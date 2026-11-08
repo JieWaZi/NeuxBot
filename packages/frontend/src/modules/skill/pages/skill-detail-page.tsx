@@ -233,6 +233,7 @@ export function SkillDetailPage() {
           backAction={backAction}
           title={skill?.name ?? t("title")}
           description={skill?.description}
+          categories={skill?.categories}
           status={
             skill && (wakerId || partners.length > 0) ? (
               <ResourceCatalogStatus

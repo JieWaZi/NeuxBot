@@ -100,7 +100,11 @@ func nativeThreadRequest(chatID string, workspace agent.Workspace, instructions 
 		HistoryTurns: request.runtime.HistoryTurns,
 	}
 	thread.Selection = &agent.TurnSelection{Reasoning: request.runtime.Reasoning, Fast: request.runtime.Fast, ContextWindow: request.runtime.ContextWindow}
-	if !request.runtime.ConfigurationResolved {
+	defaultAccountID := environment.DefaultAccountID
+	if defaultAccountID == "" {
+		defaultAccountID = agent.SystemAccountID
+	}
+	if !request.runtime.ConfigurationResolved && accountID == defaultAccountID {
 		thread.Selection.DefaultFast = environment.DefaultFast
 	}
 	switch thread.Connection.Account.Provider {

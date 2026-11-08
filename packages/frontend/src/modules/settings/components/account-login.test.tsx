@@ -5,32 +5,43 @@ import { beforeEach, expect, it, vi } from "vitest";
 import type { GlobalEventObserver } from "@/shared/api/global-events";
 import { AccountLogin } from "./account-login";
 import "@/shared/i18n";
-const { start, poll, cancel, openAuthorization, login, stream } = vi.hoisted(
-  () => ({
-    start: vi.fn(),
-    stream: {
-      observer: undefined as GlobalEventObserver | undefined,
-      stops: 0,
-    },
-    poll: vi.fn(),
-    cancel: vi.fn(),
-    openAuthorization: vi.fn(),
-    login: {
-      id: "job-1",
-      userCode: "CODE",
-      verificationUrl: "https://auth.openai.com/codex/device",
-      intervalMs: 10,
-      complete: false,
-      expiresAt: Date.now() + 60_000,
-    },
-  }),
-);
+const {
+  start,
+  poll,
+  cancel,
+  openAuthorization,
+  login,
+  stream,
+  refreshRuntime,
+} = vi.hoisted(() => ({
+  start: vi.fn(),
+  refreshRuntime: vi.fn(async () => ({})),
+  stream: {
+    observer: undefined as GlobalEventObserver | undefined,
+    stops: 0,
+  },
+  poll: vi.fn(),
+  cancel: vi.fn(),
+  openAuthorization: vi.fn(),
+  login: {
+    id: "job-1",
+    userCode: "CODE",
+    verificationUrl: "https://auth.openai.com/codex/device",
+    intervalMs: 10,
+    complete: false,
+    expiresAt: Date.now() + 60_000,
+  },
+}));
 vi.mock("@/shared/api/generated/@tanstack/react-query.gen", () => ({
   startAiAccountLoginMutation: () => ({ mutationFn: start }),
   cancelAiAccountLoginMutation: () => ({ mutationFn: cancel }),
   listAiAccountsQueryKey: () => ["accounts"],
+  listRuntimesQueryKey: () => ["runtimes"],
 }));
-vi.mock("@/shared/api/generated/sdk.gen", () => ({ getAiAccountLogin: poll }));
+vi.mock("@/shared/api/generated/sdk.gen", () => ({
+  getAiAccountLogin: poll,
+  refreshRuntime,
+}));
 vi.mock("@/shared/api/global-events", () => ({
   registerCoreConnectionRecovery: () => () => {},
   subscribeGlobalEvents: (
@@ -205,4 +216,118 @@ it("晚返回的等待快照不能覆盖已推送的成功，重连只重新对�
   act(() => stream.observer?.onResync?.("connection-restored"));
   await waitFor(() => expect(poll).toHaveBeenCalledTimes(2));
   expect(screen.getByText("登录成功，账号已保存。")).toBeVisible();
+});
+
+it("默认账号登录完成后重新探测所属智能体", async () => {
+  refreshRuntime.mockClear();
+  poll.mockResolvedValue({ data: { ...login, complete: true } });
+  const user = userEvent.setup();
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <AccountLogin
+        accountId="default-account"
+        runtimeId="codex"
+        onClose={vi.fn()}
+      />
+    </QueryClientProvider>,
+  );
+  await user.click(screen.getByRole("button", { name: "获取授权码" }));
+  await waitFor(() =>
+    expect(refreshRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({ path: { runtimeId: "codex" } }),
+    ),
+  );
+  expect(await screen.findByText("登录成功，账号已保存。")).toBeVisible();
+});
+
+it("Claude 浏览器授权不要求设备码或验证链接，保留等待与取消入口", async () => {
+  const browserLogin = {
+    ...login,
+    userCode: "",
+    verificationUrl: "",
+    complete: false,
+  };
+  start.mockResolvedValue(browserLogin);
+  poll.mockResolvedValue({ data: browserLogin });
+  const user = userEvent.setup();
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <AccountLogin
+        accountId="claude-subscription"
+        browserAuthorization
+        onClose={vi.fn()}
+      />
+    </QueryClientProvider>,
+  );
+  await user.click(screen.getByRole("button", { name: "登录" }));
+  expect(
+    await screen.findByText("如果弹出浏览器页面，请在那里完成登录。"),
+  ).toBeVisible();
+  expect(screen.getByText("等待授权完成…")).toBeVisible();
+  expect(screen.getByRole("button", { name: "取消" })).toBeVisible();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(openAuthorization).not.toHaveBeenCalled();
+});
+
+it("关闭尚未返回的受管登录后仍取消精确的新作业，不再打开链接", async () => {
+  let resolveStart: ((value: typeof login) => void) | undefined;
+  start.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolveStart = resolve;
+      }),
+  );
+  const user = userEvent.setup();
+  const onClose = vi.fn();
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <AccountLogin accountId="account-1" onClose={onClose} />
+    </QueryClientProvider>,
+  );
+  await user.click(screen.getByRole("button", { name: "获取授权码" }));
+  expect(await screen.findByText("正在准备登录")).toBeVisible();
+  await user.keyboard("{Escape}");
+  await act(async () => resolveStart?.({ ...login, id: "late-managed" }));
+  await waitFor(() =>
+    expect(cancel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { accountId: "account-1", loginId: "late-managed" },
+      }),
+      expect.anything(),
+    ),
+  );
+  expect(openAuthorization).not.toHaveBeenCalled();
+  expect(onClose).toHaveBeenCalledOnce();
+});
+
+it("设备码复制能力不可用时保留可手动选择的授权码并就地提示", async () => {
+  const user = userEvent.setup();
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <AccountLogin accountId="account-1" onClose={vi.fn()} />
+    </QueryClientProvider>,
+  );
+  await user.click(screen.getByRole("button", { name: "获取授权码" }));
+  const descriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: undefined,
+  });
+  try {
+    await user.click(await screen.findByRole("button", { name: "复制授权码" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "无法复制，请手动选择授权码。",
+    );
+    expect(screen.getByLabelText("设备授权码")).toHaveTextContent("CODE");
+  } finally {
+    if (descriptor) Object.defineProperty(navigator, "clipboard", descriptor);
+    else Reflect.deleteProperty(navigator, "clipboard");
+  }
 });

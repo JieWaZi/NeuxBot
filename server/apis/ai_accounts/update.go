@@ -1,6 +1,7 @@
 package ai_accounts
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -8,12 +9,15 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
 
 // 更新账号请求
 type UpdateAIAccountRequest struct {
+	// 智能体标识
+	RuntimeID string `json:"runtimeId" validate:"required,max=120"`
 	// 账号名称
 	Name string `json:"name" validate:"required,max=120"`
 
@@ -58,6 +62,7 @@ func (*UpdateAIAccount) Path() string { return "/:accountId" }
 
 // Validate 规范化账号名称和新凭据。
 func (a *UpdateAIAccount) Validate(*gin.Context) error {
+	a.Body.RuntimeID = strings.TrimSpace(a.Body.RuntimeID)
 	a.Body.Name = util.NormalizeName(a.Body.Name)
 	a.Body.APIKey = strings.TrimSpace(a.Body.APIKey)
 	a.Body.CustomModels = normalizeCustomModels(a.Body.CustomModels)
@@ -81,6 +86,34 @@ func (a *UpdateAIAccount) Output(ctx *gin.Context) (interface{}, error) {
 		return nil, ginx.WithStack(err)
 	}
 
+	if current.RuntimeID != a.Body.RuntimeID {
+		return nil, ginx.WithStack(status_error.AIAccountConfigurationInvalid)
+	}
+	if current.AuthMode == constants.AccountAuthModeAPIKey {
+		if err := validateDefaultModel(a.Body.SelectedModels, a.Body.DefaultModel); err != nil {
+			return nil, ginx.WithStack(err)
+		}
+	}
+	environment, err := global.RuntimeEnvironmentControllerManager.Get(ctx, current.RuntimeID)
+	if err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	candidate := current
+	candidate.Endpoint = a.Body.Endpoint
+	candidate.SelectedModels = a.Body.SelectedModels
+	candidate.ClaudeModelRoles = a.Body.ClaudeModelRoles
+	if err := aiaccount.ValidateRuntimeAccount(candidate, environment); err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	if current.AuthMode == constants.AccountAuthModeAPIKey && environment.DefaultAccountID == current.ID && environment.DefaultModel != "" {
+		allowed := slices.Contains(candidate.SelectedModels, environment.DefaultModel)
+		if environment.BaseRuntimeID == constants.RuntimeIDClaude {
+			_, allowed = aiaccount.ManagedClaudeModelTarget(candidate, environment.DefaultModel)
+		}
+		if !allowed {
+			return nil, ginx.WithStack(status_error.AIAccountInUse)
+		}
+	}
 	if current.AuthMode == constants.AccountAuthModeSubscription && a.Body.APIKey != "" {
 		return nil, ginx.WithStack(status_error.AIAccountConfigurationInvalid)
 	}

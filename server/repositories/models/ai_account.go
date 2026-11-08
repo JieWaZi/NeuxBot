@@ -11,8 +11,10 @@ func init() { dbhelper.RegisterTable(&AIAccount{}); dbhelper.RegisterTable(&AIAc
 type AIAccount struct {
 	// ID 是账号的稳定标识。
 	ID string `gorm:"type:varchar(32);primaryKey" json:"id"`
-	// Name 是去除首尾空白后全局唯一的账号名称。
-	Name string `gorm:"type:varchar(120);not null;uniqueIndex" json:"name"`
+	// RuntimeID 是拥有该账号的实际智能体环境标识，包含独立启动配置。
+	RuntimeID string `gorm:"type:varchar(120);not null;index;uniqueIndex:idx_ai_account_runtime_name,priority:1" json:"runtimeId"`
+	// Name 是去除首尾空白后在所属智能体内唯一的账号名称。
+	Name string `gorm:"type:varchar(120);not null;uniqueIndex:idx_ai_account_runtime_name,priority:2" json:"name"`
 	// AuthMode 区分 API Key 与官方订阅登录。
 	AuthMode constants.AccountAuthMode `gorm:"type:varchar(24);not null" json:"authMode"`
 

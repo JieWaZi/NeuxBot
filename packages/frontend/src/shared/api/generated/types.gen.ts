@@ -89,6 +89,10 @@ export type GithubComJieWaZiNeuxBotServerApisAiAccountsCreateAiAccountRequest = 
      */
     name: string;
     /**
+     * 智能体标识
+     */
+    runtimeId: string;
+    /**
      * 用户选择的账号模型
      */
     selectedModels?: Array<string>;
@@ -191,6 +195,10 @@ export type GithubComJieWaZiNeuxBotServerApisAiAccountsUpdateAiAccountRequest = 
      * 配置版本
      */
     revision?: number;
+    /**
+     * 智能体标识
+     */
+    runtimeId: string;
     /**
      * 用户选择的账号模型
      */
@@ -4575,6 +4583,16 @@ export type GithubComJieWaZiNeuxBotServerApisRolePresetsRolePresetWriteRequest =
 };
 
 /**
+ * 原生登录请求
+ */
+export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsAuthenticateRuntimeRequest = {
+    /**
+     * 原生认证方法
+     */
+    methodId?: string;
+};
+
+/**
  * 运行时列表响应
  */
 export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsListRuntimesResponse = {
@@ -4766,23 +4784,7 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption = {
      * 基础 CLI 类型，用于账号协议兼容性判断。
      */
     baseRuntimeId?: string;
-    /**
-     * 可执行路径
-     */
-    binary?: string;
     capabilities?: GithubComJieWaZiNeuxBotServerInternalAgentCapabilitySet & unknown;
-    /**
-     * 配置目录
-     */
-    configHome?: string;
-    /**
-     * 支持配置目录
-     */
-    configHomeSupported?: boolean;
-    /**
-     * 自定义模型
-     */
-    customModels?: Array<string>;
     /**
      * 默认账号
      */
@@ -4837,10 +4839,6 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption = {
      */
     name?: string;
     /**
-     * 前置参数
-     */
-    prefixArgs?: Array<string>;
-    /**
      * 推理选项
      */
     reasoningOptions?: Array<GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeReasoningOption>;
@@ -4873,21 +4871,9 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeReasoningOptio
 };
 
 /**
- * 环境变量请求
+ * 默认执行设置请求
  */
 export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsUpdateRuntimeEnvironmentRequest = {
-    /**
-     * 可执行路径
-     */
-    binary: string;
-    /**
-     * 配置目录
-     */
-    configHome?: string;
-    /**
-     * 自定义模型
-     */
-    customModels?: Array<string>;
     /**
      * 默认账号
      */
@@ -4913,10 +4899,6 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsUpdateRuntimeEnvironm
      * 是否默认
      */
     isDefault?: boolean;
-    /**
-     * 前置参数
-     */
-    prefixArgs?: Array<string>;
 };
 
 /**
@@ -5923,6 +5905,16 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsSkipWorkerCommand = {
      * 请求标识
      */
     requestId: string;
+};
+
+/**
+ * 工作流分类请求
+ */
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsUpdateWorkflowCategoriesRequest = {
+    /**
+     * 分类标签
+     */
+    categories?: Array<string>;
 };
 
 /**
@@ -7359,9 +7351,10 @@ export type GithubComJieWaZiNeuxBotServerConstantsRemoteTransferState = 'accepte
  * * `connector` - ResourceCategoryTypeConnector 表示独立连接器分类。
  * * `plugin` - ResourceCategoryTypePlugin 表示插件分类。
  * * `skill` - ResourceCategoryTypeSkill 表示独立技能分类。
+ * * `workflow` - ResourceCategoryTypeWorkflow 表示工作流目录分类。
  *
  */
-export type GithubComJieWaZiNeuxBotServerConstantsResourceCategoryType = '' | 'connector' | 'plugin' | 'skill';
+export type GithubComJieWaZiNeuxBotServerConstantsResourceCategoryType = '' | 'connector' | 'plugin' | 'skill' | 'workflow';
 
 /**
  * >
@@ -7382,6 +7375,29 @@ export type GithubComJieWaZiNeuxBotServerConstantsRolePresetSource = '' | 'syste
 
 /**
  * >
+ * * `` - RuntimeAuthenticationResultUnspecified 表示尚未取得认证结果。
+ * * `authentication_completed` - RuntimeAuthenticationResultAuthenticationCompleted 表示原生认证原语确认完成。
+ * * `connection_verified` - RuntimeAuthenticationResultConnectionVerified 表示原生确认了连接，未证明完成新的交互授权。
+ * * `existing_login_verified` - RuntimeAuthenticationResultExistingLoginVerified 表示原生确认了原有账号连接。
+ *
+ */
+export type GithubComJieWaZiNeuxBotServerConstantsRuntimeAuthenticationResult = '' | 'authentication_completed' | 'connection_verified' | 'existing_login_verified';
+
+/**
+ * >
+ * * `` - RuntimeAuthenticationStateUnspecified 表示尚未建立状态。
+ * * `authenticating` - RuntimeAuthenticationStateAuthenticating 表示正在进行用户触发的原生认证。
+ * * `cancelled` - RuntimeAuthenticationStateCancelled 表示原生认证已取消并完成回收。
+ * * `checking` - RuntimeAuthenticationStateChecking 表示正在读取原生认证能力。
+ * * `failed` - RuntimeAuthenticationStateFailed 表示原生认证失败。
+ * * `idle` - RuntimeAuthenticationStateIdle 表示当前没有认证任务。
+ * * `succeeded` - RuntimeAuthenticationStateSucceeded 表示原生认证已确认成功。
+ *
+ */
+export type GithubComJieWaZiNeuxBotServerConstantsRuntimeAuthenticationState = '' | 'authenticating' | 'cancelled' | 'checking' | 'failed' | 'idle' | 'succeeded';
+
+/**
+ * >
  * * `` - RuntimeCapabilityUnspecified 表示未指定 Runtime 能力。
  * * `add_directory` - RuntimeCapabilityAddDirectory 表示 Runtime 支持声明附加工作目录。
  * * `dynamic_models` - RuntimeCapabilityDynamicModels 表示本次探测取得了动态模型列表。
@@ -7396,6 +7412,39 @@ export type GithubComJieWaZiNeuxBotServerConstantsRolePresetSource = '' | 'syste
  *
  */
 export type GithubComJieWaZiNeuxBotServerConstantsRuntimeCapability = '' | 'add_directory' | 'dynamic_models' | 'image_path' | 'mcp_sse' | 'mcp_streamable_http' | 'partial_messages' | 'resume_session' | 'skill_directory' | 'streaming_user_messages' | 'structured_output';
+
+/**
+ * >
+ * * `` - RuntimeInstallationSourceUnspecified 表示尚未建立来源快照。
+ * * `managed` - RuntimeInstallationSourceManaged 表示使用应用验证并发布的程序。
+ * * `system` - RuntimeInstallationSourceSystem 表示使用本机已有安装。
+ * * `unknown` - RuntimeInstallationSourceUnknown 表示尚未确认程序来源。
+ *
+ */
+export type GithubComJieWaZiNeuxBotServerConstantsRuntimeInstallationSource = '' | 'managed' | 'system' | 'unknown';
+
+/**
+ * >
+ * * `` - RuntimeInstallationStateUnspecified 表示尚未建立安装快照。
+ * * `cancelled` - RuntimeInstallationStateCancelled 表示安装已取消并完成回收。
+ * * `failed` - RuntimeInstallationStateFailed 表示最近的安装任务失败。
+ * * `idle` - RuntimeInstallationStateIdle 表示尚未安装受管程序。
+ * * `installed` - RuntimeInstallationStateInstalled 表示程序已校验并完成发布。
+ * * `installing` - RuntimeInstallationStateInstalling 表示安装任务正在处理。
+ *
+ */
+export type GithubComJieWaZiNeuxBotServerConstantsRuntimeInstallationState = '' | 'cancelled' | 'failed' | 'idle' | 'installed' | 'installing';
+
+/**
+ * >
+ * * `` - RuntimeUpdateCheckStateUnspecified 表示尚未建立检查状态。
+ * * `checked` - RuntimeUpdateCheckStateChecked 表示已经取得官方版本。
+ * * `checking` - RuntimeUpdateCheckStateChecking 表示正在读取官方元数据。
+ * * `failed` - RuntimeUpdateCheckStateFailed 表示本次检查失败，不能判定是否最新。
+ * * `unknown` - RuntimeUpdateCheckStateUnknown 表示尚未显式检查。
+ *
+ */
+export type GithubComJieWaZiNeuxBotServerConstantsRuntimeUpdateCheckState = '' | 'checked' | 'checking' | 'failed' | 'unknown';
 
 /**
  * >
@@ -9979,13 +10028,17 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccount = {
         [key: string]: Array<string>;
     };
     /**
-     * Name 是去除首尾空白后全局唯一的账号名称。
+     * Name 是去除首尾空白后在所属智能体内唯一的账号名称。
      */
     name?: string;
     /**
      * Revision 仅用于用户配置更新冲突检测。
      */
     revision?: number;
+    /**
+     * RuntimeID 是拥有该账号的实际智能体环境标识，包含独立启动配置。
+     */
+    runtimeId?: string;
     /**
      * SelectedModels 保存用户允许在聊天中使用的该账号模型标识。
      */
@@ -12035,9 +12088,13 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowCreationSessi
 };
 
 /**
- * WorkflowDefinition 只拥有稳定身份、当前版本及创作和范围关系。
+ * WorkflowDefinition 拥有稳定身份、目录资料、当前版本及创作和范围关系。
  */
 export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition = {
+    /**
+     * Categories 是用户维护的目录分类，不属于版本源码。
+     */
+    categories?: Array<string>;
     /**
      * CreatedAt 是建立时间的 Unix 毫秒。
      */
@@ -12357,7 +12414,7 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowScopeBinding 
 };
 
 /**
- * Login 保存前端完成设备授权需要的非秘密信息。
+ * Login 保存前端观察原生设备或浏览器授权所需的非秘密状态。
  */
 export type GithubComJieWaZiNeuxBotServerServicesAiaccountLogin = {
     /**
@@ -12957,6 +13014,205 @@ export type GithubComJieWaZiNeuxBotServerServicesNotificationSnapshot = {
      * 未读成果数
      */
     unreadResultCount?: number;
+};
+
+/**
+ * 原生认证方法
+ */
+export type GithubComJieWaZiNeuxBotServerServicesRuntimeenvironmentRuntimeAuthenticationMethod = {
+    /**
+     * 方法标识
+     */
+    id?: string;
+    /**
+     * 交互方式
+     */
+    kind?: string;
+    /**
+     * 方法名称
+     */
+    name?: string;
+};
+
+/**
+ * 系统账号认证状态
+ */
+export type GithubComJieWaZiNeuxBotServerServicesRuntimeenvironmentRuntimeAuthenticationSnapshot = {
+    /**
+     * 支持密钥配置
+     */
+    apiKeySupported?: boolean;
+    /**
+     * 支持原生登录
+     */
+    canAuthenticate?: boolean;
+    /**
+     * 允许取消
+     */
+    cancelable?: boolean;
+    /**
+     * 本机配置限制
+     */
+    configurationReason?: string;
+    /**
+     * 失败代码
+     */
+    errorCode?: string;
+    /**
+     * 登录任务标识
+     */
+    jobId?: string;
+    /**
+     * 原生认证方法
+     */
+    methods?: Array<GithubComJieWaZiNeuxBotServerServicesRuntimeenvironmentRuntimeAuthenticationMethod>;
+    result?: GithubComJieWaZiNeuxBotServerConstantsRuntimeAuthenticationResult & unknown;
+    /**
+     * 快照修订
+     */
+    revision?: number;
+    /**
+     * 智能体标识
+     */
+    runtimeId?: string;
+    /**
+     * 账号范围
+     */
+    scope?: string;
+    state?: GithubComJieWaZiNeuxBotServerConstantsRuntimeAuthenticationState & unknown;
+    /**
+     * 需要终端认证
+     */
+    terminalRequired?: boolean;
+    /**
+     * 更新时间
+     */
+    updatedAt?: number;
+    /**
+     * 原生授权码
+     */
+    userCode?: string;
+    /**
+     * 原生授权地址
+     */
+    verificationUrl?: string;
+};
+
+/**
+ * 智能体安装状态
+ */
+export type GithubComJieWaZiNeuxBotServerServicesRuntimeenvironmentRuntimeInstallationSnapshot = {
+    /**
+     * 允许安装
+     */
+    canInstall?: boolean;
+    /**
+     * 允许卸载
+     */
+    canUninstall?: boolean;
+    /**
+     * 允许更新
+     */
+    canUpdate?: boolean;
+    /**
+     * 允许取消
+     */
+    cancelable?: boolean;
+    /**
+     * 检查失败代码
+     */
+    checkErrorCode?: string;
+    checkState?: GithubComJieWaZiNeuxBotServerConstantsRuntimeUpdateCheckState & unknown;
+    /**
+     * 成功检查时间
+     */
+    checkedAt?: number;
+    /**
+     * 失败代码
+     */
+    errorCode?: string;
+    /**
+     * 失败操作
+     */
+    errorOperation?: string;
+    /**
+     * 失败原因
+     */
+    errorReason?: string;
+    /**
+     * 上游响应状态
+     */
+    errorStatus?: number;
+    /**
+     * 安装方式
+     */
+    installationMethod?: string;
+    /**
+     * 程序安装位置
+     */
+    installationPath?: string;
+    /**
+     * 已安装程序
+     */
+    installed?: boolean;
+    /**
+     * 官方最新版本
+     */
+    latestVersion?: string;
+    /**
+     * 维护限制原因
+     */
+    maintenanceReason?: string;
+    /**
+     * 官方维护说明
+     */
+    officialUrl?: string;
+    /**
+     * 当前维护操作
+     */
+    operation?: string;
+    /**
+     * 当前阶段
+     */
+    phase?: string;
+    /**
+     * 下载进度
+     */
+    progress?: number;
+    /**
+     * 已下载字节
+     */
+    receivedBytes?: number;
+    /**
+     * 快照修订
+     */
+    revision?: number;
+    /**
+     * 智能体标识
+     */
+    runtimeId?: string;
+    source?: GithubComJieWaZiNeuxBotServerConstantsRuntimeInstallationSource & unknown;
+    state?: GithubComJieWaZiNeuxBotServerConstantsRuntimeInstallationState & unknown;
+    /**
+     * 支持受管安装
+     */
+    supported?: boolean;
+    /**
+     * 总下载字节
+     */
+    totalBytes?: number;
+    /**
+     * 存在可用更新
+     */
+    updateAvailable?: boolean;
+    /**
+     * 更新时间
+     */
+    updatedAt?: number;
+    /**
+     * 已安装版本
+     */
+    version?: string;
 };
 
 export type GithubComJieWaZiNeuxBotServerServicesScheduleRunView = GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticRun & {
@@ -14591,6 +14847,10 @@ export type ReadErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -14618,6 +14878,8 @@ export type ReadErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -14719,6 +14981,7 @@ export type ReadErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -14932,6 +15195,10 @@ export type CommandErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -14959,6 +15226,8 @@ export type CommandErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -15060,6 +15329,7 @@ export type CommandErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -15092,7 +15362,12 @@ export type CommandResponse = CommandResponses[keyof CommandResponses];
 export type ListAiAccountsData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * 智能体标识
+         */
+        runtimeId?: string;
+    };
     url: '/api/v1/ai-accounts';
 };
 
@@ -15108,6 +15383,17 @@ export type CreateAiAccountData = {
     query?: never;
     url: '/api/v1/ai-accounts';
 };
+
+export type CreateAiAccountErrors = {
+    /**
+     * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type CreateAiAccountError = CreateAiAccountErrors[keyof CreateAiAccountErrors];
 
 export type CreateAiAccountResponses = {
     200: GithubComJieWaZiNeuxBotServerApisAiAccountsCreateAiAccountResponse;
@@ -15200,6 +15486,7 @@ export type DeleteAiAccountErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[AIAccountCredentialError][50000000046]`
      * * `[AIAccountWorkspaceError][50000000047]`
      *
      */
@@ -15236,6 +15523,7 @@ export type UpdateAiAccountErrors = {
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
      * * `[AIAccountRevisionConflict][40900000028]`
      *
      */
@@ -15284,12 +15572,16 @@ export type LogoutAiAccountErrors = {
      * >
      * * `[AIAccountBusy][40900000027]`
      * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[RuntimeInstallationBusy][40900007301]`
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[AIAccountCredentialError][50000000046]`
      * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
      *
      */
     500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -15521,6 +15813,10 @@ export type StartAiAccountLoginErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -15548,6 +15844,8 @@ export type StartAiAccountLoginErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -15649,6 +15947,7 @@ export type StartAiAccountLoginErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -15871,6 +16170,10 @@ export type CancelAiAccountLoginErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -15898,6 +16201,8 @@ export type CancelAiAccountLoginErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -15999,6 +16304,7 @@ export type CancelAiAccountLoginErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -16316,6 +16622,10 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -16343,6 +16653,8 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -16444,6 +16756,7 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -16748,6 +17061,10 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -16775,6 +17092,8 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -16876,6 +17195,7 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -17094,6 +17414,10 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -17121,6 +17445,8 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -17222,6 +17548,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -18851,6 +19178,10 @@ export type StreamEventsErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -18878,6 +19209,8 @@ export type StreamEventsErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -18979,6 +19312,7 @@ export type StreamEventsErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -19897,6 +20231,10 @@ export type UpdateMcpServiceErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -19924,6 +20262,8 @@ export type UpdateMcpServiceErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -20025,6 +20365,7 @@ export type UpdateMcpServiceErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -20337,6 +20678,10 @@ export type UpdateApiServiceErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -20364,6 +20709,8 @@ export type UpdateApiServiceErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -20465,6 +20812,7 @@ export type UpdateApiServiceErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -29125,6 +29473,10 @@ export type ListPluginsErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -29152,6 +29504,8 @@ export type ListPluginsErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -29253,6 +29607,7 @@ export type ListPluginsErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -29487,6 +29842,10 @@ export type BrowsePluginsErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -29514,6 +29873,8 @@ export type BrowsePluginsErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -29615,6 +29976,7 @@ export type BrowsePluginsErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -30012,6 +30374,10 @@ export type PrepareCatalogPluginErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -30039,6 +30405,8 @@ export type PrepareCatalogPluginErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -30140,6 +30508,7 @@ export type PrepareCatalogPluginErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -30507,6 +30876,10 @@ export type CreatePluginFromSkillsErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -30534,6 +30907,8 @@ export type CreatePluginFromSkillsErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -30635,6 +31010,7 @@ export type CreatePluginFromSkillsErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -30951,6 +31327,10 @@ export type GetPluginErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -30978,6 +31358,8 @@ export type GetPluginErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -31079,6 +31461,7 @@ export type GetPluginErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -31391,6 +31774,10 @@ export type StartPluginAuthorizationErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -31418,6 +31805,8 @@ export type StartPluginAuthorizationErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -31519,6 +31908,7 @@ export type StartPluginAuthorizationErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -32047,6 +32437,10 @@ export type GetPluginConfigurationErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -32074,6 +32468,8 @@ export type GetPluginConfigurationErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -32175,6 +32571,7 @@ export type GetPluginConfigurationErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -32612,6 +33009,10 @@ export type InstallPluginErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -32639,6 +33040,8 @@ export type InstallPluginErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -32740,6 +33143,7 @@ export type InstallPluginErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -33315,24 +33719,9 @@ export type UpdateRuntimeEnvironmentErrors = {
     /**
      * >
      * * `[AIAccountConfigurationInvalid][40000000020]`
-     * * `[BadRequest][40000000001]`
-     * * `[RuntimeNotRegistered][40000002001]`
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
-    /**
-     * >
-     * * `[Conflict][40900000001]`
-     *
-     */
-    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
-    /**
-     * >
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     *
-     */
-    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateRuntimeEnvironmentError = UpdateRuntimeEnvironmentErrors[keyof UpdateRuntimeEnvironmentErrors];
@@ -33342,6 +33731,142 @@ export type UpdateRuntimeEnvironmentResponses = {
 };
 
 export type UpdateRuntimeEnvironmentResponse = UpdateRuntimeEnvironmentResponses[keyof UpdateRuntimeEnvironmentResponses];
+
+export type CancelRuntimeAuthenticationData = {
+    body?: never;
+    path: {
+        /**
+         * 智能体标识
+         */
+        runtimeId: string;
+    };
+    query: {
+        /**
+         * 登录任务标识
+         */
+        jobId: string;
+    };
+    url: '/api/v1/runtimes/{runtimeId}/authentication';
+};
+
+export type CancelRuntimeAuthenticationResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type CancelRuntimeAuthenticationResponse = CancelRuntimeAuthenticationResponses[keyof CancelRuntimeAuthenticationResponses];
+
+export type GetRuntimeAuthenticationData = {
+    body?: never;
+    path: {
+        /**
+         * 智能体标识
+         */
+        runtimeId: string;
+    };
+    query?: {
+        /**
+         * 重新读取原生能力
+         */
+        refresh?: boolean;
+    };
+    url: '/api/v1/runtimes/{runtimeId}/authentication';
+};
+
+export type GetRuntimeAuthenticationResponses = {
+    200: GithubComJieWaZiNeuxBotServerServicesRuntimeenvironmentRuntimeAuthenticationSnapshot;
+};
+
+export type GetRuntimeAuthenticationResponse = GetRuntimeAuthenticationResponses[keyof GetRuntimeAuthenticationResponses];
+
+export type AuthenticateRuntimeData = {
+    body: GithubComJieWaZiNeuxBotServerApisRuntimeOptionsAuthenticateRuntimeRequest & unknown;
+    path: {
+        /**
+         * 智能体标识
+         */
+        runtimeId: string;
+    };
+    query?: never;
+    url: '/api/v1/runtimes/{runtimeId}/authentication';
+};
+
+export type AuthenticateRuntimeResponses = {
+    200: GithubComJieWaZiNeuxBotServerServicesRuntimeenvironmentRuntimeAuthenticationSnapshot;
+};
+
+export type AuthenticateRuntimeResponse = AuthenticateRuntimeResponses[keyof AuthenticateRuntimeResponses];
+
+export type CheckRuntimeUpdatesData = {
+    body?: never;
+    path: {
+        /**
+         * 智能体标识
+         */
+        runtimeId: string;
+    };
+    query?: never;
+    url: '/api/v1/runtimes/{runtimeId}/check-updates';
+};
+
+export type CheckRuntimeUpdatesResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type CheckRuntimeUpdatesResponse = CheckRuntimeUpdatesResponses[keyof CheckRuntimeUpdatesResponses];
+
+export type CancelRuntimeInstallationData = {
+    body?: never;
+    path: {
+        /**
+         * 智能体标识
+         */
+        runtimeId: string;
+    };
+    query?: never;
+    url: '/api/v1/runtimes/{runtimeId}/installation';
+};
+
+export type CancelRuntimeInstallationResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type CancelRuntimeInstallationResponse = CancelRuntimeInstallationResponses[keyof CancelRuntimeInstallationResponses];
+
+export type GetRuntimeInstallationData = {
+    body?: never;
+    path: {
+        /**
+         * 智能体标识
+         */
+        runtimeId: string;
+    };
+    query?: never;
+    url: '/api/v1/runtimes/{runtimeId}/installation';
+};
+
+export type GetRuntimeInstallationResponses = {
+    200: GithubComJieWaZiNeuxBotServerServicesRuntimeenvironmentRuntimeInstallationSnapshot;
+};
+
+export type GetRuntimeInstallationResponse = GetRuntimeInstallationResponses[keyof GetRuntimeInstallationResponses];
+
+export type InstallRuntimeData = {
+    body?: never;
+    path: {
+        /**
+         * 智能体标识
+         */
+        runtimeId: string;
+    };
+    query?: never;
+    url: '/api/v1/runtimes/{runtimeId}/installation';
+};
+
+export type InstallRuntimeResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type InstallRuntimeResponse = InstallRuntimeResponses[keyof InstallRuntimeResponses];
 
 export type GetRuntimeModelCatalogData = {
     body?: never;
@@ -33370,6 +33895,24 @@ export type GetRuntimeModelCatalogResponses = {
 
 export type GetRuntimeModelCatalogResponse = GetRuntimeModelCatalogResponses[keyof GetRuntimeModelCatalogResponses];
 
+export type UninstallRuntimeData = {
+    body?: never;
+    path: {
+        /**
+         * 智能体标识
+         */
+        runtimeId: string;
+    };
+    query?: never;
+    url: '/api/v1/runtimes/{runtimeId}/program';
+};
+
+export type UninstallRuntimeResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type UninstallRuntimeResponse = UninstallRuntimeResponses[keyof UninstallRuntimeResponses];
+
 export type RefreshRuntimeData = {
     body?: never;
     path: {
@@ -33387,6 +33930,24 @@ export type RefreshRuntimeResponses = {
 };
 
 export type RefreshRuntimeResponse = RefreshRuntimeResponses[keyof RefreshRuntimeResponses];
+
+export type RestartRuntimeData = {
+    body?: never;
+    path: {
+        /**
+         * 智能体标识
+         */
+        runtimeId: string;
+    };
+    query?: never;
+    url: '/api/v1/runtimes/{runtimeId}/restart';
+};
+
+export type RestartRuntimeResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type RestartRuntimeResponse = RestartRuntimeResponses[keyof RestartRuntimeResponses];
 
 export type ListLibrarySkillsData = {
     body?: never;
@@ -34110,6 +34671,10 @@ export type SetAutomaticTaskApiErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -34137,6 +34702,8 @@ export type SetAutomaticTaskApiErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -34238,6 +34805,7 @@ export type SetAutomaticTaskApiErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -35049,6 +35617,10 @@ export type ListAutomaticTasksErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -35076,6 +35648,8 @@ export type ListAutomaticTasksErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -35177,6 +35751,7 @@ export type ListAutomaticTasksErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -35462,6 +36037,10 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -35489,6 +36068,8 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -35590,6 +36171,7 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -35841,6 +36423,10 @@ export type DeleteAutomaticTaskErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -35868,6 +36454,8 @@ export type DeleteAutomaticTaskErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -35969,6 +36557,7 @@ export type DeleteAutomaticTaskErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -36191,6 +36780,10 @@ export type GetAutomaticTaskErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -36218,6 +36811,8 @@ export type GetAutomaticTaskErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -36319,6 +36914,7 @@ export type GetAutomaticTaskErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -36692,6 +37288,10 @@ export type ListAutomaticRunsErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -36719,6 +37319,8 @@ export type ListAutomaticRunsErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -36820,6 +37422,7 @@ export type ListAutomaticRunsErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -37042,6 +37645,10 @@ export type TriggerAutomaticTaskErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -37069,6 +37676,8 @@ export type TriggerAutomaticTaskErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -37170,6 +37779,7 @@ export type TriggerAutomaticTaskErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -37831,6 +38441,10 @@ export type ListWakerPluginsErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -37858,6 +38472,8 @@ export type ListWakerPluginsErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -37959,6 +38575,7 @@ export type ListWakerPluginsErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -39057,6 +39674,10 @@ export type ListWorkflowsData = {
          */
         beforeId?: string;
         /**
+         * 分类名称
+         */
+        category?: string;
+        /**
          * 每页条数
          */
         limit?: number;
@@ -39064,6 +39685,10 @@ export type ListWorkflowsData = {
          * 搜索文字
          */
         search?: string;
+        /**
+         * 仅未分类
+         */
+        uncategorized?: boolean;
     };
     url: '/api/v1/workflows';
 };
@@ -39258,6 +39883,10 @@ export type CreateWorkflowErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -39285,6 +39914,8 @@ export type CreateWorkflowErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -39386,6 +40017,7 @@ export type CreateWorkflowErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -39617,6 +40249,10 @@ export type DeleteWorkflowErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -39644,6 +40280,8 @@ export type DeleteWorkflowErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -39745,6 +40383,7 @@ export type DeleteWorkflowErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -39986,6 +40625,10 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -40013,6 +40656,8 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -40114,6 +40759,7 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -40142,6 +40788,35 @@ export type CreateWorkflowAnnotationResponses = {
 };
 
 export type CreateWorkflowAnnotationResponse = CreateWorkflowAnnotationResponses[keyof CreateWorkflowAnnotationResponses];
+
+export type UpdateWorkflowCategoriesData = {
+    body: GithubComJieWaZiNeuxBotServerApisWorkflowsUpdateWorkflowCategoriesRequest & unknown;
+    path: {
+        /**
+         * 工作流标识
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/workflows/{id}/categories';
+};
+
+export type UpdateWorkflowCategoriesErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type UpdateWorkflowCategoriesError = UpdateWorkflowCategoriesErrors[keyof UpdateWorkflowCategoriesErrors];
+
+export type UpdateWorkflowCategoriesResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type UpdateWorkflowCategoriesResponse = UpdateWorkflowCategoriesResponses[keyof UpdateWorkflowCategoriesResponses];
 
 export type EditWorkflowConfigurationData = {
     body: GithubComJieWaZiNeuxBotServerApisWorkflowsEditConfigurationCommand & unknown;
@@ -40332,6 +41007,10 @@ export type EditWorkflowConfigurationErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -40359,6 +41038,8 @@ export type EditWorkflowConfigurationErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -40460,6 +41141,7 @@ export type EditWorkflowConfigurationErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -40678,6 +41360,10 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -40705,6 +41391,8 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -40806,6 +41494,7 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -41112,6 +41801,10 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -41139,6 +41832,8 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -41240,6 +41935,7 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -41489,6 +42185,10 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -41516,6 +42216,8 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -41617,6 +42319,7 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -41866,6 +42569,10 @@ export type StartWorkflowRunErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -41893,6 +42600,8 @@ export type StartWorkflowRunErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -41994,6 +42703,7 @@ export type StartWorkflowRunErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -42216,6 +42926,10 @@ export type DeleteWorkflowRunErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -42243,6 +42957,8 @@ export type DeleteWorkflowRunErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -42344,6 +43060,7 @@ export type DeleteWorkflowRunErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -42674,6 +43391,10 @@ export type AnswerWorkflowHumanErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -42701,6 +43422,8 @@ export type AnswerWorkflowHumanErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -42802,6 +43525,7 @@ export type AnswerWorkflowHumanErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -43028,6 +43752,10 @@ export type GetWorkflowInstanceErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -43055,6 +43783,8 @@ export type GetWorkflowInstanceErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -43156,6 +43886,7 @@ export type GetWorkflowInstanceErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -43382,6 +44113,10 @@ export type SkipWorkflowWorkerErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -43409,6 +44144,8 @@ export type SkipWorkflowWorkerErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -43510,6 +44247,7 @@ export type SkipWorkflowWorkerErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -43736,6 +44474,10 @@ export type AnswerWorkflowOperationErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -43763,6 +44505,8 @@ export type AnswerWorkflowOperationErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -43864,6 +44608,7 @@ export type AnswerWorkflowOperationErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -44086,6 +44831,10 @@ export type RetryWorkflowRunErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -44113,6 +44862,8 @@ export type RetryWorkflowRunErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -44214,6 +44965,7 @@ export type RetryWorkflowRunErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -44506,6 +45258,10 @@ export type SaveWorkflowSourceErrors = {
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -44533,6 +45289,8 @@ export type SaveWorkflowSourceErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      * * `[PluginCapabilityUnsupported][42200006501]`
      * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -44634,6 +45392,7 @@ export type SaveWorkflowSourceErrors = {
      * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
     502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;

@@ -4,7 +4,6 @@ import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
-	"slices"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -62,32 +61,15 @@ func (m *service) resolveConfiguration(ctx context.Context, config ExecutionConf
 		if m.accounts == nil {
 			return config, status_error.AIAccountConfigurationInvalid
 		}
-		account, err := m.accounts.ValidateSelection(ctx, config.AccountID, provider, config.Model, config.Reasoning)
+		account, err := m.accounts.Get(ctx, config.AccountID)
 		if err != nil {
 			return config, err
 		}
-		if config.Model == "" && !config.Resolved && account.AuthMode == constants.AccountAuthModeAPIKey {
-			candidates := []string{account.DefaultModel}
-			if config.AccountID == defaultAccountID {
-				candidates = append([]string{environment.DefaultModel}, candidates...)
-			}
-			candidates = append(candidates, account.SelectedModels...)
-			for _, candidate := range candidates {
-				allowed := slices.Contains(account.SelectedModels, candidate)
-				if provider == constants.RuntimeIDClaude {
-					_, allowed = aiaccount.ManagedClaudeModelTarget(account, candidate)
-				}
-				if candidate != "" && allowed {
-					config.Model = candidate
-					break
-				}
-			}
+		if err := aiaccount.ValidateRuntimeAccount(account, environment); err != nil {
+			return config, err
 		}
-		if config.Model == "" && !config.Resolved && account.AuthMode == constants.AccountAuthModeSubscription && config.AccountID == defaultAccountID {
-			config.Model = environment.DefaultModel
-		}
-		if config.Reasoning == "" && !config.Resolved && config.AccountID == defaultAccountID && config.Model == environment.DefaultModel {
-			config.Reasoning = environment.DefaultReasoning
+		if !config.Resolved {
+			config.Model, config.Reasoning = aiaccount.RuntimeSelectionDefaults(account, environment, config.Model, config.Reasoning)
 		}
 		// 原生组合仍由会话 setter 回执确认；受管账号必须保留凭据、协议与选中模型准入。
 		if _, err := m.accounts.ValidateSelection(ctx, config.AccountID, provider, config.Model, config.Reasoning); err != nil {
@@ -102,7 +84,7 @@ func (m *service) resolveConfiguration(ctx context.Context, config ExecutionConf
 		}
 	}
 	fast := config.Fast
-	if fast == nil && !config.Resolved {
+	if fast == nil && !config.Resolved && config.AccountID == defaultAccountID {
 		fast = environment.DefaultFast
 	}
 	if fast != nil {

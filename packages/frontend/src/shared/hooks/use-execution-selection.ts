@@ -52,9 +52,7 @@ function nativeCatalogIdentity(
           ]
         : undefined,
     version: runtime?.version,
-    binary: runtime?.resolvedBinary || runtime?.binary,
-    prefixArgs: runtime?.prefixArgs,
-    configHome: accountId === "system" ? runtime?.configHome : undefined,
+    binary: runtime?.resolvedBinary,
   };
 }
 
@@ -171,6 +169,7 @@ export function useNativeExecutionSelections(
     const account = accounts.find(
       (item) =>
         item.id === accountId &&
+        item.runtimeId === runtimeId &&
         accountSupportsRuntime(item, runtime?.baseRuntimeId || runtimeId),
     );
     const options = nativeModelCatalogOptions(
@@ -248,6 +247,7 @@ export function useExecutionSelection({
   const accounts = (accountsQuery.data?.resources ?? []).filter(
     (item) =>
       item.id &&
+      item.runtimeId === runtimeId &&
       accountSupportsRuntime(item, runtime?.baseRuntimeId || runtimeId),
   );
   const accountId = value.accountId || runtime?.defaultAccountId || "system";
@@ -345,8 +345,9 @@ export function useExecutionSelection({
     fast: value.fast,
     contextWindow: value.contextWindow,
   };
-  const catalogPending =
+  const catalogRefreshing =
     usesNativeCatalog && catalogQuery.fetchStatus !== "idle";
+  const catalogPending = catalogRefreshing && catalogState !== "fresh";
   const catalogIssue =
     !usesNativeCatalog || !catalogState
       ? undefined
@@ -383,6 +384,7 @@ export function useExecutionSelection({
     catalogIssue,
     refreshCatalog,
     catalogPending,
+    catalogRefreshing,
     fastSupported: nativeSelection?.fastSupported ?? false,
     effectiveModel,
     defaultModel: usesNativeCatalog

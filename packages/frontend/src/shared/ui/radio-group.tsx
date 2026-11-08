@@ -60,14 +60,14 @@ export function RadioGroupOption({
           aria-hidden
           className="border-field-border size-icon-sm grid shrink-0 place-items-center rounded-full border"
         >
-          <RadioGroupPrimitive.Indicator className="bg-content-primary text-background grid size-full place-items-center rounded-full">
+          <RadioGroupPrimitive.Indicator className="bg-control-highlight text-control-highlight-foreground grid size-full place-items-center rounded-full">
             <Check className="size-icon-xs" strokeWidth={1.5} />
           </RadioGroupPrimitive.Indicator>
         </span>
       ) : null}
       <span className="min-w-0 flex-1">{children}</span>
       {leadingIndicator ? null : (
-        <RadioGroupPrimitive.Indicator className="shrink-0">
+        <RadioGroupPrimitive.Indicator className="text-accent-content shrink-0">
           <Check className="size-icon-sm" strokeWidth={1.5} />
         </RadioGroupPrimitive.Indicator>
       )}

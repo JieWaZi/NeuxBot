@@ -15,13 +15,18 @@ vi.mock("@/shared/theme", () => ({
 
 vi.mock("../components/runtime-environments-section", () => ({
   RuntimeEnvironmentsSection: ({
-    onOpenAccounts,
+    onOpenRuntime,
+    onBack,
+    runtimeId,
   }: {
-    onOpenAccounts?: () => void;
+    onOpenRuntime?: (id: string) => void;
+    onBack?: () => void;
+    runtimeId?: string;
   }) => (
     <>
-      <h1>执行环境内容</h1>
-      <button onClick={onOpenAccounts}>前往账号设置</button>
+      <h1>{runtimeId ? `智能体 ${runtimeId}` : "执行环境内容"}</h1>
+      <button onClick={() => onOpenRuntime?.("codex")}>打开 Codex</button>
+      <button onClick={onBack}>返回智能体</button>
     </>
   ),
 }));
@@ -47,7 +52,10 @@ describe("SettingsScene", () => {
         />
       </>,
     );
-    expect(screen.getByText("发布集成")).toBeVisible();
+    expect(screen.queryByText("集成")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "设置" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "IM 平台与连接列表" }),
     ).toBeVisible();
@@ -84,20 +92,32 @@ describe("SettingsScene", () => {
       await screen.findByRole("heading", { name: "API 与 MCP 集成内容" }),
     ).toBeVisible();
   });
-  it("从智能体诊断入口切换到 AI 账号设置", async () => {
+  it("在同一设置分类打开智能体详情并返回", async () => {
     const user = userEvent.setup();
-    const onSelectSection = vi.fn();
-    render(
+    const onOpenRuntime = vi.fn();
+    const onRuntimeBack = vi.fn();
+    const view = render(
       <SettingsScene
-        section="runtime-environments"
+        section="agents"
         onClose={() => undefined}
-        onSelectSection={onSelectSection}
+        onOpenRuntime={onOpenRuntime}
       />,
     );
-    await user.click(
-      await screen.findByRole("button", { name: "前往账号设置" }),
+    await user.click(await screen.findByRole("button", { name: "打开 Codex" }));
+    expect(onOpenRuntime).toHaveBeenCalledWith("codex");
+    view.rerender(
+      <SettingsScene
+        section="agents"
+        runtimeId="codex"
+        onClose={() => undefined}
+        onRuntimeBack={onRuntimeBack}
+      />,
     );
-    expect(onSelectSection).toHaveBeenCalledWith("ai-accounts");
+    expect(
+      await screen.findByRole("heading", { name: "智能体 codex" }),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "返回智能体" }));
+    expect(onRuntimeBack).toHaveBeenCalledOnce();
   });
 
   it("打开时注册原生浮层以隐藏分屏浏览器", async () => {
@@ -113,12 +133,10 @@ describe("SettingsScene", () => {
     await waitFor(() => expect(visibility.result.current).toBe(false));
   });
 
-  it("设置路径显示当前分区，不重复输出设置标签", async () => {
+  it("智能体分类选中，不再显示顶级账号入口", async () => {
     function Harness() {
       const [open, setOpen] = useState(true);
-      const [section, setSection] = useState<SettingsSection>(
-        "runtime-environments",
-      );
+      const [section, setSection] = useState<SettingsSection>("agents");
       return open ? (
         <div className="grid grid-cols-[240px_1fr]">
           <SettingsContextSidebar
@@ -142,22 +160,44 @@ describe("SettingsScene", () => {
       "page",
     );
     const runtimeNavItem = screen.getByRole("button", { name: "智能体" });
-    expect(runtimeNavItem).toHaveClass("min-h-row-default", "rounded-md");
-    expect(runtimeNavItem.querySelector("span.type-body")).toHaveClass(
+    expect(runtimeNavItem).toHaveClass(
+      "min-h-control-hit-target",
+      "rounded-md",
+    );
+    expect(runtimeNavItem.querySelector("span.type-resource-body")).toHaveClass(
       "font-medium",
     );
-    expect(runtimeNavItem).toHaveClass("bg-selection-surface");
+    expect(runtimeNavItem).toHaveClass("bg-resource-hover");
     expect(screen.getByRole("button", { name: "通用" })).not.toHaveClass(
-      "bg-selection-surface",
+      "bg-resource-hover",
     );
     expect(
       await screen.findByRole("heading", { name: "执行环境内容" }),
     ).toBeInTheDocument();
 
-    const path = screen.getByRole("navigation", { name: "设置 Scene" });
-    expect(path.querySelector('[aria-current="page"]')).toHaveTextContent(
-      "智能体",
-    );
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "账号管理" }),
+    ).not.toBeInTheDocument();
   });
+});
+
+it("设置搜索在本地筛选分类并可以清除", async () => {
+  const user = userEvent.setup();
+  render(<SettingsContextSidebar activeSection="general" onSelect={vi.fn()} />);
+  await user.type(
+    screen.getByRole("searchbox", { name: "搜索设置" }),
+    "智能体",
+  );
+  expect(screen.getByRole("button", { name: "智能体" })).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "API 集成" }),
+  ).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "清除设置搜索" }));
+  expect(screen.getByRole("button", { name: "API 集成" })).toBeVisible();
+  await user.type(
+    screen.getByRole("searchbox", { name: "搜索设置" }),
+    "不存在",
+  );
+  expect(screen.getByRole("status")).toHaveTextContent("没有匹配的设置");
 });

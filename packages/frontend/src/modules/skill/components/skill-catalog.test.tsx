@@ -8,7 +8,13 @@ vi.mock("@/shared/workspace/app-scene-workspace", () => ({
   useRouteSceneActive: () => true,
 }));
 vi.mock("./skill-card", () => ({
-  SkillCard: ({ skill }: { skill: SkillSummary }) => <span>{skill.name}</span>,
+  SkillCard: ({
+    skill,
+    category,
+  }: {
+    skill: SkillSummary;
+    category: string;
+  }) => <span data-category={category}>{skill.name}</span>,
 }));
 
 it("shows a skill in each selected category and keeps untagged skills separate", () => {
@@ -39,6 +45,11 @@ it("shows a skill in each selected category and keeps untagged skills separate",
   expect(
     within(screen.getByRole("region", { name: "写作" })).getByText("审查"),
   ).toBeVisible();
+  for (const name of ["开发", "写作"]) {
+    expect(
+      within(screen.getByRole("region", { name })).getByText("审查"),
+    ).toHaveAttribute("data-category", name);
+  }
   expect(
     within(screen.getByRole("region", { name: "未分类" })).getByText("其他"),
   ).toBeVisible();
@@ -49,5 +60,6 @@ it("shows a skill in each selected category and keeps untagged skills separate",
   }
   view.rerender(<SkillCatalog {...props} category="写作" />);
   expect(screen.getAllByText("审查")).toHaveLength(1);
+  expect(screen.getByText("审查")).toHaveAttribute("data-category", "写作");
   expect(screen.queryByText("其他")).not.toBeInTheDocument();
 });

@@ -12,7 +12,7 @@ Chat 的固定文件索引定位原日志范围；业务 SQLite 中的 `chat_exe
 
 产品名为 NeuxBot；应用标识与默认程序数据目录为 `com.neuxally.desktop`，受管业务文件根为 `.neuxally`。两者分别拥有程序状态与业务文件。
 
-程序数据目录沿用桌面平台的应用数据位置，由 `ALLY_DATA_DIR` 指定；数据库 `ally.db`、`memory.db`，技能目录 `skills/`、`system-skills/`，独立账号目录 `ai-accounts/`、`account-workspaces/`，执行授权描述 `agent-contexts/`，以及 Electron 数据、程序日志和 `automatic-tasks-api.json` 均保留于此。
+程序数据目录沿用桌面平台的应用数据位置，由 `ALLY_DATA_DIR` 指定；数据库 `ally.db`、`memory.db`，技能目录 `skills/`、`system-skills/`，独立账号目录 `ai-accounts/`、`account-workspaces/`，受管程序目录 `runtime-installations/`，执行授权描述 `agent-contexts/`，以及 Electron 数据、程序日志和 `automatic-tasks-api.json` 均保留于此。
 
 受管业务文件默认位于用户主目录的 `~/.neuxally/`，可以通过 `ALLY_MANAGED_FILES_DIR` 独立指定，不改变数据库和程序数据位置：
 

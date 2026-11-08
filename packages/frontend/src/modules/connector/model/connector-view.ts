@@ -42,6 +42,7 @@ export function toConnectorSummary(
       ? connector.testStatus
       : "untested";
   return {
+    categories: connector.categories ?? [],
     activationPolicy: connectorActivationPolicyOf(connector.activationPolicy),
     affectedWakerCount: view.affectedWakerCount ?? 0,
     compatibility: view.compatibility ?? [],

@@ -34,6 +34,7 @@ export function APIServiceSettings() {
   const client = useQueryClient();
   const service = useQuery(integrationServiceOptions());
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState("");
   const [configOpen, setConfigOpen] = useState(false);
   const [draft, setDraft] = useState<{
     ip?: string;
@@ -78,10 +79,15 @@ export function APIServiceSettings() {
       ? "available"
       : "unavailable";
   return (
-    <Card asChild variant="section">
+    <Card asChild variant="settings">
       <section data-od-id="api-service">
         {service.isPending ? (
-          <div role="status" aria-busy="true" className="grid gap-3">
+          <div
+            role="status"
+            aria-busy="true"
+            aria-label={t("serviceStatus")}
+            className="grid gap-3"
+          >
             <Skeleton className="h-28 w-full" />
             <Skeleton className="h-row-default w-full" />
             <Skeleton className="h-row-default w-full" />
@@ -147,9 +153,15 @@ export function APIServiceSettings() {
                             aria-label={t(
                               copied ? "copiedAddress" : "copyAddress",
                             )}
-                            onClick={async () => {
-                              await navigator.clipboard.writeText(base);
-                              setCopied(true);
+                            onClick={() => {
+                              setCopyError("");
+                              void navigator.clipboard
+                                .writeText(base)
+                                .then(() => setCopied(true))
+                                .catch(() => {
+                                  setCopied(false);
+                                  setCopyError(t("mcp.copyFailed"));
+                                });
                             }}
                           >
                             {copied ? (
@@ -276,6 +288,11 @@ export function APIServiceSettings() {
                 </div>
               </CollapsibleContent>
             </Collapsible>
+            {copyError ? (
+              <p role="alert" className="type-body text-destructive">
+                {copyError}
+              </p>
+            ) : null}
             {(save.error || service.error) && (
               <p role="alert" className="type-body text-destructive">
                 {localApiErrorMessage(save.error || service.error, t("failed"))}

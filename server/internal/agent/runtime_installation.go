@@ -526,6 +526,28 @@ func NormalizeRuntimeVersion(version string) string {
 	return version
 }
 
+// ProbeInstallationVersion reads only the selected executable's version without accounts or model discovery.
+func (sdk *Catalog) ProbeInstallationVersion(ctx context.Context, request DetectRequest) (CLIInstallation, error) {
+	definition, exists, err := sdk.definitionForRequest(request)
+	if err != nil {
+		return CLIInstallation{}, err
+	}
+	if !exists {
+		return CLIInstallation{}, status_error.RuntimeNotRegistered
+	}
+	path, err := sdk.ResolveExecutable(request)
+	if err != nil {
+		return CLIInstallation{}, err
+	}
+	environment, err := buildPreparedEnvironment(request.BaseEnvironment, definition.environment, request.HomeDirectory)
+	if err != nil {
+		return CLIInstallation{}, err
+	}
+	args := append(append([]string(nil), definition.prefixArgs...), "--version")
+	version := agentclient.RuntimeVersion(ctx, path, args, environment.list(), "")
+	return CLIInstallation{Path: path, Version: NormalizeRuntimeVersion(version), Available: true}, nil
+}
+
 // protectedPrefixArguments prevents leading arguments from overriding native execution settings managed by NeuxBot.
 
 func (sdk *Catalog) definitionForRequest(

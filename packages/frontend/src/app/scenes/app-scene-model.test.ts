@@ -28,6 +28,29 @@ const routeSceneForLocation = (location: RouteSceneLocation) =>
 const settingsSceneTab = () => createSettingsSceneTab(labels.settings);
 
 describe("应用 Scene 模型", () => {
+  it("旧伙伴目录转到聊天入口时复用同一个 Scene，不留下目录页签", () => {
+    let snapshot = initialAppSceneSnapshot(
+      routeSceneForLocation({ pathname: "/wakers", search: "" }),
+      1,
+    );
+    snapshot = appSceneReducer(snapshot, {
+      type: "open",
+      tab: routeSceneForLocation({ pathname: "/chat", search: "" }),
+    });
+    expect(snapshot.tabs).toHaveLength(1);
+    expect(snapshot.tabs[0]?.id).toBe("chat-entry:default");
+    expect(snapshot.tabs[0]?.href).toBe("/chat");
+    snapshot = appSceneReducer(snapshot, {
+      type: "open",
+      replaceTemporary: true,
+      tab: routeSceneForLocation({
+        pathname: "/chats/latest",
+        search: "?wakerId=w1",
+      }),
+    });
+    expect(snapshot.tabs).toHaveLength(1);
+    expect(snapshot.tabs[0]?.id).toBe("chat:latest");
+  });
   it.each([
     ["/wakers/w1/projects/p1", "", "waker:w1:resources"],
     ["/teams/t1/threads/c1", "", "team:t1:thread:c1"],

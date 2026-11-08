@@ -7,6 +7,15 @@ import "github.com/shrewx/ginx"
 var Router = ginx.NewRouter(ginx.Group("/runtimes"))
 
 func init() {
+	Router.Register(&CheckRuntimeUpdates{})
+	Router.Register(&RestartRuntime{})
+	Router.Register(&GetRuntimeAuthentication{})
+	Router.Register(&AuthenticateRuntime{})
+	Router.Register(&CancelRuntimeAuthentication{})
+	Router.Register(&GetRuntimeInstallation{})
+	Router.Register(&InstallRuntime{})
+	Router.Register(&UninstallRuntime{})
+	Router.Register(&CancelRuntimeInstallation{})
 	Router.Register(&ListRuntimes{})
 	Router.Register(&GetRuntimeModelCatalog{})
 	Router.Register(&RefreshRuntimes{})

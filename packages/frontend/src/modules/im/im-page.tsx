@@ -31,7 +31,7 @@ export function IMPage() {
   }>();
 
   return (
-    <SettingsContentShell title={t("title")} description={t("description")}>
+    <SettingsContentShell title={t("title")} showHeader={false}>
       {query.error ? (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p role="alert" className="type-body text-destructive">
@@ -55,7 +55,7 @@ export function IMPage() {
           return (
             <Collapsible
               key={item}
-              className="bg-surface-tertiary overflow-hidden rounded-lg"
+              className="bg-resource-surface overflow-hidden rounded-lg"
               open={expandedPlatforms.includes(item)}
               onOpenChange={(open) =>
                 setExpandedPlatforms((current) =>
@@ -65,7 +65,7 @@ export function IMPage() {
                 )
               }
             >
-              <div className="min-h-row-rich flex flex-wrap items-center gap-x-2">
+              <div className="min-h-row-detail flex flex-wrap items-center gap-x-2">
                 <CollapsibleTrigger
                   aria-label={t("platformConnections", { platform: t(item) })}
                   className="group text-content-primary hover:bg-action-quiet-hover focus-visible:ring-ring flex min-w-0 flex-1 basis-48 items-center gap-2 self-stretch px-4 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
@@ -76,7 +76,7 @@ export function IMPage() {
                   />
                   <PlatformIcon platform={item} compact />
                   <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className="type-body font-medium break-words">
+                    <span className="type-label font-medium break-words">
                       {t(item)}
                     </span>
                     <span className="type-ui text-content-secondary min-w-0 break-words">

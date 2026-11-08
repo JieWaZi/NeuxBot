@@ -52,6 +52,17 @@ beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });
 });
 beforeEach(() => {
+  Element.prototype.hasPointerCapture = () => false;
+  Element.prototype.setPointerCapture = () => undefined;
+  Element.prototype.releasePointerCapture = () => undefined;
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   definition = {
     id: "flow",
     title: "周会准备流程",
@@ -60,6 +71,9 @@ beforeEach(() => {
     ordinal: 1,
   };
   server.use(
+    http.get(`${origin}/api/v1/resource-categories`, () =>
+      HttpResponse.json([{ name: "设计" }, { name: "研究" }]),
+    ),
     http.get(`${origin}/api/v1/workflows`, () =>
       HttpResponse.json({ items: [definition] }),
     ),
@@ -94,6 +108,42 @@ afterEach(() => {
   server.resetHandlers();
 });
 afterAll(() => server.close());
+
+it("工作流按真实分类分组，未分类也使用稳定彩色图标，分类过滤进入请求", async () => {
+  const queries: URLSearchParams[] = [];
+  server.use(
+    http.get(`${origin}/api/v1/workflows`, ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      queries.push(params);
+      return HttpResponse.json({
+        items:
+          params.get("category") === "设计"
+            ? [{ ...definition, categories: ["设计", "研究"] }]
+            : [
+                { ...definition, categories: ["设计", "研究"] },
+                { ...definition, id: "other", title: "未分组流程" },
+              ],
+      });
+    }),
+  );
+  renderList();
+  await screen.findByRole("region", { name: "设计" });
+  expect(screen.getByRole("region", { name: "研究" })).toBeVisible();
+  const untagged = screen.getByRole("region", { name: "未分类" });
+  expect(
+    untagged.querySelector("[class*='bg-resource-category-']"),
+  ).not.toBeNull();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("combobox", { name: "分类" }));
+  await user.click(await screen.findByRole("option", { name: "设计" }));
+  await waitFor(() => expect(queries.at(-1)?.get("category")).toBe("设计"));
+  expect(
+    await screen.findByRole("link", { name: "周会准备流程" }),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("link", { name: "未分组流程" }),
+  ).not.toBeInTheDocument();
+});
 
 function List() {
   const [params, setParams] = useSearchParams();

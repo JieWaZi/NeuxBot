@@ -131,7 +131,10 @@ export function TimeZonePicker({
             >
               <span className="truncate">{zone}</span>
               {value === zone ? (
-                <Check aria-hidden className="size-icon-sm shrink-0" />
+                <Check
+                  aria-hidden
+                  className="text-accent-content size-icon-sm shrink-0"
+                />
               ) : null}
             </button>
           ))}

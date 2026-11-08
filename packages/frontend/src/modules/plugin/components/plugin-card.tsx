@@ -54,7 +54,14 @@ export function PluginCard({
       title={name}
       description={description}
       descriptionLines={1}
-      icon={<PluginIcon icon={entry?.icon} icons={entry?.icons} pkg={pkg} />}
+      icon={
+        <PluginIcon
+          icon={entry?.icon}
+          icons={entry?.icons}
+          pkg={pkg}
+          category={entry?.category ?? detail?.plugin?.categories?.[0]}
+        />
+      }
       to={to}
       label={t("viewPlugin", { name })}
       actions={

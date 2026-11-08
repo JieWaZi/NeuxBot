@@ -9,10 +9,12 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
+        "settings-outline":
+          "border border-resource-border bg-resource-raised text-resource-secondary hover:bg-resource-hover hover:text-resource-content active:bg-resource-active",
         "catalog-outline":
           "border border-resource-border bg-resource-control text-resource-secondary hover:bg-resource-hover hover:text-resource-content active:bg-resource-active",
         "catalog-danger":
-          "text-resource-secondary hover:text-destructive hover:bg-destructive/8 active:bg-destructive/12",
+          "text-destructive hover:text-destructive hover:bg-destructive/8 active:bg-destructive/12",
         "catalog-primary":
           "bg-resource-primary text-resource-on-primary hover:opacity-90 active:opacity-80",
         "catalog-secondary":
@@ -46,6 +48,8 @@ export const buttonVariants = cva(
           "bg-accent-surface text-accent-content hover:bg-accent-surface-strong active:bg-accent-border",
       },
       size: {
+        settings:
+          "h-button-md gap-1.5 px-3 type-label [&_svg:not([data-companion-avatar])]:size-icon-sm",
         "catalog-icon-lg":
           "catalog-focus size-control-catalog-lg rounded-xl p-0 disabled:opacity-42 [&_svg:not([data-companion-avatar])]:size-icon-md",
         catalog:

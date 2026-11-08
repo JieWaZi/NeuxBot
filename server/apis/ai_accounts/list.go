@@ -11,6 +11,8 @@ import (
 type ListAIAccounts struct {
 	// 声明账号列表使用 GET 查询。
 	ginx.MethodGet
+	// 智能体标识
+	RuntimeID string `in:"query" name:"runtimeId" validate:"max=120"`
 }
 
 // 账号列表响应
@@ -23,8 +25,17 @@ type ListAIAccountsResponse struct {
 func (*ListAIAccounts) Path() string { return "" }
 
 // Output 返回不含凭据的账号列表。
-func (*ListAIAccounts) Output(ctx *gin.Context) (interface{}, error) {
-	accounts, err := global.AIAccountControllerManager.List(ctx)
+func (a *ListAIAccounts) Output(ctx *gin.Context) (interface{}, error) {
+	var accounts []models.AIAccount
+	var err error
+	if a.RuntimeID != "" {
+		if _, err := global.RuntimeEnvironmentControllerManager.Get(ctx, a.RuntimeID); err != nil {
+			return nil, ginx.WithStack(err)
+		}
+		accounts, err = global.AIAccountControllerManager.ListForRuntime(ctx, a.RuntimeID)
+	} else {
+		accounts, err = global.AIAccountControllerManager.List(ctx)
+	}
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}

@@ -3,6 +3,7 @@ package runtimeenvironment
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
@@ -111,5 +113,26 @@ func TestNativeFamilyPermissionMenusFollowRealPolicies(t *testing.T) {
 	}
 	if levels := NativePermissionLevels("claude", agent.AgentChoice{AutoMode: true, PermissionModes: []string{"bypassPermissions"}}); len(levels) != 3 {
 		t.Fatalf("Claude model and process permission evidence was not combined: %v", levels)
+	}
+}
+
+// TestModelCatalogRejectsAccountFromAnotherRuntime 验证凭据检查与缓存读取前校验账号归属。
+func TestModelCatalogRejectsAccountFromAnotherRuntime(t *testing.T) {
+	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "accounts.db"), Migrate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool, _ := database.DB.DB()
+	t.Cleanup(func() { _ = pool.Close() })
+	accounts := controllers.NewAIAccountController(database.DB)
+	account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", RuntimeID: "codex-profile", Name: "other profile", AuthMode: constants.AccountAuthModeSubscription,
+		Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: constants.AIAccountOpenAIURL}}
+	if err := accounts.Create(t.Context(), account, ""); err != nil {
+		t.Fatal(err)
+	}
+	svc := &service{accounts: aiaccount.New(accounts)}
+	_, err = svc.readModelCatalog(t.Context(), models.RuntimeEnvironment{RuntimeID: "codex", BaseRuntimeID: constants.RuntimeIDCodex}, account.ID, false)
+	if !errors.Is(err, status_error.AIAccountConfigurationInvalid) {
+		t.Fatalf("catalog accepted another profile's signed-out account: %v", err)
 	}
 }

@@ -25,7 +25,6 @@ import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
 import { Pagination } from "@/shared/ui/pagination";
 import { QueryState } from "@/shared/ui/query-state";
 import { Skeleton } from "@/shared/ui/skeleton";
-import { PageAction } from "@/shared/ui/resource-page";
 import { apiKeysOptions, apiKeysQueryKey } from "../api/integration-queries";
 import { SettingsContentShell, SettingsGroup } from "./settings-section-layout";
 import { MCPIntegrationSection } from "./mcp-integration-section";
@@ -114,36 +113,25 @@ export function APIIntegrationSection() {
     setParams(next);
   }
   return (
-    <SettingsContentShell
-      title={t("title")}
-      description={t("description")}
-      actions={
-        <PageAction
-          intent="primary"
-          label={t("create")}
-          onClick={() => setDialog({ action: "create" })}
-        />
-      }
-    >
+    <SettingsContentShell title={t("title")} showHeader={false}>
       <APIServiceSettings />
       <MCPIntegrationSection />
       <SettingsGroup
-        title={
-          <span className="type-label text-content-primary font-medium">
-            {t("keys")}
-          </span>
-        }
+        title={t("keys")}
         description={t("keysHelp")}
         trailing={
-          query.data ? (
-            <span className="type-ui text-content-secondary tabular-nums">
-              {query.data.totalSize ?? 0}
-            </span>
-          ) : undefined
+          <Button onClick={() => setDialog({ action: "create" })}>
+            {t("create")}
+          </Button>
         }
       >
         {query.isPending ? (
-          <div role="status" aria-busy="true" className="grid gap-3">
+          <div
+            role="status"
+            aria-busy="true"
+            aria-label={t("keys")}
+            className="grid gap-3"
+          >
             <Skeleton className="h-24 w-full" />
             <Skeleton className="h-24 w-full" />
           </div>
@@ -155,7 +143,7 @@ export function APIIntegrationSection() {
         ) : (
           <>
             {!entries.length && (
-              <Card variant="section">
+              <Card variant="settings">
                 <div
                   className="flex items-start gap-4 py-4"
                   data-od-id="api-keys-empty"

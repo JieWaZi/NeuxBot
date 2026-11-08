@@ -6,14 +6,14 @@ import { listResourceCategoriesOptions } from "@/shared/api/generated/@tanstack/
 import { CreatableMultiSelect } from "./creatable-multi-select";
 import { QueryRefreshError } from "./query-state";
 
-/** 三类资源共用词库查询与标签输入；创建随所属表单保存，不在编辑草稿时写库。 */
+/** 资源共用词库查询与标签输入；创建随所属表单保存，不在编辑草稿时写库。 */
 export function ResourceCategoryField({
   type,
   value,
   onValueChange,
   disabled,
 }: {
-  type: "plugin" | "skill" | "connector";
+  type: "plugin" | "skill" | "connector" | "workflow";
   value: readonly string[];
   onValueChange: (value: string[]) => void;
   disabled?: boolean;

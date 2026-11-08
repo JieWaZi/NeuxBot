@@ -52,6 +52,7 @@ vi.mock("@/shared/api/generated/@tanstack/react-query.gen", () => ({
       resources: [
         {
           id: "anthropic-account",
+          runtimeId: "claude",
           name: "Anthropic 账号",
           selectedModels: ["anthropic-model"],
           endpoint: {
@@ -61,6 +62,7 @@ vi.mock("@/shared/api/generated/@tanstack/react-query.gen", () => ({
         },
         {
           id: "deepseek-account",
+          runtimeId: "codex",
           name: "DeepSeek",
           selectedModels: ["deepseek-flash"],
           endpoint: {
@@ -70,6 +72,7 @@ vi.mock("@/shared/api/generated/@tanstack/react-query.gen", () => ({
         },
         {
           id: "gpt-subscription",
+          runtimeId: "codex",
           name: "ChatGPT 订阅",
           authMode: "subscription",
           endpoint: {
@@ -340,6 +343,83 @@ it("目录保留探测失败的智能体并只展示兼容账号", async () => {
   );
 });
 
+it("聊天切换同协议 Profile 时只展示目标账号，并采用目标默认账号和模型", async () => {
+  const user = userEvent.setup();
+  const onModel = vi.fn();
+  const root = {
+    id: "codex",
+    enabled: true,
+    state: "ready",
+    defaultModel: "root-default",
+    models: [{ id: "root-default", name: "Root Default" }],
+  };
+  const profile = {
+    id: "profile:work",
+    baseRuntimeId: "codex",
+    name: "Work Codex",
+    enabled: true,
+    state: "ready",
+    defaultAccountId: "profile-account",
+    defaultModel: "profile-default",
+    models: [{ id: "profile-default", name: "Profile Default" }],
+  };
+  render(
+    <ChatExecutionPicker
+      runtimes={[root, profile]}
+      accounts={[
+        {
+          id: "root-account",
+          runtimeId: "codex",
+          name: "Root Account",
+          endpoint: {
+              protocol: "openai-responses",
+              baseUrl: "https://api.example.test/v1",
+            },
+        },
+        {
+          id: "profile-account",
+          runtimeId: "profile:work",
+          name: "Profile Account",
+          endpoint: {
+              protocol: "openai-responses",
+              baseUrl: "https://api.example.test/v1",
+            },
+        },
+      ]}
+      runtime={root}
+      accountId="root-account"
+      models={root.models}
+      modelId="root-default"
+      modelName="Root Default"
+      reasoning=""
+      allowDefaultReasoning
+      catalogState="fresh"
+      onModel={onModel}
+      onReasoning={vi.fn()}
+      onFast={vi.fn()}
+    />,
+  );
+  await user.click(screen.getByTestId("composer-model-control"));
+  await user.click(screen.getByRole("button", { name: "Work Codex" }));
+  expect(
+    screen.queryByRole("radio", { name: "Root Default" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("combobox", { name: "账号" })).toHaveTextContent(
+    "Profile Account",
+  );
+  await user.click(screen.getByRole("combobox", { name: "账号" }));
+  expect(
+    screen.queryByRole("option", { name: "Root Account" }),
+  ).not.toBeInTheDocument();
+  await user.click(screen.getByRole("option", { name: "Profile Account" }));
+  await user.click(screen.getByRole("radio", { name: "Profile Default" }));
+  expect(onModel).toHaveBeenCalledExactlyOnceWith(
+    profile,
+    "profile-account",
+    profile.models[0],
+  );
+});
+
 it("模型行展示已知的上下文档位，并将 OpenCode 免费模型放到前面", async () => {
   const user = userEvent.setup();
   const changed = vi.fn();
@@ -439,4 +519,48 @@ it("Qoder 可选两份目录的模型，只展示新模型和自定义分组", a
   expect(changed).toHaveBeenCalledExactlyOnceWith(
     expect.objectContaining({ runtimeId: "qoder", model: "smodel" }),
   );
+});
+
+it("有效目录后台刷新只占用刷新按钮，不锁模型与推理选择", async () => {
+  const user = userEvent.setup();
+  const models = [
+    { id: "first", name: "First" },
+    { id: "second", name: "Second" },
+  ];
+  const runtime = { id: "codex", enabled: true, state: "ready", models };
+  const refresh = vi.fn();
+  const select = vi.fn();
+  render(
+    <ChatExecutionPicker
+      runtimes={[runtime]}
+      accounts={[]}
+      runtime={runtime}
+      accountId="system"
+      models={models}
+      modelId="first"
+      modelName="First"
+      reasoning="medium"
+      reasoningOptions={[
+        { id: "medium", name: "Medium" },
+        { id: "high", name: "High" },
+      ]}
+      allowDefaultReasoning
+      catalogState="fresh"
+      pending={false}
+      refreshing
+      onRefresh={refresh}
+      onModel={select}
+      onReasoning={vi.fn()}
+      onFast={vi.fn()}
+    />,
+  );
+  await user.click(screen.getByTestId("composer-model-control"));
+  const refreshButton = screen.getByRole("button", { name: "刷新模型列表" });
+  expect(refreshButton).toBeDisabled();
+  expect(refreshButton).toHaveAttribute("aria-busy", "true");
+  const option = screen.getByRole("radio", { name: "Second" });
+  expect(option).toBeEnabled();
+  await user.click(option);
+  expect(select).toHaveBeenCalledExactlyOnceWith(runtime, "system", models[1]);
+  expect(refresh).not.toHaveBeenCalled();
 });

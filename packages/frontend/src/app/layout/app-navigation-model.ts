@@ -27,7 +27,7 @@ export type AppNavigationLocation = {
 };
 
 const moduleHrefs: Readonly<Record<AppModuleId, string>> = {
-  partners: "/wakers",
+  partners: "/chat",
   "work-board": "/work-board",
   usage: "/usage",
   resources: "/resources",
@@ -126,7 +126,7 @@ export function resolveAppNavigation({
 }
 
 export type AppModuleTargets = {
-  /** 由既有 Query 确认仍存在的最近伙伴或团队聊天。 */
+  /** 已验证的最近聊天，或交由原聊天入口查询的当前伙伴。 */
   readonly partnerHref?: string;
   /** 由唯一设置 Scene 或原有设置偏好提供的最近位置。 */
   readonly settingsHref?: string;
@@ -153,6 +153,8 @@ export function resolveAppModuleHref(
     if (
       location &&
       (/^\/chats\/[^/]+$/.test(location.pathname) ||
+        (location.pathname === "/chat" &&
+          !new URLSearchParams(location.search).has("draftId")) ||
         /^\/teams\/[^/]+\/threads\/[^/]+$/.test(location.pathname))
     ) {
       return `${location.pathname}${location.search}`;

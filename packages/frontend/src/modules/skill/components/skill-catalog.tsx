@@ -51,12 +51,13 @@ export function SkillCatalog({
   }
   for (const items of groups.values())
     items.sort((a, b) => a.name.localeCompare(b.name));
-  const rows = (items: SkillSummary[]) => (
+  const rows = (items: SkillSummary[], group: string) => (
     <ResourceCardGrid appearance="catalog">
       {items.map((skill) => (
         <SkillCard
           key={skill.id}
           skill={skill}
+          category={group}
           wakerId={wakerId}
           disabled={disabled}
           onEnabledChange={(enabled) => onEnabledChange(skill, enabled)}
@@ -72,7 +73,7 @@ export function SkillCatalog({
     return (
       <div className="grid min-w-0 gap-3">
         {items.length ? (
-          rows(items.slice(0, shown))
+          rows(items.slice(0, shown), category)
         ) : (
           <EmptyState density="compact" title={t("emptyTitle")} />
         )}
@@ -112,7 +113,7 @@ export function SkillCatalog({
                 ) : undefined
               }
             >
-              {rows(items.slice(0, GROUP_LIMIT))}
+              {rows(items.slice(0, GROUP_LIMIT), key)}
             </ResourceCatalogGroup>
           );
         })}

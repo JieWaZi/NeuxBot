@@ -3,6 +3,7 @@ package runtime_options
 import (
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
+	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -93,28 +94,26 @@ func TestRuntimeOptionSeparatesExecutableDiscoveryFromReadiness(t *testing.T) {
 	}
 }
 
-func TestRuntimeOptionIncludesCustomModels(t *testing.T) {
-	detection := agent.DetectionResult{
-		DetectedDefaultModel: "gpt-stable",
-		Models:               []agent.ModelOption{{ID: "gpt-stable", Name: "GPT Stable"}},
-		ReasoningOptions: []agent.ReasoningOption{
-			{ID: "high", Name: "High"},
-		},
-	}
+func TestRuntimeOptionDoesNotExposeEditableLaunchConfiguration(t *testing.T) {
 	option := runtimeOption(models.RuntimeEnvironment{
-		RuntimeID:    agent.RuntimeIDCodex,
-		CustomModels: []string{"gpt-team-custom"},
-		DefaultModel: "gpt-team-custom",
-		Detection:    detection,
+		RuntimeID: agent.RuntimeIDCodex,
+		Detection: agent.DetectionResult{ResolvedBinary: "/managed/codex", Models: []agent.ModelOption{{ID: "native-model"}}},
 	})
-	if option.DefaultModel != "gpt-team-custom" {
-		t.Fatalf("DefaultModel = %q, want gpt-team-custom", option.DefaultModel)
+	encoded, err := json.Marshal(option)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(option.Models) != 2 || option.Models[1].ID != "gpt-team-custom" || !option.Models[1].Custom {
-		t.Fatalf("Models = %#v, want detected and custom models", option.Models)
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &fields); err != nil {
+		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(option.CustomModels, []string{"gpt-team-custom"}) {
-		t.Fatalf("CustomModels = %#v, want persisted custom model", option.CustomModels)
+	for _, name := range []string{"binary", "prefixArgs", "configHome", "configHomeSupported", "customModels"} {
+		if _, exists := fields[name]; exists {
+			t.Fatalf("removed setting remains in API: %s", name)
+		}
+	}
+	if option.ResolvedBinary != "/managed/codex" || len(option.Models) != 1 || option.Models[0].ID != "native-model" {
+		t.Fatalf("readonly program/model facts lost: %+v", option)
 	}
 }
 

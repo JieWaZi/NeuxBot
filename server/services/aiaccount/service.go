@@ -15,10 +15,27 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/acp-go/pkg/claude"
 )
 
 // Service 复用设置登录、账号修改和执行启动所需的账号生命周期。
 type Service struct {
+	// programReaders 统计独立认证与账号观察实际持有的原生程序。
+	programReaders map[string]int
+	// programMaintenance 在程序替换前阻止新的独立原生消费者。
+	programMaintenance map[string]bool
+	// programCleanupMutex 串行重试已退出业务操作的原生关闭，不持账号状态锁执行 I/O。
+	programCleanupMutex sync.Mutex
+	// programPendingCloses 保留系统账号观察关闭失败的原始客户端。
+	programPendingCloses map[string][]programClientCloser
+	// programResolver 从运行环境目录定位实际 CLI，包含受管安装的解释器参数。
+	programResolver func(context.Context, string) (string, []string, error)
+	// claudeFactory 复用原生客户端，测试以 Fake 隔离浏览器和进程。
+	claudeFactory func(context.Context, claude.Options) (claudeSubscriptionClient, error)
+	// claudeCredentials 只搬运应用受管目录及其精确 Keychain 项。
+	claudeCredentials *accountconfig.ClaudeCredentialStore
+	// claudeLeaseCleanups 接管准入失败但原生关闭尚未确认的账号消费者。
+	claudeLeaseCleanups map[string][]*claudeLeaseCleanup
 	// loginCommit 串行提交订阅身份，避免并发新增同一账号。
 	loginCommit sync.Mutex
 	// oauth 使用设备码认证协议。
@@ -29,13 +46,15 @@ type Service struct {
 	mutex sync.Mutex
 	// readers 统计共享执行租约；负数仅表示配置修改或登录等独占使用。
 	readers map[string]int
-	// pendingWriters blocks new readers while an exclusive change closes idle owners.
+	// exclusiveReleases 保留独占租约的实际释放器，供失败原生关闭移交同一所有者。
+	exclusiveReleases map[string]func()
+	// pendingWriters 在独占变更回收闲置消费者时阻止新读租约。
 	pendingWriters map[string]bool
 	// closeIdleSessions 通过原生会话所有者回收闲置账号租约，不复制执行状态。
 	closeIdleSessions func(context.Context, string) error
-	// invalidateAccountAuth fences native consumers and cached reads after a durable mutation.
+	// invalidateAccountAuth 在凭据提交后使旧消费者和目录缓存失效。
 	invalidateAccountAuth func(context.Context, string, string, uint64)
-	// qoderLogins holds at most one native identity receipt per Qoder edition.
+	// qoderLogins 为每个 Qoder 发行版保存至多一份原生身份回执。
 	qoderLogins map[string]qoderLoginObservation
 	// credentials 仅在准备、刷新和回收时串行同账号凭据，不覆盖模型调用。
 	credentials sync.Map
@@ -51,7 +70,7 @@ type Service struct {
 	workers sync.WaitGroup
 	// publisher 交付不含凭据的账号授权进度。
 	publisher events.Publisher
-	// dataDirectory contains the managed native account homes.
+	// dataDirectory 是全部受管原生账号目录的根目录。
 	dataDirectory string
 	// kimiDataDirectory 持久隔离每个 Kimi 订阅账号的原生登录和会话数据。
 	kimiDataDirectory string
@@ -62,6 +81,7 @@ func New(accounts controllers.AIAccountController, dataDirectory ...string) *Ser
 	service := &Service{oauth: codexoauth.New(), accounts: accounts, readers: map[string]int{}, jobs: map[string]*loginJob{}}
 	if len(dataDirectory) > 0 {
 		service.dataDirectory = dataDirectory[0]
+		service.claudeCredentials = accountconfig.NewClaudeCredentialStore(filepath.Join(dataDirectory[0], "ai-accounts", constants.RuntimeIDClaude), accountconfig.NewClaudeKeychain())
 		service.kimiDataDirectory = filepath.Join(dataDirectory[0], "ai-accounts", "kimi")
 	}
 	return service
@@ -90,6 +110,35 @@ func (s *Service) Close() {
 	s.ctx = nil
 	s.mutex.Unlock()
 	s.workers.Wait()
+	s.mutex.Lock()
+	jobs := make([]*loginJob, 0, len(s.jobs))
+	for _, job := range s.jobs {
+		jobs = append(jobs, job)
+	}
+	s.mutex.Unlock()
+	for _, job := range jobs {
+		job.mutex.Lock()
+		if job.claudeCleanup != nil {
+			if err := job.claudeCleanup(); err == nil {
+				job.claudeCleanup = nil
+				job.release()
+			}
+		}
+		job.mutex.Unlock()
+	}
+	s.mutex.Lock()
+	pendingIDs := make([]string, 0, len(s.claudeLeaseCleanups))
+	for id := range s.claudeLeaseCleanups {
+		pendingIDs = append(pendingIDs, id)
+	}
+	s.mutex.Unlock()
+	for _, id := range pendingIDs {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = s.retryClaudeLeaseCleanups(ctx, id)
+		cancel()
+	}
+	_ = s.retryProgramCleanups(context.Background(), constants.RuntimeIDClaude)
+
 }
 
 // SetIdleSessionCloser 注入账号变更前的闲置会话回收能力，活动会话由宿主拒绝回收。
@@ -101,6 +150,11 @@ func (s *Service) SetIdleSessionCloser(closeIdle func(context.Context, string) e
 
 // Exclusive 为账号设置修改或登录获取独占租约，先回收仍持有共享租约的闲置会话。
 func (s *Service) Exclusive(id string) (func(), error) {
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cleanupCancel()
+	if err := s.retryClaudeLeaseCleanups(cleanupCtx, id); err != nil {
+		return nil, err
+	}
 	s.mutex.Lock()
 	if s.pendingWriters[id] || s.readers[id] < 0 {
 		s.mutex.Unlock()
@@ -179,12 +233,13 @@ func (s *Service) grantLeaseLocked(id string, exclusive bool) func() {
 		s.readers[id]++
 	}
 	var once sync.Once
-	return func() {
+	actualRelease := func() {
 		once.Do(func() {
 			s.mutex.Lock()
 			defer s.mutex.Unlock()
 			if s.readers[id] < 0 {
 				delete(s.readers, id)
+				delete(s.exclusiveReleases, id)
 			} else {
 				s.readers[id]--
 				if s.readers[id] == 0 {
@@ -194,6 +249,21 @@ func (s *Service) grantLeaseLocked(id string, exclusive bool) func() {
 			s.notifyLeaseChangedLocked()
 		})
 	}
+	if exclusive {
+		if s.exclusiveReleases == nil {
+			s.exclusiveReleases = make(map[string]func())
+		}
+		s.exclusiveReleases[id] = actualRelease
+		return func() {
+			s.mutex.Lock()
+			retained := len(s.claudeLeaseCleanups[id]) > 0
+			s.mutex.Unlock()
+			if !retained {
+				actualRelease()
+			}
+		}
+	}
+	return actualRelease
 }
 
 func (s *Service) notifyLeaseChangedLocked() {
@@ -203,18 +273,56 @@ func (s *Service) notifyLeaseChangedLocked() {
 	}
 }
 
-// Validate 只确认关联的账号存在，不限制协议、登录状态或智能体种类。
-func (s *Service) Validate(ctx context.Context, id string) error {
-	if id == "" {
-		return nil
-	}
-	_, err := s.accounts.Get(ctx, id)
-	return err
-}
-
 // Get 返回账号模型选择与协议配置，供执行入口校验当前选择。
 func (s *Service) Get(ctx context.Context, id string) (models.AIAccount, error) {
 	return s.accounts.Get(ctx, id)
+}
+
+// ValidateRuntimeAccount 校验实际智能体归属及其原生协议，不要求账号已经登录。
+func ValidateRuntimeAccount(account models.AIAccount, environment models.RuntimeEnvironment) error {
+	if account.RuntimeID == "" || account.RuntimeID != environment.RuntimeID {
+		return status_error.AIAccountConfigurationInvalid
+	}
+	if _, ok := accountEndpoint(account, environment.BaseRuntimeID); !ok {
+		return status_error.AIAccountConfigurationInvalid
+	}
+	return nil
+}
+
+// RuntimeSelectionDefaults 只从所选账号及其绑定环境补齐未指定的模型与推理强度。
+func RuntimeSelectionDefaults(account models.AIAccount, environment models.RuntimeEnvironment, model, reasoning string) (string, string) {
+	if model == "" {
+		candidates := []string{}
+		if account.ID == environment.DefaultAccountID {
+			candidates = append(candidates, environment.DefaultModel)
+		}
+		candidates = append(candidates, account.DefaultModel)
+		if account.AuthMode == constants.AccountAuthModeAPIKey {
+			candidates = append(candidates, account.SelectedModels...)
+		}
+		for _, candidate := range candidates {
+			if candidate == "" {
+				continue
+			}
+			allowed := account.AuthMode != constants.AccountAuthModeAPIKey || slices.Contains(account.SelectedModels, candidate)
+			if account.AuthMode == constants.AccountAuthModeAPIKey && environment.BaseRuntimeID == constants.RuntimeIDClaude {
+				_, allowed = ManagedClaudeModelTarget(account, candidate)
+			}
+			if allowed {
+				model = candidate
+				break
+			}
+		}
+	}
+	if reasoning == "" {
+		if account.ID == environment.DefaultAccountID && model == environment.DefaultModel {
+			reasoning = environment.DefaultReasoning
+		}
+		if reasoning == "" && model == account.DefaultModel {
+			reasoning = account.DefaultReasoning
+		}
+	}
+	return model, reasoning
 }
 
 // ValidateSelection 在保存默认配置与执行准备前复用账号协议、凭据和模型校验。
@@ -269,7 +377,8 @@ func accountEndpoint(account models.AIAccount, runtimeID string) (models.AIAccou
 	if account.AuthMode == constants.AccountAuthModeSubscription {
 		endpoint := account.Endpoint
 		if (runtimeID == constants.RuntimeIDCodex && endpoint.Protocol == constants.AccountProtocolOpenAIResponses && endpoint.BaseURL == constants.AIAccountOpenAIURL) ||
-			(runtimeID == constants.RuntimeIDKimi && endpoint.Protocol == constants.AccountProtocolOpenAICompletions && endpoint.BaseURL == constants.AIAccountKimiURL) {
+			(runtimeID == constants.RuntimeIDKimi && endpoint.Protocol == constants.AccountProtocolOpenAICompletions && endpoint.BaseURL == constants.AIAccountKimiURL) ||
+			(runtimeID == constants.RuntimeIDClaude && endpoint.Protocol == constants.AccountProtocolAnthropicMessages && endpoint.BaseURL == constants.AIAccountAnthropicURL) {
 			return endpoint, true
 		}
 		return models.AIAccountEndpoint{}, false

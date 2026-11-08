@@ -1,6 +1,23 @@
 package ai_accounts
 
-import "testing"
+import (
+	"errors"
+	"testing"
+
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+)
+
+// TestAccountDefaultModelMustBeSelected 验证默认值不会引用其他账号或已移除的模型。
+func TestAccountDefaultModelMustBeSelected(t *testing.T) {
+	for _, model := range []string{"", "selected"} {
+		if err := validateDefaultModel([]string{"selected"}, model); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := validateDefaultModel([]string{"selected"}, "another-account-model"); !errors.Is(err, status_error.AIAccountConfigurationInvalid) {
+		t.Fatalf("unselected default accepted: %v", err)
+	}
+}
 
 func TestModelMappingsReferenceOnlySelectedAccountModels(t *testing.T) {
 	selected := []string{"fast", "strong"}

@@ -11,6 +11,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	knowledgemodel "github.com/JieWaZi/NeuxBot/server/internal/knowledge/model"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 	knowledgeservice "github.com/JieWaZi/NeuxBot/server/services/knowledge"
 	"github.com/JieWaZi/neux-knowledge/core"
 )
@@ -67,15 +68,16 @@ func detachedModelSelection(ctx context.Context, selection models.LibraryExecuti
 		if AIAccountService == nil {
 			return selection, environment, status_error.AIAccountConfigurationInvalid
 		}
-		account, err := AIAccountService.ValidateSelection(ctx, selection.AccountID, environment.BaseRuntimeID, selection.Model, selection.Reasoning)
+		account, err := AIAccountService.Get(ctx, selection.AccountID)
 		if err != nil {
 			return selection, environment, err
 		}
-		if selection.Model == "" && account.AuthMode == constants.AccountAuthModeAPIKey {
-			if len(account.SelectedModels) == 0 {
-				return selection, environment, status_error.AIAccountConfigurationInvalid
-			}
-			selection.Model = account.SelectedModels[0]
+		if err := aiaccount.ValidateRuntimeAccount(account, environment); err != nil {
+			return selection, environment, err
+		}
+		selection.Model, selection.Reasoning = aiaccount.RuntimeSelectionDefaults(account, environment, selection.Model, selection.Reasoning)
+		if _, err := AIAccountService.ValidateSelection(ctx, selection.AccountID, environment.BaseRuntimeID, selection.Model, selection.Reasoning); err != nil {
+			return selection, environment, err
 		}
 	} else {
 		if selection.Model == "" {

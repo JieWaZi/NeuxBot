@@ -121,7 +121,7 @@ export function ProjectCard({
                   {t("editProject")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  className="text-destructive"
+                  variant="destructive"
                   onSelect={() => setDeleting(true)}
                 >
                   <Trash2 />

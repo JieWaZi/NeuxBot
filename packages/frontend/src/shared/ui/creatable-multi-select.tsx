@@ -227,7 +227,10 @@ export function CreatableMultiSelect({
               onClick={() => choose(item)}
             >
               <Check
-                className={cn("shrink-0", !value.includes(item) && "invisible")}
+                className={cn(
+                  "text-accent-content shrink-0",
+                  !value.includes(item) && "invisible",
+                )}
               />
               <span className="min-w-0 break-words">{item}</span>
             </Button>

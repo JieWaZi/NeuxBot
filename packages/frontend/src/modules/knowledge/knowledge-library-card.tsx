@@ -129,7 +129,7 @@ export function KnowledgeLibraryCard({
               </Tooltip>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
-                  className="text-destructive data-[highlighted]:text-destructive"
+                  variant="destructive"
                   disabled={!canRemove || !onDelete}
                   onSelect={() => onDelete?.(library)}
                 >

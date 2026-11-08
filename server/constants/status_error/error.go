@@ -4,6 +4,30 @@ package status_error
 import "net/http"
 
 const (
+	// @errZH 当前平台暂不支持安装此智能体
+	// @errEN installing this agent is unsupported on this platform
+	RuntimeInstallationUnsupported StatusError = http.StatusUnprocessableEntity*1e8 + 7301
+	// @errZH 无法安全维护此程序，请使用其官方安装方式操作
+	// @errEN this program cannot be safely maintained; use its official installation method
+	RuntimeMaintenanceUnsupported StatusError = http.StatusUnprocessableEntity*1e8 + 7302
+	// @errZH 智能体程序维护失败，请重试
+	// @errEN agent program maintenance failed; retry the operation
+	RuntimeInstallationFailed StatusError = http.StatusBadGateway*1e8 + 7301
+	// @errZH 此智能体的程序维护尚未完成，请等待或取消
+	// @errEN this agent program is being maintained; wait or cancel the operation
+	RuntimeInstallationBusy StatusError = http.StatusConflict*1e8 + 7301
+	// @errZH 当前智能体正在执行工作，暂不能重启
+	// @errEN this agent is executing work and cannot be restarted yet
+	RuntimeRestartBusy StatusError = http.StatusConflict*1e8 + 7302
+	// @errZH 正在检查此智能体的版本，请稍后重试
+	// @errEN this agent's version is being checked; retry shortly
+	RuntimeUpdateCheckBusy StatusError = http.StatusConflict*1e8 + 7303
+	// @errZH 无法确认当前版本，暂不能判断是否需要更新
+	// @errEN the current version is unknown; whether an update is needed cannot be determined
+	RuntimeVersionUnknown StatusError = http.StatusConflict*1e8 + 7304
+)
+
+const (
 	// @errZH 软件能力执行身份无效或已过期
 	// @errEN capability execution context is invalid or expired
 	AgentContextUnauthorized StatusError = http.StatusUnauthorized*1e8 + 9001

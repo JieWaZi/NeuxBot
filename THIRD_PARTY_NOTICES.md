@@ -2,9 +2,11 @@
 
 NeuxBot 自有代码与文档采用根目录 [MIT License](LICENSE)。以下版权及许可适用于对应的第三方组成，集中保存在本文件，并随安装包分发。
 
-## OpenBot UI 布局、页签与资源界面
+## OpenBot UI 布局、页签、资源与设置界面
 
 窗口布局、侧栏几何与页签展示交互采用 [OpenBot v0.62.0](https://github.com/nightly-labs/openbot/tree/fcb35746d4919798ff889a8a58449f5d58de5f65) 的实现，结合本项目 React、语义 Token、可访问性与既有内容所有权适配。对应范围为 `app/layout` 的框架／导航、`shared/ui/scene-tab-strip.tsx` 与 `modules/chat/workbench` 的页签展示，以及插件、技能和连接器目录的分类／已安装侧栏、两列轻量条目、紧凑身份头与单列详情分区。插件资源部分参考 `MarketplaceNav`、`MarketplaceBrowse`、`MarketplaceCards`、`MarketplaceAppPage` 与 `IntegrationLayout`；技能直接对应同一提交的 `packages/ui/src/features/marketplace/MarketplaceSkills.tsx`（SkillLibrary／LibraryRow）、`MarketplaceSkillPage.tsx`（伙伴安装、SKILL.md 与信息），并参考 `packages/ui/src/components/SkillPreview.tsx` 与 `packages/ui/src/skill-preview.css` 的预览排版及既有试用卡样式。技能列表以用户分类对应源端六项分组与分类页，不展示插件或内置技能，不沿用旧的安装来源分组；本地资源文件、历史与编辑为已有能力的适配。连接器页面内新建及技能添加页的表单结构参考同一提交的 `src/renderer/src/features/servers/ServerMcpPanel.tsx`，未保存状态、重置与提交底栏参考 `ServerSettingsModal.tsx` 的保存条；资源表单切换参考 `packages/ui/src/styles/sliding-tabs.css` 的轨道、选项与选中面，适配于共享 SegmentedControl 的独立资源表单外观；连接器仍使用本项目现有传输、信任、安装与诊断契约；其详情复用相同的共享试用卡，连接器默认提示、真实资源引用及草稿交接是本项目在该视觉基础上的扩展。对应适配位于 `modules/plugin`、`modules/skill`、`modules/connector`、资源页装配与 `shared/ui` 资源变体。角色、上下文及组件映射统一见[资源 UI 标准](docs/development/resource-ui-cn.md)。具体来源见[源码对照](docs/discussions/openbot-ui-source-alignment-cn.md)、[插件设计来源](docs/superpowers/specs/2026-11-07-plugin-ui-alignment-design.md#2-固定来源与真实机制)和[技能设计来源](docs/superpowers/specs/2026-11-07-skill-ui-alignment-design.md)。
+
+设置侧栏、路径、分组行和智能体详情参考同一提交的 `SettingsDialogShell`、`ProviderSettingsPage`、`SettingsGeneralTab`、`settings-modal.css` 和 `window.css`，适配位于 `modules/settings` 及共享导航和设置表面变体。账号按智能体归属的 Go 持久化与校验沿用本项目领域实现。受管制品来源和布局核对同一提交的 `provider-runtime-manager.ts`、`provider-runtime-descriptors.ts`、`provider-runtime-releases.ts`、`provider-runtime-archive.ts` 及 `native-runtime.lock.json`；安装器以 Go 独立实现下载校验、完整版本发布及取消，不复制这些 TypeScript 实现。默认模型与安装支持范围以本项目真实能力为准。
 
 该来源采用 [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0)，原始 [LICENSE](https://github.com/nightly-labs/openbot/blob/fcb35746d4919798ff889a8a58449f5d58de5f65/LICENSE) 及以下 Required Notice 适用于对应第三方部分，不将其推定为项目 MIT 许可：
 

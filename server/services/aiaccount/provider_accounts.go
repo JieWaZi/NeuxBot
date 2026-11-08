@@ -13,6 +13,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -22,6 +24,27 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
+// SetProgramResolver 注入账号所属智能体的实际程序，不在账号模块复制安装或 PATH 发现。
+func (s *Service) SetProgramResolver(resolve func(context.Context, string) (string, []string, error)) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.programResolver = resolve
+}
+
+func (s *Service) accountProgram(ctx context.Context, account models.AIAccount) (string, []string, error) {
+	s.mutex.Lock()
+	resolve := s.programResolver
+	s.mutex.Unlock()
+	if resolve == nil || account.RuntimeID == "" {
+		return "", nil, status_error.RuntimeUnavailable
+	}
+	binary, args, err := resolve(ctx, account.RuntimeID)
+	if err != nil || strings.TrimSpace(binary) == "" {
+		return "", nil, status_error.RuntimeUnavailable
+	}
+	return binary, slices.Clone(args), nil
+}
+
 // ResolveAccount freezes the provider's actual credential identity for admission or model discovery.
 func (s *Service) ResolveAccount(ctx context.Context, request agent.AccountRequest, systemHome string) (agent.AccountRequest, error) {
 	switch request.Provider {
@@ -29,7 +52,7 @@ func (s *Service) ResolveAccount(ctx context.Context, request agent.AccountReque
 		return s.ResolveCodexAccount(ctx, request, systemHome)
 	case constants.RuntimeIDClaude:
 		if request.AccountID == agent.SystemAccountID {
-			return resolveClaudeSystemAccount(ctx, request, systemHome)
+			return s.resolveClaudeSystemAccount(ctx, request, systemHome)
 		}
 		return s.resolveManagedClaudeAccount(ctx, request)
 	case constants.RuntimeIDCursor:
@@ -59,7 +82,7 @@ func (s *Service) AcquireAccount(ctx context.Context, request agent.AccountReque
 		return s.AcquireCodexAccount(ctx, request)
 	case constants.RuntimeIDClaude:
 		if request.AccountID == agent.SystemAccountID {
-			return acquireClaudeSystemAccount(ctx, request)
+			return s.acquireClaudeSystemAccount(ctx, request)
 		}
 		return s.acquireManagedClaudeAccount(ctx, request)
 	case constants.RuntimeIDCursor:
@@ -239,4 +262,87 @@ func readNativeAccountFile(path string) ([]byte, error) {
 		return nil, status_error.AIAccountCredentialError
 	}
 	return data, nil
+}
+
+// programClientCloser 只向程序维护交付已经结束业务操作的原生清理所有者。
+type programClientCloser interface{ Close(context.Context) error }
+
+// BeginProgramMaintenance 阻止新的独立认证进程；调用方须先排空 Provider 的闲置消费者。
+func (s *Service) BeginProgramMaintenance(ctx context.Context, provider string) (func(), error) {
+	if err := s.retryProgramCleanups(ctx, provider); err != nil {
+		return nil, err
+	}
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if s.programMaintenance[provider] || s.programReaders[provider] > 0 {
+		return nil, status_error.AIAccountBusy
+	}
+	if s.programMaintenance == nil {
+		s.programMaintenance = map[string]bool{}
+	}
+	s.programMaintenance[provider] = true
+	var once sync.Once
+	return func() { once.Do(func() { s.mutex.Lock(); delete(s.programMaintenance, provider); s.mutex.Unlock() }) }, nil
+}
+
+func (s *Service) acquireProgramUse(ctx context.Context, provider string) (func(), error) {
+	if err := s.retryProgramCleanups(ctx, provider); err != nil {
+		return nil, err
+	}
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if s.programMaintenance[provider] {
+		return nil, status_error.RuntimeInstallationBusy
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if s.programReaders == nil {
+		s.programReaders = map[string]int{}
+	}
+	s.programReaders[provider]++
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			s.mutex.Lock()
+			s.programReaders[provider]--
+			if s.programReaders[provider] == 0 {
+				delete(s.programReaders, provider)
+			}
+			s.mutex.Unlock()
+		})
+	}, nil
+}
+
+func (s *Service) retainProgramCleanup(provider string, client programClientCloser) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if s.programPendingCloses == nil {
+		s.programPendingCloses = map[string][]programClientCloser{}
+	}
+	s.programPendingCloses[provider] = append(s.programPendingCloses[provider], client)
+}
+
+func (s *Service) retryProgramCleanups(ctx context.Context, provider string) error {
+	s.programCleanupMutex.Lock()
+	defer s.programCleanupMutex.Unlock()
+	for {
+		s.mutex.Lock()
+		pending := s.programPendingCloses[provider]
+		if len(pending) == 0 {
+			s.mutex.Unlock()
+			return nil
+		}
+		client := pending[0]
+		s.mutex.Unlock()
+		cleanup, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err := client.Close(cleanup)
+		cancel()
+		if err != nil {
+			return status_error.RuntimeShutdownFailed
+		}
+		s.mutex.Lock()
+		s.programPendingCloses[provider] = s.programPendingCloses[provider][1:]
+		s.mutex.Unlock()
+	}
 }

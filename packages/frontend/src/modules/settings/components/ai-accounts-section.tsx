@@ -6,13 +6,12 @@ import {
 } from "@/shared/api/local-error-surface";
 import {
   ChevronRight,
+  Plus,
   Eye,
   EyeOff,
   ExternalLink,
-  Pencil,
-  Plus,
+  MoreHorizontal,
   RefreshCw,
-  Trash2,
   X,
 } from "lucide-react";
 import { useId, useState } from "react";
@@ -23,6 +22,7 @@ import {
   deleteAiAccountMutation,
   listAiAccountsOptions,
   listAiAccountsQueryKey,
+  listRuntimesQueryKey,
   logoutAiAccountMutation,
   previewAiAccountModelsMutation,
   refreshAiAccountModelsMutation,
@@ -33,19 +33,28 @@ import type {
   GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccountEndpoint as Endpoint,
   GithubComJieWaZiNeuxBotServerApisAiAccountsAiAccountModel as AIAccountModel,
 } from "@/shared/api/generated/types.gen";
-import { getAiAccountCredential } from "@/shared/api/generated/sdk.gen";
+import {
+  getAiAccountCredential,
+  refreshRuntime,
+} from "@/shared/api/generated/sdk.gen";
 import { openExternalURL } from "@/shared/platform";
 import { AccountLogin } from "./account-login";
+import { RuntimeSystemAccountActions } from "./runtime-authentication-controls";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/shared/ui/collapsible";
 import { Button } from "@/shared/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/shared/ui/tooltip";
 import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import { FieldCheckboxDropdown } from "@/shared/ui/field-checkbox-dropdown";
-import { SearchField } from "@/shared/ui/search-field";
 import { SearchableMultiSelect } from "@/shared/ui/searchable-multi-select";
 import {
   Select,
@@ -68,7 +77,16 @@ import {
   claudeRoleDefaultsFor,
   modelDefaultsFor,
 } from "../lib/account-model-defaults";
-import { SettingsContentShell } from "./settings-section-layout";
+import { SettingsGroup, SettingsRow } from "./settings-section-layout";
+import { accountSupportsRuntime } from "@/shared/lib/account-runtime-compatibility";
+import { Skeleton } from "@/shared/ui/skeleton";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/shared/ui/dropdown-menu";
+import type { GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption as RuntimeOption } from "@/shared/api/generated/types.gen";
 import { SettingsFieldGroup, SettingsFieldRow } from "./settings-field-group";
 
 const reasoningLevels = [
@@ -87,29 +105,50 @@ const followChatModelValue = "__ally_follow_chat_model__";
 function AccountForm({
   account,
   accounts,
+  runtime,
   onSaved,
   onClose,
 }: {
   account?: AIAccount;
   accounts: AIAccount[];
+  runtime: RuntimeOption;
   onSaved: (id?: string) => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation(["aiAccounts", "common"]);
   const formId = useId();
-  const [name, setName] = useState(account?.name ?? t("presets.openai"));
-  const [nameEdited, setNameEdited] = useState(Boolean(account));
-  const [authMode, setAuthMode] = useState<"api-key" | "subscription">(
-    account?.authMode === "subscription" ? "subscription" : "api-key",
+  const runtimeId = runtime.id ?? "";
+  const baseRuntimeId = runtime.baseRuntimeId || runtimeId;
+  const supported = (protocol: Endpoint["protocol"]) =>
+    accountSupportsRuntime(
+      { authMode: "api-key", endpoint: { protocol, baseUrl: "" } },
+      baseRuntimeId,
+    );
+  const initialPreset: AccountPresetID =
+    baseRuntimeId === "claude"
+      ? "anthropic"
+      : baseRuntimeId === "gemini"
+        ? "google"
+        : baseRuntimeId === "grok"
+          ? "xai"
+          : "openai";
+  const initialEndpoint = accountPresets[initialPreset].find((item) =>
+    supported(item.protocol),
+  ) ?? {
+    protocol: "openai-responses",
+    baseUrl: officialEndpoints["openai-responses"],
+  };
+  const [name, setName] = useState(
+    account?.name ?? t(`presets.${initialPreset}`),
   );
+  const [nameEdited, setNameEdited] = useState(Boolean(account));
+  const authMode =
+    account?.authMode === "subscription" ? "subscription" : "api-key";
   const [preset, setPreset] = useState<AccountPresetID>(() =>
-    presetForEndpoint(account?.endpoint),
+    account ? presetForEndpoint(account.endpoint) : initialPreset,
   );
   const [endpoint, setEndpoint] = useState<Endpoint>(
-    account?.endpoint ?? {
-      protocol: "openai-responses",
-      baseUrl: officialEndpoints["openai-responses"],
-    },
+    account?.endpoint ?? initialEndpoint,
   );
   const [apiKey, setApiKey] = useState("");
   const [keyVisible, setKeyVisible] = useState(false);
@@ -152,8 +191,8 @@ function AccountForm({
   const claudeDefaults = claudeRoleDefaultsFor(preset, selectedModels);
   const providerWebsite =
     preset === "custom" ? undefined : providerWebsites[preset];
-  const initialPreset = presetForEndpoint(account?.endpoint);
-  const keyRequired = !account?.hasCredential || preset !== initialPreset;
+  const savedPreset = presetForEndpoint(account?.endpoint);
+  const keyRequired = !account?.hasCredential || preset !== savedPreset;
   const credentialQuery = useQuery({
     queryKey: ["ai-account-credential", account?.id],
     queryFn: async ({ signal }) => {
@@ -185,26 +224,14 @@ function AccountForm({
       ? credentialQuery.error.message
       : t("common:unknownError")
     : "";
-  const accessMode =
-    authMode === "subscription"
-      ? preset === "kimi"
-        ? "kimi-subscription"
-        : "chatgpt-subscription"
-      : preset === "kimi"
-        ? "kimi-plan"
-        : preset === "volcengineCoding"
-          ? "volcengine-coding"
-          : preset === "volcengineAgent"
-            ? "volcengine-agent"
-            : "api-key";
-  const authSelectValue =
-    accessMode === "kimi-plan" ||
-    accessMode === "volcengine-coding" ||
-    accessMode === "volcengine-agent"
-      ? "key-subscription"
-      : accessMode;
   const chooseKeyPreset = (nextPreset: AccountPresetID) => {
-    const nextEndpoint = accountPresets[nextPreset][0];
+    const nextEndpoint =
+      nextPreset === "custom"
+        ? {
+            protocol: protocols.find(supported) ?? "openai-responses",
+            baseUrl: "",
+          }
+        : accountPresets[nextPreset].find((item) => supported(item.protocol));
     if (!nextEndpoint) return;
     setPreset(nextPreset);
     setEndpoint({ ...nextEndpoint });
@@ -257,6 +284,7 @@ function AccountForm({
       }
     }
     const body = {
+      runtimeId,
       name: name.trim(),
       endpoint: { protocol: endpoint.protocol, baseUrl: endpoint.baseUrl },
       modelCatalog: discoveredModels
@@ -320,19 +348,33 @@ function AccountForm({
       apiKey: apiKeyChanged ? displayedApiKey.trim() : "",
     };
     if (account?.id) {
+      const defaultModel =
+        authMode === "subscription"
+          ? (account.defaultModel ?? "")
+          : selectedModels.includes(account.defaultModel ?? "")
+            ? (account.defaultModel ?? "")
+            : (selectedModels[0] ?? "");
+      const levels = body.modelReasoningLevels[defaultModel];
+      const sameEndpoint =
+        endpoint.protocol === account.endpoint?.protocol &&
+        endpoint.baseUrl === account.endpoint?.baseUrl;
+      const defaultReasoning =
+        defaultModel === account.defaultModel &&
+        sameEndpoint &&
+        (!levels?.length || levels.includes(account.defaultReasoning ?? ""))
+          ? (account.defaultReasoning ?? "")
+          : "";
       await update.mutateAsync({
         path: { accountId: account.id },
         body: {
           ...body,
           customModels,
-          defaultModel: selectedModels.includes(account?.defaultModel ?? "")
-            ? (account?.defaultModel ?? "")
-            : (selectedModels[0] ?? ""),
-          defaultReasoning: account?.defaultReasoning ?? "",
+          defaultModel,
+          defaultReasoning,
           revision: account.revision ?? 0,
         },
       });
-      onSaved();
+      onSaved(account.id);
     } else {
       const created = await create.mutateAsync({
         body: {
@@ -342,7 +384,7 @@ function AccountForm({
           ...(customModels.length ? { customModels } : {}),
         },
       });
-      onSaved(authMode === "subscription" ? created.id : undefined);
+      onSaved(created.id);
     }
   };
   const availableModels = [
@@ -485,6 +527,11 @@ function AccountForm({
                 <div className="flex min-w-0 items-center gap-2">
                   <Select
                     value={provider}
+                    disabled={
+                      pending ||
+                      refreshModels.isPending ||
+                      previewModels.isPending
+                    }
                     onValueChange={(value) => {
                       const nextProvider = accountProviderIDs.find(
                         (id) => id === value,
@@ -505,11 +552,19 @@ function AccountForm({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {accountProviderIDs.map((id) => (
-                        <SelectItem key={id} value={id}>
-                          {t(`presets.${id}`)}
-                        </SelectItem>
-                      ))}
+                      {accountProviderIDs
+                        .filter(
+                          (id) =>
+                            id === "custom" ||
+                            accountPresets[id].some((item) =>
+                              supported(item.protocol),
+                            ),
+                        )
+                        .map((id) => (
+                          <SelectItem key={id} value={id}>
+                            {t(`presets.${id}`)}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                   {providerWebsite ? (
@@ -531,164 +586,70 @@ function AccountForm({
                 </div>
               </SettingsFieldRow>
             ) : null}
-            <SettingsFieldRow
-              label={t("authMode")}
-              htmlFor={
-                (!account && provider === "openai") ||
-                provider === "kimi" ||
-                provider === "volcengine"
-                  ? `${formId}-auth`
-                  : undefined
-              }
-            >
-              {(account && authMode === "subscription") ||
-              (provider !== "openai" &&
-                provider !== "kimi" &&
-                provider !== "volcengine") ? (
-                <p className="type-ui text-content-secondary">
-                  {t(
-                    authMode === "subscription"
-                      ? preset === "kimi"
-                        ? "kimiSubscriptionMode"
-                        : "subscriptionMode"
-                      : "apiKeyMode",
-                  )}
-                </p>
-              ) : (
-                <div className="flex min-w-0 items-center gap-2">
-                  <Select
-                    value={authSelectValue}
-                    onValueChange={(value) => {
-                      if (value === authSelectValue) return;
-                      if (provider === "openai") {
-                        const next =
-                          value === "chatgpt-subscription"
-                            ? "subscription"
-                            : "api-key";
-                        setAuthMode(next);
-                        setEndpoint({
-                          protocol: "openai-responses",
-                          baseUrl: officialEndpoints["openai-responses"],
-                        });
-                        if (!nameEdited)
-                          setName(
-                            t(
-                              next === "subscription"
-                                ? "subscriptionMode"
-                                : "presets.openai",
-                            ),
-                          );
-                        setApiKey("");
-                        setKeyEdited(false);
-                        setDiscoveredModels([]);
-                        setSelectedModels([]);
-                        setCustomModels([]);
-                        setCustomModelInput("");
-                      } else {
-                        if (
-                          provider === "kimi" &&
-                          value === "kimi-subscription"
-                        ) {
-                          setAuthMode("subscription");
-                          setPreset("kimi");
-                          setEndpoint({
-                            protocol: "openai-completions",
-                            baseUrl: "https://api.kimi.com/coding/v1",
-                          });
-                          if (!nameEdited) setName(t("kimiSubscriptionMode"));
-                          setApiKey("");
-                          setKeyEdited(false);
-                          setDiscoveredModels([]);
-                          setSelectedModels([]);
-                          setCustomModels([]);
-                        } else {
-                          setAuthMode("api-key");
-                          chooseKeyPreset(
-                            provider === "kimi"
-                              ? value === "key-subscription"
-                                ? "kimi"
-                                : "moonshot"
-                              : value === "key-subscription"
-                                ? "volcengineCoding"
-                                : "volcengine",
-                          );
-                        }
-                      }
-                    }}
-                  >
-                    <SelectTrigger
-                      id={`${formId}-auth`}
-                      size="sm"
-                      aria-label={t("authMode")}
-                      className="min-w-0 flex-1"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="api-key">{t("apiKeyMode")}</SelectItem>
-                      {provider === "openai" && !account ? (
-                        <SelectItem value="chatgpt-subscription">
-                          {t("subscriptionMode")}
+            {authMode === "api-key" &&
+            (provider === "kimi" || provider === "volcengine") ? (
+              <SettingsFieldRow
+                label={t("planType")}
+                htmlFor={`${formId}-plan`}
+              >
+                <Select
+                  value={preset}
+                  disabled={
+                    pending ||
+                    refreshModels.isPending ||
+                    previewModels.isPending
+                  }
+                  onValueChange={(value) => {
+                    const next = accountProviderIDs.find((id) => id === value);
+                    if (value === "moonshot") chooseKeyPreset("moonshot");
+                    else if (value === "volcengineCoding")
+                      chooseKeyPreset("volcengineCoding");
+                    else if (value === "volcengineAgent")
+                      chooseKeyPreset("volcengineAgent");
+                    else if (next) chooseKeyPreset(next);
+                  }}
+                >
+                  <SelectTrigger id={`${formId}-plan`} size="sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {provider === "kimi" ? (
+                      <>
+                        <SelectItem value="moonshot">
+                          {t("apiKeyMode")}
                         </SelectItem>
-                      ) : null}
-                      {provider === "kimi" ? (
-                        <>
-                          <SelectItem value="key-subscription">
-                            {t("keySubscriptionMode")}
-                          </SelectItem>
-                          {!account ? (
-                            <SelectItem value="kimi-subscription">
-                              {t("kimiSubscriptionMode")}
-                            </SelectItem>
-                          ) : null}
-                        </>
-                      ) : null}
-                      {provider === "volcengine" ? (
-                        <SelectItem value="key-subscription">
+                        <SelectItem value="kimi">
                           {t("keySubscriptionMode")}
                         </SelectItem>
-                      ) : null}
-                    </SelectContent>
-                  </Select>
-                  {provider === "volcengine" &&
-                  authSelectValue === "key-subscription" ? (
-                    <Select
-                      value={preset}
-                      onValueChange={(value) => {
-                        if (
-                          value !== "volcengineCoding" &&
-                          value !== "volcengineAgent"
-                        )
-                          return;
-                        chooseKeyPreset(value);
-                      }}
-                    >
-                      <SelectTrigger
-                        size="sm"
-                        aria-label={t("planType")}
-                        className="min-w-0 flex-1"
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
+                      </>
+                    ) : (
+                      <>
+                        <SelectItem value="volcengine">
+                          {t("apiKeyMode")}
+                        </SelectItem>
                         <SelectItem value="volcengineCoding">
                           {t("volcengineCodingPlan")}
                         </SelectItem>
                         <SelectItem value="volcengineAgent">
                           {t("volcengineAgentPlan")}
                         </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  ) : null}
-                </div>
-              )}
-            </SettingsFieldRow>
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+              </SettingsFieldRow>
+            ) : null}
             {authMode === "api-key" ? (
               <>
                 <SettingsFieldRow label={t("key")} htmlFor={`${formId}-key`}>
                   <div className="flex min-w-0 items-center gap-2">
                     <Input
                       id={`${formId}-key`}
+                      disabled={
+                        pending ||
+                        refreshModels.isPending ||
+                        previewModels.isPending
+                      }
                       size="sm"
                       type={keyVisible ? "text" : "password"}
                       value={displayedApiKey}
@@ -733,8 +694,14 @@ function AccountForm({
               >
                 <Select
                   value={endpoint.protocol}
+                  disabled={
+                    pending ||
+                    refreshModels.isPending ||
+                    previewModels.isPending
+                  }
                   onValueChange={(value) => {
-                    const protocol = value as Endpoint["protocol"];
+                    const protocol = protocols.find((item) => item === value);
+                    if (!protocol) return;
                     const presetEndpoint = accountPresets[preset].find(
                       (item) => item.protocol === protocol,
                     );
@@ -757,11 +724,13 @@ function AccountForm({
                     {(preset === "custom"
                       ? protocols
                       : accountPresets[preset].map((item) => item.protocol)
-                    ).map((protocol) => (
-                      <SelectItem key={protocol} value={protocol}>
-                        {t(`protocol.${protocol}`)}
-                      </SelectItem>
-                    ))}
+                    )
+                      .filter(supported)
+                      .map((protocol) => (
+                        <SelectItem key={protocol} value={protocol}>
+                          {t(`protocol.${protocol}`)}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </SettingsFieldRow>
@@ -777,6 +746,11 @@ function AccountForm({
                     size="sm"
                     type="url"
                     value={endpoint.baseUrl}
+                    disabled={
+                      pending ||
+                      refreshModels.isPending ||
+                      previewModels.isPending
+                    }
                     required
                     placeholder="https://api.example.com/v1"
                     onChange={(event) =>
@@ -811,7 +785,7 @@ function AccountForm({
                     />
                     <Button
                       type="button"
-                      size="sm"
+                      size="settings"
                       variant="ghost"
                       className="w-full justify-start"
                       disabled={
@@ -864,7 +838,7 @@ function AccountForm({
                     />
                     <Button
                       type="button"
-                      size="sm"
+                      size="settings"
                       variant="ghost"
                       className="w-full justify-start"
                       disabled={!customModelInput.trim()}
@@ -924,7 +898,7 @@ function AccountForm({
           </SettingsFieldGroup>
           {authMode === "api-key" && selectedModels.length ? (
             <Collapsible
-              className="bg-surface-tertiary @container min-w-0 overflow-hidden rounded-lg"
+              className="bg-resource-surface @container min-w-0 overflow-hidden rounded-lg"
               open={advancedOpen}
               onOpenChange={setAdvancedOpen}
             >
@@ -942,7 +916,7 @@ function AccountForm({
                       <p className="type-ui font-medium">{t("modelMapping")}</p>
                       <Button
                         type="button"
-                        size="sm"
+                        size="settings"
                         variant="ghost"
                         onClick={() =>
                           setClaudeModelRoles(
@@ -1138,14 +1112,16 @@ function AccountForm({
         </div>
         <DialogFooter>
           <Button
+            size="settings"
             type="button"
-            variant="secondary"
+            variant="settings-outline"
             disabled={pending}
             onClick={onClose}
           >
             {t("common:cancel")}
           </Button>
           <Button
+            size="settings"
             type="submit"
             disabled={
               pending ||
@@ -1162,226 +1138,326 @@ function AccountForm({
   );
 }
 
-function AccountRow({
-  account,
-  onEdit,
-  onDelete,
-  onLogin,
-  onLogout,
+export function AIAccountsSection({
+  runtime,
+  onSelectAccount,
+  disabled = false,
 }: {
-  account: AIAccount;
-  onEdit: () => void;
-  onDelete: () => void;
-  onLogin: () => void;
-  onLogout: () => void;
+  runtime: RuntimeOption;
+  onSelectAccount: (accountId: string) => Promise<void>;
+  disabled?: boolean;
 }) {
-  const { t } = useTranslation("aiAccounts");
-  const [expanded, setExpanded] = useState(false);
-  const canLogout =
-    account.authMode === "subscription" &&
-    account.hasCredential &&
-    account.endpoint?.protocol === "openai-responses" &&
-    account.endpoint.baseUrl === officialEndpoints["openai-responses"];
-  const summary = account.endpoint
-    ? t(`protocol.${account.endpoint.protocol}`)
-    : "";
-  return (
-    <Collapsible
-      open={expanded}
-      onOpenChange={setExpanded}
-      className="bg-surface-tertiary overflow-hidden rounded-lg"
-    >
-      <div className="min-h-row-rich flex items-center gap-2 pr-3">
-        <CollapsibleTrigger
-          aria-label={t(expanded ? "collapseNamed" : "expandNamed", {
-            name: account.name,
-          })}
-          className="group text-content-primary hover:bg-action-quiet-hover focus-visible:ring-ring flex min-w-0 flex-1 items-center gap-2 self-stretch px-4 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
-        >
-          <ChevronRight
-            aria-hidden="true"
-            className="size-icon-sm text-content-muted shrink-0 group-data-[state=open]:rotate-90"
-          />
-          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="type-body font-medium break-words">
-              {account.name}
-            </span>
-            <span
-              className="type-ui text-content-secondary min-w-0 truncate"
-              title={summary}
-            >
-              {summary}
-            </span>
-          </span>
-        </CollapsibleTrigger>
-        <div className="flex shrink-0 items-center gap-1">
-          {account.authMode === "subscription" && !account.hasCredential ? (
-            <Button size="sm" variant="ghost" onClick={onLogin}>
-              {t("login")}
-            </Button>
-          ) : null}
-          <div className="p-1">
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label={t("editNamed", { name: account.name })}
-              title={t("edit")}
-              onClick={onEdit}
-            >
-              <Pencil />
-            </Button>
-          </div>
-          <div className="p-1">
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              className="text-destructive hover:text-destructive"
-              aria-label={t("deleteNamed", { name: account.name })}
-              title={t("deleteNamed", { name: account.name })}
-              onClick={onDelete}
-            >
-              <Trash2 />
-            </Button>
-          </div>
-        </div>
-      </div>
-      <CollapsibleContent>
-        <div className="border-border-subtle @container border-t">
-          <SettingsFieldRow label={t("authMode")}>
-            <div className="type-ui text-content-secondary flex flex-wrap items-center justify-between gap-2">
-              <span>
-                {t(
-                  account.authMode === "subscription"
-                    ? account.endpoint?.baseUrl ===
-                      "https://api.kimi.com/coding/v1"
-                      ? "kimiSubscriptionMode"
-                      : "subscriptionMode"
-                    : "apiKeyMode",
-                )}{" "}
-                · {t(account.hasCredential ? "configured" : "needsLogin")}
-              </span>
-              {account.authMode === "subscription" ? (
-                <div className="flex flex-wrap gap-1">
-                  {canLogout ? (
-                    <Button size="sm" variant="ghost" onClick={onLogout}>
-                      {t("logout")}
-                    </Button>
-                  ) : null}
-                  <Button size="sm" variant="ghost" onClick={onLogin}>
-                    {t(account.hasCredential ? "reauth" : "login")}
-                  </Button>
-                </div>
-              ) : null}
-            </div>
-          </SettingsFieldRow>
-          <dl className="border-border-subtle divide-border-subtle divide-y border-t">
-            {account.endpoint ? (
-              <SettingsFieldRow
-                label={<dt>{t(`protocol.${account.endpoint.protocol}`)}</dt>}
-              >
-                <dd className="type-ui text-content-secondary break-all">
-                  {account.endpoint.baseUrl}
-                </dd>
-              </SettingsFieldRow>
-            ) : null}
-          </dl>
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
-export function AIAccountsSection() {
   const { t } = useTranslation(["aiAccounts", "common"]);
   const queryClient = useQueryClient();
-  const accounts = useQuery(listAiAccountsOptions(withLocalErrorSurface({})));
+  const accounts = useQuery(
+    listAiAccountsOptions(
+      withLocalErrorSurface({ query: { runtimeId: runtime.id ?? "" } }),
+    ),
+  );
   const remove = useMutation(withLocalErrorMutation(deleteAiAccountMutation()));
   const logout = useMutation(withLocalErrorMutation(logoutAiAccountMutation()));
-  const [search, setSearch] = useState("");
+  const create = useMutation(withLocalErrorMutation(createAiAccountMutation()));
   const [editing, setEditing] = useState<AIAccount | "new">();
   const [confirming, setConfirming] = useState<{
     account: AIAccount;
     action: "delete" | "logout";
   }>();
   const [loginAccount, setLoginAccount] = useState<string>();
+  const [actionError, setActionError] = useState("");
   const isLogout = confirming?.action === "logout";
   const confirmMutation = isLogout ? logout : remove;
-  const filtered = (accounts.data?.resources ?? []).filter((account) =>
-    `${account.name} ${account.endpoint?.baseUrl ?? ""}`
-      .toLowerCase()
-      .includes(search.toLowerCase()),
+  const resources = accounts.data?.resources ?? [];
+  const subscriptionSupported = ["codex", "claude", "kimi"].includes(
+    runtime.baseRuntimeId || runtime.id || "",
+  );
+  const apiSupported = [
+    "codex",
+    "claude",
+    "gemini",
+    "kimi",
+    "grok",
+    "opencode",
+    "pi",
+  ].includes(runtime.baseRuntimeId || runtime.id || "");
+  const invalidate = async (accountId?: string) => {
+    await queryClient.invalidateQueries({ queryKey: listAiAccountsQueryKey() });
+    await queryClient.invalidateQueries({
+      queryKey: nativeModelCatalogQueryKey(
+        accountId ? { accountId } : undefined,
+      ),
+    });
+    if (accountId && runtime.defaultAccountId === accountId) {
+      try {
+        await refreshRuntime(
+          withLocalErrorSurface({
+            path: { runtimeId: runtime.id ?? "" },
+            throwOnError: true,
+          }),
+        );
+        await queryClient.invalidateQueries({
+          queryKey: listRuntimesQueryKey(),
+        });
+      } catch (error) {
+        setActionError(
+          error instanceof Error ? error.message : t("common:unknownError"),
+        );
+      }
+    }
+  };
+  const select = async (id: string) => {
+    setActionError("");
+    try {
+      await onSelectAccount(id);
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : t("common:unknownError"),
+      );
+    }
+  };
+  const addSubscription = async () => {
+    const baseRuntime = runtime.baseRuntimeId || runtime.id;
+    const kimi = baseRuntime === "kimi";
+    const claude = baseRuntime === "claude";
+    const label = t(
+      kimi
+        ? "kimiSubscriptionMode"
+        : claude
+          ? "claudeSubscriptionMode"
+          : "subscriptionMode",
+    );
+    let name = label;
+    let suffix = 2;
+    while (resources.some((account) => account.name === name))
+      name = `${label} ${suffix++}`;
+    try {
+      const result = await create.mutateAsync({
+        body: {
+          runtimeId: runtime.id ?? "",
+          name,
+          authMode: "subscription",
+          endpoint: {
+            protocol: kimi
+              ? "openai-completions"
+              : claude
+                ? "anthropic-messages"
+                : "openai-responses",
+            baseUrl: kimi
+              ? "https://api.kimi.com/coding/v1"
+              : claude
+                ? officialEndpoints["anthropic-messages"]
+                : officialEndpoints["openai-responses"],
+          },
+        },
+      });
+      await invalidate(result.id);
+      setLoginAccount(result.id);
+    } catch {
+      /* 创建错误保留在账号分区。 */
+    }
+  };
+  const accountRow = (account: AIAccount) => (
+    <SettingsRow
+      grouped
+      key={account.id}
+      title={account.name}
+      description={`${account.authMode === "subscription" ? t("subscriptionAccount") : (account.endpoint?.baseUrl ?? t("apiKeyMode"))} · ${t(account.hasCredential ? "configured" : "needsLogin")}`}
+    >
+      {runtime.defaultAccountId === account.id ? (
+        <span className="type-ui text-content-secondary">{t("current")}</span>
+      ) : (
+        <Button
+          size="settings"
+          variant="settings-outline"
+          disabled={disabled || !account.hasCredential}
+          onClick={() => void select(account.id ?? "")}
+        >
+          {t("useAccount")}
+        </Button>
+      )}
+      {account.authMode === "subscription" &&
+      (!account.hasCredential ||
+        (runtime.defaultAccountId === account.id &&
+          runtime.auth === "missing")) ? (
+        <Button
+          size="settings"
+          variant="settings-outline"
+          disabled={disabled}
+          onClick={() => setLoginAccount(account.id)}
+        >
+          {t("login")}
+        </Button>
+      ) : null}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label={t("accountActions", { name: account.name })}
+            disabled={disabled}
+          >
+            <MoreHorizontal />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {account.authMode === "subscription" ? (
+            <>
+              <DropdownMenuItem onSelect={() => setEditing(account)}>
+                {t("rename")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setLoginAccount(account.id)}>
+                {t("reauth")}
+              </DropdownMenuItem>
+              {account.hasCredential ? (
+                <DropdownMenuItem
+                  onSelect={() => {
+                    logout.reset();
+                    setConfirming({ account, action: "logout" });
+                  }}
+                >
+                  {t("logout")}
+                </DropdownMenuItem>
+              ) : null}
+            </>
+          ) : (
+            <DropdownMenuItem onSelect={() => setEditing(account)}>
+              {t("changeKey")}
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem
+            variant="destructive"
+            disabled={runtime.defaultAccountId === account.id}
+            onSelect={() => {
+              remove.reset();
+              setConfirming({ account, action: "delete" });
+            }}
+          >
+            {t("common:delete")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </SettingsRow>
   );
   return (
-    <SettingsContentShell
-      title={t("title")}
-      description={t("description")}
-      actions={
-        <Button onClick={() => setEditing("new")}>
-          <Plus />
-          {t("add")}
-        </Button>
-      }
-    >
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="type-ui text-content-secondary">
-            {t("accountCount", {
-              count: accounts.data?.resources?.length ?? 0,
-            })}
-          </p>
-          <SearchField
-            width="toolbar"
-            aria-label={t("search")}
-            placeholder={t("search")}
-            clearLabel={t("clearSearch")}
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
+    <>
+      <SettingsGroup
+        title={t("accounts")}
+        trailing={
+          subscriptionSupported ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="plain"
+                    aria-label={t("add")}
+                    disabled={create.isPending || disabled}
+                    onClick={() => void addSubscription()}
+                  >
+                    <Plus aria-hidden />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t("add")}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : undefined
+        }
+      >
+        <div className="bg-resource-surface overflow-hidden rounded-lg">
+          <SettingsRow
+            grouped
+            title={t("system")}
+            description={t("systemDescription")}
+          >
+            {!runtime.defaultAccountId ? (
+              <span className="type-ui text-content-secondary">
+                {t("current")}
+              </span>
+            ) : (
+              <Button
+                size="settings"
+                variant="settings-outline"
+                disabled={disabled}
+                onClick={() => void select("")}
+              >
+                {t("useAccount")}
+              </Button>
+            )}
+            <RuntimeSystemAccountActions
+              runtime={runtime}
+              disabled={disabled}
+            />
+          </SettingsRow>
+          {accounts.isPending ? (
+            <div
+              role="status"
+              aria-busy="true"
+              aria-label={t("loadingAccounts")}
+              className="px-4 py-3"
+            >
+              <Skeleton className="h-4 w-40" />
+            </div>
+          ) : null}
+          {resources
+            .filter((account) => account.authMode === "subscription")
+            .map(accountRow)}
         </div>
         {accounts.isError ? (
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p role="alert" className="type-body text-destructive">
+          <div role="alert" className="flex flex-wrap items-center gap-2">
+            <span className="type-body text-destructive">
               {accounts.error.message}
-            </p>
+            </span>
             <Button
-              size="sm"
-              variant="secondary"
-              disabled={accounts.isFetching}
+              size="settings"
+              variant="settings-outline"
               onClick={() => void accounts.refetch()}
             >
               {t("common:retry")}
             </Button>
           </div>
         ) : null}
-        {accounts.isPending ? (
-          <p role="status" className="type-body text-content-secondary">
-            {t("common:pageLoading")}
+        {create.error || actionError ? (
+          <p role="alert" className="type-body text-destructive">
+            {actionError || create.error?.message}
           </p>
-        ) : !accounts.data ? null : filtered.length === 0 ? (
-          <p className="type-body text-content-secondary py-6">
-            {t(search ? "noMatches" : "empty")}
-          </p>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {filtered.map((account) => (
-              <AccountRow
-                key={account.id}
-                account={account}
-                onEdit={() => setEditing(account)}
-                onDelete={() => {
-                  remove.reset();
-                  setConfirming({ account, action: "delete" });
-                }}
-                onLogin={() => setLoginAccount(account.id)}
-                onLogout={() => {
-                  logout.reset();
-                  setConfirming({ account, action: "logout" });
-                }}
-              />
-            ))}
+        ) : null}
+      </SettingsGroup>
+      {apiSupported ? (
+        <SettingsGroup
+          title={t("apiSection")}
+          trailing={
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="plain"
+                    aria-label={t("addAPI")}
+                    disabled={disabled}
+                    onClick={() => setEditing("new")}
+                  >
+                    <Plus aria-hidden="true" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t("addAPI")}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          }
+        >
+          <div className="bg-resource-surface overflow-hidden rounded-lg">
+            {resources.some((account) => account.authMode === "api-key") ? (
+              resources
+                .filter((account) => account.authMode === "api-key")
+                .map(accountRow)
+            ) : (
+              <div className="px-4 py-3">
+                <p className="text-content-secondary type-ui min-h-row-default flex items-center">
+                  {t("apiEmpty")}
+                </p>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </SettingsGroup>
+      ) : null}
       <Dialog
         open={Boolean(editing)}
         onOpenChange={(open) => {
@@ -1391,21 +1467,13 @@ export function AIAccountsSection() {
         {editing ? (
           <AccountForm
             key={editing === "new" ? "new" : editing.id}
+            runtime={runtime}
             account={editing === "new" ? undefined : editing}
-            accounts={accounts.data?.resources ?? []}
+            accounts={resources}
             onClose={() => setEditing(undefined)}
             onSaved={(id) => {
               setEditing(undefined);
-              const accountId = editing === "new" ? id : editing.id;
-              void queryClient
-                .invalidateQueries({ queryKey: listAiAccountsQueryKey() })
-                .then(() => {
-                  if (accountId)
-                    return queryClient.invalidateQueries({
-                      queryKey: nativeModelCatalogQueryKey({ accountId }),
-                    });
-                });
-              if (id) setLoginAccount(id);
+              void invalidate(id);
             }}
           />
         ) : null}
@@ -1413,7 +1481,7 @@ export function AIAccountsSection() {
       <Dialog
         open={Boolean(confirming)}
         onOpenChange={(open) => {
-          if (!open) setConfirming(undefined);
+          if (!open && !confirmMutation.isPending) setConfirming(undefined);
         }}
       >
         {confirming ? (
@@ -1432,37 +1500,29 @@ export function AIAccountsSection() {
             ) : null}
             <DialogFooter>
               <Button
-                variant="secondary"
+                size="settings"
+                variant="settings-outline"
                 disabled={confirmMutation.isPending}
                 onClick={() => setConfirming(undefined)}
               >
                 {t("common:cancel")}
               </Button>
               <Button
+                size="settings"
                 variant="danger"
                 disabled={confirmMutation.isPending}
-                onClick={() =>
+                onClick={() => {
                   void confirmMutation
                     .mutateAsync({
                       path: { accountId: confirming.account.id ?? "" },
                       query: { revision: confirming.account.revision ?? 0 },
                     })
-                    .then(() => {
+                    .then(async () => {
+                      await invalidate(confirming.account.id);
                       setConfirming(undefined);
-                      return queryClient
-                        .invalidateQueries({
-                          queryKey: listAiAccountsQueryKey(),
-                        })
-                        .then(() =>
-                          queryClient.invalidateQueries({
-                            queryKey: nativeModelCatalogQueryKey({
-                              accountId: confirming.account.id,
-                            }),
-                          }),
-                        );
                     })
-                    .catch(() => undefined)
-                }
+                    .catch(() => undefined);
+                }}
               >
                 {t(isLogout ? "logout" : "common:delete")}
               </Button>
@@ -1473,9 +1533,15 @@ export function AIAccountsSection() {
       {loginAccount ? (
         <AccountLogin
           accountId={loginAccount}
+          browserAuthorization={
+            (runtime.baseRuntimeId || runtime.id) === "claude"
+          }
+          runtimeId={
+            runtime.defaultAccountId === loginAccount ? runtime.id : undefined
+          }
           onClose={() => setLoginAccount(undefined)}
         />
       ) : null}
-    </SettingsContentShell>
+    </>
   );
 }

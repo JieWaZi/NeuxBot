@@ -524,7 +524,7 @@ function ChatFileRow({
             {t("workspace.downloadFile")}
           </DropdownMenuItem>
           <DropdownMenuItem
-            className="text-destructive"
+            variant="destructive"
             onSelect={() => setDeleteOpen(true)}
           >
             <Trash2 />

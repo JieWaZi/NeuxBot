@@ -11,7 +11,6 @@ export {
 } from "./components/settings-field-group";
 export {
   settingsNavigation,
-  settingsNavigationGroups,
   settingsSectionOf,
   type SettingsSection,
 } from "./settings-navigation";

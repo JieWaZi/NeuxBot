@@ -168,7 +168,6 @@ export function PluginConnectorDetailPage() {
         <ConnectorDetailHeader
           title={query.data?.connector?.name ?? (connectorKey || t("title"))}
           description={query.data?.connector?.description}
-          transport={query.data?.connector?.transport}
           backAction={{
             label: t("common:backToList"),
             onClick: () =>

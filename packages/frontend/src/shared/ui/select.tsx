@@ -15,6 +15,7 @@ type SelectTriggerProps = ComponentProps<typeof SelectPrimitive.Trigger> &
 
 export function SelectTrigger({
   children,
+  appearance,
   className,
   size,
   width,
@@ -22,7 +23,10 @@ export function SelectTrigger({
 }: SelectTriggerProps) {
   return (
     <SelectPrimitive.Trigger
-      className={cn(fieldControlTriggerVariants({ size, width }), className)}
+      className={cn(
+        fieldControlTriggerVariants({ appearance, size, width }),
+        className,
+      )}
       {...props}
     >
       {children}
@@ -86,7 +90,7 @@ export function SelectItem({
       {...props}
     >
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-      <SelectPrimitive.ItemIndicator className="absolute right-2 grid place-items-center">
+      <SelectPrimitive.ItemIndicator className="text-accent-content absolute right-2 grid place-items-center">
         <Check className="size-icon-sm" strokeWidth={1.5} />
       </SelectPrimitive.ItemIndicator>
     </SelectPrimitive.Item>

@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -20,11 +21,10 @@ import (
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
-	agentclient "github.com/JieWaZi/acp-go/pkg/agentclient"
 	claude "github.com/JieWaZi/acp-go/pkg/claude"
 )
 
-func resolveClaudeSystemAccount(ctx context.Context, request agent.AccountRequest, home string) (agent.AccountRequest, error) {
+func (service *Service) resolveClaudeSystemAccount(ctx context.Context, request agent.AccountRequest, home string) (agent.AccountRequest, error) {
 	if home == "" {
 		home = os.Getenv("CLAUDE_CONFIG_DIR")
 	}
@@ -34,7 +34,7 @@ func resolveClaudeSystemAccount(ctx context.Context, request agent.AccountReques
 	}
 	request.ConfigHome, request.NativeConfigHome = selected.configHome, home
 	request.ConfigFingerprint = selected.provider.ModelFingerprint
-	request.Subject, err = selected.subject(ctx, request)
+	request.Subject, err = selected.subject(ctx, request, service)
 	if err != nil {
 		return agent.AccountRequest{}, err
 	}
@@ -42,7 +42,7 @@ func resolveClaudeSystemAccount(ctx context.Context, request agent.AccountReques
 	return request, nil
 }
 
-func acquireClaudeSystemAccount(ctx context.Context, request agent.AccountRequest) (agent.AccountLease, error) {
+func (service *Service) acquireClaudeSystemAccount(ctx context.Context, request agent.AccountRequest) (agent.AccountLease, error) {
 	if request.Subject == "" || request.AuthGeneration != systemAccountGeneration || !filepath.IsAbs(request.ConfigHome) {
 		return agent.AccountLease{}, status_error.AIAccountConfigurationInvalid
 	}
@@ -57,7 +57,7 @@ func acquireClaudeSystemAccount(ctx context.Context, request agent.AccountReques
 		return agent.AccountLease{}, status_error.RuntimeConfigurationInvalid
 	}
 	verify := func(ctx context.Context) error {
-		subject, err := selected.subject(ctx, request)
+		subject, err := selected.subject(ctx, request, service)
 		if err != nil {
 			return err
 		}
@@ -133,6 +133,9 @@ func readClaudeSystemSettings(home string) ([]byte, error) {
 // claudeAccountEnvironment clears ambient overrides before selecting native subscription or managed API authentication.
 func claudeAccountEnvironment(home string) map[string]string {
 	environment := accountconfig.HomeEnvironment(constants.RuntimeIDClaude, home)
+	if home != "" {
+		environment["CLAUDE_SECURESTORAGE_CONFIG_DIR"] = home
+	}
 	for _, key := range []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
 		"CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"} {
 		environment[key] = ""
@@ -140,7 +143,7 @@ func claudeAccountEnvironment(home string) map[string]string {
 	return environment
 }
 
-func (s claudeSystemSelection) subject(ctx context.Context, request agent.AccountRequest) (string, error) {
+func (s claudeSystemSelection) subject(ctx context.Context, request agent.AccountRequest, service *Service) (string, error) {
 	nativeHome := request.NativeConfigHome
 	if nativeHome == "" {
 		userHome := s.environment["HOME"]
@@ -153,10 +156,10 @@ func (s claudeSystemSelection) subject(ctx context.Context, request agent.Accoun
 	if err != nil || canonical != request.ConfigHome {
 		return "", status_error.RuntimeAuthRequired
 	}
-	client, err := claude.NewClient(ctx, claude.Options{
+	client, err := service.newClaudeClient(ctx, claude.Options{
 		Executable: request.Executable, PrefixArgs: request.PrefixArgs, WorkingDirectory: request.CWD,
 		Environment: nativeAccountEnvironment(s.environment),
-	}, agentclient.HostCallbacks{})
+	})
 	if err != nil {
 		return "", nativeAccountStatusError(ctx, constants.RuntimeIDClaude, err)
 	}
@@ -164,6 +167,7 @@ func (s claudeSystemSelection) subject(ctx context.Context, request agent.Accoun
 	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	if closeErr := client.Close(closeCtx); closeErr != nil {
+		service.retainProgramCleanup(constants.RuntimeIDClaude, client)
 		logx.Errorf("native account status cleanup failed: provider=%s", constants.RuntimeIDClaude)
 		return "", status_error.RuntimeShutdownFailed
 	}
@@ -207,6 +211,9 @@ func (s claudeSystemSelection) subject(ctx context.Context, request agent.Accoun
 }
 
 func (s *Service) resolveManagedClaudeAccount(ctx context.Context, request agent.AccountRequest) (agent.AccountRequest, error) {
+	if err := s.retryClaudeLeaseCleanups(ctx, request.AccountID); err != nil {
+		return agent.AccountRequest{}, err
+	}
 	if !isManagedAccountID(request.AccountID) {
 		return agent.AccountRequest{}, status_error.AIAccountConfigurationInvalid
 	}
@@ -226,7 +233,7 @@ func (s *Service) resolveManagedClaude(ctx context.Context, request agent.Accoun
 	}
 	endpoint, ok := accountEndpoint(account, constants.RuntimeIDClaude)
 	_, modelAllowed := ManagedClaudeModelTarget(account, request.Model)
-	if !ok || account.AuthMode != constants.AccountAuthModeAPIKey || !modelAllowed {
+	if !ok || (account.AuthMode != constants.AccountAuthModeSubscription && (account.AuthMode != constants.AccountAuthModeAPIKey || !modelAllowed)) {
 		return agent.AccountRequest{}, account, endpoint, status_error.AIAccountConfigurationInvalid
 	}
 	if !account.HasCredential {
@@ -239,13 +246,24 @@ func (s *Service) resolveManagedClaude(ctx context.Context, request agent.Accoun
 	if err != nil {
 		return agent.AccountRequest{}, account, endpoint, err
 	}
-	request.Subject = accountSubject("claude-managed-api-v1", account.ID)
+	if account.AuthMode == constants.AccountAuthModeSubscription {
+		snapshot, err := s.claudeStoredCredential(ctx, account)
+		if err != nil {
+			return agent.AccountRequest{}, account, endpoint, err
+		}
+		request.Subject = accountSubject("claude-managed-subscription-v1", account.ID, snapshot.AccountID, snapshot.OrganizationID)
+	} else {
+		request.Subject = accountSubject("claude-managed-api-v1", account.ID)
+	}
 	request.ConfigHome, request.AuthGeneration = home, account.AuthGeneration
 	request.ConfigFingerprint = ManagedClaudeModelFingerprint(account)
 	return request, account, endpoint, nil
 }
 
 func (s *Service) acquireManagedClaudeAccount(ctx context.Context, request agent.AccountRequest) (agent.AccountLease, error) {
+	if err := s.retryClaudeLeaseCleanups(ctx, request.AccountID); err != nil {
+		return agent.AccountLease{}, err
+	}
 	if !isManagedAccountID(request.AccountID) {
 		return agent.AccountLease{}, status_error.AIAccountConfigurationInvalid
 	}
@@ -255,10 +273,31 @@ func (s *Service) acquireManagedClaudeAccount(ctx context.Context, request agent
 	}
 	lease, err := s.prepareManagedClaudeAccount(ctx, request)
 	if err != nil {
-		release()
+		if lease.Close != nil {
+			s.retainClaudeLeaseCleanup(request.AccountID, lease.Close, release)
+		} else {
+			release()
+		}
 		return agent.AccountLease{}, err
 	}
-	lease.Close = func(context.Context) error { release(); return nil }
+	innerClose := lease.Close
+	var closeMutex sync.Mutex
+	closed := false
+	lease.Close = func(ctx context.Context) error {
+		closeMutex.Lock()
+		defer closeMutex.Unlock()
+		if closed {
+			return nil
+		}
+		if innerClose != nil {
+			if err := innerClose(ctx); err != nil {
+				return err
+			}
+		}
+		release()
+		closed = true
+		return nil
+	}
 	return lease, nil
 }
 
@@ -272,6 +311,9 @@ func (s *Service) prepareManagedClaudeAccount(ctx context.Context, request agent
 	}
 	if !resolved.Equal(request) {
 		return agent.AccountLease{}, status_error.RuntimeAuthRequired
+	}
+	if account.AuthMode == constants.AccountAuthModeSubscription {
+		return s.prepareClaudeSubscription(ctx, request, account)
 	}
 	key, err := s.accounts.Credential(ctx, account.ID)
 	if err != nil {

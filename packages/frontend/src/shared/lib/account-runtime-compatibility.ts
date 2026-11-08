@@ -35,6 +35,9 @@ export function accountSupportsRuntime(
       (runtimeId === "codex" &&
         endpoint.protocol === "openai-responses" &&
         endpoint.baseUrl === "https://api.openai.com/v1") ||
+      (runtimeId === "claude" &&
+        endpoint.protocol === "anthropic-messages" &&
+        endpoint.baseUrl === "https://api.anthropic.com") ||
       (runtimeId === "kimi" && isKimiSubscription(account))
     );
   }

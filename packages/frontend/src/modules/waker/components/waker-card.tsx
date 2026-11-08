@@ -108,7 +108,7 @@ export function WakerCard({ waker }: { waker: Waker }) {
                 </DropdownMenuItem>
                 {!builtin ? (
                   <DropdownMenuItem
-                    className="text-destructive data-[highlighted]:text-destructive"
+                    variant="destructive"
                     onSelect={() => setDeleting(true)}
                   >
                     <Trash2 />

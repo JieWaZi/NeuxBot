@@ -15,7 +15,7 @@ import (
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
-func TestAccountsAreIndependentAndOnlyFailAtExecution(t *testing.T) {
+func TestAccountsRequireRuntimeOwnershipAndKeepExecutionLeases(t *testing.T) {
 	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "accounts.db"), Migrate: true})
 	if err != nil {
 		t.Fatal(err)
@@ -26,13 +26,16 @@ func TestAccountsAreIndependentAndOnlyFailAtExecution(t *testing.T) {
 	service := New(accounts, t.TempDir())
 	service.Start(context.Background())
 	t.Cleanup(service.Close)
-	account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", Name: "Kimi Code", AuthMode: constants.AccountAuthModeAPIKey, SelectedModels: []string{"model"}, Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://api.kimi.com/coding"}}
+	account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", RuntimeID: constants.RuntimeIDClaude, Name: "Kimi Code", AuthMode: constants.AccountAuthModeAPIKey, SelectedModels: []string{"model"}, Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://api.kimi.com/coding"}}
 	ctx := context.Background()
 	if err := accounts.Create(ctx, account, "one-shared-key"); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.Validate(ctx, account.ID); err != nil {
-		t.Fatal("association should only require an existing account")
+	if err := ValidateRuntimeAccount(account, models.RuntimeEnvironment{RuntimeID: account.RuntimeID, BaseRuntimeID: constants.RuntimeIDClaude}); err != nil {
+		t.Fatal("a compatible account in the selected runtime was rejected")
+	}
+	if err := ValidateRuntimeAccount(account, models.RuntimeEnvironment{RuntimeID: "claude-profile", BaseRuntimeID: constants.RuntimeIDClaude}); !errors.Is(err, status_error.AIAccountConfigurationInvalid) {
+		t.Fatalf("another profile accepted the account: %v", err)
 	}
 	request := agent.AccountRequest{Provider: constants.RuntimeIDClaude, AccountID: account.ID, Model: "model", CWD: t.TempDir()}
 	resolved, err := service.ResolveAccount(ctx, request, "")

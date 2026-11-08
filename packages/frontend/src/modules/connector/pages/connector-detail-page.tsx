@@ -131,7 +131,7 @@ export function ConnectorDetailPage() {
         <ConnectorDetailHeader
           title={connector?.name ?? t("title")}
           description={connector?.description}
-          transport={transport}
+          categories={connector?.categories}
           backAction={{
             label: t("common:backToList"),
             onClick: () => navigate(back),

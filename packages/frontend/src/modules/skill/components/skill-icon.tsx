@@ -1,21 +1,10 @@
-import { Sparkles } from "lucide-react";
-
-import { cn } from "@/shared/lib/cn";
+import { ResourceCategoryIcon } from "@/shared/ui/resource-category-icon";
 
 type Props = {
+  category?: string;
   className?: string;
 };
 
-export function SkillIcon({ className }: Props) {
-  return (
-    <span
-      className={cn(
-        "bg-resource-surface text-resource-muted size-resource-icon grid shrink-0 place-items-center rounded-lg",
-        className,
-      )}
-      aria-hidden="true"
-    >
-      <Sparkles className="size-resource-logo" strokeWidth={1.5} />
-    </span>
-  );
+export function SkillIcon({ category, className }: Props) {
+  return <ResourceCategoryIcon category={category} className={className} />;
 }

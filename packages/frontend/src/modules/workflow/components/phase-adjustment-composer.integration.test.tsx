@@ -28,8 +28,8 @@ import { PhaseAdjustmentComposer } from "./phase-adjustment-composer";
 const origin = "http://workflow-phase.test";
 vi.mock("@/shared/api/events", () => ({ subscribeChat: () => () => {} }));
 vi.mock("@/shared/api/global-events", () => ({
-  subscribeGlobalEvents: () => () => {},
   registerCoreConnectionRecovery: () => () => {},
+  subscribeGlobalEvents: () => () => {},
 }));
 vi.mock("@/shared/platform", async (importOriginal) => ({
   ...(await importOriginal<typeof Desktop>()),
@@ -49,6 +49,39 @@ const renderComposer = (content: ReactNode) =>
 beforeEach(() => {
   localStorage.clear();
   server.use(
+    http.get(`${origin}/api/v1/runtimes/codex/models`, ({ request }) => {
+      const accountId = new URL(request.url).searchParams.get("accountId");
+      const modelIds =
+        accountId === "phase-account"
+          ? ["account-model"]
+          : [
+              "native",
+              "selected-model",
+              "actual-model",
+              "saved-model",
+              "current-model",
+            ];
+      return HttpResponse.json({
+        runtimeId: "codex",
+        accountId,
+        state: "fresh",
+        defaultModel: modelIds[0],
+        models: modelIds.map((id) => ({
+          id,
+          name: id,
+          configurationKnown: true,
+          permissionLevels: ["default", "auto", "full-access"],
+          defaultReasoning: accountId === "phase-account" ? "" : "low",
+          reasoningOptions:
+            accountId === "phase-account"
+              ? []
+              : [
+                  { id: "low", name: "Low" },
+                  { id: "high", name: "High" },
+                ],
+        })),
+      });
+    }),
     http.get(`${origin}/api/v1/runtimes`, () =>
       HttpResponse.json({
         resources: [
@@ -79,38 +112,6 @@ beforeEach(() => {
         ],
       }),
     ),
-    http.get(`${origin}/api/v1/runtimes/codex/models`, ({ request }) => {
-      const accountId =
-        new URL(request.url).searchParams.get("accountId") || "system";
-      const ids =
-        accountId === "phase-account"
-          ? ["account-model"]
-          : [
-              "native",
-              "selected-model",
-              "actual-model",
-              "saved-model",
-              "current-model",
-            ];
-      return HttpResponse.json({
-        runtimeId: "codex",
-        accountId,
-        state: "fresh",
-        defaultModel: ids[0],
-        models: ids.map((id) => ({
-          id,
-          name: id,
-          permissionLevels: ["default", "auto", "full-access"],
-          reasoningOptions:
-            accountId === "system"
-              ? [
-                  { id: "low", name: "Low" },
-                  { id: "high", name: "High" },
-                ]
-              : [],
-        })),
-      });
-    }),
     http.get(`${origin}/api/v1/chats/:chatId`, ({ params }) =>
       HttpResponse.json({
         chat: { id: params.chatId, workspaceDirectory: "/workflow" },
@@ -123,6 +124,9 @@ beforeEach(() => {
   );
 });
 beforeAll(() => {
+  Element.prototype.hasPointerCapture = () => false;
+  Element.prototype.setPointerCapture = () => undefined;
+  Element.prototype.releasePointerCapture = () => undefined;
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -139,6 +143,9 @@ afterEach(() => server.resetHandlers());
 afterAll(() => {
   server.close();
   vi.unstubAllGlobals();
+  Reflect.deleteProperty(Element.prototype, "hasPointerCapture");
+  Reflect.deleteProperty(Element.prototype, "setPointerCapture");
+  Reflect.deleteProperty(Element.prototype, "releasePointerCapture");
 });
 
 it("阶段完整 Composer 的模型、思考、权限与附件选择实际进入创作请求", async () => {
@@ -191,13 +198,12 @@ it("阶段完整 Composer 的模型、思考、权限与附件选择实际进入
   expect(screen.getByTestId("composer-workspace-control")).toHaveTextContent(
     "默认",
   );
-  await user.click(await screen.findByRole("button", { name: /^native/ }));
+  await user.click(screen.getByTestId("composer-model-control"));
   await user.click(
     await screen.findByRole("radio", { name: "selected-model" }),
   );
-  const thinking = await screen.findByRole("combobox", { name: "选择强度" });
-  thinking.focus();
-  await user.keyboard("{Enter}{End}{Enter}");
+  await user.click(await screen.findByRole("combobox", { name: "选择强度" }));
+  await user.click(await screen.findByRole("option", { name: "高" }));
   await user.keyboard("{Escape}");
   await user.click(screen.getByRole("button", { name: "执行权限：默认权限" }));
   await user.click(screen.getByRole("menuitemradio", { name: /完全访问/ }));
@@ -236,6 +242,7 @@ it("阶段账号切换沿用聊天的上下文确认并真实提交，不覆盖�
         resources: [
           {
             id: "phase-account",
+            runtimeId: "codex",
             name: "阶段账号",
             authMode: "api-key",
             hasCredential: true,
@@ -247,6 +254,9 @@ it("阶段账号切换沿用聊天的上下文确认并真实提交，不覆盖�
           },
         ],
       }),
+    ),
+    http.get(`${origin}/api/v1/ai-accounts/phase-account/thinking`, () =>
+      HttpResponse.json({ available: false, options: [] }),
     ),
     http.get(`${origin}/api/v1/chats/chat-1`, () =>
       HttpResponse.json({
@@ -315,15 +325,19 @@ it("阶段账号切换沿用聊天的上下文确认并真实提交，不覆盖�
     ),
   );
   await user.click(screen.getByTestId("composer-model-control"));
-  screen.getByRole("combobox", { name: "账号" }).focus();
-  await user.keyboard("{Enter}");
+  await user.click(screen.getByRole("combobox", { name: "账号" }));
   await user.click(screen.getByRole("option", { name: "阶段账号" }));
   await user.click(await screen.findByRole("radio", { name: "account-model" }));
   expect(
     await screen.findByRole("dialog", { name: "在当前聊天中继续" }),
   ).toBeVisible();
   await user.click(screen.getByRole("button", { name: "确认切换并继续" }));
-  await screen.findByRole("button", { name: /^account-model/ });
+  await waitFor(() =>
+    expect(screen.getByTestId("composer-model-control")).toHaveTextContent(
+      "account-model",
+    ),
+  );
+  await user.keyboard("{Escape}");
   await user.type(
     screen.getByRole("textbox", { name: /输入消息/ }),
     "切换账号调整",

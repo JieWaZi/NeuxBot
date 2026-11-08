@@ -354,7 +354,12 @@ function PartnerNavigationLayoutContent({
   return (
     <SceneChromePortalProvider>
       {/* OpenBot v0.62.0/fcb35746：WorkspaceFrame.tsx、window.css；Scene 保活仍由本项目原所有者负责。 */}
-      <div className="app-window-shell bg-surface-chrome grid h-full min-h-0 min-w-0 grid-cols-[var(--shell-rail-width)_minmax(0,1fr)] overflow-hidden">
+      <div
+        className="app-window-shell bg-surface-chrome grid h-full min-h-0 min-w-0 grid-cols-[var(--shell-rail-width)_minmax(0,1fr)] overflow-hidden"
+        data-workflow-canvas-shell={
+          (workflowChatOpen && !settingsOpen) || undefined
+        }
+      >
         <AppModuleRail
           activeModule={settingsOpen ? "settings" : navigation.moduleId}
           onNavigate={onNavigateModule}

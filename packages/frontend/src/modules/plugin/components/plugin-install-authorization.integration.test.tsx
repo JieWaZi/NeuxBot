@@ -75,8 +75,6 @@ function detail(): GetPluginResponse {
             authentication: {
               strategy: "plugin-command",
               protocol: "neuxbot-auth/1",
-              command: "node",
-              args: ["./auth.mjs"],
               preferredAction,
             },
           },

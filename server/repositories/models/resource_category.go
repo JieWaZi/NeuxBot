@@ -11,7 +11,7 @@ func init() { dbhelper.RegisterTable(&ResourceCategory{}) }
 type ResourceCategory struct {
 	// ID 是分类的稳定标识。
 	ID string `gorm:"column:id;type:varchar(32);primaryKey" json:"id"`
-	// Type 区分插件、独立技能和独立连接器。
+	// Type 区分插件、独立技能、独立连接器和工作流。
 	Type constants.ResourceCategoryType `gorm:"column:type;not null;uniqueIndex:idx_resource_category,priority:1" json:"type"`
 	// Name 是用户设置的分类名称，同类型内唯一。
 	Name string `gorm:"column:name;not null;uniqueIndex:idx_resource_category,priority:2" json:"name"`

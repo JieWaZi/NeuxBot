@@ -4,7 +4,6 @@ import {
   ChartNoAxesCombined,
   Clock3,
   Ellipsis,
-  ListChecks,
   Package,
   Pin,
   Settings,
@@ -60,7 +59,6 @@ export function AppModuleRail({
       menuRef.current.style.translate = `0 ${menuAnchorTop.current - moreRef.current.getBoundingClientRect().top}px`;
   }, [moreOpen, pinnedModules]);
   const pages = [
-    { id: "work-board", label: t("workBoard:title"), icon: ListChecks },
     { id: "usage", label: t("usage:title"), icon: ChartNoAxesCombined },
     { id: "knowledge", label: t("knowledge:knowledge"), icon: BookOpen },
     { id: "automatic-tasks", label: t("automaticTask:title"), icon: Clock3 },
@@ -114,6 +112,11 @@ export function AppModuleRail({
             id: "partners",
             label: t("partnerNavigation.partner"),
             icon: Bot,
+          })}
+          {moduleButton({
+            id: "resources",
+            label: t("plugin:title"),
+            icon: Package,
           })}
           {pages
             .filter(({ id }) => pinnedModules.includes(id))
@@ -193,11 +196,6 @@ export function AppModuleRail({
           className="mt-auto flex shrink-0 flex-col items-center gap-1.5 pt-4"
           data-desktop-no-drag-region
         >
-          {moduleButton({
-            id: "resources",
-            label: t("plugin:title"),
-            icon: Package,
-          })}
           {moduleButton({
             id: "settings",
             label: t("partnerNavigation.settings"),

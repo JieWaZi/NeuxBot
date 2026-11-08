@@ -1,5 +1,34 @@
 package constants
 
+const (
+	// RuntimeEventTopic 是智能体程序与探测状态共用的事件主题。
+	RuntimeEventTopic = "runtimes"
+	// RuntimeInstallationChangedEventType 只唤醒受管安装快照读取。
+	RuntimeInstallationChangedEventType = "runtime.installation.changed"
+	// RuntimeAuthenticationChangedEventType 只唤醒原生认证任务快照读取。
+	RuntimeAuthenticationChangedEventType = "runtime.authentication.changed"
+	// RuntimeAuthenticationConfigurationReasonEnvironmentCredentials 表示环境凭据接管了当前原生认证。
+	RuntimeAuthenticationConfigurationReasonEnvironmentCredentials = "environment_credentials"
+	// RuntimeAuthenticationConfigurationReasonTerminalAuthentication 表示当前原生认证需要终端交互。
+	RuntimeAuthenticationConfigurationReasonTerminalAuthentication = "terminal_authentication"
+	// RuntimeAuthenticationConfigurationReasonNoNativeAuthentication 表示当前程序未提供可用原生认证方法。
+	RuntimeAuthenticationConfigurationReasonNoNativeAuthentication = "no_native_authentication"
+	// RuntimeContractChangedEventType 唤醒智能体能力与程序状态读取。
+	RuntimeContractChangedEventType = "runtimecontract.changed"
+	// CodexSubscriptionAuthMethod 是 Codex 原生 ChatGPT 认证方法标识。
+	CodexSubscriptionAuthMethod = "chat-gpt"
+	// NativeAccountKindAccount 是原生账号目录确认的订阅身份类型。
+	NativeAccountKindAccount = "account"
+	// ClaudeSubscriptionAuthMethod 是 Claude 原生订阅认证方法。
+	ClaudeSubscriptionAuthMethod = "claudeai"
+	// ClaudeCredentialsFileName 是原生文件凭据名称。
+	ClaudeCredentialsFileName = ".credentials.json"
+	// ClaudeAccountMetadataFileName 是原生账号元数据名称。
+	ClaudeAccountMetadataFileName = ".claude.json"
+	// ClaudeLegacyMetadataFileName 是旧版原生账号元数据名称。
+	ClaudeLegacyMetadataFileName = ".config.json"
+)
+
 // ChatInteractionProjectionTimeoutMillis 限制已提交交互事实的查询投影收尾，不限制人工等待。
 const ChatInteractionProjectionTimeoutMillis = 10_000
 
@@ -23,6 +52,9 @@ const RuntimeUserInputToolName = "AskUserQuestion"
 
 // WorkflowWorkerSkipRequestedEvent 表示用户请求跳过本次伙伴尝试。
 const WorkflowWorkerSkipRequestedEvent = "workflow.worker.skip_requested"
+
+// WorkflowDefinitionUpdatedEvent 表示工作流目录资料已提交变化。
+const WorkflowDefinitionUpdatedEvent = "workflow.definition.updated"
 
 // WorkflowEventHistoryPageSize 限制每次事件或日志历史读取的条数。
 const WorkflowEventHistoryPageSize = 500

@@ -105,7 +105,7 @@ export function TeamCard({
                   {t("edit")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  className="text-destructive data-[highlighted]:text-destructive"
+                  variant="destructive"
                   onSelect={() => {
                     setDeleteError("");
                     setDeleteOpen(true);

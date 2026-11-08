@@ -104,10 +104,7 @@ export function RolePresetCard({
                   <Pencil />
                   编辑预设
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-destructive data-[highlighted]:text-destructive"
-                  onSelect={onDelete}
-                >
+                <DropdownMenuItem variant="destructive" onSelect={onDelete}>
                   <Trash2 />
                   删除预设
                 </DropdownMenuItem>

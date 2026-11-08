@@ -11,6 +11,7 @@ func init() {
 	Router.Register(&GetWorkflowTriggers{})
 	Router.Register(&SaveWorkflowTriggers{})
 	Router.Register(&EditWorkflowConfiguration{})
+	Router.Register(&UpdateWorkflowCategories{})
 	Router.Register(&DeleteWorkflow{})
 	Router.Register(&DeleteWorkflowRevision{})
 	Router.Register(&DeleteWorkflowRun{})

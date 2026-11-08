@@ -24,7 +24,7 @@ type RuntimeEnvironmentController interface {
 	Get(ctx context.Context, runtimeID string) (models.RuntimeEnvironment, error)
 	// UpdateFields 更新一条环境记录的明确字段集合。
 	UpdateFields(ctx context.Context, runtimeID string, fields map[string]any) error
-	// UpdateConfiguration 更新用户可维护的完整启动配置和启用状态。
+	// UpdateConfiguration 更新默认执行选择和启用状态。
 	UpdateConfiguration(ctx context.Context, environment models.RuntimeEnvironment) error
 	// UpdateDetection 原子替换一条环境记录的完整探测快照和完成时间。
 	UpdateDetection(ctx context.Context, runtimeID string, detection agentapi.DetectionResult, detectedAt int64) error
@@ -91,6 +91,9 @@ func (c *runtimeEnvironmentController) List(
 	if err != nil {
 		return nil, databaseError("list_runtime_environments", "", err)
 	}
+	for index := range environments {
+		restoreRuntimeLaunch(&environments[index])
+	}
 	return environments, nil
 }
 
@@ -104,6 +107,7 @@ func (c *runtimeEnvironmentController) Get(
 		Where("runtime_id = ?", runtimeID).
 		First(&environment).Error
 	if err == nil {
+		restoreRuntimeLaunch(&environment)
 		return environment, nil
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -137,7 +141,7 @@ func (c *runtimeEnvironmentController) UpdateFields(
 	return nil
 }
 
-// UpdateConfiguration 更新用户可维护的完整启动配置和启用状态。
+// UpdateConfiguration 更新默认执行选择和启用状态。
 func (c *runtimeEnvironmentController) UpdateConfiguration(
 	ctx context.Context,
 	environment models.RuntimeEnvironment,
@@ -147,10 +151,6 @@ func (c *runtimeEnvironmentController) UpdateConfiguration(
 		Where("runtime_id = ?", environment.RuntimeID).
 		Select(
 			"Enabled",
-			"Binary",
-			"PrefixArgs",
-			"ConfigHome",
-			"CustomModels",
 			"DefaultModel",
 			"DefaultAccountID",
 			"DefaultReasoning",
@@ -206,4 +206,14 @@ func (c *runtimeEnvironmentController) ClearDefault(ctx context.Context) error {
 	}
 	publishCommittedChange(ctx, c.db, "runtimes", eventsResource("global", ""))
 	return nil
+}
+
+// restoreRuntimeLaunch 从已核实快照补齐内部启动字段，不读取旧用户配置列。
+func restoreRuntimeLaunch(environment *models.RuntimeEnvironment) {
+	environment.Binary = environment.Detection.ResolvedBinary
+	if environment.Binary == "" && len(environment.Detection.Runtime.BinaryCandidates) > 0 {
+		environment.Binary = environment.Detection.Runtime.BinaryCandidates[0]
+	}
+	environment.PrefixArgs = append([]string(nil), environment.Detection.Runtime.PrefixArgs...)
+	environment.ConfigHome = environment.Detection.Runtime.ConfigHome
 }

@@ -56,3 +56,17 @@ describe("IM 设置路由", () => {
     }
   });
 });
+
+it("智能体详情深链保留实际配置身份并复用唯一设置 Scene", () => {
+  expect(settingsSectionFromPath("/settings/agents")).toBe("agents");
+  const tab = routeSceneForLocation(
+    { pathname: "/settings/agents", search: "?agent=codex-profile" },
+    labels,
+  );
+  expect(tab).toMatchObject({
+    id: "settings",
+    kind: "settings",
+    mountKey: "settings",
+    href: "/settings/agents?agent=codex-profile",
+  });
+});

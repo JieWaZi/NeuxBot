@@ -17,7 +17,10 @@ import {
   refreshRuntimesMutation,
   updateRuntimeEnvironmentMutation,
 } from "@/shared/api/generated/@tanstack/react-query.gen";
-import { listRuntimesOptions } from "@/shared/api/runtime-queries";
+import {
+  listRuntimesOptions,
+  isRuntimeConfigurationEvent,
+} from "@/shared/api/runtime-queries";
 import { useQueryEvents } from "@/shared/api/use-query-events";
 import { openExternalURL } from "@/shared/platform";
 import { runtimeDisplayVersion } from "@/shared/lib/runtime-display-name";
@@ -26,6 +29,7 @@ import {
   permissionLevelTranslationKeys,
   modelPermissionLevels,
   type PermissionLevel,
+  runtimeDefaultPermissionLevels,
 } from "@/shared/lib/runtime-permissions";
 import { Button } from "@/shared/ui/button";
 import { ExecutionModelControl } from "@/shared/ui/execution-model-control";
@@ -44,7 +48,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/ui/select";
-import { cliInstallation, installationPlatform } from "./cli-installation";
+import {
+  cliInstallation,
+  installationPlatform,
+} from "@/shared/lib/cli-installation";
 import { WelcomeBrand } from "./welcome-brand";
 
 type RuntimeOption = NonNullable<ListRuntimesResponse["resources"]>[number];
@@ -54,11 +61,7 @@ function runtimeConfiguration(
 ): UpdateRuntimeEnvironmentData["body"] {
   return {
     enabled: runtime.enabled ?? true,
-    binary: runtime.binary ?? "",
-    prefixArgs: runtime.prefixArgs ?? [],
-    configHome: runtime.configHome ?? "",
     defaultAccountId: runtime.defaultAccountId ?? "",
-    customModels: runtime.customModels ?? [],
     defaultModel: runtime.defaultModel ?? "",
     defaultReasoning: runtime.defaultReasoning ?? "",
     defaultPermissionLevel: runtime.defaultPermissionLevel || "default",
@@ -75,10 +78,23 @@ function modelCatalogReady(runtime?: RuntimeOption) {
   );
 }
 
+function modelSelectionReady(runtime?: RuntimeOption) {
+  if (!runtime || !modelCatalogReady(runtime)) return false;
+  const model = runtime.models?.find(
+    (item) => item.id && item.id === runtime.defaultModel,
+  );
+  const permission = permissionLevelOf(runtime.defaultPermissionLevel);
+  return Boolean(
+    model &&
+    permission &&
+    runtimeDefaultPermissionLevels(runtime).has(permission),
+  );
+}
+
 function runtimeConfigurationReady(runtime?: RuntimeOption) {
   return Boolean(
     runtime?.id &&
-    (runtime.resolvedBinary || runtime.binary) &&
+    runtime.resolvedBinary &&
     permissionLevelOf(runtime.defaultPermissionLevel || "default"),
   );
 }
@@ -92,6 +108,7 @@ export function StartupGate({ children }: { children: ReactNode }) {
   const snapshot = useQuery({ ...options, enabled: !entered });
   useQueryEvents({
     topic: "runtimes",
+    eventFilter: isRuntimeConfigurationEvent,
     resource: { kind: "global" },
     queryKeys: [options.queryKey],
     enabled: !entered,
@@ -165,9 +182,6 @@ function CliSetup({
 }) {
   const { t } = useTranslation("common");
   const [selected, setSelected] = useState<string>();
-  const [selectedVersions, setSelectedVersions] = useState<
-    Record<string, string>
-  >({});
   const [drafts, setDrafts] = useState<
     Record<
       string,
@@ -183,7 +197,7 @@ function CliSetup({
       Number(a.baseRuntimeId === "opencode"),
   );
   const preferred =
-    runtimes.find((item) => item.isDefault) ??
+    installed.find((item) => item.isDefault) ??
     installed.find((item) => item.baseRuntimeId === "opencode") ??
     installed[0];
   const runtime =
@@ -192,25 +206,12 @@ function CliSetup({
     choices[0];
   // 按 CLI 从 Mutation Cache 读取忙碌状态，切换后返回也不会丢失仍在进行的探测。
   const mutationKey = ["onboarding-runtime", runtime?.id];
-  const saving = useIsMutating({ mutationKey: [...mutationKey, "save"] }) > 0;
-  const switchingVersion =
-    useIsMutating({ mutationKey: [...mutationKey, "version"] }) > 0;
+  const mutating = useIsMutating({ mutationKey: [...mutationKey, "save"] }) > 0;
   const refreshingSelected =
     useIsMutating({ mutationKey: [...mutationKey, "refresh"] }) > 0;
   const refreshing =
     (startupDetectionPending && !runtime?.detectedAt) || refreshingSelected;
-  const installations = (runtime?.installations ?? []).filter(
-    (item): item is typeof item & { path: string } => Boolean(item.path),
-  );
-  const hasMultipleVersions = installations.length > 1;
-  const currentBinary = runtime?.resolvedBinary || runtime?.binary || "";
-  const selectedBinary = hasMultipleVersions
-    ? (selectedVersions[runtime?.id ?? ""] ?? "")
-    : currentBinary;
-  const versionReady =
-    !hasMultipleVersions ||
-    (selectedBinary === currentBinary &&
-      installations.some((item) => item.path === selectedBinary));
+  const currentBinary = runtime?.resolvedBinary || "";
   // 草稿只保存用户的明确选择，以实际安装路径隔离不同版本。
   const draftKey = `${runtime?.id ?? ""}:${currentBinary}`;
   const draft = drafts[draftKey];
@@ -223,7 +224,6 @@ function CliSetup({
           draft?.permission ?? runtime.defaultPermissionLevel,
       }
     : undefined;
-  const programConfigured = Boolean(runtime?.id && currentBinary);
   const model = runtime?.models?.find(
     (item) => item.id === configured?.defaultModel,
   );
@@ -270,41 +270,17 @@ function CliSetup({
       else setOperationError(t("onboarding.modelsUnavailable"));
     },
   });
-  const switchVersion = useMutation({
-    ...updateRuntimeEnvironmentMutation(),
-    mutationKey: [...mutationKey, "version"],
-    onSuccess: () =>
-      client.invalidateQueries({ queryKey: listRuntimesOptions().queryKey }),
-    onError: (_error, variables) =>
-      setSelectedVersions((current) => ({
-        ...current,
-        [variables.path.runtimeId]: "",
-      })),
-  });
   const refresh = useMutation({
     ...refreshRuntimeMutation(),
     mutationKey: [...mutationKey, "refresh"],
     onSuccess: () =>
       client.invalidateQueries({ queryKey: listRuntimesOptions().queryKey }),
   });
-  const busy = saving || switchingVersion;
-  const chooseVersion = (binary: string) => {
-    const runtimeID = runtime?.id;
-    if (!runtimeID || busy) return;
-    switchVersion.reset();
-    setOperationError(undefined);
-    setSelectedVersions((current) => ({ ...current, [runtimeID]: binary }));
-    if (binary === currentBinary) return;
-    switchVersion.mutate({
-      path: { runtimeId: runtimeID },
-      body: { ...runtimeConfiguration(runtime), binary, isDefault: false },
-    });
-  };
+  const busy = mutating;
   const finish = () => {
     if (
-      !configured?.id ||
-      !selectedBinary ||
-      !versionReady ||
+      !configured?.installed ||
+      !configured.id ||
       !runtimeConfigurationReady(configured) ||
       busy
     )
@@ -316,7 +292,6 @@ function CliSetup({
         ...runtimeConfiguration(configured),
         enabled: true,
         isDefault: true,
-        binary: selectedBinary,
       },
     });
   };
@@ -369,7 +344,6 @@ function CliSetup({
               onClick={() => {
                 setSelected(item.id);
                 setCopied(false);
-                switchVersion.reset();
                 save.reset();
                 refresh.reset();
                 setOperationError(undefined);
@@ -402,50 +376,12 @@ function CliSetup({
           ))}
         </div>
         <section className="grid min-w-0 gap-4" aria-label={runtime?.name}>
-          {runtime && programConfigured ? (
+          {runtime?.installed ? (
             <>
-              {hasMultipleVersions ? (
-                <div className="grid min-w-0 gap-2">
-                  <label
-                    htmlFor="onboarding-version"
-                    className="type-label font-medium"
-                  >
-                    {t("onboarding.versionLabel")}
-                  </label>
-                  <Select
-                    value={selectedBinary}
-                    onValueChange={chooseVersion}
-                    disabled={busy}
-                  >
-                    <SelectTrigger id="onboarding-version">
-                      <SelectValue
-                        placeholder={t("onboarding.chooseVersion")}
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {installations.map((item) => (
-                        <SelectItem key={item.path} value={item.path}>
-                          {runtimeDisplayVersion(item.version) ||
-                            t("runtimeEnvironment.status.versionUnknown")}
-                          {` · ${item.path}`}
-                          {!item.available
-                            ? ` · ${t("onboarding.versionUnavailable")}`
-                            : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="type-body text-muted-foreground">
-                    {t("onboarding.versionHelp")}
-                  </p>
-                </div>
-              ) : (
-                <p className="type-body text-muted-foreground break-all">
-                  {runtimeDisplayVersion(runtime.version) ||
-                    t("runtimeEnvironment.status.versionUnknown")}{" "}
-                  · {currentBinary}
-                </p>
-              )}
+              <p className="type-body text-muted-foreground break-all">
+                {runtimeDisplayVersion(runtime.version) ||
+                  t("runtimeEnvironment.status.versionUnknown")}
+              </p>
               <div className="grid min-w-0 gap-2">
                 <label
                   htmlFor="onboarding-model"
@@ -458,11 +394,9 @@ function CliSetup({
                   id="onboarding-model"
                   label={t("executionSelection.model")}
                   selectedModelName={
-                    !versionReady
-                      ? t("onboarding.chooseVersion")
-                      : model?.name ||
-                        configured?.defaultModel ||
-                        t("onboarding.chooseModel")
+                    model?.name ||
+                    configured?.defaultModel ||
+                    t("onboarding.chooseModel")
                   }
                   selectedModel={configured?.defaultModel ?? ""}
                   models={runtime.models ?? []}
@@ -471,7 +405,7 @@ function CliSetup({
                     model?.reasoningOptions ?? runtime.reasoningOptions
                   }
                   defaultReasoning={runtime.defaultReasoning}
-                  disabled={busy || !versionReady || !runtime.models?.length}
+                  disabled={busy || !runtime.models?.length}
                   onModelChange={(id) => {
                     const nextModel = runtime.models?.find(
                       (item) => item.id === id,
@@ -487,6 +421,9 @@ function CliSetup({
                       )
                         ? (runtime.defaultReasoning ?? "")
                         : (reasoning[0]?.id ?? ""),
+                      permission:
+                        permissionLevelOf(configured?.defaultPermissionLevel) ??
+                        "default",
                     });
                   }}
                   onReasoningChange={(reasoning) => changeDraft({ reasoning })}
@@ -498,15 +435,13 @@ function CliSetup({
                 >
                   {busy
                     ? t("onboarding.checking")
-                    : !versionReady
-                      ? t("onboarding.chooseVersionBeforeModel")
-                      : !modelCatalogReady(runtime)
+                    : modelCatalogReady(runtime) && !model
+                      ? t("onboarding.chooseModel")
+                      : !modelSelectionReady(configured)
                         ? t("onboarding.modelsUnavailable")
-                        : !model
-                          ? t("onboarding.chooseModel")
-                          : t("onboarding.modelsFound", {
-                              count: runtime?.models?.length ?? 0,
-                            })}
+                        : t("onboarding.modelsFound", {
+                            count: runtime.models?.length ?? 0,
+                          })}
                 </p>
               </div>
               {permissions.size > 0 && (
@@ -519,7 +454,7 @@ function CliSetup({
                   </label>
                   <Select
                     value={configured?.defaultPermissionLevel}
-                    disabled={busy || !versionReady}
+                    disabled={busy}
                     onValueChange={(value) => {
                       const permission = permissionLevelOf(value);
                       if (permission) changeDraft({ permission });
@@ -609,15 +544,9 @@ function CliSetup({
             </Button>
           )}
         </section>
-        {(operationError ||
-          switchVersion.error ||
-          save.error ||
-          refresh.error) && (
+        {(operationError || save.error || refresh.error) && (
           <p className="type-body text-destructive break-words" role="alert">
-            {operationError ??
-              switchVersion.error?.message ??
-              save.error?.message ??
-              refresh.error?.message}
+            {operationError ?? save.error?.message ?? refresh.error?.message}
           </p>
         )}
       </CardContent>
@@ -633,11 +562,9 @@ function CliSetup({
         >
           {t(refreshing ? "onboarding.checking" : "onboarding.recheck")}
         </Button>
-        {runtime && programConfigured && (
+        {runtime?.installed && (
           <Button
-            disabled={
-              busy || !versionReady || !runtimeConfigurationReady(configured)
-            }
+            disabled={busy || !runtimeConfigurationReady(configured)}
             onClick={finish}
           >
             {t(save.isPending ? "onboarding.saving" : "onboarding.enter")}

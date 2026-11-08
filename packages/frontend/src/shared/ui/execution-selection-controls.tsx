@@ -40,7 +40,7 @@ const permissionLevelIcons = {
   "full-access": ShieldAlert,
 } satisfies Record<PermissionLevel, typeof ShieldKeyhole>;
 
-/** 聊天与指令输入共用智能体菜单；账号选择只展示兼容账号。 */
+/** 聊天与指令输入共用智能体菜单；账号按实际环境归属与协议筛选。 */
 export function ExecutionRuntimeControl({
   runtimes,
   accounts,
@@ -66,14 +66,18 @@ export function ExecutionRuntimeControl({
   const compatibleAccountsFor = (runtime: RuntimeOption) =>
     selectedAccountId === undefined
       ? []
-      : accounts.filter((account) =>
-          accountSupportsRuntime(
-            account,
-            runtime.baseRuntimeId || runtime.id || "",
-          ),
+      : accounts.filter(
+          (account) =>
+            account.runtimeId === runtime.id &&
+            accountSupportsRuntime(
+              account,
+              runtime.baseRuntimeId || runtime.id || "",
+            ),
         );
   const selectedAccount = accounts.find(
-    (account) => account.id === selectedAccountId,
+    (account) =>
+      account.id === selectedAccountId &&
+      account.runtimeId === selectedRuntime?.id,
   );
   const runtimeControl = (
     <>

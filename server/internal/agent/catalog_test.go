@@ -654,14 +654,18 @@ func TestProfileInstallationUsesItsEnvironment(t *testing.T) {
 	}
 	catalog, err := NewCatalog(CatalogConfig{Profiles: []ProfileSpec{{
 		ID: "qoder-cn-profile", BaseRuntimeID: RuntimeIDQoderCN, BinaryCandidates: []string{binary},
-		PrefixArgs: []string{"profile-prefix"}, Environment: map[string]string{"PROFILE_HOME": home},
+		PrefixArgs: []string{"profile-prefix"}, Environment: map[string]string{"PROFILE_HOME": home, "QODERCN_CONFIG_DIR": home},
 	}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	request := DetectRequest{
 		RuntimeID: "qoder-cn-profile", HomeDirectory: home, BaseEnvironment: []string{"PATH="},
-		LaunchOverride: LaunchOverride{Environment: map[string]string{"QODERCN_CONFIG_DIR": home}},
+	}
+	for _, summary := range catalog.Runtimes() {
+		if summary.ID == request.RuntimeID && summary.ConfigHome != home {
+			t.Fatalf("static native home was lost from the internal launch snapshot: %+v", summary)
+		}
 	}
 	resolved, err := catalog.ResolveExecutable(request)
 	if err != nil || resolved != binary {

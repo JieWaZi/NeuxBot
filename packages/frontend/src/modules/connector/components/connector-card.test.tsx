@@ -5,6 +5,7 @@ import "@/shared/i18n";
 import { ConnectorCard } from "./connector-card";
 
 const connector = {
+  categories: ["设计"],
   activationPolicy: "per_execution" as const,
   affectedWakerCount: 1,
   compatibility: [{ runtimeId: "codex", supported: true }],
@@ -38,6 +39,9 @@ describe("ConnectorCard", () => {
       screen.getByRole("link", { name: "查看连接器 Chrome" }),
     ).toHaveAttribute("href", "/wakers/w1/connectors/chrome");
     expect(screen.getByText(connector.description)).toHaveClass("truncate");
+    expect(
+      container.querySelector(".bg-resource-category-design svg"),
+    ).toHaveClass("lucide-swatch-book");
     expect(
       screen.queryByText(/STDIO|全局|个工具|支持/),
     ).not.toBeInTheDocument();

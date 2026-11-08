@@ -1,5 +1,6 @@
 import { Package } from "lucide-react";
 import { cn } from "@/shared/lib/cn";
+import { ResourceCategoryIcon } from "@/shared/ui/resource-category-icon";
 import type { PluginCatalogEntry } from "../model/plugin-view";
 
 type PluginIcons = NonNullable<
@@ -13,17 +14,27 @@ export function PluginIcon({
   icons,
   hero = false,
   size = "list",
+  category,
 }: {
   pkg?: PluginCatalogEntry["package"];
   icon?: string;
   icons?: PluginIcons;
   hero?: boolean;
   size?: "list" | "detail" | "navigation";
+  category?: string;
 }) {
   const themedIcons = icons ?? pkg?.presentation?.icons;
   const defaultIcon =
     themedIcons?.default ?? icon ?? pkg?.icon ?? themedIcons?.dark;
   const darkIcon = themedIcons?.dark ?? defaultIcon;
+  if (!defaultIcon && !hero && size !== "navigation") {
+    return (
+      <ResourceCategoryIcon
+        category={category ?? pkg?.presentation?.category}
+        size={size}
+      />
+    );
+  }
   return (
     <span
       aria-hidden="true"

@@ -6,6 +6,34 @@ import themeStyles from "./theme.css?raw";
 import { contrast, themeTokens } from "@/test/theme-colors";
 
 describe("语义主题", () => {
+  it.each(["light", "dark"] as const)(
+    "%s 主题的十种分类底色都能辨认白色图标",
+    (theme) => {
+      const tokens = themeTokens(theme);
+      const categories = [
+        "code",
+        "design",
+        "data",
+        "writing",
+        "research",
+        "web",
+        "automation",
+        "business",
+        "communication",
+        "tools",
+      ];
+      for (const category of categories) {
+        expect(
+          contrast(
+            "--resource-category-content",
+            `--resource-category-${category}`,
+            tokens,
+          ),
+        ).toBeGreaterThanOrEqual(3);
+      }
+    },
+  );
+
   it("使用 NeuxBot 主题绿统一亮暗主题与控件交互强调色", () => {
     expect(themeStyles).toContain(
       "--ref-ally-green-light: oklch(84.92% 0.127 150);",
@@ -81,6 +109,9 @@ describe("语义主题", () => {
           `${theme}: ${foreground} / ${background}`,
         ).toBeGreaterThanOrEqual(4.5);
       }
+      expect(
+        contrast("--focus-ring", "--field-background", tokens),
+      ).toBeGreaterThanOrEqual(3);
     },
   );
 });

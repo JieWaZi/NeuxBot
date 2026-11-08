@@ -131,11 +131,12 @@ it("忽略旧收起字段，并把过小旧宽度钳制到216，不丢弃实体�
 });
 
 it("Rail默认顺序与pin选择恢复，未知版本的boolean选择仍保留", () => {
-  expect(pinnedAppModules()).toEqual(["work-board", "usage"]);
+  expect(pinnedAppModules()).toEqual(["usage"]);
   window.localStorage.setItem(
     "ally.partner-navigation",
     JSON.stringify({
       railPins: {
+        "work-board": true,
         knowledge: true,
         workflows: false,
         future: true,
@@ -145,13 +146,10 @@ it("Rail默认顺序与pin选择恢复，未知版本的boolean选择仍保留",
   );
   const saved = readPartnerNavigationPreferences();
   expect(saved.railPins).toEqual({
+    "work-board": true,
     knowledge: true,
     workflows: false,
     future: true,
   });
-  expect(pinnedAppModules(saved.railPins)).toEqual([
-    "work-board",
-    "usage",
-    "knowledge",
-  ]);
+  expect(pinnedAppModules(saved.railPins)).toEqual(["usage", "knowledge"]);
 });

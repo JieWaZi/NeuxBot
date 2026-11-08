@@ -3,6 +3,25 @@ import { queryOptions } from "@tanstack/react-query";
 import { listRuntimesOptions as generatedListRuntimesOptions } from "./generated/@tanstack/react-query.gen";
 import { getRuntimeModelCatalog } from "./generated/sdk.gen";
 import { withLocalErrorSurface } from "./local-error-surface";
+import type { GlobalEventFrame } from "./global-events";
+
+/** 安装与登录进度只刷新所属任务；程序和账号合同变化才刷新模型及智能体目录。 */
+export function isRuntimeConfigurationEvent(
+  frame: Pick<GlobalEventFrame, "type" | "payload">,
+) {
+  const payload = frame.payload;
+  const type =
+    payload &&
+    typeof payload === "object" &&
+    "type" in payload &&
+    typeof payload.type === "string"
+      ? payload.type
+      : frame.type;
+  return (
+    type !== "runtime.installation.changed" &&
+    type !== "runtime.authentication.changed"
+  );
+}
 
 /** Runtime 快照由全局 runtimes 事件失效，继续复用生成的 Query Key。 */
 export function listRuntimesOptions(
@@ -36,8 +55,6 @@ type ModelCatalogIdentity = {
   modelConfiguration?: unknown[];
   version?: string;
   binary?: string;
-  prefixArgs?: string[];
-  configHome?: string;
 };
 
 export const nativeModelCatalogQueryKey = (

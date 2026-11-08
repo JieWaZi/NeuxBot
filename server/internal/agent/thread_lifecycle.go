@@ -55,6 +55,8 @@ type HandoffSource struct {
 
 // ThreadLifecycle holds one seat per public Chat and coordinates the durable binding.
 type ThreadLifecycle struct {
+	// restarting blocks new preparing seats while one provider's idle owners are being retired.
+	restarting map[string]bool
 	// provider exclusively owns process and resource acquisition and release.
 	provider *ProviderRuntime
 	// store owns public and detached admissions, messages and terminal evidence.
@@ -147,7 +149,7 @@ func (l *ThreadLifecycle) ForkSession(ctx context.Context, request ThreadRequest
 	operation := &threadFork{cancel: cancel, done: make(chan struct{})}
 	l.mu.Lock()
 	state := l.threads[request.ChatID]
-	if l.closing || state != nil && (state.closing || state.active != nil || state.fork != nil) {
+	if l.closing || l.restarting[request.Connection.Account.Provider] || state != nil && (state.closing || state.active != nil || state.fork != nil) {
 		l.mu.Unlock()
 		cancel()
 		return binding, status_error.RuntimeUnavailable
@@ -272,7 +274,7 @@ func (l *ThreadLifecycle) prepare(ctx context.Context, request ThreadRequest, in
 		}
 	}
 	state := l.threads[id]
-	if l.closing || state != nil && (state.closing || state.active != nil || state.fork != nil) {
+	if l.closing || l.restarting[request.Connection.Account.Provider] || state != nil && (state.closing || state.active != nil || state.fork != nil) {
 		l.mu.Unlock()
 		if closeFiles != nil {
 			_ = closeFiles(context.WithoutCancel(ctx))

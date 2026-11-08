@@ -31,7 +31,7 @@ import {
   SettingsScene,
   type SettingsSection,
 } from "@/modules/settings";
-import { listWakersOptions } from "@/modules/waker";
+import { listWakersOptions, WakerFormDialog } from "@/modules/waker";
 import {
   NotificationBell,
   NotificationPresenter,
@@ -44,13 +44,17 @@ import {
   getChannelQueryKey,
 } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { useQueryEvents } from "@/shared/api/use-query-events";
-import { nativeModelCatalogQueryKey } from "@/shared/api/runtime-queries";
+import {
+  nativeModelCatalogQueryKey,
+  isRuntimeConfigurationEvent,
+} from "@/shared/api/runtime-queries";
 import { listRuntimesQueryKey } from "@/shared/api/generated/@tanstack/react-query.gen";
 import {
   getChannelOptions,
   getChannelThreadOptions,
   teamChannelsInfiniteOptions,
   teamThreadsInfiniteOptions,
+  TeamFormDialog,
 } from "@/modules/team";
 import {
   AppSceneRouteScope,
@@ -187,6 +191,7 @@ function AppShellContent({
         : undefined;
   const settingsOpen = appScenes.snapshot.activeTabId === "settings";
   const entitySelectionRequestRef = useRef(0);
+  const [creatingEntity, setCreatingEntity] = useState<"team" | "waker">();
   const [lastSettingsSection, setSettingsSection] =
     useState<SettingsSection>("general");
   const settingsTab = appScenes.snapshot.tabs.find(
@@ -246,6 +251,7 @@ function AppShellContent({
   });
   useQueryEvents({
     topic: "runtimes",
+    eventFilter: isRuntimeConfigurationEvent,
     resource: { kind: "global" },
     queryKeys: [listRuntimesQueryKey(), nativeModelCatalogQueryKey()],
   });
@@ -570,6 +576,7 @@ function AppShellContent({
       ? `/teams/${rememberedTeamId}/threads/${rememberedTeamThreadId}`
       : undefined
     : validatedLastActive &&
+        validatedLastActive.wakerId === selectedPartnerId &&
         availablePartnerIds.has(validatedLastActive.wakerId)
       ? chatHref(validatedLastActive.chatId, validatedLastActive.wakerId)
       : undefined;
@@ -579,7 +586,7 @@ function AppShellContent({
       return;
     }
     const href = resolveAppModuleHref(moduleId, {
-      partnerHref: validatedPartnerHref,
+      partnerHref: validatedPartnerHref ?? chatEntryHref(selectedPartnerId),
     });
     navigate(href, { flushSync: true });
     const [pathname = "/", query] = href.split("?");
@@ -673,16 +680,18 @@ function AppShellContent({
         )
       : [];
   const pageBack =
-    settingsOpen && searchParams.has("connection")
-      ? () => {
-          const next = new URLSearchParams(searchParams);
-          next.delete("connection");
-          next.delete("binding");
-          navigate(`${location.pathname}${next.size ? `?${next}` : ""}`, {
-            flushSync: true,
-          });
-        }
-      : undefined;
+    settingsOpen && settingsSection === "agents" && searchParams.has("agent")
+      ? () => navigate("/settings/agents", { flushSync: true })
+      : settingsOpen && searchParams.has("connection")
+        ? () => {
+            const next = new URLSearchParams(searchParams);
+            next.delete("connection");
+            next.delete("binding");
+            navigate(`${location.pathname}${next.size ? `?${next}` : ""}`, {
+              flushSync: true,
+            });
+          }
+        : undefined;
   const cache = queryClient.getQueryCache();
   const subscribeCache = useCallback(
     (listener: () => void) => cache.subscribe(listener),
@@ -726,30 +735,23 @@ function AppShellContent({
       { flushSync: true },
     );
   };
-  const sceneActions = (
-    <>
-      {hasActiveScene && !settingsOpen && showChatChromeActions ? (
-        <Button
-          aria-label={t("workspace")}
-          onClick={() => {
-            setChatRightPanel((current) =>
-              current === "workspace" ? undefined : "workspace",
-            );
-          }}
-          className={cn(
-            titlebarActionClass,
-            activeRightPanel === "workspace" && "text-foreground",
-          )}
-          size="icon"
-          title={t("workspace")}
-          type="button"
-          variant="ghost"
-        >
-          <PanelRight />
-        </Button>
-      ) : null}
-    </>
-  );
+  const sceneActions =
+    hasActiveScene &&
+    !settingsOpen &&
+    showChatChromeActions &&
+    activeRightPanel !== "workspace" ? (
+      <Button
+        aria-label={t("workspace")}
+        onClick={() => setChatRightPanel("workspace")}
+        className={titlebarActionClass}
+        size="icon"
+        title={t("workspace")}
+        type="button"
+        variant="ghost"
+      >
+        <PanelRight />
+      </Button>
+    ) : null;
 
   return (
     <SceneChromeActionsProvider actions={sceneActions}>
@@ -838,9 +840,7 @@ function AppShellContent({
           activeChatId={currentChat?.chatId}
           contextSidebarHidden={!hasActiveScene || !isWakerDetail}
           entityStatus={entityStatus}
-          onManageEntities={(mode) =>
-            navigate(mode === "team" ? "/wakers?tab=teams" : "/wakers")
-          }
+          onManageEntities={setCreatingEntity}
           onOpenPartnerDetail={openPartnerDetail}
           onNavigateModule={navigateModule}
           moduleSidebar={
@@ -878,11 +878,11 @@ function AppShellContent({
           onSelectTeam={selectTeam}
           preferences={preferences}
           sceneContentFlush={
-            (isChatSurface ||
-              /^\/(?:knowledge|resources|usage|work-board|workflows|im|automatic-tasks)(?:\/|$)/.test(
-                location.pathname,
-              )) &&
-            !settingsOpen
+            settingsOpen ||
+            isChatSurface ||
+            /^\/(?:knowledge|resources|usage|work-board|workflows|im|automatic-tasks)(?:\/|$)/.test(
+              location.pathname,
+            )
           }
           channels={channels}
           selectedRailKey={
@@ -964,6 +964,16 @@ function AppShellContent({
               <div className="absolute inset-0 z-10">
                 <SettingsScene
                   section={settingsSection}
+                  runtimeId={searchParams.get("agent") || undefined}
+                  onOpenRuntime={(runtimeId) =>
+                    navigate(
+                      `/settings/agents?${new URLSearchParams({ agent: runtimeId })}`,
+                      { flushSync: true },
+                    )
+                  }
+                  onRuntimeBack={() =>
+                    navigate("/settings/agents", { flushSync: true })
+                  }
                   imIntegrationContent={<IMIntegrationSettingsContent />}
                   onClose={closeSettings}
                   onSelectSection={selectSettingsSection}
@@ -973,6 +983,21 @@ function AppShellContent({
             ) : null}
           </div>
         </PartnerNavigationLayout>
+        {creatingEntity === "waker" ? (
+          <WakerFormDialog
+            open
+            onOpenChange={(open) => {
+              if (!open) setCreatingEntity(undefined);
+            }}
+          />
+        ) : creatingEntity === "team" ? (
+          <TeamFormDialog
+            open
+            onOpenChange={(open) => {
+              if (!open) setCreatingEntity(undefined);
+            }}
+          />
+        ) : null}
         <Toaster position="top-right" />
       </div>
     </SceneChromeActionsProvider>

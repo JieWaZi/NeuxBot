@@ -92,7 +92,7 @@ export function ChatSkillReferenceMenu({
                 }
                 trailing={
                   selected.has(item.id) ? (
-                    <Check className="text-primary size-icon-sm" />
+                    <Check className="text-accent-content size-icon-sm" />
                   ) : null
                 }
               />

@@ -217,6 +217,10 @@ type ProviderRuntimeOptions struct {
 
 // ProviderRuntime owns all registered native connections in the application.
 type ProviderRuntime struct {
+	// systemAuthentication fences new system-account connections during explicit native authentication.
+	systemAuthentication map[string]bool
+	// restarting fences all new connections while the lifecycle retires one provider's idle owners.
+	restarting map[string]bool
 	// options freezes the shared acquisition port and cleanup bound.
 	options ProviderRuntimeOptions
 	// mu guards registration and admission only.
@@ -322,6 +326,16 @@ func (r *ProviderRuntime) Open(ctx context.Context, request ProviderConnectionRe
 	account := providerAccount{provider: request.Account.Provider, id: request.Account.AccountID}
 	openCtx, cancel := context.WithCancel(ctx)
 	r.mu.Lock()
+	if r.restarting[request.Account.Provider] {
+		r.mu.Unlock()
+		cancel()
+		return nil, status_error.RuntimeRestartBusy
+	}
+	if r.systemAuthentication[request.Account.Provider] && request.Account.AccountID == SystemAccountID {
+		r.mu.Unlock()
+		cancel()
+		return nil, status_error.AIAccountBusy
+	}
 	if r.closing {
 		r.mu.Unlock()
 		cancel()
