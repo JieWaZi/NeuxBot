@@ -2,7 +2,6 @@ package skills
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxBot/server/constants"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
@@ -28,26 +27,26 @@ type UninstallSkill struct {
 // Path 返回技能卸载接口路径。
 func (u *UninstallSkill) Path() string { return "/:wakerId/skills/:skillId" }
 
-// Output 删除技能数据库事实和全部权威版本文件。
+// Output 仅移除伙伴安装；全局入口删除库资源及全部版本。
 func (u *UninstallSkill) Output(ctx *gin.Context) (interface{}, error) {
 	return removeSkill(ctx, u)
 }
 
 // removeSkill 复用相同资源用例，空伙伴范围表示全局库。
 func removeSkill(ctx *gin.Context, u *UninstallSkill) (*ginx.CommonResponse, error) {
-	skill, err := visibleSkill(ctx, u.WakerID, u.SkillID)
+	skill, err := resourceSkill(ctx, u.WakerID, u.SkillID)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	if skill.BuiltIn {
-		return nil, ginx.WithStack(status_error.BuiltInSkillCannotUninstall)
-	}
-	if skill.Scope == constants.SkillScopePublic && u.WakerID != "" {
+	if u.WakerID != "" {
 		if err := global.SkillControllerManager.DeleteWakerSkill(ctx, u.WakerID, skill.ID); err != nil {
 			return nil, ginx.WithStack(err)
 		}
 		notifyResourceChanged(ctx, u.SkillID)
 		return ginx.CommonSuccessResponse(), nil
+	}
+	if skill.BuiltIn {
+		return nil, ginx.WithStack(status_error.BuiltInSkillCannotUninstall)
 	}
 	versions, err := global.SkillControllerManager.ListVersions(ctx, skill.ID)
 	if err != nil {

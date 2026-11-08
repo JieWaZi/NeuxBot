@@ -94,7 +94,7 @@ func (c *CreateSkillVersion) Output(ctx *gin.Context) (interface{}, error) {
 
 // createSkillVersion 复用相同资源用例，空伙伴范围表示全局库。
 func createSkillVersion(ctx *gin.Context, c *CreateSkillVersion) (models.SkillVersion, error) {
-	skill, err := visibleSkill(ctx, c.WakerID, c.SkillID)
+	skill, err := resourceSkill(ctx, c.WakerID, c.SkillID)
 	if err != nil {
 		return models.SkillVersion{}, ginx.WithStack(err)
 	}

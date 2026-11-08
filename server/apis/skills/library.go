@@ -2,7 +2,6 @@ package skills
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
@@ -86,12 +85,9 @@ func (o *InstallLibrarySkill) Output(ctx *gin.Context) (interface{}, error) {
 		return nil, ginx.WithStack(status_error.BadRequest)
 	}
 	err := global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
-		resource, err := global.SkillControllerManager.GetPackage(txctx, o.SkillID)
+		_, err := global.SkillControllerManager.GetPackage(txctx, o.SkillID)
 		if err != nil {
 			return err
-		}
-		if resource.Scope != constants.SkillScopePublic {
-			return status_error.BadRequest
 		}
 		for _, id := range o.Body.WakerIDs {
 			if _, err := global.WakerControllerManager.Get(txctx, id); err != nil {

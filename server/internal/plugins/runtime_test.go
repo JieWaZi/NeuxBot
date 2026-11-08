@@ -14,7 +14,7 @@ func TestResolveServerKeepsPortableLiteralsAndUsesExplicitBindings(t *testing.T)
 	data := t.TempDir()
 	root, _ = filepath.EvalSymlinks(root)
 	data, _ = filepath.EvalSymlinks(data)
-	pkg := Package{Format: constants.PluginFormatPortable, Manifest: Manifest{Extensions: map[string]json.RawMessage{"com.ally": json.RawMessage(`{"bindings":[{"server":"local","target":"env","name":"TOKEN","value":"${TOKEN}"}]}`)}}, Servers: []Server{{Key: "local", Type: "stdio", Command: "node", Args: []string{"${PLUGIN_ROOT}/index.js", "${UNKNOWN}"}, Env: map[string]string{"DATA": "${PLUGIN_DATA}"}}}}
+	pkg := Package{ContractVersion: constants.PluginTargetContractVersion, Format: constants.PluginFormatPortable, Manifest: Manifest{Schema: constants.PluginManifestSchema, Extensions: map[string]json.RawMessage{"com.neuxbot": json.RawMessage(`{"schemaVersion":1,"configuration":{"fields":[{"key":"TOKEN","secret":true,"required":true}],"bindings":[{"server":"local","target":"env","name":"TOKEN","value":"${TOKEN}"}]}}`)}}, Servers: []Server{{Key: "local", Type: "stdio", Command: "node", Args: []string{"${PLUGIN_ROOT}/index.js", "${UNKNOWN}"}, Env: map[string]string{"DATA": "${PLUGIN_DATA}"}}}}
 	resolved, err := ResolveServer(pkg, pkg.Servers[0], root, data, map[string]string{"TOKEN": "credential", "UNKNOWN": "must-not-expand"})
 	if err != nil {
 		t.Fatal(err)
@@ -37,15 +37,15 @@ func TestResolveServerRejectsDataDirectorySymlinkEscape(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := Server{Key: "local", Type: "stdio", Command: "node", Cwd: "${PLUGIN_DATA}/escaped"}
-	if _, err := ResolveServer(Package{Format: constants.PluginFormatPortable}, server, root, data, nil); err == nil {
+	if _, err := ResolveServer(standardTestPackage(), server, root, data, nil); err == nil {
 		t.Fatal("escaped persistent data root")
 	}
 }
 
 func TestResolveServerValidatesRemoteAfterSharedValueExpansion(t *testing.T) {
-	for _, format := range []string{constants.PluginFormatPortable, constants.PluginFormatClaude} {
+	for _, format := range []string{constants.PluginFormatPortable} {
 		t.Run(format, func(t *testing.T) {
-			pkg := Package{Format: format, Manifest: Manifest{Extensions: map[string]json.RawMessage{"com.ally": json.RawMessage(`{"bindings":[{"server":"remote","target":"header","name":"Authorization","value":"${TOKEN}"}]}`)}}}
+			pkg := Package{ContractVersion: constants.PluginTargetContractVersion, Format: format, Manifest: Manifest{Schema: constants.PluginManifestSchema, Extensions: map[string]json.RawMessage{"com.neuxbot": json.RawMessage(`{"schemaVersion":1,"configuration":{"fields":[{"key":"TOKEN","secret":true,"required":true}],"bindings":[{"server":"remote","target":"header","name":"Authorization","value":"${TOKEN}"}]}}`)}}}
 			server := Server{Key: "remote", Type: "streamable-http", URL: "https://example.com/mcp"}
 			pkg.Servers = []Server{server}
 			if _, err := ResolveServer(pkg, server, t.TempDir(), t.TempDir(), map[string]string{"TOKEN": "valid"}); err != nil {
@@ -66,7 +66,7 @@ func TestPreviewServerDoesNotCreatePersistentDirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 	data := filepath.Join(base, "data", "plugin")
-	pkg := Package{}
+	pkg := standardTestPackage()
 	input := Server{Type: "stdio", Command: "tool", Cwd: "${PLUGIN_DATA}/nested"}
 	resolved, err := PreviewServer(pkg, input, root, data, nil)
 	if err != nil {
@@ -95,7 +95,7 @@ func TestPreviewServerRejectsPersistentEscape(t *testing.T) {
 	}
 	for _, cwd := range []string{"${PLUGIN_DATA}/escape/new", "${PLUGIN_DATA}/../outside"} {
 		for _, resolve := range []func(Package, Server, string, string, map[string]string) (ResolvedServer, error){PreviewServer, ResolveServer} {
-			if _, err := resolve(Package{}, Server{Type: "stdio", Command: "tool", Cwd: cwd}, root, data, nil); err == nil {
+			if _, err := resolve(standardTestPackage(), Server{Type: "stdio", Command: "tool", Cwd: cwd}, root, data, nil); err == nil {
 				t.Fatalf("unsafe cwd accepted: %q", cwd)
 			}
 		}

@@ -8,11 +8,13 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/plugininstallation"
 	"golang.org/x/mod/semver"
@@ -22,9 +24,6 @@ func visiblePlugin(ctx context.Context, id, waker string) (models.Plugin, error)
 	resource, err := global.PluginControllerManager.Get(ctx, id)
 	if err != nil {
 		return resource, err
-	}
-	if resource.OwnerWakerID != "" && resource.OwnerWakerID != waker {
-		return resource, status_error.PluginForbidden
 	}
 	return resource, nil
 }
@@ -38,7 +37,7 @@ func secretValues(config models.PluginConfiguration) map[string]string {
 	return values
 }
 func pluginDetail(ctx context.Context, resource models.Plugin, selectedVersion ...string) (PluginDetailResponse, error) {
-	result := PluginDetailResponse{Plugin: resource, Versions: []models.PluginVersion{}, Installations: []models.WakerPlugin{}, Values: map[string]string{}, Fields: []packageplugin.ConfigurationField{}, ConfiguredSecrets: []string{}, Blockers: []string{}, Account: authorization.Account{Scopes: []string{}}}
+	result := PluginDetailResponse{Plugin: resource, Versions: []models.PluginVersion{}, Installations: []models.WakerPlugin{}, Account: authorization.Account{Scopes: []string{}}}
 	states, err := global.PluginControllerManager.ReadStates(ctx, []string{resource.ID})
 	if err != nil {
 		return result, err
@@ -49,18 +48,12 @@ func pluginDetail(ctx context.Context, resource models.Plugin, selectedVersion .
 	return result, err
 }
 func detailFromState(ctx context.Context, resource models.Plugin, state models.PluginState, selectedVersion ...string) (PluginDetailResponse, error) {
-	result := PluginDetailResponse{Plugin: resource, PartnerNames: state.PartnerNames, PartnerAvatars: state.PartnerAvatars, Versions: state.Versions, Installations: state.Installations, Values: map[string]string{}, Fields: []packageplugin.ConfigurationField{}, ConfiguredSecrets: []string{}, Blockers: []string{}, Account: authorization.Account{Scopes: []string{}}}
+	result := PluginDetailResponse{Plugin: resource, PartnerNames: state.PartnerNames, PartnerAvatars: state.PartnerAvatars, Versions: state.Versions, Installations: state.Installations, Account: authorization.Account{Scopes: []string{}}}
 	config := state.Configuration
+	result.AccountGeneration = state.Account.Generation
 
-	result.Values = config.Values
 	result.ConfigurationRevision = config.Revision
-	for _, secret := range config.Secrets {
-		if secret.Configured {
-			result.ConfiguredSecrets = append(result.ConfiguredSecrets, secret.Name)
-		}
-	}
 	if len(result.Versions) == 0 {
-		result.Blockers = append(result.Blockers, status_error.PluginNotReady.Key())
 		return result, nil
 	}
 	version := result.Versions[0]
@@ -91,12 +84,12 @@ func detailFromState(ctx context.Context, resource models.Plugin, state models.P
 		}
 	}
 	result.ResolvedVersionID = version.ID
-	extension, err := packageplugin.ClientExtension(version.Package)
-	if err != nil {
-		// 旧版本仍可查看与移除；无效声明只能作为阻塞原因，不能取得执行能力。
-		result.Blockers = append(result.Blockers, errorKey(err))
+	if err := packageplugin.ValidateContract(version.Package); err != nil {
+		result.PackageStatus = constants.PluginPackageStatusUnsupported
+		result.PackageErrorCode = errorKey(err)
 		return result, nil
 	}
+	result.PackageStatus = constants.PluginPackageStatusAvailable
 	result.ComponentIDs = map[string]string{}
 	for _, skill := range version.Package.Skills {
 		result.ComponentIDs["skill:"+skill.Key] = packageplugin.ComponentID(resource.ID, "skill:"+skill.Key)
@@ -104,12 +97,10 @@ func detailFromState(ctx context.Context, resource models.Plugin, state models.P
 	for _, server := range version.Package.Servers {
 		result.ComponentIDs["mcp:"+server.Key] = packageplugin.ComponentID(resource.ID, "mcp:"+server.Key)
 	}
-	result.Fields = extension.Config
-	result.Account, err = installationService().Summary(version, config)
-	result.Ready = err == nil
-	if err != nil {
-		result.Blockers = append(result.Blockers, errorKey(err))
+	if global.PluginBridges != nil && version.Package.Integration.Authentication != nil {
+		result.Account, _, _ = global.PluginBridges.CachedAuthorization(resource.ID, version.Digest+":"+filepath.ToSlash(version.Package.SourcePath), commandbridge.OperationContext{PluginID: resource.ID, VersionID: version.ID, Digest: version.Digest, ConfigurationRevision: config.Revision, AccountGeneration: state.Account.Generation})
 	}
+
 	return result, nil
 }
 func errorKey(err error) string {
@@ -121,10 +112,10 @@ func errorKey(err error) string {
 }
 func stagedRoot() string { return filepath.Join(global.Config.DataDirectory, "plugins", "staging") }
 func installationService() *plugininstallation.Service {
-	return plugininstallation.New(plugininstallation.Config{Contents: global.PluginContents, DataDirectory: global.Config.DataDirectory, Bridges: global.PluginBridges, BridgeEnvironment: global.PluginBridgeEnvironment, Store: global.PluginControllerManager, CloseIdlePlugin: closeIdlePlugin})
+	return plugininstallation.New(plugininstallation.Config{Transactions: global.TransactionControllerManager, Contents: global.PluginContents, DataDirectory: global.Config.DataDirectory, Bridges: global.PluginBridges, BridgeEnvironment: global.PluginBridgeEnvironment, Store: global.PluginControllerManager, CloseIdlePlugin: closeIdlePlugin})
 }
 
-func listPluginResources(ctx context.Context, waker, query string, page, size int, installedOnly bool) (ListPluginsResponse, error) {
+func listPluginResources(ctx context.Context, waker, query string, page, size int) (ListPluginsResponse, error) {
 	if page < 0 || size < 0 || size > 100 {
 		return ListPluginsResponse{}, status_error.BadRequest
 	}
@@ -144,7 +135,7 @@ func listPluginResources(ctx context.Context, waker, query string, page, size in
 	var states map[string]models.PluginState
 	err := global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
 		var err error
-		resources, total, err = global.PluginControllerManager.List(txctx, "", waker, query, (page-1)*size, size, installedOnly)
+		resources, total, err = global.PluginControllerManager.List(txctx, waker, query, (page-1)*size, size)
 		if err != nil {
 			return err
 		}

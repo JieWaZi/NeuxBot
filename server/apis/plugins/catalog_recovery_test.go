@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -22,7 +23,7 @@ func recoveryArchive(t *testing.T, version, readme string) []byte {
 	t.Helper()
 	var archive bytes.Buffer
 	writer := zip.NewWriter(&archive)
-	for name, body := range map[string]string{"entry/.codex-plugin/plugin.json": `{"name":"recovery","version":"` + version + `","extensions":{"com.ally":{"config":[{"key":"TOKEN","secret":true,"required":true}]}}}`, "entry/README.md": readme, "entry/skills/demo/SKILL.md": "---\nname: demo\ndescription: Demo\n---\n" + readme} {
+	for name, body := range map[string]string{"entry/plugin.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"recovery","version":"` + version + `","extensions":{"com.neuxbot":{"schemaVersion":1,"configuration":{"fields":[{"key":"TOKEN","secret":true,"required":true}]}}}}`, "entry/README.md": readme, "entry/skills/demo/SKILL.md": "---\nname: demo\ndescription: Demo\n---\n" + readme} {
 		item, err := writer.Create(name)
 		if err != nil {
 			t.Fatal(err)
@@ -38,7 +39,7 @@ func recoveryArchive(t *testing.T, version, readme string) []byte {
 }
 
 func TestCurrentCatalogRecoversStaleArchiveWithoutRelaxingPinnedReads(t *testing.T) {
-	for _, operation := range []string{"detail", "prepare"} {
+	for _, operation := range []string{"prepare"} {
 		for _, failure := range []string{"removed-url", "replaced-bytes"} {
 			t.Run(operation+"/"+failure, func(t *testing.T) {
 				ctx := pluginAPIContext(t)
@@ -46,6 +47,10 @@ func TestCurrentCatalogRecoversStaleArchiveWithoutRelaxingPinnedReads(t *testing
 				first := recoveryArchive(t, "1.0.0", "old "+t.TempDir())
 				second := recoveryArchive(t, "2.0.0", "new "+t.TempDir())
 				sums := [][32]byte{sha256.Sum256(first), sha256.Sum256(second)}
+				documents := make([][]byte, 2)
+				for index := range 2 {
+					documents[index], _ = json.Marshal(map[string]any{"schemaVersion": 1, "sourceCommit": strings.Repeat([]string{"a", "b"}[index], 40), "archiveSHA256": fmt.Sprintf("%x", sums[index]), "packagePath": "entry", "package": map[string]any{"contractVersion": "neuxbot-plugin/1", "format": "agent-plugins", "manifest": map[string]any{"$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", "name": "recovery", "version": fmt.Sprintf("%d.0.0", index+1)}, "skills": []any{}, "servers": []any{}, "diagnostics": []any{}}, "readmes": map[string]string{"en": "public"}, "skillContents": map[string]string{}})
+				}
 				var mode, indexRequests atomic.Int32
 				var source *httptest.Server
 				source = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +61,11 @@ func TestCurrentCatalogRecoversStaleArchiveWithoutRelaxingPinnedReads(t *testing
 						if failure == "removed-url" {
 							archivePath = []string{"/old.zip", "/new.zip"}[selected]
 						}
-						_, _ = fmt.Fprintf(w, `{"schemaVersion":2,"entries":[{"key":"recovery","name":"recovery","version":"%d.0.0","format":"codex","sourceCommit":%q,"archiveURL":%q,"archiveSHA256":"%x","packagePath":"entry"}]}`, selected+1, strings.Repeat([]string{"a", "b"}[selected], 40), source.URL+archivePath, sums[selected])
+						_, _ = fmt.Fprintf(w, `{"schemaVersion":1,"entries":[{"key":"recovery","name":"recovery","version":"%d.0.0","format":"agent-plugins","sourceCommit":%q,"archiveURL":%q,"archiveSHA256":"%x","packagePath":"entry","detailsURL":%q,"detailsSHA256":"%x","detailsSize":%d}]}`, selected+1, strings.Repeat([]string{"a", "b"}[selected], 40), source.URL+archivePath, sums[selected], source.URL+"/details.json", sha256.Sum256(documents[selected]), len(documents[selected]))
+						return
+					}
+					if r.URL.Path == "/details.json" {
+						w.WriteHeader(http.StatusServiceUnavailable)
 						return
 					}
 					if failure == "removed-url" && selected == 1 && r.URL.Path == "/old.zip" {
@@ -98,11 +107,11 @@ func TestCurrentCatalogRecoversStaleArchiveWithoutRelaxingPinnedReads(t *testing
 						t.Fatalf("current preparation did not recover changed distribution: %v", err)
 					}
 					detail := output.(PluginDetailResponse)
-					if detail.Versions[0].Version != "2.0.0" || detail.Ready || len(detail.Installations) != 0 {
+					if detail.Versions[0].Version != "2.0.0" || len(detail.Installations) != 0 {
 						t.Fatalf("preparation required readiness or installed unexpectedly: %+v", detail)
 					}
 					stored, err := (&GetPlugin{PluginID: detail.Plugin.ID}).Output(ctx)
-					if err != nil || stored.(PluginDetailResponse).Ready || !strings.HasPrefix(stored.(PluginDetailResponse).Versions[0].Package.Readme, "new ") {
+					if err != nil || !strings.HasPrefix(stored.(PluginDetailResponse).Versions[0].Package.Readme, "new ") {
 						t.Fatalf("unconfigured installed details could not show README: %+v %v", stored, err)
 					}
 				}

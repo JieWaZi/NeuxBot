@@ -733,12 +733,27 @@ const (
 	// @errZH 插件目录或安装包暂时无法下载，请检查网络后重试
 	// @errEN plugin catalog or archive could not be downloaded; check the network and retry
 	PluginDistributionUnavailable StatusError = http.StatusBadGateway*1e8 + 6502
+	// @errZH 插件所需程序暂时无法准备，请检查网络后重试
+	// @errEN required plugin dependencies could not be prepared; check the network and retry
+	PluginDependencyUnavailable StatusError = http.StatusBadGateway*1e8 + 6503
 	// @errZH 技能声明名称相同但内容不同，请调整已启用的技能或插件
 	// @errEN skills with the same declared name have different content
 	PluginSkillConflict StatusError = http.StatusConflict*1e8 + 6504
 	// @errZH 认证进程或工作仍在使用共享账号，请稍后重试
 	// @errEN shared account is in use by work or authorization; try again after it exits
 	PluginBusy StatusError = http.StatusConflict*1e8 + 6505
+	// @errZH 插件共享账号已变化，请重新确认
+	// @errEN plugin shared account changed; confirm the operation again
+	PluginAccountConflict StatusError = http.StatusConflict*1e8 + 6506
+	// @errZH 所选技能名称重复或目录包含其他技能，请调整选择后重试
+	// @errEN selected skills have duplicate names or contain other skills; adjust the selection and retry
+	PluginSkillSelectionConflict StatusError = http.StatusConflict*1e8 + 6507
+	// @errZH 当前运行目标尚不支持该插件声明的能力
+	// @errEN plugin capability is unsupported by the current target
+	PluginCapabilityUnsupported StatusError = http.StatusUnprocessableEntity*1e8 + 6501
+	// @errZH 当前插件包不受支持，请从插件目录重新安装
+	// @errEN This plugin package is unsupported. Reinstall it from the plugin catalog.
+	PluginPackageUnsupported StatusError = http.StatusUnprocessableEntity*1e8 + 6502
 )
 
 const (

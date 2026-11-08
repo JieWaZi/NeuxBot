@@ -20,7 +20,7 @@ import (
 func TestPluginControllerSeparatesLibraryFromInstalledPartnerAndPinsVersion(t *testing.T) {
 	ctx := context.Background()
 	c := NewPluginController(newTestDB(t))
-	for _, p := range []models.Plugin{{ID: "plugin-a", Name: "办公", SourceKey: "source-a"}, {ID: "plugin-b", Name: "办公", SourceKey: "source-b"}, {ID: "private", Name: "私有", SourceKey: "source-private", OwnerWakerID: "w1"}} {
+	for _, p := range []models.Plugin{{ID: "plugin-a", Name: "办公", SourceKey: "source-a"}, {ID: "plugin-b", Name: "办公", SourceKey: "source-b"}, {ID: "plugin-c", Name: "其他", SourceKey: "source-c"}} {
 		if err := c.Create(ctx, p); err != nil {
 			t.Fatal(err)
 		}
@@ -36,29 +36,26 @@ func TestPluginControllerSeparatesLibraryFromInstalledPartnerAndPinsVersion(t *t
 	if _, err := c.PutVersion(ctx, models.PluginVersion{ID: "conflict", PluginID: "plugin-a", Version: "1.0.0", Digest: strings.Repeat("b", 64)}); !errors.Is(err, status_error.PluginVersionConflict) {
 		t.Fatalf("expected digest conflict: %v", err)
 	}
-	_, total, err := c.List(ctx, "", "", "", 0, 1, false)
-	if err != nil || total != 2 {
+	_, total, err := c.List(ctx, "", "", 0, 1)
+	if err != nil || total != 3 {
 		t.Fatalf("global total: %d %v", total, err)
 	}
-	matched, count, err := c.List(ctx, "", "", "source-a", 0, 50, false)
+	matched, count, err := c.List(ctx, "", "source-a", 0, 50)
 	if err != nil || count != 1 || len(matched) != 1 || matched[0].ID != "plugin-a" {
 		t.Fatalf("renamed source lookup: %+v %d %v", matched, count, err)
 	}
 
-	items, total, err := c.List(ctx, "", "w1", "", 0, 50, false)
-	if err != nil || total != 1 || items[0].ID != "private" {
+	items, total, err := c.List(ctx, "w1", "", 0, 50)
+	if err != nil || total != 0 || len(items) != 0 {
 		t.Fatalf("uninstalled resources leaked: %+v %d %v", items, total, err)
 	}
 	if err := c.Install(ctx, models.WakerPlugin{ID: "r1", PluginID: "plugin-a", VersionID: "v1", WakerID: "w1", Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Install(ctx, models.WakerPlugin{ID: "r2", PluginID: "private", VersionID: "v1", WakerID: "w2", Enabled: true}); !errors.Is(err, status_error.PluginForbidden) {
-		t.Fatalf("private ownership bypassed: %v", err)
-	}
 	if err := c.Install(ctx, models.WakerPlugin{ID: "r3", PluginID: "plugin-b", VersionID: "v1", WakerID: "w1", Enabled: true}); !errors.Is(err, status_error.PluginVersionConflict) {
 		t.Fatalf("foreign version accepted: %v", err)
 	}
-	items, total, err = c.List(ctx, "", "w1", "办公", 0, 50, false)
+	items, total, err = c.List(ctx, "w1", "办公", 0, 50)
 	if err != nil || total != 1 || items[0].ID != "plugin-a" {
 		t.Fatalf("installed library incorrect: %+v %d %v", items, total, err)
 	}
@@ -67,6 +64,28 @@ func TestPluginControllerSeparatesLibraryFromInstalledPartnerAndPinsVersion(t *t
 	}
 	if _, err := c.Get(ctx, "plugin-a"); err != nil {
 		t.Fatal("uninstall deleted global resource", err)
+	}
+	if err := c.UpdateConfiguration(ctx, models.PluginConfiguration{PluginID: "plugin-a", Values: map[string]string{"region": "cn"}}, 0); err != nil {
+		t.Fatal(err)
+	}
+	for _, waker := range []string{"w1", "w2"} {
+		if err := c.Install(ctx, models.WakerPlugin{ID: "shared-" + waker, PluginID: "plugin-a", VersionID: "v1", WakerID: waker, Enabled: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := c.DeleteByWaker(ctx, "w1"); err != nil {
+		t.Fatal(err)
+	}
+	relations, err := c.Installations(ctx, "plugin-a", "")
+	if err != nil || len(relations) != 1 || relations[0].WakerID != "w2" {
+		t.Fatalf("partner deletion changed other installations: %+v %v", relations, err)
+	}
+	if resource, err := c.FindSource(ctx, "source-a"); err != nil || resource.ID != "plugin-a" {
+		t.Fatal("partner deletion removed shared source", resource, err)
+	}
+	config, err := c.Configuration(ctx, "plugin-a")
+	if err != nil || config.Revision != 1 || config.Values["region"] != "cn" {
+		t.Fatalf("partner deletion removed shared configuration: %+v %v", config, err)
 	}
 }
 
@@ -108,14 +127,14 @@ func TestPluginExecutionConfigurationDoesNotReadPrivateMaterials(t *testing.T) {
 	if err := controller.UpdateConfiguration(ctx, models.PluginConfiguration{PluginID: "cold-config", Values: map[string]string{"region": "cn"}, Secrets: []models.MCPSecretDefinition{{ID: "token", Name: "TOKEN", Configured: true, Value: "private-token"}}}, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Model(&models.PluginConfiguration{}).Where("plugin_id = ?", "cold-config").Update("delivery_materials", "invalid-private-material-json").Error; err != nil {
+	if err := db.Exec("INSERT INTO plugin_accounts (plugin_id,generation,delivery_materials) VALUES (?,?,?)", "cold-config", 1, "invalid-private-material-json").Error; err != nil {
 		t.Fatal(err)
 	}
 	configuration, err := controller.ExecutionConfiguration(ctx, "cold-config")
-	if err != nil || configuration.Revision != 1 || configuration.Values["region"] != "cn" || len(configuration.Secrets) != 1 || configuration.Secrets[0].Value != "private-token" || len(configuration.DeliveryMaterials) != 0 {
+	if err != nil || configuration.Revision != 1 || configuration.Values["region"] != "cn" || len(configuration.Secrets) != 1 || configuration.Secrets[0].Value != "private-token" {
 		t.Fatalf("cold values crossed private identity boundary: %+v %v", configuration, err)
 	}
-	if _, err := controller.Configuration(ctx, "cold-config"); !errors.Is(err, status_error.DatabaseError) {
+	if _, err := controller.Account(ctx, "cold-config"); !errors.Is(err, status_error.DatabaseError) {
 		t.Fatalf("invalid private materials did not protect the test boundary: %v", err)
 	}
 }
@@ -181,18 +200,18 @@ func TestIndependentResourcesAllowDuplicateDisplayNamesAndRequireInstallation(t 
 	ctx := context.Background()
 	skills := NewSkillController(db)
 	for _, id := range []string{"s1", "s2"} {
-		if err := skills.CreatePackage(ctx, models.SkillPackage{ID: id, Name: "same", Scope: constants.SkillScopePublic, Source: constants.SkillSourceZip}); err != nil {
+		if err := skills.CreatePackage(ctx, models.SkillPackage{ID: id, Name: "same", Source: constants.SkillSourceZip}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	items, err := skills.ListVisible(ctx, "w1", "")
+	items, err := skills.ListInstalled(ctx, "w1", "")
 	if err != nil || len(items) != 0 {
 		t.Fatalf("global skills implicitly installed: %+v %v", items, err)
 	}
 	if err := skills.UpsertWakerSkill(ctx, models.WakerSkill{ID: "sr1", WakerID: "w1", SkillPackageID: "s1", Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
-	items, err = skills.ListVisible(ctx, "w1", "")
+	items, err = skills.ListInstalled(ctx, "w1", "")
 	if err != nil || len(items) != 1 || items[0].SkillPackage.ID != "s1" {
 		t.Fatalf("installed skill missing: %+v %v", items, err)
 	}
@@ -235,7 +254,7 @@ func TestResourceLibrariesPageGlobalItemsAndCountOnlyInstalledPartners(t *testin
 	skills := NewSkillController(db)
 	connectors := NewMCPConnectorController(db)
 	for _, id := range []string{"a", "b"} {
-		if err := skills.CreatePackage(ctx, models.SkillPackage{ID: "s" + id, Name: "技能" + id, Scope: constants.SkillScopePublic, Source: constants.SkillSourceZip}); err != nil {
+		if err := skills.CreatePackage(ctx, models.SkillPackage{ID: "s" + id, Name: "技能" + id, Source: constants.SkillSourceZip}); err != nil {
 			t.Fatal(err)
 		}
 		if err := connectors.Create(ctx, models.MCPConnector{ID: "c" + id, RuntimeKey: "c" + id, Name: "连接" + id, Scope: constants.MCPConnectorScopePublic}); err != nil {
@@ -332,50 +351,54 @@ func TestPluginManagementSnapshotContainsIdentityAndPartnerNames(t *testing.T) {
 	}
 }
 
-func TestPluginDeliveryMaterialsAreEncryptedAndReuseConfigurationRevision(t *testing.T) {
+func TestPluginAccountMaterialsAreEncryptedAndUseIndependentGeneration(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
 	store := NewPluginController(db)
-	if err := store.Create(ctx, models.Plugin{ID: "private-material", Name: "插件", SourceKey: "material-source"}); err != nil {
+	if err := store.Create(ctx, models.Plugin{ID: "private-material", Name: "Plugin", SourceKey: "source"}); err != nil {
 		t.Fatal(err)
 	}
-	config := models.PluginConfiguration{PluginID: "private-material", DeliveryMaterials: []models.MCPSecretDefinition{{ID: "target", Name: "target", Configured: true, Value: "private-delivery-sentinel"}}}
-	if err := store.UpdateDeliveryMaterials(ctx, config); err != nil {
+	account := models.PluginAccount{PluginID: "private-material", DeliveryMaterials: []models.MCPSecretDefinition{{ID: "target", Name: "target", Configured: true, Value: "private-delivery-sentinel"}}}
+	if err := store.UpdateAccount(ctx, account, 0); err != nil {
 		t.Fatal(err)
 	}
-	var raw models.PluginConfiguration
-	if err := db.Where("plugin_id = ?", config.PluginID).First(&raw).Error; err != nil {
+	var raw models.PluginAccount
+	if err := db.Where("plugin_id = ?", account.PluginID).First(&raw).Error; err != nil {
 		t.Fatal(err)
 	}
-	if raw.Revision != 0 || len(raw.DeliveryMaterials) != 1 || raw.DeliveryMaterials[0].Ciphertext == "" || strings.Contains(raw.DeliveryMaterials[0].Ciphertext, "private-delivery-sentinel") {
-		t.Fatal("delivery material leaked or changed configuration revision")
+	if raw.Generation != 1 || raw.DeliveryMaterials[0].Value != "" || raw.DeliveryMaterials[0].Ciphertext == "" || strings.Contains(raw.DeliveryMaterials[0].Ciphertext, "private-delivery-sentinel") {
+		t.Fatal("private account material was not encrypted")
 	}
 	restarted := NewPluginController(db)
-	got, err := restarted.Configuration(ctx, config.PluginID)
+	got, err := restarted.Account(ctx, account.PluginID)
 	if err != nil || got.DeliveryMaterials[0].Value != "private-delivery-sentinel" {
-		t.Fatal("material was not readable after repository recreation", err)
+		t.Fatal("account material did not survive repository restart", err)
 	}
-	states, err := restarted.ReadStates(ctx, []string{config.PluginID})
-	if err != nil || states[config.PluginID].Configuration.DeliveryMaterials[0].Value != "private-delivery-sentinel" {
-		t.Fatal("chat state did not load private material", err)
-	}
-	if err := store.UpdateConfiguration(ctx, got, 0); err != nil {
-		t.Fatal("material preparation blocked the first explicit configuration save", err)
-	}
-	if err := store.UpdateDeliveryMaterials(ctx, config); !errors.Is(err, status_error.PluginConfigurationConflict) {
-		t.Fatal("stale material update bypassed configuration revision", err)
-	}
-	got, err = store.Configuration(ctx, config.PluginID)
-	if err != nil {
+	if err := store.UpdateConfiguration(ctx, models.PluginConfiguration{PluginID: account.PluginID}, 0); err != nil {
 		t.Fatal(err)
+	}
+	generation, err := store.AccountGeneration(ctx, account.PluginID)
+	if err != nil || generation != 1 {
+		t.Fatal("configuration save changed account generation", generation, err)
+	}
+	if err := store.UpdateAccount(ctx, account, 0); !errors.Is(err, status_error.PluginAccountConflict) {
+		t.Fatal("stale account write passed", err)
+	}
+	states, err := store.ReadStates(ctx, []string{account.PluginID})
+	if err != nil || states[account.PluginID].Account.Generation != 1 {
+		t.Fatal("management state missed narrow account generation", err)
 	}
 	got.DeliveryMaterials = nil
-	if err := store.UpdateDeliveryMaterials(ctx, got); err != nil {
+	if err := store.UpdateAccount(ctx, got, 1); err != nil {
 		t.Fatal(err)
 	}
-	got, err = restarted.Configuration(ctx, config.PluginID)
-	if err != nil || len(got.DeliveryMaterials) != 0 || got.Revision != 1 {
-		t.Fatal("clearing material changed configuration identity or retained secrets", err)
+	got, err = restarted.Account(ctx, account.PluginID)
+	if err != nil || got.Generation != 2 || len(got.DeliveryMaterials) != 0 {
+		t.Fatal("account reset retained private material", got, err)
+	}
+	config, err := store.Configuration(ctx, account.PluginID)
+	if err != nil || config.Revision != 1 {
+		t.Fatal("account reset changed configuration", err)
 	}
 }
 
@@ -489,5 +512,44 @@ func TestPluginReferenceEventsExcludeConfigurationAndRollback(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("installation lost precise candidate event")
+	}
+}
+
+func TestPluginReadStatesNeverReadsOrDecryptsConfigurationPayloads(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	store := NewPluginController(db)
+	if err := store.Create(ctx, models.Plugin{ID: "read-snapshot", Name: "Snapshot", SourceKey: "fixture"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateConfiguration(ctx, models.PluginConfiguration{PluginID: "read-snapshot", Values: map[string]string{"region": "private-value"}, Secrets: []models.MCPSecretDefinition{{Name: "TOKEN", Value: "private-token", Configured: true}}}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("UPDATE plugin_configurations SET `values` = ?, secrets = ? WHERE plugin_id = ?", "invalid-json", "invalid-json", "read-snapshot").Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{"SELECT plugin_id, revision FROM plugin_configurations WHERE plugin_id = ?", "SELECT plugin_id, generation FROM plugin_accounts WHERE plugin_id = ?"} {
+		var plans []struct {
+			// Detail 是 SQLite 对公开代次查询的实际计划。
+			Detail string
+		}
+		if err := db.Raw("EXPLAIN QUERY PLAN "+statement, "read-snapshot").Scan(&plans).Error; err != nil {
+			t.Fatal(err)
+		}
+		if len(plans) != 1 || !strings.Contains(plans[0].Detail, "SEARCH") || strings.Contains(plans[0].Detail, "SCAN") {
+			t.Fatal("public context lookup lost primary index", plans)
+		}
+	}
+
+	states, err := store.ReadStates(ctx, []string{"read-snapshot"})
+	if err != nil {
+		t.Fatal("ordinary snapshot read private configuration payload", err)
+	}
+	config := states["read-snapshot"].Configuration
+	if config.Revision != 1 || len(config.Values) != 0 || len(config.Secrets) != 0 {
+		t.Fatal("ordinary snapshot contains configuration values", config.Revision)
+	}
+	if _, err := store.Configuration(ctx, "read-snapshot"); err == nil {
+		t.Fatal("explicit settings read did not detect corrupt payload")
 	}
 }

@@ -16,7 +16,7 @@ import (
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
-func TestScanWakerSkillImportReturnsCandidatesWithoutInstalling(t *testing.T) {
+func TestScanLibrarySkillImportReturnsCandidatesWithoutInstalling(t *testing.T) {
 	database, err := dbhelper.NewDB(conf.DB{
 		Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "scan-skill.db"), Migrate: true,
 	})
@@ -69,9 +69,8 @@ func TestScanWakerSkillImportReturnsCandidatesWithoutInstalling(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := (&ScanWakerSkillImport{
-		WakerID: waker.ID,
-		Body:    ScanSkillImportRequest{Kind: "zip", Location: archivePath},
+	result, err := (&ScanLibrarySkillImport{
+		Body: ScanSkillImportRequest{Kind: "zip", Location: archivePath},
 	}).Output(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -83,7 +82,7 @@ func TestScanWakerSkillImportReturnsCandidatesWithoutInstalling(t *testing.T) {
 	if batch.Token == "" || len(batch.Candidates) != 2 {
 		t.Fatalf("scan batch = %+v", batch)
 	}
-	visible, err := global.SkillControllerManager.ListVisible(ctx, waker.ID, "")
+	visible, err := global.SkillControllerManager.ListInstalled(ctx, waker.ID, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +91,7 @@ func TestScanWakerSkillImportReturnsCandidatesWithoutInstalling(t *testing.T) {
 	}
 }
 
-func TestImportWakerSkillInstallsOnlySelectedCandidates(t *testing.T) {
+func TestImportLibrarySkillsInstallsOnlySelectedCandidates(t *testing.T) {
 	database, err := dbhelper.NewDB(conf.DB{
 		Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "install-selected-skill.db"), Migrate: true,
 	})
@@ -149,9 +148,8 @@ func TestImportWakerSkillInstallsOnlySelectedCandidates(t *testing.T) {
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
-	result, err := (&ScanWakerSkillImport{
-		WakerID: waker.ID,
-		Body:    ScanSkillImportRequest{Kind: "zip", Location: archivePath},
+	result, err := (&ScanLibrarySkillImport{
+		Body: ScanSkillImportRequest{Kind: "zip", Location: archivePath},
 	}).Output(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -167,27 +165,52 @@ func TestImportWakerSkillInstallsOnlySelectedCandidates(t *testing.T) {
 		t.Fatal("review candidate not found")
 	}
 
-	if _, err := (&ImportWakerSkill{
-		WakerID: waker.ID,
-		Body: ImportSkillRequest{
-			Token: batch.Token,
-			Candidates: []InstallSkillCandidateRequest{{
-				ID: selectedID, Version: "1.0.0",
-			}},
-		},
-	}).Output(ctx); err != nil {
-		t.Fatal(err)
-	}
-	visible, err := global.SkillControllerManager.ListVisible(ctx, waker.ID, "")
+	created, err := (&ImportLibrarySkills{
+		Body: ImportSkillRequest{Token: batch.Token, Candidates: []InstallSkillCandidateRequest{{ID: selectedID, Version: "1.0.0"}}},
+	}).Output(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(visible) != 1 || visible[0].SkillPackage.Name != "review" {
-		t.Fatalf("installed skills = %+v, want only review", visible)
+	resources := created.([]models.SkillPackage)
+	if len(resources) != 1 || resources[0].Name != "review" {
+		t.Fatalf("imported resources = %+v, want only review", resources)
+	}
+	if err := global.SkillControllerManager.UpdatePackageMetadata(ctx, resources[0].ID, "Renamed review", nil); err != nil {
+		t.Fatal(err)
+	}
+	rescanned, err := (&ScanLibrarySkillImport{Body: ScanSkillImportRequest{Kind: "zip", Location: archivePath}}).Output(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, candidate := range rescanned.(SkillImportBatch).Candidates {
+		if candidate.Name == "review" {
+			if !candidate.Installed || candidate.InstalledSkillID != resources[0].ID {
+				t.Fatalf("existing library content was not linked after rename: %+v", candidate)
+			}
+		} else if candidate.Installed || candidate.InstalledSkillID != "" {
+			t.Fatalf("new content was marked as already imported: %+v", candidate)
+		}
+	}
+	installed, err := global.SkillControllerManager.ListInstalled(ctx, waker.ID, "")
+	if err != nil || len(installed) != 0 {
+		t.Fatalf("import implicitly installed resource: %+v %v", installed, err)
+	}
+	if _, err := (&InstallLibrarySkill{SkillID: resources[0].ID, Body: InstallLibrarySkillRequest{WakerIDs: []string{"missing-partner"}}}).Output(ctx); err == nil {
+		t.Fatal("install to missing partner succeeded")
+	}
+	if _, err := global.SkillControllerManager.GetPackage(ctx, resources[0].ID); err != nil {
+		t.Fatalf("failed partner installation removed imported resource: %v", err)
+	}
+	if _, err := (&InstallLibrarySkill{SkillID: resources[0].ID, Body: InstallLibrarySkillRequest{WakerIDs: []string{waker.ID}}}).Output(ctx); err != nil {
+		t.Fatal(err)
+	}
+	installed, err = global.SkillControllerManager.ListInstalled(ctx, waker.ID, "")
+	if err != nil || len(installed) != 1 || installed[0].SkillPackage.ID != resources[0].ID {
+		t.Fatalf("explicit installation absent: %+v %v", installed, err)
 	}
 }
 
-func TestImportWakerSkillValidatesEverySelectionBeforeWritingVersions(t *testing.T) {
+func TestImportLibrarySkillsValidatesEverySelectionBeforeWritingVersions(t *testing.T) {
 	database, err := dbhelper.NewDB(conf.DB{
 		Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "validate-selection.db"), Migrate: true,
 	})
@@ -239,9 +262,8 @@ func TestImportWakerSkillValidatesEverySelectionBeforeWritingVersions(t *testing
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
-	result, err := (&ScanWakerSkillImport{
-		WakerID: waker.ID,
-		Body:    ScanSkillImportRequest{Kind: "zip", Location: archivePath},
+	result, err := (&ScanLibrarySkillImport{
+		Body: ScanSkillImportRequest{Kind: "zip", Location: archivePath},
 	}).Output(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -252,8 +274,7 @@ func TestImportWakerSkillValidatesEverySelectionBeforeWritingVersions(t *testing
 		t.Fatal(err)
 	}
 
-	_, err = (&ImportWakerSkill{
-		WakerID: waker.ID,
+	_, err = (&ImportLibrarySkills{
 		Body: ImportSkillRequest{
 			Token: batch.Token,
 			Candidates: []InstallSkillCandidateRequest{
@@ -263,9 +284,9 @@ func TestImportWakerSkillValidatesEverySelectionBeforeWritingVersions(t *testing
 		},
 	}).Output(ctx)
 	if !errors.Is(err, status_error.BadRequest) {
-		t.Fatalf("ImportWakerSkill.Output() error = %v, want BadRequest", err)
+		t.Fatalf("ImportLibrarySkills.Output() error = %v, want BadRequest", err)
 	}
-	visible, err := global.SkillControllerManager.ListVisible(ctx, waker.ID, "")
+	visible, err := global.SkillControllerManager.ListInstalled(ctx, waker.ID, "")
 	if err != nil {
 		t.Fatal(err)
 	}

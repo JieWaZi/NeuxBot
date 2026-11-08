@@ -65,7 +65,7 @@ func testDriver(t *testing.T, mode string) *Driver {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(Config{Command: binary, Args: []string{"-test.run=^TestBridgeProcess$"}, Directory: t.TempDir(), DataDirectory: t.TempDir(), PluginID: "plugin-one", Environment: append(os.Environ(), "NEUXALLY_BRIDGE_TEST="+mode)})
+	return New(Config{Command: binary, Args: []string{"-test.run=^TestBridgeProcess$"}, Directory: t.TempDir(), DataDirectory: t.TempDir(), PluginID: "plugin-one", VersionID: "version-one", Digest: strings.Repeat("a", 64), ConfigurationRevision: 3, AccountGeneration: 2, Environment: append(os.Environ(), "NEUXALLY_BRIDGE_TEST="+mode)})
 }
 
 func TestBridgeProcess(t *testing.T) {
@@ -90,10 +90,38 @@ func TestBridgeProcess(t *testing.T) {
 			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"jsonrpc": "2.0", "id": request.ID, "result": value})
 		}
 		switch request.Method {
+		case "auth/initialize":
+			protocol := constants.PluginAuthProtocol
+			if mode == "wrong-protocol" {
+				protocol = "neuxally-auth/1"
+			}
+			if mode == "wrong-context" {
+				request.Params["accountGeneration"] = 99
+			}
+			reply(map[string]any{"protocol": protocol, "context": request.Params})
 		case "auth/status":
+			if mode == "dependency-rpc" || mode == "dependency-rpc-exit" {
+				_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"jsonrpc": "2.0", "id": request.ID, "error": map[string]any{"code": -32000, "message": "dependency_unavailable"}})
+				if mode == "dependency-rpc-exit" {
+					os.Exit(0)
+				}
+				continue
+			}
 			reply(map[string]any{"state": "authorized", "account": map[string]any{"configured": true, "available": true, "id": "public-user", "scopes": []string{"documents:read"}}})
 		case "auth/start":
 			reply(map[string]any{"state": "pending"})
+			if mode == "dependency-state" || mode == "unknown-failure" || mode == "foreign-failure" {
+				errorCode := "dependency_unavailable"
+				if mode == "unknown-failure" {
+					errorCode = "https://example.invalid/?token=private"
+				}
+				operation := request.Params["operationId"]
+				if mode == "foreign-failure" {
+					operation = "previous-operation"
+				}
+				_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"jsonrpc": "2.0", "method": "auth/state", "params": map[string]any{"operationId": operation, "sessionId": request.Params["sessionId"], "state": "failed", "errorCode": errorCode}})
+				continue
+			}
 			if mode == "slow-preparation" {
 				time.Sleep(31 * time.Second)
 			}
@@ -107,7 +135,10 @@ func TestBridgeProcess(t *testing.T) {
 			if mode == "forged" {
 				session = "another-session"
 			}
-			params := map[string]any{"sessionId": session, "challengeId": "challenge-one", "actions": []any{map[string]any{"type": "copy-code", "value": "ONE"}}, "deadlineAt": time.Now().Add(time.Minute).UnixMilli()}
+			params := map[string]any{"operationId": request.Params["operationId"], "sessionId": session, "challengeId": "challenge-one", "actions": []any{map[string]any{"type": "copy-code", "value": "ONE"}}, "deadlineAt": time.Now().Add(time.Minute).UnixMilli()}
+			if mode == "foreign-operation" {
+				params["operationId"] = "previous-operation"
+			}
 			if mode == "short-challenge" {
 				params["deadlineAt"] = time.Now().Add(200 * time.Millisecond).UnixMilli()
 			}
@@ -122,9 +153,29 @@ func TestBridgeProcess(t *testing.T) {
 				_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"jsonrpc": "2.0", "method": "auth/challenge", "params": params})
 			}
 			if mode != "cancel" && mode != "short-challenge" {
-				_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"jsonrpc": "2.0", "method": "auth/state", "params": map[string]any{"sessionId": session, "state": "authorized"}})
+				_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"jsonrpc": "2.0", "method": "auth/state", "params": map[string]any{"operationId": request.Params["operationId"], "sessionId": session, "state": "authorized"}})
+			}
+			if mode == "terminal-exit" {
+				os.Exit(0)
 			}
 		case "auth/resolve":
+			if strings.HasPrefix(mode, "skill-env") {
+				component := request.Params["components"].([]any)[0].(map[string]any)
+				key, value := "TOKEN", "secret"
+				if mode == "skill-env-private" {
+					key = "CACHE"
+					value = request.Params["dataDirectory"].(string)
+				}
+				if mode == "skill-env-escape" {
+					key = "CACHE"
+					value = os.TempDir()
+				}
+				if mode == "skill-env-home" {
+					key = "HOME"
+				}
+				reply(map[string]any{"bindings": []any{map[string]any{"componentId": component["componentId"], "environment": map[string]string{key: value}}}})
+				continue
+			}
 			reply(map[string]any{"bindings": []any{map[string]any{"componentId": "not-granted", "environment": map[string]string{"TOKEN": "secret"}}}})
 		case "auth/cancel":
 			reply(map[string]string{"state": "cancelled"})
@@ -156,6 +207,29 @@ func TestBridgeChallengesAreBoundToSessionAndStatusVerified(t *testing.T) {
 	forged := testDriver(t, "forged")
 	if err := forged.LoginSession(context.Background(), "session-one", nil, func(authorization.Device) error { t.Fatal("foreign challenge exposed"); return nil }); err == nil {
 		t.Fatal("foreign session accepted")
+	}
+}
+
+func TestBridgeSeparatesDependencyPreparationFromAuthorizationFailure(t *testing.T) {
+	for _, mode := range []string{"dependency-state", "unknown-failure", "foreign-failure"} {
+		t.Run(mode, func(t *testing.T) {
+			err := testDriver(t, mode).LoginSession(context.Background(), "session-one", nil, func(authorization.Device) error {
+				t.Fatal("failed preparation exposed a challenge")
+				return nil
+			})
+			want := status_error.PluginDependencyUnavailable
+			if mode == "unknown-failure" {
+				want = status_error.PluginAuthorizationFailed
+			} else if mode == "foreign-failure" {
+				want = status_error.PluginForbidden
+			}
+			if err != want {
+				t.Fatalf("failure kind: got %v, want %v", err, want)
+			}
+		})
+	}
+	if _, err := testDriver(t, "dependency-rpc").Status(context.Background(), true); err != status_error.PluginDependencyUnavailable {
+		t.Fatalf("status preparation failure: %v", err)
 	}
 }
 
@@ -376,5 +450,70 @@ func TestStatusReadDoesNotPreparePrivateDelivery(t *testing.T) {
 	}
 	if prepared != 0 {
 		t.Fatal("status read wrote private delivery material outside authorization ownership")
+	}
+}
+
+func TestStageOneBridgeRejectsOldProtocolAndForeignContext(t *testing.T) {
+	for _, mode := range []string{"wrong-protocol", "wrong-context"} {
+		t.Run(mode, func(t *testing.T) {
+			if _, err := testDriver(t, mode).Status(context.Background(), true); !errors.Is(err, status_error.PluginAuthorizationFailed) {
+				t.Fatal("invalid initialization accepted", err)
+			}
+		})
+	}
+	if err := testDriver(t, "foreign-operation").LoginSession(context.Background(), "session-one", nil, func(authorization.Device) error { t.Fatal("old operation reached UI"); return nil }); !errors.Is(err, status_error.PluginForbidden) {
+		t.Fatal("foreign operation notification accepted", err)
+	}
+}
+
+func TestStageOneSkillEnvironmentIsLimitedToDeclaredKeysAndPrivatePaths(t *testing.T) {
+	cases := []struct {
+		// name 是协议替身行为。
+		name string
+		// keys 是允许的环境键。
+		keys []string
+		// paths 是必须留在私有目录的键。
+		paths []string
+		// target 是实际交付组件。
+		target string
+		// allowed 表示返回材料应可接受。
+		allowed bool
+	}{
+		{"skill-env", []string{"TOKEN"}, nil, "skill", true},
+		{"skill-env", nil, nil, "skill", false},
+		{"skill-env", []string{"TOKEN"}, nil, "mcp", false},
+		{"skill-env-private", []string{"CACHE"}, []string{"CACHE"}, "skill", true},
+		{"skill-env-escape", []string{"CACHE"}, []string{"CACHE"}, "skill", false},
+		{"skill-env-home", []string{"HOME"}, nil, "skill", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name+tc.target+strings.Join(tc.keys, ","), func(t *testing.T) {
+			driver := testDriver(t, tc.name)
+			_, err := driver.Resolve(context.Background(), []Component{{ComponentID: "skill-one", Key: "skills/a", Target: tc.target, EnvironmentKeys: tc.keys, PrivatePathKeys: tc.paths}})
+			if tc.allowed && err != nil {
+				t.Fatal(err)
+			}
+			if !tc.allowed && !errors.Is(err, status_error.PluginForbidden) {
+				t.Fatalf("undeclared/escaping environment accepted: %v", err)
+			}
+		})
+	}
+}
+
+func TestBridgeDrainsTerminalFramesBeforeProcessEOF(t *testing.T) {
+	for attempt := 0; attempt < 5; attempt++ {
+		driver := testDriver(t, "terminal-exit")
+		err := driver.LoginSession(context.Background(), "session", nil, func(authorization.Device) error {
+			// 让测试进程先交付终态并关闭 stdout，覆盖缓冲通知与 EOF 同时就绪。
+			time.Sleep(50 * time.Millisecond)
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("terminal authorization frame discarded at EOF: %v", err)
+		}
+	}
+	driver := testDriver(t, "dependency-rpc-exit")
+	if _, err := driver.Status(context.Background(), true); !errors.Is(err, status_error.PluginDependencyUnavailable) {
+		t.Fatalf("terminal RPC failure lost its stable error: %v", err)
 	}
 }

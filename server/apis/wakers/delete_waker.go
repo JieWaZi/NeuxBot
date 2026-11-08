@@ -11,7 +11,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
-	managedskills "github.com/JieWaZi/NeuxBot/server/internal/skills"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
@@ -60,10 +59,6 @@ func (d *DeleteWaker) Output(ctx *gin.Context) (interface{}, error) {
 		if err := global.ChannelService.ValidateWakerDetachment(ctx, d.WakerID); err != nil {
 			return nil, ginx.WithStack(err)
 		}
-	}
-	privateVersions, err := global.SkillControllerManager.ListPrivateVersionsByWaker(ctx, d.WakerID)
-	if err != nil {
-		return nil, ginx.WithStack(err)
 	}
 	// 项目标识在库事务删除后即不可查，提前收集用于事务外的记忆级联清理。
 	projects := []models.Project{}
@@ -197,16 +192,6 @@ func (d *DeleteWaker) Output(ctx *gin.Context) (interface{}, error) {
 			d.WakerID,
 		); err != nil {
 			logx.Errorf("delete waker memories failed: waker_id=%s error=%v", d.WakerID, err)
-		}
-	}
-	for _, version := range privateVersions {
-		if err := managedskills.RemoveVersion(global.Config.DataDirectory, version.ContentPath); err != nil {
-			logx.Errorf(
-				"remove deleted waker private skill version failed: waker_id=%s version_id=%s error=%v",
-				d.WakerID,
-				version.ID,
-				err,
-			)
 		}
 	}
 	return ginx.CommonSuccessResponse(), nil

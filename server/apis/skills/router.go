@@ -1,4 +1,4 @@
-// Package skills 提供伙伴技能查询、导入和启停接口。
+// Package skills 提供独立技能库与伙伴安装管理接口。
 package skills
 
 import "github.com/shrewx/ginx"
@@ -18,8 +18,6 @@ func init() {
 	Router.Register(&RestoreSkillVersion{})
 	Router.Register(&PullSkillUpdate{})
 	Router.Register(&SetWakerSkillEnabled{})
-	Router.Register(&ScanWakerSkillImport{})
-	Router.Register(&ImportWakerSkill{})
 }
 
 // LibraryRouter 提供全局资源专业操作。

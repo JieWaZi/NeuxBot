@@ -679,12 +679,8 @@ const (
 	PluginMCPSchema = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json"
 	// PluginFormatPortable 表示通用插件包。
 	PluginFormatPortable = "agent-plugins"
-	// PluginFormatClaude 表示仅导入可支持组件的 Claude 插件包。
-	PluginFormatClaude = "claude"
-	// PluginFormatCodex 表示仅导入可支持组件的 Codex 兼容插件包。
-	PluginFormatCodex = "codex"
 	// PluginExtensionNamespace 是客户端扩展空间。
-	PluginExtensionNamespace = "com.ally"
+	PluginExtensionNamespace = "com.neuxbot"
 )
 
 const (
@@ -720,7 +716,9 @@ const (
 	// PluginAuthCommandStrategy 是包内授权桥接策略。
 	PluginAuthCommandStrategy = "plugin-command"
 	// PluginAuthProtocol 是逐行JSON-RPC授权扩展版本。
-	PluginAuthProtocol = "neuxally-auth/1"
+	PluginAuthProtocol = "neuxbot-auth/1"
+	// PluginAccountInvalidationTimeoutSeconds 限定外部身份变化后撤销旧材料的本地清理时间。
+	PluginAccountInvalidationTimeoutSeconds = 5
 	// PluginAuthPreparationTimeoutSeconds 为首次挑战前的受管资产下载与启动保留有界准备时间。
 	PluginAuthPreparationTimeoutSeconds = 150
 	// PluginAuthQRPNGPrefix 标识桥接提供的内联 PNG 二维码原图。
@@ -776,6 +774,12 @@ const KnowledgeRetryAuthorityOperation = "job.retry.authority"
 // PluginReferencesChangedEventType 表示输入候选的安装、启停、版本或展示身份变化。
 const PluginReferencesChangedEventType = "plugins.references.changed"
 
+// PluginBrowseDefaultPageSize 是插件浏览窗口的默认条目数。
+const PluginBrowseDefaultPageSize = 9
+
+// PluginBrowseMaximumPageSize 限制浏览窗口及关联身份查询的批量大小。
+const PluginBrowseMaximumPageSize = 100
+
 // 实时消息操作只暴露规范展示事实，不传递原生工具载荷。
 const (
 	// MessageIncrementTextAppend 追加明确部件的新文本。
@@ -785,3 +789,46 @@ const (
 	// MessageIncrementPartUpsert 替换或创建一个安全工具部件。
 	MessageIncrementPartUpsert = "part_upsert"
 )
+
+// PluginTargetContractVersion 标识宿主严格接纳的标准插件解析快照。
+const PluginTargetContractVersion = "neuxbot-plugin/1"
+
+const (
+	// PluginPackageStatusAvailable 表示当前固定版本符合宿主包契约。
+	PluginPackageStatusAvailable = "available"
+	// PluginPackageStatusUnsupported 表示当前固定版本不能作为可用包读取或执行。
+	PluginPackageStatusUnsupported = "unsupported"
+)
+
+// PluginAuthInitializeMethod 核对新授权驱动的协议及完整操作上下文。
+const PluginAuthInitializeMethod = "auth/initialize"
+
+// PluginAuthDependencyUnavailableErrorCode 表示包内受管程序准备失败，区别于供应商认证失败。
+const PluginAuthDependencyUnavailableErrorCode = "dependency_unavailable"
+
+// PluginLocalSkillSourcePrefix 标识由所选技能创建的本地插件资源。
+const PluginLocalSkillSourcePrefix = "local-skills:"
+
+// PluginSkillBundleSourceKind 标识由已扫描技能显式生成的本地插件。
+const PluginSkillBundleSourceKind = "skill-bundle"
+
+// PluginSkillBundleInitialVersion 是本地技能插件首份不可变版本。
+const PluginSkillBundleInitialVersion = "1.0.0"
+
+// PluginSkillBundleSourcePath 是本地技能插件内不冒充上游声明的来源记录。
+const PluginSkillBundleSourcePath = ".neuxbot/skill-source.json"
+
+// PluginExtensionSchemaVersion 是宿主支持的 NeuxBot 插件扩展版本。
+const PluginExtensionSchemaVersion = 1
+
+// PluginCatalogSchemaVersion 是唯一标准包目录的发布工件版本。
+const PluginCatalogSchemaVersion = 1
+
+// PluginDetailsSchemaVersion 是标准展示公开资料的工件版本。
+const PluginDetailsSchemaVersion = 1
+
+// ResourceCategoryMaximumCount 限制单个资源可选择的分类数量。
+const ResourceCategoryMaximumCount = 50
+
+// ResourceCategoryMaximumNameLength 限制分类名称的 Unicode 字符数。
+const ResourceCategoryMaximumNameLength = 120

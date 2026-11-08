@@ -18,10 +18,9 @@ import (
 )
 
 // 导入技能
-type ImportWakerSkill struct {
+type ImportLibrarySkills struct {
+	// MethodPost 声明技能入库使用 POST。
 	ginx.MethodPost
-	// 伙伴标识
-	WakerID string `in:"path" name:"wakerId" validate:"required"`
 	// 请求体
 	Body ImportSkillRequest `in:"body"`
 }
@@ -50,8 +49,6 @@ type preparedSkillImport struct {
 	skill models.SkillPackage
 	// 版本记录
 	version models.SkillVersion
-	// 伙伴关系
-	relation models.WakerSkill
 }
 
 // 选定导入
@@ -63,10 +60,10 @@ type selectedSkillImport struct {
 }
 
 // Path 返回技能导入接口路径。
-func (i *ImportWakerSkill) Path() string { return "/:wakerId/skills/import" }
+func (i *ImportLibrarySkills) Path() string { return "/import" }
 
-// Validate 校验候选数量、范围和版本格式。
-func (i *ImportWakerSkill) Validate(*gin.Context) error {
+// Validate 校验候选数量和版本格式。
+func (i *ImportLibrarySkills) Validate(*gin.Context) error {
 	if len(i.Body.Candidates) == 0 || len(i.Body.Candidates) > 100 {
 		return ginx.WithStack(status_error.BadRequest)
 	}
@@ -84,25 +81,19 @@ func (i *ImportWakerSkill) Validate(*gin.Context) error {
 	return nil
 }
 
-// Output 导入技能并为当前伙伴创建启用关系。
-func (i *ImportWakerSkill) Output(ctx *gin.Context) (interface{}, error) {
+// Output 将所选技能保存到本地技能库，不建立伙伴安装关系。
+func (i *ImportLibrarySkills) Output(ctx *gin.Context) (interface{}, error) {
 	return importSkills(ctx, i)
 }
 
-// importSkills 复用相同资源用例，空伙伴范围表示全局库。
-func importSkills(ctx *gin.Context, i *ImportWakerSkill) ([]models.SkillPackage, error) {
-	if i.WakerID != "" {
-		if _, err := global.WakerControllerManager.Get(ctx, i.WakerID); err != nil {
-			return nil, ginx.WithStack(err)
-		}
-	}
+// importSkills 事务保存技能库与版本，伙伴安装由独立操作完成。
+func importSkills(ctx *gin.Context, i *ImportLibrarySkills) ([]models.SkillPackage, error) {
 	temporaryParent := filepath.Join(global.Config.DataDirectory, "skills", "tmp")
 	batch, err := internalSkills.OpenStagedImport(temporaryParent, i.Body.Token)
 	if err != nil {
 		logx.Errorf(
-			"open staged skill import failed: token=%s waker_id=%s error=%v",
+			"open staged skill import failed: token=%s error=%v",
 			i.Body.Token,
-			i.WakerID,
 			err,
 		)
 		return nil, ginx.WithStack(status_error.SkillImportFailed)
@@ -140,10 +131,6 @@ func importSkills(ctx *gin.Context, i *ImportWakerSkill) ([]models.SkillPackage,
 	}()
 	for _, candidate := range selected {
 		selection := candidate.request
-		scope := constants.SkillScopePrivate
-		if i.WakerID == "" {
-			scope = constants.SkillScopePublic
-		}
 		imported := candidate.imported
 		packageID, versionID := util.New(), util.New()
 		relative, digest, copyErr := internalSkills.CopyVersion(global.Config.DataDirectory, packageID, selection.Version, imported.Directory)
@@ -156,16 +143,12 @@ func importSkills(ctx *gin.Context, i *ImportWakerSkill) ([]models.SkillPackage,
 		}
 		skill := models.SkillPackage{
 			ID: packageID, Name: imported.Name, Description: description,
-			Scope: scope, Source: batch.Source.Kind,
-			OwnerWakerID: i.WakerID, CurrentVersionID: versionID,
+			Source: batch.Source.Kind, CurrentVersionID: versionID,
 		}
 		if skill.Source == constants.SkillSourceGit {
 			skill.GitURL = batch.Source.Location
 			skill.GitRef = batch.Source.Ref
 			skill.GitSubpath = candidateGitSubpath(imported.RelativePath)
-		}
-		if scope == constants.SkillScopePublic {
-			skill.OwnerWakerID = ""
 		}
 		prepared = append(prepared, preparedSkillImport{
 			skill: skill,
@@ -173,9 +156,6 @@ func importSkills(ctx *gin.Context, i *ImportWakerSkill) ([]models.SkillPackage,
 				ID: versionID, SkillPackageID: packageID, Version: selection.Version,
 				Name: imported.Name, Description: description, ContentPath: relative,
 				ContentDigest: digest, Operation: "import",
-			},
-			relation: models.WakerSkill{
-				ID: util.New(), WakerID: i.WakerID, SkillPackageID: packageID, Enabled: true,
 			},
 		})
 	}
@@ -188,11 +168,6 @@ func importSkills(ctx *gin.Context, i *ImportWakerSkill) ([]models.SkillPackage,
 				}
 				if err := global.SkillControllerManager.CreateVersion(transactionContext, item.version, true, item.version.ID); err != nil {
 					return err
-				}
-				if item.relation.WakerID != "" {
-					if err := global.SkillControllerManager.UpsertWakerSkill(transactionContext, item.relation); err != nil {
-						return err
-					}
 				}
 			}
 			return nil

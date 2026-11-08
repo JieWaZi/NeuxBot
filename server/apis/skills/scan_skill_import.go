@@ -2,6 +2,7 @@ package skills
 
 import (
 	"github.com/JieWaZi/NeuxBot/server/apis/uploads"
+	"os"
 	"path/filepath"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -13,10 +14,9 @@ import (
 )
 
 // 扫描导入
-type ScanWakerSkillImport struct {
+type ScanLibrarySkillImport struct {
+	// MethodPost 声明来源扫描使用 POST。
 	ginx.MethodPost
-	// 伙伴标识
-	WakerID string `in:"path" name:"wakerId" validate:"required"`
 	// 请求体
 	Body ScanSkillImportRequest `in:"body"`
 }
@@ -49,27 +49,22 @@ type SkillImportCandidate struct {
 	Name string `json:"name"`
 	// 描述
 	Description string `json:"description"`
-	// 已安装
+	// 已入库
 	Installed bool `json:"installed"`
-	// 已装技能
+	// 已有技能
 	InstalledSkillID string `json:"installedSkillId,omitempty"`
 }
 
 // Path 返回技能导入扫描接口路径。
-func (s *ScanWakerSkillImport) Path() string { return "/:wakerId/skills/import/scan" }
+func (s *ScanLibrarySkillImport) Path() string { return "/import/scan" }
 
 // Output 暂存来源并返回候选，不创建任何技能权威事实。
-func (s *ScanWakerSkillImport) Output(ctx *gin.Context) (interface{}, error) {
+func (s *ScanLibrarySkillImport) Output(ctx *gin.Context) (interface{}, error) {
 	return scanSkillImport(ctx, s)
 }
 
-// scanSkillImport 复用相同资源用例，空伙伴范围表示全局库。
-func scanSkillImport(ctx *gin.Context, s *ScanWakerSkillImport) (SkillImportBatch, error) {
-	if s.WakerID != "" {
-		if _, err := global.WakerControllerManager.Get(ctx, s.WakerID); err != nil {
-			return SkillImportBatch{}, ginx.WithStack(err)
-		}
-	}
+// scanSkillImport 暂存全局技能来源，不涉及伙伴安装关系。
+func scanSkillImport(ctx *gin.Context, s *ScanLibrarySkillImport) (SkillImportBatch, error) {
 	accepted := false
 	if s.Body.Kind == constants.SkillSourceZip {
 		paths, release, err := uploads.Claim(ctx, []string{s.Body.Location})
@@ -88,14 +83,27 @@ func scanSkillImport(ctx *gin.Context, s *ScanWakerSkillImport) (SkillImportBatc
 		},
 	)
 	if err != nil {
-		logx.Errorf("scan skill source failed: kind=%s waker_id=%s error=%v", s.Body.Kind, s.WakerID, err)
+		logx.Errorf("scan skill source failed: kind=%s error=%v", s.Body.Kind, err)
 		return SkillImportBatch{}, ginx.WithStack(err)
 	}
 	accepted = true
-	installed := map[string]string{}
-	candidates := make([]SkillImportCandidate, 0, len(batch.Packages))
+	digests := make([]string, 0, len(batch.Packages))
 	for _, candidate := range batch.Packages {
-		installedSkillID := installed[candidate.Name]
+		digest, err := internalSkills.Digest(candidate.Directory)
+		if err != nil {
+			_ = os.RemoveAll(batch.Root)
+			return SkillImportBatch{}, ginx.WithStack(err)
+		}
+		digests = append(digests, digest)
+	}
+	existing, err := global.SkillControllerManager.ExistingLibraryContent(ctx, digests)
+	if err != nil {
+		_ = os.RemoveAll(batch.Root)
+		return SkillImportBatch{}, ginx.WithStack(err)
+	}
+	candidates := make([]SkillImportCandidate, 0, len(batch.Packages))
+	for index, candidate := range batch.Packages {
+		installedSkillID := existing[digests[index]]
 		candidates = append(candidates, SkillImportCandidate{
 			ID: candidate.RelativePath, Name: candidate.Name,
 			Description: candidate.Description,

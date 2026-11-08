@@ -18,6 +18,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/apis/notifications"
 	"github.com/JieWaZi/NeuxBot/server/apis/plugins"
 	"github.com/JieWaZi/NeuxBot/server/apis/projects"
+	"github.com/JieWaZi/NeuxBot/server/apis/resource_categories"
 	"github.com/JieWaZi/NeuxBot/server/apis/role_presets"
 	"github.com/JieWaZi/NeuxBot/server/apis/runtime_options"
 	"github.com/JieWaZi/NeuxBot/server/apis/skills"
@@ -59,6 +60,7 @@ func init() {
 	desktopRouter.Register(runtime_options.Router)
 	desktopRouter.Register(ai_accounts.Router)
 	desktopRouter.Register(usage.Router)
+	desktopRouter.Register(resource_categories.Router)
 	desktopRouter.Register(skills.Router)
 	desktopRouter.Register(skills.LibraryRouter)
 	desktopRouter.Register(mcp.Router)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -35,6 +36,9 @@ func TestMCPConnectorAPIMaintainsSharedConfigurationAndEncryptedCredentials(
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
+	previousCategories := global.ResourceCategoryControllerManager
+	t.Cleanup(func() { global.ResourceCategoryControllerManager = previousCategories })
+	global.ResourceCategoryControllerManager = controllers.NewResourceCategoryController(database.DB)
 	previousWakers := global.WakerControllerManager
 	previousConnectors := global.MCPConnectorControllerManager
 	previousTransactions := global.TransactionControllerManager
@@ -67,6 +71,7 @@ func TestMCPConnectorAPIMaintainsSharedConfigurationAndEncryptedCredentials(
 		WakerID: "waker-1",
 		Body: ConnectorInput{
 			Name:           "代码搜索",
+			Categories:     []string{"  开发  ", "写作", "开发"},
 			Description:    "连接代码服务",
 			Transport:      constants.MCPTransportStdio,
 			Command:        "search-server",
@@ -81,6 +86,9 @@ func TestMCPConnectorAPIMaintainsSharedConfigurationAndEncryptedCredentials(
 		t.Fatalf("create connector: %v", err)
 	}
 	created := createdValue.(ConnectorResponse)
+	if !slices.Equal(created.Connector.Categories, []string{"开发", "写作"}) {
+		t.Fatalf("categories missing: %+v", created)
+	}
 	if !created.Enabled || !created.Connector.Environment[0].Configured {
 		t.Fatalf("created connector = %+v", created)
 	}
@@ -134,6 +142,13 @@ func TestMCPConnectorAPIMaintainsSharedConfigurationAndEncryptedCredentials(
 		t.Fatalf("update connector: %v", err)
 	}
 	updated := updatedValue.(ConnectorResponse)
+	if len(updated.Connector.Categories) != 0 {
+		t.Fatalf("categories not cleared: %+v", updated)
+	}
+	categories, err := global.ResourceCategoryControllerManager.List(ctx, constants.ResourceCategoryTypeConnector)
+	if err != nil || len(categories) != 2 {
+		t.Fatalf("clearing resource deleted dictionary: %+v %v", categories, err)
+	}
 	if !updated.Connector.Environment[0].Configured {
 		t.Fatal("blank credential input did not retain encrypted value")
 	}

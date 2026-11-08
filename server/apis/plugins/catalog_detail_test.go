@@ -28,7 +28,7 @@ func TestCatalogDetailAndRawReadmeAreReadOnlyAndSourceBound(t *testing.T) {
 			readme := strings.Repeat("Readme正文\n", size/13+1)
 			var archive bytes.Buffer
 			writer := zip.NewWriter(&archive)
-			for name, content := range map[string]string{"neuxally-plugin/demo/.codex-plugin/plugin.json": `{"name":"demo","version":"2"}`, "neuxally-plugin/demo/README.md": readme, "neuxally-plugin/demo/README.zh-CN.md": "目录中文说明"} {
+			for name, content := range map[string]string{"neuxally-plugin/demo/plugin.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"demo","version":"2"}`, "neuxally-plugin/demo/README.md": readme, "neuxally-plugin/demo/README.zh-CN.md": "目录中文说明"} {
 				file, err := writer.Create(name)
 				if err != nil {
 					t.Fatal(err)
@@ -41,12 +41,18 @@ func TestCatalogDetailAndRawReadmeAreReadOnlyAndSourceBound(t *testing.T) {
 				t.Fatal(err)
 			}
 			sum := sha256.Sum256(archive.Bytes())
+			details, _ := json.Marshal(map[string]any{"schemaVersion": 1, "sourceCommit": strings.Repeat("1", 40), "archiveSHA256": fmt.Sprintf("%x", sum), "packagePath": "neuxally-plugin/demo", "package": map[string]any{"contractVersion": "neuxbot-plugin/1", "format": "agent-plugins", "manifest": map[string]any{"$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", "name": "demo", "version": "2"}, "skills": []any{}, "servers": []any{}, "diagnostics": []any{}}, "readmes": map[string]string{"en": readme, "zh-CN": "目录中文说明"}, "skillContents": map[string]string{}})
 			var source *httptest.Server
 			source = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/catalog.json" {
-					fmt.Fprintf(w, `{"schemaVersion":2,"entries":[{"key":"demo","sourceCommit":"1111111111111111111111111111111111111111","archiveURL":%q,"archiveSHA256":"%x","packagePath":"neuxally-plugin/demo","name":"demo","version":"2","format":"codex"}]}`, source.URL+"/demo.zip", sum)
+					fmt.Fprintf(w, `{"schemaVersion":1,"entries":[{"key":"demo","sourceCommit":"1111111111111111111111111111111111111111","archiveURL":%q,"archiveSHA256":"%x","packagePath":"neuxally-plugin/demo","name":"demo","version":"2","format":"agent-plugins","detailsURL":%q,"detailsSHA256":"%x","detailsSize":%d}]}`, source.URL+"/demo.zip", sum, source.URL+"/details.json", sha256.Sum256(details), len(details))
 					return
 				}
+				if r.URL.Path == "/details.json" {
+					_, _ = w.Write(details)
+					return
+				}
+				t.Error("read-only endpoint fetched archive")
 				_, _ = w.Write(archive.Bytes())
 			}))
 			defer source.Close()
@@ -81,7 +87,7 @@ func TestCatalogDetailAndRawReadmeAreReadOnlyAndSourceBound(t *testing.T) {
 			if !errors.Is(err, status_error.PluginVersionConflict) {
 				t.Fatalf("accepted mismatched displayed version: %v", err)
 			}
-			_, total, err := global.PluginControllerManager.List(ctx, "", "", "", 0, 100, false)
+			_, total, err := global.PluginControllerManager.List(ctx, "", "", 0, 100)
 			if err != nil || total != 0 {
 				t.Fatalf("read-only preview created system resources: %d %v", total, err)
 			}
@@ -92,7 +98,7 @@ func TestCatalogDetailAndRawReadmeAreReadOnlyAndSourceBound(t *testing.T) {
 func TestCatalogAndInstalledReadmeLocaleKeepsPinnedSource(t *testing.T) {
 	ctx := pluginAPIContext(t)
 	root := t.TempDir()
-	for name, content := range map[string]string{".codex-plugin/plugin.json": `{"name":"office","version":"0.1.0"}`, "README.md": "Work with documents", "README.zh-CN.md": "处理办公资料"} {
+	for name, content := range map[string]string{"plugin.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"office","version":"0.1.0"}`, "README.md": "Work with documents", "README.zh-CN.md": "处理办公资料"} {
 		path := filepath.Join(root, name)
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 			t.Fatal(err)
@@ -105,7 +111,7 @@ func TestCatalogAndInstalledReadmeLocaleKeepsPinnedSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	detail, err := prepareCatalogFixture(t, ctx, stage, "", "", false)
+	detail, err := prepareCatalogFixture(t, ctx, stage, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}

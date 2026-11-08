@@ -3,12 +3,9 @@ package plugins
 import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
-	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
-	"os"
-	"path/filepath"
 )
 
 // 查看目录插件原文
@@ -36,27 +33,11 @@ func (o *GetCatalogPluginReadme) Output(ctx *gin.Context) (interface{}, error) {
 	if (o.SourceCommit != "" && o.SourceCommit != entry.SourceCommit) || (o.ArchiveSHA256 != "" && o.ArchiveSHA256 != entry.ArchiveSHA256) {
 		return nil, ginx.WithStack(status_error.PluginVersionConflict)
 	}
-	if entry.DetailsURL != "" {
-		details, err := catalog.ReadDetails(entry)
-		if err != nil {
-			return nil, ginx.WithStack(err)
-		}
-		content, _, err := details.Readme(o.Locale)
-		if err != nil {
-			return nil, ginx.WithStack(err)
-		}
-		return PluginReadmeResponse{Content: content}, nil
-	}
-	archive, err := catalog.ResolveEntry(global.PluginCatalogSource(), entry)
+	details, err := catalog.ReadDetails(entry)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	stage, err := packageplugin.StageSource(stagedRoot(), archive, entry.PackagePath)
-	if err != nil {
-		return nil, ginx.WithStack(err)
-	}
-	defer os.RemoveAll(filepath.Join(stagedRoot(), stage.Token))
-	content, err := packageplugin.ReadRawReadme(stage.Root, stage.Package, o.Locale)
+	content, _, err := details.Readme(o.Locale)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}

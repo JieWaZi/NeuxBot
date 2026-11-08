@@ -35,7 +35,7 @@ func (s *SetWakerSkillEnabled) Output(ctx *gin.Context) (interface{}, error) {
 	if _, err := global.WakerControllerManager.Get(ctx, strings.TrimSpace(s.WakerID)); err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	if _, err := visibleSkill(ctx, strings.TrimSpace(s.WakerID), strings.TrimSpace(s.SkillID)); err != nil {
+	if _, err := resourceSkill(ctx, strings.TrimSpace(s.WakerID), strings.TrimSpace(s.SkillID)); err != nil {
 		return nil, ginx.WithStack(err)
 	}
 	err := global.SkillControllerManager.UpsertWakerSkill(ctx, models.WakerSkill{ID: util.New(), WakerID: s.WakerID, SkillPackageID: s.SkillID, Enabled: s.Body.Enabled})

@@ -119,6 +119,9 @@ func (m *service) freezePluginResources(ctx context.Context, waker string, reque
 			}
 		}
 		if prior, exists := wanted[declaration.ID]; exists && request.retry {
+			if prior.AccountGeneration != declaration.AccountGeneration {
+				return frozenPluginResources{}, status_error.PluginAccountConflict
+			}
 			if prior.ConfigurationRevision != declaration.ConfigurationRevision {
 				return frozenPluginResources{}, status_error.PluginConfigurationConflict
 			}
@@ -132,7 +135,7 @@ func (m *service) freezePluginResources(ctx context.Context, waker string, reque
 		if slices.Contains(request.message.PluginIDs, declaration.ID) {
 			selected = append(selected, plugins.Snapshot{ID: declaration.ID, Name: declaration.Name})
 		}
-		identities = append(identities, map[string]any{"id": declaration.ID, "name": declaration.Name, "versionId": declaration.VersionID, "digest": declaration.Digest, "trustedAt": declaration.TrustedAt, "revision": declaration.ConfigurationRevision})
+		identities = append(identities, map[string]any{"id": declaration.ID, "name": declaration.Name, "versionId": declaration.VersionID, "digest": declaration.Digest, "trustedAt": declaration.TrustedAt, "revision": declaration.ConfigurationRevision, "accountGeneration": declaration.AccountGeneration})
 	}
 	for _, id := range request.message.PluginIDs {
 		if !enabled[id] {
@@ -209,6 +212,9 @@ func (m *service) preparePluginResources(ctx context.Context, frozen frozenPlugi
 		}
 		version, err := m.pluginController.Version(ctx, declaration.VersionID)
 		if err != nil {
+			return result, err
+		}
+		if err := plugins.ValidateContract(version.Package); err != nil {
 			return result, err
 		}
 		if version.PluginID != id || version.Digest != declaration.Digest || version.TrustedAt != declaration.TrustedAt {
@@ -341,9 +347,9 @@ func (m *service) preparePluginResources(ctx context.Context, frozen frozenPlugi
 			}
 			continue
 		}
-		snapshot := plugins.Snapshot{TargetDigest: targetDigest, TargetVersion: version.Package.Manifest.Version, Delivery: constants.PluginDeliveryProjection, LoadStage: constants.PluginLoadStagePrepared, ID: id, Name: declaration.Name, VersionID: version.ID, Version: version.Version, ConfigurationRevision: configuration.Revision, ComponentIDs: []string{}}
+		snapshot := plugins.Snapshot{TargetDigest: targetDigest, TargetVersion: version.Package.Manifest.Version, Delivery: constants.PluginDeliveryProjection, LoadStage: constants.PluginLoadStagePrepared, ID: id, Name: declaration.Name, VersionID: version.ID, Version: version.Version, ConfigurationRevision: configuration.Revision, AccountGeneration: declaration.AccountGeneration, ComponentIDs: []string{}}
 		authenticationBindings := plugins.TargetAuthenticationBindings(logicalVersion.Package, cli)
-		if declaration := logicalVersion.Package.Integration.Authentication; declaration != nil && len(declaration.Bindings) > 0 && len(authenticationBindings) == 0 {
+		if declaration := logicalVersion.Package.Integration.Authentication; declaration != nil && (len(declaration.Bindings) > 0 || len(declaration.SkillBindings) > 0) && len(authenticationBindings) == 0 && len(plugins.TargetSkillAuthenticationBindings(logicalVersion.Package, cli)) == 0 {
 			// 显式绑定同时限定授权目标；不匹配时不能降级为无范围的旧桥接解析。
 			if required {
 				return result, status_error.PluginForbidden
@@ -359,13 +365,14 @@ func (m *service) preparePluginResources(ctx context.Context, frozen frozenPlugi
 			}
 		}
 		hasAuthentication := authVersion.Package.Integration.Authentication != nil
-		nativeEligible := nativePluginVersionSupported(cli, detection.Version) && request.allowedConnectorIDs == nil && request.allowedAgentDomains == nil && len(extension.Bindings) == 0 && len(targetExtension.Bindings) == 0 && (len(extension.Config) == 0 || version.Package.Format != constants.PluginFormatPortable) && (!hasAuthentication || len(version.Package.Servers) == 0 || len(authenticationBindings) > 0)
+		nativeEligible := (cli != agentapi.RuntimeIDCodex || len(authenticationBindings) == 0) && nativePluginVersionSupported(cli, detection.Version) && request.allowedConnectorIDs == nil && request.allowedAgentDomains == nil && len(extension.Bindings) == 0 && len(targetExtension.Bindings) == 0 && (len(extension.Config) == 0 || version.Package.Format != constants.PluginFormatPortable) && (!hasAuthentication || len(version.Package.Servers) == 0 || len(authenticationBindings) > 0)
 		if nativeEligible && !nativeDeliverySupported {
 			if required {
 				return result, status_error.PluginNotReady
 			}
 			continue
 		}
+		accountState := models.PluginAccount{PluginID: id, Generation: declaration.AccountGeneration}
 		bridgeRelease := func() {}
 		candidateEnvironment := map[string]string{}
 		var candidateNative *plugins.NativeTarget
@@ -386,14 +393,14 @@ func (m *service) preparePluginResources(ctx context.Context, frozen frozenPlugi
 				bridgeRelease = retained
 			}
 			if !readOnly && m.pluginController != nil {
-				current, readErr := m.pluginController.Configuration(ctx, id)
+				current, readErr := m.pluginController.Account(ctx, id)
 				if readErr != nil {
 					return result, readErr
 				}
-				if current.Revision != configuration.Revision {
-					return result, status_error.PluginConfigurationConflict
+				if current.Generation != declaration.AccountGeneration {
+					return result, status_error.PluginAccountConflict
 				}
-				configuration.DeliveryMaterials = current.DeliveryMaterials
+				accountState = current
 			}
 
 		}
@@ -459,14 +466,15 @@ func (m *service) preparePluginResources(ctx context.Context, frozen frozenPlugi
 			snapshot.ComponentIDs = append(snapshot.ComponentIDs, componentID)
 		}
 		if !readOnly {
-			bindings, accountID, bindErr := plugininstallation.DeliveryAuthentication(authVersion, configuration, cli)
+			bindings, accountID, bindErr := plugininstallation.DeliveryAuthentication(authVersion, configuration, accountState, cli)
 			snapshot.ProviderAccountID = accountID
 			if bindErr != nil {
 				return result, bindErr
 			}
 			if hasAuthentication && len(authenticationBindings) > 0 {
 				plugininstallation.ProjectBoundAuthentication(id, authenticationBindings, nativeEligible, candidateConnectors, candidateEnvironment, bindings)
-			} else if hasAuthentication {
+			}
+			if hasAuthentication {
 				for _, binding := range bindings {
 					isSkill := false
 					for _, declaration := range version.Package.Skills {
@@ -485,6 +493,9 @@ func (m *service) preparePluginResources(ctx context.Context, frozen frozenPlugi
 							}
 							candidateEnvironment[key] = value
 						}
+						continue
+					}
+					if len(authenticationBindings) > 0 {
 						continue
 					}
 					for index := range candidateConnectors {
@@ -515,17 +526,6 @@ func (m *service) preparePluginResources(ctx context.Context, frozen frozenPlugi
 			started = time.Now()
 			native, nativeErr := plugins.PrepareNativeTargetWithDigest(filepath.Join(m.skillDataDirectory, "plugins", constants.PluginDeliveryNative), id, version.Package, root, cli, targetDigest, authenticationBindings...)
 			logSlowStage(id, "native_target", started)
-			if nativeErr == nil {
-				var configurationEnvironment map[string]string
-				configurationEnvironment, nativeErr = native.ConfigurationEnvironment(values)
-				for key, value := range configurationEnvironment {
-					if existing, exists := candidateEnvironment[key]; exists && existing != value {
-						nativeErr = status_error.PluginConfigurationConflict
-						break
-					}
-					candidateEnvironment[key] = value
-				}
-			}
 			if nativeErr != nil {
 				if required {
 					return result, nativeErr
@@ -556,13 +556,7 @@ func (m *service) preparePluginResources(ctx context.Context, frozen frozenPlugi
 				candidateConnectors = nil
 			}
 		}
-		missingRequired := false
-		for _, key := range extension.RequiredComponents {
-			if !available[key] {
-				missingRequired = true
-			}
-		}
-		if missingRequired || len(snapshot.ComponentIDs) == 0 {
+		if len(snapshot.ComponentIDs) == 0 {
 			if required {
 				return result, status_error.PluginNotReady
 			}
@@ -570,18 +564,7 @@ func (m *service) preparePluginResources(ctx context.Context, frozen frozenPlugi
 			continue
 		}
 		if isRetryResource {
-			priorDelivery := prior.Delivery
-			if priorDelivery == "" {
-				priorDelivery = constants.PluginDeliveryProjection
-			}
-			priorNativeID := prior.NativePluginID
-			if cli == agentapi.RuntimeIDCodex && snapshot.NativePluginID != "" && strings.HasPrefix(priorNativeID, snapshot.NativePluginID+"-") {
-				suffix := strings.TrimPrefix(priorNativeID, snapshot.NativePluginID+"-")
-				if regexp.MustCompile(`^[0-9a-f]{32}$`).MatchString(suffix) {
-					priorNativeID = snapshot.NativePluginID
-				}
-			}
-			if !slices.Equal(snapshot.ComponentIDs, prior.ComponentIDs) || snapshot.Delivery != priorDelivery || snapshot.NativePluginID != priorNativeID || (prior.TargetDigest != "" && snapshot.TargetDigest != prior.TargetDigest) {
+			if !slices.Equal(snapshot.ComponentIDs, prior.ComponentIDs) || snapshot.Delivery != prior.Delivery || snapshot.NativePluginID != prior.NativePluginID || snapshot.TargetDigest != prior.TargetDigest {
 				return result, status_error.PluginNotReady
 			}
 			if !readOnly && hasAuthentication && snapshot.ProviderAccountID != prior.ProviderAccountID {

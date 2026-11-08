@@ -112,7 +112,7 @@ func TestAllyCLIRejectsRemovedPluginOperationsWithoutInstallation(t *testing.T) 
 	if err != nil || len(relations) != 0 {
 		t.Fatalf("rejected operation created installations: %+v %v", relations, err)
 	}
-	_, total, err := store.List(context.Background(), "", "", "", 0, 100, false)
+	_, total, err := store.List(context.Background(), "", "", 0, 100)
 	if err != nil || total != 0 {
 		t.Fatalf("rejected operation prepared system resources: total=%d error=%v", total, err)
 	}

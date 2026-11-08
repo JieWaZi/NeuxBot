@@ -50,7 +50,7 @@ func TestPluginUpdatesCompareActualInstallationsAndExactSource(t *testing.T) {
 			}
 		}
 	}
-	value, err := (&ListPlugins{InstalledOnly: true}).Output(ctx)
+	value, err := (&ListPlugins{}).Output(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestPluginUpdatesCompareActualInstallationsAndExactSource(t *testing.T) {
 
 func writeUpdateCatalog(t *testing.T, root, version string) {
 	t.Helper()
-	body := fmt.Sprintf(`{"schemaVersion":2,"entries":[{"key":"tools","name":"tools","version":%q,"format":"codex","sourceCommit":%q,"archiveURL":"https://invalid.example/never-download.zip","archiveSHA256":%q,"packagePath":"entry"}]}`, version, strings.Repeat("a", 40), strings.Repeat("b", 64))
+	body := fmt.Sprintf(`{"schemaVersion":1,"entries":[{"key":"tools","name":"tools","version":%q,"format":"agent-plugins","detailsURL":"https://invalid.example/details.json","detailsSHA256":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","detailsSize":100,"sourceCommit":%q,"archiveURL":"https://invalid.example/never-download.zip","archiveSHA256":%q,"packagePath":"entry"}]}`, version, strings.Repeat("a", 40), strings.Repeat("b", 64))
 	if err := os.WriteFile(filepath.Join(root, "catalog.json"), []byte(body), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestPrepareUpdateRejectsFinalRecoveredArchiveChange(t *testing.T) {
 	source = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		current := int(mode.Load())
 		if r.URL.Path == "/catalog.json" {
-			fmt.Fprintf(w, `{"schemaVersion":2,"entries":[{"key":"recovery","name":"recovery","version":"%d.0.0","format":"codex","sourceCommit":%q,"archiveURL":%q,"archiveSHA256":"%x","packagePath":"entry"}]}`, current+1, strings.Repeat("a", 40), source.URL+"/owned.zip", sums[current])
+			fmt.Fprintf(w, `{"schemaVersion":1,"entries":[{"key":"recovery","name":"recovery","version":"%d.0.0","format":"agent-plugins","detailsURL":"https://invalid.example/details.json","detailsSHA256":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","detailsSize":100,"sourceCommit":%q,"archiveURL":%q,"archiveSHA256":"%x","packagePath":"entry"}]}`, current+1, strings.Repeat("a", 40), source.URL+"/owned.zip", sums[current])
 			return
 		}
 		_, _ = w.Write([][]byte{first, second}[current])
@@ -161,7 +161,7 @@ func TestUpdateAllRequiresCompleteInstallationSetAndPreservesEnabled(t *testing.
 	ctx := pluginAPIContext(t)
 	prepare := func(version string) PluginDetailResponse {
 		root := t.TempDir()
-		body := fmt.Sprintf(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"tools","version":%q,"extensions":{"com.ally":{"config":[{"key":"MODE"},{"key":"TOKEN","secret":true}]}}}`, version)
+		body := fmt.Sprintf(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"tools","version":%q,"extensions":{"com.neuxbot":{"schemaVersion":1,"configuration":{"fields":[{"key":"MODE"},{"key":"TOKEN","secret":true}]}}}}`, version)
 		if err := os.WriteFile(filepath.Join(root, "plugin.json"), []byte(body), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -169,7 +169,7 @@ func TestUpdateAllRequiresCompleteInstallationSetAndPreservesEnabled(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		detail, err := prepareCatalogFixture(t, ctx, stage, "", "", false)
+		detail, err := prepareCatalogFixture(t, ctx, stage, "", false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -194,8 +194,8 @@ func TestUpdateAllRequiresCompleteInstallationSetAndPreservesEnabled(t *testing.
 		{first, {WakerID: "w2", ExpectedVersionID: old.ResolvedVersionID, VersionID: next.ResolvedVersionID}},
 		{first, {WakerID: "w2", ExpectedVersionID: next.ResolvedVersionID, VersionID: old.ResolvedVersionID}},
 	} {
-		body := UpdateConfigurationRequest{ExpectedRevision: 1, Switches: switches}
-		_, err := (&UpdatePluginConfiguration{PluginID: old.Plugin.ID, Body: body}).Output(ctx)
+		body := UpdatePluginInstallationsRequest{ExpectedRevision: 1, Switches: switches}
+		_, err := (&UpdatePluginInstallations{PluginID: old.Plugin.ID, Body: body}).Output(ctx)
 		if !errors.Is(err, status_error.PluginVersionConflict) {
 			t.Fatalf("incomplete/conflicting update accepted: %+v err=%v", switches, err)
 		}
@@ -205,8 +205,8 @@ func TestUpdateAllRequiresCompleteInstallationSetAndPreservesEnabled(t *testing.
 			t.Fatal("failed update changed configuration or installation")
 		}
 	}
-	body := UpdateConfigurationRequest{ExpectedRevision: 1, Switches: []VersionSwitch{first, second}}
-	if _, err := (&UpdatePluginConfiguration{PluginID: old.Plugin.ID, WakerID: "w1", Body: body}).Output(ctx); err != nil {
+	body := UpdatePluginInstallationsRequest{ExpectedRevision: 1, Switches: []VersionSwitch{first, second}}
+	if _, err := (&UpdatePluginInstallations{PluginID: old.Plugin.ID, WakerID: "w1", Body: body}).Output(ctx); err != nil {
 		t.Fatal(err)
 	}
 	config, err := store.Configuration(ctx, old.Plugin.ID)

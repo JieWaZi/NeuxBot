@@ -2,9 +2,9 @@ package mcp
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"strings"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -53,6 +53,11 @@ func createConnector(ctx *gin.Context, c *CreateWakerConnector) (ConnectorRespon
 				connector,
 			); err != nil {
 				return err
+			}
+			if len(connector.Categories) > 0 {
+				if err := global.ResourceCategoryControllerManager.Ensure(transactionContext, constants.ResourceCategoryTypeConnector, connector.Categories); err != nil {
+					return err
+				}
 			}
 			if wakerID == "" {
 				return nil

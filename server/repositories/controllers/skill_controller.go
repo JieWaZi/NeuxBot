@@ -18,16 +18,20 @@ import (
 type SkillController interface {
 	// ListLibrary 分页查询全局独立技能。
 	ListLibrary(context.Context, string, int, int) ([]models.SkillWithState, int64, error)
+	// ExistingLibraryContent 按完整内容摘要返回当前技能库资源，不以展示名称判断重复。
+	ExistingLibraryContent(context.Context, []string) (map[string]string, error)
 	// InstalledCounts 返回实际安装关系总数。
 	InstalledCounts(context.Context, []string) (map[string]int64, error)
 	// InstalledPartnerPreviews 批量返回每项技能的实际安装伙伴资料预览，包含停用关系。
 	InstalledPartnerPreviews(context.Context, []string) (map[string][]models.Waker, error)
+	// InstalledPartners 返回单项技能的全部实际安装伙伴公开资料，包含停用关系。
+	InstalledPartners(context.Context, string) ([]models.Waker, error)
 	// CreatePackage 创建技能包元数据。
 	CreatePackage(ctx context.Context, skill models.SkillPackage) error
 	// GetPackage 按标识查询技能包。
 	GetPackage(ctx context.Context, id string) (models.SkillPackage, error)
-	// ListVisible 返回伙伴可见的技能包及当前版本。
-	ListVisible(ctx context.Context, wakerID string, query string) ([]models.SkillWithState, error)
+	// ListInstalled 返回伙伴实际安装的技能包及当前版本。
+	ListInstalled(ctx context.Context, wakerID string, query string) ([]models.SkillWithState, error)
 	// CreateVersion 创建不可变版本，并按预期当前版本条件推进当前指针。
 	CreateVersion(ctx context.Context, version models.SkillVersion, makeCurrent bool, expectedCurrentVersionID string) error
 	// ListVersions 返回技能的全部版本，按创建时间倒序。
@@ -42,18 +46,16 @@ type SkillController interface {
 	UpsertWakerSkill(ctx context.Context, relation models.WakerSkill) error
 	// EnsureWakerSkill 只在关系不存在时创建默认启用状态，不覆盖用户选择。
 	EnsureWakerSkill(ctx context.Context, relation models.WakerSkill) error
-	// ListEnabled 返回伙伴当前启用且可见的技能版本。
+	// ListEnabled 返回伙伴当前安装且启用的技能版本。
 	ListEnabled(ctx context.Context, wakerID string) ([]models.SkillWithState, error)
 	// DeleteWakerSkill 删除伙伴技能关系，使其恢复未关联状态。
 	DeleteWakerSkill(ctx context.Context, wakerID string, skillID string) error
-	// ListPrivateVersionsByWaker 返回删除伙伴时需要清理的私有技能版本。
-	ListPrivateVersionsByWaker(ctx context.Context, wakerID string) ([]models.SkillVersion, error)
-	// DeleteByWaker 删除伙伴关系及其拥有的全部私有技能元数据。
+	// DeleteByWaker 只删除伙伴安装关系，保留技能库和全部版本。
 	DeleteByWaker(ctx context.Context, wakerID string) error
 	// DeletePackage 删除技能包、全部版本和全部伙伴关系。
 	DeletePackage(ctx context.Context, skillID string) error
-	// UpdatePackageDisplayName 更新技能包 NeuxBot 展示名称，不修改版本元数据。
-	UpdatePackageDisplayName(ctx context.Context, skillID string, name string) error
+	// UpdatePackageMetadata 按已提供字段更新展示名称与分类，不修改版本内容。
+	UpdatePackageMetadata(ctx context.Context, skillID string, name string, categories *[]string) error
 }
 
 // skillController 使用 GORM 实现技能持久化。
@@ -90,25 +92,24 @@ func (c *skillController) GetPackage(ctx context.Context, id string) (models.Ski
 	return skill, databaseError("get_skill", "skill_id="+id, err)
 }
 
-// ListVisible 返回公开技能和当前伙伴拥有的私有技能。
-func (c *skillController) ListVisible(ctx context.Context, wakerID string, query string) ([]models.SkillWithState, error) {
+// ListInstalled 查询实际安装关系对应的技能与启停状态。
+func (c *skillController) ListInstalled(ctx context.Context, wakerID string, query string) ([]models.SkillWithState, error) {
 	var packages []models.SkillPackage
 	db := controllerDB(ctx, c.db).Where(
-		"built_in = ? OR (scope = ? AND owner_waker_id = ?) OR (scope = 'public' AND id IN (SELECT skill_package_id FROM waker_skills WHERE waker_id = ?))",
-		true, constants.SkillScopePrivate, wakerID, wakerID,
+		"id IN (SELECT skill_package_id FROM waker_skills WHERE waker_id = ?)", wakerID,
 	)
 	if normalized := strings.TrimSpace(query); normalized != "" {
 		db = db.Where("LOWER(name) LIKE ? OR LOWER(description) LIKE ?", "%"+strings.ToLower(normalized)+"%", "%"+strings.ToLower(normalized)+"%")
 	}
 	if err := db.Order("built_in DESC, updated_at DESC, id ASC").Find(&packages).Error; err != nil {
-		return nil, databaseError("list_visible_skills", "waker_id="+wakerID, err)
+		return nil, databaseError("list_installed_skills", "waker_id="+wakerID, err)
 	}
 	return c.withStates(ctx, wakerID, packages)
 }
 
-// ListEnabled 返回伙伴当前启用的可见技能。
+// ListEnabled 返回伙伴当前实际安装且启用的技能。
 func (c *skillController) ListEnabled(ctx context.Context, wakerID string) ([]models.SkillWithState, error) {
-	items, err := c.ListVisible(ctx, wakerID, "")
+	items, err := c.ListInstalled(ctx, wakerID, "")
 	if err != nil {
 		return nil, err
 	}
@@ -287,46 +288,10 @@ func (c *skillController) DeleteWakerSkill(ctx context.Context, wakerID string, 
 	return nil
 }
 
-// ListPrivateVersionsByWaker 返回一位伙伴拥有的全部私有技能版本。
-func (c *skillController) ListPrivateVersionsByWaker(
-	ctx context.Context,
-	wakerID string,
-) ([]models.SkillVersion, error) {
-	var versions []models.SkillVersion
-	err := controllerDB(ctx, c.db).
-		Model(&models.SkillVersion{}).
-		Where("skill_package_id IN (?)", controllerDB(ctx, c.db).Model(&models.SkillPackage{}).Select("id").Where("scope = ? AND owner_waker_id = ?", constants.SkillScopePrivate, wakerID)).
-		Order("skill_versions.id ASC").
-		Find(&versions).Error
-	if err != nil {
-		return nil, databaseError("list_private_skill_versions_by_waker", "waker_id="+wakerID, err)
-	}
-	return versions, nil
-}
-
-// DeleteByWaker 删除伙伴技能关系及其拥有的私有技能包和版本。
+// DeleteByWaker 仅删除伙伴技能安装关系，不触碰库资源及版本文件。
 func (c *skillController) DeleteByWaker(ctx context.Context, wakerID string) error {
-	db := controllerDB(ctx, c.db)
-	var privateSkillIDs []string
-	if err := db.Model(&models.SkillPackage{}).
-		Where("scope = ? AND owner_waker_id = ?", constants.SkillScopePrivate, wakerID).
-		Pluck("id", &privateSkillIDs).Error; err != nil {
-		return databaseError("list_private_skills_by_waker", "waker_id="+wakerID, err)
-	}
-	if err := db.Where("waker_id = ?", wakerID).Delete(&models.WakerSkill{}).Error; err != nil {
+	if err := controllerDB(ctx, c.db).Where("waker_id = ?", wakerID).Delete(&models.WakerSkill{}).Error; err != nil {
 		return databaseError("delete_waker_skill_relations", "waker_id="+wakerID, err)
-	}
-	if len(privateSkillIDs) == 0 {
-		return nil
-	}
-	if err := db.Where("skill_package_id IN ?", privateSkillIDs).Delete(&models.WakerSkill{}).Error; err != nil {
-		return databaseError("delete_private_skill_relations", "waker_id="+wakerID, err)
-	}
-	if err := db.Where("skill_package_id IN ?", privateSkillIDs).Delete(&models.SkillVersion{}).Error; err != nil {
-		return databaseError("delete_private_skill_versions", "waker_id="+wakerID, err)
-	}
-	if err := db.Where("id IN ?", privateSkillIDs).Delete(&models.SkillPackage{}).Error; err != nil {
-		return databaseError("delete_private_skill_packages", "waker_id="+wakerID, err)
 	}
 	return nil
 }
@@ -348,25 +313,31 @@ func (c *skillController) DeletePackage(ctx context.Context, skillID string) err
 
 func nowMillis() int64 { return time.Now().UnixMilli() }
 
-// UpdatePackageDisplayName 更新展示名称，不改写原技能声明名。
-func (c *skillController) UpdatePackageDisplayName(ctx context.Context, skillID string, name string) error {
+// UpdatePackageMetadata 单次更新已提供的展示资料，不改写版本或原技能声明。
+func (c *skillController) UpdatePackageMetadata(ctx context.Context, skillID string, name string, categories *[]string) error {
 	db := controllerDB(ctx, c.db)
-	result := db.Model(&models.SkillPackage{}).Where("id = ?", skillID).Updates(map[string]any{
-		"name":       name,
-		"updated_at": nowMillis(),
-	})
+	updates := map[string]any{"updated_at": nowMillis()}
+	if name != "" {
+		updates["name"] = name
+	}
+	if categories != nil {
+		if err := db.Model(&models.SkillPackage{}).Where("id = ?", skillID).Select("Categories").Updates(&models.SkillPackage{Categories: *categories}).Error; err != nil {
+			return databaseError("update_skill_categories", "skill_id="+skillID, err)
+		}
+	}
+	result := db.Model(&models.SkillPackage{}).Where("id = ?", skillID).Updates(updates)
 	if result.Error != nil {
 		if dbhelper.IsDuplicateError(result.Error) {
 			return status_error.SkillNameConflict
 		}
-		return databaseError("update_skill_display_name", "skill_id="+skillID, result.Error)
+		return databaseError("update_skill_metadata", "skill_id="+skillID, result.Error)
 	}
 	return nil
 }
 
 // ListLibrary 分页查询全局独立技能，不将其隐式安装给伙伴。
 func (c *skillController) ListLibrary(ctx context.Context, query string, offset, limit int) ([]models.SkillWithState, int64, error) {
-	db := controllerDB(ctx, c.db).Model(&models.SkillPackage{}).Where("scope = ?", constants.SkillScopePublic)
+	db := controllerDB(ctx, c.db).Model(&models.SkillPackage{}).Where("built_in = ? AND source IN ?", false, []constants.SkillSource{constants.SkillSourceGit, constants.SkillSourceZip})
 	if query = strings.TrimSpace(query); query != "" {
 		pattern := "%" + strings.ToLower(query) + "%"
 		db = db.Where("LOWER(name) LIKE ? OR LOWER(description) LIKE ?", pattern, pattern)
@@ -433,6 +404,52 @@ func (c *skillController) InstalledPartnerPreviews(ctx context.Context, ids []st
 			if partner, ok := profiles[relation.WakerID]; ok {
 				result[relation.SkillPackageID] = append(result[relation.SkillPackageID], partner)
 			}
+		}
+	}
+	return result, nil
+}
+
+// InstalledPartners 仅为技能详情读取完整安装关系，再分批补齐伙伴公开资料。
+func (c *skillController) InstalledPartners(ctx context.Context, skillID string) ([]models.Waker, error) {
+	db := controllerDB(ctx, c.db)
+	var relations []models.WakerSkill
+	if err := db.Select("waker_id").Where("skill_package_id = ?", skillID).Order("waker_id").Find(&relations).Error; err != nil {
+		return nil, databaseError("read_skill_installed_partners", "skill_id="+skillID, err)
+	}
+	result := make([]models.Waker, 0, len(relations))
+	for start := 0; start < len(relations); start += 100 {
+		end := min(start+100, len(relations))
+		ids := make([]string, 0, end-start)
+		for _, relation := range relations[start:end] {
+			ids = append(ids, relation.WakerID)
+		}
+		var partners []models.Waker
+		if err := db.Select("id", "name", "avatar").Where("id IN ?", ids).Order("id").Find(&partners).Error; err != nil {
+			return nil, databaseError("read_skill_partner_profiles", "skill_id="+skillID, err)
+		}
+		result = append(result, partners...)
+	}
+	return result, nil
+}
+
+// ExistingLibraryContent 每批按索引查找当前独立技能版本，同内容已有多项时稳定选择一个资源。
+func (c *skillController) ExistingLibraryContent(ctx context.Context, digests []string) (map[string]string, error) {
+	result := map[string]string{}
+	db := controllerDB(ctx, c.db)
+	for start := 0; start < len(digests); start += 100 {
+		end := min(start+100, len(digests))
+		var matches []struct {
+			// ContentDigest 是当前版本的完整内容摘要。
+			ContentDigest string
+			// SkillPackageID 是同摘要下稳定选出的真实资源标识。
+			SkillPackageID string
+		}
+		current := db.Model(&models.SkillPackage{}).Select("current_version_id").Where("built_in = ? AND source IN ?", false, []constants.SkillSource{constants.SkillSourceGit, constants.SkillSourceZip})
+		if err := db.Model(&models.SkillVersion{}).Select("content_digest, MIN(skill_package_id) AS skill_package_id").Where("content_digest IN ? AND id IN (?)", digests[start:end], current).Group("content_digest").Find(&matches).Error; err != nil {
+			return nil, databaseError("find_existing_library_skill_content", "", err)
+		}
+		for _, match := range matches {
+			result[match.ContentDigest] = match.SkillPackageID
 		}
 	}
 	return result, nil

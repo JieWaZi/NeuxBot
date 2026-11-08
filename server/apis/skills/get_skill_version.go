@@ -90,7 +90,7 @@ func (g *GetSkillVersion) Output(ctx *gin.Context) (interface{}, error) {
 
 // getSkillVersion 复用相同资源用例，空伙伴范围表示全局库。
 func getSkillVersion(ctx *gin.Context, g *GetSkillVersion) (SkillVersionResponse, error) {
-	skill, err := visibleSkill(ctx, g.WakerID, g.SkillID)
+	skill, err := resourceSkill(ctx, g.WakerID, g.SkillID)
 	if err != nil {
 		return SkillVersionResponse{}, ginx.WithStack(err)
 	}
@@ -123,14 +123,14 @@ func (g *GetSkillVersionFile) Path() string {
 	return "/:wakerId/skills/:skillId/versions/:versionId/file"
 }
 
-// Output 返回经过可见性和版本归属校验的文件内容。
+// Output 返回经过安装上下文和版本归属校验的文件内容。
 func (g *GetSkillVersionFile) Output(ctx *gin.Context) (interface{}, error) {
 	return getSkillVersionFile(ctx, g)
 }
 
 // getSkillVersionFile 复用相同资源用例，空伙伴范围表示全局库。
 func getSkillVersionFile(ctx *gin.Context, g *GetSkillVersionFile) (SkillVersionFileResponse, error) {
-	skill, err := visibleSkill(ctx, g.WakerID, g.SkillID)
+	skill, err := resourceSkill(ctx, g.WakerID, g.SkillID)
 	if err != nil {
 		return SkillVersionFileResponse{}, ginx.WithStack(err)
 	}

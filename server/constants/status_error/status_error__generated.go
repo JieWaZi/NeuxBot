@@ -337,6 +337,10 @@ func (v StatusError) Key() string {
 		return "PluginSkillConflict"
 	case PluginBusy:
 		return "PluginBusy"
+	case PluginAccountConflict:
+		return "PluginAccountConflict"
+	case PluginSkillSelectionConflict:
+		return "PluginSkillSelectionConflict"
 	case WorkspaceResourceConflict:
 		return "WorkspaceResourceConflict"
 	case ChatLogVersionConflict:
@@ -361,6 +365,10 @@ func (v StatusError) Key() string {
 		return "IntegrationConflict"
 	case WorkspaceResourceTooLarge:
 		return "WorkspaceResourceTooLarge"
+	case PluginCapabilityUnsupported:
+		return "PluginCapabilityUnsupported"
+	case PluginPackageUnsupported:
+		return "PluginPackageUnsupported"
 	case KnowledgeCandidateInvalid:
 		return "KnowledgeCandidateInvalid"
 	case KnowledgeUnsupported:
@@ -529,6 +537,8 @@ func (v StatusError) Key() string {
 		return "PluginAuthorizationFailed"
 	case PluginDistributionUnavailable:
 		return "PluginDistributionUnavailable"
+	case PluginDependencyUnavailable:
+		return "PluginDependencyUnavailable"
 	case KnowledgeRemoteUnreachable:
 		return "KnowledgeRemoteUnreachable"
 	case KnowledgeRemoteIncompatible:
@@ -728,6 +738,8 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			PluginNotReady:                       "complete required plugin configuration, authentication and dependencies first",
 			PluginSkillConflict:                  "skills with the same declared name have different content",
 			PluginBusy:                           "shared account is in use by work or authorization; try again after it exits",
+			PluginAccountConflict:                "plugin shared account changed; confirm the operation again",
+			PluginSkillSelectionConflict:         "selected skills have duplicate names or contain other skills; adjust the selection and retry",
 			WorkspaceResourceConflict:            "workspace resource changed; read it again",
 			ChatLogVersionConflict:               "the conversation version changed; reload before retrying",
 			ChatLogIdempotencyConflict:           "a conversation commit identity cannot be reused with different content",
@@ -740,6 +752,8 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			KnowledgeFolderHasPages:              "folder contains pages; move them out first",
 			IntegrationConflict:                  "integration revision or request identity conflicts",
 			WorkspaceResourceTooLarge:            "workspace resource exceeds the size limit",
+			PluginCapabilityUnsupported:          "plugin capability is unsupported by the current target",
+			PluginPackageUnsupported:             "This plugin package is unsupported. Reinstall it from the plugin catalog.",
 			KnowledgeCandidateInvalid:            "knowledge execution or candidate is not eligible for publication",
 			KnowledgeUnsupported:                 "knowledge provider or runtime does not support this operation",
 			KnowledgeEmbeddingNotConfigured:      "configure this library's embedding service first",
@@ -824,6 +838,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			IMProtocolInvalid:                    "The messaging platform returned an unsupported response. Inspect the failure details and connection.",
 			PluginAuthorizationFailed:            "plugin authentication did not complete or external authorization expired",
 			PluginDistributionUnavailable:        "plugin catalog or archive could not be downloaded; check the network and retry",
+			PluginDependencyUnavailable:          "required plugin dependencies could not be prepared; check the network and retry",
 			KnowledgeRemoteUnreachable:           "remote knowledge service is unreachable",
 			KnowledgeRemoteIncompatible:          "remote knowledge service protocol is incompatible",
 			KnowledgeEmbeddingUnavailable:        "knowledge embedding service unavailable",
@@ -985,6 +1000,8 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			PluginNotReady:                       "请先完成插件所需配置、认证和程序准备",
 			PluginSkillConflict:                  "技能声明名称相同但内容不同，请调整已启用的技能或插件",
 			PluginBusy:                           "认证进程或工作仍在使用共享账号，请稍后重试",
+			PluginAccountConflict:                "插件共享账号已变化，请重新确认",
+			PluginSkillSelectionConflict:         "所选技能名称重复或目录包含其他技能，请调整选择后重试",
 			WorkspaceResourceConflict:            "工作区资源已变化，请重新读取",
 			ChatLogVersionConflict:               "对话已更新，请重新读取后重试",
 			ChatLogIdempotencyConflict:           "同一对话提交标识不能用于不同内容",
@@ -997,6 +1014,8 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			KnowledgeFolderHasPages:              "目录下还有页面，请先移出页面",
 			IntegrationConflict:                  "API 集成配置已变化，请刷新后重试",
 			WorkspaceResourceTooLarge:            "工作区资源超过大小限制",
+			PluginCapabilityUnsupported:          "当前运行目标尚不支持该插件声明的能力",
+			PluginPackageUnsupported:             "当前插件包不受支持，请从插件目录重新安装",
 			KnowledgeCandidateInvalid:            "知识执行或候选未满足发布条件",
 			KnowledgeUnsupported:                 "当前知识服务或智能体不支持此操作",
 			KnowledgeEmbeddingNotConfigured:      "请先配置此知识库的独立嵌入服务",
@@ -1081,6 +1100,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			IMProtocolInvalid:                    "消息平台返回了无法识别的响应，请查看失败详情并检查连接。",
 			PluginAuthorizationFailed:            "插件认证未完成或外部授权失效",
 			PluginDistributionUnavailable:        "插件目录或安装包暂时无法下载，请检查网络后重试",
+			PluginDependencyUnavailable:          "插件所需程序暂时无法准备，请检查网络后重试",
 			KnowledgeRemoteUnreachable:           "远端知识服务连接失败",
 			KnowledgeRemoteIncompatible:          "远端知识服务响应不符合支持的协议",
 			KnowledgeEmbeddingUnavailable:        "知识库嵌入服务暂时不可用",

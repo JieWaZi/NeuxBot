@@ -176,7 +176,7 @@ func (c *trackingSkillController) GetPackage(context.Context, string) (models.Sk
 	return models.SkillPackage{}, nil
 }
 
-func (c *trackingSkillController) ListVisible(context.Context, string, string) ([]models.SkillWithState, error) {
+func (c *trackingSkillController) ListInstalled(context.Context, string, string) ([]models.SkillWithState, error) {
 	return nil, nil
 }
 
@@ -219,10 +219,6 @@ func (c *trackingSkillController) ListEnabled(context.Context, string) ([]models
 
 func (c *trackingSkillController) DeleteWakerSkill(context.Context, string, string) error {
 	return nil
-}
-
-func (c *trackingSkillController) ListPrivateVersionsByWaker(context.Context, string) ([]models.SkillVersion, error) {
-	return nil, nil
 }
 
 func (c *trackingSkillController) DeleteByWaker(context.Context, string) error {

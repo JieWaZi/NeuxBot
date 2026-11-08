@@ -3,6 +3,7 @@ package skills
 import (
 	"strings"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
@@ -25,11 +26,17 @@ func (l *ListWakerSkills) Output(ctx *gin.Context) (interface{}, error) {
 	if _, err := global.WakerControllerManager.Get(ctx, l.WakerID); err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	result, err := global.SkillControllerManager.ListVisible(ctx, l.WakerID, strings.TrimSpace(l.Query))
+	result, err := global.SkillControllerManager.ListInstalled(ctx, l.WakerID, strings.TrimSpace(l.Query))
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	responses, err := wakerSkillResponses(ctx, result)
+	imported := result[:0]
+	for _, item := range result {
+		if !item.SkillPackage.BuiltIn && (item.SkillPackage.Source == constants.SkillSourceGit || item.SkillPackage.Source == constants.SkillSourceZip) {
+			imported = append(imported, item)
+		}
+	}
+	responses, err := wakerSkillResponses(ctx, imported)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}

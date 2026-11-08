@@ -16,7 +16,7 @@ func TestEmitNativeAcceptance(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := filepath.Join(root, "source")
-	fixtureFile(t, source, ".codex-plugin/plugin.json", `{"name":"acceptance","version":"1.0.0","description":"Production derived package"}`)
+	standardInput(t, source, map[string]any{"name": "acceptance", "version": "1.0.0", "description": "Production standard package"})
 	fixtureFile(t, source, "skills/native-probe/SKILL.md", "---\nname: native-probe\ndescription: Verify native session loading.\n---\nProbe")
 	pkg, err := Load(source)
 	if err != nil {
@@ -44,7 +44,7 @@ func TestEmitNativeAcceptance(t *testing.T) {
 
 func TestPrepareNativeTargetWithDigestDoesNotReReadVerifiedRoot(t *testing.T) {
 	root := t.TempDir()
-	fixtureFile(t, root, ".codex-plugin/plugin.json", `{"name":"verified","version":"1.0.0"}`)
+	standardInput(t, root, map[string]any{"name": "verified", "version": "1.0.0"})
 	pkg, err := Load(root)
 	if err != nil {
 		t.Fatal(err)

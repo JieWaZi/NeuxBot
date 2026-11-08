@@ -35,8 +35,6 @@ type NativeTarget struct {
 	Root string
 	// Digest 是安装内容摘要，用于隔离不同执行产物。
 	Digest string
-	// headerTemplates 只保存派生请求头的无秘密模板，运行时展开值不进入插件文件。
-	headerTemplates map[string]string
 }
 
 // PrepareCodexHome 为选定账号和插件快照准备独立 CODEX_HOME，不修改原账号目录。

@@ -77,8 +77,8 @@ func StageSource(parent, location, entry string) (StagedPackage, error) {
 		return LoadSource(root, ".")
 	}
 	pkg, err := load(root)
-	// 允许 ZIP 含一个顶层包装目录，但不猜测多个候选。
-	if err != nil {
+	// 未指定逻辑入口的本机暂存可接收单层包装；可信目录声明的入口绝不重定位。
+	if err != nil && entry == "" {
 		entries, readErr := os.ReadDir(root)
 		if readErr == nil && len(entries) == 1 && entries[0].IsDir() {
 			root = filepath.Join(root, entries[0].Name())

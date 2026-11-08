@@ -1,12 +1,9 @@
 package plugins
 
 import (
-	"archive/zip"
-	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,7 +31,7 @@ func TestPluginConnectorReadsPinnedSnapshotWithoutCredentialsOrExecution(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	detail, err := prepareCatalogFixture(t, ctx, stage, "", "", true)
+	detail, err := prepareCatalogFixture(t, ctx, stage, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,55 +83,61 @@ func TestPluginConnectorReadsPinnedSnapshotWithoutCredentialsOrExecution(t *test
 	}
 }
 
-func TestPluginConnectorUsesNativeSummaryAndSanitizesURL(t *testing.T) {
-	pkg := packageplugin.Package{NativeImplementations: map[string]packageplugin.NativeImplementation{
-		"codex": {Servers: []packageplugin.NativeServerSummary{{Key: "native", Name: "Native service", Transport: "streamable-http", Endpoint: "https://user:password@example.com/mcp?token=hidden#hidden"}}},
-	}}
-	value, err := pluginConnectorResponse(pkg, "native")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := json.Marshal(value); err != nil {
-		t.Fatalf("native response cannot be serialized: %v", err)
-	}
-	if value.Connector.Name != "Native service" || value.Connector.URL != "https://example.com/mcp" {
-		t.Fatalf("wrong native info: %+v", value)
+func TestPluginConnectorSanitizesSavedURL(t *testing.T) {
+	pkg := packageplugin.Package{ContractVersion: constants.PluginTargetContractVersion, Format: constants.PluginFormatPortable, Manifest: packageplugin.Manifest{Schema: constants.PluginManifestSchema}, Servers: []packageplugin.Server{{Key: "service", Type: "streamable-http", URL: "https://user:password@example.com/mcp?token=hidden#hidden"}}}
+	result, err := pluginConnectorResponse(pkg, "service")
+	if err != nil || result.Connector.URL != "https://example.com/mcp" {
+		t.Fatal("saved URL disclosed private parts", result.Connector.URL, err)
 	}
 }
 
 func TestCatalogPluginConnectorPinsSourceWithoutInstalling(t *testing.T) {
-	ctx := pluginAPIContext(t)
-	root := t.TempDir()
-	t.Setenv("ALLY_PLUGIN_CATALOG_URL", root)
-	source, archive := strings.Repeat("a", 40), strings.Repeat("b", 64)
-	document := map[string]any{"schemaVersion": 1, "entries": []map[string]any{{
-		"key": "reader", "directory": "catalog/reader.zip", "sourceCommit": source, "archiveSHA256": archive,
-		"package": map[string]any{"manifest": map[string]any{"name": "reader"}, "servers": []map[string]any{{"key": "service", "type": "streamable-http", "url": "https://example.com/mcp?secret=hidden"}}},
-	}}}
-	raw, _ := json.Marshal(document)
-	if err := os.WriteFile(filepath.Join(root, "catalog.json"), raw, 0600); err != nil {
-		t.Fatal(err)
-	}
-	request := GetCatalogPluginConnector{Key: "reader", ConnectorKey: "service", SourceCommit: source, ArchiveSHA256: archive}
-	value, err := request.Output(ctx)
-	if err != nil || value.(mcp.ConnectorResponse).Connector.URL != "https://example.com/mcp" {
+	f := newDetailsFixture(t, "")
+	request := GetCatalogPluginConnector{Key: "recovery", ConnectorKey: "remote", SourceCommit: f.commit, ArchiveSHA256: f.archiveHash}
+	value, err := request.Output(f.ctx)
+	if err != nil || value.(mcp.ConnectorResponse).Connector.URL != "https://example.invalid/mcp" {
 		t.Fatalf("catalog connector missing: %+v %v", value, err)
 	}
-	if _, err := json.Marshal(value); err != nil {
-		t.Fatalf("catalog response cannot be serialized: %v", err)
-	}
-	listed, err := (&ListPlugins{}).Output(ctx)
-	if err != nil || len(listed.(ListPluginsResponse).Resources) != 0 {
-		t.Fatalf("read created resources: %+v %v", listed, err)
+	listed, err := (&ListPlugins{}).Output(f.ctx)
+	if err != nil || len(listed.(ListPluginsResponse).Resources) != 0 || f.archiveRequests.Load() != 0 {
+		t.Fatalf("read created resources or fetched ZIP: %+v %v", listed, err)
 	}
 	request.ArchiveSHA256 = strings.Repeat("c", 64)
-	if _, err := request.Output(ctx); !errors.Is(err, status_error.PluginVersionConflict) {
+	if _, err := request.Output(f.ctx); !errors.Is(err, status_error.PluginVersionConflict) {
 		t.Fatalf("stale catalog read: %v", err)
 	}
 }
 
+func TestCatalogPluginConnectorReadsPublicAPIKeySummaryWithoutPrivateBindings(t *testing.T) {
+	f := newDetailsFixture(t, "api-key")
+	request := GetCatalogPluginConnector{Key: "recovery", ConnectorKey: "remote", SourceCommit: f.commit, ArchiveSHA256: f.archiveHash}
+	value, err := request.Output(f.ctx)
+	if err != nil {
+		t.Fatalf("public API key connector was validated as an installed package: %v", err)
+	}
+	connector := value.(mcp.ConnectorResponse).Connector
+	if connector.URL != "https://example.invalid/mcp" || connector.TestStatus != constants.MCPTestStatusUntested || len(connector.Headers) != 0 {
+		t.Fatalf("public summary invented private configuration or diagnostics: %+v", connector)
+	}
+	_, total, err := global.PluginControllerManager.List(f.ctx, "", "", 0, 100)
+	if err != nil || total != 0 || f.archiveRequests.Load() != 0 || f.detailsRequests.Load() != 1 {
+		t.Fatalf("preview installed a resource or downloaded an archive: total=%d zip=%d details=%d err=%v", total, f.archiveRequests.Load(), f.detailsRequests.Load(), err)
+	}
+	request.ConnectorKey = "missing"
+	if _, err := request.Output(f.ctx); !errors.Is(err, status_error.PluginContentInvalid) {
+		t.Fatalf("unknown public connector accepted: %v", err)
+	}
+}
+
+func TestPluginConnectorRejectsInstalledAPIKeyWithoutPrivateBindings(t *testing.T) {
+	pkg := packageplugin.Package{ContractVersion: constants.PluginTargetContractVersion, Format: constants.PluginFormatPortable, Manifest: packageplugin.Manifest{Schema: constants.PluginManifestSchema}, Servers: []packageplugin.Server{{Key: "remote", Type: "streamable-http", URL: "https://example.invalid/mcp", Authentication: &packageplugin.MCPAuthentication{Type: "api_key", HeaderScheme: "bearer"}}}}
+	if _, err := pluginConnectorResponse(pkg, "remote"); !errors.Is(err, status_error.PluginManifestInvalid) {
+		t.Fatalf("installed connector skipped authentication binding validation: %v", err)
+	}
+}
+
 func TestPluginConnectorIncludesManagedHeaderNamesWithoutRequestingCredentials(t *testing.T) {
-	pkg := packageplugin.Package{Servers: []packageplugin.Server{{Key: "service", Type: "streamable-http", URL: "https://example.com/mcp"}}, Integration: packageplugin.Integration{Authentication: &packageplugin.Authentication{Bindings: []packageplugin.AuthenticationBinding{{Runtime: "codex", Server: "service", URL: "https://example.com/mcp", Header: "Authorization"}, {Runtime: "claude", Server: "service", URL: "https://example.com/mcp", Header: "Authorization"}}}}}
+	pkg := packageplugin.Package{ContractVersion: constants.PluginTargetContractVersion, Format: constants.PluginFormatPortable, Manifest: packageplugin.Manifest{Schema: constants.PluginManifestSchema}, Servers: []packageplugin.Server{{Key: "service", Type: "streamable-http", URL: "https://example.com/mcp"}}, Integration: packageplugin.Integration{Authentication: &packageplugin.Authentication{Strategy: constants.PluginAuthCommandStrategy, Protocol: constants.PluginAuthProtocol, Bindings: []packageplugin.AuthenticationBinding{{Runtime: "codex", Server: "service", URL: "https://example.com/mcp", Header: "Authorization"}, {Runtime: "claude", Server: "service", URL: "https://example.com/mcp", Header: "Authorization"}}}}}
 	result, err := pluginConnectorResponse(pkg, "service")
 	if err != nil {
 		t.Fatal(err)
@@ -144,51 +147,12 @@ func TestPluginConnectorIncludesManagedHeaderNamesWithoutRequestingCredentials(t
 	}
 }
 
-func TestCatalogPluginConnectorFallsBackWhenSnapshotOmitsRequestedComponent(t *testing.T) {
-	ctx := pluginAPIContext(t)
-	root := t.TempDir()
-	t.Setenv("ALLY_PLUGIN_CATALOG_URL", root)
-	var data bytes.Buffer
-	writer := zip.NewWriter(&data)
-	for path, body := range map[string]string{
-		".claude-plugin/plugin.json": `{"name":"reader","version":"1.0.0"}`,
-		".mcp.json":                  `{"native":{"type":"http","url":"https://example.com/native"}}`,
-	} {
-		entry, err := writer.Create(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := entry.Write([]byte(body)); err != nil {
-			t.Fatal(err)
-		}
+func TestCatalogPluginConnectorNeverFallsBackWhenDetailsOmitRequestedComponent(t *testing.T) {
+	f := newDetailsFixture(t, "")
+	if _, err := (&GetCatalogPluginConnector{Key: "recovery", ConnectorKey: "missing"}).Output(f.ctx); !errors.Is(err, status_error.PluginContentInvalid) {
+		t.Fatalf("missing details component accepted: %v", err)
 	}
-	if err := writer.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(root, "catalog"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "catalog/reader.zip"), data.Bytes(), 0600); err != nil {
-		t.Fatal(err)
-	}
-	digest := sha256.Sum256(data.Bytes())
-	document := map[string]any{"schemaVersion": 1, "entries": []map[string]any{{"key": "reader", "directory": "catalog/reader.zip", "sourceCommit": strings.Repeat("a", 40), "archiveSHA256": hex.EncodeToString(digest[:]), "package": map[string]any{"manifest": map[string]any{"name": "reader"}, "servers": []map[string]any{{"key": "other", "type": "stdio", "command": "node"}}}}}}
-	raw, _ := json.Marshal(document)
-	if err := os.WriteFile(filepath.Join(root, "catalog.json"), raw, 0600); err != nil {
-		t.Fatal(err)
-	}
-	value, err := (&GetCatalogPluginConnector{Key: "reader", ConnectorKey: "native"}).Output(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if value.(mcp.ConnectorResponse).Connector.URL != "https://example.com/native" {
-		t.Fatalf("wrong archive component: %+v", value)
-	}
-	entries, err := os.ReadDir(stagedRoot())
-	if err != nil && !os.IsNotExist(err) {
-		t.Fatal(err)
-	}
-	if len(entries) != 0 {
-		t.Fatalf("temporary snapshot leaked: %+v", entries)
+	if f.archiveRequests.Load() != 0 {
+		t.Fatal("missing public component downloaded archive")
 	}
 }

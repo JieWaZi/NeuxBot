@@ -201,6 +201,7 @@ func (c *mcpConnectorController) Update(
 		Where("id = ?", connector.ID).
 		Select(
 			"Name",
+			"Categories",
 			"Description",
 			"Transport",
 			"Command",

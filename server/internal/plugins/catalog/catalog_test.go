@@ -12,35 +12,20 @@ import (
 	"testing"
 )
 
-func TestCatalogRejectsChangedZIP(t *testing.T) {
-	root := t.TempDir()
-	directory := filepath.Join(root, "catalog")
-	if err := os.MkdirAll(directory, 0700); err != nil {
-		t.Fatal(err)
+func TestCatalogRejectsLegacyLocalZIPInputs(t *testing.T) {
+	if _, err := ResolveEntry(Entry{ArchiveSHA256: strings.Repeat("a", 64)}); err == nil {
+		t.Fatal("legacy local ZIP input was admitted")
 	}
-	archive := []byte("fixed archive bytes")
-	sum := sha256.Sum256(archive)
-	index := fmt.Sprintf(`{"schemaVersion":1,"entries":[{"key":"example","directory":"catalog/example.zip","sourceCommit":"1111111111111111111111111111111111111111","archiveSHA256":"%x","package":{"manifest":{"name":"example"}}}]}`, sum)
-	if err := os.WriteFile(filepath.Join(root, "catalog.json"), []byte(index), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(directory, "example.zip"), archive, 0600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Resolve(root, "example"); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(directory, "example.zip"), []byte("changed"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Resolve(root, "example"); err == nil {
-		t.Fatal("accepted modified ZIP")
+	for _, version := range []int{2, 3} {
+		if _, err := parseIndex([]byte(fmt.Sprintf(`{"schemaVersion":%d,"entries":[]}`, version))); err == nil {
+			t.Fatal("old catalog version accepted")
+		}
 	}
 }
 
 func TestCatalogCarriesSanitizedIconAndBilingualPresentationWithoutPackageDownload(t *testing.T) {
 	icon := "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(`<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>`))
-	data := []byte(`{"schemaVersion":2,"entries":[{"key":"office","name":"office","version":"0.1.0","description":"Office tools","format":"codex","sourceCommit":"` + strings.Repeat("a", 40) + `","archiveSHA256":"` + strings.Repeat("b", 64) + `","archiveURL":"https://example.invalid/office.zip","packagePath":"neuxally-plugin/office","icon":"` + icon + `","displayNames":{"en":"Office","zh-CN":"办公"},"localizedDescriptions":{"zh-CN":"处理办公资料"}}]}`)
+	data := []byte(`{"schemaVersion":1,"entries":[{"key":"office","name":"office","version":"0.1.0","description":"Office tools","format":"agent-plugins","sourceCommit":"` + strings.Repeat("a", 40) + `","archiveSHA256":"` + strings.Repeat("b", 64) + `","archiveURL":"https://example.invalid/office.zip","detailsURL":"https://example.invalid/details.json","detailsSHA256":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","detailsSize":100,"packagePath":"neuxally-plugin/office","icon":"` + icon + `","displayNames":{"en":"Office","zh-CN":"办公"},"localizedDescriptions":{"zh-CN":"处理办公资料"}}]}`)
 	entries, err := parseIndex(data)
 	if err != nil {
 		t.Fatal(err)
@@ -75,7 +60,7 @@ func TestBuiltPresentationArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 2 {
+	if len(entries) != 3 {
 		t.Fatalf("unexpected plugin catalog count: %d", len(entries))
 	}
 	for _, entry := range entries {
@@ -94,10 +79,13 @@ func TestBuiltPresentationArtifacts(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if stage.Package.Icon != entry.Package.Icon {
-				t.Fatal("catalog and ZIP icon diverged")
+			if stage.Package.Icon != entry.Package.Icon || stage.Package.Presentation.Icons != entry.Package.Presentation.Icons {
+				t.Fatal("catalog and ZIP theme icons diverged")
 			}
-			if stage.Package.Manifest.Version != "0.1.0" || stage.Package.Presentation.DeveloperName != "NeuxBot" {
+			if entry.Key == "github" && (entry.Package.Presentation.Icons.Dark == "" || entry.Package.Presentation.Icons.Dark == entry.Package.Icon) {
+				t.Fatal("GitHub requires a distinct official white dark logo")
+			}
+			if stage.Package.Manifest.Version != entry.Package.Manifest.Version || stage.Package.Presentation.DeveloperName == "" {
 				t.Fatal("logical plugin identity or developer differs")
 			}
 			for _, locale := range []string{"en", "zh-CN"} {
@@ -131,9 +119,26 @@ func TestCatalogRejectsIncompleteOrInvalidDetailsMetadata(t *testing.T) {
 		`"detailsURL":"https://example.invalid/details.json","detailsSHA256":"` + strings.Repeat("a", 64) + `","detailsSize":0`,
 		`"detailsURL":"https://example.invalid/details.json","detailsSHA256":"` + strings.Repeat("a", 64) + `","detailsSize":4194305`,
 	} {
-		raw := fmt.Sprintf(`{"schemaVersion":2,"entries":[{"key":"details","name":"details","sourceCommit":"%s","archiveURL":"https://example.invalid/owned.zip","archiveSHA256":"%s","packagePath":"entry",%s}]}`, strings.Repeat("a", 40), strings.Repeat("b", 64), fields)
+		raw := fmt.Sprintf(`{"schemaVersion":1,"entries":[{"key":"details","name":"details","sourceCommit":"%s","archiveURL":"https://example.invalid/owned.zip","archiveSHA256":"%s","packagePath":"entry",%s}]}`, strings.Repeat("a", 40), strings.Repeat("b", 64), fields)
 		if _, err := parseIndex([]byte(raw)); err == nil {
 			t.Fatalf("invalid sidecar metadata accepted: %s", fields)
 		}
+	}
+}
+
+func TestCatalogThemeIconsAreSafeAndIndependent(t *testing.T) {
+	icon := "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(`<svg xmlns="http://www.w3.org/2000/svg"><path fill="#fff" d="M0 0"/></svg>`))
+	entry := map[string]any{"key": "github", "name": "github", "format": "agent-plugins", "sourceCommit": strings.Repeat("a", 40), "archiveSHA256": strings.Repeat("b", 64), "archiveURL": "https://example.com/plugin.zip", "packagePath": "plugins/github", "detailsURL": "https://example.com/details.json", "detailsSHA256": strings.Repeat("c", 64), "detailsSize": 100, "icon": "https://example.com/track.png", "icons": map[string]string{"default": icon, "dark": "https://example.com/track-dark.png"}}
+	parse := func() ([]Entry, error) {
+		data, _ := json.Marshal(map[string]any{"schemaVersion": 1, "entries": []any{entry}})
+		return parseIndex(data)
+	}
+	entries, err := parse()
+	if err != nil || entries[0].Package.Icon != icon || entries[0].Package.Presentation.Icons.Default != icon || entries[0].Package.Presentation.Icons.Dark != "" {
+		t.Fatalf("theme icons escaped sanitizer: %+v %v", entries, err)
+	}
+	entry["icons"] = map[string]string{"default": icon, "dark": icon, "source": "private"}
+	if _, err := parse(); err == nil {
+		t.Fatal("unknown theme field accepted")
 	}
 }

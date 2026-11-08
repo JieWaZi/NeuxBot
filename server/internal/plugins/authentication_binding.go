@@ -58,10 +58,6 @@ func authenticationTarget(logical, target Package, cli string) (Package, error) 
 	if len(bindings) == 0 {
 		return target, nil
 	}
-	// 两个独立桥接不能隐式合并账号、权限和租约。
-	if _, referenced := logical.Integration.NativePlugins[cli]; referenced && target.Integration.Authentication != nil {
-		return Package{}, status_error.PluginManifestInvalid
-	}
 	target.Servers = slices.Clone(target.Servers)
 	for _, binding := range bindings {
 		index := slices.IndexFunc(target.Servers, func(server Server) bool { return server.Key == binding.Server })
@@ -84,4 +80,79 @@ func authenticationTarget(logical, target Package, cli string) (Package, error) 
 func AuthenticationEnvironmentKey(id string, binding AuthenticationBinding) string {
 	digest := sha256.Sum256([]byte(id + "\x00" + binding.Server + "\x00" + strings.ToLower(binding.Header) + "\x00" + binding.URL))
 	return constants.PluginAuthEnvironmentPrefix + fmt.Sprintf("%X", digest[:16])
+}
+
+// SkillAuthenticationBinding 只向明确技能交付声明的账号环境。
+type SkillAuthenticationBinding struct {
+	// Runtime 是受支持的原生运行目标。
+	Runtime string `json:"runtime"`
+	// Skill 是已发现技能的稳定组件键。
+	Skill string `json:"skill"`
+	// EnvironmentKeys 是允许账号驱动提供的环境键。
+	EnvironmentKeys []string `json:"environmentKeys"`
+	// PrivatePathKeys 是环境允许键中必须指向私有账号目录的子集。
+	PrivatePathKeys []string `json:"privatePathKeys,omitempty"`
+}
+
+func validateSkillAuthenticationBindings(pkg Package) error {
+	if pkg.Integration.Authentication == nil {
+		return nil
+	}
+	known := map[string]bool{}
+	for _, skill := range pkg.Skills {
+		known[skill.Key] = true
+	}
+	identities := map[string]bool{}
+	for _, binding := range pkg.Integration.Authentication.SkillBindings {
+		identity := binding.Runtime + "\x00" + binding.Skill
+		if (binding.Runtime != "codex" && binding.Runtime != "claude") || !known[binding.Skill] || identities[identity] {
+			return status_error.PluginManifestInvalid
+		}
+		identities[identity] = true
+		paths := map[string]bool{}
+		for _, key := range binding.PrivatePathKeys {
+			if paths[key] {
+				return status_error.PluginManifestInvalid
+			}
+			paths[key] = true
+		}
+		keys := map[string]bool{}
+		folded := map[string]bool{}
+		for _, key := range binding.EnvironmentKeys {
+			upper := strings.ToUpper(key)
+			if !configurationKeyPattern.MatchString(key) || folded[upper] || forbiddenSkillEnvironment(upper) || (upper == "PATH" && !paths[key]) {
+				return status_error.PluginManifestInvalid
+			}
+			keys[key] = true
+			folded[upper] = true
+		}
+		for key := range paths {
+			if !keys[key] {
+				return status_error.PluginManifestInvalid
+			}
+		}
+	}
+	return nil
+}
+
+func forbiddenSkillEnvironment(key string) bool {
+	for _, prefix := range []string{"LD_", "DYLD_", "PYTHON", "NEUXALLY_", "NEUXBOT_", "ALLY", "CODEX", "CLAUDE", "NODE_"} {
+		if strings.HasPrefix(key, prefix) {
+			return true
+		}
+	}
+	return slices.Contains([]string{"HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "PWD", "OLDPWD", "SHELL", "ENV", "BASH_ENV", "ZDOTDIR", "PLUGIN_ROOT", "PLUGIN_DATA", "GOROOT", "GOPATH"}, key)
+}
+
+// TargetSkillAuthenticationBindings 返回当前运行目标的显式技能绑定。
+func TargetSkillAuthenticationBindings(pkg Package, cli string) []SkillAuthenticationBinding {
+	result := []SkillAuthenticationBinding{}
+	if pkg.Integration.Authentication != nil {
+		for _, binding := range pkg.Integration.Authentication.SkillBindings {
+			if binding.Runtime == cli {
+				result = append(result, binding)
+			}
+		}
+	}
+	return result
 }

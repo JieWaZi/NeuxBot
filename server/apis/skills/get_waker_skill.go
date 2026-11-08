@@ -27,9 +27,9 @@ func (g *GetWakerSkill) Output(ctx *gin.Context) (interface{}, error) {
 
 // getSkill 复用相同资源用例，空伙伴范围表示全局库。
 func getSkill(ctx *gin.Context, g *GetWakerSkill) (WakerSkillResponse, error) {
-	skill, visibleErr := visibleSkill(ctx, g.WakerID, g.SkillID)
-	if visibleErr != nil {
-		return WakerSkillResponse{}, ginx.WithStack(visibleErr)
+	skill, resourceErr := resourceSkill(ctx, g.WakerID, g.SkillID)
+	if resourceErr != nil {
+		return WakerSkillResponse{}, ginx.WithStack(resourceErr)
 	}
 	if g.WakerID == "" {
 		item := models.SkillWithState{SkillPackage: skill}
@@ -40,26 +40,23 @@ func getSkill(ctx *gin.Context, g *GetWakerSkill) (WakerSkillResponse, error) {
 			}
 			item.CurrentVersion = version
 		}
-		responses, err := wakerSkillResponses(ctx, []models.SkillWithState{item})
+		response, err := wakerSkillDetailResponse(ctx, item)
 		if err != nil {
 			return WakerSkillResponse{}, ginx.WithStack(err)
 		}
-		return responses[0], nil
+		return response, nil
 	}
-	if _, err := visibleSkill(ctx, g.WakerID, g.SkillID); err != nil {
-		return WakerSkillResponse{}, ginx.WithStack(err)
-	}
-	items, err := global.SkillControllerManager.ListVisible(ctx, g.WakerID, "")
+	items, err := global.SkillControllerManager.ListInstalled(ctx, g.WakerID, "")
 	if err != nil {
 		return WakerSkillResponse{}, ginx.WithStack(err)
 	}
 	for _, item := range items {
 		if item.SkillPackage.ID == g.SkillID {
-			responses, responseErr := wakerSkillResponses(ctx, []models.SkillWithState{item})
+			response, responseErr := wakerSkillDetailResponse(ctx, item)
 			if responseErr != nil {
 				return WakerSkillResponse{}, ginx.WithStack(responseErr)
 			}
-			return responses[0], nil
+			return response, nil
 		}
 	}
 	return WakerSkillResponse{}, ginx.WithStack(status_error.SkillNotFound)

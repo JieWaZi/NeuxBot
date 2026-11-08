@@ -34,47 +34,17 @@ func (*UpdateLibrarySkill) Path() string { return "/:skillId" }
 
 // Validate 复用相同字段校验。
 func (o *UpdateLibrarySkill) Validate(ctx *gin.Context) error {
-	return (&UpdateWakerSkill{Body: o.Body}).Validate(ctx)
+	update := &UpdateWakerSkill{Body: o.Body}
+	if err := update.Validate(ctx); err != nil {
+		return err
+	}
+	o.Body = update.Body
+	return nil
 }
 
 // Output 执行共享用例，不伪造伙伴身份。
 func (o *UpdateLibrarySkill) Output(ctx *gin.Context) (interface{}, error) {
 	return updateSkill(ctx, &UpdateWakerSkill{SkillID: o.SkillID, Body: o.Body})
-}
-
-// ScanLibrarySkillImport 管理全局库资源。
-type ScanLibrarySkillImport struct {
-	ginx.MethodPost
-	// 请求体
-	Body ScanSkillImportRequest `in:"body"`
-}
-
-// Path 返回全局专业资源入口。
-func (*ScanLibrarySkillImport) Path() string { return "/import/scan" }
-
-// Output 执行共享用例，不伪造伙伴身份。
-func (o *ScanLibrarySkillImport) Output(ctx *gin.Context) (interface{}, error) {
-	return scanSkillImport(ctx, &ScanWakerSkillImport{Body: o.Body})
-}
-
-// ImportLibrarySkills 管理全局库资源。
-type ImportLibrarySkills struct {
-	ginx.MethodPost
-	// 请求体
-	Body ImportSkillRequest `in:"body"`
-}
-
-// Path 返回全局专业资源入口。
-func (*ImportLibrarySkills) Path() string { return "/import" }
-
-// Validate 复用相同字段校验。
-func (o *ImportLibrarySkills) Validate(ctx *gin.Context) error {
-	return (&ImportWakerSkill{Body: o.Body}).Validate(ctx)
-}
-
-// Output 执行共享用例，不伪造伙伴身份。
-func (o *ImportLibrarySkills) Output(ctx *gin.Context) (interface{}, error) {
-	return importSkills(ctx, &ImportWakerSkill{Body: o.Body})
 }
 
 // ListLibrarySkillVersions 管理全局库资源。
