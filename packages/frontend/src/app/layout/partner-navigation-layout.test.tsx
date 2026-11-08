@@ -209,6 +209,7 @@ function TestLayout({
   renderTitlebar,
   navigationPreferences,
   sidebarToolbar,
+  notificationBell,
   teamContext,
 }: {
   activeChatId?: string;
@@ -221,6 +222,7 @@ function TestLayout({
   renderTitlebar?: (navigationToggle: ReactNode) => ReactNode;
   navigationPreferences?: Partial<PartnerNavigationPreferences>;
   sidebarToolbar?: ReactNode;
+  notificationBell?: ReactNode;
   teamContext?: { channelId: string; threadId?: string };
 }) {
   const navigate = useNavigate();
@@ -236,6 +238,7 @@ function TestLayout({
     <PartnerNavigationLayout
       renderTitlebar={renderTitlebar}
       sidebarToolbar={sidebarToolbar}
+      notificationBell={notificationBell}
       activeChatId={activeChatId}
       channels={[]}
       contextSidebarHidden={
@@ -327,6 +330,7 @@ function renderLayout({
   renderTitlebar,
   navigationPreferences,
   sidebarToolbar,
+  notificationBell,
   teamContext,
 }: {
   activeChatId?: string;
@@ -340,6 +344,7 @@ function renderLayout({
   renderTitlebar?: (navigationToggle: ReactNode) => ReactNode;
   navigationPreferences?: Partial<PartnerNavigationPreferences>;
   sidebarToolbar?: ReactNode;
+  notificationBell?: ReactNode;
   teamContext?: { channelId: string; threadId?: string };
 } = {}) {
   const queryClient = new QueryClient({
@@ -360,6 +365,7 @@ function renderLayout({
             renderTitlebar={renderTitlebar}
             navigationPreferences={navigationPreferences}
             sidebarToolbar={sidebarToolbar}
+            notificationBell={notificationBell}
             teamContext={teamContext}
           />
         </WorkspaceProvider>
@@ -369,6 +375,26 @@ function renderLayout({
 }
 
 describe("PartnerNavigationLayout", () => {
+  it("通知紧跟前进按钮，模块栏不重复显示通知", () => {
+    renderLayout({
+      sidebarToolbar: (
+        <>
+          <button>后退</button>
+          <button>前进</button>
+        </>
+      ),
+      notificationBell: <button>通知入口</button>,
+    });
+    const bell = screen.getByRole("button", { name: "通知入口" });
+    const slot = bell.closest("[data-sidebar-history-slot]");
+    expect(slot).not.toBeNull();
+    expect(slot?.querySelectorAll("button")[1]).toHaveAccessibleName("前进");
+    expect(slot?.lastElementChild).toBe(bell);
+    expect(
+      screen.getByRole("navigation", { name: "模块导航" }),
+    ).not.toContainElement(bell);
+  });
+
   it("Rail仍是整窗首列，正常伙伴列表始终显示且没有全局收起/展开按钮", () => {
     renderLayout({
       renderTitlebar: () => <header aria-label="内容顶栏">当前内容</header>,
@@ -701,9 +727,13 @@ describe("PartnerNavigationLayout", () => {
     expect(sceneSurface.children[1]).not.toHaveClass("pl-4");
   });
 
-  it("工作流不装配空侧栏并保留固定模块入口", () => {
+  it.each([
+    "/workflows/new",
+    "/workflows/definition-1",
+    "/workflows/definition-1/runs/run-1",
+  ])("工作流 %s 不装配空侧栏并选中资源库", (initialEntry) => {
     renderLayout({
-      initialEntry: "/workflows/definition-1",
+      initialEntry,
       selectedPartnerId: "",
     });
     expect(
@@ -718,10 +748,11 @@ describe("PartnerNavigationLayout", () => {
     expect(
       screen.queryByRole("separator", { name: "调整模块侧栏宽度" }),
     ).toBeNull();
-    expect(screen.getByRole("button", { name: "工作流" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "资源库" })).toHaveAttribute(
       "aria-current",
       "page",
     );
+    expect(screen.queryByRole("button", { name: "工作流" })).toBeNull();
     expect(screen.getByRole("navigation", { name: "模块导航" })).toBeVisible();
   });
 

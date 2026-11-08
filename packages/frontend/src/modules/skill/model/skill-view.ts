@@ -6,22 +6,17 @@ export function toSkillSummary(
   item: GithubComJieWaZiNeuxBotServerApisSkillsWakerSkillResponse,
 ): SkillSummary | null {
   const skill = item.skill;
-  if (!skill?.id) return null;
-  const scope =
-    skill.builtIn || skill.source === "builtin"
-      ? "built_in"
-      : skill.scope === "public"
-        ? "public"
-        : "private";
-  const source =
-    skill.source === "git" ? "git" : skill.source === "zip" ? "zip" : "ally";
+  if (!skill?.id || (skill.source !== "git" && skill.source !== "zip"))
+    return null;
+  const source = skill.source;
   return {
     id: skill.id,
     name: skill.name ?? "",
     description: skill.description ?? "",
+    categories: skill.categories,
     version: item.currentVersion?.version ?? "",
-    scope,
     source,
+    sourceUrl: skill.gitUrl,
     enabled: item.enabled ?? false,
     affectedWakerCount: item.affectedWakerCount ?? 1,
     installedPartners: (item.installedPartners ?? []).flatMap((partner) =>

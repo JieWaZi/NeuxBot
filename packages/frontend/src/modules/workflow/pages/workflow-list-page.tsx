@@ -5,16 +5,10 @@ import { useTranslation } from "react-i18next";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { ResourceInfiniteScroll } from "@/shared/ui/resource-infinite-scroll";
 import { EmptyState } from "@/shared/ui/empty-state";
-import {
-  ResourceCardGrid,
-  ResourcePageLibraryLabel,
-  ResourcePageToolbar,
-} from "@/shared/ui/resource-page";
+import { ResourceCardGrid } from "@/shared/ui/resource-page";
+import { ResourceLoadingState } from "@/shared/ui/resource-loading-state";
 import { WorkflowCard } from "../components/workflow-card";
-import {
-  WorkflowLoadingState,
-  WorkflowQueryError,
-} from "../components/query-feedback";
+import { WorkflowQueryError } from "../components/query-feedback";
 import { listWorkflowsQueryKey } from "../api/workflow-queries";
 import { listWorkflowsInfiniteOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
@@ -42,15 +36,15 @@ export function WorkflowResourceCollection({
       void client.invalidateQueries({ queryKey: listWorkflowsQueryKey() });
   }, [active, client]);
   const query = useInfiniteQuery({
-    ...listWorkflowsInfiniteOptions({ query: { search, limit: 9 } }),
+    ...listWorkflowsInfiniteOptions({ query: { search, limit: 24 } }),
     enabled: active,
-    initialPageParam: { query: { search, limit: 9 } },
+    initialPageParam: { query: { search, limit: 24 } },
     getNextPageParam: (page) =>
       page.nextBefore && page.nextBeforeId
         ? {
             query: {
               search,
-              limit: 9,
+              limit: 24,
               before: page.nextBefore,
               beforeId: page.nextBeforeId,
             },
@@ -59,43 +53,37 @@ export function WorkflowResourceCollection({
   });
   const items = query.data?.pages.flatMap((page) => page.items ?? []) ?? [];
   return (
-    <>
-      <ResourcePageToolbar filters={filters}>
-        <ResourcePageLibraryLabel
-          installed={t("library")}
-          count={t("count", { count: items.length })}
-        />
-      </ResourcePageToolbar>
-      {query.isError ? (
+    <div className="grid min-w-0 gap-8">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">{filters}</div>
+      {query.isError && !query.isFetchNextPageError ? (
         <WorkflowQueryError
           error={query.error}
-          className="mt-6"
           retrying={query.isFetching}
           onRetry={() => void query.refetch()}
         />
       ) : null}
       {query.isPending ? (
-        <WorkflowLoadingState className="mt-6" />
+        <ResourceLoadingState layout="rows" label={t("loading")} />
       ) : !query.data ? null : !items.length ? (
         <EmptyState
-          className="mt-6"
-          title={t("empty")}
-          description={t("emptyHelp")}
+          title={search ? t("plugin:noResults") : t("empty")}
+          description={search ? undefined : t("emptyHelp")}
           icon={Workflow}
         />
       ) : (
-        <ResourceCardGrid className="mt-6">
+        <ResourceCardGrid appearance="catalog">
           {items.map((definition) => (
             <WorkflowCard key={definition.id} definition={definition} />
           ))}
         </ResourceCardGrid>
       )}
       <ResourceInfiniteScroll
-        hasMore={Boolean(query.hasNextPage)}
+        hasMore={active && Boolean(query.hasNextPage)}
         pending={query.isFetchingNextPage}
         error={query.isFetchNextPageError ? query.error : undefined}
         onLoadMore={() => void query.fetchNextPage()}
+        showLoadMoreButton={false}
       />
-    </>
+    </div>
   );
 }

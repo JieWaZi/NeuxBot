@@ -93,6 +93,7 @@ import { ResourcesContextSidebar } from "./resources-context-sidebar";
 import {
   changeResourceCategory,
   resourceCategoryFromParams,
+  resourceLibraryHref,
 } from "../pages/resources-navigation";
 import { PartnerNavigationLayout } from "./partner-navigation-layout";
 import { TeamMemberMenu } from "./team-context-sidebar";
@@ -815,15 +816,13 @@ function AppShellContent({
                   <span aria-current="page">
                     {isChatSurface
                       ? routeSceneLabels.chat
-                      : navigation.moduleId === "workflows"
-                        ? routeSceneLabels.workflow
-                        : routeSceneForLocation(
-                            {
-                              pathname: location.pathname,
-                              search: location.search,
-                            },
-                            routeSceneLabels,
-                          ).label}
+                      : routeSceneForLocation(
+                          {
+                            pathname: location.pathname,
+                            search: location.search,
+                          },
+                          routeSceneLabels,
+                        ).label}
                   </span>
                 }
               />
@@ -847,17 +846,30 @@ function AppShellContent({
           moduleSidebar={
             navigation.sidebarKind === "resources" ? (
               <ResourcesContextSidebar
+                active={hasActiveScene && !settingsOpen}
+                currentPath={location.pathname}
                 category={resourceCategoryFromParams(
                   location.pathname === "/resources"
                     ? searchParams
                     : new URLSearchParams(navigation.parentHref.split("?")[1]),
                 )}
                 onCategoryChange={(category) => {
-                  const next = changeResourceCategory(searchParams, category);
+                  const next = changeResourceCategory(
+                    new URLSearchParams(
+                      resourceLibraryHref(location).split("?")[1],
+                    ),
+                    category,
+                  );
                   navigate(`/resources?${next.toString()}`, {
                     flushSync: true,
                   });
                 }}
+                onPluginSelect={(href) =>
+                  navigate(href, {
+                    state: { resourceBack: resourceLibraryHref(location) },
+                    flushSync: true,
+                  })
+                }
               />
             ) : undefined
           }

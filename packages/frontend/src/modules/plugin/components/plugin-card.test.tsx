@@ -1,193 +1,159 @@
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
-import { it, expect, vi, afterEach } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter, useLocation } from "react-router-dom";
+import { afterEach, expect, it, vi } from "vitest";
 import "@/shared/i18n";
 import { PluginCard } from "./plugin-card";
-import type { PluginCatalogEntry, PluginDetail } from "../model/plugin-view";
+import type { PluginBrowseEntry } from "../model/plugin-browse";
 
 afterEach(cleanup);
-it("keeps a catalog name localized after preparation saves its English default", () => {
+const installed: PluginBrowseEntry = {
+  sourceKey: "source:office",
+  pluginId: "office",
+  versionId: "old",
+  catalogKey: "office",
+  name: "办公",
+  description: "实际安装内容",
+  installedCount: 2,
+};
+function RouteState() {
+  return <output>{JSON.stringify(useLocation().state)}</output>;
+}
+it("opens the actual installed resource and preserves search and partner", () => {
+  render(
+    <MemoryRouter initialEntries={["/resources?search=办公&partner=w1"]}>
+      <PluginCard entry={installed} />
+      <RouteState />
+    </MemoryRouter>,
+  );
+  const link = screen.getByRole("link", { name: "查看插件 办公" });
+  expect(link).toHaveAttribute("href", "/resources/plugins/office");
+  expect(screen.getByText("实际安装内容")).toBeVisible();
+  expect(screen.getByText("已安装")).toBeVisible();
+  expect(screen.queryByRole("checkbox")).toBeNull();
+  expect(screen.queryByRole("button", { name: /更多操作/ })).toBeNull();
+  expect(screen.queryByText(/伙伴使用/)).toBeNull();
+  fireEvent.click(link);
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "/resources?search=办公&partner=w1",
+  );
+});
+it("keeps the browse dark icon when the summary also provides a single-icon fallback", () => {
+  const light = "data:image/png;base64,light";
+  const dark = "data:image/png;base64,dark";
   render(
     <MemoryRouter>
       <PluginCard
-        catalog={{
-          key: "feishu-office",
-          package: {
-            manifest: { name: "feishu-office" },
-            presentation: {
-              displayName: "feishu-office",
-              displayNames: { en: "Feishu Office", "zh-CN": "飞书办公" },
-              localizedDescriptions: { "zh-CN": "协助办公" },
-            },
-          },
-        }}
-        detail={{ plugin: { id: "p", name: "Feishu Office" } }}
-        onInstall={vi.fn()}
+        entry={{ ...installed, icon: light, icons: { default: light, dark } }}
       />
     </MemoryRouter>,
   );
-  expect(screen.getByRole("button", { name: "安装 飞书办公" })).toBeVisible();
-  expect(screen.queryByText("Feishu Office")).not.toBeInTheDocument();
-  expect(screen.getByText("协助办公")).toBeVisible();
+  const images = screen.getByRole("article").querySelectorAll("img");
+  expect(images).toHaveLength(2);
+  expect(images[1]).toHaveAttribute("src", dark);
+  expect(images[1]).toHaveClass("dark:block");
 });
-it("keeps the saved card focused on description, partner usage and management", () => {
+it("uses a separate text install action and routes uninstalled entries through the catalog", () => {
+  const install = vi.fn();
+  render(
+    <MemoryRouter>
+      <PluginCard
+        entry={{ ...installed, pluginId: undefined, installedCount: 0 }}
+        onInstall={install}
+      />
+    </MemoryRouter>,
+  );
+  const link = screen.getByRole("link", { name: "查看插件 办公" });
+  const action = screen.getByRole("button", { name: "安装 办公" });
+  expect(link).toHaveAttribute("href", "/resources/plugins/catalog/office");
+  expect(action).toHaveTextContent("安装");
+  expect(action.querySelector("svg")).not.toBeNull();
+  expect(link).not.toContainElement(action);
+  fireEvent.click(action);
+  expect(install).toHaveBeenCalledOnce();
+  expect(screen.queryByText("已安装")).toBeNull();
+});
+it("replaces installed status with the current update action", () => {
+  const update = vi.fn();
+  render(
+    <MemoryRouter>
+      <PluginCard
+        entry={{ ...installed, update: { available: true } }}
+        onUpdate={update}
+      />
+    </MemoryRouter>,
+  );
+  expect(screen.queryByText("已安装")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "更新 办公" }));
+  expect(update).toHaveBeenCalledOnce();
+});
+it("prioritizes required authorization over update and installed state", () => {
+  const install = vi.fn();
+  render(
+    <MemoryRouter>
+      <PluginCard
+        entry={{
+          ...installed,
+          requiresAuthorization: true,
+          update: { available: true },
+        }}
+        onInstall={install}
+        onUpdate={vi.fn()}
+      />
+    </MemoryRouter>,
+  );
+  expect(screen.queryByRole("button", { name: "更新 办公" })).toBeNull();
+  expect(screen.queryByText("已安装")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "授权 办公" }));
+  expect(install).toHaveBeenCalledOnce();
+});
+it("keeps partner frozen-version content and places maintenance behind its detail link", () => {
   render(
     <MemoryRouter>
       <PluginCard
         detail={{
-          plugin: { id: "p", name: "飞书办公" },
-          account: { available: true },
-          installations: [{ wakerId: "w1", versionId: "v1" }],
+          plugin: { id: "office", name: "办公" },
+          resolvedVersionId: "new",
+          installations: [{ wakerId: "w1", versionId: "old", enabled: false }],
           versions: [
-            {
-              id: "v1",
-              version: "1.0.98",
-              package: {
-                manifest: {
-                  name: "feishu",
-                  author: { name: "Developer" },
-                },
-              },
-            },
-          ],
-        }}
-        onInstall={vi.fn()}
-      />
-    </MemoryRouter>,
-  );
-  expect(screen.getByText("1 个伙伴使用")).toBeVisible();
-  const more = screen.getByRole("button", { name: "飞书办公更多操作" });
-  fireEvent.pointerDown(more, { button: 0, ctrlKey: false });
-  expect(screen.getByRole("menuitem", { name: "查看详情" })).toHaveAttribute(
-    "href",
-    "/resources/plugins/p",
-  );
-  expect(screen.queryByText("已授权")).not.toBeInTheDocument();
-  expect(screen.queryByText("Developer")).not.toBeInTheDocument();
-  expect(screen.queryByText(/1.0.98/)).not.toBeInTheDocument();
-  expect(
-    screen.queryByRole("button", { name: /安装/ }),
-  ).not.toBeInTheDocument();
-});
-
-it.each([
-  [false, false, "安装 飞书办公"],
-  [true, false, "授权 飞书办公"],
-  [true, true, "安装 飞书办公"],
-])(
-  "catalog action follows actual installation and shared authorization (%s, %s)",
-  (installed, available, label) => {
-    const pkg: NonNullable<PluginCatalogEntry["package"]> = {
-      manifest: { name: "office" },
-      presentation: { displayName: "飞书办公" },
-    };
-    Object.assign(pkg, {
-      integration: {
-        authentication: {
-          strategy: "plugin-command",
-          protocol: "neuxally-auth/1",
-        },
-      },
-    });
-    const detail: PluginDetail = {
-      installations: installed
-        ? [{ wakerId: "already-installed-partner" }]
-        : [],
-      account: { available, checkedAt: 123 },
-      versions: [{ package: pkg }],
-    };
-    render(
-      <MemoryRouter>
-        <PluginCard
-          catalog={{ key: "office", package: pkg }}
-          detail={detail}
-          onInstall={vi.fn()}
-        />
-      </MemoryRouter>,
-    );
-    expect(screen.getByRole("button", { name: label })).toBeVisible();
-    if (available || !installed)
-      expect(screen.queryByText("授权")).not.toBeInTheDocument();
-  },
-);
-
-it("shows a separate update action beside the disabled partner switch and retains installed content", () => {
-  const onUpdate = vi.fn();
-  render(
-    <MemoryRouter>
-      <PluginCard
-        detail={{
-          plugin: { id: "p", name: "办公" },
-          resolvedVersionId: "old",
-          versions: [
-            {
-              id: "prepared",
-              package: { manifest: { description: "尚未安装的新内容" } },
-            },
+            { id: "new", package: { manifest: { description: "准备内容" } } },
             {
               id: "old",
-              package: { manifest: { description: "实际安装的内容" } },
+              package: { manifest: { description: "伙伴实际内容" } },
             },
           ],
-          installations: [{ wakerId: "w1", versionId: "old", enabled: false }],
-          update: { available: true, wakerIds: ["w1"] },
         }}
         wakerId="w1"
-        onInstall={vi.fn()}
-        onToggle={vi.fn()}
-        onUpdate={onUpdate}
       />
     </MemoryRouter>,
   );
-  expect(screen.getByText("实际安装的内容")).toBeVisible();
-  expect(screen.queryByText("尚未安装的新内容")).not.toBeInTheDocument();
-  expect(screen.getByRole("switch")).not.toBeChecked();
-  fireEvent.click(screen.getByRole("button", { name: "可更新" }));
-  expect(onUpdate).toHaveBeenCalledOnce();
+  expect(screen.getByText("伙伴实际内容")).toBeVisible();
+  expect(screen.queryByText("准备内容")).toBeNull();
+  expect(screen.getByRole("link", { name: "查看插件 办公" })).toHaveAttribute(
+    "href",
+    "/wakers/w1/plugins/office",
+  );
+  expect(screen.queryByRole("button")).toBeNull();
+  expect(screen.queryByRole("switch")).toBeNull();
 });
-
-it("uses the resolved installed version for a global card instead of a prepared version", () => {
+it("does not claim a partner's prepared resource is installed", () => {
   render(
     <MemoryRouter>
       <PluginCard
         detail={{
-          plugin: { id: "p", name: "办公" },
-          resolvedVersionId: "old",
+          plugin: { id: "prepared", name: "待安装" },
+          installations: [],
           versions: [
-            {
-              id: "prepared",
-              package: { manifest: { description: "准备内容" } },
-            },
-            { id: "old", package: { manifest: { description: "已安装内容" } } },
+            { id: "v1", package: { manifest: { description: "已准备内容" } } },
           ],
         }}
-        onInstall={vi.fn()}
+        wakerId="w1"
       />
     </MemoryRouter>,
   );
-  expect(screen.getByText("已安装内容")).toBeVisible();
-});
-
-it("does not offer reauthorization for an unavailable legacy provider", () => {
-  const legacy: PluginCatalogEntry["package"] = JSON.parse(
-    '{"manifest":{"extensions":{"com.ally":{"provider":"feishu"}}}}',
+  expect(screen.getByRole("link", { name: "查看插件 待安装" })).toHaveAttribute(
+    "href",
+    "/wakers/w1/plugins/prepared",
   );
-  render(
-    <MemoryRouter>
-      <PluginCard
-        catalog={{ key: "legacy", package: legacy }}
-        detail={{
-          plugin: { id: "p", name: "旧插件" },
-          installations: [{ wakerId: "w1", versionId: "v1" }],
-          account: { available: false, checkedAt: 123 },
-          versions: [{ id: "v1", package: legacy }],
-        }}
-        onInstall={vi.fn()}
-      />
-    </MemoryRouter>,
-  );
-  expect(
-    screen.queryByRole("button", { name: "授权 旧插件" }),
-  ).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "安装 旧插件" })).toBeVisible();
+  expect(screen.queryByText("已安装")).toBeNull();
+  expect(screen.queryByRole("button")).toBeNull();
 });

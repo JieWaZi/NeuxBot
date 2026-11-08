@@ -112,3 +112,23 @@ func TestPublishedStandardTargetRetainsExecutionMetadataWithoutSourceReads(t *te
 		}
 	}
 }
+
+func TestPublicPackageReportsConfigurationWithoutPrivateExtension(t *testing.T) {
+	root := t.TempDir()
+	standardInput(t, root, map[string]any{"extensions": map[string]any{"com.neuxbot": map[string]any{"schemaVersion": constants.PluginExtensionSchemaVersion, "configuration": map[string]any{"fields": []ConfigurationField{{Key: "TOKEN", Label: "Token", Secret: true}}}}}})
+	pkg, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	public := pkg.Public()
+	if !public.HasConfiguration {
+		t.Fatal("public package lost configuration capability")
+	}
+	body, err := json.Marshal(public)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "extensions") || strings.Contains(string(body), "TOKEN") {
+		t.Fatalf("private configuration declaration leaked: %s", body)
+	}
+}

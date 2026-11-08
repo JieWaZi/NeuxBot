@@ -1,3 +1,17 @@
+import { client } from "@/shared/api/generated/client.gen";
+import { http, HttpResponse } from "msw";
+import { setupServer } from "msw/node";
+import { beforeAll, afterAll } from "vitest";
+const categoryServer = setupServer(
+  http.get("http://127.0.0.1:8080/api/v1/resource-categories", () =>
+    HttpResponse.json([{ id: "category", name: "开发" }]),
+  ),
+);
+beforeAll(() => {
+  client.setConfig({ baseUrl: "http://127.0.0.1:8080" });
+  categoryServer.listen({ onUnhandledRequest: "error" });
+});
+afterAll(() => categoryServer.close());
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -18,6 +32,7 @@ const {
   uninstallSkill,
   updateSkill,
   themeState,
+  pageFixture,
 } = vi.hoisted(() => ({
   createVersion: vi.fn<
     (options: Record<string, unknown>) => Promise<{ id: string }>
@@ -41,6 +56,10 @@ const {
     (options: Record<string, unknown>) => Promise<{ success: boolean }>
   >(async () => ({ success: true })),
   themeState: { resolvedTheme: "light" as "dark" | "light" },
+  pageFixture: {
+    pending: false,
+    partners: [{ id: "waker-1", name: "代码伙伴" }],
+  },
 }));
 
 vi.mock("@/shared/workspace/app-scene-workspace", () => ({
@@ -66,25 +85,30 @@ vi.mock("@git-diff-view/react", () => ({
 vi.mock("../api/skill-queries", () => ({
   getWakerSkillOptions: () => ({
     queryKey: ["skill", "code-review"],
-    queryFn: async () => ({
-      skill: {
-        id: "code-review",
-        name: "代码审查",
-        description: "检查真实改动",
-        scope: "public",
-        source: "git",
-        currentVersionId: "version-1",
-      },
-      currentVersion: {
-        id: "version-1",
-        version: "1.4.0",
-        name: "code-review",
-        description: "Review real changes",
-        operation: "import",
-        createdAt: 1,
-      },
-      enabled: true,
-    }),
+    queryFn: async () =>
+      pageFixture.pending
+        ? new Promise<never>(() => undefined)
+        : {
+            skill: {
+              id: "code-review",
+              name: "代码审查",
+              description: "检查真实改动",
+              categories: ["开发"],
+              source: "git",
+              currentVersionId: "version-1",
+            },
+            currentVersion: {
+              id: "version-1",
+              version: "1.4.0",
+              name: "code-review",
+              description: "Review real changes",
+              operation: "import",
+              createdAt: 1,
+            },
+            enabled: true,
+            installedPartners: pageFixture.partners,
+            affectedWakerCount: pageFixture.partners.length,
+          },
   }),
   getWakerSkillQueryKey: () => ["skill", "code-review"],
   listSkillVersionsOptions: () => ({
@@ -185,27 +209,40 @@ vi.mock("../api/skill-queries", () => ({
 }));
 
 beforeEach(() => {
+  pageFixture.pending = false;
+  pageFixture.partners = [{ id: "waker-1", name: "代码伙伴" }];
   themeState.resolvedTheme = "light";
   delete document.documentElement.dataset.theme;
   createVersion.mockClear();
+  updateSkill.mockClear();
   pullUpdate.mockClear();
   restoreVersion.mockClear();
   saveBlob.mockClear();
   setEnabled.mockReset();
   setEnabled.mockResolvedValue({ success: true });
-  uninstallSkill.mockClear();
+  uninstallSkill.mockReset();
+  uninstallSkill.mockResolvedValue({ success: true });
 });
 
-function renderPage() {
+function renderPage(
+  path = "/wakers/waker-1/skills/code-review",
+  resourceBack?: string,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={["/wakers/waker-1/skills/code-review"]}>
+      <MemoryRouter
+        initialEntries={[{ pathname: path, state: { resourceBack } }]}
+      >
         <Routes>
           <Route
             path="/wakers/:wakerId/skills/:skillId"
+            element={<SkillDetailPage />}
+          />
+          <Route
+            path="/resources/skills/:skillId"
             element={<SkillDetailPage />}
           />
           <Route
@@ -219,7 +256,7 @@ function renderPage() {
 }
 
 describe("SkillDetailPage", () => {
-  it("uses the NeuxBot detail layout with a title return action and exposes real content tabs", async () => {
+  it("follows the skill page order with partner controls and document-local navigation", async () => {
     const user = userEvent.setup();
     renderPage();
 
@@ -229,7 +266,7 @@ describe("SkillDetailPage", () => {
     expect(
       screen.getByRole("heading", { name: "代码审查" }).closest("header"),
     ).not.toHaveClass("border-b");
-    expect(screen.getByText("code-review")).toBeInTheDocument();
+    expect(screen.queryByText("code-review")).not.toBeInTheDocument();
     expect(screen.getByText("Review real changes")).toBeInTheDocument();
     await screen.findByText(
       "检查真实改动。",
@@ -239,24 +276,62 @@ describe("SkillDetailPage", () => {
     expect(
       screen.getByRole("button", { name: "返回技能列表" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "说明" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "SKILL.md" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
     expect(
       screen.getByRole("radio", { name: "资源文件 3" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("radio", { name: "当前版本 v1.4.0" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "版本" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("radio", { name: "当前版本 v1.4.0" }));
+    expect(
+      screen.getByRole("radiogroup", { name: "技能详情内容" }),
+    ).toBeInTheDocument();
+    const partnerSection = screen
+      .getByRole("heading", { name: "伙伴" })
+      .closest("section");
+    const documentSection = screen.getByRole("radiogroup").closest("section");
+    expect(partnerSection).toContainElement(
+      screen.getByRole("switch", { name: "停用 代码审查" }),
+    );
+    expect(documentSection).toContainElement(
+      screen.getByRole("radio", { name: "资源文件 3" }),
+    );
+    expect(
+      screen.queryByRole("heading", { name: "管理" }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: "版本" }));
     expect(
       screen.getByRole("heading", { name: "版本历史" }),
     ).toBeInTheDocument();
+  });
+
+  it("mounts all content tabs before the skill or file count is available", async () => {
+    pageFixture.pending = true;
+    const user = userEvent.setup();
+    renderPage();
+    expect(screen.getByRole("radio", { name: "SKILL.md" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "资源文件 0" })).toBeEnabled();
+    expect(screen.getByRole("radio", { name: "版本" })).toBeEnabled();
+    await user.click(screen.getByRole("radio", { name: "资源文件 0" }));
+    expect(screen.getByRole("radio", { name: "资源文件 0" })).toBeChecked();
   });
 
   it("从标题区返回当前伙伴的技能列表", async () => {
     const user = userEvent.setup();
     renderPage();
     await user.hover(screen.getByRole("button", { name: "返回技能列表" }));
+    await user.click(screen.getByRole("button", { name: "返回技能列表" }));
+    expect(screen.getByText("技能列表页")).toBeInTheDocument();
+  });
+
+  it("标题返回拒绝来源不明的地址，与面包屑使用相同列表入口", async () => {
+    const user = userEvent.setup();
+    renderPage(
+      "/wakers/waker-1/skills/code-review",
+      "https://external.test/unsafe",
+    );
     await user.click(screen.getByRole("button", { name: "返回技能列表" }));
     expect(screen.getByText("技能列表页")).toBeInTheDocument();
   });
@@ -287,6 +362,16 @@ describe("SkillDetailPage", () => {
     await user.clear(instructions);
     await user.type(instructions, "# 新说明");
     await user.click(screen.getByRole("button", { name: "应用文件更改" }));
+    const saveArea = screen.getByLabelText("资源更改保存区");
+    expect(
+      saveArea.closest('[data-slot="resource-page-footer-host"]'),
+    ).not.toBeNull();
+    expect(saveArea.closest('[data-slot="resource-page-viewport"]')).toBeNull();
+    await user.click(screen.getByRole("radio", { name: "SKILL.md" }));
+    expect(screen.queryByLabelText("资源更改保存区")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: "资源文件 3" }));
+    expect(screen.getByLabelText("资源更改保存区")).toBeVisible();
+    expect(screen.getByText("# 新说明")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "保存资源更改" }));
 
     await waitFor(() => expect(createVersion).toHaveBeenCalledTimes(1));
@@ -299,6 +384,34 @@ describe("SkillDetailPage", () => {
         }),
       }),
     );
+  });
+
+  it("重置资源草稿后收起底部保存区，不创建版本", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("radio", { name: "资源文件 3" }));
+    await user.click(screen.getByRole("button", { name: "SKILL.md" }));
+    await user.click(screen.getByRole("button", { name: "编辑 SKILL.md" }));
+    const editor = screen.getByRole("textbox", { name: "编辑 SKILL.md" });
+    await user.type(editor, "新的说明");
+    await user.click(screen.getByRole("button", { name: "应用文件更改" }));
+    const footer = screen.getByLabelText("资源更改保存区");
+    await user.clear(within(footer).getByRole("textbox", { name: "新版本号" }));
+    await user.type(
+      within(footer).getByRole("textbox", { name: "新版本号" }),
+      "1.0.0",
+    );
+    expect(
+      within(footer).getByRole("button", { name: "保存资源更改" }),
+    ).toBeDisabled();
+    await user.click(within(footer).getByRole("button", { name: "重置" }));
+    expect(screen.queryByLabelText("资源更改保存区")).not.toBeInTheDocument();
+    expect(createVersion).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "SKILL.md" }));
+    await user.click(screen.getByRole("button", { name: "编辑 SKILL.md" }));
+    expect(
+      screen.getByRole("textbox", { name: "编辑 SKILL.md" }),
+    ).not.toHaveValue(expect.stringContaining("新的说明"));
   });
 
   it.each([false, true])(
@@ -401,7 +514,7 @@ describe("SkillDetailPage", () => {
     await user.type(directoryPath, "references/examples");
     await user.click(within(dialog).getByRole("button", { name: "创建目录" }));
 
-    await user.click(screen.getByRole("radio", { name: "说明" }));
+    await user.click(screen.getByRole("radio", { name: "SKILL.md" }));
     await user.click(screen.getByRole("radio", { name: "资源文件 3" }));
     expect(
       screen.getByRole("button", { name: "examples" }),
@@ -551,32 +664,91 @@ describe("SkillDetailPage", () => {
     expect(saveBlob).toHaveBeenCalledWith(expect.any(Blob), "checklist.md");
   });
 
-  it("updates display name without creating a version", async () => {
+  it("saves name and category together without creating a version", async () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findByRole("heading", { name: "代码审查" });
 
-    await user.click(screen.getByRole("button", { name: "编辑展示名称" }));
+    await user.click(screen.getByRole("button", { name: "编辑技能" }));
     const name = screen.getByRole("textbox", { name: "展示名称" });
     await user.clear(name);
     await user.type(name, "评审助手");
-    await user.click(screen.getByRole("button", { name: "保存名称" }));
+    const category = screen.getByRole("combobox", { name: "分类" });
+    await user.click(screen.getByRole("button", { name: "移除分类“开发”" }));
+    await user.type(category, "写作{Enter}");
+    await user.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => expect(updateSkill).toHaveBeenCalledTimes(1));
     expect(updateSkill.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({
         path: { wakerId: "waker-1", skillId: "code-review" },
-        body: { name: "评审助手" },
+        body: { name: "评审助手", categories: ["写作"] },
       }),
     );
+    expect(createVersion).not.toHaveBeenCalled();
+  });
+
+  it.each(["写作", ""])(
+    "updates or clears only the skill category (%s)",
+    async (category) => {
+      const user = userEvent.setup();
+      renderPage();
+      await user.click(await screen.findByRole("button", { name: "编辑技能" }));
+      const dialog = screen.getByRole("dialog", { name: "编辑技能" });
+      const input = within(dialog).getByRole("combobox", { name: "分类" });
+      expect(
+        within(dialog).getByRole("button", { name: "移除分类“开发”" }),
+      ).toBeInTheDocument();
+      await user.click(
+        within(dialog).getByRole("button", { name: "移除分类“开发”" }),
+      );
+      if (category) await user.type(input, `${category}{Enter}`);
+      await user.click(within(dialog).getByRole("button", { name: "保存" }));
+      await waitFor(() => expect(updateSkill).toHaveBeenCalledTimes(1));
+      expect(updateSkill.mock.calls[0]?.[0]).toMatchObject({
+        path: { wakerId: "waker-1", skillId: "code-review" },
+        body: { name: "代码审查", categories: category ? [category] : [] },
+      });
+      expect(createVersion).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+      );
+    },
+  );
+
+  it("edits a library category without claiming partner enable states from its identity preview", async () => {
+    const user = userEvent.setup();
+    renderPage("/resources/skills/code-review");
+    await screen.findByRole("heading", { name: "代码伙伴" });
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "编辑技能" }));
+    const dialog = screen.getByRole("dialog", { name: "编辑技能" });
+    await user.click(
+      within(dialog).getByRole("button", { name: "移除分类“开发”" }),
+    );
+    await user.type(
+      within(dialog).getByRole("combobox", { name: "分类" }),
+      "资料整理{Enter}",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(updateSkill).toHaveBeenCalledTimes(1));
+    expect(updateSkill.mock.calls[0]?.[0]).toMatchObject({
+      path: { wakerId: "", skillId: "code-review" },
+      body: { name: "代码审查", categories: ["资料整理"] },
+    });
+    expect(createVersion).not.toHaveBeenCalled();
   });
 
   it("shows metadata as read-only fields", async () => {
     renderPage();
     await screen.findByRole("heading", { name: "代码审查" });
 
-    expect(screen.getByText("元数据")).toBeInTheDocument();
-    expect(screen.getByText("code-review")).toBeInTheDocument();
+    expect(screen.getByText("信息")).toBeInTheDocument();
+    expect(screen.getByText("开发")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "修改分类" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("code-review")).not.toBeInTheDocument();
     expect(screen.getByText("Review real changes")).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "编辑元数据" }),
@@ -587,7 +759,7 @@ describe("SkillDetailPage", () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findByRole("heading", { name: "代码审查" });
-    await user.click(screen.getByRole("radio", { name: "当前版本 v1.4.0" }));
+    await user.click(screen.getByRole("radio", { name: "版本" }));
     await user.click(
       screen.getByRole("button", { name: "查看 v1.3.0 与当前版本的差异" }),
     );
@@ -612,7 +784,7 @@ describe("SkillDetailPage", () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findByRole("heading", { name: "代码审查" });
-    await user.click(screen.getByRole("radio", { name: "当前版本 v1.4.0" }));
+    await user.click(screen.getByRole("radio", { name: "版本" }));
     await user.click(
       screen.getByRole("button", { name: "查看 v1.3.0 与当前版本的差异" }),
     );
@@ -623,14 +795,14 @@ describe("SkillDetailPage", () => {
     );
   });
 
-  it("uninstalls a user skill from the detail header and returns to the list", async () => {
+  it("uninstalls a user skill from its partner row and returns to the list", async () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findByRole("heading", { name: "代码审查" });
 
-    await user.click(screen.getByRole("button", { name: "卸载技能" }));
-    const dialog = screen.getByRole("dialog", { name: "卸载技能" });
-    await user.click(within(dialog).getByRole("button", { name: "确认卸载" }));
+    await user.click(screen.getByRole("button", { name: "移除" }));
+    const dialog = screen.getByRole("dialog", { name: "移除技能" });
+    await user.click(within(dialog).getByRole("button", { name: "确认移除" }));
 
     await waitFor(() => expect(uninstallSkill).toHaveBeenCalledTimes(1));
     expect(uninstallSkill.mock.calls[0]?.[0]).toEqual(
@@ -639,6 +811,88 @@ describe("SkillDetailPage", () => {
       }),
     );
     expect(await screen.findByText("技能列表页")).toBeInTheDocument();
+  });
+
+  it("removes a fifth installed partner from the global page without deleting the skill", async () => {
+    pageFixture.partners = Array.from({ length: 5 }, (_, index) => ({
+      id: `waker-${index + 1}`,
+      name: `伙伴${index + 1}`,
+    }));
+    const user = userEvent.setup();
+    renderPage("/resources/skills/code-review");
+    const partner = await screen.findByRole("heading", { name: "伙伴5" });
+    const row = partner.parentElement?.parentElement;
+    if (!row) throw new Error("Partner row is missing");
+    await user.click(within(row).getByRole("button", { name: "移除" }));
+    const dialog = screen.getByRole("dialog", { name: "移除技能" });
+    expect(dialog).toHaveTextContent(
+      "将从“伙伴5”移除技能“代码审查”，其他伙伴不受影响。",
+    );
+    expect(dialog).toHaveTextContent("技能库和版本会保留");
+    expect(uninstallSkill).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("button", { name: "确认移除" }));
+    await waitFor(() => expect(uninstallSkill).toHaveBeenCalledTimes(1));
+    expect(uninstallSkill.mock.calls[0]?.[0]).toMatchObject({
+      path: { wakerId: "waker-5", skillId: "code-review" },
+      query: undefined,
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole("heading", { name: "代码审查" }),
+    ).toBeInTheDocument();
+    expect(setEnabled).not.toHaveBeenCalled();
+  });
+
+  it("confirms global deletion with the complete affected partner count", async () => {
+    pageFixture.partners = Array.from({ length: 5 }, (_, index) => ({
+      id: `waker-${index + 1}`,
+      name: `伙伴${index + 1}`,
+    }));
+    const user = userEvent.setup();
+    renderPage("/resources/skills/code-review");
+    const remove = await screen.findByRole("button", { name: "删除技能" });
+    const dangerSection = remove.closest("section");
+    expect(
+      screen.getAllByRole("heading", { level: 2 }).at(-1),
+    ).toHaveTextContent("危险操作");
+    expect(dangerSection).toHaveTextContent(
+      "将删除此技能的全部版本，并移除全部 5 个伙伴的安装关系。",
+    );
+    expect(
+      screen.getByRole("heading", { name: "代码审查" }).closest("header"),
+    ).not.toContainElement(remove);
+    await user.click(remove);
+    const dialog = screen.getByRole("dialog", { name: "删除技能" });
+    expect(dialog).toHaveTextContent("并移除全部 5 个伙伴的安装关系");
+    await user.click(within(dialog).getByRole("button", { name: "确认删除" }));
+    await waitFor(() => expect(uninstallSkill).toHaveBeenCalledTimes(1));
+    expect(uninstallSkill.mock.calls[0]?.[0]).toMatchObject({
+      path: { wakerId: "", skillId: "code-review" },
+      query: { confirmed: true, expectedAffectedCount: 5 },
+    });
+  });
+
+  it("removes a partner relation while preserving the library resource", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: "移除" }));
+    expect(
+      screen.queryByRole("button", { name: "删除技能" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "危险操作" }),
+    ).not.toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "移除技能" });
+    expect(dialog).toHaveTextContent(
+      "仅移除伙伴的安装关系。技能库和版本会保留。",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "确认移除" }));
+    await waitFor(() => expect(uninstallSkill).toHaveBeenCalledOnce());
+    expect(uninstallSkill.mock.calls[0]?.[0]).toMatchObject({
+      path: { wakerId: "waker-1", skillId: "code-review" },
+    });
   });
 
   it("启停失败时在详情操作区就近显示错误", async () => {

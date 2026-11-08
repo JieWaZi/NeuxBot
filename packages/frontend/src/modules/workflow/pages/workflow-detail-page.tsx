@@ -30,6 +30,7 @@ import {
 import { useTranslation } from "react-i18next";
 import {
   Link,
+  useLocation,
   useNavigate,
   useParams,
   useSearchParams,
@@ -40,6 +41,7 @@ import {
   withLocalErrorMutation,
 } from "@/shared/api/local-error-surface";
 import { cn } from "@/shared/lib/cn";
+import { resourceListBack } from "@/shared/lib/resource-navigation";
 import { Button } from "@/shared/ui/button";
 import { PageAction } from "@/shared/ui/resource-page";
 import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
@@ -118,6 +120,16 @@ export function WorkflowDetailPage() {
   const { workflowId: id = "", runId: routeRunId } = useParams();
   const isNew = id === "new";
   const [params, setParams] = useSearchParams();
+  const location = useLocation();
+  const libraryBack = resourceListBack(
+    location.state &&
+      typeof location.state === "object" &&
+      "resourceBack" in location.state
+      ? location.state.resourceBack
+      : undefined,
+    "/resources?category=workflows",
+  );
+  const resourceState = { resourceBack: libraryBack };
   const client = useQueryClient();
   const navigate = useNavigate();
   const active = useRouteSceneActive();
@@ -138,7 +150,7 @@ export function WorkflowDetailPage() {
         else next.delete(key);
         return next;
       },
-      { replace: true },
+      { replace: true, state: resourceState },
     );
   const detail = useQuery({
     ...getWorkflowOptions({ path: { id }, query: { revisionId } }),
@@ -269,7 +281,7 @@ export function WorkflowDetailPage() {
         ]) {
           void client.cancelQueries({ queryKey });
         }
-        navigate("/resources?category=workflows", { replace: true });
+        navigate(libraryBack, { replace: true });
         void client.invalidateQueries({ queryKey: listWorkflowsQueryKey() });
       },
       onState: setStream,
@@ -277,7 +289,7 @@ export function WorkflowDetailPage() {
     return () => {
       release();
     };
-  }, [active, client, id, isNew, navigate]);
+  }, [active, client, id, isNew, libraryBack, navigate]);
   const revision = detail.data?.revision;
   const [sessionSelection, setSelectedSession] = useState<string | null>();
   const setSessionSelection = (
@@ -294,7 +306,7 @@ export function WorkflowDetailPage() {
         if (clearParam) next.delete(clearParam);
         return next;
       },
-      { replace: true },
+      { replace: true, state: resourceState },
     );
   };
   const [closedChatIds, setClosedChatIds] = useState<string[]>([]);
@@ -407,7 +419,7 @@ export function WorkflowDetailPage() {
                   setHistoryOpen(false);
                 }
                 if (routeRunId && value === "canvas") {
-                  navigate(`/workflows/${id}`);
+                  navigate(`/workflows/${id}`, { state: resourceState });
                 } else {
                   change("tab", value);
                 }
@@ -628,6 +640,7 @@ export function WorkflowDetailPage() {
                   >
                     <Link
                       to={`/workflows/${id}/runs/${run.id}`}
+                      state={resourceState}
                       aria-current={
                         selectedRunId === run.id ? "page" : undefined
                       }
@@ -697,6 +710,7 @@ export function WorkflowDetailPage() {
                             onClick={() => {
                               navigate(
                                 `/workflows/${id}?tab=canvas&optimizeRun=${run.id}`,
+                                { state: resourceState },
                               );
                             }}
                           >
@@ -720,6 +734,7 @@ export function WorkflowDetailPage() {
                           >
                             <Link
                               to={`/workflows/${id}/runs/${run.id}?result=1`}
+                              state={resourceState}
                             >
                               <FileText aria-hidden="true" strokeWidth={1.5} />
                             </Link>
@@ -966,7 +981,10 @@ export function WorkflowDetailPage() {
       id={id}
       draftId={params.get("draftId") ?? undefined}
       onCreated={(definitionId) =>
-        navigate(`/workflows/${definitionId}`, { replace: true })
+        navigate(`/workflows/${definitionId}`, {
+          replace: true,
+          state: resourceState,
+        })
       }
       canvasReferences={selectedTargets.map((target) => ({
         ...target,
@@ -1080,10 +1098,12 @@ export function WorkflowDetailPage() {
       <SceneBreadcrumbs
         ariaLabel={t("breadcrumb")}
         items={[
-          { label: t("title"), href: "/resources?category=workflows" },
+          { label: t("title"), href: libraryBack },
           {
             label: title || t("title"),
-            ...(routeRunId ? { href: `/workflows/${id}` } : {}),
+            ...(routeRunId
+              ? { href: `/workflows/${id}`, state: resourceState }
+              : {}),
           },
           ...(routeRunId ? [{ label: t("run") }] : []),
         ]}
@@ -1212,7 +1232,7 @@ export function WorkflowDetailPage() {
               next?.id
                 ? `/workflows/${id}/runs/${next.id}`
                 : `/workflows/${id}?tab=canvas`,
-              { replace: true },
+              { replace: true, state: resourceState },
             );
           }}
         />
@@ -1223,7 +1243,7 @@ export function WorkflowDetailPage() {
           revisionId={detail.data?.definition?.currentRevisionId ?? ""}
           open={active && deleteOpen}
           onOpenChange={setDeleteOpen}
-          onDeleted={() => navigate("/resources?category=workflows")}
+          onDeleted={() => navigate(libraryBack)}
         />
       ) : null}
     </div>

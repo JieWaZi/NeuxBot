@@ -1,3 +1,4 @@
+import type * as ConnectorModule from "@/modules/connector";
 import type * as GeneratedSDK from "@/shared/api/generated/sdk.gen";
 import type * as GeneratedQueries from "@/shared/api/generated/@tanstack/react-query.gen";
 import type * as ChatQueries from "../api/chat-queries";
@@ -548,9 +549,8 @@ vi.mock("@/modules/project", () => ({
   }),
 }));
 
-vi.mock("@/modules/connector", () => ({
-  connectorSelectableInComposer: (activationPolicy?: string) =>
-    activationPolicy !== "team_context",
+vi.mock("@/modules/connector", async (original) => ({
+  ...(await original<typeof ConnectorModule>()),
   listWakerConnectorsOptions: () => ({
     queryKey: ["waker-connectors", "waker-1"],
     queryFn: async () => {
@@ -823,6 +823,54 @@ function ResolvedOwnerProbe() {
   );
 }
 
+function renderConnectorPromptDraft({
+  routeDraftId = "connector-example",
+  intentDraftId = "connector-example",
+  routeWakerId = "waker-1",
+  intentWakerId = "waker-1",
+}: {
+  routeDraftId?: string;
+  intentDraftId?: string;
+  routeWakerId?: string;
+  intentWakerId?: string;
+} = {}) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const view = render(
+    <QueryClientProvider client={client}>
+      <ChatQueueProvider>
+        <TooltipProvider>
+          <MemoryRouter
+            initialEntries={[
+              {
+                pathname: "/chat",
+                search: `?draftId=${routeDraftId}&wakerId=${routeWakerId}`,
+                state: {
+                  chatDraftIntent: {
+                    draftId: intentDraftId,
+                    wakerId: intentWakerId,
+                    text: "帮我使用这个连接器。",
+                    connectorId: "connector-browser",
+                  },
+                },
+              },
+            ]}
+          >
+            <Routes>
+              <Route element={<ChatLayout />}>
+                <Route path="/chat" element={<ChatPage />} />
+                <Route path="/chats/:chatId" element={<ChatPage />} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </TooltipProvider>
+      </ChatQueueProvider>
+    </QueryClientProvider>,
+  );
+  return { client, view };
+}
+
 describe("ChatPage", () => {
   it("根欢迎入口把既有最近伙伴解析贡献给主顶栏，不按伙伴列表首项猜owner", async () => {
     wakerResources.current = [
@@ -861,6 +909,263 @@ describe("ChatPage", () => {
         screen.getByRole("status", { name: "已解析伙伴" }),
       ).toHaveTextContent("waker-2"),
     );
+    expect(createChat).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+    view.unmount();
+    client.clear();
+  });
+
+  it("插件示例只填独立草稿输入，不创建会话或发送消息", async () => {
+    wakerPlugins.current = [
+      {
+        plugin: { id: "plugin-office", name: "办公插件" },
+        ready: true,
+        versions: [{ id: "pv1", version: "1.0.0" }],
+        installations: [
+          { wakerId: "waker-1", versionId: "pv1", enabled: true },
+        ],
+      },
+    ];
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <ChatQueueProvider>
+          <TooltipProvider>
+            <MemoryRouter
+              initialEntries={[
+                {
+                  pathname: "/chat",
+                  search: "?draftId=plugin-example&wakerId=waker-1",
+                  state: {
+                    chatDraftIntent: {
+                      draftId: "plugin-example",
+                      wakerId: "waker-1",
+                      text: "检查插件示例中的仓库变更",
+                      pluginId: "plugin-office",
+                    },
+                  },
+                },
+              ]}
+            >
+              <Routes>
+                <Route element={<ChatLayout />}>
+                  <Route path="/chat" element={<ChatPage />} />
+                </Route>
+              </Routes>
+            </MemoryRouter>
+          </TooltipProvider>
+        </ChatQueueProvider>
+      </QueryClientProvider>,
+    );
+    const input = await screen.findByRole("textbox", { name: "输入消息" });
+    await waitFor(() =>
+      expect(input).toHaveTextContent("检查插件示例中的仓库变更"),
+    );
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-chat-composer-plugin="plugin-office"]'),
+      ).toBeInTheDocument(),
+    );
+    expect(createChat).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+    view.unmount();
+    client.clear();
+  });
+
+  it("技能示例填入独立草稿并选中真实已启用技能，不自动创建会话或发送", async () => {
+    wakerSkills.current = [
+      {
+        enabled: true,
+        skill: {
+          id: "skill-review",
+          name: "代码审查",
+          description: "检查真实改动",
+        },
+        currentVersion: { version: "1.4.0" },
+      },
+    ];
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <ChatQueueProvider>
+          <TooltipProvider>
+            <MemoryRouter
+              initialEntries={[
+                {
+                  pathname: "/chat",
+                  search: "?draftId=skill-example&wakerId=waker-1",
+                  state: {
+                    chatDraftIntent: {
+                      draftId: "skill-example",
+                      wakerId: "waker-1",
+                      text: "帮我使用这个技能。",
+                      skillId: "skill-review",
+                    },
+                  },
+                },
+              ]}
+            >
+              <Routes>
+                <Route element={<ChatLayout />}>
+                  <Route path="/chat" element={<ChatPage />} />
+                </Route>
+              </Routes>
+            </MemoryRouter>
+          </TooltipProvider>
+        </ChatQueueProvider>
+      </QueryClientProvider>,
+    );
+    const input = await screen.findByRole("textbox", { name: "输入消息" });
+    await waitFor(() => expect(input).toHaveTextContent("帮我使用这个技能。"));
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-chat-composer-skill="skill-review"]'),
+      ).toBeInTheDocument(),
+    );
+    expect(createChat).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+    view.unmount();
+    client.clear();
+  });
+
+  it("连接器示例只填独立草稿并选中真实已启用连接器，发送由用户显式触发", async () => {
+    wakerConnectors.current = [
+      {
+        enabled: true,
+        connector: {
+          id: "connector-browser",
+          name: "浏览器工具",
+          activationPolicy: "per_execution",
+        },
+      },
+    ];
+    const user = userEvent.setup();
+    const { client, view } = renderConnectorPromptDraft();
+    const input = await screen.findByRole("textbox", { name: "输入消息" });
+    await waitFor(() =>
+      expect(
+        input.querySelector(
+          '[data-chat-composer-connector="connector-browser"]',
+        ),
+      ).toBeInTheDocument(),
+    );
+    expect(input).toHaveTextContent("帮我使用这个连接器。");
+    expect(createChat).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "发送消息" })).toBeEnabled(),
+    );
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+    await waitFor(() => expect(createChat).toHaveBeenCalledOnce());
+    expect(createChat.mock.calls[0]?.[0]).toMatchObject({
+      body: {
+        text: "帮我使用这个连接器。",
+        connectorIds: ["connector-browser"],
+        pluginIds: [],
+        skillIds: [],
+      },
+    });
+    view.unmount();
+    client.clear();
+  });
+
+  it("连接器示例等待真实候选后补单个引用，查询刷新不重复或覆盖用户草稿", async () => {
+    const user = userEvent.setup();
+    const { client, view } = renderConnectorPromptDraft();
+    const input = await screen.findByRole("textbox", { name: "输入消息" });
+    await waitFor(() =>
+      expect(
+        client.getQueryState(["waker-connectors", "waker-1"])?.status,
+      ).toBe("success"),
+    );
+    expect(input.querySelector("[data-chat-composer-connector]")).toBeNull();
+    await user.type(input, " 保留用户补充");
+    const options = [
+      {
+        enabled: true,
+        connector: {
+          id: "connector-browser",
+          name: "浏览器工具",
+          activationPolicy: "per_execution",
+        },
+      },
+    ];
+    act(() => client.setQueryData(["waker-connectors", "waker-1"], options));
+    await waitFor(() =>
+      expect(
+        input.querySelectorAll(
+          '[data-chat-composer-connector="connector-browser"]',
+        ),
+      ).toHaveLength(1),
+    );
+    expect(input).toHaveTextContent("帮我使用这个连接器。");
+    expect(input).toHaveTextContent("保留用户补充");
+    act(() =>
+      client.setQueryData(["waker-connectors", "waker-1"], [...options]),
+    );
+    expect(
+      input.querySelectorAll("[data-chat-composer-connector]"),
+    ).toHaveLength(1);
+    expect(input.textContent?.match(/帮我使用这个连接器。/g)).toHaveLength(1);
+    expect(createChat).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+    view.unmount();
+    client.clear();
+  });
+
+  it.each([
+    { enabled: false, activationPolicy: "per_execution" },
+    { enabled: true, activationPolicy: "team_context" },
+    { enabled: true, activationPolicy: "workflow_context" },
+  ])("连接器示例不自动启用或引用不可选择的连接器 %o", async (eligibility) => {
+    wakerConnectors.current = [
+      {
+        enabled: eligibility.enabled,
+        connector: {
+          id: "connector-browser",
+          name: "不可选择的工具",
+          activationPolicy: eligibility.activationPolicy,
+        },
+      },
+    ];
+    const { client, view } = renderConnectorPromptDraft();
+    const input = await screen.findByRole("textbox", { name: "输入消息" });
+    await waitFor(() =>
+      expect(
+        client.getQueryState(["waker-connectors", "waker-1"])?.status,
+      ).toBe("success"),
+    );
+    expect(input).toHaveTextContent("帮我使用这个连接器。");
+    expect(input.querySelector("[data-chat-composer-connector]")).toBeNull();
+    expect(createChat).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+    view.unmount();
+    client.clear();
+  });
+
+  it.each([
+    { routeDraftId: "other-draft" },
+    { intentWakerId: "other-partner" },
+  ])("连接器示例不消费其他草稿或伙伴的输入 %o", async (route) => {
+    wakerConnectors.current = [
+      {
+        enabled: true,
+        connector: { id: "connector-browser", name: "浏览器工具" },
+      },
+    ];
+    const { client, view } = renderConnectorPromptDraft(route);
+    const input = await screen.findByRole("textbox", { name: "输入消息" });
+    await waitFor(() =>
+      expect(
+        client.getQueryState(["waker-connectors", "waker-1"])?.status,
+      ).toBe("success"),
+    );
+    expect(input).not.toHaveTextContent("帮我使用这个连接器。");
+    expect(input.querySelector("[data-chat-composer-connector]")).toBeNull();
     expect(createChat).not.toHaveBeenCalled();
     expect(sendMessage).not.toHaveBeenCalled();
     view.unmount();
@@ -2525,7 +2830,9 @@ describe("ChatPage", () => {
       await waitFor(() =>
         expect(screen.getByText("修复首条消息闪屏")).toBeVisible(),
       );
-      expect(screen.getByText("正在准备会话")).toBeVisible();
+      expect(
+        container.querySelector("[data-chat-activity-status]"),
+      ).toBeVisible();
       expect(
         screen.queryByRole("heading", { name: "今天想一起完成什么？" }),
       ).not.toBeInTheDocument();

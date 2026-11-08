@@ -28,7 +28,16 @@ const fixture = vi.hoisted(() => ({
     }>(),
     account: { available: false },
     configurationRevision: 3,
+    accountGeneration: 4,
+  },
+  configuration: {
+    fields: [],
+    values: {},
+    configuredSecrets: [],
+    configurationRevision: 3,
+    accountGeneration: 4,
     ready: true,
+    blockers: [],
   },
   observers: new Set<GlobalEventObserver>(),
   readDelay: 0,
@@ -58,6 +67,10 @@ vi.mock("@/shared/api/global-events", () => ({
   },
 }));
 vi.mock("../api/plugin-queries", () => ({
+  getPluginConfigurationOptions: () => ({
+    queryKey: [{ _id: "getPluginConfiguration" }],
+    queryFn: async () => structuredClone(fixture.configuration),
+  }),
   getPluginOptions: () => ({
     queryKey: [{ _id: "getPlugin", path: { pluginId: "plugin-1" } }],
     queryFn: async ({ signal }: { signal: AbortSignal }) => {
@@ -93,6 +106,12 @@ vi.mock("../api/plugin-queries", () => ({
   }),
   getPluginAuthorizationOptions: () => ({
     queryKey: [{ _id: "getPluginAuthorization" }],
+    queryFn: async () => ({
+      versionId: "version-1",
+      configurationRevision: fixture.configuration.configurationRevision,
+      accountGeneration: fixture.configuration.accountGeneration,
+      account: fixture.detail.account,
+    }),
   }),
   cancelPluginAuthorizationMutation: () => ({ mutationFn: fixture.cancel }),
   installPluginMutation: () => ({ mutationFn: fixture.install }),
@@ -124,11 +143,12 @@ vi.mock("./plugin-auth-panel", () => ({
 }));
 afterEach(cleanup);
 beforeEach(() => {
+  fixture.prepare.mockReset();
   fixture.install.mockReset();
   fixture.install.mockResolvedValue({
     results: [{ wakerId: "p1", installed: true }],
   });
-  fixture.detail.ready = true;
+  fixture.configuration.ready = true;
   fixture.readDelay = 0;
   fixture.detail.account.available = false;
   fixture.detail.installations = [];
@@ -166,12 +186,12 @@ function show(
 }
 describe("plugin installation", () => {
   it("uses the freshly downloaded authorization declaration when a catalog item only contains metadata", async () => {
-    fixture.detail.ready = false;
+    fixture.configuration.ready = false;
     Object.assign(fixture.detail.versions[0]?.package ?? {}, {
       integration: {
         authentication: {
           strategy: "plugin-command",
-          protocol: "neuxally-auth/1",
+          protocol: "neuxbot-auth/1",
         },
       },
     });
@@ -213,7 +233,7 @@ describe("plugin installation", () => {
     expect(screen.getByText("已安装")).toBeVisible();
   });
   it("reauthorizes the shared account without reinstalling existing partners", async () => {
-    fixture.detail.ready = false;
+    fixture.configuration.ready = false;
     fixture.detail.installations = [
       { wakerId: "p1", versionId: "version-1", enabled: true },
     ];
@@ -221,7 +241,7 @@ describe("plugin installation", () => {
       integration: {
         authentication: {
           strategy: "plugin-command",
-          protocol: "neuxally-auth/1",
+          protocol: "neuxbot-auth/1",
         },
       },
     });
@@ -232,7 +252,7 @@ describe("plugin installation", () => {
     await waitFor(() => expect(fixture.authorization).toHaveBeenCalledOnce());
     await waitFor(() => expect(fixture.observers.size).toBeGreaterThan(0));
     fixture.detail.account.available = true;
-    fixture.detail.ready = true;
+    fixture.configuration.ready = true;
     for (const observer of fixture.observers) observer.onResync?.("test");
     expect(await screen.findByRole("status")).toHaveTextContent("授权完成");
     expect(fixture.install).not.toHaveBeenCalled();
@@ -254,7 +274,7 @@ describe("plugin installation", () => {
     fireEvent.keyDown(screen.getByRole("checkbox", { name: "伙伴一" }), {
       key: "Escape",
     });
-    fireEvent.click(screen.getByRole("button", { name: "安装" }));
+    fireEvent.click(screen.getByRole("button", { name: "继续" }));
     fireEvent.click(await screen.findByRole("button", { name: "重试" }));
     await waitFor(() => expect(fixture.install).toHaveBeenCalledTimes(2));
     expect(fixture.install.mock.calls[1]?.[0]).toMatchObject({
@@ -269,7 +289,7 @@ describe("plugin installation", () => {
     fireEvent.keyDown(screen.getByRole("checkbox", { name: "伙伴一" }), {
       key: "Escape",
     });
-    fireEvent.click(screen.getByRole("button", { name: "安装" }));
+    fireEvent.click(screen.getByRole("button", { name: "继续" }));
     await waitFor(() => expect(fixture.install).toHaveBeenCalledTimes(1));
     expect(fixture.install.mock.calls[0]?.[0]).toMatchObject({
       path: { pluginId: "plugin-1" },
@@ -290,13 +310,13 @@ describe("plugin installation", () => {
     expect(fixture.cancel).not.toHaveBeenCalled();
   });
   it("selects partners before authorization and installs them after the completion event", async () => {
-    fixture.detail.ready = false;
+    fixture.configuration.ready = false;
     for (const version of fixture.detail.versions)
       Object.assign(version.package, {
         integration: {
           authentication: {
             strategy: "plugin-command",
-            protocol: "neuxally-auth/1",
+            protocol: "neuxbot-auth/1",
           },
         },
       });
@@ -314,7 +334,7 @@ describe("plugin installation", () => {
     await waitFor(() => expect(fixture.authorization).toHaveBeenCalledTimes(1));
     expect(fixture.install).not.toHaveBeenCalled();
     await waitFor(() => expect(fixture.observers.size).toBeGreaterThan(0));
-    fixture.detail.ready = true;
+    fixture.configuration.ready = true;
     fixture.readDelay = 400;
     for (const observer of fixture.observers) observer.onResync?.("test");
     await waitFor(() => expect(fixture.install).toHaveBeenCalledTimes(1), {
@@ -325,13 +345,13 @@ describe("plugin installation", () => {
     });
   });
   it("never installs after the authorization dialog is closed", async () => {
-    fixture.detail.ready = false;
+    fixture.configuration.ready = false;
     for (const version of fixture.detail.versions)
       Object.assign(version.package, {
         integration: {
           authentication: {
             strategy: "plugin-command",
-            protocol: "neuxally-auth/1",
+            protocol: "neuxbot-auth/1",
           },
         },
       });
@@ -346,17 +366,17 @@ describe("plugin installation", () => {
     await waitFor(() => expect(fixture.observers.size).toBeGreaterThan(0));
     const observers = [...fixture.observers];
     cleanup();
-    fixture.detail.ready = true;
+    fixture.configuration.ready = true;
     for (const observer of observers) observer.onResync?.("test");
     expect(fixture.install).not.toHaveBeenCalled();
   });
   it("continues from the verified completion callback without waiting for another push", async () => {
-    fixture.detail.ready = false;
+    fixture.configuration.ready = false;
     Object.assign(fixture.detail.versions[0]?.package ?? {}, {
       integration: {
         authentication: {
           strategy: "plugin-command",
-          protocol: "neuxally-auth/1",
+          protocol: "neuxbot-auth/1",
         },
       },
     });
@@ -369,7 +389,7 @@ describe("plugin installation", () => {
     fireEvent.click(screen.getByRole("button", { name: "继续" }));
     await screen.findByText("扫码授权区域");
     await waitFor(() => expect(fixture.authorization).toHaveBeenCalledOnce());
-    fixture.detail.ready = true;
+    fixture.configuration.ready = true;
     fireEvent.click(screen.getByRole("button", { name: "完成设备授权" }));
     await waitFor(() => expect(fixture.install).toHaveBeenCalledOnce());
     expect(await screen.findByRole("status")).toHaveTextContent("安装成功");
@@ -389,12 +409,12 @@ it("uses the shared localized summary in installation and authorization panels",
 });
 
 async function beginWaitingInstallation(client?: QueryClient) {
-  fixture.detail.ready = false;
+  fixture.configuration.ready = false;
   Object.assign(fixture.detail.versions[0]?.package ?? {}, {
     integration: {
       authentication: {
         strategy: "plugin-command",
-        protocol: "neuxally-auth/1",
+        protocol: "neuxbot-auth/1",
       },
     },
   });
@@ -461,7 +481,7 @@ it("cancels a pending start response after closing before its session ID exists"
 
 it("does not cancel or disconnect an authorization after successful installation closes", async () => {
   await beginWaitingInstallation();
-  fixture.detail.ready = true;
+  fixture.configuration.ready = true;
   fireEvent.click(await screen.findByRole("button", { name: "完成设备授权" }));
   await waitFor(() => expect(fixture.install).toHaveBeenCalledOnce());
   expect(await screen.findByRole("status")).toHaveTextContent("安装成功");
@@ -526,4 +546,40 @@ it("surfaces a failed QR cancellation and allows the refresh to retry before sta
   fireEvent.click(screen.getByRole("button", { name: "刷新设备授权" }));
   await waitFor(() => expect(fixture.cancel).toHaveBeenCalledTimes(2));
   await waitFor(() => expect(fixture.authorization).toHaveBeenCalledTimes(2));
+});
+
+it("prepares the catalog preview instead of installing an older local source snapshot", async () => {
+  fixture.prepare.mockResolvedValue(structuredClone(fixture.detail));
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <MemoryRouter>
+        <PluginInstallDialog
+          detail={{
+            ...fixture.detail,
+            plugin: { ...fixture.detail.plugin, sourceKey: "catalog:office" },
+          }}
+          catalog={{
+            key: "office",
+            sourceKey: "catalog:office",
+            sourceCommit: "new-commit",
+            archiveSHA256: "new-archive",
+            package: { manifest: { name: "office" } },
+          }}
+          wakerId="p1"
+          onClose={vi.fn()}
+        />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "继续" }));
+  await waitFor(() =>
+    expect(fixture.prepare.mock.calls[0]?.[0]).toMatchObject({
+      path: { key: "office" },
+      body: { trustConfirmed: true, expectedArchiveSHA256: "new-archive" },
+    }),
+  );
 });

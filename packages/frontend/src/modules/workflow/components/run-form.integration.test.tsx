@@ -163,6 +163,21 @@ it.each([true, false])(
       http.get(`${origin}/api/v1/ai-accounts`, () =>
         HttpResponse.json({ resources: [] }),
       ),
+      http.get(`${origin}/api/v1/runtimes/codex/models`, () =>
+        HttpResponse.json({
+          runtimeId: "codex",
+          accountId: "system",
+          state: "fresh",
+          defaultModel: "native",
+          models: [
+            {
+              id: "native",
+              name: "Native",
+              permissionLevels: ["default"],
+            },
+          ],
+        }),
+      ),
       http.post(`${origin}/api/v1/workflows/flow/runs`, async ({ request }) => {
         body = await request.json();
         return HttpResponse.json({ id: "run-defaults" });

@@ -95,29 +95,21 @@ export function routeSceneForLocation(
       location,
     );
   }
-  if (
-    pathname === "/workflows" ||
-    navigation.moduleId === "resources" ||
-    (navigation.moduleId === "workflows" && pathname === "/resources")
-  )
-    return routeTab("resources", labels.resources, location);
   if (navigation.moduleId === "usage")
     return routeTab("usage", labels.usage || labels.page, location);
   if (navigation.moduleId === "work-board")
     return routeTab("work-board", labels.workBoard || labels.page, location);
-  const workflow = /^\/workflows(?:\/([^/]+)(?:\/runs\/([^/]+))?)?$/.exec(
-    pathname,
-  );
-  if (navigation.moduleId === "workflows" && workflow)
+  const workflow = /^\/workflows\/([^/]+)(?:\/runs\/([^/]+))?$/.exec(pathname);
+  if (workflow)
     return routeTab(
       workflow[1] === "new"
         ? `workflow-draft:${new URLSearchParams(search).get("draftId") || "default"}`
-        : workflow[1]
-          ? `workflow:${workflow[1]}`
-          : "workflows",
+        : `workflow:${workflow[1]}`,
       labels.workflow || labels.page,
       location,
     );
+  if (navigation.moduleId === "resources")
+    return routeTab("resources", labels.resources, location);
   const globalAutomatic = /^\/automatic-tasks(?:\/([^/]+))?$/.exec(pathname);
   if (navigation.moduleId === "automatic-tasks" && globalAutomatic)
     return routeTab(

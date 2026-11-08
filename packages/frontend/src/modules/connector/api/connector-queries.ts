@@ -35,7 +35,10 @@ export async function invalidateVisibleConnectorQueries(
 ): Promise<void> {
   await queryClient.invalidateQueries({
     predicate: (query) => {
-      const descriptor = query.queryKey[0] as { _id?: string } | undefined;
+      const descriptor = query.queryKey[0] as
+        { _id?: string; query?: { type?: string } } | undefined;
+      if (descriptor?._id === "listResourceCategories")
+        return descriptor.query?.type === "connector";
       return Boolean(
         descriptor?._id && visibleConnectorQueryIDs.has(descriptor._id),
       );

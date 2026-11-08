@@ -1,7 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { useId, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { createPortal } from "react-dom";
 import {
   localApiErrorMessage,
@@ -39,6 +39,7 @@ export function RunForm({
   const { t } = useTranslation("workflow");
   const formId = useId();
   const navigate = useNavigate();
+  const location = useLocation();
   const schema = revision.manifest?.inputSchema ?? {
     type: "object",
     properties: {},
@@ -89,7 +90,7 @@ export function RunForm({
         rememberRunInputs(id, schema, args);
         setRequest(undefined);
         onClose();
-        navigate(`/workflows/${id}/runs/${run.id}`);
+        navigate(`/workflows/${id}/runs/${run.id}`, { state: location.state });
       }
     } catch {
       // 请求失败时保留表单与局部错误。

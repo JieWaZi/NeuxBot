@@ -51,13 +51,13 @@ it.each([
     ).toBeVisible();
     if (version) expect(screen.queryByText(brand)).not.toBeInTheDocument();
     if (version) {
-      expect(screen.getByText("插件版本")).toBeVisible();
+      expect(screen.getByText("上游版本")).toBeVisible();
       expect(screen.getByText(version)).toBeVisible();
     } else {
-      expect(screen.queryByText("插件版本")).not.toBeInTheDocument();
+      expect(screen.queryByText("上游版本")).not.toBeInTheDocument();
     }
     expect(screen.queryByText("NeuxBot contributors")).not.toBeInTheDocument();
     expect(screen.queryByText("0.1.0")).not.toBeInTheDocument();
-    expect(screen.queryByText("上游版本")).not.toBeInTheDocument();
+    expect(screen.queryByText("插件版本")).not.toBeInTheDocument();
   },
 );

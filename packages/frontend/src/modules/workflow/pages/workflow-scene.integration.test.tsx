@@ -220,7 +220,14 @@ beforeEach(() => {
     ),
     http.get(`${origin}/api/v1/workflows`, () =>
       HttpResponse.json({
-        items: [{ id: "flow", title: "审批验收", ordinal: saved ? 1 : 0 }],
+        items: [
+          {
+            id: "flow",
+            title: "审批验收",
+            description: saved ? "已保存的审批流程" : "待完善的审批流程",
+            ordinal: saved ? 1 : 0,
+          },
+        ],
       }),
     ),
     http.get(`${origin}/api/v1/workflows/flow`, () =>
@@ -294,7 +301,7 @@ afterAll(() => {
 });
 
 function renderScene(
-  path: string,
+  path: string | { pathname: string; search?: string; state?: unknown },
   queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   }),
@@ -437,6 +444,40 @@ async function clickWorkflowAction(
   );
   await user.click(await screen.findByRole("menuitem", { name }));
 }
+
+it("工作流画布切换节点后返回资源库仍保留原搜索", async () => {
+  const resourceBack =
+    "/resources?category=workflows&search=%E5%AE%A1%E6%89%B9";
+  const user = userEvent.setup();
+  renderScene({ pathname: "/workflows/flow", state: { resourceBack } });
+  const breadcrumb = screen.getByRole("navigation", { name: "工作流路径" });
+  expect(
+    within(breadcrumb).getByRole("link", { name: "工作流" }),
+  ).toHaveAttribute("href", resourceBack);
+  await user.click(
+    await screen.findByRole("button", { name: "选择 生成材料" }),
+  );
+  expect(
+    within(breadcrumb).getByRole("link", { name: "工作流" }),
+  ).toHaveAttribute("href", resourceBack);
+  await user.click(within(breadcrumb).getByRole("link", { name: "工作流" }));
+  expect(
+    await screen.findByRole("searchbox", { name: "搜索工作流" }),
+  ).toHaveValue("审批");
+});
+
+it("工作流详情拒绝外部返回地址并回到资源库", () => {
+  renderScene({
+    pathname: "/workflows/flow",
+    state: {
+      resourceBack: "https://external.test/resources?category=workflows",
+    },
+  });
+  const breadcrumb = screen.getByRole("navigation", { name: "工作流路径" });
+  expect(
+    within(breadcrumb).getByRole("link", { name: "工作流" }),
+  ).toHaveAttribute("href", "/resources?category=workflows");
+});
 
 it("工作流冷加载保留输入框，消息区与画布分别显示局部 Spinner", async () => {
   let releaseDefinition = () => {};
@@ -820,13 +861,13 @@ it("节点标题保存后保留业务编辑浮层，不暴露执行模型菜单"
 it("资源页重新激活后读取创作在另一场景保存的版本", async () => {
   const refresh = renderScene("/workflows");
   await screen.findByRole("link", { name: "审批验收" });
-  expect(screen.queryByText("版本 1")).not.toBeInTheDocument();
+  expect(screen.getByText("待完善的审批流程")).toBeInTheDocument();
   scene.active = false;
   refresh();
   saved = true;
   scene.active = true;
   refresh();
-  await screen.findByText("版本 1");
+  await screen.findByText("已保存的审批流程");
 });
 
 it("已有工作流默认画布铺满主容器，会话展开收起保留共享输入实例", async () => {

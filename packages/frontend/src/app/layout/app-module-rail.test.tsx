@@ -11,20 +11,13 @@ import "@/shared/i18n";
 import { AppModuleRail } from "./app-module-rail";
 
 describe("AppModuleRail", () => {
-  it("固定提供全部模块入口且只渲染一个通知槽位", async () => {
+  it("固定提供全部模块入口，不承载通知入口", async () => {
     const user = userEvent.setup();
     const onNavigate = vi.fn();
-    render(
-      <AppModuleRail
-        activeModule="resources"
-        onNavigate={onNavigate}
-        notification={<button>通知</button>}
-      />,
-    );
+    render(<AppModuleRail activeModule="resources" onNavigate={onNavigate} />);
     const rail = screen.getByRole("navigation", { name: "模块导航" });
     for (const [label, id] of [
       ["伙伴", "partners"],
-      ["工作流", "workflows"],
       ["任务看板", "work-board"],
       ["用量统计", "usage"],
       ["资源库", "resources"],
@@ -36,9 +29,13 @@ describe("AppModuleRail", () => {
     expect(
       within(rail).getByRole("button", { name: "资源库" }),
     ).toHaveAttribute("aria-current", "page");
-    expect(screen.getAllByRole("button", { name: "通知" })).toHaveLength(1);
+    expect(
+      screen.queryByRole("button", { name: "通知" }),
+    ).not.toBeInTheDocument();
     expect(rail.querySelector("img")).toBeNull();
     await user.click(within(rail).getByRole("button", { name: "更多模块" }));
+    expect(screen.queryByRole("menuitem", { name: "工作流" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "工作流" })).toBeNull();
     await user.click(screen.getByRole("menuitem", { name: "知识库" }));
     expect(onNavigate).toHaveBeenLastCalledWith("knowledge");
     await user.click(within(rail).getByRole("button", { name: "更多模块" }));
@@ -97,11 +94,8 @@ it("More列出所有可pin模块，pin/unpin不导航、不关闭菜单并保持
   expect(
     within(rail).getByRole("button", { name: "更多模块", hidden: true }),
   ).not.toHaveAttribute("aria-current");
-  await user.click(
-    screen.getByRole("menuitemcheckbox", { name: "固定工作流" }),
-  );
   expect(
-    within(rail).queryByRole("button", { name: "工作流", hidden: true }),
+    screen.queryByRole("menuitemcheckbox", { name: "固定工作流" }),
   ).toBeNull();
   await user.click(
     screen.getByRole("menuitemcheckbox", { name: "固定知识库" }),

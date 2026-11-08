@@ -72319,6 +72319,11 @@
             "description": "包格式",
             "x-go-field-name": "Format"
           },
+          "hasConfiguration": {
+            "type": "boolean",
+            "description": "是否声明用户可编辑配置",
+            "x-go-field-name": "HasConfiguration"
+          },
           "icon": {
             "type": "string",
             "description": "软件图标",

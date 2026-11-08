@@ -56,6 +56,8 @@ type PublicServer struct {
 type PublicPackage struct {
 	// 解析契约
 	ContractVersion string `json:"contractVersion"`
+	// 是否声明用户可编辑配置
+	HasConfiguration bool `json:"hasConfiguration"`
 	// 元数据
 	Manifest PublicManifest `json:"manifest"`
 	// 包格式
@@ -84,6 +86,9 @@ type PublicPackage struct {
 func (p Package) Public() PublicPackage {
 	manifest := p.Manifest
 	result := PublicPackage{ContractVersion: p.ContractVersion, Manifest: PublicManifest{Schema: manifest.Schema, Name: manifest.Name, Version: manifest.Version, Description: manifest.Description, Author: manifest.Author, Homepage: manifest.Homepage, Repository: manifest.Repository, License: manifest.License, Keywords: manifest.Keywords}, Format: p.Format, Presentation: p.Presentation, Upstream: p.Upstream, Icon: p.Icon, Readme: p.Readme, ReadmeStatus: p.ReadmeStatus, Skills: p.Skills, Servers: []PublicServer{}, Diagnostics: p.Diagnostics}
+	if extension, err := ClientExtension(p); err == nil {
+		result.HasConfiguration = len(extension.Config) > 0
+	}
 	for _, server := range p.Servers {
 		endpoint := ""
 		if address, err := url.Parse(server.URL); err == nil && (address.Scheme == "https" || address.Scheme == "http") && address.Host != "" {

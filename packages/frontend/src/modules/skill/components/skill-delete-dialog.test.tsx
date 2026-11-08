@@ -24,9 +24,9 @@ vi.mock("../api/skill-queries", () => ({
 
 beforeEach(() => {
   uninstallSkill.mockReset();
-  let privateAttempts = 0;
+  let retryAttempts = 0;
   uninstallSkill.mockImplementation(async ({ path }) => {
-    if (path.skillId === "skill-private" && privateAttempts++ === 0) {
+    if (path.skillId === "skill-retry" && retryAttempts++ === 0) {
       throw new Error("temporary failure");
     }
     return { success: true };
@@ -52,15 +52,13 @@ describe("SkillDeleteDialog", () => {
           skills={[
             {
               affectedWakerCount: 3,
-              id: "skill-public",
-              name: "公开技能",
-              scope: "public",
+              id: "skill-first",
+              name: "代码审查",
             },
             {
               affectedWakerCount: 1,
-              id: "skill-private",
-              name: "私有技能",
-              scope: "private",
+              id: "skill-retry",
+              name: "技术写作",
             },
           ]}
           wakerId="waker-1"
@@ -71,28 +69,26 @@ describe("SkillDeleteDialog", () => {
     );
 
     expect(
-      screen.getByText(
-        "将卸载所选的 2 个技能，其中 1 个公开技能会从 3 个伙伴中移除。",
-      ),
+      screen.getByText("将从当前伙伴移除所选的 2 个技能，其他伙伴不受影响。"),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "卸载所选" }));
+    await user.click(screen.getByRole("button", { name: "移除所选" }));
 
     expect(
-      await screen.findByText("1 个技能卸载失败，已保留失败项，请重试。"),
+      await screen.findByText("1 个技能移除失败，已保留失败项，请重试。"),
     ).toBeInTheDocument();
-    expect(onDeleted).toHaveBeenCalledWith(["skill-public"]);
+    expect(onDeleted).toHaveBeenCalledWith(["skill-first"]);
     expect(uninstallSkill).toHaveBeenCalledTimes(2);
 
-    await user.click(screen.getByRole("button", { name: "重试卸载" }));
+    await user.click(screen.getByRole("button", { name: "重试移除" }));
 
     await waitFor(() => expect(uninstallSkill).toHaveBeenCalledTimes(3));
     expect(uninstallSkill.mock.calls[2]?.[0]).toEqual(
       expect.objectContaining({
-        path: { wakerId: "waker-1", skillId: "skill-private" },
+        path: { wakerId: "waker-1", skillId: "skill-retry" },
       }),
     );
-    expect(onDeleted).toHaveBeenLastCalledWith(["skill-private"]);
+    expect(onDeleted).toHaveBeenLastCalledWith(["skill-retry"]);
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });

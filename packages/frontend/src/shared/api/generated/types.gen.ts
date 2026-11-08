@@ -8710,6 +8710,10 @@ export type GithubComJieWaZiNeuxBotServerInternalPluginsPublicPackage = {
      */
     format?: string;
     /**
+     * 是否声明用户可编辑配置
+     */
+    hasConfiguration?: boolean;
+    /**
      * 软件图标
      */
     icon?: string;

@@ -21,6 +21,7 @@ type Props = {
   affectedWakerCount: number;
   connectorId: string;
   name: string;
+  ownerWakerId?: string;
   onDeleted?: () => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
@@ -31,6 +32,7 @@ export function ConnectorDeleteDialog({
   affectedWakerCount,
   connectorId,
   name,
+  ownerWakerId,
   onDeleted,
   onOpenChange,
   open,
@@ -38,6 +40,8 @@ export function ConnectorDeleteDialog({
 }: Props) {
   const { t } = useTranslation("connector");
   const queryClient = useQueryClient();
+  const removingInstallation = Boolean(wakerId && !ownerWakerId);
+  const title = t(removingInstallation ? "delete.removeTitle" : "delete.title");
   const deleteConnector = useMutation(
     withLocalErrorMutation(deleteWakerConnectorMutation()),
   );
@@ -59,12 +63,19 @@ export function ConnectorDeleteDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title={t("delete.title")}
-        description={t("delete.description")}
+        title={title}
+        description={removingInstallation ? undefined : t("delete.description")}
       >
         <div className="px-6 py-4">
           <p className="type-body">
-            {t("delete.warning", { count: affectedWakerCount, name })}
+            {t(
+              removingInstallation
+                ? "delete.removeWarning"
+                : ownerWakerId
+                  ? "delete.privateWarning"
+                  : "delete.warning",
+              { count: affectedWakerCount, name },
+            )}
           </p>
           {deleteConnector.isError ? (
             <p role="alert" className="text-destructive type-body mt-3">
@@ -85,7 +96,11 @@ export function ConnectorDeleteDialog({
           >
             {deleteConnector.isPending
               ? t("delete.deleting")
-              : t("delete.confirm")}
+              : t(
+                  removingInstallation
+                    ? "delete.removeConfirm"
+                    : "delete.confirm",
+                )}
           </Button>
         </DialogFooter>
       </DialogContent>

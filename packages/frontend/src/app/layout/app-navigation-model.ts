@@ -5,7 +5,6 @@ import {
 
 export type AppModuleId =
   | "partners"
-  | "workflows"
   | "work-board"
   | "usage"
   | "resources"
@@ -29,7 +28,6 @@ export type AppNavigationLocation = {
 
 const moduleHrefs: Readonly<Record<AppModuleId, string>> = {
   partners: "/wakers",
-  workflows: "/resources?category=workflows",
   "work-board": "/work-board",
   usage: "/usage",
   resources: "/resources",
@@ -99,16 +97,18 @@ export function resolveAppNavigation({
   );
   if (workflow)
     return route(
-      "workflows",
-      "none",
-      workflow[2] ? `/workflows/${workflow[1]}` : moduleHrefs.workflows,
+      "resources",
+      workflow[1] ? "none" : "resources",
+      workflow[2]
+        ? `/workflows/${workflow[1]}`
+        : "/resources?category=workflows",
     );
   if (pathname === "/resources" || pathname.startsWith("/resources/")) {
     if (pathname === "/resources" && params.get("category") === "workflows")
-      return route("workflows", "none");
-    const category = /\/skills(?:\/|$)/.test(pathname)
+      return route("resources", "resources", "/resources?category=workflows");
+    const category = /^\/resources\/skills(?:\/|$)/.test(pathname)
       ? "skills"
-      : /\/connectors(?:\/|$)/.test(pathname)
+      : /^\/resources\/connectors(?:\/|$)/.test(pathname)
         ? "connectors"
         : undefined;
     return route(

@@ -1,259 +1,185 @@
 import type { ReactNode } from "react";
-import { Wrench } from "lucide-react";
+import { Info, Wrench } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { localApiErrorMessage } from "@/shared/api/local-error-surface";
-import { runtimeDisplayName } from "@/shared/lib/runtime-display-name";
-import { Card } from "@/shared/ui/card";
+import { Button } from "@/shared/ui/button";
 import { DetailSection } from "@/shared/ui/detail-section";
-import { ReadOnlyField } from "@/shared/ui/read-only-field";
-import { RuntimeCliIcon } from "@/shared/ui/runtime-cli-icon";
+import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
+import {
+  ResourceCatalogField,
+  ResourceCatalogFields,
+  ResourceCatalogRow,
+  ResourceCatalogRows,
+} from "@/shared/ui/resource-catalog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/shared/ui/tooltip";
 import { connectorTransportOf } from "../model/connector-view";
-import type { ConnectorRecord, ConnectorCompatibility } from "../model/types";
+import type { ConnectorRecord } from "../model/types";
 
-/** 独立连接器与插件组件共用信息布局；诊断操作由拥有连接器的入口提供。 */
+/** 工具与完整配置分开阅读；测试诊断留在工具区的显式交互浮层中。 */
 export function ConnectorDetails({
   connector,
-  compatibility = [],
   testing = false,
   testError,
   testAction,
   managed = false,
+  source,
+  version,
 }: {
   connector: ConnectorRecord;
-  compatibility?: ConnectorCompatibility[];
   testing?: boolean;
   testError?: unknown;
   testAction?: ReactNode;
   managed?: boolean;
+  source?: ReactNode;
+  version?: string;
 }) {
-  const { t } = useTranslation("connector");
+  const { t, i18n } = useTranslation("connector");
   const transport = connectorTransportOf(connector.transport);
   const definitions =
     transport === "stdio"
       ? (connector.environment ?? [])
       : (connector.headers ?? []);
-  const testedAt = connector?.testedAt
-    ? new Intl.DateTimeFormat("zh-CN", {
+  const testedAt = connector.testedAt
+    ? new Intl.DateTimeFormat(i18n.resolvedLanguage, {
         dateStyle: "medium",
         timeStyle: "short",
       }).format(new Date(connector.testedAt))
     : t("detail.neverTested");
-  const testStatus = testing
-    ? "testing"
-    : (connector?.testStatus ?? "untested");
+  const testStatus = testing ? "testing" : (connector.testStatus ?? "untested");
   const testStatusClassName =
     testStatus === "succeeded"
       ? "text-success"
       : testStatus === "failed"
         ? "text-destructive"
-        : "text-content-secondary";
-  const compatibilityGroups = [
-    {
-      supported: true,
-      runtimes: compatibility.filter((runtime) => runtime.supported),
-    },
-    {
-      supported: false,
-      runtimes: compatibility.filter((runtime) => !runtime.supported),
-    },
-  ].filter((group) => group.runtimes.length > 0);
+        : "text-resource-muted";
+  const error = testError
+    ? localApiErrorMessage(testError, t("detail.testFailed"))
+    : connector.testError;
 
   return (
     <>
-      <DetailSection title={t("detail.configuration")} surface="wash">
-        <div className="@container/connector-config grid min-w-0 gap-5">
-          <dl className="grid min-w-0 grid-cols-1 gap-x-8 gap-y-4 @[24rem]/connector-config:grid-cols-2 @[40rem]/connector-config:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)] @[24rem]/connector-config:[&>div:last-child]:col-span-2 @[40rem]/connector-config:[&>div:last-child]:col-span-1">
-            <ReadOnlyField label={t("form.transport")}>
-              {t(`transport.${transport}`)}
-            </ReadOnlyField>
-            <ReadOnlyField label={t("detail.timeout")}>
-              {connector.timeoutMs
-                ? `${connector.timeoutMs} ms`
-                : managed
-                  ? "—"
-                  : "10000 ms"}
-            </ReadOnlyField>
-            {transport === "stdio" ? (
-              <ReadOnlyField label={t("form.command")}>
-                <code className="type-body">{connector.command || "—"}</code>
-              </ReadOnlyField>
-            ) : (
-              <ReadOnlyField label={t("form.url")}>
-                {connector.url || "—"}
-              </ReadOnlyField>
-            )}
-          </dl>
-          <dl className="grid min-w-0 gap-5">
-            {transport === "stdio" ? (
-              <ReadOnlyField label={t("form.arguments")}>
-                <code className="type-body">
-                  {(connector.arguments ?? []).join(" ") || "—"}
-                </code>
-              </ReadOnlyField>
-            ) : null}
-            <ReadOnlyField
-              label={
-                transport === "stdio"
-                  ? t("form.environment")
-                  : t("form.headers")
-              }
-            >
-              {definitions.length ? (
-                <ul className="grid min-w-0 gap-3">
-                  {definitions.map((definition) => (
-                    <li
-                      key={definition.id ?? definition.name}
-                      className="bg-muted/60 min-h-row-default grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md px-3 py-2"
-                    >
-                      <code className="min-w-0 [overflow-wrap:anywhere]">
-                        {definition.name}
-                      </code>
-                      <span className="text-content-secondary whitespace-nowrap">
-                        {managed
-                          ? t("plugin:connectorManaged")
-                          : definition.configured
-                            ? t("detail.configured")
-                            : t("detail.notConfigured")}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <span className="text-content-secondary">
-                  {t(managed ? "plugin:connectorManaged" : "form.noSecrets")}
-                </span>
-              )}
-            </ReadOnlyField>
-          </dl>
-        </div>
-      </DetailSection>
-
       <DetailSection
-        title={t("detail.connectionAndCompatibility")}
-        actions={testAction}
-      >
-        <div className="grid min-w-0 gap-6">
-          <Card asChild variant="section">
-            <section
-              aria-label={t("detail.testTitle")}
-              className="grid min-w-0 gap-4"
-            >
-              <div className="@container/connector-test min-w-0">
-                <dl className="grid min-w-0 grid-cols-1 gap-x-8 gap-y-4 @[24rem]/connector-test:grid-cols-2 @[36rem]/connector-test:grid-cols-3">
-                  <ReadOnlyField label={t("detail.testStatus")}>
-                    <span className={testStatusClassName} aria-live="polite">
-                      {t(`testStatus.${testStatus}`)}
-                    </span>
-                  </ReadOnlyField>
-                  <ReadOnlyField label={t("detail.testedAt")}>
-                    {testedAt}
-                  </ReadOnlyField>
-                  <ReadOnlyField label={t("detail.testDuration")}>
-                    {connector.testedAt
-                      ? `${connector.testDurationMs ?? 0} ms`
-                      : "—"}
-                  </ReadOnlyField>
-                </dl>
-              </div>
-              {connector.testError || Boolean(testError) ? (
-                <p
-                  role="alert"
-                  className="text-destructive type-body min-w-0 [overflow-wrap:anywhere]"
-                >
-                  {connector.testError ||
-                    localApiErrorMessage(testError, t("detail.testFailed"))}
-                </p>
-              ) : null}
-            </section>
-          </Card>
-
-          <Card asChild variant="section">
-            <section aria-label={t("detail.compatibility")}>
-              {compatibility.length ? (
-                <div className="grid min-w-0 gap-4">
-                  {compatibilityGroups.map((group) => (
-                    <div
-                      key={group.supported ? "supported" : "unsupported"}
-                      className="grid min-w-0 gap-2"
-                    >
-                      <h3 className="text-content-secondary type-ui font-medium">
-                        {group.supported
-                          ? t("compatibility.supported")
-                          : t("compatibility.unsupported")}
-                      </h3>
-                      <ul className="flex min-w-0 flex-wrap gap-x-6 gap-y-3">
-                        {group.runtimes.map((runtime) => (
-                          <li
-                            key={runtime.runtimeId}
-                            className="type-body inline-flex min-w-0 flex-wrap items-center gap-2"
-                          >
-                            <RuntimeCliIcon
-                              runtimeId={runtime.runtimeId}
-                              size={14}
-                            />
-                            <span className="font-medium [overflow-wrap:anywhere]">
-                              {runtimeDisplayName({
-                                id: runtime.runtimeId,
-                              }) || "Runtime"}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-content-secondary type-body">
-                  {t("detail.noCompatibility")}
-                </p>
-              )}
-            </section>
-          </Card>
-        </div>
-      </DetailSection>
-
-      <DetailSection
+        appearance="catalog"
         title={t("detail.tools")}
         actions={
-          connector.testedAt && connector.testToolCount !== undefined ? (
-            <span className="text-content-secondary type-ui">
-              {t("card.toolCount", { count: connector.testToolCount })}
-            </span>
-          ) : undefined
+          <>
+            {connector.testedAt && connector.testToolCount !== undefined && (
+              <span className="type-resource-caption text-resource-muted">
+                {t("card.toolCount", { count: connector.testToolCount })}
+              </span>
+            )}
+            {(testing ||
+              connector.testStatus === "succeeded" ||
+              connector.testStatus === "failed") && (
+              <span
+                className={`type-resource-caption ${testStatusClassName}`}
+                aria-live="polite"
+              >
+                {t(`testStatus.${testStatus}`)}
+              </span>
+            )}
+            <Popover>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        size="catalog-icon"
+                        variant="catalog-ghost"
+                        aria-label={t("detail.testDetails")}
+                      >
+                        <Info aria-hidden="true" />
+                      </Button>
+                    </PopoverTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>{t("detail.testDetails")}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <PopoverContent
+                width="default"
+                side="bottom"
+                align="end"
+                aria-label={t("detail.testDetails")}
+              >
+                <section
+                  aria-label={t("detail.testTitle")}
+                  className="grid gap-3"
+                >
+                  <h3 className="type-resource-body text-resource-content font-medium">
+                    {t("detail.testTitle")}
+                  </h3>
+                  <ResourceCatalogFields>
+                    <ResourceCatalogField label={t("detail.testStatus")}>
+                      <span className={testStatusClassName}>
+                        {t(`testStatus.${testStatus}`)}
+                      </span>
+                    </ResourceCatalogField>
+                    <ResourceCatalogField label={t("detail.testedAt")}>
+                      {testedAt}
+                    </ResourceCatalogField>
+                    <ResourceCatalogField label={t("detail.testDuration")}>
+                      {connector.testedAt
+                        ? `${connector.testDurationMs ?? 0} ms`
+                        : "—"}
+                    </ResourceCatalogField>
+                  </ResourceCatalogFields>
+                </section>
+              </PopoverContent>
+            </Popover>
+            {testAction}
+          </>
         }
       >
+        {error && (
+          <p
+            role="alert"
+            className="type-resource-body text-destructive min-w-0 px-4 pt-3 [overflow-wrap:anywhere]"
+          >
+            {error}
+          </p>
+        )}
         {connector.testTools?.length ? (
-          <ul className="grid min-w-0 gap-2">
+          <ResourceCatalogRows>
             {connector.testTools.map((tool) => (
-              <li
-                key={tool.name}
-                className="bg-muted/60 grid min-w-0 grid-cols-[20px_minmax(0,1fr)] items-center gap-3 rounded-md px-3 py-2"
-              >
-                <Wrench
-                  className="text-content-secondary size-icon-md"
+              <ResourceCatalogRow key={tool.name}>
+                <span
+                  className="size-resource-icon grid shrink-0 place-items-center"
                   aria-hidden="true"
-                />
-                <div className="min-w-0">
+                >
+                  <Wrench
+                    className="text-resource-secondary size-icon-lg"
+                    strokeWidth={1.5}
+                  />
+                </span>
+                <div className="min-w-0 flex-1">
                   <h3
-                    className="type-label truncate font-medium"
+                    className="type-resource-body text-resource-content truncate font-medium"
                     title={tool.name}
                   >
                     {tool.name}
                   </h3>
                   <p
-                    className="text-content-secondary type-body mt-1 truncate"
+                    className="type-resource-caption text-resource-muted mt-0.5 truncate"
                     title={tool.description || t("detail.noToolDescription")}
                   >
                     {tool.description || t("detail.noToolDescription")}
                   </p>
                 </div>
-              </li>
+              </ResourceCatalogRow>
             ))}
-          </ul>
+          </ResourceCatalogRows>
         ) : (
-          <div className="grid min-w-0 gap-1">
-            <p className="type-body font-medium">{t("detail.noTools")}</p>
-            <p className="text-content-secondary type-body">
+          <div className="grid min-w-0 gap-1 px-4 py-3">
+            <p className="type-resource-body text-resource-content font-medium">
+              {t("detail.noTools")}
+            </p>
+            <p className="type-resource-caption text-resource-muted">
               {t(
                 managed
                   ? "plugin:connectorToolsEmpty"
@@ -262,6 +188,91 @@ export function ConnectorDetails({
             </p>
           </div>
         )}
+      </DetailSection>
+      <DetailSection appearance="catalog" title={t("detail.information")}>
+        <div className="grid min-w-0 gap-3 px-4 py-3">
+          {connector.description && (
+            <p className="type-resource-body text-resource-content">
+              {connector.description}
+            </p>
+          )}
+          <ResourceCatalogFields>
+            {Boolean(connector.categories?.length) && (
+              <ResourceCatalogField label={t("common:resourceCategory.label")}>
+                {connector.categories?.join("、")}
+              </ResourceCatalogField>
+            )}
+            {source && (
+              <ResourceCatalogField label={t("detail.source")}>
+                {source}
+              </ResourceCatalogField>
+            )}
+            {version && (
+              <ResourceCatalogField label={t("detail.version")}>
+                {version}
+              </ResourceCatalogField>
+            )}
+            <ResourceCatalogField label={t("form.transport")}>
+              {t(`transport.${transport}`)}
+            </ResourceCatalogField>
+            {transport === "stdio" ? (
+              <>
+                <ResourceCatalogField label={t("form.command")}>
+                  <code>{connector.command || "—"}</code>
+                </ResourceCatalogField>
+                <ResourceCatalogField label={t("form.arguments")}>
+                  <code>{(connector.arguments ?? []).join(" ") || "—"}</code>
+                </ResourceCatalogField>
+              </>
+            ) : (
+              <ResourceCatalogField label={t("form.url")}>
+                {connector.url || "—"}
+              </ResourceCatalogField>
+            )}
+            <ResourceCatalogField label={t("detail.timeout")}>
+              {connector.timeoutMs
+                ? t("detail.timeoutValue", {
+                    seconds: connector.timeoutMs / 1000,
+                  })
+                : managed
+                  ? "—"
+                  : t("detail.timeoutValue", { seconds: 10 })}
+            </ResourceCatalogField>
+            <ResourceCatalogField
+              label={t(
+                transport === "stdio" ? "form.environment" : "form.headers",
+              )}
+            >
+              {definitions.length ? (
+                <ul className="grid min-w-0 gap-2">
+                  {definitions.map((definition) => (
+                    <li
+                      key={definition.id ?? definition.name}
+                      className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1"
+                    >
+                      <code className="min-w-0 [overflow-wrap:anywhere]">
+                        {definition.name}
+                      </code>
+                      <span className="type-resource-caption text-resource-muted">
+                        {t(
+                          managed
+                            ? "plugin:connectorManaged"
+                            : definition.configured
+                              ? "detail.configured"
+                              : "detail.notConfigured",
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <span className="text-resource-muted">
+                  {t(managed ? "plugin:connectorManaged" : "form.noSecrets")}
+                </span>
+              )}
+            </ResourceCatalogField>
+          </ResourceCatalogFields>
+        </div>
       </DetailSection>
     </>
   );

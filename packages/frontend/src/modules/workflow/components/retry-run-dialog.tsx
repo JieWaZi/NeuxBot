@@ -2,7 +2,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { RotateCcw } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   getWorkflowRunOptions,
   getWorkflowRetryPlanOptions,
@@ -31,6 +31,7 @@ export function RetryRunDialog({
 }) {
   const { t } = useTranslation("workflow");
   const navigate = useNavigate();
+  const location = useLocation();
   const [open, setOpen] = useState(false);
   const [requestId, setRequestId] = useState("");
   const plan = useQuery({
@@ -61,7 +62,7 @@ export function RetryRunDialog({
       });
       if (run.id) {
         setOpen(false);
-        navigate(`/workflows/${id}/runs/${run.id}`);
+        navigate(`/workflows/${id}/runs/${run.id}`, { state: location.state });
       }
     } catch {
       /* Preserve the plan and command identity for retry. */
