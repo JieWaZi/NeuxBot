@@ -15,6 +15,14 @@ import (
 
 // PluginController 管理插件的唯一资源、版本、安装与共享配置事实。
 type PluginController interface {
+	// BrowseInstalled 过滤、计数并分页读取全局实际安装的插件资源。
+	BrowseInstalled(context.Context, string, int, int) ([]models.Plugin, int64, error)
+	// BrowseLocalUninstalled 分页读取尚无伙伴安装的本地技能插件，零窗口仅统计总量。
+	BrowseLocalUninstalled(context.Context, string, int, int) ([]models.Plugin, int64, error)
+	// InstalledSources 返回给定有界来源集合中已存在真实安装的来源。
+	InstalledSources(context.Context, []string) ([]string, error)
+	// ReadBrowseStates 只补齐有界窗口的实际安装版本或未安装本地初始版本公开摘要与真实安装数量。
+	ReadBrowseStates(context.Context, []string) (map[string]models.PluginBrowseState, error)
 	// ContentReferences 返回数据库仍保留的受管目录相对路径。
 	ContentReferences(context.Context) ([]string, error)
 	// InstalledReferences 只读取伙伴已启用安装的展示身份和固定版本。
@@ -23,18 +31,18 @@ type PluginController interface {
 	ExecutionDeclarations(context.Context, string) ([]models.PluginExecutionDeclaration, error)
 	// ExecutionConfiguration 在冷资源取得时解密共享配置，不读取私有授权交付材料。
 	ExecutionConfiguration(context.Context, string) (models.PluginConfiguration, error)
-	// ReadStates 批量补齐最多一百个资源的版本、安装与配置。
+	// ReadStates 批量补齐最多一百个资源的版本、安装及公开配置修订。
 	ReadStates(context.Context, []string) (map[string]models.PluginState, error)
 	// Create 登记稳定资源。
 	Create(context.Context, models.Plugin) error
 	// Get 查询资源，缺失返回明确领域错误。
 	Get(context.Context, string) (models.Plugin, error)
-	// FindSource 按归属和来源查询资源，未登记时返回空资源。
-	FindSource(context.Context, string, string) (models.Plugin, error)
-	// List 按归属、安装范围和关键字分页查询资源。
-	List(context.Context, string, string, string, int, int, bool) ([]models.Plugin, int64, error)
+	// FindSource 按来源查询资源，未登记时返回空资源。
+	FindSource(context.Context, string) (models.Plugin, error)
+	// List 按安装范围和关键字分页查询资源。
+	List(context.Context, string, string, int, int) ([]models.Plugin, int64, error)
 	// Update 修改资源展示资料。
-	Update(context.Context, string, string, string) error
+	Update(context.Context, string, string, string, *[]string) error
 	// PutVersion 幂等登记不可变版本，相同版本不同摘要拒绝。
 	PutVersion(context.Context, models.PluginVersion) (models.PluginVersion, error)
 	// Version 查询明确版本。
@@ -57,11 +65,17 @@ type PluginController interface {
 	Configuration(context.Context, string) (models.PluginConfiguration, error)
 	// UpdateConfiguration 条件更新加密共享配置，由完整用例控制事务。
 	UpdateConfiguration(context.Context, models.PluginConfiguration, int64) error
-	// UpdateDeliveryMaterials 只保存同一配置修订的加密授权交付材料，不改变配置身份。
-	UpdateDeliveryMaterials(context.Context, models.PluginConfiguration) error
+	// ConfigurationRevision 只读取普通配置修订，不解密配置。
+	ConfigurationRevision(context.Context, string) (int64, error)
+	// AccountGeneration 只读取共享账号代次，不读取或解密材料。
+	AccountGeneration(context.Context, string) (int64, error)
+	// Account 仅读取实际管理或执行所需的共享私有材料。
+	Account(context.Context, string) (models.PluginAccount, error)
+	// UpdateAccount 按预期代次原子替换加密材料并推进账号代次。
+	UpdateAccount(context.Context, models.PluginAccount, int64) error
 	// Delete 删除资源和关联元数据，由调用用例控制事务和活跃内容回收。
 	Delete(context.Context, string) error
-	// DeleteByWaker 删除伙伴安装和自有资源，由伙伴聚合删除事务调用。
+	// DeleteByWaker 删除伙伴安装关系，由伙伴聚合删除事务调用。
 	DeleteByWaker(context.Context, string) error
 }
 
@@ -109,9 +123,9 @@ func (c *pluginController) Get(ctx context.Context, id string) (models.Plugin, e
 }
 
 // FindSource 查询明确来源，不凭展示名判重。
-func (c *pluginController) FindSource(ctx context.Context, owner, key string) (models.Plugin, error) {
+func (c *pluginController) FindSource(ctx context.Context, key string) (models.Plugin, error) {
 	var p models.Plugin
-	err := controllerDB(ctx, c.db).Where("owner_waker_id = ? AND source_key = ?", owner, key).Limit(1).Find(&p).Error
+	err := controllerDB(ctx, c.db).Where("source_key = ?", key).Limit(1).Find(&p).Error
 	if err != nil {
 		return p, databaseError("find_plugin_source", key, err)
 	}
@@ -119,15 +133,10 @@ func (c *pluginController) FindSource(ctx context.Context, owner, key string) (m
 }
 
 // List 将全局发现和伙伴真实安装分开，统计不补齐展示资料。
-func (c *pluginController) List(ctx context.Context, owner, waker, query string, offset, limit int, installedOnly bool) ([]models.Plugin, int64, error) {
+func (c *pluginController) List(ctx context.Context, waker, query string, offset, limit int) ([]models.Plugin, int64, error) {
 	db := controllerDB(ctx, c.db).Model(&models.Plugin{})
 	if waker != "" {
-		db = db.Where("owner_waker_id = ? OR id IN (SELECT plugin_id FROM waker_plugins WHERE waker_id = ?)", waker, waker)
-	} else {
-		db = db.Where("owner_waker_id = ?", owner)
-	}
-	if installedOnly {
-		db = db.Where("id IN (SELECT plugin_id FROM waker_plugins)")
+		db = db.Where("id IN (SELECT plugin_id FROM waker_plugins WHERE waker_id = ?)", waker)
 	}
 	if query = strings.TrimSpace(query); query != "" {
 		pattern := "%" + strings.ToLower(query) + "%"
@@ -151,8 +160,14 @@ func (c *pluginController) List(ctx context.Context, owner, waker, query string,
 }
 
 // Update 修改可变展示资料，不修改包内容。
-func (c *pluginController) Update(ctx context.Context, id, name, description string) error {
-	err := controllerDB(ctx, c.db).Model(&models.Plugin{}).Where("id = ?", id).Updates(map[string]any{"name": name, "description": description, "updated_at": nowMillis()}).Error
+func (c *pluginController) Update(ctx context.Context, id, name, description string, categories *[]string) error {
+	db := controllerDB(ctx, c.db)
+	if categories != nil {
+		if err := db.Model(&models.Plugin{}).Where("id = ?", id).Select("Categories").Updates(&models.Plugin{Categories: *categories}).Error; err != nil {
+			return databaseError("update_plugin_categories", id, err)
+		}
+	}
+	err := db.Model(&models.Plugin{}).Where("id = ?", id).Updates(map[string]any{"name": name, "description": description, "updated_at": nowMillis()}).Error
 	if err != nil {
 		return databaseError("update_plugin", id, err)
 	}
@@ -220,14 +235,11 @@ func (c *pluginController) InstalledVersionsExcept(ctx context.Context, plugin, 
 	return versions, nil
 }
 
-// Install 校验归属和版本，重复安装不重启停用关系。
+// Install 校验资源和版本，重复安装不重启停用关系。
 func (c *pluginController) Install(ctx context.Context, r models.WakerPlugin) error {
-	p, err := c.Get(ctx, r.PluginID)
+	_, err := c.Get(ctx, r.PluginID)
 	if err != nil {
 		return err
-	}
-	if p.OwnerWakerID != "" && p.OwnerWakerID != r.WakerID {
-		return status_error.PluginForbidden
 	}
 	v, err := c.Version(ctx, r.VersionID)
 	if err != nil {
@@ -330,15 +342,12 @@ func (c *pluginController) Configuration(ctx context.Context, id string) (models
 	if result.Secrets == nil {
 		result.Secrets = []models.MCPSecretDefinition{}
 	}
-	if len(result.Secrets) > 0 || len(result.DeliveryMaterials) > 0 {
+	if len(result.Secrets) > 0 {
 		key, err := getMCPStorageKey(db)
 		if err != nil {
 			return result, err
 		}
 		if err := decryptSecretDefinitions(key, id, "plugin", result.Secrets); err != nil {
-			return result, err
-		}
-		if err := decryptSecretDefinitions(key, id, "plugin-delivery", result.DeliveryMaterials); err != nil {
 			return result, err
 		}
 	}
@@ -367,20 +376,10 @@ func (c *pluginController) UpdateConfiguration(ctx context.Context, config model
 			return err
 		}
 	}
-	config.DeliveryMaterials = append([]models.MCPSecretDefinition(nil), config.DeliveryMaterials...)
-	if len(config.DeliveryMaterials) > 0 {
-		key, err := ensureMCPStorageKey(db)
-		if err != nil {
-			return err
-		}
-		if err := encryptSecretDefinitions(key, config.PluginID, "plugin-delivery", config.DeliveryMaterials); err != nil {
-			return err
-		}
-	}
 	config.Revision = expected + 1
 	config.UpdatedAt = nowMillis()
 	result := db.Model(&models.PluginConfiguration{}).Where("plugin_id = ? AND revision = ?", config.PluginID, expected).
-		Select("Revision", "Values", "Secrets", "DeliveryMaterials", "UpdatedAt").Updates(&config)
+		Select("Revision", "Values", "Secrets", "UpdatedAt").Updates(&config)
 	if result.Error == nil && result.RowsAffected == 0 && expected == 0 {
 		result = db.Clauses(clause.OnConflict{DoNothing: true}).Create(&config)
 	}
@@ -395,40 +394,9 @@ func (c *pluginController) UpdateConfiguration(ctx context.Context, config model
 }
 
 // Delete 删除完整本机元数据，内容回收在数据库提交之后处理。
-// UpdateDeliveryMaterials 复用配置密钥与乐观并发事实，凭据刷新不增加配置修订。
-func (c *pluginController) UpdateDeliveryMaterials(ctx context.Context, config models.PluginConfiguration) error {
-	db := controllerDB(ctx, c.db)
-	if _, err := c.Get(ctx, config.PluginID); err != nil {
-		return err
-	}
-	config.DeliveryMaterials = append([]models.MCPSecretDefinition(nil), config.DeliveryMaterials...)
-	if len(config.DeliveryMaterials) > 0 {
-		key, err := ensureMCPStorageKey(db)
-		if err != nil {
-			return err
-		}
-		if err := encryptSecretDefinitions(key, config.PluginID, "plugin-delivery", config.DeliveryMaterials); err != nil {
-			return err
-		}
-	}
-	result := db.Model(&models.PluginConfiguration{}).Where("plugin_id = ? AND revision = ?", config.PluginID, config.Revision).
-		Select("DeliveryMaterials").Updates(&config)
-	if result.Error == nil && result.RowsAffected == 0 && config.Revision == 0 {
-		config.Values = map[string]string{}
-		result = db.Clauses(clause.OnConflict{DoNothing: true}).Create(&config)
-	}
-	if result.Error != nil {
-		return databaseError("update_plugin_delivery_materials", config.PluginID, result.Error)
-	}
-	if result.RowsAffected != 1 {
-		return status_error.PluginConfigurationConflict
-	}
-	return nil
-}
-
 func (c *pluginController) Delete(ctx context.Context, id string) error {
 	db := controllerDB(ctx, c.db)
-	for _, model := range []any{&models.WakerPlugin{}, &models.PluginConfiguration{}, &models.PluginVersion{}} {
+	for _, model := range []any{&models.WakerPlugin{}, &models.PluginAccount{}, &models.PluginConfiguration{}, &models.PluginVersion{}} {
 		if err := db.Where("plugin_id = ?", id).Delete(model).Error; err != nil {
 			return databaseError("delete_plugin_relations", id, err)
 		}
@@ -444,35 +412,20 @@ func (c *pluginController) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// DeleteByWaker 删除当前伙伴关系及其自有资源，不影响其他全局安装。
+// DeleteByWaker 删除当前伙伴安装关系，保留共享资源与其他伙伴安装。
 func (c *pluginController) DeleteByWaker(ctx context.Context, waker string) error {
 	relations, err := c.Installations(ctx, "", waker)
 	if err != nil {
 		return err
 	}
 	db := controllerDB(ctx, c.db)
-	var owned []models.Plugin
-	if err := db.Where("owner_waker_id = ?", waker).Find(&owned).Error; err != nil {
-		return databaseError("list_owned_plugins", waker, err)
-	}
-	for _, p := range owned {
-		if err := c.Delete(ctx, p.ID); err != nil {
-			return err
-		}
-	}
 	if err := db.Where("waker_id = ?", waker).Delete(&models.WakerPlugin{}).Error; err != nil {
 		return databaseError("delete_waker_plugins", waker, err)
 	}
-	ownedIDs := map[string]bool{}
-	for _, p := range owned {
-		ownedIDs[p.ID] = true
-	}
 	for _, relation := range relations {
-		if !ownedIDs[relation.PluginID] {
-			publishCommittedChange(ctx, controllerDB(ctx, c.db), constants.PluginEventTopic, eventsResource("plugin", relation.PluginID))
-		}
+		publishCommittedChange(ctx, db, constants.PluginEventTopic, eventsResource("plugin", relation.PluginID))
 	}
-	publishReferenceChange(ctx, controllerDB(ctx, c.db), eventsResource("waker", waker))
+	publishReferenceChange(ctx, db, eventsResource("waker", waker))
 	return nil
 }
 
@@ -548,35 +501,23 @@ func (c *pluginController) ReadStates(ctx context.Context, ids []string) (map[st
 		result[install.PluginID] = item
 	}
 	var configs []models.PluginConfiguration
-	if err := db.Where("plugin_id IN ?", ids).Find(&configs).Error; err != nil {
-		return nil, databaseError("read_plugin_configurations", "", err)
+	if err := db.Select("plugin_id", "revision").Where("plugin_id IN ?", ids).Find(&configs).Error; err != nil {
+		return nil, databaseError("read_plugin_configuration_revisions", "", err)
 	}
-	var key []byte
 	for _, config := range configs {
-		if len(config.Secrets) > 0 || len(config.DeliveryMaterials) > 0 {
-			if key == nil {
-				var err error
-				key, err = getMCPStorageKey(db)
-				if err != nil {
-					return nil, err
-				}
-			}
-			if err := decryptSecretDefinitions(key, config.PluginID, "plugin", config.Secrets); err != nil {
-				return nil, err
-			}
-			if err := decryptSecretDefinitions(key, config.PluginID, "plugin-delivery", config.DeliveryMaterials); err != nil {
-				return nil, err
-			}
-		}
-		if config.Values == nil {
-			config.Values = map[string]string{}
-		}
-		if config.Secrets == nil {
-			config.Secrets = []models.MCPSecretDefinition{}
-		}
 		item := result[config.PluginID]
-		item.Configuration = config
+		item.Configuration = models.PluginConfiguration{PluginID: config.PluginID, Revision: config.Revision}
 		result[config.PluginID] = item
+	}
+
+	var accounts []models.PluginAccount
+	if err := db.Select("plugin_id", "generation").Where("plugin_id IN ?", ids).Find(&accounts).Error; err != nil {
+		return nil, databaseError("read_plugin_account_generations", "", err)
+	}
+	for _, account := range accounts {
+		state := result[account.PluginID]
+		state.Account = models.PluginAccount{PluginID: account.PluginID, Generation: account.Generation}
+		result[account.PluginID] = state
 	}
 	return result, nil
 }
@@ -599,16 +540,24 @@ func (c *pluginController) ExecutionDeclarations(ctx context.Context, waker stri
 			return tx.Model(&models.WakerPlugin{}).Select(column).Where("waker_id = ? AND enabled = ?", waker, true)
 		}
 		var resources []models.Plugin
-		if err := tx.Select("id", "name").Where("id IN (?)", installed("plugin_id")).Where("owner_waker_id = ? OR owner_waker_id = ?", "", waker).Find(&resources).Error; err != nil {
+		if err := tx.Select("id", "name").Where("id IN (?)", installed("plugin_id")).Find(&resources).Error; err != nil {
 			return databaseError("execution_plugin_resources", waker, err)
 		}
 		var versions []models.PluginVersion
-		if err := tx.Select("id", "plugin_id", "digest", "trusted_at", "content_path", "json_object('manifest', json_extract(package, '$.manifest'), 'format', json_extract(package, '$.format'), 'sourcePath', json_extract(package, '$.sourcePath'), 'skills', json_extract(package, '$.skills'), 'servers', json_extract(package, '$.servers'), 'integration', json_extract(package, '$.integration'), 'nativeComponents', json_extract(package, '$.nativeComponents'), 'nativeImplementations', json_extract(package, '$.nativeImplementations')) AS package").Where("id IN (?)", installed("version_id")).Find(&versions).Error; err != nil {
+		if err := tx.Select("id", "plugin_id", "digest", "trusted_at", "content_path", "json_object('contractVersion', json_extract(package, '$.contractVersion'), 'manifest', json_extract(package, '$.manifest'), 'format', json_extract(package, '$.format'), 'sourcePath', json_extract(package, '$.sourcePath'), 'skills', json_extract(package, '$.skills'), 'servers', json_extract(package, '$.servers'), 'integration', json_extract(package, '$.integration')) AS package").Where("id IN (?)", installed("version_id")).Find(&versions).Error; err != nil {
 			return databaseError("execution_plugin_versions", waker, err)
 		}
 		var configurations []models.PluginExecutionDeclaration
 		if err := tx.Model(&models.PluginConfiguration{}).Select("plugin_id AS id", "revision AS configuration_revision", "values", "(SELECT json_group_array(json_extract(value, '$.name')) FROM json_each(COALESCE(NULLIF(plugin_configurations.secrets, ''), '[]')) WHERE json_extract(value, '$.configured') = 1) AS configured_secrets").Where("plugin_id IN (?)", installed("plugin_id")).Find(&configurations).Error; err != nil {
 			return databaseError("execution_plugin_revisions", waker, err)
+		}
+		var accounts []models.PluginAccount
+		if err := tx.Select("plugin_id", "generation").Where("plugin_id IN (?)", installed("plugin_id")).Find(&accounts).Error; err != nil {
+			return databaseError("execution_plugin_accounts", waker, err)
+		}
+		generations := map[string]int64{}
+		for _, account := range accounts {
+			generations[account.PluginID] = account.Generation
 		}
 		byID := make(map[string]models.PluginVersion, len(versions))
 		for _, version := range versions {
@@ -629,7 +578,7 @@ func (c *pluginController) ExecutionDeclarations(ctx context.Context, waker stri
 				continue
 			}
 			configuration := settings[installation.PluginID]
-			result = append(result, models.PluginExecutionDeclaration{ID: installation.PluginID, Name: name, VersionID: version.ID, Digest: version.Digest, TrustedAt: version.TrustedAt, ConfigurationRevision: configuration.ConfigurationRevision, ContentPath: version.ContentPath, Package: version.Package, Values: configuration.Values, ConfiguredSecrets: configuration.ConfiguredSecrets})
+			result = append(result, models.PluginExecutionDeclaration{ID: installation.PluginID, Name: name, VersionID: version.ID, Digest: version.Digest, TrustedAt: version.TrustedAt, ConfigurationRevision: configuration.ConfigurationRevision, AccountGeneration: generations[installation.PluginID], ContentPath: version.ContentPath, Package: version.Package, Values: configuration.Values, ConfiguredSecrets: configuration.ConfiguredSecrets})
 		}
 		return nil
 	})
@@ -688,7 +637,7 @@ func (c *pluginController) InstalledReferences(ctx context.Context, waker string
 		return db.Model(&models.WakerPlugin{}).Select(column).Where("waker_id = ? AND enabled = ?", waker, true)
 	}
 	var resources []models.Plugin
-	if err := db.Select("id", "name", "description").Where("id IN (?)", installed("plugin_id")).Where("owner_waker_id = ? OR owner_waker_id = ?", "", waker).Order("name, id").Find(&resources).Error; err != nil {
+	if err := db.Select("id", "name", "description").Where("id IN (?)", installed("plugin_id")).Order("name, id").Find(&resources).Error; err != nil {
 		return nil, databaseError("plugin_reference_resources", waker, err)
 	}
 	var versions []models.PluginVersion

@@ -75,13 +75,13 @@ func TestPluginConnectorProbeUsesSharedAuthorizationAndOnlyDiscoversTools(t *tes
 					t.Fatal(err)
 				}
 			}
-			write(".codex-plugin/plugin.json", `{"name":"probe","version":"1.0.0"}`)
-			write(".mcp.json", fmt.Sprintf(`{"mcpServers":{"service":{"type":"http","url":%q}}}`, remote.URL))
-			write(".neuxally/integration.json", fmt.Sprintf(`{"authentication":{"strategy":"plugin-command","protocol":"neuxally-auth/1","command":"node","args":["bridge.mjs"],"bindings":[{"runtime":"codex","server":"service","url":%q,"header":"Authorization"}]}}`, remote.URL))
+			write("plugin.json", fmt.Sprintf(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"probe","version":"1.0.0","extensions":{"com.neuxbot":{"schemaVersion":1,"authentication":{"strategy":"plugin-command","protocol":"neuxbot-auth/1","command":"node","args":["bridge.mjs"],"bindings":[{"runtime":"codex","server":"service","url":%q,"header":"Authorization"}]}}}}`, remote.URL))
+			write("mcp.json", fmt.Sprintf(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"service":{"type":"streamable-http","url":%q}}}`, remote.URL))
 			write("bridge.mjs", fmt.Sprintf(`import readline from 'node:readline';import {existsSync} from 'node:fs';import path from 'node:path';
 for await(const line of readline.createInterface({input:process.stdin})){
 const r=JSON.parse(line);let result;
-if(r.method==='auth/status')result={state:'authorized',account:{configured:true,available:%t&&!existsSync(path.join(r.params.dataDirectory,'revoked')),id:'probe-user',scopes:[]}};
+if(r.method==='auth/initialize')result={protocol:'neuxbot-auth/1',context:r.params};
+else if(r.method==='auth/status')result={state:'authorized',account:{configured:true,available:%t&&!existsSync(path.join(r.params.dataDirectory,'revoked')),id:'probe-user',scopes:[]}};
 else if(r.method==='auth/resolve')result={bindings:r.params.components.map(c=>({componentId:c.componentId,headers:{Authorization:'Bearer probe-private-token'}}))};
 else throw Error('unexpected authorization action');
 console.log(JSON.stringify({jsonrpc:'2.0',id:r.id,result}));}`, authorized))
@@ -89,7 +89,7 @@ console.log(JSON.stringify({jsonrpc:'2.0',id:r.id,result}));}`, authorized))
 			if err != nil {
 				t.Fatal(err)
 			}
-			detail, err := prepareCatalogFixture(t, ctx, stage, "", "", true)
+			detail, err := prepareCatalogFixture(t, ctx, stage, "", true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -103,7 +103,7 @@ console.log(JSON.stringify({jsonrpc:'2.0',id:r.id,result}));}`, authorized))
 						t.Error(err)
 						return
 					}
-					auth, _, err := installationService().Bridge(version)
+					auth, _, err := installationService().Bridge(context.Background(), version)
 					if err != nil {
 						t.Error(err)
 						return
@@ -123,7 +123,7 @@ console.log(JSON.stringify({jsonrpc:'2.0',id:r.id,result}));}`, authorized))
 					if err != nil {
 						t.Fatal(err)
 					}
-					if _, _, err := installationService().Bridge(version); err != nil {
+					if _, _, err := installationService().Bridge(context.Background(), version); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -203,7 +203,7 @@ func TestPluginDiagnosticRedactsArgumentAndQueryTokens(t *testing.T) {
 	}
 }
 
-func TestPluginConnectorProbeKeepsOwnedSourceWhenNativeReferenceExists(t *testing.T) {
+func TestPluginConnectorProbeUsesFixedStandardSource(t *testing.T) {
 	ctx := pluginAPIContext(t)
 	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "owned", Version: "1"}, nil)
 	mcpsdk.AddTool[map[string]any, any](server, &mcpsdk.Tool{Name: "owned_search"}, func(context.Context, *mcpsdk.CallToolRequest, map[string]any) (*mcpsdk.CallToolResult, any, error) {
@@ -213,11 +213,8 @@ func TestPluginConnectorProbeKeepsOwnedSourceWhenNativeReferenceExists(t *testin
 	defer remote.Close()
 	source := t.TempDir()
 	for name, body := range map[string]string{
-		".codex-plugin/plugin.json":        `{"name":"owned-native","version":"1.0.0"}`,
-		".mcp.json":                        fmt.Sprintf(`{"mcpServers":{"owned":{"type":"http","url":%q}}}`, remote.URL),
-		".neuxally/integration.json":       `{"nativePlugins":{"codex":{"path":"native"}}}`,
-		"native/.codex-plugin/plugin.json": `{"name":"native","version":"1.0.0"}`,
-		"native/.mcp.json":                 `{"mcpServers":{"other":{"command":"node","args":["other.mjs"]}}}`,
+		"plugin.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"owned","version":"1.0.0"}`,
+		"mcp.json":    fmt.Sprintf(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"owned":{"type":"streamable-http","url":%q}}}`, remote.URL),
 	} {
 		path := filepath.Join(source, name)
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
@@ -231,7 +228,7 @@ func TestPluginConnectorProbeKeepsOwnedSourceWhenNativeReferenceExists(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	detail, err := prepareCatalogFixture(t, ctx, stage, "", "", true)
+	detail, err := prepareCatalogFixture(t, ctx, stage, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}

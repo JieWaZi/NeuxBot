@@ -402,41 +402,39 @@ func TestWakerAPICopiesPresetAndMaintainsIndependentDocuments(t *testing.T) {
 			ConfirmationName: waker.Name,
 		},
 	}
-	privateSkill := models.SkillPackage{
+	librarySkill := models.SkillPackage{
 		ID:               util.New(),
-		Name:             "private-review",
-		Description:      "Review privately",
-		Scope:            constants.SkillScopePrivate,
+		Name:             "library-review",
+		Description:      "Library review",
 		Source:           constants.SkillSourceZip,
-		OwnerWakerID:     waker.ID,
 		CurrentVersionID: util.New(),
 	}
-	privateVersionPath := filepath.Join("skills", "versions", privateSkill.ID, "1.0.0")
-	privateVersion := models.SkillVersion{
-		ID:             privateSkill.CurrentVersionID,
-		SkillPackageID: privateSkill.ID,
+	libraryVersionPath := filepath.Join("skills", "versions", librarySkill.ID, "1.0.0")
+	libraryVersion := models.SkillVersion{
+		ID:             librarySkill.CurrentVersionID,
+		SkillPackageID: librarySkill.ID,
 		Version:        "1.0.0",
-		Name:           privateSkill.Name,
-		Description:    privateSkill.Description,
-		ContentPath:    privateVersionPath,
+		Name:           librarySkill.Name,
+		Description:    librarySkill.Description,
+		ContentPath:    libraryVersionPath,
 		ContentDigest:  "digest",
 	}
-	if err := global.SkillControllerManager.CreatePackage(ctx, privateSkill); err != nil {
-		t.Fatalf("create private skill: %v", err)
+	if err := global.SkillControllerManager.CreatePackage(ctx, librarySkill); err != nil {
+		t.Fatalf("create library skill: %v", err)
 	}
-	if err := global.SkillControllerManager.CreateVersion(ctx, privateVersion, true, privateVersion.ID); err != nil {
-		t.Fatalf("create private skill version: %v", err)
+	if err := global.SkillControllerManager.CreateVersion(ctx, libraryVersion, true, libraryVersion.ID); err != nil {
+		t.Fatalf("create library skill version: %v", err)
 	}
 	if err := global.SkillControllerManager.UpsertWakerSkill(ctx, models.WakerSkill{
-		ID: util.New(), WakerID: waker.ID, SkillPackageID: privateSkill.ID, Enabled: true,
+		ID: util.New(), WakerID: waker.ID, SkillPackageID: librarySkill.ID, Enabled: true,
 	}); err != nil {
-		t.Fatalf("enable private skill: %v", err)
+		t.Fatalf("enable library skill: %v", err)
 	}
-	privateVersionDirectory := filepath.Join(global.Config.DataDirectory, privateVersionPath)
-	if err := os.MkdirAll(privateVersionDirectory, 0o700); err != nil {
+	libraryVersionDirectory := filepath.Join(global.Config.DataDirectory, libraryVersionPath)
+	if err := os.MkdirAll(libraryVersionDirectory, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(privateVersionDirectory, "marker"), []byte("managed"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(libraryVersionDirectory, "marker"), []byte("managed"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	project := models.Project{
@@ -529,11 +527,18 @@ func TestWakerAPICopiesPresetAndMaintainsIndependentDocuments(t *testing.T) {
 			remainingProjectBindings,
 		)
 	}
-	if _, err := global.SkillControllerManager.GetPackage(ctx, privateSkill.ID); err == nil {
-		t.Fatal("deleted waker private skill still exists")
+	if _, err := global.SkillControllerManager.GetPackage(ctx, librarySkill.ID); err != nil {
+		t.Fatalf("deleting partner removed library skill: %v", err)
 	}
-	if _, err := os.Stat(privateVersionDirectory); !os.IsNotExist(err) {
-		t.Fatalf("deleted waker skill directory %q still exists: %v", privateVersionDirectory, err)
+	if _, err := global.SkillControllerManager.GetVersion(ctx, libraryVersion.ID); err != nil {
+		t.Fatalf("deleting partner removed library version: %v", err)
+	}
+	if _, err := os.Stat(libraryVersionDirectory); err != nil {
+		t.Fatalf("deleting partner removed library version directory: %v", err)
+	}
+	installed, err := global.SkillControllerManager.ListInstalled(ctx, waker.ID, "")
+	if err != nil || len(installed) != 0 {
+		t.Fatalf("deleted partner retained installation: %+v %v", installed, err)
 	}
 }
 

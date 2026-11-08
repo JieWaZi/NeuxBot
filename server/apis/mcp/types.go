@@ -19,6 +19,8 @@ type SecretInput struct {
 
 // 连接器输入
 type ConnectorInput struct {
+	// 用户分类
+	Categories []string `json:"categories"`
 	// 名称
 	Name string `json:"name"`
 	// 描述
@@ -53,6 +55,8 @@ type SecretDefinition struct {
 
 // 连接器资源
 type ConnectorResource struct {
+	// 用户分类
+	Categories []string `json:"categories"`
 	// 所属伙伴
 	OwnerWakerID string `json:"ownerWakerId,omitempty"`
 	// 标识

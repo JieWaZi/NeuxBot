@@ -156,7 +156,7 @@ func (installer Installer) ensureDefinition(ctx context.Context, item definition
 	now := time.Now().UnixMilli()
 	skill := models.SkillPackage{
 		ID: item.ID, Name: metadata.Name, Description: metadata.Description,
-		Scope: constants.SkillScopePublic, Source: constants.SkillSourceBuiltin, BuiltIn: true,
+		Source: constants.SkillSourceBuiltin, BuiltIn: true,
 		CurrentVersionID: versionID, CreatedAt: now, UpdatedAt: now,
 	}
 	version := models.SkillVersion{

@@ -27,8 +27,32 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 )
 
+// OperationContext 绑定新授权协议的不可变操作与账号代次。
+type OperationContext struct {
+	// OperationID 是宿主为单次进程调用生成的不可复用身份。
+	OperationID string `json:"operationId"`
+	// PluginID 是唯一插件资源身份。
+	PluginID string `json:"pluginId"`
+	// VersionID 是已信任且固定的内容版本。
+	VersionID string `json:"versionId"`
+	// Digest 是版本完整内容摘要。
+	Digest string `json:"digest"`
+	// ConfigurationRevision 是该操作固定的共享配置修订。
+	ConfigurationRevision int64 `json:"configurationRevision"`
+	// AccountGeneration 是该操作固定的共享账号代次。
+	AccountGeneration int64 `json:"accountGeneration"`
+}
+
 // Config 固定桥接入口与应用拥有的身份目录。
 type Config struct {
+	// VersionID 是本驱动唯一可管理的固定版本。
+	VersionID string
+	// Digest 是受信包的完整内容摘要。
+	Digest string
+	// ConfigurationRevision 是初始化时固定的配置修订。
+	ConfigurationRevision int64
+	// AccountGeneration 是初始化时固定的账号代次。
+	AccountGeneration int64
 	// Command 是已经校验的绝对程序路径。
 	Command string
 	// Args 是已固定的程序参数。
@@ -46,11 +70,15 @@ type Config struct {
 	// PrepareDelivery 在独占授权完成后保存已校验的私有交付材料。
 	PrepareDelivery func(context.Context, *Driver, authorization.Account) error
 	// ClearDelivery 在官方退出成功后清除已有私有交付材料。
-	ClearDelivery func(context.Context) error
+	ClearDelivery func(context.Context, *Driver) error
 }
 
 // Component 是本轮已经获准的稳定组件与目标。
 type Component struct {
+	// EnvironmentKeys 是该技能明确允许的环境键集合。
+	EnvironmentKeys []string `json:"environmentKeys,omitempty"`
+	// PrivatePathKeys 是必须限制在本插件私有目录的环境键。
+	PrivatePathKeys []string `json:"privatePathKeys,omitempty"`
 	// ComponentID 是宿主稳定授权身份。
 	ComponentID string `json:"componentId"`
 	// Key 是原包组件键。
@@ -73,6 +101,8 @@ type Binding struct {
 
 // Driver 用JSON-RPC协议适配既有授权租约与状态机。
 type Driver struct {
+	// contextMu 保护账号提交后的操作代次更新。
+	contextMu sync.RWMutex
 	// config 固定入口、私有身份及受信资产。
 	config Config
 }
@@ -82,6 +112,19 @@ var environmentNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 // New 不启动进程；调用沿显式Context管理。
 func New(config Config) *Driver { return &Driver{config: config} }
 
+// OperationContext 返回下一次调用固定的账号和内容事实，不携带凭据。
+func (d *Driver) OperationContext() OperationContext {
+	d.contextMu.RLock()
+	defer d.contextMu.RUnlock()
+	return OperationContext{PluginID: d.config.PluginID, VersionID: d.config.VersionID, Digest: d.config.Digest, ConfigurationRevision: d.config.ConfigurationRevision, AccountGeneration: d.config.AccountGeneration}
+}
+
+func (d *Driver) advanceGeneration() {
+	d.contextMu.Lock()
+	d.config.AccountGeneration++
+	d.contextMu.Unlock()
+}
+
 // Initialize 由同一个auth/start桥接负责多阶段初始化。
 func (d *Driver) Initialize(context.Context, func(authorization.Device) error) error { return nil }
 
@@ -89,7 +132,10 @@ func (d *Driver) Initialize(context.Context, func(authorization.Device) error) e
 func (d *Driver) Logout(ctx context.Context) error {
 	_, err := d.call(ctx, constants.PluginAuthLogoutMethod, "", nil, nil, nil)
 	if err == nil && d.config.ClearDelivery != nil {
-		err = d.config.ClearDelivery(ctx)
+		err = d.config.ClearDelivery(ctx, d)
+		if err == nil {
+			d.advanceGeneration()
+		}
 	}
 	return err
 }
@@ -125,12 +171,16 @@ func (d *Driver) CompleteLogin(ctx context.Context, account authorization.Accoun
 		return err
 	}
 	if d.config.PrepareDelivery != nil {
-		return d.config.PrepareDelivery(ctx, d, account)
+		err := d.config.PrepareDelivery(ctx, d, account)
+		if err == nil {
+			d.advanceGeneration()
+		}
+		return err
 	}
 	return nil
 }
 
-// Login 兼容既有授权驱动接口，正式流程使用宿主会话身份。
+// Login 实现授权驱动接口，交互授权使用 LoginSession 的宿主会话身份。
 func (d *Driver) Login(ctx context.Context, scopes []string, report func(authorization.Device) error) error {
 	return d.LoginSession(ctx, "", scopes, report)
 }
@@ -165,6 +215,13 @@ func (d *Driver) Resolve(ctx context.Context, components []Component) ([]Binding
 			return nil, status_error.PluginForbidden
 		}
 		for key, value := range binding.Environment {
+			if components[index].Target != "skill" || !slices.Contains(components[index].EnvironmentKeys, key) {
+				return nil, status_error.PluginForbidden
+			}
+			if slices.Contains(components[index].PrivatePathKeys, key) && !strings.EqualFold(key, "PATH") && !d.privatePath(value) {
+				return nil, status_error.PluginForbidden
+			}
+
 			if strings.EqualFold(key, "PATH") && !d.allowedPath(value) {
 				return nil, status_error.PluginForbidden
 			}
@@ -204,6 +261,11 @@ type frame struct {
 }
 
 func (d *Driver) call(ctx context.Context, method, id string, scopes []string, components []Component, report func(authorization.Device) error) (json.RawMessage, error) {
+	operation := d.OperationContext()
+	if operation.PluginID == "" || operation.VersionID == "" || len(operation.Digest) != 64 || operation.ConfigurationRevision < 0 || operation.AccountGeneration < 0 {
+		return nil, status_error.PluginManifestInvalid
+	}
+	operation.OperationID = util.New()
 	if err := os.MkdirAll(d.config.DataDirectory, 0700); err != nil {
 		return nil, status_error.PluginStorageError
 	}
@@ -257,11 +319,11 @@ func (d *Driver) call(ctx context.Context, method, id string, scopes []string, c
 			scopes = []string{}
 		}
 	}
-	params := map[string]any{"sessionId": id, "pluginId": d.config.PluginID, "dataDirectory": d.config.DataDirectory, "scopes": scopes, "components": components}
+	params := map[string]any{"protocol": constants.PluginAuthProtocol, "operationId": operation.OperationID, "versionId": operation.VersionID, "digest": operation.Digest, "configurationRevision": operation.ConfigurationRevision, "accountGeneration": operation.AccountGeneration, "sessionId": id, "pluginId": d.config.PluginID, "dataDirectory": d.config.DataDirectory, "scopes": scopes, "components": components}
 	write := func(requestID int, method string) error {
 		return json.NewEncoder(stdin).Encode(map[string]any{"jsonrpc": "2.0", "id": requestID, "method": method, "params": params})
 	}
-	if write(1, method) != nil {
+	if write(1, constants.PluginAuthInitializeMethod) != nil {
 		return nil, status_error.PluginAuthorizationFailed
 	}
 	messages := make(chan frame, 8)
@@ -271,6 +333,7 @@ func (d *Driver) call(ctx context.Context, method, id string, scopes []string, c
 	go func() {
 		defer workers.Done()
 		defer close(done)
+		defer close(messages)
 		scanner := bufio.NewScanner(stdout)
 		scanner.Buffer(make([]byte, 4096), 1024*1024)
 		for scanner.Scan() {
@@ -297,10 +360,11 @@ func (d *Driver) call(ctx context.Context, method, id string, scopes []string, c
 	}
 	timer := time.NewTimer(wait)
 	defer timer.Stop()
+	initialized := false
 	for {
 		select {
 		case <-ctx.Done():
-			_ = write(2, constants.PluginAuthCancelMethod)
+			_ = write(3, constants.PluginAuthCancelMethod)
 			// 桥接先有机会取消上游，随后进程组由受管Context回收。
 			deadline := time.NewTimer(2 * time.Second)
 			select {
@@ -311,18 +375,35 @@ func (d *Driver) call(ctx context.Context, method, id string, scopes []string, c
 			return nil, status_error.OperationCanceled
 		case <-timer.C:
 			return nil, context.DeadlineExceeded
-		case <-done:
-			select {
-			case message := <-messages:
-				if message.ID == 1 && len(message.Error) == 0 && method != constants.PluginAuthStartMethod {
-					return message.Result, nil
-				}
-			default:
+		case message, ok := <-messages:
+			if !ok {
+				return nil, status_error.PluginAuthorizationFailed
 			}
-			return nil, status_error.PluginAuthorizationFailed
-		case message := <-messages:
-			if message.ID == 1 {
+			if !initialized {
+				var handshake struct {
+					// Protocol 是驱动明确接纳的协议版本。
+					Protocol string `json:"protocol"`
+					// Context 必须逐字段回显宿主初始化上下文。
+					Context OperationContext `json:"context"`
+				}
+				if message.ID != 1 || len(message.Error) > 0 || json.Unmarshal(message.Result, &handshake) != nil || handshake.Protocol != constants.PluginAuthProtocol || handshake.Context != operation {
+					return nil, status_error.PluginAuthorizationFailed
+				}
+				initialized = true
+				if write(2, method) != nil {
+					return nil, status_error.PluginAuthorizationFailed
+				}
+				continue
+			}
+			if message.ID == 2 {
 				if len(message.Error) > 0 {
+					var failure struct {
+						// Message 仅用于匹配固定失败类别，其他内容从不向外公开。
+						Message string `json:"message"`
+					}
+					if json.Unmarshal(message.Error, &failure) == nil && failure.Message == constants.PluginAuthDependencyUnavailableErrorCode {
+						return nil, status_error.PluginDependencyUnavailable
+					}
 					return nil, status_error.PluginAuthorizationFailed
 				}
 				if method != constants.PluginAuthStartMethod {
@@ -334,6 +415,8 @@ func (d *Driver) call(ctx context.Context, method, id string, scopes []string, c
 				return nil, status_error.PluginAuthorizationFailed
 			}
 			var notice struct {
+				// OperationID 绑定当前已初始化的进程调用。
+				OperationID string `json:"operationId"`
 				// SessionID 绑定宿主当前会话。
 				SessionID string `json:"sessionId"`
 				// ChallengeID 唯一标识一次交互。
@@ -348,8 +431,10 @@ func (d *Driver) call(ctx context.Context, method, id string, scopes []string, c
 				DeadlineAt int64 `json:"deadlineAt"`
 				// State 是实际授权阶段。
 				State string `json:"state"`
+				// ErrorCode 只接纳协议约定的失败类别，不公开供应商原始输出。
+				ErrorCode string `json:"errorCode"`
 			}
-			if json.Unmarshal(message.Params, &notice) != nil || notice.SessionID != id {
+			if json.Unmarshal(message.Params, &notice) != nil || notice.SessionID != id || notice.OperationID != operation.OperationID {
 				return nil, status_error.PluginForbidden
 			}
 			switch message.Method {
@@ -389,6 +474,9 @@ func (d *Driver) call(ctx context.Context, method, id string, scopes []string, c
 				case "cancelled":
 					return nil, context.Canceled
 				case "failed":
+					if notice.ErrorCode == constants.PluginAuthDependencyUnavailableErrorCode {
+						return nil, status_error.PluginDependencyUnavailable
+					}
 					return nil, status_error.PluginAuthorizationFailed
 				case "pending":
 				default:

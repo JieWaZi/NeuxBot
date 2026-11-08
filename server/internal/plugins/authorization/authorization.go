@@ -132,6 +132,17 @@ func (a *Authorizer) ScopeGranted(granted []string, required string) bool {
 }
 
 func (a *Authorizer) Status(ctx context.Context, verify bool) (Account, error) {
+	a.mu.Lock()
+	busy := a.deviceRunning || a.resetting
+	a.mu.Unlock()
+	if busy {
+		return Account{Scopes: []string{}}, status_error.PluginBusy
+	}
+	return a.verifyStatus(ctx, verify)
+}
+
+// verifyStatus 仅供同一owner已持有独占生命周期的初始化及最终核验。
+func (a *Authorizer) verifyStatus(ctx context.Context, verify bool) (Account, error) {
 	a.summaryMu.Lock()
 	a.summaryGeneration++
 	generation := a.summaryGeneration
@@ -237,6 +248,7 @@ func (a *Authorizer) Logout(ctx context.Context) error {
 	if a.active > 0 || a.deviceRunning || a.resetting {
 		return status_error.PluginBusy
 	}
+	a.clearSummary(false)
 	if err := a.driver().Logout(ctx); err != nil {
 		return err
 	}
@@ -281,7 +293,7 @@ func (a *Authorizer) Login(ctx context.Context, requested ...string) (Session, e
 		a.mu.Unlock()
 		return Session{}, status_error.PluginNotReady
 	}
-	account, err := a.Status(ctx, false)
+	account, err := a.verifyStatus(ctx, false)
 	_, canInitialize := a.driver().(interface {
 		Initialize(context.Context, func(Device) error) error
 	})
@@ -295,6 +307,7 @@ func (a *Authorizer) Login(ctx context.Context, requested ...string) (Session, e
 	work, cancel := context.WithCancelCause(a.root)
 	a.cancel = cancel
 	a.deviceRunning = true
+	a.clearSummary(false)
 	a.session = Session{ID: util.New(), State: constants.PluginAuthorizationStateWaiting, Account: account}
 	id := a.session.ID
 	scopes := a.RequiredScopes(requested...)
@@ -371,7 +384,7 @@ func (a *Authorizer) Login(ctx context.Context, requested ...string) (Session, e
 		}
 		result := Account{Scopes: []string{}}
 		if err == nil {
-			result, err = a.Status(work, true)
+			result, err = a.verifyStatus(work, true)
 			for _, scope := range scopes {
 				if !a.ScopeGranted(result.Scopes, scope) {
 					result.Available = false
@@ -388,6 +401,10 @@ func (a *Authorizer) Login(ctx context.Context, requested ...string) (Session, e
 				err = complete.CompleteLogin(work, result)
 			}
 		}
+		if err != nil {
+			a.clearSummary(false)
+			result = Account{Scopes: []string{}}
+		}
 		a.mu.Lock()
 		a.deviceRunning = false
 		a.cancel = nil
@@ -396,6 +413,9 @@ func (a *Authorizer) Login(ctx context.Context, requested ...string) (Session, e
 			if err != nil {
 				a.session.State = constants.PluginAuthorizationStateFailed
 				a.session.ErrorCode = "PluginAuthorizationFailed"
+				if errors.Is(err, status_error.PluginDependencyUnavailable) {
+					a.session.ErrorCode = status_error.PluginDependencyUnavailable.Key()
+				}
 				if context.Cause(work) == context.DeadlineExceeded || errors.Is(err, context.DeadlineExceeded) {
 					a.session.State = constants.PluginAuthorizationStateExpired
 				} else if work.Err() != nil || errors.Is(err, context.Canceled) {
@@ -420,6 +440,9 @@ func (a *Authorizer) Login(ctx context.Context, requested ...string) (Session, e
 		snapshot := a.Snapshot()
 		if snapshot.State == constants.PluginAuthorizationStateReady {
 			return snapshot, nil
+		}
+		if snapshot.ErrorCode == status_error.PluginDependencyUnavailable.Key() {
+			return Session{}, status_error.PluginDependencyUnavailable
 		}
 		return Session{}, status_error.PluginAuthorizationFailed
 	case <-ctx.Done():
@@ -458,6 +481,7 @@ func (a *Authorizer) cancelSession(id string) (<-chan struct{}, error) {
 	}
 	if a.session.State == constants.PluginAuthorizationStateWaiting {
 		a.session.State = constants.PluginAuthorizationStateCancelled
+		a.clearSummary(false)
 		a.session.Actions = nil
 		a.session.Notice = nil
 		a.session.ChallengeID = ""
@@ -501,6 +525,7 @@ func (a *Authorizer) GuardReferences() (*ReferenceGuard, error) {
 		return nil, status_error.PluginBusy
 	}
 	a.resetting = true
+	a.clearSummary(false)
 	return &ReferenceGuard{authorizer: a}, nil
 }
 

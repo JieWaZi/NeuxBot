@@ -130,6 +130,8 @@ var (
 	ChannelTaskControllerManager controllers.ChannelTaskController
 	// PluginControllerManager 保存插件资源、版本、共享配置和伙伴安装。
 	PluginControllerManager controllers.PluginController
+	// ResourceCategoryControllerManager 保存按资源类型区分的用户分类选项。
+	ResourceCategoryControllerManager controllers.ResourceCategoryController
 	// SkillControllerManager 提供全局技能包、版本和伙伴关系持久化接口。
 	SkillControllerManager controllers.SkillController
 	// MCPConnectorControllerManager 提供共享连接器和伙伴关系持久化接口。
@@ -366,6 +368,7 @@ func loadDB(ctx context.Context, configuration *Configuration) error {
 		}
 	})
 
+	ResourceCategoryControllerManager = controllers.NewResourceCategoryController(DB)
 	SkillControllerManager = controllers.NewSkillController(DB)
 	MCPConnectorControllerManager = controllers.NewMCPConnectorController(DB)
 	RuntimeEnvironmentControllerManager = controllers.NewRuntimeEnvironmentController(DB)
@@ -590,7 +593,7 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		Profiles:            ProfileDocumentControllerManager,
 		Projects:            ProjectControllerManager,
 		Skills:              SkillControllerManager,
-		PluginInstallations: plugininstallation.New(plugininstallation.Config{Contents: PluginContents, DataDirectory: configuration.DataDirectory, Bridges: PluginBridges, BridgeEnvironment: PluginBridgeEnvironment, Store: PluginControllerManager}),
+		PluginInstallations: plugininstallation.New(plugininstallation.Config{Transactions: TransactionControllerManager, Contents: PluginContents, DataDirectory: configuration.DataDirectory, Bridges: PluginBridges, BridgeEnvironment: PluginBridgeEnvironment, Store: PluginControllerManager}),
 		PluginContents:      PluginContents, Plugins: PluginControllerManager, PluginLauncher: coreExecutablePath(),
 		Connectors:          MCPConnectorControllerManager,
 		RuntimeEnvironments: RuntimeEnvironmentControllerManager,

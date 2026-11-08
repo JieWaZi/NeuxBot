@@ -18,14 +18,12 @@ type SkillPackage struct {
 	ID string `gorm:"column:id;type:varchar(32);primaryKey" json:"id"`
 	// Name 是技能包展示名称。
 	Name string `gorm:"column:name;type:varchar(120);not null" json:"name"`
+	// Categories 是用户选择的多个分类，不属于技能版本内容。
+	Categories []string `gorm:"column:categories;type:text;not null;default:'[]';serializer:json" json:"categories"`
 	// Description 是技能包的简短说明。
 	Description string `gorm:"column:description;type:text;not null;default:''" json:"description"`
-	// Scope 是技能包的公开或私有范围。
-	Scope constants.SkillScope `gorm:"column:scope;type:varchar(16);not null;index" json:"scope"`
 	// Source 是技能包的导入来源。
 	Source constants.SkillSource `gorm:"column:source;type:varchar(16);not null;index" json:"source"`
-	// OwnerWakerID 是私有技能所属伙伴，公开技能为空。
-	OwnerWakerID string `gorm:"column:owner_waker_id;type:varchar(32);index" json:"ownerWakerId,omitempty"`
 	// BuiltIn 表示技能是否随 NeuxBot 提供且不可卸载。
 	BuiltIn bool `gorm:"column:built_in;not null;default:false;index" json:"builtIn"`
 	// GitURL 是 Git 来源地址。
@@ -64,7 +62,7 @@ type SkillVersion struct {
 	// ContentPath 是应用数据目录内完整技能包的相对路径。
 	ContentPath string `gorm:"column:content_path;type:text;not null" json:"-"`
 	// ContentDigest 是完整技能包内容的 SHA-256 摘要。
-	ContentDigest string `gorm:"column:content_digest;type:varchar(64);not null" json:"contentDigest"`
+	ContentDigest string `gorm:"column:content_digest;type:varchar(64);not null;index" json:"contentDigest"`
 	// CreatedAt 是创建时间的 Unix 毫秒值。
 	CreatedAt int64 `gorm:"column:created_at;autoCreateTime:milli" json:"createdAt"`
 }

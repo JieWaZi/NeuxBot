@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -46,28 +45,28 @@ func TestWakerSkillResponsesExposeSharedChangeImpact(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, relation := range []models.WakerSkill{{ID: "p1", WakerID: "waker-1", SkillPackageID: "public"}, {ID: "p2", WakerID: "waker-2", SkillPackageID: "public"}, {ID: "s1", WakerID: "waker-1", SkillPackageID: "private"}} {
+	for _, relation := range []models.WakerSkill{{ID: "p1", WakerID: "waker-1", SkillPackageID: "library"}, {ID: "p2", WakerID: "waker-2", SkillPackageID: "library"}, {ID: "s1", WakerID: "waker-1", SkillPackageID: "second"}} {
 		if err := global.SkillControllerManager.UpsertWakerSkill(ctx, relation); err != nil {
 			t.Fatal(err)
 		}
 	}
 	responses, err := wakerSkillResponses(ctx, []models.SkillWithState{
-		{SkillPackage: models.SkillPackage{ID: "public", Scope: constants.SkillScopePublic}},
-		{SkillPackage: models.SkillPackage{ID: "private", Scope: constants.SkillScopePrivate}},
+		{SkillPackage: models.SkillPackage{ID: "library"}},
+		{SkillPackage: models.SkillPackage{ID: "second"}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if responses[0].AffectedWakerCount != 2 {
-		t.Fatalf("public affected wakers = %d, want 2", responses[0].AffectedWakerCount)
+		t.Fatalf("library affected wakers = %d, want 2", responses[0].AffectedWakerCount)
 	}
 	if responses[1].AffectedWakerCount != 1 {
-		t.Fatalf("private affected wakers = %d, want 1", responses[1].AffectedWakerCount)
+		t.Fatalf("second affected wakers = %d, want 1", responses[1].AffectedWakerCount)
 	}
 	if len(responses[0].InstalledPartners) != 2 || responses[0].InstalledPartners[0].ID != "waker-1" || responses[0].InstalledPartners[0].Avatar != "companion:v2:0123456789abcdef0123456789abcdef" {
 		t.Fatalf("installed partner preview = %+v", responses[0].InstalledPartners)
 	}
 	if len(responses[1].InstalledPartners) != 1 || responses[1].InstalledPartners[0].Name != "伙伴一" {
-		t.Fatalf("private partner preview = %+v", responses[1].InstalledPartners)
+		t.Fatalf("second partner preview = %+v", responses[1].InstalledPartners)
 	}
 }

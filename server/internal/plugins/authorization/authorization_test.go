@@ -56,6 +56,52 @@ func TestUsageChangesDoNotPublishAuthorizationChanges(t *testing.T) {
 	}
 }
 
+func TestDependencyPreparationFailureRetainsStableReasonWithoutAuthorizing(t *testing.T) {
+	for _, challenged := range []bool{false, true} {
+		name := "before-challenge"
+		if challenged {
+			name = "after-challenge"
+		}
+		t.Run(name, func(t *testing.T) {
+			finish := make(chan struct{})
+			events := make(chan Session, 2)
+			driver := &noticeDriver{run: func(ctx context.Context, report func(Device) error) error {
+				if challenged {
+					if err := report(Device{ChallengeID: "one", Actions: []Action{{Type: "copy-code", Value: "ONE"}}, DeadlineAt: time.Now().Add(time.Minute).UnixMilli()}); err != nil {
+						return err
+					}
+					select {
+					case <-finish:
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				}
+				return status_error.PluginDependencyUnavailable
+			}}
+			auth := New(Config{Driver: driver, Changed: func(session Session) { events <- session }})
+			auth.Open(context.Background())
+			t.Cleanup(auth.Close)
+			session, err := auth.Login(context.Background())
+			if challenged {
+				if err != nil || session.State != constants.PluginAuthorizationStateWaiting {
+					t.Fatalf("waiting: %v %v", session.State, err)
+				}
+				_ = awaitNoticeSession(t, events)
+				close(finish)
+			} else if err != status_error.PluginDependencyUnavailable {
+				t.Fatalf("initial HTTP lost preparation failure: %v", err)
+			}
+			terminal := awaitNoticeSession(t, events)
+			if terminal.State != constants.PluginAuthorizationStateFailed || terminal.ErrorCode != "PluginDependencyUnavailable" || terminal.Account.Available || len(terminal.Actions) != 0 || terminal.ChallengeID != "" {
+				t.Fatalf("invalid failed preparation state: %+v", terminal)
+			}
+			if account := auth.CachedAccount(); account.Available || account.CheckedAt != 0 {
+				t.Fatal("failed preparation retained verified authorization")
+			}
+		})
+	}
+}
+
 func TestNoticeCopiesAndClearsAcrossChallengesAndTerminalStates(t *testing.T) {
 	for _, outcome := range []string{"ready", "failed", "cancelled"} {
 		t.Run(outcome, func(t *testing.T) {

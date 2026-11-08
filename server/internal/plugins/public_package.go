@@ -1,5 +1,7 @@
 package plugins
 
+import "net/url"
+
 // PublicManifest 是目录与已安装插件共用的公开元数据。
 type PublicManifest struct {
 	// 规范标识
@@ -50,16 +52,10 @@ type PublicServer struct {
 	URL string `json:"url,omitempty"`
 }
 
-// PublicNativeImplementation 只保留目标真正公开使用的组件摘要。
-type PublicNativeImplementation struct {
-	// 技能摘要
-	Skills []NativeSkillSummary `json:"skills"`
-	// 连接摘要
-	Servers []NativeServerSummary `json:"servers"`
-}
-
 // PublicPackage 是全部资源公开出口共用的展示字段集。
 type PublicPackage struct {
+	// 解析契约
+	ContractVersion string `json:"contractVersion"`
 	// 元数据
 	Manifest PublicManifest `json:"manifest"`
 	// 包格式
@@ -80,8 +76,6 @@ type PublicPackage struct {
 	Servers []PublicServer `json:"servers"`
 	// 授权交互
 	Integration PublicIntegration `json:"integration"`
-	// 目标实现
-	NativeImplementations map[string]PublicNativeImplementation `json:"nativeImplementations,omitempty"`
 	// 兼容性说明
 	Diagnostics []Diagnostic `json:"diagnostics"`
 }
@@ -89,18 +83,16 @@ type PublicPackage struct {
 // Public 将完整内部声明投影到与目录公开边界一致的展示数据。
 func (p Package) Public() PublicPackage {
 	manifest := p.Manifest
-	result := PublicPackage{Manifest: PublicManifest{Schema: manifest.Schema, Name: manifest.Name, Version: manifest.Version, Description: manifest.Description, Author: manifest.Author, Homepage: manifest.Homepage, Repository: manifest.Repository, License: manifest.License, Keywords: manifest.Keywords}, Format: p.Format, Presentation: p.Presentation, Upstream: p.Upstream, Icon: p.Icon, Readme: p.Readme, ReadmeStatus: p.ReadmeStatus, Skills: p.Skills, Servers: []PublicServer{}, Diagnostics: p.Diagnostics}
-	for _, server := range nativeServerSummaries(p) {
-		result.Servers = append(result.Servers, PublicServer{Key: server.Key, Type: server.Transport, URL: server.Endpoint})
+	result := PublicPackage{ContractVersion: p.ContractVersion, Manifest: PublicManifest{Schema: manifest.Schema, Name: manifest.Name, Version: manifest.Version, Description: manifest.Description, Author: manifest.Author, Homepage: manifest.Homepage, Repository: manifest.Repository, License: manifest.License, Keywords: manifest.Keywords}, Format: p.Format, Presentation: p.Presentation, Upstream: p.Upstream, Icon: p.Icon, Readme: p.Readme, ReadmeStatus: p.ReadmeStatus, Skills: p.Skills, Servers: []PublicServer{}, Diagnostics: p.Diagnostics}
+	for _, server := range p.Servers {
+		endpoint := ""
+		if address, err := url.Parse(server.URL); err == nil && (address.Scheme == "https" || address.Scheme == "http") && address.Host != "" {
+			endpoint = address.Scheme + "://" + address.Host
+		}
+		result.Servers = append(result.Servers, PublicServer{Key: server.Key, Type: server.Type, URL: endpoint})
 	}
 	if auth := p.Integration.Authentication; auth != nil {
 		result.Integration.Authentication = &PublicAuthentication{Strategy: auth.Strategy, Protocol: auth.Protocol, PreferredAction: auth.PreferredAction, Scopes: auth.Scopes}
-	}
-	if len(p.NativeImplementations) > 0 {
-		result.NativeImplementations = make(map[string]PublicNativeImplementation, len(p.NativeImplementations))
-		for runtime, target := range p.NativeImplementations {
-			result.NativeImplementations[runtime] = PublicNativeImplementation{Skills: target.Skills, Servers: target.Servers}
-		}
 	}
 	return result
 }

@@ -2,14 +2,13 @@ package plugins
 
 import (
 	"encoding/json"
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-// PrepareNativeTarget 保留相同格式原包或转换标准主体；明确授权绑定另派生无秘密模板。
+// PrepareNativeTarget 向 Codex 交付标准原包，为 Claude 派生原生清单与无秘密授权模板。
 func PrepareNativeTarget(parent, id string, pkg Package, root, cli string, authentication ...AuthenticationBinding) (NativeTarget, error) {
 	return prepareNativeTarget(parent, id, pkg, root, cli, "", authentication...)
 }
@@ -20,6 +19,9 @@ func PrepareNativeTargetWithDigest(parent, id string, pkg Package, root, cli, ve
 }
 
 func prepareNativeTarget(parent, id string, pkg Package, root, cli, verifiedDigest string, authentication ...AuthenticationBinding) (NativeTarget, error) {
+	if err := ValidateContract(pkg); err != nil {
+		return NativeTarget{}, err
+	}
 	digest := verifiedDigest
 	var err error
 	if digest == "" {
@@ -29,14 +31,25 @@ func prepareNativeTarget(parent, id string, pkg Package, root, cli, verifiedDige
 		return NativeTarget{}, err
 	}
 	target := NativeTarget{ID: id, Name: pkg.Manifest.Name, Version: pkg.Manifest.Version, Root: root, Digest: digest}
+	if cli != "codex" && cli != "claude" {
+		return NativeTarget{}, status_error.PluginCapabilityUnsupported
+	}
+	// Codex 根标准 MCP 不能由兼容 overlay 替换；有秘密绑定时使用明确的 MCP 投射。
+	if cli == "codex" && len(authentication) > 0 {
+		return NativeTarget{}, status_error.PluginCapabilityUnsupported
+	}
+	extension, err := ClientExtension(pkg)
+	if err != nil {
+		return NativeTarget{}, err
+	}
+	if len(extension.Bindings) > 0 {
+		return NativeTarget{}, status_error.PluginCapabilityUnsupported
+	}
+
 	if target.Version == "" {
 		target.Version = digest[:12]
 	}
-	expected := constants.PluginFormatCodex
-	if cli == "claude" {
-		expected = constants.PluginFormatClaude
-	}
-	if pkg.Format == expected {
+	if cli == "codex" {
 		return prepareNativeAuthentication(parent, id, target, cli, authentication)
 	}
 	if err := os.MkdirAll(parent, 0700); err != nil {
@@ -72,16 +85,6 @@ func prepareNativeTarget(parent, id string, pkg Package, root, cli, verifiedDige
 	if len(pkg.Manifest.Keywords) > 0 {
 		manifest["keywords"] = pkg.Manifest.Keywords
 	}
-	raw, readErr := nativeManifest(root, pkg)
-	if readErr != nil {
-		return NativeTarget{}, readErr
-	}
-	// 目标原生机制解释事件和其他声明；宿主保留内容，不伪造跨端语义等价。
-	for _, key := range []string{"hooks", "agents", "commands", "lspServers", "apps", "outputStyles", "settings", "userConfig", "dependencies", "experimental", "channels", "workflows"} {
-		if value, ok := raw[key]; ok {
-			manifest[key] = value
-		}
-	}
 
 	if len(pkg.Skills) > 0 {
 		paths := []string{}
@@ -94,14 +97,11 @@ func prepareNativeTarget(parent, id string, pkg Package, root, cli, verifiedDige
 		servers := map[string]any{}
 		for _, server := range pkg.Servers {
 			data, _ := json.Marshal(server)
-			if cli == "claude" {
-				data = []byte(strings.NewReplacer("${PLUGIN_ROOT}", "${CLAUDE_PLUGIN_ROOT}", "${PLUGIN_DATA}", "${CLAUDE_PLUGIN_DATA}").Replace(string(data)))
-			} else {
-				data = []byte(strings.NewReplacer("${CLAUDE_PLUGIN_ROOT}", "${PLUGIN_ROOT}", "${CLAUDE_PLUGIN_DATA}", "${PLUGIN_DATA}").Replace(string(data)))
-			}
+			data = []byte(strings.NewReplacer("${PLUGIN_ROOT}", "${CLAUDE_PLUGIN_ROOT}", "${PLUGIN_DATA}", "${CLAUDE_PLUGIN_DATA}").Replace(string(data)))
 			var fields map[string]any
 			_ = json.Unmarshal(data, &fields)
 			delete(fields, "key")
+			delete(fields, "authentication")
 			if fields["type"] == "streamable-http" {
 				fields["type"] = "http"
 			}
@@ -109,22 +109,7 @@ func prepareNativeTarget(parent, id string, pkg Package, root, cli, verifiedDige
 		}
 		manifest["mcpServers"] = servers
 	}
-	if pkg.Format == constants.PluginFormatPortable {
-		for _, key := range []string{"skills", "mcpServers"} {
-			if value, ok := raw[key]; ok {
-				manifest[key] = value
-			}
-		}
-	}
-	if cli == "codex" {
-		if value, ok := raw["interface"]; ok {
-			manifest["interface"] = value
-		}
-	}
-	directory := ".codex-plugin"
-	if cli == "claude" {
-		directory = ".claude-plugin"
-	}
+	directory := ".claude-plugin"
 	if os.MkdirAll(filepath.Join(stage, directory), 0700) != nil {
 		return NativeTarget{}, status_error.PluginStorageError
 	}

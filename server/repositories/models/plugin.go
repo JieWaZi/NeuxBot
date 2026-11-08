@@ -10,9 +10,10 @@ func init() {
 	dbhelper.RegisterTable(&PluginVersion{})
 	dbhelper.RegisterTable(&WakerPlugin{})
 	dbhelper.RegisterTable(&PluginConfiguration{})
+	dbhelper.RegisterTable(&PluginAccount{})
 }
 
-// Plugin 保存稳定的本机插件资源与归属，展示名不参与身份判断。
+// Plugin 保存稳定的本机插件资源，展示名不参与身份判断。
 type Plugin struct {
 	// ID 是稳定资源标识。
 	ID string `gorm:"column:id;type:varchar(32);primaryKey" json:"id"`
@@ -20,10 +21,10 @@ type Plugin struct {
 	Name string `gorm:"column:name;not null" json:"name"`
 	// Description 是用途说明。
 	Description string `gorm:"column:description;not null;default:''" json:"description"`
-	// OwnerWakerID 是所属伙伴，空值表示全局资源。
-	OwnerWakerID string `gorm:"column:owner_waker_id;not null;default:'';uniqueIndex:idx_plugin_source,priority:1;index" json:"ownerWakerId,omitempty"`
+	// Categories 是用户选择的分类，与资源原始内容独立保存。
+	Categories []string `gorm:"column:categories;type:text;not null;default:'[]';serializer:json" json:"categories"`
 	// SourceKey 是明确来源身份；来源未核验时使用内容身份而非展示名称。
-	SourceKey string `gorm:"column:source_key;not null;uniqueIndex:idx_plugin_source,priority:2" json:"sourceKey"`
+	SourceKey string `gorm:"column:source_key;not null;uniqueIndex:idx_plugin_source" json:"sourceKey"`
 	// CreatedAt 是创建时间的 Unix 毫秒值。
 	CreatedAt int64 `gorm:"column:created_at;autoCreateTime:milli" json:"createdAt"`
 	// UpdatedAt 是最近修改时间的 Unix 毫秒值。
@@ -89,8 +90,6 @@ type PluginConfiguration struct {
 	Values map[string]string `gorm:"column:values;type:text;not null;serializer:json" json:"values"`
 	// Secrets 是加密保存、仅在服务端解密使用的敏感配置。
 	Secrets []MCPSecretDefinition `gorm:"column:secrets;type:text;not null;serializer:json" json:"-"`
-	// DeliveryMaterials 是安装及授权阶段校验后加密保存的私有交付材料，不返回客户端。
-	DeliveryMaterials []MCPSecretDefinition `gorm:"column:delivery_materials;type:text;serializer:json" json:"-"`
 	// UpdatedAt 是本地配置最近修改时间。
 	UpdatedAt int64 `gorm:"column:updated_at;autoUpdateTime:milli" json:"updatedAt"`
 }
@@ -110,7 +109,9 @@ type PluginState struct {
 	PartnerNames map[string]string
 	// PartnerAvatars 是同批伙伴记录中的真实头像声明，不持久化。
 	PartnerAvatars map[string]string
-	// Configuration 是服务端可用共享设置。
+	// Account 是同批读取的共享账号摘要；普通管理窗口不补齐私有材料。
+	Account PluginAccount
+	// Configuration 仅保存普通展示所需配置修订，不含配置值或秘密。
 	Configuration PluginConfiguration
 }
 
@@ -126,6 +127,8 @@ type PluginExecutionDeclaration struct {
 	Digest string
 	// TrustedAt 是该固定版本的执行配置确认时间。
 	TrustedAt int64
+	// AccountGeneration 是接纳时冻结的共享账号代次。
+	AccountGeneration int64
 	// ConfigurationRevision 是共享配置的冻结修订，零表示尚无配置。
 	ConfigurationRevision int64
 	// ContentPath 是不可变来源相对数据目录的位置。
@@ -151,3 +154,62 @@ type PluginReference struct {
 	// 版本标识
 	VersionID string `json:"versionId"`
 }
+
+// PluginBrowseVersion 只保存真实安装版本所需的公开展示与身份缓存查询字段。
+type PluginBrowseVersion struct {
+	// ID 是实际被安装关系引用的版本身份。
+	ID string
+	// PluginID 是版本所属的资源身份。
+	PluginID string
+	// Version 是用于更新比较的原包版本。
+	Version string
+	// Digest 用于固定已有授权缓存身份，不触发内容校验。
+	Digest string
+	// SourcePath 是该不可变包内的实际入口。
+	SourcePath string
+	// ManifestName 是标准清单中的名称。
+	ManifestName string
+	// ManifestDescription 是标准清单的简介。
+	ManifestDescription string
+	// DisplayName 是包声明的默认展示名称。
+	DisplayName string
+	// ShortDescription 是包声明的默认短描述。
+	ShortDescription string
+	// DisplayNames 是受支持语言的公开名称。
+	DisplayNames map[string]string `gorm:"serializer:json"`
+	// LocalizedDescriptions 是受支持语言的公开简介。
+	LocalizedDescriptions map[string]string `gorm:"serializer:json"`
+	// Category 是实际安装包声明的标准分类。
+	Category string
+	// Icons 是实际安装包的安全明暗主题图标。
+	Icons plugins.ThemeValues `gorm:"serializer:json"`
+	// Icon 是已核验的内嵌图标。
+	Icon string
+	// AuthenticationStrategy 是包内通用授权声明的策略。
+	AuthenticationStrategy string
+	// AuthenticationProtocol 是包内通用授权声明的协议。
+	AuthenticationProtocol string
+}
+
+// PluginBrowseState 是当前浏览窗口的窄列补齐结果，不保存管理配置或伙伴资料。
+type PluginBrowseState struct {
+	// Versions 只包括实际安装引用的版本，保持登记时间降序与身份升序。
+	Versions []PluginBrowseVersion
+	// InstalledCount 是包含停用关系的真实安装伙伴数。
+	InstalledCount int64
+}
+
+// PluginAccount 独占插件共享身份的持久代次和加密交付材料。
+type PluginAccount struct {
+	// PluginID 是共享账号所属的唯一插件身份。
+	PluginID string `gorm:"column:plugin_id;primaryKey" json:"pluginId"`
+	// Generation 是账号或交付材料变化的乐观并发代次。
+	Generation int64 `gorm:"column:generation;not null" json:"generation"`
+	// DeliveryMaterials 是按固定版本、组件和端点加密保存的私有材料。
+	DeliveryMaterials []MCPSecretDefinition `gorm:"column:delivery_materials;type:text;serializer:json" json:"-"`
+	// UpdatedAt 是最近一次账号代次变更的 Unix 毫秒时间。
+	UpdatedAt int64 `gorm:"column:updated_at;autoUpdateTime:milli" json:"updatedAt"`
+}
+
+// TableName 返回独立共享账号表名。
+func (PluginAccount) TableName() string { return "plugin_accounts" }

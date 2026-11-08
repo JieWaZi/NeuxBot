@@ -81,6 +81,8 @@ type Skill struct {
 
 // Server 保存插件内 MCP 连接定义，不包含本机共享凭据。
 type Server struct {
+	// Authentication 是标准 MCP 公开认证方式，不含凭据。
+	Authentication *MCPAuthentication `json:"authentication,omitempty"`
 	// Key 是清单内稳定服务键。
 	Key string `json:"key"`
 	// Type 是标准 MCP 传输。
@@ -115,6 +117,8 @@ type UpstreamSource struct {
 
 // 插件包
 type Package struct {
+	// ContractVersion 是宿主校验后的解析契约，缺失的历史快照不可执行。
+	ContractVersion string `json:"contractVersion"`
 	// 元数据
 	Manifest Manifest `json:"manifest"`
 	// 包格式
@@ -127,10 +131,6 @@ type Package struct {
 	Icon string `json:"icon,omitempty"`
 	// 插件说明
 	Readme string `json:"readme,omitempty"`
-	// 原生组成
-	NativeComponents []NativeComponent `json:"nativeComponents,omitempty"`
-	// 目标实现
-	NativeImplementations map[string]NativeImplementation `json:"nativeImplementations,omitempty"`
 	// 来源入口
 	SourcePath string `json:"sourcePath,omitempty"`
 	// 原生实现
@@ -147,59 +147,45 @@ type Package struct {
 	Diagnostics []Diagnostic `json:"diagnostics"`
 }
 
-// Load 优先读取通用清单，缺失时导入 Codex 或 Claude 清单的受支持组件。
-func Load(root string) (Package, error) {
-	pkg := Package{Skills: []Skill{}, Servers: []Server{}, Diagnostics: []Diagnostic{}}
-	portable := filepath.Join(root, "plugin.json")
-	_, err := os.Lstat(portable)
-	manifestPath := "plugin.json"
-	if os.IsNotExist(err) {
-		manifestPath = ".codex-plugin/plugin.json"
-		pkg.Format = constants.PluginFormatCodex
-		if _, err := os.Lstat(filepath.Join(root, manifestPath)); os.IsNotExist(err) {
-			manifestPath = ".claude-plugin/plugin.json"
-			pkg.Format = constants.PluginFormatClaude
+// Load 只读取标准根清单和固定组件目录，拒绝旧输入入口。
+func Load(root string) (pkg Package, resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			pkg.ContractVersion = ""
 		}
-	} else {
-		pkg.Format = constants.PluginFormatPortable
+	}()
+	pkg = Package{ContractVersion: constants.PluginTargetContractVersion, Format: constants.PluginFormatPortable, Skills: []Skill{}, Servers: []Server{}, Diagnostics: []Diagnostic{}}
+	for _, legacy := range []string{".codex-plugin", ".claude-plugin", ".neuxally", ".mcp.json", ".app.json", "hooks", "agents", "commands", ".lsp.json"} {
+		if _, err := os.Lstat(filepath.Join(root, legacy)); !os.IsNotExist(err) {
+			return pkg, status_error.PluginManifestInvalid
+		}
 	}
-	path, err := contained(root, manifestPath)
+	path, err := contained(root, "plugin.json")
 	if err != nil {
 		return pkg, status_error.PluginManifestInvalid
 	}
 	raw, err := readObject(path)
-	if err != nil {
+	if err != nil || !stringEquals(raw["$schema"], constants.PluginManifestSchema) {
 		return pkg, status_error.PluginManifestInvalid
 	}
-	if pkg.Format == constants.PluginFormatPortable {
-		if !stringEquals(raw["$schema"], constants.PluginManifestSchema) {
+	allowed := map[string]bool{"$schema": true, "name": true, "version": true, "description": true, "author": true, "homepage": true, "repository": true, "license": true, "keywords": true, "extensions": true}
+	for key := range raw {
+		if !allowed[key] {
 			return pkg, status_error.PluginManifestInvalid
 		}
-		allowed := map[string]bool{"$schema": true, "name": true, "version": true, "description": true, "author": true, "homepage": true, "repository": true, "license": true, "keywords": true, "extensions": true}
-		for key := range raw {
-			if !allowed[key] {
-				pkg.diagnose(key, "unknown_field")
-				delete(raw, key)
-			}
+	}
+	if value, exists := raw["extensions"]; exists {
+		var extensions map[string]json.RawMessage
+		if json.Unmarshal(value, &extensions) != nil || extensions == nil {
+			return pkg, status_error.PluginManifestInvalid
 		}
-		if value, ok := raw["extensions"]; ok {
-			var ext map[string]json.RawMessage
-			if json.Unmarshal(value, &ext) != nil || ext == nil {
-				pkg.diagnose("extensions", "invalid_extension")
-				delete(raw, "extensions")
-			}
-		}
-		if value, ok := raw["author"]; ok {
-			var author map[string]json.RawMessage
-			if json.Unmarshal(value, &author) != nil || author == nil {
-				return pkg, status_error.PluginManifestInvalid
-			}
-			for key, value := range author {
-				var text string
-				if (key != "name" && key != "email" && key != "url") || json.Unmarshal(value, &text) != nil || string(value) == "null" {
-					return pkg, status_error.PluginManifestInvalid
-				}
-			}
+	}
+	if value, exists := raw["author"]; exists {
+		var author Author
+		decoder := json.NewDecoder(strings.NewReader(string(value)))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&author) != nil || string(value) == "null" {
+			return pkg, status_error.PluginManifestInvalid
 		}
 	}
 	for _, key := range []string{"name", "version", "description", "homepage", "repository", "license"} {
@@ -223,47 +209,25 @@ func Load(root string) (Package, error) {
 	if pkg.Manifest.Keywords == nil {
 		pkg.Manifest.Keywords = []string{}
 	}
-	skillPaths := []string{"skills"}
-	mcpPaths := []string{"mcp.json"}
-	if pkg.compatibilityFormat() {
-		mcpPaths = []string{".mcp.json"}
-		if value, ok := raw["skills"]; ok {
-			var declared []string
-			if err := decodePaths(value, &declared); err != nil {
-				pkg.diagnose("skills", "invalid_component")
-			} else {
-				skillPaths = append(skillPaths, declared...)
-			}
-		}
-		for _, key := range []string{"hooks", "agents", "commands", "lspServers", "channels", "apps", "outputStyles", "workflows", "settings", "userConfig", "dependencies", "experimental"} {
-			if _, ok := raw[key]; ok {
-				pkg.diagnose(key, "unsupported_component")
-			}
-		}
-		for key, relative := range map[string]string{"hooks": "hooks/hooks.json", "agents": "agents", "commands": "commands", "lspServers": ".lsp.json", "apps": ".app.json"} {
-			if _, declared := raw[key]; declared {
-				continue
-			}
-			if _, err := os.Lstat(filepath.Join(root, relative)); err == nil {
-				pkg.diagnose(key, "unsupported_component")
-			}
-		}
+	if _, err := neuxExtensionObject(pkg); err != nil {
+		return pkg, err
 	}
-	seen := map[string]bool{}
-	for _, path := range skillPaths {
-		pkg.loadSkills(root, path, seen)
+	pkg.loadSkills(root, "skills", map[string]bool{})
+	if err := pkg.loadMCPFile(root, "mcp.json"); err != nil {
+		return pkg, err
 	}
-	for _, path := range mcpPaths {
-		pkg.loadMCPFile(root, path)
-	}
-	if pkg.compatibilityFormat() {
-		if value, ok := raw["mcpServers"]; ok {
-			pkg.loadDeclaredMCP(root, value)
-		}
-	}
-	pkg.loadNativeComponents(root, raw)
-	pkg.loadPresentation(root, raw)
 	if err := pkg.loadIntegration(root); err != nil {
+		return pkg, err
+	}
+	if err := pkg.loadPresentation(root); err != nil {
+		return pkg, err
+	}
+	for _, diagnostic := range pkg.Diagnostics {
+		if diagnostic.Code != "invalid_documentation" {
+			return pkg, status_error.PluginManifestInvalid
+		}
+	}
+	if _, err := ClientExtension(pkg); err != nil {
 		return pkg, err
 	}
 	sort.Slice(pkg.Skills, func(i, j int) bool { return pkg.Skills[i].Key < pkg.Skills[j].Key })
@@ -274,26 +238,25 @@ func Load(root string) (Package, error) {
 	return pkg, nil
 }
 
-func (p Package) compatibilityFormat() bool {
-	return p.Format == constants.PluginFormatClaude || p.Format == constants.PluginFormatCodex
-}
-
-func (pkg *Package) loadMCPFile(root, path string, required ...bool) {
+func (pkg *Package) loadMCPFile(root, path string) error {
 	resolved, pathErr := contained(root, path)
 	if pathErr != nil {
-		if !os.IsNotExist(pathErr) || (len(required) > 0 && required[0]) {
+		if !os.IsNotExist(pathErr) {
 			pkg.diagnose(path, "invalid_component")
 		}
-		return
+		if os.IsNotExist(pathErr) {
+			return nil
+		}
+		return status_error.PluginManifestInvalid
 	}
 	document, readErr := readObject(resolved)
 	if readErr != nil {
 		pkg.diagnose(path, "invalid_component")
-		return
+		return status_error.PluginManifestInvalid
 	}
 	if pkg.Format == constants.PluginFormatPortable && !stringEquals(document["$schema"], constants.PluginMCPSchema) {
 		pkg.diagnose(path, "unsupported_schema")
-		return
+		return status_error.PluginManifestInvalid
 	}
 	if pkg.Format == constants.PluginFormatPortable {
 		valid := true
@@ -304,51 +267,20 @@ func (pkg *Package) loadMCPFile(root, path string, required ...bool) {
 		}
 		if !valid {
 			pkg.diagnose(path, "invalid_component")
-			return
+			return status_error.PluginManifestInvalid
 		}
 	}
 	var servers map[string]json.RawMessage
 	if value, wrapped := document["mcpServers"]; wrapped {
 		if json.Unmarshal(value, &servers) != nil || servers == nil {
 			pkg.diagnose(path, "invalid_component")
-			return
+			return status_error.PluginManifestInvalid
 		}
-	} else if pkg.Format == constants.PluginFormatClaude {
-		// Claude 的独立 MCP 文件也允许直接以服务键组织定义。
-		servers = document
 	} else {
 		pkg.diagnose(path, "invalid_component")
-		return
+		return status_error.PluginManifestInvalid
 	}
-	pkg.loadServers(root, servers)
-}
-
-func (p *Package) loadDeclaredMCP(root string, value json.RawMessage) {
-	var path string
-	if json.Unmarshal(value, &path) == nil {
-		if filepath.ToSlash(filepath.Clean(path)) != ".mcp.json" {
-			p.loadMCPFile(root, path, true)
-		}
-		return
-	}
-	var inline map[string]json.RawMessage
-	if json.Unmarshal(value, &inline) == nil && inline != nil {
-		p.loadServers(root, inline)
-		return
-	}
-	var items []json.RawMessage
-	if json.Unmarshal(value, &items) == nil && items != nil {
-		for _, item := range items {
-			// MCP 声明只接受一层路径或对象，不展开嵌套数组。
-			if text := strings.TrimSpace(string(item)); text != "" && text[0] != '[' {
-				p.loadDeclaredMCP(root, item)
-			} else {
-				p.diagnose("mcpServers", "invalid_component")
-			}
-		}
-		return
-	}
-	p.diagnose("mcpServers", "invalid_component")
+	return pkg.loadServers(root, servers)
 }
 
 func (p *Package) diagnose(component, code string) {
@@ -424,10 +356,6 @@ func (p *Package) loadSkills(root, relative string, seen map[string]bool) {
 		p.diagnose(relative, "invalid_component")
 		return
 	}
-	if _, err := os.Lstat(filepath.Join(path, "SKILL.md")); err == nil && p.compatibilityFormat() {
-		p.loadSkill(root, relative, seen)
-		return
-	}
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		p.diagnose(relative, "invalid_component")
@@ -467,7 +395,7 @@ func (p *Package) loadSkill(root, relative string, seen map[string]bool) {
 	}
 	p.Skills = append(p.Skills, Skill{Key: filepath.ToSlash(relative), Name: metadata.Name, Description: metadata.Description, Path: filepath.ToSlash(relative), Digest: digest})
 }
-func (p *Package) loadServers(root string, definitions map[string]json.RawMessage) {
+func (p *Package) loadServers(root string, definitions map[string]json.RawMessage) error {
 	keys := make([]string, 0, len(definitions))
 	for key := range definitions {
 		keys = append(keys, key)
@@ -479,15 +407,7 @@ func (p *Package) loadServers(root string, definitions map[string]json.RawMessag
 		var fields map[string]json.RawMessage
 		if json.Unmarshal(raw, &server) != nil || json.Unmarshal(raw, &fields) != nil || fields == nil || key == "" {
 			p.diagnose(key, "invalid_mcp")
-			continue
-		}
-		if p.compatibilityFormat() {
-			if server.Type == "" && server.Command != "" {
-				server.Type = "stdio"
-			}
-			if server.Type == "http" {
-				server.Type = "streamable-http"
-			}
+			return status_error.PluginManifestInvalid
 		}
 		valid := true
 		for _, field := range []string{"type", "command", "cwd", "url"} {
@@ -512,17 +432,13 @@ func (p *Package) loadServers(root string, definitions map[string]json.RawMessag
 				valid = false
 			}
 			commandForValidation, cwdForValidation := server.Command, server.Cwd
-			if p.compatibilityFormat() {
-				commandForValidation = strings.ReplaceAll(commandForValidation, "${CLAUDE_PLUGIN_ROOT}", "${PLUGIN_ROOT}")
-				cwdForValidation = strings.ReplaceAll(strings.ReplaceAll(cwdForValidation, "${CLAUDE_PLUGIN_ROOT}", "${PLUGIN_ROOT}"), "${CLAUDE_PLUGIN_DATA}", "${PLUGIN_DATA}")
-			}
 			if server.Cwd != "" && !validWorkingDirectory(root, cwdForValidation) {
 				valid = false
 			}
 			if strings.ContainsAny(commandForValidation, "/\\") && !strings.HasPrefix(commandForValidation, "${PLUGIN_ROOT}/") && !strings.HasPrefix(commandForValidation, "./") {
 				valid = false
 			}
-			if strings.HasPrefix(commandForValidation, "./") || (p.compatibilityFormat() && strings.HasPrefix(commandForValidation, "${PLUGIN_ROOT}/")) {
+			if strings.HasPrefix(commandForValidation, "./") {
 				_, err := contained(root, strings.TrimPrefix(strings.TrimPrefix(commandForValidation, "${PLUGIN_ROOT}/"), "./"))
 				if err != nil {
 					valid = false
@@ -545,9 +461,9 @@ func (p *Package) loadServers(root string, definitions map[string]json.RawMessag
 			valid = false
 		}
 		if p.Format == constants.PluginFormatPortable {
-			allowed := map[string]bool{"type": true, "url": true, "headers": true}
+			allowed := map[string]bool{"type": true, "url": true, "headers": true, "extensions": true}
 			if server.Type == "stdio" {
-				allowed = map[string]bool{"type": true, "command": true, "args": true, "env": true, "cwd": true}
+				allowed = map[string]bool{"type": true, "command": true, "args": true, "env": true, "cwd": true, "extensions": true}
 			}
 			for field := range fields {
 				if !allowed[field] {
@@ -556,22 +472,18 @@ func (p *Package) loadServers(root string, definitions map[string]json.RawMessag
 			}
 		}
 		for _, existing := range p.Servers {
-			if existing.Key == key && !p.compatibilityFormat() {
+			if existing.Key == key {
 				valid = false
 			}
 		}
 		if !valid {
 			p.diagnose(key, "invalid_mcp")
-			continue
+			return status_error.PluginManifestInvalid
 		}
 		server.Key = key
-		if p.compatibilityFormat() {
-			for index, existing := range p.Servers {
-				if existing.Key == key {
-					p.Servers = append(p.Servers[:index], p.Servers[index+1:]...)
-					break
-				}
-			}
+		if err := parseMCPAuthentication(fields["extensions"], &server); err != nil {
+			p.diagnose(key, "unsupported_authentication")
+			return err
 		}
 		if server.Args == nil {
 			server.Args = []string{}
@@ -584,6 +496,7 @@ func (p *Package) loadServers(root string, definitions map[string]json.RawMessag
 		}
 		p.Servers = append(p.Servers, server)
 	}
+	return nil
 }
 func validWorkingDirectory(root, value string) bool {
 	if strings.HasPrefix(value, "${PLUGIN_DATA}") {
@@ -670,4 +583,162 @@ func validRemote(address string, headers map[string]string) bool {
 		}
 	}
 	return true
+}
+
+// ValidateContract 拒绝未经过当前唯一标准输入解析的持久快照。
+func ValidateContract(pkg Package) error {
+	if pkg.ContractVersion != constants.PluginTargetContractVersion {
+		return status_error.PluginPackageUnsupported
+	}
+	if pkg.Format != constants.PluginFormatPortable || pkg.Manifest.Schema != constants.PluginManifestSchema {
+		return status_error.PluginManifestInvalid
+	}
+	if _, err := neuxExtensionObject(pkg); err != nil {
+		return err
+	}
+	settings, err := nativeManifest(pkg)
+	if err != nil {
+		return err
+	}
+	for key := range settings {
+		if key != "interface" {
+			return status_error.PluginManifestInvalid
+		}
+	}
+
+	if auth := pkg.Integration.Authentication; auth != nil {
+		if auth.Strategy != constants.PluginAuthCommandStrategy || auth.Protocol != constants.PluginAuthProtocol {
+			return status_error.PluginManifestInvalid
+		}
+		if err := validateAuthenticationBindings(pkg.Integration); err != nil {
+			return err
+		}
+		if err := validateSkillAuthenticationBindings(pkg); err != nil {
+			return err
+		}
+	}
+	for _, server := range pkg.Servers {
+		if server.Authentication != nil && server.Authentication.Type != "none" && server.Authentication.Type != "api_key" {
+			return status_error.PluginManifestInvalid
+		}
+	}
+	return nil
+}
+
+// MCPAuthentication 保存标准服务认证声明，凭据仍由配置或账号材料拥有。
+type MCPAuthentication struct {
+	// Type 是作者声明的认证模式。
+	Type string `json:"type"`
+	// HeaderScheme 是 API key 的请求头编码方式。
+	HeaderScheme string `json:"headerScheme,omitempty"`
+	// HeaderName 仅用于 custom_header 模式。
+	HeaderName string `json:"headerName,omitempty"`
+}
+
+func parseMCPAuthentication(raw json.RawMessage, server *Server) error {
+	if len(raw) == 0 {
+		return nil
+	}
+	var extensions map[string]json.RawMessage
+	if json.Unmarshal(raw, &extensions) != nil || extensions == nil {
+		return status_error.PluginManifestInvalid
+	}
+	value, exists := extensions["com.openai"]
+	if !exists {
+		return nil
+	}
+	var openai map[string]json.RawMessage
+	if json.Unmarshal(value, &openai) != nil || openai == nil {
+		return status_error.PluginManifestInvalid
+	}
+	for key := range openai {
+		if key != "auth" {
+			return status_error.PluginManifestInvalid
+		}
+	}
+	value, exists = openai["auth"]
+	if !exists {
+		return nil
+	}
+	var auth MCPAuthentication
+	decoder := json.NewDecoder(strings.NewReader(string(value)))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&auth) != nil {
+		return status_error.PluginManifestInvalid
+	}
+	switch auth.Type {
+	case "none":
+		if auth.HeaderScheme != "" || auth.HeaderName != "" {
+			return status_error.PluginManifestInvalid
+		}
+	case "oauth", "mixed":
+		return status_error.PluginCapabilityUnsupported
+	case "api_key":
+		if server.Type == "stdio" {
+			return status_error.PluginCapabilityUnsupported
+		}
+		switch auth.HeaderScheme {
+		case "bearer", "basic":
+			if auth.HeaderName != "" {
+				return status_error.PluginManifestInvalid
+			}
+		case "custom_header":
+			if strings.EqualFold(auth.HeaderName, "Host") || auth.HeaderName == "" || !validRemote("https://example.invalid", map[string]string{auth.HeaderName: ""}) {
+				return status_error.PluginManifestInvalid
+			}
+		default:
+			return status_error.PluginManifestInvalid
+		}
+	default:
+		return status_error.PluginManifestInvalid
+	}
+	server.Authentication = &auth
+	return nil
+}
+
+func validateMCPAuthenticationBindings(pkg Package, extension Extension) error {
+	fields := map[string]ConfigurationField{}
+	for _, field := range extension.Config {
+		fields[field.Key] = field
+	}
+	for _, server := range pkg.Servers {
+		auth := server.Authentication
+		if auth == nil || auth.Type == "none" {
+			continue
+		}
+		if auth.Type != "api_key" {
+			return status_error.PluginManifestInvalid
+		}
+		header := "Authorization"
+		prefix := "Bearer "
+		if auth.HeaderScheme == "basic" {
+			prefix = "Basic "
+		}
+		if auth.HeaderScheme == "custom_header" {
+			header = auth.HeaderName
+			prefix = ""
+		}
+		covered := false
+		for _, binding := range extension.Bindings {
+			if binding.Server != server.Key || binding.Target != constants.PluginBindingTargetHeader || !strings.EqualFold(binding.Name, header) {
+				continue
+			}
+			matches := placeholderPattern.FindAllStringSubmatch(binding.Value, -1)
+			if len(matches) != 1 || binding.Value != prefix+matches[0][0] || !fields[matches[0][1]].Secret || !fields[matches[0][1]].Required {
+				return status_error.PluginManifestInvalid
+			}
+			covered = true
+		}
+		if !covered && pkg.Integration.Authentication != nil {
+			for _, binding := range pkg.Integration.Authentication.Bindings {
+				if binding.Server == server.Key && binding.URL == server.URL && strings.EqualFold(binding.Header, header) {
+					covered = true
+				}
+			}
+		}
+		if !covered {
+			return status_error.PluginManifestInvalid
+		}
+	}
+	return nil
 }

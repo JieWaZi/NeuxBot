@@ -109,7 +109,7 @@ func (m *service) freezePluginResources(ctx context.Context, waker string, reque
 		if slices.Contains(request.message.PluginIDs, declaration.ID) {
 			selected = append(selected, plugins.Snapshot{ID: declaration.ID, Name: declaration.Name})
 		}
-		identities = append(identities, map[string]any{"id": declaration.ID, "versionId": declaration.VersionID, "digest": declaration.Digest, "trustedAt": declaration.TrustedAt, "revision": declaration.ConfigurationRevision})
+		identities = append(identities, map[string]any{"id": declaration.ID, "versionId": declaration.VersionID, "digest": declaration.Digest, "trustedAt": declaration.TrustedAt, "revision": declaration.ConfigurationRevision, "accountGeneration": declaration.AccountGeneration})
 	}
 	for _, id := range request.message.PluginIDs {
 		if !enabled[id] {
@@ -152,6 +152,9 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			actual, exists := byID[declaration.ID]
 			if !exists || actual.VersionID != declaration.VersionID || actual.Digest != declaration.Digest || actual.TrustedAt != declaration.TrustedAt {
 				return preparedPlugins{}, status_error.PluginVersionConflict
+			}
+			if actual.AccountGeneration != declaration.AccountGeneration {
+				return preparedPlugins{}, status_error.PluginAccountConflict
 			}
 			if actual.ConfigurationRevision != declaration.ConfigurationRevision {
 				return preparedPlugins{}, status_error.PluginConfigurationConflict
@@ -198,6 +201,9 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 
 		version, err := m.pluginController.Version(ctx, declaration.VersionID)
 		if err != nil {
+			return result, err
+		}
+		if err := plugins.ValidateContract(version.Package); err != nil {
 			return result, err
 		}
 		if version.PluginID != id || version.Digest != declaration.Digest || version.TrustedAt != declaration.TrustedAt {
@@ -323,7 +329,7 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			}
 			continue
 		}
-		snapshot := plugins.Snapshot{TargetDigest: targetDigest, TargetVersion: version.Package.Manifest.Version, Delivery: constants.PluginDeliveryProjection, LoadStage: constants.PluginLoadStagePrepared, ID: id, Name: declaration.Name, VersionID: version.ID, Version: version.Version, ConfigurationRevision: configuration.Revision, ComponentIDs: []string{}}
+		snapshot := plugins.Snapshot{TargetDigest: targetDigest, TargetVersion: version.Package.Manifest.Version, Delivery: constants.PluginDeliveryProjection, LoadStage: constants.PluginLoadStagePrepared, ID: id, Name: declaration.Name, VersionID: version.ID, Version: version.Version, ConfigurationRevision: configuration.Revision, AccountGeneration: declaration.AccountGeneration, ComponentIDs: []string{}}
 		authenticationBindings := plugins.TargetAuthenticationBindings(logicalVersion.Package, cli)
 		if err := pluginProjectionError(id, logicalVersion.Package, version.Package, request, detection, m.pluginLauncher); err != nil {
 			if required {
@@ -340,6 +346,7 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			}
 		}
 		hasAuthentication := authVersion.Package.Integration.Authentication != nil
+		accountState := models.PluginAccount{PluginID: id, Generation: declaration.AccountGeneration}
 		bridgeRelease := func() {}
 		candidateEnvironment := map[string]string{}
 		if hasAuthentication {
@@ -353,14 +360,14 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 				bridgeRelease = retained
 			}
 			if m.pluginController != nil {
-				current, readErr := m.pluginController.Configuration(ctx, id)
+				current, readErr := m.pluginController.Account(ctx, id)
 				if readErr != nil {
 					return result, readErr
 				}
-				if current.Revision != configuration.Revision {
-					return result, status_error.PluginConfigurationConflict
+				if current.Generation != declaration.AccountGeneration {
+					return result, status_error.PluginAccountConflict
 				}
-				configuration.DeliveryMaterials = current.DeliveryMaterials
+				accountState = current
 			}
 
 		}
@@ -419,14 +426,15 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			snapshot.ComponentIDs = append(snapshot.ComponentIDs, componentID)
 		}
 
-		bindings, accountID, bindErr := plugininstallation.DeliveryAuthentication(authVersion, configuration, cli)
+		bindings, accountID, bindErr := plugininstallation.DeliveryAuthentication(authVersion, configuration, accountState, cli)
 		snapshot.ProviderAccountID = accountID
 		if bindErr != nil {
 			return result, bindErr
 		}
 		if hasAuthentication && len(authenticationBindings) > 0 {
 			plugininstallation.ProjectBoundAuthentication(id, authenticationBindings, false, candidateConnectors, candidateEnvironment, bindings)
-		} else if hasAuthentication {
+		}
+		if hasAuthentication {
 			for _, binding := range bindings {
 				isSkill := false
 				for _, declaration := range version.Package.Skills {
@@ -447,6 +455,9 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 					}
 					continue
 				}
+				if len(authenticationBindings) > 0 {
+					continue
+				}
 				for index := range candidateConnectors {
 					if candidateConnectors[index].ID != binding.ComponentID {
 						continue
@@ -461,13 +472,7 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			}
 		}
 
-		missingRequired := false
-		for _, key := range extension.RequiredComponents {
-			if !available[key] {
-				missingRequired = true
-			}
-		}
-		if missingRequired || len(snapshot.ComponentIDs) == 0 {
+		if len(snapshot.ComponentIDs) == 0 {
 			if required {
 				return result, status_error.PluginNotReady
 			}
@@ -576,7 +581,7 @@ func pluginProjectionError(pluginID string, logical, target plugins.Package, req
 	}
 	bindings := plugins.TargetAuthenticationBindings(logical, cli)
 	auth := logical.Integration.Authentication
-	if auth != nil && len(auth.Bindings) > 0 && len(bindings) == 0 {
+	if auth != nil && (len(auth.Bindings) > 0 || len(auth.SkillBindings) > 0) && len(bindings) == 0 && len(plugins.TargetSkillAuthenticationBindings(logical, cli)) == 0 {
 		return status_error.PluginForbidden
 	}
 	hasAuthentication := auth != nil || target.Integration.Authentication != nil
@@ -604,11 +609,6 @@ func pluginProjectionError(pluginID string, logical, target plugins.Package, req
 			continue
 		}
 		available[server.Key] = true
-	}
-	for _, key := range extension.RequiredComponents {
-		if !available[key] {
-			return status_error.PluginNotReady
-		}
 	}
 	if len(available) == 0 {
 		return status_error.PluginNotReady

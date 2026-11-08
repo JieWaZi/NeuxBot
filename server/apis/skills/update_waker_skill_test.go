@@ -26,6 +26,9 @@ func TestUpdateWakerSkillChangesDisplayNameWithoutVersion(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
+	previousTx := global.TransactionControllerManager
+	t.Cleanup(func() { global.TransactionControllerManager = previousTx })
+	global.TransactionControllerManager = controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))
 	previousWakers := global.WakerControllerManager
 	previousSkills := global.SkillControllerManager
 	t.Cleanup(func() {
@@ -42,10 +45,12 @@ func TestUpdateWakerSkillChangesDisplayNameWithoutVersion(t *testing.T) {
 	}
 	skill := models.SkillPackage{
 		ID: "skill-update-display", Name: "review", Description: "Review changes",
-		Scope: constants.SkillScopePrivate, Source: constants.SkillSourceZip,
-		OwnerWakerID: waker.ID, CurrentVersionID: "version-update-display",
+		Source: constants.SkillSourceZip, CurrentVersionID: "version-update-display",
 	}
 	if err := global.SkillControllerManager.CreatePackage(ctx, skill); err != nil {
+		t.Fatal(err)
+	}
+	if err := global.SkillControllerManager.EnsureWakerSkill(ctx, models.WakerSkill{ID: "fixture-relation", WakerID: waker.ID, SkillPackageID: skill.ID, Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
 	version := models.SkillVersion{
@@ -79,5 +84,18 @@ func TestUpdateWakerSkillChangesDisplayNameWithoutVersion(t *testing.T) {
 	}
 	if current.Name != "review-metadata" {
 		t.Fatalf("metadata name = %q, want review-metadata", current.Name)
+	}
+}
+
+func TestUpdateSkillMetadataValidation(t *testing.T) {
+	category := []string{"  写作  "}
+	update := &UpdateWakerSkill{Body: UpdateWakerSkillRequest{Categories: &category}}
+	if err := update.Validate(nil); err != nil || (*update.Body.Categories)[0] != "写作" {
+		t.Fatalf("category-only update rejected or not normalized: %+v %v", update.Body, err)
+	}
+	for _, name := range []string{"", "  "} {
+		if err := (&UpdateWakerSkill{Body: UpdateWakerSkillRequest{Name: name}}).Validate(nil); err == nil {
+			t.Fatalf("empty update accepted for name %q", name)
+		}
 	}
 }

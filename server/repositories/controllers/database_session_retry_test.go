@@ -19,7 +19,7 @@ func TestSQLiteConcurrentSkillVersionsReuseSessionCallbacks(t *testing.T) {
 	const versionCount = 8
 	for index := 0; index < versionCount; index++ {
 		id := fmt.Sprintf("session-skill-%d", index)
-		if err := controller.CreatePackage(ctx, models.SkillPackage{ID: id, Name: id, Scope: constants.SkillScopePublic, Source: constants.SkillSourceZip}); err != nil {
+		if err := controller.CreatePackage(ctx, models.SkillPackage{ID: id, Name: id, Source: constants.SkillSourceZip}); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -2,7 +2,6 @@ package skills
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -20,7 +19,7 @@ type WakerSkillResponse struct {
 	Enabled bool `json:"enabled"`
 	// 影响伙伴数
 	AffectedWakerCount int64 `json:"affectedWakerCount"`
-	// 安装伙伴预览
+	// 安装伙伴
 	InstalledPartners []SkillPartnerResponse `json:"installedPartners"`
 }
 
@@ -34,21 +33,15 @@ type SkillPartnerResponse struct {
 	Avatar string `json:"avatar"`
 }
 
-func visibleSkill(ctx context.Context, wakerID string, skillID string) (models.SkillPackage, error) {
+// resourceSkill 验证资源存在及伙伴入口的实际安装关系。
+func resourceSkill(ctx context.Context, wakerID string, skillID string) (models.SkillPackage, error) {
 	if wakerID == "" {
-		skill, err := global.SkillControllerManager.GetPackage(ctx, skillID)
-		if err != nil {
-			return skill, err
-		}
-		if skill.Scope == constants.SkillScopePrivate {
-			return models.SkillPackage{}, status_error.SkillNotFound
-		}
-		return skill, nil
+		return global.SkillControllerManager.GetPackage(ctx, skillID)
 	}
 	if _, err := global.WakerControllerManager.Get(ctx, wakerID); err != nil {
 		return models.SkillPackage{}, err
 	}
-	items, err := global.SkillControllerManager.ListVisible(ctx, wakerID, "")
+	items, err := global.SkillControllerManager.ListInstalled(ctx, wakerID, "")
 	if err != nil {
 		return models.SkillPackage{}, err
 	}
@@ -101,6 +94,32 @@ func wakerSkillResponses(
 		})
 	}
 	return responses, nil
+}
+
+// wakerSkillDetailResponse 为详情提供完整安装伙伴，列表仍使用有限预览。
+func wakerSkillDetailResponse(ctx context.Context, item models.SkillWithState) (WakerSkillResponse, error) {
+	response := WakerSkillResponse{
+		Skill:             item.SkillPackage,
+		CurrentVersion:    item.CurrentVersion,
+		Enabled:           item.Enabled,
+		InstalledPartners: []SkillPartnerResponse{},
+	}
+	err := global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
+		counts, err := global.SkillControllerManager.InstalledCounts(txctx, []string{item.SkillPackage.ID})
+		if err != nil {
+			return err
+		}
+		response.AffectedWakerCount = counts[item.SkillPackage.ID]
+		partners, err := global.SkillControllerManager.InstalledPartners(txctx, item.SkillPackage.ID)
+		if err != nil {
+			return err
+		}
+		for _, partner := range partners {
+			response.InstalledPartners = append(response.InstalledPartners, SkillPartnerResponse{ID: partner.ID, Name: partner.Name, Avatar: partner.Avatar})
+		}
+		return nil
+	})
+	return response, err
 }
 
 // notifyResourceChanged 仅在对应资源写入生效后登记缓存失效。

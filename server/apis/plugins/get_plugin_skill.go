@@ -40,8 +40,6 @@ type PluginSkillVersion struct {
 // 查看插件技能
 type GetPluginSkill struct {
 	ginx.MethodGet
-	// 适用智能体
-	Target string `in:"query" name:"target"`
 	// 插件标识
 	PluginID string `in:"path" name:"pluginId" validate:"required"`
 	// 版本标识
@@ -57,7 +55,7 @@ type GetPluginSkill struct {
 // Path 返回不可变插件版本的技能查看入口。
 func (*GetPluginSkill) Path() string { return "/:pluginId/skill" }
 
-// Output 复验资源可见性、版本归属和内容摘要后读取已发现的技能。
+// Output 复验资源身份、版本关联和内容摘要后读取已发现的技能。
 func (o *GetPluginSkill) Output(ctx *gin.Context) (interface{}, error) {
 	resource, err := visiblePlugin(ctx, o.PluginID, o.WakerID)
 	if err != nil {
@@ -69,6 +67,21 @@ func (o *GetPluginSkill) Output(ctx *gin.Context) (interface{}, error) {
 	}
 	if version.PluginID != resource.ID {
 		return nil, ginx.WithStack(status_error.PluginVersionConflict)
+	}
+	if err := packageplugin.ValidateContract(version.Package); err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	if o.WakerID != "" {
+		relations, err := global.PluginControllerManager.Installations(ctx, resource.ID, o.WakerID)
+		if err != nil {
+			return nil, ginx.WithStack(err)
+		}
+		if len(relations) == 0 {
+			return nil, ginx.WithStack(status_error.PluginForbidden)
+		}
+		if relations[0].VersionID != o.VersionID {
+			return nil, ginx.WithStack(status_error.PluginVersionConflict)
+		}
 	}
 	root, err := packageplugin.ContentPath(global.Config.DataDirectory, version.ContentPath)
 	if err != nil {
@@ -84,15 +97,11 @@ func (o *GetPluginSkill) Output(ctx *gin.Context) (interface{}, error) {
 	if err := packageplugin.VerifyContent(root, version.Digest); err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	skillPackage, skillRoot, err := packageplugin.SkillSource(root, version.Package, o.Target)
+	skill, content, err := packageplugin.ReadSkill(root, version.Package, o.Key)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	skill, content, err := packageplugin.ReadSkill(skillRoot, skillPackage, o.Key)
-	if err != nil {
-		return nil, ginx.WithStack(err)
-	}
-	resources, file, err := packageplugin.ReadSkillResources(skillRoot, skillPackage, o.Key, o.FilePath)
+	resources, file, err := packageplugin.ReadSkillResources(root, version.Package, o.Key, o.FilePath)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
@@ -102,6 +111,9 @@ func (o *GetPluginSkill) Output(ctx *gin.Context) (interface{}, error) {
 	}
 	versions := []PluginSkillVersion{}
 	for _, retained := range stored {
+		if packageplugin.ValidateContract(retained.Package) != nil {
+			continue
+		}
 		for _, component := range retained.Package.Skills {
 			if component.Key == o.Key {
 				versions = append(versions, PluginSkillVersion{ID: retained.ID, Version: retained.Version, CreatedAt: retained.CreatedAt, Skill: component})
@@ -109,9 +121,7 @@ func (o *GetPluginSkill) Output(ctx *gin.Context) (interface{}, error) {
 			}
 		}
 	}
-	if o.Target != "" {
-		versions = []PluginSkillVersion{{ID: version.ID, Version: version.Version, CreatedAt: version.CreatedAt, Skill: skill}}
-	}
+
 	return PluginSkillResponse{
 		Skill: skill, Content: content, Resources: resources, File: file,
 		Version: PluginSkillVersion{ID: version.ID, Version: version.Version, CreatedAt: version.CreatedAt, Skill: skill}, Versions: versions,

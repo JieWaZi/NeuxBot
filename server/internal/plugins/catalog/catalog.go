@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"sync"
 	"time"
 
@@ -31,8 +30,6 @@ type Entry struct {
 	SourceKey string `json:"sourceKey"`
 	// Key 是目录项稳定身份。
 	Key string `json:"key"`
-	// Directory 是分发目录内的包路径，不回传绝对位置。
-	Directory string `json:"-"`
 	// SourceCommit 是独立插件源固定提交。
 	SourceCommit string `json:"sourceCommit"`
 	// ArchiveSHA256 是完整压缩包摘要。
@@ -60,15 +57,17 @@ type document struct {
 		// ArchiveURL 是不可变 HTTP 下载地址。
 		ArchiveURL string `json:"archiveURL"`
 		// DetailsURL 是公开资料的明确地址。
-		DetailsURL json.RawMessage `json:"detailsURL"`
+		DetailsURL string `json:"detailsURL"`
 		// DetailsSHA256 是公开资料的完整摘要。
-		DetailsSHA256 json.RawMessage `json:"detailsSHA256"`
+		DetailsSHA256 string `json:"detailsSHA256"`
 		// DetailsSize 是公开资料的完整字节数。
-		DetailsSize json.RawMessage `json:"detailsSize"`
+		DetailsSize int64 `json:"detailsSize"`
 		// PackagePath 是逻辑入口目录。
 		PackagePath string `json:"packagePath"`
-		// 图标
+		// Icon 是默认主题图标的派生摘要。
 		Icon string `json:"icon"`
+		// Icons 是经过安全内嵌校验的明暗主题图标。
+		Icons plugins.ThemeValues `json:"icons,omitempty"`
 		// 本地名称
 		DisplayNames map[string]string `json:"displayNames"`
 		// 本地简介
@@ -77,20 +76,18 @@ type document struct {
 		Name string `json:"name"`
 		// Version 是入口版本。
 		Version string `json:"version"`
+		// Category 是发布包声明的标准分类。
+		Category string `json:"category,omitempty"`
 		// Description 是目录短描述。
 		Description string `json:"description"`
 		// Format 是包格式。
 		Format string `json:"format"`
 		// Key 是稳定目录键。
 		Key string `json:"key"`
-		// Directory 是受控相对位置。
-		Directory string `json:"directory"`
 		// SourceCommit 是固定源提交。
 		SourceCommit string `json:"sourceCommit"`
 		// ArchiveSHA256 是构建产物摘要。
 		ArchiveSHA256 string `json:"archiveSHA256"`
-		// Package 是由正式包解析器生成的构建元数据。
-		Package plugins.Package `json:"package"`
 	} `json:"entries"`
 }
 
@@ -127,13 +124,32 @@ func parseIndex(data []byte) ([]Entry, error) {
 	if len(data) > 4*1024*1024 {
 		return nil, status_error.PluginContentLimitExceeded
 	}
+	object, err := publicObject(data, "schemaVersion", "entries")
+	if err != nil {
+		return nil, err
+	}
+	var rawEntries []json.RawMessage
+	if json.Unmarshal(object["entries"], &rawEntries) != nil || rawEntries == nil {
+		return nil, status_error.PluginContentInvalid
+	}
+	for _, entry := range rawEntries {
+		fields, err := publicObject(entry, "key", "name", "version", "description", "format", "category", "sourceCommit", "archiveSHA256", "archiveURL", "packagePath", "detailsURL", "detailsSHA256", "detailsSize", "icon", "icons", "displayNames", "localizedDescriptions")
+		if err != nil {
+			return nil, err
+		}
+		if value := fields["icons"]; len(value) > 0 {
+			if _, err := publicObject(value, "default", "dark"); err != nil {
+				return nil, err
+			}
+		}
+	}
 	var index document
-	if json.Unmarshal(data, &index) != nil || (index.SchemaVersion != 1 && index.SchemaVersion != 2) {
+	if json.Unmarshal(data, &index) != nil || index.SchemaVersion != constants.PluginCatalogSchemaVersion {
 		return nil, status_error.PluginContentInvalid
 	}
 	seen := map[string]bool{}
 	for _, item := range index.Entries {
-		if !keyPattern.MatchString(item.Key) || (index.SchemaVersion == 1 && item.Directory != "catalog/"+item.Key+".zip") || seen[item.Key] || len(item.SourceCommit) != 40 || len(item.ArchiveSHA256) != 64 {
+		if !keyPattern.MatchString(item.Key) || seen[item.Key] || len(item.SourceCommit) != 40 || len(item.ArchiveSHA256) != 64 {
 			return nil, status_error.PluginContentInvalid
 		}
 		if _, err := hex.DecodeString(item.SourceCommit); err != nil {
@@ -142,35 +158,31 @@ func parseIndex(data []byte) ([]Entry, error) {
 		if _, err := hex.DecodeString(item.ArchiveSHA256); err != nil {
 			return nil, status_error.PluginContentInvalid
 		}
-		var detailsURL, detailsSHA256 string
-		var detailsSize int64
-		if len(item.DetailsURL) != 0 || len(item.DetailsSHA256) != 0 || len(item.DetailsSize) != 0 {
-			if json.Unmarshal(item.DetailsURL, &detailsURL) != nil || json.Unmarshal(item.DetailsSHA256, &detailsSHA256) != nil || json.Unmarshal(item.DetailsSize, &detailsSize) != nil || !httpAddress(detailsURL) || len(detailsSHA256) != 64 || detailsSize <= 0 || detailsSize > maxDetailsBytes {
-				return nil, status_error.PluginContentInvalid
-			}
-			if _, err := hex.DecodeString(detailsSHA256); err != nil {
-				return nil, status_error.PluginContentInvalid
-			}
+		detailsURL, detailsSHA256, detailsSize := item.DetailsURL, item.DetailsSHA256, item.DetailsSize
+		if !httpAddress(detailsURL) || len(detailsSHA256) != 64 || detailsSize <= 0 || detailsSize > maxDetailsBytes || item.Format != constants.PluginFormatPortable {
+			return nil, status_error.PluginContentInvalid
+		}
+		if _, err := hex.DecodeString(detailsSHA256); err != nil {
+			return nil, status_error.PluginContentInvalid
 		}
 		seen[item.Key] = true
-		if index.SchemaVersion == 2 {
-			if !httpAddress(item.ArchiveURL) || item.PackagePath == "" || filepath.IsAbs(item.PackagePath) || strings.Contains(item.PackagePath, "..") {
-				return nil, status_error.PluginContentInvalid
-			}
-			item.Package = plugins.Package{Manifest: plugins.Manifest{Name: item.Name, Version: item.Version, Description: item.Description}, Format: item.Format}
-			item.Package.Icon = item.Icon
-			item.Package.Presentation = plugins.Presentation{DisplayName: item.Name, ShortDescription: item.Description}
-			item.Package.Presentation.DisplayNames = item.DisplayNames
-			item.Package.Presentation.LocalizedDescriptions = item.LocalizedDescriptions
-		}
-		item.Package.Icon = plugins.SanitizeIcon(item.Package.Icon)
-		if item.Package.Presentation.SetLocalization(item.Package.Presentation.DisplayNames, item.Package.Presentation.LocalizedDescriptions) != nil {
+		if !httpAddress(item.ArchiveURL) || (item.PackagePath != "." && !safeDetailsPath(item.PackagePath)) {
 			return nil, status_error.PluginContentInvalid
 		}
-		if item.Package.Manifest.Name == "" {
+		pkg := plugins.Package{ContractVersion: constants.PluginTargetContractVersion, Manifest: plugins.Manifest{Schema: constants.PluginManifestSchema, Name: item.Name, Version: item.Version, Description: item.Description}, Format: item.Format, Icon: item.Icon, Presentation: plugins.Presentation{DisplayName: item.Name, ShortDescription: item.Description, Category: item.Category, Icons: item.Icons, DisplayNames: item.DisplayNames, LocalizedDescriptions: item.LocalizedDescriptions}}
+		pkg.Presentation.Icons.Default = plugins.SanitizeIcon(pkg.Presentation.Icons.Default)
+		pkg.Presentation.Icons.Dark = plugins.SanitizeIcon(pkg.Presentation.Icons.Dark)
+		if pkg.Presentation.Icons.Default == "" {
+			pkg.Presentation.Icons.Default = plugins.SanitizeIcon(pkg.Icon)
+		}
+		pkg.Icon = pkg.Presentation.Icons.Default
+		if pkg.Presentation.SetLocalization(pkg.Presentation.DisplayNames, pkg.Presentation.LocalizedDescriptions) != nil {
 			return nil, status_error.PluginContentInvalid
 		}
-		result = append(result, Entry{Key: item.Key, Directory: item.Directory, SourceCommit: item.SourceCommit, ArchiveSHA256: item.ArchiveSHA256, Package: item.Package, ArchiveURL: item.ArchiveURL, PackagePath: item.PackagePath, DetailsURL: detailsURL, DetailsSHA256: detailsSHA256, DetailsSize: detailsSize})
+		if pkg.Manifest.Name == "" {
+			return nil, status_error.PluginContentInvalid
+		}
+		result = append(result, Entry{Key: item.Key, SourceCommit: item.SourceCommit, ArchiveSHA256: item.ArchiveSHA256, Package: pkg, ArchiveURL: item.ArchiveURL, PackagePath: item.PackagePath, DetailsURL: detailsURL, DetailsSHA256: detailsSHA256, DetailsSize: detailsSize})
 	}
 	return result, nil
 }
@@ -188,7 +200,7 @@ func Resolve(root, key string) (string, error) {
 		if entry.Key != key {
 			continue
 		}
-		return ResolveEntry(root, entry)
+		return ResolveEntry(entry)
 	}
 	return "", status_error.PluginNotFound
 }
@@ -257,14 +269,13 @@ func Find(root, key string) (Entry, error) {
 }
 
 // ResolveEntry 下载已经选定的目录版本，不在下载前重新查询latest。
-func ResolveEntry(root string, entry Entry) (string, error) {
-	var err error
-	location := filepath.Join(root, entry.Directory)
-	if entry.ArchiveURL != "" {
-		location, err = download(entry)
-		if err != nil {
-			return "", err
-		}
+func ResolveEntry(entry Entry) (string, error) {
+	if !httpAddress(entry.ArchiveURL) {
+		return "", status_error.PluginContentInvalid
+	}
+	location, err := download(entry)
+	if err != nil {
+		return "", err
 	}
 	bytes, err := os.ReadFile(location)
 	if err != nil {
@@ -285,18 +296,18 @@ func ResolveCurrent(root, key string) (Entry, string, error) {
 	return resolveCurrent(root, key, false)
 }
 
-// ResolveDocumentation 优先解析固定公开资料，旧目录才读取完整归档；公开资料有误不能回退安装包。
+// ResolveDocumentation 仅解析固定公开资料，缺失或失败不能回退安装归档。
 func ResolveDocumentation(root, key string) (Entry, string, error) {
 	return resolveCurrent(root, key, true)
 }
 
 func resolveCurrent(root, key string, documentation bool) (Entry, string, error) {
-	resolve := ResolveEntry
+	resolve := func(_ string, entry Entry) (string, error) { return ResolveEntry(entry) }
 	same := sameArchive
 	if documentation {
 		resolve = func(root string, entry Entry) (string, error) {
 			if entry.DetailsURL == "" {
-				return ResolveEntry(root, entry)
+				return "", status_error.PluginContentInvalid
 			}
 			return detailsLocation(entry)
 		}
@@ -382,5 +393,5 @@ func resolveCurrentRead(root string, entry Entry, documentation bool, resolve fu
 }
 
 func sameArchive(first, second Entry) bool {
-	return first.SourceCommit == second.SourceCommit && first.ArchiveSHA256 == second.ArchiveSHA256 && first.ArchiveURL == second.ArchiveURL && first.PackagePath == second.PackagePath && first.Directory == second.Directory
+	return first.SourceCommit == second.SourceCommit && first.ArchiveSHA256 == second.ArchiveSHA256 && first.ArchiveURL == second.ArchiveURL && first.PackagePath == second.PackagePath
 }

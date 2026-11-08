@@ -32,6 +32,8 @@ type Snapshot struct {
 	Delivery string `json:"delivery,omitempty"`
 	// LoadStage 区分准备与实际会话加载。
 	LoadStage string `json:"loadStage,omitempty"`
+	// AccountGeneration 是接纳时固定的共享账号身份代次。
+	AccountGeneration int64 `json:"accountGeneration"`
 	// ConfigurationRevision 是本次使用的共享配置修订。
 	ConfigurationRevision int64 `json:"configurationRevision"`
 	// ProviderAccountID 是本次共享提供者账号身份，不含凭据。
@@ -62,6 +64,9 @@ func ResolveServer(pkg Package, input Server, root, data string, values map[stri
 // resolveServer 共用展开与边界规则，仅在实际取得阶段物化持久工作目录。
 func resolveServer(pkg Package, input Server, root, data string, values map[string]string, readOnly bool) (ResolvedServer, error) {
 	var result ResolvedServer
+	if err := ValidateContract(pkg); err != nil {
+		return result, err
+	}
 	realRoot, err := filepath.EvalSymlinks(root)
 	if err != nil {
 		return result, storageFailure(err)
@@ -88,20 +93,7 @@ func resolveServer(pkg Package, input Server, root, data string, values map[stri
 	}
 	variables["PLUGIN_ROOT"] = realRoot
 	variables["PLUGIN_DATA"] = realData
-	variables["CLAUDE_PLUGIN_ROOT"] = realRoot
-	variables["CLAUDE_PLUGIN_DATA"] = realData
-	expand := func(value string) (string, error) {
-		if pkg.Format == constants.PluginFormatPortable {
-			return ExpandPortable(value, realRoot, realData), nil
-		}
-		return Expand(value, variables)
-	}
-	if pkg.compatibilityFormat() {
-		server.Command, err = Expand(input.Command, variables)
-		if err != nil {
-			return result, err
-		}
-	}
+	expand := func(value string) (string, error) { return ExpandPortable(value, realRoot, realData), nil }
 	if strings.HasPrefix(server.Command, "./") {
 		server.Command, err = contained(realRoot, server.Command)
 		if err != nil {
@@ -121,20 +113,7 @@ func resolveServer(pkg Package, input Server, root, data string, values map[stri
 		}
 	}
 	for key, value := range input.Headers {
-		if pkg.compatibilityFormat() {
-			server.Headers[key], err = Expand(value, variables)
-			if err != nil {
-				return result, err
-			}
-		} else {
-			server.Headers[key] = value
-		}
-	}
-	if pkg.compatibilityFormat() {
-		server.URL, err = Expand(input.URL, variables)
-		if err != nil {
-			return result, err
-		}
+		server.Headers[key] = value
 	}
 	extension, err := ClientExtension(pkg)
 	if err != nil {
@@ -174,7 +153,7 @@ func resolveServer(pkg Package, input Server, root, data string, values map[stri
 		if err != nil {
 			return result, err
 		}
-		persistent := strings.HasPrefix(input.Cwd, "${PLUGIN_DATA}") || strings.HasPrefix(input.Cwd, "${CLAUDE_PLUGIN_DATA}")
+		persistent := strings.HasPrefix(input.Cwd, "${PLUGIN_DATA}")
 		switch {
 		case persistent:
 			relative, err := filepath.Rel(realData, cwd)
@@ -203,7 +182,7 @@ func resolveServer(pkg Package, input Server, root, data string, values map[stri
 			return result, status_error.PluginContentInvalid
 		}
 	}
-	// 配置绑定可能改变请求头或 Claude 远程地址，交付前复验最终值。
+	// 配置绑定可能改变请求头，交付前复验最终值。
 	if server.Type != "stdio" && !validRemote(server.URL, server.Headers) {
 		return result, status_error.PluginContentInvalid
 	}

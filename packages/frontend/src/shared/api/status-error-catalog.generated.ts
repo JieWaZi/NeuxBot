@@ -2134,6 +2134,19 @@ export const statusErrorCatalog = {
       },
     ],
   },
+  PluginAccountConflict: {
+    code: 40900006506,
+    en: [
+      {
+        text: "plugin shared account changed; confirm the operation again",
+      },
+    ],
+    zh: [
+      {
+        text: "插件共享账号已变化，请重新确认",
+      },
+    ],
+  },
   PluginAuthorizationFailed: {
     code: 50200006501,
     en: [
@@ -2157,6 +2170,19 @@ export const statusErrorCatalog = {
     zh: [
       {
         text: "认证进程或工作仍在使用共享账号，请稍后重试",
+      },
+    ],
+  },
+  PluginCapabilityUnsupported: {
+    code: 42200006501,
+    en: [
+      {
+        text: "plugin capability is unsupported by the current target",
+      },
+    ],
+    zh: [
+      {
+        text: "当前运行目标尚不支持该插件声明的能力",
       },
     ],
   },
@@ -2196,6 +2222,19 @@ export const statusErrorCatalog = {
     zh: [
       {
         text: "插件内容超过导入限制",
+      },
+    ],
+  },
+  PluginDependencyUnavailable: {
+    code: 50200006503,
+    en: [
+      {
+        text: "required plugin dependencies could not be prepared; check the network and retry",
+      },
+    ],
+    zh: [
+      {
+        text: "插件所需程序暂时无法准备，请检查网络后重试",
       },
     ],
   },
@@ -2264,6 +2303,19 @@ export const statusErrorCatalog = {
       },
     ],
   },
+  PluginPackageUnsupported: {
+    code: 42200006502,
+    en: [
+      {
+        text: "This plugin package is unsupported. Reinstall it from the plugin catalog.",
+      },
+    ],
+    zh: [
+      {
+        text: "当前插件包不受支持，请从插件目录重新安装",
+      },
+    ],
+  },
   PluginSkillConflict: {
     code: 40900006504,
     en: [
@@ -2274,6 +2326,19 @@ export const statusErrorCatalog = {
     zh: [
       {
         text: "技能声明名称相同但内容不同，请调整已启用的技能或插件",
+      },
+    ],
+  },
+  PluginSkillSelectionConflict: {
+    code: 40900006507,
+    en: [
+      {
+        text: "selected skills have duplicate names or contain other skills; adjust the selection and retry",
+      },
+    ],
+    zh: [
+      {
+        text: "所选技能名称重复或目录包含其他技能，请调整选择后重试",
       },
     ],
   },

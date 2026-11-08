@@ -21,7 +21,7 @@ func TestHTTPQueriesReturnCachedIndexWhileNetworkWaits(t *testing.T) {
 	defer close(gate)
 	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-gate
-		fmt.Fprint(w, `{"schemaVersion":2,"entries":[]}`)
+		fmt.Fprint(w, `{"schemaVersion":1,"entries":[]}`)
 	}))
 	// 先释放请求再等待 HTTP 服务退出，失败路径同样有界回收。
 	t.Cleanup(source.Close)
@@ -30,7 +30,7 @@ func TestHTTPQueriesReturnCachedIndexWhileNetworkWaits(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(cache), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(cache, []byte(`{"schemaVersion":2,"entries":[]}`), 0600); err != nil {
+	if err := os.WriteFile(cache, []byte(`{"schemaVersion":1,"entries":[]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.Remove(cache) })
@@ -54,7 +54,7 @@ func TestHTTPQueriesDoNotRefreshAfterFiveMinutes(t *testing.T) {
 	var requests atomic.Int32
 	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
-		fmt.Fprint(w, `{"schemaVersion":2,"entries":[]}`)
+		fmt.Fprint(w, `{"schemaVersion":1,"entries":[]}`)
 	}))
 	defer source.Close()
 	location := source.URL + "/catalog.json"
@@ -82,7 +82,7 @@ func TestHTTPMetadataAndDigestDownload(t *testing.T) {
 	var source *httptest.Server
 	source = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/catalog.json" {
-			fmt.Fprintf(w, `{"schemaVersion":2,"entries":[{"key":"github","sourceCommit":"1111111111111111111111111111111111111111","archiveURL":%q,"archiveSHA256":"%x","packagePath":"neuxally-plugin/github","name":"github","version":"2","description":"GitHub tools","format":"codex"}]}`, source.URL+"/github.zip", sum)
+			fmt.Fprintf(w, `{"schemaVersion":1,"entries":[{"detailsURL":"https://example.invalid/details.json","detailsSHA256":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","detailsSize":100,"key":"github","sourceCommit":"1111111111111111111111111111111111111111","archiveURL":%q,"archiveSHA256":"%x","packagePath":"plugins/github","name":"github","version":"2","description":"GitHub tools","format":"agent-plugins"}]}`, source.URL+"/github.zip", sum)
 			return
 		}
 		downloads++
@@ -109,7 +109,7 @@ func TestHTTPMetadataAndDigestDownload(t *testing.T) {
 }
 
 func TestHTTPDirectoryFailurePreservesStaleMetadata(t *testing.T) {
-	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, `{"schemaVersion":2,"entries":[]}`) }))
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, `{"schemaVersion":1,"entries":[]}`) }))
 	location := source.URL + "/catalog.json"
 	if entries, err := List(location); err != nil || len(entries) != 0 {
 		t.Fatalf("initial catalog: %v", err)
@@ -131,7 +131,7 @@ func TestHTTPDirectoryFailurePreservesStaleMetadata(t *testing.T) {
 
 func TestDifferentCatalogSourcesDoNotMergeSameName(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"schemaVersion":2,"entries":[{"key":"same-name","sourceCommit":"1111111111111111111111111111111111111111","archiveURL":"https://example.invalid/fixed.zip","archiveSHA256":"1111111111111111111111111111111111111111111111111111111111111111","packagePath":"neuxally-plugin/same-name","name":"same-name","version":"1","format":"codex"}]}`)
+		fmt.Fprint(w, `{"schemaVersion":1,"entries":[{"detailsURL":"https://example.invalid/details.json","detailsSHA256":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","detailsSize":100,"key":"same-name","sourceCommit":"1111111111111111111111111111111111111111","archiveURL":"https://example.invalid/fixed.zip","archiveSHA256":"1111111111111111111111111111111111111111111111111111111111111111","packagePath":"plugins/same-name","name":"same-name","version":"1","format":"agent-plugins"}]}`)
 	})
 	first := httptest.NewServer(handler)
 	defer first.Close()
@@ -151,7 +151,7 @@ func TestDifferentCatalogSourcesDoNotMergeSameName(t *testing.T) {
 }
 
 func startupCatalog(version string) string {
-	return fmt.Sprintf(`{"schemaVersion":2,"entries":[{"key":"same-name","sourceCommit":"1111111111111111111111111111111111111111","archiveURL":"https://example.invalid/fixed.zip","archiveSHA256":"1111111111111111111111111111111111111111111111111111111111111111","packagePath":"neuxally-plugin/same-name","name":"same-name","version":%q,"format":"codex"}]}`, version)
+	return fmt.Sprintf(`{"schemaVersion":1,"entries":[{"detailsURL":"https://example.invalid/details.json","detailsSHA256":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","detailsSize":100,"key":"same-name","sourceCommit":"1111111111111111111111111111111111111111","archiveURL":"https://example.invalid/fixed.zip","archiveSHA256":"1111111111111111111111111111111111111111111111111111111111111111","packagePath":"plugins/same-name","name":"same-name","version":%q,"format":"agent-plugins"}]}`, version)
 }
 
 func awaitCatalogSignal(t *testing.T, signal <-chan struct{}) {
@@ -297,7 +297,7 @@ func TestStartupRefreshFailureNeverReplacesGoodSnapshot(t *testing.T) {
 		case 1:
 			w.WriteHeader(http.StatusServiceUnavailable)
 		case 2:
-			fmt.Fprint(w, `{"schemaVersion":2,"entries":[`)
+			fmt.Fprint(w, `{"schemaVersion":1,"entries":[`)
 		default:
 			fmt.Fprint(w, startupCatalog("0.1.0"))
 		}
@@ -355,7 +355,7 @@ func TestStartupCloseCancelsRefreshAndDoesNotRetryOnQuery(t *testing.T) {
 func TestArchiveNetworkFailureDoesNotRequirePluginAuthorization(t *testing.T) {
 	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNotFound) }))
 	defer source.Close()
-	_, err := ResolveEntry("", Entry{ArchiveURL: source.URL + "/gone.zip", ArchiveSHA256: fmt.Sprintf("%x", sha256.Sum256([]byte(t.TempDir())))})
+	_, err := ResolveEntry(Entry{ArchiveURL: source.URL + "/gone.zip", ArchiveSHA256: fmt.Sprintf("%x", sha256.Sum256([]byte(t.TempDir())))})
 	if !errors.Is(err, status_error.PluginDistributionUnavailable) {
 		t.Fatalf("archive HTTP failure was reported as plugin readiness: %v", err)
 	}
@@ -376,7 +376,7 @@ func TestCurrentResolutionCoalescesRecoveryAndDoesNotRetryUnchangedArchive(t *te
 						selected = 1
 					}
 					sum := sha256.Sum256(archives[selected])
-					_, _ = fmt.Fprintf(w, `{"schemaVersion":2,"entries":[{"key":"current","name":"current","version":"%d","format":"codex","sourceCommit":"1111111111111111111111111111111111111111","archiveURL":%q,"archiveSHA256":"%x","packagePath":"entry"}]}`, selected+1, source.URL+[]string{"/old.zip", "/new.zip"}[selected], sum)
+					_, _ = fmt.Fprintf(w, `{"schemaVersion":1,"entries":[{"detailsURL":"https://example.invalid/details.json","detailsSHA256":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","detailsSize":100,"key":"current","name":"current","version":"%d","format":"agent-plugins","sourceCommit":"1111111111111111111111111111111111111111","archiveURL":%q,"archiveSHA256":"%x","packagePath":"entry"}]}`, selected+1, source.URL+[]string{"/old.zip", "/new.zip"}[selected], sum)
 					return
 				}
 				if r.URL.Path == "/old.zip" {
@@ -451,14 +451,14 @@ func TestSlowArchiveDoesNotBlockCurrentDocumentation(t *testing.T) {
 			archive := []byte("slow ZIP " + t.TempDir())
 			archiveHash := fmt.Sprintf("%x", sha256.Sum256(archive))
 			commit := "1111111111111111111111111111111111111111"
-			body := []byte(fmt.Sprintf(`{"schemaVersion":1,"sourceCommit":%q,"archiveSHA256":%q,"packagePath":"entry","package":{"manifest":{"name":"current","version":"1"},"format":"codex","skills":[],"servers":[],"diagnostics":[]},"readmes":{"en":"public documentation"},"skillContents":{}}`, commit, archiveHash))
+			body := []byte(fmt.Sprintf(`{"schemaVersion":1,"sourceCommit":%q,"archiveSHA256":%q,"packagePath":"entry","package":{"contractVersion":"neuxbot-plugin/1","manifest":{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"current","version":"1"},"format":"agent-plugins","skills":[],"servers":[],"diagnostics":[]},"readmes":{"en":"public documentation"},"skillContents":{}}`, commit, archiveHash))
 			gate, entered := make(chan struct{}), make(chan struct{})
 			var once sync.Once
 			var source *httptest.Server
 			source = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
 				case "/catalog.json":
-					_, _ = fmt.Fprintf(w, `{"schemaVersion":2,"entries":[{"key":"current","name":"current","version":"1","format":"codex","sourceCommit":%q,"archiveURL":%q,"archiveSHA256":%q,"packagePath":"entry","detailsURL":%q,"detailsSHA256":"%x","detailsSize":%d}]}`, commit, source.URL+"/owned.zip", archiveHash, source.URL+"/details.json", sha256.Sum256(body), len(body))
+					_, _ = fmt.Fprintf(w, `{"schemaVersion":1,"entries":[{"key":"current","name":"current","version":"1","format":"agent-plugins","sourceCommit":%q,"archiveURL":%q,"archiveSHA256":%q,"packagePath":"entry","detailsURL":%q,"detailsSHA256":"%x","detailsSize":%d}]}`, commit, source.URL+"/owned.zip", archiveHash, source.URL+"/details.json", sha256.Sum256(body), len(body))
 				case "/owned.zip":
 					once.Do(func() { close(entered) })
 					<-gate
@@ -512,7 +512,7 @@ func TestExplicitRefreshCoalescesAndPreservesConditionalStaleSnapshot(t *testing
 		count := requests.Add(1)
 		if count == 1 {
 			w.Header().Set("ETag", "fixed-v1")
-			fmt.Fprint(w, `{"schemaVersion":2,"entries":[]}`)
+			fmt.Fprint(w, `{"schemaVersion":1,"entries":[]}`)
 			return
 		}
 		if unavailable.Load() {
@@ -581,7 +581,7 @@ func TestCloseWaitsForExplicitRefreshAfterStartup(t *testing.T) {
 	entered := make(chan struct{})
 	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if requests.Add(1) == 1 {
-			fmt.Fprint(w, `{"schemaVersion":2,"entries":[]}`)
+			fmt.Fprint(w, `{"schemaVersion":1,"entries":[]}`)
 			return
 		}
 		close(entered)

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -156,20 +157,46 @@ func parseDetails(raw []byte, entry Entry) (Details, error) {
 	if err := validatePublicPackage(document["package"]); err != nil {
 		return result, err
 	}
-	if json.Unmarshal(raw, &result) != nil || result.SchemaVersion != 1 {
+	if json.Unmarshal(raw, &result) != nil || result.SchemaVersion != constants.PluginDetailsSchemaVersion {
 		return result, status_error.PluginContentInvalid
 	}
 	if result.SourceCommit != entry.SourceCommit || result.ArchiveSHA256 != entry.ArchiveSHA256 || result.PackagePath != entry.PackagePath {
 		return result, status_error.PluginVersionConflict
 	}
-	if result.Package.Manifest.Name != entry.Package.Manifest.Name || result.Package.Manifest.Version != entry.Package.Manifest.Version || result.Package.Format != constants.PluginFormatCodex {
+	if result.Package.Manifest.Name != entry.Package.Manifest.Name || result.Package.Manifest.Version != entry.Package.Manifest.Version || result.Package.Format != constants.PluginFormatPortable {
 		return result, status_error.PluginContentInvalid
+	}
+	if err := plugins.ValidateContract(result.Package); err != nil {
+		return result, err
+	}
+	if err := result.Package.Presentation.Validate(); err != nil {
+		return result, err
+	}
+	for _, icon := range []string{result.Package.Presentation.Icons.Default, result.Package.Presentation.Icons.Dark} {
+		if icon != "" && plugins.SanitizeIcon(icon) != icon {
+			return result, status_error.PluginContentInvalid
+		}
 	}
 	if err := result.Package.Presentation.SetLocalization(result.Package.Presentation.DisplayNames, result.Package.Presentation.LocalizedDescriptions); err != nil {
 		return result, err
 	}
 	if result.Package.Icon != "" && plugins.SanitizeIcon(result.Package.Icon) != result.Package.Icon {
 		return result, status_error.PluginContentInvalid
+	}
+	for _, server := range result.Package.Servers {
+		if server.Key == "" {
+			return result, status_error.PluginContentInvalid
+		}
+		if server.Type == "stdio" {
+			if server.URL != "" {
+				return result, status_error.PluginContentInvalid
+			}
+			continue
+		}
+		address, err := url.Parse(server.URL)
+		if err != nil || (server.Type != "streamable-http" && server.Type != "sse") || (address.Scheme != "https" && address.Scheme != "http") || address.Host == "" || address.User != nil || address.RawQuery != "" || address.Fragment != "" {
+			return result, status_error.PluginContentInvalid
+		}
 	}
 	for locale, content := range result.Readmes {
 		if (locale != constants.PluginLocaleEnglish && locale != constants.PluginLocaleChinese) || !publicText(content) {
@@ -208,7 +235,7 @@ func publicObject(raw []byte, allowed ...string) (map[string]json.RawMessage, er
 }
 
 func validatePublicPackage(raw []byte) error {
-	pkg, err := publicObject(raw, "manifest", "format", "presentation", "upstream", "icon", "skills", "servers", "integration", "diagnostics")
+	pkg, err := publicObject(raw, "contractVersion", "manifest", "format", "presentation", "upstream", "icon", "skills", "servers", "integration", "diagnostics")
 	if err != nil {
 		return err
 	}
@@ -222,8 +249,24 @@ func validatePublicPackage(raw []byte) error {
 		}
 	}
 	if value := pkg["presentation"]; len(value) != 0 {
-		if _, err := publicObject(value, "displayName", "shortDescription", "longDescription", "developerName", "category", "websiteURL", "privacyPolicyURL", "termsOfServiceURL", "displayNames", "localizedDescriptions"); err != nil {
+		if _, err := publicObject(value, "displayName", "shortDescription", "longDescription", "developerName", "category", "websiteURL", "privacyPolicyURL", "termsOfServiceURL", "displayNames", "localizedDescriptions", "defaultPrompt", "defaultPromptLocalizations", "capabilities", "supportURL", "brandColor", "icons", "setup"); err != nil {
 			return err
+		}
+	}
+	if value := pkg["presentation"]; len(value) > 0 {
+		var presentation map[string]json.RawMessage
+		_ = json.Unmarshal(value, &presentation)
+		for _, name := range []string{"brandColor", "icons"} {
+			if value := presentation[name]; len(value) > 0 {
+				if _, err := publicObject(value, "default", "dark"); err != nil {
+					return err
+				}
+			}
+		}
+		if value := presentation["setup"]; len(value) > 0 && !bytes.Equal(value, []byte("null")) {
+			if _, err := publicObject(value, "instructions", "helpURL"); err != nil {
+				return err
+			}
 		}
 	}
 	if value := pkg["upstream"]; len(value) != 0 && !bytes.Equal(value, []byte("null")) {
@@ -231,12 +274,21 @@ func validatePublicPackage(raw []byte) error {
 			return err
 		}
 	}
-	for name, fields := range map[string][]string{"skills": {"key", "name", "description", "path"}, "servers": {"key", "type", "url"}, "diagnostics": {"component", "code"}} {
+	for name, fields := range map[string][]string{"skills": {"key", "name", "description", "path"}, "servers": {"key", "type", "url", "authentication"}, "diagnostics": {"component", "code"}} {
 		var items []json.RawMessage
 		if json.Unmarshal(pkg[name], &items) != nil {
 			return status_error.PluginContentInvalid
 		}
 		for _, item := range items {
+			if name == "servers" {
+				var server map[string]json.RawMessage
+				_ = json.Unmarshal(item, &server)
+				if auth := server["authentication"]; len(auth) > 0 && !bytes.Equal(auth, []byte("null")) {
+					if _, err := publicObject(auth, "type", "headerScheme", "headerName"); err != nil {
+						return err
+					}
+				}
+			}
 			if _, err := publicObject(item, fields...); err != nil {
 				return err
 			}

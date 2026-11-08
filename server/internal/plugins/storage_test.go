@@ -111,3 +111,14 @@ func TestContentDigestFramesFileBoundariesAndRejectsCollidingReplacement(t *test
 		t.Error("accepted a framed-content staging replacement")
 	}
 }
+
+func TestStageSourceNeverRebasesAnExplicitEntry(t *testing.T) {
+	root := t.TempDir()
+	standardInput(t, filepath.Join(root, "wrapper", "entry"), nil)
+	if _, err := StageSource(t.TempDir(), root, "entry"); err == nil {
+		t.Fatal("fixed published entry was silently moved into a wrapper")
+	}
+	if _, err := StageSource(t.TempDir(), root, "wrapper/entry"); err != nil {
+		t.Fatal(err)
+	}
+}

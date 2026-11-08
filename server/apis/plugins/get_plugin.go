@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
@@ -24,7 +25,7 @@ type GetPlugin struct {
 // Path 返回插件详情入口。
 func (*GetPlugin) Path() string { return "/:pluginId" }
 
-// Output 返回不可变组成、真实安装和脱敏共享配置。
+// Output 返回固定版本的公开组成、真实安装与缓存账号摘要。
 func (o *GetPlugin) Output(ctx *gin.Context) (interface{}, error) {
 	resource, err := visiblePlugin(ctx, o.PluginID, o.WakerID)
 	if err != nil {
@@ -48,6 +49,10 @@ func (o *GetPlugin) Output(ctx *gin.Context) (interface{}, error) {
 	}
 	entries, source := catalog.Snapshot(global.PluginCatalogSource())
 	applyPluginUpdate(&result, entries, source)
+	// 不受支持的保留版本只提供管理事实，不尝试读取或重解析包内容。
+	if result.PackageStatus != constants.PluginPackageStatusAvailable {
+		return result, nil
+	}
 	for index, version := range states[resource.ID].Versions {
 		if version.ID != result.ResolvedVersionID {
 			continue

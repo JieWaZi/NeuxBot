@@ -10,9 +10,13 @@ import (
 type summaryDriver struct {
 	// noticeDriver 复用无副作用的配置与退出实现。
 	noticeDriver
+	// logoutError 控制退出失败，验证操作开始即撤销旧摘要。
+	logoutError error
 	// status 控制真实核验结果和返回时序。
 	status func() (Account, error)
 }
+
+func (d *summaryDriver) Logout(context.Context) error { return d.logoutError }
 
 func (d *summaryDriver) Status(context.Context, bool) (Account, error) { return d.status() }
 
@@ -97,5 +101,26 @@ func TestOlderConcurrentStatusCannotOverwriteNewerSummary(t *testing.T) {
 	<-done
 	if got := auth.CachedAccount(); got.Available || got.ID != "new" {
 		t.Fatal("old status overwrote new identity summary", got)
+	}
+}
+
+func TestStageOneFailedLogoutCannotRestoreEarlierInflightAccountSummary(t *testing.T) {
+	started, finish := make(chan struct{}), make(chan struct{})
+	driver := &summaryDriver{logoutError: status_error.PluginAuthorizationFailed, status: func() (Account, error) {
+		close(started)
+		<-finish
+		return Account{Available: true, ID: "former-user"}, nil
+	}}
+	auth := New(Config{Driver: driver})
+	done := make(chan struct{})
+	go func() { defer close(done); _, _ = auth.Status(context.Background(), true) }()
+	<-started
+	if err := auth.Logout(context.Background()); err != status_error.PluginAuthorizationFailed {
+		t.Fatal("logout failure swallowed", err)
+	}
+	close(finish)
+	<-done
+	if account := auth.CachedAccount(); account.Available || account.CheckedAt != 0 {
+		t.Fatal("failed logout resurrected earlier identity summary", account)
 	}
 }

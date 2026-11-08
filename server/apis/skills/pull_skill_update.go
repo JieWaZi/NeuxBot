@@ -55,7 +55,7 @@ func (p *PullSkillUpdate) Output(ctx *gin.Context) (interface{}, error) {
 
 // pullSkillUpdate 复用相同资源用例，空伙伴范围表示全局库。
 func pullSkillUpdate(ctx *gin.Context, p *PullSkillUpdate) (models.SkillVersion, error) {
-	skill, err := visibleSkill(ctx, p.WakerID, p.SkillID)
+	skill, err := resourceSkill(ctx, p.WakerID, p.SkillID)
 	if err != nil {
 		return models.SkillVersion{}, ginx.WithStack(err)
 	}

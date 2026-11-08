@@ -50,7 +50,7 @@ func (f installedPluginFixture) ExecutionDeclarations(_ context.Context, waker s
 							configured = append(configured, secret.Name)
 						}
 					}
-					result = append(result, models.PluginExecutionDeclaration{ID: state.Plugin.ID, Name: state.Plugin.Name, VersionID: version.ID, Digest: version.Digest, TrustedAt: version.TrustedAt, ConfigurationRevision: state.Configuration.Revision, ContentPath: version.ContentPath, Package: version.Package, Values: state.Configuration.Values, ConfiguredSecrets: configured})
+					result = append(result, models.PluginExecutionDeclaration{ID: state.Plugin.ID, Name: state.Plugin.Name, VersionID: version.ID, Digest: version.Digest, TrustedAt: version.TrustedAt, ConfigurationRevision: state.Configuration.Revision, AccountGeneration: state.Account.Generation, ContentPath: version.ContentPath, Package: version.Package, Values: state.Configuration.Values, ConfiguredSecrets: configured})
 				}
 			}
 		}
@@ -70,9 +70,7 @@ func (f installedPluginFixture) Version(_ context.Context, id string) (models.Pl
 }
 
 func (f installedPluginFixture) ExecutionConfiguration(ctx context.Context, id string) (models.PluginConfiguration, error) {
-	configuration, err := f.Configuration(ctx, id)
-	configuration.DeliveryMaterials = nil
-	return configuration, err
+	return f.Configuration(ctx, id)
 }
 
 func (f installedPluginFixture) Configuration(_ context.Context, id string) (models.PluginConfiguration, error) {
@@ -89,7 +87,7 @@ func executionPlugin(t *testing.T, data string, id string, skillText string, ser
 	source := t.TempDir()
 	manifest := map[string]any{"$schema": constants.PluginManifestSchema, "name": "office", "version": "1.0.0"}
 	if server {
-		manifest["extensions"] = map[string]any{constants.PluginExtensionNamespace: map[string]any{"bindings": []any{map[string]any{"server": "office", "target": "env", "name": "API_TOKEN", "value": "${TOKEN}"}}}}
+		manifest["extensions"] = map[string]any{constants.PluginExtensionNamespace: map[string]any{"schemaVersion": constants.PluginExtensionSchemaVersion, "configuration": map[string]any{"fields": []any{map[string]any{"key": "TOKEN", "secret": true, "required": true}}, "bindings": []any{map[string]any{"server": "office", "target": "env", "name": "API_TOKEN", "value": "${TOKEN}"}}}}}
 	}
 	body, _ := json.Marshal(manifest)
 	if err := os.WriteFile(filepath.Join(source, "plugin.json"), body, 0600); err != nil {
@@ -121,7 +119,11 @@ func executionPlugin(t *testing.T, data string, id string, skillText string, ser
 		t.Fatal(err)
 	}
 	version := models.PluginVersion{ID: id + "-v1", PluginID: id, Version: "1.0.0", ContentPath: relative, Digest: stage.Digest, Package: stage.Package, TrustedAt: 1}
-	return models.PluginState{Plugin: models.Plugin{ID: id, Name: "办公"}, Versions: []models.PluginVersion{version}, Installations: []models.WakerPlugin{{WakerID: "w1", PluginID: id, VersionID: version.ID, Enabled: true}}, Configuration: models.PluginConfiguration{PluginID: id, Revision: 3, Values: map[string]string{}, Secrets: []models.MCPSecretDefinition{{Name: "TOKEN", Value: "private-token", Configured: true}}}}
+	secrets := []models.MCPSecretDefinition{}
+	if server {
+		secrets = append(secrets, models.MCPSecretDefinition{Name: "TOKEN", Value: "private-token", Configured: true})
+	}
+	return models.PluginState{Plugin: models.Plugin{ID: id, Name: "办公"}, Versions: []models.PluginVersion{version}, Installations: []models.WakerPlugin{{WakerID: "w1", PluginID: id, VersionID: version.ID, Enabled: true}}, Configuration: models.PluginConfiguration{PluginID: id, Revision: 3, Values: map[string]string{}, Secrets: secrets}}
 }
 
 func TestPluginAdmissionPinsResourcesAndDoesNotSelectEveryComponent(t *testing.T) {
@@ -240,10 +242,12 @@ func TestPluginRestrictedEntryFiltersMCPAndRejectsProviderCLI(t *testing.T) {
 	state.Configuration.Secrets = nil
 	s.pluginController = installedPluginFixture{states: []models.PluginState{state}}
 	result, err = s.preparePlugins(context.Background(), "w1", pendingMessage{allowedConnectorIDs: &empty}, detection)
-	if err != nil {
-		t.Fatal(err)
+	if !errors.Is(err, status_error.PluginManifestInvalid) {
+		t.Fatal("legacy contract was not rejected", err)
 	}
-	result.release()
+	if result.release != nil {
+		result.release()
+	}
 	if len(result.skills) > 0 || len(result.environment) > 0 {
 		t.Fatal("restricted entry received CLI skills or provider environment")
 	}
@@ -421,60 +425,59 @@ func TestUnknownOrOlderNativeCLIUsesProjection(t *testing.T) {
 	}
 }
 
-func TestNativeTargetConfigurationIsValidatedAndOnlySelectedSecretsInjected(t *testing.T) {
-	data, source := t.TempDir(), t.TempDir()
-	write := func(path, content string) {
-		t.Helper()
-		path = filepath.Join(source, path)
-		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write(".codex-plugin/plugin.json", `{"name":"logical","version":"1"}`)
-	write(".neuxally/integration.json", `{"nativePlugins":{"codex":{"path":"codex"},"claude":{"path":"claude"}}}`)
-	write("codex/.codex-plugin/plugin.json", `{"name":"target","version":"1","mcpServers":{"service":{"type":"http","url":"https://example.invalid/mcp"}}}`)
-	write("claude/.claude-plugin/plugin.json", `{"name":"target","version":"1"}`)
-	write("claude/.mcp.json", `{"service":{"type":"http","url":"https://example.invalid/mcp","headers":{"Authorization":"Bearer ${TARGET_TOKEN}"}}}`)
-	stage, err := plugins.Stage(filepath.Join(data, "plugins/staging"), source)
-	if err != nil {
-		t.Fatal(err)
-	}
-	root, err := plugins.CopyContent(filepath.Join(data, "plugins/content"), stage.Root, stage.Digest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	relative, _ := filepath.Rel(data, root)
-	version := models.PluginVersion{ID: "v", PluginID: "p", Version: "1", Digest: stage.Digest, ContentPath: relative, Package: stage.Package, TrustedAt: 1}
-	state := models.PluginState{Plugin: models.Plugin{ID: "p"}, Versions: []models.PluginVersion{version}, Installations: []models.WakerPlugin{{WakerID: "w", PluginID: "p", VersionID: "v", Enabled: true}}, Configuration: models.PluginConfiguration{Values: map[string]string{}}}
-	manager := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data}
-	detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: agentapi.RuntimeIDCodex}, Version: "0.100.0", Capabilities: agentapi.CapabilitySet{agentapi.CapabilityMCPStreamableHTTP: true}}
-	request := pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}
-	prepared, err := manager.preparePlugins(context.Background(), "w", request, detection)
-	if err != nil {
-		t.Fatalf("unrelated Claude required config blocked Codex: %v", err)
-	}
-	prepared.release()
-	if len(prepared.connectors) != 1 || prepared.environment["TARGET_TOKEN"] != "" {
-		t.Fatalf("unexpected Codex delivery: %+v", prepared)
-	}
-	detection.Runtime.BaseRuntimeID = agentapi.RuntimeIDClaude
-	detection.Version = "2.0.0"
-	if result, err := manager.preparePlugins(context.Background(), "w", request, detection); err == nil {
-		result.release()
-		t.Fatal("target missing secret accepted")
-	}
-	state.Configuration.Secrets = []models.MCPSecretDefinition{{Name: "TARGET_TOKEN", Value: "configured-secret", Configured: true}}
-	manager.pluginController = installedPluginFixture{states: []models.PluginState{state}}
-	prepared, err = manager.preparePlugins(context.Background(), "w", request, detection)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer prepared.release()
-	if len(prepared.connectors) != 1 || len(prepared.connectors[0].Headers) != 1 || prepared.connectors[0].Headers[0].Value != "Bearer configured-secret" {
-		t.Fatalf("target native secret not privately injected: %+v", prepared)
+func TestPluginConfigurationIsValidatedAndOnlyBoundSecretsInjected(t *testing.T) {
+	for _, cli := range []string{"codex", "claude"} {
+		t.Run(cli, func(t *testing.T) {
+			data, source := t.TempDir(), t.TempDir()
+			manifest := `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"configured","version":"1","extensions":{"com.neuxbot":{"schemaVersion":1,"configuration":{"fields":[{"key":"TARGET_TOKEN","secret":true,"required":true},{"key":"UNUSED_TOKEN","secret":true}],"bindings":[{"server":"service","target":"header","name":"Authorization","value":"Bearer ${TARGET_TOKEN}"}]}}}}`
+			if err := os.WriteFile(filepath.Join(source, "plugin.json"), []byte(manifest), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(source, "mcp.json"), []byte(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"service":{"type":"streamable-http","url":"https://example.invalid/mcp"}}}`), 0600); err != nil {
+				t.Fatal(err)
+			}
+			stage, err := plugins.Stage(filepath.Join(data, "plugins/staging"), source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			root, err := plugins.CopyContent(filepath.Join(data, "plugins/content"), stage.Root, stage.Digest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			relative, _ := filepath.Rel(data, root)
+			version := models.PluginVersion{ID: "v", PluginID: "p", Version: "1", Digest: stage.Digest, ContentPath: relative, Package: stage.Package, TrustedAt: 1}
+			state := models.PluginState{Plugin: models.Plugin{ID: "p"}, Versions: []models.PluginVersion{version}, Installations: []models.WakerPlugin{{WakerID: "w", PluginID: "p", VersionID: "v", Enabled: true}}, Configuration: models.PluginConfiguration{Values: map[string]string{}}}
+			manager := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data}
+			detection := authenticatedPluginDetection(cli, map[string]string{"codex": "0.161.0", "claude": "2.1.159"}[cli])
+			request := pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}
+			if result, err := manager.preparePlugins(context.Background(), "w", request, detection); !errors.Is(err, status_error.PluginNotReady) {
+				if result.release != nil {
+					result.release()
+				}
+				t.Fatal("missing required secret accepted", err)
+			}
+			state.Configuration.Secrets = []models.MCPSecretDefinition{{Name: "TARGET_TOKEN", Value: "configured-secret", Configured: true}, {Name: "UNUSED_TOKEN", Value: "unused-secret", Configured: true}}
+			manager.pluginController = installedPluginFixture{states: []models.PluginState{state}}
+			prepared, err := manager.preparePlugins(context.Background(), "w", request, detection)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer prepared.release()
+			if len(prepared.connectors) != 1 || len(prepared.environment) != 0 {
+				t.Fatal("explicit configuration binding did not use scoped projection")
+			}
+			headers := prepared.connectors[0].Headers
+			if len(headers) != 1 || headers[0].Name != "Authorization" || headers[0].Value != "Bearer configured-secret" {
+				t.Fatal("only the declared secret should reach its MCP header")
+			}
+			encoded, _ := json.Marshal(prepared.snapshots)
+			if strings.Contains(string(encoded), "configured-secret") || strings.Contains(string(encoded), "unused-secret") {
+				t.Fatal("snapshot leaked private configuration")
+			}
+			if err := plugins.VerifyContent(root, version.Digest); err != nil {
+				t.Fatal("configuration modified immutable source", err)
+			}
+		})
 	}
 }
 
@@ -496,10 +499,12 @@ func TestPluginAdmissionRejectsLegacyProviderWithoutDeliveringComponents(t *test
 				t.Fatalf("legacy capability delivered: %+v", result)
 			}
 			result, err = s.preparePlugins(context.Background(), "w1", pendingMessage{}, detection)
-			if err != nil || len(result.snapshots) != 0 {
-				t.Fatalf("automatic legacy capability delivered: %+v %v", result, err)
+			if !errors.Is(err, status_error.PluginManifestInvalid) || len(result.snapshots) != 0 || len(result.skills) != 0 || len(result.connectors) != 0 || len(result.environment) != 0 {
+				t.Fatalf("automatic legacy capability was not rejected: %+v %v", result, err)
 			}
-			result.release()
+			if result.release != nil {
+				result.release()
+			}
 		})
 	}
 }
@@ -572,7 +577,15 @@ func TestHotPluginDeclarationsIgnoreManagementPayloads(t *testing.T) {
 		if err := db.Create(&models.PluginConfiguration{PluginID: id, Revision: 3, Values: map[string]string{}, Secrets: []models.MCPSecretDefinition{}}).Error; err != nil {
 			t.Fatal(err)
 		}
-		if err := db.Model(&models.PluginConfiguration{}).Where("plugin_id = ?", id).Updates(map[string]any{"secrets": `[{"name":"TOKEN","configured":true,"ciphertext":"damaged"}]`, "delivery_materials": "invalid-material-json"}).Error; err != nil {
+		if err := db.Model(&models.PluginConfiguration{}).Where("plugin_id = ?", id).Updates(map[string]any{"secrets": `[{"name":"TOKEN","configured":true,"ciphertext":"damaged"}]`, "values": `{}`}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, id := range []string{"active", "disabled"} {
+		if err := db.Create(&models.PluginAccount{PluginID: id, Generation: 7}).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Model(&models.PluginAccount{}).Where("plugin_id = ?", id).Update("delivery_materials", "invalid-material-json").Error; err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -602,13 +615,13 @@ func TestHotPluginDeclarationsIgnoreManagementPayloads(t *testing.T) {
 	if !slices.Equal(frozen.pluginIDs, []string{"active"}) || len(frozen.selected) != 1 || frozen.selected[0].Name != "办公" {
 		t.Fatalf("wrong enabled fixed resources: %+v", frozen)
 	}
-	if len(frozen.declarations) != 1 || frozen.declarations[0].VersionID != "pinned" || frozen.declarations[0].Digest != "fixed-digest" || frozen.declarations[0].TrustedAt != 7 || frozen.declarations[0].ConfigurationRevision != 3 {
+	if len(frozen.declarations) != 1 || frozen.declarations[0].VersionID != "pinned" || frozen.declarations[0].Digest != "fixed-digest" || frozen.declarations[0].TrustedAt != 7 || frozen.declarations[0].ConfigurationRevision != 3 || frozen.declarations[0].AccountGeneration != 7 {
 		t.Fatalf("static declaration lost fixed version, trust or revision: %+v", frozen.declarations)
 	}
 	if !slices.Equal(frozen.declarations[0].ConfiguredSecrets, []string{"TOKEN"}) {
 		t.Fatalf("hot declaration lost configured secret presence: %+v", frozen.declarations[0])
 	}
-	if queries != 4 || rows["waker_plugins"] != 1 || rows["plugin_versions"] != 1 || rows["plugins"] != 1 || rows["plugin_configurations"] != 1 || len(rows) != 4 {
+	if queries != 5 || rows["waker_plugins"] != 1 || rows["plugin_versions"] != 1 || rows["plugins"] != 1 || rows["plugin_configurations"] != 1 || rows["plugin_accounts"] != 1 || len(rows) != 5 {
 		t.Fatalf("hot declaration expanded management data: queries=%d rows=%v", queries, rows)
 	}
 	if err := db.Model(&models.PluginConfiguration{}).Where("plugin_id = ?", "active").Update("revision", 4).Error; err != nil {
@@ -805,7 +818,7 @@ func TestNativePluginSkillSelectionIsReadOnly(t *testing.T) {
 }
 
 func TestOptionalPluginDeclarationsSkipUndeliverableComponents(t *testing.T) {
-	for _, kind := range []string{"native-only", "required-mcp"} {
+	for _, kind := range []string{"native-only", "missing-skill-support"} {
 		t.Run(kind, func(t *testing.T) {
 			data := t.TempDir()
 			state := executionPlugin(t, data, "p1", "fixed skill", false)
@@ -814,7 +827,7 @@ func TestOptionalPluginDeclarationsSkipUndeliverableComponents(t *testing.T) {
 			if kind == "native-only" {
 				detection.Version = "0.161.0"
 			} else {
-				state.Versions[0].Package.Manifest.Extensions = map[string]json.RawMessage{constants.PluginExtensionNamespace: json.RawMessage(`{"requiredComponents":["unavailable"]}`)}
+				detection.Runtime.SkillDirectoryName = ""
 			}
 			core := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data}
 			frozen, err := core.freezePluginResources(t.Context(), "w1", pendingMessage{}, detection)
@@ -826,5 +839,58 @@ func TestOptionalPluginDeclarationsSkipUndeliverableComponents(t *testing.T) {
 				t.Fatalf("optional undeliverable declaration entered native skills: %+v %v", selected, err)
 			}
 		})
+	}
+}
+
+// Account 为测试保留与配置读取分离的真实账号代次和材料边界。
+func (f installedPluginFixture) Account(_ context.Context, id string) (models.PluginAccount, error) {
+	for _, state := range f.states {
+		if state.Plugin.ID == id {
+			account := state.Account
+			account.PluginID = id
+			return account, nil
+		}
+	}
+	return models.PluginAccount{PluginID: id}, nil
+}
+
+// AccountGeneration 为测试提供不读取秘密的身份代次。
+func (f installedPluginFixture) AccountGeneration(ctx context.Context, id string) (int64, error) {
+	account, err := f.Account(ctx, id)
+	return account.Generation, err
+}
+
+func TestPluginAccountGenerationInvalidatesFrozenResources(t *testing.T) {
+	data := t.TempDir()
+	state := executionPlugin(t, data, "account-generation", "perform work", false)
+	state.Account = models.PluginAccount{PluginID: state.Plugin.ID, Generation: 1}
+	core := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data}
+	detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "kimi", SkillDirectoryName: ".agents"}}
+	request := pendingMessage{message: userMessage{PluginIDs: []string{state.Plugin.ID}}}
+	original, err := core.freezePluginResources(t.Context(), "w1", request, detection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := core.acquirePluginResources(t.Context(), original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prepared.release()
+	if len(prepared.snapshots) != 1 || prepared.snapshots[0].AccountGeneration != 1 {
+		t.Fatal("account generation was not frozen", prepared.snapshots)
+	}
+	state.Account.Generation = 2
+	core.pluginController = installedPluginFixture{states: []models.PluginState{state}}
+	next, err := core.freezePluginResources(t.Context(), "w1", request, detection)
+	if err != nil || next.key == original.key {
+		t.Fatal("changed account reused declaration", err)
+	}
+	if _, err := core.acquirePluginResources(t.Context(), original); !errors.Is(err, status_error.PluginAccountConflict) {
+		t.Fatal("cold acquisition accepted changed account", err)
+	}
+	state.Versions[0].Package.ContractVersion = ""
+	core.pluginController = installedPluginFixture{states: []models.PluginState{state}}
+	if _, err := core.preparePlugins(t.Context(), "w1", request, detection); !errors.Is(err, status_error.PluginPackageUnsupported) {
+		t.Fatal("old contract executed", err)
 	}
 }

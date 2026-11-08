@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 
@@ -24,8 +25,41 @@ import (
 const maxPresentationBytes = 256 * 1024
 const maxReadmeBytes = 1024 * 1024
 
-// 插件展示资料
+var brandColorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+
+// ThemeValues 分别保存作者明确声明的默认与暗色展示值。
+type ThemeValues struct {
+	// Default 是默认主题资源或颜色。
+	Default string `json:"default,omitempty"`
+	// Dark 是可选暗色主题资源或颜色。
+	Dark string `json:"dark,omitempty"`
+}
+
+// SetupPresentation 保存安全的静态连接说明，不包含驱动能力。
+type SetupPresentation struct {
+	// Instructions 是固定语言的安全 Markdown 说明。
+	Instructions map[string]string `json:"instructions,omitempty"`
+	// HelpURL 是作者公开的 HTTPS 帮助地址。
+	HelpURL string `json:"helpURL,omitempty"`
+}
+
+// Presentation 保存标准 interface 与显式本地化资料。
 type Presentation struct {
+	// DefaultPrompt 是按固定索引归一的作者提示词。
+	DefaultPrompt []string `json:"defaultPrompt,omitempty"`
+	// DefaultPromptLocalizations 与标准提示词按索引等长对应。
+	DefaultPromptLocalizations map[string][]string `json:"defaultPromptLocalizations,omitempty"`
+	// Capabilities 只描述业务能力，不授予权限。
+	Capabilities []string `json:"capabilities,omitempty"`
+	// SupportURL 是公开支持入口。
+	SupportURL string `json:"supportURL,omitempty"`
+	// BrandColor 是经过颜色格式校验的主题品牌色。
+	BrandColor ThemeValues `json:"brandColor,omitempty"`
+	// Icons 是分别校验后的主题内嵌图标。
+	Icons ThemeValues `json:"icons,omitempty"`
+	// Setup 是显式引用资料中的静态连接说明。
+	Setup *SetupPresentation `json:"setup,omitempty"`
+
 	// 本地名称
 	DisplayNames map[string]string `json:"displayNames,omitempty"`
 	// 本地简介
@@ -48,92 +82,129 @@ type Presentation struct {
 	TermsOfServiceURL string `json:"termsOfServiceURL,omitempty"`
 }
 
-func (p *Package) loadPresentation(root string, raw map[string]json.RawMessage) {
+func (p *Package) loadPresentation(root string) error {
 	p.Presentation = Presentation{DisplayName: p.Manifest.Name, ShortDescription: p.Manifest.Description, DeveloperName: p.Manifest.Author.Name, WebsiteURL: publicURL(p.Manifest.Homepage)}
+	settings, err := nativeManifest(*p)
+	if err != nil {
+		return err
+	}
+	for key := range settings {
+		if key != "interface" {
+			return status_error.PluginCapabilityUnsupported
+		}
+	}
 	presentation := map[string]json.RawMessage{}
-	icon := ""
-	if p.Format == constants.PluginFormatPortable {
-		var settings map[string]json.RawMessage
-		if value, exists := p.Manifest.Extensions["com.openai"]; exists {
-			if json.Unmarshal(value, &settings) != nil || settings == nil {
-				p.diagnose("extensions.com.openai", "invalid_extension")
-			}
-		} else if overlay, err := contained(root, ".codex-plugin/plugin.json"); err == nil {
-			settings, _ = readObject(overlay)
+	if value, exists := settings["interface"]; exists {
+		if json.Unmarshal(value, &presentation) != nil || presentation == nil {
+			return status_error.PluginManifestInvalid
 		}
-		if settings != nil {
-			if value, exists := settings["interface"]; exists && (json.Unmarshal(value, &presentation) != nil || presentation == nil) {
-				p.diagnose("interface", "invalid_component")
-				presentation = map[string]json.RawMessage{}
-			}
-			for _, key := range []string{"apps", "hooks", "mcpServerIds", "onboardingSkill"} {
-				if _, exists := settings[key]; exists {
-					p.diagnose(key, "unsupported_component")
-				}
-			}
-		}
-	} else if p.Format == constants.PluginFormatCodex {
-		if value, exists := raw["interface"]; exists && (json.Unmarshal(value, &presentation) != nil || presentation == nil) {
-			p.diagnose("interface", "invalid_component")
-			presentation = map[string]json.RawMessage{}
-		}
-	} else {
-		presentation = raw
-		icon = metadataString(raw, "icon")
-		p.Presentation.PrivacyPolicyURL = publicURL(metadataString(raw, "privacyPolicyUrl"))
-		p.Presentation.TermsOfServiceURL = publicURL(metadataString(raw, "termsOfServiceUrl"))
 	}
-	for key, target := range map[string]*string{
-		"displayName": &p.Presentation.DisplayName, "shortDescription": &p.Presentation.ShortDescription,
-		"longDescription": &p.Presentation.LongDescription, "developerName": &p.Presentation.DeveloperName, "category": &p.Presentation.Category,
-	} {
-		if text := metadataString(presentation, key); text != "" {
+	for key, target := range map[string]*string{"displayName": &p.Presentation.DisplayName, "shortDescription": &p.Presentation.ShortDescription, "longDescription": &p.Presentation.LongDescription, "developerName": &p.Presentation.DeveloperName, "category": &p.Presentation.Category} {
+		if value, exists := presentation[key]; exists {
+			if !validString(value) {
+				return status_error.PluginManifestInvalid
+			}
+			*target = metadataString(presentation, key)
+		}
+	}
+	for key, target := range map[string]*string{"websiteURL": &p.Presentation.WebsiteURL, "privacyPolicyURL": &p.Presentation.PrivacyPolicyURL, "termsOfServiceURL": &p.Presentation.TermsOfServiceURL, "supportURL": &p.Presentation.SupportURL} {
+		if value, exists := presentation[key]; exists {
+			if !validString(value) {
+				return status_error.PluginManifestInvalid
+			}
+			text := metadataString(presentation, key)
+			if text != "" && publicURL(text) == "" {
+				return status_error.PluginManifestInvalid
+			}
 			*target = text
 		}
 	}
-	for key, target := range map[string]*string{"websiteURL": &p.Presentation.WebsiteURL, "privacyPolicyURL": &p.Presentation.PrivacyPolicyURL, "termsOfServiceURL": &p.Presentation.TermsOfServiceURL} {
-		if text := publicURL(metadataString(presentation, key)); text != "" {
-			*target = text
+	if value, exists := presentation["defaultPrompt"]; exists {
+		if err := decodePaths(value, &p.Presentation.DefaultPrompt); err != nil {
+			return status_error.PluginManifestInvalid
 		}
 	}
-	for _, key := range []string{"logo", "composerIcon"} {
-		if value := metadataString(presentation, key); value != "" {
-			icon = value
-			break
+	if value, exists := presentation["capabilities"]; exists {
+		if !validStringArray(value) || json.Unmarshal(value, &p.Presentation.Capabilities) != nil {
+			return status_error.PluginManifestInvalid
 		}
 	}
-	// 本机扩展的既有展示资料继续可读，不从外部资料派生执行设置。
-	var ally map[string]json.RawMessage
-	if json.Unmarshal(p.Manifest.Extensions[constants.PluginExtensionNamespace], &ally) == nil {
-		if value := metadataString(ally, "displayName"); value != "" {
-			p.Presentation.DisplayName = value
-		}
-		if icon == "" {
-			icon = metadataString(ally, "icon")
-		}
-		if value := publicURL(metadataString(ally, "privacyPolicy")); value != "" && p.Presentation.PrivacyPolicyURL == "" {
-			p.Presentation.PrivacyPolicyURL = value
-		}
-		if value := publicURL(metadataString(ally, "termsOfService")); value != "" && p.Presentation.TermsOfServiceURL == "" {
-			p.Presentation.TermsOfServiceURL = value
+	for key, target := range map[string]*string{"brandColor": &p.Presentation.BrandColor.Default, "brandColorDark": &p.Presentation.BrandColor.Dark} {
+		if value, exists := presentation[key]; exists {
+			if !validString(value) {
+				return status_error.PluginManifestInvalid
+			}
+			color := metadataString(presentation, key)
+			if !brandColorPattern.MatchString(color) {
+				return status_error.PluginManifestInvalid
+			}
+			*target = color
 		}
 	}
-	if icon != "" {
-		if value, err := readIcon(root, icon); err == nil {
-			p.Icon = value
-		} else {
-			p.diagnose("icon", "invalid_asset")
+	icons := map[string]string{}
+	for _, key := range []string{"logo", "logoDark", "composerIcon", "composerIconDark"} {
+		if value, exists := presentation[key]; exists {
+			if !validString(value) || metadataString(presentation, key) == "" {
+				return status_error.PluginManifestInvalid
+			}
+			icon, err := readIcon(root, metadataString(presentation, key))
+			if err != nil {
+				return err
+			}
+			icons[key] = icon
 		}
 	}
-	if content, err := readBounded(root, ".neuxally/presentation.json", 32*1024); err == nil {
-		var localized Presentation
-		if json.Unmarshal(content, &localized) != nil || p.Presentation.SetLocalization(localized.DisplayNames, localized.LocalizedDescriptions) != nil {
-			p.diagnose(".neuxally/presentation.json", "invalid_asset")
-		}
-	} else if _, statErr := os.Lstat(filepath.Join(root, ".neuxally/presentation.json")); !os.IsNotExist(statErr) {
-		p.diagnose(".neuxally/presentation.json", "invalid_asset")
+	p.Presentation.Icons = ThemeValues{Default: icons["logo"], Dark: icons["logoDark"]}
+	if p.Presentation.Icons.Default == "" {
+		p.Presentation.Icons.Default = icons["composerIcon"]
 	}
-	// 展示直接保留业务上游声明，不从封装品牌或授权辅助程序推断作者和版本。
+	if p.Presentation.Icons.Dark == "" {
+		p.Presentation.Icons.Dark = icons["composerIconDark"]
+	}
+	p.Icon = p.Presentation.Icons.Default
+	extension, err := neuxExtensionObject(*p)
+	if err != nil {
+		return err
+	}
+	if value, exists := extension["presentation"]; exists {
+		if !validString(value) {
+			return status_error.PluginManifestInvalid
+		}
+		relative := metadataString(extension, "presentation")
+		if !strings.HasPrefix(filepath.ToSlash(filepath.Clean(relative)), ".neuxbot/") {
+			return status_error.PluginManifestInvalid
+		}
+		if _, err := contained(filepath.Join(root, ".neuxbot"), strings.TrimPrefix(filepath.ToSlash(filepath.Clean(relative)), ".neuxbot/")); err != nil {
+			return status_error.PluginManifestInvalid
+		}
+		content, err := readBounded(root, relative, 32*1024)
+		if err != nil {
+			return err
+		}
+		var localized struct {
+			// DisplayNames 是双语名称映射。
+			DisplayNames map[string]string `json:"displayNames"`
+			// LocalizedDescriptions 是双语简介。
+			LocalizedDescriptions map[string]string `json:"localizedDescriptions"`
+			// DefaultPromptLocalizations 与标准提示词等长对应。
+			DefaultPromptLocalizations map[string][]string `json:"defaultPromptLocalizations"`
+			// Setup 是静态安装帮助。
+			Setup *SetupPresentation `json:"setup"`
+		}
+		decoder := json.NewDecoder(bytes.NewReader(content))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&localized) != nil {
+			return status_error.PluginManifestInvalid
+		}
+		if err := p.Presentation.SetLocalization(localized.DisplayNames, localized.LocalizedDescriptions); err != nil {
+			return err
+		}
+		p.Presentation.DefaultPromptLocalizations = localized.DefaultPromptLocalizations
+		p.Presentation.Setup = localized.Setup
+	}
+	if err := p.Presentation.Validate(); err != nil {
+		return err
+	}
 	if content, err := readBounded(root, "provenance.json", maxMetadataBytes); err == nil {
 		var provenance map[string]json.RawMessage
 		var upstream UpstreamSource
@@ -143,6 +214,57 @@ func (p *Package) loadPresentation(root string, raw map[string]json.RawMessage) 
 		}
 	}
 	p.loadReadme(root, constants.PluginLocaleEnglish)
+	return nil
+}
+
+// Validate 校验公开展示字段、提示词索引和静态连接帮助。
+func (p Presentation) Validate() error {
+	for _, text := range []string{p.DisplayName, p.ShortDescription, p.LongDescription, p.DeveloperName, p.Category} {
+		if len(text) > maxMetadataBytes || !utf8.ValidString(text) || strings.ContainsRune(text, 0) {
+			return status_error.PluginManifestInvalid
+		}
+	}
+	for _, url := range []string{p.SupportURL, p.WebsiteURL, p.PrivacyPolicyURL, p.TermsOfServiceURL} {
+		if url != "" && publicURL(url) == "" {
+			return status_error.PluginManifestInvalid
+		}
+	}
+	for _, color := range []string{p.BrandColor.Default, p.BrandColor.Dark} {
+		if color != "" && !brandColorPattern.MatchString(color) {
+			return status_error.PluginManifestInvalid
+		}
+	}
+	if len(p.DefaultPrompt) > 20 || len(p.Capabilities) > 64 {
+		return status_error.PluginContentLimitExceeded
+	}
+	for _, values := range [][]string{p.DefaultPrompt, p.Capabilities} {
+		for _, text := range values {
+			if len(text) > 4096 || !utf8.ValidString(text) || strings.ContainsRune(text, 0) || strings.TrimSpace(text) == "" {
+				return status_error.PluginManifestInvalid
+			}
+		}
+	}
+	for locale, values := range p.DefaultPromptLocalizations {
+		if (locale != constants.PluginLocaleEnglish && locale != constants.PluginLocaleChinese) || len(values) != len(p.DefaultPrompt) {
+			return status_error.PluginManifestInvalid
+		}
+		for _, text := range values {
+			if text == "" || len(text) > 4096 || !utf8.ValidString(text) || strings.ContainsRune(text, 0) {
+				return status_error.PluginManifestInvalid
+			}
+		}
+	}
+	if p.Setup != nil {
+		if url := p.Setup.HelpURL; url != "" && (!strings.HasPrefix(url, "https://") || publicURL(url) == "") {
+			return status_error.PluginManifestInvalid
+		}
+		for locale, text := range p.Setup.Instructions {
+			if (locale != constants.PluginLocaleEnglish && locale != constants.PluginLocaleChinese) || len(text) > 16*1024 || !utf8.ValidString(text) || strings.ContainsRune(text, 0) {
+				return status_error.PluginManifestInvalid
+			}
+		}
+	}
+	return nil
 }
 
 func metadataString(fields map[string]json.RawMessage, key string) string {

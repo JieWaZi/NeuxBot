@@ -164,11 +164,12 @@ func newSkillVersionAPIFixture(t *testing.T) skillVersionAPIFixture {
 		t.Fatal(err)
 	}
 	skill := models.SkillPackage{
-		ID: "skill-version-operations", Name: "review", Scope: constants.SkillScopePrivate,
-		Source: constants.SkillSourceGit, OwnerWakerID: waker.ID,
-		GitURL: "https://example.com/review.git", GitSubpath: "skills/review",
+		ID: "skill-version-operations", Name: "review", Source: constants.SkillSourceGit, GitURL: "https://example.com/review.git", GitSubpath: "skills/review",
 	}
 	if err := global.SkillControllerManager.CreatePackage(ctx, skill); err != nil {
+		t.Fatal(err)
+	}
+	if err := global.SkillControllerManager.EnsureWakerSkill(ctx, models.WakerSkill{ID: "fixture-relation", WakerID: waker.ID, SkillPackageID: skill.ID, Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
 
