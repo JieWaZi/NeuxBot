@@ -7,6 +7,7 @@
     "dev": "pnpm dev:web",
     "dev:desktop": "pnpm --dir desktop dev",
     "dev:native": "pnpm build:sidecar && pnpm terminal:build && pnpm --dir desktop electron:dev",
+    "dev:native:plugins": "node scripts/dev-plugin-catalog.mjs",
     "dev:server": "pnpm pi:bridge:generate && node scripts/dev-server.mjs",
     "icon:generate": "sh ./scripts/generate-macos-app-icon.sh",
     "api:generate": "sh ./scripts/generate-api.sh",

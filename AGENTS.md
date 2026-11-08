@@ -7,6 +7,7 @@ Avoid unnecessary secondary labels and descriptions.Let the layout do the explai
 - 所有代码和开发文档修改前阅读 [CONTEXT.md](CONTEXT.md) 与 [架构总览](docs/architecture/overview-cn.md)。
 - 后端修改阅读 [后端约定](docs/development/backend-cn.md)。
 - 前端修改阅读 [前端约定](docs/development/frontend-cn.md)；页面、组件、样式或交互修改还必须完整阅读 [UI 标准](docs/development/ui-cn.md)。
+- 插件、技能、连接器的目录、详情或添加页，以及工作流资源目录修改，还须完整阅读[资源 UI 标准](docs/development/resource-ui-cn.md)；固定源端角色规范与当前实现差异分别核对。
 - 跨端协议、OpenAPI 和桌面生命周期修改同时阅读前后端约定及 [桌面边界](docs/architecture/desktop-lifecycle-cn.md)。
 - 通知、实时状态、事件订阅和轮询修改阅读 [通知与工作看板](docs/architecture/notifications-and-work-board-cn.md)。
 - 文档编写遵守 [文档约定](docs/development/documentation-cn.md)。
