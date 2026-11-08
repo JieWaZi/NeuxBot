@@ -1,4 +1,11 @@
-import type { ComponentProps, ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
+import { createPortal } from "react-dom";
 import { Slottable } from "@radix-ui/react-slot";
 
 import { cn } from "@/shared/lib/cn";
@@ -33,11 +40,13 @@ export function PageAction({
   asChild = false,
   hitArea = "default",
   intent,
+  appearance = "default",
   label,
   children,
   ...props
 }: Omit<ComponentProps<typeof Button>, "size"> & {
   hitArea?: "default" | "comfortable";
+  appearance?: "default" | "catalog";
   intent?: "primary" | "secondary" | "edit" | "delete" | "revoke";
   label?: string;
 }) {
@@ -45,17 +54,23 @@ export function PageAction({
   const comfortable = Boolean(label) || hitArea === "comfortable";
   const iconOnly = intent === "edit" || intent === "delete";
   const variant =
-    intent === "delete" || intent === "revoke"
-      ? "danger-quiet"
-      : intent === "edit"
-        ? "ghost"
-        : intent === "primary"
-          ? "primary"
-          : intent === "secondary"
-            ? "secondary"
-            : label
+    appearance === "catalog" && intent !== "delete" && intent !== "revoke"
+      ? intent === "primary"
+        ? "catalog-primary"
+        : intent === "edit"
+          ? "catalog-ghost"
+          : "catalog-secondary"
+      : intent === "delete" || intent === "revoke"
+        ? "danger-quiet"
+        : intent === "edit"
+          ? "ghost"
+          : intent === "primary"
+            ? "primary"
+            : intent === "secondary"
               ? "secondary"
-              : props.variant;
+              : label
+                ? "secondary"
+                : props.variant;
   const action = (
     <Button
       {...props}
@@ -65,13 +80,20 @@ export function PageAction({
       data-page-action={comfortable ? "true" : undefined}
       data-variant={comfortable ? (variant ?? "primary") : undefined}
       className={cn(
-        iconOnly
-          ? "w-control-md gap-0 px-0"
-          : "gap-2 px-2 @[32rem]/page-header:px-3",
-        comfortable && "page-action min-w-9",
+        appearance !== "catalog" &&
+          (iconOnly
+            ? "w-control-md gap-0 px-0"
+            : "gap-2 px-2 @[32rem]/page-header:px-3"),
+        comfortable && appearance !== "catalog" && "page-action min-w-9",
         props.className,
       )}
-      size="md"
+      size={
+        appearance === "catalog"
+          ? iconOnly
+            ? "catalog-icon"
+            : "catalog"
+          : "md"
+      }
     >
       {asChild ? <Slottable>{children}</Slottable> : children}
       {label && !iconOnly ? (
@@ -95,11 +117,25 @@ export function ResourcePageHeader({
   title,
   description,
   actions,
+  appearance = "default",
 }: {
   title: string;
   description: ReactNode;
-  actions: ReactNode;
+  actions?: ReactNode;
+  appearance?: "default" | "catalog";
 }) {
+  if (appearance === "catalog")
+    return (
+      <header className="text-resource-content grid min-w-0 gap-1 pb-6">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+          <h1 className="type-resource-title font-semibold">{title}</h1>
+          {actions}
+        </div>
+        {description && (
+          <div className="type-label text-resource-muted">{description}</div>
+        )}
+      </header>
+    );
   return (
     <PageHeader title={title} description={description} actions={actions} />
   );
@@ -133,48 +169,123 @@ export function ResourcePageSearchField(
   return <SearchField {...props} size="sm" width="toolbar" />;
 }
 
+const ResourcePageFooterHost = createContext<HTMLDivElement | null | undefined>(
+  undefined,
+);
+
 export function ResourcePageSurface({
   children,
   className,
   contentClassName,
   contentLayout = "scroll",
+  appearance = "default",
   ...props
 }: ComponentProps<"div"> & {
   contentClassName?: string;
-  contentLayout?: "scroll" | "pane";
+  contentLayout?: "scroll" | "pane" | "form";
+  appearance?: "default" | "catalog";
 }) {
+  const [footerHost, setFooterHost] = useState<HTMLDivElement | null>(null);
   return (
-    <div
-      data-slot="resource-page-surface"
+    <ResourcePageFooterHost.Provider value={footerHost}>
+      <div
+        data-slot="resource-page-surface"
+        data-appearance={appearance}
+        data-content-layout={contentLayout}
+        className={cn(
+          "@container/resource-page flex h-full min-h-0 min-w-0 flex-col overflow-hidden",
+          appearance === "catalog"
+            ? "bg-resource-canvas text-resource-content"
+            : "bg-surface-scene",
+          className,
+        )}
+        {...props}
+      >
+        <div
+          data-slot="resource-page-viewport"
+          className={cn(
+            "min-h-0 flex-1 px-4 @[42.5rem]/resource-page:px-6",
+            appearance === "catalog"
+              ? cn(
+                  "pt-resource-content-top",
+                  contentLayout !== "pane" && "pb-8",
+                )
+              : "pt-shell-content-top",
+            contentLayout !== "pane"
+              ? cn(
+                  "scrollbar-hidden scroll-pb-scene-bottom overflow-y-auto",
+                  appearance === "default" && "pb-scene-bottom",
+                )
+              : "overflow-hidden",
+            contentClassName,
+          )}
+        >
+          {appearance === "catalog" ? (
+            <div
+              data-slot="resource-page-content"
+              className={cn(
+                "max-w-resource-catalog @container/resource-catalog mx-auto w-full min-w-0",
+                contentLayout === "form" && "flex min-h-full flex-col",
+                contentLayout === "pane" && "flex h-full min-h-0 flex-col",
+              )}
+            >
+              {children}
+            </div>
+          ) : (
+            children
+          )}
+        </div>
+        <div
+          ref={setFooterHost}
+          data-slot="resource-page-footer-host"
+          className="shrink-0"
+        />
+      </div>
+    </ResourcePageFooterHost.Provider>
+  );
+}
+
+/** 保存操作挂到所属页面底部，与正文滚动区分开；弹窗保留自身 footer。 */
+export function ResourcePageFooter({
+  children,
+  className,
+  appearance = "page",
+  ...props
+}: ComponentProps<"footer"> & { appearance?: "page" | "dialog" }) {
+  const host = useContext(ResourcePageFooterHost);
+  const footer = (
+    <footer
+      data-slot="resource-page-footer"
+      {...props}
       className={cn(
-        "bg-surface-scene @container/resource-page h-full min-w-0 overflow-hidden",
+        "shrink-0 px-4 @[42.5rem]/resource-page:px-6",
+        appearance === "page"
+          ? "bg-resource-surface border-resource-border min-h-15 border-t py-3"
+          : "py-4",
         className,
       )}
-      {...props}
     >
-      <div
-        className={cn(
-          "pt-shell-content-top h-full px-4 @[42.5rem]/resource-page:px-6",
-          contentLayout === "scroll"
-            ? "scrollbar-hidden pb-scene-bottom scroll-pb-scene-bottom overflow-y-auto"
-            : "overflow-hidden",
-          contentClassName,
-        )}
-      >
+      <div className="max-w-resource-catalog mx-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-3">
         {children}
       </div>
-    </div>
+    </footer>
   );
+  if (appearance === "dialog" || host === undefined) return footer;
+  return host ? createPortal(footer, host) : null;
 }
 
 export function ResourceCardGrid({
   className,
+  appearance = "default",
   ...props
-}: ComponentProps<"div">) {
+}: ComponentProps<"div"> & { appearance?: "default" | "catalog" }) {
   return (
     <div
       className={cn(
-        "grid grid-cols-1 gap-3 @[36rem]/resource-page:grid-cols-2 @[56rem]/resource-page:grid-cols-3",
+        "grid grid-cols-1",
+        appearance === "catalog"
+          ? "gap-x-6 gap-y-1 @[41.5rem]/resource-catalog:grid-cols-2"
+          : "gap-3 @[36rem]/resource-page:grid-cols-2 @[56rem]/resource-page:grid-cols-3",
         className,
       )}
       {...props}

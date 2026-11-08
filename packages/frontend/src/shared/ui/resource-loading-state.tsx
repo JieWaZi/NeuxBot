@@ -5,7 +5,8 @@ import { Card, CardBody, CardFooter } from "./card";
 import { ResourceCardGrid } from "./resource-page";
 import { Skeleton } from "./skeleton";
 
-export type ResourceLoadingLayout = "cards" | "detail" | "content";
+export type ResourceLoadingLayout =
+  "cards" | "rows" | "detail" | "catalog-detail" | "content";
 
 /** 首次读取按内容布局占位；页头、筛选与页签由调用方保持可用。 */
 export function ResourceLoadingState({
@@ -25,7 +26,33 @@ export function ResourceLoadingState({
       aria-label={label ?? t("loading")}
       className={cn("min-w-0", className)}
     >
-      {layout === "cards" ? (
+      {layout === "rows" ? (
+        <ResourceCardGrid appearance="catalog" aria-hidden="true">
+          {Array.from({ length: 9 }, (_, index) => (
+            <div key={index} className="flex min-w-0 items-center gap-3 p-2">
+              <Skeleton className="size-resource-icon shrink-0" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-5 w-2/3" />
+                <Skeleton className="h-4 w-full" />
+              </div>
+              <Skeleton className="h-control-catalog w-16 shrink-0" />
+            </div>
+          ))}
+        </ResourceCardGrid>
+      ) : layout === "catalog-detail" ? (
+        <div className="space-y-6" aria-hidden="true">
+          {Array.from({ length: 3 }, (_, index) => (
+            <div key={index} className="space-y-2">
+              <Skeleton className="h-5 w-1/4" />
+              <div className="bg-resource-surface space-y-3 rounded-lg px-4 py-3">
+                <Skeleton className="h-5 w-2/3" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-5/6" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : layout === "cards" ? (
         <ResourceCardGrid>
           {Array.from({ length: 9 }, (_, index) => (
             <Card key={index} variant="resource" aria-hidden="true">

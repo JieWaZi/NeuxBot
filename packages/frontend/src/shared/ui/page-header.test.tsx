@@ -83,6 +83,26 @@ describe("详情页标题与操作", () => {
     expect(screen.getByRole("button", { name: "编辑项目" })).toHaveFocus();
   });
 
+  it("表单标题返回操作只导航，不提交所属表单", async () => {
+    const user = userEvent.setup();
+    const onBack = vi.fn();
+    const onSubmit = vi.fn((event: React.FormEvent) => event.preventDefault());
+    render(
+      <form onSubmit={onSubmit}>
+        <PageHeader
+          appearance="compact"
+          layout="form"
+          title="添加连接器"
+          backAction={{ label: "返回连接器列表", onClick: onBack }}
+          actions={<button type="button">HTTP</button>}
+        />
+      </form>,
+    );
+    await user.click(screen.getByRole("button", { name: "返回连接器列表" }));
+    expect(onBack).toHaveBeenCalledOnce();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it("删除只显示图标，保留可访问名称与禁用保护", async () => {
     const user = userEvent.setup();
     const onDelete = vi.fn();

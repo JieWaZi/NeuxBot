@@ -8,6 +8,8 @@ const textareaVariants = cva(
   {
     variants: {
       appearance: {
+        catalog:
+          "min-h-19 min-w-0 resize-y border-resource-border-strong bg-resource-control px-3 py-2 type-label text-resource-content placeholder:text-resource-placeholder hover:border-resource-border-strong hover:bg-resource-control focus:border-resource-border-strong focus:ring-0 focus-visible:border-resource-muted disabled:cursor-not-allowed disabled:opacity-42",
         field: null,
         embedded:
           "rounded-none border-0 bg-transparent hover:bg-transparent focus:ring-0",
@@ -42,14 +44,19 @@ export function Textarea({
     return (
       <div
         className={
-          appearance === "field"
-            ? "border-field-border bg-field duration-quick ease-ui hover:border-field-border-hover focus-within:border-field-border-active rounded-md border transition-[background-color,border-color]"
-            : undefined
+          appearance === "catalog"
+            ? "border-resource-border-strong bg-resource-control focus-within:border-resource-muted rounded-md border"
+            : appearance === "field"
+              ? "border-field-border bg-field duration-quick ease-ui hover:border-field-border-hover focus-within:border-field-border-active rounded-md border transition-[background-color,border-color]"
+              : undefined
         }
       >
         <textarea
           className={cn(
-            textareaVariants({ size, appearance }),
+            textareaVariants({
+              size: appearance === "catalog" ? null : size,
+              appearance,
+            }),
             "border-0 bg-transparent hover:bg-transparent focus:ring-0",
             className,
           )}
@@ -63,7 +70,13 @@ export function Textarea({
   }
   return (
     <textarea
-      className={cn(textareaVariants({ size, appearance }), className)}
+      className={cn(
+        textareaVariants({
+          size: appearance === "catalog" ? null : size,
+          appearance,
+        }),
+        className,
+      )}
       {...props}
     />
   );

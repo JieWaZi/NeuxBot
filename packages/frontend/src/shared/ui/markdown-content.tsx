@@ -26,7 +26,13 @@ const Streamdown = lazy(() =>
 );
 
 /** 资源说明与技能正文共用只读 Markdown；不加载包内或远程图片，不赋予本机文件访问。 */
-export function MarkdownContent({ content }: { content: string }) {
+export function MarkdownContent({
+  content,
+  appearance = "default",
+}: {
+  content: string;
+  appearance?: "default" | "catalog" | "catalog-document";
+}) {
   const { t } = useTranslation("plugin");
   const [failed, setFailed] = useState(false);
   function PublicLink({
@@ -53,7 +59,15 @@ export function MarkdownContent({ content }: { content: string }) {
   return (
     <div
       className={cn(
-        "type-body [&_h1]:type-page-title [&_h2]:type-title [&_h3]:type-label w-full max-w-none min-w-0 space-y-3 break-words [&_code]:font-mono [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-medium [&_pre]:overflow-auto [&_pre]:font-mono",
+        "w-full max-w-none min-w-0 space-y-3 break-words [&_code]:font-mono [&_pre]:overflow-auto [&_pre]:font-mono",
+        appearance === "catalog-document"
+          ? "catalog-document text-resource-content"
+          : cn(
+              "[&_h1]:type-page-title [&_h2]:type-title [&_h3]:type-label [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-medium",
+              appearance === "catalog"
+                ? "type-resource-body text-resource-content"
+                : "type-body",
+            ),
         markdownTableContainerClassName,
       )}
     >
