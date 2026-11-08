@@ -863,7 +863,7 @@ export function WorkflowDetailPage() {
                       icon={
                         viewing ? (
                           <Check
-                            className="text-primary"
+                            className="text-accent-content"
                             aria-hidden="true"
                             strokeWidth={1.5}
                           />
@@ -1116,6 +1116,7 @@ export function WorkflowDetailPage() {
           revisionId={revision.id ?? ""}
           title={title ?? t("title")}
           description={detail.data?.definition?.description ?? ""}
+          categories={detail.data?.definition?.categories}
           open={active && basicOpen}
           onOpenChange={setBasicOpen}
         />

@@ -3,6 +3,7 @@ package global
 
 import (
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/installation"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
@@ -19,6 +20,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -379,6 +381,16 @@ func loadDB(ctx context.Context, configuration *Configuration) error {
 	WorkflowRunControllerManager = controllers.NewWorkflowRunController(DB)
 	WorkflowCreationControllerManager = controllers.NewWorkflowCreationController(DB)
 	AIAccountService = aiaccount.New(AIAccountControllerManager, configuration.DataDirectory)
+	AIAccountService.SetProgramResolver(func(ctx context.Context, runtimeID string) (string, []string, error) {
+		environment, err := RuntimeEnvironmentControllerManager.Get(ctx, runtimeID)
+		if err != nil {
+			return "", nil, err
+		}
+		if (environment.BaseRuntimeID != constants.RuntimeIDClaude && environment.BaseRuntimeID != constants.RuntimeIDKimi) || environment.Detection.ResolvedBinary == "" {
+			return "", nil, status_error.RuntimeUnavailable
+		}
+		return environment.Detection.ResolvedBinary, append([]string(nil), environment.PrefixArgs...), nil
+	})
 	AIAccountService.SetEventPublisher(EventHub)
 	AIAccountService.Start(ctx)
 
@@ -466,6 +478,46 @@ func loadRuntime(ctx context.Context) error {
 	RuntimeCatalog = sdk
 	AgentProviders = agent.NewProviderRuntime(agent.ProviderRuntimeOptions{AcquireAccount: AIAccountService.AcquireAccount})
 	RuntimeEnvironmentService, err = runtimeenvironment.New(runtimeenvironment.Config{
+		BeforeRuntimeMaintenance: func(ctx context.Context, provider string) (func(), error) {
+			if AgentThreads == nil {
+				return nil, status_error.RuntimeEnvironmentServiceUnavailable
+			}
+			providerRelease, err := AgentThreads.BeginProviderMaintenance(ctx, provider)
+			if err != nil {
+				return nil, err
+			}
+			accountRelease, err := AIAccountService.BeginProgramMaintenance(ctx, provider)
+			if err != nil {
+				providerRelease()
+				return nil, err
+			}
+			var once sync.Once
+			return func() { once.Do(func() { accountRelease(); providerRelease() }) }, nil
+		},
+		RestartProvider: func(ctx context.Context, provider string) error {
+			if AgentThreads == nil {
+				return status_error.RuntimeEnvironmentServiceUnavailable
+			}
+			return AgentThreads.RestartProvider(ctx, provider)
+		},
+		BeforeRuntimeAuthentication: func(ctx context.Context, provider string) (func(), error) {
+			release, err := AgentProviders.BeginSystemAuthentication(ctx, provider)
+			if err != nil {
+				return nil, err
+			}
+			if AgentThreads != nil {
+				if err := AgentThreads.CloseIdleSystemRuntime(ctx, provider); err != nil {
+					release()
+					return nil, err
+				}
+			}
+			if err := AgentProviders.CheckSystemAuthenticationIdle(provider); err != nil {
+				release()
+				return nil, err
+			}
+			return release, nil
+		},
+		Installer:                 installation.New(filepath.Join(Config.DataDirectory, "runtime-installations")),
 		Accounts:                  AIAccountService,
 		ProviderRuntime:           AgentProviders,
 		ResolveAccount:            AIAccountService.ResolveAccount,

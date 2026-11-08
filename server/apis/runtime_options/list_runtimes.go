@@ -128,22 +128,12 @@ type RuntimeOption struct {
 	DefaultFast *bool `json:"defaultFast,omitempty"`
 	// 默认权限
 	DefaultPermissionLevel constants.PermissionLevel `json:"defaultPermissionLevel"`
-	// 自定义模型
-	CustomModels []string `json:"customModels"`
 	// 模型列表
 	Models []RuntimeModelOption `json:"models"`
 	// 推理选项
 	ReasoningOptions []RuntimeReasoningOption `json:"reasoningOptions"`
 	// 诊断信息
 	Diagnostics []RuntimeDiagnostic `json:"diagnostics"`
-	// 可执行路径
-	Binary string `json:"binary"`
-	// 前置参数
-	PrefixArgs []string `json:"prefixArgs"`
-	// 配置目录
-	ConfigHome string `json:"configHome"`
-	// 支持配置目录
-	ConfigHomeSupported bool `json:"configHomeSupported"`
 	// 探测时间
 	DetectedAt int64 `json:"detectedAt"`
 }
@@ -192,14 +182,14 @@ func runtimeOption(environment models.RuntimeEnvironment) RuntimeOption {
 	detection := environment.Detection
 	defaultModel, defaultReasoning := agentapi.NormalizeDetectedDefaults(
 		detection,
-		environment.CustomModels,
+		nil,
 		environment.DefaultModel,
 		environment.DefaultReasoning,
 	)
 	if environment.BaseRuntimeID == agentapi.RuntimeIDCodex {
 		defaultModel, defaultReasoning = environment.DefaultModel, environment.DefaultReasoning
 	}
-	availableModels := agentapi.AvailableModels(detection, environment.CustomModels)
+	availableModels := agentapi.AvailableModels(detection, nil)
 	detectedModelIDs := make(map[string]struct{}, len(detection.Models))
 	for _, model := range detection.Models {
 		detectedModelIDs[model.ID] = struct{}{}
@@ -246,14 +236,9 @@ func runtimeOption(environment models.RuntimeEnvironment) RuntimeOption {
 		DefaultReasoning:       defaultReasoning,
 		DefaultFast:            environment.DefaultFast,
 		DefaultPermissionLevel: environment.DefaultPermissionLevel,
-		CustomModels:           append([]string(nil), environment.CustomModels...),
 		Models:                 models,
 		ReasoningOptions:       reasoningOptions,
 		Diagnostics:            diagnostics,
-		Binary:                 environment.Binary,
-		PrefixArgs:             append([]string(nil), environment.PrefixArgs...),
-		ConfigHome:             environment.ConfigHome,
-		ConfigHomeSupported:    detection.Runtime.ConfigHomeEnvironmentVariable != "",
 		DetectedAt:             environment.DetectedAt,
 	}
 }

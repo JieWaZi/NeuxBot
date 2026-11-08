@@ -3,6 +3,18 @@ import { afterEach, expect, it } from "vitest";
 import { PluginIcon } from "./plugin-icon";
 
 afterEach(cleanup);
+it("无品牌图的插件复用分类颜色与图标，未分类统一使用积木", () => {
+  const view = render(<PluginIcon category="设计" />);
+  expect(view.container.firstElementChild).toHaveClass(
+    "bg-resource-category-design",
+  );
+  expect(view.container.querySelector("svg")).toHaveClass("lucide-swatch-book");
+  view.rerender(<PluginIcon />);
+  expect(view.container.firstElementChild).toHaveClass(
+    "bg-resource-category-tools",
+  );
+  expect(view.container.querySelector("svg")).toHaveClass("lucide-blocks");
+});
 it("uses only the supplied package icon for catalog, detail and install sizes", () => {
   const icon = "data:image/png;base64,iVBORw0KGgo=";
   const { container, rerender } = render(<PluginIcon pkg={{ icon }} />);

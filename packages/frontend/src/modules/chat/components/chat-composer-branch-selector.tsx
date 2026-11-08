@@ -260,7 +260,7 @@ export function ChatComposerBranchSelector({
                         {selected ? (
                           <Check
                             aria-hidden
-                            className="text-foreground size-icon-sm shrink-0"
+                            className="text-accent-content size-icon-sm shrink-0"
                             strokeWidth={1.5}
                           />
                         ) : null}

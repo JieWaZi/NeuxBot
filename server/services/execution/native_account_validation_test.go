@@ -34,7 +34,7 @@ func TestNativeAccountValidationDoesNotProbe(t *testing.T) {
 	} {
 		t.Run(sample.runtimeID, func(t *testing.T) {
 			account := models.AIAccount{
-				ID: "0123456789abcdef0123456789abcdef", Name: "selected account", AuthMode: constants.AccountAuthModeAPIKey,
+				ID: "0123456789abcdef0123456789abcdef", RuntimeID: sample.runtimeID, Name: "selected account", AuthMode: constants.AccountAuthModeAPIKey,
 				Endpoints:      []models.AIAccountEndpoint{{Protocol: sample.protocol, BaseURL: "https://provider.example/v1"}},
 				SelectedModels: []string{sample.model}, ModelReasoningLevels: map[string][]string{sample.model: {"high"}},
 			}
@@ -88,6 +88,9 @@ func TestNativeAccountValidationKeepsAdmissionGuards(t *testing.T) {
 		{"incompatible protocol", func(account *models.AIAccount, _ *models.RuntimeEnvironment, _ *ExecutionConfiguration) {
 			account.Endpoints[0].Protocol = constants.AccountProtocolAnthropicMessages
 		}, status_error.AIAccountConfigurationInvalid},
+		{"another runtime profile", func(account *models.AIAccount, _ *models.RuntimeEnvironment, _ *ExecutionConfiguration) {
+			account.RuntimeID = "gemini-another-profile"
+		}, status_error.AIAccountConfigurationInvalid},
 		{"missing credential", func(account *models.AIAccount, _ *models.RuntimeEnvironment, _ *ExecutionConfiguration) {
 			account.HasCredential = false
 		}, status_error.RuntimeAuthRequired},
@@ -96,7 +99,7 @@ func TestNativeAccountValidationKeepsAdmissionGuards(t *testing.T) {
 		}, status_error.BadRequest},
 	} {
 		t.Run(sample.name, func(t *testing.T) {
-			account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", Name: "Google", AuthMode: constants.AccountAuthModeAPIKey,
+			account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", RuntimeID: constants.RuntimeIDGemini, Name: "Google", AuthMode: constants.AccountAuthModeAPIKey,
 				Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolGoogleGenerativeAI, BaseURL: constants.AIAccountGoogleURL}}, SelectedModels: []string{"gemini-3.8-flash"}, HasCredential: true}
 			environment := nativeValidationEnvironment(constants.RuntimeIDGemini)
 			config := ExecutionConfiguration{RuntimeID: constants.RuntimeIDGemini, AccountID: account.ID, Model: "gemini-3.8-flash", Reasoning: "LOW", PermissionLevel: constants.PermissionLevelFullAccess}
@@ -110,6 +113,78 @@ func TestNativeAccountValidationKeepsAdmissionGuards(t *testing.T) {
 				t.Fatalf("admission error=%v, want %v", err, sample.want)
 			}
 		})
+	}
+}
+
+// TestManagedAccountDefaultsStayBoundToTheirAccount 验证默认模型、强度与实际账号共同解析。
+func TestManagedAccountDefaultsStayBoundToTheirAccount(t *testing.T) {
+	account := models.AIAccount{
+		ID: "0123456789abcdef0123456789abcdef", RuntimeID: constants.RuntimeIDGemini,
+		Name: "Google", AuthMode: constants.AccountAuthModeAPIKey,
+		Endpoints:      []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolGoogleGenerativeAI, BaseURL: constants.AIAccountGoogleURL}},
+		SelectedModels: []string{"first", "preferred", "runtime-default"}, DefaultModel: "preferred", DefaultReasoning: "LOW",
+	}
+	accounts := nativeValidationAccounts(t, account, "fixture-key")
+	for _, usesDefaultAccount := range []bool{false, true} {
+		environment := nativeValidationEnvironment(account.RuntimeID)
+		environment.DefaultModel, environment.DefaultReasoning = "runtime-default", "HIGH"
+		wantModel, wantReasoning := account.DefaultModel, account.DefaultReasoning
+		if usesDefaultAccount {
+			environment.DefaultAccountID = account.ID
+			wantModel, wantReasoning = environment.DefaultModel, environment.DefaultReasoning
+		}
+		manager := &service{runtimeSummaries: validationRuntimeSummaries(account.RuntimeID), accounts: accounts, runtimeEnvironments: configurationEnvironmentReader{environment: environment}}
+		resolved, err := manager.ResolveConfiguration(t.Context(), ExecutionConfiguration{RuntimeID: account.RuntimeID, AccountID: account.ID, PermissionLevel: constants.PermissionLevelFullAccess})
+		if err != nil || resolved.Model != wantModel || resolved.Reasoning != wantReasoning {
+			t.Fatalf("default account=%v: got %+v error=%v", usesDefaultAccount, resolved, err)
+		}
+		resolved, err = manager.ResolveConfiguration(t.Context(), ExecutionConfiguration{RuntimeID: account.RuntimeID, AccountID: account.ID, Model: "first", PermissionLevel: constants.PermissionLevelFullAccess})
+		if err != nil || resolved.Model != "first" || resolved.Reasoning != "" {
+			t.Fatalf("explicit model inherited a different model's default: %+v %v", resolved, err)
+		}
+	}
+}
+
+// TestNativeAccountChatAdmissionRejectsAnotherProfile 验证真实聊天入口在原生启动及耐久接纳前拒绝跨配置账号。
+func TestNativeAccountChatAdmissionRejectsAnotherProfile(t *testing.T) {
+	manager := newMessageTestService(t, t.TempDir())
+	account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", RuntimeID: "codex-profile", Name: "profile account", AuthMode: constants.AccountAuthModeAPIKey,
+		Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: constants.AIAccountOpenAIURL}}, SelectedModels: []string{"gpt-5"}}
+	manager.execution.(*service).accounts = nativeValidationAccounts(t, account, "fixture-key")
+	request := testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "reject cross-profile account"},
+		Runtime: runtimeSelection{RuntimeID: constants.RuntimeIDCodex, AccountID: account.ID, Model: "gpt-5"}}
+	if _, err := manager.sendTestMessage(t.Context(), request); !errors.Is(err, status_error.AIAccountConfigurationInvalid) {
+		t.Fatalf("chat accepted another profile's account: %v", err)
+	}
+	ids, err := manager.store.ListChatIDs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range ids {
+		version, err := manager.store.ReadVersion(t.Context(), id)
+		if err != nil || version != 0 {
+			t.Fatalf("rejected account committed chat events: %d %v", version, err)
+		}
+	}
+}
+
+// TestNativeThreadFastDefaultBelongsToDefaultAccount 验证环境 Fast 偏好不会被另一账号继承。
+func TestNativeThreadFastDefaultBelongsToDefaultAccount(t *testing.T) {
+	fast := true
+	for _, defaultAccount := range []string{"", "managed-default"} {
+		for _, selectedAccount := range []string{"", "managed-default", "other-managed"} {
+			environment := models.RuntimeEnvironment{DefaultAccountID: defaultAccount, DefaultFast: &fast}
+			request := pendingMessage{runtime: runtimeSelection{AccountID: selectedAccount}}
+			thread := nativeThreadRequest("chat", agentapi.SessionPlan{}, request, environment, agentapi.ResourceSelection{}, "key")
+			if (thread.Selection.DefaultFast != nil) != (selectedAccount == defaultAccount) {
+				t.Fatalf("default=%q selected=%q inherited=%v", defaultAccount, selectedAccount, thread.Selection.DefaultFast)
+			}
+			request.runtime.Fast = &fast
+			thread = nativeThreadRequest("chat", agentapi.SessionPlan{}, request, environment, agentapi.ResourceSelection{}, "key")
+			if thread.Selection.Fast == nil || !*thread.Selection.Fast {
+				t.Fatal("explicit Fast selection was lost")
+			}
+		}
 	}
 }
 

@@ -24,6 +24,19 @@
   --color-resource-placeholder: var(--resource-placeholder);
   --color-resource-primary: var(--resource-primary);
   --color-resource-on-primary: var(--resource-on-primary);
+  --color-resource-category-code: var(--resource-category-code);
+  --color-resource-category-design: var(--resource-category-design);
+  --color-resource-category-data: var(--resource-category-data);
+  --color-resource-category-writing: var(--resource-category-writing);
+  --color-resource-category-research: var(--resource-category-research);
+  --color-resource-category-web: var(--resource-category-web);
+  --color-resource-category-automation: var(--resource-category-automation);
+  --color-resource-category-business: var(--resource-category-business);
+  --color-resource-category-communication: var(
+    --resource-category-communication
+  );
+  --color-resource-category-tools: var(--resource-category-tools);
+  --color-resource-category-content: var(--resource-category-content);
   --color-resource-border: var(--shell-border-edge);
   --color-resource-border-strong: var(--shell-separator-strong);
   --color-resource-hover: var(--shell-control-hover);
@@ -103,6 +116,7 @@
   --color-field-hover: var(--field-background-hover);
   --color-field-border: var(--field-border);
   --color-field-border-hover: var(--field-border-hover);
+  --color-field-border-focus: var(--field-border-focus);
   --color-field-border-active: var(--field-border-active);
   --color-control-switch-thumb: var(--control-switch-thumb);
   --color-control-switch-track-checked: var(--control-switch-track-checked);
@@ -175,6 +189,8 @@
   --spacing-row-compact: 1.875rem;
   --spacing-row-default: 2.5rem;
   --spacing-row-settings: 2rem;
+  --spacing-row-detail: 4rem;
+  --container-settings-content: 49rem;
   --spacing-row-navigation: 2.75rem;
   --spacing-row-rich: 3.5rem;
   --spacing-work-board-focus-list: calc(5 * var(--spacing-row-rich) + 3.5rem);
@@ -364,6 +380,22 @@
   --surface-workbench: var(--shell-surface-canvas);
   --surface-chrome: var(--shell-surface-frame);
   --surface-module-rail: var(--shell-surface-frame);
+}
+
+/* 工作流与窗口底色连成完整画布，不再包在独立的圆角底板内。 */
+.app-window-shell[data-workflow-canvas-shell] {
+  --surface-canvas: var(--shell-surface-frame);
+  --surface-scene: var(--shell-surface-frame);
+}
+.app-window-shell[data-workflow-canvas-shell] .app-workspace-frame {
+  padding-inline-end: 0;
+  padding-block-end: 0;
+}
+.app-window-shell[data-workflow-canvas-shell] .app-workspace-frame::before {
+  display: none;
+}
+.app-window-shell[data-workflow-canvas-shell] .app-scene-body-clip {
+  border-radius: 0;
 }
 
 .app-module-rail {
@@ -675,14 +707,14 @@
   }
 }
 
-/* OpenBot 控件以单像素中性焦点环反馈键盘焦点，鼠标点击不画布局外框。 */
+/* 目录控件只对键盘焦点提供主题色反馈，鼠标点击不画布局外框。 */
 .catalog-focus:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 1px var(--resource-muted);
+  box-shadow: 0 0 0 1px var(--ring);
 }
 
 .catalog-search:has(input:focus-visible) {
-  box-shadow: 0 0 0 1px var(--resource-muted);
+  box-shadow: 0 0 0 1px var(--ring);
 }
 
 html,
@@ -908,13 +940,14 @@ button:disabled {
   background-size: 10px 10px;
 }
 
-/* 工作流画布缩放平移时的点阵底纹，略高于默认密度以便对齐节点。 */
+/* 新建页、占位与交互画布共用清晰点阵；交互画布按视口缩放覆盖间距。 */
 .surface-pattern-dots-canvas {
   background-image: radial-gradient(
     circle,
-    color-mix(in srgb, var(--border-default) 44%, transparent) 1px,
-    transparent 1px
+    var(--border-default) 1.5px,
+    transparent 1.5px
   );
+  background-size: 20px 20px;
 }
 
 .surface-pattern-grid {

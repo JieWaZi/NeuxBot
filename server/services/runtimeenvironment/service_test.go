@@ -153,6 +153,8 @@ func TestManualRefreshRecoversStartupFailure(t *testing.T) {
 
 // countingRuntimeCatalog 记录通过服务高层 seam 发生的探测次数。
 type countingRuntimeCatalog struct {
+	// installationVersion 覆盖显式本机版本探测，空值沿用基础版本。
+	installationVersion string
 	// summaries 覆盖测试要对账的内置 Runtime；空值沿用 Codex 和 Claude。
 	summaries []agentapi.RuntimeSummary
 	// mutex 保护并发探测次数和 Runtime 标识记录。
@@ -235,59 +237,58 @@ func (e *countingRuntimeCatalog) ResolveExecutable(request agentapi.DetectReques
 	return "/usr/local/bin/" + request.RuntimeID, nil
 }
 
-// TestRefreshPinsDefaultAndPreservesConfiguredPiCommand 验证默认路径固定及自定义命令保留。
-func TestRefreshPinsDefaultAndPreservesConfiguredPiCommand(t *testing.T) {
+// ProbeInstallationVersion 提供不启动模型或账号的确定性本机程序回执。
+func (e *countingRuntimeCatalog) ProbeInstallationVersion(_ context.Context, request agentapi.DetectRequest) (agentapi.CLIInstallation, error) {
+	version := e.installationVersion
+	if version == "" {
+		version = "1.0.0"
+	}
+	return agentapi.CLIInstallation{Path: request.LaunchOverride.Binary, Version: version, Available: true}, nil
+}
+
+// TestRefreshUsesReadOnlyProgramSnapshot 验证程序定位来自静态声明和检测结果，偏好保存不持久化手动启动参数。
+func TestRefreshUsesReadOnlyProgramSnapshot(t *testing.T) {
 	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "pi.db"), Migrate: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	sqlDB, err := database.DB.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer sqlDB.Close()
+	pool, _ := database.DB.DB()
+	defer pool.Close()
 	environments := controllers.NewRuntimeEnvironmentController(database.DB)
-	catalog := &countingRuntimeCatalog{summaries: []agentapi.RuntimeSummary{{ID: agentapi.RuntimeIDPi, BaseRuntimeID: agentapi.RuntimeIDPi, Name: "Pi", BinaryCandidates: []string{"pi"}}}}
-	svc, err := newWithRuntimeCatalog(catalog, environments, controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB)))
+	catalog := &countingRuntimeCatalog{summaries: []agentapi.RuntimeSummary{{ID: agentapi.RuntimeIDPi, BaseRuntimeID: agentapi.RuntimeIDPi, Name: "Pi", BinaryCandidates: []string{"pi"}, PrefixArgs: []string{"--profile", "native"}}}}
+	api, err := newWithRuntimeCatalog(catalog, environments, controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc.(*service).probeProvider = catalog.probe
-	ctx := context.Background()
-	if _, err := svc.EnsureInitialized(ctx); err != nil {
+	api.(*service).probeProvider = catalog.probe
+	if _, err := api.EnsureInitialized(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.RefreshAll(ctx); err != nil {
+	initial, err := environments.Get(t.Context(), "pi")
+	if err != nil || initial.Binary != "pi" || len(initial.PrefixArgs) != 2 {
+		t.Fatalf("initial static launch snapshot: %+v %v", initial, err)
+	}
+	if err := api.RefreshAll(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	initial, err := environments.Get(ctx, "pi")
+	current, err := environments.Get(t.Context(), "pi")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if initial.Binary != "/usr/local/bin/pi" {
-		t.Fatalf("default installation path = %q, want pinned executable", initial.Binary)
-	}
-	if err := environments.UpdateFields(ctx, "pi", map[string]any{"binary": "pi-acp", "name": "Pi ACP"}); err != nil {
+	current.Binary, current.PrefixArgs, current.ConfigHome = "/untrusted/program", []string{"--untrusted"}, "/untrusted/home"
+	if err := environments.UpdateConfiguration(t.Context(), current); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.RefreshAll(ctx); err != nil {
+	if err := api.RefreshOne(t.Context(), "pi"); err != nil {
 		t.Fatal(err)
 	}
-	actual, err := environments.Get(ctx, "pi")
-	if err != nil {
-		t.Fatal(err)
+	actual, err := environments.Get(t.Context(), "pi")
+	if err != nil || actual.Binary != "/usr/local/bin/pi" || len(actual.PrefixArgs) != 2 || actual.ConfigHome != "" {
+		t.Fatalf("manual launch values entered persisted settings: %+v %v", actual, err)
 	}
-	if actual.Binary != "pi-acp" || actual.Name != "Pi" || catalog.lastRequest("pi").LaunchOverride.Binary != "pi-acp" {
-		t.Fatalf("Pi command was rewritten: %+v", actual)
-	}
-	if err := environments.UpdateFields(ctx, "pi", map[string]any{"binary": "/opt/tools/pi"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := svc.RefreshOne(ctx, "pi"); err != nil {
-		t.Fatal(err)
-	}
-	if catalog.lastRequest("pi").LaunchOverride.Binary != "/opt/tools/pi" {
-		t.Fatal("custom Pi command was replaced")
+	request := catalog.lastRequest("pi")
+	if request.LaunchOverride.Binary != actual.Binary || len(request.LaunchOverride.PrefixArgs) != 2 || request.LaunchOverride.PrefixArgs[1] != "native" {
+		t.Fatalf("static profile launch arguments were lost: %+v", request.LaunchOverride)
 	}
 }
 
@@ -482,12 +483,8 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 		t.Fatalf("RefreshOne() error = %v", err)
 	}
 	request := catalog.lastRequest(agentapi.RuntimeIDClaude)
-	if request.LaunchOverride.Environment["CLAUDE_CONFIG_DIR"] != claude.ConfigHome {
-		t.Fatalf(
-			"Claude config environment = %#v, want CLAUDE_CONFIG_DIR=%q",
-			request.LaunchOverride.Environment,
-			claude.ConfigHome,
-		)
+	if request.LaunchOverride.Environment["CLAUDE_CONFIG_DIR"] != "" {
+		t.Fatalf("manual config home survived preference save: %#v", request.LaunchOverride.Environment)
 	}
 	codex, err := environments.Get(context.Background(), agentapi.RuntimeIDCodex)
 	if err != nil {

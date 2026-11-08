@@ -11,10 +11,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 const kimiCredentialMarker = "kimi-cli-managed"
@@ -98,22 +100,8 @@ func (s *Service) kimiAccountHome(id string, create bool) (string, error) {
 	return filepath.EvalSymlinks(home)
 }
 
-func kimiExecutable() (string, error) {
-	if path, err := exec.LookPath("kimi"); err == nil {
-		return path, nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", status_error.AIAccountLoginFailed
-	}
-	path := filepath.Join(home, ".kimi-code", "bin", "kimi")
-	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
-		return "", status_error.AIAccountLoginFailed
-	}
-	return path, nil
-}
-
-func (s *Service) startKimiLogin(id string, revision int64) (Login, error) {
+func (s *Service) startKimiLogin(ctx context.Context, account models.AIAccount) (Login, error) {
+	id, revision := account.ID, account.Revision
 	release, err := s.Exclusive(id)
 	if err != nil {
 		return Login{}, err
@@ -123,11 +111,18 @@ func (s *Service) startKimiLogin(id string, revision int64) (Login, error) {
 		release()
 		return Login{}, err
 	}
-	binary, err := kimiExecutable()
+	binary, prefixArgs, err := s.accountProgram(ctx, account)
 	if err != nil {
 		release()
 		return Login{}, err
 	}
+	releaseProgram, err := s.acquireProgramUse(ctx, constants.RuntimeIDKimi)
+	if err != nil {
+		release()
+		return Login{}, err
+	}
+	releaseAccount := release
+	release = func() { releaseProgram(); releaseAccount() }
 	s.loginCommit.Lock()
 	s.mutex.Lock()
 	if s.ctx == nil || s.ctx.Err() != nil {
@@ -153,8 +148,8 @@ func (s *Service) startKimiLogin(id string, revision int64) (Login, error) {
 		previous.mutex.Unlock()
 	}
 	output := &kimiLoginOutput{ready: make(chan string, 1)}
-	command := exec.CommandContext(job.ctx, binary, "login")
-	command.Env = append(accountconfig.Environment(os.Environ()), "KIMI_CODE_HOME="+home)
+	command := exec.CommandContext(job.ctx, binary, append(prefixArgs, "login")...)
+	command.Env = nativeAccountEnvironment(accountconfig.HomeEnvironment(constants.RuntimeIDKimi, home))
 	command.Stdout, command.Stderr = output, output
 	if err := command.Start(); err != nil {
 		close(job.kimiExit)

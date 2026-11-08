@@ -10,12 +10,15 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
 
 // 新增账号请求
 type CreateAIAccountRequest struct {
+	// 智能体标识
+	RuntimeID string `json:"runtimeId" validate:"required,max=120"`
 	// 账号名称
 	Name string `json:"name" validate:"required,max=120"`
 	// 认证方式
@@ -58,6 +61,7 @@ func (*CreateAIAccount) Path() string { return "" }
 
 // Validate 规范化名称并限制受支持的配置组合。
 func (a *CreateAIAccount) Validate(*gin.Context) error {
+	a.Body.RuntimeID = strings.TrimSpace(a.Body.RuntimeID)
 	a.Body.Name = util.NormalizeName(a.Body.Name)
 	a.Body.APIKey = strings.TrimSpace(a.Body.APIKey)
 	a.Body.CustomModels = normalizeCustomModels(a.Body.CustomModels)
@@ -67,6 +71,11 @@ func (a *CreateAIAccount) Validate(*gin.Context) error {
 	a.Body.DefaultReasoning = strings.TrimSpace(a.Body.DefaultReasoning)
 	if err := validateModelMappings(a.Body.SelectedModels, a.Body.ModelDisplayNames, a.Body.ModelReasoningLevels, a.Body.ClaudeModelRoles); err != nil {
 		return err
+	}
+	if a.Body.AuthMode == constants.AccountAuthModeAPIKey {
+		if err := validateDefaultModel(a.Body.SelectedModels, a.Body.DefaultModel); err != nil {
+			return err
+		}
 	}
 	if a.Body.Name == "" || (a.Body.AuthMode == constants.AccountAuthModeAPIKey && a.Body.APIKey == "") {
 		return status_error.AIAccountConfigurationInvalid
@@ -87,6 +96,7 @@ func (a *CreateAIAccount) Output(ctx *gin.Context) (interface{}, error) {
 	id := util.New()
 	account := models.AIAccount{
 		ID:                   id,
+		RuntimeID:            a.Body.RuntimeID,
 		Name:                 a.Body.Name,
 		AuthMode:             a.Body.AuthMode,
 		Endpoints:            a.Body.Endpoints,
@@ -99,6 +109,13 @@ func (a *CreateAIAccount) Output(ctx *gin.Context) (interface{}, error) {
 		ClaudeModelRoles:     a.Body.ClaudeModelRoles,
 		DefaultModel:         a.Body.DefaultModel,
 		DefaultReasoning:     a.Body.DefaultReasoning,
+	}
+	environment, err := global.RuntimeEnvironmentControllerManager.Get(ctx, account.RuntimeID)
+	if err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	if err := aiaccount.ValidateRuntimeAccount(account, environment); err != nil {
+		return nil, ginx.WithStack(err)
 	}
 	if err := global.AIAccountControllerManager.Create(ctx, account, a.Body.APIKey); err != nil {
 		return nil, ginx.WithStack(err)
@@ -134,7 +151,8 @@ func validateEndpoints(mode constants.AccountAuthMode, endpoints []models.AIAcco
 	if mode == constants.AccountAuthModeSubscription {
 		endpoint := endpoints[0]
 		if (endpoint.Protocol != constants.AccountProtocolOpenAIResponses || endpoint.BaseURL != constants.AIAccountOpenAIURL) &&
-			(endpoint.Protocol != constants.AccountProtocolOpenAICompletions || endpoint.BaseURL != constants.AIAccountKimiURL) {
+			(endpoint.Protocol != constants.AccountProtocolOpenAICompletions || endpoint.BaseURL != constants.AIAccountKimiURL) &&
+			(endpoint.Protocol != constants.AccountProtocolAnthropicMessages || endpoint.BaseURL != constants.AIAccountAnthropicURL) {
 			return status_error.AIAccountConfigurationInvalid
 		}
 	}

@@ -11,14 +11,13 @@ import "@/shared/i18n";
 import { AppModuleRail } from "./app-module-rail";
 
 describe("AppModuleRail", () => {
-  it("固定提供全部模块入口，不承载通知入口", async () => {
+  it("资源库紧随伙伴，不重复提供工作看板入口", async () => {
     const user = userEvent.setup();
     const onNavigate = vi.fn();
     render(<AppModuleRail activeModule="resources" onNavigate={onNavigate} />);
     const rail = screen.getByRole("navigation", { name: "模块导航" });
     for (const [label, id] of [
       ["伙伴", "partners"],
-      ["任务看板", "work-board"],
       ["用量统计", "usage"],
       ["资源库", "resources"],
       ["设置", "settings"],
@@ -33,7 +32,18 @@ describe("AppModuleRail", () => {
       screen.queryByRole("button", { name: "通知" }),
     ).not.toBeInTheDocument();
     expect(rail.querySelector("img")).toBeNull();
+    expect(
+      within(rail)
+        .getAllByRole("button")
+        .slice(0, 2)
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["伙伴", "资源库"]);
+    expect(within(rail).queryByRole("button", { name: "任务看板" })).toBeNull();
     await user.click(within(rail).getByRole("button", { name: "更多模块" }));
+    expect(screen.queryByRole("menuitem", { name: "任务看板" })).toBeNull();
+    expect(
+      screen.queryByRole("menuitemcheckbox", { name: "固定任务看板" }),
+    ).toBeNull();
     expect(screen.queryByRole("menuitem", { name: "工作流" })).toBeNull();
     expect(screen.queryByRole("button", { name: "工作流" })).toBeNull();
     await user.click(screen.getByRole("menuitem", { name: "知识库" }));

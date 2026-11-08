@@ -20,6 +20,7 @@ export function changeResourceCategory(
   for (const key of ["page", "search", "componentPage", "source"])
     next.delete(key);
   if (category !== "skills") next.delete("skillCategory");
+  if (category !== "workflows") next.delete("workflowCategory");
   return next;
 }
 

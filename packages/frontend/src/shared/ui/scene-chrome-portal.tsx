@@ -198,7 +198,8 @@ export function SceneChromeLayout({
   const accessoryAtLeft =
     accessorySide === "left" && Boolean(accessoryWidth) && !accessoryFullscreen;
   const actionRef = useRef<HTMLDivElement>(null);
-  const [actionWidth, setActionWidth] = useState(0);
+  const [measuredActionWidth, setActionWidth] = useState(0);
+  const actionWidth = sceneActions ? measuredActionWidth : 0;
   useLayoutEffect(() => {
     const actionElement = actionRef.current;
     if (!actionElement) return;

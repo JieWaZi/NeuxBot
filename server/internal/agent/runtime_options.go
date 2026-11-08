@@ -119,6 +119,8 @@ type RuntimeSummary struct {
 	SkillDirectoryName string
 	// ConfigHomeEnvironmentVariable is the controlled environment variable for the configuration home.
 	ConfigHomeEnvironmentVariable string
+	// ConfigHome is the optional native home declared by the static profile, never a user preference.
+	ConfigHome string
 }
 
 // DetectionState aliases the shared runtime detection-state enumeration.

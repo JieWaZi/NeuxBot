@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { client } from "@/shared/api/generated/client.gen";
 import {
   useExecutionSelection,
+  useNativeExecutionSelections,
   type ExecutionSelection,
 } from "./use-execution-selection";
 
@@ -47,16 +48,23 @@ const server = setupServer(
       resources: [
         {
           id: "work",
+          runtimeId: "codex",
           name: "Work",
           authMode: "api-key",
           hasCredential: true,
-          endpoints: [{ protocol: "openai-responses" }],
+          endpoints: [
+            {
+              protocol: "openai-responses",
+              baseUrl: "https://api.example.test/v1",
+            },
+          ],
           selectedModels: ["work-model"],
           defaultModel: "work-model",
           defaultReasoning: "max",
         },
         {
           id: "subscription",
+          runtimeId: "codex",
           name: "Subscription",
           authMode: "subscription",
           hasCredential: true,
@@ -69,6 +77,7 @@ const server = setupServer(
         },
         {
           id: "anthropic",
+          runtimeId: "claude",
           authMode: "api-key",
           hasCredential: true,
           authGeneration: 7,
@@ -203,8 +212,10 @@ it.each([
     expect(result.current.models.map((item) => item.id)).toEqual([
       "account-model",
     ]);
-    expect(result.current.accounts.map((item) => item.id)).toEqual(
-      compatibleAccounts,
+    await waitFor(() =>
+      expect(result.current.accounts.map((item) => item.id)).toEqual(
+        compatibleAccounts,
+      ),
     );
     expect([...result.current.supportedPermissions]).toEqual(permissions);
     expect(result.current.selection).toMatchObject({
@@ -243,8 +254,10 @@ it.each([
       refresh = result.current.refreshCatalog();
     });
     try {
-      await waitFor(() => expect(result.current.catalogPending).toBe(true));
-      expect(result.current.valid).toBe(false);
+      await waitFor(() => expect(result.current.catalogRefreshing).toBe(true));
+      expect(result.current.catalogPending).toBe(false);
+      expect(result.current.loading).toBe(false);
+      expect(result.current.valid).toBe(true);
       expect(result.current.models[0]?.id).toBe("account-model");
     } finally {
       await act(async () => {
@@ -264,7 +277,137 @@ it.each([
 );
 
 describe("统一执行配置选择", () => {
-  it("只提供协议兼容账号，切换账号后查询对应模型的推理能力", async () => {
+  it("同协议 Profile 隔离账号，旧账号不能读取目标目录，切换后采用目标默认配置", async () => {
+    server.use(
+      http.get(`${origin}/api/v1/runtimes`, () =>
+        HttpResponse.json({
+          resources: [
+            { id: "codex", enabled: true, state: "ready", isDefault: true },
+            {
+              id: "profile:work",
+              baseRuntimeId: "codex",
+              enabled: true,
+              state: "ready",
+              defaultAccountId: "profile-account",
+              defaultModel: "profile-model",
+              defaultReasoning: "low",
+            },
+          ],
+        }),
+      ),
+      http.get(`${origin}/api/v1/ai-accounts`, () =>
+        HttpResponse.json({
+          resources: [
+            {
+              id: "work",
+              runtimeId: "codex",
+              hasCredential: true,
+              authMode: "api-key",
+              endpoints: [
+                {
+                  protocol: "openai-responses",
+                  baseUrl: "https://api.example.test/v1",
+                },
+              ],
+              defaultModel: "work-model",
+            },
+            {
+              id: "profile-account",
+              runtimeId: "profile:work",
+              hasCredential: true,
+              authMode: "api-key",
+              endpoints: [
+                {
+                  protocol: "openai-responses",
+                  baseUrl: "https://api.example.test/v1",
+                },
+              ],
+              defaultModel: "account-model",
+            },
+          ],
+        }),
+      ),
+      http.get(
+        `${origin}/api/v1/runtimes/:runtimeId/models`,
+        ({ request, params }) => {
+          requests.push(request.url);
+          const accountId = new URL(request.url).searchParams.get("accountId");
+          return HttpResponse.json({
+            runtimeId: params.runtimeId,
+            accountId,
+            state: "fresh",
+            defaultModel: "account-model",
+            models: ["work-model", "account-model", "profile-model"].map(
+              (id) => ({
+                id,
+                permissionLevels: ["default"],
+                reasoningOptions: [{ id: "low" }, { id: "high" }],
+                defaultReasoning: "high",
+              }),
+            ),
+          });
+        },
+      ),
+    );
+    const { result, rerender } = selection({
+      runtimeId: "codex",
+      accountId: "work",
+    });
+    await waitFor(() => expect(result.current.valid).toBe(true));
+    expect(result.current.accounts.map((account) => account.id)).toEqual([
+      "work",
+    ]);
+
+    rerender({
+      value: {
+        runtimeId: "profile:work",
+        accountId: "work",
+        model: "work-model",
+      },
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.valid).toBe(false);
+    expect(result.current.accounts.map((account) => account.id)).toEqual([
+      "profile-account",
+    ]);
+    expect(result.current.models).toEqual([]);
+    expect(requests).toHaveLength(1);
+
+    rerender({ value: { runtimeId: "profile:work" } });
+    await waitFor(() => expect(result.current.valid).toBe(true));
+    expect(result.current.selection).toMatchObject({
+      accountId: "profile-account",
+      model: "profile-model",
+      reasoning: "low",
+    });
+  });
+
+  it("非默认账号采用自己的默认模型和推理，不继承环境默认模型", async () => {
+    server.use(
+      http.get(`${origin}/api/v1/runtimes/codex/models`, () =>
+        HttpResponse.json({
+          runtimeId: "codex",
+          accountId: "work",
+          state: "fresh",
+          defaultModel: "catalog-default",
+          models: ["catalog-default", "work-model", "native"].map((id) => ({
+            id,
+            permissionLevels: ["default"],
+            reasoningOptions: [{ id: "low" }, { id: "max" }],
+            defaultReasoning: "low",
+          })),
+        }),
+      ),
+    );
+    const { result } = selection({ runtimeId: "codex", accountId: "work" });
+    await waitFor(() => expect(result.current.valid).toBe(true));
+    expect(result.current.selection).toMatchObject({
+      model: "work-model",
+      reasoning: "max",
+    });
+  });
+
+  it("只提供当前智能体的兼容账号，切换账号后查询对应模型的推理能力", async () => {
     const { result, rerender } = selection({ accountId: "system" });
     await waitFor(() => expect(result.current.valid).toBe(true));
     expect(result.current.accounts.map((item) => item.id)).toEqual([
@@ -384,6 +527,54 @@ describe("统一执行配置选择", () => {
       permissionLevel: "default",
     });
   });
+});
+
+it("批量执行校验拒绝其他 Profile 的账号，不启动该账号目录查询", async () => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+  const { result } = renderHook(
+    () =>
+      useNativeExecutionSelections(
+        [
+          { runtimeId: "codex", accountId: "work" },
+          { runtimeId: "profile:work", accountId: "work" },
+        ],
+        [
+          { id: "codex", enabled: true, state: "ready" },
+          {
+            id: "profile:work",
+            baseRuntimeId: "codex",
+            enabled: true,
+            state: "ready",
+          },
+        ],
+        [
+          {
+            id: "work",
+            runtimeId: "codex",
+            authMode: "api-key",
+            hasCredential: true,
+            endpoints: [
+              {
+                protocol: "openai-responses",
+                baseUrl: "https://api.example.test/v1",
+              },
+            ],
+          },
+        ],
+      ),
+    { wrapper },
+  );
+  await waitFor(() => expect(result.current[0]?.valid).toBe(true));
+  expect(result.current[1]?.valid).toBe(false);
+  expect(requests).toEqual([
+    `${origin}/api/v1/runtimes/codex/models?accountId=work`,
+  ]);
+  queryClient.clear();
 });
 
 it("知识模型默认选择真实最低档，显式高档保留，切换模型后重新选择最低档", async () => {
@@ -602,6 +793,7 @@ it.each([
           resources: [
             {
               id: "anthropic",
+              runtimeId: "claude",
               authMode: "api-key",
               hasCredential: true,
               defaultModel: "retired-account-model",
@@ -637,3 +829,100 @@ it.each([
     expect(result.current.selection.model).toBe("native-default");
   },
 );
+
+it("系统原生模型不被无关账号目录的加载或失败锁住", async () => {
+  let release!: () => void;
+  const accountsPending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  server.use(
+    http.get(`${origin}/api/v1/ai-accounts`, async () => {
+      await accountsPending;
+      return HttpResponse.json({ code: "DATABASE_ERROR" }, { status: 503 });
+    }),
+  );
+  const { result } = selection({ runtimeId: "codex", accountId: "system" });
+  try {
+    await waitFor(() =>
+      expect(result.current.models.length).toBeGreaterThan(0),
+    );
+    expect(result.current.accountsQuery.isPending).toBe(true);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.valid).toBe(true);
+    expect(result.current.reasoningOptions.map((option) => option.id)).toEqual([
+      "high",
+      "low",
+    ]);
+    expect(result.current.fastSupported).toBe(true);
+  } finally {
+    release();
+  }
+  await waitFor(() => expect(result.current.accountsQuery.isError).toBe(true));
+  expect(result.current.error).toBeNull();
+  expect(result.current.loading).toBe(false);
+  expect(result.current.valid).toBe(true);
+});
+
+it("批量选择在已有有效目录后台刷新时保留模型权限和可用性", async () => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+  const { result } = renderHook(
+    () =>
+      useNativeExecutionSelections(
+        [{ runtimeId: "codex", accountId: "system" }],
+        [
+          {
+            id: "codex",
+            baseRuntimeId: "codex",
+            enabled: true,
+            state: "ready",
+            installed: true,
+            defaultPermissionLevel: "auto",
+          },
+        ],
+        [],
+      ),
+    { wrapper },
+  );
+  await waitFor(() => expect(result.current[0]?.valid).toBe(true));
+  let release!: () => void;
+  const refreshPending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  server.use(
+    http.get(`${origin}/api/v1/runtimes/codex/models`, async () => {
+      await refreshPending;
+      return catalogResponse("codex", "system");
+    }),
+  );
+  let refresh: Promise<unknown> | undefined;
+  act(() => {
+    refresh = queryClient.invalidateQueries({
+      queryKey: ["native-model-catalog"],
+    });
+  });
+  try {
+    await waitFor(() =>
+      expect(
+        queryClient.isFetching({ queryKey: ["native-model-catalog"] }),
+      ).toBe(1),
+    );
+    expect(result.current[0]?.valid).toBe(true);
+    expect(result.current[0]?.pending).toBe(false);
+    expect([...(result.current[0]?.supportedPermissions ?? [])]).toEqual([
+      "default",
+      "auto",
+      "full-access",
+    ]);
+  } finally {
+    await act(async () => {
+      release();
+      await refresh;
+    });
+    queryClient.clear();
+  }
+});

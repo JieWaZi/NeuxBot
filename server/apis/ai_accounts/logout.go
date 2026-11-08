@@ -20,7 +20,7 @@ type LogoutAIAccount struct {
 // Path 返回退出受管账号登录的路径。
 func (*LogoutAIAccount) Path() string { return "/:accountId/credential" }
 
-// Output 清除受管 ChatGPT 登录，并保留账号及其选择。
+// Output 清除受管订阅登录，并保留账号及其选择。
 func (a *LogoutAIAccount) Output(ctx *gin.Context) (interface{}, error) {
 	release, err := global.AIAccountService.Exclusive(a.AccountID)
 	if err != nil {
@@ -35,11 +35,15 @@ func (a *LogoutAIAccount) Output(ctx *gin.Context) (interface{}, error) {
 		return nil, ginx.WithStack(status_error.AIAccountRevisionConflict)
 	}
 	if account.AuthMode != constants.AccountAuthModeSubscription || len(account.Endpoints) != 1 ||
-		account.Endpoints[0].Protocol != constants.AccountProtocolOpenAIResponses ||
-		account.Endpoints[0].BaseURL != constants.AIAccountOpenAIURL {
+		!((account.Endpoints[0].Protocol == constants.AccountProtocolOpenAIResponses && account.Endpoints[0].BaseURL == constants.AIAccountOpenAIURL) || (account.Endpoints[0].Protocol == constants.AccountProtocolAnthropicMessages && account.Endpoints[0].BaseURL == constants.AIAccountAnthropicURL)) {
 		return nil, ginx.WithStack(status_error.AIAccountConfigurationInvalid)
 	}
 	if account.HasCredential {
+		if account.Endpoints[0].Protocol == constants.AccountProtocolAnthropicMessages {
+			if err := global.AIAccountService.LogoutClaudeSubscription(ctx, account); err != nil {
+				return nil, ginx.WithStack(err)
+			}
+		}
 		if err := global.AIAccountService.RemoveCodexCredentialFiles(ctx, account); err != nil {
 			return nil, ginx.WithStack(err)
 		}

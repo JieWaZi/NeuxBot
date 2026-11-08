@@ -445,15 +445,15 @@ func (m *service) startMessage(
 		if err != nil {
 			return AcceptedExecution{}, err
 		}
+		if err := aiaccount.ValidateRuntimeAccount(account, runtimeEnvironment); err != nil {
+			return AcceptedExecution{}, err
+		}
+		if !request.runtime.ConfigurationResolved {
+			request.runtime.Model, request.runtime.Reasoning = aiaccount.RuntimeSelectionDefaults(account, runtimeEnvironment, request.runtime.Model, request.runtime.Reasoning)
+		}
 		if account.AuthMode == constants.AccountAuthModeAPIKey {
 			if len(account.SelectedModels) == 0 {
 				return AcceptedExecution{}, status_error.AIAccountConfigurationInvalid
-			}
-			if request.runtime.Model == "" && !request.runtime.ConfigurationResolved {
-				request.runtime.Model = account.SelectedModels[0]
-				if nativeProvider(runtimeEnvironment) == constants.RuntimeIDClaude {
-					request.runtime.Model, _ = aiaccount.ManagedClaudeModelTarget(account, "")
-				}
 			}
 			allowed := slices.Contains(account.SelectedModels, request.runtime.Model)
 			if nativeProvider(runtimeEnvironment) == constants.RuntimeIDClaude {
@@ -1607,7 +1607,7 @@ func runtimePermissionSupported(
 	}
 	levels := agent.ModelPermissionLevels(
 		environment.Detection,
-		environment.CustomModels,
+		nil,
 		selectedID,
 	)
 	// 未登录时可能无法取得模型权限目录，留待原生 Runtime 返回鉴权错误。

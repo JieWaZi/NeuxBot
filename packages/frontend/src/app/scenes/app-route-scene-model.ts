@@ -131,7 +131,11 @@ export function routeSceneForLocation(
   const chat = /^\/chats\/([^/]+)$/.exec(pathname);
   if (chat?.[1]) return routeTab(`chat:${chat[1]}`, labels.chat, location);
 
-  if (pathname === "/" || pathname === "/chat") {
+  if (
+    pathname === "/" ||
+    pathname === "/chat" ||
+    (pathname === "/wakers" && params.get("tab") !== "teams")
+  ) {
     const draftId = params.get("draftId");
     const wakerId = params.get("wakerId") || "default";
     return routeTab(

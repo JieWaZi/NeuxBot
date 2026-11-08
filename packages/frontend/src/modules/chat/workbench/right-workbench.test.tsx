@@ -64,6 +64,7 @@ function Harness(overrides: Partial<ComponentProps<typeof RightWorkbench>>) {
         changesProps={{ query: "", rootPath: "/workspace" }}
         taskBoard={<div />}
         onAddCodeReference={() => {}}
+        onDismiss={() => {}}
         onEmpty={onEmpty}
         {...overrides}
       />

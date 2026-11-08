@@ -6,7 +6,41 @@ import {
   nativeModelCatalogOptions,
   nativeModelCatalogQueryKey,
   usesNativeModelCatalog,
+  isRuntimeConfigurationEvent,
 } from "./runtime-queries";
+
+it("安装进度不刷新模型目录，终态合同变化继续刷新，兼容统一事件信封", () => {
+  expect(
+    isRuntimeConfigurationEvent({
+      type: "runtime.installation.changed",
+      payload: null,
+    }),
+  ).toBe(false);
+  expect(
+    isRuntimeConfigurationEvent({
+      type: "event",
+      payload: { type: "runtime.installation.changed" },
+    }),
+  ).toBe(false);
+  expect(
+    isRuntimeConfigurationEvent({
+      type: "event",
+      payload: { type: "runtime.authentication.changed" },
+    }),
+  ).toBe(false);
+  expect(
+    isRuntimeConfigurationEvent({
+      type: "runtimecontract.changed",
+      payload: null,
+    }),
+  ).toBe(true);
+  expect(
+    isRuntimeConfigurationEvent({
+      type: "event",
+      payload: { type: "runtime.changed" },
+    }),
+  ).toBe(true);
+});
 
 const { readSnapshots, readCatalog } = vi.hoisted(() => ({
   readSnapshots: vi.fn(),
@@ -124,4 +158,42 @@ it("账号失效只影响该账号的各智能体目录", async () => {
   expect(client.getQueryState(workCodex)?.isInvalidated).toBe(true);
   expect(client.getQueryState(workClaude)?.isInvalidated).toBe(true);
   expect(client.getQueryState(systemClaude)?.isInvalidated).toBe(false);
+});
+
+it("同一原生登录在不同 Profile 的目录分别缓存，并拒绝返回基础智能体身份", async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const root = nativeModelCatalogOptions({
+    runtimeId: "codex",
+    accountId: "system",
+  });
+  const profile = nativeModelCatalogOptions({
+    runtimeId: "profile:work",
+    accountId: "system",
+  });
+  readCatalog.mockResolvedValueOnce({
+    data: { runtimeId: "codex", accountId: "system", state: "fresh" },
+  });
+  await client.fetchQuery(root);
+  readCatalog.mockResolvedValueOnce({
+    data: { runtimeId: "codex", accountId: "system", state: "fresh" },
+  });
+  await expect(client.fetchQuery(profile)).rejects.toThrow(
+    "Native model catalog identity changed",
+  );
+  expect(client.getQueryData(profile.queryKey)).toBeUndefined();
+  expect(client.getQueryData(root.queryKey)).toMatchObject({
+    runtimeId: "codex",
+  });
+  readCatalog.mockResolvedValueOnce({
+    data: { runtimeId: "profile:work", accountId: "system", state: "fresh" },
+  });
+  await expect(client.fetchQuery(profile)).resolves.toMatchObject({
+    runtimeId: "profile:work",
+  });
+  expect(readCatalog).toHaveBeenLastCalledWith(
+    expect.objectContaining({ path: { runtimeId: "profile:work" } }),
+  );
+  client.clear();
 });

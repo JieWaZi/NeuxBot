@@ -36,7 +36,7 @@ func codexAccountQueryFixture(t *testing.T, mode constants.AccountAuthMode, stat
 	})
 	id := "0123456789abcdef0123456789abcdef"
 	global.AIAccountControllerManager = accountCredentialReadStub{account: models.AIAccount{
-		ID: id, AuthMode: mode, HasCredential: true, SelectedModels: []string{"account-model"},
+		ID: id, RuntimeID: constants.RuntimeIDCodex, AuthMode: mode, HasCredential: true, SelectedModels: []string{"account-model"},
 		Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: constants.AIAccountOpenAIURL}},
 	}}
 	global.AIAccountService = aiaccount.New(global.AIAccountControllerManager)
@@ -123,7 +123,7 @@ func TestManagedNativeFamilyThinkingUsesSelectedCatalog(t *testing.T) {
 			if provider == "claude" {
 				protocol = constants.AccountProtocolAnthropicMessages
 			}
-			global.AIAccountControllerManager = accountCredentialReadStub{account: models.AIAccount{ID: id, AuthMode: constants.AccountAuthModeAPIKey, HasCredential: true, SelectedModels: []string{"account-model"}, Endpoints: []models.AIAccountEndpoint{{Protocol: protocol}}}}
+			global.AIAccountControllerManager = accountCredentialReadStub{account: models.AIAccount{ID: id, RuntimeID: provider, AuthMode: constants.AccountAuthModeAPIKey, HasCredential: true, SelectedModels: []string{"account-model"}, Endpoints: []models.AIAccountEndpoint{{Protocol: protocol}}}}
 			global.RuntimeEnvironmentControllerManager = officialThinkingEnvironment{environment: models.RuntimeEnvironment{RuntimeID: provider, BaseRuntimeID: provider, Enabled: true}}
 			global.RuntimeEnvironmentService = codexAccountCatalogStub{read: func(runtimeID, accountID string, refresh bool) runtimeenvironment.AccountModelCatalog {
 				if runtimeID != provider || accountID != id || refresh {

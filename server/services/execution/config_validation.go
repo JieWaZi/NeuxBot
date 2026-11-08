@@ -43,16 +43,16 @@ func (m *service) ResolveConfiguration(ctx context.Context, config ExecutionConf
 		// 显式原生登录身份阻止后续派发再次采用已变化的默认账号。
 		config.AccountID = constants.AiAccountSystemID
 	}
-	if config.Reasoning == "" && !config.Resolved {
+	if config.Reasoning == "" && !config.Resolved && config.AccountID == constants.AiAccountSystemID {
 		config.Reasoning = environment.DefaultReasoning
-		if config.AccountID == constants.AiAccountSystemID && config.Reasoning != "" {
+		if config.Reasoning != "" {
 			// 已配置的原生默认强度按目标模型解析；未配置或没有具体档位时保留空值。
 			model := config.Model
 			if model == "" {
 				model = environment.DefaultModel
 			}
 			_, config.Reasoning = agentapi.NormalizeDetectedDefaults(
-				environment.Detection, environment.CustomModels, model, config.Reasoning,
+				environment.Detection, nil, model, config.Reasoning,
 			)
 		}
 	}
@@ -62,22 +62,19 @@ func (m *service) ResolveConfiguration(ctx context.Context, config ExecutionConf
 		if m.accounts == nil {
 			return config, status_error.AIAccountConfigurationInvalid
 		}
-		account, err := m.accounts.ValidateSelection(ctx, config.AccountID, environment.BaseRuntimeID, config.Model, config.Reasoning)
+		account, err := m.accounts.Get(ctx, config.AccountID)
 		if err != nil {
 			return config, err
 		}
-		if account.AuthMode == constants.AccountAuthModeAPIKey && config.Model == "" && !config.Resolved {
-			if len(account.SelectedModels) == 0 {
-				return config, status_error.AIAccountConfigurationInvalid
-			}
-			config.Model = account.SelectedModels[0]
-			if environment.BaseRuntimeID == constants.RuntimeIDClaude {
-				config.Model, _ = aiaccount.ManagedClaudeModelTarget(account, "")
-			}
-			// 默认模型确定后仍按该模型校验账号声明，不能用空模型跳过推理约束。
-			if _, err := m.accounts.ValidateSelection(ctx, config.AccountID, environment.BaseRuntimeID, config.Model, config.Reasoning); err != nil {
-				return config, err
-			}
+		if err := aiaccount.ValidateRuntimeAccount(account, environment); err != nil {
+			return config, err
+		}
+		if !config.Resolved {
+			config.Model, config.Reasoning = aiaccount.RuntimeSelectionDefaults(account, environment, config.Model, config.Reasoning)
+		}
+		// 默认模型和强度确定后统一校验，不能用空模型跳过账号准入。
+		if _, err := m.accounts.ValidateSelection(ctx, config.AccountID, environment.BaseRuntimeID, config.Model, config.Reasoning); err != nil {
+			return config, err
 		}
 		validation = config
 		if account.AuthMode == constants.AccountAuthModeAPIKey && accountconfig.IsNativeAccountRuntime(environment.BaseRuntimeID) {
@@ -135,7 +132,7 @@ func validateExecutionConfiguration(
 	if selectedModel == "" {
 		selectedModel = strings.TrimSpace(environment.DefaultModel)
 	}
-	modelsAvailable := agentapi.AvailableModels(environment.Detection, environment.CustomModels)
+	modelsAvailable := agentapi.AvailableModels(environment.Detection, nil)
 	modelIndex := -1
 	for index, model := range modelsAvailable {
 		if model.ID == selectedModel {

@@ -360,6 +360,7 @@ func definitionSummaries(
 			InstructionFileName:           definition.instructionFileName,
 			SkillDirectoryName:            definition.skillDirectoryName,
 			ConfigHomeEnvironmentVariable: definition.configHomeEnvironmentVariable,
+			ConfigHome:                    definition.environment[definition.configHomeEnvironmentVariable],
 		})
 	}
 	sort.Slice(summaries, func(left, right int) bool {

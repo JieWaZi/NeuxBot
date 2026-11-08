@@ -18,7 +18,7 @@ func TestResourceCategoriesPersistAndRemainIsolatedByType(t *testing.T) {
 	connection, _ := database.DB.DB()
 	ctx := context.Background()
 	store := NewResourceCategoryController(database.DB)
-	for _, kind := range []constants.ResourceCategoryType{constants.ResourceCategoryTypeSkill, constants.ResourceCategoryTypePlugin, constants.ResourceCategoryTypeConnector} {
+	for _, kind := range []constants.ResourceCategoryType{constants.ResourceCategoryTypeSkill, constants.ResourceCategoryTypePlugin, constants.ResourceCategoryTypeConnector, constants.ResourceCategoryTypeWorkflow} {
 		if err := store.Ensure(ctx, kind, []string{"开发", "开发", "写作"}); err != nil {
 			t.Fatal(err)
 		}

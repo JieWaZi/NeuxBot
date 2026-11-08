@@ -99,11 +99,19 @@ export function DropdownMenuSeparator({
 
 export function DropdownMenuItem({
   className,
+  variant = "default",
   ...props
-}: ComponentProps<typeof DropdownMenuPrimitive.Item>) {
+}: ComponentProps<typeof DropdownMenuPrimitive.Item> & {
+  variant?: "default" | "destructive";
+}) {
   return (
     <DropdownMenuPrimitive.Item
-      className={cn(menuItemClass, className)}
+      className={cn(
+        menuItemClass,
+        variant === "destructive" &&
+          "text-destructive data-[highlighted]:bg-destructive/8 data-[highlighted]:text-destructive",
+        className,
+      )}
       {...props}
     />
   );
@@ -120,7 +128,7 @@ export function DropdownMenuCheckboxItem({
       {...props}
     >
       {children}
-      <DropdownMenuPrimitive.ItemIndicator className="ml-auto shrink-0">
+      <DropdownMenuPrimitive.ItemIndicator className="text-accent-content ml-auto shrink-0">
         <Check className="size-icon-sm" strokeWidth={1.5} />
       </DropdownMenuPrimitive.ItemIndicator>
     </DropdownMenuPrimitive.CheckboxItem>
@@ -138,7 +146,7 @@ export function DropdownMenuRadioItem({
       {...props}
     >
       {children}
-      <DropdownMenuPrimitive.ItemIndicator className="ml-auto shrink-0">
+      <DropdownMenuPrimitive.ItemIndicator className="text-accent-content ml-auto shrink-0">
         <Check className="size-icon-sm" strokeWidth={1.5} />
       </DropdownMenuPrimitive.ItemIndicator>
     </DropdownMenuPrimitive.RadioItem>

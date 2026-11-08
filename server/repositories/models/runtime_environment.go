@@ -27,14 +27,12 @@ type RuntimeEnvironment struct {
 	Enabled bool `gorm:"column:enabled;not null;default:true" json:"enabled"`
 	// IsDefault 表示该条目是否是新对话优先使用的全局默认 Runtime。
 	IsDefault bool `gorm:"column:is_default;not null;default:false;index" json:"isDefault"`
-	// Binary 是用户保存的可执行文件名或绝对路径。
-	Binary string `gorm:"column:binary;type:text;not null" json:"binary"`
-	// PrefixArgs 是放在 Runtime 子命令之前的用户前置参数。
-	PrefixArgs []string `gorm:"column:prefix_args;type:text;not null;serializer:json" json:"prefixArgs"`
-	// ConfigHome 是由 Runtime Definition 映射到受控环境变量的配置主目录。
-	ConfigHome string `gorm:"column:config_home;type:text;not null;default:''" json:"configHome,omitempty"`
-	// CustomModels 是用户为动态探测目录补充的模型标识。
-	CustomModels []string `gorm:"column:custom_models;type:text;not null;default:'[]';serializer:json" json:"customModels"`
+	// Binary 是从只读探测快照恢复的实际程序，不作为用户设置持久化。
+	Binary string `gorm:"-" json:"-"`
+	// PrefixArgs 是探测时确认的内部启动参数，不接受用户设置。
+	PrefixArgs []string `gorm:"-" json:"-"`
+	// ConfigHome 是内部原生账号解析使用的配置目录，不作为用户设置持久化。
+	ConfigHome string `gorm:"-" json:"-"`
 	// DefaultModel 是切换到该 Runtime 时优先使用的模型标识。
 	DefaultModel string `gorm:"column:default_model;type:varchar(200);not null;default:''" json:"defaultModel"`
 	// DefaultReasoning 是切换到该 Runtime 时优先使用的推理强度标识。

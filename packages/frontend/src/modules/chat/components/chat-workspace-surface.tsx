@@ -373,7 +373,7 @@ export function ChatWorkspaceSurface({
             <div
               aria-hidden="true"
               className={cn(
-                "surface-pattern-dots duration-slow ease-ui pointer-events-none absolute inset-0 transition-opacity",
+                "surface-pattern-dots surface-pattern-dots-canvas duration-slow ease-ui pointer-events-none absolute inset-0 transition-opacity",
                 canvasInput ? "opacity-100" : "opacity-0",
               )}
             />
@@ -559,6 +559,7 @@ export function ChatWorkspaceSurface({
               }
               displayWidth={displayWidth}
               onAddCodeReference={onAddCodeReference}
+              onDismiss={onDismissRightPanel}
               onEmpty={onDismissRightPanel}
               onOpenFile={(file) =>
                 adapter.thread.onOpenFile?.({ ...file, reference: file })

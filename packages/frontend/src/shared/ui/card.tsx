@@ -11,6 +11,7 @@ const cardVariants = cva("bg-card text-foreground min-w-0 rounded-xl", {
     variant: {
       default: "flex flex-col gap-5 py-5",
       section: "p-5",
+      settings: "bg-resource-surface p-4",
       floating: "bg-surface-scene shadow-md flex flex-col gap-5 py-5",
       resource:
         "group/resource-card [--ring:var(--status-success-content)] duration-quick hover:bg-card-hover data-[state=selected]:bg-accent-surface flex flex-col overflow-hidden transition-colors motion-reduce:transition-none",

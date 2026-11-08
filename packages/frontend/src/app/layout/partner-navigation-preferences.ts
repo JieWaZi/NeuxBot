@@ -43,11 +43,10 @@ export function clampContextSidebarWidth(value: number): number {
 
 export type AppPinnableModuleId = Exclude<
   AppModuleId,
-  "partners" | "resources" | "settings"
+  "partners" | "resources" | "settings" | "work-board"
 >;
-// B03 确认的 NeuxBot 模块次序；pin 选择参照 OpenBot src/renderer/src/layout.tsx。
+// 工作看板由顶栏通知入口打开；其余模块的 pin 参照 OpenBot src/renderer/src/layout.tsx。
 export const appPinnableModules = [
-  "work-board",
   "usage",
   "knowledge",
   "automatic-tasks",
@@ -55,9 +54,7 @@ export const appPinnableModules = [
 export function pinnedAppModules(
   choices: Readonly<Record<string, boolean>> = {},
 ): readonly AppPinnableModuleId[] {
-  return appPinnableModules.filter(
-    (id) => choices[id] ?? (id === "work-board" || id === "usage"),
-  );
+  return appPinnableModules.filter((id) => choices[id] ?? id === "usage");
 }
 function booleanRecord(value: unknown): Record<string, boolean> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};

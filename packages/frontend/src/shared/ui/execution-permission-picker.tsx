@@ -23,6 +23,7 @@ type ExecutionPermissionPickerProps = {
   supported: ReadonlySet<PermissionLevel>;
   disabled?: boolean;
   ariaLabel?: string;
+  hitArea?: "default" | "comfortable";
   onChange: (value: PermissionLevel) => void;
 };
 
@@ -37,6 +38,7 @@ export function ExecutionPermissionPicker({
   supported,
   disabled = false,
   ariaLabel,
+  hitArea = "default",
   onChange,
 }: ExecutionPermissionPickerProps) {
   const { t } = useTranslation("common");
@@ -48,7 +50,7 @@ export function ExecutionPermissionPicker({
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
-          size="icon-sm"
+          size={hitArea === "comfortable" ? "icon" : "icon-sm"}
           variant="ghost"
           disabled={disabled || supported.size === 0}
           aria-label={

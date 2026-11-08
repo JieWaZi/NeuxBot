@@ -438,7 +438,7 @@ export function TeamChatTree({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem
-              className="text-destructive data-[highlighted]:text-destructive"
+              variant="destructive"
               onSelect={() => {
                 setDeleteError("");
                 setDeleteTarget({ id: targetThreadId, title });

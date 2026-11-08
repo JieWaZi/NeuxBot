@@ -15,6 +15,7 @@ import {
   Maximize2,
   MessagesSquare,
   Minimize2,
+  PanelRight,
   Plus,
   TerminalSquare,
 } from "lucide-react";
@@ -88,6 +89,7 @@ type RightWorkbenchProps = {
   displayWidth?: number;
   animateLayout?: boolean;
   onAddCodeReference: (reference: ChatCodeReference) => void;
+  onDismiss: () => void;
   onOpenFile?: (file: ResolvedFileReference) => void;
   onOpenURL?: (url: string) => unknown;
   taskBoard?: ReactNode;
@@ -108,6 +110,7 @@ export function RightWorkbench({
   displayWidth,
   animateLayout = false,
   onAddCodeReference,
+  onDismiss,
   onOpenFile,
   onOpenURL,
   taskBoard,
@@ -342,8 +345,7 @@ export function RightWorkbench({
             width: `${width}%`,
             ...(index === chromePanes.length - 1
               ? {
-                  paddingRight:
-                    "calc(var(--scene-chrome-actions-width, 0px) + var(--spacing-control-md) + 8px)",
+                  paddingRight: "calc(2 * var(--spacing-control-md) + 12px)",
                 }
               : {}),
           }}
@@ -357,28 +359,44 @@ export function RightWorkbench({
           {renderPaneTabs(pane)}
         </div>
       ))}
-      <Button
-        aria-label={
-          snapshot.fullscreen
-            ? t("workbench.exitFullView")
-            : t("workbench.fullView")
-        }
-        aria-pressed={snapshot.fullscreen}
-        className="absolute z-20"
-        style={{ right: "calc(var(--scene-chrome-actions-width, 0px) + 8px)" }}
-        size="icon"
-        title={
-          snapshot.fullscreen
-            ? t("workbench.exitFullView")
-            : t("workbench.fullView")
-        }
-        variant="ghost"
-        onClick={() =>
-          dispatch({ type: "set-fullscreen", fullscreen: !snapshot.fullscreen })
-        }
+      <div
+        className="absolute inset-y-0 right-2 z-20 flex items-center gap-1"
+        data-desktop-no-drag-region
       >
-        {snapshot.fullscreen ? <Minimize2 /> : <Maximize2 />}
-      </Button>
+        <Button
+          aria-label={
+            snapshot.fullscreen
+              ? t("workbench.exitFullView")
+              : t("workbench.fullView")
+          }
+          aria-pressed={snapshot.fullscreen}
+          size="icon"
+          title={
+            snapshot.fullscreen
+              ? t("workbench.exitFullView")
+              : t("workbench.fullView")
+          }
+          variant="ghost"
+          onClick={() =>
+            dispatch({
+              type: "set-fullscreen",
+              fullscreen: !snapshot.fullscreen,
+            })
+          }
+        >
+          {snapshot.fullscreen ? <Minimize2 /> : <Maximize2 />}
+        </Button>
+        <Button
+          aria-label={t("closeRightPanel")}
+          onClick={onDismiss}
+          size="icon"
+          title={t("closeRightPanel")}
+          type="button"
+          variant="ghost"
+        >
+          <PanelRight />
+        </Button>
+      </div>
     </header>
   );
 

@@ -1752,6 +1752,9 @@ it.each([660, 400])(
   async (width) => {
     const requests: unknown[] = [];
     server.use(
+      http.get(`${origin}/api/v1/resource-categories`, () =>
+        HttpResponse.json([]),
+      ),
       http.put(
         `${origin}/api/v1/workflows/flow/configuration`,
         async ({ request }) => {

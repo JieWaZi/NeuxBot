@@ -1,11 +1,9 @@
 package runtime_options
 
 import (
-	"context"
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"errors"
-	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -21,32 +19,12 @@ import (
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
-func TestConfigurationRequiresDetectRefreshOnlyForLaunchChanges(t *testing.T) {
-	current := models.RuntimeEnvironment{
-		Binary:       "codex",
-		PrefixArgs:   []string{"--profile", "ally"},
-		ConfigHome:   "/tmp/codex-home",
-		DefaultModel: "gpt-5",
-	}
-	permissionOnly := current
-	permissionOnly.DefaultPermissionLevel = "full-access"
-	if configurationRequiresDetectRefresh(current, permissionOnly) {
-		t.Fatal("permission-only update should not require detect refresh")
-	}
-	binaryChanged := current
-	binaryChanged.Binary = "/usr/local/bin/codex"
-	if !configurationRequiresDetectRefresh(current, binaryChanged) {
-		t.Fatal("binary change should require detect refresh")
-	}
-}
-
 func TestCanCompleteStartupSetupRequiresDetectedModelsAndPermissions(t *testing.T) {
 	ready := models.RuntimeEnvironment{
 		Enabled:                true,
 		IsDefault:              true,
 		DefaultModel:           "free-model",
 		DefaultPermissionLevel: agentapi.PermissionLevelFullAccess,
-		CustomModels:           []string{},
 		Detection: agentapi.DetectionResult{
 			ResolvedBinary: "/installed/opencode",
 			State:          agentapi.DetectionStateReady,
@@ -111,7 +89,7 @@ func TestUpdateRuntimeEnvironmentRejectsManagedACPAccount(t *testing.T) {
 			t.Fatal(err)
 		}
 		request := UpdateRuntimeEnvironment{RuntimeID: provider, Body: UpdateRuntimeEnvironmentRequest{
-			Binary: provider, DefaultAccountID: "fixture-managed-account",
+			DefaultAccountID: "fixture-managed-account",
 		}}
 		if _, err := request.Output(ctx); !errors.Is(err, status_error.AIAccountConfigurationInvalid) {
 			t.Fatalf("%s accepted a managed account or checked an unrelated account record: %v", provider, err)
@@ -119,94 +97,40 @@ func TestUpdateRuntimeEnvironmentRejectsManagedACPAccount(t *testing.T) {
 	}
 }
 
-func TestUpdateRuntimeEnvironmentRejectsAliasedQoderRoots(t *testing.T) {
+// TestUpdateRuntimeDefaultRejectsAccountFromAnotherProfile 验证同协议智能体配置不能互用默认账号。
+func TestUpdateRuntimeDefaultRejectsAccountFromAnotherProfile(t *testing.T) {
 	runtimeUpdateFixture(t)
-	root := t.TempDir()
-	old, cnHome := filepath.Join(root, "global"), filepath.Join(root, "cn")
-	for _, directory := range []string{old, cnHome} {
-		if err := os.Mkdir(directory, 0700); err != nil {
+	for _, runtimeID := range []string{"codex", "codex-profile"} {
+		if err := global.RuntimeEnvironmentControllerManager.Ensure(t.Context(), models.RuntimeEnvironment{ID: runtimeID, RuntimeID: runtimeID, BaseRuntimeID: constants.RuntimeIDCodex, Binary: "codex"}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	alias := filepath.Join(root, "alias-to-cn")
-	if err := os.Symlink(cnHome, alias); err != nil {
-		t.Logf("symlink fixture unavailable, checking the direct path: %v", err)
-		alias = cnHome
-	}
-	env := models.RuntimeEnvironment{
-		ID: "global-qoder", RuntimeID: constants.RuntimeIDQoder, BaseRuntimeID: constants.RuntimeIDQoder, Binary: "qoder", ConfigHome: old,
-	}
-	for _, row := range []models.RuntimeEnvironment{
-		env,
-		{ID: "regional-qoder", RuntimeID: "qoder-cn-profile", BaseRuntimeID: constants.RuntimeIDQoderCN, Binary: "qodercn", ConfigHome: cnHome},
-	} {
-		if err := global.RuntimeEnvironmentControllerManager.Ensure(t.Context(), row); err != nil {
-			t.Fatal(err)
-		}
-	}
-	ctx, _ := gin.CreateTestContext(nil)
-	request := UpdateRuntimeEnvironment{RuntimeID: env.RuntimeID, Body: UpdateRuntimeEnvironmentRequest{
-		Binary: env.Binary, ConfigHome: alias, IsDefault: true,
-	}}
-	if _, err := request.Output(ctx); !errors.Is(err, status_error.RuntimeConfigurationInvalid) {
-		t.Fatalf("the regional runtime's aliased config root was accepted: %v", err)
-	}
-	current, err := global.RuntimeEnvironmentControllerManager.Get(t.Context(), env.RuntimeID)
+	accountID := "0123456789abcdef0123456789abcdef"
+	account := models.AIAccount{ID: accountID, RuntimeID: "codex-profile", Name: "other profile", AuthMode: constants.AccountAuthModeAPIKey,
+		Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: constants.AIAccountOpenAIURL}}, SelectedModels: []string{"model"}}
+	// 此测试通过真实账号服务校验，避免只检查请求字段。
+	accounts := global.AIAccountService
+	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "accounts.sqlite"), Migrate: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if current.ConfigHome != old || current.IsDefault {
-		t.Fatal("an invalid update partially changed the saved runtime")
+	pool, _ := database.DB.DB()
+	t.Cleanup(func() { _ = pool.Close() })
+	repository := controllers.NewAIAccountController(database.DB)
+	if err := repository.Create(t.Context(), account, "fixture-key"); err != nil {
+		t.Fatal(err)
 	}
-	env.ConfigHome = filepath.Join(root, "new-uncreated-root")
-	if err := updateRuntimeEnvironment(t.Context(), env, false); err != nil {
-		t.Fatalf("an independent first-use root was rejected: %v", err)
+	global.AIAccountService = aiaccount.New(repository)
+	t.Cleanup(func() { global.AIAccountService = accounts })
+	ctx, _ := gin.CreateTestContext(nil)
+	request := UpdateRuntimeEnvironment{RuntimeID: "codex", Body: UpdateRuntimeEnvironmentRequest{DefaultAccountID: accountID, DefaultModel: "model"}}
+	if _, err := request.Output(ctx); !errors.Is(err, status_error.AIAccountConfigurationInvalid) {
+		t.Fatalf("runtime accepted another profile's default account: %v", err)
 	}
-}
-
-func TestUpdateRuntimeEnvironmentFencesQoderPeerRootChange(t *testing.T) {
-	runtimeUpdateFixture(t)
-	parent := t.TempDir()
-	globalHome, cnHome, shared := filepath.Join(parent, "global"), filepath.Join(parent, "cn"), filepath.Join(parent, "shared")
-	environment := models.RuntimeEnvironment{
-		ID: "global-qoder", RuntimeID: constants.RuntimeIDQoder, BaseRuntimeID: constants.RuntimeIDQoder, Binary: "qoder", ConfigHome: globalHome,
+	current, err := global.RuntimeEnvironmentControllerManager.Get(t.Context(), "codex")
+	if err != nil || current.DefaultAccountID != "" || current.DefaultModel != "" {
+		t.Fatalf("rejected binding partially changed defaults: %+v %v", current, err)
 	}
-	peer := models.RuntimeEnvironment{
-		ID: "regional-qoder", RuntimeID: constants.RuntimeIDQoderCN, BaseRuntimeID: constants.RuntimeIDQoderCN, Binary: "qodercn", ConfigHome: cnHome,
-	}
-	for _, row := range []models.RuntimeEnvironment{environment, peer} {
-		if err := global.RuntimeEnvironmentControllerManager.Ensure(t.Context(), row); err != nil {
-			t.Fatal(err)
-		}
-	}
-	global.TransactionControllerManager = beforeRuntimeUpdateTransaction{
-		TransactionController: global.TransactionControllerManager,
-		before: func(ctx context.Context) error {
-			return global.RuntimeEnvironmentControllerManager.UpdateFields(ctx, peer.RuntimeID, map[string]any{"config_home": shared})
-		},
-	}
-	environment.ConfigHome = shared
-	if err := updateRuntimeEnvironment(t.Context(), environment, false); !errors.Is(err, status_error.Conflict) {
-		t.Fatalf("a peer update after filesystem preflight was accepted: %v", err)
-	}
-	saved, err := global.RuntimeEnvironmentControllerManager.Get(t.Context(), environment.RuntimeID)
-	if err != nil || saved.ConfigHome != globalHome {
-		t.Fatalf("the rejected configuration changed the original runtime: %v", err)
-	}
-}
-
-type beforeRuntimeUpdateTransaction struct {
-	// TransactionController owns the actual SQLite transaction.
-	controllers.TransactionController
-	// before commits the competing change after the request's preflight.
-	before func(context.Context) error
-}
-
-func (t beforeRuntimeUpdateTransaction) Transaction(ctx context.Context, run func(context.Context) error) error {
-	if err := t.before(ctx); err != nil {
-		return err
-	}
-	return t.TransactionController.Transaction(ctx, run)
 }
 
 func runtimeUpdateFixture(t *testing.T) {

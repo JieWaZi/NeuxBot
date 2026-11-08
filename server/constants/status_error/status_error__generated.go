@@ -349,6 +349,14 @@ func (v StatusError) Key() string {
 		return "ChatLogIdempotencyConflict"
 	case ChatLogNativeOutcomePending:
 		return "ChatLogNativeOutcomePending"
+	case RuntimeInstallationBusy:
+		return "RuntimeInstallationBusy"
+	case RuntimeRestartBusy:
+		return "RuntimeRestartBusy"
+	case RuntimeUpdateCheckBusy:
+		return "RuntimeUpdateCheckBusy"
+	case RuntimeVersionUnknown:
+		return "RuntimeVersionUnknown"
 	case AgentCommandOutcomeUnknown:
 		return "AgentCommandOutcomeUnknown"
 	case AgentCommandRequestConflict:
@@ -369,6 +377,10 @@ func (v StatusError) Key() string {
 		return "PluginCapabilityUnsupported"
 	case PluginPackageUnsupported:
 		return "PluginPackageUnsupported"
+	case RuntimeInstallationUnsupported:
+		return "RuntimeInstallationUnsupported"
+	case RuntimeMaintenanceUnsupported:
+		return "RuntimeMaintenanceUnsupported"
 	case KnowledgeCandidateInvalid:
 		return "KnowledgeCandidateInvalid"
 	case KnowledgeUnsupported:
@@ -539,6 +551,8 @@ func (v StatusError) Key() string {
 		return "PluginDistributionUnavailable"
 	case PluginDependencyUnavailable:
 		return "PluginDependencyUnavailable"
+	case RuntimeInstallationFailed:
+		return "RuntimeInstallationFailed"
 	case KnowledgeRemoteUnreachable:
 		return "KnowledgeRemoteUnreachable"
 	case KnowledgeRemoteIncompatible:
@@ -744,6 +758,10 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			ChatLogVersionConflict:               "the conversation version changed; reload before retrying",
 			ChatLogIdempotencyConflict:           "a conversation commit identity cannot be reused with different content",
 			ChatLogNativeOutcomePending:          "the previous message result is not confirmed yet; try again shortly",
+			RuntimeInstallationBusy:              "this agent program is being maintained; wait or cancel the operation",
+			RuntimeRestartBusy:                   "this agent is executing work and cannot be restarted yet",
+			RuntimeUpdateCheckBusy:               "this agent's version is being checked; retry shortly",
+			RuntimeVersionUnknown:                "the current version is unknown; whether an update is needed cannot be determined",
 			AgentCommandOutcomeUnknown:           "command outcome is uncertain; inspect the original request receipt",
 			AgentCommandRequestConflict:          "command request identifier was already used with different content",
 			KnowledgeConflict:                    "knowledge version or request content has changed",
@@ -754,6 +772,8 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkspaceResourceTooLarge:            "workspace resource exceeds the size limit",
 			PluginCapabilityUnsupported:          "plugin capability is unsupported by the current target",
 			PluginPackageUnsupported:             "This plugin package is unsupported. Reinstall it from the plugin catalog.",
+			RuntimeInstallationUnsupported:       "installing this agent is unsupported on this platform",
+			RuntimeMaintenanceUnsupported:        "this program cannot be safely maintained; use its official installation method",
 			KnowledgeCandidateInvalid:            "knowledge execution or candidate is not eligible for publication",
 			KnowledgeUnsupported:                 "knowledge provider or runtime does not support this operation",
 			KnowledgeEmbeddingNotConfigured:      "configure this library's embedding service first",
@@ -839,6 +859,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			PluginAuthorizationFailed:            "plugin authentication did not complete or external authorization expired",
 			PluginDistributionUnavailable:        "plugin catalog or archive could not be downloaded; check the network and retry",
 			PluginDependencyUnavailable:          "required plugin dependencies could not be prepared; check the network and retry",
+			RuntimeInstallationFailed:            "agent program maintenance failed; retry the operation",
 			KnowledgeRemoteUnreachable:           "remote knowledge service is unreachable",
 			KnowledgeRemoteIncompatible:          "remote knowledge service protocol is incompatible",
 			KnowledgeEmbeddingUnavailable:        "knowledge embedding service unavailable",
@@ -1006,6 +1027,10 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			ChatLogVersionConflict:               "对话已更新，请重新读取后重试",
 			ChatLogIdempotencyConflict:           "同一对话提交标识不能用于不同内容",
 			ChatLogNativeOutcomePending:          "上一条消息的执行结果尚未确认，请稍后重试",
+			RuntimeInstallationBusy:              "此智能体的程序维护尚未完成，请等待或取消",
+			RuntimeRestartBusy:                   "当前智能体正在执行工作，暂不能重启",
+			RuntimeUpdateCheckBusy:               "正在检查此智能体的版本，请稍后重试",
+			RuntimeVersionUnknown:                "无法确认当前版本，暂不能判断是否需要更新",
 			AgentCommandOutcomeUnknown:           "软件能力命令提交结果尚不确定，请查询原请求回执",
 			AgentCommandRequestConflict:          "同一命令请求标识不能用于不同内容",
 			KnowledgeConflict:                    "知识版本或请求内容已变化，请刷新后重试",
@@ -1016,6 +1041,8 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkspaceResourceTooLarge:            "工作区资源超过大小限制",
 			PluginCapabilityUnsupported:          "当前运行目标尚不支持该插件声明的能力",
 			PluginPackageUnsupported:             "当前插件包不受支持，请从插件目录重新安装",
+			RuntimeInstallationUnsupported:       "当前平台暂不支持安装此智能体",
+			RuntimeMaintenanceUnsupported:        "无法安全维护此程序，请使用其官方安装方式操作",
 			KnowledgeCandidateInvalid:            "知识执行或候选未满足发布条件",
 			KnowledgeUnsupported:                 "当前知识服务或智能体不支持此操作",
 			KnowledgeEmbeddingNotConfigured:      "请先配置此知识库的独立嵌入服务",
@@ -1101,6 +1128,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			PluginAuthorizationFailed:            "插件认证未完成或外部授权失效",
 			PluginDistributionUnavailable:        "插件目录或安装包暂时无法下载，请检查网络后重试",
 			PluginDependencyUnavailable:          "插件所需程序暂时无法准备，请检查网络后重试",
+			RuntimeInstallationFailed:            "智能体程序维护失败，请重试",
 			KnowledgeRemoteUnreachable:           "远端知识服务连接失败",
 			KnowledgeRemoteIncompatible:          "远端知识服务响应不符合支持的协议",
 			KnowledgeEmbeddingUnavailable:        "知识库嵌入服务暂时不可用",

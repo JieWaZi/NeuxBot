@@ -10,7 +10,7 @@ func workflowResources(ctx context.Context) (map[string]any, error) {
 	}
 	runtimes := []map[string]any{}
 	for _, environment := range environments {
-		runtimes = append(runtimes, map[string]any{"id": environment.RuntimeID, "name": environment.Name, "enabled": environment.Enabled, "defaultAccountId": environment.DefaultAccountID, "defaultModel": environment.DefaultModel, "customModels": environment.CustomModels, "defaultReasoning": environment.DefaultReasoning, "defaultPermissionLevel": environment.DefaultPermissionLevel})
+		runtimes = append(runtimes, map[string]any{"id": environment.RuntimeID, "name": environment.Name, "enabled": environment.Enabled, "defaultAccountId": environment.DefaultAccountID, "defaultModel": environment.DefaultModel, "defaultReasoning": environment.DefaultReasoning, "defaultPermissionLevel": environment.DefaultPermissionLevel})
 	}
 	accounts, err := AIAccountControllerManager.List(ctx)
 	if err != nil {
@@ -18,7 +18,7 @@ func workflowResources(ctx context.Context) (map[string]any, error) {
 	}
 	items := []map[string]any{}
 	for _, account := range accounts {
-		items = append(items, map[string]any{"id": account.ID, "name": account.Name, "authMode": account.AuthMode, "models": account.SelectedModels, "customModels": account.CustomModels, "defaultModel": account.DefaultModel, "defaultReasoning": account.DefaultReasoning, "reasoningLevels": account.ModelReasoningLevels})
+		items = append(items, map[string]any{"id": account.ID, "runtimeId": account.RuntimeID, "name": account.Name, "authMode": account.AuthMode, "models": account.SelectedModels, "customModels": account.CustomModels, "defaultModel": account.DefaultModel, "defaultReasoning": account.DefaultReasoning, "reasoningLevels": account.ModelReasoningLevels})
 	}
 	targets, err := IMService.Targets(ctx, "", true)
 	if err != nil {

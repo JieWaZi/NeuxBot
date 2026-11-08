@@ -7,6 +7,7 @@ import { SkillIcon } from "./skill-icon";
 import type { SkillSummary } from "../model/types";
 
 type Props = {
+  category?: string;
   onInstall?: () => void;
   disabled?: boolean;
   skill: SkillSummary;
@@ -15,6 +16,7 @@ type Props = {
 };
 
 export function SkillCard({
+  category,
   disabled,
   onInstall,
   onEnabledChange,
@@ -32,7 +34,7 @@ export function SkillCard({
       description={
         wakerId && !skill.enabled ? t("disabled") : skill.description
       }
-      icon={<SkillIcon />}
+      icon={<SkillIcon category={category ?? skill.categories?.[0]} />}
       to={resourceTo}
       label={t("card.view", { name: skill.name })}
       actions={

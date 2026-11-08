@@ -42,3 +42,14 @@ func TestGoogleAccountCreateAndUpdatePreserveNativeChoices(t *testing.T) {
 		t.Fatal("opaque native choice was normalized")
 	}
 }
+
+func TestClaudeSubscriptionRequiresOfficialAnthropicEndpoint(t *testing.T) {
+	request := CreateAIAccount{Body: CreateAIAccountRequest{RuntimeID: constants.RuntimeIDClaude, Name: "Claude", AuthMode: constants.AccountAuthModeSubscription, Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: constants.AIAccountAnthropicURL}}}}
+	if err := request.Validate(nil); err != nil {
+		t.Fatal(err)
+	}
+	request.Body.Endpoints[0].BaseURL = "https://gateway.example.test"
+	if err := request.Validate(nil); !errors.Is(err, status_error.AIAccountConfigurationInvalid) {
+		t.Fatalf("third-party subscription endpoint accepted: %v", err)
+	}
+}

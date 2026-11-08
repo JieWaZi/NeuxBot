@@ -9,16 +9,18 @@ export function NavigationPanel({
   children,
   ...props
 }: Omit<ComponentProps<"nav">, "title"> & {
-  appearance?: "default" | "catalog";
+  appearance?: "default" | "catalog" | "settings";
   title?: ReactNode;
 }) {
   return (
     <nav
       className={cn(
         "flex min-h-0 flex-col",
-        appearance === "catalog"
-          ? "bg-resource-canvas text-resource-content h-full gap-1 px-3 pt-4 pb-3"
-          : "bg-surface-chrome text-content-primary",
+        appearance === "settings"
+          ? "bg-surface-scene text-content-primary h-full gap-4"
+          : appearance === "catalog"
+            ? "bg-resource-canvas text-resource-content h-full gap-1 px-3 pt-4 pb-3"
+            : "bg-surface-chrome text-content-primary",
         className,
       )}
       {...props}
@@ -39,12 +41,12 @@ export function NavigationSection({
 }: Omit<ComponentProps<"section">, "title"> & {
   title?: ReactNode;
   titleClassName?: string;
-  appearance?: "default" | "catalog";
+  appearance?: "default" | "catalog" | "settings";
 }) {
   return (
     <section
       className={cn(
-        appearance === "catalog" ? "min-w-0" : "px-2 py-2",
+        appearance !== "default" ? "min-w-0" : "px-2 py-2",
         className,
       )}
       {...props}
@@ -52,16 +54,18 @@ export function NavigationSection({
       {title ? (
         <div
           className={cn(
-            appearance === "catalog"
-              ? "text-resource-muted type-resource-caption mt-4 mb-1 px-2"
-              : "text-content-caption type-caption px-2 py-1",
+            appearance === "settings"
+              ? "text-content-secondary type-ui mb-2 px-3"
+              : appearance === "catalog"
+                ? "text-resource-muted type-resource-caption mt-4 mb-1 px-2"
+                : "text-content-caption type-caption px-2 py-1",
             titleClassName,
           )}
         >
           {title}
         </div>
       ) : null}
-      <div className={appearance === "catalog" ? "grid gap-1" : "grid gap-0.5"}>
+      <div className={appearance !== "default" ? "grid gap-1" : "grid gap-0.5"}>
         {children}
       </div>
     </section>
@@ -70,7 +74,7 @@ export function NavigationSection({
 
 type NavigationItemProps = ComponentProps<"button"> & {
   active?: boolean;
-  density?: "default" | "navigation" | "catalog";
+  density?: "default" | "navigation" | "catalog" | "settings";
   icon?: ReactNode;
   label: ReactNode;
   description?: ReactNode;
@@ -93,12 +97,14 @@ export function NavigationItem({
       aria-current={active ? "page" : undefined}
       className={cn(
         "duration-quick ease-ui focus-visible:ring-ring grid w-full grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-2 rounded-md text-left transition-[background-color,color] outline-none focus-visible:ring-2",
-        density === "catalog"
-          ? "catalog-focus [&>span:first-child>svg]:size-icon-md min-h-row-catalog px-2"
-          : density === "navigation"
-            ? "[&_svg]:size-icon-md min-h-row-navigation px-3"
-            : "[&_svg]:size-icon-md min-h-row-default px-2",
-        density === "catalog"
+        density === "settings"
+          ? "[&_svg]:size-icon-md min-h-control-hit-target px-3"
+          : density === "catalog"
+            ? "catalog-focus [&>span:first-child>svg]:size-icon-md min-h-row-catalog px-2"
+            : density === "navigation"
+              ? "[&_svg]:size-icon-md min-h-row-navigation px-3"
+              : "[&_svg]:size-icon-md min-h-row-default px-2",
+        density === "catalog" || density === "settings"
           ? active
             ? "bg-resource-hover text-resource-content"
             : "text-resource-secondary hover:bg-resource-hover hover:text-resource-content"
@@ -114,10 +120,14 @@ export function NavigationItem({
         <span
           className={cn(
             "block truncate",
-            density === "catalog"
+            density === "settings"
               ? "type-resource-body"
-              : "type-body font-medium",
-            density === "catalog" && active && "font-medium",
+              : density === "catalog"
+                ? "type-resource-body"
+                : "type-body font-medium",
+            (density === "catalog" || density === "settings") &&
+              active &&
+              "font-medium",
           )}
         >
           {label}

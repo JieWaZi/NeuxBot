@@ -45,11 +45,12 @@ function show() {
 }
 it("服务状态和客户端地址清晰展示，不再提供技术文档区", async () => {
   show();
-  expect(screen.getByRole("heading", { name: "API 集成" })).toBeVisible();
+  expect(
+    screen.getByRole("heading", { name: "API 集成", hidden: true }),
+  ).toBeVisible();
   expect(screen.getByRole("button", { name: "创建 API Key" })).toBeVisible();
-  const overview = await screen.findByRole("status", {
-    name: "API 服务状态",
-  });
+  await screen.findByText("运行中");
+  const overview = screen.getByRole("status", { name: "API 服务状态" });
   expect(within(overview).queryByText("API 服务可用")).not.toBeInTheDocument();
   expect(within(overview).getByText("运行中")).toBeVisible();
   expect(

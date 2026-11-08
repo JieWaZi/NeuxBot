@@ -58,9 +58,7 @@ function nativeCatalogIdentity(
           ]
         : undefined,
     version: runtime?.version,
-    binary: runtime?.resolvedBinary || runtime?.binary,
-    prefixArgs: runtime?.prefixArgs,
-    configHome: accountId === "system" ? runtime?.configHome : undefined,
+    binary: runtime?.resolvedBinary,
   };
 }
 
@@ -122,9 +120,13 @@ function resolveNativeSelection({
     : undefined;
   const reasoningOptions = modelOption?.reasoningOptions ?? [];
   const preferredReasoning =
-    configuredAccount && effectiveModel === runtime?.defaultModel
-      ? runtime?.defaultReasoning || modelOption?.defaultReasoning
-      : modelOption?.defaultReasoning;
+    (configuredAccount && effectiveModel === runtime?.defaultModel
+      ? runtime?.defaultReasoning
+      : undefined) ||
+    (effectiveModel === account?.defaultModel
+      ? account.defaultReasoning
+      : undefined) ||
+    modelOption?.defaultReasoning;
   const defaultReasoning =
     reasoningOptions.find((item) => item.id === preferredReasoning)?.id || "";
   const requestedReasoning =
@@ -206,6 +208,7 @@ export function useNativeExecutionSelections(
     const account = accounts.find(
       (item) =>
         item.id === accountId &&
+        item.runtimeId === runtimeId &&
         accountSupportsRuntime(item, runtime?.baseRuntimeId || runtimeId),
     );
     const options = nativeModelCatalogOptions(
@@ -242,20 +245,21 @@ export function useNativeExecutionSelections(
       catalog: query?.data,
       defaults,
     });
-    const settled = query?.fetchStatus === "idle" && !query.isError;
+    // 同一身份的有效目录在后台重读期间仍可使用；新身份或失效回执仍需重新确认。
+    const available = query?.data?.state === "fresh" && !query.isError;
     return {
       selection: resolved.selection,
       valid: Boolean(
         resolved.configurationValid &&
-        settled &&
+        available &&
         target.runtime?.enabled &&
         target.runtime.state === "ready",
       ),
       supportedPermissions:
-        resolved.modelConfigurationValid && settled
+        resolved.modelConfigurationValid && available
           ? resolved.supportedPermissions
           : new Set<PermissionLevel>(),
-      pending: query && query.fetchStatus !== "idle",
+      pending: Boolean(query && !available && query.fetchStatus !== "idle"),
     };
   });
 }
@@ -298,6 +302,7 @@ export function useExecutionSelection({
   const accounts = (accountsQuery.data?.resources ?? []).filter(
     (item) =>
       item.id &&
+      item.runtimeId === runtimeId &&
       accountSupportsRuntime(item, runtime?.baseRuntimeId || runtimeId),
   );
   const accountId = value.accountId || runtime?.defaultAccountId || "system";
@@ -385,9 +390,12 @@ export function useExecutionSelection({
           : (account.selectedModels ?? [])
         ).map((id) => ({ id, name: account.modelDisplayNames?.[id] || id }))
       : (runtime?.models ?? []));
-  const preferredModel = account
-    ? account.defaultModel || nativeModelsQuery.data?.defaultModel
-    : runtime?.defaultModel;
+  const configuredAccount =
+    accountId === (runtime?.defaultAccountId || "system");
+  const preferredModel =
+    (configuredAccount ? runtime?.defaultModel : undefined) ||
+    account?.defaultModel ||
+    nativeModelsQuery.data?.defaultModel;
   const { model, effectiveModel } = nativeSelection
     ? {
         model: nativeSelection.selection.model,
@@ -437,9 +445,13 @@ export function useExecutionSelection({
       : runtimeModel?.reasoningOptions?.length
         ? runtimeModel.reasoningOptions
         : (runtime?.reasoningOptions ?? []));
-  const preferredReasoning = account
-    ? account.defaultReasoning
-    : runtime?.defaultReasoning;
+  const preferredReasoning =
+    (configuredAccount && effectiveModel === runtime?.defaultModel
+      ? runtime?.defaultReasoning
+      : undefined) ||
+    (effectiveModel === account?.defaultModel
+      ? account.defaultReasoning
+      : undefined);
   const requestedReasoning =
     reasoningDefault === "minimum"
       ? value.reasoning || minimumReasoning(reasoningOptions)
@@ -474,8 +486,9 @@ export function useExecutionSelection({
     fast: undefined,
     contextWindow: undefined,
   };
-  const catalogPending =
+  const catalogRefreshing =
     usesNativeCatalog && catalogQuery.fetchStatus !== "idle";
+  const catalogPending = catalogRefreshing && catalogState !== "fresh";
   const catalogIssue =
     !usesNativeCatalog || !catalogState
       ? undefined
@@ -491,14 +504,14 @@ export function useExecutionSelection({
                 ? "catalogModelUnavailable"
                 : undefined;
   const error =
-    runtimesQuery.error ||
-    accountsQuery.error ||
-    nativeModelsQuery.error ||
-    thinkingQuery.error ||
-    catalogQuery.error;
+    (!fixedRuntime ? runtimesQuery.error : null) ||
+    (accountId !== "system" ? accountsQuery.error : null) ||
+    (usesNativeCatalog
+      ? catalogQuery.error
+      : nativeModelsQuery.error || thinkingQuery.error);
   const loading =
     (!fixedRuntime && runtimesQuery.isPending) ||
-    accountsQuery.isPending ||
+    (accountId !== "system" && accountsQuery.isPending) ||
     Boolean(
       usesNativeCatalog &&
       runtimeInstalled &&
@@ -531,6 +544,7 @@ export function useExecutionSelection({
     catalogIssue,
     refreshCatalog,
     catalogPending,
+    catalogRefreshing,
     fastSupported: nativeSelection?.fastSupported ?? false,
     effectiveModel,
     defaultModel: usesNativeCatalog

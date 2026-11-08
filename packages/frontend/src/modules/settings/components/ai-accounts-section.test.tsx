@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { AIAccountsSection } from "./ai-accounts-section";
 import "@/shared/i18n";
+import type { GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption as RuntimeOption } from "@/shared/api/generated/types.gen";
 
 const {
   create,
@@ -14,7 +15,9 @@ const {
   list,
   readCredential,
   logout,
+  detectRuntime,
 } = vi.hoisted(() => ({
+  detectRuntime: vi.fn(async () => ({})),
   list: vi.fn(),
   create: vi.fn(async () => ({ id: "new-account" })),
   update: vi.fn(async () => ({})),
@@ -28,12 +31,22 @@ const {
   accounts: { current: [] as Array<Record<string, unknown>> },
   readCredential: vi.fn(async () => ({ data: { apiKey: "saved-secret" } })),
 }));
+vi.mock("./account-login", () => ({
+  AccountLogin: ({ accountId }: { accountId: string }) => (
+    <p>授权账号 {accountId}</p>
+  ),
+}));
+vi.mock("./runtime-authentication-controls", () => ({
+  RuntimeSystemAccountActions: () => null,
+}));
 vi.mock("@/shared/api/generated/sdk.gen", () => ({
   getAiAccountCredential: readCredential,
+  refreshRuntime: detectRuntime,
 }));
 vi.mock("@/shared/api/generated/@tanstack/react-query.gen", () => ({
   listAiAccountsOptions: () => ({ queryKey: ["accounts"], queryFn: list }),
   listAiAccountsQueryKey: () => ["accounts"],
+  listRuntimesQueryKey: () => ["runtimes"],
   createAiAccountMutation: () => ({ mutationFn: create }),
   updateAiAccountMutation: () => ({ mutationFn: update }),
   previewAiAccountModelsMutation: () => ({ mutationFn: preview }),
@@ -92,9 +105,7 @@ it("编辑已有账号回显 Key，默认隐藏且未修改时不重复替换", 
   ];
   const user = userEvent.setup();
   renderAccounts();
-  await user.click(
-    await screen.findByRole("button", { name: "编辑账号 密钥账号" }),
-  );
+  await openEdit(user, "密钥账号");
   const key = await screen.findByLabelText("API Key");
   await waitFor(() => expect(key).toHaveValue("saved-secret"));
   expect(key).toHaveAttribute("type", "password");
@@ -110,14 +121,26 @@ it("编辑已有账号回显 Key，默认隐藏且未修改时不重复替换", 
     ),
   );
 });
-function renderAccounts() {
+function renderAccounts(
+  runtime: RuntimeOption = {
+    id: "opencode",
+    baseRuntimeId: "opencode",
+    defaultAccountId: "",
+  },
+  onSelectAccount: (id: string) => Promise<void> = async () => {},
+  disabled = false,
+) {
   render(
     <QueryClientProvider
       client={
         new QueryClient({ defaultOptions: { queries: { retry: false } } })
       }
     >
-      <AIAccountsSection />
+      <AIAccountsSection
+        runtime={runtime}
+        onSelectAccount={onSelectAccount}
+        disabled={disabled}
+      />
     </QueryClientProvider>,
   );
 }
@@ -125,7 +148,7 @@ function renderAccounts() {
 it("每个账号只保存一个请求协议，API 地址不再选择格式", async () => {
   const user = userEvent.setup();
   renderAccounts();
-  await user.click(screen.getByRole("button", { name: "添加账号" }));
+  await user.click(screen.getByRole("button", { name: "添加密钥" }));
   const key = screen.getByLabelText("API Key");
   expect(screen.getByRole("combobox", { name: "请求协议" })).toBeVisible();
   expect(screen.getByRole("textbox", { name: "API 地址" })).toHaveValue(
@@ -156,7 +179,7 @@ it("每个账号只保存一个请求协议，API 地址不再选择格式", asy
 it("内置服务商切换协议时同步地址，账号只保存当前协议", async () => {
   const user = userEvent.setup();
   renderAccounts();
-  await user.click(screen.getByRole("button", { name: "添加账号" }));
+  await user.click(screen.getByRole("button", { name: "添加密钥" }));
   await user.click(screen.getByRole("combobox", { name: "服务商" }));
   await user.click(screen.getByRole("option", { name: "DeepSeek" }));
   expect(screen.getByRole("textbox", { name: "账号名称" })).toHaveValue(
@@ -189,153 +212,11 @@ it("内置服务商切换协议时同步地址，账号只保存当前协议", a
   );
 });
 
-it("Kimi 统一展示 API 与套餐选项，套餐仍保存为 Key 账号", async () => {
-  const user = userEvent.setup();
-  renderAccounts();
-  await user.click(screen.getByRole("button", { name: "添加账号" }));
-  await user.click(screen.getByRole("combobox", { name: "服务商" }));
-  await user.click(screen.getByRole("option", { name: "Kimi" }));
-  expect(screen.getByRole("textbox", { name: "账号名称" })).toHaveValue("Kimi");
-  expect(screen.getByRole("textbox", { name: "API 地址" })).toHaveValue(
-    "https://api.moonshot.cn/v1",
-  );
-  await user.click(screen.getByRole("combobox", { name: "认证方式" }));
-  expect(screen.queryByRole("option", { name: "ChatGPT 订阅" })).toBeNull();
-  await user.click(screen.getByRole("option", { name: "订阅套餐（API Key）" }));
-  expect(screen.getByRole("textbox", { name: "API 地址" })).toHaveValue(
-    "https://api.kimi.com/coding/v1",
-  );
-  await user.click(screen.getByRole("combobox", { name: "请求协议" }));
-  await user.click(screen.getByRole("option", { name: "Anthropic Messages" }));
-  expect(screen.getByRole("textbox", { name: "API 地址" })).toHaveValue(
-    "https://api.kimi.com/coding",
-  );
-  await user.type(screen.getByLabelText("API Key"), "kimi-plan-key");
-  await user.click(screen.getByRole("button", { name: "保存" }));
-  await waitFor(() =>
-    expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        body: expect.objectContaining({
-          authMode: "api-key",
-          endpoints: [
-            {
-              protocol: "anthropic-messages",
-              baseUrl: "https://api.kimi.com/coding",
-            },
-          ],
-        }),
-      }),
-      expect.anything(),
-    ),
-  );
-});
-
-it("火山方舟按套餐切换地址，通义千问只显示短名称", async () => {
-  const user = userEvent.setup();
-  renderAccounts();
-  await user.click(screen.getByRole("button", { name: "添加账号" }));
-  await user.click(screen.getByRole("combobox", { name: "服务商" }));
-  await user.click(screen.getByRole("option", { name: "火山方舟" }));
-  await user.click(screen.getByRole("combobox", { name: "认证方式" }));
-  expect(screen.queryByRole("option", { name: "ChatGPT 订阅" })).toBeNull();
-  await user.click(screen.getByRole("option", { name: "订阅套餐（API Key）" }));
-  expect(screen.getByRole("combobox", { name: "套餐类型" })).toBeVisible();
-  expect(screen.getByRole("textbox", { name: "API 地址" })).toHaveValue(
-    "https://ark.cn-beijing.volces.com/api/coding/v3",
-  );
-  await user.click(screen.getByRole("combobox", { name: "套餐类型" }));
-  await user.click(screen.getByRole("option", { name: "Agent Plan" }));
-  expect(screen.getByRole("textbox", { name: "API 地址" })).toHaveValue(
-    "https://ark.cn-beijing.volces.com/api/plan/v3",
-  );
-  await user.click(screen.getByRole("combobox", { name: "服务商" }));
-  await user.click(screen.getByRole("option", { name: "通义千问" }));
-  expect(screen.getByRole("textbox", { name: "账号名称" })).toHaveValue(
-    "通义千问",
-  );
-  expect(screen.queryByRole("combobox", { name: "认证方式" })).toBeNull();
-  expect(screen.getByText("API Key", { selector: "p" })).toBeVisible();
-});
-
-it("ChatGPT 订阅选项只出现在 OpenAI，自定义仅使用 API Key", async () => {
-  const user = userEvent.setup();
-  renderAccounts();
-  await user.click(screen.getByRole("button", { name: "添加账号" }));
-  await user.click(screen.getByRole("combobox", { name: "认证方式" }));
-  expect(screen.getByRole("option", { name: "ChatGPT 订阅" })).toBeVisible();
-  await user.keyboard("{Escape}");
-  await user.click(screen.getByRole("combobox", { name: "服务商" }));
-  await user.click(screen.getByRole("option", { name: "自定义" }));
-  expect(screen.queryByRole("combobox", { name: "认证方式" })).toBeNull();
-  await user.click(screen.getByRole("combobox", { name: "服务商" }));
-  await user.click(screen.getByRole("option", { name: "OpenAI" }));
-  expect(screen.getByRole("combobox", { name: "认证方式" })).toBeVisible();
-});
-
-it("已保存的 ChatGPT 订阅账号不能改选其他服务商", async () => {
-  accounts.current = [
-    {
-      id: "saved-subscription",
-      name: "我的订阅",
-      authMode: "subscription",
-      hasCredential: true,
-      endpoints: [
-        { protocol: "openai-responses", baseUrl: "https://api.openai.com/v1" },
-      ],
-    },
-  ];
-  const user = userEvent.setup();
-  renderAccounts();
-  await user.click(
-    await screen.findByRole("button", { name: "编辑账号 我的订阅" }),
-  );
-  expect(screen.getByText("ChatGPT 订阅", { selector: "p" })).toBeVisible();
-  expect(screen.queryByRole("combobox", { name: "服务商" })).toBeNull();
-  expect(screen.queryByRole("combobox", { name: "认证方式" })).toBeNull();
-});
-
-it("编辑 Kimi 账号切换套餐时要求输入对应套餐的 Key", async () => {
-  accounts.current = [
-    {
-      id: "saved-kimi",
-      name: "Kimi 工作账号",
-      authMode: "api-key",
-      hasCredential: true,
-      endpoints: [
-        { protocol: "openai-responses", baseUrl: "https://api.moonshot.cn/v1" },
-      ],
-    },
-  ];
-  const user = userEvent.setup();
-  renderAccounts();
-  await user.click(
-    await screen.findByRole("button", { name: "编辑账号 Kimi 工作账号" }),
-  );
-  const key = screen.getByLabelText("API Key");
-  expect(key).not.toBeRequired();
-  await user.click(screen.getByRole("combobox", { name: "认证方式" }));
-  await user.click(screen.getByRole("option", { name: "订阅套餐（API Key）" }));
-  expect(key).toBeRequired();
-  expect(key).toHaveAttribute("placeholder", "输入 API Key");
-  await user.click(screen.getByRole("button", { name: "保存" }));
-  expect(update).not.toHaveBeenCalled();
-  await user.type(key, "plan-key");
-  await user.click(screen.getByRole("button", { name: "保存" }));
-  await waitFor(() =>
-    expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        body: expect.objectContaining({ apiKey: "plan-key" }),
-      }),
-      expect.anything(),
-    ),
-  );
-});
-
 it("服务商选择框旁的官网按钮打开对应网站", async () => {
   const open = vi.spyOn(window, "open").mockReturnValue(null);
   const user = userEvent.setup();
   renderAccounts();
-  await user.click(screen.getByRole("button", { name: "添加账号" }));
+  await user.click(screen.getByRole("button", { name: "添加密钥" }));
   await user.click(screen.getByRole("button", { name: "访问OpenAI官网" }));
   expect(open).toHaveBeenCalledWith(
     "https://platform.openai.com/",
@@ -363,7 +244,7 @@ it("刷新只更新候选模型，搜索后手动选择并在再次刷新时保�
     ],
   });
   renderAccounts();
-  await user.click(screen.getByRole("button", { name: "添加账号" }));
+  await user.click(screen.getByRole("button", { name: "添加密钥" }));
   await user.type(screen.getByLabelText("API Key"), "test-key");
   await user.click(screen.getByRole("button", { name: "刷新模型列表" }));
   expect(
@@ -429,9 +310,7 @@ it("上下文长度直接跟随已选模型，并保存用户修改", async () =
   ];
   const user = userEvent.setup();
   renderAccounts();
-  await user.click(
-    await screen.findByRole("button", { name: "编辑账号 模型账号" }),
-  );
+  await openEdit(user, "模型账号");
   const contextSize = screen.getByRole("spinbutton", {
     name: "model-a 的上下文长度（tokens）",
   });
@@ -469,9 +348,7 @@ it("模型映射随账号保存，Claude 角色只引用已选模型", async () 
   ];
   const user = userEvent.setup();
   renderAccounts();
-  await user.click(
-    await screen.findByRole("button", { name: "编辑账号 映射账号" }),
-  );
+  await openEdit(user, "映射账号");
   await user.click(screen.getByRole("combobox", { name: "Opus 使用的模型" }));
   await user.click(screen.getByRole("option", { name: "strong" }));
   await user.type(
@@ -509,9 +386,7 @@ it("DeepSeek Responses 使用 服务商目录默认值并将映射留在高级�
   ];
   const user = userEvent.setup();
   renderAccounts();
-  await user.click(
-    await screen.findByRole("button", { name: "编辑账号 DeepSeek Responses" }),
-  );
+  await openEdit(user, "DeepSeek Responses");
   expect(screen.getByRole("button", { name: "高级" })).toHaveAttribute(
     "aria-expanded",
     "true",
@@ -562,9 +437,7 @@ it("没有预设映射的 Responses 模型默认选择 Low、Medium、High", asy
   ];
   const user = userEvent.setup();
   renderAccounts();
-  await user.click(
-    await screen.findByRole("button", { name: "编辑账号 火山方舟旧模型" }),
-  );
+  await openEdit(user, "火山方舟旧模型");
   expect(
     screen.getByRole("button", {
       name: "doubao-seed-1-6-flash-250615 的思考等级",
@@ -605,9 +478,7 @@ it("火山方舟当前 Codex 预设带出 服务商模型元数据", async () =>
   ];
   const user = userEvent.setup();
   renderAccounts();
-  await user.click(
-    await screen.findByRole("button", { name: "编辑账号 火山方舟新模型" }),
-  );
+  await openEdit(user, "火山方舟新模型");
   expect(
     screen.getByRole("textbox", {
       name: "doubao-seed-2-1-pro-260628 的菜单显示名",
@@ -645,9 +516,7 @@ it("DeepSeek Anthropic 只呈现 Claude 角色映射并套用已选模型的默�
   ];
   const user = userEvent.setup();
   renderAccounts();
-  await user.click(
-    await screen.findByRole("button", { name: "编辑账号 DeepSeek Anthropic" }),
-  );
+  await openEdit(user, "DeepSeek Anthropic");
   expect(
     screen.getByRole("combobox", { name: "Sonnet 使用的模型" }),
   ).toHaveTextContent("deepseek-v4-pro");
@@ -693,9 +562,7 @@ it("编辑账号回显已保存的 Key，未修改时仍保留原凭据", async 
   ];
   const user = userEvent.setup();
   renderAccounts();
-  await user.click(
-    await screen.findByRole("button", { name: "编辑账号 账号 A" }),
-  );
+  await openEdit(user, "账号 A");
   await waitFor(() =>
     expect(screen.getByLabelText("API Key")).toHaveValue("saved-secret"),
   );
@@ -729,9 +596,7 @@ it("编辑账号修改地址后按当前表单刷新并复用已保存的 Key", 
   ];
   const user = userEvent.setup();
   renderAccounts();
-  await user.click(
-    await screen.findByRole("button", { name: "编辑账号 账号 A" }),
-  );
+  await openEdit(user, "账号 A");
   const address = screen.getByRole("textbox", { name: "API 地址" });
   await user.clear(address);
   await user.type(address, "https://new.example.com/v1");
@@ -754,39 +619,6 @@ it("编辑账号修改地址后按当前表单刷新并复用已保存的 Key", 
   expect(refresh).not.toHaveBeenCalled();
 });
 
-it("账号详情按需展开，编辑操作不改变展开状态", async () => {
-  accounts.current = [
-    {
-      id: "saved",
-      name: "工作账号",
-      authMode: "api-key",
-      hasCredential: true,
-      endpoints: [
-        {
-          protocol: "anthropic-messages",
-          baseUrl: "https://api.example.com/anthropic",
-        },
-      ],
-    },
-  ];
-  const user = userEvent.setup();
-  renderAccounts();
-  const expand = await screen.findByRole("button", {
-    name: "展开账号 工作账号",
-  });
-  expect(expand).toHaveAttribute("aria-expanded", "false");
-  expect(
-    screen.queryByText("https://api.example.com/anthropic"),
-  ).not.toBeInTheDocument();
-  await user.click(expand);
-  expect(screen.getByText("https://api.example.com/anthropic")).toBeVisible();
-  await user.click(screen.getByRole("button", { name: "编辑账号 工作账号" }));
-  await user.click(screen.getByRole("button", { name: "取消" }));
-  expect(
-    screen.getByRole("button", { name: "收起账号 工作账号" }),
-  ).toHaveAttribute("aria-expanded", "true");
-});
-
 it("新增账号去除首尾空白后不能与现有账号重名", async () => {
   accounts.current = [
     {
@@ -799,8 +631,8 @@ it("新增账号去除首尾空白后不能与现有账号重名", async () => {
   ];
   const user = userEvent.setup();
   renderAccounts();
-  await screen.findByRole("button", { name: "编辑账号 OpenAI" });
-  await user.click(screen.getByRole("button", { name: "添加账号" }));
+  await screen.findByRole("button", { name: "OpenAI 的账号操作" });
+  await user.click(screen.getByRole("button", { name: "添加密钥" }));
   const name = screen.getByRole("textbox", { name: "账号名称" });
   expect(name).toHaveAttribute("aria-invalid", "true");
   expect(screen.getByRole("alert")).toHaveTextContent("账号名称已存在");
@@ -827,9 +659,7 @@ it("编辑保留自身名称可保存，但不能改为其他账号名称", asyn
   }));
   const user = userEvent.setup();
   renderAccounts();
-  await user.click(
-    await screen.findByRole("button", { name: "编辑账号 账号 A" }),
-  );
+  await openEdit(user, "账号 A");
   expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
   const name = screen.getByRole("textbox", { name: "账号名称" });
   await user.clear(name);
@@ -849,29 +679,36 @@ it("后台刷新失败保留账号列表，并可重试恢复", async () => {
   });
   render(
     <QueryClientProvider client={queryClient}>
-      <AIAccountsSection />
+      <AIAccountsSection
+        runtime={{
+          id: "opencode",
+          baseRuntimeId: "opencode",
+          defaultAccountId: "",
+        }}
+        onSelectAccount={async () => {}}
+      />
     </QueryClientProvider>,
   );
-  await screen.findByRole("button", { name: "编辑账号 工作账号" });
+  await screen.findByRole("button", { name: "工作账号 的账号操作" });
   list.mockRejectedValueOnce(new Error("暂时离线"));
   await act(() => queryClient.invalidateQueries({ queryKey: ["accounts"] }));
   expect(await screen.findByRole("alert")).toHaveTextContent("暂时离线");
   expect(
-    screen.getByRole("button", { name: "编辑账号 工作账号" }),
+    screen.getByRole("button", { name: "工作账号 的账号操作" }),
   ).toBeVisible();
   await user.click(screen.getByRole("button", { name: "重试" }));
   await waitFor(() =>
     expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
   );
   expect(
-    screen.getByRole("button", { name: "编辑账号 工作账号" }),
+    screen.getByRole("button", { name: "工作账号 的账号操作" }),
   ).toBeVisible();
 });
 
 it("Google 服务商提供原生 GenerateContent 地址与 API Key 表单", async () => {
   const user = userEvent.setup();
   renderAccounts();
-  await user.click(await screen.findByRole("button", { name: "添加账号" }));
+  await user.click(await screen.findByRole("button", { name: "添加密钥" }));
   await user.click(screen.getByRole("combobox", { name: "服务商" }));
   await user.click(await screen.findByRole("option", { name: "Google" }));
   expect(screen.getByLabelText("API 地址")).toHaveValue(
@@ -901,9 +738,7 @@ it("编辑保留原生自定义推理 ID 并原样提交", async () => {
   ];
   const user = userEvent.setup();
   renderAccounts();
-  await user.click(
-    await screen.findByRole("button", { name: "编辑账号 原生账号" }),
-  );
+  await openEdit(user, "原生账号");
   expect(
     screen.getByRole("button", { name: "org/model 的思考等级" }),
   ).toHaveTextContent("LOW, provider-fast, budget:8192");
@@ -922,44 +757,240 @@ it("编辑保留原生自定义推理 ID 并原样提交", async () => {
   );
 });
 
-it("退出 ChatGPT 登录保留账号并刷新登录状态", async () => {
-  const account = {
-    id: "chatgpt-account",
-    name: "工作账号",
-    authMode: "subscription",
-    revision: 3,
-    hasCredential: true,
-    endpoints: [
-      { protocol: "openai-responses", baseUrl: "https://api.openai.com/v1" },
-    ],
-  };
-  accounts.current = [account];
-  logout.mockImplementationOnce(async () => {
-    accounts.current = [{ ...account, hasCredential: false, revision: 4 }];
-    return {};
-  });
-  const user = userEvent.setup();
-  renderAccounts();
+async function openEdit(
+  user: ReturnType<typeof userEvent.setup>,
+  name: string,
+) {
   await user.click(
-    await screen.findByRole("button", { name: "展开账号 工作账号" }),
+    await screen.findByRole("button", { name: `${name} 的账号操作` }),
   );
-  await user.click(screen.getByRole("button", { name: "退出登录" }));
-  expect(
-    screen.getByRole("dialog", { name: "退出账号 工作账号 的登录" }),
-  ).toBeVisible();
-  expect(logout).not.toHaveBeenCalled();
-  await user.click(screen.getByRole("button", { name: "退出登录" }));
+  await user.click(
+    await screen.findByRole("menuitem", { name: "更改 API Key" }),
+  );
+}
+
+it("新增 API 账号携带详情智能体归属并仅提供兼容协议", async () => {
+  const user = userEvent.setup();
+  renderAccounts({ id: "claude", baseRuntimeId: "claude" });
+  await user.click(screen.getByRole("button", { name: "添加密钥" }));
+  expect(screen.getByLabelText("API 地址")).toHaveValue(
+    "https://api.anthropic.com",
+  );
+  await user.type(screen.getByLabelText("API Key"), "key");
+  await user.click(screen.getByRole("button", { name: "保存" }));
   await waitFor(() =>
-    expect(logout).toHaveBeenCalledWith(
+    expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
-        path: { accountId: account.id },
-        query: { revision: 3 },
+        body: expect.objectContaining({
+          runtimeId: "claude",
+          endpoints: [
+            {
+              protocol: "anthropic-messages",
+              baseUrl: "https://api.anthropic.com",
+            },
+          ],
+        }),
       }),
       expect.anything(),
     ),
   );
-  await waitFor(() =>
-    expect(screen.getByText("待登录", { exact: false })).toBeVisible(),
+});
+
+it("Grok 的密钥配置默认使用自身官方服务，不误导用户填写到 OpenAI", async () => {
+  renderAccounts({ id: "grok", baseRuntimeId: "grok" });
+  await userEvent.click(screen.getByRole("button", { name: "添加密钥" }));
+  expect(screen.getByRole("textbox", { name: "账号名称" })).toHaveValue("xAI");
+  expect(screen.getByLabelText("API 地址")).toHaveValue("https://api.x.ai/v1");
+});
+it("订阅账号可在详情内重命名并保留原生默认模型", async () => {
+  accounts.current = [
+    {
+      id: "subscription",
+      name: "个人订阅",
+      authMode: "subscription",
+      hasCredential: true,
+      defaultModel: "native-model",
+      defaultReasoning: "high",
+      endpoints: [
+        { protocol: "openai-responses", baseUrl: "https://api.openai.com/v1" },
+      ],
+    },
+  ];
+  const user = userEvent.setup();
+  renderAccounts({ id: "codex", baseRuntimeId: "codex" });
+  await user.click(
+    await screen.findByRole("button", { name: "个人订阅 的账号操作" }),
   );
-  expect(screen.getByText("工作账号")).toBeVisible();
+  await user.click(await screen.findByRole("menuitem", { name: "重命名" }));
+  const name = screen.getByRole("textbox", { name: "账号名称" });
+  await user.clear(name);
+  await user.type(name, "工作订阅");
+  await user.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() =>
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          runtimeId: "codex",
+          name: "工作订阅",
+          defaultModel: "native-model",
+          defaultReasoning: "high",
+        }),
+      }),
+      expect.anything(),
+    ),
+  );
+});
+it("替换 API 默认模型清除原模型的推理强度", async () => {
+  accounts.current = [
+    {
+      id: "api",
+      name: "测试账号",
+      authMode: "api-key",
+      hasCredential: true,
+      defaultModel: "old-model",
+      defaultReasoning: "high",
+      selectedModels: ["new-model"],
+      modelCatalog: ["new-model"],
+      modelReasoningLevels: { "new-model": ["low"] },
+      endpoints: [
+        { protocol: "openai-responses", baseUrl: "https://api.openai.com/v1" },
+      ],
+    },
+  ];
+  const user = userEvent.setup();
+  renderAccounts();
+  await openEdit(user, "测试账号");
+  await user.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() =>
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          defaultModel: "new-model",
+          defaultReasoning: "",
+        }),
+      }),
+      expect.anything(),
+    ),
+  );
+});
+it("当前账号删除入口禁用，切换使用真实默认账号操作", async () => {
+  accounts.current = [
+    {
+      id: "api",
+      name: "当前工作账号",
+      authMode: "api-key",
+      hasCredential: true,
+      endpoints: [],
+    },
+  ];
+  const user = userEvent.setup();
+  const select = vi.fn(async () => {});
+  renderAccounts({ id: "codex", defaultAccountId: "api" }, select);
+  await user.click(
+    await screen.findByRole("button", { name: "当前工作账号 的账号操作" }),
+  );
+  expect(await screen.findByRole("menuitem", { name: "删除" })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
+  expect(screen.getByRole("menuitem", { name: "删除" })).toHaveClass(
+    "text-destructive",
+    "data-[highlighted]:text-destructive",
+  );
+  await user.keyboard("{Escape}");
+  await user.click(screen.getByRole("button", { name: "切换" }));
+  expect(select).toHaveBeenCalledWith("");
+});
+
+it("添加密钥使用分组标题右侧加号，不再显示重复的 API Key 摘要行", async () => {
+  renderAccounts();
+  const add = screen.getByRole("button", { name: "添加密钥" });
+  expect(add.textContent).toBe("");
+  expect(add.querySelector("svg")).toHaveClass("lucide-plus");
+  expect(
+    screen.getByRole("heading", { name: "API 密钥" }).parentElement
+      ?.parentElement,
+  ).toContainElement(add);
+  expect(
+    screen.queryByRole("heading", { name: "API Key" }),
+  ).not.toBeInTheDocument();
+});
+
+it("模型请求未结束时固定端点身份，完成后切换服务商不会混入旧模型", async () => {
+  let resolveModels:
+    | ((result: { resources: Array<{ id: string; name: string }> }) => void)
+    | undefined;
+  preview.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolveModels = resolve;
+      }),
+  );
+  const user = userEvent.setup();
+  renderAccounts();
+  await user.click(screen.getByRole("button", { name: "添加密钥" }));
+  await user.type(screen.getByLabelText("API Key"), "key");
+  await user.click(screen.getByRole("button", { name: "刷新模型列表" }));
+  expect(screen.getByRole("combobox", { name: "服务商" })).toBeDisabled();
+  expect(screen.getByRole("combobox", { name: "请求协议" })).toBeDisabled();
+  expect(screen.getByLabelText("API 地址")).toBeDisabled();
+  expect(screen.getByLabelText("API Key")).toBeDisabled();
+  await act(async () =>
+    resolveModels?.({ resources: [{ id: "old-model", name: "Old Model" }] }),
+  );
+  await user.click(screen.getByRole("combobox", { name: "服务商" }));
+  await user.click(await screen.findByRole("option", { name: "Anthropic" }));
+  expect(screen.getByLabelText("API 地址")).toHaveValue(
+    "https://api.anthropic.com",
+  );
+  await user.click(screen.getByRole("button", { name: "选择模型" }));
+  expect(screen.queryByText("Old Model")).not.toBeInTheDocument();
+});
+
+it("Claude 详情提供添加订阅账号并创建 Anthropic 归属配置", async () => {
+  const user = userEvent.setup();
+  renderAccounts({ id: "claude", baseRuntimeId: "claude" });
+  const add = screen.getByRole("button", { name: "添加账号" });
+  expect(add).not.toHaveTextContent("添加账号");
+  await user.click(add);
+  await waitFor(() =>
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          runtimeId: "claude",
+          authMode: "subscription",
+          endpoints: [
+            {
+              protocol: "anthropic-messages",
+              baseUrl: "https://api.anthropic.com",
+            },
+          ],
+        }),
+      }),
+      expect.anything(),
+    ),
+  );
+  expect(await screen.findByText("授权账号 new-account")).toBeVisible();
+});
+
+it("安装期间不能从现有订阅账号启动登录", async () => {
+  accounts.current = [
+    {
+      id: "subscription",
+      name: "待登录订阅",
+      authMode: "subscription",
+      hasCredential: false,
+      endpoints: [],
+    },
+  ];
+  const user = userEvent.setup();
+  renderAccounts(
+    { id: "claude", baseRuntimeId: "claude" },
+    async () => {},
+    true,
+  );
+  const login = await screen.findByRole("button", { name: "登录" });
+  expect(login).toBeDisabled();
+  await user.click(login);
+  expect(screen.queryByText("授权账号 subscription")).not.toBeInTheDocument();
 });

@@ -1108,6 +1108,7 @@ function TeamChatView({
     catalogState: executionSelection.catalogState,
     catalogIssue: executionSelection.catalogIssue,
     catalogPending: executionSelection.catalogPending,
+    catalogRefreshing: executionSelection.catalogRefreshing,
     fastSupported: executionSelection.fastSupported,
     selectedFast: executionSelection.selection.fast ?? false,
     refreshCatalog: executionSelection.refreshCatalog,

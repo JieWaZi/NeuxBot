@@ -135,6 +135,7 @@ type Props = {
   catalogState?: string;
   catalogIssue?: ExecutionSelectionState["catalogIssue"];
   pending?: boolean;
+  refreshing?: boolean;
   sessionSwitchPending?: boolean;
   onRefresh?: () => unknown;
   onModel: (runtime: Runtime, accountId: string, model: Model) => void;
@@ -165,7 +166,10 @@ export function ChatExecutionPicker(props: Props) {
     runtimes.find((item) => item.enabled);
   const provider = runtime?.baseRuntimeId || runtime?.id || "";
   const compatible = props.accounts.filter(
-    (account) => account.id && accountSupportsRuntime(account, provider),
+    (account) =>
+      account.id &&
+      account.runtimeId === runtime?.id &&
+      accountSupportsRuntime(account, provider),
   );
   const accountId = preview?.accountId || props.accountId || "system";
   const account = compatible.find((item) => item.id === accountId);
@@ -200,6 +204,7 @@ export function ChatExecutionPicker(props: Props) {
       ? directory.catalogPending
       : directory.loading
     : props.pending;
+  const refreshing = browsing ? directory.catalogRefreshing : props.refreshing;
   const refresh = native
     ? browsing
       ? directory.refreshCatalog
@@ -230,7 +235,8 @@ export function ChatExecutionPicker(props: Props) {
     runtimeDisplayName(triggerRuntime) ||
     t("chat:runtimeUnavailable");
   const triggerAccount = props.accounts.find(
-    (item) => item.id === props.accountId,
+    (item) =>
+      item.id === props.accountId && item.runtimeId === props.runtime?.id,
   );
   const groups = modelGroups(
     models,
@@ -409,12 +415,15 @@ export function ChatExecutionPicker(props: Props) {
                         type="button"
                         variant="ghost"
                         size="icon"
-                        disabled={pending}
-                        aria-busy={pending || undefined}
+                        disabled={pending || refreshing}
+                        aria-busy={pending || refreshing || undefined}
                         aria-label={refreshLabel}
                         onClick={() => void refresh()}
                       >
-                        <RotateCw aria-hidden />
+                        <RotateCw
+                          aria-hidden
+                          className={refreshing ? "animate-spin" : undefined}
+                        />
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>{refreshLabel}</TooltipContent>

@@ -22,6 +22,8 @@ func (v ResourceCategoryType) String() string {
 		return "plugin"
 	case ResourceCategoryTypeSkill:
 		return "skill"
+	case ResourceCategoryTypeWorkflow:
+		return "workflow"
 	}
 	return ""
 }
@@ -36,12 +38,14 @@ func (v ResourceCategoryType) Label() string {
 		return "ResourceCategoryTypePlugin 表示插件分类。"
 	case ResourceCategoryTypeSkill:
 		return "ResourceCategoryTypeSkill 表示独立技能分类。"
+	case ResourceCategoryTypeWorkflow:
+		return "ResourceCategoryTypeWorkflow 表示工作流目录分类。"
 	}
 	return ""
 }
 
 func (v ResourceCategoryType) Values() []enum.Enum {
-	return []enum.Enum{ResourceCategoryTypeUnspecified, ResourceCategoryTypeConnector, ResourceCategoryTypePlugin, ResourceCategoryTypeSkill}
+	return []enum.Enum{ResourceCategoryTypeUnspecified, ResourceCategoryTypeConnector, ResourceCategoryTypePlugin, ResourceCategoryTypeSkill, ResourceCategoryTypeWorkflow}
 }
 
 func (v ResourceCategoryType) Type() string {
@@ -50,7 +54,7 @@ func (v ResourceCategoryType) Type() string {
 
 func (v ResourceCategoryType) MarshalText() ([]byte, error) {
 	switch v {
-	case ResourceCategoryTypeUnspecified, ResourceCategoryTypeConnector, ResourceCategoryTypePlugin, ResourceCategoryTypeSkill:
+	case ResourceCategoryTypeUnspecified, ResourceCategoryTypeConnector, ResourceCategoryTypePlugin, ResourceCategoryTypeSkill, ResourceCategoryTypeWorkflow:
 		return []byte(v.String()), nil
 	default:
 		return nil, enum.InvalidTypeError
@@ -67,6 +71,8 @@ func (v *ResourceCategoryType) UnmarshalText(text []byte) error {
 		*v = ResourceCategoryTypePlugin
 	case ResourceCategoryTypeSkill.String():
 		*v = ResourceCategoryTypeSkill
+	case ResourceCategoryTypeWorkflow.String():
+		*v = ResourceCategoryTypeWorkflow
 	default:
 		return enum.InvalidTypeError
 	}

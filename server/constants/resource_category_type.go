@@ -14,4 +14,6 @@ const (
 	ResourceCategoryTypeSkill ResourceCategoryType = "skill"
 	// ResourceCategoryTypeConnector 表示独立连接器分类。
 	ResourceCategoryTypeConnector ResourceCategoryType = "connector"
+	// ResourceCategoryTypeWorkflow 表示工作流目录分类。
+	ResourceCategoryTypeWorkflow ResourceCategoryType = "workflow"
 )

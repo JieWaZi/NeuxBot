@@ -71,6 +71,9 @@ func (s *service) readModelCatalog(ctx context.Context, environment models.Runti
 		if err != nil {
 			return result, err
 		}
+		if err := aiaccount.ValidateRuntimeAccount(account, environment); err != nil {
+			return result, err
+		}
 		result.AuthGeneration = account.AuthGeneration
 		if !account.HasCredential {
 			result.State, result.ErrorCode = agent.CatalogSignedOut, "sign_in_required"

@@ -51,6 +51,8 @@ export function ExecutionConfigurationControls({
             accountId,
             model: "",
             reasoning: "",
+            fast: undefined,
+            contextWindow: undefined,
             permissionLevel: safeDefaultPermissionLevel(
               selection.permissionLevel,
               runtimeDefaultPermissionLevels(nextRuntime),

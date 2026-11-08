@@ -159,7 +159,11 @@ export function WorkflowDetailDock({
                   <action.icon aria-hidden="true" strokeWidth={1.5} />
                   <span className="flex-1">{t(action.key)}</span>
                   {action.selected ? (
-                    <Check aria-hidden="true" strokeWidth={1.5} />
+                    <Check
+                      aria-hidden="true"
+                      className="text-accent-content"
+                      strokeWidth={1.5}
+                    />
                   ) : null}
                 </DropdownMenuItem>
               </Fragment>

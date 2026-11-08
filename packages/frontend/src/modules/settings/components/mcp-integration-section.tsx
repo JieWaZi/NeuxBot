@@ -70,7 +70,7 @@ export function MCPIntegrationSection() {
         />
       }
     >
-      <Card variant="section">
+      <Card variant="settings">
         {service.isPending ? (
           <div
             role="status"

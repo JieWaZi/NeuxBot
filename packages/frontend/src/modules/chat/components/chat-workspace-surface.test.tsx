@@ -462,7 +462,13 @@ describe("ChatWorkspaceSurface right workbench", () => {
     expect(await screen.findByText("终端实例")).toBeInTheDocument();
     expect(lifecycle.browserMounts).toBe(1);
     expect(lifecycle.terminalMounts).toBe(1);
-    await user.click(screen.getByRole("button", { name: "收起右栏" }));
+    const header = screen
+      .getByRole("button", { name: "完整视图" })
+      .closest("header");
+    if (!header) throw new Error("工作台顶栏未挂载");
+    await user.click(
+      within(header).getByRole("button", { name: "关闭工作台" }),
+    );
     expect(lifecycle.browserUnmounts).toBe(0);
     expect(lifecycle.terminalUnmounts).toBe(0);
     await user.click(screen.getByRole("button", { name: "显示工作台" }));

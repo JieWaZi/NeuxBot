@@ -482,7 +482,7 @@ func (s *Service) resourcesCatalog(ctx context.Context, definitionID string) (ma
 		}
 		resources["wakers"] = items
 	}
-	workflows, err := s.store.ListDefinitions(ctx, "", 0, "", 100)
+	workflows, err := s.store.ListDefinitions(ctx, "", 0, "", 100, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -597,7 +597,7 @@ func (s *Service) resourceItemsPage(ctx context.Context, definitionID, kind, cur
 				return nil, status_error.BadRequest
 			}
 		}
-		values, err := s.store.ListDefinitions(ctx, "", position.UpdatedAt, position.ID, limit+1)
+		values, err := s.store.ListDefinitions(ctx, "", position.UpdatedAt, position.ID, limit+1, nil)
 		if err != nil {
 			return nil, err
 		}

@@ -202,7 +202,7 @@ export function ChatHistoryNavigationRow({
             {t("partnerNavigation.renameChat")}
           </DropdownMenuItem>
           <DropdownMenuItem
-            className="text-destructive"
+            variant="destructive"
             onSelect={() => onAction("delete")}
           >
             <Trash2 />

@@ -95,11 +95,11 @@ func TestAIAccountNamesAreUnique(t *testing.T) {
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	controller := NewAIAccountController(database.DB)
 	ctx := context.Background()
-	first := models.AIAccount{ID: "first", Name: "OpenAI", AuthMode: constants.AccountAuthModeAPIKey}
+	first := models.AIAccount{ID: "first", RuntimeID: "codex", Name: "OpenAI", AuthMode: constants.AccountAuthModeAPIKey}
 	if err := controller.Create(ctx, first, "first-key"); err != nil {
 		t.Fatal(err)
 	}
-	second := models.AIAccount{ID: "second", Name: first.Name, AuthMode: constants.AccountAuthModeAPIKey}
+	second := models.AIAccount{ID: "second", RuntimeID: first.RuntimeID, Name: first.Name, AuthMode: constants.AccountAuthModeAPIKey}
 	if err := controller.Create(ctx, second, "second-key"); !errors.Is(err, status_error.AIAccountNameConflict) {
 		t.Fatalf("duplicate account name accepted: %v", err)
 	}
@@ -128,6 +128,22 @@ func TestAIAccountNamesAreUnique(t *testing.T) {
 	}
 	if err := controller.Update(ctx, unchanged, ""); err != nil {
 		t.Fatalf("keeping the same account name should succeed: %v", err)
+	}
+	otherRuntime := models.AIAccount{ID: "other-runtime", RuntimeID: "codex-profile", Name: first.Name, AuthMode: constants.AccountAuthModeAPIKey}
+	if err := controller.Create(ctx, otherRuntime, "profile-key"); err != nil {
+		t.Fatalf("independent runtimes cannot reuse an account name: %v", err)
+	}
+	listed, err := controller.ListForRuntime(ctx, otherRuntime.RuntimeID)
+	if err != nil || len(listed) != 1 || listed[0].ID != otherRuntime.ID || listed[0].CredentialCiphertext != "" {
+		t.Fatalf("runtime list mixed accounts or exposed credentials: %+v %v", listed, err)
+	}
+	otherRuntime, err = controller.Get(ctx, otherRuntime.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherRuntime.RuntimeID = first.RuntimeID
+	if err := controller.Update(ctx, otherRuntime, ""); !errors.Is(err, status_error.AIAccountConfigurationInvalid) {
+		t.Fatalf("account ownership can be reassigned: %v", err)
 	}
 }
 

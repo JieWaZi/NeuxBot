@@ -1,6 +1,17 @@
 import { useId, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { localApiErrorMessage } from "@/shared/api/local-error-surface";
+import {
+  localApiErrorMessage,
+  withLocalErrorMutation,
+} from "@/shared/api/local-error-surface";
+import {
+  updateWorkflowCategoriesMutation,
+  getWorkflowQueryKey,
+  listWorkflowsQueryKey,
+  listResourceCategoriesQueryKey,
+} from "@/shared/api/generated/@tanstack/react-query.gen";
+import { ResourceCategoryField } from "@/shared/ui/resource-category-field";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
 import { FieldLabel } from "@/shared/ui/field-label";
@@ -13,6 +24,7 @@ export function BasicInformationDialog({
   revisionId,
   title,
   description,
+  categories = [],
   open,
   onOpenChange,
 }: {
@@ -20,15 +32,54 @@ export function BasicInformationDialog({
   revisionId: string;
   title: string;
   description: string;
+  categories?: string[];
   open: boolean;
   onOpenChange: (value: boolean) => void;
 }) {
   const { t } = useTranslation("workflow");
   const formId = useId();
   const [values, setValues] = useState({ title, description });
+  const [selectedCategories, setSelectedCategories] = useState(categories);
+  const client = useQueryClient();
+  const updateCategories = useMutation({
+    ...withLocalErrorMutation(updateWorkflowCategoriesMutation()),
+    onSuccess: () => {
+      void client.invalidateQueries({
+        queryKey: getWorkflowQueryKey({ path: { id } }),
+      });
+      void client.invalidateQueries({ queryKey: listWorkflowsQueryKey() });
+      void client.invalidateQueries({
+        queryKey: listResourceCategoriesQueryKey({
+          query: { type: "workflow" },
+        }),
+      });
+    },
+  });
   const configure = useWorkflowConfiguration(id, revisionId);
+  const pending = configure.pending || updateCategories.isPending;
+  const save = async () => {
+    if (JSON.stringify(selectedCategories) !== JSON.stringify(categories)) {
+      try {
+        await updateCategories.mutateAsync({
+          path: { id },
+          body: { categories: selectedCategories },
+        });
+      } catch {
+        return;
+      }
+    }
+    if (values.title !== title || values.description !== description) {
+      if (!(await configure.save({ target: "meta", fields: values }))) return;
+    }
+    onOpenChange(false);
+  };
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(value) => {
+        if (!pending) onOpenChange(value);
+      }}
+    >
       <DialogContent
         title={t("editBasicInformation")}
         description={t("basicInformationHelp")}
@@ -38,11 +89,7 @@ export function BasicInformationDialog({
           className="contents"
           onSubmit={(event) => {
             event.preventDefault();
-            void configure
-              .save({ target: "meta", fields: values })
-              .then((saved) => {
-                if (saved) onOpenChange(false);
-              });
+            void save();
           }}
         >
           <div className="grid gap-5 overflow-y-auto px-6 pb-5">
@@ -87,9 +134,18 @@ export function BasicInformationDialog({
                 {t("descriptionHelp")}
               </p>
             </div>
-            {configure.error ? (
+            <ResourceCategoryField
+              type="workflow"
+              value={selectedCategories}
+              onValueChange={setSelectedCategories}
+              disabled={pending}
+            />
+            {configure.error || updateCategories.error ? (
               <p role="alert" className="text-destructive type-body">
-                {localApiErrorMessage(configure.error, t("error"))}
+                {localApiErrorMessage(
+                  configure.error ?? updateCategories.error,
+                  t("error"),
+                )}
               </p>
             ) : null}
           </div>
@@ -97,6 +153,7 @@ export function BasicInformationDialog({
             <Button
               type="button"
               variant="secondary"
+              disabled={pending}
               onClick={() => onOpenChange(false)}
             >
               {t("cancel")}
@@ -104,7 +161,7 @@ export function BasicInformationDialog({
             <Button
               type="submit"
               form={formId}
-              disabled={configure.pending || !values.title.trim()}
+              disabled={pending || !values.title.trim()}
             >
               {t("save")}
             </Button>

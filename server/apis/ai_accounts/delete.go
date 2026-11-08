@@ -47,6 +47,9 @@ func (a *DeleteAIAccount) Output(ctx *gin.Context) (interface{}, error) {
 	if err := global.AIAccountService.RemoveCodexCredentialFiles(ctx, account); err != nil {
 		return nil, ginx.WithStack(err)
 	}
+	if err := global.AIAccountService.RemoveClaudeCredentialFiles(ctx, account); err != nil {
+		return nil, ginx.WithStack(err)
+	}
 	if err := global.AIAccountControllerManager.Delete(ctx, a.AccountID, a.Revision); err != nil {
 		return nil, ginx.WithStack(err)
 	}

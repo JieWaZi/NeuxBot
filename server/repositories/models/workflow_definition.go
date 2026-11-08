@@ -20,7 +20,7 @@ type WorkflowScopeBinding struct {
 	WorkingDirectory string `json:"workingDirectory"`
 }
 
-// WorkflowDefinition 只拥有稳定身份、当前版本及创作和范围关系。
+// WorkflowDefinition 拥有稳定身份、目录资料、当前版本及创作和范围关系。
 type WorkflowDefinition struct {
 	// ID 是工作流的稳定身份。
 	ID string `gorm:"type:varchar(32);primaryKey" json:"id"`
@@ -28,6 +28,8 @@ type WorkflowDefinition struct {
 	Title string `gorm:"type:varchar(120);not null" json:"title"`
 	// Description 是当前版本的业务用途。
 	Description string `gorm:"type:text;not null" json:"description"`
+	// Categories 是用户维护的目录分类，不属于版本源码。
+	Categories []string `gorm:"column:categories;type:text;not null;default:'[]';serializer:json" json:"categories"`
 	// WhenToUse 是当前版本的使用场景。
 	WhenToUse string `gorm:"type:text;not null" json:"whenToUse"`
 	// CurrentRevisionID 指向完整保存的不可变版本，空定义为空。

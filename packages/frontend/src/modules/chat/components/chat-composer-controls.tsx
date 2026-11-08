@@ -54,6 +54,7 @@ type ChatComposerControlsProps = {
   catalogState?: string;
   catalogIssue?: ExecutionSelectionState["catalogIssue"];
   catalogPending?: boolean;
+  catalogRefreshing?: boolean;
   refreshCatalog?: () => unknown;
   fastSupported?: boolean;
   selectedFast?: boolean;
@@ -96,6 +97,7 @@ export function useChatComposerControls({
   catalogState,
   catalogIssue,
   catalogPending,
+  catalogRefreshing,
   refreshCatalog,
   fastSupported,
   selectedFast,
@@ -130,7 +132,9 @@ export function useChatComposerControls({
   });
   const accounts = accountsQuery.data?.resources ?? [];
   const selectedAccount = accounts.find(
-    (account) => account.id === selectedAccountId,
+    (account) =>
+      account.id === selectedAccountId &&
+      account.runtimeId === selectedRuntime?.id,
   );
   const modelOptions =
     modelOptionsOverride ??
@@ -232,6 +236,7 @@ export function useChatComposerControls({
         catalogState={catalogState}
         catalogIssue={catalogIssue}
         pending={thinkingPending || catalogPending}
+        refreshing={catalogRefreshing}
         sessionSwitchPending={sessionSwitchPending}
         onRefresh={refreshCatalog}
         fast={selectedFast}

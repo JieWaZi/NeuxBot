@@ -343,7 +343,7 @@ export function TeamFormDialog({
                             </span>
                           </span>
                           {checked ? (
-                            <Check className="text-primary size-icon-sm" />
+                            <Check className="text-accent-content size-icon-sm" />
                           ) : null}
                         </label>
                       );

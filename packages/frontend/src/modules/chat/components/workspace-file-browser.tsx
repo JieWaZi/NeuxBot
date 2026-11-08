@@ -517,7 +517,7 @@ function WorkspaceTreeEntry({
                   {t("workspace.renameDirectory")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  className="text-destructive"
+                  variant="destructive"
                   onSelect={() => void deleteDirectory()}
                 >
                   <Trash2 />
@@ -797,7 +797,7 @@ function WorkspaceFileButton({
               {t("workspace.downloadFile")}
             </DropdownMenuItem>
             <DropdownMenuItem
-              className="text-destructive"
+              variant="destructive"
               onSelect={() => void deleteFile()}
             >
               <Trash2 />

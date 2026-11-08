@@ -16,7 +16,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 )
 
-// Login 保存前端完成设备授权需要的非秘密信息。
+// Login 保存前端观察原生设备或浏览器授权所需的非秘密状态。
 type Login struct {
 	// 任务标识
 	ID string `json:"id"`
@@ -34,8 +34,13 @@ type Login struct {
 	ErrorCode string `json:"errorCode,omitempty"`
 }
 
-// loginJob 保存设备授权的内存状态，取消与提交由同一把锁保护。
+// loginJob 保存原生授权的内存状态，取消与提交由同一把锁保护。
 type loginJob struct {
+	// claudeExit 在原生 Claude 认证进程退出且清理已尝试后关闭。
+	claudeExit chan struct{}
+	// claudeCleanup 为关闭失败保留同一原生客户端的清理职责。
+	claudeCleanup func() error
+
 	// ctx 在用户取消或启动新授权时中止未完成的网络轮询。
 	ctx context.Context
 	// cancel 终止该次授权任务。
@@ -62,7 +67,7 @@ type loginJob struct {
 	release func()
 }
 
-// StartLogin 开始独立设备授权，已有登录状态仅在成功提交后替换。
+// StartLogin 开始独立原生授权，已有登录状态仅在成功提交后替换。
 func (s *Service) StartLogin(ctx context.Context, id string) (Login, error) {
 	ctx, done, beginErr := s.begin(ctx)
 	if beginErr != nil {
@@ -76,8 +81,11 @@ func (s *Service) StartLogin(ctx context.Context, id string) (Login, error) {
 	if account.AuthMode != constants.AccountAuthModeSubscription {
 		return Login{}, status_error.AIAccountConfigurationInvalid
 	}
+	if claudeSubscription(account) {
+		return s.startClaudeLogin(ctx, id)
+	}
 	if len(account.Endpoints) == 1 && account.Endpoints[0].Protocol == constants.AccountProtocolOpenAICompletions && account.Endpoints[0].BaseURL == constants.AIAccountKimiURL {
-		return s.startKimiLogin(id, account.Revision)
+		return s.startKimiLogin(ctx, account)
 	}
 	if len(account.Endpoints) != 1 || account.Endpoints[0].Protocol != constants.AccountProtocolOpenAIResponses || account.Endpoints[0].BaseURL != constants.AIAccountOpenAIURL {
 		return Login{}, status_error.AIAccountConfigurationInvalid
@@ -238,7 +246,11 @@ func (s *Service) advanceLogin(ctx context.Context, id string, job *loginJob) (L
 	if currentJob != job || ctx.Err() != nil || job.ctx.Err() != nil {
 		return Login{}, status_error.AIAccountLoginFailed
 	}
-	accounts, listErr := s.accounts.List(ctx)
+	current, err := s.accounts.Get(ctx, id)
+	if err != nil {
+		return Login{}, err
+	}
+	accounts, listErr := s.accounts.ListForRuntime(ctx, current.RuntimeID)
 	if listErr != nil {
 		return Login{}, listErr
 	}
@@ -260,10 +272,6 @@ func (s *Service) advanceLogin(ctx context.Context, id string, job *loginJob) (L
 		if saved.Tokens.Identity() == job.tokens.Identity() {
 			return Login{}, status_error.AIAccountRevisionConflict
 		}
-	}
-	current, err := s.accounts.Get(ctx, id)
-	if err != nil {
-		return Login{}, err
 	}
 	if current.Revision != job.revision {
 		return Login{}, status_error.AIAccountRevisionConflict
@@ -309,10 +317,28 @@ func (s *Service) CancelLogin(id, jobID string) {
 	if job == nil {
 		return
 	}
+	if job.view.ID == jobID && job.claudeExit != nil {
+		timer := time.NewTimer(5 * time.Second)
+		select {
+		case <-job.claudeExit:
+		case <-timer.C:
+		}
+		timer.Stop()
+	}
 	job.mutex.Lock()
 	defer job.mutex.Unlock()
 	job.snapshotMutex.Lock()
 	defer job.snapshotMutex.Unlock()
+	if job.view.ID == jobID && job.claudeCleanup != nil && job.claudeExit != nil {
+		select {
+		case <-job.claudeExit:
+			if err := job.claudeCleanup(); err == nil {
+				job.claudeCleanup = nil
+				job.release()
+			}
+		default:
+		}
+	}
 	if job.view.ID == jobID && !job.view.Complete {
 		job.canceled = true
 		job.tokens = nil

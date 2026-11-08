@@ -1200,6 +1200,7 @@ function ChatView({
     catalogState: executionSelection.catalogState,
     catalogIssue: executionSelection.catalogIssue,
     catalogPending: executionSelection.catalogPending,
+    catalogRefreshing: executionSelection.catalogRefreshing,
     refreshCatalog: executionSelection.refreshCatalog,
     fastSupported: executionSelection.fastSupported,
     selectedFast,

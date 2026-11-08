@@ -80,7 +80,7 @@ func TestKnowledgeModelAcceptsValidManagedClaudeAccount(t *testing.T) {
 	RuntimeEnvironmentControllerManager = controllers.NewRuntimeEnvironmentController(database.DB)
 	AIAccountService = aiaccount.New(controllers.NewAIAccountController(database.DB))
 	defer func() { RuntimeEnvironmentControllerManager = previousRuntime; AIAccountService = previousAccounts }()
-	account := models.AIAccount{ID: "managed-account", Name: "test", AuthMode: constants.AccountAuthModeAPIKey, HasCredential: true, SelectedModels: []string{"model-a"}, Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://model.example/v1"}}}
+	account := models.AIAccount{ID: "managed-account", RuntimeID: constants.RuntimeIDClaude, Name: "test", AuthMode: constants.AccountAuthModeAPIKey, HasCredential: true, SelectedModels: []string{"model-a"}, Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://model.example/v1"}}}
 	if err := database.DB.Create(&account).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -91,6 +91,13 @@ func TestKnowledgeModelAcceptsValidManagedClaudeAccount(t *testing.T) {
 	selected, err := resolveKnowledgeModel(ctx, models.LibraryExecutionDefaults{RuntimeID: constants.RuntimeIDClaude, AccountID: account.ID, Model: "model-a"})
 	if err != nil || selected.AccountID != account.ID || selected.Model != "model-a" {
 		t.Fatalf("system login blocked managed model: %+v %v", selected, err)
+	}
+	environment.ID, environment.RuntimeID = "other-profile", "claude-profile"
+	if err := RuntimeEnvironmentControllerManager.Ensure(ctx, environment); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolveKnowledgeModel(ctx, models.LibraryExecutionDefaults{RuntimeID: environment.RuntimeID, AccountID: account.ID, Model: "model-a"}); !errors.Is(err, status_error.AIAccountConfigurationInvalid) {
+		t.Fatalf("detached model accepted another runtime account: %v", err)
 	}
 }
 
@@ -120,7 +127,7 @@ func TestKnowledgeGenerationWaitsForAccountMutationAndCanBeCancelled(t *testing.
 	defer provider.Close(ctx)
 	AgentThreads = agent.NewThreadLifecycle(provider, store)
 	defer AgentThreads.Close(ctx)
-	account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", Name: "fixture", AuthMode: constants.AccountAuthModeAPIKey, SelectedModels: []string{"fixture-model"}, Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://model.example"}}}
+	account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", RuntimeID: constants.RuntimeIDClaude, Name: "fixture", AuthMode: constants.AccountAuthModeAPIKey, SelectedModels: []string{"fixture-model"}, Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://model.example"}}}
 	if err := accounts.Create(ctx, account, "not-read-before-lease-is-acquired"); err != nil {
 		t.Fatal(err)
 	}

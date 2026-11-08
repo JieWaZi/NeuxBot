@@ -30,7 +30,7 @@ describe("应用模块归属", () => {
     ["/teams/t1/threads/c1", "partners", "partners", "/teams/t1/chats"],
     ["/teams", "partners", "partners", "/wakers?tab=teams"],
     ["/wakers?tab=teams", "partners", "partners", "/wakers?tab=teams"],
-    ["/chats/c1?wakerId=w1", "partners", "partners", "/wakers"],
+    ["/chats/c1?wakerId=w1", "partners", "partners", "/chat"],
     ["/resources/plugins/p1/skills/s1", "resources", "resources", "/resources"],
     [
       "/resources/plugins/p1/connectors/c1",
@@ -100,24 +100,29 @@ describe("应用模块归属", () => {
       "settings",
       "/settings/integration-im",
     ],
-    ["/unknown", "partners", "partners", "/wakers"],
-    ["/resources-other", "partners", "partners", "/wakers"],
-    ["/workflows/f1/unknown", "partners", "partners", "/wakers"],
+    ["/unknown", "partners", "partners", "/chat"],
+    ["/resources-other", "partners", "partners", "/chat"],
+    ["/workflows/f1/unknown", "partners", "partners", "/chat"],
   ])("%s 由 %s 提供导航", (href, moduleId, sidebarKind, parentHref) => {
     expect(resolve(href)).toEqual({ moduleId, sidebarKind, parentHref });
   });
 });
 
 describe("模块入口目标", () => {
+  it("没有已验证最近聊天时保留当前伙伴的聊天入口", () => {
+    expect(
+      resolveAppModuleHref("partners", { partnerHref: "/chat?wakerId=w2" }),
+    ).toBe("/chat?wakerId=w2");
+  });
   it.each([
-    ["partners", "/wakers"],
+    ["partners", "/chat"],
     ["work-board", "/work-board"],
     ["usage", "/usage"],
     ["resources", "/resources"],
     ["knowledge", "/knowledge"],
     ["automatic-tasks", "/automatic-tasks"],
     ["settings", "/settings/general"],
-  ] as const)("%s 首次或已删除目标回实际列表", (moduleId, href) => {
+  ] as const)("%s 首次或已删除目标使用模块默认入口", (moduleId, href) => {
     expect(resolveAppModuleHref(moduleId)).toBe(href);
   });
 
@@ -151,8 +156,8 @@ describe("模块入口目标", () => {
     "https://example.com/chats/c1",
     "//example.com/chats/c1",
     "/\\example.com/chats/c1",
-  ])("非法或非聊天伙伴目标 %s 回伙伴列表", (partnerHref) => {
-    expect(resolveAppModuleHref("partners", { partnerHref })).toBe("/wakers");
+  ])("非法或非聊天伙伴目标 %s 回聊天入口", (partnerHref) => {
+    expect(resolveAppModuleHref("partners", { partnerHref })).toBe("/chat");
   });
 
   it.each(["/resources", "/unknown", "https://example.com/settings/general"])(

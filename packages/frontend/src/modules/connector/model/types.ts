@@ -36,6 +36,7 @@ export type ConnectorFormValue = {
 };
 
 export type ConnectorSummary = {
+  categories?: string[];
   activationPolicy: ConnectorActivationPolicy;
   affectedWakerCount: number;
   compatibility: ConnectorCompatibility[];

@@ -6,8 +6,8 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
-	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 	"github.com/JieWaZi/NeuxBot/server/services/runtimeenvironment"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
@@ -42,8 +42,11 @@ func (a *GetAIAccountNativeModels) Output(ctx *gin.Context) (interface{}, error)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	if account.AuthMode != constants.AccountAuthModeSubscription || !environment.Enabled || len(account.Endpoints) != 1 || !accountconfig.Supports(environment.BaseRuntimeID, account.Endpoints[0].Protocol) {
+	if account.AuthMode != constants.AccountAuthModeSubscription || !environment.Enabled {
 		return nil, ginx.WithStack(status_error.AIAccountConfigurationInvalid)
+	}
+	if err := aiaccount.ValidateRuntimeAccount(account, environment); err != nil {
+		return nil, ginx.WithStack(err)
 	}
 	if !agent.SupportsProvider(environment.BaseRuntimeID) {
 		return nil, ginx.WithStack(status_error.RuntimePolicyUnsupported)

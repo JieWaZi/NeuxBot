@@ -23,7 +23,7 @@ type ComposerSurfaceProps = ComponentProps<"div"> & {
 };
 
 const composerSurfaceClassName =
-  "border-field-border bg-surface-raised focus-within:border-field-border-active focus-within:ring-ring shadow-composer data-[invalid]:border-destructive relative rounded-2xl border transition-[border-color,box-shadow] focus-within:ring-2";
+  "border-field-border bg-surface-raised shadow-composer data-[invalid]:border-destructive relative rounded-2xl border transition-[border-color,box-shadow]";
 
 /** Composer 的叠层容器，按 DOM 顺序让后面的表面覆盖前面的底边。 */
 export function ComposerStack({ className, ...props }: ComponentProps<"div">) {

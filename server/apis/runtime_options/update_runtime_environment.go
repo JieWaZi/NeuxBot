@@ -4,7 +4,6 @@ import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
-	"slices"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -17,7 +16,7 @@ import (
 	"github.com/shrewx/ginx"
 )
 
-// 环境变量请求
+// 默认执行设置请求
 type UpdateRuntimeEnvironmentRequest struct {
 	// 默认账号
 	DefaultAccountID string `json:"defaultAccountId" validate:"max=32"`
@@ -25,14 +24,6 @@ type UpdateRuntimeEnvironmentRequest struct {
 	Enabled bool `json:"enabled"`
 	// 是否默认
 	IsDefault bool `json:"isDefault"`
-	// 可执行路径
-	Binary string `json:"binary" validate:"required,max=4096"`
-	// 前置参数
-	PrefixArgs []string `json:"prefixArgs" validate:"max=100,dive,max=4096"`
-	// 配置目录
-	ConfigHome string `json:"configHome" validate:"max=4096"`
-	// 自定义模型
-	CustomModels []string `json:"customModels" validate:"max=50,dive,max=200"`
 	// 默认模型
 	DefaultModel string `json:"defaultModel" validate:"max=200"`
 	// 默认推理
@@ -43,7 +34,7 @@ type UpdateRuntimeEnvironmentRequest struct {
 	DefaultPermissionLevel constants.PermissionLevel `json:"defaultPermissionLevel" validate:"required"`
 }
 
-// 更新环境变量
+// 更新默认执行设置
 type UpdateRuntimeEnvironment struct {
 	ginx.MethodPut
 	// 运行时标识
@@ -58,9 +49,6 @@ func (u *UpdateRuntimeEnvironment) Path() string { return "/:runtimeId" }
 // Validate 规范化 Runtime 环境配置中的文本字段。
 func (u *UpdateRuntimeEnvironment) Validate(*gin.Context) error {
 	u.RuntimeID = strings.TrimSpace(u.RuntimeID)
-	u.Body.Binary = strings.TrimSpace(u.Body.Binary)
-	u.Body.ConfigHome = strings.TrimSpace(u.Body.ConfigHome)
-	u.Body.CustomModels = normalizeCustomModels(u.Body.CustomModels)
 	u.Body.DefaultModel = strings.TrimSpace(u.Body.DefaultModel)
 	u.Body.DefaultReasoning = strings.TrimSpace(u.Body.DefaultReasoning)
 	u.Body.DefaultPermissionLevel = constants.PermissionLevel(
@@ -75,10 +63,10 @@ func (u *UpdateRuntimeEnvironment) Output(ctx *gin.Context) (interface{}, error)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	if !agentapi.LaunchOverrideArgumentsAllowed(current.BaseRuntimeID, u.Body.PrefixArgs) {
-		return nil, ginx.WithStack(status_error.BadRequest)
+	accountID := strings.TrimSpace(u.Body.DefaultAccountID)
+	if accountID == constants.AiAccountSystemID {
+		accountID = ""
 	}
-	accountID := u.Body.DefaultAccountID
 	if accountconfig.ACPSystemConfigVariable(current.BaseRuntimeID) != "" {
 		if accountID == constants.AiAccountSystemID {
 			accountID = ""
@@ -96,18 +84,25 @@ func (u *UpdateRuntimeEnvironment) Output(ctx *gin.Context) (interface{}, error)
 		releaseAccount = release
 		defer release()
 	}
-	if err := global.AIAccountService.Validate(ctx, accountID); err != nil {
-		return nil, ginx.WithStack(err)
+	if accountID != "" {
+		account, err := global.AIAccountService.Get(ctx, accountID)
+		if err != nil {
+			return nil, ginx.WithStack(err)
+		}
+		if err := aiaccount.ValidateRuntimeAccount(account, current); err != nil {
+			return nil, ginx.WithStack(err)
+		}
+		if account.AuthMode == constants.AccountAuthModeAPIKey && u.Body.DefaultModel != "" {
+			if _, err := global.AIAccountService.ValidateSelection(ctx, accountID, current.BaseRuntimeID, u.Body.DefaultModel, u.Body.DefaultReasoning); err != nil {
+				return nil, ginx.WithStack(err)
+			}
+		}
 	}
 	environment := models.RuntimeEnvironment{
 		DefaultAccountID:       accountID,
 		BaseRuntimeID:          current.BaseRuntimeID,
 		RuntimeID:              u.RuntimeID,
 		Enabled:                u.Body.Enabled,
-		Binary:                 u.Body.Binary,
-		PrefixArgs:             append([]string(nil), u.Body.PrefixArgs...),
-		ConfigHome:             u.Body.ConfigHome,
-		CustomModels:           append([]string(nil), u.Body.CustomModels...),
 		DefaultModel:           u.Body.DefaultModel,
 		DefaultReasoning:       u.Body.DefaultReasoning,
 		DefaultFast:            u.Body.DefaultFast,
@@ -117,7 +112,7 @@ func (u *UpdateRuntimeEnvironment) Output(ctx *gin.Context) (interface{}, error)
 		return nil, ginx.WithStack(err)
 	}
 	releaseAccount()
-	if configurationRequiresDetectRefresh(current, environment) || current.DefaultAccountID != environment.DefaultAccountID {
+	if current.DefaultAccountID != environment.DefaultAccountID {
 		if err := global.RuntimeEnvironmentService.RefreshOne(ctx, u.RuntimeID); err != nil {
 			return nil, ginx.WithStack(err)
 		}
@@ -148,45 +143,10 @@ func canCompleteStartupSetup(environment models.RuntimeEnvironment) bool {
 	}
 	permissions := agentapi.ModelPermissionLevels(
 		environment.Detection,
-		environment.CustomModels,
+		nil,
 		environment.DefaultModel,
 	)
 	return agentapi.PermissionLevelSupported(permissions, environment.DefaultPermissionLevel)
-}
-
-func configurationRequiresDetectRefresh(
-	current models.RuntimeEnvironment,
-	next models.RuntimeEnvironment,
-) bool {
-	return !agentapi.LaunchDetectInputsEqual(
-		agentapi.LaunchDetectInput{
-			Binary:     current.Binary,
-			PrefixArgs: current.PrefixArgs,
-			ConfigHome: current.ConfigHome,
-		},
-		agentapi.LaunchDetectInput{
-			Binary:     next.Binary,
-			PrefixArgs: next.PrefixArgs,
-			ConfigHome: next.ConfigHome,
-		},
-	)
-}
-
-func normalizeCustomModels(models []string) []string {
-	result := make([]string, 0, len(models))
-	seen := make(map[string]struct{}, len(models))
-	for _, model := range models {
-		model = strings.TrimSpace(model)
-		if model == "" {
-			continue
-		}
-		if _, exists := seen[model]; exists {
-			continue
-		}
-		seen[model] = struct{}{}
-		result = append(result, model)
-	}
-	return result
 }
 
 func updateRuntimeEnvironment(
@@ -194,63 +154,16 @@ func updateRuntimeEnvironment(
 	environment models.RuntimeEnvironment,
 	isDefault bool,
 ) error {
-	peer := accountconfig.QoderPeerRuntimeID(environment.BaseRuntimeID)
-	if !isDefault && peer == "" {
+	if !isDefault {
 		return global.RuntimeEnvironmentControllerManager.UpdateConfiguration(ctx, environment)
 	}
-	var peerHomes []string
-	if peer != "" {
-		var err error
-		peerHomes, err = qoderPeerConfigHomes(ctx, peer)
-		if err != nil {
-			return err
-		}
-		if err := aiaccount.ValidateQoderConfigHomes(environment.BaseRuntimeID, environment.ConfigHome, peerHomes); err != nil {
-			return err
-		}
-	}
 	return global.TransactionControllerManager.Transaction(ctx, func(transactionContext context.Context) error {
-		if peer != "" {
-			// Keep filesystem work outside the database transaction. Fence the
-			// exact peer configuration used by that preflight before writing.
-			currentPeerHomes, err := qoderPeerConfigHomes(transactionContext, peer)
-			if err != nil {
-				return err
-			}
-			if !slices.Equal(currentPeerHomes, peerHomes) {
-				return status_error.Conflict
-			}
-		}
-		if isDefault {
-			if err := global.RuntimeEnvironmentControllerManager.ClearDefault(transactionContext); err != nil {
-				return err
-			}
+		if err := global.RuntimeEnvironmentControllerManager.ClearDefault(transactionContext); err != nil {
+			return err
 		}
 		if err := global.RuntimeEnvironmentControllerManager.UpdateConfiguration(transactionContext, environment); err != nil {
 			return err
 		}
-		if !isDefault {
-			return nil
-		}
-		return global.RuntimeEnvironmentControllerManager.UpdateFields(
-			transactionContext,
-			environment.RuntimeID,
-			map[string]any{"is_default": true},
-		)
+		return global.RuntimeEnvironmentControllerManager.UpdateFields(transactionContext, environment.RuntimeID, map[string]any{"is_default": true})
 	})
-}
-
-func qoderPeerConfigHomes(ctx context.Context, peer string) ([]string, error) {
-	environments, err := global.RuntimeEnvironmentControllerManager.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	var homes []string
-	for _, environment := range environments {
-		if environment.BaseRuntimeID == peer && environment.ConfigHome != "" {
-			homes = append(homes, environment.ConfigHome)
-		}
-	}
-	slices.Sort(homes)
-	return slices.Compact(homes), nil
 }

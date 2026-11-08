@@ -2673,6 +2673,58 @@ export const statusErrorCatalog = {
       },
     ],
   },
+  RuntimeInstallationBusy: {
+    code: 40900007301,
+    en: [
+      {
+        text: "this agent program is being maintained; wait or cancel the operation",
+      },
+    ],
+    zh: [
+      {
+        text: "此智能体的程序维护尚未完成，请等待或取消",
+      },
+    ],
+  },
+  RuntimeInstallationFailed: {
+    code: 50200007301,
+    en: [
+      {
+        text: "agent program maintenance failed; retry the operation",
+      },
+    ],
+    zh: [
+      {
+        text: "智能体程序维护失败，请重试",
+      },
+    ],
+  },
+  RuntimeInstallationUnsupported: {
+    code: 42200007301,
+    en: [
+      {
+        text: "installing this agent is unsupported on this platform",
+      },
+    ],
+    zh: [
+      {
+        text: "当前平台暂不支持安装此智能体",
+      },
+    ],
+  },
+  RuntimeMaintenanceUnsupported: {
+    code: 42200007302,
+    en: [
+      {
+        text: "this program cannot be safely maintained; use its official installation method",
+      },
+    ],
+    zh: [
+      {
+        text: "无法安全维护此程序，请使用其官方安装方式操作",
+      },
+    ],
+  },
   RuntimeModelSelectionFailed: {
     code: 50000000053,
     en: [
@@ -2751,6 +2803,19 @@ export const statusErrorCatalog = {
       },
     ],
   },
+  RuntimeRestartBusy: {
+    code: 40900007302,
+    en: [
+      {
+        text: "this agent is executing work and cannot be restarted yet",
+      },
+    ],
+    zh: [
+      {
+        text: "当前智能体正在执行工作，暂不能重启",
+      },
+    ],
+  },
   RuntimeSessionNotFound: {
     code: 50000000043,
     en: [
@@ -2787,6 +2852,32 @@ export const statusErrorCatalog = {
     zh: [
       {
         text: "所选智能体当前不可用，请稍后重试",
+      },
+    ],
+  },
+  RuntimeUpdateCheckBusy: {
+    code: 40900007303,
+    en: [
+      {
+        text: "this agent's version is being checked; retry shortly",
+      },
+    ],
+    zh: [
+      {
+        text: "正在检查此智能体的版本，请稍后重试",
+      },
+    ],
+  },
+  RuntimeVersionUnknown: {
+    code: 40900007304,
+    en: [
+      {
+        text: "the current version is unknown; whether an update is needed cannot be determined",
+      },
+    ],
+    zh: [
+      {
+        text: "无法确认当前版本，暂不能判断是否需要更新",
       },
     ],
   },

@@ -30,6 +30,8 @@ type AIAccountController interface {
 	ClearCredential(context.Context, string, int64) error
 	// List 返回全部不含凭据的账号。
 	List(context.Context) ([]models.AIAccount, error)
+	// ListForRuntime 返回指定智能体内不含凭据的账号。
+	ListForRuntime(context.Context, string) ([]models.AIAccount, error)
 	// Get 返回账号元数据。
 	Get(context.Context, string) (models.AIAccount, error)
 	// Create 原子保存账号与加密 API Key。
@@ -56,6 +58,15 @@ func (c *aiAccountController) List(ctx context.Context) ([]models.AIAccount, err
 	accounts := []models.AIAccount{}
 	if err := controllerDB(ctx, c.db).Omit("CredentialCiphertext").Order("created_at ASC, id ASC").Find(&accounts).Error; err != nil {
 		return nil, databaseError("list_ai_accounts", "", err)
+	}
+	return accounts, nil
+}
+
+// ListForRuntime 在数据库中按实际智能体归属过滤账号。
+func (c *aiAccountController) ListForRuntime(ctx context.Context, runtimeID string) ([]models.AIAccount, error) {
+	accounts := []models.AIAccount{}
+	if err := controllerDB(ctx, c.db).Omit("CredentialCiphertext").Where("runtime_id = ?", runtimeID).Order("created_at ASC, id ASC").Find(&accounts).Error; err != nil {
+		return nil, databaseError("list_runtime_ai_accounts", runtimeID, err)
 	}
 	return accounts, nil
 }
@@ -101,6 +112,9 @@ func (c *aiAccountController) Update(ctx context.Context, account models.AIAccou
 	current, err := c.Get(ctx, account.ID)
 	if err != nil {
 		return err
+	}
+	if current.RuntimeID != account.RuntimeID {
+		return status_error.AIAccountConfigurationInvalid
 	}
 	if current.Revision != revision {
 		return status_error.AIAccountRevisionConflict

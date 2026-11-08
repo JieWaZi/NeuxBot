@@ -19,8 +19,10 @@ type WorkflowController interface {
 	DeleteDefinition(context.Context, string, string) error
 	// GetDefinition 按稳定身份读取定义。
 	GetDefinition(context.Context, string) (models.WorkflowDefinition, error)
-	// ListDefinitions 使用字面搜索和更新时间游标读取有界列表。
-	ListDefinitions(context.Context, string, int64, string, int) ([]models.WorkflowDefinition, error)
+	// ListDefinitions 先按字面搜索与分类过滤，再按更新时间游标读取有界列表。
+	ListDefinitions(context.Context, string, int64, string, int, *string) ([]models.WorkflowDefinition, error)
+	// UpdateCategories 只更新目录标签，保留源码版本和执行关系。
+	UpdateCategories(context.Context, string, []string) error
 	// UpdateHead 在当前版本仍匹配时提交新版本指针及摘要。
 	UpdateHead(context.Context, models.WorkflowDefinition, string) error
 	// CreateRevision 插入不可变源码、投影和执行程序。
@@ -100,11 +102,18 @@ func (c *workflowController) GetDefinition(ctx context.Context, id string) (mode
 	}
 	return value, nil
 }
-func (c *workflowController) ListDefinitions(ctx context.Context, query string, before int64, beforeID string, limit int) ([]models.WorkflowDefinition, error) {
+func (c *workflowController) ListDefinitions(ctx context.Context, query string, before int64, beforeID string, limit int, category *string) ([]models.WorkflowDefinition, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
 	db := controllerDB(ctx, c.db).Model(&models.WorkflowDefinition{})
+	if category != nil {
+		if *category == "" {
+			db = db.Where("json_array_length(categories) = 0")
+		} else {
+			db = db.Where("EXISTS (SELECT 1 FROM json_each(workflow_definitions.categories) WHERE value = ?)", *category)
+		}
+	}
 	if query = strings.ToLower(strings.TrimSpace(query)); query != "" {
 		db = db.Where("instr(lower(title), ?) > 0 OR instr(lower(description), ?) > 0", query, query)
 	}
@@ -116,6 +125,15 @@ func (c *workflowController) ListDefinitions(ctx context.Context, query string, 
 		return nil, databaseError("list_workflow_definitions", "", err)
 	}
 	return values, nil
+}
+
+// UpdateCategories 使用单表局部更新，不移动当前源码版本。
+func (c *workflowController) UpdateCategories(ctx context.Context, id string, categories []string) error {
+	value := models.WorkflowDefinition{Categories: categories}
+	if err := controllerDB(ctx, c.db).Model(&value).Where("id = ?", id).Select("Categories", "UpdatedAt").Updates(&value).Error; err != nil {
+		return databaseError("update_workflow_categories", id, err)
+	}
+	return nil
 }
 func (c *workflowController) UpdateHead(ctx context.Context, value models.WorkflowDefinition, expected string) error {
 	result := controllerDB(ctx, c.db).Model(&models.WorkflowDefinition{}).Where("id = ? AND current_revision_id = ?", value.ID, expected).Updates(map[string]any{"current_revision_id": value.CurrentRevisionID, "ordinal": value.Ordinal, "title": value.Title, "description": value.Description, "when_to_use": value.WhenToUse})

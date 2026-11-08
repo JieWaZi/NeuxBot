@@ -109,6 +109,17 @@
   --resource-muted: #6b6b70;
   --resource-placeholder: #5c5c61;
   --resource-accent-text: #0064c8;
+  --resource-category-code: #466c99;
+  --resource-category-design: #8764a2;
+  --resource-category-data: #4c8077;
+  --resource-category-writing: #aa6b4e;
+  --resource-category-research: #626eac;
+  --resource-category-web: #397e91;
+  --resource-category-automation: #99704a;
+  --resource-category-business: #788045;
+  --resource-category-communication: #a6586f;
+  --resource-category-tools: #65778e;
+  --resource-category-content: #ffffff;
   /* NeuxBot 试用卡：浅色柔和、暗色沉静，CSS 与 shader 共用同一套主题配色。 */
   --resource-artwork-lilac: #c4bce5;
   --resource-artwork-ember: #e4c194;
@@ -250,9 +261,9 @@
   --field-placeholder: var(--content-muted);
   --field-border: rgba(0, 0, 0, 0.08);
   --field-border-hover: rgba(0, 0, 0, 0.2);
-  --field-border-focus: var(--ref-neutral-550);
+  --field-border-focus: var(--focus-ring);
   --field-border-active: var(--field-border-hover);
-  --focus-ring: var(--ref-neutral-650);
+  --focus-ring: var(--accent-content);
   --overlay-scrim: rgba(16, 26, 39, 0.2);
   --scrollbar-thumb: var(--action-neutral-pressed);
   --control-highlight-background: var(--accent-default);
@@ -374,6 +385,17 @@
   --resource-muted: #979797;
   --resource-placeholder: #bfbfbf;
   --resource-accent-text: #42a0ff;
+  --resource-category-code: #547aa5;
+  --resource-category-design: #9572b0;
+  --resource-category-data: #578b81;
+  --resource-category-writing: #b57659;
+  --resource-category-research: #707cb8;
+  --resource-category-web: #478c9d;
+  --resource-category-automation: #a67d57;
+  --resource-category-business: #858e51;
+  --resource-category-communication: #b2657c;
+  --resource-category-tools: #73869e;
+  --resource-category-content: #ffffff;
   --resource-artwork-lilac: #786794;
   --resource-artwork-ember: #967749;
   --resource-artwork-mint: #4f907c;
@@ -520,7 +542,7 @@
   --field-placeholder: var(--ref-neutral-550);
   --field-border: rgba(255, 255, 255, 0.18);
   --field-border-hover: rgba(255, 255, 255, 0.24);
-  --field-border-focus: var(--ref-neutral-550);
+  --field-border-focus: var(--focus-ring);
   --field-border-active: var(--field-border-focus);
   --focus-ring: var(--accent-default);
   --overlay-scrim: rgba(0, 0, 0, 0.56);
