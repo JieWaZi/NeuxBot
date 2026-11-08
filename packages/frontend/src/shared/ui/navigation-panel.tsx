@@ -3,21 +3,34 @@ import type { ComponentProps, ReactNode } from "react";
 import { cn } from "@/shared/lib/cn";
 
 export function NavigationPanel({
+  appearance = "default",
+  title,
   className,
+  children,
   ...props
-}: ComponentProps<"nav">) {
+}: Omit<ComponentProps<"nav">, "title"> & {
+  appearance?: "default" | "catalog";
+  title?: ReactNode;
+}) {
   return (
     <nav
       className={cn(
-        "bg-surface-chrome text-content-primary flex min-h-0 flex-col",
+        "flex min-h-0 flex-col",
+        appearance === "catalog"
+          ? "bg-resource-canvas text-resource-content h-full gap-1 px-3 pt-4 pb-3"
+          : "bg-surface-chrome text-content-primary",
         className,
       )}
       {...props}
-    />
+    >
+      {title && <h2 className="type-label mb-3 px-2 font-semibold">{title}</h2>}
+      {children}
+    </nav>
   );
 }
 
 export function NavigationSection({
+  appearance = "default",
   className,
   children,
   title,
@@ -26,27 +39,38 @@ export function NavigationSection({
 }: Omit<ComponentProps<"section">, "title"> & {
   title?: ReactNode;
   titleClassName?: string;
+  appearance?: "default" | "catalog";
 }) {
   return (
-    <section className={cn("px-2 py-2", className)} {...props}>
+    <section
+      className={cn(
+        appearance === "catalog" ? "min-w-0" : "px-2 py-2",
+        className,
+      )}
+      {...props}
+    >
       {title ? (
         <div
           className={cn(
-            "text-content-caption type-caption px-2 py-1",
+            appearance === "catalog"
+              ? "text-resource-muted type-resource-caption mt-4 mb-1 px-2"
+              : "text-content-caption type-caption px-2 py-1",
             titleClassName,
           )}
         >
           {title}
         </div>
       ) : null}
-      <div className="grid gap-0.5">{children}</div>
+      <div className={appearance === "catalog" ? "grid gap-1" : "grid gap-0.5"}>
+        {children}
+      </div>
     </section>
   );
 }
 
 type NavigationItemProps = ComponentProps<"button"> & {
   active?: boolean;
-  density?: "default" | "navigation";
+  density?: "default" | "navigation" | "catalog";
   icon?: ReactNode;
   label: ReactNode;
   description?: ReactNode;
@@ -68,20 +92,36 @@ export function NavigationItem({
       type="button"
       aria-current={active ? "page" : undefined}
       className={cn(
-        "duration-quick ease-ui focus-visible:ring-ring [&_svg]:size-icon-md grid w-full grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-2 rounded-md text-left transition-[background-color,color] outline-none focus-visible:ring-2",
-        density === "navigation"
-          ? "min-h-row-navigation px-3"
-          : "min-h-row-default px-2",
-        active
-          ? "bg-selection-surface text-content-primary"
-          : "text-content-secondary hover:bg-action-quiet-hover hover:text-content-primary",
+        "duration-quick ease-ui focus-visible:ring-ring grid w-full grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-2 rounded-md text-left transition-[background-color,color] outline-none focus-visible:ring-2",
+        density === "catalog"
+          ? "catalog-focus [&>span:first-child>svg]:size-icon-md min-h-row-catalog px-2"
+          : density === "navigation"
+            ? "[&_svg]:size-icon-md min-h-row-navigation px-3"
+            : "[&_svg]:size-icon-md min-h-row-default px-2",
+        density === "catalog"
+          ? active
+            ? "bg-resource-hover text-resource-content"
+            : "text-resource-secondary hover:bg-resource-hover hover:text-resource-content"
+          : active
+            ? "bg-selection-surface text-content-primary"
+            : "text-content-secondary hover:bg-action-quiet-hover hover:text-content-primary",
         className,
       )}
       {...props}
     >
       <span className="grid place-items-center">{icon}</span>
       <span className="min-w-0">
-        <span className="type-body block truncate font-medium">{label}</span>
+        <span
+          className={cn(
+            "block truncate",
+            density === "catalog"
+              ? "type-resource-body"
+              : "type-body font-medium",
+            density === "catalog" && active && "font-medium",
+          )}
+        >
+          {label}
+        </span>
         {description ? (
           <span className="text-content-caption type-caption block truncate">
             {description}

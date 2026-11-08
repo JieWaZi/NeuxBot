@@ -1,4 +1,5 @@
 import type * as Motion from "motion/react";
+import { StrictMode } from "react";
 import {
   act,
   fireEvent,
@@ -26,6 +27,7 @@ let teamWidth = 100;
 let ancestorScale = 1;
 let optionTop = 3;
 let optionHeight = 30;
+let trackHeight = 36;
 let resize: (() => void) | undefined;
 
 beforeEach(() => {
@@ -34,6 +36,7 @@ beforeEach(() => {
   ancestorScale = 1;
   optionTop = 3;
   optionHeight = 30;
+  trackHeight = 36;
   vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(
     function (this: HTMLElement) {
       return this.getAttribute("role") === "radiogroup" ? 106 + teamWidth : 0;
@@ -41,7 +44,7 @@ beforeEach(() => {
   );
   vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
     function (this: HTMLElement) {
-      return this.getAttribute("role") === "radiogroup" ? 36 : 0;
+      return this.getAttribute("role") === "radiogroup" ? trackHeight : 0;
     },
   );
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
@@ -51,7 +54,7 @@ beforeEach(() => {
           20 * ancestorScale,
           10 * ancestorScale,
           (106 + teamWidth) * ancestorScale,
-          36 * ancestorScale,
+          trackHeight * ancestorScale,
         );
       }
       if (this.getAttribute("role") === "radio") {
@@ -101,6 +104,47 @@ function highlight() {
   return node;
 }
 
+it("资源表单高亮测量真实 28px 选项，不继承 shell 命中框或裁切圆角", async () => {
+  optionHeight = 28;
+  trackHeight = 34;
+  render(
+    <SegmentedControl
+      appearance="catalog-form"
+      ariaLabel="模式"
+      options={options}
+      value="waker"
+      onValueChange={() => {}}
+    />,
+  );
+  await waitFor(() => {
+    expect(highlight()).toHaveStyle({ opacity: "1" });
+    expect(highlight().style.clipPath).toBe(
+      "inset(3px 103px 3px 3px round var(--segmented-highlight-radius, var(--radius-control-inner)))",
+    );
+  });
+  expect(highlight()).not.toHaveClass("segmented-control-shell");
+});
+
+it("StrictMode 初始化时高亮仅覆盖默认选项", async () => {
+  render(
+    <StrictMode>
+      <SegmentedControl
+        appearance="shell"
+        ariaLabel="模式"
+        options={options}
+        value="waker"
+        onValueChange={() => {}}
+      />
+    </StrictMode>,
+  );
+  await waitFor(() => {
+    expect(highlight()).toHaveStyle({ opacity: "1" });
+    expect(highlight().style.clipPath).toBe(
+      "inset(3px 103px 3px 3px round var(--segmented-highlight-radius, var(--radius-control-inner)))",
+    );
+  });
+});
+
 it("首次定位到当前选项，切换时先拉伸再收拢到目标选项", async () => {
   const { rerender } = render(
     <SegmentedControl
@@ -114,7 +158,7 @@ it("首次定位到当前选项，切换时先拉伸再收拢到目标选项", a
   expect(thumb).toHaveAttribute("aria-hidden", "true");
   await waitFor(() =>
     expect(thumb.style.clipPath).toBe(
-      "inset(3px 103px 3px 3px round var(--radius-control-inner))",
+      "inset(3px 103px 3px 3px round var(--segmented-highlight-radius, var(--radius-control-inner)))",
     ),
   );
   rerender(
@@ -135,7 +179,7 @@ it("首次定位到当前选项，切换时先拉伸再收拢到目标选项", a
   });
   await waitFor(() => {
     expect(thumb.style.clipPath).toBe(
-      "inset(3px 3px 3px 103px round var(--radius-control-inner))",
+      "inset(3px 3px 3px 103px round var(--segmented-highlight-radius, var(--radius-control-inner)))",
     );
   });
 });
@@ -148,7 +192,7 @@ it("快速反向切换最终跟随受控值，不被上一段回弹覆盖", asyn
   rerender(<SegmentedControl {...props} value="waker" />);
   await waitFor(() => {
     expect(highlight().style.clipPath).toBe(
-      "inset(3px 103px 3px 3px round var(--radius-control-inner))",
+      "inset(3px 103px 3px 3px round var(--segmented-highlight-radius, var(--radius-control-inner)))",
     );
   });
 });
@@ -160,20 +204,20 @@ it("减少动态效果时立即定位，选项宽度变化后重新对齐", asyn
   rerender(<SegmentedControl {...props} value="team" />);
   await waitFor(() =>
     expect(highlight().style.clipPath).toBe(
-      "inset(3px 3px 3px 103px round var(--radius-control-inner))",
+      "inset(3px 3px 3px 103px round var(--segmented-highlight-radius, var(--radius-control-inner)))",
     ),
   );
   teamWidth = 160;
   act(() => resize?.());
   await waitFor(() =>
     expect(highlight().style.clipPath).toBe(
-      "inset(3px 3px 3px 103px round var(--radius-control-inner))",
+      "inset(3px 3px 3px 103px round var(--segmented-highlight-radius, var(--radius-control-inner)))",
     ),
   );
   rerender(<SegmentedControl {...props} value="waker" />);
   await waitFor(() =>
     expect(highlight().style.clipPath).toBe(
-      "inset(3px 163px 3px 3px round var(--radius-control-inner))",
+      "inset(3px 163px 3px 3px round var(--segmented-highlight-radius, var(--radius-control-inner)))",
     ),
   );
 });
@@ -214,7 +258,7 @@ it("隐藏 Scene 时停止高亮，恢复后直接对齐最新的受控选项", 
   rerender(content(true, "team"));
   await waitFor(() =>
     expect(highlight().style.clipPath).toBe(
-      "inset(3px 3px 3px 103px round var(--radius-control-inner))",
+      "inset(3px 3px 3px 103px round var(--segmented-highlight-radius, var(--radius-control-inner)))",
     ),
   );
   expect(highlight()).toHaveStyle({ opacity: "1" });
@@ -232,7 +276,7 @@ it("祖先缩放时仍使用控件本地坐标定位高亮", async () => {
   );
   await waitFor(() =>
     expect(highlight().style.clipPath).toBe(
-      "inset(3px 103px 3px 3px round var(--radius-control-inner))",
+      "inset(3px 103px 3px 3px round var(--segmented-highlight-radius, var(--radius-control-inner)))",
     ),
   );
 });
@@ -253,7 +297,7 @@ it.each([1, 0.5])(
     const { rerender } = render(<SegmentedControl {...props} value="waker" />);
     await waitFor(() =>
       expect(highlight().style.clipPath).toBe(
-        "inset(0px 103px 0px 3px round var(--radius-control-inner))",
+        "inset(0px 103px 0px 3px round var(--segmented-highlight-radius, var(--radius-control-inner)))",
       ),
     );
     // 视觉高亮由 shell CSS 自身的 24px 表面裁切；Motion 只沿真实命中框定位横向边界。
@@ -264,7 +308,7 @@ it.each([1, 0.5])(
     rerender(<SegmentedControl {...props} value="team" />);
     await waitFor(() =>
       expect(highlight().style.clipPath).toBe(
-        "inset(0px 3px 0px 103px round var(--radius-control-inner))",
+        "inset(0px 3px 0px 103px round var(--segmented-highlight-radius, var(--radius-control-inner)))",
       ),
     );
   },

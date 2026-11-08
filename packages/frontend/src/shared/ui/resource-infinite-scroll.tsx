@@ -8,11 +8,13 @@ export function ResourceInfiniteScroll({
   pending = false,
   error,
   onLoadMore,
+  showLoadMoreButton = true,
 }: {
   hasMore: boolean;
   pending?: boolean;
   error?: unknown;
   onLoadMore: () => void;
+  showLoadMoreButton?: boolean;
 }) {
   const { t } = useTranslation("common");
   const target = useRef<HTMLDivElement>(null);
@@ -34,16 +36,30 @@ export function ResourceInfiniteScroll({
   }, [hasMore, pending, error, onLoadMore]);
   if (!hasMore) return null;
   return (
-    <div ref={target} className="flex justify-center py-3" aria-busy={pending}>
-      <Button variant="ghost" size="sm" disabled={pending} onClick={onLoadMore}>
-        {t(
-          pending
-            ? "resourceSelection.loadingMore"
-            : error
-              ? "retry"
-              : "resourceSelection.loadMore",
-        )}
-      </Button>
+    <div
+      ref={target}
+      data-slot="resource-infinite-scroll"
+      className="flex justify-center py-3"
+      aria-busy={pending}
+      role={pending ? "status" : undefined}
+      aria-label={pending ? t("resourceSelection.loadingMore") : undefined}
+    >
+      {(showLoadMoreButton || Boolean(error)) && (
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={pending}
+          onClick={onLoadMore}
+        >
+          {t(
+            pending
+              ? "resourceSelection.loadingMore"
+              : error
+                ? "retry"
+                : "resourceSelection.loadMore",
+          )}
+        </Button>
+      )}
       {error ? (
         <p role="alert" className="type-body text-destructive">
           {t("resourceSelection.loadMoreFailed")}

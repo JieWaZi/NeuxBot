@@ -8,6 +8,8 @@ const inputVariants = cva(
   {
     variants: {
       appearance: {
+        catalog:
+          "h-control-catalog min-w-0 border-resource-border-strong bg-resource-control px-3 type-label text-resource-content placeholder:text-resource-placeholder focus-visible:border-resource-muted disabled:cursor-not-allowed disabled:opacity-42",
         default:
           "border-field-border bg-field hover:border-field-border-hover hover:bg-field-hover focus:border-field-border-active",
         quiet:
@@ -43,7 +45,14 @@ export function Input({
 }: InputProps) {
   return (
     <input
-      className={cn(inputVariants({ appearance, shape, size }), className)}
+      className={cn(
+        inputVariants({
+          appearance,
+          shape,
+          size: appearance === "catalog" ? null : size,
+        }),
+        className,
+      )}
       {...props}
     />
   );

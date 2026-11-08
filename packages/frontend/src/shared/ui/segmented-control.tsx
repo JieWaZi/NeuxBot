@@ -12,6 +12,8 @@ const segmentedControlVariants = cva("items-stretch", {
         "bg-button-fill relative isolate inline-flex w-fit gap-0.5 rounded-control p-0.5",
       shell:
         "segmented-control-shell relative isolate inline-flex w-fit rounded-control",
+      "catalog-form":
+        "segmented-control-catalog-form relative isolate inline-flex w-fit",
       cards:
         "grid w-full grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-3",
       underline: "inline-flex min-w-0 items-stretch gap-4",
@@ -28,6 +30,7 @@ const segmentedControlVariants = cva("items-stretch", {
     },
   },
   compoundVariants: [
+    { appearance: "catalog-form", class: "type-resource-tab" },
     { appearance: "segments", distribution: "fill", class: "flex" },
     { appearance: "shell", distribution: "fill", class: "flex" },
     { appearance: "segments", size: "sm", class: "h-control-sm" },
@@ -53,6 +56,7 @@ const segmentedOptionVariants = cva(
           "[&_svg]:size-icon-md h-full items-center justify-center gap-1.5 rounded-control-inner px-2",
         shell:
           "[&_svg]:size-icon-md h-full items-center justify-center gap-1.5 rounded-control-inner px-2",
+        "catalog-form": "segmented-control-catalog-form-option catalog-focus",
         cards:
           "border-border-subtle bg-surface-raised hover:bg-surface-tertiary [&_svg]:size-icon-lg items-center gap-3 rounded-md border p-4 text-left aria-checked:border-accent-border",
         underline:
@@ -106,7 +110,11 @@ export function SegmentedControl<T extends string>({
   size,
   value,
 }: SegmentedControlProps<T>) {
-  const isSegments = appearance === "segments" || appearance === "shell";
+  const isSegments =
+    appearance === "segments" ||
+    appearance === "shell" ||
+    appearance === "catalog-form";
+  const controlSize = appearance === "catalog-form" ? null : size;
   const segmentRefs = useRef(new Map<string, HTMLButtonElement>());
 
   const moveSelection = (
@@ -148,7 +156,11 @@ export function SegmentedControl<T extends string>({
     <div
       aria-disabled={disabled || undefined}
       className={cn(
-        segmentedControlVariants({ appearance, size, distribution }),
+        segmentedControlVariants({
+          appearance,
+          size: controlSize,
+          distribution,
+        }),
         appearance === "resources" &&
           options.length === 4 &&
           "@[56rem]/resource-page:grid-cols-4",
@@ -199,20 +211,28 @@ export function SegmentedControl<T extends string>({
             onClick={() => onValueChange(option.value)}
             onKeyDown={(event) => moveSelection(event, index)}
             className={cn(
-              segmentedOptionVariants({ appearance, size, distribution }),
-              appearance === "underline"
-                ? selected
-                  ? "text-content-primary font-medium"
-                  : "text-content-secondary hover:text-content-primary"
-                : selected
-                  ? cn(
-                      "text-content-primary font-medium",
-                      !isSegments && "bg-surface-raised",
-                    )
-                  : isSegments
-                    ? "text-button-content opacity-70 [@media(hover:hover)_and_(pointer:fine)]:hover:opacity-90"
-                    : "text-button-content hover:bg-button-fill-hover active:bg-button-fill-pressed",
-              option.disabled && "pointer-events-none opacity-45",
+              segmentedOptionVariants({
+                appearance,
+                size: controlSize,
+                distribution,
+              }),
+              appearance === "catalog-form"
+                ? null
+                : appearance === "underline"
+                  ? selected
+                    ? "text-content-primary font-medium"
+                    : "text-content-secondary hover:text-content-primary"
+                  : selected
+                    ? cn(
+                        "text-content-primary font-medium",
+                        !isSegments && "bg-surface-raised",
+                      )
+                    : isSegments
+                      ? "text-button-content opacity-70 [@media(hover:hover)_and_(pointer:fine)]:hover:opacity-90"
+                      : "text-button-content hover:bg-button-fill-hover active:bg-button-fill-pressed",
+              option.disabled &&
+                appearance !== "catalog-form" &&
+                "pointer-events-none opacity-45",
             )}
           >
             {option.icon}
@@ -237,28 +257,36 @@ export function SegmentedControl<T extends string>({
           value={value}
           layoutKey={JSON.stringify([
             options.map(({ value, label }) => [value, label]),
+            appearance,
             size,
             distribution,
           ])}
           className={cn(
-            segmentedControlVariants({ appearance, size, distribution }),
+            segmentedControlVariants({
+              appearance,
+              size: controlSize,
+              distribution,
+            }),
             "text-content-primary pointer-events-none absolute inset-0 w-full",
-            appearance === "shell" ? "bg-transparent" : "bg-surface-raised",
+            appearance === "shell" || appearance === "catalog-form"
+              ? "bg-transparent"
+              : "bg-surface-raised",
           )}
         >
-          {options.map((option) => (
-            <span
-              key={option.value}
-              className={cn(
-                segmentedOptionVariants({ appearance, size, distribution }),
-                option.value === value && "font-medium",
-                option.disabled && "opacity-45",
-              )}
-            >
-              {option.icon}
-              <span className="whitespace-nowrap">{option.label}</span>
-            </span>
-          ))}
+          {appearance !== "catalog-form" &&
+            options.map((option) => (
+              <span
+                key={option.value}
+                className={cn(
+                  segmentedOptionVariants({ appearance, size, distribution }),
+                  option.value === value && "font-medium",
+                  option.disabled && "opacity-45",
+                )}
+              >
+                {option.icon}
+                <span className="whitespace-nowrap">{option.label}</span>
+              </span>
+            ))}
         </SegmentedControlHighlight>
       ) : null}
     </div>

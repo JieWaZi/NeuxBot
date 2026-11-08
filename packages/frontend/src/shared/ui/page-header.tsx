@@ -15,8 +15,10 @@ type PageHeaderProps = Omit<ComponentProps<"header">, "title"> & {
   description?: ReactNode;
   eyebrow?: ReactNode;
   actions?: ReactNode;
-  layout?: "list" | "detail";
+  layout?: "list" | "detail" | "form";
   visual?: ReactNode;
+  appearance?: "default" | "compact";
+  status?: ReactNode;
   /** 由页面提供确定的列表入口；未提供时保留普通标题区。 */
   backAction?: { label: string; onClick: () => void };
 };
@@ -35,6 +37,7 @@ function PageHeaderBack({
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
+              type="button"
               size="icon"
               variant="ghost"
               aria-label={action.label}
@@ -92,6 +95,7 @@ function PageHeaderTitleBlock({
 
 export function PageHeader({
   actions,
+  appearance = "default",
   backAction,
   children,
   className,
@@ -99,9 +103,49 @@ export function PageHeader({
   eyebrow,
   layout = "list",
   title,
+  status,
   visual,
   ...props
 }: PageHeaderProps) {
+  if (appearance === "compact")
+    return (
+      <header
+        className={cn(
+          "@container/page-header flex min-w-0 flex-wrap items-center gap-3",
+          className,
+        )}
+        {...props}
+      >
+        <div
+          className={cn(
+            "group/page-title flex min-w-0 items-center",
+            layout === "form" ? "flex-auto" : "flex-1 basis-60",
+          )}
+        >
+          {backAction && <PageHeaderBack action={backAction} />}
+          {visual && <div className="mr-3 shrink-0">{visual}</div>}
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <h1 className="type-resource-heading text-resource-content min-w-0 font-semibold break-words">
+                {title}
+              </h1>
+              {status}
+            </div>
+            {description && (
+              <div className="type-resource-caption text-resource-muted mt-1 min-w-0">
+                {description}
+              </div>
+            )}
+          </div>
+        </div>
+        {actions && (
+          <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
+            {actions}
+          </div>
+        )}
+        {children}
+      </header>
+    );
   if (layout === "detail" && visual) {
     return (
       <header

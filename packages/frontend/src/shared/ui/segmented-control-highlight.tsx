@@ -3,7 +3,6 @@ import {
   motion,
   useMotionValue,
   useReducedMotion,
-  useTransform,
 } from "motion/react";
 import {
   useContext,
@@ -39,10 +38,7 @@ export function SegmentedControlHighlight({
   const bottom = useMotionValue(0);
   const width = useMotionValue(0);
   const opacity = useMotionValue(0);
-  const clipPath = useTransform(
-    () =>
-      `inset(${top.get()}px ${Math.max(0, width.get() - right.get())}px ${bottom.get()}px ${Math.max(0, left.get())}px round var(--radius-control-inner))`,
-  );
+  const clipPath = useMotionValue("inset(50%)");
   const previous = useRef<{
     value: string;
     left: number;
@@ -51,6 +47,20 @@ export function SegmentedControlHighlight({
     bottom: number;
     width: number;
   } | null>(null);
+
+  useLayoutEffect(() => {
+    const update = () => {
+      clipPath.set(
+        `inset(${top.get()}px ${Math.max(0, width.get() - right.get())}px ${bottom.get()}px ${Math.max(0, left.get())}px round var(--segmented-highlight-radius, var(--radius-control-inner)))`,
+      );
+    };
+    // StrictMode 重放布局 Effect 时恢复订阅，并用已测量的边界同步裁切。
+    const unsubscribe = [top, right, bottom, left, width].map((edge) =>
+      edge.on("change", update),
+    );
+    update();
+    return () => unsubscribe.forEach((stop) => stop());
+  }, [clipPath, top, right, bottom, left, width]);
 
   useLayoutEffect(() => {
     if (!visible) {

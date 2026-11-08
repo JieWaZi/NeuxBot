@@ -10,6 +10,7 @@ export const fieldControlTriggerVariants = cva(
     variants: {
       size: {
         sm: "h-control-sm px-2 type-ui",
+        catalog: "catalog-focus h-control-catalog px-3 type-resource-row-title",
         md: "h-control-md px-3 type-body",
         lg: "h-control-lg px-3 type-label",
       },

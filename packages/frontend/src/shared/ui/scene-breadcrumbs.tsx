@@ -30,7 +30,7 @@ export function SceneBreadcrumbs({
           data-desktop-no-drag-region
           className="min-w-0 overflow-x-auto"
         >
-          <ol className="type-body flex min-w-0 items-center gap-1 whitespace-nowrap">
+          <ol className="type-body flex min-w-max items-center gap-1 whitespace-nowrap">
             {items.map((item, index) => (
               <Fragment key={item.href ?? "current"}>
                 {index > 0 ? (

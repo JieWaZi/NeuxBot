@@ -20,6 +20,8 @@ export function ResourceListItem({
   footer,
   actions,
   selected,
+  selection,
+  appearance = "card",
   onClick,
   descriptionLines = 2,
   headingLevel = 2,
@@ -36,9 +38,65 @@ export function ResourceListItem({
   footer?: ReactNode;
   actions?: ReactNode;
   selected?: boolean;
+  selection?: ReactNode;
+  appearance?: "card" | "row";
 }) {
   const location = useLocation();
   const Heading = headingLevel === 3 ? "h3" : "h2";
+  const hitProps = {
+    "aria-label": label,
+    title: [title, description].filter(Boolean).join("\n"),
+    className:
+      "catalog-focus focus-visible:ring-ring absolute inset-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-inset",
+  };
+  if (appearance === "row")
+    return (
+      <article
+        data-slot="resource-list-item"
+        data-appearance="row"
+        data-state={selected ? "selected" : undefined}
+        className="duration-quick hover:bg-resource-hover data-[state=selected]:bg-resource-hover text-resource-content relative flex min-w-0 items-center gap-3 rounded-lg p-2 transition-colors motion-reduce:transition-none"
+      >
+        {to ? (
+          <Link
+            {...hitProps}
+            to={to}
+            state={{ resourceBack: location.pathname + location.search }}
+          />
+        ) : (
+          <button {...hitProps} type="button" onClick={onClick} />
+        )}
+        {selection && <div className="relative shrink-0">{selection}</div>}
+        <div className="pointer-events-none shrink-0">{icon}</div>
+        <div className="pointer-events-none min-w-0 flex-1 space-y-0.5">
+          <Heading
+            className="type-resource-row-title truncate font-medium"
+            title={title}
+          >
+            {title}
+          </Heading>
+          {description && (
+            <p
+              className="type-resource-row-description text-resource-muted truncate"
+              title={description}
+            >
+              {description}
+            </p>
+          )}
+          {(metadata || footer) && (
+            <div className="type-caption text-content-caption flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+              {metadata}
+              {footer}
+            </div>
+          )}
+        </div>
+        {actions && (
+          <div className="relative flex max-w-full shrink-0 flex-wrap items-center gap-1">
+            {actions}
+          </div>
+        )}
+      </article>
+    );
   return (
     <Card
       asChild
@@ -65,6 +123,7 @@ export function ResourceListItem({
               className="focus-visible:ring-ring absolute inset-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-inset"
             />
           )}
+          {selection && <div className="relative shrink-0">{selection}</div>}
           {icon}
           <div className="pointer-events-none flex min-w-0 flex-1 flex-col self-stretch">
             <Heading className="type-label truncate font-medium">

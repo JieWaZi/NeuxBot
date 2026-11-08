@@ -88,7 +88,7 @@
 :root,
 [data-theme="light"] {
   color-scheme: light;
-  /* OpenBot v0.62.0/fcb35746：brand tokens-light.css；仅供窗口壳层消费。 */
+  /* OpenBot v0.62.0/fcb35746：brand tokens-light.css；供窗口壳层与资源目录共享。 */
   --shell-surface-frame: #e8e8eb;
   --shell-surface-canvas: #f5f5f6;
   --shell-border-edge: rgba(20, 20, 20, 0.07);
@@ -99,6 +99,38 @@
   --shell-tabs-track: #ececee;
   --shell-tabs-pill: #ffffff;
   --shell-menu-shadow: transparent;
+  /* OpenBot Marketplace / IntegrationPage 的独立表面与文字层级。 */
+  --resource-canvas: var(--shell-surface-canvas);
+  --resource-surface: #ffffff;
+  --resource-control: var(--resource-surface);
+  --resource-raised: #fcfcfc;
+  --resource-content: #141414;
+  --resource-secondary: #3a3a3c;
+  --resource-muted: #6b6b70;
+  --resource-placeholder: #5c5c61;
+  --resource-accent-text: #0064c8;
+  /* NeuxBot 试用卡：浅色柔和、暗色沉静，CSS 与 shader 共用同一套主题配色。 */
+  --resource-artwork-lilac: #c4bce5;
+  --resource-artwork-ember: #e4c194;
+  --resource-artwork-mint: #a6d7c2;
+  --resource-artwork-blue: #a3c5df;
+  --resource-artwork-sky: #c1dce7;
+  --resource-artwork-indigo: #a8b6dc;
+  --resource-artwork-cyan: #a5d4d4;
+  --resource-artwork-terracotta: #d9b5a0;
+  --resource-artwork-coral: #dfb6b2;
+  --resource-artwork-magenta: #d3b3ce;
+  --resource-artwork-dim: #aab8bc;
+  --resource-artwork-canvas: var(--resource-canvas);
+  --resource-artwork-violet-deep: #a99acb;
+  --resource-artwork-red-deep: #c99b98;
+  --resource-artwork-green-deep: #83b6a4;
+  --resource-artwork-blue-deep: #87a9c3;
+  --resource-artwork-plum-deep: #b79bb8;
+  --resource-artwork-silver: #d6e0df;
+
+  --resource-primary: #1c1c1e;
+  --resource-on-primary: #ffffff;
 
   --editor-syntax-black: #383a42;
   --editor-syntax-gray: #a0a1a7;
@@ -333,6 +365,34 @@
   /* 对应桌面 tokens.css，不读取 React Native 专属 tokens-native.css。 */
   --shell-surface-frame: #0d0d0d;
   --shell-surface-canvas: #1a1a1a;
+  --resource-canvas: var(--shell-surface-canvas);
+  --resource-surface: #212121;
+  --resource-control: var(--resource-surface);
+  --resource-raised: #242424;
+  --resource-content: #ffffff;
+  --resource-secondary: #dcdcdc;
+  --resource-muted: #979797;
+  --resource-placeholder: #bfbfbf;
+  --resource-accent-text: #42a0ff;
+  --resource-artwork-lilac: #786794;
+  --resource-artwork-ember: #967749;
+  --resource-artwork-mint: #4f907c;
+  --resource-artwork-blue: #4f7e9c;
+  --resource-artwork-sky: #648f9f;
+  --resource-artwork-indigo: #656f9c;
+  --resource-artwork-cyan: #4b8e92;
+  --resource-artwork-terracotta: #976f5d;
+  --resource-artwork-coral: #9a6c70;
+  --resource-artwork-magenta: #8b6689;
+  --resource-artwork-dim: #526568;
+  --resource-artwork-violet-deep: #403653;
+  --resource-artwork-red-deep: #583d3c;
+  --resource-artwork-green-deep: #2c544a;
+  --resource-artwork-blue-deep: #2c455d;
+  --resource-artwork-plum-deep: #50384e;
+  --resource-artwork-silver: #798d8b;
+  --resource-primary: #f0f0f0;
+  --resource-on-primary: #141414;
   --shell-border-edge: rgba(255, 255, 255, 0.035);
   --shell-separator: rgba(255, 255, 255, 0.035);
   --shell-separator-strong: rgba(255, 255, 255, 0.045);

@@ -11,6 +11,7 @@ type Props<T extends string> = {
   onValueChange: (value: T) => void;
   options: ReadonlyArray<{ label: string; value: T }>;
   value: T;
+  size?: "sm" | "catalog";
 };
 
 export function ResourceFilterSelect<T extends string>({
@@ -18,6 +19,7 @@ export function ResourceFilterSelect<T extends string>({
   onValueChange,
   options,
   value,
+  size = "sm",
 }: Props<T>) {
   return (
     <Select
@@ -27,7 +29,7 @@ export function ResourceFilterSelect<T extends string>({
         if (selected) onValueChange(selected.value);
       }}
     >
-      <SelectTrigger size="sm" width="filter" aria-label={ariaLabel}>
+      <SelectTrigger size={size} width="filter" aria-label={ariaLabel}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
