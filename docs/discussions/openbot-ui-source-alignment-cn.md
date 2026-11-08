@@ -78,7 +78,25 @@ Web 有独立手机布局：`WebWorkspace` 使用 phone media query 与 workspac
 - 源端 flat tabs、短分隔线与局部 hover／selected 使用语义状态；本项目仍遵循无普通 Card 常驻边框、`focus-visible` 与减少动态规则。
 - 复制或改写第三方实现时保留准确来源及许可声明，按仓库规则维护 THIRD_PARTY_NOTICES；不把第三方实现描述为自研。
 
-## 6. 待验证
+## 6. 资源界面的实施差异
+
+源端角色和几何以[资源 UI 标准](../development/resource-ui-cn.md)为准。当前代码已在共享资源变体中统一以下差异；这里记录静态实现和自动化边界，不表示完成本轮真实页面视觉验收。
+
+| 核对项          | 当前实现                                                                                                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 按钮            | catalog 为 32px、14px／行高 1、gap 6px、16px glyph；catalog-form 保留 settings 宿主的 14/20。圆角使用已确认的本产品覆盖。Button loading 保留焦点、表达 busy 并阻断重复激活。   |
+| 详情身份及 Item | 身份简介使用 12/16；Item 无额外透明边界，40px media 与上下 12px padding 保持 64px；状态 Badge 的透明边界只用于其自身 22px 盒。媒体 SVG 使用独立尺寸及 1.5 描边，不套按钮规则。 |
+| 资源表单        | Input／Textarea 使用独立 catalog 外观：32px 输入、14/20；说明文本域最小 76px、允许纵向调整。名称、地址、环境变量等字段由共享控件管理外观。                                     |
+| 搜索            | catalog 外框为 32px、6px 圆角、0.5px 边线、9px 横内边距和 16px 图标；键盘环与鼠标焦点分开。                                                                                    |
+| 保存条          | ResourcePageFooter 挂到所属 pane 的底部槽，与正文滚动区分开；条体为 surface、顶部普通边线、最小高 60px，内容与表单对齐。                                                       |
+| 来源／传输选项  | catalog-form 使用 34px 轨道、28px Trigger、8／6px 圆角和 13/16；shell 仍服务伙伴／团队切换，不与表单合并。                                                                     |
+| 数据状态        | 首次内容和技能扫描使用所属区域骨架，Shell 保持挂载；已安装伙伴后台刷新失败保留旧列表，并在附近提供错误重试。                                                                   |
+
+品牌图 75% 留白、连接器 TryCard、技能三个 Tab、Git／ZIP 添加、标题右侧来源切换、连接器秒级超时、Shell 分隔线与真实固定版本草稿引用均为用户确认的产品扩展。它们不计为源端误移植，也不改写成源端原生事实。
+
+浅暗主题最终计算样式、窄 pane、长中文、实际命中区和平台交互仍需真实页面核对。自动化测试与静态源码审查不代替这些验收。
+
+## 7. 待验证
 
 固定来源不替代用户按钮映射确认。安装包与 tag 的精确对应、各主题最终计算样式、窄容器命中区、macOS 拖动与原生浏览器／终端身份均须真实核对。尚未做的项目不写作已通过。每阶段对照源端同一状态与逻辑尺寸，截图只承担验证证据。
 
@@ -122,3 +140,9 @@ Web 有独立手机布局：`WebWorkspace` 使用 phone media query 与 workspac
 [brand-dark]: https://github.com/nightly-labs/openbot/blob/fcb35746d4919798ff889a8a58449f5d58de5f65/packages/brand/src/tokens.css#L10
 [brand-light]: https://github.com/nightly-labs/openbot/blob/fcb35746d4919798ff889a8a58449f5d58de5f65/packages/brand/src/tokens-light.css#L25
 [sliding-tabs]: https://github.com/nightly-labs/openbot/blob/fcb35746d4919798ff889a8a58449f5d58de5f65/packages/ui/src/styles/sliding-tabs.css#L11
+[resource-button-css]: https://github.com/nightly-labs/openbot/blob/fcb35746d4919798ff889a8a58449f5d58de5f65/packages/ui/src/styles/primitives.css#L100
+[resource-window-icons]: https://github.com/nightly-labs/openbot/blob/fcb35746d4919798ff889a8a58449f5d58de5f65/packages/ui/src/features/marketplace/marketplace.css#L1371
+[resource-item-css]: https://github.com/nightly-labs/openbot/blob/fcb35746d4919798ff889a8a58449f5d58de5f65/packages/ui/src/styles/primitives.css#L1253
+[resource-card-css]: https://github.com/nightly-labs/openbot/blob/fcb35746d4919798ff889a8a58449f5d58de5f65/packages/ui/src/features/settings/settings-modal.css#L261
+[resource-header]: https://github.com/nightly-labs/openbot/blob/fcb35746d4919798ff889a8a58449f5d58de5f65/packages/ui/src/features/settings/IntegrationLayout.tsx#L206
+[resource-savebar]: https://github.com/nightly-labs/openbot/blob/fcb35746d4919798ff889a8a58449f5d58de5f65/packages/ui/src/features/settings/settings-modal.css#L649

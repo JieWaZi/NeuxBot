@@ -60,6 +60,8 @@ pnpm dev:native
 
 使用本机浏览器版时改为运行 `pnpm dev:web`，按终端地址打开网页即可进入工作台，无需配对码。同一数据目录只运行一个 Core。`pnpm package:web` 生成独立本机 Web 包，`pnpm build:native` 生成桌面安装包；运行要求与启动方式见[构建与发布](docs/development/build-and-release-cn.md)。
 
+审查尚未发布的本机插件源码时，先在明确选择的插件仓库运行 `npm ci`，再运行 `pnpm dev:native:plugins --plugins ../neux-plugins`。命令将真实包构建到该仓库的 `.cache/development/catalog`，并在开发进程期间提供下载服务；普通启动继续使用正式发布目录。
+
 </details>
 
 配置与使用见 [使用指南](docs/README.md)，系统命令能力见 [allycli 完整说明](server/cmd/allycli/README.md)，参与开发见 [贡献指南](CONTRIBUTING.md)。这些文档目前提供简体中文版本。

@@ -20,6 +20,16 @@ API 生成器从锁定 ginx 模块的临时源码副本构建，应用 `scripts/
 
 插件包、授权桥接与程序依赖由独立 [neux-plugins](https://github.com/JieWaZi/neux-plugins) 仓库构建和发布。Core 通过 HTTP 目录读取元数据，安装时按目录摘要下载包；应用开发和打包不下载、编译或内置供应商 CLI，也不生成插件安装 ZIP 或来源副本。目录、安装、配置与授权边界见 [插件资源](../architecture/plugin-resources-cn.md)。
 
+本地跨仓库开发需明确选择插件源码：在插件仓库先运行 `npm ci`，再在主仓库运行 `pnpm dev:native:plugins --plugins ../neux-plugins`。启动器调用插件仓库的 `build-review-snapshot.mjs`，将未提交源码复制到独立临时 Git 快照，按新规范构建到插件仓库 `.cache/development/catalog`；真实仓库的提交和索引不变。它只重写开发目录中的下载地址到本机回环服务，摘要、版本及来源隔离保持不变，服务随开发子进程退出。输出持久保留，每次启动重新构建并更新下载端口；普通 `dev:native` 和正式包仍使用默认发布源。
+
+正式目录、公开资料与自有扩展统一固定为 `schemaVersion: 1`，标准清单仍使用 Agent Plugins `1.0.0`，授权仍使用 `neuxbot-auth/1`。发布先审查并提交独立插件仓库，再从真实提交构建目录、公开资料与完整 ZIP；校验来源提交、HTTP 下载地址、摘要和公开资料大小后上传新的 Release，并将其设为最新正式版本。默认目录为 `https://github.com/JieWaZi/neux-plugins/releases/latest/download/catalog.json`。公开 HTTP 200 后仍需由 Core 读取目录、公开资料及完整归档，确认真实三包契约；不能只改 schemaVersion 数字或用本地快照替代正式发布。插件依赖资产的固定旧发布地址保持有效，不覆盖既有 Release 工件。
+
+仅为另一个明确配置的 Core 提供工件时，添加 `--serve-only`，并将启动器打印的目录路径设置为该 Core 的 `ALLY_PLUGIN_CATALOG_URL`。此模式不启动桌面或浏览器。新目录使用独立来源身份，不接管已有正式源资源或旧授权。验证真实三包的跨仓库目录、公开详情、技能、不可变准备与固定版本读取，可运行：
+
+```sh
+NEUX_VERIFY_LOCAL_PLUGIN_ARTIFACTS=1 pnpm dev:native:plugins --plugins ../neux-plugins -- go -C server test ./apis/plugins -run '^TestDevelopmentPluginArtifacts$' -count=1 -v
+```
+
 已由 Vite 或 esbuild 打包的 JavaScript 依赖放在开发依赖中，安装包仅额外携带 node-pty 及其必要依赖。node-pty 只保留当前平台与架构的预编译文件；本机编译目录仅保留 Release 的原生模块、动态库、可执行文件及 ConPTY 运行文件，排除调试符号、静态库、对象目录和构建元数据。node-addon-api 只保留包信息与许可，不携带编译期头文件和工具。electron-builder 固定使用 `--publish never`，产物由独立发布任务统一上传，打包任务无需 GitHub 发布令牌。
 
 原生发布前将 Renderer 资源装配到 `desktop/dist-native`，对超过 1 KiB 的 JS、CSS、JSON、SVG 使用 Brotli 无损压缩。`ally` 协议恢复原字节与 MIME，HTML 保留 CSP 校验；开发模式仍使用原 `dist`。资源冒烟逐项比对压缩发布与原始构建字节。启动预算始终统计未压缩产物。
