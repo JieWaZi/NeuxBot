@@ -255,6 +255,8 @@ type providerConnection struct {
 	skills *SkillSelection
 	// qoderContextWindow is the actual process launch tier; zero preserves native settings.
 	qoderContextWindow int64
+	// configuration identifies the actual request whose startup resources this owner acquired.
+	configuration string
 	// mu protects startup result publication and cleanup attempts, keeping startup and cleanup mutually exclusive.
 	mu sync.Mutex
 	// cancelOpen signals the startup goroutine to stop without waiting for resource acquisition to return.

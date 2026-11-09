@@ -285,10 +285,6 @@ func (v StatusError) Key() string {
 		return "AIAccountInUse"
 	case AIAccountNameConflict:
 		return "AIAccountNameConflict"
-	case ExecutionRetryUnavailable:
-		return "ExecutionRetryUnavailable"
-	case ExecutionRetryInProgress:
-		return "ExecutionRetryInProgress"
 	case AutomaticTaskBusy:
 		return "AutomaticTaskBusy"
 	case AutomaticTaskDisabled:
@@ -702,8 +698,6 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			AIAccountRevisionConflict:            "account has changed; refresh and try again",
 			AIAccountInUse:                       "account is referenced by an agent or chat; switch accounts first",
 			AIAccountNameConflict:                "account name already exists",
-			ExecutionRetryUnavailable:            "this response cannot be retried directly",
-			ExecutionRetryInProgress:             "the retry request is being processed; check its status shortly",
 			AutomaticTaskBusy:                    "the previous automatic run is still active",
 			AutomaticTaskDisabled:                "the automatic task is disabled",
 			AutomaticTaskRequestConflict:         "the request identifier was used with different input",
@@ -959,8 +953,6 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			AIAccountRevisionConflict:            "账号配置已更改，请刷新后重试",
 			AIAccountInUse:                       "账号仍被智能体或聊天引用，请先切换账号",
 			AIAccountNameConflict:                "账号名称已存在，请使用其他名称",
-			ExecutionRetryUnavailable:            "当前回复不能直接重试，请按错误提示处理后重新发送",
-			ExecutionRetryInProgress:             "重试请求正在处理，请稍后检查状态",
 			AutomaticTaskBusy:                    "上一次自动运行尚未结束，请先处理对应对话",
 			AutomaticTaskDisabled:                "自动任务已停用，不能接纳新的运行",
 			AutomaticTaskRequestConflict:         "请求标识已被不同的附加输入使用",

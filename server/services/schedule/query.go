@@ -96,7 +96,7 @@ func (s *Service) taskView(ctx context.Context, task models.AutomaticTask) (Task
 		view.ExecutorName = waker.Name
 	}
 	config := task.AutomaticTaskConfiguration
-	if err := s.validateConfiguration(ctx, task.WakerID, &config); err != nil {
+	if err := s.validateConfiguration(ctx, task.WakerID, &config, false); err != nil {
 		view.ConfigurationError = util.ErrorCode(err, status_error.AutomaticTaskServiceInvalid.Key())
 	}
 	view.RunCount, err = s.config.Tasks.CountAcceptedRuns(ctx, task.ID)

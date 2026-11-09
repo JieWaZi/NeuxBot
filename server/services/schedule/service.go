@@ -30,8 +30,10 @@ import (
 type Executions interface {
 	// Start 以可靠接纳模式启动一个标准 Chat。
 	Start(context.Context, execution.WorkIntent) (execution.AcceptedExecution, error)
-	// ValidateConfiguration 校验运行时和权限组合。
+	// ValidateConfiguration 校验尚未接纳的任务配置，不保存当前默认选择。
 	ValidateConfiguration(context.Context, execution.ExecutionConfiguration) error
+	// ResolveConfiguration 在机会创建时解析并冻结本次有效选择。
+	ResolveConfiguration(context.Context, execution.ExecutionConfiguration) (execution.ExecutionConfiguration, error)
 }
 
 // Chats 只读取首次执行权威状态及原子删除直接关联的 Chat。

@@ -133,8 +133,6 @@ type Config struct {
 type QueryIndexDependencies struct {
 	// Chats 持久化 Chat 主查询索引。
 	Chats controllers.ChatController
-	// RuntimeSessions 持久化 Runtime 原生会话续接查询索引。
-	RuntimeSessions controllers.RuntimeSessionController
 	// Transactions 提供跨查询索引替换的数据库事务边界。
 	Transactions controllers.TransactionController
 	// DeletionIntents 持久化文件 staging 与数据库事务之间的提交标记。
@@ -145,7 +143,6 @@ type QueryIndexDependencies struct {
 func New(config Config) (Module, error) {
 	if config.Projects == nil ||
 		config.QueryIndexes.Chats == nil ||
-		config.QueryIndexes.RuntimeSessions == nil ||
 		config.QueryIndexes.Transactions == nil ||
 		config.QueryIndexes.DeletionIntents == nil {
 		return nil, status_error.BadRequest
@@ -181,7 +178,6 @@ func newService(config Config) (*service, error) {
 	subscriptions := newSubscriptionHub()
 	queryIndexes := newQueryIndexStore(
 		config.QueryIndexes.Chats,
-		config.QueryIndexes.RuntimeSessions,
 		config.QueryIndexes.Transactions,
 	)
 	queryIndexes.results = config.Results

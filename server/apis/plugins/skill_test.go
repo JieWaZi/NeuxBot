@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -77,7 +76,11 @@ func TestPluginSkillReadsOnlyRequestedImmutableVersionAndVisibleOwner(t *testing
 		t.Fatalf("arbitrary file requested as a skill: %v", err)
 	}
 	request.Key = "skills/reports"
-	if err := os.WriteFile(filepath.Join(global.Config.DataDirectory, version.ContentPath, "skills/reports/SKILL.md"), []byte("modified"), 0o600); err != nil {
+	stored, err := global.PluginControllerManager.Version(ctx, version.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(global.Config.DataDirectory, stored.ContentPath, "skills/reports/SKILL.md"), []byte("modified"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := request.Output(ctx); !errors.Is(err, status_error.PluginVersionConflict) {
@@ -241,7 +244,7 @@ func TestUpstreamSkillReadsFullPinnedZIPBeforeAndAfterInstallation(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry := preview.(catalog.Entry)
+	entry := preview.(PluginCatalogEntryResponse)
 	archivePath := filepath.Join(root, "reader.zip")
 	if err := os.WriteFile(archivePath, archive.Bytes(), 0600); err != nil {
 		t.Fatal(err)

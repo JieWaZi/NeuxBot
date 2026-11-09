@@ -212,8 +212,6 @@ it("waits for account readiness but never auto-submits after authorization", asy
       authentication: {
         strategy: "plugin-command",
         protocol: "neuxally-auth/1",
-        command: "node",
-        args: ["./.neuxally/auth/authorize.mjs"],
       },
     };
   fixture.prepare.mockResolvedValue(current);
@@ -289,8 +287,6 @@ it.each([false, true])(
         authentication: {
           strategy: "plugin-command",
           protocol: "neuxally-auth/1",
-          command: "node",
-          args: ["./.neuxally/auth/authorize.mjs"],
         },
       };
     fixture.prepare.mockResolvedValue(detail);
@@ -332,8 +328,6 @@ it("updates with new required draft settings and an already connected account ev
       authentication: {
         strategy: "plugin-command",
         protocol: "neuxally-auth/1",
-        command: "node",
-        args: ["./.neuxally/auth/authorize.mjs"],
       },
     };
   fixture.prepare.mockResolvedValue(detail);
@@ -370,8 +364,6 @@ it("cancels a newly started authorization whose response arrives after the updat
       authentication: {
         strategy: "plugin-command",
         protocol: "neuxally-auth/1",
-        command: "node",
-        args: ["./.neuxally/auth/authorize.mjs"],
       },
     };
   fixture.prepare.mockResolvedValue(detail);
@@ -407,8 +399,6 @@ it("does not cancel another owner's existing waiting authorization when the dial
       authentication: {
         strategy: "plugin-command",
         protocol: "neuxally-auth/1",
-        command: "node",
-        args: ["./.neuxally/auth/authorize.mjs"],
       },
     };
   fixture.prepare.mockResolvedValue(detail);

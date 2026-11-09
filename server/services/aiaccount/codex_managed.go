@@ -25,8 +25,6 @@ type managedCodexSelection struct {
 	request agent.AccountRequest
 	// account supplies selected models and the credential CAS revision.
 	account models.AIAccount
-	// endpoint is the selected account's validated Responses endpoint.
-	endpoint models.AIAccountEndpoint
 	// apiKey is populated only for a selected API key account.
 	apiKey string
 	// chatGPT is populated only for a selected ChatGPT subscription.
@@ -79,7 +77,7 @@ func (s *Service) resolveManagedCodex(ctx context.Context, request agent.Account
 	if err != nil {
 		return managedCodexSelection{}, err
 	}
-	endpoint, ok := accountEndpoint(account, constants.RuntimeIDCodex)
+	_, ok := accountEndpoint(account, constants.RuntimeIDCodex)
 	if !ok {
 		return managedCodexSelection{}, status_error.AIAccountConfigurationInvalid
 	}
@@ -101,7 +99,7 @@ func (s *Service) resolveManagedCodex(ctx context.Context, request agent.Account
 	if err != nil {
 		return managedCodexSelection{}, err
 	}
-	selected := managedCodexSelection{account: account, endpoint: endpoint}
+	selected := managedCodexSelection{account: account}
 	identity := ""
 	switch account.AuthMode {
 	case constants.AccountAuthModeAPIKey:
@@ -117,7 +115,13 @@ func (s *Service) resolveManagedCodex(ctx context.Context, request agent.Account
 	scope, _ := json.Marshal([]string{"codex-managed-v1", account.ID, string(account.AuthMode), identity})
 	digest := sha256.Sum256(scope)
 	request.Subject = "codex-managed:" + hex.EncodeToString(digest[:])
-	request.ConfigHome, request.AuthGeneration = home, account.AuthGeneration
+	request.ConfigHome, request.AuthGeneration, request.ConfigFingerprint = home, account.AuthGeneration, ""
+	if account.AuthMode == constants.AccountAuthModeAPIKey {
+		request.ConfigFingerprint, err = accountconfig.NativeConfigurationFingerprint(managedCodexConfigurationSpec(account))
+		if err != nil {
+			return managedCodexSelection{}, err
+		}
+	}
 	selected.request = request
 	return selected, nil
 }
@@ -132,10 +136,13 @@ func (s *Service) acquireManagedCodex(ctx context.Context, request agent.Account
 	if err != nil {
 		return agent.AccountLease{}, err
 	}
-	if !selected.request.Equal(request) {
+	if selected.request.Subject != request.Subject || selected.request.AuthGeneration != request.AuthGeneration {
 		return agent.AccountLease{}, status_error.RuntimeAuthRequired
 	}
-	account, endpoint := selected.account, selected.endpoint
+	if !selected.request.Equal(request) {
+		return agent.AccountLease{}, status_error.RuntimeConfigurationInvalid
+	}
+	account := selected.account
 	home, err := s.managedAccountHome(constants.RuntimeIDCodex, account, true)
 	if err != nil {
 		return agent.AccountLease{}, err
@@ -143,18 +150,8 @@ func (s *Service) acquireManagedCodex(ctx context.Context, request agent.Account
 	if home != request.ConfigHome {
 		return agent.AccountLease{}, status_error.AIAccountConfigurationInvalid
 	}
-	spec := accountconfig.Spec{
-		ID: account.ID, RuntimeID: constants.RuntimeIDCodex, AuthMode: account.AuthMode,
-		Protocol: endpoint.Protocol, BaseURL: endpoint.BaseURL,
-		SelectedModels: account.SelectedModels, ModelContextSizes: account.ModelContextSizes,
-		ModelDisplayNames: account.ModelDisplayNames, ModelReasoningLevels: account.ModelReasoningLevels,
-	}
-	if account.AuthMode == constants.AccountAuthModeAPIKey {
-		spec.APIKey, spec.Model = selected.apiKey, account.DefaultModel
-		if !slices.Contains(account.SelectedModels, spec.Model) {
-			spec.Model = account.SelectedModels[0]
-		}
-	}
+	spec := managedCodexConfigurationSpec(account)
+	spec.APIKey = selected.apiKey
 	config, err := accountconfig.PrepareCodexHome(home, spec)
 	if err != nil {
 		return agent.AccountLease{}, err
@@ -301,20 +298,11 @@ func (s *Service) RemoveCodexCredentialFiles(_ context.Context, account models.A
 	return nil
 }
 
-// SetCodexAuthInvalidator retains the Codex-only assembly callback for existing callers.
-func (s *Service) SetCodexAuthInvalidator(invalidate func(context.Context, string, uint64)) {
-	if invalidate == nil {
-		s.SetAccountAuthInvalidator(nil)
-		return
+// managedCodexConfigurationSpec 为启动配置比较和实际物化提供同一份稳定模型目录。
+func managedCodexConfigurationSpec(account models.AIAccount) accountconfig.Spec {
+	spec := accountconfig.Spec{ID: account.ID, RuntimeID: constants.RuntimeIDCodex, AuthMode: account.AuthMode, Protocol: account.Endpoint.Protocol, BaseURL: account.Endpoint.BaseURL, SelectedModels: account.SelectedModels, ModelContextSizes: account.ModelContextSizes, ModelDisplayNames: account.ModelDisplayNames, ModelReasoningLevels: account.ModelReasoningLevels}
+	if account.AuthMode == constants.AccountAuthModeAPIKey && len(account.SelectedModels) > 0 {
+		spec.Model = account.SelectedModels[0]
 	}
-	s.SetAccountAuthInvalidator(func(ctx context.Context, provider, id string, generation uint64) {
-		if provider == constants.RuntimeIDCodex {
-			invalidate(ctx, id, generation)
-		}
-	})
-}
-
-// InvalidateCodexAuth preserves the credential mutation entry point used by existing APIs.
-func (s *Service) InvalidateCodexAuth(ctx context.Context, previous models.AIAccount) {
-	s.InvalidateAccountAuth(ctx, previous)
+	return spec
 }

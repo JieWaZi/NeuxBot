@@ -93,10 +93,11 @@ func (s *Service) route(ctx context.Context, input models.IMInbox) error {
 		}
 		if linkID == "" {
 			linkID = protocol.StableID("link", input.ID)
-			frozen := binding
-			frozen.ContextToken = ""
-			frozen.ContextCiphertext = ""
-			link := models.IMConversationLink{ID: linkID, BindingID: binding.ID, Title: shortTitle(input.Content), Configuration: frozen}
+			link := models.IMConversationLink{ID: linkID, BindingID: binding.ID, Title: shortTitle(input.Content), Configuration: models.IMConversationConfiguration{
+				WakerID: binding.WakerID, ChannelID: binding.ChannelID,
+				ProjectID: binding.ProjectID, WorkingDirectory: binding.WorkingDirectory,
+				Options: binding.Options,
+			}}
 			if err := s.config.Store.SaveLink(ctx, link); err != nil {
 				return err
 			}

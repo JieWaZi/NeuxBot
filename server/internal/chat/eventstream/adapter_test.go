@@ -454,18 +454,30 @@ func TestForkCapabilitiesMatchWindowAndIncrementalTerminal(t *testing.T) {
 	}
 	appendFact(constants.ChatEventTypeCreated, "", eventlog.ChatCreatedData{WorkspaceDirectory: "/workspace"})
 	appendFact(constants.ChatEventTypeExecutionCreated, "one", eventlog.ExecutionCreatedData{RuntimeID: "runtime"})
-	appendFact(constants.ChatEventTypeInvocationFinished, "one", eventlog.InvocationFinishedData{RecoveryStrategy: constants.InvocationRecoveryInitial, RuntimeID: "runtime", SessionOutputID: "private-session", ForkMode: "turn", ForkPosition: "verified-turn"})
 	appendFact(constants.ChatEventTypeExecutionCompleted, "one", eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})
+	result := &agent.NativeResult{Key: agent.NativeResultKey{Session: agent.NativeSessionKey{Provider: "codex", Subject: "fixture", SessionID: "private-session"}}, ForkMode: "turn", ForkPosition: "verified-turn"}
 	adapter := NewAdapter()
 	var event PublicEvent
 	for _, record := range records {
 		var err error
-		event, err = adapter.Apply(record)
+		if record.Type == constants.ChatEventTypeExecutionCompleted {
+			event, err = adapter.ApplyNativeTerminal(record, result)
+		} else {
+			event, err = adapter.Apply(record)
+		}
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
-	snapshot, err := messageview.ReplayPublicMessages(records)
+	builder := messageview.NewPublicMessageViewBuilder()
+	for _, record := range records {
+		if _, err := builder.Apply(record); err != nil {
+			t.Fatal(err)
+		}
+	}
+	builder.SetNativeResult("one", result)
+	snapshot := builder.Messages()
+	var err error
 	if err != nil || len(snapshot) != 1 || event.Message == nil || !reflect.DeepEqual(event.Message.Fork, snapshot[0].Fork) || !event.Message.Fork.Available {
 		t.Fatalf("terminal and snapshot diverged: %+v %+v %v", event.Message, snapshot, err)
 	}

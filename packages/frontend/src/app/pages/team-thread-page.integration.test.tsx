@@ -199,7 +199,6 @@ describe("团队首发完整路由交接", () => {
               {
                 id: "current-native-model",
                 name: "Current Native Model",
-                configurationKnown: true,
                 permissionLevels: ["default", "auto", "full-access"],
               },
               ...(unknownMemberOptions
@@ -207,7 +206,6 @@ describe("团队首发完整路由交接", () => {
                     {
                       id: "unconfirmed",
                       name: "Unconfirmed",
-                      configurationKnown: false,
                       permissionLevels: ["default"],
                     },
                   ]
@@ -351,7 +349,11 @@ describe("团队首发完整路由交接", () => {
           </QueryClientProvider>
         </StrictMode>,
       );
-      await screen.findByText("Current Native Model");
+      await waitFor(() =>
+        expect(screen.getByTestId("composer-model-control")).toHaveTextContent(
+          "gpt-5",
+        ),
+      );
       await userEvent.setup().type(screen.getByRole("textbox"), text);
       await waitFor(() =>
         expect(screen.getByRole("button", { name: "发送消息" })).toBeEnabled(),
@@ -363,13 +365,11 @@ describe("团队首发完整路由交接", () => {
           memberConfigs: expect.arrayContaining([
             expect.objectContaining({
               wakerId: "lead",
-              model: "current-native-model",
+              model: "gpt-5",
             }),
             expect.objectContaining({
               wakerId: "member",
-              model: unknownMemberOptions
-                ? "unconfirmed"
-                : "current-native-model",
+              model: unknownMemberOptions ? "unconfirmed" : "",
             }),
           ]),
         }),

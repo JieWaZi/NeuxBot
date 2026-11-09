@@ -85,7 +85,7 @@ func TestRemoteChatSelectedAttachmentsUseHTTPWithoutLocalModelAndRecoverOriginal
 	s.config.Engine = nil
 	s.config.Connections = &readConnectionFixture{value: models.KnowledgeConnection{ID: "remote", Backend: "custom", BaseURL: endpoint.URL, AuthMode: "bearer", Revision: 1, Enabled: true}}
 	root := t.TempDir()
-	if err = workspace.EnsureAgentWorkspace(root, "waker"); err != nil {
+	if err = workspace.EnsureIsolatedExecutionWorkspace(root, "chat", "waker"); err != nil {
 		t.Fatal(err)
 	}
 	s.config.Chats = selectedChat{chat: models.Chat{ID: "chat", WakerID: "waker", WorkspaceDirectory: root}}

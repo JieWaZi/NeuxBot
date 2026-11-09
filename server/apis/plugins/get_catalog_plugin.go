@@ -35,7 +35,7 @@ func (o *GetCatalogPlugin) Output(ctx *gin.Context) (interface{}, error) {
 			return nil, ginx.WithStack(err)
 		}
 		entry.Package = details.ViewPackage(o.Locale)
-		return entry, nil
+		return publicCatalogEntry(entry), nil
 	}
 	stage, err := packageplugin.StageSource(stagedRoot(), archive, entry.PackagePath)
 	if err != nil {
@@ -46,5 +46,5 @@ func (o *GetCatalogPlugin) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	return entry, nil
+	return publicCatalogEntry(entry), nil
 }

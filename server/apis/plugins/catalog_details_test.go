@@ -117,10 +117,10 @@ func TestCatalogDetailsReadmeAndSkillNeedNoInstallationOrArchive(t *testing.T) {
 		}
 	}
 	value, err := (&GetCatalogPlugin{Key: "recovery", Locale: "zh-CN"}).Output(f.ctx)
-	if err != nil || value.(catalog.Entry).Package.Readme != "中文公开说明" {
+	if err != nil || value.(PluginCatalogEntryResponse).Package.Readme != "中文公开说明" {
 		t.Fatalf("public localized details failed: %+v %v", value, err)
 	}
-	publicJSON, err := json.Marshal(value.(catalog.Entry).Package)
+	publicJSON, err := json.Marshal(value.(PluginCatalogEntryResponse).Package)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +232,7 @@ func TestCurrentDetailsRecoversMetadataButPinnedReadsStayBound(t *testing.T) {
 				t.Fatal("pinned raw request refreshed catalog")
 			}
 			value, err := (&GetCatalogPlugin{Key: "recovery"}).Output(ctx)
-			if err != nil || value.(catalog.Entry).Package.Readme != "revision-1" {
+			if err != nil || value.(PluginCatalogEntryResponse).Package.Readme != "revision-1" {
 				t.Fatalf("current metadata did not recover: %+v %v", value, err)
 			}
 			if indexRequests.Load() != 2 || detailsRequests.Load() != 2 || archiveRequests.Load() != 0 {

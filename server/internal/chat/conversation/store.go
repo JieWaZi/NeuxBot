@@ -297,7 +297,6 @@ func validChatChange(change agent.ConversationChange) bool {
 	if f := change.Fact; f != nil {
 		switch f.Type {
 		case constants.ChatEventTypeUnspecified, constants.ChatEventTypeRuntimeEvent,
-			constants.ChatEventTypeNativeSessionCleared, constants.ChatEventTypeNativeSessionUpdated,
 			constants.ChatEventTypeAssistantMessage, constants.ChatEventTypeToolMessage:
 			return false
 		case constants.ChatEventTypeUserMessageCreated, constants.ChatEventTypeMessageInherited:
@@ -308,7 +307,7 @@ func validChatChange(change agent.ConversationChange) bool {
 			if !validID(f.ExecutionID) && !validID(f.MessageID) {
 				return false
 			}
-		case constants.ChatEventTypeInvocationFinished, constants.ChatEventTypeExecutionCompleted,
+		case constants.ChatEventTypeExecutionCompleted,
 			constants.ChatEventTypeExecutionFailed, constants.ChatEventTypeExecutionCanceled:
 			var fields map[string]json.RawMessage
 			if len(f.Data) != 0 && json.Unmarshal(f.Data, &fields) != nil {

@@ -15,7 +15,6 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
@@ -133,12 +132,8 @@ type pendingMessage struct {
 	message userMessage
 	// runtime 是本轮 Runtime 选择。
 	runtime runtimeSelection
-	// parentExecutionID 是编排或重试产生的可选父执行标识。
+	// parentExecutionID 是编排产生的可选父执行标识。
 	parentExecutionID string
-	// retry 表示用户要求重放固定父执行，取得聊天占位后必须重新核对最新资格。
-	retry bool
-	// pluginSnapshots 在失败重试时限制为原执行冻结的插件资源。
-	pluginSnapshots []plugins.Snapshot
 	// admission 决定首批事实在 Runtime 调度前还是接受后提交。
 	admission constants.ExecutionAdmission
 	// toolCapabilities 保存上层入口为本次执行签发的短期内部能力。
@@ -427,56 +422,41 @@ func (m *service) startMessage(
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
-	if request.runtime.AccountID == "" && !request.runtime.ConfigurationResolved {
-		if !state.isNew && state.lastExecutionID != "" {
-			request.runtime.AccountID = state.chat.LastAccountID
-		} else {
-			request.runtime.AccountID = runtimeEnvironment.DefaultAccountID
-		}
-	}
-	if request.runtime.AccountID == "system" {
-		request.runtime.AccountID = ""
-	}
-	if request.runtime.AccountID != "" {
-		if m.accounts == nil {
-			return AcceptedExecution{}, status_error.AIAccountConfigurationInvalid
-		}
-		account, err := m.accounts.Get(ctx, request.runtime.AccountID)
-		if err != nil {
-			return AcceptedExecution{}, err
-		}
-		if account.AuthMode == constants.AccountAuthModeAPIKey {
-			if len(account.SelectedModels) == 0 {
-				return AcceptedExecution{}, status_error.AIAccountConfigurationInvalid
-			}
-			if request.runtime.Model == "" && !request.runtime.ConfigurationResolved {
-				request.runtime.Model = account.SelectedModels[0]
-				if nativeProvider(runtimeEnvironment) == constants.RuntimeIDClaude {
-					request.runtime.Model, _ = aiaccount.ManagedClaudeModelTarget(account, "")
-				}
-			}
-			allowed := slices.Contains(account.SelectedModels, request.runtime.Model)
-			if nativeProvider(runtimeEnvironment) == constants.RuntimeIDClaude {
-				_, allowed = aiaccount.ManagedClaudeModelTarget(account, request.runtime.Model)
-			}
-
-			if !allowed {
-				return AcceptedExecution{}, status_error.BadRequest
+	// 普通续聊只在同一 Runtime 中沿用最近有效选择；已接纳配置的空值不再继承默认。
+	config := ExecutionConfiguration{Resolved: request.runtime.ConfigurationResolved, RuntimeID: request.runtime.RuntimeID, AccountID: request.runtime.AccountID, Model: request.runtime.Model, Reasoning: request.runtime.Reasoning, Fast: request.runtime.Fast, PermissionLevel: requiredPermissionLevel}
+	if !config.Resolved && !state.isNew && state.chat.LastRuntimeID == config.RuntimeID && state.lastExecutionID != "" {
+		if config.AccountID == "" {
+			config.AccountID = state.chat.LastAccountID
+			if config.AccountID == "" {
+				config.AccountID = constants.AiAccountSystemID
 			}
 		}
-	}
-	defaultAccountID := runtimeEnvironment.DefaultAccountID
-	if defaultAccountID == constants.AiAccountSystemID {
-		defaultAccountID = ""
-	}
-	if !request.runtime.ConfigurationResolved && request.runtime.AccountID == defaultAccountID {
-		if request.runtime.Model == "" {
-			request.runtime.Model = runtimeEnvironment.DefaultModel
+		lastAccountID := state.chat.LastAccountID
+		if lastAccountID == "" {
+			lastAccountID = constants.AiAccountSystemID
 		}
-		if request.runtime.Reasoning == "" && request.runtime.Model == runtimeEnvironment.DefaultModel {
-			request.runtime.Reasoning = runtimeEnvironment.DefaultReasoning
+		if config.AccountID == lastAccountID {
+			if config.Model == "" {
+				config.Model = state.chat.LastModel
+			}
+			if config.Reasoning == "" && config.Model == state.chat.LastModel {
+				config.Reasoning = state.chat.LastReasoning
+			}
+			if config.Fast == nil {
+				config.Fast = state.chat.LastFast
+			}
+			if request.runtime.ContextWindow == "" {
+				request.runtime.ContextWindow = state.chat.LastContextWindow
+			}
+			config.Resolved = true
 		}
 	}
+	config, err = m.resolveConfiguration(ctx, config, runtimeEnvironment)
+	if err != nil {
+		return AcceptedExecution{}, err
+	}
+	request.runtime.AccountID, request.runtime.Model, request.runtime.Reasoning, request.runtime.Fast = config.AccountID, config.Model, config.Reasoning, config.Fast
+	request.runtime.ConfigurationResolved = true
 	if !constants.SelectablePermissionLevel(requiredPermissionLevel) {
 		return AcceptedExecution{}, status_error.BadRequest
 	}
@@ -515,13 +495,20 @@ func (m *service) startMessage(
 	}
 	enabledConnectors := []models.MCPConnector{}
 	if m.connectorController != nil {
-		enabledConnectors, err = m.connectorController.ListEnabled(
+		enabledConnectors, err = m.connectorController.ExecutionDeclarations(
 			ctx,
 			state.chat.WakerID,
 		)
 		if err != nil {
 			return AcceptedExecution{}, err
 		}
+	}
+	enabledConnectors = slices.DeleteFunc(enabledConnectors, func(connector models.MCPConnector) bool {
+		supported, _ := agent.ConnectorCompatibility(nativeProvider(runtimeEnvironment), agent.ConnectorTransport(connector.Transport))
+		return !supported
+	})
+	if !selectedConnectorsAreEnabled(request.message.ConnectorIDs, enabledConnectors) {
+		return AcceptedExecution{}, status_error.BadRequest
 	}
 	frozenPlugins, err := m.freezePluginResources(ctx, state.chat.WakerID, request, runtimeEnvironment.Detection)
 	if err != nil {
@@ -649,9 +636,11 @@ type messageChat struct {
 	lastExecutionID string
 	// workspaceDirectory 是伙伴固定 cwd 或宿主领域提供的隔离成员 cwd。
 	workspaceDirectory string
+	// additionalDirectories 是本轮仍可用的授权目录子集，不改写 Chat 保存的授权上限。
+	additionalDirectories []string
 	// projectLinks 只保存真实项目来源及展示标签，不对应磁盘链接。
 	projectLinks []workspace.ProjectLink
-	// projectSources 是全部真实项目来源及指令策略的冻结快照。
+	// projectSources 是本轮有效项目来源及其已接纳的指令策略。
 	projectSources []eventlog.ProjectSourceSnapshot
 	// threadWorkspaceID 非空时表示 Chat 绑定 thread 级共享执行工作区。
 	threadWorkspaceID string
@@ -776,11 +765,7 @@ func (m *service) resolveMessageChat(
 		if state.workspaceDirectory == "" {
 			return messageChat{}, status_error.ChatDirectoryOwnershipInvalid
 		}
-		if err := validateFrozenWorkspace(state.chat); err != nil {
-			return messageChat{}, err
-		}
-
-		return state, nil
+		return availableMessageWorkspace(state, request.message.CodeReferences)
 	}
 
 	input := request.create
@@ -836,11 +821,12 @@ func (m *service) resolveMessageChat(
 		UpdatedAt:                    now,
 	}
 	return messageChat{
-		isNew:              true,
-		chat:               chat,
-		workspaceDirectory: workspaceDirectory,
-		projectLinks:       resolvedWorkspace.projectLinks,
-		projectSources:     resolvedWorkspace.projectSources,
+		isNew:                 true,
+		chat:                  chat,
+		workspaceDirectory:    workspaceDirectory,
+		additionalDirectories: resolvedWorkspace.additionalDirectories,
+		projectLinks:          resolvedWorkspace.projectLinks,
+		projectSources:        resolvedWorkspace.projectSources,
 	}, nil
 }
 
@@ -982,17 +968,56 @@ func (m *service) resolveChatWorkspaceScope(ctx context.Context, input pendingCh
 	}, nil
 }
 
-// validateFrozenWorkspace 确认已有 Chat 冻结的全部目录仍然可用。
-func validateFrozenWorkspace(chat models.Chat) error {
-	if chat.WorkspaceDirectory == "" || len(chat.AdditionalWorkingDirectories) == 0 {
-		return status_error.ProjectSourceUnavailable
+// availableMessageWorkspace 从原授权根收窄本轮有效目录，所有后续消费者共用该集合。
+func availableMessageWorkspace(state messageChat, references []CodeReferenceInput) (messageChat, error) {
+	cwd, err := resolveWorkingDirectory(state.workspaceDirectory)
+	if err != nil || !sameFilesystemPath(cwd.Path, state.workspaceDirectory) {
+		return messageChat{}, status_error.ChatDirectoryOwnershipInvalid
 	}
-	for _, directory := range chat.AdditionalWorkingDirectories {
-		if _, resolveErr := resolveWorkingDirectory(directory); resolveErr != nil {
-			return status_error.ProjectSourceUnavailable
+	available := make(map[string]bool, len(state.chat.AdditionalWorkingDirectories))
+	directories := make([]string, 0, len(state.chat.AdditionalWorkingDirectories))
+	for _, directory := range state.chat.AdditionalWorkingDirectories {
+		resolved, err := resolveWorkingDirectory(directory)
+		valid := err == nil && sameFilesystemPath(resolved.Path, directory)
+		available[filepath.Clean(directory)] = valid
+		if valid {
+			directories = append(directories, directory)
+			continue
+		}
+		for _, reference := range references {
+			if filepath.IsAbs(reference.Path) && pathWithinRoot(directory, reference.Path) {
+				return messageChat{}, status_error.ProjectSourceUnavailable
+			}
 		}
 	}
-	return nil
+	state.additionalDirectories = directories
+	sources := make([]eventlog.ProjectSourceSnapshot, 0, len(state.projectSources))
+	for _, source := range state.projectSources {
+		if available[filepath.Clean(source.SourcePath)] {
+			sources = append(sources, source)
+			continue
+		}
+		for _, reference := range references {
+			if !filepath.IsAbs(reference.Path) && pathWithinRoot(source.EntryName, reference.Path) {
+				return messageChat{}, status_error.ProjectSourceUnavailable
+			}
+		}
+	}
+	state.projectSources = sources
+	links := make([]workspace.ProjectLink, 0, len(state.projectLinks))
+	for _, link := range state.projectLinks {
+		if available[filepath.Clean(link.SourcePath)] {
+			links = append(links, link)
+		}
+	}
+	state.projectLinks = links
+	return state, nil
+}
+
+// pathWithinRoot 仅比较已记录授权的词法范围，不跟随可能被替换的符号链接。
+func pathWithinRoot(root, path string) bool {
+	relative, err := filepath.Rel(root, path)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func ensureMessageExecutionWorkspace(state messageChat) error {
@@ -1016,32 +1041,8 @@ func ensureMessageExecutionWorkspace(state messageChat) error {
 }
 
 // prepareMessageFiles 原子物化执行上下文并准备消息附件。
-func (m *service) prepareMessageFiles(
-	ctx context.Context,
-	state messageChat,
-	messageID string,
-	executionID string,
-	attachments []AttachmentInput,
-	codeReferences []CodeReferenceInput,
-	runtimeID string,
-	detection agent.DetectionResult,
-) (*preparedMessageFiles, error) {
-	if m.threads == nil {
-		return nil, status_error.RuntimeUnavailable
-	}
-	workspaceDirectory := state.workspaceDirectory
-	if workspaceDirectory == "" {
-		return nil, status_error.ChatDirectoryOwnershipInvalid
-	}
-	projectLinks := append([]workspace.ProjectLink(nil), state.projectLinks...)
-	if len(projectLinks) == 0 {
-		for _, source := range state.projectSources {
-			projectLinks = append(projectLinks, workspace.ProjectLink{
-				EntryName:  source.EntryName,
-				SourcePath: source.SourcePath,
-			})
-		}
-	}
+// prepareNativeInstructions reads current stable profile and project instructions for a native session.
+func (m *service) prepareNativeInstructions(ctx context.Context, state messageChat, runtimeID string) ([]agent.Instruction, error) {
 	runtimeFiles, err := m.resolveRuntimeWorkspaceFiles(runtimeID)
 	if err != nil {
 		return nil, status_error.RuntimeUnavailable
@@ -1102,6 +1103,39 @@ func (m *service) prepareMessageFiles(
 			})
 		}
 	}
+	return instructions, nil
+}
+
+func (m *service) prepareMessageFiles(
+	ctx context.Context,
+	state messageChat,
+	messageID string,
+	executionID string,
+	attachments []AttachmentInput,
+	codeReferences []CodeReferenceInput,
+	runtimeID string,
+	detection agent.DetectionResult,
+) (*preparedMessageFiles, error) {
+	if m.threads == nil {
+		return nil, status_error.RuntimeUnavailable
+	}
+	workspaceDirectory := state.workspaceDirectory
+	if workspaceDirectory == "" {
+		return nil, status_error.ChatDirectoryOwnershipInvalid
+	}
+	projectLinks := append([]workspace.ProjectLink(nil), state.projectLinks...)
+	if len(projectLinks) == 0 {
+		for _, source := range state.projectSources {
+			projectLinks = append(projectLinks, workspace.ProjectLink{
+				EntryName:  source.EntryName,
+				SourcePath: source.SourcePath,
+			})
+		}
+	}
+	instructions, err := m.prepareNativeInstructions(ctx, state, runtimeID)
+	if err != nil {
+		return nil, err
+	}
 	taskDirectories, err := workspace.EnsureTaskDirectories(workspaceDirectory, executionID)
 	if err != nil {
 		return nil, err
@@ -1130,7 +1164,7 @@ func (m *service) prepareMessageFiles(
 		for _, source := range projectionRoots {
 			usedNames[source.EntryName] = true
 		}
-		for _, directory := range state.chat.AdditionalWorkingDirectories {
+		for _, directory := range state.additionalDirectories {
 			if sameFilesystemPath(directory, workspaceDirectory) || slices.ContainsFunc(projectionRoots, func(source workspace.ProjectLink) bool { return sameFilesystemPath(source.SourcePath, directory) }) {
 				continue
 			}
@@ -1387,15 +1421,8 @@ func selectedConnectorReferences(
 	return references
 }
 
-// buildSessionPlan 分别声明稳定会话、本轮输入和续接指令。
-func (m *service) buildSessionPlan(
-	state messageChat,
-	request pendingMessage,
-	files *preparedMessageFiles,
-	enabledSkills []models.SkillWithState,
-	enabledConnectors []models.MCPConnector,
-	runtimeEnvironment models.RuntimeEnvironment,
-) (agent.SessionPlan, agent.TurnInput) {
+// nativeMessage 冻结本轮附件与文件引用，历史交接由 ThreadLifecycle 负责。
+func nativeMessage(request pendingMessage, files *preparedMessageFiles) agent.Message {
 	attachments := make(
 		[]agent.Attachment,
 		0,
@@ -1419,21 +1446,11 @@ func (m *service) buildSessionPlan(
 			Path: runtimeProjectEntryPath(reference.Path, files.projectEntries), StartLine: reference.StartLine, EndLine: reference.EndLine, Content: reference.Content,
 		})
 	}
-	skills := make([]agent.Skill, 0, len(enabledSkills))
-	selectedSkillIDs := make(map[string]struct{}, len(request.message.SkillIDs))
-	for _, skillID := range request.message.SkillIDs {
-		selectedSkillIDs[skillID] = struct{}{}
-	}
-	for _, item := range enabledSkills {
-		if item.CurrentVersion.ID == "" {
-			continue
-		}
-		skills = append(skills, agent.Skill{
-			Name: item.CurrentVersion.Name,
-			Path: filepath.Join(m.skillDataDirectory, item.CurrentVersion.ContentPath),
-		})
-	}
-	connectors := runtimeConnectorDeclarations(enabledConnectors)
+	return agent.Message{Text: request.message.Text, Attachments: attachments, CodeReferences: codeReferences}
+}
+
+// nativeInstructions 合并伙伴与入口已经读取的稳定指令。
+func nativeInstructions(request pendingMessage, files *preparedMessageFiles) []agent.Instruction {
 	instructions := append([]agent.Instruction(nil), files.instructions...)
 	for _, instruction := range request.supplementalInstructions {
 		if instruction.Name != "" && instruction.Content != "" {
@@ -1441,56 +1458,56 @@ func (m *service) buildSessionPlan(
 		}
 	}
 
-	additionalWritableDirectories := append([]string(nil), state.chat.AdditionalWorkingDirectories...)
+	return instructions
+}
 
+// nativeSkills 直接读取启用技能的已发布版本位置。
+func (m *service) nativeSkills(enabledSkills []models.SkillWithState) []agent.Skill {
+	skills := make([]agent.Skill, 0, len(enabledSkills))
+	for _, item := range enabledSkills {
+		if item.CurrentVersion.ID == "" {
+			continue
+		}
+		skills = append(skills, agent.Skill{
+			Name:   item.CurrentVersion.Name,
+			Path:   filepath.Join(m.skillDataDirectory, item.CurrentVersion.ContentPath),
+			Digest: item.CurrentVersion.ContentDigest,
+		})
+	}
+	return skills
+}
+
+// nativeWorkspace 将已接纳的目录授权交给现有原生资源边界。
+func nativeWorkspace(state messageChat, request pendingMessage, files *preparedMessageFiles) agent.Workspace {
+	directories := slices.Clone(state.additionalDirectories)
 	if request.runtime.WorkspaceReadOnly {
-		additionalWritableDirectories = nil
+		directories = nil
 	}
-	sessionPlan := agent.SessionPlan{
-		Target: agent.SessionTarget{
-			RuntimeID:  request.runtime.RuntimeID,
-			Binary:     runtimeEnvironment.Binary,
-			PrefixArgs: append([]string(nil), runtimeEnvironment.PrefixArgs...),
-			ConfigHome: runtimeEnvironment.ConfigHome,
-		},
-		Detection: runtimeEnvironment.Detection,
-		Workspace: agent.Workspace{
-			Path:                          files.executionWorkspaceDirectory,
-			Managed:                       true,
-			AdditionalWritableDirectories: additionalWritableDirectories,
-			ProjectDirectories:            runtimeProjectDirectories(state.chat, state.projectSources),
-		},
-		Instructions: instructions,
-		Skills:       skills,
-		Connectors:   connectors,
-		Policy: agent.RunPolicy{
-			Model:     request.runtime.Model,
-			Reasoning: request.runtime.Reasoning,
-			Execution: executionPolicy(
-				request.runtime.PermissionLevel,
-				request.runtime.WorkspaceReadOnly,
-			),
-		},
-	}
+	return agent.Workspace{Path: files.executionWorkspaceDirectory, Managed: true, AdditionalWritableDirectories: directories, ProjectDirectories: runtimeProjectDirectories(state.additionalDirectories, state.projectSources)}
+}
+
+// nativeContextInstructions 只携带本轮路径及业务引用。
+func nativeContextInstructions(request pendingMessage, files *preparedMessageFiles) []agent.Instruction {
 	taskContext := fmt.Sprintf("New deliverables for this execution: %q. Intermediate files and exact input copies: %q. Keep modifications to existing files at their existing true paths.", files.taskDirectories.Outputs, files.taskDirectories.Temporary)
 	if request.message.Actor == "workflow" {
 		taskContext = fmt.Sprintf("This workflow worker has an isolated execution directory at %q. Its intermediate files and exact input copies are in %q. The current workflow workspace context specifies the owning scripts, state, cache and run-result directories.", files.executionWorkspaceDirectory, files.taskDirectories.Temporary)
 	}
-	turn := agent.TurnInput{
-		Message:             agent.Message{Text: request.message.Text, Attachments: attachments, CodeReferences: codeReferences},
-		ContextInstructions: append([]agent.Instruction{{Name: "Current task directories", Content: taskContext}}, request.contextInstructions...),
-	}
+	contextInstructions := append([]agent.Instruction{{Name: "Current task directories", Content: taskContext}}, request.contextInstructions...)
 	if len(files.projectEntries) > 0 {
 		encoded, _ := json.Marshal(files.projectEntries)
-		turn.ContextInstructions = append(turn.ContextInstructions, agent.Instruction{Name: "Current project entries", Content: "This native client uses the following cwd-relative project entries. Use each entry path for project tools; sourcePath remains the original authorized file location.\n" + string(encoded)})
+		contextInstructions = append(contextInstructions, agent.Instruction{Name: "Current project entries", Content: "This native client uses the following cwd-relative project entries. Use each entry path for project tools; sourcePath remains the original authorized file location.\n" + string(encoded)})
 	}
+	return contextInstructions
+}
+
+func selectedSkillNames(request pendingMessage, enabledSkills []models.SkillWithState) []string {
+	names := []string{}
 	for _, item := range enabledSkills {
-		if item.CurrentVersion.ID != "" && hasSkillID(selectedSkillIDs, item.SkillPackage.ID) {
-			turn.SelectedSkills = append(turn.SelectedSkills, item.CurrentVersion.Name)
+		if item.CurrentVersion.ID != "" && slices.Contains(request.message.SkillIDs, item.SkillPackage.ID) {
+			names = append(names, item.CurrentVersion.Name)
 		}
 	}
-	turn.SelectedConnectors = slices.Clone(request.message.ConnectorIDs)
-	return sessionPlan, turn
+	return names
 }
 
 func selectedRuntimeConnectorsAreEnabled(selected []string, connectors []agent.Connector) bool {
@@ -1504,13 +1521,13 @@ func selectedRuntimeConnectorsAreEnabled(selected []string, connectors []agent.C
 
 // runtimeProjectDirectories 把冻结项目来源转换为 Runtime 可理解的逻辑目录和默认落点。
 func runtimeProjectDirectories(
-	chat models.Chat,
+	authorized []string,
 	sources []eventlog.ProjectSourceSnapshot,
 ) []agent.WorkspaceProjectDirectory {
 	directories := make([]agent.WorkspaceProjectDirectory, 0, len(sources))
 	defaultDirectory := ""
-	if len(chat.AdditionalWorkingDirectories) > 0 {
-		defaultDirectory = chat.AdditionalWorkingDirectories[0]
+	if len(authorized) > 0 {
+		defaultDirectory = authorized[0]
 	}
 	for _, source := range sources {
 		directories = append(directories, agent.WorkspaceProjectDirectory{
@@ -1585,36 +1602,6 @@ func selectedConnectorsAreEnabled(
 		}
 	}
 	return true
-}
-
-func hasSkillID(skillIDs map[string]struct{}, skillID string) bool {
-	_, exists := skillIDs[skillID]
-	return exists
-}
-
-func executionPolicy(level agent.PermissionLevel, workspaceReadOnly bool) agent.ExecutionPolicy {
-	return agent.ExecutionPolicy{PermissionLevel: level, WorkspaceReadOnly: workspaceReadOnly}
-}
-
-func runtimePermissionSupported(
-	environment models.RuntimeEnvironment,
-	modelID string,
-	level agent.PermissionLevel,
-) bool {
-	selectedID := strings.TrimSpace(modelID)
-	if selectedID == "" {
-		selectedID = environment.DefaultModel
-	}
-	levels := agent.ModelPermissionLevels(
-		environment.Detection,
-		environment.CustomModels,
-		selectedID,
-	)
-	// 未登录时可能无法取得模型权限目录，留待原生 Runtime 返回鉴权错误。
-	if len(levels) == 0 && environment.Detection.Auth == agent.AuthStatusMissing {
-		return constants.SelectablePermissionLevel(level)
-	}
-	return agent.PermissionLevelSupported(levels, level)
 }
 
 // ensureInitialExecutionWorkspace 保留普通伙伴目录与宿主领域隔离工作区的不同归属。

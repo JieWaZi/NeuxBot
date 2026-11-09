@@ -64,13 +64,7 @@ func (m *service) locateExecution(ctx context.Context, chatID, executionID, subm
 				if position.Lifecycle {
 					location.LifecycleSequences = append(location.LifecycleSequences, position.Sequence)
 				}
-				if position.InvocationBoundary {
-					location.InvocationBoundarySequence = position.Sequence
-				}
-				if position.InvocationFinished {
-					location.InvocationFinishedSequence = position.Sequence
-					location.FinishedInvocationBoundarySequence = location.InvocationBoundarySequence
-				}
+
 			}
 			for _, location := range locations {
 				matches := (executionID != "" && location.ExecutionID == executionID) || (submissionID != "" && location.SubmissionID == submissionID) || (executionID == "" && submissionID == "" && !location.MessageOnly)
@@ -136,7 +130,7 @@ func (m *service) locateExecution(ctx context.Context, chatID, executionID, subm
 	}
 }
 
-// readExecutionWindow 只读取已覆盖的生命周期位置和最后一次调用结论。
+// readExecutionWindow 只读取已覆盖的执行生命周期位置。
 func (m *service) readExecutionWindow(ctx context.Context, chatID, executionID, submissionID string) (eventlog.ExecutionWindow, error) {
 	location, covered, err := m.locateExecution(ctx, chatID, executionID, submissionID)
 	if err != nil {
@@ -146,8 +140,6 @@ func (m *service) readExecutionWindow(ctx context.Context, chatID, executionID, 
 	if location != nil && !location.MessageOnly {
 		positions.StartSequence = location.Sequence
 		positions.LifecycleSequences = location.LifecycleSequences
-		positions.InvocationFinishedSequence = location.InvocationFinishedSequence
-		positions.InvocationBoundarySequence = location.FinishedInvocationBoundarySequence
 	}
 	return m.logStore.ReadExecutionFacts(chatID, positions)
 }

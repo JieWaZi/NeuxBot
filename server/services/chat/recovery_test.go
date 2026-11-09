@@ -256,7 +256,6 @@ func newRecoveryTestService(t *testing.T, logDirectory string, stores ...*conver
 		StorageDirectory: logDirectory,
 		QueryIndexes: QueryIndexDependencies{
 			Chats:           controllers.NewChatController(database.DB),
-			RuntimeSessions: controllers.NewRuntimeSessionController(database.DB),
 			DeletionIntents: controllers.NewChatDeletionIntentController(database.DB),
 			Transactions: controllers.NewTransactionController(
 				dbhelper.NewGormTransactionManager(database.DB),

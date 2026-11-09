@@ -1225,7 +1225,7 @@ func TestExecutionObservationHotReadBudgetIgnoresLongPublicHistory(t *testing.T)
 		if _, err := conversationfixture.Commit(t.Context(), store, chatID, records); err != nil {
 			t.Fatal(err)
 		}
-		module, err := chatservice.New(chatservice.Config{StorageDirectory: root, Conversations: store, Projects: controllers.NewProjectController(fixture.db), QueryIndexes: chatservice.QueryIndexDependencies{Chats: controllers.NewChatController(fixture.db), RuntimeSessions: controllers.NewRuntimeSessionController(fixture.db), DeletionIntents: controllers.NewChatDeletionIntentController(fixture.db), Transactions: fixture.service.transactions}})
+		module, err := chatservice.New(chatservice.Config{StorageDirectory: root, Conversations: store, Projects: controllers.NewProjectController(fixture.db), QueryIndexes: chatservice.QueryIndexDependencies{Chats: controllers.NewChatController(fixture.db), DeletionIntents: controllers.NewChatDeletionIntentController(fixture.db), Transactions: fixture.service.transactions}})
 		if err != nil {
 			t.Fatal(err)
 		}

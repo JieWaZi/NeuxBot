@@ -22,7 +22,7 @@ type CreateAIAccountRequest struct {
 	AuthMode constants.AccountAuthMode `json:"authMode" validate:"required"`
 
 	// 协议入口
-	Endpoints []models.AIAccountEndpoint `json:"endpoints" validate:"required,len=1,dive"`
+	Endpoint models.AIAccountEndpoint `json:"endpoint" validate:"required"`
 	// 最近一次获取的模型目录
 	ModelCatalog []string `json:"modelCatalog" validate:"max=500,dive,max=200"`
 	// 用户选择的账号模型
@@ -75,7 +75,7 @@ func (a *CreateAIAccount) Validate(*gin.Context) error {
 	if a.Body.AuthMode == constants.AccountAuthModeSubscription && a.Body.APIKey != "" {
 		return status_error.AIAccountConfigurationInvalid
 	}
-	if err := validateEndpoints(a.Body.AuthMode, a.Body.Endpoints); err != nil {
+	if err := validateEndpoint(a.Body.AuthMode, &a.Body.Endpoint); err != nil {
 		return err
 	}
 
@@ -89,7 +89,7 @@ func (a *CreateAIAccount) Output(ctx *gin.Context) (interface{}, error) {
 		ID:                   id,
 		Name:                 a.Body.Name,
 		AuthMode:             a.Body.AuthMode,
-		Endpoints:            a.Body.Endpoints,
+		Endpoint:             a.Body.Endpoint,
 		ModelCatalog:         append([]string(nil), a.Body.ModelCatalog...),
 		SelectedModels:       append([]string(nil), a.Body.SelectedModels...),
 		CustomModels:         append([]string(nil), a.Body.CustomModels...),
@@ -112,31 +112,18 @@ type CreateAIAccountResponse struct {
 	ID string `json:"id"`
 }
 
-func validateEndpoints(mode constants.AccountAuthMode, endpoints []models.AIAccountEndpoint) error {
+func validateEndpoint(mode constants.AccountAuthMode, endpoint *models.AIAccountEndpoint) error {
 	if mode != constants.AccountAuthModeAPIKey && mode != constants.AccountAuthModeSubscription {
 		return status_error.AIAccountConfigurationInvalid
 	}
-	if len(endpoints) != 1 {
+	if err := accountconfig.ValidateEndpoint(endpoint.Protocol, endpoint.BaseURL); err != nil {
+		return err
+	}
+	endpoint.BaseURL = strings.TrimRight(strings.TrimSpace(endpoint.BaseURL), "/")
+	if mode == constants.AccountAuthModeSubscription &&
+		(endpoint.Protocol != constants.AccountProtocolOpenAIResponses || endpoint.BaseURL != constants.AIAccountOpenAIURL) &&
+		(endpoint.Protocol != constants.AccountProtocolOpenAICompletions || endpoint.BaseURL != constants.AIAccountKimiURL) {
 		return status_error.AIAccountConfigurationInvalid
-	}
-	seen := map[constants.AccountProtocol]bool{}
-	for index := range endpoints {
-		endpoint := &endpoints[index]
-		if seen[endpoint.Protocol] {
-			return status_error.AIAccountConfigurationInvalid
-		}
-		seen[endpoint.Protocol] = true
-		if err := accountconfig.ValidateEndpoint(endpoint.Protocol, endpoint.BaseURL); err != nil {
-			return err
-		}
-		endpoint.BaseURL = strings.TrimRight(strings.TrimSpace(endpoint.BaseURL), "/")
-	}
-	if mode == constants.AccountAuthModeSubscription {
-		endpoint := endpoints[0]
-		if (endpoint.Protocol != constants.AccountProtocolOpenAIResponses || endpoint.BaseURL != constants.AIAccountOpenAIURL) &&
-			(endpoint.Protocol != constants.AccountProtocolOpenAICompletions || endpoint.BaseURL != constants.AIAccountKimiURL) {
-			return status_error.AIAccountConfigurationInvalid
-		}
 	}
 	return nil
 }

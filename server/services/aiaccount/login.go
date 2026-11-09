@@ -48,6 +48,8 @@ type loginJob struct {
 	view Login
 	// device 是服务端设备授权信息。
 	device codexoauth.Device
+	// authGeneration 固定原生登录独占取得时的实际凭据代次。
+	authGeneration uint64
 	// revision 是开始登录时的账号版本。
 	revision int64
 	// tokens 暂存已兑换但尚未提交的令牌束。
@@ -76,10 +78,10 @@ func (s *Service) StartLogin(ctx context.Context, id string) (Login, error) {
 	if account.AuthMode != constants.AccountAuthModeSubscription {
 		return Login{}, status_error.AIAccountConfigurationInvalid
 	}
-	if len(account.Endpoints) == 1 && account.Endpoints[0].Protocol == constants.AccountProtocolOpenAICompletions && account.Endpoints[0].BaseURL == constants.AIAccountKimiURL {
-		return s.startKimiLogin(id, account.Revision)
+	if account.Endpoint.Protocol == constants.AccountProtocolOpenAICompletions && account.Endpoint.BaseURL == constants.AIAccountKimiURL {
+		return s.startKimiLogin(id)
 	}
-	if len(account.Endpoints) != 1 || account.Endpoints[0].Protocol != constants.AccountProtocolOpenAIResponses || account.Endpoints[0].BaseURL != constants.AIAccountOpenAIURL {
+	if account.Endpoint.Protocol != constants.AccountProtocolOpenAIResponses || account.Endpoint.BaseURL != constants.AIAccountOpenAIURL {
 		return Login{}, status_error.AIAccountConfigurationInvalid
 	}
 	release, err := s.Exclusive(id)
@@ -92,7 +94,7 @@ func (s *Service) StartLogin(ctx context.Context, id string) (Login, error) {
 		release()
 		return Login{}, err
 	}
-	if account.AuthMode != constants.AccountAuthModeSubscription || len(account.Endpoints) != 1 || account.Endpoints[0].Protocol != constants.AccountProtocolOpenAIResponses || account.Endpoints[0].BaseURL != constants.AIAccountOpenAIURL {
+	if account.AuthMode != constants.AccountAuthModeSubscription || account.Endpoint.Protocol != constants.AccountProtocolOpenAIResponses || account.Endpoint.BaseURL != constants.AIAccountOpenAIURL {
 		release()
 		return Login{}, status_error.AIAccountConfigurationInvalid
 	}
@@ -287,7 +289,7 @@ func (s *Service) advanceLogin(ctx context.Context, id string, job *loginJob) (L
 	if err := s.accounts.StoreLoginCredential(ctx, id, current.Revision, string(encoded)); err != nil {
 		return Login{}, err
 	}
-	s.InvalidateCodexAuth(ctx, current)
+	s.InvalidateAccountAuth(ctx, current)
 	job.tokens = nil
 	job.snapshotMutex.Lock()
 	job.view.Complete = true

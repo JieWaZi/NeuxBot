@@ -15,6 +15,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -438,6 +439,55 @@ func TestSelectedConnectorReferencesRequireEnabledConnectors(t *testing.T) {
 	}
 }
 
+func TestNativeConnectorsRemainSelectedAfterProbeFailure(t *testing.T) {
+	manager := newMessageTestService(t, t.TempDir())
+	core := manager.execution.(*service)
+	environment, err := core.runtimeEnvironments.Get(t.Context(), "codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	environment.Detection.State, environment.Detection.Capabilities = agent.DetectionStateUnavailable, nil
+	core.runtimeEnvironments = configurationEnvironmentReader{environment: environment}
+	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "connectors.db"), Migrate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := database.DB.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	connectors := controllers.NewMCPConnectorController(database.DB)
+	for _, connector := range []models.MCPConnector{
+		{ID: "stdio-resource", Name: "stdio_resource", RuntimeKey: "stdio_resource", Scope: constants.MCPConnectorScopeBuiltIn, Transport: constants.MCPTransportStdio, Command: "fixture-no-start"},
+		{ID: "http-resource", Name: "http_resource", RuntimeKey: "http_resource", Scope: constants.MCPConnectorScopeBuiltIn, Transport: constants.MCPTransportStreamableHTTP, URL: "https://example.invalid/mcp"},
+	} {
+		if err := connectors.Create(t.Context(), connector); err != nil {
+			t.Fatal(err)
+		}
+	}
+	core.connectorController = connectors
+	accepted, err := manager.sendTestMessage(t.Context(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1"}, Message: userMessage{Text: "use configured tools", ConnectorIDs: []string{"stdio-resource", "http-resource"}}, Runtime: runtimeSelection{RuntimeID: "codex"}})
+	if err != nil {
+		t.Fatalf("failed diagnostic probe blocked configured connectors: %v", err)
+	}
+	waitForChatTerminal(t, manager, accepted.Chat.ID)
+	calls := manager.nativeCalls(t, "thread/start")
+	if len(calls) != 1 || !strings.Contains(string(calls[0]), "stdio_resource") || !strings.Contains(string(calls[0]), "http_resource") {
+		t.Fatalf("native session did not receive both configured connectors: %s", calls)
+	}
+	if err := core.CancelExecutionAndWait(t.Context(), accepted.Chat.ID, accepted.Execution.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := core.ForkChat(t.Context(), chatservice.ForkInput{ChatID: accepted.Chat.ID, ExecutionID: accepted.Execution.ID, ClientRequestID: "probe-independent-fork"}); err != nil {
+		t.Fatalf("failed diagnostic probe blocked native fork resources: %v", err)
+	}
+	calls = manager.nativeCalls(t, "thread/fork")
+	if len(calls) != 1 || !strings.Contains(string(calls[0]), "stdio_resource") || !strings.Contains(string(calls[0]), "http_resource") {
+		t.Fatalf("native fork did not receive both configured connectors: %s", calls)
+	}
+}
+
 func TestChatPublicQueriesObserveMessageAndRename(t *testing.T) {
 	manager := newMessageTestService(
 		t,
@@ -592,10 +642,7 @@ func newMessageTestService(
 		StorageDirectory: logDirectory,
 		Projects:         projects,
 		QueryIndexes: chatservice.QueryIndexDependencies{
-			Chats: controllers.NewChatController(database.DB),
-			RuntimeSessions: controllers.NewRuntimeSessionController(
-				database.DB,
-			),
+			Chats:           controllers.NewChatController(database.DB),
 			DeletionIntents: controllers.NewChatDeletionIntentController(database.DB),
 			Transactions:    transactions,
 		},
@@ -614,6 +661,7 @@ func newMessageTestService(
 	summaries := []agent.RuntimeSummary{fixtureCodexSummary(), {ID: agent.RuntimeIDClaude, BaseRuntimeID: agent.RuntimeIDClaude, InstructionFileName: "CLAUDE.md", SkillDirectoryName: ".claude"}}
 	executionCore, err := New(Config{
 		Threads: threads, RuntimeSummaries: summaries,
+		Agent: selectedOptions.agent, AgentBinary: selectedOptions.agentBinary, AgentEndpoint: "http://127.0.0.1:1/agent/v1",
 		ResolveAccount: func(_ context.Context, request agent.AccountRequest, _ string) (agent.AccountRequest, error) {
 			request.Subject = "fixture-subject"
 			return request, nil
@@ -700,7 +748,11 @@ func readyTestModel(id string) agent.ModelOption {
 }
 
 type messageTestOptions struct {
-	// rejectLaunch simulates an unavailable provider before any admission.
+	// agent 提供真实执行能力授权和系统技能交付。
+	agent *capability.Registry
+	// agentBinary 是初始化发布的测试 CLI 原件。
+	agentBinary string
+	// rejectLaunch 模拟接纳前原生执行器不可用。
 	rejectLaunch bool
 	// plugins 提供安装快照的只读端口。
 	plugins controllers.PluginController
@@ -799,9 +851,162 @@ func (s messageTestService) nativeCalls(t *testing.T, method string) []json.RawM
 	return calls
 }
 
+// recordedRun 保存定向准备测试实际消费的执行输入。
 type recordedRun struct {
-	// SessionPlan captures the projected capabilities and managed workspace instructions.
-	agent.SessionPlan
-	// TurnInput captures the prompt assembly.
-	agent.TurnInput
+	// Runtime 是调用方已经选定的执行配置。
+	Runtime runtimeSelection
+	// Detection 是本次原生能力快照。
+	Detection agent.DetectionResult
+	// Workspace 是当前已授权工作范围。
+	Workspace agent.Workspace
+	// Instructions 是稳定宿主指令。
+	Instructions []agent.Instruction
+	// Skills 是当前启用的技能声明。
+	Skills []agent.Skill
+	// Connectors 是不含秘密的 MCP 声明。
+	Connectors []agent.ConnectorDeclaration
+	// Message 是本轮业务输入。
+	Message agent.Message
+	// ContextInstructions 是本轮明确上下文。
+	ContextInstructions []agent.Instruction
+	// SelectedSkills 是用户明确引用的技能名称。
+	SelectedSkills []string
+	// SelectedConnectors 是用户明确引用的连接器身份。
+	SelectedConnectors []string
+	// ReadOnly 表示本次执行要求只读范围。
+	ReadOnly bool
+}
+
+func (r recordedRun) thread() agent.ThreadRequest {
+	return nativeThreadRequest("chat", r.Workspace, r.Instructions, pendingMessage{runtime: r.Runtime}, models.RuntimeEnvironment{Detection: r.Detection}, agent.ResourceSelection{}, "")
+}
+func (r recordedRun) prompt() string {
+	return nativeTurnPrompt(r.Message, r.ContextInstructions, r.SelectedSkills, r.SelectedConnectors)
+}
+func (r recordedRun) turnRequest(id string, detection agent.DetectionResult) (agent.TurnRequest, error) {
+	return nativeTurnInput(id, r.Message, r.ContextInstructions, r.SelectedSkills, r.SelectedConnectors, detection)
+}
+func (r *recordedRun) prepare(m *service, chat models.Chat, id string, capabilities []ToolCapability, domains *[]string, paths []string) (func(), func(), error) {
+	r.Runtime.WorkspaceReadOnly = r.ReadOnly
+	return m.prepareAgent(models.RuntimeEnvironment{Detection: r.Detection}, r.Workspace, &r.Skills, &r.Instructions, &r.Connectors, &r.ContextInstructions, chat, id, pendingMessage{runtime: r.Runtime, toolCapabilities: capabilities, allowedAgentDomains: domains}, paths)
+}
+func recordBusinessInputs(m *service, state messageChat, request pendingMessage, files *preparedMessageFiles, skills []models.SkillWithState, connectors []models.MCPConnector, environment models.RuntimeEnvironment) recordedRun {
+	r := recordedRun{Runtime: request.runtime, Detection: environment.Detection, Workspace: nativeWorkspace(state, request, files), Instructions: nativeInstructions(request, files), Skills: m.nativeSkills(skills), Connectors: runtimeConnectorDeclarations(connectors), Message: nativeMessage(request, files), ContextInstructions: nativeContextInstructions(request, files), SelectedSkills: selectedSkillNames(request, skills), SelectedConnectors: request.message.ConnectorIDs}
+	return r
+}
+
+func TestNativeContinuationKeepsLastEffectiveSelection(t *testing.T) {
+	manager := newMessageTestService(t, t.TempDir())
+	first, err := manager.sendTestMessage(t.Context(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1"}, Message: userMessage{Text: "first"}, Runtime: runtimeSelection{RuntimeID: "codex", Model: "gpt-5"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForChatTerminal(t, manager, first.Chat.ID)
+	second, err := manager.sendTestMessage(t.Context(), testMessageInput{ChatID: first.Chat.ID, Message: userMessage{Text: "second"}, Runtime: runtimeSelection{RuntimeID: "codex"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Execution.Model != "gpt-5" {
+		t.Fatalf("continuation model = %q, want last effective gpt-5", second.Execution.Model)
+	}
+	waitForChatTerminal(t, manager, first.Chat.ID)
+}
+
+// TestNativeSystemUsesOnlyMatchingAccountDefaults 验证原生派发只采用当前账号适用的环境模型默认值。
+func TestNativeSystemUsesOnlyMatchingAccountDefaults(t *testing.T) {
+	for _, selection := range []struct {
+		// defaultAccount 是环境默认模型所属的账号。
+		defaultAccount string
+		// expectedModel 是显式 system 本次应使用的模型，空值保留原生默认。
+		expectedModel string
+	}{
+		{defaultAccount: constants.AiAccountSystemID, expectedModel: "gpt-5"},
+		{defaultAccount: "managed-default", expectedModel: ""},
+	} {
+		t.Run(selection.defaultAccount, func(t *testing.T) {
+			manager := newMessageTestService(t, t.TempDir())
+			core := manager.execution.(*service)
+			environment, err := core.runtimeEnvironments.Get(t.Context(), "codex")
+			if err != nil {
+				t.Fatal(err)
+			}
+			environment.DefaultAccountID, environment.DefaultModel = selection.defaultAccount, "gpt-5"
+			core.runtimeEnvironments = configurationEnvironmentReader{environment: environment}
+			accepted, err := manager.sendTestMessage(t.Context(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1"}, Message: userMessage{Text: "system selection"}, Runtime: runtimeSelection{RuntimeID: "codex", AccountID: constants.AiAccountSystemID}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if accepted.Execution.Model != selection.expectedModel {
+				t.Fatalf("system model=%q, want %q", accepted.Execution.Model, selection.expectedModel)
+			}
+			waitForChatTerminal(t, manager, accepted.Chat.ID)
+		})
+	}
+}
+
+func TestNativeResolvedEmptySelectionSurvivesDefaultsAndContinuation(t *testing.T) {
+	manager := newMessageTestService(t, t.TempDir())
+	core := manager.execution.(*service)
+	environment, err := core.runtimeEnvironments.Get(t.Context(), "codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	environment.DefaultModel = "gpt-5"
+	core.runtimeEnvironments = configurationEnvironmentReader{environment: environment}
+	first, err := core.Start(t.Context(), WorkIntent{ClientRequestID: "frozen-empty-native", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1"}}, Input: WorkInput{Actor: "user", Content: "native defaults"}, Options: WorkOptions{RuntimeID: "codex", ConfigurationResolved: true, PermissionLevel: constants.PermissionLevelAuto}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Execution.Model != "" {
+		t.Fatalf("frozen native default became %q", first.Execution.Model)
+	}
+	waitForChatTerminal(t, manager, first.Chat.ID)
+	second, err := manager.sendTestMessage(t.Context(), testMessageInput{ChatID: first.Chat.ID, Message: userMessage{Text: "continue native defaults"}, Runtime: runtimeSelection{RuntimeID: "codex"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Execution.Model != "" {
+		t.Fatalf("continuation replaced known empty native default with %q", second.Execution.Model)
+	}
+	waitForChatTerminal(t, manager, first.Chat.ID)
+}
+
+func TestNativeTwoTurnsUsePublishedSystemSkill(t *testing.T) {
+	root := t.TempDir()
+	binary := filepath.Join(t.TempDir(), "allycli")
+	if err := os.WriteFile(binary, []byte("fixture CLI publication"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	registry := capability.New(nil)
+	t.Cleanup(registry.Close)
+	manager := newMessageTestService(t, t.TempDir(), messageTestOptions{agent: registry, agentBinary: binary, skillDataDirectory: root})
+	core := manager.execution.(*service)
+	if err := os.Remove(binary); err != nil {
+		t.Fatal(err)
+	}
+	publishedParent := filepath.Dir(core.systemSkillDirectory)
+	before, err := os.Stat(publishedParent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := manager.sendTestMessage(t.Context(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1"}, Message: userMessage{Text: "first published skill"}, Runtime: runtimeSelection{RuntimeID: "codex"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForChatTerminal(t, manager, first.Chat.ID)
+	second, err := manager.sendTestMessage(t.Context(), testMessageInput{ChatID: first.Chat.ID, Message: userMessage{Text: "second published skill"}, Runtime: runtimeSelection{RuntimeID: "codex"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForChatTerminal(t, manager, second.Chat.ID)
+	after, err := os.Stat(publishedParent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !before.ModTime().Equal(after.ModTime()) {
+		t.Fatal("turn preparation republished or staged system assets")
+	}
+	if len(manager.nativeCalls(t, "thread/start")) != 1 || len(manager.nativeCalls(t, "turn/start")) != 2 {
+		t.Fatal("two system-skill turns did not reuse the native session")
+	}
 }

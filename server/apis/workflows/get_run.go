@@ -24,6 +24,82 @@ type GetWorkflowRun struct {
 	Offset int `in:"query" name:"offset" validate:"min=0"`
 }
 
+// WorkflowRunResponse 只公开运行的业务事实，执行上下文与恢复帧留在仓储。
+type WorkflowRunResponse struct {
+	// 调用树根运行
+	RootRunID string `json:"rootRunId"`
+	// 运行标识
+	ID string `json:"id"`
+	// 工作流标识
+	DefinitionID string `json:"definitionId"`
+	// 版本标识
+	RevisionID string `json:"revisionId"`
+	// 版本序号
+	RevisionOrdinal int64 `json:"revisionOrdinal"`
+	// 运行状态
+	Status constants.WorkflowRunStatus `json:"status"`
+	// 运行参数
+	Args any `json:"args"`
+	// 执行配置
+	Defaults models.WorkflowExecutionDefaults `json:"defaults"`
+	// 运行预算
+	Limits workflowdsl.Limits `json:"limits"`
+	// 批准工作范围
+	ScopeBinding models.WorkflowScopeBinding `json:"scopeBinding"`
+	// 父运行标识
+	ParentRunID string `json:"parentRunId"`
+	// 跟随父运行
+	Joined bool `json:"joined"`
+	// 调用层级
+	Depth int `json:"depth"`
+	// 运行结果
+	Result any `json:"result"`
+	// 失败信息
+	Failure *workflowdsl.Value `json:"failure,omitempty"`
+	// 运行版本
+	Version int64 `json:"version"`
+	// 开始时间
+	StartedAt int64 `json:"startedAt"`
+	// 截止时间
+	DeadlineAt int64 `json:"deadlineAt"`
+	// 完成时间
+	CompletedAt *int64 `json:"completedAt,omitempty"`
+	// 接纳时间
+	CreatedAt int64 `json:"createdAt"`
+	// 更新时间
+	UpdatedAt int64 `json:"updatedAt"`
+	// 触发来源
+	TriggerSource string `json:"triggerSource"`
+}
+
+func workflowRunResponse(run models.WorkflowRun) WorkflowRunResponse {
+	triggerSource, _ := run.Context["triggerSource"].(string)
+	return WorkflowRunResponse{
+		RootRunID:       run.RootRunID,
+		ID:              run.ID,
+		DefinitionID:    run.DefinitionID,
+		RevisionID:      run.RevisionID,
+		RevisionOrdinal: run.RevisionOrdinal,
+		Status:          run.Status,
+		Args:            run.Args,
+		Defaults:        run.Defaults,
+		Limits:          run.Limits,
+		ScopeBinding:    run.ScopeBinding,
+		ParentRunID:     run.ParentRunID,
+		Joined:          run.Joined,
+		Depth:           run.Depth,
+		Result:          run.Result,
+		Failure:         run.Failure,
+		Version:         run.Version,
+		StartedAt:       run.StartedAt,
+		DeadlineAt:      run.DeadlineAt,
+		CompletedAt:     run.CompletedAt,
+		CreatedAt:       run.CreatedAt,
+		UpdatedAt:       run.UpdatedAt,
+		TriggerSource:   triggerSource,
+	}
+}
+
 // 运行详情
 type WorkflowRunDetailResponse struct {
 	// 成果文件
@@ -37,9 +113,9 @@ type WorkflowRunDetailResponse struct {
 	// 编译清单
 	Manifest workflowdsl.CanvasManifest `json:"manifest"`
 	// 子运行
-	Children []models.WorkflowRun `json:"children"`
+	Children []WorkflowRunResponse `json:"children"`
 	// 运行信息
-	Run models.WorkflowRun `json:"run"`
+	Run WorkflowRunResponse `json:"run"`
 	// 节点实例
 	Instances []models.WorkflowNodeInstance `json:"instances"`
 	// 人工请求
@@ -81,7 +157,10 @@ func (o *GetWorkflowRun) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	response := WorkflowRunDetailResponse{SourceDigest: revision.SourceDigest, ManifestDigest: workflowdsl.CanvasDigest(workflowdsl.ExportCanvas(revision.Manifest)), Run: run, Manifest: workflowdsl.ExportCanvas(revision.Manifest), Children: children, HumanRequests: humans, OperationRequests: operations, InstanceCount: int(total), Instances: instances}
+	response := WorkflowRunDetailResponse{SourceDigest: revision.SourceDigest, ManifestDigest: workflowdsl.CanvasDigest(workflowdsl.ExportCanvas(revision.Manifest)), Run: workflowRunResponse(run), Manifest: workflowdsl.ExportCanvas(revision.Manifest), Children: []WorkflowRunResponse{}, HumanRequests: humans, OperationRequests: operations, InstanceCount: int(total), Instances: instances}
+	for _, child := range children {
+		response.Children = append(response.Children, workflowRunResponse(child))
+	}
 	response.Files = []workflow.OutputFile{}
 	if run.Status == constants.WorkflowRunStatusSucceeded {
 		response.Files = workflow.InspectOutputFiles(run, revision.Manifest.Meta.OutputSchema, run.Result)

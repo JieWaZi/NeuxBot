@@ -80,6 +80,8 @@ type threadState struct {
 	admittedSkills *SkillSelection
 	// active is the actual Turn holding the seat from preparation through settlement.
 	active *Turn
+	// fork owns a no-input native fork while the same Chat seat is reserved.
+	fork *threadFork
 	// binding caches a committed native session address and its compatibility key.
 	binding *NativeBinding
 	// effective retains the session configuration needed to reuse a compatible process.
@@ -105,6 +107,121 @@ func NewThreadLifecycle(provider *ProviderRuntime, store ConversationStore) *Thr
 	return &ThreadLifecycle{provider: provider, store: store, threads: make(map[string]*threadState)}
 }
 
+// threadFork reserves the existing Chat seat without inventing a host input or Turn.
+type threadFork struct {
+	// cancel stops native preparation and the outstanding fork call.
+	cancel context.CancelFunc
+	// done closes after the operation has attempted cleanup under the same owner.
+	done chan struct{}
+}
+
+// ForkSession creates native history without admitting or submitting a model input.
+// The returned binding is published by the host's durable fork operation.
+func (l *ThreadLifecycle) ForkSession(ctx context.Context, request ThreadRequest, acquire func(context.Context, ResourceSelection) (ResourceLease, error)) (binding NativeBinding, resultErr error) {
+	if request.ChatID == "" || request.Fork == nil {
+		return binding, status_error.AgentInputInvalid
+	}
+	// A failed cleanup keeps the original owner. Retry that owner before opening
+	// the same durable fork receipt; never replace it while resources remain held.
+	l.mu.Lock()
+	previous := l.threads[request.ChatID]
+	retryCleanup := previous != nil && previous.closing && previous.active == nil && previous.fork == nil
+	l.mu.Unlock()
+	if retryCleanup {
+		if err := l.closeCapturedThread(ctx, previous); err != nil {
+			return binding, err
+		}
+	}
+	request.Connection = freezeProviderRequest(request.Connection)
+	cfg, err := freezeThreadSettings(&request)
+	if err != nil {
+		return binding, err
+	}
+	if request.Fork.HistoryIdentity != "" {
+		var current threadConfiguration
+		if json.Unmarshal(cfg, &current) != nil || current.Identity != request.Fork.HistoryIdentity {
+			return binding, status_error.ChatForkUnavailable
+		}
+	}
+	operationContext, cancel := context.WithCancel(ctx)
+	operation := &threadFork{cancel: cancel, done: make(chan struct{})}
+	l.mu.Lock()
+	state := l.threads[request.ChatID]
+	if l.closing || state != nil && (state.closing || state.active != nil || state.fork != nil) {
+		l.mu.Unlock()
+		cancel()
+		return binding, status_error.RuntimeUnavailable
+	}
+	for _, other := range l.threads {
+		if other != state && (other.active != nil || other.fork != nil) && skillsConflict(other.admittedSkills, request.Connection.Resources.Skills) {
+			l.mu.Unlock()
+			cancel()
+			return binding, status_error.RuntimeUnavailable
+		}
+	}
+	if state == nil {
+		state = &threadState{id: request.ChatID, chatID: request.ChatID}
+		l.threads[state.id] = state
+	}
+	state.fork = operation
+	state.admittedAccount = providerAccount{provider: request.Connection.Account.Provider, id: request.Connection.Account.AccountID}
+	state.admittedPlugins = maps.Clone(request.Connection.Resources.Plugins)
+	state.admittedSkills = request.Connection.Resources.Skills
+	l.mu.Unlock()
+	defer func() {
+		cancel()
+		cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), turnSettlementTimeout)
+		defer stop()
+		cleanupErr := l.closeConnection(cleanup, state)
+		resultErr = errors.Join(resultErr, cleanupErr)
+		l.mu.Lock()
+		state.fork = nil
+		if cleanupErr == nil && l.threads[state.id] == state {
+			delete(l.threads, state.id)
+		}
+		close(operation.done)
+		l.mu.Unlock()
+	}()
+	if err := l.closeConnection(operationContext, state); err != nil {
+		return binding, err
+	}
+	conn, err := l.openConnection(operationContext, state, request.Connection, acquire, nil)
+	if err != nil {
+		return binding, err
+	}
+	client, err := conn.Client()
+	if err != nil {
+		return binding, err
+	}
+	fork := *request.Fork
+	if !fork.ReconcileOnly {
+		gate := fork.BeforeFork
+		fork.BeforeFork = func(ctx context.Context) error {
+			if verify := conn.accountLease.VerifyLogin; verify != nil {
+				if err := verify(ctx); err != nil {
+					return err
+				}
+			}
+			if gate != nil {
+				return gate(ctx)
+			}
+			return nil
+		}
+	}
+	fork.Session = request.Session
+	if request.Connection.Account.Provider == "codex" {
+		fork.Session.CodexMode = request.Mode
+	}
+	session, err := client.ForkSession(operationContext, fork)
+	if err != nil {
+		return binding, err
+	}
+	if session.ID == "" || session.ID == fork.SourceSessionID {
+		return binding, status_error.ChatForkIndeterminate
+	}
+	return NativeBinding{Session: NativeSessionKey{Provider: request.Connection.Account.Provider, Subject: request.Connection.Account.Subject, SessionID: session.ID}, Configuration: cfg}, nil
+}
+
 // Prepare reserves the actual Turn before acquiring an account or opening a native session.
 func (l *ThreadLifecycle) Prepare(ctx context.Context, request ThreadRequest, input TurnRequest, ports TurnPorts) (*Turn, error) {
 	return l.prepare(ctx, request, input, ports, nil)
@@ -127,12 +244,26 @@ func (l *ThreadLifecycle) prepare(ctx context.Context, request ThreadRequest, in
 	if id == "" {
 		id = "private:" + input.HostInvocationID
 	}
+	// A prior release failure retains this exact owner. Retry it before
+	// reserving a new Turn instead of permanently fencing the public Chat.
+	l.mu.Lock()
+	previous := l.threads[id]
+	retryCleanup := previous != nil && previous.closing && previous.active == nil && previous.fork == nil
+	l.mu.Unlock()
+	if retryCleanup {
+		if err := l.closeCapturedThread(ctx, previous); err != nil {
+			if closeFiles != nil {
+				_ = closeFiles(context.WithoutCancel(ctx))
+			}
+			return nil, err
+		}
+	}
 	request.Connection = freezeProviderRequest(request.Connection)
 	l.mu.Lock()
 	// Check and publish the preparing consumer under one admission lock. Two
 	// different Chats cannot both observe an empty target before either registers.
 	for _, other := range l.threads {
-		if other.id != id && other.active != nil && skillsConflict(other.admittedSkills, request.Connection.Resources.Skills) {
+		if other.id != id && (other.active != nil || other.fork != nil) && skillsConflict(other.admittedSkills, request.Connection.Resources.Skills) {
 			l.mu.Unlock()
 			if closeFiles != nil {
 				_ = closeFiles(context.WithoutCancel(ctx))
@@ -141,7 +272,7 @@ func (l *ThreadLifecycle) prepare(ctx context.Context, request ThreadRequest, in
 		}
 	}
 	state := l.threads[id]
-	if l.closing || state != nil && (state.closing || state.active != nil) {
+	if l.closing || state != nil && (state.closing || state.active != nil || state.fork != nil) {
 		l.mu.Unlock()
 		if closeFiles != nil {
 			_ = closeFiles(context.WithoutCancel(ctx))
@@ -203,7 +334,8 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 	l.mu.Lock()
 	conn, hot, effective, reader := state.connection, state.binding, state.effective, state.reader
 	l.mu.Unlock()
-	compatible := !request.ForceNew && request.Fork == nil && compatibleBinding(stored, request.Connection.Account, cfg)
+	compatible := !request.ForceNew && request.Fork == nil && candidateBinding(stored, request.Connection.Account, cfg)
+	processConfiguration := threadProcessConfiguration(request)
 	var replacementHandoff *NativeHandoff
 	if stored != nil && request.Fork == nil && request.Connection.Account.Provider != stored.Session.Provider {
 		replacementHandoff, err = l.failedHandoffForReplacement(ctx, state.chatID, *stored)
@@ -217,15 +349,23 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 		_, err := conn.Client()
 		hotUsable = err == nil
 	}
+	if compatible && hotUsable {
+		client, err := conn.Client()
+		if err != nil {
+			hotUsable = false
+		} else {
+			compatible = resumableConfiguration(stored.Configuration, cfg, client.Capabilities())
+		}
+	}
 	windowChanged := hotUsable && conn.qoderContextWindow != request.Connection.Launch.QoderContextWindow
-	if compatible && hotUsable && !windowChanged {
+	if compatible && hotUsable && conn.configuration == processConfiguration && !windowChanged {
 		binding, err := l.reconcileHandoff(ctx, state.chatID, *stored, reader)
 		if err != nil {
 			return err
 		}
 		t.setSession(conn, binding)
 		t.effective = effective
-		if request.Selection != nil {
+		{
 			client, err := conn.Client()
 			if err != nil {
 				return err
@@ -270,6 +410,16 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 		}
 		stored = &prior
 	}
+	if compatible && !hotUsable && !compatibleBinding(stored, request.Connection.Account, cfg) && (request.Summarize || handoffClaimed(stored.Handoff)) {
+		// A cold adapter may reject reloading changed instructions or resources.
+		// Resolve the source before acquiring this turn's temporary workspace;
+		// retiring a speculative new owner must never delete its input files.
+		prior, sourceSummary, sourceErr := l.reopenHandoffSource(t, *stored, request.Summarize)
+		if sourceErr != nil {
+			return sourceErr
+		}
+		stored, summary = &prior, sourceSummary
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -288,6 +438,11 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 	if request.Connection.Launch.RequireNoTools && !client.Capabilities().ToolsDisabled {
 		return status_error.RuntimePolicyUnsupported
 	}
+	if compatible && !resumableConfiguration(stored.Configuration, cfg, client.Capabilities()) {
+		// Cold recovery cannot assume capabilities from a previous process.
+		compatible = false
+	}
+	conn.configuration = processConfiguration
 	if request.Connection.Account.Provider == "codex" {
 		request.Session.CodexMode = request.Mode
 	}
@@ -372,7 +527,7 @@ func (l *ThreadLifecycle) openConnection(ctx context.Context, state *threadState
 	// Retire idle consumers before ProviderRuntime reserves and materializes the
 	// target. Active and preparing consumers are never canceled for replacement.
 	if err := l.closeIdleConsumers(ctx, status_error.RuntimeUnavailable, func(other *threadState) bool {
-		return other != state && (other.connection != nil && skillsConflict(other.connection.skills, request.Resources.Skills) || other.active != nil && skillsConflict(other.admittedSkills, request.Resources.Skills))
+		return other != state && (other.connection != nil && skillsConflict(other.connection.skills, request.Resources.Skills) || (other.active != nil || other.fork != nil) && skillsConflict(other.admittedSkills, request.Resources.Skills))
 	}); err != nil {
 		return nil, err
 	}
@@ -438,6 +593,7 @@ func (l *ThreadLifecycle) reopenHandoffSource(t *Turn, binding NativeBinding, su
 	if resolveErr != nil {
 		return checked, nil, err
 	}
+	source.Thread.Connection = freezeProviderRequest(source.Thread.Connection)
 	cfg, freezeErr := freezeThreadSettings(&source.Thread)
 	if freezeErr != nil || !compatibleBinding(&binding, source.Thread.Connection.Account, cfg) {
 		return checked, nil, err
@@ -485,8 +641,63 @@ func compatibleBinding(binding *NativeBinding, account AccountRequest, config js
 		string(binding.Configuration) == string(config)
 }
 
+// threadConfiguration retains only nonsecret native-history compatibility facts.
+type threadConfiguration struct {
+	// Identity covers the selected account, history root and authorized workspace policy.
+	Identity string `json:"identity"`
+	// Instructions identifies stable host instructions, independently reloadable by some adapters.
+	Instructions string `json:"instructions"`
+	// Resources identifies the declared tools and skill versions, independently of process startup.
+	Resources string `json:"resources"`
+}
+
+// HistoryIdentity returns only the compatibility evidence needed to address native history.
+func (binding NativeBinding) HistoryIdentity() string {
+	var config threadConfiguration
+	if json.Unmarshal(binding.Configuration, &config) != nil {
+		return ""
+	}
+	return config.Identity
+}
+
+func candidateBinding(binding *NativeBinding, account AccountRequest, config json.RawMessage) bool {
+	if binding == nil || binding.Session.Provider != account.Provider || binding.Session.Subject != account.Subject {
+		return false
+	}
+	var before, after threadConfiguration
+	return json.Unmarshal(binding.Configuration, &before) == nil && json.Unmarshal(config, &after) == nil && before.Identity == after.Identity
+}
+
+func resumableConfiguration(previous, current json.RawMessage, capabilities AgentCapabilities) bool {
+	var before, after threadConfiguration
+	if json.Unmarshal(previous, &before) != nil || json.Unmarshal(current, &after) != nil || before.Identity != after.Identity {
+		return false
+	}
+	return (before.Resources == after.Resources || capabilities.ReloadResourcesOnResume) &&
+		(before.Instructions == after.Instructions || capabilities.ReloadInstructionsOnResume)
+}
+
+func configurationDigest(value any) string {
+	encoded, _ := json.Marshal(value)
+	sum := sha256.Sum256(encoded)
+	return hex.EncodeToString(sum[:])
+}
+
+func threadProcessConfiguration(request ThreadRequest) string {
+	account := request.Connection.Account
+	account.WaitForLease = false
+	if request.Selection != nil {
+		// Existing session setters own these models; launch materialization does
+		// not make a per-turn model selection a different native history.
+		switch account.Provider {
+		case "codex", "claude", "kimi", "gemini", "grok", "opencode", "pi":
+			account.Model = ""
+		}
+	}
+	return configurationDigest([]any{account, request.Connection.Launch, request.Connection.Resources, request.Session, request.ResourceGeneration})
+}
+
 func freezeThreadSettings(request *ThreadRequest) (json.RawMessage, error) {
-	request.Connection = freezeProviderRequest(request.Connection)
 	request.Session.AdditionalDirectories = slices.Clone(request.Session.AdditionalDirectories)
 	request.Settings = slices.Clone(request.Settings)
 	if request.Fork != nil {
@@ -543,12 +754,6 @@ func freezeThreadSettings(request *ThreadRequest) (json.RawMessage, error) {
 			request.Connection.Launch.QoderContextWindow = size
 		}
 	}
-	// The inherited process environment reaches the child without selecting a
-	// thread. Managed overrides and the verified account still determine compatibility.
-	connection := request.Connection
-	connection.Launch.BaseEnvironment = nil
-	// Qoder's window argument only determines process startup; native sessions can still resume with the original ID.
-	connection.Launch.QoderContextWindow = 0
 	if request.Selection != nil {
 		settings := *request.Selection
 		if settings.Fast != nil {
@@ -560,20 +765,32 @@ func freezeThreadSettings(request *ThreadRequest) (json.RawMessage, error) {
 			settings.DefaultFast = &fast
 		}
 		request.Selection = &settings
-		// These adapters set models within the selected session. Startup account
-		// materialization stays fixed; a model change need not replace its history.
-		switch connection.Account.Provider {
-		case "codex", "claude", "kimi", "gemini", "grok", "opencode", "pi":
-			connection.Account.Model = ""
+	}
+	// Credential generations and startup environment decide process reuse, not
+	// whether a verified subject can access the same native history directory.
+	historyHome := account.DataHome
+	if historyHome == "" {
+		historyHome = account.ConfigHome
+		if historyHome == "" {
+			historyHome = request.Connection.Launch.ConfigHome
 		}
 	}
-	encoded, err := json.Marshal([]any{connection, request.Session, request.Settings, request.Mode, request.ResourceGeneration})
+	directories := append(slices.Clone(request.Session.AdditionalDirectories), request.Connection.Launch.ACPAdditionalDirectories...)
+	slices.Sort(directories)
+	connectors := slices.Clone(request.Connection.Resources.ConnectorIDs)
+	slices.Sort(connectors)
+	configuration := threadConfiguration{
+		Identity: configurationDigest([]any{account.AccountID, historyHome, account.NativeConfigHome, account.CWD, slices.Compact(directories),
+			request.Connection.Launch.CursorPermissionMode, request.Connection.Launch.ProcessPermissionMode,
+			request.Connection.Launch.Claude, request.Connection.Launch.RequireNoTools}),
+		Instructions: configurationDigest(request.Session.DeveloperInstructions),
+		Resources:    configurationDigest([]any{request.Connection.Resources.Skills, request.Connection.Resources.Plugins, slices.Compact(connectors), request.ResourceGeneration}),
+	}
+	encoded, err := json.Marshal(configuration)
 	if err != nil {
 		return nil, status_error.RuntimeConfigurationInvalid
 	}
-	// Only compatibility evidence is persisted. Environment and launch overrides can contain secrets.
-	sum := sha256.Sum256(encoded)
-	return json.RawMessage(`"` + hex.EncodeToString(sum[:]) + `"`), nil
+	return encoded, nil
 }
 
 func newTurnID() string {
@@ -587,7 +804,7 @@ func newTurnID() string {
 func (l *ThreadLifecycle) CloseIdleAccount(ctx context.Context, accountID string) error {
 	return l.closeIdleConsumers(ctx, status_error.AIAccountBusy, func(state *threadState) bool {
 		connected := state.connection != nil && state.connection.account.id == accountID
-		admitted := state.active != nil && state.admittedAccount.id == accountID
+		admitted := (state.active != nil || state.fork != nil) && state.admittedAccount.id == accountID
 		return connected || admitted
 	})
 }
@@ -600,7 +817,7 @@ func (l *ThreadLifecycle) CloseIdlePlugin(ctx context.Context, pluginID string) 
 		if state.connection != nil {
 			_, connected = state.connection.plugins[pluginID]
 		}
-		return connected || state.active != nil && admitted
+		return connected || (state.active != nil || state.fork != nil) && admitted
 	})
 }
 
@@ -611,7 +828,7 @@ func (l *ThreadLifecycle) closeIdleConsumers(ctx context.Context, busy error, us
 		if !uses(state) {
 			continue
 		}
-		if state.active != nil {
+		if state.active != nil || state.fork != nil {
 			l.mu.Unlock()
 			return busy
 		}
@@ -640,13 +857,32 @@ func (l *ThreadLifecycle) closeIdleConsumers(ctx context.Context, busy error, us
 func (l *ThreadLifecycle) CloseThread(ctx context.Context, id string) error {
 	l.mu.Lock()
 	state := l.threads[id]
+	l.mu.Unlock()
+	return l.closeCapturedThread(ctx, state)
+}
+
+func (l *ThreadLifecycle) closeCapturedThread(ctx context.Context, state *threadState) error {
 	if state == nil {
+		return nil
+	}
+	l.mu.Lock()
+	// Another cleanup may already have retired this owner and admitted a
+	// successor with the same Chat ID. Never look up and stop that successor.
+	if l.threads[state.id] != state {
 		l.mu.Unlock()
 		return nil
 	}
 	state.closing = true
-	active := state.active
+	active, fork := state.active, state.fork
 	l.mu.Unlock()
+	if fork != nil {
+		fork.cancel()
+		select {
+		case <-fork.done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 	if active != nil {
 		if err := active.Close(ctx); err != nil {
 			return err
@@ -656,8 +892,8 @@ func (l *ThreadLifecycle) CloseThread(ctx context.Context, id string) error {
 		return err
 	}
 	l.mu.Lock()
-	if l.threads[id] == state {
-		delete(l.threads, id)
+	if l.threads[state.id] == state {
+		delete(l.threads, state.id)
 	}
 	l.mu.Unlock()
 	return nil
@@ -684,7 +920,7 @@ func (l *ThreadLifecycle) closeConnection(ctx context.Context, state *threadStat
 		l.markClosing(state)
 		return err
 	}
-	if err := errors.Join(l.drainNativeOutcomes(ctx, reader), reader.flushRemaining(ctx)); err != nil {
+	if err := errors.Join(l.drainNativeOutcomes(ctx, reader, true), reader.flushRemaining(ctx)); err != nil {
 		l.markClosing(state)
 		return err
 	}

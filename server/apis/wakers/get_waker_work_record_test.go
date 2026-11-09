@@ -55,7 +55,6 @@ func TestGetWakerWorkRecordReturnsAggregatedStats(t *testing.T) {
 		Projects:         controllers.NewProjectController(database.DB),
 		QueryIndexes: chatservice.QueryIndexDependencies{
 			Chats:           global.ChatControllerManager,
-			RuntimeSessions: controllers.NewRuntimeSessionController(database.DB),
 			DeletionIntents: controllers.NewChatDeletionIntentController(database.DB),
 			Transactions: controllers.NewTransactionController(
 				dbhelper.NewGormTransactionManager(database.DB),

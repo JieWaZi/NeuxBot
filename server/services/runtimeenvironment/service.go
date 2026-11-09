@@ -35,7 +35,7 @@ type Service interface {
 	EnsureInitialized(ctx context.Context) (bool, error)
 	// StartupDetection 返回本次启动探测是否仍在进行及是否发生持久化故障。
 	StartupDetection() (pending bool, failed bool, setupRequired bool)
-	// CompleteStartupSetup 在用户保存已安装智能体的默认选择后解除本次启动引导。
+	// CompleteStartupSetup 在用户保存合法的智能体默认配置后解除本次启动引导。
 	CompleteStartupSetup()
 	// RefreshAll 重新探测全部已注册 Runtime。
 	RefreshAll(ctx context.Context) error
@@ -173,7 +173,7 @@ func (s *service) Start(ctx context.Context) error {
 		return status_error.RuntimeEnvironmentServiceUnavailable
 	}
 	s.lifecycleContext, s.cancelLifecycle = context.WithCancel(ctx)
-	// 启动准入只读取持久化安装证据，不等待 CLI 或模型进程。
+	// 启动准入读取已有默认配置或安装证据，不等待 CLI 或模型进程。
 	if _, err := s.EnsureInitialized(ctx); err != nil {
 		s.cancelLifecycle()
 		return err
@@ -186,7 +186,8 @@ func (s *service) Start(ctx context.Context) error {
 	s.startupMutex.Lock()
 	s.startupPending, s.startupFailed, s.startupSetupRequired = true, false, true
 	for _, environment := range previous {
-		if environment.Detection.ResolvedBinary != "" {
+		if environment.Detection.ResolvedBinary != "" ||
+			(environment.Enabled && environment.IsDefault && strings.TrimSpace(environment.Binary) != "") {
 			s.startupSetupRequired = false
 			break
 		}
@@ -376,7 +377,7 @@ func (s *service) reconcileEnvironment(
 	return environment, s.environments.UpdateFields(ctx, environment.RuntimeID, fields)
 }
 
-// persistDetection 原子保存探测快照，在目录刷新失败时保留上次结果，并清理失效默认选择。
+// persistDetection 原子保存探测快照与安装定位；模型、推理和权限默认值只由用户配置用例修改。
 func (s *service) persistDetection(
 	ctx context.Context,
 	environment models.RuntimeEnvironment,
@@ -398,28 +399,6 @@ func (s *service) persistDetection(
 	} else {
 		detection = agent.PreservePreviousOptionsOnFailure(environment.Detection, detection)
 	}
-	defaultModel, defaultReasoning := agent.NormalizeDetectedDefaults(
-		detection,
-		environment.CustomModels,
-		environment.DefaultModel,
-		environment.DefaultReasoning,
-	)
-	nextPermission, degraded := agent.SafePermissionLevel(
-		environment.DefaultPermissionLevel,
-		agent.ModelPermissionLevels(
-			detection,
-			environment.CustomModels,
-			defaultModel,
-		),
-	)
-	if degraded {
-		detection.Diagnostics = append(detection.Diagnostics, agent.Diagnostic{
-			Code:  agent.DiagnosticCodePermissionDefaultDowngraded,
-			Level: agent.DiagnosticLevelWarning,
-			Message: "default permission level was reduced to a " +
-				"level the current model can express",
-		})
-	}
 	if err := s.environments.UpdateDetection(
 		ctx,
 		environment.RuntimeID,
@@ -431,15 +410,6 @@ func (s *service) persistDetection(
 	fields := map[string]any{}
 	if environment.Binary == firstBinary(environment.Detection.Runtime.BinaryCandidates) && detection.ResolvedBinary != "" {
 		fields["binary"] = detection.ResolvedBinary
-	}
-	if defaultModel != environment.DefaultModel && !nativeCatalog {
-		fields["default_model"] = defaultModel
-	}
-	if defaultReasoning != environment.DefaultReasoning && !nativeCatalog {
-		fields["default_reasoning"] = defaultReasoning
-	}
-	if nextPermission != environment.DefaultPermissionLevel {
-		fields["default_permission_level"] = nextPermission
 	}
 	if len(fields) == 0 {
 		return nil
@@ -531,7 +501,8 @@ func (s *service) ensureDefault(ctx context.Context) error {
 			return err
 		}
 		for _, environment := range environments {
-			if environment.IsDefault && environment.Enabled && environment.Detection.State == agent.DetectionStateReady {
+			// 已保存的默认选择不由后台探测重新决策，包括用户主动禁用的条目。
+			if environment.IsDefault {
 				return nil
 			}
 		}
@@ -544,7 +515,7 @@ func (s *service) ensureDefault(ctx context.Context) error {
 			}
 			return s.environments.UpdateFields(transactionContext, environment.RuntimeID, map[string]any{"is_default": true})
 		}
-		return s.environments.ClearDefault(transactionContext)
+		return nil
 	})
 }
 

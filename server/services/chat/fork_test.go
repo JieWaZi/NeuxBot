@@ -13,12 +13,14 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
@@ -34,7 +36,7 @@ func forkFixture(t *testing.T) (*service, string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	m := newTestService(t, Config{StorageDirectory: t.TempDir(), QueryIndexes: QueryIndexDependencies{Chats: controllers.NewChatController(database.DB), RuntimeSessions: controllers.NewRuntimeSessionController(database.DB), DeletionIntents: controllers.NewChatDeletionIntentController(database.DB), Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))}})
+	m := newTestService(t, Config{StorageDirectory: t.TempDir(), QueryIndexes: QueryIndexDependencies{Chats: controllers.NewChatController(database.DB), DeletionIntents: controllers.NewChatDeletionIntentController(database.DB), Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))}})
 	id := "12345678901234567890123456789012"
 	root, err := m.storage.AgentWorkspace("waker")
 	if err != nil {
@@ -57,14 +59,16 @@ func forkFixture(t *testing.T) (*service, string) {
 	for _, mark := range []string{"before", "after"} {
 		facts = append(facts,
 			eventlog.AppendInput{Type: constants.ChatEventTypeUserMessageCreated, MessageID: "user-" + mark, Data: marshalData(eventlog.MessageCreatedData{Role: constants.MessageRoleUser, Content: mark, Attachments: []eventlog.AttachmentReference{{Name: "before.txt", Path: "attachments/before.txt", Managed: true}}})},
-			eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: mark, Data: marshalData(eventlog.ExecutionCreatedData{UserMessageID: "user-" + mark, RuntimeID: "custom-codex", Model: "model", Reasoning: "high", PermissionLevel: constants.PermissionLevelDefault})},
+			eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: mark, Data: marshalData(eventlog.ExecutionCreatedData{UserMessageID: "user-" + mark, AccountID: "account-source", RuntimeID: "custom-codex", Model: "model", Reasoning: "high", PermissionLevel: constants.PermissionLevelDefault})},
 			eventlog.AppendInput{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: mark},
-			eventlog.AppendInput{Type: constants.ChatEventTypeInvocationFinished, ExecutionID: mark, Data: marshalData(eventlog.InvocationFinishedData{RecoveryStrategy: constants.InvocationRecoveryInitial, RuntimeID: "custom-codex", WorkingDirectory: root, SessionOutputID: "native-parent", ForkMode: "turn", ForkPosition: "turn-" + mark})},
 			eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: mark, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})},
 		)
 	}
 	if _, err = m.logStore.Create(id, facts); err != nil {
 		t.Fatal(err)
+	}
+	for _, mark := range []string{"before", "after"} {
+		forkNativeFixture(t, m.logStore.(*conversationJournal), id, mark, "turn", "turn-"+mark)
 	}
 	return m, id
 }
@@ -73,12 +77,12 @@ func forkFixture(t *testing.T) (*service, string) {
 func TestForkCopiesBoundaryWithoutExecutionsAndSurvivesParentDeletion(t *testing.T) {
 	m, parent := forkFixture(t)
 	calls := 0
-	native := func(_ context.Context, input NativeForkInput) (string, error) {
+	native := func(_ context.Context, input NativeForkInput) (agent.NativeBinding, error) {
 		calls++
-		if input.Invocation.ForkPosition != "turn-before" || input.Invocation.SessionOutputID != "native-parent" {
+		if input.Boundary.Position != "turn-before" || input.Boundary.Session.SessionID != "native-parent" {
 			t.Fatalf("wrong native boundary: %+v", input)
 		}
-		return "native-child", nil
+		return forkTestBinding("native-child"), nil
 	}
 	input := ForkInput{ChatID: parent, ExecutionID: "before", ClientRequestID: "stable-request"}
 	child, err := m.ForkChat(context.Background(), input, NativeFork{Execute: native})
@@ -100,11 +104,11 @@ func TestForkCopiesBoundaryWithoutExecutionsAndSurvivesParentDeletion(t *testing
 	if len(inheritedPage.Resources) != 2 || inheritedPage.Resources[0].Content != "before" || detail.Chat.ForkSourceChatID != parent {
 		t.Fatalf("unexpected inherited state: %+v", detail)
 	}
-	if detail.Chat.LastReasoning != "high" {
-		t.Fatal("reasoning snapshot lost")
+	if detail.Chat.LastReasoning != "high" || detail.Chat.LastAccountID != "account-source" {
+		t.Fatalf("execution choice snapshot lost: %+v", detail.Chat)
 	}
-	if detail.RuntimeSessions["custom-codex"].SessionID != "native-child" {
-		t.Fatal("parent session binding copied")
+	if detail.LastExecutionID == "" {
+		t.Fatal("inherited execution boundary lost")
 	}
 	capabilities, err := m.ReadMessageHistory(context.Background(), child, 0, 50)
 	if err != nil || capabilities.ForkLatestExecutionID == "" {
@@ -136,6 +140,37 @@ func TestForkCopiesBoundaryWithoutExecutionsAndSurvivesParentDeletion(t *testing
 	if err != nil || len(older.Resources) != 1 || older.Resources[0].Content != "before" {
 		t.Fatalf("older page: %+v %v", older, err)
 	}
+	if err := m.queryIndexes.chatController.Delete(t.Context(), child); err != nil {
+		t.Fatal(err)
+	}
+	directory, indexes := m.storage.Root(), m.queryIndexes
+	intents := m.deletionIntents
+	m.Close()
+	m = newTestService(t, Config{StorageDirectory: directory, QueryIndexes: QueryIndexDependencies{Chats: indexes.chatController, Transactions: indexes.transactionController, DeletionIntents: intents}})
+	t.Cleanup(m.Close)
+	if err := m.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := m.LoadExecutionContext(t.Context(), child)
+	if err != nil || reopened.LastExecutionID != detail.LastExecutionID || reopened.Chat.LastAccountID != "account-source" || reopened.Chat.LastReasoning != "high" {
+		t.Fatalf("reopened inherited choices or boundary lost: %+v %v", reopened, err)
+	}
+	grandchild, err := m.ForkChat(t.Context(), ForkInput{ChatID: child, ExecutionID: detail.LastExecutionID, ClientRequestID: "after-source-delete"}, NativeFork{Execute: func(_ context.Context, input NativeForkInput) (agent.NativeBinding, error) {
+		if input.Boundary.Session.SessionID != "native-child" {
+			t.Fatalf("refork uses wrong native source: %+v", input.Boundary)
+		}
+		return forkTestBinding("native-grandchild"), nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	grandchildRoot, err := m.storage.ChatRoot(grandchild)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content, err := os.ReadFile(filepath.Join(grandchildRoot, "attachments/before.txt")); err != nil || string(content) != "独立附件" {
+		t.Fatalf("refork attachment: %q %v", content, err)
+	}
 	if err = m.DeleteChat(context.Background(), child); err != nil {
 		t.Fatal(err)
 	}
@@ -148,9 +183,12 @@ func TestForkCopiesBoundaryWithoutExecutionsAndSurvivesParentDeletion(t *testing
 func TestForkRejectsConcurrentDeletionAndUncertainRetry(t *testing.T) {
 	m, parent := forkFixture(t)
 	calls := 0
-	native := func(_ context.Context, input NativeForkInput) (string, error) {
+	native := func(_ context.Context, input NativeForkInput) (agent.NativeBinding, error) {
 		if input.ReconcileOnly {
-			return "", status_error.ChatForkIndeterminate
+			return agent.NativeBinding{}, status_error.ChatForkIndeterminate
+		}
+		if err := input.BeforeFork(t.Context()); err != nil {
+			return agent.NativeBinding{}, err
 		}
 		calls++
 		if err := m.DeleteChat(context.Background(), parent); !errors.Is(err, status_error.ChatHasActiveExecution) {
@@ -166,7 +204,7 @@ func TestForkRejectsConcurrentDeletionAndUncertainRetry(t *testing.T) {
 		if !errors.Is(err, status_error.ChatHasActiveExecution) {
 			t.Fatalf("send admission: %v", err)
 		}
-		return "", context.DeadlineExceeded
+		return agent.NativeBinding{}, context.DeadlineExceeded
 	}
 	input := ForkInput{ChatID: parent, ExecutionID: "before", ClientRequestID: "uncertain"}
 	if _, err := m.ForkChat(context.Background(), input, NativeFork{Execute: native}); !errors.Is(err, context.DeadlineExceeded) {
@@ -212,6 +250,8 @@ func TestForkRecoveryPublishesDurableNativeResult(t *testing.T) {
 	operation.Prepared = true
 	operation.NativeStarted = true
 	operation.SessionID = "durable-child"
+	payload.Binding = forkTestBindingPointer("durable-child")
+	operation.Payload = marshalData(payload)
 	if err = chatstorage.WriteForkOperation(m.storage.ForkDirectory(parent, input.ClientRequestID), operation); err != nil {
 		t.Fatal(err)
 	}
@@ -219,12 +259,21 @@ func TestForkRecoveryPublishesDurableNativeResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	state, err := m.LoadExecutionContext(context.Background(), operation.ChatID)
-	if err != nil || state.RuntimeSessions["custom-codex"].SessionID != "durable-child" {
+	if err != nil || state.LastExecutionID == "" {
 		t.Fatalf("recovery: %+v %v", state, err)
 	}
 	records, err := m.logStore.ReadAll(operation.ChatID)
-	if err != nil || len(records) != len(payload.Messages)+1 {
-		t.Fatalf("recovery log contains %d records, want %d: %v", len(records), len(payload.Messages)+1, err)
+	if err != nil || len(records) != len(payload.Messages)+2 {
+		t.Fatalf("recovery log contains %d records, want %d: %v", len(records), len(payload.Messages)+2, err)
+	}
+	_, err = m.ForkChat(t.Context(), ForkInput{ChatID: operation.ChatID, ExecutionID: state.LastExecutionID, ClientRequestID: "recovered-child"}, NativeFork{Execute: func(_ context.Context, input NativeForkInput) (agent.NativeBinding, error) {
+		if input.Boundary.Session.SessionID != "durable-child" {
+			t.Fatalf("recovered child lost durable native identity: %+v", input.Boundary)
+		}
+		return forkTestBinding("durable-grandchild"), nil
+	}})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -246,7 +295,10 @@ func TestForkProjectionFailureRecoversWithoutSecondNativeCall(t *testing.T) {
 	m.queryIndexes.chatController = failForkProjection{ChatController: original}
 	calls := 0
 	input := ForkInput{ChatID: parent, ExecutionID: "before", ClientRequestID: "projection-fail"}
-	native := func(context.Context, NativeForkInput) (string, error) { calls++; return "durable-child", nil }
+	native := func(context.Context, NativeForkInput) (agent.NativeBinding, error) {
+		calls++
+		return forkTestBinding("durable-child"), nil
+	}
 	if _, err := m.ForkChat(context.Background(), input, NativeFork{Execute: native}); err == nil {
 		t.Fatal("projection failure hidden")
 	}
@@ -282,6 +334,8 @@ func TestForkDeletionSealsVisibleChild(t *testing.T) {
 	operation.Prepared = true
 	operation.NativeStarted = true
 	operation.SessionID = "native-child"
+	payload.Binding = forkTestBindingPointer("native-child")
+	operation.Payload = marshalData(payload)
 	directory := m.storage.ForkDirectory(parent, input.ClientRequestID)
 	if err = chatstorage.WriteForkOperation(directory, operation); err != nil {
 		t.Fatal(err)
@@ -322,6 +376,8 @@ func TestForkDeletionCancelsUnpublishedChild(t *testing.T) {
 	operation.Prepared = true
 	operation.NativeStarted = true
 	operation.SessionID = "native-child"
+	payload.Binding = forkTestBindingPointer("native-child")
+	operation.Payload = marshalData(payload)
 	directory := m.storage.ForkDirectory(parent, input.ClientRequestID)
 	if err = chatstorage.WriteForkOperation(directory, operation); err != nil {
 		t.Fatal(err)
@@ -345,25 +401,26 @@ func TestForkDeletionCancelsUnpublishedChild(t *testing.T) {
 	}
 }
 
-// TestForkPreflightFailureCanRetry 验证无原生副作用的失败不会进入对账死路。
-func TestForkPreflightFailureCanRetry(t *testing.T) {
+// TestForkColdPreparationFailureCanRetry 验证无原生副作用的失败不会进入对账死路。
+func TestForkColdPreparationFailureCanRetry(t *testing.T) {
 	m, parent := forkFixture(t)
 	input := ForkInput{ChatID: parent, ExecutionID: "before", ClientRequestID: "preflight"}
 	ready := false
 	calls := 0
 	native := NativeFork{
-		Preflight: func(context.Context, NativeForkInput) error {
+		Execute: func(_ context.Context, input NativeForkInput) (agent.NativeBinding, error) {
 			if !ready {
-				return status_error.RuntimeUnavailable
+				return agent.NativeBinding{}, status_error.RuntimeUnavailable
 			}
-			return nil
-		},
-		Execute: func(_ context.Context, input NativeForkInput) (string, error) {
+			if err := input.BeforeFork(t.Context()); err != nil {
+				return agent.NativeBinding{}, err
+			}
+
 			if input.ReconcileOnly {
 				t.Fatal("retry was treated as an uncertain native call")
 			}
 			calls++
-			return "native-child", nil
+			return forkTestBinding("native-child"), nil
 		},
 	}
 	if _, err := m.ForkChat(context.Background(), input, native); !errors.Is(err, status_error.RuntimeUnavailable) || calls != 0 {
@@ -397,6 +454,8 @@ func TestDeleteWakerCancelsPendingFork(t *testing.T) {
 	operation.Prepared = true
 	operation.NativeStarted = true
 	operation.SessionID = "native-child"
+	payload.Binding = forkTestBindingPointer("native-child")
+	operation.Payload = marshalData(payload)
 	directory := m.storage.ForkDirectory(parent, input.ClientRequestID)
 	if err = chatstorage.WriteForkOperation(directory, operation); err != nil {
 		t.Fatal(err)
@@ -422,8 +481,8 @@ func TestDeleteWakerIncludesPublishedFork(t *testing.T) {
 	m, parent := forkFixture(t)
 	child, err := m.ForkChat(context.Background(), ForkInput{
 		ChatID: parent, ExecutionID: "before", ClientRequestID: "delete-published-waker",
-	}, NativeFork{Execute: func(context.Context, NativeForkInput) (string, error) {
-		return "native-child", nil
+	}, NativeFork{Execute: func(context.Context, NativeForkInput) (agent.NativeBinding, error) {
+		return forkTestBinding("native-child"), nil
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -459,7 +518,10 @@ func TestForkAttachmentFailureRetriesPreparationBeforeNativeSideEffect(t *testin
 	}
 	calls := 0
 	input := ForkInput{ChatID: parent, ExecutionID: "before", ClientRequestID: "file-fail"}
-	native := func(context.Context, NativeForkInput) (string, error) { calls++; return "native-child", nil }
+	native := func(context.Context, NativeForkInput) (agent.NativeBinding, error) {
+		calls++
+		return forkTestBinding("native-child"), nil
+	}
 	if _, err = m.ForkChat(context.Background(), input, NativeFork{Execute: native}); err == nil || calls != 0 {
 		t.Fatal("native called before attachments were ready")
 	}
@@ -495,7 +557,7 @@ func TestForkActiveAndUnsupportedBoundaryAreRejected(t *testing.T) {
 		case "team":
 			changed.threadWorkspaceID = "team"
 		}
-		targets, err := forkPoints(records, changed, nil)
+		targets, err := m.resolveForkPoints(t.Context(), parent, records, changed)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -505,21 +567,20 @@ func TestForkActiveAndUnsupportedBoundaryAreRejected(t *testing.T) {
 			}
 		}
 	}
-	for i := range records {
-		if records[i].Type == constants.ChatEventTypeInvocationFinished {
-			var data eventlog.InvocationFinishedData
-			_ = json.Unmarshal(records[i].Data, &data)
-			data.ForkMode = "latest"
-			data.ForkPosition = ""
-			records[i].Data = marshalData(data)
-		}
+	points, err := m.resolveForkPoints(t.Context(), parent, records, state)
+	if err != nil || len(points) != 2 {
+		t.Fatal(err, points)
 	}
-	// The latest-only boundary is available only while the matching native session is current.
-	binding := &agent.NativeBinding{Session: agent.NativeSessionKey{Provider: "codex", Subject: "fixture", SessionID: "native-parent"}}
-	points, err := forkPoints(records, state, binding)
-	if err != nil || len(points) != 2 || points[0].target.Available || !points[1].target.Available {
-		t.Fatalf("latest boundary: %+v %v", points, err)
+	for i := range points {
+		points[i].boundary.Mode = "latest"
+		points[i].boundary.Position = ""
 	}
+	binding := forkTestBinding("native-parent")
+	assessForkPoints(points, records, state, &binding)
+	if points[0].target.Available || !points[1].target.Available {
+		t.Fatalf("latest boundary: %+v", points)
+	}
+
 }
 
 func TestForkUsesMetadataCheckpointForLongTool(t *testing.T) {
@@ -548,11 +609,11 @@ func TestForkUsesMetadataCheckpointForLongTool(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := m.logStore.Append(parent, []eventlog.AppendInput{
-		{Type: constants.ChatEventTypeInvocationFinished, ExecutionID: id, Data: marshalData(eventlog.InvocationFinishedData{RecoveryStrategy: constants.InvocationRecoveryInitial, RuntimeID: "custom-codex", SessionOutputID: "native-parent", ForkMode: "turn", ForkPosition: "turn-review-tool"})},
 		{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: id, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})},
 	}); err != nil {
 		t.Fatal(err)
 	}
+	forkNativeFixture(t, journal, parent, id, "turn", "turn-review-tool")
 	operation, err := m.prepareFork(ctx, ForkInput{ChatID: parent, ExecutionID: id, ClientRequestID: "review"})
 	if err != nil {
 		t.Fatal(err)
@@ -570,4 +631,46 @@ func TestForkUsesMetadataCheckpointForLongTool(t *testing.T) {
 		}
 	}
 	t.Fatal("fork discarded safe tool display")
+}
+
+// TestInheritedLatestForkUsesDurableBoundaryWithoutSessionIndex 验证继承原生边界独立支持再次分叉。
+func TestInheritedLatestForkUsesDurableBoundaryWithoutSessionIndex(t *testing.T) {
+	record := eventlog.Record{Type: constants.ChatEventTypeMessageInherited, MessageID: "child-boundary", Data: marshalData(messageview.InheritedMessage{
+		Message:           messageview.Message{ID: "child-boundary", Role: constants.MessageRoleAssistant},
+		ForkConfiguration: &eventlog.ExecutionCreatedData{RuntimeID: "custom-codex"},
+		ForkBoundary:      &agent.NativeForkBoundary{Session: agent.NativeSessionKey{Provider: "codex", Subject: "fixture", SessionID: "child-native"}, Mode: "latest"},
+	})}
+	points, err := forkPoints([]eventlog.Record{record})
+	assessForkPoints(points, []eventlog.Record{record}, chatState{}, nil)
+	if err != nil || len(points) != 1 || !points[0].target.Available {
+		t.Fatalf("inherited latest boundary must remain forkable: %+v %v", points, err)
+	}
+	assessForkPoints(points, []eventlog.Record{record}, chatState{}, &agent.NativeBinding{Session: agent.NativeSessionKey{SessionID: "replacement"}})
+	if err != nil || len(points) != 1 || points[0].target.Available || points[0].target.ReasonCode != "session_changed" {
+		t.Fatalf("a newer binding must supersede the inherited boundary: %+v %v", points, err)
+	}
+}
+
+func forkTestBinding(session string) agent.NativeBinding {
+	return agent.NativeBinding{Session: agent.NativeSessionKey{Provider: "codex", Subject: "fixture", SessionID: session}}
+}
+func forkTestBindingPointer(session string) *agent.NativeBinding {
+	value := forkTestBinding(session)
+	return &value
+}
+
+// forkNativeFixture supplies the canonical input/result relation for isolated Chat publication tests.
+// Production submission is covered separately by execution.TestNativeProductCanonicalFork.
+func forkNativeFixture(t *testing.T, journal *conversationJournal, chatID, executionID, mode, position string) {
+	t.Helper()
+	ctx := t.Context()
+	binding := forkTestBinding("native-parent")
+	key := agent.NativeResultKey{Session: binding.Session, InvocationID: executionID + "-native"}
+	inputID := executionID + "-input"
+	if err := journal.CommitNativeResult(ctx, agent.NativeResult{Key: key, ForkMode: mode, ForkPosition: position, Turn: acpmeta.NativeTurn{InvocationID: key.InvocationID, Origin: acpmeta.NativeTurnOriginHost, Status: acpmeta.NativeTurnCompleted, ConsumedInputIDs: []string{inputID}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conversationfixture.Commit(ctx, journal.Store, chatID, []agent.ConversationChange{{Binding: &binding}, {Input: &agent.HostInput{HostInvocationID: executionID, AdapterInputID: inputID, Session: binding.Session, ExecutionID: executionID, AssistantMessageID: executionID}}, {Consumption: &agent.InputConsumption{HostInvocationID: executionID, Result: key}}}); err != nil {
+		t.Fatal(err)
+	}
 }

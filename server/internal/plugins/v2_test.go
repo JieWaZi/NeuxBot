@@ -179,7 +179,7 @@ func TestNativeCapabilitySummariesAreReadOnlyAndDoNotExposeConfiguration(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, _ := json.Marshal(pkg.NativeImplementations)
+	data, _ := json.Marshal(pkg.Public().NativeImplementations)
 	if !strings.Contains(string(data), `"skills":[{"key":"skills/review","name":"review","description":"Review changes"}]`) || !strings.Contains(string(data), `"endpoint":"https://api.example.test"`) {
 		t.Fatalf("read-only capability index missing: %s", data)
 	}
@@ -188,6 +188,34 @@ func TestNativeCapabilitySummariesAreReadOnlyAndDoNotExposeConfiguration(t *test
 	}
 	if len(pkg.Skills) != 0 || len(pkg.Servers) != 0 {
 		t.Fatal("read-only index changed logical runtime components")
+	}
+}
+
+func TestPublishedNativeTargetRetainsExecutionMetadataWithoutSourceReads(t *testing.T) {
+	root := t.TempDir()
+	fixtureFile(t, root, "entry/.codex-plugin/plugin.json", `{"name":"logical"}`)
+	fixtureFile(t, root, "entry/.neuxally/integration.json", `{"nativePlugins":{"codex":{"path":"upstream/codex"}}}`)
+	fixtureFile(t, root, "upstream/codex/.codex-plugin/plugin.json", `{"name":"target","version":"2"}`)
+	fixtureFile(t, root, "upstream/codex/skills/review/SKILL.md", "---\nname: review\ndescription: Review changes\n---\nFull guide")
+	fixtureFile(t, root, "upstream/codex/.mcp.json", `{"mcpServers":{"service":{"type":"http","url":"https://example.test/mcp"}}}`)
+	pkg, err := LoadSource(root, "entry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := json.Marshal(pkg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var published Package
+	if err := json.Unmarshal(stored, &published); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatal(err)
+	}
+	target, path, err := DeclaredTarget(published, "codex")
+	if err != nil || path != "upstream/codex" || len(target.Skills) != 1 || target.Skills[0].Name != "review" || target.Skills[0].Path != "skills/review" || len(target.Skills[0].Digest) != 64 || len(target.Servers) != 1 || target.Servers[0].URL != "https://example.test/mcp" {
+		t.Fatalf("published target requires source parsing or lost actual components: %+v %q %v", target, path, err)
 	}
 }
 

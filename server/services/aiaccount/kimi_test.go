@@ -2,6 +2,7 @@ package aiaccount
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -55,7 +57,7 @@ func TestKimiSubscriptionUsesIndependentNativeHomes(t *testing.T) {
 	t.Cleanup(service.Close)
 	for index, id := range []string{"0123456789abcdef0123456789abcdef", "fedcba9876543210fedcba9876543210"} {
 		account := models.AIAccount{ID: id, Name: "Kimi " + string(rune('A'+index)), AuthMode: constants.AccountAuthModeSubscription,
-			Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolOpenAICompletions, BaseURL: constants.AIAccountKimiURL}}}
+			Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolOpenAICompletions, BaseURL: constants.AIAccountKimiURL}}
 		if err := accounts.Create(context.Background(), account, ""); err != nil {
 			t.Fatal(err)
 		}
@@ -81,6 +83,11 @@ func TestKimiSubscriptionUsesIndependentNativeHomes(t *testing.T) {
 		if !login.Complete {
 			t.Fatal("native login was not committed")
 		}
+
+		loggedIn, err := accounts.Get(t.Context(), id)
+		if err != nil || loggedIn.AuthGeneration != 2 {
+			t.Fatalf("native login did not rotate its unverified identity generation: %+v err=%v", loggedIn, err)
+		}
 		request := agent.AccountRequest{
 			Provider: constants.RuntimeIDKimi, AccountID: id, CWD: t.TempDir(), Model: "kimi-code/k3",
 		}
@@ -104,6 +111,14 @@ func TestKimiSubscriptionUsesIndependentNativeHomes(t *testing.T) {
 		if err := lease.Close(t.Context()); err != nil {
 			t.Fatal(err)
 		}
+
+		if err := accounts.StoreLoginCredential(t.Context(), id, loggedIn.Revision, kimiCredentialMarker); err != nil {
+			t.Fatal(err)
+		}
+		reauthenticated, err := service.ResolveAccount(t.Context(), request, "")
+		if err != nil || reauthenticated.ConfigHome != selected.ConfigHome || reauthenticated.Subject == selected.Subject {
+			t.Fatalf("unverified reauthentication reused session subject: before=%+v after=%+v err=%v", selected, reauthenticated, err)
+		}
 	}
 }
 
@@ -126,7 +141,7 @@ func TestCancelKimiLoginReleasesAccountAfterNativeExit(t *testing.T) {
 	t.Cleanup(service.Close)
 	id := "0123456789abcdef0123456789abcdef"
 	account := models.AIAccount{ID: id, Name: "Kimi", AuthMode: constants.AccountAuthModeSubscription,
-		Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolOpenAICompletions, BaseURL: constants.AIAccountKimiURL}}}
+		Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolOpenAICompletions, BaseURL: constants.AIAccountKimiURL}}
 	if err := accounts.Create(context.Background(), account, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -148,4 +163,91 @@ func TestCancelKimiLoginReleasesAccountAfterNativeExit(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("canceled native login did not release the account lease")
+}
+
+func TestKimiLoginCommitsNativeIdentityAcrossConcurrentMetadataSave(t *testing.T) {
+	service, _, _ := subscriptionFixture(t)
+	service.dataDirectory = t.TempDir()
+	service.kimiDataDirectory = filepath.Join(service.dataDirectory, "ai-accounts", "kimi")
+	account := models.AIAccount{ID: "fedcba9876543210fedcba9876543210", Name: "before", AuthMode: constants.AccountAuthModeSubscription, Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolOpenAICompletions, BaseURL: constants.AIAccountKimiURL}}
+	if err := service.accounts.Create(t.Context(), account, kimiCredentialMarker); err != nil {
+		t.Fatal(err)
+	}
+	home, err := service.kimiHome(account.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte("old native subject"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	original, err := service.ResolveAccount(t.Context(), agent.AccountRequest{Provider: "kimi", AccountID: account.ID, CWD: t.TempDir()}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := `#!/bin/sh
+printf 'new native subject' > "$KIMI_CODE_HOME/config.toml"
+printf 'Opening browser for Kimi device login: https://www.kimi.com/code/authorize_device?user_code=ABCD-EFGH\n'
+while [ ! -f "$KIMI_CODE_HOME/finish" ]; do sleep 0.01; done
+`
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "kimi"), []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	invalidated := make(chan uint64, 1)
+	service.SetAccountAuthInvalidator(func(_ context.Context, provider, id string, generation uint64) {
+		if provider == "kimi" && id == account.ID {
+			invalidated <- generation
+		}
+	})
+	login, err := service.StartLogin(t.Context(), account.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := service.accounts.Get(t.Context(), account.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current.Name = "renamed during native login"
+	current.DefaultModel = "new-default"
+	current.DefaultReasoning = "high"
+	if err := service.accounts.Update(t.Context(), current, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "finish"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		login, err = service.GetLogin(t.Context(), account.ID, login.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if login.Complete || login.ErrorCode != "" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	saved, err := service.accounts.Get(t.Context(), account.ID)
+	if err != nil || !login.Complete || login.ErrorCode != "" || saved.AuthGeneration != 2 || saved.Name != current.Name || saved.DefaultModel != "new-default" || saved.DefaultReasoning != "high" {
+		t.Fatalf("native identity commit lost metadata or generation: login=%+v account=%+v err=%v", login, saved, err)
+	}
+	select {
+	case generation := <-invalidated:
+		if generation != 1 {
+			t.Fatalf("invalidated generation %d", generation)
+		}
+	default:
+		t.Fatal("old catalog generation was not invalidated")
+	}
+	next, err := service.ResolveAccount(t.Context(), original, "")
+	if err != nil || next.Subject == original.Subject {
+		t.Fatalf("changed native login reused old subject: %+v err=%v", next, err)
+	}
+	if _, err := service.AcquireAccount(t.Context(), original); !errors.Is(err, status_error.RuntimeAuthRequired) {
+		t.Fatalf("old credential result remained admissible: %v", err)
+	}
+	if err := service.accounts.StoreRefreshedCredential(t.Context(), account.ID, saved.Revision, original.AuthGeneration, kimiCredentialMarker); !errors.Is(err, status_error.AIAccountRevisionConflict) {
+		t.Fatalf("old generation callback accepted: %v", err)
+	}
 }

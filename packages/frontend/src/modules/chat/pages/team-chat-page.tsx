@@ -45,7 +45,10 @@ import {
   ChatWorkspaceSurface,
   type ChatWorkspaceAdapter,
 } from "../components/chat-workspace-surface";
-import { useChatComposerControls } from "../components/chat-composer-controls";
+import {
+  useChatComposerControls,
+  type ChatExecutionSelectionPatch,
+} from "../components/chat-composer-controls";
 import { workspaceFilesOf } from "../model/chat-workspace-files";
 import { resolveGitWorkspaceDirectories } from "../model/git-workspace-directories";
 import { useChatWorkspaceBindings } from "../components/use-chat-workspace-bindings";
@@ -505,7 +508,6 @@ function TeamChatView({
         detailQuery.data?.chat?.lastPermissionLevel,
     },
     enabled: Boolean(configuredRuntime),
-    defaults: true,
   });
   const draftMemberValues = teamContext.threadId
     ? []
@@ -528,6 +530,7 @@ function TeamChatView({
       model: config.model,
       permissionLevel: config.permissionLevel,
       reasoning: config.reasoning,
+      fast: config.fast,
       runtimeId: config.runtimeId,
       wakerId: teamContext.members[index]?.id ?? "",
     };
@@ -554,9 +557,7 @@ function TeamChatView({
   );
   const availableReasoningOptions = executionSelection.reasoningOptions;
   const selectedReasoning = executionSelection.selection.reasoning;
-  const updateExecutionSelection = (
-    patch: Partial<TeamMemberExecutionConfig>,
-  ) => {
+  const updateExecutionSelection = (patch: ChatExecutionSelectionPatch) => {
     const targetWakerIds = effectiveTeamConfigTargetWakerId
       ? [effectiveTeamConfigTargetWakerId]
       : [];
@@ -571,6 +572,7 @@ function TeamChatView({
         model: patch.model ?? current.model,
         permissionLevel: patch.permissionLevel ?? current.permissionLevel,
         reasoning: patch.reasoning ?? current.reasoning,
+        fast: patch.fast === null ? undefined : (patch.fast ?? current.fast),
         runtimeId: patch.runtimeId ?? current.runtimeId,
       };
       return [{ ...config, wakerId }];
@@ -710,7 +712,6 @@ function TeamChatView({
       !selectedWakerID ||
       !effectiveRuntimeID ||
       invalidNativeMemberIndex !== -1 ||
-      selectedPermissionUnsupported ||
       (executionSelection.usesNativeCatalog && !executionSelection.valid) ||
       (!activeChatId && !workspaceDirectory && !selectedDraftProject),
     ),
@@ -722,8 +723,9 @@ function TeamChatView({
     selection: {
       accountId: executionSelection.selection.accountId,
       runtimeId: selectedRuntime?.id ?? "",
-      model: selectedModel,
+      model: executionSelection.selection.model,
       reasoning: selectedReasoning,
+      fast: executionSelection.selection.fast,
       permissionLevel: selectedPermissionLevel,
       skillIds: selectedSkillIDs,
       selectedSkills,
@@ -796,6 +798,7 @@ function TeamChatView({
           runtimeId: selection?.runtimeId ?? "",
           model: selection?.model ?? "",
           reasoning: selection?.reasoning ?? "",
+          fast: selection?.fast,
           permissionLevel: selection?.permissionLevel ?? "auto",
           attachments: attachmentPaths.map((sourcePath) => ({ sourcePath })),
           skillIds: selection?.skillIds ?? [],
@@ -1032,11 +1035,7 @@ function TeamChatView({
     selectedDraftProject?.name ||
     (workspaceDirectory ? workspaceDirectory.split(/[\\/]/).pop() : "") ||
     t("selectWorkspace");
-  const permissionEvidenceReady =
-    !executionSelection.loading &&
-    !executionSelection.catalogPending &&
-    (!executionSelection.usesNativeCatalog ||
-      (executionSelection.catalogState === "fresh" && selectedModelOption));
+  const permissionEvidenceReady = supportedPermissions.size > 0;
   const permissionWarning = !permissionEvidenceReady
     ? ""
     : selectedPermissionUnsupported
@@ -1111,7 +1110,7 @@ function TeamChatView({
     fastSupported: executionSelection.fastSupported,
     selectedFast: executionSelection.selection.fast ?? false,
     refreshCatalog: executionSelection.refreshCatalog,
-    thinkingPending: executionSelection.thinkingQuery.isFetching,
+    thinkingPending: executionSelection.catalogPending,
     historicalRuntime,
     historicalRuntimeDisabled,
     onPickDirectory: pickDirectory,
@@ -1325,7 +1324,6 @@ function TeamChatView({
         `chat:${activeChatId}`,
         `team:${teamContext.threadId}`,
       ],
-      onRetryExecution: chatRuntime.retryExecution,
       hasEarlierMessages:
         sceneActive &&
         (teamMainChat

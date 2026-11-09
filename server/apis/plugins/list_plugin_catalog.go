@@ -27,7 +27,7 @@ type ListPluginCatalogResponse struct {
 	// 来源状态
 	Source catalog.SourceState `json:"source"`
 	// 本地条目
-	Entries []catalog.Entry `json:"entries"`
+	Entries []PluginCatalogEntryResponse `json:"entries"`
 	// 准确总数
 	TotalSize int `json:"totalSize"`
 	// 当前页码
@@ -63,5 +63,9 @@ func (o *ListPluginCatalog) Output(ctx *gin.Context) (interface{}, error) {
 	}
 	start := min((page-1)*size, len(filtered))
 	end := min(start+size, len(filtered))
-	return ListPluginCatalogResponse{Source: catalog.State(global.PluginCatalogSource()), Entries: filtered[start:end], TotalSize: len(filtered), PageNum: page, PageSize: size}, nil
+	visible := make([]PluginCatalogEntryResponse, 0, end-start)
+	for _, entry := range filtered[start:end] {
+		visible = append(visible, publicCatalogEntry(entry))
+	}
+	return ListPluginCatalogResponse{Source: catalog.State(global.PluginCatalogSource()), Entries: visible, TotalSize: len(filtered), PageNum: page, PageSize: size}, nil
 }

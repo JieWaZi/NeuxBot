@@ -20,6 +20,8 @@ type ChannelMemberDetail struct {
 	Model string `json:"model"`
 	// 推理强度
 	Reasoning string `json:"reasoning"`
+	// Fast 模式
+	Fast *bool `json:"fast,omitempty"`
 	// 权限等级
 	PermissionLevel constants.PermissionLevel `json:"permissionLevel"`
 	// 展示顺序
@@ -61,6 +63,7 @@ func loadChannelDetail(
 			AccountID:       member.AccountID,
 			Model:           member.Model,
 			Reasoning:       member.Reasoning,
+			Fast:            member.Fast,
 			PermissionLevel: member.PermissionLevel,
 			Position:        member.Position,
 		})

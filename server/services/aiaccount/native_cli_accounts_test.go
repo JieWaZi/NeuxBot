@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -24,11 +25,11 @@ func TestNativeCLIManagedLeases(t *testing.T) {
 	service.dataDirectory = t.TempDir()
 	ctx := t.Context()
 	for index, tc := range []struct {
-		// provider identifies the native runtime.
+		// provider 指定实际接入的原生智能体。
 		provider string
-		// protocol is the managed account protocol.
+		// protocol 是受管账号的原生请求协议。
 		protocol constants.AccountProtocol
-		// rootKey is the environment variable read by the native CLI.
+		// rootKey 是原生 CLI 用于读取受管配置根的环境变量。
 		rootKey string
 	}{
 		{constants.RuntimeIDKimi, constants.AccountProtocolOpenAICompletions, "KIMI_CODE_HOME"},
@@ -40,7 +41,7 @@ func TestNativeCLIManagedLeases(t *testing.T) {
 		t.Run(tc.provider, func(t *testing.T) {
 			account := models.AIAccount{
 				ID: fmt.Sprintf("%032x", index+1), Name: tc.provider, AuthMode: constants.AccountAuthModeAPIKey,
-				Endpoints:      []models.AIAccountEndpoint{{Protocol: tc.protocol, BaseURL: "https://gateway.example.invalid/v1"}},
+				Endpoint:       models.AIAccountEndpoint{Protocol: tc.protocol, BaseURL: "https://gateway.example.invalid/v1"},
 				SelectedModels: []string{"model-a", "model-b"}, DefaultModel: "model-a",
 			}
 			if err := service.accounts.Create(ctx, account, "test-key"); err != nil {
@@ -91,12 +92,23 @@ func TestNativeCLIManagedLeases(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			current.Name = tc.provider + " renamed"
 			current.DefaultModel = "model-b"
+			current.DefaultReasoning = "display-default"
+			current.ModelCatalog = []string{"newly-discovered-model"}
 			if err := service.accounts.Update(ctx, current, ""); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := service.AcquireAccount(ctx, selected); !errors.Is(err, status_error.RuntimeConfigurationInvalid) {
-				t.Fatalf("accepted stale account revision: %v", err)
+			unchanged, err := service.ResolveAccount(ctx, selected, "")
+			if err != nil || !unchanged.Equal(selected) {
+				t.Fatalf("display/default/catalog save replaced native account configuration: before=%+v after=%+v err=%v", selected, unchanged, err)
+			}
+			retained, err := service.AcquireAccount(ctx, selected)
+			if err != nil {
+				t.Fatalf("display/default/catalog save invalidated admitted account: %v", err)
+			}
+			if err := retained.Close(ctx); err != nil {
+				t.Fatal(err)
 			}
 			fresh, err := service.ResolveAccount(ctx, selected, "")
 			if err != nil {
@@ -343,6 +355,81 @@ func TestNativeProviderAuthMapKeepsAccountAcrossOAuthRefresh(t *testing.T) {
 			write("account-b", "access-c", "refresh-c")
 			if err := lease.VerifyLogin(t.Context()); !errors.Is(err, status_error.RuntimeAuthRequired) {
 				t.Fatalf("native account switch escaped the fence: %v", err)
+			}
+		})
+	}
+}
+
+func TestNativeCLIConfigurationUsesOnlyDeliveredFields(t *testing.T) {
+	for i, tc := range []struct {
+		// provider 指定实际生成账号配置的智能体。
+		provider string
+		// protocol 是该智能体原生支持的请求协议。
+		protocol constants.AccountProtocol
+	}{{"kimi", constants.AccountProtocolOpenAICompletions}, {"gemini", constants.AccountProtocolGoogleGenerativeAI}, {"grok", constants.AccountProtocolOpenAIResponses}, {"opencode", constants.AccountProtocolOpenAIResponses}, {"pi", constants.AccountProtocolOpenAIResponses}} {
+		t.Run(tc.provider, func(t *testing.T) {
+			service, _, _ := subscriptionFixture(t)
+			service.dataDirectory = t.TempDir()
+			account := models.AIAccount{ID: fmt.Sprintf("%032x", i+10), Name: tc.provider, AuthMode: constants.AccountAuthModeAPIKey, Endpoint: models.AIAccountEndpoint{Protocol: tc.protocol, BaseURL: "https://example.invalid/v1"}, SelectedModels: []string{"first", "second"}}
+			if err := service.accounts.Create(t.Context(), account, "key"); err != nil {
+				t.Fatal(err)
+			}
+			input := agent.AccountRequest{Provider: tc.provider, AccountID: account.ID, CWD: t.TempDir()}
+			first, err := service.ResolveAccount(t.Context(), input, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			lease, err := service.AcquireAccount(t.Context(), first)
+			if err != nil {
+				t.Fatal(err)
+			}
+			originalEnvironment := lease.Environment
+			if err := lease.Close(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			current, err := service.accounts.Get(t.Context(), account.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			current.ClaudeModelRoles = map[string]string{"sonnet": "second"}
+			current.ModelDisplayNames = map[string]string{"not-selected": "ignored"}
+			current.ModelContextSizes = map[string]int{"not-selected": 1048576}
+			current.ModelReasoningLevels = map[string][]string{"not-selected": {"ignored"}}
+			if tc.provider != "opencode" {
+				current.ModelDisplayNames["first"] = "unused name"
+			}
+			if tc.provider != "kimi" {
+				current.ModelContextSizes["first"] = 1048576
+				current.ModelReasoningLevels["first"] = []string{"unused-grade"}
+			}
+			if err := service.accounts.Update(t.Context(), current, ""); err != nil {
+				t.Fatal(err)
+			}
+			unchanged, err := service.ResolveAccount(t.Context(), input, "")
+			if err != nil || !unchanged.Equal(first) {
+				t.Fatalf("undelivered metadata changed launch/history: before=%+v after=%+v err=%v", first, unchanged, err)
+			}
+			retained, err := service.AcquireAccount(t.Context(), unchanged)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(retained.Environment, originalEnvironment) {
+				t.Fatalf("undelivered metadata changed launch environment: %v -> %v", originalEnvironment, retained.Environment)
+			}
+			if err := retained.Close(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			current, err = service.accounts.Get(t.Context(), account.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			current.SelectedModels = []string{"changed-first", "second"}
+			if err := service.accounts.Update(t.Context(), current, ""); err != nil {
+				t.Fatal(err)
+			}
+			changed, err := service.ResolveAccount(t.Context(), input, "")
+			if err != nil || changed.ConfigFingerprint == first.ConfigFingerprint {
+				t.Fatalf("delivered model change ignored: %+v err=%v", changed, err)
 			}
 		})
 	}

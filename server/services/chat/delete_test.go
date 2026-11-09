@@ -57,10 +57,6 @@ func TestDeleteMissingChatsCleansIndexesAndFinalizes(t *testing.T) {
 	if err := controller.Create(ctx, models.Chat{ID: chatID, WakerID: "waker-target"}); err != nil {
 		t.Fatal(err)
 	}
-	sessions := controllers.NewRuntimeSessionController(db)
-	if err := sessions.Upsert(ctx, models.RuntimeSession{ChatID: chatID, RuntimeID: "codex", SessionID: "stale"}); err != nil {
-		t.Fatal(err)
-	}
 	finalized := false
 	if err := chats.DeleteChatsAtomically(ctx, []string{chatID, chatID}, func(context.Context) error {
 		finalized = true
@@ -73,9 +69,6 @@ func TestDeleteMissingChatsCleansIndexesAndFinalizes(t *testing.T) {
 	}
 	if _, err := controller.Get(ctx, chatID); !hasStatusErrorCode(err, status_error.ChatNotFound.Code()) {
 		t.Fatalf("stale chat index remains: %v", err)
-	}
-	if session, err := sessions.Get(ctx, chatID, "codex"); err != nil || session.SessionID != "" {
-		t.Fatalf("stale runtime session remains: %+v, %v", session, err)
 	}
 	if err := chats.DeleteChat(ctx, chatID); err != nil {
 		t.Fatalf("repeat deletion: %v", err)
@@ -128,7 +121,6 @@ func TestDeleteChatRemovesAuthorityIndexesAndManagedDirectories(t *testing.T) {
 	ctx := context.Background()
 	db, chatService, logStore := newDeleteTestService(t)
 	chatController := controllers.NewChatController(db)
-	runtimeSessionController := controllers.NewRuntimeSessionController(db)
 
 	chatID := "81818181818181818181818181818181"
 	messageID := "82828282828282828282828282828282"
@@ -199,13 +191,6 @@ func TestDeleteChatRemovesAuthorityIndexesAndManagedDirectories(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Create() chat error = %v", err)
 	}
-	if err := runtimeSessionController.Upsert(ctx, models.RuntimeSession{
-		ChatID:    chatID,
-		RuntimeID: "codex",
-		SessionID: "session-1",
-	}); err != nil {
-		t.Fatalf("Upsert() session error = %v", err)
-	}
 
 	// 混合批量删除同时覆盖正常日志和不存在的关联。
 	if err := chatService.DeleteChats(ctx, []string{chatID, "13131313131313131313131313131313"}); err != nil {
@@ -224,9 +209,6 @@ func TestDeleteChatRemovesAuthorityIndexesAndManagedDirectories(t *testing.T) {
 	}
 	if _, err := chatController.Get(ctx, chatID); err == nil {
 		t.Fatal("chat query index still exists")
-	}
-	if session, err := runtimeSessionController.Get(ctx, chatID, "codex"); err != nil || session.SessionID != "" {
-		t.Fatalf("native session after delete = %+v, error = %v", session, err)
 	}
 
 }
@@ -329,7 +311,6 @@ func TestDeleteChatDoesNotRequireMessageView(t *testing.T) {
 	db, chatService, logStore := newDeleteTestService(t)
 	if err := db.AutoMigrate(
 		&models.Chat{},
-		&models.RuntimeSession{},
 	); err != nil {
 		t.Fatalf("migrate delete test indexes: %v", err)
 	}
@@ -586,7 +567,6 @@ func newDeleteTestService(
 		Conversations:    logStore.Store,
 		QueryIndexes: QueryIndexDependencies{
 			Chats:           controllers.NewChatController(database.DB),
-			RuntimeSessions: controllers.NewRuntimeSessionController(database.DB),
 			DeletionIntents: controllers.NewChatDeletionIntentController(database.DB),
 			Transactions: controllers.NewTransactionController(
 				dbhelper.NewGormTransactionManager(database.DB),

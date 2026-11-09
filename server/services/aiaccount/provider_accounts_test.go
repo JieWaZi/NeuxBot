@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -21,7 +22,7 @@ func TestManagedClaudeLeaseFencesCredentialRotation(t *testing.T) {
 	ctx := t.Context()
 	account := models.AIAccount{
 		ID: "fedcba9876543210fedcba9876543210", Name: "Claude fixture", AuthMode: constants.AccountAuthModeAPIKey,
-		Endpoints:      []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://gateway.example.invalid"}},
+		Endpoint:       models.AIAccountEndpoint{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://gateway.example.invalid"},
 		SelectedModels: []string{"fixture-default", "fixture-opus"}, DefaultModel: "fixture-default",
 		ClaudeModelRoles: map[string]string{"opus": "fixture-opus"},
 	}
@@ -75,7 +76,7 @@ func TestManagedClaudeLeaseFencesCredentialRotation(t *testing.T) {
 	if err := service.accounts.Update(ctx, previous, "test-new"); err != nil {
 		t.Fatal(err)
 	}
-	service.InvalidateCodexAuth(ctx, previous)
+	service.InvalidateAccountAuth(ctx, previous)
 	if !invalidated {
 		t.Fatal("managed Claude credential mutation did not invalidate its previous generation")
 	}
@@ -98,7 +99,7 @@ func TestManagedClaudeLeaseRejectsChangedModelRole(t *testing.T) {
 	ctx := t.Context()
 	account := models.AIAccount{
 		ID: "fedcba9876543210fedcba9876543210", Name: "Claude fixture", AuthMode: constants.AccountAuthModeAPIKey,
-		Endpoints:      []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://gateway.example.invalid"}},
+		Endpoint:       models.AIAccountEndpoint{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://gateway.example.invalid"},
 		SelectedModels: []string{"model-a", "model-b"}, DefaultModel: "model-a",
 		ClaudeModelRoles: map[string]string{"sonnet": "model-a"},
 	}
@@ -330,7 +331,7 @@ func TestManagedClaudeAllowsNativeAliasesWithoutChangingAccountDefault(t *testin
 	ctx := t.Context()
 	account := models.AIAccount{
 		ID: "fedcba9876543210fedcba9876543210", Name: "Claude role fixture", AuthMode: constants.AccountAuthModeAPIKey,
-		Endpoints:      []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: constants.AIAccountAnthropicURL}},
+		Endpoint:       models.AIAccountEndpoint{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: constants.AIAccountAnthropicURL},
 		SelectedModels: []string{"fixture-default", "fixture-sonnet"}, DefaultModel: "fixture-default",
 		ClaudeModelRoles: map[string]string{"sonnet": "fixture-sonnet"},
 	}
@@ -519,5 +520,54 @@ func TestClaudeSystemUserSettingsCredentialIsFrozen(t *testing.T) {
 	}
 	if lease.Environment["ANTHROPIC_AUTH_TOKEN"] != "fixture-a" {
 		t.Fatal("external changes mutated an already acquired launch environment")
+	}
+}
+
+func TestManagedClaudeIgnoresUndeliveredAccountMetadata(t *testing.T) {
+	service, _, _ := subscriptionFixture(t)
+	service.dataDirectory = t.TempDir()
+	account := models.AIAccount{ID: "fedcba9876543210fedcba9876543210", Name: "Claude", AuthMode: constants.AccountAuthModeAPIKey, Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://example.invalid"}, SelectedModels: []string{"first", "second"}, DefaultModel: "first", ClaudeModelRoles: map[string]string{"sonnet": "second"}}
+	if err := service.accounts.Create(t.Context(), account, "key"); err != nil {
+		t.Fatal(err)
+	}
+	input := agent.AccountRequest{Provider: "claude", AccountID: account.ID, CWD: t.TempDir(), Model: "first"}
+	original, err := service.ResolveAccount(t.Context(), input, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := service.AcquireAccount(t.Context(), original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := lease.Environment
+	if err := lease.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	current, err := service.accounts.Get(t.Context(), account.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current.Name = "renamed"
+	current.DefaultModel = "second"
+	current.DefaultReasoning = "high"
+	current.ModelCatalog = []string{"discovered"}
+	current.ModelContextSizes = map[string]int{"first": 1048576}
+	current.ModelReasoningLevels = map[string][]string{"first": {"ignored"}}
+	current.ModelDisplayNames = map[string]string{"not-selected": "ignored"}
+	current.ClaudeModelRoles["not-a-native-role"] = "first"
+	if err := service.accounts.Update(t.Context(), current, ""); err != nil {
+		t.Fatal(err)
+	}
+	retained, err := service.ResolveAccount(t.Context(), input, "")
+	if err != nil || !retained.Equal(original) {
+		t.Fatalf("undelivered metadata changed Claude launch/history: before=%+v after=%+v err=%v", original, retained, err)
+	}
+	next, err := service.AcquireAccount(t.Context(), retained)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer next.Close(t.Context())
+	if !reflect.DeepEqual(next.Environment, before) {
+		t.Fatalf("undelivered metadata changed actual Claude environment: %v -> %v", before, next.Environment)
 	}
 }

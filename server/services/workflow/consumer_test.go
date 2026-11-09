@@ -100,8 +100,6 @@ func TestConsumerCLIScopesReplayActualDefaultsAndRevocation(t *testing.T) {
 	}
 	activate()
 	defer revoke()
-	endpoint := httptest.NewServer(registry)
-	defer endpoint.Close()
 	call := func(input map[string]any, failed bool) map[string]any {
 		t.Helper()
 		params := map[string]any{}
@@ -139,12 +137,12 @@ func TestConsumerCLIScopesReplayActualDefaultsAndRevocation(t *testing.T) {
 		}
 		requestID, _ := input["requestId"].(string)
 		body, _ := json.Marshal(capability.Request{Operation: id, RequestID: requestID, Params: params})
-		request, _ := http.NewRequest(http.MethodPost, endpoint.URL+constants.AgentCLIPath+"/commands", bytes.NewReader(body))
+		request, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1"+constants.AgentCLIPath+"/commands", bytes.NewReader(body))
 		request.Header.Set("Authorization", "Bearer "+grant.Token)
-		response, err := endpoint.Client().Do(request)
-		if err != nil {
-			t.Fatal(err)
-		}
+		request.RemoteAddr = "127.0.0.1:12345"
+		recorder := httptest.NewRecorder()
+		registry.ServeHTTP(recorder, request)
+		response := recorder.Result()
 		defer response.Body.Close()
 		var value map[string]any
 		if err := json.NewDecoder(response.Body).Decode(&value); err != nil {
@@ -175,7 +173,15 @@ func TestConsumerCLIScopesReplayActualDefaultsAndRevocation(t *testing.T) {
 		t.Fatalf("model escaped actual execution configuration: %+v %v", run, err)
 	}
 	runTicks(t, s, runID, 12)
-	call(map[string]any{"action": "run.get", "runId": runID}, false)
+	observed := call(map[string]any{"action": "run.get", "runId": runID}, false)["data"].(map[string]any)["run"].(map[string]any)
+	if observed["id"] != runID || observed["triggerSource"] != "agent" {
+		t.Fatalf("public tool lost run identity/origin: %+v", observed)
+	}
+	for _, field := range []string{"flowContext", "rootFiberId", "workspace"} {
+		if _, found := observed[field]; found {
+			t.Errorf("public tool leaks %s", field)
+		}
+	}
 	call(map[string]any{"action": "run.start", "workflowId": other.ID, "requestId": "other"}, true)
 	call(map[string]any{"action": "run.start", "workflowId": definition.ID, "requestId": "escalate", "permissionLevel": "full_access"}, true)
 	manual, err := s.StartRun(ctx, StartRunCommand{DefinitionID: definition.ID, RequestID: "manual", Args: map[string]any{"text": "manual"}})

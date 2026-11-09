@@ -30,16 +30,8 @@ func (j *terminalJournal) LoadExecutionContext(context.Context, string) (chatser
 	panic("unexpected LoadExecutionContext call")
 }
 
-func (j *terminalJournal) CommitStartedTurn(context.Context, chatservice.StartedTurn) (chatservice.AcceptedTurn, error) {
-	panic("unexpected CommitStartedTurn call")
-}
-
 func (j *terminalJournal) CommitAcceptedTurn(context.Context, chatservice.StartedTurn) (chatservice.AcceptedTurn, error) {
 	panic("unexpected CommitAcceptedTurn call")
-}
-
-func (j *terminalJournal) MarkExecutionStarted(context.Context, models.Execution, string) (models.Execution, error) {
-	panic("unexpected MarkExecutionStarted call")
 }
 
 func (j *terminalJournal) ReadRecords(string) ([]eventlog.Record, error) {

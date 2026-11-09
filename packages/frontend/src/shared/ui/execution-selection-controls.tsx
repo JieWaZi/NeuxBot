@@ -152,46 +152,47 @@ export function ExecutionRuntimeControl({
             <>
               <DropdownMenuLabel>{t("chat:runtimeSection")}</DropdownMenuLabel>
               <DropdownMenuRadioGroup value={selectedRuntime?.id ?? ""}>
-                {runtimes
-                  .filter((item) => item.state === "ready")
-                  .map((item) => {
-                    const hasAccountChoices =
-                      compatibleAccountsFor(item).length > 0;
-                    return (
-                      <DropdownMenuRadioItem
-                        key={item.id}
-                        value={item.id ?? ""}
-                        disabled={!item.enabled}
-                        onSelect={(event) => {
-                          if (!item.enabled) return;
-                          if (hasAccountChoices) {
-                            event.preventDefault();
-                            setAccountRuntimeId(item.id ?? null);
-                          } else if (
-                            selectedRuntime?.id !== item.id ||
-                            selectedAccountId !== "system"
-                          ) {
-                            onSelect(item, "system");
-                          }
-                        }}
-                        className="min-h-row-rich grid grid-cols-[32px_minmax(0,1fr)_auto] items-center px-2 py-1"
-                      >
-                        <span className="bg-muted grid size-8 place-items-center rounded-sm">
-                          <RuntimeCliIcon runtimeId={item.id} />
-                        </span>
-                        <span className="min-w-0">
-                          <strong className="type-body block truncate font-medium">
-                            {runtimeDisplayName(item)}
-                          </strong>
-                          <small className="text-muted-foreground type-caption block truncate">
-                            {!item.enabled
-                              ? t("chat:runtimeDisabled")
-                              : item.version || t("chat:ready")}
-                          </small>
-                        </span>
-                      </DropdownMenuRadioItem>
-                    );
-                  })}
+                {runtimes.map((item) => {
+                  const hasAccountChoices =
+                    compatibleAccountsFor(item).length > 0;
+                  return (
+                    <DropdownMenuRadioItem
+                      key={item.id}
+                      value={item.id ?? ""}
+                      disabled={!item.enabled}
+                      onSelect={(event) => {
+                        if (!item.enabled) return;
+                        if (hasAccountChoices) {
+                          event.preventDefault();
+                          setAccountRuntimeId(item.id ?? null);
+                        } else if (
+                          selectedRuntime?.id !== item.id ||
+                          selectedAccountId !== "system"
+                        ) {
+                          onSelect(item, "system");
+                        }
+                      }}
+                      className="min-h-row-rich grid grid-cols-[32px_minmax(0,1fr)_auto] items-center px-2 py-1"
+                    >
+                      <span className="bg-muted grid size-8 place-items-center rounded-sm">
+                        <RuntimeCliIcon runtimeId={item.id} />
+                      </span>
+                      <span className="min-w-0">
+                        <strong className="type-body block truncate font-medium">
+                          {runtimeDisplayName(item)}
+                        </strong>
+                        <small className="text-muted-foreground type-caption block truncate">
+                          {!item.enabled
+                            ? t("chat:runtimeDisabled")
+                            : item.version ||
+                              t(
+                                "common:runtimeEnvironment.status.versionUnknown",
+                              )}
+                        </small>
+                      </span>
+                    </DropdownMenuRadioItem>
+                  );
+                })}
               </DropdownMenuRadioGroup>
             </>
           )}

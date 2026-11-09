@@ -100,7 +100,7 @@ type IMBinding struct {
 type IMExecutionOptions struct {
 	// RuntimeID 是选择的智能体环境。
 	RuntimeID string `json:"runtimeId"`
-	// AccountID 是选择的账号，空值沿用智能体设置。
+	// AccountID 是已解析的账号选择，合法空值保留原生默认。
 	AccountID string `json:"accountId"`
 	// Model 是选择的模型。
 	Model string `json:"model"`
@@ -112,6 +112,20 @@ type IMExecutionOptions struct {
 
 // TableName 返回聊天授权表名。
 func (IMBinding) TableName() string { return "im_bindings" }
+
+// IMConversationConfiguration 仅保存此对话实际消费的目标、工作范围与有效执行选择。
+type IMConversationConfiguration struct {
+	// WakerID 是已接纳的独立伙伴，团队目标时为空。
+	WakerID string `json:"wakerId"`
+	// ChannelID 是已接纳的团队，独立伙伴目标时为空。
+	ChannelID string `json:"channelId"`
+	// ProjectID 是此对话获准使用的项目。
+	ProjectID string `json:"projectId"`
+	// WorkingDirectory 是此对话获准使用的真实目录。
+	WorkingDirectory string `json:"workingDirectory"`
+	// Options 是接纳时已经解析的执行选择，不再继承当前绑定的默认值。
+	Options IMExecutionOptions `json:"options"`
+}
 
 // IMConversationLink 保存一段 IM 对话与标准 Chat 或 Team Thread 的稳定关系。
 type IMConversationLink struct {
@@ -128,7 +142,7 @@ type IMConversationLink struct {
 	// Title 是显示用的本地标题。
 	Title string `json:"title"`
 	// Configuration 冻结该会话的执行目标及工作范围，不随绑定编辑变化。
-	Configuration IMBinding `gorm:"serializer:json;type:text" json:"-"`
+	Configuration IMConversationConfiguration `gorm:"serializer:json;type:text" json:"-"`
 	// PendingReportIDs 是已发现但尚未决定直达或协调的成员报告。
 	PendingReportIDs []string `gorm:"serializer:json;type:text" json:"-"`
 	// EventCursor 是负责人主 Chat 已可靠投递登记的持久事件游标。

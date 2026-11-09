@@ -34,9 +34,9 @@ func (a *LogoutAIAccount) Output(ctx *gin.Context) (interface{}, error) {
 	if account.Revision != a.Revision {
 		return nil, ginx.WithStack(status_error.AIAccountRevisionConflict)
 	}
-	if account.AuthMode != constants.AccountAuthModeSubscription || len(account.Endpoints) != 1 ||
-		account.Endpoints[0].Protocol != constants.AccountProtocolOpenAIResponses ||
-		account.Endpoints[0].BaseURL != constants.AIAccountOpenAIURL {
+	if account.AuthMode != constants.AccountAuthModeSubscription ||
+		account.Endpoint.Protocol != constants.AccountProtocolOpenAIResponses ||
+		account.Endpoint.BaseURL != constants.AIAccountOpenAIURL {
 		return nil, ginx.WithStack(status_error.AIAccountConfigurationInvalid)
 	}
 	if account.HasCredential {
@@ -46,7 +46,7 @@ func (a *LogoutAIAccount) Output(ctx *gin.Context) (interface{}, error) {
 		if err := global.AIAccountControllerManager.ClearCredential(ctx, account.ID, account.Revision); err != nil {
 			return nil, ginx.WithStack(err)
 		}
-		global.AIAccountService.InvalidateCodexAuth(ctx, account)
+		global.AIAccountService.InvalidateAccountAuth(ctx, account)
 	}
 	return ginx.CommonSuccessResponse(), nil
 }

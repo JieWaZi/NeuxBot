@@ -3,6 +3,8 @@ package accountconfig
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -47,8 +49,8 @@ type Spec struct {
 	ModelReasoningLevels map[string][]string
 	// ClaudeModelRoles 保存 Claude Code 各内置角色的实际模型映射。
 	ClaudeModelRoles map[string]string
-	// Revision 隔离修改配置后的启动指纹。
-	Revision int64
+	// ConfigFingerprint 标识真实原生配置，不包含用户配置的 CAS 修订。
+	ConfigFingerprint string
 }
 
 // Supports 声明原生配置可直接表达的协议，不用于限制账号关联。
@@ -128,7 +130,7 @@ func PrepareForWorkspace(storage, workspace string, spec Spec) (map[string]strin
 		return nil, err
 	}
 	env := HomeEnvironment(spec.RuntimeID, home)
-	env[constants.AIAccountIdentityEnvironment] = spec.ID + ":" + strconv.FormatInt(spec.Revision, 10)
+	env[constants.AIAccountIdentityEnvironment] = spec.ID + ":" + spec.ConfigFingerprint
 	if spec.RuntimeID == constants.RuntimeIDCodex {
 		config, err := PrepareCodexHome(home, spec)
 		if err != nil {
@@ -255,7 +257,8 @@ func PrepareCodexHome(home string, spec Spec) (CodexHomeConfig, error) {
 			if err != nil {
 				return CodexHomeConfig{}, storageError(err)
 			}
-			catalogPath := filepath.Join(home, "models.json")
+			catalogDigest := sha256.Sum256(catalog)
+			catalogPath := filepath.Join(home, "models-"+hex.EncodeToString(catalogDigest[:])+".json")
 			if err := WriteFile(catalogPath, catalog); err != nil {
 				return CodexHomeConfig{}, err
 			}
@@ -270,15 +273,15 @@ func PrepareCodexHome(home string, spec Spec) (CodexHomeConfig, error) {
 	default:
 		return CodexHomeConfig{}, status_error.AIAccountConfigurationInvalid
 	}
+	// 复制进程及会话配置前，同时固定启动模型种子与其目录。
+	// 调用方本轮明确请求的模型仍通过独立的原生设置入口应用。
+	if spec.Model != "" {
+		authority["model"] = spec.Model
+	}
 	for key, value := range authority {
 		if key != "model_providers" {
 			result.Overrides[key], _ = json.Marshal(value)
 		}
-	}
-	// The model default belongs to the native home. The effective requested
-	// model and reasoning belong to the caller opening a native session.
-	if spec.Model != "" {
-		authority["model"] = spec.Model
 	}
 	var config bytes.Buffer
 	if err := toml.NewEncoder(&config).Encode(authority); err != nil {
@@ -366,4 +369,51 @@ func EnsureHome(workspace, runtimeID string) (string, error) {
 		}
 	}
 	return directory, nil
+}
+
+// NativeConfigurationFingerprint 仅比较该智能体实际写入受管启动文件的配置。
+// 凭据通过 AuthGeneration 独立隔离，调用方默认值归本轮有效选择解析。
+func NativeConfigurationFingerprint(spec Spec) (string, error) {
+	fields := []any{spec.RuntimeID, spec.AuthMode, spec.Protocol, spec.BaseURL}
+	if spec.AuthMode == constants.AccountAuthModeAPIKey {
+		switch spec.RuntimeID {
+		case constants.RuntimeIDCodex:
+			catalog, err := codexCatalog(spec)
+			if err != nil {
+				return "", err
+			}
+			fields = append(fields, json.RawMessage(catalog))
+		case constants.RuntimeIDGemini:
+			fields = append(fields, spec.Model)
+		case constants.RuntimeIDGrok, constants.RuntimeIDPi:
+			fields = append(fields, spec.SelectedModels)
+		case constants.RuntimeIDOpenCode:
+			rows := make([][]string, 0, len(spec.SelectedModels))
+			for _, id := range spec.SelectedModels {
+				name := spec.ModelDisplayNames[id]
+				if name == "" {
+					name = id
+				}
+				rows = append(rows, []string{id, name})
+			}
+			fields = append(fields, spec.Model, rows)
+		case constants.RuntimeIDKimi:
+			rows := make([]any, 0, len(spec.SelectedModels))
+			for _, id := range spec.SelectedModels {
+				contextSize := spec.ModelContextSizes[id]
+				if contextSize < 1 {
+					contextSize = 262144
+				}
+				selected := spec
+				selected.Model = id
+				rows = append(rows, []any{id, contextSize, kimiReasoningLevels(selected)})
+			}
+			fields = append(fields, spec.Model, rows)
+		default:
+			return "", status_error.AIAccountConfigurationInvalid
+		}
+	}
+	encoded, _ := json.Marshal(fields)
+	sum := sha256.Sum256(encoded)
+	return hex.EncodeToString(sum[:]), nil
 }

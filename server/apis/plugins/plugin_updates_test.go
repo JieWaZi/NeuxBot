@@ -234,7 +234,7 @@ func TestPluginUpdateSemanticOrderingAndCatalogRollback(t *testing.T) {
 		{"invalid", "1.0.0", false}, {"2.0.0", "invalid", false},
 	} {
 		t.Run(test.Target+"/"+test.Current, func(t *testing.T) {
-			detail := PluginDetailResponse{Plugin: models.Plugin{SourceKey: "catalog:tools"}, Versions: []models.PluginVersion{{ID: "v", Version: test.Current}}, Installations: []models.WakerPlugin{{WakerID: "w1", VersionID: "v"}}}
+			detail := PluginDetailResponse{Plugin: models.Plugin{SourceKey: "catalog:tools"}, Versions: []PluginVersionResponse{{ID: "v", Version: test.Current}}, Installations: []models.WakerPlugin{{WakerID: "w1", VersionID: "v"}}}
 			entries := []catalog.Entry{{SourceKey: "catalog:tools", Key: "tools", ArchiveSHA256: strings.Repeat("b", 64), Package: packageplugin.Package{Manifest: packageplugin.Manifest{Version: test.Target}}}}
 			applyPluginUpdate(&detail, entries, catalog.SourceState{State: "available"})
 			if detail.Update.Available != test.Available {
@@ -242,7 +242,7 @@ func TestPluginUpdateSemanticOrderingAndCatalogRollback(t *testing.T) {
 			}
 		})
 	}
-	detail := PluginDetailResponse{Plugin: models.Plugin{SourceKey: "catalog:tools"}, Versions: []models.PluginVersion{{ID: "old", Version: "1.0.0"}, {ID: "ahead", Version: "3.0.0"}}, Installations: []models.WakerPlugin{{WakerID: "w1", VersionID: "old"}, {WakerID: "w2", VersionID: "ahead"}}}
+	detail := PluginDetailResponse{Plugin: models.Plugin{SourceKey: "catalog:tools"}, Versions: []PluginVersionResponse{{ID: "old", Version: "1.0.0"}, {ID: "ahead", Version: "3.0.0"}}, Installations: []models.WakerPlugin{{WakerID: "w1", VersionID: "old"}, {WakerID: "w2", VersionID: "ahead"}}}
 	entries := []catalog.Entry{{SourceKey: "catalog:tools", Key: "tools", Package: packageplugin.Package{Manifest: packageplugin.Manifest{Version: "2.0.0"}}}}
 	applyPluginUpdate(&detail, entries, catalog.SourceState{State: "available"})
 	if detail.Update.Available {

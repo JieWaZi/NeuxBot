@@ -35,20 +35,6 @@ export type GithubComJieWaZiNeuxBotServerApisAiAccountsAiAccountModel = {
 };
 
 /**
- * AccountThinkingOption 是原生 ACP 返回的模型专属档位。
- */
-export type GithubComJieWaZiNeuxBotServerApisAiAccountsAccountThinkingOption = {
-    /**
-     * ID 是 CLI 接受的推理强度标识。
-     */
-    id?: string;
-    /**
-     * Name 是 CLI 提供的展示名称。
-     */
-    name?: string;
-};
-
-/**
  * 新增账号请求
  */
 export type GithubComJieWaZiNeuxBotServerApisAiAccountsCreateAiAccountRequest = {
@@ -75,10 +61,7 @@ export type GithubComJieWaZiNeuxBotServerApisAiAccountsCreateAiAccountRequest = 
      * 默认推理强度
      */
     defaultReasoning?: string;
-    /**
-     * 协议入口
-     */
-    endpoints: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccountEndpoint>;
+    endpoint: GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccountEndpoint & unknown;
     /**
      * 最近一次获取的模型目录
      */
@@ -132,34 +115,6 @@ export type GithubComJieWaZiNeuxBotServerApisAiAccountsGetAiAccountCredentialRes
 };
 
 /**
- * GetAIAccountNativeModelsResponse 是订阅账号本地模型目录。
- */
-export type GithubComJieWaZiNeuxBotServerApisAiAccountsGetAiAccountNativeModelsResponse = {
-    /**
-     * DefaultModel 是该账号原生配置声明的默认模型。
-     */
-    defaultModel?: string;
-    /**
-     * Models 是该账号原生配置可选的模型标识。
-     */
-    models?: Array<string>;
-};
-
-/**
- * GetAIAccountThinkingResponse 区分探测成功与没有可靠模型专属回执。
- */
-export type GithubComJieWaZiNeuxBotServerApisAiAccountsGetAiAccountThinkingResponse = {
-    /**
-     * Available 表示获得了当前模型的原生能力目录。
-     */
-    available?: boolean;
-    /**
-     * Options 只含当前选中模型原生返回的档位。
-     */
-    options?: Array<GithubComJieWaZiNeuxBotServerApisAiAccountsAccountThinkingOption>;
-};
-
-/**
  * 账号列表响应
  */
 export type GithubComJieWaZiNeuxBotServerApisAiAccountsListAiAccountsResponse = {
@@ -205,10 +160,7 @@ export type GithubComJieWaZiNeuxBotServerApisAiAccountsUpdateAiAccountRequest = 
      * 默认推理强度
      */
     defaultReasoning?: string;
-    /**
-     * 协议入口
-     */
-    endpoints: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccountEndpoint>;
+    endpoint: GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccountEndpoint & unknown;
     /**
      * 最近一次获取的模型目录
      */
@@ -416,6 +368,10 @@ export type GithubComJieWaZiNeuxBotServerApisChannelsChannelMemberDetail = {
      */
     accountId?: string;
     /**
+     * Fast 模式
+     */
+    fast?: boolean;
+    /**
      * 模型
      */
     model?: string;
@@ -443,6 +399,10 @@ export type GithubComJieWaZiNeuxBotServerApisChannelsChannelMemberInput = {
      * 账号标识
      */
     accountId?: string;
+    /**
+     * Fast 模式
+     */
+    fast?: boolean;
     /**
      * 模型
      */
@@ -3847,7 +3807,7 @@ export type GithubComJieWaZiNeuxBotServerApisPluginsListPluginCatalogResponse = 
     /**
      * 本地条目
      */
-    entries?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsCatalogEntry>;
+    entries?: Array<GithubComJieWaZiNeuxBotServerApisPluginsPluginCatalogEntryResponse>;
     /**
      * 当前页码
      */
@@ -3929,6 +3889,49 @@ export type GithubComJieWaZiNeuxBotServerApisPluginsPluginAuthorizationResponse 
 };
 
 /**
+ * 插件目录条目
+ */
+export type GithubComJieWaZiNeuxBotServerApisPluginsPluginCatalogEntryResponse = {
+    /**
+     * 归档摘要
+     */
+    archiveSHA256?: string;
+    /**
+     * 归档地址
+     */
+    archiveURL?: string;
+    /**
+     * 资料摘要
+     */
+    detailsSHA256?: string;
+    /**
+     * 资料大小
+     */
+    detailsSize?: number;
+    /**
+     * 资料地址
+     */
+    detailsURL?: string;
+    /**
+     * 目录标识
+     */
+    key?: string;
+    package?: GithubComJieWaZiNeuxBotServerInternalPluginsPublicPackage & unknown;
+    /**
+     * 逻辑入口
+     */
+    packagePath?: string;
+    /**
+     * 来源提交
+     */
+    sourceCommit?: string;
+    /**
+     * 来源身份
+     */
+    sourceKey?: string;
+};
+
+/**
  * 插件详情
  */
 export type GithubComJieWaZiNeuxBotServerApisPluginsPluginDetailResponse = {
@@ -3938,12 +3941,6 @@ export type GithubComJieWaZiNeuxBotServerApisPluginsPluginDetailResponse = {
      */
     blockers?: Array<string>;
     catalogSource?: GithubComJieWaZiNeuxBotServerInternalPluginsCatalogSourceState & unknown;
-    /**
-     * 组件授权标识
-     */
-    componentIds?: {
-        [key: string]: string;
-    };
     /**
      * 配置修订
      */
@@ -3991,7 +3988,7 @@ export type GithubComJieWaZiNeuxBotServerApisPluginsPluginDetailResponse = {
     /**
      * 保留版本
      */
-    versions?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsPluginVersion>;
+    versions?: Array<GithubComJieWaZiNeuxBotServerApisPluginsPluginVersionResponse>;
 };
 
 /**
@@ -4078,6 +4075,43 @@ export type GithubComJieWaZiNeuxBotServerApisPluginsPluginUpdateResponse = {
      * 落后伙伴
      */
     wakerIds?: Array<string>;
+};
+
+/**
+ * 插件公开版本
+ */
+export type GithubComJieWaZiNeuxBotServerApisPluginsPluginVersionResponse = {
+    /**
+     * 创建时间
+     */
+    createdAt?: number;
+    /**
+     * 内容摘要
+     */
+    digest?: string;
+    /**
+     * 版本标识
+     */
+    id?: string;
+    package?: GithubComJieWaZiNeuxBotServerInternalPluginsPublicPackage & unknown;
+    /**
+     * 插件标识
+     */
+    pluginId?: string;
+    /**
+     * 分发来源
+     */
+    provenance?: {
+        [key: string]: unknown;
+    };
+    /**
+     * 信任时间
+     */
+    trustedAt?: number;
+    /**
+     * 版本名称
+     */
+    version?: string;
 };
 
 /**
@@ -4440,10 +4474,6 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelCatalogRe
      */
     defaultModel?: string;
     /**
-     * 最近成功时间
-     */
-    detectedAt?: number;
-    /**
      * 刷新错误
      */
     errorCode?: string;
@@ -4456,27 +4486,15 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelCatalogRe
      */
     runtimeId?: string;
     /**
-     * 发现来源
-     */
-    source?: string;
-    /**
      * 发现状态
      */
     state?: string;
-    /**
-     * 原生版本
-     */
-    version?: string;
 };
 
 /**
  * 模型选项
  */
 export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelOption = {
-    /**
-     * 已确认逐模型设置
-     */
-    configurationKnown?: boolean;
     /**
      * 可选上下文档位
      */
@@ -4506,10 +4524,6 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelOption = 
      */
     defaultReasoning?: string;
     /**
-     * 原生默认服务档位
-     */
-    defaultServiceTier?: string;
-    /**
      * 描述
      */
     description?: string;
@@ -4534,10 +4548,6 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelOption = 
      */
     id?: string;
     /**
-     * 输入类型
-     */
-    inputModalities?: Array<string>;
-    /**
      * 最大上下文
      */
     maxContextWindowTokens?: number;
@@ -4553,10 +4563,6 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelOption = 
      * 推理选项
      */
     reasoningOptions?: Array<GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeReasoningOption>;
-    /**
-     * 原生服务档位
-     */
-    serviceTiers?: Array<GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeReasoningOption>;
 };
 
 /**
@@ -4564,7 +4570,7 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelOption = 
  */
 export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption = {
     /**
-     * 鉴权结论
+     * 最近鉴权探测结论
      */
     auth?: string;
     /**
@@ -4654,7 +4660,7 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption = {
      */
     resolvedBinary?: string;
     /**
-     * 运行状态
+     * 最近探测结论
      */
     state?: string;
     /**
@@ -5467,10 +5473,6 @@ export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkResultResponse = {
  */
 export type GithubComJieWaZiNeuxBotServerApisWorkflowsAnswerHumanCommand = {
     /**
-     * 问题版本
-     */
-    questionVersion: number;
-    /**
      * 提交标识
      */
     requestId?: string;
@@ -5771,6 +5773,26 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowAnnotationRequest 
 };
 
 /**
+ * WorkflowAttemptResponse 保留历史尝试的身份、结果和可访问的伙伴对话。
+ */
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowAttemptResponse = {
+    /**
+     * 尝试代际
+     */
+    attemptGeneration?: number;
+    /**
+     * 伙伴对话
+     */
+    chatId?: string;
+    failure?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslValue & unknown;
+    /**
+     * 尝试标识
+     */
+    id?: string;
+    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus & unknown;
+};
+
+/**
  * 工作流详情
  */
 export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowDetailResponse = {
@@ -5838,7 +5860,7 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowInstanceResponse =
     /**
      * 尝试历史
      */
-    attempts?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowEffect>;
+    attempts?: Array<GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowAttemptResponse>;
     chat?: GithubComJieWaZiNeuxBotServerServicesChatChatSummary & unknown;
     effect?: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowEffectView & unknown;
     execution?: GithubComJieWaZiNeuxBotServerRepositoriesModelsExecution & unknown;
@@ -6013,7 +6035,7 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunDetailResponse 
     /**
      * 子运行
      */
-    children?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun>;
+    children?: Array<GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunResponse>;
     /**
      * 成果文件
      */
@@ -6047,7 +6069,7 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunDetailResponse 
      * 操作许可
      */
     operationRequests?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowOperationRequest>;
-    run?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun & unknown;
+    run?: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunResponse & unknown;
     /**
      * 源码摘要
      */
@@ -6061,7 +6083,7 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunListResponse = 
     /**
      * 运行列表
      */
-    items?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun>;
+    items?: Array<GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunResponse>;
     /**
      * 时间游标
      */
@@ -6070,6 +6092,85 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunListResponse = 
      * 身份游标
      */
     nextBeforeId?: string;
+};
+
+/**
+ * WorkflowRunResponse 只公开运行的业务事实，执行上下文与恢复帧留在仓储。
+ */
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunResponse = {
+    /**
+     * 运行参数
+     */
+    args?: unknown;
+    /**
+     * 完成时间
+     */
+    completedAt?: number;
+    /**
+     * 接纳时间
+     */
+    createdAt?: number;
+    /**
+     * 截止时间
+     */
+    deadlineAt?: number;
+    defaults?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowExecutionDefaults & unknown;
+    /**
+     * 工作流标识
+     */
+    definitionId?: string;
+    /**
+     * 调用层级
+     */
+    depth?: number;
+    failure?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslValue & unknown;
+    /**
+     * 运行标识
+     */
+    id?: string;
+    /**
+     * 跟随父运行
+     */
+    joined?: boolean;
+    limits?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslLimits & unknown;
+    /**
+     * 父运行标识
+     */
+    parentRunId?: string;
+    /**
+     * 运行结果
+     */
+    result?: unknown;
+    /**
+     * 版本标识
+     */
+    revisionId?: string;
+    /**
+     * 版本序号
+     */
+    revisionOrdinal?: number;
+    /**
+     * 调用树根运行
+     */
+    rootRunId?: string;
+    scopeBinding?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowScopeBinding & unknown;
+    /**
+     * 开始时间
+     */
+    startedAt?: number;
+    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowRunStatus & unknown;
+    /**
+     * 触发来源
+     */
+    triggerSource?: string;
+    /**
+     * 更新时间
+     */
+    updatedAt?: number;
+    /**
+     * 运行版本
+     */
+    version?: number;
 };
 
 /**
@@ -6718,17 +6819,14 @@ export type GithubComJieWaZiNeuxBotServerConstantsChannelTaskStatus = 'cancelled
  * * `execution.created` - ChatEventTypeExecutionCreated 表示一次执行已经建立。
  * * `execution.failed` - ChatEventTypeExecutionFailed 表示一次执行因错误结束。
  * * `execution.started` - ChatEventTypeExecutionStarted 表示一次执行已经启动 Runtime。
- * * `invocation.finished` - ChatEventTypeInvocationFinished 表示一次 Runtime Invocation 的实际事实已经持久化。
  * * `message.inherited` - ChatEventTypeMessageInherited 表示分叉复制的历史展示快照，不创建新的 Execution。
  * * `message.user_created` - ChatEventTypeUserMessageCreated 表示一条用户消息已经持久化。
- * * `native_session.cleared` - ChatEventTypeNativeSessionCleared 表示失效的原生 Session 句柄已经清除。
- * * `native_session.updated` - ChatEventTypeNativeSessionUpdated 表示原生 Runtime Session 句柄已经更新。
  * * `runtime.event` - ChatEventTypeRuntimeEvent 表示仅用于实时投影、不会进入权威日志的 Runtime 增量。
  * * `tool.message` - ChatEventTypeToolMessage 表示 Runtime 已完整形成一条工具结果执行消息。
  * * `workspace.changes` - ChatEventTypeFileChanges 表示独立工作区采集结果及其不可变内容已经提交。
  *
  */
-export type GithubComJieWaZiNeuxBotServerConstantsChatEventType = '' | 'agent.command_committed' | 'approval.requested' | 'approval.resolved' | 'assistant.message' | 'chat.created' | 'chat.title_updated' | 'elicitation.requested' | 'elicitation.resolved' | 'execution.canceled' | 'execution.completed' | 'execution.created' | 'execution.failed' | 'execution.started' | 'invocation.finished' | 'message.inherited' | 'message.user_created' | 'native_session.cleared' | 'native_session.updated' | 'runtime.event' | 'tool.message' | 'workspace.changes';
+export type GithubComJieWaZiNeuxBotServerConstantsChatEventType = '' | 'agent.command_committed' | 'approval.requested' | 'approval.resolved' | 'assistant.message' | 'chat.created' | 'chat.title_updated' | 'elicitation.requested' | 'elicitation.resolved' | 'execution.canceled' | 'execution.completed' | 'execution.created' | 'execution.failed' | 'execution.started' | 'message.inherited' | 'message.user_created' | 'runtime.event' | 'tool.message' | 'workspace.changes';
 
 /**
  * >
@@ -7670,10 +7768,6 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage = {
      */
     plugins?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsSnapshot>;
     /**
-     * Retryable 表示后端允许用户安全重试该失败回合。
-     */
-    retryable?: boolean;
-    /**
      * Revision 是最后一次改变公开消息快照的权威事件序号。
      */
     revision?: number;
@@ -8060,62 +8154,6 @@ export type GithubComJieWaZiNeuxBotServerInternalPackagefilesResourceFile = {
 };
 
 /**
- * Authentication 声明包内授权桥接，不复制供应商协议。
- */
-export type GithubComJieWaZiNeuxBotServerInternalPluginsAuthentication = {
-    /**
-     * Args 是独立传递的入口参数。
-     */
-    args?: Array<string>;
-    /**
-     * Bindings 将授权秘密限定到明确的原生目标和远端连接。
-     */
-    bindings?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsAuthenticationBinding>;
-    /**
-     * Command 是已安装包内的固定入口。
-     */
-    command?: string;
-    /**
-     * PreferredAction 是首次等待时的交互类型，不替代实际授权消息。
-     */
-    preferredAction?: string;
-    /**
-     * Protocol 是桥接消息版本。
-     */
-    protocol?: string;
-    /**
-     * Scopes 是插件明确需要的权限。
-     */
-    scopes?: Array<string>;
-    /**
-     * Strategy 是宿主支持的认证策略。
-     */
-    strategy?: string;
-};
-
-/**
- * AuthenticationBinding 将桥接秘密限定到一个原生运行目标的远端请求头。
- */
-export type GithubComJieWaZiNeuxBotServerInternalPluginsAuthenticationBinding = {
-    /**
-     * Header 是允许桥接提供的请求头名称。
-     */
-    header?: string;
-    /**
-     * Runtime 是原生目标标识。
-     */
-    runtime?: string;
-    /**
-     * Server 是原生包已有的 MCP 连接键。
-     */
-    server?: string;
-    /**
-     * URL 是允许接收秘密的精确 HTTPS 地址。
-     */
-    url?: string;
-};
-
-/**
  * Author 保存包作者的公开署名资料。
  */
 export type GithubComJieWaZiNeuxBotServerInternalPluginsAuthor = {
@@ -8261,49 +8299,6 @@ export type GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationUsage = {
 };
 
 /**
- * Entry 描述一个本地目录项及其不可变来源。
- */
-export type GithubComJieWaZiNeuxBotServerInternalPluginsCatalogEntry = {
-    /**
-     * ArchiveSHA256 是完整压缩包摘要。
-     */
-    archiveSHA256?: string;
-    /**
-     * ArchiveURL 是不可变 HTTP 下载地址。
-     */
-    archiveURL?: string;
-    /**
-     * DetailsSHA256 固定公开资料的完整字节摘要。
-     */
-    detailsSHA256?: string;
-    /**
-     * DetailsSize 是公开资料的完整字节数。
-     */
-    detailsSize?: number;
-    /**
-     * DetailsURL 是目录明确声明的公开资料地址。
-     */
-    detailsURL?: string;
-    /**
-     * Key 是目录项稳定身份。
-     */
-    key?: string;
-    package?: GithubComJieWaZiNeuxBotServerInternalPluginsPackage & unknown;
-    /**
-     * PackagePath 是完整来源中的逻辑入口。
-     */
-    packagePath?: string;
-    /**
-     * SourceCommit 是独立插件源固定提交。
-     */
-    sourceCommit?: string;
-    /**
-     * SourceKey 是来源限定的逻辑身份，不凭同名合并。
-     */
-    sourceKey?: string;
-};
-
-/**
  * SourceState 描述目录缓存与本次同步状态，不把同步失败伪装为空库。
  */
 export type GithubComJieWaZiNeuxBotServerInternalPluginsCatalogSourceState = {
@@ -8366,142 +8361,6 @@ export type GithubComJieWaZiNeuxBotServerInternalPluginsDiagnostic = {
 };
 
 /**
- * Integration 只保存原生引用和授权扩展，不重复包身份和组件。
- */
-export type GithubComJieWaZiNeuxBotServerInternalPluginsIntegration = {
-    authentication?: GithubComJieWaZiNeuxBotServerInternalPluginsAuthentication & unknown;
-    /**
-     * NativePlugins 按目标选择完整原生实现。
-     */
-    nativePlugins?: {
-        [key: string]: GithubComJieWaZiNeuxBotServerInternalPluginsNativeReference;
-    };
-};
-
-/**
- * Manifest 保存标准元数据；客户端扩展不覆盖标准组件发现。
- */
-export type GithubComJieWaZiNeuxBotServerInternalPluginsManifest = {
-    /**
-     * Schema 是固定规范标识。
-     */
-    $schema?: string;
-    author?: GithubComJieWaZiNeuxBotServerInternalPluginsAuthor & unknown;
-    /**
-     * Description 是能力说明。
-     */
-    description?: string;
-    /**
-     * Extensions 是按命名空间保留的客户端扩展。
-     */
-    extensions?: {
-        [key: string]: EncodingJsonRawMessage;
-    };
-    /**
-     * Homepage 是公开说明入口。
-     */
-    homepage?: string;
-    /**
-     * Keywords 是包声明标签。
-     */
-    keywords?: Array<string>;
-    /**
-     * License 是清单声明的插件包许可标识。
-     */
-    license?: string;
-    /**
-     * Name 是包声明名称。
-     */
-    name?: string;
-    /**
-     * Repository 是清单声明的源码或能力来源。
-     */
-    repository?: string;
-    /**
-     * Version 是标准清单声明的插件包版本。
-     */
-    version?: string;
-};
-
-/**
- * NativeComponent 描述原生完整保留的组件；投射路径不宣称支持其执行语义。
- */
-export type GithubComJieWaZiNeuxBotServerInternalPluginsNativeComponent = {
-    /**
-     * Kind 是原生组件类别。
-     */
-    kind?: string;
-    /**
-     * Paths 是声明或默认发现的包内路径。
-     */
-    paths?: Array<string>;
-};
-
-/**
- * NativeImplementation 是精确目标来源摘要，不表示已经加载。
- */
-export type GithubComJieWaZiNeuxBotServerInternalPluginsNativeImplementation = {
-    /**
-     * Components 是保留的原生组成。
-     */
-    components?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsNativeComponent>;
-    /**
-     * Config 是实际原生包所需配置，必填约束只用于选中该目标时。
-     */
-    config?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsConfigurationField>;
-    /**
-     * Digest 是实际原生完整摘要。
-     */
-    digest?: string;
-    /**
-     * Format 是实际原生格式。
-     */
-    format?: string;
-    /**
-     * Name 是实际原生名称。
-     */
-    name?: string;
-    /**
-     * Path 是固定来源内的原生目录。
-     */
-    path?: string;
-    /**
-     * ServerCount 是已发现连接器数量。
-     */
-    serverCount?: number;
-    /**
-     * 连接摘要
-     */
-    servers?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsNativeServerSummary>;
-    /**
-     * SkillCount 是已发现技能数量。
-     */
-    skillCount?: number;
-    /**
-     * 技能摘要
-     */
-    skills?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsNativeSkillSummary>;
-    /**
-     * TrustRequired 表示实际原生包包含需要执行信任的组件或授权入口。
-     */
-    trustRequired?: boolean;
-    /**
-     * Version 是实际原生版本。
-     */
-    version?: string;
-};
-
-/**
- * NativeReference 指向同一已核验来源快照中的原生包。
- */
-export type GithubComJieWaZiNeuxBotServerInternalPluginsNativeReference = {
-    /**
-     * Path 是相对完整来源根的目录。
-     */
-    path?: string;
-};
-
-/**
  * 上游连接摘要
  */
 export type GithubComJieWaZiNeuxBotServerInternalPluginsNativeServerSummary = {
@@ -8539,62 +8398,6 @@ export type GithubComJieWaZiNeuxBotServerInternalPluginsNativeSkillSummary = {
      * 技能名称
      */
     name?: string;
-};
-
-/**
- * 插件包
- */
-export type GithubComJieWaZiNeuxBotServerInternalPluginsPackage = {
-    /**
-     * 兼容性说明
-     */
-    diagnostics?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsDiagnostic>;
-    /**
-     * 包格式
-     */
-    format?: string;
-    /**
-     * 软件图标
-     */
-    icon?: string;
-    integration?: GithubComJieWaZiNeuxBotServerInternalPluginsIntegration & unknown;
-    manifest?: GithubComJieWaZiNeuxBotServerInternalPluginsManifest & unknown;
-    /**
-     * 原生组成
-     */
-    nativeComponents?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsNativeComponent>;
-    /**
-     * 目标实现
-     */
-    nativeImplementations?: {
-        [key: string]: GithubComJieWaZiNeuxBotServerInternalPluginsNativeImplementation;
-    };
-    presentation?: GithubComJieWaZiNeuxBotServerInternalPluginsPresentation & unknown;
-    /**
-     * 插件说明
-     */
-    readme?: string;
-    /**
-     * 正文路径
-     */
-    readmePath?: string;
-    /**
-     * 正文状态
-     */
-    readmeStatus?: string;
-    /**
-     * 包含连接器
-     */
-    servers?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsServer>;
-    /**
-     * 包含技能
-     */
-    skills?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsSkill>;
-    /**
-     * 来源入口
-     */
-    sourcePath?: string;
-    upstream?: GithubComJieWaZiNeuxBotServerInternalPluginsUpstreamSource & unknown;
 };
 
 /**
@@ -8648,43 +8451,145 @@ export type GithubComJieWaZiNeuxBotServerInternalPluginsPresentation = {
 };
 
 /**
- * Server 保存插件内 MCP 连接定义，不包含本机共享凭据。
+ * PublicAuthentication 保留授权交互提示，排除程序入口与交付绑定。
  */
-export type GithubComJieWaZiNeuxBotServerInternalPluginsServer = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsPublicAuthentication = {
     /**
-     * Args 是保持原序的程序参数。
+     * 首选交互
      */
-    args?: Array<string>;
+    preferredAction?: string;
     /**
-     * Command 是程序令牌或包内相对程序。
+     * 授权协议
      */
-    command?: string;
+    protocol?: string;
     /**
-     * Cwd 是规范允许的工作目录。
+     * 所需权限
      */
-    cwd?: string;
+    scopes?: Array<string>;
     /**
-     * Env 是待展开的环境定义。
+     * 授权策略
      */
-    env?: {
-        [key: string]: string;
+    strategy?: string;
+};
+
+/**
+ * PublicIntegration 是公开授权交互声明。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalPluginsPublicIntegration = {
+    authentication?: GithubComJieWaZiNeuxBotServerInternalPluginsPublicAuthentication & unknown;
+};
+
+/**
+ * PublicManifest 是目录与已安装插件共用的公开元数据。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalPluginsPublicManifest = {
+    /**
+     * 规范标识
+     */
+    $schema?: string;
+    author?: GithubComJieWaZiNeuxBotServerInternalPluginsAuthor & unknown;
+    /**
+     * 能力说明
+     */
+    description?: string;
+    /**
+     * 项目主页
+     */
+    homepage?: string;
+    /**
+     * 包标签
+     */
+    keywords?: Array<string>;
+    /**
+     * 许可标识
+     */
+    license?: string;
+    /**
+     * 包名称
+     */
+    name?: string;
+    /**
+     * 源码仓库
+     */
+    repository?: string;
+    /**
+     * 包版本
+     */
+    version?: string;
+};
+
+/**
+ * PublicNativeImplementation 只保留目标真正公开使用的组件摘要。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalPluginsPublicNativeImplementation = {
+    /**
+     * 连接摘要
+     */
+    servers?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsNativeServerSummary>;
+    /**
+     * 技能摘要
+     */
+    skills?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsNativeSkillSummary>;
+};
+
+/**
+ * PublicPackage 是全部资源公开出口共用的展示字段集。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalPluginsPublicPackage = {
+    /**
+     * 兼容性说明
+     */
+    diagnostics?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsDiagnostic>;
+    /**
+     * 包格式
+     */
+    format?: string;
+    /**
+     * 软件图标
+     */
+    icon?: string;
+    integration?: GithubComJieWaZiNeuxBotServerInternalPluginsPublicIntegration & unknown;
+    manifest?: GithubComJieWaZiNeuxBotServerInternalPluginsPublicManifest & unknown;
+    /**
+     * 目标实现
+     */
+    nativeImplementations?: {
+        [key: string]: GithubComJieWaZiNeuxBotServerInternalPluginsPublicNativeImplementation;
     };
+    presentation?: GithubComJieWaZiNeuxBotServerInternalPluginsPresentation & unknown;
     /**
-     * Headers 是待展开的请求头定义。
+     * 插件说明
      */
-    headers?: {
-        [key: string]: string;
-    };
+    readme?: string;
     /**
-     * Key 是清单内稳定服务键。
+     * 正文状态
+     */
+    readmeStatus?: string;
+    /**
+     * 包含连接器
+     */
+    servers?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsPublicServer>;
+    /**
+     * 包含技能
+     */
+    skills?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsSkill>;
+    upstream?: GithubComJieWaZiNeuxBotServerInternalPluginsUpstreamSource & unknown;
+};
+
+/**
+ * PublicServer 是连接器展示摘要，不提供执行配置。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalPluginsPublicServer = {
+    /**
+     * 组件标识
      */
     key?: string;
     /**
-     * Type 是标准 MCP 传输。
+     * 传输方式
      */
     type?: string;
     /**
-     * URL 是待展开的外部服务地址。
+     * 服务源站
      */
     url?: string;
 };
@@ -9845,10 +9750,7 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccount = {
      * DefaultReasoning 是选择该账号时优先使用的推理强度标识。
      */
     defaultReasoning?: string;
-    /**
-     * Endpoints 保存账号唯一的请求协议及服务地址；数组形式兼容已有存储。
-     */
-    endpoints?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccountEndpoint>;
+    endpoint?: GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccountEndpoint & unknown;
     /**
      * HasCredential 表示已保存 API Key 或完整订阅令牌。
      */
@@ -9884,7 +9786,7 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccount = {
      */
     name?: string;
     /**
-     * Revision 用于更新冲突检测和隔离进程缓存。
+     * Revision 仅用于用户配置更新冲突检测。
      */
     revision?: number;
     /**
@@ -10027,16 +9929,20 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskConfigur
      */
     executorWakerId?: string;
     /**
+     * Fast 在计划中为空时于机会接纳读取智能体默认；运行记录中的空值保持原生默认。
+     */
+    fast?: boolean;
+    /**
      * Instruction 是每次执行发送给伙伴的完整工作指令。
      */
     instruction?: string;
     knowledge?: GithubComJieWaZiNeuxBotServerRepositoriesModelsKnowledgeMaintenanceAuthorization & unknown;
     /**
-     * MemberConfigs 是团队成员的任务专属覆盖；未列出的成员沿用运行时团队设置。
+     * MemberConfigs 在任务配置中保存成员覆盖，在运行记录中保存接纳时的完整成员选择。
      */
     memberConfigs?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskMemberConfiguration>;
     /**
-     * Model 是执行使用的模型，空值使用智能体默认值。
+     * Model 是计划选择的模型；运行记录保存接纳时有效选择，空值保持原生默认。
      */
     model?: string;
     /**
@@ -10096,6 +10002,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskMemberCo
      * AccountID 是此成员选用的账号。
      */
     accountId?: string;
+    /**
+     * Fast 是成员覆盖的加速选择；机会接纳后 nil 保留原生默认。
+     */
+    fast?: boolean;
     /**
      * Model 是此成员选用的模型，空值使用智能体默认模型。
      */
@@ -10391,6 +10301,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelThreadMember =
      */
     expertise?: Array<GithubComJieWaZiNeuxBotServerInternalProfileExpertise>;
     /**
+     * Fast 是该成员后续新执行使用的加速选择；nil 保留原生默认。
+     */
+    fast?: boolean;
+    /**
      * IsLead 表示该成员是否为首发时冻结的唯一团队负责人。
      */
     isLead?: boolean;
@@ -10621,10 +10535,6 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsExecution = {
     runtimeId?: string;
     status?: GithubComJieWaZiNeuxBotServerConstantsExecutionStatus & unknown;
     /**
-     * SubmissionHash 是规范化输入和冻结配置的摘要，拒绝同键异内容。
-     */
-    submissionHash?: string;
-    /**
      * SubmissionID 是入口无关的稳定输入身份，写入同一权威执行事实。
      */
     submissionId?: string;
@@ -10816,7 +10726,7 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsImConversationLink = 
  */
 export type GithubComJieWaZiNeuxBotServerRepositoriesModelsImExecutionOptions = {
     /**
-     * AccountID 是选择的账号，空值沿用智能体设置。
+     * AccountID 是已解析的账号选择，合法空值保留原生默认。
      */
     accountId?: string;
     /**
@@ -11355,43 +11265,6 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsPluginReference = {
 };
 
 /**
- * PluginVersion 保存完整不可变内容和由其解析的组件快照。
- */
-export type GithubComJieWaZiNeuxBotServerRepositoriesModelsPluginVersion = {
-    /**
-     * CreatedAt 是版本登记时间的 Unix 毫秒值。
-     */
-    createdAt?: number;
-    /**
-     * Digest 是完整内容摘要。
-     */
-    digest?: string;
-    /**
-     * ID 是版本标识。
-     */
-    id?: string;
-    package?: GithubComJieWaZiNeuxBotServerInternalPluginsPackage & unknown;
-    /**
-     * PluginID 是所属资源。
-     */
-    pluginId?: string;
-    /**
-     * Provenance 是分发来源原始记录，不包含凭据。
-     */
-    provenance?: {
-        [key: string]: unknown;
-    };
-    /**
-     * TrustedAt 是用户对该不可变 MCP 内容确认执行配置的时间。
-     */
-    trustedAt?: number;
-    /**
-     * Version 是原包版本或明确的本机版本号。
-     */
-    version?: string;
-};
-
-/**
  * RolePreset 保存创建伙伴时可复用的一次性初始化内容。
  */
 export type GithubComJieWaZiNeuxBotServerRepositoriesModelsRolePreset = {
@@ -11494,10 +11367,6 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillVersion = {
      * ContentDigest 是完整技能包内容的 SHA-256 摘要。
      */
     contentDigest?: string;
-    /**
-     * ContentPath 是应用数据目录内完整技能包的相对路径。
-     */
-    contentPath?: string;
     /**
      * CreatedAt 是创建时间的 Unix 毫秒值。
      */
@@ -11990,63 +11859,6 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition = 
 };
 
 /**
- * WorkflowEffect 是派发前持久保存的 outbox 与不可变效果收据。
- */
-export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowEffect = {
-    /**
-     * AttemptGeneration 区分真实尝试，不随 Runner 所有者改变。
-     */
-    attemptGeneration?: number;
-    /**
-     * ChatID 是 Core 接纳后的稳定对话身份。
-     */
-    chatId?: string;
-    /**
-     * ChildRunID 是已接纳的真实子运行身份，不能从普通 JSON 伪造。
-     */
-    childRunId?: string;
-    /**
-     * CreatedAt 是准备时间。
-     */
-    createdAt?: number;
-    /**
-     * DeadlineAt 是本效果的期限。
-     */
-    deadlineAt?: number;
-    /**
-     * ExecutionID 是派发前预分配的 Core 执行身份。
-     */
-    executionId?: string;
-    executionStatus?: GithubComJieWaZiNeuxBotServerConstantsExecutionStatus & unknown;
-    failure?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslValue & unknown;
-    /**
-     * FiberID 是等待此效果的执行帧。
-     */
-    fiberId?: string;
-    /**
-     * FinalMessageID 绑定本次成功执行的权威最终助手消息，续聊不会替换此锚点。
-     */
-    finalMessageId?: string;
-    /**
-     * ID 是幂等派发身份。
-     */
-    id?: string;
-    /**
-     * InstanceID 是所属节点实例。
-     */
-    instanceId?: string;
-    /**
-     * OutputRepairs 是已持久接纳的无工具输出纠正次数，重启不重置。
-     */
-    outputRepairs?: number;
-    /**
-     * RunID 是所属运行。
-     */
-    runId?: string;
-    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus & unknown;
-};
-
-/**
  * WorkflowEvent 是提交后 SSE 与断线重放共用的有界持久事件。
  */
 export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowEvent = {
@@ -12090,6 +11902,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowExecutionDefa
      * AccountID 是账号身份，空值交给该智能体的既有账号规则。
      */
     accountId?: string;
+    /**
+     * Fast 是接纳时冻结的快速模式意图；空值保留原生行为，后续派发不重新读取默认值。
+     */
+    fast?: boolean;
     /**
      * Model 是选定模型。
      */
@@ -12147,10 +11963,6 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowHumanRequest 
      * Prompt 是已求值的问题正文。
      */
     prompt?: string;
-    /**
-     * QuestionVersion 是当前冻结问题的乐观并发版本。
-     */
-    questionVersion?: number;
     /**
      * RunID 是所属运行。
      */
@@ -12313,91 +12125,6 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowOperationRequ
      */
     runId?: string;
     status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus & unknown;
-};
-
-/**
- * WorkflowRun 固定版本、参数、执行配置和租约，不读取后续创作修改。
- */
-export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun = {
-    /**
-     * Args 是已填显式默认值并校验的运行输入。
-     */
-    args?: unknown;
-    /**
-     * CompletedAt 是真实终态时间。
-     */
-    completedAt?: number;
-    /**
-     * CreatedAt 是接纳时间。
-     */
-    createdAt?: number;
-    /**
-     * DeadlineAt 是运行总预算期限。
-     */
-    deadlineAt?: number;
-    defaults?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowExecutionDefaults & unknown;
-    /**
-     * DefinitionID 是所属定义。
-     */
-    definitionId?: string;
-    /**
-     * Depth 是调用树深度。
-     */
-    depth?: number;
-    failure?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslValue & unknown;
-    /**
-     * Context 是只读流程上下文，不包含账号密钥。
-     */
-    flowContext?: {
-        [key: string]: unknown;
-    };
-    /**
-     * ID 是运行身份。
-     */
-    id?: string;
-    /**
-     * Joined 表示父运行取消时也应停止本运行。
-     */
-    joined?: boolean;
-    limits?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslLimits & unknown;
-    /**
-     * ParentRunID 是 joined 或 detached 子运行的来源。
-     */
-    parentRunId?: string;
-    /**
-     * Result 是通过最终输出 schema 的返回 JSON。
-     */
-    result?: unknown;
-    /**
-     * RevisionID 是本次不可变版本。
-     */
-    revisionId?: string;
-    /**
-     * RevisionOrdinal 是展示所需的冻结版本号。
-     */
-    revisionOrdinal?: number;
-    /**
-     * RootFiberID 是主程序的执行帧。
-     */
-    rootFiberId?: string;
-    /**
-     * RootRunID 绑定调用树，统一限制全部后代的数量。
-     */
-    rootRunId?: string;
-    scopeBinding?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowScopeBinding & unknown;
-    /**
-     * StartedAt 是冻结的时间来源。
-     */
-    startedAt?: number;
-    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowRunStatus & unknown;
-    /**
-     * UpdatedAt 是最后提交时间。
-     */
-    updatedAt?: number;
-    /**
-     * Version 是每次持久提交增加的 CAS 版本。
-     */
-    version?: number;
 };
 
 /**
@@ -14626,8 +14353,6 @@ export type ReadErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -14964,8 +14689,6 @@ export type CommandErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -15550,8 +15273,6 @@ export type StartAiAccountLoginErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -15897,8 +15618,6 @@ export type CancelAiAccountLoginErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -16113,46 +15832,6 @@ export type GetAiAccountLoginResponses = {
 
 export type GetAiAccountLoginResponse = GetAiAccountLoginResponses[keyof GetAiAccountLoginResponses];
 
-export type GetAiAccountNativeModelsData = {
-    body?: never;
-    path: {
-        /**
-         * AccountID 是当前选择的订阅账号。
-         */
-        accountId: string;
-    };
-    query: {
-        /**
-         * RuntimeID 是聊天当前选择的运行环境。
-         */
-        runtimeId: string;
-    };
-    url: '/api/v1/ai-accounts/{accountId}/models/native';
-};
-
-export type GetAiAccountNativeModelsErrors = {
-    /**
-     * >
-     * * `[AIAccountConfigurationInvalid][40000000020]`
-     *
-     */
-    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
-    /**
-     * >
-     * * `[RuntimePolicyUnsupported][50000000011]`
-     *
-     */
-    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
-};
-
-export type GetAiAccountNativeModelsError = GetAiAccountNativeModelsErrors[keyof GetAiAccountNativeModelsErrors];
-
-export type GetAiAccountNativeModelsResponses = {
-    200: GithubComJieWaZiNeuxBotServerApisAiAccountsGetAiAccountNativeModelsResponse;
-};
-
-export type GetAiAccountNativeModelsResponse = GetAiAccountNativeModelsResponses[keyof GetAiAccountNativeModelsResponses];
-
 export type RefreshAiAccountModelsData = {
     body?: never;
     path: {
@@ -16195,51 +15874,6 @@ export type RefreshAiAccountModelsResponses = {
 };
 
 export type RefreshAiAccountModelsResponse = RefreshAiAccountModelsResponses[keyof RefreshAiAccountModelsResponses];
-
-export type GetAiAccountThinkingData = {
-    body?: never;
-    path: {
-        /**
-         * AccountID 是聊天当前选择的受管账号。
-         */
-        accountId: string;
-    };
-    query: {
-        /**
-         * Model 是聊天当前选择的服务端模型 ID。
-         */
-        model: string;
-        /**
-         * RuntimeID 是聊天当前选择的 CLI 环境。
-         */
-        runtimeId: string;
-    };
-    url: '/api/v1/ai-accounts/{accountId}/thinking';
-};
-
-export type GetAiAccountThinkingErrors = {
-    /**
-     * >
-     * * `[AIAccountConfigurationInvalid][40000000020]`
-     * * `[BadRequest][40000000001]`
-     *
-     */
-    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
-    /**
-     * >
-     * * `[RuntimePolicyUnsupported][50000000011]`
-     *
-     */
-    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
-};
-
-export type GetAiAccountThinkingError = GetAiAccountThinkingErrors[keyof GetAiAccountThinkingErrors];
-
-export type GetAiAccountThinkingResponses = {
-    200: GithubComJieWaZiNeuxBotServerApisAiAccountsGetAiAccountThinkingResponse;
-};
-
-export type GetAiAccountThinkingResponse = GetAiAccountThinkingResponses[keyof GetAiAccountThinkingResponses];
 
 export type ListGlobalAutomaticTasksData = {
     body?: never;
@@ -16424,8 +16058,6 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -16853,8 +16485,6 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -17196,8 +16826,6 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -18359,28 +17987,6 @@ export type ListChatEventsResponses = {
 
 export type ListChatEventsResponse = ListChatEventsResponses[keyof ListChatEventsResponses];
 
-export type RetryChatExecutionData = {
-    body?: never;
-    path: {
-        /**
-         * 对话标识
-         */
-        chatId: string;
-        /**
-         * 执行标识
-         */
-        executionId: string;
-    };
-    query?: never;
-    url: '/api/v1/chats/{chatId}/executions/{executionId}/retry';
-};
-
-export type RetryChatExecutionResponses = {
-    200: GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution;
-};
-
-export type RetryChatExecutionResponse = RetryChatExecutionResponses[keyof RetryChatExecutionResponses];
-
 export type ForkChatData = {
     body: GithubComJieWaZiNeuxBotServerApisChatsForkChatRequest & unknown;
     path: {
@@ -18972,8 +18578,6 @@ export type StreamEventsErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -20015,8 +19619,6 @@ export type UpdateMcpServiceErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -20452,8 +20054,6 @@ export type UpdateApiServiceErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -29241,8 +28841,6 @@ export type ListPluginsErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -29563,7 +29161,7 @@ export type GetCatalogPluginErrors = {
 export type GetCatalogPluginError = GetCatalogPluginErrors[keyof GetCatalogPluginErrors];
 
 export type GetCatalogPluginResponses = {
-    200: GithubComJieWaZiNeuxBotServerInternalPluginsCatalogEntry;
+    200: GithubComJieWaZiNeuxBotServerApisPluginsPluginCatalogEntryResponse;
 };
 
 export type GetCatalogPluginResponse = GetCatalogPluginResponses[keyof GetCatalogPluginResponses];
@@ -29805,8 +29403,6 @@ export type PrepareCatalogPluginErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -30386,8 +29982,6 @@ export type GetPluginErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -31334,8 +30928,6 @@ export type InstallPluginErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -31946,7 +31538,6 @@ export type UpdateRuntimeEnvironmentErrors = {
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
-     * * `[AIAccountBusy][40900000027]`
      * * `[Conflict][40900000001]`
      *
      */
@@ -32712,8 +32303,6 @@ export type SetAutomaticTaskApiErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -33650,8 +33239,6 @@ export type ListAutomaticTasksErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -34060,8 +33647,6 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -34436,8 +34021,6 @@ export type DeleteAutomaticTaskErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -34783,8 +34366,6 @@ export type GetAutomaticTaskErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -35281,8 +34862,6 @@ export type ListAutomaticRunsErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -35628,8 +35207,6 @@ export type TriggerAutomaticTaskErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -36414,8 +35991,6 @@ export type ListWakerPluginsErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -37925,8 +37500,6 @@ export type CreateWorkflowErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -38281,8 +37854,6 @@ export type DeleteWorkflowErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -38647,8 +38218,6 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -38990,8 +38559,6 @@ export type EditWorkflowConfigurationErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -39333,8 +38900,6 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -39764,8 +39329,6 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -40138,8 +39701,6 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -40512,8 +40073,6 @@ export type StartWorkflowRunErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -40684,7 +40243,7 @@ export type StartWorkflowRunErrors = {
 export type StartWorkflowRunError = StartWorkflowRunErrors[keyof StartWorkflowRunErrors];
 
 export type StartWorkflowRunResponses = {
-    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun;
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunResponse;
 };
 
 export type StartWorkflowRunResponse = StartWorkflowRunResponses[keyof StartWorkflowRunResponses];
@@ -40859,8 +40418,6 @@ export type DeleteWorkflowRunErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -41314,8 +40871,6 @@ export type AnswerWorkflowHumanErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -41665,8 +41220,6 @@ export type GetWorkflowInstanceErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -42016,8 +41569,6 @@ export type SkipWorkflowWorkerErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -42367,8 +41918,6 @@ export type AnswerWorkflowOperationErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -42714,8 +42263,6 @@ export type RetryWorkflowRunErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -42886,7 +42433,7 @@ export type RetryWorkflowRunErrors = {
 export type RetryWorkflowRunError = RetryWorkflowRunErrors[keyof RetryWorkflowRunErrors];
 
 export type RetryWorkflowRunResponses = {
-    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun;
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunResponse;
 };
 
 export type RetryWorkflowRunResponse = RetryWorkflowRunResponses[keyof RetryWorkflowRunResponses];
@@ -43131,8 +42678,6 @@ export type SaveWorkflowSourceErrors = {
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`

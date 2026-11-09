@@ -171,7 +171,14 @@ func (s *Service) handleCreationTool(ctx context.Context, scope workflowtool.Sco
 			}
 			calls = append(calls, items...)
 		}
-		return map[string]any{"run": run, "instances": instances, "actionCalls": calls, "humanRequests": humans, "operations": operations, "totalInstances": total, "nextCursor": nextOffset(offset, len(instances), int(total))}, nil
+		publicRun := map[string]any{"rootRunId": run.RootRunID, "id": run.ID, "definitionId": run.DefinitionID, "revisionId": run.RevisionID, "revisionOrdinal": run.RevisionOrdinal, "status": run.Status, "args": run.Args, "defaults": run.Defaults, "limits": run.Limits, "scopeBinding": run.ScopeBinding, "parentRunId": run.ParentRunID, "joined": run.Joined, "depth": run.Depth, "result": run.Result, "version": run.Version, "startedAt": run.StartedAt, "deadlineAt": run.DeadlineAt, "createdAt": run.CreatedAt, "updatedAt": run.UpdatedAt, "triggerSource": run.Context["triggerSource"]}
+		if run.Failure != nil {
+			publicRun["failure"] = run.Failure
+		}
+		if run.CompletedAt != nil {
+			publicRun["completedAt"] = run.CompletedAt
+		}
+		return map[string]any{"run": publicRun, "instances": instances, "actionCalls": calls, "humanRequests": humans, "operations": operations, "totalInstances": total, "nextCursor": nextOffset(offset, len(instances), int(total))}, nil
 	default:
 		return nil, status_error.WorkflowCapabilityUnsupported
 	}
@@ -300,7 +307,7 @@ func (s *Service) BindConsumer(ctx context.Context, intent execution.WorkIntent,
 			return intent, status_error.WorkflowStateConflict.WithField("workflowId", id)
 		}
 	}
-	if err := s.executions.ValidateConfiguration(ctx, execution.ExecutionConfiguration{RuntimeID: intent.Options.RuntimeID, AccountID: intent.Options.AccountID, Model: intent.Options.Model, Reasoning: intent.Options.Reasoning, PermissionLevel: intent.Options.PermissionLevel}); err != nil {
+	if err := s.executions.ValidateConfiguration(ctx, execution.ExecutionConfiguration{Resolved: intent.Options.ConfigurationResolved, RuntimeID: intent.Options.RuntimeID, AccountID: intent.Options.AccountID, Model: intent.Options.Model, Reasoning: intent.Options.Reasoning, Fast: intent.Options.Fast, PermissionLevel: intent.Options.PermissionLevel}); err != nil {
 		return intent, err
 	}
 	chatID := intent.Chat.ChatID
@@ -411,11 +418,18 @@ func (s *Service) handleConsumerTool(ctx context.Context, scope workflowtool.Sco
 		if input.InputFileRoots != nil {
 			roots = input.InputFileRoots
 		}
-		run, err := s.StartRun(ctx, StartRunCommand{AutomaticRunID: actual.AutomaticRunID, InputFileRoots: roots, DefinitionID: input.WorkflowID, RevisionID: input.RevisionID, RequestID: requestID, Args: input.Args, TriggerSource: "agent", ConsumerLeaseID: lease.ID, ApprovedScope: &approved, Defaults: models.WorkflowExecutionDefaults{RuntimeID: actual.RuntimeID, AccountID: actual.AccountID, Model: actual.Model, Reasoning: actual.Reasoning, PermissionLevel: actual.PermissionLevel, WorkspaceReadOnly: actual.WorkspaceReadOnly}})
+		run, err := s.StartRun(ctx, StartRunCommand{AutomaticRunID: actual.AutomaticRunID, InputFileRoots: roots, DefinitionID: input.WorkflowID, RevisionID: input.RevisionID, RequestID: requestID, Args: input.Args, TriggerSource: "agent", ConsumerLeaseID: lease.ID, ApprovedScope: &approved, Defaults: models.WorkflowExecutionDefaults{RuntimeID: actual.RuntimeID, AccountID: actual.AccountID, Model: actual.Model, Reasoning: actual.Reasoning, Fast: actual.Fast, PermissionLevel: actual.PermissionLevel, WorkspaceReadOnly: actual.WorkspaceReadOnly}})
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{"ok": true, "data": run}, nil
+		publicRun := map[string]any{"rootRunId": run.RootRunID, "id": run.ID, "definitionId": run.DefinitionID, "revisionId": run.RevisionID, "revisionOrdinal": run.RevisionOrdinal, "status": run.Status, "args": run.Args, "defaults": run.Defaults, "limits": run.Limits, "scopeBinding": run.ScopeBinding, "parentRunId": run.ParentRunID, "joined": run.Joined, "depth": run.Depth, "result": run.Result, "version": run.Version, "startedAt": run.StartedAt, "deadlineAt": run.DeadlineAt, "createdAt": run.CreatedAt, "updatedAt": run.UpdatedAt, "triggerSource": run.Context["triggerSource"]}
+		if run.Failure != nil {
+			publicRun["failure"] = run.Failure
+		}
+		if run.CompletedAt != nil {
+			publicRun["completedAt"] = run.CompletedAt
+		}
+		return map[string]any{"ok": true, "data": publicRun}, nil
 	}
 	if input.Action != constants.WorkflowActionRunGet && input.Action != constants.WorkflowActionRunCancel {
 		return nil, status_error.WorkflowCapabilityUnsupported
@@ -437,7 +451,14 @@ func (s *Service) handleConsumerTool(ctx context.Context, scope workflowtool.Sco
 			return nil, err
 		}
 		run, err = s.runs.GetRun(ctx, run.ID)
-		return map[string]any{"ok": true, "data": run}, err
+		publicRun := map[string]any{"rootRunId": run.RootRunID, "id": run.ID, "definitionId": run.DefinitionID, "revisionId": run.RevisionID, "revisionOrdinal": run.RevisionOrdinal, "status": run.Status, "args": run.Args, "defaults": run.Defaults, "limits": run.Limits, "scopeBinding": run.ScopeBinding, "parentRunId": run.ParentRunID, "joined": run.Joined, "depth": run.Depth, "result": run.Result, "version": run.Version, "startedAt": run.StartedAt, "deadlineAt": run.DeadlineAt, "createdAt": run.CreatedAt, "updatedAt": run.UpdatedAt, "triggerSource": run.Context["triggerSource"]}
+		if run.Failure != nil {
+			publicRun["failure"] = run.Failure
+		}
+		if run.CompletedAt != nil {
+			publicRun["completedAt"] = run.CompletedAt
+		}
+		return map[string]any{"ok": true, "data": publicRun}, err
 	}
 	humans, err := s.runs.ListHumanRequests(ctx, run.ID)
 	if err != nil {
@@ -447,7 +468,14 @@ func (s *Service) handleConsumerTool(ctx context.Context, scope workflowtool.Sco
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"ok": true, "data": map[string]any{"run": run, "humanRequests": humans, "operationRequests": operations}}, nil
+	publicRun := map[string]any{"rootRunId": run.RootRunID, "id": run.ID, "definitionId": run.DefinitionID, "revisionId": run.RevisionID, "revisionOrdinal": run.RevisionOrdinal, "status": run.Status, "args": run.Args, "defaults": run.Defaults, "limits": run.Limits, "scopeBinding": run.ScopeBinding, "parentRunId": run.ParentRunID, "joined": run.Joined, "depth": run.Depth, "result": run.Result, "version": run.Version, "startedAt": run.StartedAt, "deadlineAt": run.DeadlineAt, "createdAt": run.CreatedAt, "updatedAt": run.UpdatedAt, "triggerSource": run.Context["triggerSource"]}
+	if run.Failure != nil {
+		publicRun["failure"] = run.Failure
+	}
+	if run.CompletedAt != nil {
+		publicRun["completedAt"] = run.CompletedAt
+	}
+	return map[string]any{"ok": true, "data": map[string]any{"run": publicRun, "humanRequests": humans, "operationRequests": operations}}, nil
 }
 
 // Resources 返回创作可引用的真实目录，凭据仅输出可选择的引用身份。

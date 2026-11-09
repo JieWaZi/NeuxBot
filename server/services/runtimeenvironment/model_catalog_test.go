@@ -2,6 +2,7 @@ package runtimeenvironment
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -16,76 +17,45 @@ import (
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
-func TestModelCatalogReadUsesPersistedOptionsAndRefreshProbes(t *testing.T) {
+func TestModelCatalogReadVerifiesSystemSubjectBeforePersistedCache(t *testing.T) {
 	root := t.TempDir()
 	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(root, "catalog.db"), Migrate: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	pool, err := database.DB.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
+	pool, _ := database.DB.DB()
 	defer pool.Close()
 	store := controllers.NewRuntimeModelCatalogController(database.DB)
 	environment := models.RuntimeEnvironment{RuntimeID: "codex", BaseRuntimeID: "codex", Binary: "codex"}
-	ctx := t.Context()
-	err = store.Store(ctx, models.RuntimeModelCatalog{
-		RuntimeID: "codex", AccountID: agent.SystemAccountID,
-		Fingerprint: persistedModelCatalogFingerprint(environment, 0, ""), ProbeStartedAt: 1,
-		Snapshot: agent.ModelCatalogSnapshot{
-			State: agent.CatalogFresh, DetectedAt: 1,
-			AgentModelCatalog: agent.AgentModelCatalog{Models: []agent.AgentChoice{{
-				ID: "persisted-model", Config: &agent.AgentModelConfig{Options: []agent.AgentSessionOption{{
-					ID: "reasoning_effort", Choices: []agent.AgentChoice{{ID: "high"}},
-				}}},
-			}}},
-		},
-	})
-	if err != nil {
+	first := agent.AccountRequest{Provider: "codex", AccountID: agent.SystemAccountID, Subject: "first", AuthGeneration: 1, ConfigHome: root}
+	encoded, _ := json.Marshal([]any{first.Subject, first.ConfigHome, first.DataHome, first.ConfigFingerprint})
+	fingerprint := persistedModelCatalogFingerprint(environment, first.AuthGeneration, string(encoded))
+	if err := store.Store(t.Context(), models.RuntimeModelCatalog{RuntimeID: "codex", AccountID: agent.SystemAccountID, Fingerprint: fingerprint, AuthGeneration: 1, ProbeStartedAt: 1, Snapshot: agent.ModelCatalogSnapshot{State: agent.CatalogFresh, AgentModelCatalog: agent.AgentModelCatalog{Models: []agent.AgentChoice{{ID: "first-subject-model"}}}}}); err != nil {
 		t.Fatal(err)
 	}
-	environment.Detection.Version = "new-startup-version"
 	probes := 0
-	svc := &service{
-		modelCatalog: agent.NewModelCatalog(nil), modelCatalogs: store,
-		runtimeCatalog: &countingRuntimeCatalog{}, accountWorkspaceDirectory: root,
-		resolveAccount: func(context.Context, agent.AccountRequest, string) (agent.AccountRequest, error) {
-			probes++
+	current := first
+	signedOut := false
+	svc := &service{modelCatalogs: store, runtimeCatalog: &countingRuntimeCatalog{}, accountWorkspaceDirectory: root, resolveAccount: func(context.Context, agent.AccountRequest, string) (agent.AccountRequest, error) {
+		probes++
+		if signedOut {
 			return agent.AccountRequest{}, status_error.RuntimeAuthRequired
-		},
+		}
+		return current, nil
+	}}
+	cached, err := svc.readModelCatalog(t.Context(), environment, "", false)
+	if err != nil || cached.State != agent.CatalogFresh || len(cached.Models) != 1 || probes != 1 {
+		t.Fatalf("same subject cache unavailable: %+v probes=%d err=%v", cached, probes, err)
 	}
-	cached, err := svc.readModelCatalog(ctx, environment, "", false)
-	if err != nil || probes != 0 || cached.State != agent.CatalogFresh || len(cached.Models) != 1 ||
-		cached.Models[0].ID != "persisted-model" || cached.Models[0].Config.Options[0].Choices[0].ID != "high" {
-		t.Fatalf("passive read did not reuse the durable catalog: %+v, probes=%d, err=%v", cached, probes, err)
+	current.Subject = "second"
+	changed, err := svc.readModelCatalog(t.Context(), environment, "", false)
+	if err != nil || len(changed.Models) != 0 || probes != 2 {
+		t.Fatalf("new subject reused old catalog: %+v probes=%d err=%v", changed, probes, err)
 	}
-	other := environment
-	other.ConfigHome = filepath.Join(root, "another-profile")
-	missing, err := svc.readModelCatalog(ctx, other, "", false)
-	if err != nil || missing.State != agent.CatalogSignedOut || probes != 1 {
-		t.Fatalf("first read did not probe the new profile: %+v, probes=%d, err=%v", missing, probes, err)
-	}
-	repeat, err := svc.readModelCatalog(ctx, other, "", false)
-	if err != nil || repeat.State != agent.CatalogSignedOut || probes != 1 {
-		t.Fatalf("first probe outcome was not persisted: %+v, probes=%d, err=%v", repeat, probes, err)
-	}
-	fresh, err := svc.readModelCatalog(ctx, environment, "", true)
-	if err != nil || fresh.State != agent.CatalogSignedOut || probes != 2 {
-		t.Fatalf("explicit refresh did not check native credentials: %+v, probes=%d, err=%v", fresh, probes, err)
-	}
-	err = store.Store(ctx, models.RuntimeModelCatalog{
-		RuntimeID: "codex", AccountID: agent.SystemAccountID,
-		Fingerprint: persistedModelCatalogFingerprint(environment, 0, ""), ProbeStartedAt: 2,
-		Snapshot: cached.ModelCatalogSnapshot,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	restarted := &service{modelCatalogs: controllers.NewRuntimeModelCatalogController(database.DB)}
-	reloaded, err := restarted.readModelCatalog(ctx, environment, "", false)
-	if err != nil || reloaded.State != agent.CatalogSignedOut || len(reloaded.Models) != 0 {
-		t.Fatalf("late probe overrode the durable signed-out result: %+v, err=%v", reloaded, err)
+	signedOut = true
+	loggedOut, err := svc.readModelCatalog(t.Context(), environment, "", false)
+	if err != nil || loggedOut.State != agent.CatalogSignedOut || len(loggedOut.Models) != 0 || probes != 3 {
+		t.Fatalf("logout reused old catalog: %+v probes=%d err=%v", loggedOut, probes, err)
 	}
 }
 

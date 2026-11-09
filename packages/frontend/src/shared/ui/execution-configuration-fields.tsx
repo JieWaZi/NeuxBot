@@ -7,10 +7,7 @@ import { runtimeDisplayName } from "@/shared/lib/runtime-display-name";
 import {
   permissionLevels,
   permissionLevelOf,
-  modelPermissionLevels,
   permissionLevelTranslationKeys,
-  runtimeDefaultPermissionLevels,
-  safeDefaultPermissionLevel,
 } from "@/shared/lib/runtime-permissions";
 import { Button } from "@/shared/ui/button";
 import { FieldLabel } from "@/shared/ui/field-label";
@@ -145,10 +142,6 @@ export function ExecutionConfigurationFields({
               model: "",
               reasoning: "",
               fast: undefined,
-              permissionLevel: safeDefaultPermissionLevel(
-                selection.permissionLevel,
-                runtimeDefaultPermissionLevels(next ?? {}),
-              ),
             });
           })}
         {field(
@@ -180,18 +173,8 @@ export function ExecutionConfigurationFields({
               model: model === "__default" ? "" : model,
               reasoning: "",
               fast: undefined,
-              permissionLevel: safeDefaultPermissionLevel(
-                selection.permissionLevel,
-                state.usesNativeCatalog
-                  ? modelPermissionLevels(models, model)
-                  : runtime?.models?.some((item) => item.id === model)
-                    ? modelPermissionLevels(runtime.models, model)
-                    : runtimeDefaultPermissionLevels(runtime ?? {}),
-              ),
             }),
-          state.nativeModelsQuery.isFetching ||
-            (state.usesNativeCatalog &&
-              (state.catalogState !== "fresh" || state.catalogPending)),
+          models.length === 0 && defaults,
         )}
         {!reasoningHidden &&
           field(
@@ -210,10 +193,7 @@ export function ExecutionConfigurationFields({
             ],
             (reasoning) =>
               change({ reasoning: reasoning === "__default" ? "" : reasoning }),
-            !reasoningOptions.length ||
-              state.thinkingQuery.isFetching ||
-              (state.usesNativeCatalog &&
-                (state.catalogState !== "fresh" || state.catalogPending)),
+            !reasoningOptions.length,
           )}
         {fastEnabled &&
           state.fastSupported &&
@@ -236,7 +216,7 @@ export function ExecutionConfigurationFields({
               change({
                 fast: fast === "__default" ? undefined : fast === "on",
               }),
-            state.catalogState !== "fresh" || state.catalogPending,
+            false,
           )}
         {!permissionHidden &&
           field(

@@ -140,8 +140,36 @@ func TestHostDirectoriesFreezeRealPathsAndPreserveBusinessScope(t *testing.T) {
 			if err := os.Remove(internal); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := manager.execution.Start(ctx, WorkIntent{Chat: ChatTarget{ChatID: accepted.Chat.ID}, Input: WorkInput{Actor: "user", Content: "失效目录"}, Options: intent.Options, Admission: intent.Admission}); !errors.Is(err, status_error.ProjectSourceUnavailable) {
-				t.Fatalf("continuation silently ignored an unavailable host directory: %v", err)
+			if _, err := manager.execution.Start(ctx, WorkIntent{Chat: ChatTarget{ChatID: accepted.Chat.ID}, Input: WorkInput{Actor: "user", Content: "不需要离线项目的追问"}, Options: intent.Options, Admission: intent.Admission}); err != nil {
+				t.Fatalf("offline additional project blocked an unrelated continuation: %v", err)
+			}
+			waitForChatTerminal(t, manager, accepted.Chat.ID)
+			calls := manager.nativeCalls(t, "turn/start")
+			if len(calls) != 3 || strings.Contains(string(calls[2]), internal) {
+				t.Fatalf("offline root remained in the effective native scope: %s", calls)
+			}
+			summary, err := manager.chats.GetChatSummary(ctx, accepted.Chat.ID)
+			if err != nil || !slices.Equal(summary.Chat.AdditionalWorkingDirectories, want) {
+				t.Fatalf("effective subset rewrote the durable authorization: %+v %v", summary, err)
+			}
+			reference := WorkInput{Actor: "user", Content: "读取离线文件", CodeReferences: []CodeReferenceInput{{Path: filepath.Join(internal, "notes.md")}}}
+			if _, err := manager.execution.Start(ctx, WorkIntent{Chat: ChatTarget{ChatID: accepted.Chat.ID}, Input: reference, Options: intent.Options, Admission: intent.Admission}); !errors.Is(err, status_error.ProjectSourceUnavailable) {
+				t.Fatalf("explicit offline reference did not report unavailable source: %v", err)
+			}
+			outside := t.TempDir()
+			if err := os.Symlink(outside, internal); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := manager.execution.Start(ctx, WorkIntent{Chat: ChatTarget{ChatID: accepted.Chat.ID}, Input: WorkInput{Actor: "user", Content: "继续讨论原问题"}, Options: intent.Options, Admission: intent.Admission}); err != nil {
+				t.Fatalf("repointed optional root blocked unrelated text: %v", err)
+			}
+			waitForChatTerminal(t, manager, accepted.Chat.ID)
+			calls = manager.nativeCalls(t, "turn/start")
+			if len(calls) != 4 || strings.Contains(string(calls[3]), outside) || strings.Contains(string(calls[3]), internal) {
+				t.Fatalf("repointed symlink expanded native authorization: %s", calls)
+			}
+			if _, err := manager.execution.Start(ctx, WorkIntent{Chat: ChatTarget{ChatID: accepted.Chat.ID}, Input: reference, Options: intent.Options, Admission: intent.Admission}); !errors.Is(err, status_error.ProjectSourceUnavailable) {
+				t.Fatalf("repointed source was implicitly reauthorized: %v", err)
 			}
 		})
 	}

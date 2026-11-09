@@ -74,15 +74,3 @@ export function runtimeDefaultPermissionLevels(
 ): ReadonlySet<PermissionLevel> {
   return modelPermissionLevels(runtime.models, runtime.defaultModel);
 }
-
-export function safeDefaultPermissionLevel(
-  preferred: PermissionLevel,
-  supported: ReadonlySet<PermissionLevel>,
-): PermissionLevel {
-  if (supported.has(preferred)) return preferred;
-  if (supported.size === 0) return preferred;
-  if (supported.has("auto")) return "auto";
-  if (supported.has("default")) return "default";
-  const [first] = supported;
-  return first ?? preferred;
-}

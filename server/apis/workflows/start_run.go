@@ -25,5 +25,5 @@ func (o *StartWorkflowRun) Output(ctx *gin.Context) (interface{}, error) {
 		return nil, ginx.WithStack(err)
 	}
 	// 前端需要接纳后的真实运行身份打开独立运行 Scene。
-	return run, nil
+	return workflowRunResponse(run), nil
 }

@@ -24,7 +24,7 @@ func TestAIAccountCredentialsAndRevision(t *testing.T) {
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	controller := NewAIAccountController(database.DB)
 	ctx := context.Background()
-	account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", Name: "Kimi", AuthMode: constants.AccountAuthModeAPIKey, Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://api.kimi.com/coding"}, {Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: "https://api.kimi.com/coding/v1"}}}
+	account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", Name: "Kimi", AuthMode: constants.AccountAuthModeAPIKey, Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://api.kimi.com/coding"}}
 	if err := controller.Create(ctx, account, "secret-for-test"); err != nil {
 		t.Fatal(err)
 	}
@@ -62,8 +62,8 @@ func TestAIAccountCredentialsAndRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Endpoints) != 2 {
-		t.Fatal("protocols were not retained")
+	if current.Endpoint != account.Endpoint {
+		t.Fatal("endpoint was not retained")
 	}
 	if err := controller.Update(ctx, current, "replacement"); err != nil {
 		t.Fatal(err)
@@ -142,7 +142,7 @@ func TestAIAccountAuthGenerationTracksCredentialBoundaries(t *testing.T) {
 	ctx := t.Context()
 	account := models.AIAccount{
 		ID: "0123456789abcdef0123456789abcdef", Name: "account", AuthMode: constants.AccountAuthModeAPIKey,
-		Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: constants.AIAccountOpenAIURL}},
+		Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: constants.AIAccountOpenAIURL},
 	}
 	if err := repo.Create(ctx, account, "first"); err != nil {
 		t.Fatal(err)
@@ -170,7 +170,7 @@ func TestAIAccountAuthGenerationTracksCredentialBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	current = read(2)
-	current.Endpoints = []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: "https://different.example/v1"}}
+	current.Endpoint = models.AIAccountEndpoint{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: "https://different.example/v1"}
 	if err := repo.Update(ctx, current, ""); err != nil {
 		t.Fatal(err)
 	}

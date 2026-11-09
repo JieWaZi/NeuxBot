@@ -53,7 +53,6 @@ export function RunForm({
   const resolveConfiguration = !savedConfiguration && needsRuntimeDefault;
   const execution = useExecutionSelection({
     value: defaults ?? {},
-    defaults: true,
     enabled: Boolean(container && resolveConfiguration),
   });
   const runDefaults = !resolveConfiguration

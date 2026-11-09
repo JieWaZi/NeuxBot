@@ -83,9 +83,10 @@ it("编辑已有账号回显 Key，默认隐藏且未修改时不重复替换", 
       authMode: "api-key",
       revision: 1,
       hasCredential: true,
-      endpoints: [
-        { protocol: "openai-responses", baseUrl: "https://api.example.com/v1" },
-      ],
+      endpoint: {
+        protocol: "openai-responses",
+        baseUrl: "https://api.example.com/v1",
+      },
       selectedModels: ["model-a"],
       modelCatalog: ["model-a"],
     },
@@ -140,12 +141,10 @@ it("每个账号只保存一个请求协议，API 地址不再选择格式", asy
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
         body: expect.objectContaining({
-          endpoints: [
-            {
-              protocol: "openai-responses",
-              baseUrl: "https://api.openai.com/v1",
-            },
-          ],
+          endpoint: {
+            protocol: "openai-responses",
+            baseUrl: "https://api.openai.com/v1",
+          },
         }),
       }),
       expect.anything(),
@@ -176,12 +175,10 @@ it("内置服务商切换协议时同步地址，账号只保存当前协议", a
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
         body: expect.objectContaining({
-          endpoints: [
-            {
-              protocol: "anthropic-messages",
-              baseUrl: "https://api.deepseek.com/anthropic",
-            },
-          ],
+          endpoint: {
+            protocol: "anthropic-messages",
+            baseUrl: "https://api.deepseek.com/anthropic",
+          },
         }),
       }),
       expect.anything(),
@@ -217,12 +214,10 @@ it("Kimi 统一展示 API 与套餐选项，套餐仍保存为 Key 账号", asyn
       expect.objectContaining({
         body: expect.objectContaining({
           authMode: "api-key",
-          endpoints: [
-            {
-              protocol: "anthropic-messages",
-              baseUrl: "https://api.kimi.com/coding",
-            },
-          ],
+          endpoint: {
+            protocol: "anthropic-messages",
+            baseUrl: "https://api.kimi.com/coding",
+          },
         }),
       }),
       expect.anything(),
@@ -279,9 +274,10 @@ it("已保存的 ChatGPT 订阅账号不能改选其他服务商", async () => {
       name: "我的订阅",
       authMode: "subscription",
       hasCredential: true,
-      endpoints: [
-        { protocol: "openai-responses", baseUrl: "https://api.openai.com/v1" },
-      ],
+      endpoint: {
+        protocol: "openai-responses",
+        baseUrl: "https://api.openai.com/v1",
+      },
     },
   ];
   const user = userEvent.setup();
@@ -301,9 +297,10 @@ it("编辑 Kimi 账号切换套餐时要求输入对应套餐的 Key", async () 
       name: "Kimi 工作账号",
       authMode: "api-key",
       hasCredential: true,
-      endpoints: [
-        { protocol: "openai-responses", baseUrl: "https://api.moonshot.cn/v1" },
-      ],
+      endpoint: {
+        protocol: "openai-responses",
+        baseUrl: "https://api.moonshot.cn/v1",
+      },
     },
   ];
   const user = userEvent.setup();
@@ -420,9 +417,10 @@ it("上下文长度直接跟随已选模型，并保存用户修改", async () =
       authMode: "api-key",
       revision: 1,
       hasCredential: true,
-      endpoints: [
-        { protocol: "openai-completions", baseUrl: "https://example.com/v1" },
-      ],
+      endpoint: {
+        protocol: "openai-completions",
+        baseUrl: "https://example.com/v1",
+      },
       selectedModels: ["model-a"],
       modelCatalog: ["model-a"],
     },
@@ -460,9 +458,10 @@ it("模型映射随账号保存，Claude 角色只引用已选模型", async () 
       authMode: "api-key",
       revision: 1,
       hasCredential: true,
-      endpoints: [
-        { protocol: "anthropic-messages", baseUrl: "https://example.com" },
-      ],
+      endpoint: {
+        protocol: "anthropic-messages",
+        baseUrl: "https://example.com",
+      },
       selectedModels: ["fast", "strong"],
       modelCatalog: ["fast", "strong"],
     },
@@ -500,9 +499,10 @@ it("DeepSeek Responses 使用 服务商目录默认值并将映射留在高级�
       authMode: "api-key",
       revision: 1,
       hasCredential: true,
-      endpoints: [
-        { protocol: "openai-responses", baseUrl: "https://api.deepseek.com" },
-      ],
+      endpoint: {
+        protocol: "openai-responses",
+        baseUrl: "https://api.deepseek.com",
+      },
       selectedModels: ["deepseek-flash"],
       modelCatalog: ["deepseek-flash"],
     },
@@ -550,12 +550,10 @@ it("没有预设映射的 Responses 模型默认选择 Low、Medium、High", asy
       authMode: "api-key",
       revision: 1,
       hasCredential: true,
-      endpoints: [
-        {
-          protocol: "openai-responses",
-          baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
-        },
-      ],
+      endpoint: {
+        protocol: "openai-responses",
+        baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      },
       selectedModels: ["doubao-seed-1-6-flash-250615"],
       modelCatalog: ["doubao-seed-1-6-flash-250615"],
     },
@@ -593,12 +591,10 @@ it("火山方舟当前 Codex 预设带出 服务商模型元数据", async () =>
       authMode: "api-key",
       revision: 1,
       hasCredential: true,
-      endpoints: [
-        {
-          protocol: "openai-responses",
-          baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
-        },
-      ],
+      endpoint: {
+        protocol: "openai-responses",
+        baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      },
       selectedModels: ["doubao-seed-2-1-pro-260628"],
       modelCatalog: ["doubao-seed-2-1-pro-260628"],
     },
@@ -633,12 +629,10 @@ it("DeepSeek Anthropic 只呈现 Claude 角色映射并套用已选模型的默�
       authMode: "api-key",
       revision: 1,
       hasCredential: true,
-      endpoints: [
-        {
-          protocol: "anthropic-messages",
-          baseUrl: "https://api.deepseek.com/anthropic",
-        },
-      ],
+      endpoint: {
+        protocol: "anthropic-messages",
+        baseUrl: "https://api.deepseek.com/anthropic",
+      },
       selectedModels: ["deepseek-v4-pro", "deepseek-v4-flash"],
       modelCatalog: ["deepseek-v4-pro", "deepseek-v4-flash"],
     },
@@ -681,12 +675,10 @@ it("编辑账号回显已保存的 Key，未修改时仍保留原凭据", async 
       authMode: "api-key",
       revision: 2,
       hasCredential: true,
-      endpoints: [
-        {
-          protocol: "anthropic-messages",
-          baseUrl: "https://api.anthropic.com",
-        },
-      ],
+      endpoint: {
+        protocol: "anthropic-messages",
+        baseUrl: "https://api.anthropic.com",
+      },
       selectedModels: ["claude-model"],
       modelCatalog: ["claude-model"],
     },
@@ -722,9 +714,10 @@ it("编辑账号修改地址后按当前表单刷新并复用已保存的 Key", 
       name: "账号 A",
       authMode: "api-key",
       hasCredential: true,
-      endpoints: [
-        { protocol: "openai-responses", baseUrl: "https://old.example.com/v1" },
-      ],
+      endpoint: {
+        protocol: "openai-responses",
+        baseUrl: "https://old.example.com/v1",
+      },
     },
   ];
   const user = userEvent.setup();
@@ -761,12 +754,10 @@ it("账号详情按需展开，编辑操作不改变展开状态", async () => {
       name: "工作账号",
       authMode: "api-key",
       hasCredential: true,
-      endpoints: [
-        {
-          protocol: "anthropic-messages",
-          baseUrl: "https://api.example.com/anthropic",
-        },
-      ],
+      endpoint: {
+        protocol: "anthropic-messages",
+        baseUrl: "https://api.example.com/anthropic",
+      },
     },
   ];
   const user = userEvent.setup();
@@ -794,7 +785,7 @@ it("新增账号去除首尾空白后不能与现有账号重名", async () => {
       name: "OpenAI",
       authMode: "api-key",
       hasCredential: true,
-      endpoints: [],
+      endpoint: undefined,
     },
   ];
   const user = userEvent.setup();
@@ -821,9 +812,10 @@ it("编辑保留自身名称可保存，但不能改为其他账号名称", asyn
     name,
     authMode: "api-key",
     hasCredential: true,
-    endpoints: [
-      { protocol: "openai-responses", baseUrl: "https://api.openai.com/v1" },
-    ],
+    endpoint: {
+      protocol: "openai-responses",
+      baseUrl: "https://api.openai.com/v1",
+    },
   }));
   const user = userEvent.setup();
   renderAccounts();
@@ -841,7 +833,7 @@ it("编辑保留自身名称可保存，但不能改为其他账号名称", asyn
 
 it("后台刷新失败保留账号列表，并可重试恢复", async () => {
   accounts.current = [
-    { id: "saved", name: "工作账号", authMode: "api-key", endpoints: [] },
+    { id: "saved", name: "工作账号", authMode: "api-key", endpoint: undefined },
   ];
   const user = userEvent.setup();
   const queryClient = new QueryClient({
@@ -889,9 +881,10 @@ it("编辑保留原生自定义推理 ID 并原样提交", async () => {
       authMode: "api-key",
       revision: 1,
       hasCredential: true,
-      endpoints: [
-        { protocol: "openai-responses", baseUrl: "https://example.test/v1" },
-      ],
+      endpoint: {
+        protocol: "openai-responses",
+        baseUrl: "https://example.test/v1",
+      },
       selectedModels: ["org/model"],
       modelCatalog: ["org/model"],
       modelReasoningLevels: {
@@ -929,9 +922,10 @@ it("退出 ChatGPT 登录保留账号并刷新登录状态", async () => {
     authMode: "subscription",
     revision: 3,
     hasCredential: true,
-    endpoints: [
-      { protocol: "openai-responses", baseUrl: "https://api.openai.com/v1" },
-    ],
+    endpoint: {
+      protocol: "openai-responses",
+      baseUrl: "https://api.openai.com/v1",
+    },
   };
   accounts.current = [account];
   logout.mockImplementationOnce(async () => {

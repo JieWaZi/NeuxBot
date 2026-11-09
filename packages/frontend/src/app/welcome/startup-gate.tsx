@@ -25,9 +25,7 @@ import {
   permissionLevelOf,
   permissionLevelTranslationKeys,
   modelPermissionLevels,
-  safeDefaultPermissionLevel,
   type PermissionLevel,
-  runtimeDefaultPermissionLevels,
 } from "@/shared/lib/runtime-permissions";
 import { Button } from "@/shared/ui/button";
 import { ExecutionModelControl } from "@/shared/ui/execution-model-control";
@@ -63,14 +61,13 @@ function runtimeConfiguration(
     customModels: runtime.customModels ?? [],
     defaultModel: runtime.defaultModel ?? "",
     defaultReasoning: runtime.defaultReasoning ?? "",
-    defaultPermissionLevel: runtime.defaultPermissionLevel ?? "full-access",
+    defaultPermissionLevel: runtime.defaultPermissionLevel || "default",
   };
 }
 
 function modelCatalogReady(runtime?: RuntimeOption) {
   return Boolean(
     runtime?.installed &&
-    runtime.state === "ready" &&
     runtime.models?.some((item) => item.id) &&
     !runtime.diagnostics?.some(
       (item) => item.code === "ACP_OPTIONS_UNAVAILABLE",
@@ -78,16 +75,11 @@ function modelCatalogReady(runtime?: RuntimeOption) {
   );
 }
 
-function modelSelectionReady(runtime?: RuntimeOption) {
-  if (!runtime || !modelCatalogReady(runtime)) return false;
-  const model = runtime.models?.find(
-    (item) => item.id && item.id === runtime.defaultModel,
-  );
-  const permission = permissionLevelOf(runtime.defaultPermissionLevel);
+function runtimeConfigurationReady(runtime?: RuntimeOption) {
   return Boolean(
-    model &&
-    permission &&
-    runtimeDefaultPermissionLevels(runtime).has(permission),
+    runtime?.id &&
+    (runtime.resolvedBinary || runtime.binary) &&
+    permissionLevelOf(runtime.defaultPermissionLevel || "default"),
   );
 }
 
@@ -118,9 +110,7 @@ export function StartupGate({ children }: { children: ReactNode }) {
     (runtime) => runtime.installed,
   );
   const error = snapshot.error ?? refresh.error;
-  const failed =
-    Boolean(error) ||
-    (snapshot.data?.startupDetectionFailed && installed.length === 0);
+  const failed = Boolean(error);
   return (
     <WelcomeBrand intro={false}>
       {failed ? (
@@ -149,6 +139,7 @@ export function StartupGate({ children }: { children: ReactNode }) {
         <CliSetup
           runtimes={snapshot.data?.resources ?? []}
           installed={installed}
+          startupDetectionFailed={Boolean(snapshot.data.startupDetectionFailed)}
           startupDetectionPending={Boolean(
             snapshot.data.startupDetectionPending,
           )}
@@ -163,11 +154,13 @@ function CliSetup({
   runtimes,
   installed,
   startupDetectionPending,
+  startupDetectionFailed,
   onEnter,
 }: {
   runtimes: RuntimeOption[];
   installed: RuntimeOption[];
   startupDetectionPending: boolean;
+  startupDetectionFailed: boolean;
   onEnter: () => void;
 }) {
   const { t } = useTranslation("common");
@@ -190,7 +183,7 @@ function CliSetup({
       Number(a.baseRuntimeId === "opencode"),
   );
   const preferred =
-    installed.find((item) => item.isDefault) ??
+    runtimes.find((item) => item.isDefault) ??
     installed.find((item) => item.baseRuntimeId === "opencode") ??
     installed[0];
   const runtime =
@@ -199,7 +192,9 @@ function CliSetup({
     choices[0];
   // 按 CLI 从 Mutation Cache 读取忙碌状态，切换后返回也不会丢失仍在进行的探测。
   const mutationKey = ["onboarding-runtime", runtime?.id];
-  const mutating = useIsMutating({ mutationKey }) > 0;
+  const saving = useIsMutating({ mutationKey: [...mutationKey, "save"] }) > 0;
+  const switchingVersion =
+    useIsMutating({ mutationKey: [...mutationKey, "version"] }) > 0;
   const refreshingSelected =
     useIsMutating({ mutationKey: [...mutationKey, "refresh"] }) > 0;
   const refreshing =
@@ -215,9 +210,7 @@ function CliSetup({
   const versionReady =
     !hasMultipleVersions ||
     (selectedBinary === currentBinary &&
-      installations.some(
-        (item) => item.path === selectedBinary && item.available,
-      ));
+      installations.some((item) => item.path === selectedBinary));
   // 草稿只保存用户的明确选择，以实际安装路径隔离不同版本。
   const draftKey = `${runtime?.id ?? ""}:${currentBinary}`;
   const draft = drafts[draftKey];
@@ -230,6 +223,7 @@ function CliSetup({
           draft?.permission ?? runtime.defaultPermissionLevel,
       }
     : undefined;
+  const programConfigured = Boolean(runtime?.id && currentBinary);
   const model = runtime?.models?.find(
     (item) => item.id === configured?.defaultModel,
   );
@@ -270,7 +264,7 @@ function CliSetup({
       );
       if (
         snapshot?.startupSetupRequired === false &&
-        modelSelectionReady(confirmed)
+        runtimeConfigurationReady(confirmed)
       )
         onEnter();
       else setOperationError(t("onboarding.modelsUnavailable"));
@@ -293,7 +287,7 @@ function CliSetup({
     onSuccess: () =>
       client.invalidateQueries({ queryKey: listRuntimesOptions().queryKey }),
   });
-  const busy = refreshing || mutating;
+  const busy = saving || switchingVersion;
   const chooseVersion = (binary: string) => {
     const runtimeID = runtime?.id;
     if (!runtimeID || busy) return;
@@ -308,11 +302,10 @@ function CliSetup({
   };
   const finish = () => {
     if (
-      !configured?.installed ||
-      !configured.id ||
+      !configured?.id ||
       !selectedBinary ||
       !versionReady ||
-      !modelSelectionReady(configured) ||
+      !runtimeConfigurationReady(configured) ||
       busy
     )
       return;
@@ -355,6 +348,11 @@ function CliSetup({
         <p className="type-body text-muted-foreground">
           {t("onboarding.catalogHelp", { count: installed.length })}
         </p>
+        {startupDetectionFailed ? (
+          <p className="type-body text-destructive break-words" role="alert">
+            {t("onboarding.checkFailedHelp")}
+          </p>
+        ) : null}
         <div
           className="welcome-runtime-list"
           role="group"
@@ -404,7 +402,7 @@ function CliSetup({
           ))}
         </div>
         <section className="grid min-w-0 gap-4" aria-label={runtime?.name}>
-          {runtime?.installed ? (
+          {runtime && programConfigured ? (
             <>
               {hasMultipleVersions ? (
                 <div className="grid min-w-0 gap-2">
@@ -426,11 +424,7 @@ function CliSetup({
                     </SelectTrigger>
                     <SelectContent>
                       {installations.map((item) => (
-                        <SelectItem
-                          key={item.path}
-                          value={item.path}
-                          disabled={!item.available}
-                        >
+                        <SelectItem key={item.path} value={item.path}>
                           {runtimeDisplayVersion(item.version) ||
                             t("runtimeEnvironment.status.versionUnknown")}
                           {` · ${item.path}`}
@@ -493,11 +487,6 @@ function CliSetup({
                       )
                         ? (runtime.defaultReasoning ?? "")
                         : (reasoning[0]?.id ?? ""),
-                      permission: safeDefaultPermissionLevel(
-                        permissionLevelOf(configured?.defaultPermissionLevel) ??
-                          "default",
-                        modelPermissionLevels(runtime.models, id),
-                      ),
                     });
                   }}
                   onReasoningChange={(reasoning) => changeDraft({ reasoning })}
@@ -511,12 +500,12 @@ function CliSetup({
                     ? t("onboarding.checking")
                     : !versionReady
                       ? t("onboarding.chooseVersionBeforeModel")
-                      : modelCatalogReady(runtime) && !model
-                        ? t("onboarding.chooseModel")
-                        : !modelSelectionReady(configured)
-                          ? t("onboarding.modelsUnavailable")
+                      : !modelCatalogReady(runtime)
+                        ? t("onboarding.modelsUnavailable")
+                        : !model
+                          ? t("onboarding.chooseModel")
                           : t("onboarding.modelsFound", {
-                              count: runtime.models?.length ?? 0,
+                              count: runtime?.models?.length ?? 0,
                             })}
                 </p>
               </div>
@@ -635,7 +624,7 @@ function CliSetup({
       <CardFooter className="shrink-0 flex-wrap justify-end">
         <Button
           variant="secondary"
-          disabled={busy || !runtime?.id}
+          disabled={busy || refreshing || !runtime?.id}
           onClick={() => {
             if (!runtime?.id) return;
             setOperationError(undefined);
@@ -644,9 +633,11 @@ function CliSetup({
         >
           {t(refreshing ? "onboarding.checking" : "onboarding.recheck")}
         </Button>
-        {runtime?.installed && (
+        {runtime && programConfigured && (
           <Button
-            disabled={busy || !versionReady || !modelSelectionReady(configured)}
+            disabled={
+              busy || !versionReady || !runtimeConfigurationReady(configured)
+            }
             onClick={finish}
           >
             {t(save.isPending ? "onboarding.saving" : "onboarding.enter")}

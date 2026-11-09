@@ -22,12 +22,6 @@ type ChatExecutionLocation struct {
 	Sequence int64 `gorm:"index:idx_chat_execution_sequence,priority:3"`
 	// LifecycleSequences 是 execution.started 和唯一终态在原 JSONL 中的位置。
 	LifecycleSequences []int64 `gorm:"serializer:json;type:text"`
-	// InvocationBoundarySequence 是最新原生调用身份首次出现的原信封位置。
-	InvocationBoundarySequence int64
-	// InvocationFinishedSequence 是最近已持久化调用结论的原日志位置。
-	InvocationFinishedSequence int64
-	// FinishedInvocationBoundarySequence 是最近调用结论对应的原生身份信封位置。
-	FinishedInvocationBoundarySequence int64
 	// MessageOnly 区分用户或继承消息入口与真实接纳执行。
 	MessageOnly bool `gorm:"index:idx_chat_execution_sequence,priority:2"`
 }
@@ -56,14 +50,6 @@ func MergeExecutionLocationTail(previous *ChatExecutionLocation, next ChatExecut
 	next.LifecycleSequences = append(append([]int64(nil), previous.LifecycleSequences...), next.LifecycleSequences...)
 	slices.Sort(next.LifecycleSequences)
 	next.LifecycleSequences = slices.Compact(next.LifecycleSequences)
-	if next.InvocationFinishedSequence == 0 {
-		next.InvocationFinishedSequence = previous.InvocationFinishedSequence
-		next.FinishedInvocationBoundarySequence = previous.FinishedInvocationBoundarySequence
-	} else if next.FinishedInvocationBoundarySequence == 0 {
-		next.FinishedInvocationBoundarySequence = previous.InvocationBoundarySequence
-	}
-	if next.InvocationBoundarySequence == 0 {
-		next.InvocationBoundarySequence = previous.InvocationBoundarySequence
-	}
+
 	return next
 }

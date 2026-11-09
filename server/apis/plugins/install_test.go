@@ -207,7 +207,10 @@ func TestInstallRejectsMutatedManagedVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	version := detail.Versions[0]
+	version, err := global.PluginControllerManager.Version(ctx, detail.Versions[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(global.Config.DataDirectory, version.ContentPath, "injected.sh"), []byte("arbitrary mutation"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +336,11 @@ func TestVersionSwitchRejectsUnreadyTargetsWithoutChangingInstallation(t *testin
 			var target models.PluginVersion
 			for _, v := range next.Versions {
 				if v.Version == "2.0.0" {
-					target = v
+					var readErr error
+					target, readErr = global.PluginControllerManager.Version(ctx, v.ID)
+					if readErr != nil {
+						t.Fatal(readErr)
+					}
 				}
 			}
 			if target.ID == "" {
@@ -653,7 +660,10 @@ func TestVersionSwitchRejectsLegacyImportedVersionWithoutChangingPin(t *testing.
 	if _, err := (&InstallPlugin{PluginID: detail.Plugin.ID, Body: InstallPluginRequest{VersionID: detail.ResolvedVersionID, WakerIDs: []string{"w1"}}}).Output(ctx); err != nil {
 		t.Fatal(err)
 	}
-	legacy := detail.Versions[0]
+	legacy, err := global.PluginControllerManager.Version(ctx, detail.Versions[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	legacy.ID, legacy.Version, legacy.Provenance = "imported-version", "local-import", nil
 	if _, err := global.PluginControllerManager.PutVersion(ctx, legacy); err != nil {
 		t.Fatal(err)
@@ -705,7 +715,10 @@ func TestInstallRejectsLocalContentWithCopiedCatalogIdentityAndProvenance(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	version := detail.Versions[0]
+	version, err := global.PluginControllerManager.Version(ctx, detail.Versions[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	provenance, err := json.Marshal(version.Provenance)
 	if err != nil {
 		t.Fatal(err)

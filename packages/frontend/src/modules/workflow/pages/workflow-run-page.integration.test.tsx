@@ -138,7 +138,6 @@ beforeEach(() => {
     humanRequests: [
       {
         id: "human-1",
-        questionVersion: 1,
         snapshotDigest: "frozen",
         instanceId: "actual-1",
         status: "waiting",
@@ -456,7 +455,6 @@ it("人工输入支持五种控件，预填默认值只在用户确认后提交�
     humanRequests: [
       {
         id: "human-1",
-        questionVersion: 1,
         snapshotDigest: "frozen",
         instanceId: "actual-1",
         status: "waiting",

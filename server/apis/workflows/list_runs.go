@@ -2,7 +2,6 @@ package workflows
 
 import (
 	"github.com/JieWaZi/NeuxBot/server/global"
-	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -24,7 +23,7 @@ type ListWorkflowRuns struct {
 // 运行列表
 type WorkflowRunListResponse struct {
 	// 运行列表
-	Items []models.WorkflowRun `json:"items"`
+	Items []WorkflowRunResponse `json:"items"`
 	// 时间游标
 	NextBefore int64 `json:"nextBefore"`
 	// 身份游标
@@ -40,7 +39,10 @@ func (o *ListWorkflowRuns) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	result := WorkflowRunListResponse{Items: items}
+	result := WorkflowRunListResponse{Items: []WorkflowRunResponse{}}
+	for _, item := range items {
+		result.Items = append(result.Items, workflowRunResponse(item))
+	}
 	limit := o.Limit
 	if limit == 0 {
 		limit = 50

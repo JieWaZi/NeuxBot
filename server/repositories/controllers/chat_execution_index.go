@@ -114,7 +114,7 @@ func (c *chatController) AdvanceExecutionLocations(ctx context.Context, chatID s
 				}
 			}
 		}
-		if err := db.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "chat_id"}, {Name: "execution_id"}}, DoUpdates: clause.AssignmentColumns([]string{"submission_id", "sequence", "message_only", "lifecycle_sequences", "invocation_boundary_sequence", "invocation_finished_sequence", "finished_invocation_boundary_sequence"})}).CreateInBatches(locations, 100).Error; err != nil {
+		if err := db.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "chat_id"}, {Name: "execution_id"}}, DoUpdates: clause.AssignmentColumns([]string{"submission_id", "sequence", "message_only", "lifecycle_sequences"})}).CreateInBatches(locations, 100).Error; err != nil {
 			return databaseError("index_chat_execution_locations", "chat_id="+chatID, err)
 		}
 	}

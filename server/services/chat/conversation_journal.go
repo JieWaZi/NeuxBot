@@ -282,7 +282,7 @@ func (j *conversationJournal) CountUserMessages(id string) (int64, error) {
 func (j *conversationJournal) ReadExecutionFacts(id string, positions eventlog.ExecutionFactPositions) (eventlog.ExecutionWindow, error) {
 	window := eventlog.ExecutionWindow{LatestSequence: positions.LatestSequence, StartSequence: positions.StartSequence}
 	cursors := append([]int64{1}, positions.LifecycleSequences...)
-	for _, cursor := range []int64{positions.StartSequence, positions.InvocationBoundarySequence, positions.InvocationFinishedSequence} {
+	for _, cursor := range []int64{positions.StartSequence} {
 		if cursor > 0 {
 			cursors = append(cursors, cursor)
 		}
@@ -301,7 +301,6 @@ func (j *conversationJournal) ReadExecutionIndexTail(id string, after int64) (ev
 	}
 	tail.LatestSequence = page.Version
 	starts := make(map[string]int64)
-	invocations := make(map[string]string)
 	for _, record := range factRecords(id, page.Records) {
 		switch record.Type {
 		case constants.ChatEventTypeExecutionCreated:
@@ -318,13 +317,9 @@ func (j *conversationJournal) ReadExecutionIndexTail(id string, after int64) (ev
 			Sequence: record.Sequence, ExecutionStartSequence: start,
 			Lifecycle: record.Type == constants.ChatEventTypeExecutionStarted || record.Type == constants.ChatEventTypeExecutionCompleted ||
 				record.Type == constants.ChatEventTypeExecutionCanceled || record.Type == constants.ChatEventTypeExecutionFailed,
-			InvocationFinished: record.Type == constants.ChatEventTypeInvocationFinished,
-			InvocationBoundary: record.InvocationID != "" && invocations[record.ExecutionID] != record.InvocationID,
 		}
-		if position.InvocationBoundary {
-			invocations[record.ExecutionID] = record.InvocationID
-		}
-		if position.Lifecycle || position.InvocationFinished || position.InvocationBoundary {
+
+		if position.Lifecycle {
 			tail.Positions = append(tail.Positions, position)
 		}
 	}
@@ -586,6 +581,15 @@ func (j *conversationJournal) applyPublic(ctx context.Context, adapter *eventstr
 		}
 		// Canonical native outcomes provide the only persisted usage evidence.
 		if outcome != nil {
+			binding, err := j.ReadBinding(ctx, row.ChatID)
+			if err != nil {
+				return eventstream.PublicEvent{}, false, err
+			}
+			sessionID := ""
+			if binding != nil && !binding.Cleared {
+				sessionID = binding.Session.SessionID
+			}
+			adapter.SetCurrentForkSession(sessionID)
 			projected, err := adapter.ApplyNativeTerminal(row, outcome)
 			return projected, true, err
 		}

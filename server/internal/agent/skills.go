@@ -51,7 +51,7 @@ type skillManifest struct {
 	Targets map[string]map[string]string `json:"targets"`
 }
 
-// FreezeSkills reads only selected content and fixes its physical target identity.
+// FreezeSkills reserves the published content identity without reading source trees.
 func FreezeSkills(detection DetectionResult, workspace Workspace, skills []Skill, plugins map[string]string) (*SkillSelection, error) {
 	if !workspace.Managed || workspace.Path == "" {
 		if len(skills) != 0 {
@@ -60,7 +60,7 @@ func FreezeSkills(detection DetectionResult, workspace Workspace, skills []Skill
 		return nil, nil
 	}
 	directory := detection.Runtime.SkillDirectoryName
-	if !safeSkillEntryName(directory) || !detection.Capabilities.Has(CapabilitySkillDirectory) {
+	if !safeSkillEntryName(directory) {
 		if len(skills) != 0 {
 			return nil, status_error.SkillUnavailable
 		}
@@ -81,14 +81,11 @@ func FreezeSkills(detection DetectionResult, workspace Workspace, skills []Skill
 			return nil, status_error.SkillContentInvalid
 		}
 		names[skill.Name] = true
-		if info, err := os.Stat(filepath.Join(skill.Path, "SKILL.md")); err != nil || !info.Mode().IsRegular() {
+		decoded, err := hex.DecodeString(skill.Digest)
+		if err != nil || len(decoded) != sha256.Size {
 			return nil, status_error.SkillContentInvalid
 		}
-		digest, err := managedskills.Digest(skill.Path)
-		if err != nil {
-			return nil, skillStorageError(err)
-		}
-		selection.entries = append(selection.entries, skillEntry{name: skill.Name, path: skill.Path, digest: digest})
+		selection.entries = append(selection.entries, skillEntry{name: skill.Name, path: skill.Path, digest: hex.EncodeToString(decoded)})
 	}
 	slices.SortFunc(selection.entries, func(a, b skillEntry) int { return strings.Compare(a.name, b.name) })
 	for _, entry := range selection.entries {

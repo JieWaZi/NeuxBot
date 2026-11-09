@@ -29,7 +29,7 @@ func TestOpenChatScopeEndpointsKeepPrivateFilesSeparateAndReadActualProjects(t *
 	previousChat, previousManaged := global.ChatService, global.Config.ManagedFilesDirectory
 	defer func() { global.ChatService = previousChat; global.Config.ManagedFilesDirectory = previousManaged }()
 	global.Config.ManagedFilesDirectory = t.TempDir()
-	service, err := chatservice.New(chatservice.Config{StorageDirectory: global.Config.ManagedFilesDirectory, Projects: controllers.NewProjectController(database.DB), QueryIndexes: chatservice.QueryIndexDependencies{Chats: controllers.NewChatController(database.DB), RuntimeSessions: controllers.NewRuntimeSessionController(database.DB), DeletionIntents: controllers.NewChatDeletionIntentController(database.DB), Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))}})
+	service, err := chatservice.New(chatservice.Config{StorageDirectory: global.Config.ManagedFilesDirectory, Projects: controllers.NewProjectController(database.DB), QueryIndexes: chatservice.QueryIndexDependencies{Chats: controllers.NewChatController(database.DB), DeletionIntents: controllers.NewChatDeletionIntentController(database.DB), Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))}})
 	if err != nil {
 		t.Fatal(err)
 	}

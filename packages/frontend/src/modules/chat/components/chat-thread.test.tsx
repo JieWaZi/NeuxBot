@@ -123,7 +123,6 @@ function canonicalMessage(): AllyChatMessage {
       typeof meta?.failureCode === "string" ? meta.failureCode : undefined,
     errorMessageSource:
       meta?.errorMessageSource === "public" ? "public" : undefined,
-    retryable: meta?.retryable === true,
   };
 }
 function AssistantMessage(

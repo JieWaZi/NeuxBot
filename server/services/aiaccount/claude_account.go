@@ -305,7 +305,7 @@ func ManagedClaudeModelTarget(account models.AIAccount, model string) (string, b
 // independently of credential generation, using the same model spec as the lease.
 func ManagedClaudeModelFingerprint(account models.AIAccount) string {
 	spec := managedClaudeModelSpec(account)
-	encoded, _ := json.Marshal([]any{spec.Model, spec.SelectedModels, spec.ClaudeModelRoles, spec.ModelDisplayNames})
+	encoded, _ := json.Marshal(accountconfig.ClaudeAPIEnvironment(spec))
 	sum := sha256.Sum256(encoded)
 	return hex.EncodeToString(sum[:])
 }
@@ -316,8 +316,8 @@ func managedClaudeModelSpec(account models.AIAccount) accountconfig.Spec {
 	selected := slices.DeleteFunc(slices.Clone(account.SelectedModels), func(model string) bool {
 		return model == "" || model == "default"
 	})
-	model := account.DefaultModel
-	if len(selected) > 0 && !slices.Contains(selected, model) {
+	model := ""
+	if len(selected) > 0 {
 		model = selected[0]
 	}
 	return accountconfig.Spec{

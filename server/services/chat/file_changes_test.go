@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"os"
 	"path/filepath"
 	"strings"
@@ -227,7 +228,9 @@ func TestForkClonesOnlySelectedHistoricalFileRecordAndSurvivesSourceDeletion(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	child, err := service.ForkChat(ctx, ForkInput{ChatID: parent, ExecutionID: "before", ClientRequestID: "file-copy"}, NativeFork{Execute: func(context.Context, NativeForkInput) (string, error) { return "independent-child", nil }})
+	child, err := service.ForkChat(ctx, ForkInput{ChatID: parent, ExecutionID: "before", ClientRequestID: "file-copy"}, NativeFork{Execute: func(context.Context, NativeForkInput) (agent.NativeBinding, error) {
+		return forkTestBinding("independent-child"), nil
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,6 +257,46 @@ func TestForkClonesOnlySelectedHistoricalFileRecordAndSurvivesSourceDeletion(t *
 	diff, err := service.GetMessageFileChange(ctx, child, inherited, source.Files[0].AbsolutePath)
 	if err != nil || diff.Comparison == nil {
 		t.Fatalf("copied immutable diff missing: %+v %v", diff, err)
+	}
+	indexes, directory, intents := service.queryIndexes, service.storage.Root(), service.deletionIntents
+	service.Close()
+	service = newTestService(t, Config{StorageDirectory: directory, QueryIndexes: QueryIndexDependencies{Chats: indexes.chatController, Transactions: indexes.transactionController, DeletionIntents: intents}})
+	t.Cleanup(service.Close)
+	if err = service.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	grandchild, err := service.ForkChat(ctx, ForkInput{ChatID: child, ExecutionID: inherited, ClientRequestID: "file-copy-after-restart"}, NativeFork{Execute: func(_ context.Context, input NativeForkInput) (agent.NativeBinding, error) {
+		if input.Boundary.Session.SessionID != "independent-child" {
+			t.Fatalf("refork used deleted source native identity: %+v", input.Boundary)
+		}
+		return forkTestBinding("independent-grandchild"), nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	history, err = service.ReadMessageHistory(ctx, grandchild, 0, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	grandchildMessage := ""
+	for _, message := range history.Resources {
+		if message.FileChangeRecord != nil {
+			grandchildMessage = message.ID
+		}
+	}
+	if grandchildMessage == "" || grandchildMessage == inherited {
+		t.Fatal("refork must own a distinct result message")
+	}
+	if err = service.DeleteChat(ctx, child); err != nil {
+		t.Fatal(err)
+	}
+	copied, err = service.GetMessageFileChanges(ctx, grandchild, grandchildMessage)
+	if err != nil || copied.ID != source.ID || copied.TotalFiles != 1 {
+		t.Fatalf("grandchild depends on deleted sources: %+v %v", copied, err)
+	}
+	diff, err = service.GetMessageFileChange(ctx, grandchild, grandchildMessage, source.Files[0].AbsolutePath)
+	if err != nil || diff.Comparison == nil {
+		t.Fatalf("grandchild immutable diff missing: %+v %v", diff, err)
 	}
 }
 

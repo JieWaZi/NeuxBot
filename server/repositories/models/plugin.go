@@ -114,7 +114,7 @@ type PluginState struct {
 	Configuration PluginConfiguration
 }
 
-// PluginExecutionDeclaration 是伙伴启用安装的静态执行声明，不携带包、配置或授权材料。
+// PluginExecutionDeclaration 是伙伴启用安装的执行声明，不携带明文秘密或授权材料。
 type PluginExecutionDeclaration struct {
 	// ID 是已启用插件的资源身份。
 	ID string
@@ -128,6 +128,14 @@ type PluginExecutionDeclaration struct {
 	TrustedAt int64
 	// ConfigurationRevision 是共享配置的冻结修订，零表示尚无配置。
 	ConfigurationRevision int64
+	// ContentPath 是不可变来源相对数据目录的位置。
+	ContentPath string
+	// Package 只含固定版本的目标、组件和配置声明，不含 README 等展示正文。
+	Package plugins.Package `gorm:"serializer:json"`
+	// Values 是判断目标配置就绪所需的普通值。
+	Values map[string]string `gorm:"serializer:json"`
+	// ConfiguredSecrets 仅保存已配置秘密的名称，不包含密文和明文。
+	ConfiguredSecrets []string `gorm:"serializer:json"`
 }
 
 // PluginReference 是输入候选使用的已启用固定版本引用。

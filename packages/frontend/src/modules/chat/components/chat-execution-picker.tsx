@@ -156,9 +156,7 @@ export function ChatExecutionPicker(props: Props) {
     accountId: string;
   }>();
   const [search, setSearch] = useState("");
-  const runtimes = props.runtimes.filter(
-    (runtime) => runtime.id && runtime.state === "ready",
-  );
+  const runtimes = props.runtimes.filter((runtime) => runtime.id);
   const runtime =
     runtimes.find((item) => item.id === preview?.runtimeId) ??
     props.runtime ??
@@ -178,7 +176,6 @@ export function ChatExecutionPicker(props: Props) {
     runtime,
     value: { runtimeId: runtime?.id, accountId },
     enabled: open && browsing,
-    defaults: true,
   });
   const models = browsing ? directory.models : props.models;
   const defaultModel =
@@ -205,8 +202,8 @@ export function ChatExecutionPicker(props: Props) {
       ? directory.refreshCatalog
       : props.onRefresh
     : undefined;
-  const settingsDisabled = pending || (native && catalogState !== "fresh");
-  const modelsDisabled = pending || (settingsDisabled && !catalogRefreshFailed);
+  const settingsDisabled = Boolean(props.sessionSwitchPending);
+  const modelsDisabled = settingsDisabled;
   const fixed = cursorSettings(provider, selected);
   const contextWindows = (selected?.contextWindowOptions ?? []).flatMap(
     ({ id, tokens }) => (id && tokens ? [{ id, tokens }] : []),

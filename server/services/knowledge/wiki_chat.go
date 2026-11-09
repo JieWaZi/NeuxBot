@@ -56,7 +56,7 @@ func (s *Service) ValidateWorkIntent(ctx context.Context, intent execution.WorkI
 	if link.Operation == constants.KnowledgeAutomaticMaintenanceChatOperation {
 		validPermissions = !options.WorkspaceReadOnly && options.PermissionLevel == constants.PermissionLevelFullAccess
 	}
-	if intent.RetryExecutionID != "" || !validPermissions ||
+	if !validPermissions ||
 		options.AllowedAgentDomains == nil || len(*options.AllowedAgentDomains) != 1 || (*options.AllowedAgentDomains)[0] != "interaction" ||
 		options.AllowedConnectorIDs == nil || len(*options.AllowedConnectorIDs) != 0 ||
 		len(options.ToolCapabilities) != 1 || options.ToolCapabilities[0].ID != "knowledge.maintenance" || len(options.ToolCapabilities[0].Bindings) == 0 {

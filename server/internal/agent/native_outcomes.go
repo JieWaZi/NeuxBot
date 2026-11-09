@@ -27,7 +27,7 @@ func (l *ThreadLifecycle) commitAndAcknowledge(ctx context.Context, client Agent
 	}
 	key := NativeResultKey{Session: session, InvocationID: outcome.Turn.InvocationID}
 	result := NativeResult{Key: key, Turn: outcome.Turn, StopReason: outcome.StopReason,
-		ForkPosition: outcome.ForkPosition, Unavailable: outcome.Unavailable,
+		ForkMode: client.Capabilities().ForkMode, ForkPosition: outcome.ForkPosition, Unavailable: outcome.Unavailable,
 	}
 	if outcome.FinalMessage != nil {
 		result.FinalMessage = &NativeFinalMessage{ID: outcome.FinalMessage.ID, Text: outcome.FinalMessage.Text}
@@ -178,7 +178,7 @@ func (r *nativeOutcomeReader) stop(ctx context.Context) error {
 	}
 }
 
-func (l *ThreadLifecycle) drainNativeOutcomes(ctx context.Context, reader *nativeOutcomeReader) error {
+func (l *ThreadLifecycle) drainNativeOutcomes(ctx context.Context, reader *nativeOutcomeReader, producerStopped bool) error {
 	if reader == nil {
 		return nil
 	}
@@ -189,12 +189,28 @@ func (l *ThreadLifecycle) drainNativeOutcomes(ctx context.Context, reader *nativ
 		}
 		var pending error
 		for _, outcome := range page.Outcomes {
+			// A transport fault can retire an observed invocation without a
+			// native terminal. Once its producer has actually stopped, there is
+			// nothing left to await or acknowledge for this observation. Keep
+			// the admitted input and fragments without inventing consumption.
+			if producerStopped && incompleteNativeOutcome(outcome) {
+				if page.More {
+					// The ledger has no cursor past an unacknowledged prefix. Do
+					// not lose terminal receipts hidden behind this page.
+					pending = errors.Join(pending, status_error.ChatLogNativeOutcomePending)
+				}
+				continue
+			}
 			pending = errors.Join(pending, l.persistReceipt(ctx, reader, outcome, nil))
 		}
 		if pending != nil || !page.More {
 			return pending
 		}
 	}
+}
+
+func incompleteNativeOutcome(outcome AgentNativeOutcome) bool {
+	return outcome.Turn.InvocationID != "" && outcome.Turn.Status == "" && outcome.OperationError != nil
 }
 
 func (r *nativeOutcomeReader) observe(ctx context.Context, scope AgentScope, event AgentEvent) error {

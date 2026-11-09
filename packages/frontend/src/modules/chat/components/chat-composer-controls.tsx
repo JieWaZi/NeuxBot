@@ -16,11 +16,7 @@ import {
   hasPlatformService,
   listWorkspaceGitRepositories,
 } from "@/shared/platform";
-import {
-  modelPermissionLevels,
-  safeDefaultPermissionLevel,
-  type PermissionLevel,
-} from "@/shared/lib/runtime-permissions";
+import type { PermissionLevel } from "@/shared/lib/runtime-permissions";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import { WorkspaceScopePicker } from "@/shared/ui/workspace-scope-picker";
@@ -262,12 +258,7 @@ export function useChatComposerControls({
             runtimeId: runtime.id ?? "",
             accountId,
             model: model.id ?? "",
-            permissionLevel: usesNativeCatalog
-              ? safeDefaultPermissionLevel(
-                  selectedPermissionLevel,
-                  modelPermissionLevels([model], model.id ?? ""),
-                )
-              : selectedPermissionLevel,
+            permissionLevel: selectedPermissionLevel,
             reasoning,
             fast: null,
             ...(enableContextWindow ? { contextWindow: "" } : {}),

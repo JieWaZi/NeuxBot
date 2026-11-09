@@ -16,8 +16,8 @@ type AIAccount struct {
 	// AuthMode 区分 API Key 与官方订阅登录。
 	AuthMode constants.AccountAuthMode `gorm:"type:varchar(24);not null" json:"authMode"`
 
-	// Endpoints 保存账号唯一的请求协议及服务地址；数组形式兼容已有存储。
-	Endpoints []AIAccountEndpoint `gorm:"type:text;not null;serializer:json" json:"endpoints"`
+	// Endpoint 保存账号唯一的请求协议及服务地址。
+	Endpoint AIAccountEndpoint `gorm:"type:text;not null;serializer:json" json:"endpoint"`
 	// ModelCatalog 保存最近一次从该账号服务获取的模型标识。
 	ModelCatalog []string `gorm:"type:text;not null;default:'[]';serializer:json" json:"modelCatalog"`
 	// SelectedModels 保存用户允许在聊天中使用的该账号模型标识。
@@ -36,7 +36,7 @@ type AIAccount struct {
 	DefaultModel string `gorm:"type:varchar(200);not null;default:''" json:"defaultModel"`
 	// DefaultReasoning 是选择该账号时优先使用的推理强度标识。
 	DefaultReasoning string `gorm:"type:varchar(80);not null;default:''" json:"defaultReasoning"`
-	// Revision 用于更新冲突检测和隔离进程缓存。
+	// Revision 仅用于用户配置更新冲突检测。
 	Revision int64 `gorm:"not null" json:"revision"`
 	// 认证代次
 	AuthGeneration uint64 `gorm:"not null;default:1" json:"authGeneration"`

@@ -435,15 +435,12 @@ const (
 	// @errZH 账号名称已存在，请使用其他名称
 	// @errEN account name already exists
 	AIAccountNameConflict
-	// @errZH 当前回复不能直接重试，请按错误提示处理后重新发送
-	// @errEN this response cannot be retried directly
-	ExecutionRetryUnavailable
-	// @errZH 重试请求正在处理，请稍后检查状态
-	// @errEN the retry request is being processed; check its status shortly
-	ExecutionRetryInProgress
+)
+
+const (
 	// @errZH 上一次自动运行尚未结束，请先处理对应对话
 	// @errEN the previous automatic run is still active
-	AutomaticTaskBusy
+	AutomaticTaskBusy StatusError = http.StatusConflict*1e8 + iota + 33
 	// @errZH 自动任务已停用，不能接纳新的运行
 	// @errEN the automatic task is disabled
 	AutomaticTaskDisabled

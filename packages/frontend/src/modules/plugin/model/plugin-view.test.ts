@@ -19,8 +19,6 @@ const pkg: PluginCatalogEntry["package"] = {
     authentication: {
       strategy: "plugin-command",
       protocol: "neuxally-auth/1",
-      command: "node",
-      args: ["./.neuxally/auth/authorize.mjs"],
     },
   },
   skills: [],
@@ -42,7 +40,6 @@ it("recognizes authorization declarations without a provider allowlist", () => {
         authentication: {
           strategy: "plugin-command",
           protocol: "neuxally-auth/1",
-          command: "./.neuxally/auth/authorize",
         },
       },
     }),

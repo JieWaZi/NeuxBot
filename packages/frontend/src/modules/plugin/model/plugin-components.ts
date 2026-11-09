@@ -40,9 +40,7 @@ export function pluginComponents(
                 pkg,
                 detail.plugin?.description,
                 detail.plugin?.sourceKey,
-              ) ||
-              server.url ||
-              server.command,
+              ) || server.url,
           }));
     return entries.flatMap((entry) => {
       if (

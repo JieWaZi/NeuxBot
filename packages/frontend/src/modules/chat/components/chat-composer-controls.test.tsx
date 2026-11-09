@@ -54,34 +54,28 @@ vi.mock("@/shared/api/generated/@tanstack/react-query.gen", () => ({
           id: "anthropic-account",
           name: "Anthropic 账号",
           selectedModels: ["anthropic-model"],
-          endpoints: [
-            {
-              protocol: "anthropic-messages",
-              baseUrl: "https://api.anthropic.com",
-            },
-          ],
+          endpoint: {
+            protocol: "anthropic-messages",
+            baseUrl: "https://api.anthropic.com",
+          },
         },
         {
           id: "deepseek-account",
           name: "DeepSeek",
           selectedModels: ["deepseek-flash"],
-          endpoints: [
-            {
-              protocol: "openai-responses",
-              baseUrl: "https://api.deepseek.com",
-            },
-          ],
+          endpoint: {
+            protocol: "openai-responses",
+            baseUrl: "https://api.deepseek.com",
+          },
         },
         {
           id: "gpt-subscription",
           name: "ChatGPT 订阅",
           authMode: "subscription",
-          endpoints: [
-            {
-              protocol: "openai-responses",
-              baseUrl: "https://api.openai.com/v1",
-            },
-          ],
+          endpoint: {
+            protocol: "openai-responses",
+            baseUrl: "https://api.openai.com/v1",
+          },
         },
       ],
     }),
@@ -172,12 +166,7 @@ function Controls({
   const model = selection.model || selected?.defaultModel || "";
   const controls = useChatComposerControls({
     catalogState: nativeCatalog ? "fresh" : undefined,
-    modelOptionsOverride: nativeCatalog
-      ? selected?.models.map((model) => ({
-          ...model,
-          configurationKnown: selected.id !== "workbuddy",
-        }))
-      : undefined,
+    modelOptionsOverride: nativeCatalog ? selected?.models : undefined,
     selectedAccountId: selection.accountId,
     activeChatId,
     projects: [],
@@ -316,7 +305,7 @@ it("已有对话时锁定工作区选择并提示开启新对话", async () => {
   expect(control).toHaveAttribute("title", "如需修改目录请开启新对话");
 });
 
-it("目录只展示已就绪智能体和兼容账号", async () => {
+it("目录保留探测失败的智能体并只展示兼容账号", async () => {
   const user = userEvent.setup();
   const availableRuntimes = [
     ...runtimes,
@@ -333,9 +322,7 @@ it("目录只展示已就绪智能体和兼容账号", async () => {
   const changed = vi.fn();
   renderControls(changed, availableRuntimes);
   await user.click(screen.getByTestId("composer-model-control"));
-  expect(
-    screen.queryByRole("button", { name: "Missing" }),
-  ).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Missing" })).toBeEnabled();
   await user.click(screen.getByRole("button", { name: /^claude$/i }));
   await user.click(screen.getByRole("combobox", { name: "账号" }));
   expect(
@@ -423,7 +410,12 @@ it("Qoder 可选两份目录的模型，只展示新模型和自定义分组", a
           creditMultiplier: 0,
         },
         { id: "auto", name: "Auto", group: "qoder/default" },
-        { id: "smodel", name: "Sonus", group: "qoder/new", creditMultiplier: 8 },
+        {
+          id: "smodel",
+          name: "Sonus",
+          group: "qoder/new",
+          creditMultiplier: 8,
+        },
         { id: "custom-model", name: "Custom Model", group: "qoder/custom" },
       ],
     },
@@ -436,7 +428,9 @@ it("Qoder 可选两份目录的模型，只展示新模型和自定义分组", a
   expect(screen.getByRole("group", { name: "新模型" })).toContainElement(sonus);
   expect(sonus).toHaveTextContent("8×");
   const custom = screen.getByRole("radio", { name: "Custom Model" });
-  expect(screen.getByRole("group", { name: "自定义" })).toContainElement(custom);
+  expect(screen.getByRole("group", { name: "自定义" })).toContainElement(
+    custom,
+  );
   expect(custom).toBeEnabled();
   const flash = screen.getByRole("radio", { name: "Qwen3.8-Flash" });
   expect(flash).toHaveTextContent("免费");

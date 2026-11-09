@@ -9,10 +9,10 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
-func TestCreateAIAccountNormalizesNameAndRequiresOneProtocol(t *testing.T) {
+func TestCreateAIAccountNormalizesNameAndValidatesEndpoint(t *testing.T) {
 	request := CreateAIAccount{Body: CreateAIAccountRequest{
 		Name: " OpenAI ", AuthMode: constants.AccountAuthModeAPIKey, APIKey: "test-key",
-		Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: "https://api.openai.com/v1"}},
+		Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: "https://api.openai.com/v1"},
 	}}
 	if err := request.Validate(nil); err != nil {
 		t.Fatal(err)
@@ -20,21 +20,21 @@ func TestCreateAIAccountNormalizesNameAndRequiresOneProtocol(t *testing.T) {
 	if request.Body.Name != "OpenAI" {
 		t.Fatal("account name was not normalized")
 	}
-	request.Body.Endpoints = append(request.Body.Endpoints, models.AIAccountEndpoint{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://api.anthropic.com"})
+	request.Body.Endpoint.BaseURL = "invalid"
 	if err := request.Validate(nil); !errors.Is(err, status_error.AIAccountConfigurationInvalid) {
-		t.Fatalf("multiple protocols accepted: %v", err)
+		t.Fatalf("invalid endpoint accepted: %v", err)
 	}
 }
 
 // TestGoogleAccountCreateAndUpdatePreserveNativeChoices 验证新增与更新接受并保留实际原生选择 ID。
 func TestGoogleAccountCreateAndUpdatePreserveNativeChoices(t *testing.T) {
 	levels := map[string][]string{"org/model": {"LOW", "budget:8192", "provider-fast"}}
-	endpoint := []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolGoogleGenerativeAI, BaseURL: constants.AIAccountGoogleURL}}
-	create := CreateAIAccount{Body: CreateAIAccountRequest{Name: "Google", AuthMode: constants.AccountAuthModeAPIKey, APIKey: "fixture", Endpoints: endpoint, SelectedModels: []string{"org/model"}, ModelReasoningLevels: levels, DefaultModel: "org/model", DefaultReasoning: "budget:8192"}}
+	endpoint := models.AIAccountEndpoint{Protocol: constants.AccountProtocolGoogleGenerativeAI, BaseURL: constants.AIAccountGoogleURL}
+	create := CreateAIAccount{Body: CreateAIAccountRequest{Name: "Google", AuthMode: constants.AccountAuthModeAPIKey, APIKey: "fixture", Endpoint: endpoint, SelectedModels: []string{"org/model"}, ModelReasoningLevels: levels, DefaultModel: "org/model", DefaultReasoning: "budget:8192"}}
 	if err := create.Validate(nil); err != nil {
 		t.Fatal(err)
 	}
-	update := UpdateAIAccount{Body: UpdateAIAccountRequest{Name: create.Body.Name, Endpoints: endpoint, SelectedModels: create.Body.SelectedModels, ModelReasoningLevels: create.Body.ModelReasoningLevels, DefaultModel: create.Body.DefaultModel, DefaultReasoning: create.Body.DefaultReasoning}}
+	update := UpdateAIAccount{Body: UpdateAIAccountRequest{Name: create.Body.Name, Endpoint: endpoint, SelectedModels: create.Body.SelectedModels, ModelReasoningLevels: create.Body.ModelReasoningLevels, DefaultModel: create.Body.DefaultModel, DefaultReasoning: create.Body.DefaultReasoning}}
 	if err := update.Validate(nil); err != nil {
 		t.Fatal(err)
 	}

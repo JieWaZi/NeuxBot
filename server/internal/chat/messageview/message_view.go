@@ -59,8 +59,6 @@ type MessageViewBuilder struct {
 	pendingTextIndexes map[string][]int
 	// provisionalTextIndexes 保存工具仍在运行时暂归入过程区的尾部文本下标。
 	provisionalTextIndexes map[string][]int
-	// failureMessages 保存调用事实中可用于补全历史终态的错误说明。
-	failureMessages map[string]string
 }
 
 // ReplayMessages 重放权威日志，构建截至最新序号的消息展示视图。
@@ -102,7 +100,6 @@ func NewMessageViewBuilder() *MessageViewBuilder {
 		textBuilders:           make(map[string]map[string]*strings.Builder),
 		pendingTextIndexes:     make(map[string][]int),
 		provisionalTextIndexes: make(map[string][]int),
-		failureMessages:        make(map[string]string),
 	}
 }
 
@@ -127,10 +124,10 @@ func (p *MessageViewBuilder) Apply(record eventlog.Record) (string, error) {
 		message.ID = record.MessageID
 		if message.Role == constants.MessageRoleAssistant {
 			message.Fork = &MessageFork{ReasonCode: "position_missing"}
-			if inherited.ForkInvocation != nil && inherited.ForkConfiguration != nil {
+			if inherited.ForkBoundary != nil && inherited.ForkConfiguration != nil {
 				p.forkLatestID = record.MessageID
 				p.forkSessionID = ""
-				p.setForkInvocation(&message, *inherited.ForkInvocation)
+				p.setForkBoundary(&message, *inherited.ForkBoundary)
 			}
 		}
 		if !p.publicOnly {
@@ -165,8 +162,6 @@ func (p *MessageViewBuilder) Apply(record eventlog.Record) (string, error) {
 	case constants.ChatEventTypeAssistantMessage,
 		constants.ChatEventTypeToolMessage:
 		return p.applyRuntimeMessage(record)
-	case constants.ChatEventTypeInvocationFinished:
-		return "", p.applyInvocationFinished(record)
 	case constants.ChatEventTypeExecutionCompleted,
 		constants.ChatEventTypeExecutionFailed,
 		constants.ChatEventTypeExecutionCanceled:
@@ -174,21 +169,6 @@ func (p *MessageViewBuilder) Apply(record eventlog.Record) (string, error) {
 	default:
 		return "", nil
 	}
-}
-
-// applyInvocationFinished 保留历史调用事实中的失败原因，供旧终态记录补全展示。
-func (p *MessageViewBuilder) applyInvocationFinished(record eventlog.Record) error {
-	var finished eventlog.InvocationFinishedData
-	if err := json.Unmarshal(record.Data, &finished); err != nil {
-		return status_error.ChatLogError
-	}
-	if index, exists := p.messageIndexes[p.executionMessages[record.ExecutionID]]; exists {
-		p.setForkInvocation(&p.messages[index], finished)
-	}
-	if message := agentapi.RecordedFailureDisplayMessage(finished.FailureMessage); message != "" {
-		p.failureMessages[record.ExecutionID] = message
-	}
-	return nil
 }
 
 // applyApprovalResolved 将安全审批结果附着到对应工具展示部件。
@@ -258,6 +238,8 @@ func (p *MessageViewBuilder) snapshotMessage(message Message, public bool) Messa
 			fork.Available, fork.ReasonCode = false, "team"
 		case message.Status != constants.ExecutionStatusCompleted && message.Status != constants.ExecutionStatusFailed && message.Status != constants.ExecutionStatusCanceled:
 			fork.Available, fork.ReasonCode = false, "unfinished"
+		case fork.LatestOnly && message.ID != p.forkLatestID:
+			fork.Available, fork.ReasonCode = false, "latest_only"
 		case fork.LatestOnly && message.ID == p.forkLatestID:
 			if !message.Inherited && (p.currentForkSessionID == "" || p.currentForkSessionID != p.forkSessionID) {
 				fork.Available, fork.ReasonCode = false, "session_changed"
@@ -498,7 +480,6 @@ func (p *MessageViewBuilder) applyExecutionFinished(record eventlog.Record) (str
 	messageID := p.executionMessages[record.ExecutionID]
 	if index, exists := p.messageIndexes[messageID]; exists {
 		message := &p.messages[index]
-		message.Retryable = finished.Retryable
 		message.ErrorParams = finished.ErrorParams
 		message.ErrorMessageSource = finished.ErrorMessageSource
 		message.LiveRevision = max(message.LiveRevision, finished.MessageRevision)
@@ -511,10 +492,7 @@ func (p *MessageViewBuilder) applyExecutionFinished(record eventlog.Record) (str
 		}
 	}
 	errorMessage := agentapi.RecordedFailureDisplayMessage(finished.ErrorMessage)
-	if errorMessage == "" && finished.ErrorMessageSource == "" {
-		errorMessage = p.failureMessages[record.ExecutionID]
-	}
-	delete(p.failureMessages, record.ExecutionID)
+
 	if p.updateStatus(
 		messageID,
 		finished.Status,
@@ -880,20 +858,20 @@ func cloneMessage(message Message, public bool) Message {
 	return clone
 }
 
-// setForkInvocation 只提取安全操作能力；句柄仅保留在最后回合的私有验证上下文。
-func (p *MessageViewBuilder) setForkInvocation(message *Message, invocation eventlog.InvocationFinishedData) {
+// setForkBoundary 只提取安全操作能力；句柄仅保留在最后回合的私有验证上下文。
+func (p *MessageViewBuilder) setForkBoundary(message *Message, boundary agentapi.NativeForkBoundary) {
 	fork := &MessageFork{ReasonCode: "position_missing"}
 	switch {
-	case invocation.SessionOutputID == "":
+	case boundary.Session.SessionID == "":
 		fork.ReasonCode = "session_missing"
-	case invocation.ForkMode == acpmeta.ForkTurn && invocation.ForkPosition != "":
+	case boundary.Mode == acpmeta.ForkTurn && boundary.Position != "":
 		fork.Available, fork.ReasonCode = true, ""
-	case invocation.ForkMode == acpmeta.ForkLatest:
+	case boundary.Mode == acpmeta.ForkLatest:
 		fork.Available, fork.LatestOnly, fork.ReasonCode = true, true, ""
 	}
 	message.Fork = fork
 	if message.ID == p.forkLatestID {
-		p.forkSessionID = invocation.SessionOutputID
+		p.forkSessionID = boundary.Session.SessionID
 	}
 }
 

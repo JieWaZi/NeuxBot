@@ -21,7 +21,7 @@ func TestNativeManagedProfiles(t *testing.T) {
 			if runtimeID == "grok" {
 				protocol = constants.AccountProtocolOpenAIResponses
 			}
-			spec := Spec{ID: "account-a", Revision: 1, RuntimeID: runtimeID, AuthMode: constants.AccountAuthModeAPIKey, Protocol: protocol, BaseURL: "https://example.test/proxy/v1beta", APIKey: "secret-a", Model: "gemini-2.5-pro", SelectedModels: []string{"gemini-2.5-pro"}}
+			spec := Spec{ID: "account-a", ConfigFingerprint: "configuration-1", RuntimeID: runtimeID, AuthMode: constants.AccountAuthModeAPIKey, Protocol: protocol, BaseURL: "https://example.test/proxy/v1beta", APIKey: "secret-a", Model: "gemini-2.5-pro", SelectedModels: []string{"gemini-2.5-pro"}}
 			env, err := Prepare(workspace, spec)
 			if err != nil {
 				t.Fatal(err)
@@ -80,13 +80,13 @@ func TestNativeManagedProfiles(t *testing.T) {
 			if next[homeKey] == env[homeKey] {
 				t.Fatal("account state reused")
 			}
-			spec.Revision++
+			spec.ConfigFingerprint = "configuration-2"
 			revised, err := Prepare(workspace, spec)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if next[homeKey] == revised[homeKey] {
-				t.Fatal("revision state reused")
+				t.Fatal("configuration state reused")
 			}
 		})
 	}
@@ -116,7 +116,7 @@ func TestGeminiManagedTrustPolicy(t *testing.T) {
 	for _, mode := range []string{"denied", "denied-root", "denied-parent-alias", "symlink", "null"} {
 		t.Run(mode, func(t *testing.T) {
 			workspace := t.TempDir()
-			spec := Spec{ID: "account", Revision: 1, RuntimeID: "gemini", AuthMode: constants.AccountAuthModeAPIKey, Protocol: constants.AccountProtocolGoogleGenerativeAI, BaseURL: constants.AIAccountGoogleURL, APIKey: "key", Model: "gemini-3.8-flash", SelectedModels: []string{"gemini-3.8-flash"}}
+			spec := Spec{ID: "account", ConfigFingerprint: "configuration-1", RuntimeID: "gemini", AuthMode: constants.AccountAuthModeAPIKey, Protocol: constants.AccountProtocolGoogleGenerativeAI, BaseURL: constants.AIAccountGoogleURL, APIKey: "key", Model: "gemini-3.8-flash", SelectedModels: []string{"gemini-3.8-flash"}}
 			env, err := Prepare(workspace, spec)
 			if err != nil {
 				t.Fatal(err)
@@ -162,7 +162,7 @@ func TestGeminiManagedTrustPolicy(t *testing.T) {
 // TestGrokManagedCredentialContract 验证可被原生 TOML 解析的模型、协议及目录认证绑定，拒绝未实现的 Messages。
 func TestGrokManagedCredentialContract(t *testing.T) {
 	for _, protocol := range []constants.AccountProtocol{constants.AccountProtocolOpenAIResponses, constants.AccountProtocolOpenAICompletions} {
-		spec := Spec{ID: "account", Revision: 1, RuntimeID: constants.RuntimeIDGrok, AuthMode: constants.AccountAuthModeAPIKey, Protocol: protocol, BaseURL: "https://proxy.example/v1", APIKey: "third-party-key", Model: "org/model", SelectedModels: []string{"org/model"}, ModelReasoningLevels: map[string][]string{"org/model": {"provider-fast"}}}
+		spec := Spec{ID: "account", ConfigFingerprint: "configuration-1", RuntimeID: constants.RuntimeIDGrok, AuthMode: constants.AccountAuthModeAPIKey, Protocol: protocol, BaseURL: "https://proxy.example/v1", APIKey: "third-party-key", Model: "org/model", SelectedModels: []string{"org/model"}, ModelReasoningLevels: map[string][]string{"org/model": {"provider-fast"}}}
 		env, err := Prepare(t.TempDir(), spec)
 		if err != nil {
 			t.Fatal(err)

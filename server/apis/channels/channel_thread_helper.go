@@ -19,6 +19,7 @@ func memberExecutionConfigInputs(members []ChannelMemberInput) []channel.MemberE
 			AccountID:       member.AccountID,
 			Model:           member.Model,
 			Reasoning:       member.Reasoning,
+			Fast:            member.Fast,
 			PermissionLevel: member.PermissionLevel,
 		})
 	}

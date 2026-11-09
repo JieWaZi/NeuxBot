@@ -9,8 +9,6 @@ var Router = ginx.NewRouter(ginx.Group("/ai-accounts"))
 func init() {
 	Router.Register(&ListAIAccounts{})
 	Router.Register(&RefreshAIAccountModels{})
-	Router.Register(&GetAIAccountThinking{})
-	Router.Register(&GetAIAccountNativeModels{})
 	Router.Register(&GetAIAccountCredential{})
 	Router.Register(&LogoutAIAccount{})
 	Router.Register(&PreviewAIAccountModels{})

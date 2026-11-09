@@ -505,9 +505,9 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 	if err != nil {
 		t.Fatalf("read normalized Codex environment: %v", err)
 	}
-	if codex.DefaultModel != "gpt-stable" || codex.DefaultReasoning != "high" {
+	if codex.DefaultModel != "stale-model" || codex.DefaultReasoning != "high" {
 		t.Fatalf(
-			"Codex defaults = %q/%q, want gpt-stable/high",
+			"Codex defaults = %q/%q, want saved stale-model/high",
 			codex.DefaultModel,
 			codex.DefaultReasoning,
 		)
@@ -541,7 +541,7 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 	}
 }
 
-func TestRefreshDowngradesUnsupportedDefaultPermission(t *testing.T) {
+func TestRefreshPreservesConfiguredPermissionWhenCatalogChanges(t *testing.T) {
 	catalog, environments, serviceValue := newRuntimeEnvironmentTestService(t)
 	if _, err := serviceValue.EnsureInitialized(context.Background()); err != nil {
 		t.Fatalf("EnsureInitialized() error = %v", err)
@@ -564,16 +564,16 @@ func TestRefreshDowngradesUnsupportedDefaultPermission(t *testing.T) {
 		t.Fatal("expected persisted runtime environments")
 	}
 	for _, environment := range listed {
-		if environment.DefaultPermissionLevel != agentapi.PermissionLevelAuto {
+		if environment.DefaultPermissionLevel != agentapi.PermissionLevelFullAccess {
 			t.Fatalf(
-				"%s default permission = %q, want auto",
+				"%s default permission = %q, want saved full-access",
 				environment.RuntimeID,
 				environment.DefaultPermissionLevel,
 			)
 		}
-		if !hasPermissionDefaultDowngraded(environment.Detection.Diagnostics) {
+		if hasPermissionDefaultDowngraded(environment.Detection.Diagnostics) {
 			t.Fatalf(
-				"%s diagnostics = %#v, want PERMISSION_DEFAULT_DOWNGRADED",
+				"%s diagnostics = %#v, did not want a permission downgrade diagnostic",
 				environment.RuntimeID,
 				environment.Detection.Diagnostics,
 			)
@@ -661,7 +661,7 @@ func newRuntimeEnvironmentTestService(t *testing.T) (
 
 func hasPermissionDefaultDowngraded(diagnostics []agentapi.Diagnostic) bool {
 	for _, diagnostic := range diagnostics {
-		if diagnostic.Code == agentapi.DiagnosticCodePermissionDefaultDowngraded {
+		if diagnostic.Code == "PERMISSION_DEFAULT_DOWNGRADED" {
 			return true
 		}
 	}
@@ -904,5 +904,66 @@ func TestDetectionWithoutProviderPreservesInstallation(t *testing.T) {
 	}
 	if catalog.detectionCount() != 0 {
 		t.Fatal("detection fell back to the legacy catalog")
+	}
+}
+
+// TestRefreshPreservesSelectedRuntimeAcrossProbeFailure 验证失败快照不会替换默认智能体或改写用户配置。
+func TestRefreshPreservesSelectedRuntimeAcrossProbeFailure(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		t.Run(map[bool]string{true: "已启用", false: "已禁用"}[enabled], func(t *testing.T) {
+			base, repo, api := newRuntimeEnvironmentTestService(t)
+			svc := api.(*service)
+			ctx := context.Background()
+			if err := svc.RefreshAll(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if err := repo.ClearDefault(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if err := repo.UpdateFields(ctx, agentapi.RuntimeIDCodex, map[string]any{
+				"is_default": true, "enabled": enabled, "default_model": "saved-model", "default_reasoning": "saved-thinking", "default_permission_level": agentapi.PermissionLevelFullAccess,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			catalog := &controlledRuntimeCatalog{countingRuntimeCatalog: base, executableMissing: true}
+			svc.runtimeCatalog, svc.probeProvider = catalog, catalog.probe
+			if err := svc.RefreshOne(ctx, agentapi.RuntimeIDCodex); err != nil {
+				t.Fatal(err)
+			}
+			selected, err := repo.Get(ctx, agentapi.RuntimeIDCodex)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !selected.IsDefault || selected.Enabled != enabled || selected.DefaultModel != "saved-model" || selected.DefaultReasoning != "saved-thinking" || selected.DefaultPermissionLevel != agentapi.PermissionLevelFullAccess {
+				t.Fatalf("probe changed saved selection: %+v", selected)
+			}
+			if selected.Detection.State != agentapi.DetectionStateUnavailable {
+				t.Fatalf("probe diagnostic was lost: %+v", selected.Detection)
+			}
+		})
+	}
+}
+
+// TestStartupKeepsSavedSelectionWithoutProbeEvidence 验证旧失败快照不使已有默认选择重新进入引导。
+func TestStartupKeepsSavedSelectionWithoutProbeEvidence(t *testing.T) {
+	base, repo, api := newRuntimeEnvironmentTestService(t)
+	svc := api.(*service)
+	ctx := context.Background()
+	if _, err := svc.EnsureInitialized(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpdateFields(ctx, agentapi.RuntimeIDCodex, map[string]any{"is_default": true}); err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	catalog := &controlledRuntimeCatalog{countingRuntimeCatalog: base, release: release}
+	svc.runtimeCatalog, svc.probeProvider = catalog, catalog.probe
+	if err := svc.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+	defer close(release)
+	if _, _, required := svc.StartupDetection(); required {
+		t.Fatal("saved default was blocked by missing probe evidence")
 	}
 }

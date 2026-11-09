@@ -34,7 +34,7 @@ import (
 
 func TestNativeTurnPromptPreservesBusinessReferences(t *testing.T) {
 	turn := nativePromptFixture()
-	text := nativeTurnPrompt(turn)
+	text := turn.prompt()
 	for _, want := range []string{"review this", "report.csv", "/tmp/report.csv", "main.go", "return 42", "search-guide", "docs-mcp"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("prompt lost %q: %s", want, text)
@@ -73,14 +73,13 @@ func TestNativeTurnFailurePreservesAPIMeaning(t *testing.T) {
 	}
 }
 
-func nativePromptFixture() agent.TurnInput {
-	return agent.TurnInput{
+func nativePromptFixture() recordedRun {
+	return recordedRun{
 		Message: agent.Message{
 			Text:           "review this",
 			Attachments:    []agent.Attachment{{Name: "report.csv", Path: "artifacts/report.csv", RuntimePath: "/tmp/report.csv"}},
 			CodeReferences: []agent.CodeReference{{Path: "main.go", StartLine: 2, EndLine: 2, Content: "return 42"}},
 		},
-		History:        []agent.HistoryMessage{{Role: "assistant", Content: "previous answer"}},
 		SelectedSkills: []string{"search-guide"}, SelectedConnectors: []string{"docs-mcp"},
 	}
 }
@@ -92,6 +91,10 @@ type nativeProductFixture struct {
 	trace string
 	// accounts 记录原生连接获取账号租约的次数。
 	accounts *atomic.Int32
+	// failAccountAcquire 指定冷账号获取失败的租约序号，零表示正常获取。
+	failAccountAcquire *atomic.Int32
+	// failAccountClose 指定清理失败的真实账号租约序号，零表示正常释放。
+	failAccountClose *atomic.Int32
 	// usage 提供从原生终态重建用量查询的 SQLite 投影。
 	usage *controllers.UsageController
 	// open 重新装配独立的 Core、Thread、Provider 和 ConversationStore。
@@ -164,6 +167,8 @@ func newNativeProductFixture(t *testing.T, ctx context.Context, providerID, chil
 		environment.entry.DefaultFast = nil
 	}
 	accounts := new(atomic.Int32)
+	failAccountClose := new(atomic.Int32)
+	failAccountAcquire := new(atomic.Int32)
 	open := func() (Core, chatservice.Module, *conversation.Store, func()) {
 		t.Helper()
 		store, err := conversation.NewStore(root)
@@ -175,17 +180,25 @@ func newNativeProductFixture(t *testing.T, ctx context.Context, providerID, chil
 				if account.Provider != providerID || account.Subject != "fixture-subject" {
 					return agent.AccountLease{}, status_error.AIAccountConfigurationInvalid
 				}
-				accounts.Add(1)
+				leaseNumber := accounts.Add(1)
+				if failAccountAcquire.Load() == leaseNumber {
+					return agent.AccountLease{}, status_error.RuntimeUnavailable
+				}
 				if providerID == constants.RuntimeIDPi {
 					return agent.AccountLease{Environment: map[string]string{"PI_CODING_AGENT_DIR": filepath.Join(root, "pi-fixture-account")}}, nil
 				}
 
-				return agent.AccountLease{}, nil
+				return agent.AccountLease{DataHome: account.DataHome, Close: func(context.Context) error {
+					if failAccountClose.Load() == leaseNumber {
+						return status_error.RuntimeUnavailable
+					}
+					return nil
+				}}, nil
 			},
 		})
 		threads := agent.NewThreadLifecycle(provider, store)
 		chats, err := chatservice.New(chatservice.Config{Conversations: store, StorageDirectory: root, Projects: projects,
-			QueryIndexes: chatservice.QueryIndexDependencies{Chats: controllers.NewChatController(db), RuntimeSessions: controllers.NewRuntimeSessionController(db),
+			QueryIndexes: chatservice.QueryIndexDependencies{Chats: controllers.NewChatController(db),
 				Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(db)), DeletionIntents: controllers.NewChatDeletionIntentController(db)},
 		})
 		if err != nil {
@@ -196,6 +209,7 @@ func newNativeProductFixture(t *testing.T, ctx context.Context, providerID, chil
 		}
 		core, err := New(Config{Threads: threads, ResolveAccount: func(_ context.Context, request agent.AccountRequest, _ string) (agent.AccountRequest, error) {
 			request.Subject = "fixture-subject"
+			request.DataHome = os.Getenv("NEUX_EXECUTION_FIXTURE_ACCOUNT_HOME")
 			return request, nil
 		}, Journal: chats, DormantChats: chats, Wakers: wakers, Profiles: profiles, Projects: projects, RuntimeSummaries: []agent.RuntimeSummary{summary},
 			RuntimeEnvironments: environment, SkillDataDirectory: root, StorageDirectory: root})
@@ -217,7 +231,7 @@ func newNativeProductFixture(t *testing.T, ctx context.Context, providerID, chil
 			store.Close()
 		}
 	}
-	return nativeProductFixture{root: root, trace: trace, accounts: accounts, usage: controllers.NewUsageController(db), open: open}
+	return nativeProductFixture{root: root, trace: trace, accounts: accounts, failAccountClose: failAccountClose, failAccountAcquire: failAccountAcquire, usage: controllers.NewUsageController(db), open: open}
 }
 
 func TestNativeProductDurationStartsBeforePreparation(t *testing.T) {
@@ -795,6 +809,12 @@ func TestNativeExecutionCodexChild(t *testing.T) {
 			ack(map[string]any{"config": map[string]any{}})
 		case "skills/list", "skills/extraRoots/set":
 			ack(map[string]any{})
+		case "thread/fork":
+			if os.Getenv("NEUX_EXECUTION_FIXTURE_FORK_UNCERTAIN") == "1" {
+				continue
+			}
+			thread = fmt.Sprintf("fixture-fork-%d", os.Getpid())
+			ack(map[string]any{"thread": map[string]any{"id": thread}, "model": "fixture-model"})
 		case "thread/start", "thread/resume":
 			params, _ := frame["params"].(map[string]any)
 			thread, _ = params["threadId"].(string)
@@ -1079,8 +1099,8 @@ func serveNativeExecutionCursor(out *json.Encoder, read func() (map[string]any, 
 }
 
 func TestNativeThreadReceivesInstructionsWithoutWorkspaceFiles(t *testing.T) {
-	plan := agent.SessionPlan{Instructions: []agent.Instruction{{Name: "PARTNER.md", Content: "partner rule"}, {Name: "TEAM.md", Content: "team rule"}}, Workspace: agent.Workspace{Path: t.TempDir(), Managed: true}}
-	thread := nativeThreadRequest("chat", plan, pendingMessage{}, models.RuntimeEnvironment{}, agent.ResourceSelection{}, "key")
+	plan := recordedRun{Instructions: []agent.Instruction{{Name: "PARTNER.md", Content: "partner rule"}, {Name: "TEAM.md", Content: "team rule"}}, Workspace: agent.Workspace{Path: t.TempDir(), Managed: true}}
+	thread := nativeThreadRequest("chat", plan.Workspace, plan.Instructions, pendingMessage{}, models.RuntimeEnvironment{}, agent.ResourceSelection{}, "key")
 	if thread.Session.DeveloperInstructions == nil || !strings.Contains(*thread.Session.DeveloperInstructions, "partner rule") || !strings.Contains(*thread.Session.DeveloperInstructions, "team rule") {
 		t.Fatalf("native session lost stable instructions: %+v", thread.Session)
 	}
@@ -1178,6 +1198,72 @@ func TestNativeProductAcquiresReservedPluginSkills(t *testing.T) {
 		return
 	}
 	t.Fatal("missing native thread startup receipt")
+}
+
+func TestNativeProductMCPDisplayRenameKeepsCodexSession(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 12*time.Second)
+	defer cancel()
+	fixture := newNativeProductFixture(t, ctx, "codex", "TestNativeExecutionCodexChild", constants.PermissionLevelAuto)
+	core, _, store, closeRuntime := fixture.open()
+	defer closeRuntime()
+	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "connectors.db"), Migrate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := database.DB.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	connectors := controllers.NewMCPConnectorController(database.DB)
+	connector := models.MCPConnector{ID: "stable-connector", Name: "Original display", RuntimeKey: "stable_native_key", Scope: constants.MCPConnectorScopeBuiltIn, Transport: constants.MCPTransportStreamableHTTP, URL: "https://example.invalid/mcp", TimeoutMS: 10000}
+	if err := connectors.Create(ctx, connector); err != nil {
+		t.Fatal(err)
+	}
+	fallback := connector
+	fallback.ID, fallback.Name, fallback.RuntimeKey = "fallback-connector", "original_fallback", ""
+	if err := connectors.Create(ctx, fallback); err != nil {
+		t.Fatal(err)
+	}
+	manager := core.(*service)
+	manager.connectorController = connectors
+	environment := manager.runtimeEnvironments.(nativeFixtureEnvironment)
+	environment.entry.Detection.Capabilities = agent.CapabilitySet{agent.CapabilityMCPStreamableHTTP: true}
+	manager.runtimeEnvironments = environment
+	options := WorkOptions{RuntimeID: "codex", Model: "fixture-model", Reasoning: "high", PermissionLevel: constants.PermissionLevelAuto}
+	start := func(target ChatTarget, requestID, text string) (agent.NativeSessionKey, string) {
+		t.Helper()
+		accepted, err := core.Start(ctx, WorkIntent{ClientRequestID: requestID, Chat: target, Input: WorkInput{Actor: "user", Content: text}, Options: options})
+		if err != nil {
+			t.Fatal(err)
+		}
+		waitNativeProductStatus(t, ctx, store, accepted, constants.ExecutionStatusCompleted)
+		if err := core.CancelExecutionAndWait(ctx, accepted.Chat.ID, accepted.Execution.ID); err != nil {
+			t.Fatal(err)
+		}
+		input, consumed, err := store.ReadHostInputConsumption(ctx, agent.HostInputRef{ChatID: accepted.Chat.ID, HostInvocationID: accepted.Execution.ID})
+		if err != nil || consumed == nil || input.Session.SessionID == "" {
+			t.Fatalf("missing real native consumption: %+v %+v %v", input, consumed, err)
+		}
+		return input.Session, accepted.Chat.ID
+	}
+	first, chatID := start(ChatTarget{Create: &CreateChatSpec{WakerID: "native-waker"}}, "connector-rename", "before-display-rename")
+	connector.Name = "Renamed display"
+	if err := connectors.Update(ctx, connector); err != nil {
+		t.Fatal(err)
+	}
+	second, _ := start(ChatTarget{ChatID: chatID}, "", "after-display-rename")
+	if second.SessionID != first.SessionID || fixture.accounts.Load() != 1 {
+		t.Fatalf("display rename replaced native session: first=%+v second=%+v account acquisitions=%d", first, second, fixture.accounts.Load())
+	}
+	fallback.Name = "renamed_fallback"
+	if err := connectors.Update(ctx, fallback); err != nil {
+		t.Fatal(err)
+	}
+	third, _ := start(ChatTarget{ChatID: chatID}, "", "after-actual-native-name-change")
+	if third.SessionID == second.SessionID || fixture.accounts.Load() != 2 {
+		t.Fatalf("actual fallback native name change reused the old session: second=%+v third=%+v account acquisitions=%d", second, third, fixture.accounts.Load())
+	}
 }
 
 // nativeFixtureBusinessText 只按明确宿主上下文边界分离业务正文，不按短句猜测。

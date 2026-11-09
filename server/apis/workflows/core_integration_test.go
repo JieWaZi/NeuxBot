@@ -180,7 +180,7 @@ func openCoreWorkflowPorts(t *testing.T, directory string, runtime workflowFixtu
 	if err != nil {
 		t.Fatal(err)
 	}
-	chats, err := chatservice.New(chatservice.Config{StorageDirectory: directory, Conversations: conversations, Projects: projects, QueryIndexes: chatservice.QueryIndexDependencies{Chats: controllers.NewChatController(database.DB), RuntimeSessions: controllers.NewRuntimeSessionController(database.DB), DeletionIntents: controllers.NewChatDeletionIntentController(database.DB), Transactions: transactions}})
+	chats, err := chatservice.New(chatservice.Config{StorageDirectory: directory, Conversations: conversations, Projects: projects, QueryIndexes: chatservice.QueryIndexDependencies{Chats: controllers.NewChatController(database.DB), DeletionIntents: controllers.NewChatDeletionIntentController(database.DB), Transactions: transactions}})
 	if err != nil {
 		t.Fatal(err)
 	}

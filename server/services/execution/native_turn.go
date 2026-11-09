@@ -29,13 +29,13 @@ import (
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
 
-// nativeResourceProjection is the public description of resources actually owned by one connection.
+// nativeResourceProjection 记录现有连接实际持有的交付资源。
 type nativeResourceProjection struct {
-	// plugins identifies delivered plugin versions.
+	// plugins 记录实际交付的插件版本。
 	plugins []plugins.Snapshot
-	// connectors identifies the materialized connector set.
+	// connectors 记录实际物化的连接器集合。
 	connectors []agent.Connector
-	// updateUsage assigns or clears the current admitted execution on shared plugin leases.
+	// updateUsage 设置或清除共享插件租约当前接纳的执行用途。
 	updateUsage func(...authorization.Usage)
 }
 
@@ -49,7 +49,7 @@ func nativeProvider(environment models.RuntimeEnvironment) string {
 	return environment.RuntimeID
 }
 
-func nativeThreadRequest(chatID string, plan agent.SessionPlan, request pendingMessage, environment models.RuntimeEnvironment, resources agent.ResourceSelection, key string) agent.ThreadRequest {
+func nativeThreadRequest(chatID string, workspace agent.Workspace, instructions []agent.Instruction, request pendingMessage, environment models.RuntimeEnvironment, resources agent.ResourceSelection, key string) agent.ThreadRequest {
 	accountID := request.runtime.AccountID
 	if accountID == "" {
 		accountID = agent.SystemAccountID
@@ -65,26 +65,26 @@ func nativeThreadRequest(chatID string, plan agent.SessionPlan, request pendingM
 		}
 	}
 	mode := "agent"
-	if plan.Policy.Execution.WorkspaceReadOnly || plan.Policy.Execution.PermissionLevel == constants.PermissionLevelDefault {
+	if request.runtime.WorkspaceReadOnly || request.runtime.PermissionLevel == constants.PermissionLevelDefault {
 		mode = "read-only"
-	} else if plan.Policy.Execution.PermissionLevel == constants.PermissionLevelFullAccess {
+	} else if request.runtime.PermissionLevel == constants.PermissionLevelFullAccess {
 		mode = "agent-full-access"
 	}
 	digest := sha256.Sum256([]byte(key))
 	// A workspace already supplied as cwd is not an additional native capability.
-	additional := make([]string, 0, len(plan.Workspace.AdditionalWritableDirectories))
-	for _, directory := range plan.Workspace.AdditionalWritableDirectories {
-		if filepath.Clean(directory) != filepath.Clean(plan.Workspace.Path) {
+	additional := make([]string, 0, len(workspace.AdditionalWritableDirectories))
+	for _, directory := range workspace.AdditionalWritableDirectories {
+		if filepath.Clean(directory) != filepath.Clean(workspace.Path) {
 			additional = append(additional, directory)
 		}
 	}
-	if supported, known := agent.AdditionalDirectorySupport(plan.Detection); known && !supported {
+	if supported, known := agent.AdditionalDirectorySupport(environment.Detection); known && !supported {
 		additional = nil
 	}
 	thread := agent.ThreadRequest{
 		ChatID: chatID,
 		Connection: agent.ProviderConnectionRequest{
-			Account: agent.AccountRequest{Executable: executable, PrefixArgs: environment.PrefixArgs, Provider: nativeProvider(environment), AccountID: accountID, CWD: plan.Workspace.Path, Model: plan.Policy.Model},
+			Account: agent.AccountRequest{Executable: executable, PrefixArgs: environment.PrefixArgs, Provider: nativeProvider(environment), AccountID: accountID, CWD: workspace.Path, Model: request.runtime.Model},
 			Launch: agent.ProviderLaunch{
 				Executable: executable, PrefixArgs: environment.PrefixArgs, ConfigHome: environment.ConfigHome, BaseEnvironment: env,
 				CodexConfig: map[string]json.RawMessage{
@@ -99,17 +99,17 @@ func nativeThreadRequest(chatID string, plan agent.SessionPlan, request pendingM
 		Summarize:    request.runtime.HistoryMode == constants.HistoryModeSummary,
 		HistoryTurns: request.runtime.HistoryTurns,
 	}
-	thread.Selection = &agent.TurnSelection{Reasoning: plan.Policy.Reasoning, Fast: request.runtime.Fast, ContextWindow: request.runtime.ContextWindow}
+	thread.Selection = &agent.TurnSelection{Reasoning: request.runtime.Reasoning, Fast: request.runtime.Fast, ContextWindow: request.runtime.ContextWindow}
 	if !request.runtime.ConfigurationResolved {
 		thread.Selection.DefaultFast = environment.DefaultFast
 	}
 	switch thread.Connection.Account.Provider {
 	case constants.RuntimeIDClaude, constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder, constants.RuntimeIDQoderCN:
 		thread.Mode = "default"
-		if plan.Policy.Execution.PermissionLevel == constants.PermissionLevelAuto {
+		if request.runtime.PermissionLevel == constants.PermissionLevelAuto {
 			thread.Mode = "auto"
 		}
-		if plan.Policy.Execution.PermissionLevel == constants.PermissionLevelFullAccess {
+		if request.runtime.PermissionLevel == constants.PermissionLevelFullAccess {
 			thread.Mode = "bypassPermissions"
 			if thread.Connection.Account.Provider == constants.RuntimeIDQoder || thread.Connection.Account.Provider == constants.RuntimeIDQoderCN {
 				thread.Mode = "yolo"
@@ -119,24 +119,24 @@ func nativeThreadRequest(chatID string, plan agent.SessionPlan, request pendingM
 		// Cursor's ACP policy is process-scoped; it is not a session task mode.
 		thread.Mode = ""
 		thread.Connection.Launch.CursorPermissionMode = "default"
-		if plan.Policy.Execution.PermissionLevel == constants.PermissionLevelAuto {
+		if request.runtime.PermissionLevel == constants.PermissionLevelAuto {
 			thread.Connection.Launch.CursorPermissionMode = "auto"
 		}
-		if plan.Policy.Execution.PermissionLevel == constants.PermissionLevelFullAccess {
+		if request.runtime.PermissionLevel == constants.PermissionLevelFullAccess {
 			thread.Connection.Launch.CursorPermissionMode = "full-access"
 		}
 	case constants.RuntimeIDKimi, constants.RuntimeIDGemini, constants.RuntimeIDGrok, constants.RuntimeIDOpenCode, constants.RuntimeIDPi:
 		thread.Mode = ""
-		thread.Connection.Launch.ProcessPermissionMode = string(plan.Policy.Execution.PermissionLevel)
+		thread.Connection.Launch.ProcessPermissionMode = string(request.runtime.PermissionLevel)
 	}
 	provider := thread.Connection.Account.Provider
 	if accountID != agent.SystemAccountID && (provider == constants.RuntimeIDOpenCode || provider == constants.RuntimeIDPi) {
 		// The native provider namespace is transport detail; account validation and
 		// public choices continue to use the user's configured model IDs.
-		thread.Connection.Account.Model = accountconfig.NativeModelID(provider, plan.Policy.Model)
+		thread.Connection.Account.Model = accountconfig.NativeModelID(provider, request.runtime.Model)
 	}
 
-	if instructions := agent.DeveloperInstructions(plan); instructions != "" {
+	if instructions := agent.DeveloperInstructions(instructions); instructions != "" {
 		thread.Session.DeveloperInstructions = &instructions
 	}
 	return thread
@@ -165,27 +165,27 @@ func nativeUsageSource(input pendingMessage, state messageChat) string {
 }
 
 // nativeTurnPrompt projects only the current business input. Thread owns any handoff prefix.
-func nativeTurnPrompt(turn agent.TurnInput) string {
+func nativeTurnPrompt(message agent.Message, contextInstructions []agent.Instruction, selectedSkills, selectedConnectors []string) string {
 	var prompt strings.Builder
-	prompt.WriteString(turn.Message.Text)
-	for _, attachment := range turn.Message.Attachments {
+	prompt.WriteString(message.Text)
+	for _, attachment := range message.Attachments {
 		fmt.Fprintf(&prompt, "\n\nAttachment %q is available at %q.", attachment.Name, attachment.RuntimePath)
 	}
-	for _, reference := range turn.Message.CodeReferences {
+	for _, reference := range message.CodeReferences {
 		if reference.StartLine == 0 {
 			fmt.Fprintf(&prompt, "\n\nReferenced file %q.", reference.Path)
 		} else {
 			fmt.Fprintf(&prompt, "\n\nReferenced lines %d-%d of %q:\n%s", reference.StartLine, reference.EndLine, reference.Path, reference.Content)
 		}
 	}
-	if len(turn.SelectedSkills) > 0 {
-		fmt.Fprintf(&prompt, "\n\nSelected skills: %s.", strings.Join(turn.SelectedSkills, ", "))
+	if len(selectedSkills) > 0 {
+		fmt.Fprintf(&prompt, "\n\nSelected skills: %s.", strings.Join(selectedSkills, ", "))
 	}
-	if len(turn.SelectedConnectors) > 0 {
-		fmt.Fprintf(&prompt, "\n\nSelected connectors: %s.", strings.Join(turn.SelectedConnectors, ", "))
+	if len(selectedConnectors) > 0 {
+		fmt.Fprintf(&prompt, "\n\nSelected connectors: %s.", strings.Join(selectedConnectors, ", "))
 	}
-	if len(turn.ContextInstructions) > 0 {
-		encoded, _ := json.Marshal(turn.ContextInstructions)
+	if len(contextInstructions) > 0 {
+		encoded, _ := json.Marshal(contextInstructions)
 		prompt.WriteString("\n\n<neuxbot-turn-context>\n")
 		prompt.Write(encoded)
 		prompt.WriteString("\n</neuxbot-turn-context>")
@@ -194,13 +194,13 @@ func nativeTurnPrompt(turn agent.TurnInput) string {
 }
 
 // nativeTurnInput includes bounded native image data when the detected runtime advertises support.
-func nativeTurnInput(id string, input agent.TurnInput, detection agent.DetectionResult) (agent.TurnRequest, error) {
-	request := agent.TurnRequest{HostInvocationID: id, ExecutionID: id, AssistantMessageID: id, Text: nativeTurnPrompt(input)}
+func nativeTurnInput(id string, message agent.Message, contextInstructions []agent.Instruction, selectedSkills, selectedConnectors []string, detection agent.DetectionResult) (agent.TurnRequest, error) {
+	request := agent.TurnRequest{HostInvocationID: id, ExecutionID: id, AssistantMessageID: id, Text: nativeTurnPrompt(message, contextInstructions, selectedSkills, selectedConnectors)}
 	if !detection.Capabilities[agent.CapabilityImagePath] {
 		return request, nil
 	}
 	const attachmentLimit = 20 << 20
-	for _, attachment := range input.Message.Attachments {
+	for _, attachment := range message.Attachments {
 		if !strings.HasPrefix(attachment.MediaType, "image/") {
 			continue
 		}
@@ -233,11 +233,14 @@ func (m *service) startNativeExecution(
 		return AcceptedExecution{}, status_error.RuntimeUnavailable
 	}
 
-	plan, input := m.buildSessionPlan(state, request, files, enabledSkills, enabledConnectors, environment)
-	plan.Target.AccountID = request.runtime.AccountID
-	input.Message.Text += pluginSelectionHint(frozen.selected)
-	activate, revoke, err := m.prepareAgent(&plan, &input,
-		state.chat, executionID, request.toolCapabilities, request.allowedAgentDomains, files.referencedFiles, request.automaticRunID)
+	workspace := nativeWorkspace(state, request, files)
+	skills := m.nativeSkills(enabledSkills)
+	connectors := runtimeConnectorDeclarations(enabledConnectors)
+	contextInstructions := nativeContextInstructions(request, files)
+	message := nativeMessage(request, files)
+	message.Text += pluginSelectionHint(frozen.selected)
+	instructions := nativeInstructions(request, files)
+	activate, revoke, err := m.prepareAgent(environment, workspace, &skills, &instructions, &connectors, &contextInstructions, state.chat, executionID, request, files.referencedFiles)
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
@@ -253,7 +256,7 @@ func (m *service) startNativeExecution(
 	for _, item := range frozen.declarations {
 		selection.Plugins[item.ID] = item.VersionID
 	}
-	for _, connector := range plan.Connectors {
+	for _, connector := range connectors {
 		selection.ConnectorIDs = append(selection.ConnectorIDs, connector.ID)
 	}
 	slices.Sort(selection.ConnectorIDs)
@@ -261,21 +264,21 @@ func (m *service) startNativeExecution(
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
-	selectedSkills, err := mergePluginSkills(plan.Skills, pluginSkills)
+	selectedSkills, err := mergePluginSkills(skills, pluginSkills)
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
-	selection.Skills, err = agent.FreezeSkills(plan.Detection, plan.Workspace, selectedSkills, selection.Plugins)
+	selection.Skills, err = agent.FreezeSkills(environment.Detection, workspace, selectedSkills, selection.Plugins)
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
 
-	metadata, err := json.Marshal([]any{plan.Instructions, plan.Skills, plan.Connectors, plan.Workspace})
+	metadata, err := json.Marshal([]any{instructions, skills, connectors, workspace})
 	if err != nil {
 		return AcceptedExecution{}, status_error.RuntimeConfigurationInvalid
 	}
 	key := sessionResourceKey(frozen.key, string(metadata), enabledConnectors)
-	thread := nativeThreadRequest(state.chat.ID, plan, request, environment, selection, key)
+	thread := nativeThreadRequest(state.chat.ID, workspace, instructions, request, environment, selection, key)
 	thread.Connection.Account, err = m.resolveAccount(ctx, thread.Connection.Account, thread.Connection.Launch.ConfigHome)
 	if err != nil {
 		return AcceptedExecution{}, err
@@ -292,9 +295,9 @@ func (m *service) startNativeExecution(
 	}
 	ports := work.ports(m)
 	ports.AcquireResources = func(ctx context.Context, selection agent.ResourceSelection) (agent.ResourceLease, error) {
-		return m.acquireNativeResources(ctx, state.chat.ID, plan, enabledConnectors, frozen, selection)
+		return m.acquireNativeResources(ctx, state.chat.ID, state.chat.WakerID, workspace, environment.Detection, skills, connectors, enabledConnectors, frozen, selection)
 	}
-	nativeInput, err := nativeTurnInput(executionID, input, environment.Detection)
+	nativeInput, err := nativeTurnInput(executionID, message, contextInstructions, selectedSkillNames(request, enabledSkills), request.message.ConnectorIDs, environment.Detection)
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
@@ -361,10 +364,10 @@ func (m *service) startNativeExecution(
 }
 
 func (m *service) acquireNativeResources(
-	ctx context.Context, chatID string, plan agent.SessionPlan,
+	ctx context.Context, chatID, wakerID string, workspace agent.Workspace, detection agent.DetectionResult, skills []agent.Skill, connectors []agent.ConnectorDeclaration,
 	baseConnectors []models.MCPConnector, frozen frozenPluginResources, selection agent.ResourceSelection,
 ) (agent.ResourceLease, error) {
-	materialized, err := m.acquirePluginResources(ctx, frozen, false)
+	materialized, err := m.acquirePluginResources(ctx, frozen)
 	projection := &nativeResourceProjection{}
 	lease := agent.ResourceLease{Close: func(context.Context) error {
 		m.nativeResources.CompareAndDelete(chatID, projection)
@@ -378,22 +381,25 @@ func (m *service) acquireNativeResources(
 	}
 	projection.plugins = materialized.snapshots
 	projection.updateUsage = materialized.updateUsage
-	plan.Skills, err = mergePluginSkills(plan.Skills, materialized.skills)
+	skills, err = mergePluginSkills(skills, materialized.skills)
 	if err != nil {
 		return lease, err
 	}
 
 	// 实际插件租约取得后再次确认精确内容；ProviderRuntime 持有目标预约并负责发布。
-	lease.Skills, err = agent.FreezeSkills(plan.Detection, plan.Workspace, plan.Skills, selection.Plugins)
+	lease.Skills, err = agent.FreezeSkills(detection, workspace, skills, selection.Plugins)
 	if err != nil {
 		return lease, err
 	}
-	if !agent.SameSkills(selection.Skills, lease.Skills) {
-		return lease, status_error.SkillContentInvalid
-	}
 
+	if m.connectorController != nil && len(baseConnectors) > 0 {
+		baseConnectors, err = m.connectorController.AcquireEnabled(ctx, wakerID, baseConnectors)
+		if err != nil {
+			return lease, err
+		}
+	}
 	projection.connectors = runtimeConnectorResources(append(slices.Clone(baseConnectors), materialized.connectors...))
-	for _, declaration := range plan.Connectors {
+	for _, declaration := range connectors {
 		if declaration.ID == "neuxbot-internal-capabilities" {
 			projection.connectors = append(projection.connectors, agent.Connector{ID: declaration.ID, Name: declaration.Name,
 				RuntimeKey: declaration.RuntimeKey, Transport: declaration.Transport, Command: declaration.Command, Arguments: declaration.Arguments})

@@ -52,9 +52,9 @@ func TestRuntimeOptionIncludesDetectedModelReasoningOptions(t *testing.T) {
 			want,
 		)
 	}
-	if option.DefaultModel != "gpt-stable" || option.DefaultReasoning != "high" {
+	if option.DefaultModel != "stale-model" || option.DefaultReasoning != "stale-reasoning" {
 		t.Fatalf(
-			"defaults = %q/%q, want gpt-stable/high",
+			"defaults = %q/%q, want saved stale-model/stale-reasoning",
 			option.DefaultModel,
 			option.DefaultReasoning,
 		)
@@ -182,7 +182,7 @@ func TestQoderNativeModelKeepsExactReasoningChoices(t *testing.T) {
 		want := []RuntimeReasoningOption{{ID: "xhigh", Name: "Extra High"}, {ID: "low", Name: "Low"},
 			{ID: "medium", Name: "Medium"}, {ID: "none", Name: "None"}}
 		got := nativeModelOption(provider, row)
-		if got.ID != "qfmodel" || got.DefaultReasoning != "xhigh" || !got.ConfigurationKnown ||
+		if got.ID != "qfmodel" || got.DefaultReasoning != "xhigh" ||
 			got.FastSupported || !reflect.DeepEqual(got.ReasoningOptions, want) {
 			t.Fatalf("%s changed the native Qoder choices: %+v", provider, got)
 		}
@@ -200,10 +200,10 @@ func TestNativeModelOptionKeepsUnknownSettingsOutOfMenus(t *testing.T) {
 			}},
 		}
 		got := nativeModelOption("workbuddy", row)
-		if got.ID != row.ID || len(got.PermissionLevels) != 1 || got.ConfigurationKnown {
+		if got.ID != row.ID || len(got.PermissionLevels) != 1 {
 			t.Fatalf("listed model or independent permission evidence lost: %+v", got)
 		}
-		if len(got.ReasoningOptions) != 0 || got.DefaultReasoning != "" || got.FastSupported || got.DefaultFast != nil || len(got.ServiceTiers) != 0 || got.DefaultServiceTier != nil {
+		if len(got.ReasoningOptions) != 0 || got.DefaultReasoning != "" || got.FastSupported || got.DefaultFast != nil {
 			t.Fatalf("unknown settings %v leaked into choices: %+v", unknown, got)
 		}
 	}
@@ -222,5 +222,16 @@ func TestNativeModelOptionOffersOnlyMultipleNativeContextWindows(t *testing.T) {
 		if got := nativeModelOption(provider, row); got.DefaultContextWindow != "200000" || len(got.ContextWindowOptions) != 2 {
 			t.Fatalf("%s: native choices missing: %+v", provider, got)
 		}
+	}
+}
+
+// TestRuntimeOptionPreservesNativeDefaultSelection 验证空模型代表原生默认，不会被探测候选替换。
+func TestRuntimeOptionPreservesNativeDefaultSelection(t *testing.T) {
+	option := runtimeOption(models.RuntimeEnvironment{
+		BaseRuntimeID: agent.RuntimeIDClaude,
+		Detection:     agent.DetectionResult{DetectedDefaultModel: "sonnet", DetectedDefaultReasoning: "high", Models: []agent.ModelOption{{ID: "sonnet"}}},
+	})
+	if option.DefaultModel != "" || option.DefaultReasoning != "" {
+		t.Fatalf("native default replaced by probe: %+v", option)
 	}
 }

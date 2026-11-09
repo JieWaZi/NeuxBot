@@ -244,34 +244,15 @@ it("downloads the complete oversized README from its fixed version instead of sh
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
-it("keeps native implementation paths and digests out of the public plugin overview", () => {
+it("keeps empty native targets out of the plugin component overview", () => {
   render(
     <MemoryRouter>
       <PluginOverview
         pkg={{
           manifest: { name: "logical", version: "2.0.0" },
-          nativeComponents: [{ kind: "hooks", paths: ["hooks/hooks.json"] }],
           nativeImplementations: {
-            codex: {
-              path: "codex-plugins/github",
-              name: "github",
-              version: "0.1.12",
-              format: "codex",
-              digest: "a".repeat(64),
-              components: [],
-              skillCount: 0,
-              serverCount: 1,
-            },
-            claude: {
-              path: "claude-plugins/github",
-              name: "github",
-              version: "1.0.0",
-              format: "claude",
-              digest: "b".repeat(64),
-              components: [],
-              skillCount: 0,
-              serverCount: 1,
-            },
+            codex: { skills: [], servers: [] },
+            claude: { skills: [], servers: [] },
           },
         }}
       />
@@ -280,10 +261,9 @@ it("keeps native implementation paths and digests out of the public plugin overv
   expect(
     screen.queryByRole("heading", { name: "原生组件" }),
   ).not.toBeInTheDocument();
-  expect(screen.queryByText("hooks/hooks.json")).not.toBeInTheDocument();
-  expect(screen.queryByText("codex-plugins/github")).not.toBeInTheDocument();
-  expect(screen.queryByText("claude-plugins/github")).not.toBeInTheDocument();
-  expect(screen.queryByText("0.1.12")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /查看技能/ }),
+  ).not.toBeInTheDocument();
 });
 
 it("downloads the displayed locale from the same pinned catalog source", async () => {

@@ -46,7 +46,10 @@ func (u *UpdateChannel) Output(ctx *gin.Context) (interface{}, error) {
 		if err != nil {
 			return err
 		}
-		if err := validateChannelMembersExist(transactionContext, u.Body); err != nil {
+		input := u.Body
+		// 每次事务重试都从原始选择解析，避免沿用已回滚尝试填入的默认值。
+		input.Members = append([]ChannelMemberInput(nil), u.Body.Members...)
+		if err := resolveChannelMembers(transactionContext, &input); err != nil {
 			return err
 		}
 		occupied, err := global.ChannelControllerManager.NameExists(
@@ -60,7 +63,7 @@ func (u *UpdateChannel) Output(ctx *gin.Context) (interface{}, error) {
 		if occupied {
 			return status_error.ChannelNameConflict
 		}
-		channel, members := channelModels(u.ChannelID, u.Body, existing.CreatedAt)
+		channel, members := channelModels(u.ChannelID, input, existing.CreatedAt)
 		if err := global.ChannelControllerManager.Update(transactionContext, channel, members); err != nil {
 			return err
 		}

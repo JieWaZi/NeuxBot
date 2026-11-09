@@ -1030,7 +1030,6 @@ const resources = {
       requestProtocol: "请求协议",
       apiAddress: "API 地址",
       selectModels: "选择模型",
-      loadingNativeModels: "正在读取模型",
       searchModels: "搜索模型",
       noMatchingModels: "没有匹配的模型",
       clearSelectedModels: "清空已选",
@@ -1733,8 +1732,7 @@ const resources = {
       ready: "可用",
       runtimeSection: "智能体",
       backToRuntimeList: "返回智能体列表",
-      permissionUnsupported:
-        "当前智能体或模型不支持已选权限，请先更换权限或模型。",
+      permissionUnsupported: "模型目录未列出已选权限，运行时将由智能体确认。",
       permissionDowngraded: "部分智能体无法启用完全访问。",
       skills: "技能",
       connectors: "MCP 连接器",

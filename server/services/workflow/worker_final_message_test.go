@@ -103,6 +103,22 @@ func TestCoreWorkerDispatchAlignsStructuredPromptWithResultBindings(t *testing.T
 	}
 }
 
+func TestCoreWorkerDispatchPreservesFrozenFast(t *testing.T) {
+	falseValue, trueValue := false, true
+	for _, fast := range []*bool{nil, &falseValue, &trueValue} {
+		port := &workerDispatchExecution{}
+		run := workerTestRun(t, "work", "codex")
+		run.WorkerConfigurations["work"] = models.WorkflowExecutionDefaults{RuntimeID: "codex", Fast: fast, PermissionLevel: constants.PermissionLevelDefault}
+		effect := models.WorkflowEffect{ID: "fast-attempt", ExecutionID: "fast-execution", Boundary: workflowdsl.EffectBoundary{NodeID: "work", Arguments: []workflowdsl.Value{workflowdsl.JSONValue("执行已接纳配置"), workflowdsl.JSONValue(map[string]any{"resolve": map[string]any{"wakerId": "fixture"}})}}}
+		if _, err := (CoreWorkerAdapter{Executions: port}).Dispatch(t.Context(), WorkerDispatch{Run: run, Effect: effect}); err != nil {
+			t.Fatal(err)
+		}
+		if !port.intent.Options.ConfigurationResolved || !reflect.DeepEqual(port.intent.Options.Fast, fast) {
+			t.Fatalf("worker changed admitted Fast: want=%v actual=%+v", fast, port.intent.Options)
+		}
+	}
+}
+
 func workerTestRun(t *testing.T, nodeID, runtimeID string) models.WorkflowRun {
 	t.Helper()
 	run := models.WorkflowRun{ID: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", DefinitionID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", WorkerConfigurations: map[string]models.WorkflowExecutionDefaults{nodeID: {RuntimeID: runtimeID}}}

@@ -62,7 +62,7 @@ type SkillVersion struct {
 	// Notes 是用户可见的版本备注。
 	Notes string `gorm:"column:notes;type:text;not null;default:''" json:"notes"`
 	// ContentPath 是应用数据目录内完整技能包的相对路径。
-	ContentPath string `gorm:"column:content_path;type:text;not null" json:"contentPath"`
+	ContentPath string `gorm:"column:content_path;type:text;not null" json:"-"`
 	// ContentDigest 是完整技能包内容的 SHA-256 摘要。
 	ContentDigest string `gorm:"column:content_digest;type:varchar(64);not null" json:"contentDigest"`
 	// CreatedAt 是创建时间的 Unix 毫秒值。

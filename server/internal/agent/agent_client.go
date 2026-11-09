@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"maps"
+	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -68,6 +70,10 @@ type AgentCapabilities struct {
 	Load bool
 	// Resume indicates session recovery without history replay.
 	Resume bool
+	// ReloadResourcesOnResume confirms that a new process reads current tools and skills for an existing session.
+	ReloadResourcesOnResume bool
+	// ReloadInstructionsOnResume confirms replacement of saved instructions on an existing session.
+	ReloadInstructionsOnResume bool
 	// List indicates paged discovery of existing native sessions.
 	List bool
 	// ForkMode preserves the negotiated latest or exact-position fork precision.
@@ -164,6 +170,10 @@ type AgentSessionPage struct {
 
 // AgentForkRequest targets a native source and freezes receipt reconciliation.
 type AgentForkRequest struct {
+	// HistoryIdentity carries the source binding's verified native history boundary.
+	HistoryIdentity string
+	// BeforeFork durably records the host side-effect boundary after cold preparation.
+	BeforeFork func(context.Context) error
 	// SourceSessionID is the existing native session to fork.
 	SourceSessionID string
 	// SourceCWD is the source's real directory, distinct from the child connection cwd.
@@ -661,6 +671,8 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 		}
 		client.native, err = claude.NewClient(ctx, claude.Options{
 			Executable: launch.Executable, PrefixArgs: launch.PrefixArgs, WorkingDirectory: account.CWD,
+			// The adapter sanitizes process diagnostics; preserve them when the stream ends without a native result.
+			Logger:      slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})).With("runtime_id", account.Provider),
 			Environment: env, Launch: claude.LaunchOptions{
 				SettingSources: launch.Claude.SettingSources, Tools: launch.Claude.Tools,
 				SettingsPath: launch.Claude.SettingsPath, WorkspaceOnly: launch.Claude.WorkspaceOnly,
@@ -948,6 +960,12 @@ func (c *directAgentClient) Initialize(ctx context.Context) error {
 		Load:    response.AgentCapabilities.LoadSession, Resume: session.Resume != nil, List: session.List != nil,
 		ForkMode: acpmeta.ForkMode(response.Meta), Steer: steer, Compact: compact, NativeOutcomes: outcomes,
 		ToolsDisabled: c.requireNoTools,
+	}
+	if _, ok := c.native.(*claude.Client); ok {
+		// The Claude adapter constructs every resumed process from its current
+		// resource request. Instruction replacement has a separate version gate.
+		c.capabilities.ReloadResourcesOnResume = true
+		c.capabilities.ReloadInstructionsOnResume, _ = c.instructionSupport["resume"].(bool)
 	}
 	if c.requireNoTools {
 		c.capabilities.Load, c.capabilities.Resume, c.capabilities.List = false, false, false
@@ -1878,6 +1896,11 @@ func (c *directAgentClient) ForkSession(ctx context.Context, input AgentForkRequ
 	request.AdditionalDirectories = directories
 	if err := translateNativeShape(c.mcp, &request.McpServers); err != nil {
 		return AgentSession{}, err
+	}
+	if input.BeforeFork != nil {
+		if err := input.BeforeFork(ctx); err != nil {
+			return AgentSession{}, err
+		}
 	}
 	result, err := forker.UnstableForkSession(ctx, request)
 	if err != nil {

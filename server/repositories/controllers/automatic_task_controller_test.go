@@ -214,3 +214,29 @@ func TestAutomaticRunUniqueOpportunityAndFrozenConfiguration(t *testing.T) {
 		t.Fatalf("history = %+v, %d, %v", page, count, err)
 	}
 }
+
+// TestAutomaticTaskConfigurationUpdatesFastTriState 验证配置更新完整保存开启、关闭和原生默认三态。
+func TestAutomaticTaskConfigurationUpdatesFastTriState(t *testing.T) {
+	repository, _ := automaticTaskTestRepository(t)
+	task := automaticTaskFixture(util.New())
+	if err := repository.Create(t.Context(), task); err != nil {
+		t.Fatal(err)
+	}
+	on, off := true, false
+	for _, fast := range []*bool{&on, &off, nil} {
+		previousRevision := task.Revision
+		task.Fast = fast
+		task.Revision++
+		task.ConfigurationVersion++
+		if err := repository.UpdateConfiguration(t.Context(), task, previousRevision); err != nil {
+			t.Fatal(err)
+		}
+		saved, err := repository.Get(t.Context(), task.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if (saved.Fast == nil) != (fast == nil) || saved.Fast != nil && *saved.Fast != *fast {
+			t.Fatalf("Fast update lost tri-state: saved=%v want=%v", saved.Fast, fast)
+		}
+	}
+}

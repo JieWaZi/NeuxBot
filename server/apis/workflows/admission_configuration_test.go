@@ -4,6 +4,7 @@ import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +17,79 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 )
+
+// consumerAdmissionEnvironment 提供当前 Runtime 默认值，调用者已接纳选择由 StartRunCommand 单独提供。
+type consumerAdmissionEnvironment struct{}
+
+// Get 返回所选原生 Runtime 的真实注册元数据与测试默认值。
+func (consumerAdmissionEnvironment) Get(ctx context.Context, id string) (models.RuntimeEnvironment, error) {
+	environment, err := (fixtureEnvironment{}).Get(ctx, id)
+	if err != nil {
+		return environment, err
+	}
+	catalog, err := agentapi.NewCatalog(agentapi.CatalogConfig{})
+	if err != nil {
+		return environment, err
+	}
+	for _, registered := range catalog.Runtimes() {
+		if registered.ID == id {
+			environment.RuntimeID, environment.BaseRuntimeID = id, id
+			environment.Detection.Runtime = registered
+			break
+		}
+	}
+	environment.DefaultModel, environment.DefaultReasoning = id+"-latest", "high"
+	fast := true
+	environment.DefaultFast = &fast
+	return environment, nil
+}
+
+func TestConsumerWorkerAdmissionPreservesOnlyMatchingCallerSelection(t *testing.T) {
+	fast := true
+	for _, test := range []struct {
+		// name 标识实际节点覆盖分支。
+		name string
+		// account 是调用者已接纳的账号身份。
+		account string
+		// resolve 是固定在 Workflow 源码中的节点覆盖。
+		resolve string
+		// runtime 是节点应实际采用的 Runtime。
+		runtime string
+		// model 是手工确定的有效模型，空值表示保留原生默认。
+		model string
+		// reasoning 是手工确定的有效推理选择。
+		reasoning string
+		// fast 是手工确定的有效快速模式意图。
+		fast *bool
+	}{
+		{name: "same caller", account: "system", resolve: `{"kind":"waker","wakerId":"fixture-waker","runtimeId":"codex"}`, runtime: "codex"},
+		{name: "same native account alias", account: "", resolve: `{"kind":"waker","wakerId":"fixture-waker","runtimeId":"codex","accountId":"system"}`, runtime: "codex"},
+		{name: "changed runtime", account: "system", resolve: `{"kind":"waker","wakerId":"fixture-waker","runtimeId":"claude"}`, runtime: "claude", model: "claude-latest", reasoning: "high", fast: &fast},
+		{name: "changed account", account: "previous-managed-account", resolve: `{"kind":"waker","wakerId":"fixture-waker","runtimeId":"codex","accountId":"system"}`, runtime: "codex", model: "codex-latest", reasoning: "high", fast: &fast},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			s, _ := openCoreWorkflowPorts(t, t.TempDir(), &fixtureRuntime{}, consumerAdmissionEnvironment{}, true)
+			source := `export const meta={sdk:'ally.workflow',title:'调用者配置',description:'接纳后保留原生默认',phases:[{id:'work',title:'执行',detail:'验证节点有效身份',canExit:true}]};await askUser('继续？',{id:'wait',label:'等待',phase:'work'});return await worker('冻结节点配置',{id:'task',label:'任务',phase:'work',resolve:` + test.resolve + `});`
+			definition := savedTestWorkflow(t, s, source)
+			run, err := s.StartRun(t.Context(), workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "consumer-run", ConsumerLeaseID: "actual-caller", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex", AccountID: test.account, PermissionLevel: constants.PermissionLevelDefault}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			selected := run.WorkerConfigurations["task"]
+			if selected.RuntimeID != test.runtime || selected.AccountID != "system" || selected.Model != test.model || selected.Reasoning != test.reasoning || !reflect.DeepEqual(selected.Fast, test.fast) {
+				t.Fatalf("worker inherited the wrong caller/default configuration: %+v", selected)
+			}
+			retried, err := s.StartRun(t.Context(), workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "frozen-retry", Defaults: run.Defaults, WorkerConfigurations: run.WorkerConfigurations})
+			if err != nil {
+				t.Fatal(err)
+			}
+			retrySelection := retried.WorkerConfigurations["task"]
+			if !reflect.DeepEqual(retrySelection, selected) {
+				t.Fatalf("retry reinterpreted an already frozen worker configuration: %+v", retrySelection)
+			}
+		})
+	}
+}
 
 // mutableAdmissionEnvironment 只替代外部目录配置，运行状态仍由真实 SQLite 与 Core 持有。
 type mutableAdmissionEnvironment struct {
@@ -131,7 +205,12 @@ func testWorkerAdmissionFrozenConfiguration(t *testing.T, reasoning string) {
 		case <-time.After(5 * time.Second):
 			t.Fatalf("worker %d was not dispatched: status=%s failure=%+v", index, state.Run.Status, state.Run.Failure)
 		}
-		configurationMatches := actual.model == model && actual.reasoning == reasoning && actual.permission == permission
+		expectedReasoning := reasoning
+		if index == 1 {
+			// 显式选择 override 模型时使用其原生推理默认，不继承 fixture 模型的默认强度。
+			expectedReasoning = ""
+		}
+		configurationMatches := actual.model == model && actual.reasoning == expectedReasoning && actual.permission == permission
 		if actual.account != constants.AiAccountSystemID || !configurationMatches {
 			t.Fatalf("worker %d followed changed global defaults: %+v", index, actual)
 		}
@@ -164,7 +243,11 @@ func testWorkerAdmissionFrozenConfiguration(t *testing.T, reasoning string) {
 		t.Fatal("reused worker dispatched again")
 	}
 	for node, configuration := range finalState.Run.WorkerConfigurations {
-		if configuration.Reasoning != reasoning || configuration.RuntimeID != "codex" {
+		expectedReasoning := reasoning
+		if node == "second" {
+			expectedReasoning = ""
+		}
+		if configuration.Reasoning != expectedReasoning || configuration.RuntimeID != "codex" {
 			t.Fatalf("retry changed frozen config %s: %+v", node, configuration)
 		}
 	}

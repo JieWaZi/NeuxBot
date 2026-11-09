@@ -57,9 +57,8 @@ func TestNativeQuestionsSharePendingFactsAndResolveExactlyOnce(t *testing.T) {
 			}
 			journal := &consentTestJournal{interactionTestJournal: &interactionTestJournal{store: store}, updates: make(chan []models.PendingElicitation, 4)}
 			coordinator := newElicitationCoordinator(journal)
-			state := coordinator.inputState("execution")
-			if state.Pending() {
-				t.Fatal("undelivered request paused native inactivity")
+			if len(coordinator.pendingProjection(chatID)) > 0 {
+				t.Fatal("undelivered request appeared in the pending projection")
 			}
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -72,7 +71,7 @@ func TestNativeQuestionsSharePendingFactsAndResolveExactlyOnce(t *testing.T) {
 				done <- decision
 			}()
 			pending := <-journal.updates
-			if len(pending) != 1 || !state.Pending() {
+			if len(pending) != 1 || !(len(coordinator.pendingProjection(chatID)) > 0) {
 				t.Fatalf("durable request missing: %+v", pending)
 			}
 			id := pending[0].ElicitationID
@@ -99,8 +98,8 @@ func TestNativeQuestionsSharePendingFactsAndResolveExactlyOnce(t *testing.T) {
 			case <-time.After(time.Second):
 				t.Fatal("native wait was not released")
 			}
-			if state.Pending() {
-				t.Fatal("resolved request permanently paused native inactivity")
+			if len(coordinator.pendingProjection(chatID)) > 0 {
+				t.Fatal("resolved request remained in the pending projection")
 			}
 			if err := coordinator.resolveAccepted(context.Background(), chatID, id, map[string]any{"answer": "late"}); !errors.Is(err, status_error.ElicitationAlreadyResolved) {
 				t.Fatalf("late response accepted: %v", err)

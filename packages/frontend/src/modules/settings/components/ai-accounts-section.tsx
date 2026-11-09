@@ -103,10 +103,10 @@ function AccountForm({
     account?.authMode === "subscription" ? "subscription" : "api-key",
   );
   const [preset, setPreset] = useState<AccountPresetID>(() =>
-    presetForEndpoint(account?.endpoints?.[0]),
+    presetForEndpoint(account?.endpoint),
   );
   const [endpoint, setEndpoint] = useState<Endpoint>(
-    account?.endpoints?.[0] ?? {
+    account?.endpoint ?? {
       protocol: "openai-responses",
       baseUrl: officialEndpoints["openai-responses"],
     },
@@ -152,7 +152,7 @@ function AccountForm({
   const claudeDefaults = claudeRoleDefaultsFor(preset, selectedModels);
   const providerWebsite =
     preset === "custom" ? undefined : providerWebsites[preset];
-  const initialPreset = presetForEndpoint(account?.endpoints?.[0]);
+  const initialPreset = presetForEndpoint(account?.endpoint);
   const keyRequired = !account?.hasCredential || preset !== initialPreset;
   const credentialQuery = useQuery({
     queryKey: ["ai-account-credential", account?.id],
@@ -258,7 +258,7 @@ function AccountForm({
     }
     const body = {
       name: name.trim(),
-      endpoints: [{ protocol: endpoint.protocol, baseUrl: endpoint.baseUrl }],
+      endpoint: { protocol: endpoint.protocol, baseUrl: endpoint.baseUrl },
       modelCatalog: discoveredModels
         .map((item) => item.id ?? "")
         .filter(Boolean),
@@ -822,9 +822,8 @@ function AccountForm({
                       onClick={() =>
                         account?.id &&
                         !apiKeyChanged &&
-                        account.endpoints?.[0]?.protocol ===
-                          endpoint.protocol &&
-                        account.endpoints?.[0]?.baseUrl === endpoint.baseUrl
+                        account.endpoint?.protocol === endpoint.protocol &&
+                        account.endpoint?.baseUrl === endpoint.baseUrl
                           ? refreshModels.mutate({
                               path: { accountId: account.id },
                             })
@@ -1181,10 +1180,10 @@ function AccountRow({
   const canLogout =
     account.authMode === "subscription" &&
     account.hasCredential &&
-    account.endpoints?.[0]?.protocol === "openai-responses" &&
-    account.endpoints[0].baseUrl === officialEndpoints["openai-responses"];
-  const summary = account.endpoints?.[0]
-    ? t(`protocol.${account.endpoints[0].protocol}`)
+    account.endpoint?.protocol === "openai-responses" &&
+    account.endpoint.baseUrl === officialEndpoints["openai-responses"];
+  const summary = account.endpoint
+    ? t(`protocol.${account.endpoint.protocol}`)
     : "";
   return (
     <Collapsible
@@ -1253,7 +1252,7 @@ function AccountRow({
               <span>
                 {t(
                   account.authMode === "subscription"
-                    ? account.endpoints?.[0]?.baseUrl ===
+                    ? account.endpoint?.baseUrl ===
                       "https://api.kimi.com/coding/v1"
                       ? "kimiSubscriptionMode"
                       : "subscriptionMode"
@@ -1276,16 +1275,15 @@ function AccountRow({
             </div>
           </SettingsFieldRow>
           <dl className="border-border-subtle divide-border-subtle divide-y border-t">
-            {account.endpoints?.slice(0, 1).map((endpoint) => (
+            {account.endpoint ? (
               <SettingsFieldRow
-                key={endpoint.protocol}
-                label={<dt>{t(`protocol.${endpoint.protocol}`)}</dt>}
+                label={<dt>{t(`protocol.${account.endpoint.protocol}`)}</dt>}
               >
                 <dd className="type-ui text-content-secondary break-all">
-                  {endpoint.baseUrl}
+                  {account.endpoint.baseUrl}
                 </dd>
               </SettingsFieldRow>
-            ))}
+            ) : null}
           </dl>
         </div>
       </CollapsibleContent>
@@ -1309,7 +1307,7 @@ export function AIAccountsSection() {
   const isLogout = confirming?.action === "logout";
   const confirmMutation = isLogout ? logout : remove;
   const filtered = (accounts.data?.resources ?? []).filter((account) =>
-    `${account.name} ${account.endpoints?.[0]?.baseUrl ?? ""}`
+    `${account.name} ${account.endpoint?.baseUrl ?? ""}`
       .toLowerCase()
       .includes(search.toLowerCase()),
   );

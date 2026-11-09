@@ -76,10 +76,49 @@ vi.mock("@/shared/api/generated/sdk.gen", async (original) => ({
             },
           ],
         },
+        {
+          id: "claude",
+          name: "Claude",
+          baseRuntimeId: "claude",
+          enabled: true,
+          state: "ready",
+        },
       ],
     },
   }),
-  listAiAccounts: async () => ({ data: { resources: [] } }),
+  getRuntimeModelCatalog: async (options?: {
+    query?: { accountId?: string };
+  }) => ({
+    data: {
+      runtimeId: "codex",
+      accountId: options?.query?.accountId || "system",
+      state: "fresh",
+      defaultModel: "model-1",
+      models: [
+        {
+          id: "model-1",
+          name: "模型一",
+          permissionLevels: ["default", "auto", "full-access"],
+          reasoningOptions: [{ id: "high", name: "High" }],
+        },
+      ],
+    },
+  }),
+  listAiAccounts: async () => ({
+    data: {
+      resources: [
+        {
+          id: "managed",
+          name: "测试账号",
+          enabled: true,
+          hasCredential: true,
+          authMode: "api-key",
+          endpoint: { protocol: "openai-responses" },
+          selectedModels: ["model-1"],
+        },
+      ],
+    },
+  }),
   listProjects: async () => ({ data: { resources: [] } }),
   previewAutomaticSchedule: async () => ({
     data: { nextRuns: [Date.now() + 60000], runsIn24Hours: 1 },
@@ -357,6 +396,7 @@ it("编辑保留启停、执行配置和编辑版本，保存失败时保留草�
           accountId: "system",
           model: "model-1",
           reasoning: "high",
+          fast: false,
           permissionLevel: "auto",
           workingDirectory: "/workspace/authorized",
           enabled: false,
@@ -388,6 +428,7 @@ it("编辑保留启停、执行配置和编辑版本，保存失败时保留草�
       instruction: "已有指令",
       model: "model-1",
       reasoning: "high",
+      fast: false,
       workingDirectory: "",
     },
   });
@@ -756,3 +797,60 @@ it.each(["project", "directory"])(
     expect(body.workingDirectory || "").toBe("");
   },
 );
+
+it.each(
+  [true, false].flatMap((fast) =>
+    ["runtime", "account", "model"].map((kind) => ({ fast, kind })),
+  ),
+)("修改 $kind 清除已保存 Fast=$fast", async ({ fast, kind }) => {
+  const user = userEvent.setup();
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <TaskFormDialog
+        open
+        wakerId="waker-1"
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+        task={{
+          id: "task-1",
+          name: "既有任务",
+          instruction: "继续",
+          trigger: "api",
+          revision: 1,
+          runtimeId: "codex",
+          accountId: "system",
+          model: "model-1",
+          fast,
+          permissionLevel: "default",
+          enabled: true,
+        }}
+      />
+    </QueryClientProvider>,
+  );
+  await vi.dynamicImportSettled();
+  await screen.findByLabelText("任务名称");
+  if (kind === "model") {
+    await user.click(await screen.findByTestId("composer-model-control"));
+    await user.click(screen.getByRole("button", { name: "选择模型" }));
+    await user.click(screen.getByRole("radio", { name: "默认模型" }));
+  } else {
+    await user.click(await screen.findByTestId("composer-runtime-control"));
+    await user.click(
+      screen.getByRole("menuitemradio", {
+        name: kind === "runtime" ? /Claude/ : /Codex/,
+      }),
+    );
+    if (kind === "account")
+      await user.click(screen.getByRole("menuitemradio", { name: "测试账号" }));
+  }
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled(),
+  );
+  await user.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+  expect(update.mock.calls[0]?.[0].body.fast).toBeUndefined();
+});

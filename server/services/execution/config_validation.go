@@ -4,11 +4,11 @@ import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -36,131 +36,97 @@ func (m *service) ResolveConfiguration(ctx context.Context, config ExecutionConf
 	if err != nil {
 		return config, err
 	}
+	return m.resolveConfiguration(ctx, config, environment)
+}
+
+// resolveConfiguration 使预检和发送消费同一环境快照与默认选择规则。
+func (m *service) resolveConfiguration(ctx context.Context, config ExecutionConfiguration, environment models.RuntimeEnvironment) (ExecutionConfiguration, error) {
+	if config.RuntimeID == "" || !constants.SelectablePermissionLevel(config.PermissionLevel) {
+		return config, status_error.BadRequest
+	}
+	if err := validateRuntimeAvailability(environment, config); err != nil {
+		return config, err
+	}
 	if config.AccountID == "" && !config.Resolved {
 		config.AccountID = environment.DefaultAccountID
 	}
 	if config.AccountID == "" {
-		// 显式原生登录身份阻止后续派发再次采用已变化的默认账号。
 		config.AccountID = constants.AiAccountSystemID
 	}
-	if config.Reasoning == "" && !config.Resolved {
-		config.Reasoning = environment.DefaultReasoning
-		if config.AccountID == constants.AiAccountSystemID && config.Reasoning != "" {
-			// 已配置的原生默认强度按目标模型解析；未配置或没有具体档位时保留空值。
-			model := config.Model
-			if model == "" {
-				model = environment.DefaultModel
-			}
-			_, config.Reasoning = agentapi.NormalizeDetectedDefaults(
-				environment.Detection, environment.CustomModels, model, config.Reasoning,
-			)
-		}
+	defaultAccountID := environment.DefaultAccountID
+	if defaultAccountID == "" {
+		defaultAccountID = constants.AiAccountSystemID
 	}
-	validation := config
-	validateConfiguration := validateExecutionConfiguration
+	provider := nativeProvider(environment)
 	if config.AccountID != constants.AiAccountSystemID {
 		if m.accounts == nil {
 			return config, status_error.AIAccountConfigurationInvalid
 		}
-		account, err := m.accounts.ValidateSelection(ctx, config.AccountID, environment.BaseRuntimeID, config.Model, config.Reasoning)
+		account, err := m.accounts.ValidateSelection(ctx, config.AccountID, provider, config.Model, config.Reasoning)
 		if err != nil {
 			return config, err
 		}
-		if account.AuthMode == constants.AccountAuthModeAPIKey && config.Model == "" && !config.Resolved {
-			if len(account.SelectedModels) == 0 {
-				return config, status_error.AIAccountConfigurationInvalid
+		if config.Model == "" && !config.Resolved && account.AuthMode == constants.AccountAuthModeAPIKey {
+			candidates := []string{account.DefaultModel}
+			if config.AccountID == defaultAccountID {
+				candidates = append([]string{environment.DefaultModel}, candidates...)
 			}
-			config.Model = account.SelectedModels[0]
-			if environment.BaseRuntimeID == constants.RuntimeIDClaude {
-				config.Model, _ = aiaccount.ManagedClaudeModelTarget(account, "")
-			}
-			// 默认模型确定后仍按该模型校验账号声明，不能用空模型跳过推理约束。
-			if _, err := m.accounts.ValidateSelection(ctx, config.AccountID, environment.BaseRuntimeID, config.Model, config.Reasoning); err != nil {
-				return config, err
-			}
-		}
-		validation = config
-		if account.AuthMode == constants.AccountAuthModeAPIKey && accountconfig.IsNativeAccountRuntime(environment.BaseRuntimeID) {
-			// 账号已确认协议、凭据与模型；原生模型、强度和权限由本次会话的 driver 回执确认。
-			// 系统登录模型的目录不能代表该账号，也不在配置准入额外创建探测会话。
-			validateConfiguration = validateRuntimeAvailability
-		} else if account.AuthMode == constants.AccountAuthModeAPIKey {
-			// 账号模型不一定在原生目录中，权限仍以该环境的已探测能力验证。
-			declaredReasoning := len(account.ModelReasoningLevels[config.Model]) > 0
-			validation.Model = environment.DefaultModel
-			if declaredReasoning {
-				validation.Reasoning = ""
+			candidates = append(candidates, account.SelectedModels...)
+			for _, candidate := range candidates {
+				allowed := slices.Contains(account.SelectedModels, candidate)
+				if provider == constants.RuntimeIDClaude {
+					_, allowed = aiaccount.ManagedClaudeModelTarget(account, candidate)
+				}
+				if candidate != "" && allowed {
+					config.Model = candidate
+					break
+				}
 			}
 		}
+		if config.Model == "" && !config.Resolved && account.AuthMode == constants.AccountAuthModeSubscription && config.AccountID == defaultAccountID {
+			config.Model = environment.DefaultModel
+		}
+		if config.Reasoning == "" && !config.Resolved && config.AccountID == defaultAccountID && config.Model == environment.DefaultModel {
+			config.Reasoning = environment.DefaultReasoning
+		}
+		// 原生组合仍由会话 setter 回执确认；受管账号必须保留凭据、协议与选中模型准入。
+		if _, err := m.accounts.ValidateSelection(ctx, config.AccountID, provider, config.Model, config.Reasoning); err != nil {
+			return config, err
+		}
+	} else if !config.Resolved {
+		if config.Model == "" && config.AccountID == defaultAccountID {
+			config.Model = environment.DefaultModel
+		}
+		if config.Reasoning == "" && config.AccountID == defaultAccountID && config.Model == environment.DefaultModel {
+			config.Reasoning = environment.DefaultReasoning
+		}
 	}
-	if config.Model == "" && !config.Resolved {
-		config.Model = environment.DefaultModel
-		validation.Model = config.Model
+	fast := config.Fast
+	if fast == nil && !config.Resolved {
+		fast = environment.DefaultFast
 	}
-	if err := validateConfiguration(environment, validation); err != nil {
-		return config, err
+	if fast != nil {
+		value := *fast
+		config.Fast = &value
 	}
-	_, err = m.resolveRuntimeWorkspaceFiles(config.RuntimeID)
+	// 持久化的模型目录不是实际会话能力；明确请求原样交给唯一原生设置端口。
+	_, err := m.resolveRuntimeWorkspaceFiles(config.RuntimeID)
 	config.Resolved = true
 	return config, err
 }
 
-// validateRuntimeAvailability 只读取持久化的程序可用状态与连接器传输能力。
+// validateRuntimeAvailability 校验用户启用及适配器支持范围；探测结果不决定本次调用资格。
 func validateRuntimeAvailability(
 	environment models.RuntimeEnvironment,
 	config ExecutionConfiguration,
 ) error {
-	if !environment.Enabled || environment.Detection.State != constants.RuntimeDetectionStateReady {
+	if !environment.Enabled {
 		return status_error.RuntimeUnavailable
 	}
-	if config.RequiredConnectorTransport != constants.RuntimeConnectorTransportUnspecified &&
-		!agentapi.DetectedConnectorTransportSupported(
-			environment.Detection,
-			config.RequiredConnectorTransport,
-		) {
-		return status_error.RuntimeUnavailable
+	if config.RequiredConnectorTransport != constants.RuntimeConnectorTransportUnspecified {
+		if supported, _ := agentapi.ConnectorCompatibility(nativeProvider(environment), config.RequiredConnectorTransport); !supported {
+			return status_error.RuntimePolicyUnsupported
+		}
 	}
 	return nil
-}
-
-// validateExecutionConfiguration 只使用一份冻结 Runtime 环境快照完成组合校验。
-func validateExecutionConfiguration(
-	environment models.RuntimeEnvironment,
-	config ExecutionConfiguration,
-) error {
-	if err := validateRuntimeAvailability(environment, config); err != nil {
-		return err
-	}
-	selectedModel := strings.TrimSpace(config.Model)
-	if selectedModel == "" {
-		selectedModel = strings.TrimSpace(environment.DefaultModel)
-	}
-	modelsAvailable := agentapi.AvailableModels(environment.Detection, environment.CustomModels)
-	modelIndex := -1
-	for index, model := range modelsAvailable {
-		if model.ID == selectedModel {
-			modelIndex = index
-			break
-		}
-	}
-	if len(modelsAvailable) > 0 && modelIndex < 0 {
-		return status_error.BadRequest
-	}
-	if !runtimePermissionSupported(environment, selectedModel, config.PermissionLevel) {
-		return status_error.BadRequest
-	}
-	selectedReasoning := strings.TrimSpace(config.Reasoning)
-	if selectedReasoning == "" {
-		return nil
-	}
-	reasoningOptions := environment.Detection.ReasoningOptions
-	if modelIndex >= 0 && len(modelsAvailable[modelIndex].ReasoningOptions) > 0 {
-		reasoningOptions = modelsAvailable[modelIndex].ReasoningOptions
-	}
-	for _, option := range reasoningOptions {
-		if option.ID == selectedReasoning {
-			return nil
-		}
-	}
-	return status_error.BadRequest
 }

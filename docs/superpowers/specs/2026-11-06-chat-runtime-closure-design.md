@@ -1,14 +1,14 @@
 # 聊天主链与资源生命周期重构收口方案
 
-> 状态：待评审的目标方案，尚未实施。本文只定义本次收口，不代表现行能力已经改变。
+> 状态：主链与 API 清理及复查发现的默认选择接纳遗漏已补齐；定向自动化与独立审查通过，尚未完成真实整体验收。未提交或发布，真实 CLI、模型和桌面验收待执行。已删除源码按审查基线的路径标注，可用本地 git show 查看；实际完成证据见[实施清单](../plans/2026-11-06-chat-runtime-closure.md)。
 >
-> 基线：主仓库 `5e955b5d03b19c47f966072466232411d17b2883` 及编写时的工作树；OpenBot 固定提交 `f44dbe116c89a944f8d7d085e092c967b3fce0df`。本次依据静态源码审查，未运行真实 CLI、账号、模型或界面验收。
+> 基线：主仓库 `3a10bc53a8f2fa06b3fb5213e163d3acdb70c002`；OpenBot 固定提交 `f44dbe116c89a944f8d7d085e092c967b3fce0df`。主链与 API 均直接核对本地源码。本次依据静态源码审查，未运行真实 CLI、账号、模型或界面验收。
 
 ## 1. 目标、范围与约束
 
 本次完成[原重建方案](2026-11-04-agentruntime-rebuild-design.md)尚未收口的部分：删除旧运行合同、旧续接索引、不可达交付分支和过宽失效规则，让首发、热续聊、冷恢复及资源变更沿一条能直接阅读的主链完成。旧实现仅作为行为样本，不通过改名、嵌入、转发接口或新的准备对象继续保留。
 
-范围覆盖普通聊天，以及团队、工作流、自动任务、IM 对同一执行入口的直接消费；包括 Skill、MCP、插件、伙伴指令、项目目录、模型选择和账号变化。既有十一类 CLI 均需核对：Codex、Claude、Cursor、Kimi、Gemini、Grok、OpenCode、Pi、WorkBuddy、Qoder、Qoder CN。自定义 ACP 继续使用公共协议合同。
+范围覆盖普通聊天，以及团队、工作流、自动任务、IM 对同一执行入口的直接消费；包括 Skill、MCP、插件、伙伴指令、项目目录、模型选择和账号变化。相关公开 API 的废弃入口、无用历史字段和内部存储透传同阶段清理，不能以“涉及协议”为由推迟到后续阶段。既有十一类 CLI 均需核对：Codex、Claude、Cursor、Kimi、Gemini、Grok、OpenCode、Pi、WorkBuddy、Qoder、Qoder CN。自定义 ACP 继续使用公共协议合同。
 
 以下约束沿用已有决定：
 
@@ -16,13 +16,13 @@
 - 复用现有 Execution、ThreadLifecycle、Turn、ProviderRuntime、ConversationStore 和资源管理模块；不新增通用 Plan、FrozenContext、ResourceManager、RefreshCoordinator 或兼容适配层。
 - 消息、原生绑定、输入接纳和原生结果继续使用同一 ConversationStore；SQLite 保留实际需要的可重建查询投影。
 - 不实现旧应用数据迁移、旧布局认领、新旧执行器双跑、双写或旧接口回退。新数据的重启恢复、原生 resume、fork 和索引重建继续保留。
-- 本次交付为文档，不修改代码、清理数据、提交或发布。实施时保留无关修改；外部项目和原生 CLI 的用户全局目录不属于应用数据清理范围。
+- 用户已授权按本方案实施代码和 API 清理；保留无关修改，不清理用户数据，不提交或发布。外部项目和原生 CLI 的用户全局目录不属于应用数据清理范围。
 
-本方案提出的具体选择是：资源普通修改在下一轮接纳生效；已发布资源版本作为热续聊的事实依据；同主体认证变化与原生历史兼容分开判断；当前不支持的执行重试和 native-only 插件组合保持明确拒绝，不借清理扩大功能范围。
+本方案提出的具体选择是：资源普通修改在下一轮接纳生效；已发布资源版本作为热续聊的事实依据；同主体认证变化与原生历史兼容分开判断。没有成功实现的普通执行重试公开入口整体删除；当前 native-only 插件组合继续在实际资源入口明确拒绝，不借清理扩大功能范围。
 
 ## 2. OpenBot 对照与当前偏差
 
-| 对照点 | OpenBot 固定源码 | 当前偏差 | 本次落点 |
+| 对照点 | OpenBot 固定源码 | 审查基线偏差 | 本次落点 |
 | --- | --- | --- | --- |
 | 聊天调度 | [OB-01][ob-drain] 在调度入口处理 refresh、准备 client/thread，再提交新增输入 | 新底座前仍通过旧 SessionPlan、TurnInput 再转一遍请求 | Execution 直接构造现有 ThreadRequest、TurnRequest 与 TurnPorts |
 | 同次准备 | [OB-02][ob-start] 对 MCP、环境、工具运行时和指令各读取一次，请求与清单共用 | 同一选择多次转换、复制；预检与实际发送分别解释默认值 | 一次接纳只解析一份有效选择，内部消费同一结果 |
@@ -34,17 +34,19 @@
 
 OpenBot 同样有 starting、未确认提交、配置指纹、历史接力和并发检查。本方案吸收其职责边界，不复制 Effect 对象层级，也不照搬其忽略部分关闭错误的处理。NeuxBot 的受管版本、共享物理技能目标、精确能力授权和 JSONL 提交有独立需求，按下文保留。
 
+实施以本地 OpenBot checkout 的固定提交为主要依据，通过 `git show <固定提交>:<文件>` 核对实际合同、注册入口、消费者及其依赖；文末链接供评审定位，不替代本地源码阅读。不以本地可变 HEAD、旧审查结论或上游字段同名推导当前保证。上游以 scoped IPC / Team action 合同为主，本项目使用 REST、OpenAPI 和 CLI，按职责与语义对照，不机械复制 URL 或全部字段。
+
 ## 3. 必须废弃的旧设计
 
 删除以生产消费者为依据；旧测试不能成为维持废弃结构的理由。仍有业务用途的字段先接到当前唯一所有者，同一个实施工作包删除旧入口及其专属实现，禁止留下长期转发层。
 
 | 编号 | 废弃项与代码定位 | 必须完成的替代或删除 | 完成判据 |
 | --- | --- | --- | --- |
-| D01 | [SessionPlan、SessionTarget、TurnInput](../../../server/internal/agent/execution_plan.go) | Execution 直接准备现有 ThreadRequest、TurnRequest、ResourceSelection 和 TurnPorts；指令组合使用实际输入，不再接受旧 Plan | 生产与测试不再构造这三个旧合同；没有同义重命名类型 |
+| D01 | `SessionPlan/SessionTarget/TurnInput`（基线 `server/internal/agent/execution_plan.go`） | Execution 直接准备现有 ThreadRequest、TurnRequest、ResourceSelection 和 TurnPorts；指令组合使用实际输入，不再接受旧 Plan | 生产与测试不再构造这三个旧合同；没有同义重命名类型 |
 | D02 | 上述合同中无消费者的 ResourceKey、ReadOnlyHandoff、旧 native 插件字段、History、UserInputState、ApprovalHandler 等 | 删除死字段；真实历史由 Thread/Store 提供，审批与问答由 TurnPorts 提供；其余仍有消费者的基础类型留在 owning 文件 | 不存在只为旧合同服务的字段、空赋值或转发方法 |
 | D03 | [Journal](../../../server/services/chat/journal.go) 的 CommitStartedTurn、MarkExecutionStarted、ReadExecutionConfiguration | 删除生产不可达入口和专属实现；保留新 BeforeSubmit 原子接纳及可靠来源的 CommitAcceptedTurn | 所有首发/续发只接当前原子接纳口，不存在另一种启动提交时机 |
 | D04 | RuntimeSession 旧表、RuntimeSessions map 和恢复维护链 | fork 需要的 SessionID、LastExecutionID 从新 Binding 或继承边界事实读取；删除每轮旧表查询、重放、恢复、写入及装配 | 普通续聊、fork、重启与删除不读写旧续接表；不建立旧数据 importer |
-| D05 | [插件准备](../../../server/services/execution/plugins.go)中的 retry/pluginSnapshots 历史执行重试分支 | 删除不可达筛选、比对及专属测试；公开重试入口继续返回当前不可用结果 | 普通插件交付不携带历史重试选项；实际交付快照仍保存 |
+| D05 | [插件准备](../../../server/services/execution/plugins.go)中的 retry/pluginSnapshots 历史执行重试分支，以及始终失败的普通执行重试 API | 删除筛选、比对、WorkIntent.RetryExecutionID、公开路由、retryable 旧事实和专用前端链；见 API-01 | 无不可成功的公开入口或兼容拒绝空壳；实际交付快照、提交重发和工作流重试仍保留 |
 | D06 | 插件 nativeDeliverySupported 永为 false 后仍保留的 native 成功构造、preparedPlugins.native、nativePluginScope | 删除无人消费的执行侧原生包成功路径和专属参数；保留实际 Skill/MCP 投射，以及 native-only 当前明确拒绝策略 | 不存在“构造成功但实际无人交付”的包；管理端仍用的解析不误删 |
 | D07 | [系统 Skill](../../../server/internal/skills/builtin/system.go)每轮读取二进制、staging 物化和整树校验 | 移至 Core 启动或程序资产版本变化，回合引用既有目录与摘要 | 同一进程、同一程序资产的普通热续聊不重建系统技能 |
 | D08 | selectNativePluginSkills 复用完整 preparePluginResources 的预选流程 | 读取版本中已有的技能目标与摘要；实际解密、内容复核和物化只在冷获取执行 | 热路径不再遍历全部插件内容或构造后丢弃 MCP/环境 |
@@ -85,6 +87,8 @@ OpenBot 同样有 starting、未确认提交、配置指纹、历史接力和并
 | 用户显式选择 | 本轮以显式值为准；原生 setter 回执确认实际采用值 |
 | 团队成员配置创建或修改 | 未指定项在该配置保存边界按当前 Runtime 默认解析，保存明确选择；派发使用已解析配置 |
 | 自动任务、工作流、IM 已接纳工作 | 使用其接纳记录中的有效配置；合法空值表示原生默认，不在派发时重新继承当前默认 |
+
+自动任务的新运行和工作流创作的新输入在接纳时保存当时有效的 Fast 选择；同次工作重试沿用该值，不读取后来修改的默认设置。自动任务配置保存不提前固定未来每次运行的默认值。
 
 预检与真实执行调用同一个解析规则，但预检不持有未来的凭据租约。执行必须在自己的接纳边界取得当前允许使用的身份和资源。Fast、强度、上下文档位使用现有原生设置路径，区分请求值与原生有效值；禁止再从不同默认源分别补齐。
 
@@ -212,7 +216,7 @@ flowchart LR
 - 工作流版本、实际参数、已求值效果和节点有效配置继续持久保存；自动任务机会与工作流运行各自拥有其真实生命周期，不强行合成同一执行记录。
 - IM 对话只保存目标、目录及有效执行选择；停止把整个 IMBinding 当配置快照。每次入口重新核对当前授权，投递的目的地、正文、文件和未知结果继续固定于原投递。
 - 团队、工作流、自动任务、IM 使用同一有效选择解析与 Execution；可靠来源保留 pending 接纳。GenerateText、Wiki 维护等独立调用继续复用 Thread/Turn/Provider，不绕开资源和原生终态链。
-- 前述领域中与聊天主链无关的工作流候选重复存储、恒定 QuestionVersion 等单独整理，不纳入本次核心重写，避免扩大收口范围。
+- 恒定 QuestionVersion 等无实际作用的 API 字段按第 10 节纳入本阶段；工作流候选正文重复持久化等独立存储优化不借 API 清理扩大为另一轮编排重写。
 
 ### 9.3 消息、绑定、fork 与成果
 
@@ -222,7 +226,58 @@ BeforeSubmit 继续在一批耐久事实中提交业务接纳、Binding 与准�
 
 原生消息和用量仍使用现有唯一记录与去重身份。文件结束侧在允许下一轮写盘前保存，差异计算及成果发布可以随后完成；该技术屏障不能替换成第二个全局生命周期。conversationJournal 与查询投影沿同一个 Store 收敛，禁止为减少转换改成双写或把原生日志当第二份公开消息。
 
-## 10. 校验保留与删除规则
+## 10. API 与历史字段同步收口
+
+### 10.1 契约审查与删除原则
+
+API 合同按“生产者 → 路由/响应 → 前端、CLI、集成调用 → 实际行为”逐项核对。生成 SDK 的引用、测试 fixture 填值、历史字段转抄本身不算业务消费者。把字段命名为历史、optional 或 compatibility 也不能作为删除依据；仍有实际行为的消息历史、原生恢复和并发字段保留。
+
+本阶段允许直接删除废弃路由和字段、收窄请求/响应并同步仓库存储表达，不保留别名路由、deprecated 长期字段、双读双写或旧请求适配。第一方前端、CLI 和集成合同同一工作包切换；外部旧调用方不在本次兼容范围。原本无成功实现的端点删除注册，不再保留一个永远 Unsupported 的实现。
+
+公开投影只用于真实的 HTTP/CLI 数据边界：优先收敛已有响应类型；必须新增公开 DTO 时只列真实业务字段，不嵌入完整存储模型，不新增转换 Service、通用序列化框架或与现有业务平行的状态。内部 Package、FlowContext 等使用 JSON 持久化的结构不能通过全局删除 JSON 字段来缩小 API，否则会丢失执行事实。
+
+本地 OpenBot 的[消息提交合同][ob-message-contract]保留客户端输入身份，[原生设置合同][ob-settings-contract]表达实际选项与当前值，[Skill 合同][ob-skill-contract]公开安装业务资料，[工作流审批合同][ob-workflow-contract]使用步骤身份及决策。它们支持按真实职责收敛合同，不支持把本项目仍在使用的历史接力、动态候选或认证字段照其字段数量裁剪。
+
+### 10.2 已确认的入口与字段清单
+
+路径以下省略统一 `/api/v1` 前缀。条目同时规定公开契约与内部数据的不同处理，不能将“移出响应”实施成“删除服务端事实”。
+
+| 编号 | API / 字段与依据 | 本阶段最终处理 | 必须同步的消费者与保留事实 |
+| --- | --- | --- | --- |
+| API-01 | `POST /chats/{chatId}/executions/{executionId}/retry`；基线 `server/apis/chats/retry_chat_execution.go`存在，但 Start 对 RetryExecutionID 无条件拒绝；消息 retryable 没有生产 true 写入 | 删除路由、操作类型、RetryExecutionID、插件历史重试分支及仅服务该能力的 retryable 终态事实/回放/响应；删除生成 retryChatExecution 与专用 UI callback/按钮 | 同步普通/团队聊天、错误卡和知识入口防御；保留使用同一提交身份的网络重发、原生恢复、fork、steer，以及真实 workflow.retry |
+| API-02 | `GET /ai-accounts/{accountId}/models/native`；基线 `server/apis/ai_accounts/native_models.go`裁剪统一目录，前端调用仅在不使用 native catalog 时启用，与当前后端成功支持域不相交 | 删除路由、响应、account-native-models QueryKey 与旧 fallback；统一使用 `GET /runtimes/{runtimeId}/models?accountId=...` | 保留真实账号模型、默认模型和 fresh/stale/error 语义，不删除原生模型发现 |
+| API-03 | `GET /ai-accounts/{accountId}/thinking`；基线 `server/apis/ai_accounts/thinking.go`重复裁剪同一目录，存在与 API-02 相同的消费者断路 | 删除路由、AccountThinkingOption/响应、account-thinking QueryKey 与旧 fallback；使用统一目录的模型级推理选项 | 保留 reasoning 请求值、模型级未知状态处理及原生 setter，不能把未知档位变成支持 |
+| API-04 | 创建、更新、列表账号的 `endpoints[]`；[模型](../../../server/repositories/models/ai_account.go)明确为旧存储兼容数组，而创建/更新均强制 len=1 | 统一为单个 `endpoint {protocol, baseUrl}`，同步存储字段、服务与前端；删除空/多端点历史分支和 `[0]` 投影 | 账号预览已经是单 endpoint；同步所有原生账号准备、模型目录、协议适配及设置表单，不增加旧数组 importer |
+| API-05 | 各公开 Execution 响应的 `submissionHash`；[内部 Execution](../../../server/repositories/models/execution.go)当前直接 JSON 输出，消费者是服务端同键异内容校验 | 从 HTTP、公开事件或工具响应中移除该摘要；不修改服务端 JSONL 接纳事实与幂等算法 | 保留 submissionId、userMessageId、executionId 等实际提交关联；检查工作流实例等直接嵌入 Execution 的出口，不只改首发接口 |
+| API-06 | RuntimeModelOption 的 `configurationKnown/inputModalities/serviceTiers/defaultServiceTier`；统一模型目录外层 `source/version/detectedAt`，仓库实际消费侧没有读取这些响应字段 | 删除无用公开透传及专属响应构造；保留内部原生目录数据，Fast 仍从原生 service tier 转换 | Runtime 列表自己的 version/detectedAt 有启动页、设置页消费者，保留；模型 ID、推理、权限、Fast、上下文档位、目录状态和 authGeneration 保留 |
+| API-07 | PluginDetailResponse 的 `componentIds`；[详情组装](../../../server/apis/plugins/resources.go)每次构造 map，前端无读取 | 删除详情/全局和伙伴列表共用响应字段与构造循环 | 保留实际交付 plugins.Snapshot.ComponentIDs，不删除执行和历史回执中的组件身份 |
+| API-08 | Skill 版本列表、详情、创建/恢复/pull 响应的 `contentPath`；[版本模型](../../../server/repositories/models/skill.go)直接暴露仓库存储位置 | 所有公开 SkillVersion 出口不再输出物理 contentPath；文件访问继续使用 skillId/versionId/技能内相对 path | 内部 ContentPath、版本 ID、ContentDigest、正文历史和资源 digest 保留；不影响真实编辑器和文件接口 |
+| API-09 | 插件列表/详情/准备结果直接返回完整 PluginVersion.Package，带 `sourcePath/readmePath/nativeComponents`、原生目标位置、执行配置与授权命令等内部描述 | 使用统一公开 Package 字段集；复用[目录公开边界](../../../server/internal/plugins/catalog/details.go)，删除无消费者存储/执行透传，禁止只在某个详情入口过滤 | 保留展示元数据、配置表单、版本摘要/信任、授权交互提示、nativeImplementations 的目标与 Skill/MCP 摘要；内部完整 Package 和认证/目标选择描述保留 |
+| API-10 | `POST /workflows/{id}/runs/{runId}/humans/{humanId}/answer` 的 `questionVersion`，以及 Human 响应/模型同名字段；每个新 ID 都固定赋 1，无递增入口 | 删除请求、响应、模型赋值、前端回传和恒定版本检查，不新增替代版本字段 | 保留 HumanID、snapshotDigest、waiting 状态、期限、答案 Schema、request receipt，防止重复作答 |
+| API-11 | 工作流 Run 列表/详情及 CLI/模型入口透传 `rootFiberId` 与完整 `flowContext`；前端仅消费其中 triggerSource | 公开运行结果直接提供 triggerSource；workspace 如有真实模型消费按既有业务用途单独投影；移除帧 ID、consumerLeaseId、pythonExecutable 等内部实现内容 | 内部 Run.Context、root fiber 与 DSL flowContext.workspace 保留；REST/CLI/工具、子运行/自动任务关联统一公开字段，不能只修改一个 REST 响应 |
+| API-12 | 实例详情 `attempts` 直接返回 `[]models.WorkflowEffect`，而当前 effect 已使用业务响应；[实例 API](../../../server/apis/workflows/get_instance.go)混用了两种边界 | 尝试历史改为明确字段：id、attemptGeneration、status、chatId、failure，以及实际需要的执行关联/时间；不再公开 fiberId、outputRepairs、finalMessageId 等实现字段 | 内部修复次数、结果位置和执行状态继续用于恢复；当前 effect 的 candidateSubmitted、skipRequested 及真实重试能力保留 |
+
+API-06 的 model 配置字段与真实 Fast/上下文支持不是同一件事；API-09 的原生目标展示与不可达原生交付成功分支也不是同一件事。资源管理的 compatibility、README 下载、Skill 版本文件和插件组件详情均有消费者，继续保留。
+
+### 10.3 消费与生成一次切换
+
+每个条目沿以下顺序在同一分包完成：
+
+1. 在源码合同中删除路由/字段或收窄响应，清除专属校验、默认值、服务入口及无消费者持久字段；内部仍有作用的事实保留。
+2. 同步所有生产消费者：共享执行选择 hook、设置账号表单、聊天和团队错误操作、工作流人机问答、实例详情，以及实际 CLI/Skill/自动任务/IM 出口。删除旧 QueryKey、fallback 和把旧 DTO 转成新 DTO 的过渡代码。
+3. 运行 `pnpm api:generate`，由已有生成器更新 `server/openapi.json`、`server/integration-openapi.json`、前端 generated SDK/types/query options 及生成脚本实际覆盖的错误目录；不手工维护生成声明。集成 OpenAPI 只改变其实际导出的入口，不能扩大公开面。
+4. 定向检查源路由、生成 operation、请求构造和响应读取；旧名字只有在删除清单/讨论中允许出现，生产合同与测试 fixture 不再伪造旧字段。保留内部同名事实的条目按具体序列化边界检查。
+5. 更新直接合同测试和原文档；运行 `pnpm api:check`、共享前端类型检查及受影响测试。涉及 workflow SDK 或内置 Skill 来源时再运行对应生成与检查，不为只删 REST 字段重生成无关产物。
+
+测试必须证明能力还在新入口工作。例如旧 thinking 口删除后，模型专属推理设置仍通过统一目录正确展示和提交；重试 API 删除后，网络中断沿原 submissionId 核对仍有效。不能仅以“生成文件里找不到旧字段”代替实际消费验证。
+
+### 10.4 明确保留的字段
+
+首发 clientRequestId 与续发 submissionId 有真实幂等作用，公开日志游标、消息 revision/liveRevision、requestId、pending 交互内容与答案关联也有消费者，本次不因名称带历史就删除。startNewSession、historyTurns、historyMode、summaryModel、summaryReasoning 仍由会话切换对话框、历史接力和工作流创作消费，保留当前真实功能；若另行改变产品交互，再统一改变相应合同，不能在此次清理中悄悄移除。
+
+账号 revision/authGeneration、模型与资源版本摘要、信任和配置修订仍承担并发、认证或交付身份职责。API 的目标是只表达真实业务能力，并把内部算法事实留在正确边界，不是把所有非展示字段一概删掉。
+
+## 11. 校验保留与删除规则
 
 | 边界 | 保留的校验 | 可以移除或合并的部分 |
 | --- | --- | --- |
@@ -235,24 +290,26 @@ BeforeSubmit 继续在一批耐久事实中提交业务接纳、Binding 与准�
 
 一个检查只有在不同时间、不同权威输入或不同副作用边界上保护真实不变量时才保留。审查记录必须指出它保护什么、失败影响什么、由谁处理；不以“保险”或“未来可能使用”作为理由。
 
-## 11. 实施分包与顺序
+## 12. 实施分包与顺序
 
-本节是设计收口的工作包划分，不是已经执行的进度。审批本方案后再形成代码级执行清单。实现直接修改现有 owning 模块，同一分包完成接线和旧逻辑删除；不重新创建长期候选包或把旧实现包进新门面。
+本节定义设计收口的工作包；实施步骤见[实施清单](../plans/2026-11-06-chat-runtime-closure.md)，完成状态以实际删除与验证证据为准。实现直接修改现有 owning 模块，同一分包完成接线和旧逻辑删除；不重新创建长期候选包或把旧实现包进新门面。
 
 | 顺序 | 工作包与 owning 文件 | 交付物及关联删除 | 定向验证 |
 | --- | --- | --- | --- |
-| P1 | 输入与合同：execution/intent.go、work.go、config_validation.go、native_turn.go、agent.go，agent/execution_plan.go | 单一有效选择解析，直接准备现有请求；D01–D03、D12 的相关死合同删除；不改变原生接纳顺序 | 首发/续发、团队空默认、显式 system、已解析空值、审批与问答 |
-| P2 | 资源：skills/builtin/system.go、技能版本仓储、MCP controller、execution/plugins.go 与 session_resources.go | 系统资产一次发布、热声明查询、冷实际获取；D05–D09、D13；保留应用当前拒绝的 native-only 组合 | 第二轮无物化、禁用 MCP 故障不影响发送、冷获取配置变化、共享目标冲突与关闭失败 |
+| P1 | 输入与合同：execution/intent.go、work.go、config_validation.go、native_turn.go、agent.go，agent/execution_plan.go，chats API/前端消费 | 单一有效选择解析，直接准备现有请求；D01–D03、D12；API-01/05 同步删除；不改变原生接纳顺序 | 首发/续发、团队空默认、显式 system、已解析空值、审批与问答、提交重发 |
+| P2 | 资源：skills/builtin/system.go、技能版本仓储、MCP controller、execution/plugins.go、session_resources.go、资源公开响应 | 系统资产一次发布、热声明查询、冷实际获取；D05–D09、D13；API-07–09；保留应用当前拒绝的 native-only 组合 | 第二轮无物化、禁用 MCP 故障不影响发送、公开资源详情仍完整、共享目标冲突与关闭失败 |
 | P3 | 兼容：agent/thread_lifecycle.go、provider_runtime.go、session_settings.go 与 owning acp-go adapter | 拆开进程/历史兼容；D10；先完成 Codex/Claude 两条完整资源刷新链，再按全部 CLI 验证；不增加并行策略表 | 模型/目录/资源变化时 SessionID、进程身份和 Prompt 次数；恢复/替换只交接一次 |
-| P4 | 账号：runtime_options/ai_accounts API、aiaccount、runtimeenvironment/model_catalog.go、原装配 | 普通保存退出 Exclusive；实际认证失效和目录状态一致；D11–D12；同主体恢复按可证实能力生效 | 活动账号改默认值/改名、同主体重登、换主体、旧代次迟到、目录缓存失效 |
-| P5 | 旧续接链与业务接入：chat/journal.go、fork.go、fork_targets.go、recovery.go、live_projection.go，原 model/controller 装配 | D04 全链删除；离线目录有效子集；团队/工作流/自动任务/IM 直接消费新选择；IM 快照缩小 | 新数据 fork/重启/删除、可靠来源 pending、旧索引不存在、外接目录离线 |
-| P6 | 全链复审与当前文档：Agent README、chat/runtimes/plugin/workspace 架构及直接受影响生成契约 | 逐项关闭删除清单；当前文档只写实际行为；确认没有新包装和孤立旧测试 | 端到端合成链、必要跨 CLI 实测、生成检查和 docs:check；列出未完成真实验收 |
+| P4 | 账号：runtime_options/ai_accounts API、aiaccount、runtimeenvironment/model_catalog.go、原装配与共享选择 hook | 普通保存退出 Exclusive；实际认证失效和目录状态一致；D11–D12；API-02–04/06；同主体恢复按可证实能力生效 | 活动账号改默认值/改名、单 endpoint、统一模型/推理目录、同主体重登、旧代次迟到 |
+| P5 | 旧续接链与业务接入：chat/journal.go、fork.go、fork_targets.go、recovery.go、live_projection.go，原装配与 workflow API/消费 | D04 全链删除；离线目录有效子集；各入口消费新选择；IM 快照缩小；API-10–12 | 新数据 fork/重启/删除、可靠 pending、人工回答、尝试历史、CLI/工具与 REST 运行信息一致 |
+| P6 | 全链复审与当前文档：Agent README、chat/runtimes/plugin/workspace 架构及直接受影响生成契约 | 逐项关闭 D01–D13 与 API-01–12；当前文档只写实际行为；确认没有新包装和孤立旧测试 | 端到端合成链、必要跨 CLI 实测、源合同/生成契约/消费者一致、docs:check；列出未完成真实验收 |
 
 P2 在旧兼容规则下也必须正确工作；P3 不以 P4 未来的账号行为作为已存在保证。每包提交应同时包含直接消费者和相应删除，不保留临时双路径。受管 home 变化与原生历史恢复必须成组验证，不能先删除身份隔离后等待下包补齐。
 
-## 12. 验收标准与完成定义
+API 清理分配到拥有该行为的工作包，不能等 P6 才批量删除已切换代码仍宣称支持的接口。P6 只复核全链生成结果与遗漏项。
 
-### 12.1 必须证明的场景
+## 13. 验收标准与完成定义
+
+### 13.1 必须证明的场景
 
 | 编号 | 场景 | 通过条件 |
 | --- | --- | --- |
@@ -270,10 +327,13 @@ P2 在旧兼容规则下也必须正确工作；P3 不以 P4 未来的账号行�
 | A12 | fork 首次续聊、再次 fork、宿主重启、来源删除 | 全程不依赖旧 RuntimeSession；原生句柄来自正确边界；附件/成果归属保留 |
 | A13 | 附加项目离线或链接改指向 | 无关追问可继续；明确文件引用失败可读；不扩大授权或读取新指向目录 |
 | A14 | 团队、自动任务、工作流、IM 及独立任务 | 同一解析与原生执行链；可靠 pending 与撤权检查保留；无新业务专属执行器 |
+| A15 | 废弃公开入口与历史字段删除 | API-01–12 的源路由/字段、生成 operation/types、第一方调用同步切换；无恒失败路由、旧 fallback、旧 JSONL 兼容分支或只为类型检查保留的 fixture |
+| A16 | 新公开合同保留原能力 | 单 endpoint 账号创建/编辑/目录查询正确；统一目录仍支持推理/Fast/上下文；Skill 编辑/插件详情/授权正常；人工回答和工作流真实重试保留 |
+| A17 | 内部事实与公开响应分离 | 公开 Execution 无 submissionHash，公开 Run/Attempts/Package 无被移除实现字段；服务端幂等、DSL workspace、冷资源选择、认证与崩溃恢复仍使用完整事实 |
 
 合成测试使用隔离目录、假原生进程和计数证据，观察实际进程启动、SessionID、输入接纳、文件发布与资源释放。性能验收先证明热路径不再发生被移除的 I/O，不承诺未测量的加速数值。旧的纯私有函数测试改成真实行为断言，删除只服务不可达分支的测试；并发用例验证实际竞态边界。
 
-### 12.2 检查范围
+### 13.2 检查范围
 
 按修改文件选定已有测试及新增场景，不例行运行全仓检查。例如从仓库根运行：
 
@@ -289,25 +349,31 @@ go test ./apis/runtime_options -run '^Test' -count=1
 
 真实 CLI/模型验证分别记录程序版本、资源变化、进程与 SessionID、首发/续聊结果及仍不支持项；静态和合成通过不能写成真实平台或视觉通过。十一类 CLI 的实际限制记录回原有验收文档，不新建第二份永久能力表。
 
-### 12.3 收口检查
+### 13.3 收口检查
 
-- [ ] D01–D13 每项都有删除证据或精确保留职责，不能以“已经包装接通”关闭条目。
-- [ ] 从 API 首发/续发到终态只存在一条生产执行链；旧合同、旧续接表和不可达交付代码消失。
-- [ ] 热路径只做本轮业务准备、声明比较与必要原生设置，不承担资源安装与完整内容验证。
-- [ ] 进程刷新、原生恢复、真正替换三种行为有独立可观测证据；观测目录变化不再触发替换。
-- [ ] 账号默认选择、展示配置、凭据、主体和历史存储各有明确变化语义；普通保存不干预执行进程。
-- [ ] 新数据的 pending、未确认输入、fork、重启和索引重建完整；不增加旧数据兼容路径。
-- [ ] 每包完成独立审查；现行架构、注释和生成契约与实际切换一致，明确真实验收剩余边界。
+- [x] D01–D13 每项都有删除证据或精确保留职责，不能以“已经包装接通”关闭条目。
+- [x] API-01–12 已在各 owning 工作包完成；源合同、OpenAPI、生成客户端、第一方消费和测试一致，无别名接口或内部模型整对象透传补丁。
+- [x] 从 API 首发/续发到终态只存在一条生产执行链；旧合同、旧续接表和不可达交付代码消失。
+- [x] 热路径只做本轮业务准备、声明比较与必要原生设置，不承担资源安装与完整内容验证。
+- [x] 进程刷新、原生恢复、真正替换三种行为有独立可观测证据；观测目录变化不再触发替换。
+- [x] 账号默认选择、展示配置、凭据、主体和历史存储各有明确变化语义；普通保存不干预执行进程。
+- [x] 新数据的 pending、未确认输入、fork、重启和索引重建完整；不增加旧数据兼容路径。
+- [x] 每包完成独立审查；默认选择接纳遗漏已补齐，现行架构、注释和直接消费者与实际切换一致。生成契约和真实验收边界见实施清单。
+- [ ] 完成第 14 节真实 CLI、账号、模型和桌面验收；自动化与协议替身不代替实际平台结果。
 
-## 13. 实施前仍需验证的能力边界
+## 14. 真实原生验收边界
 
-本节不是未决定的业务范围。业务目标和变更时机已由本方案确定，以下事实需在对应 adapter 实施时验证：
+实现按锁定 adapter 已声明的能力分支；业务目标和变更时机已由本方案确定。以下边界仍需结合实际安装版本、账号和模型核实，协议测试替身不代替真实验收：
 
 1. 各 CLI 的 Skill/MCP/指令变化能否在保留原 SessionID 的情况下重载；Claude 优先对齐 OpenBot，其他 CLI 不泛化其保证。
 2. 受管账号同主体重新登录后，原生历史能否在新的认证材料下访问；单 home CLI 采用安全更新还是明确 session 替换，必须有相应版本证据。
 3. 系统账号外部变化的实际可观察来源和检测时点；不能声称 OpenBot 已完整覆盖已登录账号外部换主体。
 
+用户已选择本轮只修复 Kimi 登录成功后的凭据代次提交与并发保存。登录失败、取消沿用现有处理，不在启动重新登录时预先推进代次；该原生 CLI 可能在失败前已写入稳定 home，因此本轮不承诺失败后原生认证材料保持不变。
+
 不能验证时保持明确限制和既有隔离，记录具体 CLI/版本及原因；禁止为通过用例伪造能力，或保留旧路径充当未经声明的回退。
+
+实施遇到上述能力缺口或影响真实产品行为的矛盾时，先对照本地固定 OpenBot、对应原生 driver 和当前生产消费者，给出具体证据、影响与可行取舍，再与用户讨论；其余不依赖该结论的工作可以继续。已确认无用途的旧 API/字段删除属于本阶段范围，不逐项重新请求批准；不能为避免讨论真实行为问题而保留旧逻辑或扩大功能。
 
 [ob-drain]: https://github.com/nightly-labs/openbot/blob/f44dbe116c89a944f8d7d085e092c967b3fce0df/src/backend/agent/drain-scheduler.ts#L687
 [ob-start]: https://github.com/nightly-labs/openbot/blob/f44dbe116c89a944f8d7d085e092c967b3fce0df/src/backend/agent/thread-lifecycle.ts#L603
@@ -317,3 +383,7 @@ go test ./apis/runtime_options -run '^Test' -count=1
 [ob-fingerprint]: https://github.com/nightly-labs/openbot/blob/f44dbe116c89a944f8d7d085e092c967b3fce0df/src/backend/agent/thread-lifecycle.ts#L949
 [ob-rename]: https://github.com/nightly-labs/openbot/blob/f44dbe116c89a944f8d7d085e092c967b3fce0df/src/backend/agent/provider-accounts.ts#L328
 [ob-account-home]: https://github.com/nightly-labs/openbot/blob/f44dbe116c89a944f8d7d085e092c967b3fce0df/src/backend/agent/provider-account-store.ts#L97
+[ob-message-contract]: https://github.com/nightly-labs/openbot/blob/f44dbe116c89a944f8d7d085e092c967b3fce0df/packages/contracts/src/ipc-conversations.ts#L170
+[ob-settings-contract]: https://github.com/nightly-labs/openbot/blob/f44dbe116c89a944f8d7d085e092c967b3fce0df/packages/contracts/src/ipc-agent-session-settings.ts#L5
+[ob-skill-contract]: https://github.com/nightly-labs/openbot/blob/f44dbe116c89a944f8d7d085e092c967b3fce0df/packages/contracts/src/ipc-skills.ts#L138
+[ob-workflow-contract]: https://github.com/nightly-labs/openbot/blob/f44dbe116c89a944f8d7d085e092c967b3fce0df/packages/contracts/src/ipc-workflows.ts#L388

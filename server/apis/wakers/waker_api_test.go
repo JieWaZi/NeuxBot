@@ -102,7 +102,6 @@ func TestWakerAPICopiesPresetAndMaintainsIndependentDocuments(t *testing.T) {
 		Projects:         global.ProjectControllerManager,
 		QueryIndexes: chatservice.QueryIndexDependencies{
 			Chats:           global.ChatControllerManager,
-			RuntimeSessions: controllers.NewRuntimeSessionController(database.DB),
 			DeletionIntents: controllers.NewChatDeletionIntentController(database.DB),
 			Transactions:    global.TransactionControllerManager,
 		},

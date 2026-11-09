@@ -246,7 +246,6 @@ type ChatThreadProps = {
   contextMetrics?: ChatRunMetrics;
   sendFailure: ChatSendFailure;
   errorScopes?: readonly string[];
-  onRetryExecution?: (executionId: string) => Promise<void>;
   onRecoverSession?: () => void;
   hasEarlierMessages: boolean;
   isLoadingEarlier: boolean;
@@ -2107,7 +2106,6 @@ export function ChatThread({
   onLoadEarlier,
   sendFailure,
   errorScopes = emptyList,
-  onRetryExecution,
   onRecoverSession,
   warning,
   requestedInteractionId,
@@ -2223,7 +2221,6 @@ export function ChatThread({
       <ChatForkContext value={fork}>
         <ChatErrorActions
           value={{
-            retry: onRetryExecution,
             recover: onRecoverSession,
             disabled: isRunning,
             begin: (operation) => {

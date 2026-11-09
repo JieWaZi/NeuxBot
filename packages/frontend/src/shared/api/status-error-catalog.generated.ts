@@ -1244,32 +1244,6 @@ export const statusErrorCatalog = {
       },
     ],
   },
-  ExecutionRetryInProgress: {
-    code: 40900000032,
-    en: [
-      {
-        text: "the retry request is being processed; check its status shortly",
-      },
-    ],
-    zh: [
-      {
-        text: "重试请求正在处理，请稍后检查状态",
-      },
-    ],
-  },
-  ExecutionRetryUnavailable: {
-    code: 40900000031,
-    en: [
-      {
-        text: "this response cannot be retried directly",
-      },
-    ],
-    zh: [
-      {
-        text: "当前回复不能直接重试，请按错误提示处理后重新发送",
-      },
-    ],
-  },
   IMChatNotAuthorized: {
     code: 40300004001,
     en: [

@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
@@ -113,10 +114,19 @@ func kimiExecutable() (string, error) {
 	return path, nil
 }
 
-func (s *Service) startKimiLogin(id string, revision int64) (Login, error) {
+func (s *Service) startKimiLogin(id string) (Login, error) {
 	release, err := s.Exclusive(id)
 	if err != nil {
 		return Login{}, err
+	}
+	current, err := s.accounts.Get(context.Background(), id)
+	if err != nil {
+		release()
+		return Login{}, err
+	}
+	if current.AuthMode != constants.AccountAuthModeSubscription || current.Endpoint.Protocol != constants.AccountProtocolOpenAICompletions || current.Endpoint.BaseURL != constants.AIAccountKimiURL {
+		release()
+		return Login{}, status_error.AIAccountConfigurationInvalid
 	}
 	home, err := s.kimiHome(id)
 	if err != nil {
@@ -137,7 +147,7 @@ func (s *Service) startKimiLogin(id string, revision int64) (Login, error) {
 		return Login{}, status_error.OperationCanceled
 	}
 	expiresAt := time.Now().Add(30 * time.Minute)
-	job := &loginJob{revision: revision, release: release, kimiExit: make(chan struct{}), kimiReady: make(chan struct{}), view: Login{ID: util.New(), ExpiresAt: expiresAt.UnixMilli(), IntervalMS: 2000}}
+	job := &loginJob{authGeneration: current.AuthGeneration, release: release, kimiExit: make(chan struct{}), kimiReady: make(chan struct{}), view: Login{ID: util.New(), ExpiresAt: expiresAt.UnixMilli(), IntervalMS: 2000}}
 	job.ctx, job.cancel = context.WithDeadline(s.ctx, expiresAt)
 	previous := s.jobs[id]
 	if previous != nil {
@@ -237,12 +247,13 @@ func (s *Service) commitKimiLogin(ctx context.Context, id string, job *loginJob)
 	if err != nil {
 		return Login{}, err
 	}
-	if current.Revision != job.revision {
+	if current.AuthGeneration != job.authGeneration {
 		return Login{}, status_error.AIAccountRevisionConflict
 	}
-	if err := s.accounts.StoreCredential(ctx, id, current.Revision, kimiCredentialMarker); err != nil {
+	if err := s.accounts.StoreNativeLoginCredential(ctx, id, job.authGeneration, kimiCredentialMarker); err != nil {
 		return Login{}, err
 	}
+	s.InvalidateAccountAuth(ctx, current)
 	job.snapshotMutex.Lock()
 	job.view.Complete = true
 	view := job.view

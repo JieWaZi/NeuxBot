@@ -172,8 +172,6 @@ describe("plugin installation", () => {
         authentication: {
           strategy: "plugin-command",
           protocol: "neuxally-auth/1",
-          command: "node",
-          args: ["./.neuxally/auth/authorize.mjs"],
         },
       },
     });
@@ -224,8 +222,6 @@ describe("plugin installation", () => {
         authentication: {
           strategy: "plugin-command",
           protocol: "neuxally-auth/1",
-          command: "node",
-          args: ["./.neuxally/auth/authorize.mjs"],
         },
       },
     });
@@ -301,8 +297,6 @@ describe("plugin installation", () => {
           authentication: {
             strategy: "plugin-command",
             protocol: "neuxally-auth/1",
-            command: "node",
-            args: ["./.neuxally/auth/authorize.mjs"],
           },
         },
       });
@@ -338,8 +332,6 @@ describe("plugin installation", () => {
           authentication: {
             strategy: "plugin-command",
             protocol: "neuxally-auth/1",
-            command: "node",
-            args: ["./.neuxally/auth/authorize.mjs"],
           },
         },
       });
@@ -365,8 +357,6 @@ describe("plugin installation", () => {
         authentication: {
           strategy: "plugin-command",
           protocol: "neuxally-auth/1",
-          command: "node",
-          args: ["./.neuxally/auth/authorize.mjs"],
         },
       },
     });
@@ -405,8 +395,6 @@ async function beginWaitingInstallation(client?: QueryClient) {
       authentication: {
         strategy: "plugin-command",
         protocol: "neuxally-auth/1",
-        command: "node",
-        args: ["./.neuxally/auth/authorize.mjs"],
       },
     },
   });

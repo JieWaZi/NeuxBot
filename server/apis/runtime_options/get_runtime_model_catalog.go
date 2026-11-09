@@ -14,6 +14,7 @@ import (
 
 // 指定账号的原生模型目录
 type GetRuntimeModelCatalog struct {
+	// MethodGet 声明模型目录使用只读查询。
 	ginx.MethodGet
 	// 智能体标识
 	RuntimeID string `in:"path" name:"runtimeId" validate:"required,max=120"`
@@ -31,14 +32,8 @@ type RuntimeModelCatalogResponse struct {
 	AccountID string `json:"accountId"`
 	// 认证代次
 	AuthGeneration uint64 `json:"authGeneration"`
-	// 原生版本
-	Version string `json:"version"`
-	// 发现来源
-	Source string `json:"source"`
 	// 发现状态
 	State string `json:"state"`
-	// 最近成功时间
-	DetectedAt int64 `json:"detectedAt"`
 	// 刷新错误
 	ErrorCode string `json:"errorCode,omitempty"`
 	// 原生默认模型
@@ -61,8 +56,8 @@ func (o *GetRuntimeModelCatalog) Output(ctx *gin.Context) (interface{}, error) {
 	}
 	return RuntimeModelCatalogResponse{
 		RuntimeID: runtimeID, AccountID: result.AccountID, AuthGeneration: result.AuthGeneration,
-		Version: result.Capabilities.Version, Source: result.Provider + "_native", State: result.State,
-		DetectedAt: result.DetectedAt, ErrorCode: result.ErrorCode, DefaultModel: result.DefaultID, Models: models,
+		State:     result.State,
+		ErrorCode: result.ErrorCode, DefaultModel: result.DefaultID, Models: models,
 	}, nil
 }
 
@@ -70,8 +65,6 @@ func nativeModelOption(provider string, row agent.AgentChoice) RuntimeModelOptio
 	result := RuntimeModelOption{
 		ID: row.ID, Name: row.Name, Description: row.Description, Group: row.Group, GroupName: row.GroupName,
 		Free: row.Free, CreditMultiplier: row.CreditMultiplier,
-		ConfigurationKnown: row.Config != nil && len(row.Config.UnknownOptionIDs) == 0,
-		InputModalities:    row.InputModalities, DefaultServiceTier: row.DefaultServiceTier,
 		FastSupported: row.FastServiceTier != "", ReasoningOptions: []RuntimeReasoningOption{},
 		PermissionLevels: runtimeenvironment.NativePermissionLevels(provider, row),
 	}
@@ -89,7 +82,7 @@ func nativeModelOption(provider string, row agent.AgentChoice) RuntimeModelOptio
 	})
 	fastUnknown := slices.Contains(row.Config.UnknownOptionIDs, "fast") || slices.Contains(row.Config.UnknownOptionIDs, "service_tier")
 	if fastUnknown {
-		result.FastSupported, result.DefaultFast, result.DefaultServiceTier = false, nil, nil
+		result.FastSupported, result.DefaultFast = false, nil
 	}
 	for _, setting := range row.Config.Options {
 		if slices.Contains(row.Config.UnknownOptionIDs, setting.ID) {
@@ -131,12 +124,6 @@ func nativeModelOption(provider string, row agent.AgentChoice) RuntimeModelOptio
 			} else if setting.Value.ID == "on" || setting.Value.ID == "off" || setting.Value.ID == "true" || setting.Value.ID == "false" {
 				v := setting.Value.ID == "on" || setting.Value.ID == "true"
 				result.DefaultFast = &v
-			}
-		case setting.ID == "service_tier" && !fastUnknown:
-			for _, choice := range setting.Choices {
-				if choice.ID != "inherit" && choice.ID != "off" {
-					result.ServiceTiers = append(result.ServiceTiers, RuntimeReasoningOption{ID: choice.ID, Name: choice.Name})
-				}
 			}
 		}
 	}

@@ -27,7 +27,6 @@ function question(options: HumanRequest["options"]) {
           id: "question",
           status: "waiting",
           prompt: "选择分析项目",
-          questionVersion: 2,
           snapshotDigest: "frozen",
           options,
         }}
@@ -57,7 +56,6 @@ it("动态多选限制数量并携带冻结版本与摘要", async () => {
       body: expect.objectContaining({
         value: ["a"],
         skip: false,
-        questionVersion: 2,
         snapshotDigest: "frozen",
       }),
     }),

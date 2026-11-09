@@ -58,10 +58,12 @@ func (m *service) PrepareChatGroup(
 			return PreparedChatGroup{}, err
 		}
 		if err := m.ValidateConfiguration(ctx, ExecutionConfiguration{
+			Resolved:                   true,
 			RuntimeID:                  member.RuntimeID,
 			AccountID:                  member.AccountID,
 			Model:                      member.Model,
 			Reasoning:                  member.Reasoning,
+			Fast:                       member.Fast,
 			PermissionLevel:            member.PermissionLevel,
 			RequiredConnectorTransport: teamConnectorTransport(member.WakerID == intent.Scope.WakerID),
 		}); err != nil {

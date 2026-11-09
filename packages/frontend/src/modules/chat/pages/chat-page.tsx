@@ -565,18 +565,13 @@ function ChatView({
         entry?.defaults?.permissionLevel ||
         undefined,
     },
-    defaults: true,
     enabled: Boolean(selectedRuntime),
   });
-  const selectedAccount = executionSelection.accounts.find(
-    (item) => item.id === selectedAccountId,
-  );
   const availableModels = executionSelection.models;
   const selectedModel = executionSelection.effectiveModel;
   const selectedModelOption = availableModels.find(
     (item) => item.id === selectedModel,
   );
-  const thinkingQuery = executionSelection.thinkingQuery;
   const supportedPermissions = executionSelection.supportedPermissions;
   const selectedPermissionLevel = executionSelection.selection.permissionLevel;
   const selectedPermissionUnsupported = Boolean(
@@ -593,9 +588,7 @@ function ChatView({
   );
   const availableReasoningOptions = executionSelection.reasoningOptions;
   const selectedReasoning = executionSelection.selection.reasoning;
-  const selectedFast = executionSelection.fastSupported
-    ? (executionSelection.selection.fast ?? false)
-    : undefined;
+  const selectedFast = executionSelection.selection.fast;
   const summaryRuntime = historicalRuntime ?? selectedRuntime;
   const summaryAccountId = detailQuery.data?.chat?.lastAccountId || "system";
   const summaryAccount = (accountsQuery.data?.resources ?? []).find(
@@ -797,7 +790,6 @@ function ChatView({
       entry?.isSendDisabled ||
       !selectedWakerID ||
       !effectiveRuntimeID ||
-      selectedPermissionUnsupported ||
       (executionSelection.usesNativeCatalog && !executionSelection.valid) ||
       (presentation === "composer" &&
         Boolean(detailQuery.data?.chat?.activeExecutionId)),
@@ -1095,11 +1087,7 @@ function ChatView({
     selectedDraftProject?.name ||
     (workspaceDirectory ? workspaceDirectory.split(/[\\/]/).pop() : "") ||
     t("selectWorkspace");
-  const permissionEvidenceReady =
-    !executionSelection.loading &&
-    !executionSelection.catalogPending &&
-    (!executionSelection.usesNativeCatalog ||
-      (executionSelection.catalogState === "fresh" && selectedModelOption));
+  const permissionEvidenceReady = supportedPermissions.size > 0;
   const permissionWarning = !permissionEvidenceReady
     ? ""
     : selectedPermissionUnsupported
@@ -1181,9 +1169,7 @@ function ChatView({
       sessionSwitch?.reason === "switch" &&
       sessionSwitch.chatId === activeChatId,
     ),
-    thinkingPending: Boolean(
-      selectedAccount && thinkingQuery.isPending && thinkingQuery.isFetching,
-    ),
+    thinkingPending: executionSelection.catalogPending,
     historicalRuntime,
     historicalRuntimeDisabled,
     onPickDirectory: pickDirectory,
@@ -1329,7 +1315,6 @@ function ChatView({
       contextMetrics: chatRuntime.contextMetrics,
       sendFailure: chatRuntime.sendFailure,
       errorScopes: [runtimeQueueKey, `chat:${activeChatId}`],
-      onRetryExecution: chatRuntime.retryExecution,
       onRecoverSession: () => {
         if (!activeChatId) return;
         setSessionSwitch({

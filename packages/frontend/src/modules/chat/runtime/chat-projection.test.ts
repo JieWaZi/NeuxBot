@@ -472,6 +472,7 @@ describe("chat projection", () => {
       status: "failed",
       errorMessage:
         "400 Invalid max_tokens value, the valid range is [1, 393216]",
+      errorMessageSource: "public",
     });
 
     expect(completed.status).toEqual({ type: "complete", reason: "stop" });
@@ -496,19 +497,19 @@ describe("chat projection", () => {
 
     expect(failed.content).toEqual([]);
     expect(failed.metadata?.custom).toMatchObject({
-      failureMessage: "Internal error",
-      retryable: false,
+      failureMessage:
+        "当前模型不在你的套餐范围内。请切换模型，或检查套餐后重试。",
     });
     expect(failed.status).toEqual({
       type: "incomplete",
       reason: "error",
       error: {
-        message: "Internal error",
+        message: "当前模型不在你的套餐范围内。请切换模型，或检查套餐后重试。",
       },
     });
   });
 
-  it("系统故障同样通过消息错误元数据展示 CLI 原始诊断", () => {
+  it("系统故障通过消息错误元数据展示安全提示，不公开 CLI 私有诊断", () => {
     const failed = toThreadMessage({
       id: "assistant-process-exited",
       role: "assistant",
@@ -520,14 +521,13 @@ describe("chat projection", () => {
 
     expect(failed.content).toEqual([]);
     expect(failed.metadata?.custom).toMatchObject({
-      failureMessage: "child process exited with private diagnostics",
-      retryable: false,
+      failureMessage: "执行进程异常退出，请检查执行结果和运行环境。",
     });
     expect(failed.status).toEqual({
       type: "incomplete",
       reason: "error",
       error: {
-        message: "child process exited with private diagnostics",
+        message: "执行进程异常退出，请检查执行结果和运行环境。",
       },
     });
   });

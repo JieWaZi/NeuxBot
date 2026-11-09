@@ -58,12 +58,13 @@ func TestWorkflowMCPUsesCustomRuntimeBase(t *testing.T) {
 		t.Fatal(err)
 	}
 	journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "turn"}}
-	manager := &service{agent: registry, agentEndpoint: "http://127.0.0.1:1/agent/v1", agentBinary: binary, journal: journal, storage: layout, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
-	request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: "custom-claude"}, Detection: agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "claude"}}}}
+	manager := &service{agent: registry, agentEndpoint: "http://127.0.0.1:1/agent/v1", journal: journal, storage: layout, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
+	manager.systemSkillDirectory = publishedTestSystemSkill(t, manager.skillDataDirectory, binary)
+	request := recordedRun{Runtime: runtimeSelection{RuntimeID: "custom-claude"}, Detection: agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "claude"}}}
 	capabilities := []ToolCapability{{ID: "workflow", Bindings: []capability.Binding{{Operation: "workflow.source.get", Call: func(context.Context, capability.Request) (capability.Result, error) {
 		return capability.Result{}, nil
 	}}}}}
-	_, release, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, journal.chat, "turn", capabilities, &[]string{}, nil)
+	_, release, err := request.prepare(manager, journal.chat, "turn", capabilities, &[]string{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +72,7 @@ func TestWorkflowMCPUsesCustomRuntimeBase(t *testing.T) {
 	if len(request.Connectors) != 1 || request.Connectors[0].RuntimeKey != "ally_capabilities" {
 		t.Fatalf("custom runtime lost MCP: %+v", request.Connectors)
 	}
-	if !strings.Contains(agentapi.DeveloperInstructions(request.SessionPlan), "Use the injected ally_capabilities MCP tools for NeuxBot operations in this execution") || strings.Contains(nativeTurnPrompt(request.TurnInput), "For all NeuxBot CLI calls") {
+	if !strings.Contains(agentapi.DeveloperInstructions(request.Instructions), "Use the injected ally_capabilities MCP tools for NeuxBot operations in this execution") || strings.Contains(request.prompt(), "For all NeuxBot CLI calls") {
 		t.Fatalf("MCP workflow received competing CLI instructions: %+v", request)
 	}
 	for _, instruction := range request.Instructions {
@@ -92,21 +93,22 @@ func TestWorkflowResultSelectsOnlySupportedTransport(t *testing.T) {
 				t.Fatal(err)
 			}
 			journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "turn"}}
-			manager := &service{agent: registry, agentEndpoint: "http://127.0.0.1:1/agent/v1", agentBinary: binary, journal: journal, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
-			request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: runtimeID}}}
+			manager := &service{agent: registry, agentEndpoint: "http://127.0.0.1:1/agent/v1", journal: journal, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
+			manager.systemSkillDirectory = publishedTestSystemSkill(t, manager.skillDataDirectory, binary)
+			request := recordedRun{Runtime: runtimeSelection{RuntimeID: runtimeID}}
 			capabilities := []ToolCapability{{ID: "result", Bindings: []capability.Binding{{Operation: "workflow.results.schema", Call: func(context.Context, capability.Request) (capability.Result, error) {
 				return capability.Result{}, nil
 			}}}}}
-			_, release, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, journal.chat, "turn", capabilities, &[]string{}, nil)
+			_, release, err := request.prepare(manager, journal.chat, "turn", capabilities, &[]string{}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer release()
 			if runtimeID == "codex" {
-				if len(request.Connectors) != 1 || !strings.Contains(agentapi.DeveloperInstructions(request.SessionPlan), "Use the injected ally_capabilities MCP tools") || strings.Contains(nativeTurnPrompt(request.TurnInput), "For all NeuxBot CLI calls") {
+				if len(request.Connectors) != 1 || !strings.Contains(agentapi.DeveloperInstructions(request.Instructions), "Use the injected ally_capabilities MCP tools") || strings.Contains(request.prompt(), "For all NeuxBot CLI calls") {
 					t.Fatalf("result worker did not receive its MCP transport: %+v", request)
 				}
-			} else if len(request.Connectors) != 0 || !strings.Contains(nativeTurnPrompt(request.TurnInput), "For all NeuxBot CLI calls") || preparedContextPath(t, request) == "" {
+			} else if len(request.Connectors) != 0 || !strings.Contains(request.prompt(), "For all NeuxBot CLI calls") || preparedContextPath(t, request) == "" {
 				t.Fatalf("unsupported runtime lost its actual CLI fallback: %+v", request)
 			}
 		})
@@ -128,9 +130,10 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 	}
 	journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "first"}}
 	programDirectory := t.TempDir()
-	manager := &service{agent: registry, agentEndpoint: endpoint + constants.AgentCLIPath, agentBinary: binary, journal: journal, storage: layout, skillDataDirectory: programDirectory, elicitations: newElicitationCoordinator(journal)}
-	request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: "codex", AccountID: "account"}}}
-	activate, revoke, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, journal.chat, "first", nil, &[]string{}, nil)
+	manager := &service{agent: registry, agentEndpoint: endpoint + constants.AgentCLIPath, journal: journal, storage: layout, skillDataDirectory: programDirectory, elicitations: newElicitationCoordinator(journal)}
+	manager.systemSkillDirectory = publishedTestSystemSkill(t, manager.skillDataDirectory, binary)
+	request := recordedRun{Runtime: runtimeSelection{RuntimeID: "codex", AccountID: "account"}}
+	activate, revoke, err := request.prepare(manager, journal.chat, "first", nil, &[]string{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,8 +164,8 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 	}
 	revoke()
 	journal.chat.ActiveExecutionID = "second"
-	secondRequest := recordedRun{SessionPlan: agentapi.SessionPlan{Target: request.Target}}
-	activate, revokeSecond, err := manager.prepareAgent(&secondRequest.SessionPlan, &secondRequest.TurnInput, journal.chat, "second", nil, &[]string{}, nil)
+	secondRequest := recordedRun{Runtime: request.Runtime}
+	activate, revokeSecond, err := secondRequest.prepare(manager, journal.chat, "second", nil, &[]string{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +222,8 @@ func TestKnowledgeCLIPreparationKeepsOnlyTheFrozenGrant(t *testing.T) {
 		t.Fatalf("build real CLI: %v\n%s", err, output)
 	}
 	journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "execution"}}
-	manager := &service{agent: registry, agentEndpoint: endpoint.URL + constants.AgentCLIPath, agentBinary: binary, journal: journal, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
+	manager := &service{agent: registry, agentEndpoint: endpoint.URL + constants.AgentCLIPath, journal: journal, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
+	manager.systemSkillDirectory = publishedTestSystemSkill(t, manager.skillDataDirectory, binary)
 	manager.agentBindings = func(models.Chat, string, []string, string) []capability.Binding {
 		t.Fatal("scoped command discovered ordinary resources")
 		return nil
@@ -234,8 +238,8 @@ func TestKnowledgeCLIPreparationKeepsOnlyTheFrozenGrant(t *testing.T) {
 		}
 		bindings = append(bindings, b)
 	}
-	request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: "codex"}, Policy: agentapi.RunPolicy{Execution: agentapi.ExecutionPolicy{WorkspaceReadOnly: true}}}}
-	activate, revoke, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, journal.chat, "execution", []ToolCapability{{ID: "knowledge.organize", Bindings: bindings}}, &[]string{}, nil)
+	request := recordedRun{Runtime: runtimeSelection{RuntimeID: "codex"}, ReadOnly: true}
+	activate, revoke, err := request.prepare(manager, journal.chat, "execution", []ToolCapability{{ID: "knowledge.organize", Bindings: bindings}}, &[]string{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +248,7 @@ func TestKnowledgeCLIPreparationKeepsOnlyTheFrozenGrant(t *testing.T) {
 	if len(request.Connectors) != 0 {
 		t.Fatalf("knowledge grant added a retired MCP transport: %+v", request.Connectors)
 	}
-	if preparedContextPath(t, request) == "" || !request.Policy.Execution.WorkspaceReadOnly {
+	if preparedContextPath(t, request) == "" || !request.ReadOnly {
 		t.Fatal("existing CLI context or workspace policy was lost")
 	}
 	// 从无技能文件的目录运行，清空 PATH，证明入口与引用均无需搜索。
@@ -282,7 +286,9 @@ func agentPreparationFixture(t *testing.T) *service {
 		t.Fatal(err)
 	}
 	journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "turn"}}
-	return &service{agent: registry, agentEndpoint: "http://127.0.0.1:1/agent/v1", agentBinary: binary, journal: journal, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
+	manager := &service{agent: registry, agentEndpoint: "http://127.0.0.1:1/agent/v1", journal: journal, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
+	manager.systemSkillDirectory = publishedTestSystemSkill(t, manager.skillDataDirectory, binary)
+	return manager
 }
 
 func TestAgentPreparationFreezesRealReferencedFilesIndependentOfNativeProjection(t *testing.T) {
@@ -308,8 +314,8 @@ func TestAgentPreparationFreezesRealReferencedFilesIndependentOfNativeProjection
 		}
 		return capability.Result{}, status_error.AgentOperationForbidden
 	}}}}}
-	request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: "unsupported"}}, TurnInput: agentapi.TurnInput{Message: agentapi.Message{CodeReferences: []agentapi.CodeReference{{Path: "projects/chat/project/report.txt"}}}}}
-	activate, revoke, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, chat, "turn", bindings, &[]string{}, files)
+	request := recordedRun{Runtime: runtimeSelection{RuntimeID: "unsupported"}, Message: agentapi.Message{CodeReferences: []agentapi.CodeReference{{Path: "projects/chat/project/report.txt"}}}}
+	activate, revoke, err := request.prepare(manager, chat, "turn", bindings, &[]string{}, files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,8 +370,8 @@ func TestWorkflowAuthoringPreparationSuppliesModeAndStableGuideForEveryRuntime(t
 				name := []string{"first-business-goal", "hot-short-edit", "restored-short-follow-up", "pure-explanation"}[index]
 				t.Run(name, func(t *testing.T) {
 					journal.chat.ActiveExecutionID = name
-					request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: runtimeID}, Detection: agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: baseRuntimeID}}, Instructions: []agentapi.Instruction{{Name: "PARTNER.md", Content: "Answer simple requests directly."}}}, TurnInput: agentapi.TurnInput{Message: agentapi.Message{Text: message}}}
-					_, release, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, journal.chat, name, nil, nil, nil)
+					request := recordedRun{Runtime: runtimeSelection{RuntimeID: runtimeID}, Detection: agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: baseRuntimeID}}, Instructions: []agentapi.Instruction{{Name: "PARTNER.md", Content: "Answer simple requests directly."}}, Message: agentapi.Message{Text: message}}
+					_, release, err := request.prepare(manager, journal.chat, name, nil, nil, nil)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -389,14 +395,14 @@ func TestWorkflowAuthoringPreparationSuppliesModeAndStableGuideForEveryRuntime(t
 					} else if !reflect.DeepEqual(request.Instructions, stableInstructions) {
 						t.Error("turn content or restored session changed the stable authoring instructions")
 					}
-					if request.Message.Text != message || strings.Contains(nativeTurnPrompt(request.TurnInput), guide) || strings.Contains(nativeTurnPrompt(request.TurnInput), "<workflow-authoring-context>") {
+					if request.Message.Text != message || strings.Contains(request.prompt(), guide) || strings.Contains(request.prompt(), "<workflow-authoring-context>") {
 						t.Error("preparation rewrote user input or repeated the stable authoring role in this turn")
 					}
 					if runtimeID != "unsupported" {
-						if len(request.Connectors) != 1 || request.Connectors[0].RuntimeKey != "ally_capabilities" || strings.Contains(nativeTurnPrompt(request.TurnInput), "For all NeuxBot CLI calls") {
+						if len(request.Connectors) != 1 || request.Connectors[0].RuntimeKey != "ally_capabilities" || strings.Contains(request.prompt(), "For all NeuxBot CLI calls") {
 							t.Errorf("base/custom runtime lost its single MCP authoring transport: %+v", request.Connectors)
 						}
-					} else if len(request.Connectors) != 0 || !strings.Contains(nativeTurnPrompt(request.TurnInput), "For all NeuxBot CLI calls") || preparedContextPath(t, request) == "" {
+					} else if len(request.Connectors) != 0 || !strings.Contains(request.prompt(), "For all NeuxBot CLI calls") || preparedContextPath(t, request) == "" {
 						t.Error("unknown runtime lost the authorized CLI fallback")
 					}
 				})
@@ -414,13 +420,13 @@ func TestWorkflowAuthoringPreparationDoesNotOverrideOrdinaryChatOrWorker(t *test
 			if operation != "" {
 				capabilities = []ToolCapability{{ID: "worker", Bindings: []capability.Binding{agentPreparationBinding(t, operation)}}}
 			}
-			request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: "codex"}}, TurnInput: agentapi.TurnInput{Message: agentapi.Message{Text: "访问多个资讯网，然后汇总AI新闻"}}}
-			_, release, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, journal.chat, "turn", capabilities, &[]string{}, nil)
+			request := recordedRun{Runtime: runtimeSelection{RuntimeID: "codex"}, Message: agentapi.Message{Text: "访问多个资讯网，然后汇总AI新闻"}}
+			_, release, err := request.prepare(manager, journal.chat, "turn", capabilities, &[]string{}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer release()
-			if strings.Contains(nativeTurnPrompt(request.TurnInput), "Current workflow references") {
+			if strings.Contains(request.prompt(), "Current workflow references") {
 				t.Fatal("ordinary chat or execution worker received the authoring role")
 			}
 			for _, instruction := range request.Instructions {
@@ -457,4 +463,17 @@ func preparedContextPath(t *testing.T, request recordedRun) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+func publishedTestSystemSkill(t *testing.T, root, binary string) string {
+	t.Helper()
+	directory, err := builtinskills.SystemDirectory(root, binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory, err = filepath.EvalSymlinks(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return directory
 }

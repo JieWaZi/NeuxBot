@@ -3,6 +3,7 @@ package messageview
 
 import (
 	"encoding/json"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -159,8 +160,6 @@ type Message struct {
 	Fork *MessageFork `json:"fork,omitempty"`
 	// Inherited 标记从来源会话复制的历史，不计作本会话的新执行。
 	Inherited bool `json:"inherited,omitempty"`
-	// Retryable 表示后端允许用户安全重试该失败回合。
-	Retryable bool `json:"retryable,omitempty"`
 	// ID 是消息的稳定标识。
 	ID string `json:"id"`
 	// 输入提交标识
@@ -227,8 +226,8 @@ type InheritedMessage struct {
 	FileChangeRoots []string `json:"fileChangeRoots,omitempty"`
 	// SourceMessageID 保留直接来源 Chat 中的消息身份，供权威历史追溯。
 	SourceMessageID string `json:"sourceMessageId"`
-	// ForkInvocation 仅在继承末尾保存子原生 Session 的检查点，允许再次分叉。
-	ForkInvocation *eventlog.InvocationFinishedData `json:"forkInvocation,omitempty"`
+	// ForkBoundary 仅在继承末尾保存子原生 Session 的检查点，允许再次分叉。
+	ForkBoundary *agent.NativeForkBoundary `json:"forkBoundary,omitempty"`
 	// ForkConfiguration 是该检查点对应的冻结执行选择。
 	ForkConfiguration *eventlog.ExecutionCreatedData `json:"forkConfiguration,omitempty"`
 	// Message 保存重新分配身份的安全展示信息。

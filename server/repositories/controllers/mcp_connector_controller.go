@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -27,6 +28,10 @@ type MCPConnectorController interface {
 	ListForWaker(ctx context.Context, wakerID string, query string) ([]models.MCPConnectorWithState, error)
 	// ListEnabled 返回当前伙伴已启用的连接器。
 	ListEnabled(ctx context.Context, wakerID string) ([]models.MCPConnector, error)
+	// ExecutionDeclarations 只读取启用连接器的固定执行配置和密文身份，不解密。
+	ExecutionDeclarations(context.Context, string) ([]models.MCPConnector, error)
+	// AcquireEnabled 冷获取时核对当前声明，只解密本次实际交付项。
+	AcquireEnabled(context.Context, string, []models.MCPConnector) ([]models.MCPConnector, error)
 	// Update 替换连接器的可编辑普通配置和调用方准备的测试字段。
 	Update(ctx context.Context, connector models.MCPConnector) error
 	// UpdateTestSnapshot 替换连接器最近一次测试快照。
@@ -174,15 +179,83 @@ func (c *mcpConnectorController) ListEnabled(
 	ctx context.Context,
 	wakerID string,
 ) ([]models.MCPConnector, error) {
-	items, err := c.ListForWaker(ctx, wakerID, "")
+	items, err := c.enabledConnectors(ctx, wakerID, false)
 	if err != nil {
 		return nil, err
 	}
 	result := make([]models.MCPConnector, 0, len(items))
 	for _, item := range items {
-		if item.Enabled {
-			result = append(result, item.Connector)
+		if err := decryptConnectorSecrets(controllerDB(ctx, c.db), &item); err != nil {
+			return nil, err
 		}
+		result = append(result, item)
+	}
+	return result, nil
+}
+
+// ExecutionDeclarations 不读取管理测试结果，不访问秘密存储密钥。
+func (c *mcpConnectorController) ExecutionDeclarations(ctx context.Context, waker string) ([]models.MCPConnector, error) {
+	var result []models.MCPConnector
+	err := NewTransactionController(dbhelper.NewGormTransactionManager(c.db)).Transaction(ctx, func(readContext context.Context) error {
+		var err error
+		result, err = c.enabledConnectors(readContext, waker, true)
+		return err
+	})
+	return result, err
+}
+
+func (c *mcpConnectorController) enabledConnectors(ctx context.Context, waker string, declaration bool) ([]models.MCPConnector, error) {
+	db := controllerDB(ctx, c.db)
+	var relations []models.WakerMCPConnector
+	if err := db.Select("mcp_connector_id", "enabled").Where("waker_id = ?", waker).Find(&relations).Error; err != nil {
+		return nil, databaseError("execution_mcp_relations", waker, err)
+	}
+	enabled, disabled := []string{}, []string{}
+	for _, relation := range relations {
+		if relation.Enabled {
+			enabled = append(enabled, relation.MCPConnectorID)
+		} else {
+			disabled = append(disabled, relation.MCPConnectorID)
+		}
+	}
+	query := db.Model(&models.MCPConnector{}).Where("((scope = ? AND id NOT IN ?) OR id IN ?) AND (owner_waker_id = ? OR owner_waker_id = ?)", constants.MCPConnectorScopeBuiltIn, append(disabled, ""), append(enabled, ""), "", waker)
+	if declaration {
+		query = query.Select("id", "name", "runtime_key", "scope", "owner_waker_id", "transport", "command", "arguments", "environment", "url", "headers", "timeout_ms", "trusted_config_digest", "trusted_at")
+	}
+	items := []models.MCPConnector{}
+	if err := query.Order("id").Find(&items).Error; err != nil {
+		return nil, databaseError("execution_mcp_connectors", waker, err)
+	}
+	for index := range items {
+		normalizeConnectorCollections(&items[index])
+	}
+	return items, nil
+}
+
+// AcquireEnabled 接受已筛选的交付子集；声明到获取之间发生配置或启用变化则拒绝。
+func (c *mcpConnectorController) AcquireEnabled(ctx context.Context, waker string, expected []models.MCPConnector) ([]models.MCPConnector, error) {
+	current, err := c.ExecutionDeclarations(ctx, waker)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]models.MCPConnector, len(current))
+	for _, connector := range current {
+		byID[connector.ID] = connector
+	}
+	result := make([]models.MCPConnector, 0, len(expected))
+	for _, declaration := range expected {
+		connector, exists := byID[declaration.ID]
+		// 存在稳定原生名称时，管理展示名变化不改变冷获取的实际执行配置。
+		if connector.RuntimeKey != "" {
+			declaration.Name = connector.Name
+		}
+		if !exists || !reflect.DeepEqual(connector, declaration) {
+			return nil, status_error.Conflict
+		}
+		if err := decryptConnectorSecrets(controllerDB(ctx, c.db), &connector); err != nil {
+			return nil, err
+		}
+		result = append(result, connector)
 	}
 	return result, nil
 }

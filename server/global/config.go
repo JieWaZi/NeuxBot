@@ -520,7 +520,6 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		Results:          WorkResultControllerManager,
 		QueryIndexes: chat.QueryIndexDependencies{
 			Chats:           ChatControllerManager,
-			RuntimeSessions: controllers.NewRuntimeSessionController(DB),
 			Transactions:    TransactionControllerManager,
 			DeletionIntents: ChatDeletionIntentControllerManager,
 		},

@@ -135,16 +135,12 @@ func TestCommittedInteractionResolutionSurvivesRequestCancellation(t *testing.T)
 // TestUsageFoundationForkPreservesOriginWithoutNewConsumption 验证带用量的父回合只继承身份和展示，不创建子消费事实。
 func TestUsageFoundationForkPreservesOriginWithoutNewConsumption(t *testing.T) {
 	manager, parent := forkFixture(t)
-	root, err := manager.storage.AgentWorkspace("waker")
-	if err != nil {
-		t.Fatal(err)
-	}
 	ctx := context.Background()
 	store := manager.logStore.(*conversationJournal).Store
 	session := agent.NativeSessionKey{Provider: "codex", Subject: "fixture", SessionID: "native-parent"}
 	key := agent.NativeResultKey{Session: session, InvocationID: "spent-invocation"}
 	inputTokens, outputTokens := int64(250), int64(30)
-	if err := store.CommitNativeResult(ctx, agent.NativeResult{Key: key, Turn: acpmeta.NativeTurn{
+	if err := store.CommitNativeResult(ctx, agent.NativeResult{Key: key, ForkMode: "turn", ForkPosition: "turn-spent", Turn: acpmeta.NativeTurn{
 		InvocationID: key.InvocationID, Origin: acpmeta.NativeTurnOriginHost, Status: acpmeta.NativeTurnCompleted,
 		ConsumedInputIDs: []string{"spent-input"},
 		Usage:            &acpmeta.TurnUsage{InputTokens: &inputTokens, OutputTokens: &outputTokens, Complete: true, Source: "fixture"},
@@ -162,7 +158,6 @@ func TestUsageFoundationForkPreservesOriginWithoutNewConsumption(t *testing.T) {
 		conversationfixture.NativeMessage(t, store, parent, "spent", agent.MessageChange{Kind: agent.MessageAppend, ContentType: constants.RuntimeEventTypeTextDelta, Text: "inherit this answer"}),
 	)
 	changes = append(changes, conversationfixture.Facts([]eventlog.AppendInput{
-		{Type: constants.ChatEventTypeInvocationFinished, ExecutionID: "spent", InvocationID: "spent-host", Data: marshalData(eventlog.InvocationFinishedData{RecoveryStrategy: constants.InvocationRecoveryInitial, RuntimeID: "custom-codex", WorkingDirectory: root, SessionOutputID: "native-parent", ForkMode: "turn", ForkPosition: "turn-spent"})},
 		{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: "spent", Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})},
 	})...)
 	if _, err := conversationfixture.Commit(ctx, store, parent, changes); err != nil {
@@ -172,11 +167,11 @@ func TestUsageFoundationForkPreservesOriginWithoutNewConsumption(t *testing.T) {
 	if err != nil || len(parentMessages) != 1 || parentMessages[0].RunMetrics == nil || parentMessages[0].RunMetrics.InputTokens != 250 {
 		t.Fatalf("parent usage fixture missing: %+v error=%v", parentMessages, err)
 	}
-	child, err := manager.ForkChat(ctx, ForkInput{ChatID: parent, ExecutionID: "spent", ClientRequestID: "usage-origin"}, NativeFork{Execute: func(_ context.Context, input NativeForkInput) (string, error) {
-		if input.Invocation.ForkPosition != "turn-spent" {
-			t.Fatalf("wrong fork boundary: %+v", input.Invocation)
+	child, err := manager.ForkChat(ctx, ForkInput{ChatID: parent, ExecutionID: "spent", ClientRequestID: "usage-origin"}, NativeFork{Execute: func(_ context.Context, input NativeForkInput) (agent.NativeBinding, error) {
+		if input.Boundary.Position != "turn-spent" {
+			t.Fatalf("wrong fork boundary: %+v", input.Boundary)
 		}
-		return "native-child", nil
+		return forkTestBinding("native-child"), nil
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -188,7 +183,7 @@ func TestUsageFoundationForkPreservesOriginWithoutNewConsumption(t *testing.T) {
 	found := false
 	for _, record := range records {
 		switch record.Type {
-		case constants.ChatEventTypeExecutionCreated, constants.ChatEventTypeExecutionStarted, constants.ChatEventTypeInvocationFinished, constants.ChatEventTypeExecutionCompleted, constants.ChatEventTypeExecutionFailed, constants.ChatEventTypeExecutionCanceled:
+		case constants.ChatEventTypeExecutionCreated, constants.ChatEventTypeExecutionStarted, constants.ChatEventTypeExecutionCompleted, constants.ChatEventTypeExecutionFailed, constants.ChatEventTypeExecutionCanceled:
 			t.Fatalf("fork created execution or consumption fact: %+v", record)
 		case constants.ChatEventTypeMessageInherited:
 			var inherited messageview.InheritedMessage

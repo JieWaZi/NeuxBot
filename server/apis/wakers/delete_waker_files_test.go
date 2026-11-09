@@ -59,7 +59,7 @@ func TestDeleteWakerOwnsAgentFilesWithoutAnyChatsAndRollsBackDatabaseFailure(t *
 			global.AutomaticTaskControllerManager, global.PluginControllerManager = nil, nil
 			global.KnowledgeService, global.IntegrationService, global.MemoryService = nil, nil, nil
 			global.ScheduleService, global.ChannelService, global.AgentThreads = nil, nil, nil
-			service, err := chatservice.New(chatservice.Config{StorageDirectory: global.Config.ManagedFilesDirectory, Projects: global.ProjectControllerManager, QueryIndexes: chatservice.QueryIndexDependencies{Chats: controllers.NewChatController(database.DB), RuntimeSessions: controllers.NewRuntimeSessionController(database.DB), DeletionIntents: controllers.NewChatDeletionIntentController(database.DB), Transactions: global.TransactionControllerManager}})
+			service, err := chatservice.New(chatservice.Config{StorageDirectory: global.Config.ManagedFilesDirectory, Projects: global.ProjectControllerManager, QueryIndexes: chatservice.QueryIndexDependencies{Chats: controllers.NewChatController(database.DB), DeletionIntents: controllers.NewChatDeletionIntentController(database.DB), Transactions: global.TransactionControllerManager}})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -1,4 +1,3 @@
-import { retryChatExecution } from "@/shared/api/generated/sdk.gen";
 import { ApiError } from "@/shared/api/errors";
 import {
   reportErrorNotice,
@@ -127,7 +126,6 @@ type ChatRuntimeResult = {
   isRunning: boolean;
   hasVisibleMessages: boolean;
   sendFailure: ChatSendFailure;
-  retryExecution: (executionId: string) => Promise<void>;
   contextMetrics?: ChatRunMetrics;
   pendingApprovals: PendingApproval[];
   pendingElicitations: PendingElicitation[];
@@ -429,61 +427,6 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     void sourceRef.current.reconcile().catch(() => {});
   }, []);
   useEffect(() => () => clearErrorNoticeActions(queueKey), [queueKey]);
-
-  const retryExecution = useCallback(
-    async (executionId: string) => {
-      if (!options.chatId || runningRef.current || options.isSendDisabled)
-        return;
-      const chatId = options.chatId;
-      const key = options.conversationKey;
-      runningRef.current = true;
-      setSending({ queueKey });
-      try {
-        const { data } = await retryChatExecution({
-          path: { chatId, executionId },
-          throwOnError: true,
-        });
-        if (mountedRef.current && observedChatKeyRef.current === key) {
-          const execution = data.execution;
-          if (
-            execution?.status === "pending" ||
-            execution?.status === "running"
-          ) {
-            setOverlay((previous) => ({
-              chatId,
-              messages: applyChatEvent(
-                previous.chatId === chatId ? previous.messages : [],
-                {
-                  message: {
-                    id: execution.id,
-                    executionId: execution.id,
-                    role: "assistant",
-                    status: execution.status,
-                  },
-                },
-              ),
-            }));
-          }
-          onStarted(data, { chatId, key, queueKey });
-          reconcileHistory();
-          terminalRef.current();
-        }
-      } finally {
-        if (observedChatKeyRef.current === key) runningRef.current = false;
-        setSending((value) =>
-          value?.queueKey === queueKey ? undefined : value,
-        );
-      }
-    },
-    [
-      options.chatId,
-      options.conversationKey,
-      options.isSendDisabled,
-      queueKey,
-      onStarted,
-      reconcileHistory,
-    ],
-  );
 
   const currentSendFailure =
     sendFailure.chatId === options.chatId ? sendFailure.value : NO_SEND_FAILURE;
@@ -1369,7 +1312,6 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     isRunning,
     hasVisibleMessages: messages.length > 0,
     sendFailure: currentSendFailure,
-    retryExecution,
     contextMetrics: latestContextMetrics(messages),
     pendingApprovals,
     pendingElicitations,

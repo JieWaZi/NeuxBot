@@ -3,9 +3,6 @@ package aiaccount
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"path/filepath"
 	"slices"
 	"sync"
@@ -220,17 +217,6 @@ func (s *Service) Get(ctx context.Context, id string) (models.AIAccount, error) 
 	return s.accounts.Get(ctx, id)
 }
 
-// SessionConfigurationKey 只描述影响原生配置的账号事实，凭据轮换继续使用独立的修订并发保护。
-// 凭据修改与重新登录先通过既有独占租约关闭闲置消费者，不把秘密或凭据修订写入静态身份。
-func SessionConfigurationKey(account models.AIAccount) string {
-	body, _ := json.Marshal([]any{
-		account.ID, account.AuthMode, account.Endpoints, account.SelectedModels,
-		account.ModelContextSizes, account.ModelDisplayNames, account.ModelReasoningLevels, account.ClaudeModelRoles,
-	})
-	digest := sha256.Sum256(body)
-	return hex.EncodeToString(digest[:])
-}
-
 // ValidateSelection 在保存默认配置与执行准备前复用账号协议、凭据和模型校验。
 func (s *Service) ValidateSelection(ctx context.Context, id, runtimeID, model, reasoning string) (models.AIAccount, error) {
 	account, err := s.accounts.Get(ctx, id)
@@ -277,19 +263,19 @@ func (s *Service) credentialGate(id string) *codexoauth.CredentialGate {
 
 // accountEndpoint 只使用账号的唯一协议入口，不进行协议转换。
 func accountEndpoint(account models.AIAccount, runtimeID string) (models.AIAccountEndpoint, bool) {
-	if len(account.Endpoints) == 0 {
+	if account.Endpoint.Protocol == "" {
 		return models.AIAccountEndpoint{}, false
 	}
 	if account.AuthMode == constants.AccountAuthModeSubscription {
-		endpoint := account.Endpoints[0]
+		endpoint := account.Endpoint
 		if (runtimeID == constants.RuntimeIDCodex && endpoint.Protocol == constants.AccountProtocolOpenAIResponses && endpoint.BaseURL == constants.AIAccountOpenAIURL) ||
 			(runtimeID == constants.RuntimeIDKimi && endpoint.Protocol == constants.AccountProtocolOpenAICompletions && endpoint.BaseURL == constants.AIAccountKimiURL) {
 			return endpoint, true
 		}
 		return models.AIAccountEndpoint{}, false
 	}
-	if accountconfig.Supports(runtimeID, account.Endpoints[0].Protocol) {
-		return account.Endpoints[0], true
+	if accountconfig.Supports(runtimeID, account.Endpoint.Protocol) {
+		return account.Endpoint, true
 	}
 	return models.AIAccountEndpoint{}, false
 }

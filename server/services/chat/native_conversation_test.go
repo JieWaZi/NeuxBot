@@ -92,7 +92,7 @@ func TestChatNativeAdmissionStreamsTerminalAndReopens(t *testing.T) {
 		Conversations:    store,
 		Projects:         controllers.NewProjectController(db.DB),
 		QueryIndexes: QueryIndexDependencies{
-			Chats: controllers.NewChatController(db.DB), RuntimeSessions: controllers.NewRuntimeSessionController(db.DB),
+			Chats:           controllers.NewChatController(db.DB),
 			DeletionIntents: controllers.NewChatDeletionIntentController(db.DB),
 			Transactions:    controllers.NewTransactionController(dbhelper.NewGormTransactionManager(db.DB)),
 		},

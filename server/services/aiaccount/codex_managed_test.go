@@ -93,7 +93,7 @@ func TestManagedCodexAPIKeyGenerationFencesStaleSelection(t *testing.T) {
 	ctx := t.Context()
 	account := models.AIAccount{
 		ID: "fedcba9876543210fedcba9876543210", Name: "key", AuthMode: constants.AccountAuthModeAPIKey,
-		Endpoints:      []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: constants.AIAccountOpenAIURL}},
+		Endpoint:       models.AIAccountEndpoint{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: constants.AIAccountOpenAIURL},
 		SelectedModels: []string{"fixture-model"},
 	}
 	if err := s.accounts.Create(ctx, account, "fixture-first-key"); err != nil {
@@ -114,10 +114,10 @@ func TestManagedCodexAPIKeyGenerationFencesStaleSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	next, err := s.ResolveCodexAccount(ctx, input, "")
-	if err != nil || !next.Equal(first) {
-		t.Fatalf("metadata changed frozen auth identity: %v", err)
+	if err != nil || next.Subject != first.Subject || next.AuthGeneration != first.AuthGeneration || next.ConfigHome != first.ConfigHome || next.ConfigFingerprint == first.ConfigFingerprint {
+		t.Fatalf("model metadata did not refresh launch identity independently of auth/history: %v", err)
 	}
-	lease, err := s.AcquireCodexAccount(ctx, first)
+	lease, err := s.AcquireCodexAccount(ctx, next)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,11 @@ func TestManagedCodexAPIKeyGenerationFencesStaleSelection(t *testing.T) {
 		t.Fatalf("unselected API key was accepted: %v", err)
 	}
 	closeAccountLease(t, lease.Close)
-	if data, err := os.ReadFile(filepath.Join(first.ConfigHome, "models.json")); err != nil || len(data) == 0 {
+	paths, err := filepath.Glob(filepath.Join(first.ConfigHome, "models-*.json"))
+	if err != nil || len(paths) != 1 {
+		t.Fatal("selected account model catalog missing")
+	}
+	if data, err := os.ReadFile(paths[0]); err != nil || len(data) == 0 {
 		t.Fatal("selected account models were not materialized")
 	}
 	current, err = s.accounts.Get(ctx, account.ID)

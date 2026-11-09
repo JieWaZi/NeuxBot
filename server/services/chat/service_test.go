@@ -11,7 +11,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -46,7 +45,6 @@ func TestAppendParticipantMessagesIsIdempotentAndPreservesSource(t *testing.T) {
 		StorageDirectory: t.TempDir(),
 		QueryIndexes: QueryIndexDependencies{
 			Chats:           controllers.NewChatController(database.DB),
-			RuntimeSessions: controllers.NewRuntimeSessionController(database.DB),
 			DeletionIntents: controllers.NewChatDeletionIntentController(database.DB),
 			Transactions: controllers.NewTransactionController(
 				dbhelper.NewGormTransactionManager(database.DB),
@@ -379,7 +377,7 @@ func TestMetadataFromRecordsAppliesLatestChatTitle(t *testing.T) {
 	}
 }
 
-func TestLoadExecutionContextRepairsLaggingSessionProjection(t *testing.T) {
+func TestLoadExecutionContextReadsInheritedBoundaryAfterProjectionCatchUp(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	database, err := dbhelper.NewDB(conf.DB{
@@ -405,11 +403,12 @@ func TestLoadExecutionContextRepairsLaggingSessionProjection(t *testing.T) {
 				WakerID:            "waker-1",
 				WorkspaceDirectory: "/tmp/project",
 				Title:              "Session 权威状态",
+				ForkSourceChatID:   "source",
 			}),
 		},
 		{Type: constants.ChatEventTypeMessageInherited, MessageID: "execution-1", Data: marshalData(messageview.InheritedMessage{
-			Message:        messageview.Message{ID: "execution-1", Role: constants.MessageRoleAssistant, ExecutionID: "execution-1"},
-			ForkInvocation: &eventlog.InvocationFinishedData{RuntimeID: "codex", SessionOutputID: "jsonl-session", RecoveryStrategy: constants.InvocationRecoveryInitial},
+			Message:      messageview.Message{ID: "execution-1", Role: constants.MessageRoleAssistant, ExecutionID: "execution-1"},
+			ForkBoundary: &agent.NativeForkBoundary{Session: agent.NativeSessionKey{Provider: "codex", Subject: "fixture", SessionID: "jsonl-session"}},
 		})},
 	})
 	if err != nil {
@@ -421,6 +420,7 @@ func TestLoadExecutionContextRepairsLaggingSessionProjection(t *testing.T) {
 		WakerID:            "waker-1",
 		WorkspaceDirectory: "/tmp/project",
 		Title:              "Session 权威状态",
+		ForkSourceChatID:   "source",
 		LatestSequence:     records[0].Sequence,
 		CreatedAt:          records[0].RecordedAt,
 		UpdatedAt:          records[len(records)-1].RecordedAt,
@@ -430,9 +430,8 @@ func TestLoadExecutionContextRepairsLaggingSessionProjection(t *testing.T) {
 	chatService := newTestService(t, Config{
 		StorageDirectory: logStore.Root(),
 		QueryIndexes: QueryIndexDependencies{
-			Chats:           chatController,
-			RuntimeSessions: controllers.NewRuntimeSessionController(database.DB),
-			Transactions:    controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB)),
+			Chats:        chatController,
+			Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB)),
 		},
 	})
 
@@ -440,10 +439,8 @@ func TestLoadExecutionContextRepairsLaggingSessionProjection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadExecutionContext() error = %v", err)
 	}
-	session, exists := detail.RuntimeSessions["codex"]
-	if !exists || session.SessionID != "jsonl-session" ||
-		session.LastExecutionID != "execution-1" {
-		t.Fatalf("runtime session = %+v, want JSONL authority", session)
+	if detail.LastExecutionID != "execution-1" {
+		t.Fatalf("last execution = %q, want inherited boundary", detail.LastExecutionID)
 	}
 }
 
@@ -463,38 +460,35 @@ func TestMessageForkWindowAndTerminalDoNotReplayEarlierRounds(t *testing.T) {
 	facts := []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WorkspaceDirectory: "/workspace", WakerID: "waker"})}}
 	for _, id := range []string{"old", "new"} {
 		configuration := marshalData(eventlog.ExecutionCreatedData{RuntimeID: "runtime", UserMessageID: "user-" + id})
-		invocation := marshalData(eventlog.InvocationFinishedData{RecoveryStrategy: constants.InvocationRecoveryInitial, RuntimeID: "runtime", SessionOutputID: "private-session", ForkMode: "turn", ForkPosition: "private-position"})
 		if id == "old" {
-			invocation = json.RawMessage(`{"runtimeId":7}`)
 			configuration = json.RawMessage(`{"runtimeId":7}`)
 		}
 		facts = append(facts,
 			eventlog.AppendInput{Type: constants.ChatEventTypeUserMessageCreated, MessageID: "user-" + id, Data: marshalData(eventlog.MessageCreatedData{Role: constants.MessageRoleUser, Content: id})},
 			eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: id, Data: configuration},
-			eventlog.AppendInput{Type: constants.ChatEventTypeInvocationFinished, ExecutionID: id, Data: invocation},
 			eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: id, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})},
 		)
 	}
 	if _, err := store.Create(chatID, facts); err != nil {
 		t.Fatal(err)
 	}
+	forkNativeFixture(t, store, chatID, "new", "turn", "private-position")
 	manager := &service{logStore: store}
 	if _, _, err := manager.loadChatState(chatID); err == nil {
-		t.Fatal("sentinel old invocation did not reject full replay")
+		t.Fatal("sentinel malformed execution did not reject full replay")
 	}
 	page, err := manager.ReadMessageHistory(context.Background(), chatID, 0, 1)
 	if err != nil || len(page.Resources) != 1 || page.ForkLatestExecutionID != "new" || page.Resources[0].Fork == nil || !page.Resources[0].Fork.Available {
 		t.Fatalf("window replayed earlier fork rounds: %+v %v", page, err)
 	}
-	window, err := store.ReadProjectionAfter(chatID, 5, 0)
+	window, err := store.ReadProjectionAfter(chatID, 4, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapter, err := eventstream.ReplayAfter(window.Records, 5)
+	_, events, err := manager.replayPublic(context.Background(), chatID, window.Records, 4)
 	if err != nil {
 		t.Fatal(err)
 	}
-	events := adapter.EventsAfter(5, 0)
 	terminal := events[len(events)-1]
 	if terminal.Message == nil || terminal.Message.Fork == nil || !terminal.Message.Fork.Available {
 		t.Fatalf("incremental terminal lost fork capability: %+v", terminal)

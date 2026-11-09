@@ -39,13 +39,17 @@ func (s *Service) resolveManagedNativeCLI(ctx context.Context, request agent.Acc
 	if err := accountconfig.ValidateEndpoint(endpoint.Protocol, endpoint.BaseURL); err != nil {
 		return agent.AccountRequest{}, account, endpoint, err
 	}
+	key, err := accountconfig.NativeConfigurationFingerprint(managedNativeCLISpec(account, request.Provider))
+	if err != nil {
+		return agent.AccountRequest{}, account, endpoint, err
+	}
 	switch account.AuthMode {
 	case constants.AccountAuthModeAPIKey:
 		model := accountconfig.AccountModelID(request.Provider, request.Model)
 		if len(account.SelectedModels) == 0 || model != "" && !slices.Contains(account.SelectedModels, model) {
 			return agent.AccountRequest{}, account, endpoint, status_error.AIAccountConfigurationInvalid
 		}
-		request.ConfigHome, err = s.managedAccountHome(request.Provider, account, false, nativeCLIRevisionDirectory(account))
+		request.ConfigHome, err = s.managedAccountHome(request.Provider, account, false, "configuration-"+key)
 	case constants.AccountAuthModeSubscription:
 		// Kimi's existing device login owns this persistent native directory.
 		request.ConfigHome, err = s.kimiAccountHome(account.ID, false)
@@ -57,9 +61,12 @@ func (s *Service) resolveManagedNativeCLI(ctx context.Context, request agent.Acc
 	}
 	request.NativeConfigHome, request.DataHome = "", ""
 	request.Subject = accountSubject("native-cli-managed-v1", request.Provider, account.ID, string(account.AuthMode))
+	if account.AuthMode == constants.AccountAuthModeSubscription {
+		// Kimi 的登录回执没有可验证的真实主体；稳定 home 不能证明重新登录仍属于同一人。
+		request.Subject = accountSubject("native-cli-managed-unverified-login-v1", request.Provider, account.ID, strconv.FormatUint(account.AuthGeneration, 10))
+	}
 	request.AuthGeneration = account.AuthGeneration
-	request.ConfigFingerprint = accountSubject("native-cli-managed-config-v1",
-		strconv.FormatInt(account.Revision, 10), string(endpoint.Protocol), endpoint.BaseURL)
+	request.ConfigFingerprint = key
 	return request, account, endpoint, nil
 }
 
@@ -83,7 +90,7 @@ func (s *Service) prepareManagedNativeCLI(ctx context.Context, request agent.Acc
 		return agent.AccountLease{}, err
 	}
 	defer unlock()
-	resolved, account, endpoint, err := s.resolveManagedNativeCLI(ctx, request)
+	resolved, account, _, err := s.resolveManagedNativeCLI(ctx, request)
 	if err != nil {
 		return agent.AccountLease{}, err
 	}
@@ -107,29 +114,28 @@ func (s *Service) prepareManagedNativeCLI(ctx context.Context, request agent.Acc
 		return agent.AccountLease{ConfigHome: request.ConfigHome,
 			Environment: accountconfig.HomeEnvironment(request.Provider, request.ConfigHome)}, nil
 	}
-	home, err := s.managedAccountHome(request.Provider, account, true, nativeCLIRevisionDirectory(account))
+	home, err := s.managedAccountHome(request.Provider, account, true, "configuration-"+resolved.ConfigFingerprint)
 	if err != nil {
 		return agent.AccountLease{}, err
 	}
 	if home != request.ConfigHome {
 		return agent.AccountLease{}, status_error.RuntimeConfigurationInvalid
 	}
-	model := account.DefaultModel
-	if !slices.Contains(account.SelectedModels, model) {
-		model = account.SelectedModels[0]
-	}
-	environment, err := accountconfig.PrepareForWorkspace(home, request.CWD, accountconfig.Spec{
-		ID: account.ID, RuntimeID: request.Provider, AuthMode: account.AuthMode, Protocol: endpoint.Protocol, BaseURL: endpoint.BaseURL,
-		APIKey: secret, Model: model, MaxContextSize: account.ModelContextSizes[model], Revision: account.Revision,
-		SelectedModels: account.SelectedModels, ModelContextSizes: account.ModelContextSizes,
-		ModelDisplayNames: account.ModelDisplayNames, ModelReasoningLevels: account.ModelReasoningLevels,
-	})
+	spec := managedNativeCLISpec(account, request.Provider)
+	spec.APIKey, spec.ConfigFingerprint = secret, resolved.ConfigFingerprint
+	environment, err := accountconfig.PrepareForWorkspace(home, request.CWD, spec)
 	if err != nil {
 		return agent.AccountLease{}, err
 	}
 	return agent.AccountLease{ConfigHome: home, Environment: environment}, nil
 }
 
-func nativeCLIRevisionDirectory(account models.AIAccount) string {
-	return "revision-" + strconv.FormatInt(account.Revision, 10)
+// managedNativeCLISpec 使用稳定的配置模型种子，本轮有效模型由原生设置入口应用。
+func managedNativeCLISpec(account models.AIAccount, provider string) accountconfig.Spec {
+	spec := accountconfig.Spec{ID: account.ID, RuntimeID: provider, AuthMode: account.AuthMode, Protocol: account.Endpoint.Protocol, BaseURL: account.Endpoint.BaseURL, SelectedModels: account.SelectedModels, ModelContextSizes: account.ModelContextSizes, ModelDisplayNames: account.ModelDisplayNames, ModelReasoningLevels: account.ModelReasoningLevels}
+	if len(account.SelectedModels) > 0 {
+		spec.Model = account.SelectedModels[0]
+		spec.MaxContextSize = account.ModelContextSizes[spec.Model]
+	}
+	return spec
 }

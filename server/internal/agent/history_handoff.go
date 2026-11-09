@@ -298,7 +298,7 @@ func (l *ThreadLifecycle) reconcileHandoff(ctx context.Context, chatID string, b
 	}
 	err := check()
 	if errors.Is(err, status_error.ChatLogNativeOutcomePending) && reader != nil && reader.session == binding.Session {
-		drainErr := l.drainNativeOutcomes(ctx, reader)
+		drainErr := l.drainNativeOutcomes(ctx, reader, false)
 		if err = check(); err != nil {
 			err = errors.Join(err, drainErr)
 		}

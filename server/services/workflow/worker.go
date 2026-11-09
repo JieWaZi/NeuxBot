@@ -104,7 +104,7 @@ func (a CoreWorkerAdapter) Dispatch(ctx context.Context, input WorkerDispatch) (
 	if !frozen {
 		return WorkerReceipt{}, status_error.WorkflowStateInvalid
 	}
-	configuration := execution.ExecutionConfiguration{Resolved: true, RuntimeID: defaults.RuntimeID, AccountID: defaults.AccountID, Model: defaults.Model, Reasoning: defaults.Reasoning, PermissionLevel: defaults.PermissionLevel}
+	configuration := execution.ExecutionConfiguration{Resolved: true, RuntimeID: defaults.RuntimeID, AccountID: defaults.AccountID, Model: defaults.Model, Reasoning: defaults.Reasoning, Fast: defaults.Fast, PermissionLevel: defaults.PermissionLevel}
 	schema, _ := options["schema"].(map[string]any)
 	resultInstruction := ""
 	if len(schema) > 0 {
@@ -137,7 +137,7 @@ func (a CoreWorkerAdapter) Dispatch(ctx context.Context, input WorkerDispatch) (
 	if resultInstruction != "" {
 		contextInstructions = append(contextInstructions, workinput.Instruction{Name: constants.WorkflowResultsInstructionFileName, Content: resultInstruction})
 	}
-	accepted, err := a.Executions.Start(ctx, execution.WorkIntent{AutomaticRunID: input.Run.AutomaticRunID, ExecutionID: input.Effect.ExecutionID, ClientRequestID: input.Effect.ID, Chat: execution.ChatTarget{Create: create}, Input: execution.WorkInput{Actor: "workflow", Content: prompt, ContextInstructions: contextInstructions}, Options: execution.WorkOptions{ConfigurationResolved: true, RuntimeID: configuration.RuntimeID, AccountID: configuration.AccountID, Model: configuration.Model, Reasoning: configuration.Reasoning, PermissionLevel: defaults.PermissionLevel, WorkspaceReadOnly: defaults.WorkspaceReadOnly, SessionPolicy: constants.RuntimeSessionPolicyNew, ToolCapabilities: tools, AllowedConnectorIDs: allowedConnectors, AllowedAgentDomains: &domains}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch})
+	accepted, err := a.Executions.Start(ctx, execution.WorkIntent{AutomaticRunID: input.Run.AutomaticRunID, ExecutionID: input.Effect.ExecutionID, ClientRequestID: input.Effect.ID, Chat: execution.ChatTarget{Create: create}, Input: execution.WorkInput{Actor: "workflow", Content: prompt, ContextInstructions: contextInstructions}, Options: execution.WorkOptions{ConfigurationResolved: true, RuntimeID: configuration.RuntimeID, AccountID: configuration.AccountID, Model: configuration.Model, Reasoning: configuration.Reasoning, Fast: configuration.Fast, PermissionLevel: defaults.PermissionLevel, WorkspaceReadOnly: defaults.WorkspaceReadOnly, SessionPolicy: constants.RuntimeSessionPolicyNew, ToolCapabilities: tools, AllowedConnectorIDs: allowedConnectors, AllowedAgentDomains: &domains}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch})
 	if err != nil {
 		return WorkerReceipt{}, err
 	}
@@ -236,7 +236,7 @@ func (a CoreWorkerAdapter) ResolveAdmission(ctx context.Context, options map[str
 	if !constants.SelectablePermissionLevel(defaults.PermissionLevel) {
 		return defaults, status_error.BadRequest
 	}
-	config := execution.ExecutionConfiguration{Resolved: resolved, RuntimeID: defaults.RuntimeID, AccountID: defaults.AccountID, Model: defaults.Model, Reasoning: defaults.Reasoning, PermissionLevel: defaults.PermissionLevel}
+	config := execution.ExecutionConfiguration{Resolved: resolved, RuntimeID: defaults.RuntimeID, AccountID: defaults.AccountID, Model: defaults.Model, Reasoning: defaults.Reasoning, Fast: defaults.Fast, PermissionLevel: defaults.PermissionLevel}
 
 	if _, err := workerConnectorAllowlist(options); err != nil {
 		return defaults, err
@@ -246,6 +246,7 @@ func (a CoreWorkerAdapter) ResolveAdmission(ctx context.Context, options map[str
 		return defaults, err
 	}
 	defaults.RuntimeID, defaults.AccountID, defaults.Model, defaults.Reasoning = configuration.RuntimeID, configuration.AccountID, configuration.Model, configuration.Reasoning
+	defaults.Fast = configuration.Fast
 	return defaults, nil
 }
 

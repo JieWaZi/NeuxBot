@@ -16,23 +16,31 @@ func sessionResourceKey(pluginKey, workspaceConfiguration string, connectors []m
 	slices.SortFunc(connectors, func(a, b models.MCPConnector) int { return strings.Compare(a.ID, b.ID) })
 	identities := make([]any, 0, len(connectors))
 	for _, connector := range connectors {
+		nativeName := connector.RuntimeKey
+		if nativeName == "" {
+			nativeName = connector.Name
+		}
 		environment, headers := slices.Clone(connector.Environment), slices.Clone(connector.Headers)
 		for _, definitions := range [][]models.MCPSecretDefinition{environment, headers} {
 			slices.SortFunc(definitions, func(a, b models.MCPSecretDefinition) int { return strings.Compare(a.Name, b.Name) })
 		}
 		// Value 的 JSON 契约明确排除明文；只纳入持久定义与密文，忽略刷新和探测状态。
-		identities = append(identities, []any{connector.ID, connector.Name, connector.RuntimeKey, connector.Transport, connector.Command, connector.Arguments, connector.URL, connector.TimeoutMS, environment, headers})
+		identities = append(identities, []any{connector.ID, nativeName, connector.Transport, connector.Command, connector.Arguments, connector.URL, connector.TimeoutMS, environment, headers})
 	}
 	body, _ := json.Marshal([]any{pluginKey, workspaceConfiguration, identities})
 	return agentIdentity(string(body))
 }
 
-// runtimeConnectorDeclarations 只声明连接器的固定程序与公开配置，不读取秘密值。
+// runtimeConnectorDeclarations 使用实际原生名称声明配置，不把管理展示名写入会话 metadata。
 func runtimeConnectorDeclarations(connectors []models.MCPConnector) []agentapi.ConnectorDeclaration {
 	result := make([]agentapi.ConnectorDeclaration, 0, len(connectors))
 	for _, connector := range connectors {
+		nativeName := connector.RuntimeKey
+		if nativeName == "" {
+			nativeName = connector.Name
+		}
 		result = append(result, agentapi.ConnectorDeclaration{
-			ID: connector.ID, Name: connector.Name, RuntimeKey: connector.RuntimeKey,
+			ID: connector.ID, Name: nativeName, RuntimeKey: connector.RuntimeKey,
 			Transport: agentapi.ConnectorTransport(connector.Transport), Command: connector.Command,
 			Arguments: slices.Clone(connector.Arguments), URL: connector.URL, TimeoutMS: connector.TimeoutMS,
 		})
@@ -40,7 +48,7 @@ func runtimeConnectorDeclarations(connectors []models.MCPConnector) []agentapi.C
 	return result
 }
 
-// runtimeConnectorResources 只在冷获取时展开实际连接秘密，本轮选择由 TurnInput 保存。
+// runtimeConnectorResources 只在冷获取时展开实际连接秘密，本轮显式选择由实际输入保存。
 func runtimeConnectorResources(connectors []models.MCPConnector) []agentapi.Connector {
 	result := make([]agentapi.Connector, 0, len(connectors))
 	for _, connector := range connectors {

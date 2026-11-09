@@ -23,15 +23,13 @@ type ExecutionContext struct {
 	Chat models.Chat
 	// LastExecutionID 是最近助手执行或继承消息的原续接游标。
 	LastExecutionID string
-	// RuntimeSessions 是按 Runtime 标识索引的当前原生 Session。
-	RuntimeSessions map[string]models.RuntimeSession
 	// ProjectSources 是 Chat 创建时冻结的项目来源映射。
 	ProjectSources []eventlog.ProjectSourceSnapshot
 	// ThreadWorkspaceID 非空时表示 Chat 绑定 thread 级共享执行工作区。
 	ThreadWorkspaceID string
 }
 
-// StartedTurn 描述 Runtime 接受输入后需要原子提交的首批事实和投影。
+// StartedTurn 描述原生提交门禁或可靠入口需要原子接纳的首批事实和投影。
 type StartedTurn struct {
 	// NewChat 表示本批次需要建立新的 Chat JSONL。
 	NewChat bool
@@ -57,7 +55,7 @@ type DormantChat struct {
 type AcceptedTurn struct {
 	// Chat 是已经推进到本批次最终 Sequence 的 Chat 投影。
 	Chat models.Chat
-	// Execution 是已经进入 running 状态的执行投影。
+	// Execution 是已经按接纳事实推进状态的执行投影。
 	Execution models.Execution
 }
 
@@ -86,10 +84,8 @@ type TerminalCommit struct {
 // Journal 是 Execution Core 写入和读取 Chat 权威事实的内部接口。
 //
 // 调用方负责工作校验、Workspace、Context 和 Runtime 生命周期；Journal 负责 JSONL、
-// SQLite 窄投影和 committed SSE 的一致顺序。
+// SQLite 窄投影和已提交事件发布的一致顺序。
 type Journal interface {
-	// ReadExecutionConfiguration 只读原执行或继承边界冻结的配置事实。
-	ReadExecutionConfiguration(context.Context, string, string) (eventlog.ExecutionCreatedData, error)
 	// ReadSubmission 读取指定输入身份的已接纳回执，缺失返回 nil。
 	ReadSubmission(context.Context, string, string) (*models.Execution, error)
 	// ReadInitialExecution 读取首发身份及精确首次执行。
@@ -104,12 +100,8 @@ type Journal interface {
 	LoadExecutionChat(ctx context.Context, chatID string) (models.Chat, error)
 	// LoadExecutionContext 返回已有 Chat 的权威执行准备快照。
 	LoadExecutionContext(ctx context.Context, chatID string) (ExecutionContext, error)
-	// CommitStartedTurn 原子提交 Runtime 已接受输入后的首批事实。
-	CommitStartedTurn(ctx context.Context, turn StartedTurn) (AcceptedTurn, error)
 	// CommitAcceptedTurn 在可靠入口派发前提交 pending Execution 和输入事实。
 	CommitAcceptedTurn(ctx context.Context, turn StartedTurn) (AcceptedTurn, error)
-	// MarkExecutionStarted 在预先接纳的 Execution 获得 Runtime Invocation 后提交启动事实。
-	MarkExecutionStarted(ctx context.Context, execution models.Execution, invocationID string) (models.Execution, error)
 	// ReadExecutionRecords 返回 Chat 创建记录和指定执行的完整权威事实。
 	ReadExecutionRecords(chatID string, executionID string) ([]eventlog.Record, error)
 	// ReadRecords 返回完整 Chat 的权威记录。
@@ -263,22 +255,44 @@ func (m *service) LoadExecutionContext(
 	if len(records) != 1 || json.Unmarshal(records[0].Data, &created) != nil {
 		return ExecutionContext{}, status_error.ChatLogCorrupted
 	}
-	sessions, err := m.queryIndexes.runtimeSessionController.ListByChat(ctx, chatID)
-	if err != nil {
-		return ExecutionContext{}, err
-	}
 	lastID := chat.ActiveExecutionID
 	if lastID == "" {
 		lastID = chat.LastEndedExecutionID
 	}
 	if lastID == "" && chat.ForkSourceChatID != "" {
-		for _, session := range sessions {
-			if session.RuntimeID == chat.LastRuntimeID {
-				lastID = session.LastExecutionID
+		// 继承页同时包含用户消息；只有保存原生分叉结果的消息才是执行续接边界。
+		for before := int64(0); ; {
+			window, err := m.logStore.ReadCompletedHistoryCandidates(chatID, before, 128)
+			if err != nil {
+				return ExecutionContext{}, err
 			}
+			for _, candidate := range window.Resources {
+				if !candidate.Inherited {
+					continue
+				}
+				records, err := m.logStore.ReadAfter(chatID, candidate.Sequence-1, 1)
+				if err != nil {
+					return ExecutionContext{}, err
+				}
+				var inherited messageview.InheritedMessage
+				if len(records) != 1 || json.Unmarshal(records[0].Data, &inherited) != nil {
+					return ExecutionContext{}, status_error.ChatLogCorrupted
+				}
+				if inherited.ForkBoundary != nil {
+					if inherited.ForkBoundary.Session.Provider == "" || inherited.ForkBoundary.Session.SessionID == "" {
+						return ExecutionContext{}, status_error.ChatLogCorrupted
+					}
+					lastID = candidate.MessageID
+					break
+				}
+			}
+			if lastID != "" || !window.HasMore {
+				break
+			}
+			before = window.NextBeforeSequence
 		}
 	}
-	return ExecutionContext{Chat: chat, LastExecutionID: lastID, RuntimeSessions: runtimeSessionsByID(sessions), ProjectSources: append([]eventlog.ProjectSourceSnapshot(nil), created.ProjectSources...), ThreadWorkspaceID: strings.TrimSpace(created.ThreadWorkspaceID)}, nil
+	return ExecutionContext{Chat: chat, LastExecutionID: lastID, ProjectSources: append([]eventlog.ProjectSourceSnapshot(nil), created.ProjectSources...), ThreadWorkspaceID: strings.TrimSpace(created.ThreadWorkspaceID)}, nil
 }
 
 // ReadHistoryCandidates 只在明确冷交接时定位最近成功轮，失败执行整体跳过。
@@ -287,66 +301,6 @@ func (m *service) ReadHistoryCandidates(ctx context.Context, chatID string, befo
 		return eventlog.HistoryCandidateWindow{}, chatContextStatus(err)
 	}
 	return m.logStore.ReadCompletedHistoryCandidates(chatID, before, limit)
-}
-
-// CommitStartedTurn 原子提交 Runtime 已接受输入后的首批事实。
-func (m *service) CommitStartedTurn(
-	ctx context.Context,
-	turn StartedTurn,
-) (AcceptedTurn, error) {
-	records, err := m.commitTurnFacts(turn)
-	if err != nil {
-		return AcceptedTurn{}, err
-	}
-	last := records[len(records)-1]
-	chat := turn.Chat
-	chat.LatestSequence = last.Sequence
-	chat.ActiveExecutionID = turn.Execution.ID
-	chat.LastAccountID = turn.Execution.AccountID
-	chat.LastRuntimeID = turn.Execution.RuntimeID
-	chat.LastModel = turn.Execution.Model
-	chat.LastReasoning = turn.Execution.Reasoning
-	chat.LastFast = turn.Execution.Fast
-	chat.LastContextWindow = turn.Execution.ContextWindow
-	chat.LastPermissionLevel = turn.Execution.PermissionLevel
-	chat.UpdatedAt = last.RecordedAt
-	m.queryIndexes.indexStartedMessage(
-		ctx,
-		turn.NewChat,
-		chat,
-		turn.Execution,
-		records[0].Sequence-1,
-	)
-
-	execution := turn.Execution
-	execution.Status = constants.ExecutionStatusRunning
-	execution.Revision++
-	execution.UpdatedAt = last.RecordedAt
-	m.eventCommitter.publishCommitted(records)
-	return AcceptedTurn{Chat: chat, Execution: execution}, nil
-}
-
-// MarkExecutionStarted 为已经 pending 的 Execution 提交 Runtime 启动事实。
-func (m *service) MarkExecutionStarted(
-	_ context.Context,
-	execution models.Execution,
-	invocationID string,
-) (models.Execution, error) {
-	records, err := m.eventCommitter.append(execution.ChatID, []eventlog.AppendInput{{
-		Type:         constants.ChatEventTypeExecutionStarted,
-		ExecutionID:  execution.ID,
-		InvocationID: invocationID,
-	}})
-	if err != nil {
-		return models.Execution{}, err
-	}
-	last := records[len(records)-1]
-	execution.Status = constants.ExecutionStatusRunning
-	execution.Revision++
-	execution.UpdatedAt = last.RecordedAt
-	m.queryIndexes.indexExecutionStarted(execution, last)
-	m.eventCommitter.publishCommitted(records)
-	return execution, nil
 }
 
 // commitTurnFacts 按新建或续发语义提交一批已校验事实。
@@ -384,40 +338,6 @@ func (m *service) ReadExecutionRecords(chatID string, executionID string) ([]eve
 		}
 	}
 	return nil, status_error.ExecutionNotFound
-}
-
-// ReadExecutionConfiguration 只读取已定位的执行入口或继承边界，供冷续接核对冻结配置。
-func (m *service) ReadExecutionConfiguration(ctx context.Context, chatID, executionID string) (eventlog.ExecutionCreatedData, error) {
-	location, _, err := m.locateExecution(ctx, chatID, executionID, "")
-	if err != nil {
-		return eventlog.ExecutionCreatedData{}, err
-	}
-	if location == nil {
-		return eventlog.ExecutionCreatedData{}, status_error.ExecutionNotFound
-	}
-	records, err := m.logStore.ReadAfter(chatID, location.Sequence-1, 1)
-	if err != nil {
-		return eventlog.ExecutionCreatedData{}, err
-	}
-	if len(records) != 1 {
-		return eventlog.ExecutionCreatedData{}, status_error.ChatLogCorrupted
-	}
-	var result eventlog.ExecutionCreatedData
-	if records[0].Type == constants.ChatEventTypeMessageInherited {
-		var inherited struct {
-			// ForkConfiguration 是继承边界冻结的原执行配置。
-			ForkConfiguration *eventlog.ExecutionCreatedData `json:"forkConfiguration"`
-		}
-		if json.Unmarshal(records[0].Data, &inherited) != nil {
-			return result, status_error.ChatLogCorrupted
-		}
-		if inherited.ForkConfiguration != nil {
-			result = *inherited.ForkConfiguration
-		}
-	} else if records[0].Type != constants.ChatEventTypeExecutionCreated || json.Unmarshal(records[0].Data, &result) != nil {
-		return result, status_error.ChatLogCorrupted
-	}
-	return result, nil
 }
 
 // ReadRecords 返回实时消息投影所需的当前权威记录。

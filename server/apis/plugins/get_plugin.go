@@ -48,7 +48,7 @@ func (o *GetPlugin) Output(ctx *gin.Context) (interface{}, error) {
 	}
 	entries, source := catalog.Snapshot(global.PluginCatalogSource())
 	applyPluginUpdate(&result, entries, source)
-	for index, version := range result.Versions {
+	for index, version := range states[resource.ID].Versions {
 		if version.ID != result.ResolvedVersionID {
 			continue
 		}
@@ -61,7 +61,7 @@ func (o *GetPlugin) Output(ctx *gin.Context) (interface{}, error) {
 		if readErr != nil {
 			return nil, ginx.WithStack(readErr)
 		}
-		result.Versions[index].Package = parsed
+		result.Versions[index].Package = parsed.Public()
 	}
 	return result, nil
 }

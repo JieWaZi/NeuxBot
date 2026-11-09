@@ -118,7 +118,7 @@ func TestLibraryDeleteLeavesAllChatsToTheirOriginalLifecycle(t *testing.T) {
 	manager, err := chatservice.New(chatservice.Config{
 		StorageDirectory: root, Projects: controllers.NewProjectController(database.DB),
 		QueryIndexes: chatservice.QueryIndexDependencies{
-			Chats: controllers.NewChatController(database.DB), RuntimeSessions: controllers.NewRuntimeSessionController(database.DB),
+			Chats:           controllers.NewChatController(database.DB),
 			DeletionIntents: controllers.NewChatDeletionIntentController(database.DB),
 			Transactions:    controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB)),
 		},

@@ -145,16 +145,6 @@ type Instruction struct {
 	Content string
 }
 
-// HistoryMessage holds an authoritative message used to seed a new native session.
-type HistoryMessage struct {
-	// Role is the message's stable conversation role.
-	Role string
-	// Content is the message body after display projection.
-	Content string
-	// CodeReferences contains content references frozen when the historical user message was sent.
-	CodeReferences []CodeReference
-}
-
 // Attachment holds a managed attachment reference passed to the runtime with this message.
 type Attachment struct {
 	// Name is the attachment name displayed to the agent.
@@ -195,6 +185,8 @@ type Skill struct {
 	Name string
 	// Path is the absolute path of the skill directory currently available to NeuxBot.
 	Path string
+	// Digest identifies content verified when this immutable skill version was published.
+	Digest string
 }
 
 // Connector holds an MCP connection available to the current runtime invocation.
@@ -221,26 +213,6 @@ type Connector struct {
 	TimeoutMS int64
 }
 
-// RunPolicy holds the invocation's model selection and execution scope corresponding to product permissions.
-type RunPolicy struct {
-	// Model identifies the model selected for this invocation.
-	Model string
-	// Reasoning is the reasoning effort selected for this invocation.
-	Reasoning string
-	// Thinking is an explicit thinking toggle for detached tasks; nil preserves the native default.
-	Thinking *bool
-	// Execution holds product permissions frozen by the caller.
-	Execution ExecutionPolicy
-}
-
-// UserInputState describes host-created input waits for the inactivity timer.
-type UserInputState interface {
-	// Pending reports unresolved host input in the current execution.
-	Pending() bool
-	// Changed wakes observers without blocking when input-wait state changes.
-	Changed() <-chan struct{}
-}
-
 // Workspace holds the filesystem scope of a runtime invocation.
 type Workspace struct {
 	// Path is the subprocess's actual working directory.
@@ -259,14 +231,6 @@ type WorkspaceProjectDirectory struct {
 	Path string
 	// Default selects this directory when file ownership cannot be inferred from task semantics.
 	Default bool
-}
-
-// ExecutionPolicy holds product permissions frozen by the caller.
-type ExecutionPolicy struct {
-	// PermissionLevel is the cross-runtime product permission level frozen by the caller.
-	PermissionLevel PermissionLevel
-	// WorkspaceReadOnly means the host requires read-only workspace access.
-	WorkspaceReadOnly bool
 }
 
 // UsageData is the complete normalized usage delivered by the runtime SDK to the host.
@@ -327,87 +291,4 @@ type ConnectorDeclaration struct {
 	URL string
 	// TimeoutMS is the fixed startup timeout.
 	TimeoutMS int64
-}
-
-// SessionTarget holds secret-free runtime and native launch selections without owning account or process resources.
-type SessionTarget struct {
-	// RuntimeID is the runtime or local profile selected by the user.
-	RuntimeID string
-	// AccountID is the frozen account principal.
-	AccountID string
-	// Binary is the fixed executable selection.
-	Binary string
-	// PrefixArgs contains fixed leading launch arguments.
-	PrefixArgs []string
-	// ConfigHome is the fixed native configuration directory.
-	ConfigHome string
-	// NativePluginDirectories contains fixed native plugin directories.
-	NativePluginDirectories []string
-	// NativePluginScope is the fixed native plugin scope fact.
-	NativePluginScope string
-	// CodexPluginConfiguration contains native configuration overrides without secrets.
-	CodexPluginConfiguration map[string]string
-	// ClaudeSettingsPath is the fixed model settings file.
-	ClaudeSettingsPath string
-}
-
-// SessionPlan holds static business facts needed for session compatibility, excluding turn input and resource acquisition callbacks.
-type SessionPlan struct {
-	// Target contains frozen runtime, account, and native launch selections.
-	Target SessionTarget
-	// Detection is the current runnable detection snapshot.
-	Detection DetectionResult
-	// Workspace is the authorized work scope.
-	Workspace Workspace
-	// Instructions contains fixed profile, project, or task instructions.
-	Instructions []Instruction
-	// Skills contains fixed skills declared for the current scope.
-	Skills []Skill
-	// Connectors contains fixed connectors declared for the current scope.
-	Connectors []ConnectorDeclaration
-	// Policy contains fixed model, reasoning, and permission selections.
-	Policy RunPolicy
-	// ResourceKey is the secret-free compatibility basis for account and plugin configuration.
-	ResourceKey string
-	// PluginIDs identifies plugins requiring protection before resource binding.
-	PluginIDs []string
-	// ReadOnlyHandoff requires read-only handoff generation in the native context and closure of temporary consumers.
-	ReadOnlyHandoff bool
-}
-
-// TurnInput holds only new messages, explicit selections, and interaction ports for this turn.
-type TurnInput struct {
-	// Message is the current user input.
-	Message Message
-	// ContextInstructions contains this turn's task paths and business role contracts, never session compatibility data.
-	ContextInstructions []Instruction
-	// History seeds bounded history only when a session is actually created.
-	History []HistoryMessage
-	// SelectedSkills contains fixed skill names explicitly selected for this turn.
-	SelectedSkills []string
-	// SelectedConnectors contains fixed connector identifiers explicitly selected for this turn.
-	SelectedConnectors []string
-	// UserInputState is this turn's capability question-and-answer wait state.
-	UserInputState UserInputState
-	// ApprovalHandler is this turn's tool approval port.
-	ApprovalHandler ApprovalHandler
-	// ElicitationHandler is this turn's structured input port.
-	ElicitationHandler ElicitationHandler
-}
-
-// DetectedConnectorTransportSupported uses only the same detection snapshot to determine MCP transport availability for new executions.
-func DetectedConnectorTransportSupported(
-	detection DetectionResult,
-	transport ConnectorTransport,
-) bool {
-	switch transport {
-	case ConnectorTransportStdio:
-		return detection.State == DetectionStateReady
-	case ConnectorTransportStreamableHTTP:
-		return detection.Capabilities.Has(CapabilityMCPStreamableHTTP)
-	case ConnectorTransportSSE:
-		return detection.Capabilities.Has(CapabilityMCPSSE)
-	default:
-		return false
-	}
 }

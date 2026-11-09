@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { client } from "@/shared/api/generated/client.gen";
 import {
   useExecutionSelection,
+  useNativeExecutionSelections,
   type ExecutionSelection,
 } from "./use-execution-selection";
 
@@ -50,7 +51,7 @@ const server = setupServer(
           name: "Work",
           authMode: "api-key",
           hasCredential: true,
-          endpoints: [{ protocol: "openai-responses" }],
+          endpoint: { protocol: "openai-responses" },
           selectedModels: ["work-model"],
           defaultModel: "work-model",
           defaultReasoning: "max",
@@ -60,19 +61,17 @@ const server = setupServer(
           name: "Subscription",
           authMode: "subscription",
           hasCredential: true,
-          endpoints: [
-            {
-              protocol: "openai-responses",
-              baseUrl: "https://api.openai.com/v1",
-            },
-          ],
+          endpoint: {
+            protocol: "openai-responses",
+            baseUrl: "https://api.openai.com/v1",
+          },
         },
         {
           id: "anthropic",
           authMode: "api-key",
           hasCredential: true,
           authGeneration: 7,
-          endpoints: [{ protocol: "anthropic-messages" }],
+          endpoint: { protocol: "anthropic-messages" },
         },
       ],
     }),
@@ -99,7 +98,7 @@ function catalogResponse(runtimeId: string, accountId: string) {
     id,
     name: id,
     defaultReasoning,
-    configurationKnown: true,
+
     permissionLevels,
     fastSupported,
     reasoningOptions: efforts.map((id) => ({ id })),
@@ -132,11 +131,7 @@ afterEach(() => {
 });
 afterAll(() => server.close());
 
-function selection(
-  value: ExecutionSelection,
-  defaults = false,
-  reasoningDefault?: "minimum",
-) {
+function selection(value: ExecutionSelection, reasoningDefault?: "minimum") {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -147,7 +142,6 @@ function selection(
     ({ value }) =>
       useExecutionSelection({
         value,
-        defaults,
         reasoningDefault,
       }),
     {
@@ -188,7 +182,7 @@ it.each([
           models: [
             {
               id: "account-model",
-              configurationKnown: true,
+
               reasoningOptions: [{ id: "native-effort" }],
               defaultReasoning: "native-effort",
               fastSupported: true,
@@ -199,7 +193,8 @@ it.each([
       }),
     );
     const { result, rerender } = selection({ runtimeId, accountId: "system" });
-    await waitFor(() => expect(result.current.valid).toBe(true));
+    await waitFor(() => expect(result.current.catalogState).toBe("fresh"));
+    expect(result.current.valid).toBe(true);
     expect(result.current.models.map((item) => item.id)).toEqual([
       "account-model",
     ]);
@@ -210,7 +205,7 @@ it.each([
     expect(result.current.selection).toMatchObject({
       model: "account-model",
       reasoning: "native-effort",
-      permissionLevel: runtimeId === "codex" ? "auto" : "default",
+      permissionLevel: "auto",
       fast: undefined,
     });
     rerender({ value: { runtimeId, accountId: "system", fast: false } });
@@ -244,7 +239,7 @@ it.each([
     });
     try {
       await waitFor(() => expect(result.current.catalogPending).toBe(true));
-      expect(result.current.valid).toBe(false);
+      expect(result.current.valid).toBe(true);
       expect(result.current.models[0]?.id).toBe("account-model");
     } finally {
       await act(async () => {
@@ -259,14 +254,15 @@ it.each([
     expect(result.current.models.map((item) => item.id)).toEqual([
       "account-model",
     ]);
-    expect(result.current.valid).toBe(false);
+    expect(result.current.valid).toBe(true);
   },
 );
 
 describe("统一执行配置选择", () => {
   it("只提供协议兼容账号，切换账号后查询对应模型的推理能力", async () => {
     const { result, rerender } = selection({ accountId: "system" });
-    await waitFor(() => expect(result.current.valid).toBe(true));
+    await waitFor(() => expect(result.current.catalogState).toBe("fresh"));
+    expect(result.current.valid).toBe(true);
     expect(result.current.accounts.map((item) => item.id)).toEqual([
       "work",
       "subscription",
@@ -276,7 +272,8 @@ describe("统一执行配置选择", () => {
       reasoning: "high",
     });
     rerender({ value: { runtimeId: "codex", accountId: "work" } });
-    await waitFor(() => expect(result.current.valid).toBe(true));
+    await waitFor(() => expect(result.current.catalogState).toBe("fresh"));
+    expect(result.current.valid).toBe(true);
     expect(result.current.models.map((item) => item.id)).toEqual([
       "work-model",
     ]);
@@ -290,7 +287,8 @@ describe("统一执行配置选择", () => {
       ),
     ).toBe(true);
     rerender({ value: { runtimeId: "codex", accountId: "system" } });
-    await waitFor(() => expect(result.current.valid).toBe(true));
+    await waitFor(() => expect(result.current.catalogState).toBe("fresh"));
+    expect(result.current.valid).toBe(true);
     expect(result.current.selection).toMatchObject({
       model: "native",
       reasoning: "high",
@@ -299,7 +297,8 @@ describe("统一执行配置选择", () => {
 
   it("订阅账号使用原生目录，并以账号目录默认模型读取推理选项", async () => {
     const { result } = selection({ accountId: "subscription" });
-    await waitFor(() => expect(result.current.valid).toBe(true));
+    await waitFor(() => expect(result.current.catalogState).toBe("fresh"));
+    expect(result.current.valid).toBe(true);
     expect(result.current.selection.model).toBe("subscription-model");
     expect(result.current.models.map((item) => item.id)).toEqual([
       "subscription-model",
@@ -330,37 +329,39 @@ describe("统一执行配置选择", () => {
       ),
     );
     const { result, rerender } = selection({ accountId: "" });
-    await waitFor(() => expect(result.current.valid).toBe(true));
+    await waitFor(() => expect(result.current.catalogState).toBe("fresh"));
+    expect(result.current.valid).toBe(true);
     expect(result.current.selection).toMatchObject({
       accountId: "work",
-      model: "work-model",
+      model: "native",
     });
     rerender({ value: { accountId: "system" } });
-    await waitFor(() => expect(result.current.valid).toBe(true));
+    await waitFor(() => expect(result.current.catalogState).toBe("fresh"));
+    expect(result.current.valid).toBe(true);
     expect(result.current.selection).toMatchObject({
       accountId: "system",
       model: "native",
     });
   });
 
-  it("保存的执行配置失效时阻止提交，不替换用户明确选择的模型", async () => {
+  it("目录未列出已保存模型时仍允许原生尝试并保留选择", async () => {
     const { result } = selection({
       accountId: "system",
       model: "removed",
       reasoning: "high",
     });
-    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(result.current.catalogState).toBe("fresh"));
     expect(result.current.selection.model).toBe("removed");
-    expect(result.current.valid).toBe(false);
+    expect(result.current.valid).toBe(true);
   });
 
-  it("模型限制权限时沿用安全的默认值，明确的不支持权限保持不可提交", async () => {
+  it("目录限制只决定权限菜单，明确权限交给原生执行确认", async () => {
     const { result, rerender } = selection({
       accountId: "system",
       model: "limited",
     });
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.selection.permissionLevel).toBe("default");
+    await waitFor(() => expect(result.current.catalogState).toBe("fresh"));
+    expect(result.current.selection.permissionLevel).toBe("auto");
     expect([...result.current.supportedPermissions]).toEqual(["default"]);
     rerender({
       value: {
@@ -369,19 +370,21 @@ describe("统一执行配置选择", () => {
         permissionLevel: "full-access",
       },
     });
-    expect(result.current.valid).toBe(false);
+    expect(result.current.valid).toBe(true);
   });
 
-  it("设置默认值时将模型和推理规范化为当前目录的有效值", async () => {
-    const { result } = selection(
-      { accountId: "system", model: "limited", reasoning: "high" },
-      true,
-    );
-    await waitFor(() => expect(result.current.valid).toBe(true));
+  it("设置默认值保留明确模型和推理选择", async () => {
+    const { result } = selection({
+      accountId: "system",
+      model: "limited",
+      reasoning: "high",
+    });
+    await waitFor(() => expect(result.current.catalogState).toBe("fresh"));
+    expect(result.current.valid).toBe(true);
     expect(result.current.selection).toMatchObject({
       model: "limited",
-      reasoning: "low",
-      permissionLevel: "default",
+      reasoning: "high",
+      permissionLevel: "auto",
     });
   });
 });
@@ -389,10 +392,10 @@ describe("统一执行配置选择", () => {
 it("知识模型默认选择真实最低档，显式高档保留，切换模型后重新选择最低档", async () => {
   const { result, rerender } = selection(
     { accountId: "system", model: "native" },
-    false,
     "minimum",
   );
-  await waitFor(() => expect(result.current.valid).toBe(true));
+  await waitFor(() => expect(result.current.catalogState).toBe("fresh"));
+  expect(result.current.valid).toBe(true);
   expect(result.current.selection.reasoning).toBe("low");
   rerender({
     value: { accountId: "system", model: "native", reasoning: "high" },
@@ -426,9 +429,10 @@ it("账号切换隔离迟到目录，显式关闭 Fast 保持 false", async () =
   await waitFor(() => expect(entered).toBe(true));
   rerender({ value: { accountId: "subscription", fast: false } });
   await waitFor(() => expect(result.current.catalogState).toBe("fresh"));
-  expect(result.current.valid).toBe(false);
+  expect(result.current.valid).toBe(true);
   rerender({ value: { accountId: "subscription" } });
-  await waitFor(() => expect(result.current.valid).toBe(true));
+  await waitFor(() => expect(result.current.catalogState).toBe("fresh"));
+  expect(result.current.valid).toBe(true);
   expect(result.current.selection).toMatchObject({
     model: "subscription-model",
     fast: undefined,
@@ -438,7 +442,8 @@ it("账号切换隔离迟到目录，显式关闭 Fast 保持 false", async () =
     "subscription-model",
   ]);
   rerender({ value: { accountId: "system", fast: false } });
-  await waitFor(() => expect(result.current.valid).toBe(true));
+  await waitFor(() => expect(result.current.catalogState).toBe("fresh"));
+  expect(result.current.valid).toBe(true);
   expect(result.current.selection).toMatchObject({
     model: "native",
     fast: false,
@@ -471,7 +476,7 @@ it("Claude 切换到受管 API 账号时不会显示系统账号的迟到目录"
         models: [
           {
             id: accountId,
-            configurationKnown: true,
+
             permissionLevels: ["default"],
           },
         ],
@@ -484,7 +489,8 @@ it("Claude 切换到受管 API 账号时不会显示系统账号的迟到目录"
   });
   await waitFor(() => expect(entered).toBe(true));
   rerender({ value: { runtimeId: "claude", accountId: "anthropic" } });
-  await waitFor(() => expect(result.current.valid).toBe(true));
+  await waitFor(() => expect(result.current.catalogState).toBe("fresh"));
+  expect(result.current.valid).toBe(true);
   await act(async () => release());
   expect(result.current.models.map((item) => item.id)).toEqual(["anthropic"]);
 });
@@ -514,7 +520,7 @@ it.each([
       model: "missing",
     });
     await waitFor(() => expect(result.current.catalogIssue).toBe(issue));
-    expect(result.current.valid).toBe(false);
+    expect(result.current.valid).toBe(true);
     expect(result.current.catalogPending).toBe(false);
   },
 );
@@ -536,13 +542,13 @@ it("WorkBuddy 允许已列出但可选配置未知的模型使用原生默认值
         models: [
           {
             id: "opening-model",
-            configurationKnown: true,
+
             reasoningOptions: [{ id: "high" }],
             permissionLevels: ["default"],
           },
           {
             id: model,
-            configurationKnown: false,
+
             reasoningOptions: [],
             fastSupported: false,
             permissionLevels: ["default"],
@@ -571,7 +577,7 @@ it("WorkBuddy 允许已列出但可选配置未知的模型使用原生默认值
     { permissionLevel: "full-access" },
   ] as const) {
     rerender({ value: { ...value, ...override } });
-    expect(result.current.valid).toBe(false);
+    expect(result.current.valid).toBe(true);
   }
 });
 
@@ -580,7 +586,7 @@ it.each([
   { state: "ready", enabled: false },
   { state: "unavailable", enabled: true },
 ])(
-  "默认模型按目录回退，执行仍要求 ready + enabled ($state / $enabled)",
+  "默认模型保持已保存选择，执行只要求配置启用 ($state / $enabled)",
   async ({ state, enabled }) => {
     server.use(
       http.get(`${origin}/api/v1/runtimes`, () =>
@@ -605,7 +611,7 @@ it.each([
               authMode: "api-key",
               hasCredential: true,
               defaultModel: "retired-account-model",
-              endpoints: [{ protocol: "anthropic-messages" }],
+              endpoint: { protocol: "anthropic-messages" },
             },
           ],
         }),
@@ -618,22 +624,167 @@ it.each([
           defaultModel: "native-default",
           models: ["first", "native-default"].map((id) => ({
             id,
-            configurationKnown: true,
+
             permissionLevels: ["default"],
           })),
         }),
       ),
     );
-    const { result } = selection(
-      {
-        runtimeId: "claude",
-        accountId: "anthropic",
-        model: "retired-runtime-model",
-      },
-      true,
-    );
+    const { result } = selection({
+      runtimeId: "claude",
+      accountId: "anthropic",
+      model: "retired-runtime-model",
+    });
     await waitFor(() => expect(result.current.configurationValid).toBe(true));
-    expect(result.current.valid).toBe(state === "ready" && enabled);
-    expect(result.current.selection.model).toBe("native-default");
+    expect(result.current.valid).toBe(enabled);
+    expect(result.current.selection.model).toBe("retired-runtime-model");
   },
 );
+
+it.each(["stale", "unavailable", "signed_out", "error"])(
+  "探测失败不阻止执行或清除明确选择：%s",
+  async (state) => {
+    server.use(
+      http.get(`${origin}/api/v1/runtimes`, () =>
+        HttpResponse.json({
+          resources: [
+            {
+              id: "codex",
+              enabled: true,
+              state: "unavailable",
+              installed: false,
+              isDefault: true,
+              defaultModel: "saved-model",
+              defaultReasoning: "high",
+            },
+          ],
+        }),
+      ),
+      http.get(`${origin}/api/v1/runtimes/codex/models`, () =>
+        state === "error"
+          ? HttpResponse.json(
+              { code: "AI_ACCOUNT_MODELS_UNAVAILABLE" },
+              { status: 503 },
+            )
+          : HttpResponse.json({
+              runtimeId: "codex",
+              accountId: "system",
+              state,
+              models: [],
+            }),
+      ),
+    );
+    const value = {
+      runtimeId: "codex",
+      accountId: "system",
+      model: "chosen-model",
+      reasoning: "high",
+      fast: false,
+      contextWindow: "1m",
+      permissionLevel: "full-access",
+    };
+    const { result } = selection(value);
+    await waitFor(() =>
+      expect(result.current.runtimesQuery.isSuccess).toBe(true),
+    );
+    await waitFor(() =>
+      expect(result.current.accountsQuery.isSuccess).toBe(true),
+    );
+    await waitFor(() => expect(result.current.catalogPending).toBe(false));
+    expect(result.current.valid).toBe(true);
+    expect(result.current.selection).toMatchObject(value);
+    expect(result.current.runtimes.map((runtime) => runtime.id)).toEqual([
+      "codex",
+    ]);
+  },
+);
+
+it("批量配置在目录不可用时保留配置并只校验身份与权限枚举", async () => {
+  server.use(
+    http.get(`${origin}/api/v1/runtimes/codex/models`, () =>
+      HttpResponse.json({
+        runtimeId: "codex",
+        accountId: "system",
+        state: "stale",
+        models: [],
+      }),
+    ),
+  );
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const value = {
+    runtimeId: "codex",
+    accountId: "system",
+    model: "saved",
+    reasoning: "high",
+    fast: true,
+    contextWindow: "1m",
+    permissionLevel: "full-access",
+  };
+  const runtimes = [
+    { id: "codex", enabled: true, state: "unavailable", installed: true },
+  ];
+  const { result } = renderHook(
+    () =>
+      useNativeExecutionSelections(
+        [
+          value,
+          { ...value, accountId: "missing" },
+          { ...value, permissionLevel: "invalid" },
+        ],
+        runtimes,
+        [],
+      ),
+    {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      ),
+    },
+  );
+  await waitFor(() => expect(result.current[0]?.pending).toBe(false));
+  expect(result.current[0]).toMatchObject({ valid: true, selection: value });
+  expect(result.current[1]?.valid).toBe(false);
+  expect(result.current[2]?.valid).toBe(false);
+});
+
+it.each([
+  { runtimeId: "codex", accountId: "missing" },
+  { runtimeId: "codex", accountId: "anthropic" },
+  { runtimeId: "codex", accountId: "work", permissionLevel: "invalid" },
+])("目录故障不绕过真实账号和权限枚举约束 %j", async (value) => {
+  server.use(
+    http.get(`${origin}/api/v1/runtimes/codex/models`, () =>
+      HttpResponse.error(),
+    ),
+  );
+  const { result } = selection(value);
+  await waitFor(() =>
+    expect(result.current.accountsQuery.isSuccess).toBe(true),
+  );
+  expect(result.current.valid).toBe(false);
+});
+
+it("缺少凭据的兼容账号仍不能执行", async () => {
+  server.use(
+    http.get(`${origin}/api/v1/ai-accounts`, () =>
+      HttpResponse.json({
+        resources: [
+          {
+            id: "work",
+            authMode: "api-key",
+            hasCredential: false,
+            endpoint: { protocol: "openai-responses" },
+          },
+        ],
+      }),
+    ),
+  );
+  const { result } = selection({ runtimeId: "codex", accountId: "work" });
+  await waitFor(() =>
+    expect(result.current.accountsQuery.isSuccess).toBe(true),
+  );
+  expect(result.current.valid).toBe(false);
+});

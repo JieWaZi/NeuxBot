@@ -53,13 +53,12 @@ func TestCLIQuestionsUseCanonicalFactsAndActualUserDecision(t *testing.T) {
 	defer hub.Close()
 	coordinator := newElicitationCoordinator(journal, hub)
 	manager := &service{elicitations: coordinator, events: hub}
-	state := coordinator.inputState("execution")
 	bindings := map[string]capability.Binding{}
 	for _, value := range manager.questionBindings(chatID, "execution") {
 		bindings[value.Operation] = value
 	}
 	invalid := capability.Request{Operation: "interaction.questions.create", RequestID: "impossible", Params: map[string]any{"message": "无法完成", "allowSkip": false, "requestedSchema": map[string]any{"type": "object", "properties": map[string]any{"choice": map[string]any{"type": "string", "enum": []string{"A"}, "minLength": 2}}, "required": []string{"choice"}}}}
-	if _, err := bindings[invalid.Operation].Call(context.Background(), invalid); !errors.Is(err, status_error.AgentInputInvalid) || state.Pending() {
+	if _, err := bindings[invalid.Operation].Call(context.Background(), invalid); !errors.Is(err, status_error.AgentInputInvalid) || (len(coordinator.pendingProjection(chatID)) > 0) {
 		t.Fatalf("impossible question became pending: %v", err)
 	}
 	if _, err := bindings[invalid.Operation].Receipt(context.Background(), invalid.RequestID); !errors.Is(err, status_error.AgentReceiptNotFound) {
@@ -67,7 +66,7 @@ func TestCLIQuestionsUseCanonicalFactsAndActualUserDecision(t *testing.T) {
 	}
 	request := capability.Request{Operation: "interaction.questions.create", RequestID: "choice", Params: map[string]any{"message": "选择交付方式", "allowSkip": false, "requestedSchema": map[string]any{"type": "object", "properties": map[string]any{"choice": map[string]any{"type": "string", "enum": []string{"file", "text"}}}, "required": []string{"choice"}, "additionalProperties": false}}}
 	first, err := bindings[request.Operation].Call(context.Background(), request)
-	if err != nil || !state.Pending() {
+	if err != nil || !(len(coordinator.pendingProjection(chatID)) > 0) {
 		t.Fatalf("question was not pending: %+v %v", first, err)
 	}
 	id := first.CommandID
@@ -93,8 +92,8 @@ func TestCLIQuestionsUseCanonicalFactsAndActualUserDecision(t *testing.T) {
 	if err := coordinator.resolveAccepted(context.Background(), chatID, id, map[string]any{"choice": "file"}); err != nil {
 		t.Fatal(err)
 	}
-	if state.Pending() {
-		t.Fatal("resolved question kept runtime idle timer paused")
+	if len(coordinator.pendingProjection(chatID)) > 0 {
+		t.Fatal("resolved question remained in the pending projection")
 	}
 	result, err := bindings["interaction.questions.wait"].Call(context.Background(), capability.Request{Params: map[string]any{"questionId": id, "timeoutMs": 100}})
 	if err != nil || result.Data.(map[string]any)["completed"] != true {

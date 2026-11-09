@@ -4,7 +4,6 @@ import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -138,42 +137,6 @@ func resolveFixtureDelivery(t *testing.T, manager *service, state models.PluginS
 	return state
 }
 
-func TestBoundCanonicalAuthenticationUsesOwnBridgeAndOneNativeMCP(t *testing.T) {
-	for _, cli := range []string{"codex", "claude"} {
-		t.Run(cli, func(t *testing.T) {
-			manager, state, root := authenticatedPluginSourceFixture(t, authenticationFixtureShape{Canonical: true, Skills: true})
-			version := "0.161.0"
-			if cli == "claude" {
-				version = "2.1.159"
-			}
-			prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: cli}, Version: version})
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer prepared.release()
-			if len(prepared.native) != 1 || len(prepared.connectors) != 0 || len(prepared.environment) != 1 || len(prepared.snapshots) != 1 || prepared.snapshots[0].ProviderAccountID != "oauth-user" {
-				t.Fatal("canonical resource did not deliver exactly once with its own bridge")
-			}
-			for key, value := range prepared.environment {
-				if !strings.HasPrefix(key, "ALLY_PLUGIN_AUTH_") || value != "Bearer oauth-device-token" {
-					t.Fatal("canonical bridge secret missing from private process environment")
-				}
-			}
-			pkg, err := plugins.Load(prepared.native[0].Root)
-			if err != nil || len(pkg.Servers) != 1 || pkg.Servers[0].Key != "github" {
-				t.Fatal("canonical target MCP was duplicated or lost", err)
-			}
-			_, body, err := plugins.ReadSkill(prepared.native[0].Root, pkg, "skills/review")
-			if err != nil || !strings.Contains(body, "# Canonical complete guide") {
-				t.Fatal("canonical target full skill is unavailable", err)
-			}
-			if err := plugins.VerifyContent(root, state.Versions[0].Digest); err != nil {
-				t.Fatal("canonical source changed", err)
-			}
-		})
-	}
-}
-
 func TestBoundAuthenticationRejectsUndeclaredRuntimeBeforeStartingBridge(t *testing.T) {
 	for _, required := range []bool{true, false} {
 		t.Run(fmt.Sprintf("required=%t", required), func(t *testing.T) {
@@ -182,7 +145,7 @@ func TestBoundAuthenticationRejectsUndeclaredRuntimeBeforeStartingBridge(t *test
 			if required {
 				request.message.PluginIDs = []string{"p"}
 			}
-			detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "pi"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilityMCPStreamableHTTP: true}}
+			detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "pi", SkillDirectoryName: ".pi"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilityMCPStreamableHTTP: true}}
 			prepared, err := manager.preparePlugins(context.Background(), "w", request, detection)
 			if required && !errors.Is(err, status_error.PluginForbidden) {
 				prepared.release()
@@ -193,7 +156,7 @@ func TestBoundAuthenticationRejectsUndeclaredRuntimeBeforeStartingBridge(t *test
 					t.Fatal(err)
 				}
 				defer prepared.release()
-				if len(prepared.connectors) != 0 || len(prepared.native) != 0 || len(prepared.environment) != 0 || len(prepared.snapshots) != 0 {
+				if len(prepared.connectors) != 0 || len(prepared.environment) != 0 || len(prepared.snapshots) != 0 {
 					t.Fatal("optional undeclared runtime received authenticated components")
 				}
 			}
@@ -206,13 +169,13 @@ func TestBoundAuthenticationRejectsUndeclaredRuntimeBeforeStartingBridge(t *test
 
 func TestUnboundLegacySkillBridgeStillProjectsForOtherRuntime(t *testing.T) {
 	manager, _, _ := authenticatedPluginSourceFixture(t, authenticationFixtureShape{LegacySkillBridge: true})
-	detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "pi"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
+	detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "pi", SkillDirectoryName: ".pi"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
 	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, detection)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer prepared.release()
-	if len(prepared.skills) != 1 || len(prepared.native) != 0 || len(prepared.connectors) != 0 || prepared.environment["BUSINESS_TOKEN"] != "legacy-secret" {
+	if len(prepared.skills) != 1 || len(prepared.connectors) != 0 || prepared.environment["BUSINESS_TOKEN"] != "legacy-secret" {
 		t.Fatal("target binding gate changed the unbound legacy skill bridge")
 	}
 }
@@ -230,7 +193,7 @@ func TestSkillCommandBridgeProjectsManagedCLIForOtherRuntimes(t *testing.T) {
 			registry := commandbridge.NewRegistry(context.Background(), nil)
 			t.Cleanup(registry.Close)
 			manager.pluginInstallations = plugininstallation.New(plugininstallation.Config{DataDirectory: data, Bridges: registry, BridgeEnvironment: os.Environ()})
-			detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: cli}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
+			detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: cli, SkillDirectoryName: ".agents"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
 			prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, detection)
 			if err != nil {
 				t.Fatal(err)
@@ -238,7 +201,7 @@ func TestSkillCommandBridgeProjectsManagedCLIForOtherRuntimes(t *testing.T) {
 			defer prepared.release()
 			private := filepath.Join(data, "plugins/data/p")
 			paths := filepath.SplitList(prepared.environment["PATH"])
-			if len(prepared.skills) != 1 || len(prepared.native) != 0 || len(prepared.connectors) != 0 || len(paths) == 0 || paths[0] != private || prepared.environment["WECOM_CLI_CONFIG_DIR"] != private {
+			if len(prepared.skills) != 1 || len(prepared.connectors) != 0 || len(paths) == 0 || paths[0] != private || prepared.environment["WECOM_CLI_CONFIG_DIR"] != private {
 				t.Fatal("skill projection lost the managed CLI or its shared profile")
 			}
 		})
@@ -279,7 +242,7 @@ func TestSkillCommandBridgesMergePrivatePathsAndKeepOtherConflicts(t *testing.T)
 			first = resolveFixtureDelivery(t, manager, first)
 			second = resolveFixtureDelivery(t, manager, second)
 			manager.pluginController = installedPluginFixture{states: []models.PluginState{first, second}}
-			detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "pi"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
+			detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "pi", SkillDirectoryName: ".pi"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
 			prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p", "second"}}}, detection)
 			defer prepared.release()
 			if conflict {
@@ -305,140 +268,20 @@ func TestSkillCommandBridgesMergePrivatePathsAndKeepOtherConflicts(t *testing.T)
 	}
 }
 
-func TestBoundCodexExecutionExpandsUnboundCompositeHeaderOnlyInMemory(t *testing.T) {
-	manager, state, root := authenticatedPluginSourceFixture(t, authenticationFixtureShape{Canonical: true, UnboundHeader: "prefix ${OTHER_TOKEN}:suffix"})
-	secret := "configuration-private-sentinel-902"
-	state.Configuration.Secrets = []models.MCPSecretDefinition{{Name: "OTHER_TOKEN", Value: secret, Configured: true}}
-	manager.pluginController = installedPluginFixture{states: []models.PluginState{state}}
-	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer prepared.release()
-	key := plugins.AuthenticationEnvironmentKey("p", plugins.AuthenticationBinding{Server: "github", URL: "https://api.githubcopilot.com/mcp/", Header: "X-Business"})
-	if len(prepared.native) != 1 || prepared.environment[key] != "prefix "+secret+":suffix" {
-		t.Fatal("Codex private environment did not receive its complete configured header")
-	}
-	for _, directory := range []string{root, prepared.native[0].Root} {
-		if err := filepath.WalkDir(directory, func(path string, entry os.DirEntry, err error) error {
-			if err != nil || entry.IsDir() {
-				return err
-			}
-			body, err := os.ReadFile(path)
-			if err == nil && strings.Contains(string(body), secret) {
-				t.Fatal("configured header secret was written into a plugin file")
-			}
-			return err
-		}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	snapshot, err := json.Marshal(prepared.snapshots)
-	if err != nil || strings.Contains(string(snapshot), secret) {
-		t.Fatal("configured header secret escaped into a persisted delivery snapshot")
-	}
-	if err := plugins.VerifyContent(root, state.Versions[0].Digest); err != nil {
-		t.Fatal("fixed source changed while expanding private header", err)
-	}
-}
-
-func TestBoundNativeAuthenticationUsesLogicalBridgeAndPrivateTemplate(t *testing.T) {
-	for _, cli := range []string{"codex", "claude"} {
-		t.Run(cli, func(t *testing.T) {
-			manager, state, root := authenticatedPluginFixture(t)
-			version := "0.161.0"
-			if cli == "claude" {
-				version = "2.1.159"
-			}
-			prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: cli}, Version: version})
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer prepared.release()
-			if len(prepared.native) != 1 || len(prepared.connectors) != 0 || len(prepared.snapshots) != 1 || prepared.snapshots[0].ProviderAccountID != "oauth-user" {
-				t.Fatalf("incomplete authenticated native delivery: %+v", prepared)
-			}
-			if len(prepared.environment) != 1 {
-				t.Fatalf("unexpected environment: %v", prepared.environment)
-			}
-			for key, value := range prepared.environment {
-				if !strings.HasPrefix(key, "ALLY_PLUGIN_AUTH_") || value != "Bearer oauth-device-token" {
-					t.Fatal("missing namespaced OAuth header")
-				}
-			}
-			body, _ := os.ReadFile(filepath.Join(prepared.native[0].Root, ".mcp.json"))
-			if strings.Contains(string(body), "oauth-device-token") || strings.Contains(string(body), "OLD_TOKEN") || strings.Contains(string(body), "oauth") {
-				t.Fatalf("unsafe native auth: %s", body)
-			}
-			apps, _ := os.ReadFile(filepath.Join(prepared.native[0].Root, ".app.json"))
-			if string(apps) != `{"apps":{"optional":{"id":"separate-hosted-app","required":false}}}` {
-				t.Fatal("hosted app identity altered")
-			}
-			if err := plugins.VerifyContent(root, state.Versions[0].Digest); err != nil {
-				t.Fatal("fixed source mutated", err)
-			}
-		})
-	}
-}
-
-func TestBoundAuthenticationFallbackKeepsConnectorScopeAndRetryIdentity(t *testing.T) {
-	manager, _, _ := authenticatedPluginFixture(t)
-	detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "claude"}, Version: "2.1.1", Capabilities: agentapi.CapabilitySet{agentapi.CapabilityMCPStreamableHTTP: true}}
-	request := pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}
-	prepared, err := manager.preparePlugins(context.Background(), "w", request, detection)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(prepared.native) != 0 || len(prepared.connectors) != 1 || len(prepared.environment) != 0 {
-		t.Fatalf("unexpected projection: %+v", prepared)
-	}
-	if headers := prepared.connectors[0].Headers; len(headers) != 1 || headers[0].Name != "Authorization" || headers[0].Value != "Bearer oauth-device-token" {
-		t.Fatalf("incorrect OAuth headers: %+v", headers)
-	}
-	snapshots := append([]plugins.Snapshot{}, prepared.snapshots...)
-	prepared.release()
-	for _, mutation := range []string{"account", "digest", "delivery"} {
-		t.Run(mutation, func(t *testing.T) {
-			prior := snapshots[0]
-			switch mutation {
-			case "account":
-				prior.ProviderAccountID = "other-user"
-			case "digest":
-				prior.TargetDigest = "another-digest"
-			case "delivery":
-				prior.Delivery = "native"
-			}
-			retry := pendingMessage{retry: true, pluginSnapshots: []plugins.Snapshot{prior}}
-			result, err := manager.preparePlugins(context.Background(), "w", retry, detection)
-			if err == nil {
-				result.release()
-				t.Fatal("retry identity change accepted")
-			}
-		})
-	}
-	allowed := []string{}
-	request.allowedConnectorIDs = &allowed
-	detection.Version = "2.1.159"
-	result, err := manager.preparePlugins(context.Background(), "w", request, detection)
-	if err == nil {
-		result.release()
-		t.Fatal("empty allowlist bypassed by native authentication")
-	}
-}
-
 func TestBoundAuthenticationAllowsMissingCredentialDuringChat(t *testing.T) {
 	for _, reply := range []string{`headers:{}`, `headers:{Authorization:''}`} {
 		t.Run(reply, func(t *testing.T) {
 			manager, _, _ := authenticatedPluginFixture(t, reply)
-			prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"})
+			prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilityMCPStreamableHTTP: true}})
 			if err != nil {
 				t.Fatalf("missing authorization prevented plugin delivery: %v", err)
 			}
 			defer prepared.release()
-			if len(prepared.native) != 1 || len(prepared.snapshots) != 1 || len(prepared.environment) != 1 {
+			if len(prepared.connectors) != 1 || len(prepared.snapshots) != 1 {
 				t.Fatalf("plugin delivery was lost without credentials: %+v", prepared.snapshots)
 			}
-			for _, value := range prepared.environment {
+			for _, header := range prepared.connectors[0].Headers {
+				value := header.Value
 				if value != "" {
 					t.Fatal("missing credential invented an authorization header")
 				}
@@ -464,12 +307,12 @@ func TestAuthorizationManagementRejectsUndeclaredSecrets(t *testing.T) {
 
 func TestChatPluginLoadingDoesNotPreflightProviderStatus(t *testing.T) {
 	manager, _, _ := authenticatedPluginSourceFixture(t, authenticationFixtureShape{RejectStatus: true})
-	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"})
+	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilityMCPStreamableHTTP: true}})
 	if err != nil {
 		t.Fatalf("chat performed provider status preflight: %v", err)
 	}
 	defer prepared.release()
-	if len(prepared.native) != 1 || len(prepared.snapshots) != 1 || prepared.snapshots[0].ProviderAccountID != "oauth-user" {
+	if len(prepared.connectors) != 1 || len(prepared.snapshots) != 1 || prepared.snapshots[0].ProviderAccountID != "oauth-user" {
 		t.Fatalf("local plugin loading lost fixed resource or invented online identity: %+v", prepared.snapshots)
 	}
 }
@@ -478,7 +321,7 @@ func TestChatPluginLoadingNeverStartsAuthorizationBridge(t *testing.T) {
 	manager, state, _ := authenticatedPluginFixture(t)
 	state.Configuration.DeliveryMaterials = nil
 	manager.pluginController = installedPluginFixture{states: []models.PluginState{state}}
-	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"})
+	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilityMCPStreamableHTTP: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -486,10 +329,11 @@ func TestChatPluginLoadingNeverStartsAuthorizationBridge(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(manager.skillDataDirectory, "plugins/data/p/fixture-bridge-started")); !os.IsNotExist(err) {
 		t.Fatal("chat started the authorization program")
 	}
-	if len(prepared.native) != 1 {
+	if len(prepared.connectors) != 1 {
 		t.Fatal("missing private material prevented capability delivery")
 	}
-	for _, value := range prepared.environment {
+	for _, header := range prepared.connectors[0].Headers {
+		value := header.Value
 		if value != "" {
 			t.Fatal("chat invented a credential instead of loading existing material")
 		}
@@ -500,15 +344,16 @@ func TestChatPluginLoadingKeepsMaterialAcrossOrdinaryConfigurationRevision(t *te
 	manager, state, _ := authenticatedPluginFixture(t)
 	state.Configuration.Revision++
 	manager.pluginController = installedPluginFixture{states: []models.PluginState{state}}
-	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"})
+	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilityMCPStreamableHTTP: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer prepared.release()
-	if len(prepared.native) != 1 {
+	if len(prepared.connectors) != 1 {
 		t.Fatal("stale material blocked capability delivery")
 	}
-	for _, value := range prepared.environment {
+	for _, header := range prepared.connectors[0].Headers {
+		value := header.Value
 		if value != "Bearer oauth-device-token" {
 			t.Fatal("ordinary configuration revision discarded the existing identity")
 		}
@@ -522,42 +367,13 @@ func TestChatDeliversLegacySkillWithoutPrivateMaterial(t *testing.T) {
 	manager, state, _ := authenticatedPluginSourceFixture(t, authenticationFixtureShape{LegacySkillBridge: true})
 	state.Configuration.DeliveryMaterials = nil
 	manager.pluginController = installedPluginFixture{states: []models.PluginState{state}}
-	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "pi"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}})
+	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "pi", SkillDirectoryName: ".pi"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer prepared.release()
 	if len(prepared.skills) != 1 || len(prepared.environment) != 0 {
 		t.Fatal("missing material prevented skill delivery")
-	}
-}
-
-func TestRetryRejectsChangedSavedAuthorizationSubject(t *testing.T) {
-	manager, state, _ := authenticatedPluginFixture(t)
-	detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"}
-	first, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, detection)
-	if err != nil {
-		t.Fatal(err)
-	}
-	prior := slices.Clone(first.snapshots)
-	first.release()
-	_, driver, err := manager.pluginInstallations.Bridge(state.Versions[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-	state.Configuration.DeliveryMaterials, err = plugininstallation.ResolveDeliveryMaterials(context.Background(), driver, state.Versions[0], state.Configuration, "another-authorized-user")
-	if err != nil {
-		t.Fatal(err)
-	}
-	manager.pluginController = installedPluginFixture{states: []models.PluginState{state}}
-	_ = os.Remove(filepath.Join(manager.skillDataDirectory, "plugins/data/p/fixture-bridge-started"))
-	retried, err := manager.preparePlugins(context.Background(), "w", pendingMessage{retry: true, pluginSnapshots: prior}, detection)
-	if !errors.Is(err, status_error.PluginConfigurationConflict) {
-		retried.release()
-		t.Fatal("retry crossed the reauthorized subject boundary", err)
-	}
-	if _, err := os.Stat(filepath.Join(manager.skillDataDirectory, "plugins/data/p/fixture-bridge-started")); !os.IsNotExist(err) {
-		t.Fatal("retry resolved the provider instead of checking saved subject")
 	}
 }
 
@@ -575,7 +391,7 @@ func (f currentAuthenticationFixture) Configuration(context.Context, string) (mo
 
 func TestPluginIdentityIsLoadedAfterAcquiringFrozenResources(t *testing.T) {
 	manager, state, _ := authenticatedPluginFixture(t)
-	detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"}
+	detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilityMCPStreamableHTTP: true}}
 	plan, err := manager.freezePluginResources(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, detection)
 	if err != nil {
 		t.Fatal(err)
@@ -589,7 +405,7 @@ func TestPluginIdentityIsLoadedAfterAcquiringFrozenResources(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager.pluginController = currentAuthenticationFixture{installedPluginFixture: installedPluginFixture{states: []models.PluginState{state}}, current: state.Configuration}
-	prepared, err := manager.acquirePluginResources(context.Background(), plan, true)
+	prepared, err := manager.acquirePluginResources(context.Background(), plan)
 	if err != nil {
 		t.Fatal(err)
 	}

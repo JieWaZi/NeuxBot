@@ -14,9 +14,7 @@ type PluginDetailResponse struct {
 	// 当前解析版本
 	ResolvedVersionID string `json:"resolvedVersionId"`
 	// 保留版本
-	Versions []models.PluginVersion `json:"versions"`
-	// 组件授权标识
-	ComponentIDs map[string]string `json:"componentIds"`
+	Versions []PluginVersionResponse `json:"versions"`
 	// 安装伙伴名称
 	PartnerNames map[string]string `json:"partnerNames"`
 	// 伙伴头像
@@ -41,6 +39,50 @@ type PluginDetailResponse struct {
 	Update PluginUpdateResponse `json:"update"`
 	// 目录状态
 	CatalogSource catalog.SourceState `json:"catalogSource"`
+}
+
+// 插件公开版本
+type PluginVersionResponse struct {
+	// 版本标识
+	ID string `json:"id"`
+	// 插件标识
+	PluginID string `json:"pluginId"`
+	// 版本名称
+	Version string `json:"version"`
+	// 内容摘要
+	Digest string `json:"digest"`
+	// 展示资料
+	Package packageplugin.PublicPackage `json:"package"`
+	// 信任时间
+	TrustedAt int64 `json:"trustedAt"`
+	// 分发来源
+	Provenance map[string]any `json:"provenance"`
+	// 创建时间
+	CreatedAt int64 `json:"createdAt"`
+}
+
+// 插件目录条目
+type PluginCatalogEntryResponse struct {
+	// 来源身份
+	SourceKey string `json:"sourceKey"`
+	// 目录标识
+	Key string `json:"key"`
+	// 来源提交
+	SourceCommit string `json:"sourceCommit"`
+	// 归档摘要
+	ArchiveSHA256 string `json:"archiveSHA256"`
+	// 归档地址
+	ArchiveURL string `json:"archiveURL,omitempty"`
+	// 逻辑入口
+	PackagePath string `json:"packagePath,omitempty"`
+	// 资料地址
+	DetailsURL string `json:"detailsURL,omitempty"`
+	// 资料摘要
+	DetailsSHA256 string `json:"detailsSHA256,omitempty"`
+	// 资料大小
+	DetailsSize int64 `json:"detailsSize,omitempty"`
+	// 展示资料
+	Package packageplugin.PublicPackage `json:"package"`
 }
 
 // 插件更新摘要

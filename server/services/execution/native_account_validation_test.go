@@ -35,7 +35,7 @@ func TestNativeAccountValidationDoesNotProbe(t *testing.T) {
 		t.Run(sample.runtimeID, func(t *testing.T) {
 			account := models.AIAccount{
 				ID: "0123456789abcdef0123456789abcdef", Name: "selected account", AuthMode: constants.AccountAuthModeAPIKey,
-				Endpoints:      []models.AIAccountEndpoint{{Protocol: sample.protocol, BaseURL: "https://provider.example/v1"}},
+				Endpoint:       models.AIAccountEndpoint{Protocol: sample.protocol, BaseURL: "https://provider.example/v1"},
 				SelectedModels: []string{sample.model}, ModelReasoningLevels: map[string][]string{sample.model: {"high"}},
 			}
 			accounts := nativeValidationAccounts(t, account, "selected-account-key")
@@ -70,12 +70,9 @@ func TestNativeAccountValidationKeepsAdmissionGuards(t *testing.T) {
 		{"disabled CLI", func(_ *models.AIAccount, environment *models.RuntimeEnvironment, _ *ExecutionConfiguration) {
 			environment.Enabled = false
 		}, status_error.RuntimeUnavailable},
-		{"unavailable CLI", func(_ *models.AIAccount, environment *models.RuntimeEnvironment, _ *ExecutionConfiguration) {
-			environment.Detection.State = agentapi.DetectionStateUnavailable
-		}, status_error.RuntimeUnavailable},
 		{"missing transport", func(_ *models.AIAccount, _ *models.RuntimeEnvironment, config *ExecutionConfiguration) {
-			config.RequiredConnectorTransport = constants.RuntimeConnectorTransportStreamableHTTP
-		}, status_error.RuntimeUnavailable},
+			config.RequiredConnectorTransport = constants.RuntimeConnectorTransport("unsupported")
+		}, status_error.RuntimePolicyUnsupported},
 		{"invalid permission", func(_ *models.AIAccount, _ *models.RuntimeEnvironment, config *ExecutionConfiguration) {
 			config.PermissionLevel = constants.PermissionLevel("invalid")
 		}, status_error.BadRequest},
@@ -86,18 +83,15 @@ func TestNativeAccountValidationKeepsAdmissionGuards(t *testing.T) {
 			account.SelectedModels = nil
 		}, status_error.AIAccountConfigurationInvalid},
 		{"incompatible protocol", func(account *models.AIAccount, _ *models.RuntimeEnvironment, _ *ExecutionConfiguration) {
-			account.Endpoints[0].Protocol = constants.AccountProtocolAnthropicMessages
+			account.Endpoint.Protocol = constants.AccountProtocolAnthropicMessages
 		}, status_error.AIAccountConfigurationInvalid},
 		{"missing credential", func(account *models.AIAccount, _ *models.RuntimeEnvironment, _ *ExecutionConfiguration) {
 			account.HasCredential = false
 		}, status_error.RuntimeAuthRequired},
-		{"system model permission", func(_ *models.AIAccount, _ *models.RuntimeEnvironment, config *ExecutionConfiguration) {
-			config.AccountID, config.Model, config.Reasoning = constants.AiAccountSystemID, "auto", ""
-		}, status_error.BadRequest},
 	} {
 		t.Run(sample.name, func(t *testing.T) {
 			account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", Name: "Google", AuthMode: constants.AccountAuthModeAPIKey,
-				Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolGoogleGenerativeAI, BaseURL: constants.AIAccountGoogleURL}}, SelectedModels: []string{"gemini-3.8-flash"}, HasCredential: true}
+				Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolGoogleGenerativeAI, BaseURL: constants.AIAccountGoogleURL}, SelectedModels: []string{"gemini-3.8-flash"}, HasCredential: true}
 			environment := nativeValidationEnvironment(constants.RuntimeIDGemini)
 			config := ExecutionConfiguration{RuntimeID: constants.RuntimeIDGemini, AccountID: account.ID, Model: "gemini-3.8-flash", Reasoning: "LOW", PermissionLevel: constants.PermissionLevelFullAccess}
 			sample.mutate(&account, &environment, &config)
@@ -141,4 +135,78 @@ func nativeValidationEnvironment(runtimeID string) models.RuntimeEnvironment {
 
 func validationRuntimeSummaries(runtimeID string) []agentapi.RuntimeSummary {
 	return []agentapi.RuntimeSummary{{ID: runtimeID, BaseRuntimeID: runtimeID, InstructionFileName: "AGENTS.md"}}
+}
+
+func TestResolveConfigurationUsesPersistedManagedDefaultModel(t *testing.T) {
+	for _, sample := range []struct {
+		// name 描述默认模型来源。
+		name string
+		// runtimeDefault 是持久化的智能体默认模型。
+		runtimeDefault string
+		// accountDefault 是账号保存的默认模型。
+		accountDefault string
+		// configuredAccount 表示是否选择智能体默认账号。
+		configuredAccount bool
+		// explicit 是本轮明确请求的模型。
+		explicit string
+		// resolved 表示此前已接纳配置，空模型保留原生默认。
+		resolved bool
+		// want 是唯一有效模型选择。
+		want string
+	}{
+		{name: "runtime selected second model", runtimeDefault: "second", accountDefault: "preferred", configuredAccount: true, want: "second"},
+		{name: "invalid runtime default", runtimeDefault: "removed", accountDefault: "preferred", configuredAccount: true, want: "preferred"},
+		{name: "explicit nondefault account", runtimeDefault: "second", accountDefault: "preferred", want: "preferred"},
+		{name: "invalid account default", runtimeDefault: "removed", accountDefault: "removed", want: "first"},
+		{name: "explicit model", runtimeDefault: "second", accountDefault: "preferred", configuredAccount: true, explicit: "first", want: "first"},
+		{name: "frozen native model", runtimeDefault: "second", accountDefault: "preferred", configuredAccount: true, resolved: true},
+	} {
+		t.Run(sample.name, func(t *testing.T) {
+			account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", Name: "Google", AuthMode: constants.AccountAuthModeAPIKey, Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolGoogleGenerativeAI, BaseURL: constants.AIAccountGoogleURL}, SelectedModels: []string{"first", "second", "preferred"}, DefaultModel: sample.accountDefault}
+			environment := nativeValidationEnvironment(constants.RuntimeIDGemini)
+			environment.DefaultAccountID = "other"
+			if sample.configuredAccount {
+				environment.DefaultAccountID = account.ID
+			}
+			environment.DefaultModel = sample.runtimeDefault
+			manager := &service{runtimeSummaries: validationRuntimeSummaries(constants.RuntimeIDGemini), accounts: nativeValidationAccounts(t, account, "selected-key"), runtimeEnvironments: configurationEnvironmentReader{environment: environment}}
+			result, err := manager.ResolveConfiguration(t.Context(), ExecutionConfiguration{RuntimeID: constants.RuntimeIDGemini, AccountID: account.ID, Model: sample.explicit, Resolved: sample.resolved, PermissionLevel: constants.PermissionLevelDefault})
+			if err != nil || result.Model != sample.want {
+				t.Fatalf("effective model=%q error=%v, want %q", result.Model, err, sample.want)
+			}
+		})
+	}
+}
+
+func TestResolveConfigurationKeepsManagedClaudeRuntimeAlias(t *testing.T) {
+	account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", Name: "Claude", AuthMode: constants.AccountAuthModeAPIKey, Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: constants.AIAccountAnthropicURL}, SelectedModels: []string{"first", "second"}, DefaultModel: "first", ClaudeModelRoles: map[string]string{"sonnet": "second"}}
+	environment := nativeValidationEnvironment(constants.RuntimeIDClaude)
+	environment.DefaultAccountID, environment.DefaultModel = account.ID, "sonnet"
+	manager := &service{runtimeSummaries: validationRuntimeSummaries(constants.RuntimeIDClaude), accounts: nativeValidationAccounts(t, account, "selected-key"), runtimeEnvironments: configurationEnvironmentReader{environment: environment}}
+	resolved, err := manager.ResolveConfiguration(t.Context(), ExecutionConfiguration{RuntimeID: constants.RuntimeIDClaude, AccountID: account.ID, PermissionLevel: constants.PermissionLevelDefault})
+	if err != nil || resolved.Model != "sonnet" {
+		t.Fatalf("managed native alias=%q error=%v, want sonnet", resolved.Model, err)
+	}
+}
+
+// TestSubscriptionDefaultsSurviveFailedProbe 保留订阅默认账号的配置，且不改写已解析的空选择。
+func TestSubscriptionDefaultsSurviveFailedProbe(t *testing.T) {
+	account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", Name: "Codex", AuthMode: constants.AccountAuthModeSubscription,
+		Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: constants.AIAccountOpenAIURL}}
+	environment := nativeValidationEnvironment(constants.RuntimeIDCodex)
+	environment.DefaultAccountID, environment.DefaultModel, environment.DefaultReasoning = account.ID, "chosen-model", "high"
+	environment.Detection = agentapi.DetectionResult{State: agentapi.DetectionStateUnavailable}
+	manager := &service{runtimeSummaries: validationRuntimeSummaries(constants.RuntimeIDCodex), accounts: nativeValidationAccounts(t, account, "subscription-credential"), runtimeEnvironments: configurationEnvironmentReader{environment: environment}}
+	for _, resolved := range []bool{false, true} {
+		selection, err := manager.ResolveConfiguration(t.Context(), ExecutionConfiguration{RuntimeID: constants.RuntimeIDCodex, Resolved: resolved, AccountID: account.ID, PermissionLevel: constants.PermissionLevelDefault})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !resolved && (selection.Model != "chosen-model" || selection.Reasoning != "high") {
+			t.Fatalf("subscription defaults were lost: %+v", selection)
+		}
+		if resolved && (selection.Model != "" || selection.Reasoning != "") {
+			t.Fatalf("resolved native defaults were replaced: %+v", selection)
+		}
+	}
 }

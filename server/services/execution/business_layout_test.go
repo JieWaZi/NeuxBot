@@ -20,30 +20,34 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
-func TestTurnPathsAndContextDoNotChangeStaticSessionPlan(t *testing.T) {
+func TestTurnPathsAndContextDoNotChangeNativeSessionSettings(t *testing.T) {
 	root := t.TempDir()
 	manager := &service{}
 	state := messageChat{chat: models.Chat{WakerID: "partner", WorkspaceDirectory: root, AdditionalWorkingDirectories: []string{root}}}
 	files := &preparedMessageFiles{executionWorkspaceDirectory: root, instructions: []agentapi.Instruction{{Name: "PARTNER.md", Content: "persistent partner"}}, taskDirectories: workspace.TaskDirectories{Outputs: filepath.Join(root, "outputs", "execution-one"), Temporary: filepath.Join(root, "tmp", "execution-one")}}
 	request := pendingMessage{supplementalInstructions: []agentapi.Instruction{{Name: "TEAM.md", Content: "stable team role"}}, contextInstructions: []agentapi.Instruction{{Name: "Current Lead Turn", Content: "coordination"}}}
-	firstPlan, firstTurn := manager.buildSessionPlan(state, request, files, nil, nil, models.RuntimeEnvironment{})
+	firstPlan := recordBusinessInputs(manager, state, request, files, nil, nil, models.RuntimeEnvironment{})
+
+	firstTurn := firstPlan
 	files.taskDirectories = workspace.TaskDirectories{Outputs: filepath.Join(root, "outputs", "execution-two"), Temporary: filepath.Join(root, "tmp", "execution-two")}
 	request.contextInstructions[0].Content = "direct execution"
-	secondPlan, secondTurn := manager.buildSessionPlan(state, request, files, nil, nil, models.RuntimeEnvironment{})
-	if !reflect.DeepEqual(firstPlan, secondPlan) {
+	secondPlan := recordBusinessInputs(manager, state, request, files, nil, nil, models.RuntimeEnvironment{})
+
+	secondTurn := secondPlan
+	if !reflect.DeepEqual(firstPlan.thread(), secondPlan.thread()) {
 		t.Fatal("turn data changed stable session configuration")
 	}
 	if reflect.DeepEqual(firstTurn.ContextInstructions, secondTurn.ContextInstructions) {
 		t.Fatal("current task context was not delivered independently")
 	}
-	static, _ := json.Marshal(firstPlan)
+	static, _ := json.Marshal(firstPlan.thread())
 	if strings.Contains(string(static), "execution-one") || strings.Contains(string(static), "Current Lead Turn") {
 		t.Fatalf("dynamic context entered session fingerprint: %s", static)
 	}
-	if !strings.Contains(nativeTurnPrompt(secondTurn), "execution-two") || !strings.Contains(nativeTurnPrompt(secondTurn), "direct execution") {
+	if !strings.Contains(secondTurn.prompt(), "execution-two") || !strings.Contains(secondTurn.prompt(), "direct execution") {
 		t.Fatal("native turn lost exact task paths or current mode")
 	}
-	if !strings.Contains(agentapi.DeveloperInstructions(secondPlan), "stable team role") {
+	if !strings.Contains(agentapi.DeveloperInstructions(secondPlan.Instructions), "stable team role") {
 		t.Fatal("stable team role was removed from developer instructions")
 	}
 }
@@ -52,6 +56,14 @@ func TestCapabilityFileRootsFreezeTaskOutputsAndRealProjects(t *testing.T) {
 	manager := agentPreparationFixture(t)
 	chat := manager.journal.(*agentTestJournal).chat
 	cwd, project := t.TempDir(), t.TempDir()
+	cwd, err := filepath.EvalSymlinks(cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err = filepath.EvalSymlinks(project)
+	if err != nil {
+		t.Fatal(err)
+	}
 	task, err := workspace.EnsureTaskDirectories(cwd, "turn")
 	if err != nil {
 		t.Fatal(err)
@@ -63,8 +75,8 @@ func TestCapabilityFileRootsFreezeTaskOutputsAndRealProjects(t *testing.T) {
 		roots = append([]string(nil), frozen...)
 		return nil
 	}
-	plan := agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: "codex"}, Workspace: agentapi.Workspace{Path: cwd, ProjectDirectories: []agentapi.WorkspaceProjectDirectory{{Path: project}}}}
-	_, release, err := manager.prepareAgent(&plan, &agentapi.TurnInput{}, chat, "turn", nil, nil, nil)
+	plan := recordedRun{Runtime: runtimeSelection{RuntimeID: "codex"}, Workspace: agentapi.Workspace{Path: cwd, ProjectDirectories: []agentapi.WorkspaceProjectDirectory{{Path: project}}}}
+	_, release, err := plan.prepare(manager, chat, "turn", nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,9 +130,10 @@ func TestProjectEntryDeliveryUsesNativeEvidenceAndIsolatesSharedWakerChats(t *te
 		t.Helper()
 		state := messageChat{chat: models.Chat{ID: chatID, WakerID: "waker-1", WorkspaceDirectory: root, AdditionalWorkingDirectories: []string{project}}, workspaceDirectory: root}
 		if project != "" {
+			state.additionalDirectories = []string{project}
 			state.projectSources = []eventlog.ProjectSourceSnapshot{{EntryName: "same-name", SourcePath: project}}
 		} else {
-			state.chat.AdditionalWorkingDirectories = []string{root}
+			state.additionalDirectories = []string{root}
 		}
 		detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{ID: agentapi.RuntimeIDCursor, BaseRuntimeID: agentapi.RuntimeIDCursor}, Capabilities: evidence}
 		var references []CodeReferenceInput
@@ -138,8 +151,8 @@ func TestProjectEntryDeliveryUsesNativeEvidenceAndIsolatesSharedWakerChats(t *te
 	if _, err := os.Lstat(filepath.Join(root, "projects")); !os.IsNotExist(err) {
 		t.Fatalf("native delivery created links: %v", err)
 	}
-	nativePlan, _ := core.buildSessionPlan(nativeState, pendingMessage{}, native, nil, nil, models.RuntimeEnvironment{Detection: agentapi.DetectionResult{Capabilities: agentapi.CapabilitySet{agentapi.CapabilityAddDirectory: true}}})
-	if got := nativeThreadRequest("native-chat", nativePlan, pendingMessage{}, models.RuntimeEnvironment{}, agentapi.ResourceSelection{}, "stable").Session.AdditionalDirectories; !reflect.DeepEqual(got, []string{projectOne}) {
+	nativePlan := recordBusinessInputs(core, nativeState, pendingMessage{}, native, nil, nil, models.RuntimeEnvironment{Detection: agentapi.DetectionResult{Capabilities: agentapi.CapabilitySet{agentapi.CapabilityAddDirectory: true}}})
+	if got := nativeThreadRequest("native-chat", nativePlan.Workspace, nativePlan.Instructions, pendingMessage{}, models.RuntimeEnvironment{Detection: nativePlan.Detection}, agentapi.ResourceSelection{}, "stable").Session.AdditionalDirectories; !reflect.DeepEqual(got, []string{projectOne}) {
 		t.Fatalf("native roots lost: %v", got)
 	}
 	empty, _ := prepare("empty-chat", "", agentapi.CapabilitySet{agentapi.CapabilityAddDirectory: false})
@@ -169,16 +182,18 @@ func TestProjectEntryDeliveryUsesNativeEvidenceAndIsolatesSharedWakerChats(t *te
 	if err != nil || stillFirst != expectedFirst {
 		t.Fatalf("rejected replacement changed first Chat: %s %v", stillFirst, err)
 	}
-	plan, input := core.buildSessionPlan(firstState, pendingMessage{}, first, nil, nil, models.RuntimeEnvironment{Detection: agentapi.DetectionResult{Capabilities: agentapi.CapabilitySet{agentapi.CapabilityAddDirectory: false}}})
-	thread := nativeThreadRequest("chat-one", plan, pendingMessage{}, models.RuntimeEnvironment{}, agentapi.ResourceSelection{}, "stable")
+	plan := recordBusinessInputs(core, firstState, pendingMessage{}, first, nil, nil, models.RuntimeEnvironment{Detection: agentapi.DetectionResult{Capabilities: agentapi.CapabilitySet{agentapi.CapabilityAddDirectory: false}}})
+
+	input := plan
+	thread := nativeThreadRequest("chat-one", plan.Workspace, plan.Instructions, pendingMessage{}, models.RuntimeEnvironment{Detection: plan.Detection}, agentapi.ResourceSelection{}, "stable")
 	if thread.Connection.Account.CWD != root || len(thread.Session.AdditionalDirectories) != 0 {
-		t.Fatalf("fallback changed cwd or sent unsupported roots: %+v", thread)
+		t.Fatalf("fallback cwd=%q additionalDirectories=%v", thread.Connection.Account.CWD, thread.Session.AdditionalDirectories)
 	}
 	actualFile, err := filepath.EvalSymlinks(sourceFile)
 	if err != nil || len(first.codeReferences) != 1 || first.codeReferences[0].Path != actualFile || len(input.Message.CodeReferences) != 1 || input.Message.CodeReferences[0].Path != "projects/chat-one/same-name/main.txt" {
 		t.Fatalf("native projection changed durable file identity: durable=%+v native=%+v err=%v", first.codeReferences, input.Message.CodeReferences, err)
 	}
-	if !strings.Contains(nativeTurnPrompt(input), "projects/chat-one/same-name") || len(plan.Workspace.ProjectDirectories) != 1 || plan.Workspace.ProjectDirectories[0].Path != projectOne {
+	if !strings.Contains(input.prompt(), "projects/chat-one/same-name") || len(plan.Workspace.ProjectDirectories) != 1 || plan.Workspace.ProjectDirectories[0].Path != projectOne {
 		t.Fatal("projection lost actual project identity or native discovery entry")
 	}
 	unknown, _ := prepare("unknown-chat", projectOne, nil)

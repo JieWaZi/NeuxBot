@@ -1,8 +1,8 @@
 import { i18n } from "@/shared/i18n";
 import type {
   GithubComJieWaZiNeuxBotServerApisPluginsPluginDetailResponse as PluginDetail,
-  GithubComJieWaZiNeuxBotServerRepositoriesModelsPluginVersion as PluginVersion,
-  GithubComJieWaZiNeuxBotServerInternalPluginsCatalogEntry as PluginCatalogEntry,
+  GithubComJieWaZiNeuxBotServerApisPluginsPluginVersionResponse as PluginVersion,
+  GithubComJieWaZiNeuxBotServerApisPluginsPluginCatalogEntryResponse as PluginCatalogEntry,
 } from "@/shared/api/generated/types.gen";
 export type { PluginDetail, PluginVersion, PluginCatalogEntry };
 export type ResourceCategory = "plugins" | "skills" | "connectors";
@@ -83,13 +83,7 @@ export function pluginDisplayName(
     pkg?.presentation?.displayNames?.en?.trim();
   if (localized) return localized;
   if (pkg?.presentation?.displayName) return pkg.presentation.displayName;
-  const extension = pkg?.manifest?.extensions?.["com.ally"];
-  return extension &&
-    typeof extension === "object" &&
-    "displayName" in extension &&
-    typeof extension.displayName === "string"
-    ? extension.displayName
-    : (name ?? pkg?.manifest?.name ?? "");
+  return name ?? pkg?.manifest?.name ?? "";
 }
 
 /** 展示与正文请求共用同一语言选择，未知界面语言回退英文。 */

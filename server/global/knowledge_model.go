@@ -43,7 +43,7 @@ func detachedModelSelection(ctx context.Context, selection models.LibraryExecuti
 	if err != nil {
 		return selection, environment, err
 	}
-	if !environment.Enabled || environment.Detection.State != agent.DetectionStateReady {
+	if !environment.Enabled {
 		return selection, environment, status_error.RuntimeUnavailable
 	}
 	provider := environment.BaseRuntimeID
@@ -80,14 +80,6 @@ func detachedModelSelection(ctx context.Context, selection models.LibraryExecuti
 	} else {
 		if selection.Model == "" {
 			selection.Model = environment.DefaultModel
-		}
-		available := agent.AvailableModels(environment.Detection, environment.CustomModels)
-		found := len(available) == 0
-		for _, model := range available {
-			found = found || model.ID == selection.Model
-		}
-		if !found {
-			return selection, environment, status_error.KnowledgeInvalid
 		}
 	}
 	return selection, environment, nil

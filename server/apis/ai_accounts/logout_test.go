@@ -37,7 +37,7 @@ func TestLogoutAIAccountRemovesOnlySelectedCodexCredential(t *testing.T) {
 
 	first := models.AIAccount{
 		ID: "0123456789abcdef0123456789abcdef", Name: "first", AuthMode: constants.AccountAuthModeSubscription,
-		Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: constants.AIAccountOpenAIURL}},
+		Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: constants.AIAccountOpenAIURL},
 	}
 	second := first
 	second.ID, second.Name = "fedcba9876543210fedcba9876543210", "second"
@@ -57,9 +57,9 @@ func TestLogoutAIAccountRemovesOnlySelectedCodexCredential(t *testing.T) {
 		}
 	}
 	var invalidated bool
-	service.SetCodexAuthInvalidator(func(ctx context.Context, id string, generation uint64) {
-		if id != first.ID || generation != 1 || invalidated {
-			t.Fatal("invalidated the wrong account or generation")
+	service.SetAccountAuthInvalidator(func(ctx context.Context, provider, id string, generation uint64) {
+		if provider != constants.RuntimeIDCodex || id != first.ID || generation != 1 || invalidated {
+			t.Fatal("invalidated the wrong provider, account or generation")
 		}
 		current, err := repo.Get(ctx, id)
 		if err != nil || current.HasCredential || current.AuthGeneration != 2 {

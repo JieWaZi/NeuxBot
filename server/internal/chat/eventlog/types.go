@@ -223,8 +223,6 @@ type ExecutionCreatedData struct {
 	PermissionLevel constants.PermissionLevel `json:"permissionLevel"`
 	// PluginResources 是接纳时冻结的插件身份、版本与配置修订。
 	PluginResources []plugins.Snapshot `json:"pluginResources,omitempty"`
-	// NativePluginScope 是接纳时冻结的外部原生插件摘要，供分叉续聊核验能力边界。
-	NativePluginScope string `json:"nativePluginScope,omitempty"`
 	// WorkspaceReadOnly 表示本次 Runtime 只能读取工作区且不能申请文件修改。
 	WorkspaceReadOnly bool `json:"workspaceReadOnly,omitempty"`
 }
@@ -345,106 +343,8 @@ type RuntimeMessageData struct {
 	MessageRevision int64 `json:"messageRevision"`
 }
 
-// InvocationDiagnosticData 保存一次调用继承或产生的非秘密诊断。
-type InvocationDiagnosticData struct {
-	// Code 是可以稳定聚合和本地化的诊断码。
-	Code string `json:"code"`
-	// Level 是诊断对本次调用的影响等级。
-	Level constants.RuntimeDiagnosticLevel `json:"level"`
-	// Message 是供排障使用的简明技术说明。
-	Message string `json:"message"`
-}
-
-// InvocationFinishedData 保存一次 Runtime Invocation 的完整可诊断事实。
-type InvocationFinishedData struct {
-	// StopReason 是协议实际返回的原始停止原因，未知扩展值原样保留。
-	StopReason string `json:"stopReason,omitempty"`
-	// TerminationReason 是已确认的调用终止原因。
-	TerminationReason constants.RuntimeTerminationReason `json:"terminationReason,omitempty"`
-	// PrefixArgs 是调用时冻结的自定义运行时前置参数。
-	PrefixArgs []string `json:"prefixArgs,omitempty"`
-	// ConfigHome 是调用时冻结的原生配置与会话主目录，不进入公开接口。
-	ConfigHome string `json:"configHome,omitempty"`
-	// ForkMode 是本次适配器确认的原生分叉精度。
-	ForkMode string `json:"forkMode,omitempty"`
-	// ForkPosition 是终态确认的原生位置，不进入公开消息接口。
-	ForkPosition string `json:"forkPosition,omitempty"`
-	// WorkingDirectory 是本次 Runtime 调用实际使用的当前工作目录。
-	WorkingDirectory string `json:"workingDirectory"`
-	// AdditionalWritableDirectories 是本次 Runtime 调用实际授权的附加读写目录。
-	AdditionalWritableDirectories []string `json:"additionalWritableDirectories,omitempty"`
-	// Attempt 是该 Invocation 在所属 Execution 中从一开始的尝试序号。
-	Attempt int `json:"attempt"`
-	// RecoveryStrategy 是 Host 本次采用的启动或恢复策略。
-	RecoveryStrategy constants.InvocationRecoveryStrategy `json:"recoveryStrategy"`
-	// TriggerReason 是触发重建或安全重试的稳定原因。
-	TriggerReason constants.InvocationTriggerReason `json:"triggerReason,omitempty"`
-	// RuntimeID 是调用方选择的开放 Runtime 标识。
-	RuntimeID string `json:"runtimeId"`
-	// BaseRuntimeID 是提供实际协议语义的内置 Runtime 标识。
-	BaseRuntimeID string `json:"baseRuntimeId"`
-	// Binary 是本次实际启动的可执行文件路径。
-	Binary string `json:"binary"`
-	// Version 是 Prepare 阶段探测到的 CLI 版本。
-	Version string `json:"version"`
-	// Model 是本次实际传给 CLI 的模型标识。
-	Model string `json:"model"`
-	// Reasoning 是本次实际传给 CLI 的推理强度。
-	Reasoning string `json:"reasoning,omitempty"`
-	// ServiceTier 是本次实际传给 CLI 的服务等级。
-	ServiceTier string `json:"serviceTier,omitempty"`
-	// PermissionLevel 是本次调用冻结的跨 Runtime 产品权限等级。
-	PermissionLevel constants.PermissionLevel `json:"permissionLevel,omitempty"`
-	// WorkspaceReadOnly 表示本次调用禁止 Runtime 修改工作区。
-	WorkspaceReadOnly bool `json:"workspaceReadOnly,omitempty"`
-	// EnvironmentFingerprint 是最终进程环境的不可逆摘要。
-	EnvironmentFingerprint string `json:"environmentFingerprint"`
-	// Capabilities 是调用启动时冻结的 Runtime 能力集合。
-	Capabilities []constants.RuntimeCapability `json:"capabilities"`
-	// SessionMode 是本次调用要求的新建、恢复或禁用 Session 动作。
-	SessionMode constants.RuntimeSessionMode `json:"sessionMode"`
-	// SessionInputID 是本次恢复调用使用的输入 Session 句柄。
-	SessionInputID string `json:"sessionInputId,omitempty"`
-	// SessionOutputID 是 Runtime 创建、确认或捕获的 Session 句柄。
-	SessionOutputID string `json:"sessionOutputId,omitempty"`
-	// SessionState 是 SDK 在调用结束时确认的 Session 状态。
-	SessionState constants.RuntimeSessionState `json:"sessionState"`
-	// ExitCode 是 Runtime 主进程退出码。
-	ExitCode int `json:"exitCode"`
-	// Signal 是平台能够识别时的进程终止信号。
-	Signal string `json:"signal,omitempty"`
-	// ProtocolHealthy 表示 Parser 是否观察到必要协议语义。
-	ProtocolHealthy bool `json:"protocolHealthy"`
-	// VisibleOutput 表示调用已经产生面向用户的文本。
-	VisibleOutput bool `json:"visibleOutput"`
-	// ReasoningOutput 表示调用已经产生或开始产生推理内容。
-	ReasoningOutput bool `json:"reasoningOutput"`
-	// ToolUse 表示调用已经请求执行工具。
-	ToolUse bool `json:"toolUse"`
-	// FileWrite 表示调用明确报告了文件修改。
-	FileWrite bool `json:"fileWrite"`
-	// Artifact 表示调用明确报告了 Artifact 生成。
-	Artifact bool `json:"artifact"`
-	// FailureCode 是调用失败时的稳定技术错误码。
-	FailureCode constants.RuntimeFailureCode `json:"failureCode,omitempty"`
-	// FailureStage 是调用失败发生的共享执行阶段。
-	FailureStage string `json:"failureStage,omitempty"`
-	// FailureMessage 是不包含秘密值的技术错误说明。
-	FailureMessage string `json:"failureMessage,omitempty"`
-	// FailureTransience 表示失败是否属于 Host 可以安全考虑的瞬时错误。
-	FailureTransience constants.RuntimeFailureTransience `json:"failureTransience,omitempty"`
-	// Diagnostics 保存本次调用继承或产生的非秘密诊断。
-	Diagnostics []InvocationDiagnosticData `json:"diagnostics,omitempty"`
-	// UndeliveredEvents 是 Event Sink 失败后没有成功交付的事件数量。
-	UndeliveredEvents int `json:"undeliveredEvents,omitempty"`
-	// UndeliveredBytes 是 Event Sink 失败后没有成功交付的载荷字节数。
-	UndeliveredBytes int64 `json:"undeliveredBytes,omitempty"`
-}
-
 // ExecutionFinishedData 保存执行终态和失败诊断。
 type ExecutionFinishedData struct {
-	// Retryable 表示失败已确认无可见输出及工具副作用，允许用户重新提交。
-	Retryable bool `json:"retryable,omitempty"`
 	// Status 是执行最终生命周期状态。
 	Status constants.ExecutionStatus `json:"status"`
 	// ErrorCode 是失败时供前端映射的稳定错误码。
@@ -486,10 +386,6 @@ type ExecutionFactPositions struct {
 	StartSequence int64
 	// LifecycleSequences 是 execution.started 与终态的原序号。
 	LifecycleSequences []int64
-	// InvocationFinishedSequence 是最后一次持久调用结论的原序号。
-	InvocationFinishedSequence int64
-	// InvocationBoundarySequence 是该调用身份首次出现的原信封序号。
-	InvocationBoundarySequence int64
 	// LatestSequence 是上述定位完整覆盖的日志游标。
 	LatestSequence int64
 }
@@ -502,10 +398,6 @@ type ExecutionIndexPosition struct {
 	ExecutionStartSequence int64
 	// Lifecycle 表示执行启动或终态事实。
 	Lifecycle bool
-	// InvocationBoundary 表示原生调用身份在该信封首次出现。
-	InvocationBoundary bool
-	// InvocationFinished 表示该记录是持久调用结论。
-	InvocationFinished bool
 }
 
 // ExecutionIndexTail 保存定位投影尚未覆盖的原索引尾部。

@@ -49,7 +49,7 @@ func (s *service) buildTeamMD(
 	if err != nil {
 		return "", err
 	}
-	members, err := s.threads.ListMembers(ctx, thread.ID)
+	members, err := s.currentThreadMemberProfiles(ctx, thread.ID)
 	if err != nil {
 		return "", err
 	}
@@ -122,6 +122,37 @@ func (s *service) buildTeamMD(
 	return builder.String(), nil
 }
 
+// currentThreadMemberProfiles 只刷新已接纳成员的公开档案，缺失伙伴保留历史展示资料。
+func (s *service) currentThreadMemberProfiles(ctx context.Context, threadID string) ([]models.ChannelThreadMember, error) {
+	members, err := s.threads.ListMembers(ctx, threadID)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(members))
+	for _, member := range members {
+		ids = append(ids, member.WakerID)
+	}
+	wakers, err := s.wakers.ListByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	profiles := make(map[string]models.Waker, len(wakers))
+	for _, waker := range wakers {
+		profiles[waker.ID] = waker
+	}
+	for index := range members {
+		waker, exists := profiles[members[index].WakerID]
+		if !exists {
+			continue
+		}
+		members[index].DisplayName = rosterText(waker.Name, constants.ChannelRosterMaximumNameRunes, "Not provided")
+		members[index].RoleName = rosterText(waker.RoleName, constants.ChannelRosterMaximumRoleNameRunes, "")
+		members[index].Bio = rosterText(waker.Bio, constants.ChannelRosterMaximumBioRunes, "")
+		members[index].Expertise = snapshotMemberExpertise(waker.Expertise)
+	}
+	return members, nil
+}
+
 // memberRoster 组装有界成员列表；负责人看到完整分派摘要，成员看到简表。
 func memberRoster(
 	members []models.ChannelThreadMember,
@@ -165,7 +196,7 @@ func memberRoster(
 	return roster.String()
 }
 
-// snapshotMemberExpertise 冻结有界专长摘要，避免旧团队依赖后续可变伙伴资料。
+// snapshotMemberExpertise 提取有界专长摘要，供当前指令与缺失伙伴的历史展示使用。
 func snapshotMemberExpertise(expertise []profile.Expertise) []profile.Expertise {
 	result := make([]profile.Expertise, 0, constants.ChannelRosterMaximumExpertiseCount)
 	for _, item := range expertise {

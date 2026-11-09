@@ -86,8 +86,6 @@ it.each([
         authentication: {
           strategy: "plugin-command",
           protocol: "neuxally-auth/1",
-          command: "node",
-          args: ["./.neuxally/auth/authorize.mjs"],
         },
       },
     });

@@ -111,6 +111,7 @@ func (p *MessageViewBuilder) SetNativeResult(messageID string, result *agent.Nat
 		return
 	}
 	message := &p.messages[index]
+	p.setForkBoundary(message, agent.NativeForkBoundary{Session: result.Key.Session, Mode: result.ForkMode, Position: result.ForkPosition})
 	if message.RunMetrics != nil {
 		message.RunMetrics.TokenUsage = nil
 		message.RunMetrics.LatestRequestOutputTokens = nil

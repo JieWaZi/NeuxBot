@@ -81,7 +81,7 @@ func privateSubdirectory(root string, parts ...string) (string, error) {
 	return directory, nil
 }
 
-// prepareNative 按账号身份与修订固定原生配置和持久缓存，避免切换账号复用旧状态。
+// prepareNative 按账号身份与实际配置固定原生配置和持久缓存，避免切换账号复用旧状态。
 func prepareNative(storage, workspace string, spec Spec) (map[string]string, error) {
 	if spec.AuthMode != constants.AccountAuthModeAPIKey || !Supports(spec.RuntimeID, spec.Protocol) || strings.TrimSpace(spec.Model) == "" {
 		return nil, status_error.AIAccountConfigurationInvalid
@@ -93,7 +93,7 @@ func prepareNative(storage, workspace string, spec Spec) (map[string]string, err
 	if err != nil {
 		return nil, err
 	}
-	identity := spec.ID + ":" + strconv.FormatInt(spec.Revision, 10)
+	identity := spec.ID + ":" + spec.ConfigFingerprint
 	digest := sha256.Sum256([]byte(identity))
 	home, err := privateSubdirectory(root, hex.EncodeToString(digest[:16]))
 	if err != nil {

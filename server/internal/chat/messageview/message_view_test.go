@@ -43,44 +43,6 @@ func TestReplayMessagesPreservesSelectedCapabilitySnapshots(t *testing.T) {
 	}
 }
 
-func TestReplayMessagesRestoresRecordedInnermostFailure(t *testing.T) {
-	t.Parallel()
-
-	invocationFinished := json.RawMessage(
-		`{"failureMessage":"{\"code\":-32603,\"message\":\"Internal error\",\"data\":{\"error\":\"可执行文件 codex 不存在\"}}"}`,
-	)
-	executionFinished, _ := eventlog.MarshalData(eventlog.ExecutionFinishedData{
-		ErrorCode: "RUNTIME_UNAVAILABLE",
-		Status:    constants.ExecutionStatusFailed,
-	})
-	messages, err := ReplayMessages([]eventlog.Record{
-		chatCreatedRecord(1, "/workspace/project"),
-		executionCreatedRecord(2, "execution-1"),
-		{
-			ChatID:      "chat-1",
-			Sequence:    3,
-			RecordedAt:  300,
-			Type:        constants.ChatEventTypeInvocationFinished,
-			ExecutionID: "execution-1",
-			Data:        invocationFinished,
-		},
-		{
-			ChatID:      "chat-1",
-			Sequence:    4,
-			RecordedAt:  400,
-			Type:        constants.ChatEventTypeExecutionFailed,
-			ExecutionID: "execution-1",
-			Data:        executionFinished,
-		},
-	})
-	if err != nil {
-		t.Fatalf("ReplayMessages() error = %v", err)
-	}
-	if len(messages) != 1 || messages[0].ErrorMessage != "可执行文件 codex 不存在" {
-		t.Fatalf("messages = %#v", messages)
-	}
-}
-
 func TestReplayMessagesKeepsWholeFileCodeReferencesSeparateFromAttachments(t *testing.T) {
 	t.Parallel()
 

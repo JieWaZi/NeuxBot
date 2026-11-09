@@ -5,6 +5,7 @@ import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"errors"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,6 +17,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
+	"github.com/JieWaZi/NeuxBot/server/services/runtimeenvironment"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
@@ -40,9 +42,10 @@ func TestConfigurationRequiresDetectRefreshOnlyForLaunchChanges(t *testing.T) {
 	}
 }
 
-func TestCanCompleteStartupSetupRequiresDetectedModelsAndPermissions(t *testing.T) {
+func TestCanCompleteStartupSetupUsesExplicitConfiguration(t *testing.T) {
 	ready := models.RuntimeEnvironment{
 		Enabled:                true,
+		Binary:                 "opencode",
 		IsDefault:              true,
 		DefaultModel:           "free-model",
 		DefaultPermissionLevel: agentapi.PermissionLevelFullAccess,
@@ -66,25 +69,31 @@ func TestCanCompleteStartupSetupRequiresDetectedModelsAndPermissions(t *testing.
 		allowed bool
 	}{
 		{name: "模型与权限就绪", allowed: true},
-		{name: "所选智能体探测未就绪", change: func(environment *models.RuntimeEnvironment) {
+		{name: "所选智能体探测未就绪", allowed: true, change: func(environment *models.RuntimeEnvironment) {
 			environment.Detection.State = agentapi.DetectionStateUnavailable
 		}},
+		{name: "没有安装探测证据", allowed: true, change: func(environment *models.RuntimeEnvironment) {
+			environment.Detection.ResolvedBinary = ""
+		}},
+		{name: "已禁用", change: func(environment *models.RuntimeEnvironment) { environment.Enabled = false }},
+		{name: "未配置命令", change: func(environment *models.RuntimeEnvironment) { environment.Binary = "" }},
+		{name: "无效权限", change: func(environment *models.RuntimeEnvironment) { environment.DefaultPermissionLevel = "invalid" }},
 		{name: "尚未设为默认", change: func(environment *models.RuntimeEnvironment) {
 			environment.IsDefault = false
 		}},
-		{name: "只有安装证据", change: func(environment *models.RuntimeEnvironment) {
+		{name: "只有安装证据", allowed: true, change: func(environment *models.RuntimeEnvironment) {
 			environment.Detection.Models = []agentapi.ModelOption{}
 		}},
-		{name: "没有默认模型", change: func(environment *models.RuntimeEnvironment) {
+		{name: "使用原生默认模型", allowed: true, change: func(environment *models.RuntimeEnvironment) {
 			environment.DefaultModel = ""
 		}},
-		{name: "默认模型已失效", change: func(environment *models.RuntimeEnvironment) {
+		{name: "默认模型未在目录中", allowed: true, change: func(environment *models.RuntimeEnvironment) {
 			environment.DefaultModel = "removed-model"
 		}},
-		{name: "默认权限不支持", change: func(environment *models.RuntimeEnvironment) {
+		{name: "目录未声明所选权限", allowed: true, change: func(environment *models.RuntimeEnvironment) {
 			environment.DefaultPermissionLevel = agentapi.PermissionLevelAuto
 		}},
-		{name: "旧目录仍在但刷新失败", change: func(environment *models.RuntimeEnvironment) {
+		{name: "旧目录仍在但刷新失败", allowed: true, change: func(environment *models.RuntimeEnvironment) {
 			environment.Detection.Diagnostics = []agentapi.Diagnostic{{Code: agentapi.DiagnosticCodeACPOptionsUnavailable}}
 		}},
 	}
@@ -209,7 +218,7 @@ func (t beforeRuntimeUpdateTransaction) Transaction(ctx context.Context, run fun
 	return t.TransactionController.Transaction(ctx, run)
 }
 
-func runtimeUpdateFixture(t *testing.T) {
+func runtimeUpdateFixture(t *testing.T) controllers.AIAccountController {
 	t.Helper()
 	homeVariable := "HOME"
 	if runtime.GOOS == "windows" {
@@ -233,5 +242,105 @@ func runtimeUpdateFixture(t *testing.T) {
 	})
 	global.RuntimeEnvironmentControllerManager = controllers.NewRuntimeEnvironmentController(database.DB)
 	global.TransactionControllerManager = controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))
-	global.AIAccountService = aiaccount.New(controllers.NewAIAccountController(database.DB))
+	accounts := controllers.NewAIAccountController(database.DB)
+	global.AIAccountService = aiaccount.New(accounts, t.TempDir())
+	return accounts
+}
+
+// runtimeUpdateRefreshRecorder 只替代外部 CLI 探测，账号及配置保存使用真实实现。
+type runtimeUpdateRefreshRecorder struct {
+	// Service 提供本测试不使用的生命周期接口。
+	runtimeenvironment.Service
+	// refreshed 记录配置更新后请求探测的智能体。
+	refreshed []string
+}
+
+// RefreshOne 记录外部探测请求，不启动本机智能体。
+func (r *runtimeUpdateRefreshRecorder) RefreshOne(_ context.Context, runtimeID string) error {
+	r.refreshed = append(r.refreshed, runtimeID)
+	return nil
+}
+
+// TestUpdateRuntimeEnvironmentKeepsActiveAccountLease 验证普通默认配置和启动设置保存不争用账号租约。
+func TestUpdateRuntimeEnvironmentKeepsActiveAccountLease(t *testing.T) {
+	for _, launchChanged := range []bool{false, true} {
+		t.Run(map[bool]string{false: "默认设置", true: "下一次启动设置"}[launchChanged], func(t *testing.T) {
+			accounts := runtimeUpdateFixture(t)
+			account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", Name: "managed", AuthMode: constants.AccountAuthModeAPIKey,
+				Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://example.invalid"}, SelectedModels: []string{"first", "second"}}
+			if err := accounts.Create(t.Context(), account, "fixture-credential"); err != nil {
+				t.Fatal(err)
+			}
+			oldFast, newFast := false, true
+			environment := models.RuntimeEnvironment{ID: "runtime", RuntimeID: constants.RuntimeIDClaude, BaseRuntimeID: constants.RuntimeIDClaude, Enabled: true,
+				Binary: "claude", DefaultAccountID: account.ID, DefaultModel: "first", DefaultReasoning: "low", DefaultFast: &oldFast, DefaultPermissionLevel: constants.PermissionLevelDefault}
+			if err := global.RuntimeEnvironmentControllerManager.Ensure(t.Context(), environment); err != nil {
+				t.Fatal(err)
+			}
+			cwd := t.TempDir()
+			selected, err := global.AIAccountService.ResolveAccount(t.Context(), agentapi.AccountRequest{
+				Provider: environment.BaseRuntimeID, AccountID: account.ID, Model: environment.DefaultModel, Executable: environment.Binary, CWD: cwd,
+			}, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			lease, err := global.AIAccountService.AcquireAccount(t.Context(), selected)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := lease.Close(context.Background()); err != nil {
+					t.Error(err)
+				}
+			})
+			closes := 0
+			global.AIAccountService.SetIdleSessionCloser(func(context.Context, string) error { closes++; return status_error.AIAccountBusy })
+			refresh := &runtimeUpdateRefreshRecorder{}
+			previousService := global.RuntimeEnvironmentService
+			global.RuntimeEnvironmentService = refresh
+			t.Cleanup(func() { global.RuntimeEnvironmentService = previousService })
+			request := UpdateRuntimeEnvironment{RuntimeID: environment.RuntimeID, Body: UpdateRuntimeEnvironmentRequest{
+				Enabled: true, Binary: environment.Binary, DefaultAccountID: account.ID, DefaultModel: "second", DefaultReasoning: "high", DefaultFast: &newFast, DefaultPermissionLevel: constants.PermissionLevelFullAccess,
+			}}
+			if launchChanged {
+				request.Body.Binary = "/next/bin/claude"
+				request.Body.ConfigHome = filepath.Join(t.TempDir(), "next-config")
+			}
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx.Request = httptest.NewRequest("PUT", "/", nil)
+			if _, err := request.Output(ctx); err != nil {
+				t.Fatalf("ordinary runtime save blocked by active account: %v", err)
+			}
+			saved, err := global.RuntimeEnvironmentControllerManager.Get(t.Context(), environment.RuntimeID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if saved.DefaultModel != "second" || saved.DefaultReasoning != "high" || saved.DefaultFast == nil || !*saved.DefaultFast || saved.DefaultPermissionLevel != constants.PermissionLevelFullAccess || closes != 0 {
+				t.Fatalf("ordinary save changed account ownership or lost defaults: %+v closes=%d", saved, closes)
+			}
+			if saved.Binary != request.Body.Binary || saved.ConfigHome != request.Body.ConfigHome || configurationRequiresDetectRefresh(environment, saved) != launchChanged || len(refresh.refreshed) != map[bool]int{false: 0, true: 1}[launchChanged] {
+				t.Fatalf("launch configuration was not saved for the next preparation: %+v refresh=%v", saved, refresh.refreshed)
+			}
+			next, err := global.AIAccountService.ResolveAccount(t.Context(), agentapi.AccountRequest{
+				Provider: saved.BaseRuntimeID, AccountID: saved.DefaultAccountID, Model: saved.DefaultModel, Executable: saved.Binary, PrefixArgs: saved.PrefixArgs, CWD: cwd,
+			}, saved.ConfigHome)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if selected.Executable != "claude" || selected.Model != "first" || next.Executable != request.Body.Binary || next.Model != "second" || next.Subject != selected.Subject || next.AuthGeneration != selected.AuthGeneration {
+				t.Fatalf("saved launch changed an accepted identity or was not read next: previous=%+v next=%+v", selected, next)
+			}
+			nextLease, err := global.AIAccountService.AcquireAccount(t.Context(), next)
+			if err != nil {
+				t.Fatalf("next preparation could not share the unchanged account identity: %v", err)
+			}
+			if err := nextLease.Close(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			persistedAccount, err := accounts.Get(t.Context(), account.ID)
+			if err != nil || persistedAccount.AuthGeneration != selected.AuthGeneration || closes != 0 {
+				t.Fatalf("ordinary runtime save changed account authentication: %+v closes=%d error=%v", persistedAccount, closes, err)
+			}
+		})
+	}
 }

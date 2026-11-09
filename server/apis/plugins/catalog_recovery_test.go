@@ -89,7 +89,7 @@ func TestCurrentCatalogRecoversStaleArchiveWithoutRelaxingPinnedReads(t *testing
 					if err != nil {
 						t.Fatalf("current details did not recover changed distribution: %v", err)
 					}
-					if got := output.(catalog.Entry); got.Package.Manifest.Version != "2.0.0" || !strings.HasPrefix(got.Package.Readme, "new ") {
+					if got := output.(PluginCatalogEntryResponse); got.Package.Manifest.Version != "2.0.0" || !strings.HasPrefix(got.Package.Readme, "new ") {
 						t.Fatalf("wrong recovered package: %+v", got)
 					}
 				} else {

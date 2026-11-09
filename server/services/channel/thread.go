@@ -102,6 +102,34 @@ func (s *service) createThread(
 	if err != nil {
 		return ThreadResult{}, err
 	}
+	if input.ConfigurationResolved && len(input.MemberConfigs) != len(configured) {
+		return ThreadResult{}, status_error.ChannelMemberCountInvalid
+	}
+	// 已保存成员及上游已接纳的覆盖保持原生空值；只有新覆盖在此保存边界解析默认。
+	if !input.ConfigurationResolved {
+		for _, override := range input.MemberConfigs {
+			for index := range configured {
+				member := &configured[index]
+				if member.WakerID != override.WakerID {
+					continue
+				}
+				configuration := execution.ExecutionConfiguration{RuntimeID: member.RuntimeID, AccountID: member.AccountID,
+					Model: member.Model, Reasoning: member.Reasoning, Fast: member.Fast, PermissionLevel: member.PermissionLevel}
+				if member.WakerID == channel.LeadWakerID {
+					configuration.RequiredConnectorTransport = constants.RuntimeConnectorTransportStreamableHTTP
+				}
+				resolved, resolveErr := s.executions.ResolveConfiguration(ctx, configuration)
+				if resolveErr != nil {
+					return ThreadResult{}, resolveErr
+				}
+				member.RuntimeID, member.AccountID = resolved.RuntimeID, resolved.AccountID
+				member.Model, member.Reasoning, member.Fast = resolved.Model, resolved.Reasoning, resolved.Fast
+				member.PermissionLevel = resolved.PermissionLevel
+				break
+			}
+		}
+	}
+
 	if input.MentionWakerID != "" && !configuredMember(configured, input.MentionWakerID) {
 		return ThreadResult{}, status_error.ChannelMemberNotFound.WithParams(
 			map[string]interface{}{"WakerID": input.MentionWakerID},
@@ -129,6 +157,7 @@ func (s *service) createThread(
 			AccountID:       member.AccountID,
 			Model:           member.Model,
 			Reasoning:       member.Reasoning,
+			Fast:            member.Fast,
 			PermissionLevel: member.PermissionLevel,
 		})
 		isLead := member.WakerID == channel.LeadWakerID
@@ -146,6 +175,7 @@ func (s *service) createThread(
 			AccountID:       member.AccountID,
 			Model:           member.Model,
 			Reasoning:       member.Reasoning,
+			Fast:            member.Fast,
 			PermissionLevel: member.PermissionLevel,
 			Position:        member.Position,
 			CreatedAt:       now,
@@ -297,6 +327,7 @@ func (s *service) createThread(
 		leadConfig.RuntimeID,
 		leadConfig.Model,
 		leadConfig.Reasoning,
+		leadConfig.Fast,
 		leadConfig.PermissionLevel,
 		capability,
 		teamInstruction,
@@ -385,6 +416,7 @@ func createThreadRequestIdentity(input CreateThreadInput) (requestidempotency.Id
 		input.WorkingDirectory,
 		input.MentionWakerID,
 		input.MemberConfigs,
+		input.ConfigurationResolved,
 		input.Input,
 	})
 }
@@ -445,6 +477,7 @@ func ApplyMemberConfigOverrides(
 		result[index].AccountID = config.AccountID
 		result[index].Model = config.Model
 		result[index].Reasoning = config.Reasoning
+		result[index].Fast = config.Fast
 		result[index].PermissionLevel = config.PermissionLevel
 		delete(byWakerID, result[index].WakerID)
 	}

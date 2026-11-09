@@ -33,7 +33,7 @@ type AccountModelCatalog struct {
 	AuthGeneration uint64
 }
 
-// ReadModelCatalog 优先读取目录快照，首次缺失或显式刷新时探测并保存。
+// ReadModelCatalog 确认当前系统主体后读取目录快照，首次缺失或显式刷新时探测并保存。
 func (s *service) ReadModelCatalog(ctx context.Context, runtimeID, accountID string, refresh bool) (AccountModelCatalog, error) {
 	environment, err := s.environments.Get(ctx, runtimeID)
 	if err != nil {
@@ -63,6 +63,20 @@ func (s *service) readModelCatalog(ctx context.Context, environment models.Runti
 		State: agent.CatalogUnavailable, ErrorCode: "catalog_unavailable",
 	}}
 	var accountFingerprint string
+	var systemAccount *agent.AccountRequest
+	if accountID == agent.SystemAccountID {
+		selected, err := s.resolveModelCatalogAccount(ctx, environment, accountID)
+		if err != nil {
+			if errors.Is(err, status_error.RuntimeAuthRequired) {
+				result.State, result.ErrorCode = agent.CatalogSignedOut, "sign_in_required"
+			}
+			return result, nil
+		}
+		systemAccount = &selected
+		result.AuthGeneration = selected.AuthGeneration
+		encoded, _ := json.Marshal([]any{selected.Subject, selected.ConfigHome, selected.DataHome, selected.ConfigFingerprint})
+		accountFingerprint = string(encoded)
+	}
 	if accountID != agent.SystemAccountID {
 		if s.accounts == nil {
 			return result, nil
@@ -115,7 +129,7 @@ func (s *service) readModelCatalog(ctx context.Context, environment models.Runti
 				return ready, nil
 			}
 		}
-		return s.refreshModelCatalog(probeCtx, environment, result, cached, fingerprint, startedAt)
+		return s.refreshModelCatalog(probeCtx, environment, result, cached, fingerprint, startedAt, systemAccount)
 	})
 	select {
 	case <-ctx.Done():
@@ -125,8 +139,8 @@ func (s *service) readModelCatalog(ctx context.Context, environment models.Runti
 	}
 }
 
-func (s *service) refreshModelCatalog(ctx context.Context, environment models.RuntimeEnvironment, result AccountModelCatalog, cached models.RuntimeModelCatalog, fingerprint string, startedAt int64) (AccountModelCatalog, error) {
-	probed := s.probeModelCatalog(ctx, environment, result)
+func (s *service) refreshModelCatalog(ctx context.Context, environment models.RuntimeEnvironment, result AccountModelCatalog, cached models.RuntimeModelCatalog, fingerprint string, startedAt int64, systemAccount *agent.AccountRequest) (AccountModelCatalog, error) {
+	probed := s.probeModelCatalog(ctx, environment, result, systemAccount)
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
@@ -166,7 +180,31 @@ func persistedModelCatalogFingerprint(environment models.RuntimeEnvironment, aut
 	return fmt.Sprintf("%x", sha256.Sum256(body))
 }
 
-func (s *service) probeModelCatalog(ctx context.Context, environment models.RuntimeEnvironment, result AccountModelCatalog) AccountModelCatalog {
+func (s *service) resolveModelCatalogAccount(ctx context.Context, environment models.RuntimeEnvironment, accountID string) (agent.AccountRequest, error) {
+	if s.runtimeCatalog == nil || s.accountWorkspaceDirectory == "" {
+		return agent.AccountRequest{}, status_error.RuntimeUnavailable
+	}
+	request := runtimeDetectRequest(environment.Detection.Runtime, environment)
+	request.RuntimeID = environment.RuntimeID
+	binary, err := s.runtimeCatalog.ResolveExecutable(request)
+	if err != nil {
+		return agent.AccountRequest{}, err
+	}
+	cwd := filepath.Join(s.accountWorkspaceDirectory, environment.BaseRuntimeID)
+	if err := os.MkdirAll(cwd, 0700); err != nil {
+		return agent.AccountRequest{}, err
+	}
+	selected := agent.AccountRequest{Provider: environment.BaseRuntimeID, AccountID: accountID, CWD: cwd, Executable: binary, PrefixArgs: environment.PrefixArgs}
+	if s.resolveAccount != nil {
+		return s.resolveAccount(ctx, selected, environment.ConfigHome)
+	}
+	if accountID == agent.SystemAccountID && environment.BaseRuntimeID == constants.RuntimeIDCodex {
+		return aiaccount.ResolveCodexSystemAccount(ctx, selected, environment.ConfigHome)
+	}
+	return agent.AccountRequest{}, status_error.AIAccountConfigurationInvalid
+}
+
+func (s *service) probeModelCatalog(ctx context.Context, environment models.RuntimeEnvironment, result AccountModelCatalog, systemAccount *agent.AccountRequest) AccountModelCatalog {
 	accountID := result.AccountID
 	if s.modelCatalog == nil || s.accountWorkspaceDirectory == "" {
 		return result
@@ -183,16 +221,14 @@ func (s *service) probeModelCatalog(ctx context.Context, environment models.Runt
 		return result
 	}
 	resolve := func(ctx context.Context) (agent.AccountRequest, error) {
-		selected := agent.AccountRequest{Provider: environment.BaseRuntimeID, AccountID: accountID, CWD: cwd, Executable: binary, PrefixArgs: environment.PrefixArgs}
-		if s.resolveAccount == nil && accountID == agent.SystemAccountID && environment.BaseRuntimeID == constants.RuntimeIDCodex {
-			return aiaccount.ResolveCodexSystemAccount(ctx, selected, environment.ConfigHome)
-		}
-		if s.resolveAccount == nil {
-			return agent.AccountRequest{}, status_error.AIAccountConfigurationInvalid
-		}
-		return s.resolveAccount(ctx, selected, environment.ConfigHome)
+		return s.resolveModelCatalogAccount(ctx, environment, accountID)
 	}
-	selected, err := resolve(ctx)
+	var selected agent.AccountRequest
+	if systemAccount != nil {
+		selected = *systemAccount
+	} else {
+		selected, err = resolve(ctx)
+	}
 	if err != nil {
 		if errors.Is(err, status_error.RuntimeAuthRequired) {
 			result.State, result.ErrorCode = agent.CatalogSignedOut, "sign_in_required"
@@ -423,6 +459,6 @@ func NativePermissionLevels(provider string, model agent.AgentChoice) []constant
 }
 
 func accountModelFingerprint(account models.AIAccount) string {
-	encoded, _ := json.Marshal([]any{account.SelectedModels, account.DefaultModel, account.ModelReasoningLevels, account.ModelDisplayNames, account.ClaudeModelRoles, account.Endpoints})
+	encoded, _ := json.Marshal([]any{account.SelectedModels, account.DefaultModel, account.ModelReasoningLevels, account.ModelDisplayNames, account.ClaudeModelRoles, account.Endpoint})
 	return fmt.Sprintf("%x", sha256.Sum256(encoded))
 }

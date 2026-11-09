@@ -239,6 +239,18 @@ type NativeBinding struct {
 	Handoff *NativeHandoff `json:"handoff,omitempty"`
 }
 
+// NativeForkBoundary is the minimal provider-confirmed inherited history address.
+type NativeForkBoundary struct {
+	// Session identifies the independently owned native history.
+	Session NativeSessionKey `json:"session"`
+	// HistoryIdentity identifies the verified account, history root and workspace boundary.
+	HistoryIdentity string `json:"historyIdentity"`
+	// Mode records the precision negotiated by the source connection.
+	Mode string `json:"mode"`
+	// Position identifies the exact completed turn when supported.
+	Position string `json:"position,omitempty"`
+}
+
 // NativeHandoff contains references to a frozen replacement-session history input.
 type NativeHandoff struct {
 	// History lists completed user/assistant pairs from oldest to newest.
@@ -353,6 +365,8 @@ type NativeResult struct {
 	FinalMessage *NativeFinalMessage `json:"finalMessage,omitempty"`
 	// StopReason is the native terminal classification when known.
 	StopReason string `json:"stopReason,omitempty"`
+	// ForkMode is the precision negotiated by the actual native connection.
+	ForkMode string `json:"forkMode,omitempty"`
 	// ForkPosition is a provider-confirmed exact resume or fork position.
 	ForkPosition string `json:"forkPosition,omitempty"`
 	// Failure is the safe native failure classification, without transport or delivery errors.

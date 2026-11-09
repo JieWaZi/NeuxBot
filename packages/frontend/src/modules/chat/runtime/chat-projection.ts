@@ -472,7 +472,6 @@ export function toThreadMessage(
           ? {
               failureMessage: errorMessage,
               failureCode: message.errorCode,
-              retryable: message.retryable === true,
               executionId: message.executionId,
             }
           : {}),

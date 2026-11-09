@@ -50,8 +50,6 @@ type elicitationCoordinator struct {
 	byID map[string]*pendingElicitation
 	// orderByChat 保存每个 Chat 的结构化输入到达顺序。
 	orderByChat map[string][]string
-	// changes 保存当前执行的单消费者等待状态唤醒信号。
-	changes map[string]chan struct{}
 	// journal 先持久化结构化输入事实，再更新可重建投影并发布安全事件。
 	journal chatservice.Journal
 }
@@ -76,7 +74,6 @@ func newElicitationCoordinator(journal chatservice.Journal, hub ...*events.Hub) 
 		byID:        make(map[string]*pendingElicitation),
 		orderByChat: make(map[string][]string),
 		journal:     journal, events: publisher,
-		changes: make(map[string]chan struct{}),
 	}
 }
 
@@ -160,7 +157,6 @@ func (c *elicitationCoordinator) request(
 	c.mutex.Lock()
 	pending.requestedAt = record.RecordedAt
 	c.byID[requested.ElicitationID] = pending
-	c.signalInputLocked(executionID)
 	c.orderByChat[chatID] = append(
 		c.orderByChat[chatID],
 		requested.ElicitationID,
@@ -373,7 +369,6 @@ func (c *elicitationCoordinator) commitResolution(
 
 	c.mutex.Lock()
 	delete(c.byID, pending.requested.ElicitationID)
-	c.signalInputLocked(pending.executionID)
 	order := c.orderByChat[pending.chatID]
 	remaining := order[:0]
 	for _, currentID := range order {

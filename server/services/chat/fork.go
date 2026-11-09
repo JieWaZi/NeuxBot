@@ -18,7 +18,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
-	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // ForkInput 保存用户明确选择的会话、回合及幂等请求身份。
@@ -33,22 +32,26 @@ type ForkInput struct {
 
 // NativeForkInput 只向内部 Runtime 端口提供冻结的原生执行事实。
 type NativeForkInput struct {
+	// BeforeFork 在真实原生分叉调用前持久记录副作用边界。
+	BeforeFork func(context.Context) error
 	// ReceiptDirectory 保存适配器对账记录，不属于前端可访问的工作区。
 	ReceiptDirectory string
 	// ReconcileOnly 要求适配器只对账上一次原生结果，不能重新创建。
 	ReconcileOnly bool
-	// Invocation 是来源回合实际使用的运行时、模型、权限与原生位置。
-	Invocation eventlog.InvocationFinishedData
+	// Boundary 是来源回合规范原生结果确认的位置。
+	Boundary agent.NativeForkBoundary
+	// Configuration 是来源回合冻结的执行设置。
+	Configuration eventlog.ExecutionCreatedData
+	// ChatID 是需要重新核验当前工作范围和资源的来源聊天。
+	ChatID string
 	// Workspace 是该伙伴固定的真实 Runtime 工作目录。
 	Workspace string
 }
 
 // NativeFork 在明确越过原生副作用边界前验证配置，再创建独立 Session。
 type NativeFork struct {
-	// Preflight 只做无原生副作用的验证；失败时同一请求可以安全重试。
-	Preflight func(context.Context, NativeForkInput) error
 	// Execute 创建或对账原生 Session；不能发送历史 Prompt。
-	Execute func(context.Context, NativeForkInput) (string, error)
+	Execute func(context.Context, NativeForkInput) (agent.NativeBinding, error)
 }
 
 // forkPayload 固化发布所需的历史，避免重试时读取已经变化的父会话。
@@ -57,8 +60,10 @@ type forkPayload struct {
 	Created eventlog.ChatCreatedData `json:"created"`
 	// Messages 是重新分配展示身份后的继承历史。
 	Messages []messageview.InheritedMessage `json:"messages"`
-	// Invocation 是分叉边界的原生执行事实。
-	Invocation eventlog.InvocationFinishedData `json:"invocation"`
+	// Boundary 是分叉边界的最小原生位置。
+	Boundary agent.NativeForkBoundary `json:"boundary"`
+	// Binding 是实际原生分叉返回的会话和兼容事实。
+	Binding *agent.NativeBinding `json:"binding,omitempty"`
 	// LastExecutionID 是子 Session 对应的最后继承消息身份，仅用于续接游标。
 	LastExecutionID string `json:"lastExecutionId"`
 }
@@ -153,7 +158,7 @@ func (m *service) ForkChat(ctx context.Context, input ForkInput, fork NativeFork
 		}
 		valid := false
 		for _, point := range points {
-			if point.target.ExecutionID == input.ExecutionID && point.target.Available && point.invocation.SessionOutputID == payload.Invocation.SessionOutputID && point.invocation.ForkPosition == payload.Invocation.ForkPosition {
+			if point.target.ExecutionID == input.ExecutionID && point.target.Available && point.boundary == payload.Boundary {
 				valid = true
 				break
 			}
@@ -173,27 +178,27 @@ func (m *service) ForkChat(ctx context.Context, input ForkInput, fork NativeFork
 	}
 	if operation.SessionID == "" {
 		reconcileOnly := operation.NativeStarted
-		if !reconcileOnly && fork.Preflight != nil {
-			if err = fork.Preflight(ctx, NativeForkInput{
-				ReceiptDirectory: directory,
-				Invocation:       payload.Invocation,
-				Workspace:        payload.Created.WorkspaceDirectory,
-			}); err != nil {
-				return "", err
+		beforeFork := func(ctx context.Context) error {
+			if err := ctx.Err(); err != nil {
+				return err
 			}
+			operation.NativeStarted = true
+			return chatstorage.WriteForkOperation(directory, operation)
 		}
-		operation.NativeStarted = true
-		if err = chatstorage.WriteForkOperation(directory, operation); err != nil {
-			return "", err
-		}
-		sessionID, forkErr := fork.Execute(ctx, NativeForkInput{ReceiptDirectory: directory, Invocation: payload.Invocation, Workspace: payload.Created.WorkspaceDirectory, ReconcileOnly: reconcileOnly})
+		binding, forkErr := fork.Execute(ctx, NativeForkInput{BeforeFork: beforeFork, ReceiptDirectory: directory, Boundary: payload.Boundary, Configuration: *payload.Created.ForkConfiguration, ChatID: input.ChatID, Workspace: payload.Created.WorkspaceDirectory, ReconcileOnly: reconcileOnly})
 		if forkErr != nil {
 			return "", forkErr
 		}
-		if sessionID == "" || sessionID == payload.Invocation.SessionOutputID {
+		if binding.Session.SessionID == "" || binding.Session.SessionID == payload.Boundary.Session.SessionID {
 			return "", status_error.ChatForkIndeterminate
 		}
-		operation.SessionID = sessionID
+		operation.NativeStarted = true
+		operation.SessionID = binding.Session.SessionID
+		payload.Binding = &binding
+		operation.Payload, err = json.Marshal(payload)
+		if err != nil {
+			return "", status_error.ChatLogError
+		}
 		if err = chatstorage.WriteForkOperation(directory, operation); err != nil {
 			return "", err
 		}
@@ -296,7 +301,7 @@ func (m *service) prepareFork(ctx context.Context, input ForkInput) (chatstorage
 			ForkSourceExecutionID:        input.ExecutionID,
 			ForkConfiguration:            &selected.configuration,
 		},
-		Invocation: selected.invocation,
+		Boundary: selected.boundary,
 	}
 	for _, message := range messages {
 		sourceMessageID := message.ID
@@ -403,16 +408,24 @@ func (m *service) publishFork(ctx context.Context, directory string, operation c
 		facts := []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated, Data: marshalData(payload.Created)}}
 		for _, message := range payload.Messages {
 			if message.ID == payload.LastExecutionID {
-				invocation := payload.Invocation
-				invocation.SessionInputID = ""
-				invocation.SessionOutputID = operation.SessionID
-				invocation.WorkingDirectory = payload.Created.WorkspaceDirectory
-				message.ForkInvocation = &invocation
+				boundary := payload.Boundary
+				boundary.Session.SessionID = operation.SessionID
+				message.ForkBoundary = &boundary
 				message.ForkConfiguration = payload.Created.ForkConfiguration
 			}
 			facts = append(facts, eventlog.AppendInput{Type: constants.ChatEventTypeMessageInherited, MessageID: message.ID, Data: marshalData(message)})
 		}
 		if err := writeForkFacts(ctx, staged, operation.ChatID, facts); err != nil {
+			return err
+		}
+		if payload.Binding == nil {
+			return status_error.ChatLogCorrupted
+		}
+		version, err := staged.ReadVersion(ctx, operation.ChatID)
+		if err != nil {
+			return err
+		}
+		if _, err = staged.Commit(ctx, agent.ConversationBatch{ChatID: operation.ChatID, Key: "fork-binding", ExpectedVersion: version, Changes: []agent.ConversationChange{{Binding: payload.Binding}}}); err != nil {
 			return err
 		}
 		if err = m.storage.PublishForkLog(staging, operation.ChatID); err != nil {
@@ -425,27 +438,7 @@ func (m *service) publishFork(ctx context.Context, directory string, operation c
 	if err != nil {
 		return err
 	}
-	return m.queryIndexes.replaceCurrentProjection(ctx, currentProjection{chat: state.chat, runtimeSessions: state.runtimeSessions})
-}
-
-// projectInheritedForkSession extracts the child session from the inherited fork boundary.
-func projectInheritedForkSession(record eventlog.Record, sessions map[string]models.RuntimeSession) error {
-	var inherited messageview.InheritedMessage
-	if err := json.Unmarshal(record.Data, &inherited); err != nil {
-		return status_error.ChatLogCorrupted
-	}
-	invocation := inherited.ForkInvocation
-	if invocation == nil {
-		return nil
-	}
-	if invocation.RuntimeID == "" || invocation.SessionOutputID == "" {
-		return status_error.ChatLogCorrupted
-	}
-	sessions[invocation.RuntimeID] = models.RuntimeSession{
-		ChatID: record.ChatID, RuntimeID: invocation.RuntimeID, SessionID: invocation.SessionOutputID,
-		LastExecutionID: record.MessageID, UpdatedAt: record.RecordedAt,
-	}
-	return nil
+	return m.queryIndexes.replaceCurrentProjection(ctx, currentProjection{chat: state.chat})
 }
 
 // writeForkFacts 分批提交历史，完整日志在目录原子发布之前保持私有。

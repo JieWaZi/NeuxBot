@@ -496,10 +496,16 @@ func serveNativeExecutionACP(in *bufio.Scanner, out *json.Encoder, trace *os.Fil
 			if !workBuddy {
 				capabilities["resume"] = map[string]any{}
 			}
+			if os.Getenv("NEUX_EXECUTION_FIXTURE_FORK") == "latest" {
+				capabilities["fork"] = map[string]any{}
+			}
 			response := map[string]any{"protocolVersion": 1, "agentCapabilities": map[string]any{"loadSession": true, "sessionCapabilities": capabilities}}
 			name := map[string]string{"kimi": "Kimi Code CLI", "gemini": "gemini-cli", "opencode": "OpenCode"}[provider]
 			if name != "" {
 				response["agentInfo"] = map[string]string{"name": name, "version": "1.52.0"}
+			}
+			if os.Getenv("NEUX_EXECUTION_FIXTURE_FORK") == "latest" {
+				response["agentInfo"] = map[string]string{"name": name, "version": "2.0.2"}
 			}
 			if provider == "grok" {
 				response["_meta"] = map[string]any{"grokShell": true}
@@ -508,8 +514,14 @@ func serveNativeExecutionACP(in *bufio.Scanner, out *json.Encoder, trace *os.Fil
 		case "session/new":
 			session = "acp-fixture-" + filepath.Base(filepath.Dir(value("cwd")))
 			reply(id, map[string]any{"sessionId": session, "configOptions": settings(), "modes": modes()})
+		case "session/fork":
+			session = fmt.Sprintf("acp-fork-%d", os.Getpid())
+			reply(id, map[string]any{"sessionId": session, "configOptions": settings(), "modes": modes()})
 		case "session/load", "session/resume":
 			session = "acp-fixture-" + filepath.Base(filepath.Dir(value("cwd")))
+			if os.Getenv("NEUX_EXECUTION_FIXTURE_FORK") == "latest" {
+				session = value("sessionId")
+			}
 			if value("sessionId") != session || workBuddy != (frame.Method == "session/load") {
 				os.Exit(4)
 			}

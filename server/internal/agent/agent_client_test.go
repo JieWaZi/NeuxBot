@@ -392,6 +392,29 @@ func TestProviderClientMCPTrustsOnlySelectedProviderEvidence(t *testing.T) {
 	}
 }
 
+func TestProviderClientRejectsMCPTransportsMissingFromNativeHandshake(t *testing.T) {
+	for _, transport := range []string{"http", "sse"} {
+		t.Run(transport, func(t *testing.T) {
+			request := providerTestRequest(t, "gemini")
+			runtime := NewProviderRuntime(ProviderRuntimeOptions{AcquireAccount: providerTestAccount})
+			t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+			conn, err := runtime.Open(t.Context(), request, ProviderConnectionPorts{AcquireResources: func(context.Context, ResourceSelection) (ResourceLease, error) {
+				return ResourceLease{MCPServers: []AgentMCPServer{{Name: "requested", Transport: transport, URL: "https://example.invalid/mcp"}}}, nil
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			client, err := conn.Client()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := client.NewSession(t.Context(), AgentSessionOptions{}); !errors.Is(err, status_error.RuntimePolicyUnsupported) {
+				t.Fatalf("native session silently dropped unsupported %s resource: %v", transport, err)
+			}
+		})
+	}
+}
+
 func TestProviderClientResourceLinkPreservesOptionalMetadata(t *testing.T) {
 	for _, original := range []acp.ContentBlockResourceLink{
 		{Type: "resource_link", Uri: "file:///report", Name: "report"},

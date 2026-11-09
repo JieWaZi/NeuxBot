@@ -283,7 +283,6 @@ function RuntimeEnvironmentRow({
       permissionLevel: draft.defaultPermissionLevel,
     },
     enabled: true,
-    defaults: true,
   });
   const accountsQuery = selection.accountsQuery;
   const linkedAccount = (accountsQuery.data?.resources ?? []).find(
@@ -500,8 +499,8 @@ function RuntimeEnvironmentRow({
           ) : null}
           <div className="flex items-center gap-2">
             <Switch
-              checked={ready && (runtime.enabled ?? false)}
-              disabled={pending || !ready}
+              checked={runtime.enabled ?? false}
+              disabled={pending}
               aria-label={`${runtimeDisplayName(runtime)}启用状态`}
               onClick={() =>
                 mutate(normalizedRuntimeDraft(runtime, runtimeDraft(runtime)), {
@@ -511,11 +510,9 @@ function RuntimeEnvironmentRow({
             />
             <span className="text-content-secondary type-ui whitespace-nowrap">
               {t(
-                !ready
-                  ? "runtimeEnvironment.status.unavailable"
-                  : runtime.enabled
-                    ? "runtimeEnvironment.status.enabled"
-                    : "runtimeEnvironment.status.disabled",
+                runtime.enabled
+                  ? "runtimeEnvironment.status.enabled"
+                  : "runtimeEnvironment.status.disabled",
               )}
             </span>
           </div>
@@ -524,7 +521,6 @@ function RuntimeEnvironmentRow({
             supported={supportedPermissions}
             disabled={
               pending ||
-              !ready ||
               !permissionEditingEnabled ||
               supportedPermissions.size === 0
             }
@@ -549,9 +545,7 @@ function RuntimeEnvironmentRow({
           <Button
             size="sm"
             variant="ghost"
-            disabled={
-              pending || !runtime.enabled || !ready || runtime.isDefault
-            }
+            disabled={pending || !runtime.enabled || runtime.isDefault}
             onClick={() =>
               mutate(normalizedRuntimeDraft(runtime, runtimeDraft(runtime)), {
                 isDefault: true,
@@ -848,7 +842,6 @@ export function RuntimeEnvironmentsSection({
     })),
     runtimes,
     accountsQuery.data?.resources ?? [],
-    { defaults: false },
   );
   const nativePermissions = new Map(
     discovered.flatMap((runtime, index) => {
@@ -862,15 +855,15 @@ export function RuntimeEnvironmentsSection({
     nativePermissions.get(runtime.id ?? "") ??
     runtimeDefaultPermissionLevels(runtime);
   const yoloCapable =
-    discovered.some((runtime) => runtime.state === "ready") &&
-    discovered
-      .filter((runtime) => runtime.state === "ready")
-      .every((runtime) => runtimePermissions(runtime).has("full-access"));
+    discovered.length > 0 &&
+    discovered.every((runtime) =>
+      runtimePermissions(runtime).has("full-access"),
+    );
   const allDiscoveredUseFullAccess =
-    yoloCapable &&
-    discovered
-      .filter((runtime) => runtime.state === "ready")
-      .every((runtime) => runtime.defaultPermissionLevel === "full-access");
+    discovered.length > 0 &&
+    discovered.every(
+      (runtime) => runtime.defaultPermissionLevel === "full-access",
+    );
   const permissionMode =
     allDiscoveredUseFullAccess && !manualEditing ? "yolo" : "manual";
   const yoloUpdate = useMutation(
@@ -883,9 +876,7 @@ export function RuntimeEnvironmentsSection({
     try {
       await Promise.all(
         discovered.flatMap((runtime) =>
-          runtime.id &&
-          runtime.state === "ready" &&
-          runtimePermissions(runtime).has("full-access")
+          runtime.id && runtimePermissions(runtime).has("full-access")
             ? [
                 yoloUpdate.mutateAsync({
                   path: { runtimeId: runtime.id },

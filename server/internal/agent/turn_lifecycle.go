@@ -196,7 +196,8 @@ func (t *Turn) Run(ctx context.Context) TurnResult {
 	unconfirmed := result.BusinessAdmitted && result.OperationError != nil && result.Outcome == nil &&
 		result.Admission == string(native.AdmissionUnknown) &&
 		(result.Submission == string(native.SubmissionSent) || result.Submission == string(native.SubmissionUnknown))
-	result.CleanupError = t.settle(unconfirmed || t.thread.chatID == "" || t.opened && !t.admitted)
+	incomplete := result.Outcome != nil && incompleteNativeOutcome(*result.Outcome)
+	result.CleanupError = t.settle(unconfirmed || incomplete || t.thread.chatID == "" || t.opened && !t.admitted)
 	return result
 }
 
@@ -253,7 +254,7 @@ func (t *Turn) runPrompt() TurnResult {
 	}
 	res.Binding = cloneBinding(t.binding)
 	res.Effective = t.observedSession()
-	if res.Outcome != nil {
+	if res.Outcome != nil && !incompleteNativeOutcome(*res.Outcome) {
 		l := t.lifecycle
 		reader := l.sessionReader(t.thread)
 		var err error
@@ -664,7 +665,7 @@ func (l *ThreadLifecycle) callbacks(state *threadState, generation uint64) Agent
 func (l *ThreadLifecycle) Compact(ctx context.Context, chatID string) (AgentCompactResult, error) {
 	l.mu.Lock()
 	state := l.threads[chatID]
-	if l.closing || state == nil || state.closing || state.active != nil || state.binding == nil || state.connection == nil {
+	if l.closing || state == nil || state.closing || (state.active != nil || state.fork != nil) || state.binding == nil || state.connection == nil {
 		l.mu.Unlock()
 		return AgentCompactResult{}, status_error.RuntimeUnavailable
 	}

@@ -58,7 +58,7 @@ func TestCatalogDetailAndRawReadmeAreReadOnlyAndSourceBound(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			entry := output.(catalog.Entry)
+			entry := output.(PluginCatalogEntryResponse)
 			if size == 300*1024 && (entry.Package.ReadmeStatus != "available" || entry.Package.Readme != readme) {
 				t.Fatal("300 KiB readme was truncated")
 			}
@@ -70,7 +70,7 @@ func TestCatalogDetailAndRawReadmeAreReadOnlyAndSourceBound(t *testing.T) {
 				t.Fatalf("raw content changed: %v", err)
 			}
 			localizedOutput, err := (&GetCatalogPlugin{Key: "demo", Locale: "zh-CN"}).Output(ctx)
-			if err != nil || localizedOutput.(catalog.Entry).Package.Readme != "目录中文说明" {
+			if err != nil || localizedOutput.(PluginCatalogEntryResponse).Package.Readme != "目录中文说明" {
 				t.Fatalf("catalog locale not selected: %v", err)
 			}
 			localizedRaw, err := (&GetCatalogPluginReadme{Key: "demo", Locale: "zh-CN", SourceCommit: entry.SourceCommit, ArchiveSHA256: entry.ArchiveSHA256}).Output(ctx)

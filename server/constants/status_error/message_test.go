@@ -27,3 +27,18 @@ func TestPublicParamsUsesTemplateFieldsAndDropsPrivatePayload(t *testing.T) {
 		t.Fatalf("conditional parameters = %#v", params)
 	}
 }
+
+// TestAutomaticTaskConflictCodesRemainStable 验证公开自动任务错误的数值协议不受其他错误移除影响。
+func TestAutomaticTaskConflictCodesRemainStable(t *testing.T) {
+	for code, expected := range map[StatusError]int{
+		AutomaticTaskBusy:             40900000033,
+		AutomaticTaskDisabled:         40900000034,
+		AutomaticTaskRequestConflict:  40900000035,
+		AutomaticTaskRevisionConflict: 40900000036,
+		AutomaticTaskAdmissionRevoked: 40900000037,
+	} {
+		if int(code) != expected {
+			t.Errorf("%s code=%d want=%d", code.Key(), code, expected)
+		}
+	}
+}

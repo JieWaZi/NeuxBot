@@ -47,7 +47,6 @@ import {
 } from "../runtime/chat-send-failure";
 
 export const ChatErrorActions = createContext<{
-  retry?: (executionId: string) => Promise<void>;
   recover?: () => void;
   disabled?: boolean;
   report?: (message: string, operation: string) => void;
@@ -219,7 +218,6 @@ export function MessageFailure({
       message.errorParams,
       message.errorMessageSource,
     ).message || t("executionIncomplete");
-  const canRetry = message.retryable === true && last && actions.retry;
   const canRecover =
     runtimeSessionMissing(message.errorCode) && last && actions.recover;
   return (
@@ -232,7 +230,6 @@ export function MessageFailure({
       onDismiss={onDismiss}
       appearance={appearance}
       disabled={actions.disabled}
-      onRetry={canRetry ? () => actions.retry?.(executionId) : undefined}
       onContinue={canRecover ? actions.recover : undefined}
     />
   );

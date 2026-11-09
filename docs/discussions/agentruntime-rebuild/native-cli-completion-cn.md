@@ -10,9 +10,11 @@
 
 标准 ACP 的进程、通知屏障、会话目录、设置、取消、终态交付在 `acp-go/pkg/acpclient` 统一管理。`standardacp` 只持有四种 CLI 的启动及有证据的协议差异；Pi 的 RPC 与标准 ACP 不同，在 `acp-go/pkg/pi` 独立适配后提供同一 Client 合同。
 
-宿主账号服务冻结原生根目录、凭据身份和配置指纹；ProviderRuntime 持有租约直至原生进程退出。受管 API 账号按认证世代和配置修订隔离。模型原始 ID 与 OpenCode、Pi 的 `ally/` 原生命名空间只在边界转换；原生目录中其他服务商的同名模型不能进入受管账号菜单。模型切换使用原生 setter；进程级权限变更重建连接。
+宿主账号服务冻结原生根目录、凭据身份和配置指纹；ProviderRuntime 持有租约直至原生进程退出。受管 API 账号按认证代次和实际原生配置隔离，普通名称、默认值及未交付元数据不进入身份。模型原始 ID 与 OpenCode、Pi 的 `ally/` 原生命名空间只在边界转换；原生目录中其他服务商的同名模型不能进入受管账号菜单。模型切换使用原生 setter；进程级权限变更重建连接。
 
 Kimi 同时保留 Python `KIMI_SHARE_DIR` 与 TypeScript `KIMI_CODE_HOME` 的原生语义；Gemini 的 `GEMINI_CLI_HOME` 是包含 `.gemini` 的目录；Pi 使用 `PI_CODING_AGENT_DIR`；OpenCode 同时固定 XDG 配置、数据、缓存和状态目录，单设 `OPENCODE_CONFIG_DIR` 不视为隔离凭据。系统账号的本地身份用于发现切换，不冒充服务器验证的登录状态。OAuth 正常更新 access/expiry 不改变已有账号主体；有可信账号标识时使用它，否则保守绑定保存的授权凭据。
+
+Kimi 订阅重新登录成功后以认证代次提交，普通名称或默认值保存不能使已发生的登录提交丢失。本轮按用户选择保留失败和取消的原处理，不在启动登录前推进代次；原生 CLI 可能在失败前写入稳定 home，因此失败不证明认证材料未变。
 
 ## 提前处理的边界
 

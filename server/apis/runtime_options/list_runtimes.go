@@ -32,18 +32,10 @@ type RuntimeModelOption struct {
 	DefaultContextWindow string `json:"defaultContextWindow,omitempty"`
 	// 可选上下文档位
 	ContextWindowOptions []RuntimeContextWindowOption `json:"contextWindowOptions,omitempty"`
-	// 已确认逐模型设置
-	ConfigurationKnown bool `json:"configurationKnown"`
 	// 支持 Fast
 	FastSupported bool `json:"fastSupported"`
 	// 原生默认 Fast
 	DefaultFast *bool `json:"defaultFast,omitempty"`
-	// 输入类型
-	InputModalities []string `json:"inputModalities,omitempty"`
-	// 原生服务档位
-	ServiceTiers []RuntimeReasoningOption `json:"serviceTiers,omitempty"`
-	// 原生默认服务档位
-	DefaultServiceTier *string `json:"defaultServiceTier,omitempty"`
 	// 标识
 	ID string `json:"id"`
 	// 名称
@@ -108,7 +100,7 @@ type RuntimeOption struct {
 	Enabled bool `json:"enabled"`
 	// 是否默认
 	IsDefault bool `json:"isDefault"`
-	// 运行状态
+	// 最近探测结论
 	State string `json:"state"`
 	// 可执行文件是否已在当前探测环境中找到
 	Installed bool `json:"installed"`
@@ -118,7 +110,7 @@ type RuntimeOption struct {
 	ResolvedBinary string `json:"resolvedBinary"`
 	// 已发现及历史保存的安装实例
 	Installations []RuntimeInstallation `json:"installations"`
-	// 鉴权结论
+	// 最近鉴权探测结论
 	Auth string `json:"auth"`
 	// 默认模型
 	DefaultModel string `json:"defaultModel"`
@@ -190,15 +182,6 @@ func (l *ListRuntimes) Output(ctx *gin.Context) (interface{}, error) {
 
 func runtimeOption(environment models.RuntimeEnvironment) RuntimeOption {
 	detection := environment.Detection
-	defaultModel, defaultReasoning := agentapi.NormalizeDetectedDefaults(
-		detection,
-		environment.CustomModels,
-		environment.DefaultModel,
-		environment.DefaultReasoning,
-	)
-	if environment.BaseRuntimeID == agentapi.RuntimeIDCodex {
-		defaultModel, defaultReasoning = environment.DefaultModel, environment.DefaultReasoning
-	}
 	availableModels := agentapi.AvailableModels(detection, environment.CustomModels)
 	detectedModelIDs := make(map[string]struct{}, len(detection.Models))
 	for _, model := range detection.Models {
@@ -242,8 +225,8 @@ func runtimeOption(environment models.RuntimeEnvironment) RuntimeOption {
 		ResolvedBinary:         detection.ResolvedBinary,
 		Installations:          runtimeInstallations(detection.Installations),
 		Auth:                   string(detection.Auth),
-		DefaultModel:           defaultModel,
-		DefaultReasoning:       defaultReasoning,
+		DefaultModel:           environment.DefaultModel,
+		DefaultReasoning:       environment.DefaultReasoning,
 		DefaultFast:            environment.DefaultFast,
 		DefaultPermissionLevel: environment.DefaultPermissionLevel,
 		CustomModels:           append([]string(nil), environment.CustomModels...),

@@ -11,28 +11,22 @@ import { TooltipProvider } from "@/shared/ui/tooltip";
 
 const {
   accounts,
-  nativeModels,
   modelCatalog,
   refreshAll,
   refreshOne,
   runtimes,
-  thinking,
   updateRuntime,
 } = vi.hoisted(() => ({
   accounts: { current: [] as Array<Record<string, unknown>> },
-  nativeModels: vi.fn(),
   modelCatalog: vi.fn(),
   refreshAll: vi.fn(async () => undefined),
   refreshOne: vi.fn(async () => undefined),
   runtimes: { current: [] as Array<Record<string, unknown>> },
-  thinking: vi.fn(),
   updateRuntime: vi.fn(async () => undefined),
 }));
 
 vi.mock("@/shared/api/generated/sdk.gen", () => ({
-  getAiAccountNativeModels: nativeModels,
   getRuntimeModelCatalog: modelCatalog,
-  getAiAccountThinking: thinking,
 }));
 
 vi.mock("@/shared/api/generated/@tanstack/react-query.gen", () => ({
@@ -108,7 +102,6 @@ beforeEach(() => {
   refreshAll.mockClear();
   refreshOne.mockClear();
   updateRuntime.mockClear();
-  nativeModels.mockReset();
   modelCatalog.mockImplementation(async ({ path, query }) => {
     const runtime = runtimes.current.find((item) => item.id === path.runtimeId);
     const account = accounts.current.find(
@@ -136,7 +129,7 @@ beforeEach(() => {
           query.accountId === "system" ? runtime?.defaultModel : rows[0]?.id,
         models: rows.map((row) => ({
           ...row,
-          configurationKnown: true,
+
           permissionLevels: row.permissionLevels ?? [
             "default",
             "auto",
@@ -147,7 +140,6 @@ beforeEach(() => {
       },
     };
   });
-  thinking.mockReset();
   accounts.current = [];
   runtimes.current = [
     {
@@ -273,24 +265,22 @@ describe("RuntimeEnvironmentsSection", () => {
         id: "chatgpt-subscription",
         name: "ChatGPT 订阅",
         authMode: "subscription",
-        endpoints: [
-          {
-            protocol: "openai-responses",
-            baseUrl: "https://api.openai.com/v1",
-          },
-        ],
+        endpoint: {
+          protocol: "openai-responses",
+          baseUrl: "https://api.openai.com/v1",
+        },
       },
       {
         id: "deepseek",
         name: "DeepSeek",
         authMode: "api-key",
-        endpoints: [{ protocol: "openai-responses" }],
+        endpoint: { protocol: "openai-responses" },
       },
       {
         id: "volcengine",
         name: "火山方舟",
         authMode: "api-key",
-        endpoints: [{ protocol: "anthropic-messages" }],
+        endpoint: { protocol: "anthropic-messages" },
       },
     ];
     const user = userEvent.setup();
@@ -318,17 +308,15 @@ describe("RuntimeEnvironmentsSection", () => {
         authMode: "api-key",
         hasCredential: true,
         revision: 1,
-        endpoints: [
-          { protocol: "openai-responses", baseUrl: "https://api.deepseek.com" },
-        ],
+        endpoint: {
+          protocol: "openai-responses",
+          baseUrl: "https://api.deepseek.com",
+        },
         selectedModels: ["deepseek-flash"],
         defaultModel: "deepseek-flash",
         defaultReasoning: "",
       },
     ];
-    thinking.mockResolvedValue({
-      data: { available: true, options: [{ id: "max", name: "Max" }] },
-    });
     const user = userEvent.setup();
     renderSection(
       new QueryClient({ defaultOptions: { queries: { retry: false } } }),
@@ -393,22 +381,14 @@ describe("RuntimeEnvironmentsSection", () => {
         name: "ChatGPT",
         authMode: "subscription",
         revision: 2,
-        endpoints: [
-          {
-            protocol: "openai-responses",
-            baseUrl: "https://api.openai.com/v1",
-          },
-        ],
+        endpoint: {
+          protocol: "openai-responses",
+          baseUrl: "https://api.openai.com/v1",
+        },
         defaultModel: "",
         defaultReasoning: "",
       },
     ];
-    nativeModels.mockResolvedValue({
-      data: { models: ["gpt-native"], defaultModel: "gpt-native" },
-    });
-    thinking.mockResolvedValue({
-      data: { available: false, options: [] },
-    });
     const user = userEvent.setup();
     renderSection(
       new QueryClient({ defaultOptions: { queries: { retry: false } } }),
@@ -490,10 +470,10 @@ describe("RuntimeEnvironmentsSection", () => {
     expect(screen.getByText("未安装")).toBeInTheDocument();
     expect(
       screen.getByRole("switch", { name: "Claude启用状态" }),
-    ).not.toBeChecked();
+    ).toBeChecked();
     expect(
       screen.getByRole("switch", { name: "Claude启用状态" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
     expect(
       screen.getByRole("button", { name: "展开Claude智能体设置" }),
     ).toBeEnabled();
@@ -562,7 +542,7 @@ describe("RuntimeEnvironmentsSection", () => {
     ).toBeEnabled();
     expect(
       within(found).getByRole("switch", { name: "Cursor启用状态" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
   });
 
   it("未登录的 CLI 在已发现行显示告警图标和自行登录建议", async () => {
@@ -735,7 +715,7 @@ describe("RuntimeEnvironmentsSection", () => {
             {
               id: "account-model",
               name: "Account Model",
-              configurationKnown: true,
+
               fastSupported: true,
               permissionLevels: ["default", "full-access"],
             },
@@ -748,6 +728,14 @@ describe("RuntimeEnvironmentsSection", () => {
       );
       await user.click(
         await screen.findByRole("button", { name: `展开${label}智能体设置` }),
+      );
+      const modelControl = await screen.findByRole("combobox", {
+        name: "默认模型",
+      });
+      modelControl.focus();
+      await user.keyboard("{Enter}");
+      await user.click(
+        await screen.findByRole("option", { name: "Account Model" }),
       );
       const fast = await screen.findByRole("combobox", { name: "Fast" });
       expect(
@@ -797,7 +785,7 @@ describe("RuntimeEnvironmentsSection", () => {
           name: id,
           authMode: "api-key",
           hasCredential: true,
-          endpoints: [{ protocol: "anthropic-messages" }],
+          endpoint: { protocol: "anthropic-messages" },
         }));
       }
       modelCatalog.mockImplementation(async ({ path, query }) => ({
@@ -809,7 +797,7 @@ describe("RuntimeEnvironmentsSection", () => {
           models: ["original", "second"].map((id) => ({
             id,
             name: id,
-            configurationKnown: true,
+
             permissionLevels: ["default"],
           })),
         },
@@ -874,13 +862,13 @@ describe("RuntimeEnvironmentsSection", () => {
           {
             id: "known",
             name: "Known",
-            configurationKnown: true,
+
             permissionLevels: ["default"],
           },
           {
             id: "unconfirmed",
             name: "Unconfirmed",
-            configurationKnown: false,
+
             permissionLevels: ["default"],
           },
         ],
@@ -1283,4 +1271,60 @@ it("已安装智能体的 unknown 版本展示为版本未知", async () => {
   );
   await screen.findByText("版本未知");
   expect(screen.queryByText("unknown")).not.toBeInTheDocument();
+});
+
+it("陈旧目录选择模型后保存仍保留明确完全访问权限", async () => {
+  modelCatalog.mockResolvedValue({
+    data: {
+      runtimeId: "codex",
+      accountId: "system",
+      state: "stale",
+      models: [
+        { id: "gpt-5", name: "GPT-5", permissionLevels: ["full-access"] },
+        { id: "old-target", name: "Old Target", permissionLevels: ["default"] },
+      ],
+    },
+  });
+  const user = userEvent.setup();
+  renderSection(
+    new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  );
+  await user.click(
+    await screen.findByRole("button", { name: "展开Codex智能体设置" }),
+  );
+  const model = screen.getByRole("combobox", { name: "默认模型" });
+  model.focus();
+  await user.keyboard("{Enter}");
+  await user.click(await screen.findByRole("option", { name: "Old Target" }));
+  await user.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() =>
+    expect(updateRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          defaultModel: "old-target",
+          defaultPermissionLevel: "full-access",
+        }),
+      }),
+      expect.anything(),
+    ),
+  );
+});
+
+it("目录不可用不会把已保存的 YOLO 显示成手动", async () => {
+  modelCatalog.mockResolvedValue({
+    data: {
+      runtimeId: "codex",
+      accountId: "system",
+      state: "unavailable",
+      models: [],
+    },
+  });
+  renderSection(
+    new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  );
+  await waitForRuntimesLoaded();
+  expect(screen.getByRole("radio", { name: "YOLO" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
 });

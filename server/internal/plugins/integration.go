@@ -139,7 +139,8 @@ func LoadSource(source, entry string) (Package, error) {
 		if err != nil {
 			return pkg, err
 		}
-		pkg.NativeImplementations[cli] = NativeImplementation{Path: ref.Path, Name: native.Manifest.Name, Version: native.Manifest.Version, Format: native.Format, Digest: digest, Components: native.NativeComponents, Config: extension.Config, TrustRequired: native.RequiresTrust(), Skills: nativeSkillSummaries(native), Servers: nativeServerSummaries(native), SkillCount: len(native.Skills), ServerCount: len(native.Servers)}
+		execution := Package{Manifest: configured.Manifest, Format: configured.Format, Integration: configured.Integration, Skills: configured.Skills, Servers: configured.Servers, NativeComponents: configured.NativeComponents}
+		pkg.NativeImplementations[cli] = NativeImplementation{Path: ref.Path, Name: native.Manifest.Name, Version: native.Manifest.Version, Format: native.Format, Digest: digest, Components: native.NativeComponents, Config: extension.Config, TrustRequired: native.RequiresTrust(), Skills: nativeSkillSummaries(native), Servers: nativeServerSummaries(native), SkillCount: len(native.Skills), ServerCount: len(native.Servers), Execution: &execution}
 	}
 	_, err = ClientExtension(pkg)
 	return pkg, err
@@ -181,6 +182,22 @@ func SelectTarget(source string, pkg Package, cli string) (Package, string, erro
 	return target, root, err
 }
 
+// DeclaredTarget 只读取发布版本中已经解析的目标，不访问来源文件。
+func DeclaredTarget(pkg Package, cli string) (Package, string, error) {
+	if _, referenced := pkg.Integration.NativePlugins[cli]; referenced {
+		target, exists := pkg.NativeImplementations[cli]
+		if !exists || target.Execution == nil || !safeRelative(target.Path) {
+			return Package{}, "", status_error.PluginContentInvalid
+		}
+		return *target.Execution, target.Path, nil
+	}
+	if len(pkg.Skills) == 0 && len(pkg.Servers) == 0 && len(pkg.Integration.NativePlugins) > 0 {
+		return Package{}, "", status_error.PluginNotReady
+	}
+	target, err := authenticationTarget(pkg, pkg, cli)
+	return target, pkg.SourcePath, err
+}
+
 // NativeComponent 描述原生完整保留的组件；投射路径不宣称支持其执行语义。
 type NativeComponent struct {
 	// Kind 是原生组件类别。
@@ -191,6 +208,8 @@ type NativeComponent struct {
 
 // NativeImplementation 是精确目标来源摘要，不表示已经加载。
 type NativeImplementation struct {
+	// Execution 是发布时解析的实际目标组件与配置模板，仅供内部执行声明读取。
+	Execution *Package `json:"execution,omitempty"`
 	// Path 是固定来源内的原生目录。
 	Path string `json:"path"`
 	// Name 是实际原生名称。

@@ -25,6 +25,8 @@ type ChannelMemberInput struct {
 	Model string `json:"model" validate:"max=200"`
 	// 推理强度
 	Reasoning string `json:"reasoning" validate:"max=80"`
+	// Fast 模式
+	Fast *bool `json:"fast,omitempty"`
 	// 权限等级
 	PermissionLevel constants.PermissionLevel `json:"permissionLevel" validate:"required"`
 }
@@ -94,38 +96,48 @@ func normalizeChannelMemberInputs(
 	return normalized, nil
 }
 
-func validateChannelMembersExist(ctx context.Context, input ChannelInput) error {
-	for _, member := range input.Members {
+func resolveChannelMembers(ctx context.Context, input *ChannelInput) error {
+	for index, member := range input.Members {
 		if _, err := global.WakerControllerManager.Get(ctx, member.WakerID); err != nil {
 			return err
 		}
-		if err := validateChannelMemberExecutionConfig(ctx, member, member.WakerID == input.LeadWakerID); err != nil {
+		resolved, err := resolveChannelMemberExecutionConfig(ctx, member, member.WakerID == input.LeadWakerID)
+		if err != nil {
 			return err
 		}
+		input.Members[index] = resolved
 	}
 	return nil
 }
 
-// validateChannelMemberExecutionConfig 复用 Execution Core 的唯一执行配置校验器。
-func validateChannelMemberExecutionConfig(
+// resolveChannelMemberExecutionConfig 在保存边界冻结 Execution Core 解析后的成员选择。
+func resolveChannelMemberExecutionConfig(
 	ctx context.Context,
 	member ChannelMemberInput,
 	requireCollaboration bool,
-) error {
+) (ChannelMemberInput, error) {
 	if global.ExecutionService == nil {
-		return status_error.ChatServiceNotStarted
+		return member, status_error.ChatServiceNotStarted
 	}
 	configuration := execution.ExecutionConfiguration{
 		RuntimeID:       member.RuntimeID,
 		AccountID:       member.AccountID,
 		Model:           member.Model,
 		Reasoning:       member.Reasoning,
+		Fast:            member.Fast,
 		PermissionLevel: member.PermissionLevel,
 	}
 	if requireCollaboration {
 		configuration.RequiredConnectorTransport = constants.RuntimeConnectorTransportStreamableHTTP
 	}
-	return global.ExecutionService.ValidateConfiguration(ctx, configuration)
+	resolved, err := global.ExecutionService.ResolveConfiguration(ctx, configuration)
+	if err != nil {
+		return member, err
+	}
+	member.RuntimeID, member.AccountID = resolved.RuntimeID, resolved.AccountID
+	member.Model, member.Reasoning, member.Fast = resolved.Model, resolved.Reasoning, resolved.Fast
+	member.PermissionLevel = resolved.PermissionLevel
+	return member, nil
 }
 
 func channelModels(
@@ -154,6 +166,7 @@ func channelModels(
 			AccountID:       inputMember.AccountID,
 			Model:           inputMember.Model,
 			Reasoning:       inputMember.Reasoning,
+			Fast:            inputMember.Fast,
 			PermissionLevel: inputMember.PermissionLevel,
 			Position:        position,
 			CreatedAt:       now,

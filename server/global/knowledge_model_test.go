@@ -40,8 +40,20 @@ func TestKnowledgeModelSelectionDoesNotRequireExecutionServiceOrPartner(t *testi
 	if err != nil || selected.Model != "known-model" || selected.AccountID != constants.AiAccountSystemID {
 		t.Fatalf("独立模型选择失败: %+v %v", selected, err)
 	}
-	if _, err := resolveKnowledgeModel(ctx, models.LibraryExecutionDefaults{RuntimeID: constants.RuntimeIDClaude, Model: "unknown-model"}); !errors.Is(err, status_error.KnowledgeInvalid) {
-		t.Fatalf("不存在的模型被接纳: %v", err)
+	if selected, err := resolveKnowledgeModel(ctx, models.LibraryExecutionDefaults{RuntimeID: constants.RuntimeIDClaude, Model: "unknown-model"}); err != nil || selected.Model != "unknown-model" {
+		t.Fatalf("探测目录阻止原生模型选择: %+v %v", selected, err)
+	}
+	if err := RuntimeEnvironmentControllerManager.UpdateDetection(ctx, constants.RuntimeIDClaude, agent.DetectionResult{State: agent.DetectionStateUnavailable}, 1); err != nil {
+		t.Fatal(err)
+	}
+	if selected, err := resolveKnowledgeModel(ctx, models.LibraryExecutionDefaults{RuntimeID: constants.RuntimeIDClaude}); err != nil || selected.Model != "known-model" {
+		t.Fatalf("探测失败阻止已配置模型: %+v %v", selected, err)
+	}
+	if err := RuntimeEnvironmentControllerManager.UpdateFields(ctx, constants.RuntimeIDClaude, map[string]any{"enabled": false}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolveKnowledgeModel(ctx, models.LibraryExecutionDefaults{RuntimeID: constants.RuntimeIDClaude}); !errors.Is(err, status_error.RuntimeUnavailable) {
+		t.Fatalf("用户禁用未保留: %v", err)
 	}
 }
 
@@ -80,7 +92,7 @@ func TestKnowledgeModelAcceptsValidManagedClaudeAccount(t *testing.T) {
 	RuntimeEnvironmentControllerManager = controllers.NewRuntimeEnvironmentController(database.DB)
 	AIAccountService = aiaccount.New(controllers.NewAIAccountController(database.DB))
 	defer func() { RuntimeEnvironmentControllerManager = previousRuntime; AIAccountService = previousAccounts }()
-	account := models.AIAccount{ID: "managed-account", Name: "test", AuthMode: constants.AccountAuthModeAPIKey, HasCredential: true, SelectedModels: []string{"model-a"}, Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://model.example/v1"}}}
+	account := models.AIAccount{ID: "managed-account", Name: "test", AuthMode: constants.AccountAuthModeAPIKey, HasCredential: true, SelectedModels: []string{"model-a"}, Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://model.example/v1"}}
 	if err := database.DB.Create(&account).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +132,7 @@ func TestKnowledgeGenerationWaitsForAccountMutationAndCanBeCancelled(t *testing.
 	defer provider.Close(ctx)
 	AgentThreads = agent.NewThreadLifecycle(provider, store)
 	defer AgentThreads.Close(ctx)
-	account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", Name: "fixture", AuthMode: constants.AccountAuthModeAPIKey, SelectedModels: []string{"fixture-model"}, Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://model.example"}}}
+	account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", Name: "fixture", AuthMode: constants.AccountAuthModeAPIKey, SelectedModels: []string{"fixture-model"}, Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://model.example"}}
 	if err := accounts.Create(ctx, account, "not-read-before-lease-is-acquired"); err != nil {
 		t.Fatal(err)
 	}

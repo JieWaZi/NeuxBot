@@ -237,22 +237,6 @@ func TestConnectorCompatibilityMatchesUpstreamTransports(t *testing.T) {
 	}
 }
 
-func TestDetectedConnectorTransportSupportedUsesCapabilitySnapshot(t *testing.T) {
-	detection := DetectionResult{
-		State: DetectionStateReady,
-		Capabilities: CapabilitySet{
-			CapabilityMCPStreamableHTTP: true,
-		},
-	}
-	if !DetectedConnectorTransportSupported(detection, ConnectorTransportStdio) ||
-		!DetectedConnectorTransportSupported(detection, ConnectorTransportStreamableHTTP) {
-		t.Fatal("ready runtime lost declared MCP transports")
-	}
-	if DetectedConnectorTransportSupported(detection, ConnectorTransportSSE) {
-		t.Fatal("runtime gained undeclared SSE transport")
-	}
-}
-
 func TestResolveExecutableRejectsUnregisteredRuntimeWithStableError(t *testing.T) {
 	sdk, err := NewCatalog(CatalogConfig{})
 	if err != nil {

@@ -125,11 +125,11 @@ type RuntimeSummary struct {
 type DetectionState = constants.RuntimeDetectionState
 
 const (
-	// DetectionStateUnavailable means the runtime executable was not found or could not be invoked.
+	// DetectionStateUnavailable means the latest probe could not find or invoke the runtime.
 	DetectionStateUnavailable = constants.RuntimeDetectionStateUnavailable
-	// DetectionStateIncompatible means the executable exists but lacks required protocol capabilities.
+	// DetectionStateIncompatible means the latest probe did not confirm required protocol capabilities.
 	DetectionStateIncompatible = constants.RuntimeDetectionStateIncompatible
-	// DetectionStateReady means required runtime capabilities are satisfied and invocation can be prepared.
+	// DetectionStateReady means the latest probe confirmed required runtime capabilities, not invocation eligibility.
 	DetectionStateReady = constants.RuntimeDetectionStateReady
 )
 
@@ -268,8 +268,6 @@ const (
 	DiagnosticCodeACPOptionsUnavailable = "ACP_OPTIONS_UNAVAILABLE"
 	// DiagnosticCodeACPOptionsFallback indicates reuse of the last successful model catalog during detection.
 	DiagnosticCodeACPOptionsFallback = "ACP_OPTIONS_FALLBACK"
-	// DiagnosticCodePermissionDefaultDowngraded indicates safe downgrading of persisted default permissions to detected capabilities.
-	DiagnosticCodePermissionDefaultDowngraded = "PERMISSION_DEFAULT_DOWNGRADED"
 )
 
 // PreservePreviousOptionsOnFailure retains the last successful catalog when ACP model catalog refresh fails.
@@ -325,125 +323,6 @@ func AvailableModels(
 		})
 	}
 	return models
-}
-
-// NormalizeDetectedDefaults preserves valid defaults against detected and custom models and falls back to the detection snapshot for invalid values.
-func NormalizeDetectedDefaults(
-	detection DetectionResult,
-	customModelIDs []string,
-	modelID string,
-	reasoningID string,
-) (string, string) {
-	models := AvailableModels(detection, customModelIDs)
-	fallbackModel := strings.TrimSpace(detection.DetectedDefaultModel)
-	if fallbackModel == "" && len(models) > 0 {
-		fallbackModel = models[0].ID
-	}
-
-	modelIndex := -1
-	for index, model := range models {
-		if model.ID == modelID {
-			modelIndex = index
-			break
-		}
-	}
-	if modelIndex < 0 {
-		modelID = fallbackModel
-		for index, model := range models {
-			if model.ID == modelID {
-				modelIndex = index
-				break
-			}
-		}
-	}
-	if modelIndex >= 0 {
-		modelID = models[modelIndex].ID
-	} else {
-		modelID = ""
-	}
-
-	reasoningOptions := detection.ReasoningOptions
-	if modelIndex >= 0 && len(models[modelIndex].ReasoningOptions) > 0 {
-		reasoningOptions = models[modelIndex].ReasoningOptions
-	}
-	for _, option := range reasoningOptions {
-		if option.ID == reasoningID {
-			return modelID, reasoningID
-		}
-	}
-	fallbackReasoning := strings.TrimSpace(detection.DetectedDefaultReasoning)
-	if fallbackReasoning != "" {
-		for _, option := range reasoningOptions {
-			if option.ID == fallbackReasoning {
-				return modelID, fallbackReasoning
-			}
-		}
-	}
-	if len(reasoningOptions) == 0 {
-		return modelID, ""
-	}
-	return modelID, reasoningOptions[0].ID
-}
-
-// ModelPermissionLevels returns detected product permissions for a model, or empty when the model or declaration is absent.
-func ModelPermissionLevels(
-	detection DetectionResult,
-	customModelIDs []string,
-	modelID string,
-) []PermissionLevel {
-	models := AvailableModels(detection, customModelIDs)
-	selectedID := strings.TrimSpace(modelID)
-	if selectedID == "" {
-		selectedID = strings.TrimSpace(detection.DetectedDefaultModel)
-	}
-	if selectedID == "" && len(models) > 0 {
-		selectedID = models[0].ID
-	}
-	for _, model := range models {
-		if model.ID != selectedID {
-			continue
-		}
-		return append([]PermissionLevel(nil), model.PermissionLevels...)
-	}
-	return nil
-}
-
-// PermissionLevelSupported checks whether the product permission appears in the detected list.
-func PermissionLevelSupported(
-	supported []PermissionLevel,
-	level PermissionLevel,
-) bool {
-	if !constants.SelectablePermissionLevel(level) {
-		return false
-	}
-	for _, candidate := range supported {
-		if candidate == level {
-			return true
-		}
-	}
-	return false
-}
-
-// SafePermissionLevel preserves or safely downgrades default permissions within the detected list; an empty list preserves the value without reporting a downgrade.
-func SafePermissionLevel(
-	preferred PermissionLevel,
-	supported []PermissionLevel,
-) (PermissionLevel, bool) {
-	if PermissionLevelSupported(supported, preferred) {
-		return preferred, false
-	}
-	if len(supported) == 0 {
-		return preferred, false
-	}
-	for _, candidate := range []PermissionLevel{
-		PermissionLevelAuto,
-		PermissionLevelDefault,
-	} {
-		if PermissionLevelSupported(supported, candidate) {
-			return candidate, true
-		}
-	}
-	return supported[0], true
 }
 
 func hasDiagnostic(diagnostics []Diagnostic, code string) bool {

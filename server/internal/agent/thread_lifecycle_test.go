@@ -641,7 +641,17 @@ func fixtureClaudeFrame(out *json.Encoder, frame map[string]any, session, cwd st
 			"subtype": "success", "request_id": frame["request_id"], "response": response,
 		}})
 	case "user":
+		if strings.Contains(fmt.Sprint(frame["message"]), "fixture disconnect before native result") {
+			emit(map[string]any{"type": "system", "subtype": "session_state_changed", "state": "running"})
+			os.Exit(0)
+		}
 		usage := map[string]any{"input_tokens": 43, "output_tokens": 7, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}
+		if strings.Contains(fmt.Sprint(frame["message"]), "fixture disconnect after observed input") {
+			emit(map[string]any{"type": "assistant", "user_message_uuid": frame["uuid"], "parent_tool_use_id": nil,
+				"message": map[string]any{"id": "partial-native", "model": "sonnet", "usage": usage,
+					"content": []map[string]any{{"type": "text", "text": "partial native answer"}}}})
+			os.Exit(0)
+		}
 		if legacy {
 			terminal := "fixture-legacy-" + fmt.Sprint(frame["uuid"])
 			if strings.Contains(fmt.Sprint(frame["message"]), "unconfirmed legacy input") {
@@ -729,6 +739,9 @@ func TestThreadTurnPartialAcquisitionClosesSameOwnerBeforeRetry(t *testing.T) {
 	ports := chatPorts(req.ChatID, input, true)
 	opens, releases := 0, 0
 	ports.AcquireResources = func(context.Context, agent.ResourceSelection) (agent.ResourceLease, error) {
+		if opens != 0 && releases < 2 {
+			t.Errorf("replacement acquired resources before the retained owner was released: opens=%d releases=%d", opens, releases)
+		}
 		opens++
 		return agent.ResourceLease{Close: func(context.Context) error {
 			releases++
@@ -743,10 +756,10 @@ func TestThreadTurnPartialAcquisitionClosesSameOwnerBeforeRetry(t *testing.T) {
 		t.Fatalf("partial prepare = %v", err)
 	}
 	_, err = lifecycle.Prepare(t.Context(), req, input, ports)
-	if !errors.Is(err, status_error.RuntimeUnavailable) || opens != 1 {
-		t.Fatalf("substitute owner attempted = %v opens=%d", err, opens)
+	if !errors.Is(err, status_error.RuntimeConfigurationInvalid) || opens != 2 || releases != 3 {
+		t.Fatalf("ordinary preparation did not release the old owner before its new attempt: %v opens=%d releases=%d", err, opens, releases)
 	}
-	if err := lifecycle.CloseThread(t.Context(), req.ChatID); err != nil || releases != 2 {
+	if err := lifecycle.CloseThread(t.Context(), req.ChatID); err != nil || releases != 3 {
 		t.Fatalf("same owner release retry = %v releases=%d", err, releases)
 	}
 }
@@ -889,7 +902,7 @@ func TestThreadTurnReplacementSeedsFiveCompleteTurns(t *testing.T) {
 	if err := lifecycle.CloseThread(t.Context(), req.ChatID); err != nil {
 		t.Fatal(err)
 	}
-	req.Connection.Account.AuthGeneration++
+	req.ResourceGeneration++
 	req.Summarize = true // No old live owner remains, so the bounded fallback applies.
 	input := chatTurn(6, "replacement-current-user")
 	turn, err := lifecycle.Prepare(t.Context(), req, input, chatPorts(req.ChatID, input, false))
@@ -1213,7 +1226,7 @@ func TestThreadTurnToolInPrivateHandoffFallsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Connection.Account.AuthGeneration++
+	req.ResourceGeneration++
 	req.Summarize = true
 	next := chatTurn(1, "handoff-new-input")
 	turn, err = lifecycle.Prepare(t.Context(), req, next, chatPorts(req.ChatID, next, false))
@@ -1289,17 +1302,133 @@ func TestThreadTurnCloseStopsProcessOnBlockedOutcomeStore(t *testing.T) {
 	}
 	next := chatTurn(1, "cannot replace unresolved producer")
 	if successor, err := lifecycle.Prepare(t.Context(), req, next, chatPorts(req.ChatID, next, false)); successor != nil ||
-		!errors.Is(err, status_error.RuntimeUnavailable) {
+		!errors.Is(err, status_error.ChatLogError) {
 		t.Fatalf("unresolved close allowed replacement: %+v %v", successor, err)
 	}
 	fault.block.Store(false)
-	if err := lifecycle.CloseThread(t.Context(), req.ChatID); err != nil {
+	recovered, err := lifecycle.Prepare(t.Context(), req, next, chatPorts(req.ChatID, next, false))
+	if err != nil {
+		t.Fatalf("ordinary preparation did not retry the retained outcome owner: %v", err)
+	}
+	if err := recovered.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	key := agent.NativeResultKey{Session: res.Binding.Session, InvocationID: res.Outcome.Turn.InvocationID}
 	durable, err := store.ReadNativeResult(t.Context(), key)
 	if err != nil || durable.Turn.Usage == nil || durable.Turn.Status != acpmeta.NativeTurnCompleted {
 		t.Fatalf("released producer lost the unacknowledged receipt: %+v %v", durable, err)
+	}
+}
+
+func TestThreadTurnDisconnectedClaudeCanStartExplicitNewSession(t *testing.T) {
+	lifecycle, store, req, trace := newTurnFixture(t, "claude")
+	configureThreadFixture(&req, trace)
+	input := chatTurn(0, "fixture disconnect before native result")
+	turn, err := lifecycle.Prepare(t.Context(), req, input, chatPorts(req.ChatID, input, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := turn.Run(t.Context())
+	if !result.BusinessAdmitted || result.OperationError == nil || result.Admission != "unknown" {
+		t.Fatalf("disconnected native input lost its uncertainty: %+v", result)
+	}
+	if result.StorageError != nil || result.CleanupError != nil {
+		t.Fatalf("a missing native terminal was treated as blocked storage or unreleased resources: %+v", result)
+	}
+	_, consumed, err := store.ReadHostInputConsumption(t.Context(), agent.HostInputRef{ChatID: req.ChatID, HostInvocationID: input.HostInvocationID})
+	if err != nil || consumed != nil {
+		t.Fatalf("disconnection fabricated input consumption: %+v %v", consumed, err)
+	}
+	req.ForceNew = true
+	next := chatTurn(1, "explicit new input after disconnected Claude")
+	successor, err := lifecycle.Prepare(t.Context(), req, next, chatPorts(req.ChatID, next, false))
+	if err != nil {
+		t.Fatalf("released native producer still blocks a fresh session: %v", err)
+	}
+	settled := successor.Run(t.Context())
+	if settled.OperationError != nil || settled.StorageError != nil || settled.CleanupError != nil || settled.Outcome == nil || settled.Outcome.Turn.Status != acpmeta.NativeTurnCompleted {
+		t.Fatalf("fresh explicit input failed: %+v", settled)
+	}
+	data, err := os.ReadFile(trace)
+	if err != nil || strings.Count(string(data), input.Text) != 1 || strings.Count(string(data), next.Text) != 1 {
+		t.Fatalf("unconfirmed input was replayed or new input was lost: %s %v", data, err)
+	}
+}
+
+func TestThreadTurnDisconnectedClaudePreservesObservedFragments(t *testing.T) {
+	lifecycle, store, req, trace := newTurnFixture(t, "claude")
+	configureThreadFixture(&req, trace)
+	input := chatTurn(0, "fixture disconnect after observed input")
+	turn, err := lifecycle.Prepare(t.Context(), req, input, chatPorts(req.ChatID, input, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := turn.Run(t.Context())
+	if result.Outcome == nil || result.Outcome.Turn.Status != "" || result.Outcome.OperationError == nil || result.Admission != "confirmed" {
+		t.Fatalf("fixture did not produce an observed invocation without a terminal: %+v", result)
+	}
+	if result.OperationError == nil || result.StorageError != nil || result.CleanupError != nil {
+		t.Fatalf("incomplete invocation obscured the transport failure: %+v", result)
+	}
+	message, err := store.ReadMessage(t.Context(), req.ChatID, input.AssistantMessageID)
+	if err != nil || message.Text != "partial native answer" {
+		t.Fatalf("already observed fragments were lost: %+v %v", message, err)
+	}
+	_, consumed, err := store.ReadHostInputConsumption(t.Context(), agent.HostInputRef{ChatID: req.ChatID, HostInvocationID: input.HostInvocationID})
+	if err != nil || consumed != nil {
+		t.Fatalf("a missing terminal fabricated canonical consumption: %+v %v", consumed, err)
+	}
+	if _, err := store.ReadNativeResult(t.Context(), agent.NativeResultKey{Session: result.Binding.Session, InvocationID: result.Outcome.Turn.InvocationID}); !errors.Is(err, status_error.ChatLogNativeOutcomePending) {
+		t.Fatalf("a missing native terminal was fabricated: %v", err)
+	}
+	req.Connection.Account.Provider = "codex"
+	configureThreadFixture(&req, trace)
+	next := chatTurn(1, "explicit provider switch after partial Claude output")
+	completeThreadFixtureTurn(t, lifecycle, store, req, next, false)
+	data, err := os.ReadFile(trace)
+	if err != nil || strings.Count(string(data), input.Text) != 1 {
+		t.Fatalf("unconfirmed terminal caused old input replay: %s %v", data, err)
+	}
+}
+
+func TestThreadPrepareRetriesOriginalFailedLeaseRelease(t *testing.T) {
+	_, store, req, trace := newTurnFixture(t, "claude")
+	configureThreadFixture(&req, trace)
+	var fail atomic.Bool
+	var acquired atomic.Int32
+	fail.Store(true)
+	provider := agent.NewProviderRuntime(agent.ProviderRuntimeOptions{AcquireAccount: func(context.Context, agent.AccountRequest) (agent.AccountLease, error) {
+		acquired.Add(1)
+		return agent.AccountLease{Close: func(context.Context) error {
+			if fail.Load() {
+				return status_error.RuntimeShutdownFailed
+			}
+			return nil
+		}}, nil
+	}})
+	lifecycle := agent.NewThreadLifecycle(provider, store)
+	t.Cleanup(func() {
+		fail.Store(false)
+		if err := lifecycle.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+		if err := provider.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	input := chatTurn(0, "complete input before failed lease release")
+	completeThreadFixtureTurn(t, lifecycle, store, req, input, true)
+	if err := lifecycle.CloseThread(t.Context(), req.ChatID); !errors.Is(err, status_error.RuntimeShutdownFailed) {
+		t.Fatalf("close did not retain a failed account lease: %v", err)
+	}
+	next := chatTurn(1, "new input after release recovery")
+	if turn, err := lifecycle.Prepare(t.Context(), req, next, chatPorts(req.ChatID, next, false)); turn != nil || !errors.Is(err, status_error.RuntimeShutdownFailed) || acquired.Load() != 1 {
+		t.Fatalf("a new owner overtook the failed release: turn=%v err=%v acquisitions=%d", turn != nil, err, acquired.Load())
+	}
+	fail.Store(false)
+	completeThreadFixtureTurn(t, lifecycle, store, req, next, false)
+	if acquired.Load() != 2 {
+		t.Fatalf("ordinary preparation did not reopen after releasing the exact old owner: %d", acquired.Load())
 	}
 }
 
@@ -1362,7 +1491,7 @@ func TestThreadTurnFailedAuthorizationDoesNotConsumeHandoffBeforeSend(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Connection.Account.AuthGeneration++
+	req.ResourceGeneration++
 	denied := chatTurn(1, "denied-replacement-input")
 	ports := chatPorts(req.ChatID, denied, false)
 	ports.Authorize = func(context.Context, agent.TurnAdmission, agent.CommitReceipt) (func(), error) {
@@ -1556,7 +1685,7 @@ func TestThreadTurnHandoffSurvivesCancellationAtDurableClaim(t *testing.T) {
 	configureThreadFixture(&req, trace)
 	first := chatTurn(0, "original frozen handoff question")
 	completeThreadFixtureTurn(t, lifecycle, store, req, first, true)
-	req.Connection.Account.AuthGeneration++
+	req.ResourceGeneration++
 	canceled := chatTurn(1, "never send claimed handoff")
 	ports := chatPorts(req.ChatID, canceled, false)
 	runCtx, cancel := context.WithCancel(t.Context())
@@ -1714,7 +1843,7 @@ func TestThreadTurnUnresolvedHandoffBlocksSuccessorAndColdRetry(t *testing.T) {
 	configureThreadFixture(&req, trace)
 	first := chatTurn(0, "completed source for unknown delivery")
 	completeThreadFixtureTurn(t, lifecycle, store, req, first, true)
-	req.Connection.Account.AuthGeneration++
+	req.ResourceGeneration++
 	input := chatTurn(1, "hold-unconfirmed-handoff")
 	turn, err := lifecycle.Prepare(t.Context(), req, input, chatPorts(req.ChatID, input, false))
 	if err != nil {
@@ -2327,7 +2456,7 @@ func TestThreadTurnReplacesOnlyTheAuthoritativeNativeCommentaryLane(t *testing.T
 	}
 }
 
-func TestThreadTurnColdExplicitEnvironmentChangeReplacesNativeSession(t *testing.T) {
+func TestThreadTurnColdExplicitEnvironmentChangeResumesNativeSession(t *testing.T) {
 	lifecycle, store, request, trace := newTurnFixture(t, "codex")
 	configureThreadFixture(&request, trace)
 	request.Connection.Launch.Environment["THREAD_FIXTURE_UNIQUE_CODEX_SESSION"] = "1"
@@ -2340,11 +2469,94 @@ func TestThreadTurnColdExplicitEnvironmentChangeReplacesNativeSession(t *testing
 	request.Connection.Launch.Environment["MANAGED_TOOL_MODE"] = "changed"
 	next := chatTurn(1, "question after managed environment edit")
 	replacement := completeThreadFixtureTurn(t, lifecycle, store, request, next, false)
-	if replacement.Binding.Session == original.Binding.Session || string(replacement.Binding.Configuration) == string(original.Binding.Configuration) {
-		t.Fatalf("managed environment edit reused the old binding: %+v", replacement.Binding)
+	if replacement.Binding.Session != original.Binding.Session || string(replacement.Binding.Configuration) != string(original.Binding.Configuration) {
+		t.Fatalf("process environment edit replaced compatible native history: %+v", replacement.Binding)
 	}
-	if line := fixturePromptLine(t, trace, next.Text); !strings.Contains(line, first.Text) {
-		t.Fatalf("replacement did not receive the previous complete turn: %s", line)
+	if line := fixturePromptLine(t, trace, next.Text); strings.Contains(line, first.Text) {
+		t.Fatalf("process refresh replayed the previous input: %s", line)
+	}
+}
+
+func TestThreadTurnHotProcessChangeResumesSameHistory(t *testing.T) {
+	for _, change := range []string{"environment", "credentials"} {
+		t.Run(change, func(t *testing.T) {
+			lifecycle, store, request, trace := newTurnFixture(t, "codex")
+			configureThreadFixture(&request, trace)
+			request.Connection.Launch.Environment["THREAD_FIXTURE_UNIQUE_CODEX_SESSION"] = "1"
+			first := chatTurn(0, "first process input")
+			original := completeThreadFixtureTurn(t, lifecycle, store, request, first, true)
+			if change == "environment" {
+				request.Connection.Launch.Environment["MANAGED_TOOL_MODE"] = "new"
+			} else {
+				// The authority has proven the same subject and unchanged history root.
+				request.Connection.Account.AuthGeneration++
+			}
+			next := chatTurn(1, "input after process refresh")
+			result := completeThreadFixtureTurn(t, lifecycle, store, request, next, false)
+			wire, err := os.ReadFile(trace)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Binding.Session != original.Binding.Session || strings.Count(string(wire), `"method":"thread/start"`) != 1 || strings.Count(string(wire), `"method":"thread/resume"`) != 1 {
+				t.Fatalf("process change did not resume the original history: %+v; %s", result.Binding, wire)
+			}
+			if strings.Contains(fixturePromptLine(t, trace, next.Text), first.Text) {
+				t.Fatal("process refresh replayed prior user input")
+			}
+		})
+	}
+}
+
+func TestThreadTurnResourceRefreshUsesNegotiatedReload(t *testing.T) {
+	for _, test := range []struct {
+		// name identifies the actual adapter and mutation exercised.
+		name string
+		// provider selects the native fixture.
+		provider string
+		// legacy selects Claude without resumed instruction replacement.
+		legacy bool
+		// instructions changes the stable developer instructions rather than resources.
+		instructions bool
+		// resume records whether this native configuration can retain its history.
+		resume bool
+	}{
+		{name: "claude-resources", provider: "claude", resume: true},
+		{name: "claude-instructions", provider: "claude", instructions: true, resume: true},
+		{name: "claude-old-instructions", provider: "claude", legacy: true, instructions: true},
+		{name: "codex-resources", provider: "codex"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			lifecycle, store, request, trace := newTurnFixture(t, test.provider)
+			configureThreadFixture(&request, trace)
+			request.Connection.Launch.Environment["THREAD_FIXTURE_UNIQUE_CODEX_SESSION"] = "1"
+			if test.legacy {
+				request.Connection.Launch.Environment["THREAD_FIXTURE_CLAUDE_LEGACY"] = "1"
+			}
+			instructions := "original partner profile"
+			request.Session.DeveloperInstructions = &instructions
+			original := completeThreadFixtureTurn(t, lifecycle, store, request, chatTurn(0, "before resource update"), true)
+			if test.instructions {
+				instructions = "updated partner profile"
+			} else {
+				request.ResourceGeneration++
+			}
+			next := chatTurn(1, "after resource update")
+			turn, err := lifecycle.Prepare(t.Context(), request, next, chatPorts(request.ChatID, next, false))
+			if err != nil {
+				t.Fatal(err)
+			}
+			turn.Cancel()
+			result := turn.Run(t.Context())
+			if same := result.Binding.Session == original.Binding.Session; same != test.resume {
+				t.Fatalf("retained native session = %t, expected %t: %+v", same, test.resume, result.Binding)
+			}
+			if test.resume {
+				wire, err := os.ReadFile(trace)
+				if err != nil || !strings.Contains(string(wire), "--resume="+original.Binding.Session.SessionID) {
+					t.Fatalf("missing native resource reload: %s %v", wire, err)
+				}
+			}
+		})
 	}
 }
 
@@ -2419,5 +2631,116 @@ func TestQoderContextWindowRestartsProcessAndResumesNativeSession(t *testing.T) 
 		strings.Count(wire, `"method":"session/resume"`) != 2 ||
 		strings.Count(wire, "--context-window=400000") != 1 {
 		t.Fatalf("expected new only on the first turn and two native resumes: %s", wire)
+	}
+}
+
+func TestThreadForkPreparationUsesExistingSeatAndManagement(t *testing.T) {
+	lifecycle, _, req, trace := newTurnFixture(t, "codex")
+	req.Connection.Resources.Plugins = map[string]string{"fork-plugin": "v1"}
+	req.Fork = &agent.AgentForkRequest{SourceSessionID: "native-source", SourceCWD: req.Connection.Account.CWD, ReceiptDirectory: t.TempDir(), Position: "source-turn"}
+	entered := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		_, err := lifecycle.ForkSession(t.Context(), req, func(ctx context.Context, _ agent.ResourceSelection) (agent.ResourceLease, error) {
+			close(entered)
+			<-ctx.Done()
+			return agent.ResourceLease{}, ctx.Err()
+		})
+		done <- err
+	}()
+	<-entered
+	if err := lifecycle.CloseIdleAccount(t.Context(), req.Connection.Account.AccountID); !errors.Is(err, status_error.AIAccountBusy) {
+		t.Fatalf("fork preparation account is not busy: %v", err)
+	}
+	if err := lifecycle.CloseIdlePlugin(t.Context(), "fork-plugin"); !errors.Is(err, status_error.PluginBusy) {
+		t.Fatalf("fork preparation plugin is not busy: %v", err)
+	}
+	if _, err := lifecycle.ForkSession(t.Context(), req, nil); !errors.Is(err, status_error.RuntimeUnavailable) {
+		t.Fatalf("fork preparation did not reserve its Chat seat: %v", err)
+	}
+	if err := lifecycle.CloseThread(t.Context(), req.ChatID); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err == nil {
+		t.Fatal("CloseThread did not cancel outstanding fork preparation")
+	}
+	body, _ := os.ReadFile(trace)
+	if strings.Contains(string(body), "thread/fork") || strings.Contains(string(body), "turn/start") {
+		t.Fatalf("canceled fork preparation submitted native work: %s", body)
+	}
+}
+
+func TestThreadForkRetainsFailedResourceCleanup(t *testing.T) {
+	_, store, req, trace := newTurnFixture(t, "codex")
+	provider := agent.NewProviderRuntime(agent.ProviderRuntimeOptions{AcquireAccount: func(context.Context, agent.AccountRequest) (agent.AccountLease, error) {
+		return agent.AccountLease{}, nil
+	}})
+	lifecycle := agent.NewThreadLifecycle(provider, store)
+	t.Cleanup(func() { _ = lifecycle.Close(context.Background()); _ = provider.Close(context.Background()) })
+	req.Connection.Resources.Plugins = map[string]string{"fork-plugin": "v1"}
+	req.Fork = &agent.AgentForkRequest{SourceSessionID: "native-source", SourceCWD: req.Connection.Account.CWD, ReceiptDirectory: t.TempDir(), Position: "source-turn"}
+	var releases atomic.Int32
+	var allowClose atomic.Bool
+	binding, err := lifecycle.ForkSession(t.Context(), req, func(context.Context, agent.ResourceSelection) (agent.ResourceLease, error) {
+		return agent.ResourceLease{Close: func(context.Context) error {
+			releases.Add(1)
+			if !allowClose.Load() {
+				return status_error.RuntimeUnavailable
+			}
+			return nil
+		}}, nil
+	})
+	if binding.Session.SessionID != "fixture-child" || !errors.Is(err, status_error.RuntimeShutdownFailed) {
+		t.Fatalf("native fork result/cleanup not kept separate: %+v %v", binding, err)
+	}
+	if _, err := lifecycle.ForkSession(t.Context(), req, nil); !errors.Is(err, status_error.RuntimeShutdownFailed) {
+		t.Fatalf("failed owner replaced: %v", err)
+	}
+	if err := lifecycle.CloseIdlePlugin(t.Context(), "fork-plugin"); !errors.Is(err, status_error.RuntimeShutdownFailed) {
+		t.Fatalf("plugin mutation lost failed owner: %v", err)
+	}
+	allowClose.Store(true)
+	if err := lifecycle.CloseThread(t.Context(), req.ChatID); err != nil {
+		t.Fatal(err)
+	}
+	if releases.Load() < 2 {
+		t.Fatal("cleanup was not retried on the original resource lease")
+	}
+	body, err := os.ReadFile(trace)
+	if err != nil || strings.Count(string(body), "thread/fork") != 1 || strings.Contains(string(body), "turn/start") {
+		t.Fatalf("native fork was reexecuted or submitted a prompt: %s %v", body, err)
+	}
+}
+
+func TestThreadForkVerifiesOriginalLoginBeforeNativeGate(t *testing.T) {
+	_, store, req, trace := newTurnFixture(t, "codex")
+	var changed atomic.Bool
+	provider := agent.NewProviderRuntime(agent.ProviderRuntimeOptions{AcquireAccount: func(context.Context, agent.AccountRequest) (agent.AccountLease, error) {
+		return agent.AccountLease{VerifyLogin: func(context.Context) error {
+			if changed.Load() {
+				return status_error.RuntimeAuthRequired
+			}
+			return nil
+		}}, nil
+	}})
+	lifecycle := agent.NewThreadLifecycle(provider, store)
+	t.Cleanup(func() { _ = lifecycle.Close(context.Background()); _ = provider.Close(context.Background()) })
+	var gates atomic.Int32
+	req.Fork = &agent.AgentForkRequest{SourceSessionID: "native-source", SourceCWD: req.Connection.Account.CWD, ReceiptDirectory: t.TempDir(), Position: "source-turn", BeforeFork: func(context.Context) error { gates.Add(1); return nil }}
+	_, err := lifecycle.ForkSession(t.Context(), req, func(context.Context, agent.ResourceSelection) (agent.ResourceLease, error) {
+		changed.Store(true)
+		return agent.ResourceLease{}, nil
+	})
+	if !errors.Is(err, status_error.RuntimeAuthRequired) || gates.Load() != 0 {
+		t.Errorf("changed login passed native gate: %v gates=%d", err, gates.Load())
+	}
+	body, _ := os.ReadFile(trace)
+	if strings.Contains(string(body), "thread/fork") {
+		t.Errorf("fork used changed login: %s", body)
+	}
+	changed.Store(false)
+	binding, err := lifecycle.ForkSession(t.Context(), req, nil)
+	if err != nil || binding.Session.SessionID != "fixture-child" || gates.Load() != 1 {
+		t.Fatalf("original request did not recover after login repair: %+v %v gates=%d", binding, err, gates.Load())
 	}
 }

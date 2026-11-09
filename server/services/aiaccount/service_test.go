@@ -26,7 +26,7 @@ func TestAccountsAreIndependentAndOnlyFailAtExecution(t *testing.T) {
 	service := New(accounts, t.TempDir())
 	service.Start(context.Background())
 	t.Cleanup(service.Close)
-	account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", Name: "Kimi Code", AuthMode: constants.AccountAuthModeAPIKey, SelectedModels: []string{"model"}, Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://api.kimi.com/coding"}}}
+	account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", Name: "Kimi Code", AuthMode: constants.AccountAuthModeAPIKey, SelectedModels: []string{"model"}, Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://api.kimi.com/coding"}}
 	ctx := context.Background()
 	if err := accounts.Create(ctx, account, "one-shared-key"); err != nil {
 		t.Fatal(err)

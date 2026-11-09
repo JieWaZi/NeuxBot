@@ -11,7 +11,54 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	managedskills "github.com/JieWaZi/NeuxBot/server/internal/skills"
 )
+
+func TestManagedSkillsRemainDiscoverableAfterProbeFailure(t *testing.T) {
+	cwd, source := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "SKILL.md"), []byte("published skill"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	detection := DetectionResult{Runtime: RuntimeSummary{SkillDirectoryName: ".agents"}, State: DetectionStateUnavailable}
+	if err := prepareTestSkills(detection, Workspace{Path: cwd, Managed: true}, []Skill{{Name: "demo", Path: source}}); err != nil {
+		t.Fatalf("failed diagnostic probe blocked skill publication: %v", err)
+	}
+	body, err := os.ReadFile(filepath.Join(cwd, ".agents", "skills", "demo", "SKILL.md"))
+	if err != nil || string(body) != "published skill" {
+		t.Fatalf("registered discovery directory lost skill: %q %v", body, err)
+	}
+}
+
+func TestPublishedSkillDeclarationNeedsNoSourceIOAndColdPublishChecksContent(t *testing.T) {
+	cwd, source := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "SKILL.md"), []byte("published skill"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	digest, err := managedskills.Digest(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(source, source+"-offline"); err != nil {
+		t.Fatal(err)
+	}
+	detection := DetectionResult{Runtime: RuntimeSummary{SkillDirectoryName: ".agents"}, Capabilities: CapabilitySet{CapabilitySkillDirectory: true}}
+	selection, err := FreezeSkills(detection, Workspace{Path: cwd, Managed: true}, []Skill{{Name: "demo", Path: source, Digest: digest}}, nil)
+	if err != nil {
+		t.Fatalf("published declaration read source content: %v", err)
+	}
+	if err := os.Rename(source+"-offline", source); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "SKILL.md"), []byte("tampered"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := prepareSkills(selection); !errors.Is(err, status_error.SkillContentInvalid) {
+		t.Fatalf("cold publication accepted changed immutable content: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cwd, ".agents", "skills", "demo")); !os.IsNotExist(err) {
+		t.Fatalf("tampered skill became visible: %v", err)
+	}
+}
 
 func TestManagedSkillsPreserveWorkspaceFilesAndCopySources(t *testing.T) {
 	root, source := t.TempDir(), t.TempDir()
@@ -27,7 +74,14 @@ func TestManagedSkillsPreserveWorkspaceFilesAndCopySources(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(source, "SKILL.md"), []byte("version one"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	request := SessionPlan{Workspace: Workspace{Path: root, Managed: true}, Detection: DetectionResult{Runtime: RuntimeSummary{BaseRuntimeID: "claude", InstructionFileName: "CLAUDE.md", SkillDirectoryName: ".claude"}, Capabilities: CapabilitySet{CapabilitySkillDirectory: true}}, Skills: []Skill{{Name: "managed", Path: source}}}
+	request := struct {
+		// Workspace is the authorized managed directory.
+		Workspace Workspace
+		// Detection supplies the native skill delivery capabilities.
+		Detection DetectionResult
+		// Skills names the source content to publish.
+		Skills []Skill
+	}{Workspace: Workspace{Path: root, Managed: true}, Detection: DetectionResult{Runtime: RuntimeSummary{BaseRuntimeID: "claude", InstructionFileName: "CLAUDE.md", SkillDirectoryName: ".claude"}, Capabilities: CapabilitySet{CapabilitySkillDirectory: true}}, Skills: []Skill{{Name: "managed", Path: source}}}
 	if err := prepareTestSkills(request.Detection, request.Workspace, request.Skills); err != nil {
 		t.Fatal(err)
 	}
@@ -166,6 +220,13 @@ func TestManagedSkillsFailedSourcePreservesPreviousVersion(t *testing.T) {
 }
 
 func prepareTestSkills(detection DetectionResult, workspace Workspace, skills []Skill) error {
+	for index := range skills {
+		digest, err := managedskills.Digest(skills[index].Path)
+		if err != nil {
+			return err
+		}
+		skills[index].Digest = digest
+	}
 	selection, err := FreezeSkills(detection, workspace, skills, nil)
 	if err != nil {
 		return err
@@ -233,7 +294,11 @@ func skillTestSelection(t *testing.T, cwd, directory, content string) *SkillSele
 	if err := os.WriteFile(filepath.Join(source, "SKILL.md"), []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
-	selection, err := FreezeSkills(DetectionResult{Runtime: RuntimeSummary{SkillDirectoryName: directory}, Capabilities: CapabilitySet{CapabilitySkillDirectory: true}}, Workspace{Path: cwd, Managed: true}, []Skill{{Name: "demo", Path: source}}, nil)
+	digest, err := managedskills.Digest(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := FreezeSkills(DetectionResult{Runtime: RuntimeSummary{SkillDirectoryName: directory}, Capabilities: CapabilitySet{CapabilitySkillDirectory: true}}, Workspace{Path: cwd, Managed: true}, []Skill{{Name: "demo", Path: source, Digest: digest}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -544,7 +609,7 @@ func TestSharedSkillsPluginVersionsParticipateInTargetReservation(t *testing.T) 
 	template := skillTestSelection(t, cwd, ".agents", "same bytes")
 	freeze := func(version string) ProviderConnectionRequest {
 		versions := map[string]string{"plugin": version}
-		selection, err := FreezeSkills(DetectionResult{Runtime: RuntimeSummary{SkillDirectoryName: ".agents"}, Capabilities: CapabilitySet{CapabilitySkillDirectory: true}}, Workspace{Path: cwd, Managed: true}, []Skill{{Name: "demo", Path: template.entries[0].path}}, versions)
+		selection, err := FreezeSkills(DetectionResult{Runtime: RuntimeSummary{SkillDirectoryName: ".agents"}, Capabilities: CapabilitySet{CapabilitySkillDirectory: true}}, Workspace{Path: cwd, Managed: true}, []Skill{{Name: "demo", Path: template.entries[0].path, Digest: template.entries[0].digest}}, versions)
 		if err != nil {
 			t.Fatal(err)
 		}

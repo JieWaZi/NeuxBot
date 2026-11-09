@@ -87,15 +87,7 @@ func (u *UpdateRuntimeEnvironment) Output(ctx *gin.Context) (interface{}, error)
 			return nil, ginx.WithStack(status_error.AIAccountConfigurationInvalid)
 		}
 	}
-	releaseAccount := func() {}
-	if accountID != "" {
-		release, err := global.AIAccountService.Exclusive(accountID)
-		if err != nil {
-			return nil, ginx.WithStack(err)
-		}
-		releaseAccount = release
-		defer release()
-	}
+	// Runtime 设置只影响后续准备，不改写账号认证材料或回收现有消费者。
 	if err := global.AIAccountService.Validate(ctx, accountID); err != nil {
 		return nil, ginx.WithStack(err)
 	}
@@ -116,7 +108,6 @@ func (u *UpdateRuntimeEnvironment) Output(ctx *gin.Context) (interface{}, error)
 	if err := updateRuntimeEnvironment(ctx, environment, u.Body.IsDefault); err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	releaseAccount()
 	if configurationRequiresDetectRefresh(current, environment) || current.DefaultAccountID != environment.DefaultAccountID {
 		if err := global.RuntimeEnvironmentService.RefreshOne(ctx, u.RuntimeID); err != nil {
 			return nil, ginx.WithStack(err)
@@ -134,24 +125,10 @@ func (u *UpdateRuntimeEnvironment) Output(ctx *gin.Context) (interface{}, error)
 	return ginx.CommonSuccessResponse(), nil
 }
 
-// canCompleteStartupSetup 只在所选默认智能体完成模型与权限探测后解除首次引导。
+// canCompleteStartupSetup 接受用户明确保存的合法默认配置，原生默认模型可留空，探测结果仅提供诊断。
 func canCompleteStartupSetup(environment models.RuntimeEnvironment) bool {
-	configured := environment.Enabled && environment.IsDefault && environment.DefaultModel != ""
-	installed := environment.Detection.ResolvedBinary != "" && environment.Detection.State == agentapi.DetectionStateReady
-	if !configured || !installed {
-		return false
-	}
-	for _, diagnostic := range environment.Detection.Diagnostics {
-		if diagnostic.Code == agentapi.DiagnosticCodeACPOptionsUnavailable {
-			return false
-		}
-	}
-	permissions := agentapi.ModelPermissionLevels(
-		environment.Detection,
-		environment.CustomModels,
-		environment.DefaultModel,
-	)
-	return agentapi.PermissionLevelSupported(permissions, environment.DefaultPermissionLevel)
+	return environment.Enabled && environment.IsDefault && strings.TrimSpace(environment.Binary) != "" &&
+		constants.SelectablePermissionLevel(environment.DefaultPermissionLevel)
 }
 
 func configurationRequiresDetectRefresh(

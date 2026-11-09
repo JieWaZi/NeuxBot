@@ -27,8 +27,6 @@ type ToolCapability struct {
 type WorkIntent struct {
 	// AutomaticRunID 是服务端编排传入的原自动运行，外部正文不能绑定。
 	AutomaticRunID string `json:"-"`
-	// RetryExecutionID 表示由用户重试的已失败执行；输入与配置从权威记录恢复。
-	RetryExecutionID string
 	// ExecutionID 是上层持久编排预先分配的可选执行标识；普通入口留空并由 Execution Core 生成。
 	ExecutionID string
 	// ClientRequestID 是新建 Chat 首次发送时由客户端稳定复用的幂等标识；已有 Chat 续发必须为空。
@@ -95,6 +93,8 @@ type PrepareChatMember struct {
 	Model string
 	// Reasoning 是团队对话为该成员冻结的推理强度。
 	Reasoning string
+	// Fast 是团队对话为该成员冻结的加速选择；nil 保留原生默认。
+	Fast *bool
 	// PermissionLevel 是团队对话为该成员冻结的产品权限等级。
 	PermissionLevel constants.PermissionLevel
 }
@@ -169,12 +169,6 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 		if err := m.validateIntent(ctx, intent); err != nil {
 			return AcceptedExecution{}, err
 		}
-	}
-	if intent.RetryExecutionID != "" {
-		if strings.TrimSpace(intent.Chat.ChatID) == "" || strings.TrimSpace(intent.RetryExecutionID) == "" {
-			return AcceptedExecution{}, status_error.BadRequest
-		}
-		return AcceptedExecution{}, status_error.ExecutionRetryUnavailable
 	}
 
 	inputContext := ctx

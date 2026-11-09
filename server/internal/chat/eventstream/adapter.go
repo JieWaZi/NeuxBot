@@ -348,3 +348,8 @@ func (a *Adapter) ApplyNativeTerminal(record eventlog.Record, result *agent.Nati
 	a.messageView.SetNativeResult(record.ExecutionID, result)
 	return a.Apply(record)
 }
+
+// SetCurrentForkSession 为仅末轮分叉能力提供规范会话绑定。
+func (a *Adapter) SetCurrentForkSession(sessionID string) {
+	a.messageView.SetCurrentForkSession(sessionID)
+}

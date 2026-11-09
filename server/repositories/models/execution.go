@@ -13,8 +13,8 @@ type Execution struct {
 	AutomaticRunID string `json:"automaticRunId,omitempty"`
 	// SubmissionID 是入口无关的稳定输入身份，写入同一权威执行事实。
 	SubmissionID string `json:"submissionId,omitempty"`
-	// SubmissionHash 是规范化输入和冻结配置的摘要，拒绝同键异内容。
-	SubmissionHash string `json:"submissionHash,omitempty"`
+	// SubmissionHash 只用于服务端同键异内容校验；耐久摘要由 JSONL 执行事实单独保存，不向外序列化。
+	SubmissionHash string `json:"-"`
 	// AccountID 是本次冻结的账号标识；空值使用智能体默认配置。
 	AccountID string `gorm:"type:varchar(32);not null;default:''" json:"accountId"`
 	// ID 是 32 位无连字符 UUID。

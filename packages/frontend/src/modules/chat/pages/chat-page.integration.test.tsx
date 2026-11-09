@@ -377,7 +377,7 @@ vi.mock("@/shared/api/generated/sdk.gen", async (importOriginal) => ({
         state: "fresh",
         defaultModel:
           query.accountId === "system" ? runtime?.defaultModel : models[0]?.id,
-        models: models.map((model) => ({ ...model, configurationKnown: true })),
+        models,
       },
     };
   },
@@ -510,12 +510,10 @@ vi.mock(
           name: `账号 ${id}`,
           authMode: "api-key",
           hasCredential: true,
-          endpoints: [
-            {
-              protocol: "openai-responses",
-              baseUrl: "https://api.openai.com/v1",
-            },
-          ],
+          endpoint: {
+            protocol: "openai-responses",
+            baseUrl: "https://api.openai.com/v1",
+          },
           selectedModels:
             id === "C" && accountCIncludesOldModel.current
               ? ["c-model", "b-model"]
@@ -1626,143 +1624,152 @@ describe("ChatPage", () => {
     expect(await screen.findByText("负责人最终汇总")).toBeVisible();
   });
 
-  it("成员 Tab 发送直连成员 Chat，不触发 Channel 委派", async () => {
-    chatLastPermissionLevel.current = "full-access";
-    sendMessage.mockResolvedValueOnce({
-      chat: {
-        id: "member-chat",
-        wakerId: "waker-2",
-        latestSequence: 4,
-        activeExecutionId: "member-execution",
-      },
-      execution: {
-        id: "member-execution",
-        userMessageId: "message-2",
-        status: "running",
-      },
-    });
-    wakerResources.current = [
-      { id: "waker-1", name: "团队负责人" },
-      { id: "waker-2", name: "执行成员" },
-    ];
-    const onSendMessage = vi.fn(async () => ({
-      execution: { id: "channel-execution", status: "running" as const },
-    }));
-    const user = userEvent.setup();
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    render(
-      <QueryClientProvider client={queryClient}>
-        <WorkspaceProvider>
-          <ChatQueueProvider>
-            <TooltipProvider delayDuration={0}>
-              <MemoryRouter initialEntries={["/team"]}>
-                <Routes>
-                  <Route element={<ChatLayout rightPanel="workspace" />}>
-                    <Route
-                      path="/team"
-                      element={
-                        <>
-                          <TeamMemberTabControls
-                            members={[
-                              {
-                                chatId: "member-chat",
-                                name: "执行成员",
-                                wakerId: "waker-2",
-                              },
-                            ]}
-                          />
-                          <TeamChatPageContent
-                            chatId="team-lead-chat"
-                            teamContext={{
-                              channelId: "team-1",
-                              leadProcessing: false,
-                              leadWakerId: "waker-1",
-                              members: [
-                                {
-                                  chatId: "team-lead-chat",
-                                  id: "waker-1",
-                                  isLead: true,
-                                  model: "gpt-5",
-                                  name: "团队负责人",
-                                  permissionLevel: "auto",
-                                  reasoning: "",
-                                  runtimeId: "codex",
-                                },
+  it.each(["gpt-5", ""])(
+    "成员 Tab 保留已保存模型 %s 直连成员 Chat，不触发 Channel 委派",
+    async (savedModel) => {
+      chatLastPermissionLevel.current = "full-access";
+      sendMessage.mockResolvedValueOnce({
+        chat: {
+          id: "member-chat",
+          wakerId: "waker-2",
+          latestSequence: 4,
+          activeExecutionId: "member-execution",
+        },
+        execution: {
+          id: "member-execution",
+          userMessageId: "message-2",
+          status: "running",
+        },
+      });
+      wakerResources.current = [
+        { id: "waker-1", name: "团队负责人" },
+        { id: "waker-2", name: "执行成员" },
+      ];
+      const onSendMessage = vi.fn(async () => ({
+        execution: { id: "channel-execution", status: "running" as const },
+      }));
+      const user = userEvent.setup();
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={queryClient}>
+          <WorkspaceProvider>
+            <ChatQueueProvider>
+              <TooltipProvider delayDuration={0}>
+                <MemoryRouter initialEntries={["/team"]}>
+                  <Routes>
+                    <Route element={<ChatLayout rightPanel="workspace" />}>
+                      <Route
+                        path="/team"
+                        element={
+                          <>
+                            <TeamMemberTabControls
+                              members={[
                                 {
                                   chatId: "member-chat",
-                                  id: "waker-2",
-                                  isLead: false,
-                                  model: "gpt-5",
                                   name: "执行成员",
-                                  permissionLevel: "auto",
-                                  reasoning: "",
-                                  runtimeId: "codex",
+                                  wakerId: "waker-2",
                                 },
-                              ],
-                              name: "研发团队",
-                              timeline: [],
-                              hasEarlierTimelineMessages: false,
-                              isLoadingEarlierTimelineMessages: false,
-                              onLoadEarlierTimelineMessages: vi.fn(),
-                              onCreateThread: vi.fn(),
-                              onSendMessage,
-                              onStopWork: vi.fn(),
-                              onThreadCreated: vi.fn(),
-                              onUpdateMemberConfigs: vi.fn(),
-                              renderTaskBoard: () => <div>任务板详情</div>,
-                              threadId: "thread-1",
-                              workState: "idle",
-                              workProgress: {
-                                phase: "idle",
-                                review: 0,
-                                terminal: 0,
-                                total: 0,
-                              },
-                            }}
-                          />
-                        </>
-                      }
-                    />
-                  </Route>
-                </Routes>
-              </MemoryRouter>
-            </TooltipProvider>
-          </ChatQueueProvider>
-        </WorkspaceProvider>
-      </QueryClientProvider>,
-    );
+                              ]}
+                            />
+                            <TeamChatPageContent
+                              chatId="team-lead-chat"
+                              teamContext={{
+                                channelId: "team-1",
+                                leadProcessing: false,
+                                leadWakerId: "waker-1",
+                                members: [
+                                  {
+                                    chatId: "team-lead-chat",
+                                    id: "waker-1",
+                                    isLead: true,
+                                    model: "gpt-5",
+                                    name: "团队负责人",
+                                    permissionLevel: "auto",
+                                    reasoning: "",
+                                    runtimeId: "codex",
+                                  },
+                                  {
+                                    chatId: "member-chat",
+                                    id: "waker-2",
+                                    isLead: false,
+                                    accountId: "system",
+                                    model: savedModel,
+                                    name: "执行成员",
+                                    permissionLevel: "auto",
+                                    reasoning: "",
+                                    runtimeId: "codex",
+                                  },
+                                ],
+                                name: "研发团队",
+                                timeline: [],
+                                hasEarlierTimelineMessages: false,
+                                isLoadingEarlierTimelineMessages: false,
+                                onLoadEarlierTimelineMessages: vi.fn(),
+                                onCreateThread: vi.fn(),
+                                onSendMessage,
+                                onStopWork: vi.fn(),
+                                onThreadCreated: vi.fn(),
+                                onUpdateMemberConfigs: vi.fn(),
+                                renderTaskBoard: () => <div>任务板详情</div>,
+                                threadId: "thread-1",
+                                workState: "idle",
+                                workProgress: {
+                                  phase: "idle",
+                                  review: 0,
+                                  terminal: 0,
+                                  total: 0,
+                                },
+                              }}
+                            />
+                          </>
+                        }
+                      />
+                    </Route>
+                  </Routes>
+                </MemoryRouter>
+              </TooltipProvider>
+            </ChatQueueProvider>
+          </WorkspaceProvider>
+        </QueryClientProvider>,
+      );
 
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: "测试打开执行成员会话",
-      }),
-    );
-    await screen.findByText("历史消息：member-chat");
-    expect(
-      screen.getByRole("button", { name: "执行权限：自动审批" }),
-    ).toBeVisible();
-    expect(chatMessageReads.current["member-chat"]).toBe(1);
-    const input = screen.getByRole("textbox", { name: "输入消息" });
-    await user.type(input, "和成员直接聊聊");
-    await user.click(screen.getByRole("button", { name: "发送消息" }));
+      fireEvent.click(
+        await screen.findByRole("button", {
+          name: "测试打开执行成员会话",
+        }),
+      );
+      await screen.findByText("历史消息：member-chat");
+      expect(
+        screen.getByRole("button", { name: "执行权限：自动审批" }),
+      ).toBeVisible();
+      expect(chatMessageReads.current["member-chat"]).toBe(1);
+      const input = screen.getByRole("textbox", { name: "输入消息" });
+      await user.type(input, "和成员直接聊聊");
+      await user.click(screen.getByRole("button", { name: "发送消息" }));
 
-    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
-    await act(async () => {
-      await new Promise((resolve) => window.setTimeout(resolve, 100));
-    });
-    expect(screen.getByText("和成员直接聊聊")).toBeVisible();
-    expect(chatMessageReads.current["member-chat"]).toBe(1);
-    expect(sendMessage.mock.calls[0]?.[0]).toEqual(
-      expect.objectContaining({
-        path: { chatId: "member-chat" },
-        body: expect.objectContaining({ text: "和成员直接聊聊" }),
-      }),
-    );
-    expect(onSendMessage).not.toHaveBeenCalled();
-    expect(chatDetailReads.current["member-chat"]).toBe(1);
-  });
+      await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+      await act(async () => {
+        await new Promise((resolve) => window.setTimeout(resolve, 100));
+      });
+      expect(screen.getByText("和成员直接聊聊")).toBeVisible();
+      expect(chatMessageReads.current["member-chat"]).toBe(1);
+      expect(sendMessage.mock.calls[0]?.[0]).toEqual(
+        expect.objectContaining({
+          path: { chatId: "member-chat" },
+          body: expect.objectContaining({
+            text: "和成员直接聊聊",
+            model: savedModel,
+            reasoning: "",
+            accountId: "system",
+          }),
+        }),
+      );
+      expect(onSendMessage).not.toHaveBeenCalled();
+      expect(chatDetailReads.current["member-chat"]).toBe(1);
+    },
+  );
 
   it("新团队对话在成员草稿 Tab 调整执行配置后于首次发送冻结", async () => {
     window.localStorage.setItem(
@@ -2900,7 +2907,7 @@ describe("ChatPage", () => {
     expect(screen.getByRole("button", { name: /允许本次/ })).toBeDisabled();
   });
 
-  it("Runtime 默认完全访问不受支持时安全降为自动审批", async () => {
+  it("目录权限候选不改写已保存的默认完全访问", async () => {
     runtimeOptions.current = [
       {
         id: "codex",
@@ -2942,22 +2949,22 @@ describe("ChatPage", () => {
     );
 
     expect(
-      await screen.findByText("部分智能体无法启用完全访问。"),
+      await screen.findByText("模型目录未列出已选权限，运行时将由智能体确认。"),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "执行权限：自动审批" }),
+      screen.getByRole("button", { name: "执行权限：完全访问" }),
     ).toBeEnabled();
     await user.type(screen.getByRole("textbox", { name: "输入消息" }), "继续");
     await user.click(screen.getByRole("button", { name: "发送消息" }));
     await waitFor(() => expect(sendMessage).toHaveBeenCalledOnce());
     expect(sendMessage.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({
-        body: expect.objectContaining({ permissionLevel: "auto" }),
+        body: expect.objectContaining({ permissionLevel: "full-access" }),
       }),
     );
   });
 
-  it("历史显式权限不受支持时保持选择并阻止发送", async () => {
+  it("历史显式权限未被目录列出时保持选择并尝试发送", async () => {
     chatLastPermissionLevel.current = "full-access";
     runtimeOptions.current = [
       {
@@ -2999,33 +3006,30 @@ describe("ChatPage", () => {
     );
 
     expect(
-      await screen.findByText(
-        "当前智能体或模型不支持已选权限，请先更换权限或模型。",
-      ),
+      await screen.findByText("模型目录未列出已选权限，运行时将由智能体确认。"),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "执行权限：完全访问" }),
     ).toBeEnabled();
     await user.type(screen.getByRole("textbox", { name: "输入消息" }), "继续");
-    expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
-    expect(sendMessage).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledOnce());
+    expect(sendMessage.mock.calls[0]?.[0]).toMatchObject({
+      body: { permissionLevel: "full-access" },
+    });
   });
 
-  it("探测未声明权限时保持选择并阻止发送", async () => {
+  it("智能体探测失败且目录为空时保留默认配置并尝试发送", async () => {
     runtimeOptions.current = [
       {
         id: "codex",
         name: "Codex",
         enabled: true,
-        state: "ready",
+        state: "unavailable",
         defaultModel: "gpt-5",
         defaultPermissionLevel: "full-access",
-        models: [
-          {
-            id: "gpt-5",
-            name: "GPT-5",
-          },
-        ],
+        defaultReasoning: "high",
+        models: [],
       },
     ];
     const user = userEvent.setup();
@@ -3051,17 +3055,21 @@ describe("ChatPage", () => {
       </QueryClientProvider>,
     );
 
-    expect(
-      await screen.findByText(
-        "当前智能体或模型不支持已选权限，请先更换权限或模型。",
-      ),
-    ).toBeInTheDocument();
+    await screen.findByRole("button", { name: "执行权限：完全访问" });
     expect(
       screen.getByRole("button", { name: "执行权限：完全访问" }),
     ).toBeDisabled();
     await user.type(screen.getByRole("textbox", { name: "输入消息" }), "继续");
-    expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
-    expect(sendMessage).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledOnce());
+    expect(sendMessage.mock.calls[0]?.[0]).toMatchObject({
+      body: {
+        runtimeId: "codex",
+        model: "gpt-5",
+        reasoning: "high",
+        permissionLevel: "full-access",
+      },
+    });
   });
 
   it("按 ACP 模型展示专属 Thinking，并在切换模型时显示继承", async () => {

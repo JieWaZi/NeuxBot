@@ -4,12 +4,6 @@ import {
   useErrorNotices,
   reportErrorNotice,
 } from "@/shared/api/error-notices";
-const { retryExecutionMock } = vi.hoisted(() => ({
-  retryExecutionMock: vi.fn(),
-}));
-vi.mock("@/shared/api/generated/sdk.gen", () => ({
-  retryChatExecution: retryExecutionMock,
-}));
 import type { AppendMessage, ExternalStoreAdapter } from "@assistant-ui/react";
 import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { createElement, useLayoutEffect, type ReactNode } from "react";
@@ -211,7 +205,6 @@ describe("useChatRuntime queue", () => {
     projectedMessages.current = [];
     subscriptionOptions.current = undefined;
     subscribeChatMock.mockClear();
-    retryExecutionMock.mockReset();
     const notices = renderHook(useErrorNotices);
     act(() => {
       for (const notice of notices.result.current)
@@ -395,42 +388,6 @@ describe("useChatRuntime queue", () => {
       unmount();
       vi.useRealTimers();
     }
-  });
-
-  it("消息重试绑定失败执行，连点只调用一次接口，结果触发权威刷新", async () => {
-    let resolve!: (value: { data: MessageResult }) => void;
-    retryExecutionMock.mockImplementation(
-      () =>
-        new Promise((done) => {
-          resolve = done;
-        }),
-    );
-    const options = {
-      ...runtimeOptions("chat-retry"),
-      activeExecutionId: undefined,
-    };
-    const { result } = renderHook(() => useChatRuntime(options), { wrapper });
-    let pending!: Promise<void>;
-    act(() => {
-      pending = result.current.retryExecution("failed-1");
-      void result.current.retryExecution("failed-1");
-    });
-    expect(retryExecutionMock).toHaveBeenCalledTimes(1);
-    expect(retryExecutionMock).toHaveBeenCalledWith({
-      path: { chatId: "chat-retry", executionId: "failed-1" },
-      throwOnError: true,
-    });
-    await act(async () => {
-      resolve({
-        data: {
-          chat: { id: "chat-retry" },
-          execution: { id: "child-1", status: "running" },
-        },
-      });
-      await pending;
-    });
-    expect(options.onTerminal).toHaveBeenCalled();
-    expect(result.current.isRunning).toBe(true);
   });
 
   it("响应未知时只检查状态，不重新发送；后续发送成功清除发送错误", async () => {

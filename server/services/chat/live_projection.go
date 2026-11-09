@@ -3,7 +3,6 @@ package chat
 import (
 	"context"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
@@ -26,11 +25,7 @@ func (m *service) catchUpLiveProjection(ctx context.Context, chatID string) erro
 		if err := ctx.Err(); err != nil {
 			return chatContextStatus(err)
 		}
-		sessions, err := m.queryIndexes.runtimeSessionController.ListByChat(ctx, chatID)
-		if err != nil {
-			return err
-		}
-		projection := currentProjection{chat: indexed, runtimeSessions: runtimeSessionsByID(sessions)}
+		projection := currentProjection{chat: indexed}
 		if err := applyProjectionTail(&projection, tail); err != nil {
 			return err
 		}
@@ -54,19 +49,6 @@ func (m *service) catchUpLiveProjection(ctx context.Context, chatID string) erro
 				"last_ended_execution_at":     current.LastEndedExecutionAt,
 			}); err != nil {
 				return err
-			}
-			for _, record := range tail {
-				if record.Type == constants.ChatEventTypeMessageInherited {
-					if err := m.queryIndexes.runtimeSessionController.DeleteByChat(transactionContext, chatID); err != nil {
-						return err
-					}
-					for _, session := range projection.runtimeSessions {
-						if err := m.queryIndexes.runtimeSessionController.Upsert(transactionContext, session); err != nil {
-							return err
-						}
-					}
-					break
-				}
 			}
 			return m.queryIndexes.publishResult(transactionContext, projection.result)
 		})

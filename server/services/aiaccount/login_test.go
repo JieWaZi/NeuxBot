@@ -35,7 +35,7 @@ func subscriptionFixture(t *testing.T) (*Service, models.AIAccount, codexCredent
 	service := New(controllers.NewAIAccountController(database.DB))
 	service.Start(context.Background())
 	t.Cleanup(service.Close)
-	account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", Name: "subscription", AuthMode: constants.AccountAuthModeSubscription, Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: constants.AIAccountOpenAIURL}}}
+	account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", Name: "subscription", AuthMode: constants.AccountAuthModeSubscription, Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: constants.AIAccountOpenAIURL}}
 	credential := codexCredential{Tokens: subscriptionTokens("user", "refresh-original"), LastRefresh: time.Now().UTC().Add(-time.Minute)}
 	encoded, _ := json.Marshal(credential)
 	if err := service.accounts.Create(context.Background(), account, string(encoded)); err != nil {
@@ -136,7 +136,7 @@ func TestCoreLoginCompletesAndPublishesWithoutRendererPolling(t *testing.T) {
 	service, account, _ := subscriptionFixture(t)
 	kimi := models.AIAccount{
 		ID: "fedcba9876543210fedcba9876543210", Name: "Kimi subscription", AuthMode: constants.AccountAuthModeSubscription,
-		Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolOpenAICompletions, BaseURL: constants.AIAccountKimiURL}},
+		Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolOpenAICompletions, BaseURL: constants.AIAccountKimiURL},
 	}
 	if err := service.accounts.Create(t.Context(), kimi, kimiCredentialMarker); err != nil {
 		t.Fatal(err)

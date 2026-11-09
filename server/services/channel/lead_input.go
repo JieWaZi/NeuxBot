@@ -137,6 +137,7 @@ func (s *service) drainLeadInputs(
 		lead.RuntimeID,
 		lead.Model,
 		lead.Reasoning,
+		lead.Fast,
 		lead.PermissionLevel,
 		capability,
 		teamInstruction,

@@ -157,6 +157,7 @@ func (s *service) drainNotifications(ctx context.Context, threadID string) error
 		lead.RuntimeID,
 		lead.Model,
 		lead.Reasoning,
+		lead.Fast,
 		lead.PermissionLevel,
 		capability,
 		teamInstruction,

@@ -10,11 +10,11 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
-func TestSessionPlanExcludesConnectorSecretMaterial(t *testing.T) {
+func TestConnectorDeclarationsExcludeSecretMaterial(t *testing.T) {
 	connector := models.MCPConnector{ID: "connector", Transport: constants.MCPTransportStreamableHTTP, URL: "https://service.invalid/mcp", Headers: []models.MCPSecretDefinition{{Name: "Authorization", Value: "private-header", Configured: true}}, Environment: []models.MCPSecretDefinition{{Name: "TOKEN", Value: "private-environment", Configured: true}}}
-	plan, _ := (&service{}).buildSessionPlan(messageChat{}, pendingMessage{}, &preparedMessageFiles{}, nil, []models.MCPConnector{connector}, models.RuntimeEnvironment{})
-	if len(plan.Connectors) != 1 || plan.Connectors[0].URL != connector.URL {
-		t.Fatalf("static session plan retained connector secrets: connectors=%d", len(plan.Connectors))
+	connectors := runtimeConnectorDeclarations([]models.MCPConnector{connector})
+	if len(connectors) != 1 || connectors[0].URL != connector.URL {
+		t.Fatalf("connector declaration lost its fixed URL: connectors=%d", len(connectors))
 	}
 }
 

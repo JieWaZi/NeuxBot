@@ -374,7 +374,7 @@ it("版本切换失败保留错误与引导，可以重新选择重试", async (
   ).toBeEnabled();
 });
 
-it("单个安装版本不增加选择字段，模型目录失败时禁止进入并支持重检恢复", async () => {
+it("单个安装版本不增加选择字段，目录失败仍可进入并支持重检恢复", async () => {
   api.read.mockResolvedValue({
     ...found,
     resources: [
@@ -404,7 +404,7 @@ it("单个安装版本不增加选择字段，模型目录失败时禁止进入�
   );
   expect(
     screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
-  ).toBeDisabled();
+  ).toBeEnabled();
   api.refreshOne.mockImplementationOnce(async () =>
     api.read.mockResolvedValue(found),
   );
@@ -422,7 +422,7 @@ it.each([
   { models: [{ id: "free-model", permissionLevels: ["default"] }] },
   { diagnostics: [{ code: "ACP_OPTIONS_UNAVAILABLE" }] },
 ])(
-  "模型为空、默认模型失效、权限不匹配或刷新失败均不能进入：%j",
+  "目录为空、模型未列出、权限候选不匹配或刷新失败仍可进入：%j",
   async (patch) => {
     api.read.mockResolvedValue({
       ...found,
@@ -431,7 +431,7 @@ it.each([
     mount();
     expect(
       await screen.findByRole("button", { name: "设为默认并进入 NeuxBot" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
     expect(api.update).not.toHaveBeenCalled();
   },
 );
@@ -565,17 +565,17 @@ it("用户安装后手动重检，再设置默认进入", async () => {
   expect(await screen.findByText("工作区")).toBeVisible();
 });
 
-it("探测故障与未安装分开，成功重检可恢复安装引导", async () => {
+it("探测故障在安装引导中提示，不替换配置入口", async () => {
   api.read.mockResolvedValue({ ...missing, startupDetectionFailed: true });
   mount();
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "本次检测未能完整完成",
   );
-  expect(screen.queryByText("设置智能体")).not.toBeInTheDocument();
-  api.refresh.mockImplementationOnce(async () =>
+  expect(screen.getByText("设置智能体")).toBeInTheDocument();
+  api.refreshOne.mockImplementationOnce(async () =>
     api.read.mockResolvedValue(missing),
   );
-  fireEvent.click(screen.getByRole("button", { name: "重试" }));
+  fireEvent.click(screen.getByRole("button", { name: "重新检测" }));
   expect(
     await screen.findByRole("heading", { name: "设置智能体" }),
   ).toBeVisible();
@@ -653,14 +653,14 @@ it("本次探测中连接失败，仍允许手动重试读取", async () => {
   expect(screen.getByRole("button", { name: "重试" })).toBeEnabled();
 });
 
-it("重检请求成功但后端仍有启动故障时保留错误页", async () => {
+it("重检仍有探测故障时保留提示和配置入口", async () => {
   api.read.mockResolvedValue({ ...missing, startupDetectionFailed: true });
   mount();
   await screen.findByRole("alert");
-  fireEvent.click(screen.getByRole("button", { name: "重试" }));
-  await waitFor(() => expect(api.refresh).toHaveBeenCalledOnce());
+  fireEvent.click(screen.getByRole("button", { name: "重新检测" }));
+  await waitFor(() => expect(api.refreshOne).toHaveBeenCalledOnce());
   expect(screen.getByRole("alert")).toHaveTextContent("本次检测未能完整完成");
-  expect(screen.queryByText("设置智能体")).not.toBeInTheDocument();
+  expect(screen.getByText("设置智能体")).toBeInTheDocument();
 });
 
 it("保存请求成功但后端未解除准入时仍保留引导", async () => {
@@ -698,7 +698,7 @@ it("单页同时列出已安装与未安装 CLI，安装命令使用图标复制
   expect(api.update).not.toHaveBeenCalled();
 });
 
-it("超过十个模型复用搜索选择，按用户所选模型与支持权限保存", async () => {
+it("超过十个模型复用搜索选择，保留已配置权限保存", async () => {
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -742,11 +742,89 @@ it("超过十个模型复用搜索选择，按用户所选模型与支持权限�
       expect.objectContaining({
         body: expect.objectContaining({
           defaultModel: "model-11",
-          defaultPermissionLevel: "default",
+          defaultPermissionLevel: "auto",
         }),
       }),
       expect.anything(),
     ),
   );
   vi.unstubAllGlobals();
+});
+
+it("所选智能体探测失败且目录为空仍可保存配置并进入", async () => {
+  api.read.mockResolvedValue({
+    ...found,
+    resources: [
+      {
+        ...found.resources?.[0],
+        state: "unavailable",
+        models: [],
+        defaultModel: "saved-model",
+        diagnostics: [{ code: "ACP_OPTIONS_UNAVAILABLE" }],
+      },
+    ],
+  });
+  mount();
+  const enter = await screen.findByRole("button", {
+    name: "设为默认并进入 NeuxBot",
+  });
+  expect(enter).toBeEnabled();
+  fireEvent.click(enter);
+  expect(await screen.findByText("工作区")).toBeVisible();
+  expect(api.update).toHaveBeenCalledWith(
+    expect.objectContaining({
+      body: expect.objectContaining({
+        defaultModel: "saved-model",
+        defaultPermissionLevel: "auto",
+        enabled: true,
+        isDefault: true,
+      }),
+    }),
+    expect.anything(),
+  );
+});
+
+it("后台探测未完成不阻止保存已有程序配置", async () => {
+  api.read.mockResolvedValue({
+    ...found,
+    startupDetectionPending: true,
+    resources: [
+      { ...found.resources?.[0], state: "", detectedAt: 0, models: [] },
+    ],
+  });
+  mount();
+  const enter = await screen.findByRole("button", {
+    name: "设为默认并进入 NeuxBot",
+  });
+  expect(enter).toBeEnabled();
+  fireEvent.click(enter);
+  expect(await screen.findByText("工作区")).toBeVisible();
+});
+
+it("目录为空且未配置权限时以默认权限保存首次配置", async () => {
+  api.read.mockResolvedValue({
+    ...found,
+    resources: [
+      {
+        ...found.resources?.[0],
+        models: [],
+        defaultPermissionLevel: undefined,
+      },
+    ],
+  });
+  mount();
+  const enter = await screen.findByRole("button", {
+    name: "设为默认并进入 NeuxBot",
+  });
+  expect(enter).toBeEnabled();
+  fireEvent.click(enter);
+  expect(await screen.findByText("工作区")).toBeVisible();
+  expect(api.update).toHaveBeenCalledWith(
+    expect.objectContaining({
+      body: expect.objectContaining({
+        defaultPermissionLevel: "default",
+      }),
+    }),
+    expect.anything(),
+  );
 });

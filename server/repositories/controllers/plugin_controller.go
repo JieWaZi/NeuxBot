@@ -603,11 +603,11 @@ func (c *pluginController) ExecutionDeclarations(ctx context.Context, waker stri
 			return databaseError("execution_plugin_resources", waker, err)
 		}
 		var versions []models.PluginVersion
-		if err := tx.Select("id", "plugin_id", "digest", "trusted_at").Where("id IN (?)", installed("version_id")).Find(&versions).Error; err != nil {
+		if err := tx.Select("id", "plugin_id", "digest", "trusted_at", "content_path", "json_object('manifest', json_extract(package, '$.manifest'), 'format', json_extract(package, '$.format'), 'sourcePath', json_extract(package, '$.sourcePath'), 'skills', json_extract(package, '$.skills'), 'servers', json_extract(package, '$.servers'), 'integration', json_extract(package, '$.integration'), 'nativeComponents', json_extract(package, '$.nativeComponents'), 'nativeImplementations', json_extract(package, '$.nativeImplementations')) AS package").Where("id IN (?)", installed("version_id")).Find(&versions).Error; err != nil {
 			return databaseError("execution_plugin_versions", waker, err)
 		}
-		var configurations []models.PluginConfiguration
-		if err := tx.Select("plugin_id", "revision").Where("plugin_id IN (?)", installed("plugin_id")).Find(&configurations).Error; err != nil {
+		var configurations []models.PluginExecutionDeclaration
+		if err := tx.Model(&models.PluginConfiguration{}).Select("plugin_id AS id", "revision AS configuration_revision", "values", "(SELECT json_group_array(json_extract(value, '$.name')) FROM json_each(COALESCE(NULLIF(plugin_configurations.secrets, ''), '[]')) WHERE json_extract(value, '$.configured') = 1) AS configured_secrets").Where("plugin_id IN (?)", installed("plugin_id")).Find(&configurations).Error; err != nil {
 			return databaseError("execution_plugin_revisions", waker, err)
 		}
 		byID := make(map[string]models.PluginVersion, len(versions))
@@ -618,9 +618,9 @@ func (c *pluginController) ExecutionDeclarations(ctx context.Context, waker stri
 		for _, resource := range resources {
 			names[resource.ID] = resource.Name
 		}
-		revisions := make(map[string]int64, len(configurations))
+		settings := make(map[string]models.PluginExecutionDeclaration, len(configurations))
 		for _, configuration := range configurations {
-			revisions[configuration.PluginID] = configuration.Revision
+			settings[configuration.ID] = configuration
 		}
 		for _, installation := range installations {
 			version, exists := byID[installation.VersionID]
@@ -628,7 +628,8 @@ func (c *pluginController) ExecutionDeclarations(ctx context.Context, waker stri
 			if !exists || !owned || version.PluginID != installation.PluginID {
 				continue
 			}
-			result = append(result, models.PluginExecutionDeclaration{ID: installation.PluginID, Name: name, VersionID: version.ID, Digest: version.Digest, TrustedAt: version.TrustedAt, ConfigurationRevision: revisions[installation.PluginID]})
+			configuration := settings[installation.PluginID]
+			result = append(result, models.PluginExecutionDeclaration{ID: installation.PluginID, Name: name, VersionID: version.ID, Digest: version.Digest, TrustedAt: version.TrustedAt, ConfigurationRevision: configuration.ConfigurationRevision, ContentPath: version.ContentPath, Package: version.Package, Values: configuration.Values, ConfiguredSecrets: configuration.ConfiguredSecrets})
 		}
 		return nil
 	})

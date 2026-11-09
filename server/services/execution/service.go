@@ -6,6 +6,7 @@ import (
 
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -20,6 +21,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/projectsource"
+	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
@@ -71,6 +73,8 @@ type ExecutionConfiguration struct {
 	Model string
 	// Reasoning 是可选推理强度标识；空值使用 Runtime 默认值。
 	Reasoning string
+	// Fast 是本次 Fast 选择；未解析时空值继承 Runtime 默认，已解析空值保持原生默认。
+	Fast *bool
 	// PermissionLevel 是跨 Runtime 的产品权限等级。
 	PermissionLevel constants.PermissionLevel
 	// RequiredConnectorTransport 是调用入口要求 Runtime 明确支持的 MCP 传输；空值表示无额外要求。
@@ -97,23 +101,23 @@ type service struct {
 	agent *capability.Registry
 	// agentEndpoint 是应用明确提供的本机执行协议地址。
 	agentEndpoint string
-	// agentBinary 是随应用发布的 CLI 真实路径。
-	agentBinary string
+	// systemSkillDirectory 是初始化时发布的不可变系统技能目录。
+	systemSkillDirectory string
 	// agentBindings 提供伙伴当前普通业务能力的领域绑定。
 	agentBindings func(models.Chat, string, []string, string) []capability.Binding
-	// validateIntent 在任何首发、续发或重试接纳前校验领域持久约束。
+	// validateIntent 在首发和续发接纳前校验领域持久约束。
 	validateIntent func(context.Context, WorkIntent) error
 	// acquireTeamChatInput 将团队成员 Chat 的直接输入纳入团队聚合接纳边界。
 	acquireTeamChatInput func(context.Context, string, bool) (context.Context, func(), error)
 	// accounts 为执行冻结账号并生成隔离配置。
 	accounts *aiaccount.Service
-	// threads owns native bindings and turns for the same conversation store as journal.
+	// threads 管理原生绑定与回合，与 journal 共用同一会话存储。
 	threads *agent.ThreadLifecycle
-	// resolveAccount freezes the subject and generation before native acquisition.
+	// resolveAccount 在原生获取前确认账号主体和认证代次。
 	resolveAccount func(context.Context, agent.AccountRequest, string) (agent.AccountRequest, error)
-	// runtimeSummaries supplies pure workspace file metadata from the runtime catalog.
+	// runtimeSummaries 提供目录中的工作区文件与技能发现元数据。
 	runtimeSummaries []agent.RuntimeSummary
-	// nativeResources tracks connection-owned public resource projections for hot turns.
+	// nativeResources 保存现有连接实际持有的资源引用，供热续聊消费。
 	nativeResources sync.Map
 	// journal 读写 Chat 权威事实、窄投影和 committed SSE。
 	journal chatservice.Journal
@@ -127,7 +131,7 @@ type service struct {
 	projectController controllers.ProjectController
 	// skillController 读取伙伴当前启用技能。
 	skillController controllers.SkillController
-	// connectorController 读取伙伴当前启用并已解密的连接器。
+	// connectorController 读取伙伴启用声明并在冷获取解密实际交付的连接器。
 	connectorController controllers.MCPConnectorController
 	// pluginInstallations 复用声明驱动身份与安装预检。
 	pluginInstallations *plugininstallation.Service
@@ -173,11 +177,11 @@ type Config struct {
 	AcquireTeamChatInput func(context.Context, string, bool) (context.Context, func(), error)
 	// Accounts 管理受管账号的使用租约和配置投射。
 	Accounts *aiaccount.Service
-	// Threads owns native turns and shares Chat's conversation store.
+	// Threads 管理原生回合，与 Chat 共用会话存储。
 	Threads *agent.ThreadLifecycle
-	// ResolveAccount freezes an authoritative subject and generation for the selected config root.
+	// ResolveAccount 为所选配置根确认权威账号主体与认证代次。
 	ResolveAccount func(context.Context, agent.AccountRequest, string) (agent.AccountRequest, error)
-	// RuntimeSummaries declares workspace filenames and skill directories.
+	// RuntimeSummaries 声明工作区指令文件与技能发现目录。
 	RuntimeSummaries []agent.RuntimeSummary
 	// Journal 读写 Chat 权威事实和可重建投影。
 	Journal chatservice.Journal
@@ -191,7 +195,7 @@ type Config struct {
 	Projects controllers.ProjectController
 	// Skills 读取伙伴当前启用技能。
 	Skills controllers.SkillController
-	// Connectors 读取伙伴当前启用并已解密的连接器。
+	// Connectors 读取伙伴启用声明并在冷获取解密实际交付的连接器。
 	Connectors controllers.MCPConnectorController
 	// PluginInstallations 提供共享声明驱动身份。
 	PluginInstallations *plugininstallation.Service
@@ -256,11 +260,22 @@ func New(config Config) (Core, error) {
 	if err != nil {
 		return nil, err
 	}
+	systemSkillDirectory := ""
+	if config.Agent != nil {
+		systemSkillDirectory, err = builtinskills.SystemDirectory(strings.TrimSpace(config.SkillDataDirectory), config.AgentBinary)
+		if err != nil {
+			return nil, err
+		}
+		systemSkillDirectory, err = filepath.EvalSymlinks(systemSkillDirectory)
+		if err != nil {
+			return nil, status_error.AgentContextStorageError
+		}
+	}
 	return &service{
 		agent:                config.Agent,
 		events:               config.Events,
 		agentEndpoint:        config.AgentEndpoint,
-		agentBinary:          config.AgentBinary,
+		systemSkillDirectory: systemSkillDirectory,
 		agentBindings:        config.AgentBindings,
 		validateIntent:       config.ValidateIntent,
 		accounts:             config.Accounts,

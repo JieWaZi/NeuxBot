@@ -103,8 +103,6 @@ type queryIndexStore struct {
 	logStore chatJournalStorage
 	// chatController 持久化对话查询索引。
 	chatController controllers.ChatController
-	// runtimeSessionController 持久化 Runtime 续接查询索引。
-	runtimeSessionController controllers.RuntimeSessionController
 	// transactionController 提供跨查询索引写入的数据库事务边界。
 	transactionController controllers.TransactionController
 }
@@ -112,13 +110,11 @@ type queryIndexStore struct {
 // newQueryIndexStore 创建可重建的 SQLite 查询索引集合。
 func newQueryIndexStore(
 	chats controllers.ChatController,
-	runtimeSessions controllers.RuntimeSessionController,
 	transactions controllers.TransactionController,
 ) *queryIndexStore {
 	return &queryIndexStore{
-		chatController:           chats,
-		runtimeSessionController: runtimeSessions,
-		transactionController:    transactions,
+		chatController:        chats,
+		transactionController: transactions,
 	}
 }
 
@@ -236,8 +232,7 @@ func (p *queryIndexStore) ensureChatState(
 		return
 	}
 	if err := p.replaceCurrentProjection(ctx, currentProjection{
-		chat:            state.chat,
-		runtimeSessions: state.runtimeSessions,
+		chat: state.chat,
 	}); err != nil {
 		logx.Errorf(
 			"restore missing chat query index failed: chat_id=%s error=%v",
@@ -322,9 +317,6 @@ func (p *queryIndexStore) deleteChats(
 				if err := p.results.Delete(transactionContext, constants.WorkResultOwnerKindChat, []string{chatID}); err != nil {
 					return err
 				}
-			}
-			if err := p.runtimeSessionController.DeleteByChat(transactionContext, chatID); err != nil {
-				return err
 			}
 			if err := p.chatController.Delete(transactionContext, chatID); err != nil {
 				return err

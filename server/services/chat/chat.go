@@ -34,8 +34,6 @@ type chatState struct {
 	createRequestHash string
 	// initialExecution 是首发建立的第一条 Execution，并随终态事件推进。
 	initialExecution *models.Execution
-	// runtimeSessions 是每个 Runtime 当前仍然有效的原生会话。
-	runtimeSessions map[string]models.RuntimeSession
 	// projectSources 是接纳时冻结的真实项目来源与展示标签。
 	projectSources []eventlog.ProjectSourceSnapshot
 	// threadWorkspaceID 非空时表示 Chat 绑定 thread 级共享执行工作区。
@@ -338,11 +336,11 @@ func replayChatState(records []eventlog.Record) (chatState, error) {
 		},
 		createRequestID:   strings.TrimSpace(data.ClientRequestID),
 		createRequestHash: strings.TrimSpace(data.ClientRequestHash),
-		runtimeSessions:   make(map[string]models.RuntimeSession),
 		projectSources:    append([]eventlog.ProjectSourceSnapshot(nil), data.ProjectSources...),
 		threadWorkspaceID: strings.TrimSpace(data.ThreadWorkspaceID),
 	}
 	if data.ForkConfiguration != nil {
+		state.chat.LastAccountID = data.ForkConfiguration.AccountID
 		state.chat.LastRuntimeID = data.ForkConfiguration.RuntimeID
 		state.chat.LastModel = data.ForkConfiguration.Model
 		state.chat.LastReasoning = data.ForkConfiguration.Reasoning
@@ -524,10 +522,6 @@ func replayChatState(records []eventlog.Record) (chatState, error) {
 				state.chat.WaitingElicitation = false
 			}
 			activeExecution = nil
-		case constants.ChatEventTypeMessageInherited:
-			if err := projectInheritedForkSession(record, state.runtimeSessions); err != nil {
-				return chatState{}, err
-			}
 
 		}
 	}

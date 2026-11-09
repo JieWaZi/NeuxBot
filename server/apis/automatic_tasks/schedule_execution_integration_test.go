@@ -17,6 +17,7 @@ import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/agent/agentfixture"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -129,7 +130,7 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 	}
 	t.Cleanup(store.Close)
 	chats, err := chat.New(chat.Config{StorageDirectory: dataDirectory, Projects: projects, Conversations: store,
-		QueryIndexes: chat.QueryIndexDependencies{Chats: controllers.NewChatController(database.DB), RuntimeSessions: controllers.NewRuntimeSessionController(database.DB), Transactions: transactions, DeletionIntents: controllers.NewChatDeletionIntentController(database.DB)}})
+		QueryIndexes: chat.QueryIndexDependencies{Chats: controllers.NewChatController(database.DB), Transactions: transactions, DeletionIntents: controllers.NewChatDeletionIntentController(database.DB)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,16 +224,18 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	receive := func(want string) {
+	receive := func(want string) integrationPrompt {
 		t.Helper()
 		select {
 		case request := <-runtime.requests:
 			if request.model != "model" || !strings.Contains(request.input.Text, want) {
 				t.Fatalf("runtime frozen request: %+v", request)
 			}
+			return request
 		case <-time.After(5 * time.Second):
 			t.Fatal("Core did not dispatch Runtime")
 		}
+		return integrationPrompt{}
 	}
 	complete := func(taskID, runID string) schedule.RunView {
 		t.Helper()
@@ -253,7 +256,7 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 		t.Fatal("real initial Execution did not complete")
 		return schedule.RunView{}
 	}
-	receive("原始指令")
+	manualPrompt := receive("原始指令")
 	if err := automaticAPI.Delete(ctx, wakerID, scheduled.TaskID); util.ErrorCode(err, status_error.AutomaticTaskServiceInvalid.Key()) != status_error.AutomaticTaskBusy.Key() {
 		t.Fatalf("active Chat deletion: %v", err)
 	}
@@ -274,24 +277,80 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 		t.Fatalf("standard hidden Chat authority: %+v %v", state, err)
 	}
 	if state.Chat.ProjectID != "" || len(state.Chat.AdditionalWorkingDirectories) != 1 || state.Chat.AdditionalWorkingDirectories[0] != state.Chat.WorkspaceDirectory {
-		t.Fatalf("未选工作范围的伙伴任务应冻结会话临时目录: %+v", state.Chat)
+		t.Fatalf("未选工作范围的伙伴任务应冻结伙伴工作目录: %+v", state.Chat)
 	}
 	if info, err := os.Stat(state.Chat.WorkspaceDirectory); err != nil || !info.IsDir() {
-		t.Fatalf("伙伴会话临时目录未创建: %v", err)
+		t.Fatalf("伙伴工作目录未创建: %v", err)
 	}
 	now.Add(time.Minute.Milliseconds())
 	if err := service.Tick(ctx); err != nil {
 		t.Fatal(err)
 	}
-	receive("后续指令")
+	timedPrompt := receive("后续指令")
 	history, total, err := automaticAPI.Runs(ctx, wakerID, scheduled.TaskID, 20, 0)
 	if err != nil || total != 2 || history[0].Source != constants.AutomaticRunSourceSchedule {
 		t.Fatalf("timer opportunity: %+v %v", history, err)
 	}
 	timed := complete(scheduled.TaskID, history[0].ID)
 	timedState, err := chats.ReadInitialExecution(ctx, timed.ChatID)
-	if err != nil || timedState.Chat.WorkspaceDirectory == state.Chat.WorkspaceDirectory {
-		t.Fatalf("不同自动运行必须使用独立临时目录: %+v %v", timedState, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout, err := chatstorage.NewLayout(dataDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentDirectory, err := layout.AgentWorkspace(wakerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if timedState.Chat.WorkspaceDirectory != agentDirectory || state.Chat.WorkspaceDirectory != agentDirectory {
+		t.Fatalf("同一伙伴普通任务应共享固定 cwd: manual=%s timed=%s want=%s", state.Chat.WorkspaceDirectory, timedState.Chat.WorkspaceDirectory, agentDirectory)
+	}
+	if manual.ChatID == timed.ChatID || manual.ExecutionID == timed.ExecutionID || manualPrompt.input.SessionID == "" || manualPrompt.input.SessionID == timedPrompt.input.SessionID {
+		t.Fatalf("共享 cwd 不能共享 Chat、Execution 或原生会话身份: manual=%+v timed=%+v native=%s/%s", manual, timed, manualPrompt.input.SessionID, timedPrompt.input.SessionID)
+	}
+	manualRoot, err := layout.ChatRoot(manual.ChatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	timedRoot, err := layout.ChatRoot(timed.ChatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manualLog, err := store.LogPath(manual.ChatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	timedLog, err := store.LogPath(timed.ChatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manualRoot == timedRoot || manualLog == timedLog {
+		t.Fatalf("聊天私有日志归属被合并: %s/%s %s/%s", manualRoot, timedRoot, manualLog, timedLog)
+	}
+	// 同名附件放在各自聊天根中；后续真实删除必须只清理所属聊天。
+	manualAttachment := filepath.Join(manualRoot, constants.ExecutionWorkspaceAttachmentsDirectory, "private.txt")
+	timedAttachment := filepath.Join(timedRoot, constants.ExecutionWorkspaceAttachmentsDirectory, "private.txt")
+	for file, body := range map[string]string{manualAttachment: "manual attachment", timedAttachment: "timed attachment"} {
+		if err := os.MkdirAll(filepath.Dir(file), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(file, []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, executionID := range []string{manual.ExecutionID, timed.ExecutionID} {
+		for _, kind := range []string{constants.TaskOutputsDirectoryName, "tmp"} {
+			directory := filepath.Join(agentDirectory, kind, executionID)
+			if info, err := os.Stat(directory); err != nil || !info.IsDir() {
+				t.Fatalf("执行任务目录未按 Execution 隔离: %s %v", directory, err)
+			}
+		}
+	}
+	persistentOutput := filepath.Join(agentDirectory, constants.TaskOutputsDirectoryName, manual.ExecutionID, "report.txt")
+	if err := os.WriteFile(persistentOutput, []byte("persistent result"), 0600); err != nil {
+		t.Fatal(err)
 	}
 	config.Trigger = constants.AutomaticTaskTriggerAPI
 	apiTask, err := service.SaveConfiguration(ctx, wakerID, "", 0, config, true)
@@ -331,6 +390,15 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 	if err := chats.DeleteChatsAtomically(ctx, []string{manual.ChatID}, func(context.Context) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := os.Stat(manualAttachment); !os.IsNotExist(err) {
+		t.Fatalf("删除聊天没有清理自身私有附件: %v", err)
+	}
+	if body, err := os.ReadFile(timedAttachment); err != nil || string(body) != "timed attachment" {
+		t.Fatalf("删除聊天影响了其他聊天的私有附件: %q %v", body, err)
+	}
+	if body, err := os.ReadFile(persistentOutput); err != nil || string(body) != "persistent result" {
+		t.Fatalf("删除聊天清理了伙伴持久成果: %q %v", body, err)
+	}
 	history, _, err = automaticAPI.Runs(ctx, wakerID, scheduled.TaskID, 20, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -352,6 +420,12 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 		if err := automaticAPI.Delete(ctx, wakerID, taskID); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if _, err := os.Stat(timedAttachment); !os.IsNotExist(err) {
+		t.Fatalf("删除任务没有清理所属聊天的私有附件: %v", err)
+	}
+	if body, err := os.ReadFile(persistentOutput); err != nil || string(body) != "persistent result" {
+		t.Fatalf("删除任务清理了共享伙伴 cwd 中的持久成果: %q %v", body, err)
 	}
 	for _, chatID := range []string{manual.ChatID, timed.ChatID, apiRun.ChatID, recovered.ChatID} {
 		if _, err := chats.ReadInitialExecution(ctx, chatID); !util.HasStatusCode(err, status_error.ChatNotFound) {

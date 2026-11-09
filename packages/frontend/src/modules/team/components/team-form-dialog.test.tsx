@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import {
   afterAll,
@@ -14,6 +15,7 @@ import {
 import "@/shared/i18n";
 
 import { TeamFormDialog } from "./team-form-dialog";
+import type * as TeamSDK from "@/shared/api/generated/sdk.gen";
 
 class ResizeObserverStub {
   observe() {}
@@ -21,10 +23,21 @@ class ResizeObserverStub {
   disconnect() {}
 }
 
-beforeAll(() => vi.stubGlobal("ResizeObserver", ResizeObserverStub));
-afterAll(() => vi.unstubAllGlobals());
+beforeAll(() => {
+  vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+  Element.prototype.hasPointerCapture = () => false;
+  Element.prototype.setPointerCapture = () => {};
+  Element.prototype.releasePointerCapture = () => {};
+});
+afterAll(() => {
+  vi.unstubAllGlobals();
+  Reflect.deleteProperty(Element.prototype, "hasPointerCapture");
+  Reflect.deleteProperty(Element.prototype, "setPointerCapture");
+  Reflect.deleteProperty(Element.prototype, "releasePointerCapture");
+});
 
 const fixtures = vi.hoisted(() => ({
+  update: vi.fn(),
   runtimesError: false,
   wakersError: false,
   wakers: [
@@ -37,7 +50,18 @@ const fixtures = vi.hoisted(() => ({
 vi.mock("@/shared/api/generated/@tanstack/react-query.gen", () => ({
   listAiAccountsOptions: () => ({
     queryKey: ["ai-accounts"],
-    queryFn: async () => ({ resources: [] }),
+    queryFn: async () => ({
+      resources: [
+        {
+          id: "managed",
+          name: "测试账号",
+          hasCredential: true,
+          authMode: "api-key",
+          endpoint: { protocol: "openai-responses" },
+          selectedModels: ["gpt-test"],
+        },
+      ],
+    }),
   }),
   listRuntimesOptions: () => ({
     queryKey: ["runtimes"],
@@ -62,8 +86,45 @@ vi.mock("@/shared/api/generated/@tanstack/react-query.gen", () => ({
             name: "Codex",
             state: "ready",
           },
+          {
+            id: "claude",
+            name: "Claude",
+            enabled: true,
+            baseRuntimeId: "claude",
+            state: "ready",
+          },
         ],
       };
+    },
+  }),
+}));
+
+vi.mock("@/shared/api/generated/sdk.gen", async (original) => ({
+  ...(await original<typeof TeamSDK>()),
+  getRuntimeModelCatalog: async ({
+    path,
+    query,
+  }: {
+    path: { runtimeId: string };
+    query: { accountId: string };
+  }) => ({
+    data: {
+      runtimeId: path.runtimeId,
+      accountId: query.accountId,
+      state: "fresh",
+      models: [
+        {
+          id: "gpt-test",
+          name: "原模型",
+          reasoningOptions: [{ id: "medium", name: "中" }],
+          permissionLevels: ["default", "auto", "full-access"],
+        },
+        {
+          id: "next-model",
+          name: "另一模型",
+          permissionLevels: ["default", "auto", "full-access"],
+        },
+      ],
     },
   }),
 }));
@@ -85,7 +146,8 @@ vi.mock("../api/channel-queries", () => ({
     },
     getNextPageParam: () => undefined,
   }),
-  updateChannelMutation: () => ({ mutationFn: vi.fn() }),
+  updateChannelMutation: () => ({ mutationFn: fixtures.update }),
+  getChannelQueryKey: () => ["channel"],
   teamQueryKeys: { channels: () => ["channels"] },
 }));
 
@@ -106,12 +168,12 @@ function selectMember(name: string) {
   fireEvent.click(screen.getByRole("checkbox", { name: new RegExp(name) }));
 }
 
-describe("TeamFormDialog", () => {
-  beforeEach(() => {
-    fixtures.runtimesError = false;
-    fixtures.wakersError = false;
-  });
+beforeEach(() => {
+  fixtures.runtimesError = false;
+  fixtures.wakersError = false;
+});
 
+describe("TeamFormDialog", () => {
   it("添加成员后仍要求用户显式选择唯一负责人", async () => {
     renderDialog();
 
@@ -183,4 +245,91 @@ describe("TeamFormDialog", () => {
     expect(screen.getByText("智能体暂时无法载入。")).toBeVisible();
     expect(screen.getAllByRole("button", { name: "重新载入" })).toHaveLength(2);
   });
+});
+
+it.each([true, false, undefined])("编辑团队保留成员 Fast=%s", async (fast) => {
+  const user = userEvent.setup();
+  fixtures.update.mockReset().mockResolvedValue({});
+  const detail = {
+    channel: { id: "team", name: "原团队", leadWakerId: "waker-1" },
+    members: ["waker-1", "waker-2"].map((id) => ({
+      waker: { id, name: id },
+      runtimeId: "codex",
+      accountId: "system",
+      model: "gpt-test",
+      reasoning: "medium",
+      permissionLevel: "auto" as const,
+      fast,
+    })),
+  };
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <MemoryRouter>
+        <TeamFormDialog open onOpenChange={vi.fn()} detail={detail} />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  const name = await screen.findByLabelText(/团队名称/);
+  await user.clear(name);
+  await user.type(name, "新团队名称");
+  await user.click(screen.getByRole("button", { name: "保存团队" }));
+  await waitFor(() => expect(fixtures.update).toHaveBeenCalledTimes(1));
+  expect(
+    fixtures.update.mock.calls[0]?.[0].body.members.map(
+      (member: { fast?: boolean }) => member.fast,
+    ),
+  ).toEqual([fast, fast]);
+});
+
+it.each(
+  [true, false].flatMap((fast) =>
+    (["runtime", "account", "model"] as const).map((kind) => ({ fast, kind })),
+  ),
+)("团队改选 $kind 清除 Fast=$fast 并保留其他成员", async ({ fast, kind }) => {
+  const user = userEvent.setup();
+  fixtures.update.mockReset().mockResolvedValue({});
+  const detail = {
+    channel: { id: "team", name: "原团队", leadWakerId: "waker-1" },
+    members: ["waker-1", "waker-2"].map((id) => ({
+      waker: { id, name: id },
+      runtimeId: "codex",
+      accountId: "system",
+      model: "gpt-test",
+      reasoning: "medium",
+      permissionLevel: "auto" as const,
+      fast,
+    })),
+  };
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <MemoryRouter>
+        <TeamFormDialog open onOpenChange={vi.fn()} detail={detail} />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  const labels = { runtime: "智能体", account: "账号", model: "模型" };
+  const control = await screen.findByRole("combobox", {
+    name: `waker-1 · ${labels[kind]}`,
+  });
+  await user.click(control);
+  await user.click(
+    await screen.findByRole("option", {
+      name: { runtime: /Claude/, account: "测试账号", model: "另一模型" }[kind],
+    }),
+  );
+  await user.click(screen.getByRole("button", { name: "保存团队" }));
+  await waitFor(() => expect(fixtures.update).toHaveBeenCalledTimes(1));
+  expect(
+    fixtures.update.mock.calls[0]?.[0].body.members.map(
+      (member: { fast?: boolean }) => member.fast,
+    ),
+  ).toEqual([undefined, fast]);
 });

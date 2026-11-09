@@ -17,50 +17,6 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
-// executionInputState 将真实未决问题连接到 Runtime 无活动策略。
-type executionInputState struct {
-	// coordinator 拥有当前未决输入事实。
-	coordinator *elicitationCoordinator
-	// executionID 是唯一允许观察的执行。
-	executionID string
-	// changes 只为该执行合并状态唤醒。
-	changes <-chan struct{}
-}
-
-func (s executionInputState) Pending() bool {
-	s.coordinator.mutex.Lock()
-	defer s.coordinator.mutex.Unlock()
-	for _, question := range s.coordinator.byID {
-		if question.executionID == s.executionID {
-			return true
-		}
-	}
-	return false
-}
-
-func (s executionInputState) Changed() <-chan struct{} { return s.changes }
-
-func (c *elicitationCoordinator) inputState(executionID string) agentapi.UserInputState {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	if c.changes == nil {
-		c.changes = make(map[string]chan struct{})
-	}
-	if c.changes[executionID] == nil {
-		c.changes[executionID] = make(chan struct{}, 1)
-	}
-	return executionInputState{coordinator: c, executionID: executionID, changes: c.changes[executionID]}
-}
-
-func (c *elicitationCoordinator) signalInputLocked(executionID string) {
-	if channel := c.changes[executionID]; channel != nil {
-		select {
-		case channel <- struct{}{}:
-		default:
-		}
-	}
-}
-
 func (c *elicitationCoordinator) finishQuestions(chatID, executionID string) {
 	c.commitMutex.Lock()
 	c.mutex.Lock()
@@ -77,9 +33,6 @@ func (c *elicitationCoordinator) finishQuestions(chatID, executionID string) {
 			logx.Errorf("invalidate CLI question failed: chat_id=%s execution_id=%s question_id=%s error=%v", chatID, executionID, id, err)
 		}
 	}
-	c.mutex.Lock()
-	delete(c.changes, executionID)
-	c.mutex.Unlock()
 }
 
 func (m *service) questionBindings(chatID, executionID string) []capability.Binding {
@@ -213,7 +166,6 @@ func (c *elicitationCoordinator) createQuestion(ctx context.Context, chatID, exe
 	c.mutex.Lock()
 	c.byID[id] = &pendingElicitation{chatID: chatID, executionID: executionID, invocationID: record.InvocationID, requested: requested, requestedAt: record.RecordedAt, response: make(chan agentapi.ElicitationDecision, 1)}
 	c.orderByChat[chatID] = append(c.orderByChat[chatID], id)
-	c.signalInputLocked(executionID)
 	c.mutex.Unlock()
 	c.journal.PublishElicitationFact(ctx, record, c.pendingProjection(chatID))
 	if c.events != nil {

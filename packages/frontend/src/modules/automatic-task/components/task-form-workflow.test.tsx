@@ -5,6 +5,8 @@ import { beforeAll, afterAll, expect, it, vi } from "vitest";
 import type * as SDK from "@/shared/api/generated/sdk.gen";
 import "@/shared/i18n";
 import { TaskFormDialog } from "./task-dialogs";
+import { WorkflowTriggerDialog } from "./workflow-trigger-dialog";
+import { MemoryRouter } from "react-router-dom";
 
 vi.mock("@/shared/ui/execution-configuration-controls", () => ({
   ExecutionConfigurationControls: () => <span>执行配置控件</span>,
@@ -48,6 +50,23 @@ vi.mock("@/shared/api/generated/sdk.gen", async (original) => ({
           },
         },
       },
+    },
+  }),
+  getWorkflowTriggers: async () => ({
+    data: {
+      fingerprint: "existing",
+      tasks: [
+        {
+          id: "trigger-a",
+          wakerId: "owner",
+          trigger: "api",
+          fast: false,
+          workflowInputBindings: {
+            text: { source: "api" },
+            repeat: { source: "fixed", value: 5 },
+          },
+        },
+      ],
     },
   }),
   updateWorkflowAutomaticTask: update,
@@ -96,6 +115,7 @@ it("编辑工作流自动任务只保存当前任务，API 必填字段无需填
           trigger: "api",
           enabled: true,
           revision: 3,
+          fast: false,
         }}
       />
     </QueryClientProvider>,
@@ -117,6 +137,7 @@ it("编辑工作流自动任务只保存当前任务，API 必填字段无需填
     path: { taskId: "task-a" },
     body: {
       revision: 3,
+      fast: false,
       workflowInputBindings: {
         text: { source: "api" },
         repeat: { source: "fixed", value: 5 },
@@ -125,4 +146,33 @@ it("编辑工作流自动任务只保存当前任务，API 必填字段无需填
   });
   expect(bulk).not.toHaveBeenCalled();
   expect(saved).toHaveBeenCalledWith({ taskId: "task-a" });
+});
+
+it("编辑工作流触发设置保留显式关闭的 Fast", async () => {
+  bulk
+    .mockClear()
+    .mockResolvedValue({ data: { tasks: [{ taskId: "trigger-a" }] } });
+  const user = userEvent.setup();
+  render(
+    <MemoryRouter>
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <WorkflowTriggerDialog
+          definitionId="flow"
+          open
+          onOpenChange={vi.fn()}
+        />
+      </QueryClientProvider>
+    </MemoryRouter>,
+  );
+  const save = await screen.findByRole("button", { name: "保存触发条件" });
+  await waitFor(() => expect(save).toBeEnabled());
+  await user.click(save);
+  await waitFor(() => expect(bulk).toHaveBeenCalledTimes(1));
+  expect(bulk.mock.calls[0]?.[0]).toMatchObject({
+    body: { configuration: { fast: false } },
+  });
 });

@@ -38,7 +38,7 @@ func secretValues(config models.PluginConfiguration) map[string]string {
 	return values
 }
 func pluginDetail(ctx context.Context, resource models.Plugin, selectedVersion ...string) (PluginDetailResponse, error) {
-	result := PluginDetailResponse{Plugin: resource, Versions: []models.PluginVersion{}, Installations: []models.WakerPlugin{}, Values: map[string]string{}, Fields: []packageplugin.ConfigurationField{}, ConfiguredSecrets: []string{}, Blockers: []string{}, Account: authorization.Account{Scopes: []string{}}}
+	result := PluginDetailResponse{Plugin: resource, Versions: []PluginVersionResponse{}, Installations: []models.WakerPlugin{}, Values: map[string]string{}, Fields: []packageplugin.ConfigurationField{}, ConfiguredSecrets: []string{}, Blockers: []string{}, Account: authorization.Account{Scopes: []string{}}}
 	states, err := global.PluginControllerManager.ReadStates(ctx, []string{resource.ID})
 	if err != nil {
 		return result, err
@@ -49,7 +49,7 @@ func pluginDetail(ctx context.Context, resource models.Plugin, selectedVersion .
 	return result, err
 }
 func detailFromState(ctx context.Context, resource models.Plugin, state models.PluginState, selectedVersion ...string) (PluginDetailResponse, error) {
-	result := PluginDetailResponse{Plugin: resource, PartnerNames: state.PartnerNames, PartnerAvatars: state.PartnerAvatars, Versions: state.Versions, Installations: state.Installations, Values: map[string]string{}, Fields: []packageplugin.ConfigurationField{}, ConfiguredSecrets: []string{}, Blockers: []string{}, Account: authorization.Account{Scopes: []string{}}}
+	result := PluginDetailResponse{Plugin: resource, PartnerNames: state.PartnerNames, PartnerAvatars: state.PartnerAvatars, Versions: publicPluginVersions(state.Versions), Installations: state.Installations, Values: map[string]string{}, Fields: []packageplugin.ConfigurationField{}, ConfiguredSecrets: []string{}, Blockers: []string{}, Account: authorization.Account{Scopes: []string{}}}
 	config := state.Configuration
 
 	result.Values = config.Values
@@ -63,14 +63,14 @@ func detailFromState(ctx context.Context, resource models.Plugin, state models.P
 		result.Blockers = append(result.Blockers, status_error.PluginNotReady.Key())
 		return result, nil
 	}
-	version := result.Versions[0]
+	version := state.Versions[0]
 	// 普通全局入口优先展示真实安装中最近登记的版本；准备结果仍显式固定目标版本。
 	if len(selectedVersion) == 0 || selectedVersion[0] == "" {
 		installed := map[string]bool{}
 		for _, relation := range state.Installations {
 			installed[relation.VersionID] = true
 		}
-		for _, candidate := range result.Versions {
+		for _, candidate := range state.Versions {
 			if installed[candidate.ID] {
 				version = candidate
 				break
@@ -79,7 +79,7 @@ func detailFromState(ctx context.Context, resource models.Plugin, state models.P
 	}
 	if len(selectedVersion) > 0 && selectedVersion[0] != "" {
 		found := false
-		for _, candidate := range result.Versions {
+		for _, candidate := range state.Versions {
 			if candidate.ID == selectedVersion[0] {
 				version = candidate
 				found = true
@@ -97,13 +97,6 @@ func detailFromState(ctx context.Context, resource models.Plugin, state models.P
 		result.Blockers = append(result.Blockers, errorKey(err))
 		return result, nil
 	}
-	result.ComponentIDs = map[string]string{}
-	for _, skill := range version.Package.Skills {
-		result.ComponentIDs["skill:"+skill.Key] = packageplugin.ComponentID(resource.ID, "skill:"+skill.Key)
-	}
-	for _, server := range version.Package.Servers {
-		result.ComponentIDs["mcp:"+server.Key] = packageplugin.ComponentID(resource.ID, "mcp:"+server.Key)
-	}
 	result.Fields = extension.Config
 	result.Account, err = installationService().Summary(version, config)
 	result.Ready = err == nil
@@ -118,6 +111,18 @@ func errorKey(err error) string {
 		return coded.Key()
 	}
 	return status_error.InternalServerError.Key()
+}
+
+func publicPluginVersions(versions []models.PluginVersion) []PluginVersionResponse {
+	result := make([]PluginVersionResponse, 0, len(versions))
+	for _, version := range versions {
+		result = append(result, PluginVersionResponse{ID: version.ID, PluginID: version.PluginID, Version: version.Version, Digest: version.Digest, Package: version.Package.Public(), TrustedAt: version.TrustedAt, Provenance: version.Provenance, CreatedAt: version.CreatedAt})
+	}
+	return result
+}
+
+func publicCatalogEntry(entry catalog.Entry) PluginCatalogEntryResponse {
+	return PluginCatalogEntryResponse{SourceKey: entry.SourceKey, Key: entry.Key, SourceCommit: entry.SourceCommit, ArchiveSHA256: entry.ArchiveSHA256, ArchiveURL: entry.ArchiveURL, PackagePath: entry.PackagePath, DetailsURL: entry.DetailsURL, DetailsSHA256: entry.DetailsSHA256, DetailsSize: entry.DetailsSize, Package: entry.Package.Public()}
 }
 func stagedRoot() string { return filepath.Join(global.Config.DataDirectory, "plugins", "staging") }
 func installationService() *plugininstallation.Service {
