@@ -150,11 +150,13 @@ export function subscribeGlobalEvents(
             bufferBytes = 0;
             for (const frame of pending) deliver.onEvent(frame);
             // 原连接仍可用的缺口/非法帧需要服务器补快照或 backlog；
+            // 通知晚加入者同样依赖 WS 快照结束恢复，主进程不会自动重订阅。
             // 重连和资源重试已自动补齐，不能重复注册形成恢复循环。
             if (
               reason === "resync_required" ||
               reason === "delivery_gap" ||
-              reason === "invalid_frame"
+              reason === "invalid_frame" ||
+              (reason === "subscription_joined" && topic === "notifications")
             )
               current.resync();
           })

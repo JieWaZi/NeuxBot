@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Bell, LoaderCircle, WifiOff } from "lucide-react";
+import { Bell } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
@@ -137,24 +137,6 @@ export function NotificationBell({
                 >
                   {count > 99 ? "99+" : count}
                 </span>
-              ) : null}
-              {count === undefined ? (
-                snapshot.isError ? (
-                  <WifiOff
-                    aria-hidden="true"
-                    className="absolute top-0 right-0"
-                  />
-                ) : (
-                  <LoaderCircle
-                    aria-hidden="true"
-                    className="absolute top-0 right-0 motion-safe:animate-spin"
-                  />
-                )
-              ) : !connected ? (
-                <WifiOff
-                  aria-hidden="true"
-                  className="text-content-secondary absolute bottom-0 left-0"
-                />
               ) : null}
             </span>
           </motion.button>
