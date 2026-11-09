@@ -113,7 +113,7 @@ func (t *Turn) applySettings(client AgentClient, request ThreadRequest) error {
 	// Claude model changes can downgrade auto mode. The adapter validates the
 	// requested mode against the newly selected model before any prompt is admitted.
 	mode := request.Mode
-	if provider := request.Connection.Account.Provider; (provider == "qoder" || provider == "qoder-cn") && mode == "yolo" {
+	if provider := request.Connection.Account.Provider; provider == "qoder" && mode == "yolo" {
 		if !slices.ContainsFunc(t.effective.Modes, func(choice AgentChoice) bool { return choice.ID == mode }) &&
 			slices.ContainsFunc(t.effective.Modes, func(choice AgentChoice) bool { return choice.ID == "bypassPermissions" }) {
 			mode = "bypassPermissions"
@@ -166,7 +166,7 @@ func (t *Turn) applyProviderSelection(client AgentClient, provider string, selec
 	}
 	t.requestedFast = fast
 	// Qoder confirmed the tier before startup using the same account's SDK catalog.
-	if selection.ContextWindow == "" || provider == "qoder" || provider == "qoder-cn" {
+	if selection.ContextWindow == "" || provider == "qoder" {
 		return nil
 	}
 	window := slices.IndexFunc(t.effective.Options, IsContextWindowOption)

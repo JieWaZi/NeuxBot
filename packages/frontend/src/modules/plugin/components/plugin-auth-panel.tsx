@@ -30,7 +30,6 @@ import {
 } from "@/shared/api/local-error-surface";
 import {
   getPluginAuthorizationOptions,
-  getPluginAuthorizationSessionOptions,
   checkPluginAccountMutation,
   startPluginAuthorizationMutation,
   cancelPluginAuthorizationMutation,
@@ -77,27 +76,6 @@ export function PluginAuthPanel({
     enabled: active && Boolean(pluginId && versionId),
   });
   const context = pluginAccountContext(status.data);
-  const sessionId = status.data?.session?.id ?? "";
-  const sessionOptions = getPluginAuthorizationSessionOptions(
-    withLocalErrorSurface({
-      path: { pluginId, sessionId },
-      query: { wakerId, versionId },
-    }),
-  );
-  const sessionKey = [
-    ...sessionOptions.queryKey,
-    status.data?.configurationRevision,
-    status.data?.accountGeneration,
-  ];
-  const sessionQuery = useQuery({
-    queryKey: sessionKey,
-    queryFn: (context) => {
-      const read = sessionOptions.queryFn;
-      if (typeof read !== "function") throw new Error(t("failed"));
-      return read({ ...context, queryKey: sessionOptions.queryKey });
-    },
-    enabled: active && Boolean(sessionId),
-  });
   const ownedContexts = useRef(
     new Map<string, CheckPluginAccountData["body"]>(),
   );
@@ -147,7 +125,7 @@ export function PluginAuthPanel({
   useQueryEvents({
     topic: "plugins",
     resource: { kind: "global" },
-    queryKeys: [options.queryKey, sessionKey],
+    queryKeys: [options.queryKey],
     active,
   });
   const [openError, setOpenError] = useState("");
@@ -192,13 +170,8 @@ export function PluginAuthPanel({
   });
   const account = status.data?.account;
   const activeUses = status.data?.activeUses ?? [];
-  const cachedSession = status.data?.session;
-  const session =
-    sessionQuery.data?.id === cachedSession?.id &&
-    sessionQuery.data?.challengeId === cachedSession?.challengeId &&
-    sessionQuery.data?.state === cachedSession?.state
-      ? sessionQuery.data
-      : cachedSession;
+  // 账号接口已返回同一上下文的完整会话；不再并行查询可能刚被替换的旧会话。
+  const session = status.data?.session;
   const noticeMessage =
     session?.notice?.messages?.[
       pluginLocale(i18n.resolvedLanguage ?? i18n.language)
@@ -335,7 +308,7 @@ export function PluginAuthPanel({
     }
   }
   return (
-    <section className="space-y-4">
+    <section className={installation ? "space-y-4 text-center" : "space-y-4"}>
       {!installation && (
         <div>
           <h3 className="type-label font-medium">{t("authentication")}</h3>
@@ -355,6 +328,13 @@ export function PluginAuthPanel({
             <StatusNotice tone="success">
               {t("sharedIdentity", { name: account?.name || account?.id })}
             </StatusNotice>
+          ) : !waiting &&
+            !pending &&
+            !status.isPending &&
+            (expired ||
+              session?.state === "failed" ||
+              session?.state === "cancelled") ? (
+            <StatusNotice role="status">{message}</StatusNotice>
           ) : (
             <p className="type-body text-content-secondary" role="status">
               {waiting
@@ -395,12 +375,19 @@ export function PluginAuthPanel({
                 {t("missingScopesHelp")}
               </p>
             )}
-          <div className="flex flex-wrap gap-2">
+          <div
+            className={
+              installation
+                ? "flex flex-wrap justify-center gap-2"
+                : "flex flex-wrap gap-2"
+            }
+          >
             {(!installation || (!waiting && !pending && !status.isPending)) &&
               (!ready || waiting) &&
               !showQR && (
                 <Button
                   type="button"
+                  variant="text"
                   disabled={pending || !context || activeUses.length > 0}
                   onClick={() => void restart()}
                 >

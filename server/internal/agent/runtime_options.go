@@ -27,8 +27,6 @@ const (
 	RuntimeIDWorkBuddy = constants.RuntimeIDWorkBuddy
 	// RuntimeIDQoder identifies the Qoder CLI standard ACP runtime.
 	RuntimeIDQoder = constants.RuntimeIDQoder
-	// RuntimeIDQoderCN identifies the Chinese Qoder CLI standard ACP runtime.
-	RuntimeIDQoderCN = constants.RuntimeIDQoderCN
 )
 
 // DetectRequest selects the installation or profile to inspect.
@@ -369,7 +367,7 @@ func nativeAdditionalDirectoryFlag(provider string) string {
 	switch provider {
 	case RuntimeIDGemini:
 		return "--include-directories"
-	case RuntimeIDWorkBuddy, RuntimeIDQoder, RuntimeIDQoderCN:
+	case RuntimeIDWorkBuddy, RuntimeIDQoder:
 		return "--add-dir"
 	default:
 		return ""

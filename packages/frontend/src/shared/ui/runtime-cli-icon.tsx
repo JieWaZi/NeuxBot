@@ -25,11 +25,7 @@ export function RuntimeCliIcon({
 }: RuntimeCliIconProps) {
   const normalizedRuntimeId = runtimeId?.trim().toLowerCase();
 
-  if (
-    normalizedRuntimeId === "qoder" ||
-    normalizedRuntimeId === "qoder-cn" ||
-    normalizedRuntimeId === "workbuddy"
-  ) {
+  if (normalizedRuntimeId === "qoder" || normalizedRuntimeId === "workbuddy") {
     return (
       <img
         aria-hidden

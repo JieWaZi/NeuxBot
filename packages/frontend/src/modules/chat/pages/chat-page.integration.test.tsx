@@ -514,6 +514,7 @@ vi.mock(
         resources: ["A", "B", "C"].map((id) => ({
           id,
           name: `账号 ${id}`,
+          runtimeId: "codex",
           authMode: "api-key",
           hasCredential: true,
           endpoint: {
@@ -1172,7 +1173,7 @@ describe("ChatPage", () => {
     client.clear();
   });
 
-  it("新聊天空态保留问候和输入框，不渲染推荐提示且无需消息区AuiProvider", async () => {
+  it("新聊天空态保留输入框，不展示中央大头像、问候和推荐提示", async () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -1194,7 +1195,11 @@ describe("ChatPage", () => {
       </QueryClientProvider>,
     );
     await screen.findByRole("textbox", { name: "输入消息" });
-    await screen.findByRole("heading", { name: "今天想一起完成什么？" });
+    await waitFor(() => expect(client.getQueryData(["wakers"])).toBeDefined());
+    expect(
+      screen.queryByRole("heading", { name: "今天想一起完成什么？" }),
+    ).toBeNull();
+    expect(view.container.querySelector(".size-avatar-docked")).toBeNull();
     for (const prompt of [
       "阅读当前项目，给我一个可执行的实现计划",
       "检查当前改动，优先指出真实风险",
@@ -1956,7 +1961,7 @@ describe("ChatPage", () => {
       },
     );
     expect(
-      workingMember.querySelector('[data-companion-animated="false"]'),
+      workingMember.querySelector("svg[data-companion-avatar]"),
     ).toBeInTheDocument();
     await user.hover(workingMember);
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
@@ -1976,13 +1981,13 @@ describe("ChatPage", () => {
     await user.click(
       screen.getByRole("button", { name: "测试打开空闲成员会话" }),
     );
+    await waitFor(() =>
+      expect(screen.queryByText("完整成员结果")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole("textbox", { name: "输入消息" })).toBeVisible();
     expect(
-      await screen.findByRole(
-        "heading",
-        { name: "今天想一起完成什么？" },
-        { timeout: 5000 },
-      ),
-    ).toBeVisible();
+      screen.queryByRole("heading", { name: "今天想一起完成什么？" }),
+    ).toBeNull();
     expect(screen.queryByText("完整成员结果")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "团队负责人" }));
     expect(await screen.findByText("负责人最终汇总")).toBeVisible();
@@ -2417,7 +2422,7 @@ describe("ChatPage", () => {
           </ChatQueueProvider>
         </QueryClientProvider>,
       );
-      await screen.findByRole("heading", { name: "今天想一起完成什么？" });
+      await screen.findByRole("textbox", { name: "输入消息" });
       await user.type(
         screen.getByRole("textbox", { name: "输入消息" }),
         "继续工作",
@@ -2776,7 +2781,7 @@ describe("ChatPage", () => {
                 root.current.querySelector('[role="status"][aria-busy="true"]'),
               ),
               avatar: root.current.querySelector(
-                "[data-chat-scroll-viewport] [data-companion-animated]",
+                "[data-chat-scroll-viewport] svg[data-companion-avatar]",
               ),
             });
           }}
@@ -2802,7 +2807,7 @@ describe("ChatPage", () => {
       root.current = container;
 
       expect(
-        await screen.findByRole("heading", { name: "今天想一起完成什么？" }),
+        await screen.findByRole("textbox", { name: "输入消息" }),
       ).toBeVisible();
       const input = screen.getByRole("textbox", { name: "输入消息" });
       await user.type(input, "修复首条消息闪屏");
@@ -2949,7 +2954,7 @@ describe("ChatPage", () => {
         </ChatQueueProvider>
       </QueryClientProvider>,
     );
-    await screen.findByRole("heading", { name: "今天想一起完成什么？" });
+    await screen.findByRole("textbox", { name: "输入消息" });
     await user.type(
       screen.getByRole("textbox", { name: "输入消息" }),
       "首发很快完成",
@@ -3617,11 +3622,8 @@ describe("ChatPage", () => {
       screen.getByRole("combobox", { name: "上下文窗口" });
     expect(windowSelector()).toHaveTextContent("272K");
     expect(
-      screen
-        .getByRole("combobox", { name: "选择强度" })
-        .compareDocumentPosition(windowSelector()) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+      screen.queryByRole("combobox", { name: "选择强度" }),
+    ).not.toBeInTheDocument();
     await user.click(windowSelector());
     await user.click(screen.getByRole("option", { name: "1M" }));
 

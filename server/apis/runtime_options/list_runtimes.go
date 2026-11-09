@@ -4,6 +4,7 @@ import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
@@ -163,8 +164,18 @@ func (l *ListRuntimes) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
+	if global.RuntimeCatalog == nil {
+		return nil, ginx.WithStack(status_error.RuntimeUnavailable)
+	}
+	registered := make(map[string]struct{})
+	for _, summary := range global.RuntimeCatalog.Runtimes() {
+		registered[summary.ID] = struct{}{}
+	}
 	resources := make([]RuntimeOption, 0, len(environments))
 	for _, environment := range environments {
+		if _, exists := registered[environment.RuntimeID]; !exists {
+			continue
+		}
 		resources = append(resources, runtimeOption(environment))
 	}
 	return ListRuntimesResponse{Resources: resources, StartupDetectionPending: pending, StartupDetectionFailed: failed, StartupSetupRequired: setupRequired}, nil

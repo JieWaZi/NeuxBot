@@ -1366,7 +1366,17 @@ export function AIAccountsSection({
           <SettingsRow
             grouped
             title={t("system")}
-            description={t("systemDescription")}
+            description={
+              runtime.defaultAccountId
+                ? t("systemDescription")
+                : t(
+                    runtime.auth === "missing"
+                      ? "systemSignedOut"
+                      : runtime.auth === "ok"
+                        ? "systemConnected"
+                        : "systemAuthUnknown",
+                  )
+            }
           >
             {!runtime.defaultAccountId ? (
               <span className="type-ui text-content-secondary">

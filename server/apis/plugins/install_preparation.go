@@ -3,8 +3,11 @@ package plugins
 import (
 	"context"
 	"maps"
+	"path/filepath"
 	"slices"
 
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
@@ -12,6 +15,20 @@ import (
 // 文件和官方 CLI 在事务外读取；返回的占用必须在数据库提交后释放。
 func prepareInstallationVersions(ctx context.Context, versions []models.PluginVersion, config *models.PluginConfiguration, account *models.PluginAccount) (func(), error) {
 	return installationService().PrepareVersions(ctx, versions, config, account)
+}
+
+// commitInstallationAccount 在预检租约释放前同步已提交的配置和账号代次，保留同次核验的公开身份。
+func commitInstallationAccount(versions []models.PluginVersion, expectedRevision, expectedGeneration, revision, generation int64) {
+	if global.PluginBridges == nil {
+		return
+	}
+	for _, version := range versions {
+		if version.Package.Integration.Authentication == nil {
+			continue
+		}
+		// 只更新持有的精确入口；其他版本的临时核验不能替换当前共享身份。
+		global.PluginBridges.CommitPreparation(commandbridge.OperationContext{PluginID: version.PluginID, VersionID: version.ID, Digest: version.Digest, ConfigurationRevision: expectedRevision, AccountGeneration: expectedGeneration}, version.Digest+":"+filepath.ToSlash(version.Package.SourcePath), revision, generation)
+	}
 }
 
 // configurationChange 生成请求后的独立配置副本，预检和事务使用同一规则。

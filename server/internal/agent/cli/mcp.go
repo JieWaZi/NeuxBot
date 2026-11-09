@@ -52,7 +52,7 @@ func newMCPServer(ctx context.Context, path string) (*mcp.Server, error) {
 		return nil, err
 	}
 	bound := client{connection: connection}
-	response, err := bound.request(ctx, http.MethodGet, "/capabilities", nil, false, 5*time.Second)
+	response, err := bound.request(ctx, http.MethodGet, constants.AgentCLIMCPCatalogPath, nil, false, 5*time.Second)
 	if err != nil {
 		return nil, err
 	}

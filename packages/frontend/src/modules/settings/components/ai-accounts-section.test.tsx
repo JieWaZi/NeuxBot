@@ -987,3 +987,13 @@ it("安装期间不能从现有订阅账号启动登录", async () => {
   await user.click(login);
   expect(screen.queryByText("授权账号 subscription")).not.toBeInTheDocument();
 });
+
+it.each([
+  ["missing", "未登录"],
+  ["ok", "已连接（原生客户端未提供账号名称）"],
+  ["unknown", "登录状态未确认"],
+])("内置账号选择不冒充登录状态：%s", async (auth, label) => {
+  renderAccounts({ id: "kimi", baseRuntimeId: "kimi", installed: true, auth });
+  expect(await screen.findByText(label)).toBeVisible();
+  expect(screen.getByText("当前账号")).toBeVisible();
+});

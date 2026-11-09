@@ -142,7 +142,7 @@ func newNativeProductFixture(t *testing.T, ctx context.Context, providerID, chil
 		summary.SkillDirectoryName = ".cursor"
 	case "workbuddy":
 		summary.SkillDirectoryName = ".codebuddy"
-	case "qoder", "qoder-cn":
+	case "qoder":
 		summary.SkillDirectoryName = ".qoder"
 	}
 	model := agent.ModelOption{ID: "fixture-model", PermissionLevels: []constants.PermissionLevel{permission}}
@@ -1107,7 +1107,7 @@ func TestNativeThreadReceivesInstructionsWithoutWorkspaceFiles(t *testing.T) {
 }
 
 func TestNativeFullAccessApprovalsUseFrozenPolicy(t *testing.T) {
-	for _, provider := range []string{"codex", "claude", "cursor", "workbuddy", "qoder", "qoder-cn", "kimi", "gemini", "grok", "opencode", "pi"} {
+	for _, provider := range []string{"codex", "claude", "cursor", "workbuddy", "qoder", "kimi", "gemini", "grok", "opencode", "pi"} {
 		t.Run(provider, func(t *testing.T) {
 			work := nativeExecutionWork{input: pendingMessage{runtime: runtimeSelection{RuntimeID: provider, PermissionLevel: constants.PermissionLevelFullAccess}}}
 			approve := work.ports(&service{}).Approve

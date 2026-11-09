@@ -1,47 +1,109 @@
-import styles from "../../../../../vendor/companion/styles.json";
+import { SHAPES, SHAPE_BY_ID, type ShapeId } from "@neuxbot/bloub/skins";
+import {
+  EXPRESSIONS,
+  EXPRESSION_BY_ID,
+  type ExpressionId,
+} from "@neuxbot/bloub/expressions";
 
-const prefix = "companion:v2:";
-const pattern = /^companion:v[12]:[0-9a-f]{32}$/;
-const bodyStyles = Object.keys(styles) as (keyof typeof styles)[];
+export const avatarShapes = SHAPES.filter(({ id }) => id !== "goutte");
+export const avatarExpressions = EXPRESSIONS;
+export {
+  MATERIALS as avatarMaterials,
+  PALETTE as avatarColors,
+} from "@neuxbot/bloub/materials";
+import {
+  MATERIALS as avatarMaterials,
+  PALETTE as avatarColors,
+  DEFAULT_COLOR,
+  type Material,
+} from "@neuxbot/bloub/materials";
+export type AvatarMaterial = Material;
+export type CompanionAppearance = {
+  material: AvatarMaterial;
+  shape: ShapeId;
+  expression: ExpressionId;
+  color: string;
+};
+export const defaultCompanionAvatar = "bloub:v1:plush:cercle:neutre:8b5cf6";
+const legacy = /^companion:v[12]:[0-9a-f]{32}$/;
 
-export function randomCompanionAvatar(): string {
-  return prefix + crypto.randomUUID().replaceAll("-", "");
+function parse(value: string): CompanionAppearance | undefined {
+  const [kind, version, material, shape, expression, color, extra] =
+    value.split(":");
+  const selectedMaterial =
+    avatarMaterials.find((item) => item === material) ??
+    (["crystal", "metal", "flat", "flora"].includes(material ?? "")
+      ? "plush"
+      : undefined);
+  if (
+    kind !== "bloub" ||
+    version !== "v1" ||
+    extra !== undefined ||
+    !selectedMaterial ||
+    !shape ||
+    !expression ||
+    !color ||
+    !/^[0-9a-f]{6}$/i.test(color)
+  )
+    return;
+  const body = SHAPE_BY_ID.get(shape);
+  const face = EXPRESSION_BY_ID.get(expression);
+  if (!body || body.id === "goutte" || !face) return;
+  return {
+    material: selectedMaterial,
+    shape: body.id,
+    expression: face.id,
+    color: `#${color.toLowerCase()}`,
+  };
 }
 
-/** 从当前身体风格切到下一款，固定身份保证保存及再次编辑时顺序一致。 */
-export function nextCompanionAvatar(avatar: string): string {
-  const current = bodyStyles.indexOf(companionAppearance(avatar).style);
-  const next = bodyStyles[(current + 1) % bodyStyles.length] ?? "original";
-  return styles[next].avatar;
+export function encodeCompanionAppearance(config: CompanionAppearance): string {
+  const result = `bloub:v1:${config.material}:${config.shape}:${config.expression}:${config.color.replace(/^#/, "").toLowerCase()}`;
+  return parse(result) ? result : defaultCompanionAvatar;
 }
 
-/** 未提供合法形象时，以调用方身份生成稳定展示，不执行外部图片地址。 */
+/** 默认组合只由身份生成；旧标识继续作为稳定身份，不保留旧身体资源。 */
+export function companionAppearance(avatar: string): CompanionAppearance {
+  const saved = parse(avatar);
+  if (saved) return saved;
+  let hash = 2166136261;
+  for (const character of avatar.slice(0, 256))
+    hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+  const sample = hash >>> 0;
+  return {
+    material: "plush",
+    shape: avatarShapes[sample % avatarShapes.length]?.id ?? "cercle",
+    expression:
+      avatarExpressions[(sample >>> 8) % avatarExpressions.length]?.id ??
+      "neutre",
+    color: avatarColors[(sample >>> 16) % avatarColors.length] ?? DEFAULT_COLOR,
+  };
+}
+
+export function isCompanionAvatar(value: string): boolean {
+  return Boolean(parse(value) || legacy.test(value));
+}
+
 export function companionAvatar(
   value: string | undefined,
   identity: string,
 ): string {
-  if (value && pattern.test(value)) return value;
-  let seed = 2166136261;
-  for (const character of `${identity}:${value?.slice(0, 128) ?? ""}`)
-    seed = Math.imul(seed ^ character.charCodeAt(0), 16777619);
-  return prefix + (seed >>> 0).toString(16).padStart(8, "0").repeat(4);
+  if (value && (parse(value) || legacy.test(value))) return value;
+  return encodeCompanionAppearance(
+    companionAppearance(`${identity}:${value?.slice(0, 128) ?? ""}`),
+  );
 }
 
-/** 身体风格随身份稳定还原，材质与颜色由图片决定。 */
-export function companionAppearance(avatar: string) {
-  let seed = 2166136261;
-  for (const character of avatar)
-    seed = Math.imul(seed ^ character.charCodeAt(0), 16777619);
-  const sample = (length: number) => {
-    seed += 0x6d2b79f5;
-    let value = Math.imul(seed ^ (seed >>> 15), seed | 1);
-    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
-    return Math.floor((((value ^ (value >>> 14)) >>> 0) / 4294967296) * length);
-  };
-  const selected = bodyStyles.find((style) => styles[style].avatar === avatar);
-  const style = selected ?? bodyStyles[sample(bodyStyles.length)] ?? "original";
-  return {
-    style,
-    glow: styles[style].glow,
-  };
+export function randomCompanionAvatar(
+  material: AvatarMaterial = "plush",
+): string {
+  const bytes = crypto.getRandomValues(new Uint32Array(4));
+  return encodeCompanionAppearance({
+    material,
+    shape: avatarShapes[(bytes[1] ?? 0) % avatarShapes.length]?.id ?? "cercle",
+    expression:
+      avatarExpressions[(bytes[2] ?? 0) % avatarExpressions.length]?.id ??
+      "neutre",
+    color: avatarColors[(bytes[3] ?? 0) % avatarColors.length] ?? DEFAULT_COLOR,
+  });
 }

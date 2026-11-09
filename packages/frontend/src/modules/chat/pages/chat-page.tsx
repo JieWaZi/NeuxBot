@@ -29,6 +29,9 @@ import type { ChatWorkspaceMainContent } from "../components/chat-workspace-surf
 import { useWorkbench } from "../workbench/workbench-store";
 import type { ChatSendSelection } from "../runtime/chat-queue-store";
 import { useTranslation } from "react-i18next";
+import { Terminal } from "lucide-react";
+import { Button } from "@/shared/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import {
   useNavigate,
   useLocation,
@@ -101,8 +104,6 @@ import {
   withStableCreateRequest,
 } from "@/shared/lib/create-request-idempotency";
 import { type PermissionLevel } from "@/shared/lib/runtime-permissions";
-import { Avatar } from "@/shared/ui/avatar";
-import { TypedPhrases } from "@/shared/ui/typed-phrases";
 import { useSceneWorkspace } from "@/shared/workspace/workspace-context";
 import type { WorkspaceMemberTab } from "@/shared/workspace/workspace-tab";
 import type { ChatOutletContext } from "./chat-page-shared";
@@ -120,6 +121,8 @@ export type ChatWorkspaceEntry = {
   /** 首条输入在完整画布内居中，发送后在主容器内展开会话与业务内容。 */
   canvasInput?: boolean;
   showSummary?: boolean;
+  /** 没有 Shell 工作台入口的宿主可显式保留终端操作。 */
+  showTerminalAction?: boolean;
   showFileChanges?: boolean;
   active?: boolean;
   defaults?: ExecutionSelection;
@@ -301,7 +304,6 @@ function ChatView({
   }, []);
   const {
     composerClearRevision,
-    companionScopeRevision,
     clearComposer,
     markSkipComposerClearOnCreate,
   } = useComposerScopeTransition(
@@ -1124,37 +1126,9 @@ function ChatView({
         ? t("permissionDowngraded")
         : "";
 
-  const greetingPhrases = useMemo(
-    () => [
-      t("greeting"),
-      t("greetingPhrases.start"),
-      t("greetingPhrases.progress"),
-      t("greetingPhrases.next"),
-      t("greetingPhrases.share"),
-    ],
-    [t],
-  );
-  const emptyState = (
-    <div className="mx-auto grid w-full max-w-[560px] justify-items-center px-6 pt-[clamp(64px,12vh,140px)] text-center">
-      <Avatar
-        name={wakerName}
-        src={conversationAvatar}
-        size="docked"
-        preview
-        summon={false}
-        activity={chatRuntime.isRunning ? "starting" : "idle"}
-      />
-      {selectedWaker ? (
-        <TypedPhrases
-          as="h1"
-          phrases={greetingPhrases}
-          className="type-page-title mt-6 text-center font-semibold"
-        />
-      ) : (
-        <h1 className="type-page-title mt-6 font-semibold">
-          {t("createWakerFirst")}
-        </h1>
-      )}
+  const emptyState = selectedWaker ? null : (
+    <div className="text-content-secondary type-body grid h-full place-items-center px-6 text-center">
+      {t("createWakerFirst")}
     </div>
   );
   const contributedEmptyState =
@@ -1304,6 +1278,23 @@ function ChatView({
       emptyState: messageEmptyState,
       isHistoryLoading: historyIsLoading,
       composerSettings,
+      composerActions:
+        entry?.showTerminalAction && activeChatId && workspaceDirectory ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t("openTerminal")}
+                onClick={openChatTerminal}
+              >
+                <Terminal />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t("openTerminal")}</TooltipContent>
+          </Tooltip>
+        ) : undefined,
       composerEffects,
       composerDraft: entry?.draft ?? promptDraft?.text,
       composerDraftReference: promptDraft?.skillId
@@ -1336,7 +1327,6 @@ function ChatView({
       onConnectorSelectionChange: setSelectedConnectorIDs,
       codeReferenceRequest,
       composerClearRevision,
-      companionScopeRevision,
       composerRestoreRevision,
       terminalEnabled: Boolean(activeChatId && workspaceDirectory),
       linkWorkspaceRoot: workspaceDirectory,

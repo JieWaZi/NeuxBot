@@ -11,7 +11,7 @@ import (
 	acp "github.com/JieWaZi/acp-go-sdk"
 )
 
-// NativeAuthenticationMethod describes an actual initialize advertisement.
+// NativeAuthenticationMethod describes a capability verified against the selected native program.
 type NativeAuthenticationMethod struct {
 	// ID is the native method identity, never a host-invented OAuth flow.
 	ID string
@@ -65,6 +65,9 @@ func NewSystemAuthenticationClient(ctx context.Context, account AccountRequest, 
 			environment["CLAUDE_SECURESTORAGE_CONFIG_DIR"] = account.NativeConfigHome
 		}
 	}
+	if account.Provider == constants.RuntimeIDKimi {
+		return &kimiAuthenticationClient{account: account, launch: launch, environment: environment}, nil
+	}
 	client, err := newDirectAgentClient(ctx, account, launch, AccountLease{Environment: environment}, LaunchAuthLease{}, ResourceLease{}, AgentClientCallbacks{})
 	if err != nil {
 		return nil, err
@@ -85,8 +88,8 @@ func systemAuthenticationHasCredential(provider string, environment map[string]s
 		variables = []string{"CODEBUDDY_AUTH_TOKEN", "CODEBUDDY_API_KEY"}
 	case constants.RuntimeIDQoder:
 		variables = []string{"QODER_PERSONAL_ACCESS_TOKEN"}
-	case constants.RuntimeIDQoderCN:
-		variables = []string{"QODERCN_PERSONAL_ACCESS_TOKEN"}
+	case constants.RuntimeIDKimi:
+		variables = []string{"KIMI_API_KEY", "KIMI_MODEL_API_KEY"}
 	case constants.RuntimeIDGemini:
 		variables = []string{"GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENAI_USE_VERTEXAI"}
 	case constants.RuntimeIDGrok:
@@ -128,8 +131,6 @@ func systemAuthenticationEnvironment(provider string, launch ProviderLaunch) map
 			keep = strings.HasPrefix(upper, "CODEBUDDY_")
 		case constants.RuntimeIDQoder:
 			keep = strings.HasPrefix(upper, "QODER_")
-		case constants.RuntimeIDQoderCN:
-			keep = strings.HasPrefix(upper, "QODERCN_")
 		case constants.RuntimeIDKimi:
 			keep = strings.HasPrefix(upper, "KIMI_")
 		case constants.RuntimeIDGemini:
@@ -159,8 +160,6 @@ func systemAuthenticationHomeVariable(provider string) string {
 		return "CODEBUDDY_CONFIG_DIR"
 	case constants.RuntimeIDQoder:
 		return "QODER_CONFIG_DIR"
-	case constants.RuntimeIDQoderCN:
-		return "QODERCN_CONFIG_DIR"
 	case constants.RuntimeIDKimi:
 		return "KIMI_CODE_HOME"
 	case constants.RuntimeIDGemini:

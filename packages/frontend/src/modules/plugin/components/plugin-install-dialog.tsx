@@ -12,7 +12,7 @@ import {
   useEffectEvent,
   useRef,
 } from "react";
-import { Plus } from "lucide-react";
+import { LoaderCircle, Plus } from "lucide-react";
 import type {
   GetPluginAuthorizationResponse,
   StartPluginAuthorizationResponse,
@@ -56,7 +56,11 @@ import { PluginIcon } from "./plugin-icon";
 import { PluginAuthPanel } from "./plugin-auth-panel";
 import { PluginConfigurationEditor } from "./plugin-configuration-editor";
 
+import type { PluginBrowseEntry } from "../model/plugin-browse";
+
 type Props = {
+  preview?: Pick<PluginBrowseEntry, "name" | "description" | "icon" | "icons">;
+  catalogRead?: { pending: boolean; error?: unknown; onRetry: () => void };
   catalog?: PluginCatalogEntry;
   detail?: PluginDetail;
   wakerId?: string;
@@ -65,6 +69,8 @@ type Props = {
 };
 export function PluginInstallDialog({
   catalog,
+  preview,
+  catalogRead,
   detail: initial,
   wakerId = "",
   onClose,
@@ -390,8 +396,13 @@ export function PluginInstallDialog({
         onPluginSnapshot();
     });
   }, [client, queryHash]);
+  const catalogUnavailable = Boolean(
+    !detail &&
+    catalogRead &&
+    (!catalog || catalogRead.pending || catalogRead.error),
+  );
   async function submit() {
-    if (locked.current) return;
+    if (locked.current || catalogUnavailable) return;
     locked.current = true;
     intent.current = selected;
     setResumeError(undefined);
@@ -488,9 +499,11 @@ export function PluginInstallDialog({
           authorizeOnly || (phase === "authorization" && !complete)
             ? "authorizeNamed"
             : "installNamed",
-          { name: pluginDisplayName(pkg, detail?.plugin?.name) },
+          {
+            name: pluginDisplayName(pkg, detail?.plugin?.name ?? preview?.name),
+          },
         )}
-        description={pluginSummary(pkg)}
+        description={pluginSummary(pkg, preview?.description)}
         visual={
           <div className="flex items-center gap-5 pb-2">
             <span className="bg-surface-subtle grid size-14 place-items-center rounded-lg">
@@ -506,7 +519,12 @@ export function PluginInstallDialog({
               />
             </span>
             <Plus className="size-icon-lg text-content-caption" />
-            <PluginIcon pkg={pkg} hero />
+            <PluginIcon
+              pkg={pkg}
+              icon={pkg ? undefined : preview?.icon}
+              icons={pkg ? undefined : preview?.icons}
+              hero
+            />
           </div>
         }
       >
@@ -533,7 +551,9 @@ export function PluginInstallDialog({
                     />
                   </div>
                   <Button
+                    aria-busy={catalogRead?.pending || undefined}
                     disabled={
+                      catalogUnavailable ||
                       pending ||
                       query.isError ||
                       query.isFetching ||
@@ -543,6 +563,12 @@ export function PluginInstallDialog({
                     }
                     onClick={() => void submit()}
                   >
+                    {catalogRead?.pending && (
+                      <LoaderCircle
+                        aria-hidden="true"
+                        className="motion-safe:animate-spin"
+                      />
+                    )}
                     {pending
                       ? t("busy")
                       : authorizeOnly
@@ -553,6 +579,24 @@ export function PluginInstallDialog({
                   </Button>
                 </div>
               ) : null}
+              {catalogRead?.error && (
+                <StatusNotice
+                  role="alert"
+                  className="flex flex-wrap items-center gap-3"
+                >
+                  <p className="min-w-0 flex-1 break-words">
+                    {localApiErrorMessage(catalogRead.error, t("failed"))}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={catalogRead.pending}
+                    onClick={catalogRead.onRetry}
+                  >
+                    {t("retry")}
+                  </Button>
+                </StatusNotice>
+              )}
               {query.isError && (
                 <QueryState
                   error={query.error}

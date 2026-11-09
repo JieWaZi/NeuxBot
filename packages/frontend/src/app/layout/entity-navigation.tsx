@@ -166,7 +166,7 @@ function EntityAvatar({
       shape="square"
       src={item.waker.avatar}
       activity={wakerCompanionActivity(item.waker.activityState)}
-      size="sm"
+      size="md"
     />
   ) : (
     <TeamEntityAvatar team={item.team} />

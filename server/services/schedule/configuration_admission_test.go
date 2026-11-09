@@ -246,7 +246,7 @@ func TestPendingTeamRunFreezesOverridesAndInheritedNativeDefaults(t *testing.T) 
 			accounts := controllers.NewAIAccountController(database.DB)
 			oldAccountID, futureAccountID := util.New(), util.New()
 			for _, id := range []string{oldAccountID, futureAccountID} {
-				if err := accounts.Create(ctx, models.AIAccount{ID: id, Name: id, AuthMode: constants.AccountAuthModeAPIKey,
+				if err := accounts.Create(ctx, models.AIAccount{ID: id, RuntimeID: constants.RuntimeIDCodex, Name: id, AuthMode: constants.AccountAuthModeAPIKey,
 					Endpoint:       models.AIAccountEndpoint{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: constants.AIAccountOpenAIURL},
 					SelectedModels: []string{"plan-model", "admission-model", "future-model"}, DefaultModel: "plan-model"}, "test-key"); err != nil {
 					t.Fatal(err)

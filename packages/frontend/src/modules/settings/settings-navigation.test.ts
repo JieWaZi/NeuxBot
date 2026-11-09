@@ -3,18 +3,16 @@ import { settingsNavigation, settingsSectionOf } from "./settings-navigation";
 
 describe("API 集成设置导航", () => {
   it("恢复 API 集成路由且不重复入口", () => {
-    expect(settingsSectionOf("integration-api")).toBe("integration-api");
+    expect(settingsSectionOf("integration-api")).toBe("integrations");
     expect(
-      settingsNavigation.filter(
-        (item) => String(item.key) === "integration-api",
-      ),
+      settingsNavigation.filter((item) => String(item.key) === "integrations"),
     ).toHaveLength(1);
   });
 });
 
-it("IM 与 API 保留独立入口，MCP 归入 API", () => {
-  expect(settingsSectionOf("integration-im")).toBe("integration-im");
-  expect(settingsSectionOf("integration-mcp")).toBe("integration-api");
+it("旧 IM、API 与 MCP 入口统一归属集成", () => {
+  expect(settingsSectionOf("integration-im")).toBe("integrations");
+  expect(settingsSectionOf("integration-mcp")).toBe("integrations");
   expect(settingsSectionOf("unknown")).toBe("general");
 });
 
@@ -23,8 +21,7 @@ it("智能体包含账号管理，不保留独立账号分类或旧路由兼容"
   expect(settingsNavigation.map((item) => item.key)).toEqual([
     "general",
     "agents",
-    "integration-im",
-    "integration-api",
+    "integrations",
   ]);
   expect(settingsSectionOf("ai-accounts")).toBe("general");
   expect(settingsSectionOf("runtime-environments")).toBe("general");

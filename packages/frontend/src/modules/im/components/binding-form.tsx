@@ -13,7 +13,7 @@ import {
   type ExecutionSelection,
 } from "@/shared/hooks/use-execution-selection";
 import { Button } from "@/shared/ui/button";
-import { DialogFooter } from "@/shared/ui/dialog";
+import { FormFooter } from "./form-footer";
 import { ExecutionConfigurationControls } from "@/shared/ui/execution-configuration-controls";
 import { WorkspaceScopePicker } from "@/shared/ui/workspace-scope-picker";
 import { FieldControlTrigger } from "@/shared/ui/field-control-trigger";
@@ -29,7 +29,11 @@ import {
 import { Switch } from "@/shared/ui/switch";
 import { SegmentedControl } from "@/shared/ui/segmented-control";
 import { useWorkExecutors } from "@/shared/hooks/use-work-executors";
-import { SettingsFieldGroup, SettingsFieldRow } from "@/modules/settings";
+import {
+  useSettingsDraftGuard,
+  SettingsFieldGroup,
+  SettingsFieldRow,
+} from "@/modules/settings";
 import type { IMBinding } from "../types";
 
 export function BindingForm({
@@ -40,6 +44,7 @@ export function BindingForm({
   onBeforeSave,
   disabled = false,
   purpose = "edit",
+  host = "dialog",
 }: {
   binding: IMBinding;
   onClose: () => void;
@@ -48,9 +53,12 @@ export function BindingForm({
   onBeforeSave?: () => Promise<unknown>;
   disabled?: boolean;
   purpose?: "edit" | "authorization";
+  host?: "page" | "dialog";
 }) {
   const { t } = useTranslation("im");
   const id = useId();
+  // 版本与草稿是同一编辑快照；后台刷新不能替换版本后静默覆盖并发修改。
+  const [revision] = useState(binding.revision);
   const [kind, setKind] = useState(binding.channelId ? "team" : "waker");
   const [target, setTarget] = useState(
     binding.channelId || binding.wakerId || "",
@@ -85,6 +93,25 @@ export function BindingForm({
     value: options,
     enabled: kind === "waker",
   });
+  const [initialDraft] = useState(() => ({
+    kind,
+    target,
+    projectID,
+    directory,
+    controllers,
+    allowWorkflow,
+    options,
+  }));
+  const dirty =
+    JSON.stringify({
+      kind,
+      target,
+      projectID,
+      directory,
+      controllers,
+      allowWorkflow,
+      options,
+    }) !== JSON.stringify(initialDraft);
   const save = useMutation({
     mutationFn: async () => {
       await onBeforeSave?.();
@@ -110,7 +137,7 @@ export function BindingForm({
                 : {},
             controllerIds: controllers.split(/[,，\s]+/).filter(Boolean),
             allowWorkflowDelivery: allowWorkflow,
-            revision: binding.revision,
+            revision,
           },
           throwOnError: true,
         }),
@@ -124,6 +151,7 @@ export function BindingForm({
   const submit = (e: FormEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (save.isPending) return;
     save.mutate();
   };
   const chooseTarget = (value: string) => {
@@ -131,11 +159,25 @@ export function BindingForm({
     setProjectID("");
     setDirectory("");
   };
+  useSettingsDraftGuard({
+    dirty: host === "page" && dirty,
+    pending: host === "page" && save.isPending,
+  });
   return (
-    <form className="contents" onSubmit={submit}>
-      <div className="grid min-h-0 gap-6 overflow-y-auto px-6 pb-6">
+    <form id={id + "-form"} className="contents" onSubmit={submit}>
+      <fieldset
+        disabled={save.isPending}
+        className={
+          host === "dialog"
+            ? "grid min-h-0 gap-6 overflow-y-auto px-6 pb-6"
+            : "grid min-h-0 gap-6"
+        }
+      >
         {beforeFields}
-        <SettingsFieldGroup title={t("runtimeConfiguration")}>
+        <SettingsFieldGroup
+          surface={host === "page" ? "plain" : "card"}
+          title={t("runtimeConfiguration")}
+        >
           <SettingsFieldRow label={t("executor")}>
             <div className="grid gap-3">
               <SegmentedControl
@@ -151,7 +193,11 @@ export function BindingForm({
                 ]}
               />
               <Select value={target} onValueChange={chooseTarget}>
-                <SelectTrigger aria-label={t("executor")}>
+                <SelectTrigger
+                  appearance={host === "page" ? "settings" : "default"}
+                  size={host === "page" ? "settings" : "sm"}
+                  aria-label={t("executor")}
+                >
                   <SelectValue placeholder={t("chooseExecutor")} />
                 </SelectTrigger>
                 <SelectContent>
@@ -196,7 +242,10 @@ export function BindingForm({
             )}
           </SettingsFieldRow>
         </SettingsFieldGroup>
-        <SettingsFieldGroup title={t("permissionsAndScope")}>
+        <SettingsFieldGroup
+          surface={host === "page" ? "plain" : "card"}
+          title={t("permissionsAndScope")}
+        >
           <SettingsFieldRow label={t("scope")}>
             <div className="grid gap-2">
               <WorkspaceScopePicker
@@ -253,6 +302,7 @@ export function BindingForm({
             >
               <div className="grid gap-2">
                 <Input
+                  appearance={host === "page" ? "catalog" : "default"}
                   id={id + "-controllers"}
                   required
                   placeholder={
@@ -286,22 +336,46 @@ export function BindingForm({
             </div>
           </SettingsFieldRow>
         </SettingsFieldGroup>
-        {save.error || executors.error || projects.error || directoryError ? (
+        {(host === "dialog" && save.error) ||
+        executors.error ||
+        projects.error ||
+        directoryError ? (
           <p role="alert" className="text-destructive type-caption">
             {localApiErrorMessage(
-              save.error || executors.error || projects.error || directoryError,
+              (host === "dialog" && save.error) ||
+                executors.error ||
+                projects.error ||
+                directoryError,
               t("operationFailed"),
             )}
           </p>
         ) : null}
-      </div>
-      <DialogFooter>
-        <Button type="button" variant="secondary" onClick={onClose}>
+      </fieldset>
+      <FormFooter host={host}>
+        {host === "page" && save.error ? (
+          <p role="alert" className="text-destructive type-body basis-full">
+            {localApiErrorMessage(save.error, t("bindingSaveFailed"))}
+          </p>
+        ) : null}
+        {host === "page" && dirty ? (
+          <span className="type-body text-content-secondary mr-auto">
+            {t("unsavedChanges")}
+          </span>
+        ) : null}
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={save.isPending}
+          onClick={onClose}
+        >
           {t("cancel")}
         </Button>
         <Button
           type="submit"
+          form={id + "-form"}
+          aria-busy={save.isPending}
           disabled={
+            (host === "page" && !dirty) ||
             (!target && !onBeforeSave) ||
             disabled ||
             save.isPending ||
@@ -320,7 +394,7 @@ export function BindingForm({
                 : "authorize",
           )}
         </Button>
-      </DialogFooter>
+      </FormFooter>
     </form>
   );
 }

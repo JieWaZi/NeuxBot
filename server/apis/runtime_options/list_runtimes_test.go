@@ -7,7 +7,10 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/runtimeenvironment"
+	"github.com/gin-gonic/gin"
 )
 
 func TestRuntimeOptionIncludesDetectedModelReasoningOptions(t *testing.T) {
@@ -169,7 +172,7 @@ func TestNativeModelOptionPreservesProviderMenus(t *testing.T) {
 }
 
 func TestQoderNativeModelKeepsExactReasoningChoices(t *testing.T) {
-	for _, provider := range []string{"qoder", "qoder-cn"} {
+	for _, provider := range []string{"qoder"} {
 		row := agent.AgentChoice{
 			ID: "qfmodel", Name: "Qwen3.8-Flash (default)",
 			Config: &agent.AgentModelConfig{Options: []agent.AgentSessionOption{{
@@ -209,7 +212,7 @@ func TestNativeModelOptionKeepsUnknownSettingsOutOfMenus(t *testing.T) {
 }
 
 func TestNativeModelOptionOffersOnlyMultipleNativeContextWindows(t *testing.T) {
-	for _, provider := range []string{"qoder", "qoder-cn", "workbuddy", "opencode"} {
+	for _, provider := range []string{"qoder", "workbuddy", "opencode"} {
 		row := agent.AgentChoice{Config: &agent.AgentModelConfig{Options: []agent.AgentSessionOption{{
 			ID: "context_window", Value: agent.AgentOptionValue{ID: "200000"},
 			Choices: []agent.AgentChoice{{ID: "200000"}},
@@ -232,5 +235,43 @@ func TestRuntimeOptionPreservesNativeDefaultSelection(t *testing.T) {
 	})
 	if option.DefaultModel != "" || option.DefaultReasoning != "" {
 		t.Fatalf("native default replaced by probe: %+v", option)
+	}
+}
+
+// TestListRuntimesExcludesUnregisteredPersistedEnvironment 验证已移除智能体的历史条目不会出现在目录，注册的自定义配置仍然保留。
+func TestListRuntimesExcludesUnregisteredPersistedEnvironment(t *testing.T) {
+	runtimeUpdateFixture(t)
+	catalog, err := agent.NewCatalog(agent.CatalogConfig{Profiles: []agent.ProfileSpec{{ID: "fixture-qoder-profile", BaseRuntimeID: "qoder", Name: "Fixture Qoder"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousCatalog, previousService := global.RuntimeCatalog, global.RuntimeEnvironmentService
+	t.Cleanup(func() { global.RuntimeCatalog, global.RuntimeEnvironmentService = previousCatalog, previousService })
+	global.RuntimeCatalog = catalog
+	service, err := runtimeenvironment.New(runtimeenvironment.Config{RuntimeCatalog: catalog, Environments: global.RuntimeEnvironmentControllerManager, Transactions: global.TransactionControllerManager})
+	if err != nil {
+		t.Fatal(err)
+	}
+	global.RuntimeEnvironmentService = service
+	for _, id := range []string{"qoder", "fixture-qoder-profile", "retired-runtime"} {
+		if err := global.RuntimeEnvironmentControllerManager.Ensure(t.Context(), models.RuntimeEnvironment{ID: id, RuntimeID: id, BaseRuntimeID: "qoder", Name: id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, _ := gin.CreateTestContext(nil)
+	output, err := (&ListRuntimes{}).Output(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resources := output.(ListRuntimesResponse).Resources
+	if len(resources) != 2 {
+		t.Fatalf("runtime list retained unregistered history: %+v", resources)
+	}
+	seen := map[string]bool{}
+	for _, resource := range resources {
+		seen[resource.ID] = true
+	}
+	if !seen["qoder"] || !seen["fixture-qoder-profile"] {
+		t.Fatalf("registered runtimes lost: %+v", resources)
 	}
 }

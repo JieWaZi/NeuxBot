@@ -28,7 +28,7 @@ type nativeOwner struct {
 
 // Only self-contained publisher artifacts can be replaced as one file. Bundled
 // Codex/Cursor/Pi and interpreter scripts must retain their original owner/layout.
-var singleFileProviders = map[string]bool{"claude": true, "kimi": true, "opencode": true, "grok": true, "qoder": true, "qoder-cn": true, "workbuddy": true}
+var singleFileProviders = map[string]bool{"claude": true, "kimi": true, "opencode": true, "grok": true, "qoder": true, "workbuddy": true}
 
 func nativeImage(name string) bool {
 	file, err := os.Open(name)

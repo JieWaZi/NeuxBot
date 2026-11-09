@@ -154,6 +154,7 @@ func (s *service) refreshModelCatalog(ctx context.Context, environment models.Ru
 		previous := cached.Snapshot
 		previous.State, previous.ErrorCode = agent.CatalogStale, probed.ErrorCode
 		previous.QoderLoginVerified = probed.QoderLoginVerified
+		previous.KimiLoginVerified = probed.KimiLoginVerified
 		probed.ModelCatalogSnapshot = previous
 	}
 	if s.modelCatalogs != nil {
@@ -172,7 +173,7 @@ func persistedModelCatalogFingerprint(environment models.RuntimeEnvironment, aut
 	scope := []any{environment.BaseRuntimeID, environment.Binary, environment.PrefixArgs,
 		environment.ConfigHome, authGeneration, accountFingerprint}
 	switch environment.BaseRuntimeID {
-	case constants.RuntimeIDQoder, constants.RuntimeIDQoderCN:
+	case constants.RuntimeIDQoder:
 		// 旧快照已丢弃 SDK 可用标记，必须重新读取才能排除不可用模型。
 		scope = append(scope, "qoder-selectable-models")
 	case constants.RuntimeIDClaude, constants.RuntimeIDPi:
@@ -342,7 +343,7 @@ func (s *service) detectNative(ctx context.Context, summary agent.RuntimeSummary
 	if snapshot.Capabilities.Version != "" {
 		result.State = agent.DetectionStateReady
 	}
-	if snapshot.QoderLoginVerified {
+	if snapshot.QoderLoginVerified || snapshot.KimiLoginVerified {
 		result.Auth = agent.AuthStatusOK
 	}
 	if snapshot.State == agent.CatalogSignedOut {
@@ -356,12 +357,12 @@ func (s *service) detectNative(ctx context.Context, summary agent.RuntimeSummary
 	}
 	result.State, result.Auth = agent.DetectionStateReady, agent.AuthStatusOK
 	if environment.BaseRuntimeID != constants.RuntimeIDCodex && environment.BaseRuntimeID != constants.RuntimeIDClaude &&
-		environment.BaseRuntimeID != constants.RuntimeIDCursor && !snapshot.QoderLoginVerified {
+		environment.BaseRuntimeID != constants.RuntimeIDCursor && !snapshot.QoderLoginVerified && !snapshot.KimiLoginVerified {
 		// Other ACP providers may expose models before authentication.
 		result.Auth = agent.AuthStatusUnknown
 	}
 	if snapshot.State == agent.CatalogStale {
-		if !snapshot.QoderLoginVerified {
+		if !snapshot.QoderLoginVerified && !snapshot.KimiLoginVerified {
 			result.Auth = agent.AuthStatusUnknown
 		}
 		result.Diagnostics = []agent.Diagnostic{{

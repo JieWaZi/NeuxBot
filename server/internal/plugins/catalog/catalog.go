@@ -17,6 +17,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 )
 
@@ -223,12 +224,15 @@ func download(entry Entry) (string, error) {
 		}
 	}
 	client := http.Client{Timeout: 2 * time.Minute}
+	started := time.Now()
 	response, err := client.Get(entry.ArchiveURL)
 	if err != nil {
+		logDistributionFailure("archive_get", entry.Key, entry.ArchiveURL, response, started, err)
 		return "", status_error.PluginDistributionUnavailable
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
+		logDistributionFailure("archive_status", entry.Key, entry.ArchiveURL, response, started, nil)
 		return "", status_error.PluginDistributionUnavailable
 	}
 	temporary, err := os.CreateTemp(parent, "download-*.zip")
@@ -240,6 +244,7 @@ func download(entry Entry) (string, error) {
 	hash := sha256.New()
 	size, err := io.Copy(io.MultiWriter(temporary, hash), io.LimitReader(response.Body, 100*1024*1024+1))
 	if err != nil {
+		logDistributionFailure("archive_body", entry.Key, entry.ArchiveURL, response, started, err)
 		return "", status_error.PluginDistributionUnavailable
 	}
 	if size > 100*1024*1024 {
@@ -252,6 +257,29 @@ func download(entry Entry) (string, error) {
 		return "", status_error.PluginStorageError
 	}
 	return location, nil
+}
+
+// logDistributionFailure 在底层错误首次转换时保留阶段、耗时与上游状态，不输出重定向签名或查询凭据。
+func logDistributionFailure(operation, key, address string, response *http.Response, started time.Time, err error) {
+	location, host, status := "", "", 0
+	if parsed, parseErr := url.Parse(address); parseErr == nil {
+		location = parsed.Scheme + "://" + parsed.Host + parsed.EscapedPath()
+		host = parsed.Host
+	}
+	if response != nil {
+		status = response.StatusCode
+		if response.Request != nil && response.Request.URL != nil {
+			host = response.Request.URL.Host
+		}
+	}
+	// url.Error 自带完整请求地址，必须只记录不含 URL 的底层连接或读取错误。
+	var requestErr *url.Error
+	if errors.As(err, &requestErr) {
+		err = requestErr.Err
+	}
+	var timeout interface{ Timeout() bool }
+	timedOut := errors.As(err, &timeout) && timeout.Timeout()
+	logx.Warnf("plugin distribution request failed: operation=%s plugin_key=%s url=%s upstream_host=%s upstream_status=%d elapsed_ms=%d timeout=%t error=%v", operation, key, location, host, status, time.Since(started).Milliseconds(), timedOut, err)
 }
 
 // Find 返回已验证目录中的精确入口，安装不得自行猜测包根。

@@ -1,6 +1,6 @@
 # 架构总览
 
-普通聊天通过 `Execution → ThreadLifecycle/Turn → ProviderRuntime → 原生 Client` 接入 11 个 CLI，Chat 与运行时共用 ConversationStore。独立文本生成与 Wiki 维护使用同一执行底座。文本生成需要原生工具禁用能力，Wiki 维护需要原生受限 MCP，目前由 Claude 提供。各 CLI 的本地验证与原生限制见 [CLI 验收记录](../discussions/agentruntime-rebuild/native-cli-completion-cn.md)。
+普通聊天通过 `Execution → ThreadLifecycle/Turn → ProviderRuntime → 原生 Client` 接入 10 个 CLI，Chat 与运行时共用 ConversationStore。独立文本生成与 Wiki 维护使用同一执行底座。文本生成需要原生工具禁用能力，Wiki 维护需要原生受限 MCP，目前由 Claude 提供。各 CLI 的本地验证与原生限制见 [CLI 验收记录](../discussions/agentruntime-rebuild/native-cli-completion-cn.md)。
 
 NeuxBot 是本地优先的伙伴工作台。Web 和 Electron 各自承载宿主能力，共享 React 应用承载界面，Go Core 拥有业务规则、文件、Git、终端执行与持久化，智能体适配隐藏原生 CLI 的协议差异。
 

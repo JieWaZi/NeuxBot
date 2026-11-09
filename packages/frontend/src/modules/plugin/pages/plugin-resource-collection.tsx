@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import {
@@ -25,6 +25,7 @@ import {
 } from "@/shared/hooks/use-resource-pages";
 import { ResourceInfiniteScroll } from "@/shared/ui/resource-infinite-scroll";
 import { QueryRefreshError, QueryState } from "@/shared/ui/query-state";
+import { Dialog, DialogContent } from "@/shared/ui/dialog";
 import {
   refreshPluginCatalogMutation,
   getPluginOptions,
@@ -36,8 +37,6 @@ import {
   pluginInstalledVersion,
   pluginNeedsAuthorization,
   pluginLocale,
-  type PluginCatalogEntry,
-  type PluginDetail,
 } from "../model/plugin-view";
 import { usePluginBrowsePages } from "../api/use-plugin-browse";
 import {
@@ -53,17 +52,10 @@ import {
 } from "../components/deferred-plugin-dialogs";
 
 type ManageTarget = { pluginId: string; versionId?: string };
-type LoadIntent =
+type LoadIntent = { title: string; preview?: PluginBrowseEntry } & (
   | { kind: "install"; catalogKey?: string; target?: ManageTarget }
-  | { kind: "update"; target: ManageTarget };
-type LoadResult =
-  | {
-      kind: "install";
-      catalog?: PluginCatalogEntry;
-      detail?: PluginDetail;
-      authorizeOnly?: boolean;
-    }
-  | { kind: "update"; detail: PluginDetail };
+  | { kind: "update"; target: ManageTarget }
+);
 type Props = {
   wakerId?: string;
   targetPartnerId?: string;
@@ -76,17 +68,11 @@ export function PluginResourceCollection({
   search,
   searchField,
 }: Props) {
-  const { t, i18n } = useTranslation("plugin");
-  const locale = pluginLocale(i18n.resolvedLanguage ?? i18n.language);
+  const { t } = useTranslation("plugin");
   const client = useQueryClient();
   const active = useRouteSceneActive();
   const groupId = useId();
-  const [updating, setUpdating] = useState<PluginDetail | null>(null);
-  const [installation, setInstallation] = useState<{
-    catalog?: PluginCatalogEntry;
-    detail?: PluginDetail;
-    authorizeOnly?: boolean;
-  } | null>(null);
+  const [intent, setIntent] = useState<LoadIntent | null>(null);
   const refresh = useMutation({
     ...withLocalErrorMutation(refreshPluginCatalogMutation()),
     onSettled: () => invalidatePluginQueries(client),
@@ -131,52 +117,21 @@ export function PluginResourceCollection({
   const source = wakerId ? installed.metadata : browse.source;
   const itemCount = wakerId ? details.length : browse.entries.length;
   const groups = pluginBrowseGroups(browse.entries);
-  const load = useMutation({
-    mutationFn: async (intent: LoadIntent): Promise<LoadResult> => {
-      if (intent.kind === "install" && intent.catalogKey) {
-        const catalog = await client.fetchQuery({
-          ...getCatalogPluginOptions(
-            withLocalErrorSurface({
-              path: { key: intent.catalogKey },
-              query: { locale },
-            }),
-          ),
-          staleTime: 0,
-        });
-        return { kind: "install", catalog };
-      }
-      if (!intent.target) throw new Error(t("failed"));
-      const detail = await client.fetchQuery({
-        ...getPluginOptions(
-          withLocalErrorSurface({
-            path: { pluginId: intent.target.pluginId },
-            query: { locale, versionId: intent.target.versionId },
-          }),
-        ),
-        staleTime: 0,
-      });
-      return intent.kind === "install"
-        ? {
-            kind: "install",
-            detail,
-            authorizeOnly: pluginNeedsAuthorization(
-              pluginInstalledVersion(detail)?.package,
-              detail,
-            ),
-          }
-        : { kind: "update", detail };
-    },
-    onSuccess: (result) => {
-      if (result.kind === "install") setInstallation(result);
-      else setUpdating(result.detail);
-    },
-  });
   const manage = (entry: PluginBrowseEntry, kind: "install" | "update") => {
+    const title = t(
+      kind === "update"
+        ? "updateNamed"
+        : entry.requiresAuthorization
+          ? "authorizeNamed"
+          : "installNamed",
+      { name: entry.name ?? "" },
+    );
     if (kind === "install" && !(entry.installedCount ?? 0) && entry.catalogKey)
-      load.mutate({ kind, catalogKey: entry.catalogKey });
+      setIntent({ kind, catalogKey: entry.catalogKey, title, preview: entry });
     else if (entry.pluginId)
-      load.mutate({
+      setIntent({
         kind,
+        title,
         target: { pluginId: entry.pluginId, versionId: entry.versionId },
       });
   };
@@ -224,20 +179,6 @@ export function PluginResourceCollection({
             {localApiErrorMessage(refresh.error, t("catalogUnavailable"))}
           </p>
         )}
-        {load.isPending && (
-          <p
-            role="status"
-            aria-label={t("busy")}
-            className="type-resource-body text-resource-secondary"
-          >
-            {t("busy")}
-          </p>
-        )}
-        {load.error && (
-          <p role="alert" className="type-resource-body text-destructive">
-            {localApiErrorMessage(load.error, t("failed"))}
-          </p>
-        )}
         {query.isPending || itemCount === 0 ? (
           <QueryState
             loadingLayout="rows"
@@ -277,7 +218,6 @@ export function PluginResourceCollection({
                   <PluginCard
                     key={entry.sourceKey}
                     entry={entry}
-                    pending={load.isPending}
                     onInstall={() => manage(entry, "install")}
                     onUpdate={() => manage(entry, "update")}
                   />
@@ -303,19 +243,98 @@ export function PluginResourceCollection({
           onLoadMore={() => void query.fetchNextPage()}
         />
       </div>
-      {updating && (
-        <PluginUpdateDialog
-          detail={updating}
-          onClose={() => setUpdating(null)}
-        />
-      )}
-      {installation && (
-        <PluginInstallDialog
-          {...installation}
+      {intent && (
+        <PluginResourceActionDialog
+          intent={intent}
           wakerId={targetPartnerId ?? wakerId}
-          onClose={() => setInstallation(null)}
+          onClose={() => setIntent(null)}
         />
       )}
     </div>
+  );
+}
+
+/** 操作先挂载弹窗，再在弹窗生命周期内读取所需资料；关闭会释放读取且不会被迟到响应重开。 */
+function PluginResourceActionDialog({
+  intent,
+  wakerId,
+  onClose,
+}: {
+  intent: LoadIntent;
+  wakerId: string;
+  onClose: () => void;
+}) {
+  const { i18n } = useTranslation("plugin");
+  const locale = pluginLocale(i18n.resolvedLanguage ?? i18n.language);
+  const catalogKey = intent.kind === "install" ? intent.catalogKey : undefined;
+  const catalog = useQuery({
+    ...getCatalogPluginOptions(
+      withLocalErrorSurface({
+        path: { key: catalogKey ?? "" },
+        query: { locale },
+      }),
+    ),
+    enabled: Boolean(catalogKey),
+    staleTime: 0,
+    retry: false,
+  });
+  const detail = useQuery({
+    ...getPluginOptions(
+      withLocalErrorSurface({
+        path: { pluginId: intent.target?.pluginId ?? "" },
+        query: { locale, versionId: intent.target?.versionId },
+      }),
+    ),
+    enabled: Boolean(intent.target),
+    staleTime: 0,
+  });
+  if (catalogKey)
+    return (
+      <PluginInstallDialog
+        catalog={catalog.data}
+        preview={intent.preview}
+        catalogRead={{
+          pending: catalog.isPending || catalog.isFetching,
+          error: catalog.error,
+          onRetry: () => void catalog.refetch(),
+        }}
+        wakerId={wakerId}
+        onClose={onClose}
+      />
+    );
+  if (!catalogKey && detail.data) {
+    return intent.kind === "update" ? (
+      <PluginUpdateDialog detail={detail.data} onClose={onClose} />
+    ) : (
+      <PluginInstallDialog
+        detail={detail.data}
+        authorizeOnly={pluginNeedsAuthorization(
+          pluginInstalledVersion(detail.data)?.package,
+          detail.data,
+        )}
+        wakerId={wakerId}
+        onClose={onClose}
+      />
+    );
+  }
+  const query = catalogKey ? catalog : detail;
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent title={intent.title}>
+        <div className="px-6 pb-5">
+          <QueryState
+            loadingLayout="content"
+            pending={query.isPending}
+            error={query.error}
+            onRetry={() => void query.refetch()}
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

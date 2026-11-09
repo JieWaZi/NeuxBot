@@ -909,24 +909,15 @@ it("已有工作流默认画布铺满主容器，会话展开收起保留共享�
   expect(input).toHaveTextContent("保留共享聊天草稿");
 });
 
-it("点击新建立即打开画布输入框，不等待列表刷新或创建空记录", async () => {
+it("新建工作流立即显示空白输入框，不展示大头像和问候或创建空记录", async () => {
   const create = vi.fn(() => HttpResponse.json({ id: "new-flow" }));
   server.use(http.post(`${origin}/api/v1/workflows`, create));
-  const user = userEvent.setup();
-  renderScene("/workflows");
-  await screen.findByRole("link", { name: "审批验收" });
-  await user.click(screen.getByRole("button", { name: "新建工作流" }));
+  renderScene("/workflows/new");
   await screen.findByRole("textbox", { name: "输入消息" });
+  expect(screen.queryByRole("heading", { name: "欢迎使用工作流" })).toBeNull();
   expect(
-    screen.getByRole("heading", { name: "欢迎使用工作流" }),
-  ).toBeInTheDocument();
-  const welcome = screen.getByRole("heading", { name: "欢迎使用工作流" });
-  expect(welcome.querySelector("[data-typed-phrase]")).toBeInTheDocument();
-  expect(
-    within(screen.getByTestId("chat-page-layout")).getByRole("button", {
-      name: "与 NeuxBot 互动",
-    }),
-  ).toBeInTheDocument();
+    screen.getByTestId("chat-page-layout").querySelector(".size-avatar-docked"),
+  ).toBeNull();
   expect(create).not.toHaveBeenCalled();
   expect(
     screen.queryByRole("button", { name: /帮我创建周会准备流程/ }),
@@ -2324,6 +2315,10 @@ it("工作流主容器与工具 Tab 独立，历史切换保留各自输入并�
   await user.type(inputA, "甲未发送");
   expect(screen.queryByRole("tab", { name: "工作流" })).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "打开终端" }));
+  expect(await screen.findByText("测试终端内容")).toBeVisible();
+  expect(
+    document.querySelector("[data-chat-composer-context-row]"),
+  ).not.toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: "关闭“工作流”" }),
   ).not.toBeInTheDocument();

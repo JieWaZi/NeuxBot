@@ -588,14 +588,14 @@ func TestProviderRuntimeChild(t *testing.T) {
 			fmt.Println("2.1.128 (Claude Code)")
 		case "cursor":
 			fmt.Println("2026.10.27-abcdef0")
-		case "qoder", "qoder-cn":
+		case "qoder":
 			fmt.Println("1.1.53")
 		}
 		os.Exit(0)
 	}
 	out := json.NewEncoder(os.Stdout)
 	scanner := bufio.NewScanner(os.Stdin)
-	if (provider == "qoder" || provider == "qoder-cn") && slices.Contains(os.Args, "--sdk") {
+	if provider == "qoder" && slices.Contains(os.Args, "--sdk") {
 		for scanner.Scan() {
 			var frame struct {
 				// ID correlates SDK requests and receipts.
@@ -712,6 +712,12 @@ func TestProviderRuntimeChild(t *testing.T) {
 			}
 		} else {
 			switch frame.Method {
+			case "authenticate":
+				if provider == "kimi" && os.Getenv("FIXTURE_KIMI_SIGNED_OUT") != "" {
+					reply["error"] = map[string]any{"code": -32000, "message": "Authentication required"}
+				} else {
+					reply["result"] = map[string]any{}
+				}
 			case "initialize":
 				result := map[string]any{"protocolVersion": 1, "agentCapabilities": map[string]any{
 					"promptCapabilities": map[string]any{"image": true},
@@ -719,9 +725,20 @@ func TestProviderRuntimeChild(t *testing.T) {
 				if provider == "gemini" {
 					result["agentInfo"] = map[string]string{"name": "gemini-cli", "version": "0.65.0"}
 				}
+				if provider == "kimi" {
+					result["agentInfo"] = map[string]string{"name": "Kimi Code CLI", "version": "2.0.2"}
+					result["authMethods"] = []map[string]any{{"id": "login", "type": "terminal", "name": "Kimi", "args": []string{"--login"}}}
+				}
 				reply["result"] = result
 			case "session/new":
 				result := map[string]any{"sessionId": "fixture-native"}
+				if provider == "kimi" {
+					if os.Getenv("FIXTURE_KIMI_SIGNED_OUT") != "" {
+						reply["error"] = map[string]any{"code": -32000, "message": "Authentication required"}
+						break
+					}
+					result["configOptions"] = []map[string]any{{"type": "select", "id": "model", "category": "model", "name": "Model", "currentValue": "fixture-kimi-model", "options": []map[string]string{{"value": "fixture-kimi-model", "name": "Fixture"}}}}
+				}
 				if provider == "gemini" {
 					result["configOptions"] = []map[string]any{{
 						"type": "select", "id": "model", "category": "model", "name": "Model", "currentValue": "fixture-gemini-model",
@@ -771,7 +788,7 @@ func TestProviderRuntimeChild(t *testing.T) {
 }
 
 func TestQoderContextWindowPreservesSessionCompatibility(t *testing.T) {
-	for _, provider := range []string{"qoder", "qoder-cn"} {
+	for _, provider := range []string{"qoder"} {
 		t.Run(provider, func(t *testing.T) {
 			base := ThreadRequest{Connection: ProviderConnectionRequest{
 				Account: AccountRequest{Provider: provider, CWD: t.TempDir(), Model: "qfmodel"},

@@ -110,7 +110,7 @@ func TestNativeFamilyModelChangesPreserveBindingButPolicyChangesReplaceIt(t *tes
 }
 
 func TestStandardACPProvidersUseTheSharedProcessOwner(t *testing.T) {
-	for _, provider := range []string{"workbuddy", "qoder", "qoder-cn"} {
+	for _, provider := range []string{"workbuddy", "qoder"} {
 		t.Run(provider, func(t *testing.T) {
 			request := providerTestRequest(t, provider)
 			runtime := NewProviderRuntime(ProviderRuntimeOptions{AcquireAccount: providerTestAccount})

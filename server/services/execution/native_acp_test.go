@@ -116,7 +116,7 @@ func TestNativeProductRemainingACPContinueCancelAndRecover(t *testing.T) {
 }
 
 func TestNativeProductWorkBuddyQoderContinueCancelAndRecover(t *testing.T) {
-	for _, provider := range []string{constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder, constants.RuntimeIDQoderCN} {
+	for _, provider := range []string{constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder} {
 		t.Run(provider, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 25*time.Second)
 			defer cancel()
@@ -347,7 +347,7 @@ func assertACPNativeProductWire(t *testing.T, tracePath, sessionID string, expec
 }
 
 func TestNativeACPExternalDirectoryPreservesFullAccess(t *testing.T) {
-	for _, provider := range []string{constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder, constants.RuntimeIDQoderCN} {
+	for _, provider := range []string{constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder} {
 		t.Run(provider, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 			defer cancel()
@@ -422,13 +422,12 @@ func serveNativeExecutionACP(in *bufio.Scanner, out *json.Encoder, trace *os.Fil
 	var session string
 	model, effort, mode := "fixture-default", "low", "default"
 	effortCategory, full := "thought_level", "yolo"
-	if provider == "qoder" || provider == "qoder-cn" {
+	if provider == "qoder" {
 		effortCategory = "model"
 	}
 	if workBuddy {
 		effortCategory, full = "thought_level", "bypassPermissions"
-	} else if provider == constants.RuntimeIDQoderCN {
-		full = "bypassPermissions"
+
 	}
 	selectOption := func(id, category, current string, values ...string) map[string]any {
 		choices := make([]map[string]string, 0, len(values))
@@ -458,7 +457,7 @@ func serveNativeExecutionACP(in *bufio.Scanner, out *json.Encoder, trace *os.Fil
 	}
 	finish := func(id any, reason string, serial, tokens int) {
 		result := map[string]any{"stopReason": reason, "userMessageId": fmt.Sprintf("fixture-user-%d", serial)}
-		if provider == constants.RuntimeIDQoder || provider == constants.RuntimeIDQoderCN {
+		if provider == constants.RuntimeIDQoder {
 			// Qoder 原生回执使用 UUID；无效身份不能证明当前输入已被消费。
 			result["userMessageId"] = fmt.Sprintf("00000000-0000-4000-8000-%012d", serial)
 		}

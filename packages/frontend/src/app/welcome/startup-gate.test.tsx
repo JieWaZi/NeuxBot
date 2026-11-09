@@ -525,7 +525,6 @@ it("安装目录覆盖全部内置 CLI，Windows 不提供 Unix 安装命令", (
     "grok",
     "workbuddy",
     "qoder",
-    "qoder-cn",
   ]) {
     expect(cliInstallation(id, "macos")?.url).toMatch(/^https:\/\//);
     expect(cliInstallation(id, "windows")?.command ?? "").not.toMatch(

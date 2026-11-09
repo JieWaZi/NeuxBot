@@ -237,7 +237,7 @@ func (s *service) Start(ctx context.Context) error {
 	}
 	s.startupMutex.Lock()
 	s.startupPending, s.startupFailed, s.startupSetupRequired = true, false, true
-	for _, environment := range previous {
+	for _, environment := range s.registeredEnvironments(previous) {
 		if environment.Detection.ResolvedBinary != "" ||
 			(environment.Enabled && environment.IsDefault && strings.TrimSpace(environment.Binary) != "") {
 			s.startupSetupRequired = false
@@ -579,6 +579,7 @@ func (s *service) ensureDefault(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		environments = s.registeredEnvironments(environments)
 		for _, environment := range environments {
 			// 已保存的默认选择不由后台探测重新决策，包括用户主动禁用的条目。
 			if environment.IsDefault {
@@ -596,6 +597,21 @@ func (s *service) ensureDefault(ctx context.Context) error {
 		}
 		return nil
 	})
+}
+
+// registeredEnvironments 只让当前目录中的智能体及配置参与启动和默认选择。
+func (s *service) registeredEnvironments(environments []models.RuntimeEnvironment) []models.RuntimeEnvironment {
+	registered := make(map[string]struct{})
+	for _, summary := range s.runtimeCatalog.Runtimes() {
+		registered[summary.ID] = struct{}{}
+	}
+	result := make([]models.RuntimeEnvironment, 0, len(environments))
+	for _, environment := range environments {
+		if _, exists := registered[environment.RuntimeID]; exists {
+			result = append(result, environment)
+		}
+	}
+	return result
 }
 
 func newEnvironment(summary agent.RuntimeSummary) models.RuntimeEnvironment {

@@ -5,6 +5,8 @@ const (
 	AgentCLIProtocolVersion = 1
 	// AgentCLIPath 是与桌面管理认证隔离的本机能力入口。
 	AgentCLIPath = "/agent/v1"
+	// AgentCLIMCPCatalogPath 只向待接纳或已接纳的授权上下文发布固定工具目录。
+	AgentCLIMCPCatalogPath = "/mcp/catalog"
 	// AgentCLIBinaryEnvironment 允许应用装配明确提供受管 CLI 的实际路径。
 	AgentCLIBinaryEnvironment = "ALLYCLI_BINARY_PATH"
 	// AgentCLIRequestMaximumBytes 限制普通命令载荷与连接响应。

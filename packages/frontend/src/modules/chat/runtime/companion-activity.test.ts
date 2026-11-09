@@ -1,9 +1,7 @@
 import type { AllyChatMessage } from "./chat-projection";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { messageCompanionActivity } from "./companion-activity";
-import { createCompanion } from "../../../../../../vendor/companion/renderer";
-import { companionAppearance } from "@/shared/companion/appearance";
-import { companionPlayback } from "@/shared/companion/playback";
+import { companionPresentation } from "@/shared/companion/playback";
 
 afterEach(() => vi.useRealTimers());
 
@@ -24,37 +22,11 @@ function message(
 
 describe("消息驱动形象", () => {
   it("准备期间持续显示环绕圈圈，原生接纳后才进入思考", () => {
-    vi.useFakeTimers();
-    const host = document.createElement("div");
-    const engine = createCompanion(host, {
-      ...companionAppearance("companion:v1:0123456789abcdef0123456789abcdef"),
-      character: "ally",
-      emotion: "02",
-      autostart: false,
-      idle: false,
-      lite: false,
-    });
-    const playback = companionPlayback(
-      engine,
-      messageCompanionActivity(message([], "pending", true)),
-      { reactions: [] },
-    );
-    try {
-      playback.visibility(true, true);
-      vi.advanceTimersByTime(5_000);
-      expect(
-        host.querySelector('.ally-effects-front [data-effect="36"]'),
-      ).toHaveAttribute("opacity", "1");
-      expect(
-        host.querySelector('.ally-effects-front [data-effect="30"]'),
-      ).toHaveAttribute("opacity", "0");
-      playback.update(messageCompanionActivity(message([])));
-      expect(
-        host.querySelector('.ally-effects-front [data-effect="30"]'),
-      ).toHaveAttribute("opacity", "1");
-    } finally {
-      playback.destroy();
-    }
+    const pending = messageCompanionActivity(message([], "pending", true));
+    expect(companionPresentation(pending).state).toBe("swirl");
+    const accepted = messageCompanionActivity(message([]));
+    expect(companionPresentation(accepted).motion).toBe("thinking");
+    expect(companionPresentation(accepted).state).toBe("thinking");
   });
   it("会话等待与停止只影响最新消息，历史消息即使保留 running 也保持空闲", () => {
     const messages = [

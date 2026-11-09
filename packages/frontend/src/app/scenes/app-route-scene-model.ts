@@ -1,6 +1,9 @@
 import { resolveAppNavigation } from "../layout/app-navigation-model";
 import type { AppSceneTab } from "@/shared/workspace/app-scene-model";
-import { legacyIMSettingsHref } from "./settings-route";
+import {
+  integrationSettingsHref,
+  legacyIMSettingsHref,
+} from "./settings-route";
 
 export type RouteSceneLocation = {
   key?: string;
@@ -61,7 +64,9 @@ export function routeSceneForLocation(
   const navigation = resolveAppNavigation(location);
   if (navigation.moduleId === "settings") {
     const href =
-      legacyIMSettingsHref(pathname, search) || `${pathname}${search}`;
+      legacyIMSettingsHref(pathname, search) ||
+      integrationSettingsHref(pathname, search) ||
+      `${pathname}${search}`;
     const [settingsPath = "", settingsSearch = ""] = href.split("?");
     const params = new URLSearchParams(settingsSearch);
     // 临时详情仅属于当前打开动作，切回设置标签时不恢复已离开的弹窗。

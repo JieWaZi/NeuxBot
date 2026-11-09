@@ -711,7 +711,7 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 			Executable: launch.Executable, PrefixArgs: acpDirectoryArguments(launch, account.Provider), WorkingDirectory: account.CWD,
 			Environment: env, CatalogConfigHome: launch.WorkBuddyCatalogHome, ExplicitCredential: lease.Environment["CODEBUDDY_AUTH_TOKEN"] != "" || lease.Environment["CODEBUDDY_API_KEY"] != "",
 		}, host)
-	case constants.RuntimeIDQoder, constants.RuntimeIDQoderCN:
+	case constants.RuntimeIDQoder:
 		client.native, err = qoder.NewClient(ctx, qoder.Options{
 			RuntimeID: account.Provider, Executable: launch.Executable, PrefixArgs: acpDirectoryArguments(launch, account.Provider),
 			WorkingDirectory: account.CWD, Environment: env, ExpectedUserID: lease.QoderUserID, Model: account.Model,

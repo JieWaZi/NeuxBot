@@ -36,6 +36,7 @@ import type { ReactElement } from "react";
 const render = (ui: ReactElement) =>
   renderView(ui, { wrapper: TooltipProvider });
 
+import { useSettingsDraftGuard } from "@/modules/settings";
 import { AppShell } from "./app-shell";
 import { getChatOptions } from "@/modules/chat";
 import type * as PluginQueries from "@/modules/plugin/api/plugin-queries";
@@ -124,22 +125,34 @@ vi.mock("@/modules/chat/pages/team-chat-page", () => ({
 
 vi.mock("@/modules/im", () => ({
   IMPage: () => <h1>IM 平台列表</h1>,
-  IMConnectionDetailDialog: ({
+  useIMConnections: () => ({
+    data: { resources: [{ id: "one", name: "飞书连接", platform: "feishu" }] },
+  }),
+  IMConnectionDetailPage: ({
     connectionId,
     initialBindingId,
-    onClose,
+    onBack,
   }: {
     connectionId: string;
     initialBindingId?: string;
-    onClose: () => void;
-  }) => (
-    <div role="dialog" aria-label="IM 连接详情">
-      <p>
-        {connectionId}/{initialBindingId}
-      </p>
-      <button onClick={onClose}>关闭连接</button>
-    </div>
-  ),
+    onBack: () => void;
+  }) => {
+    const [draft, setDraft] = useState("");
+    useSettingsDraftGuard({ dirty: Boolean(draft) });
+    return (
+      <section aria-label="IM 连接详情">
+        <p>
+          {connectionId}/{initialBindingId}
+        </p>
+        <input
+          aria-label="IM配置草稿"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+        />
+        <button onClick={onBack}>关闭连接</button>
+      </section>
+    );
+  },
 }));
 
 vi.mock("@/modules/project/api/project-queries", () => ({
@@ -1291,13 +1304,14 @@ describe("AppShell 伙伴导航", () => {
   it("旧 IM 深链打开设置内详情，退出模块后可恢复已关闭详情的设置Scene", async () => {
     const user = userEvent.setup();
     renderShell("/im/connection-one?chat=binding-one");
+    await screen.findByRole("region", { name: "IM 连接详情" });
     expect(
-      await screen.findByRole("heading", { name: "IM 平台列表" }),
-    ).toBeVisible();
+      screen.queryByRole("heading", { name: "IM 平台列表" }),
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("dialog", { name: "IM 连接详情" }),
+      screen.getByRole("region", { name: "IM 连接详情" }),
     ).toHaveTextContent("connection-one/binding-one");
-    expect(screen.getByRole("button", { name: "IM 集成" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "集成" })).toHaveAttribute(
       "aria-current",
       "page",
     );
@@ -1316,17 +1330,17 @@ describe("AppShell 伙伴导航", () => {
     expect(screen.getAllByRole("region", { name: "设置 Scene" })).toHaveLength(
       1,
     );
-    expect(screen.queryByRole("dialog", { name: "IM 连接详情" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "IM 连接详情" })).toBeNull();
   });
 
   it("发布集成中切换 IM 分类后不会重开已关闭的深链详情", async () => {
     const user = userEvent.setup();
     renderShell("/im/connection-one?chat=binding-one");
-    await screen.findByRole("dialog", { name: "IM 连接详情" });
+    await screen.findByRole("region", { name: "IM 连接详情" });
     await user.click(screen.getByRole("button", { name: "关闭连接" }));
     await user.click(screen.getByRole("button", { name: "通用" }));
     expect(screen.queryByRole("heading", { name: "IM 平台列表" })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "IM 集成" }));
+    await user.click(screen.getByRole("button", { name: "集成" }));
     expect(screen.getByRole("heading", { name: "IM 平台列表" })).toBeVisible();
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getAllByRole("region", { name: "设置 Scene" })).toHaveLength(
@@ -1389,7 +1403,7 @@ describe("AppShell 伙伴导航", () => {
     expect(
       await screen.findByRole("heading", { name: "IM 平台列表" }),
     ).toBeVisible();
-    expect(screen.getByRole("button", { name: "IM 集成" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "集成" })).toHaveAttribute(
       "aria-current",
       "page",
     );
@@ -1805,7 +1819,7 @@ describe("AppShell 伙伴导航", () => {
     );
     await findContent({ name: "会话 waker-2-latest" });
     await user.click(screen.getByRole("button", { name: "设置" }));
-    await user.click(screen.getByRole("button", { name: "IM 集成" }));
+    await user.click(screen.getByRole("button", { name: "集成" }));
     await user.click(
       within(screen.getByRole("navigation", { name: "伙伴头像栏" })).getByRole(
         "button",
@@ -1822,7 +1836,7 @@ describe("AppShell 伙伴导航", () => {
       document.querySelector('[data-route-scene-id="chat:waker-2-latest"]'),
     ).not.toBeNull();
     await user.click(screen.getByRole("button", { name: "设置" }));
-    expect(screen.getByRole("button", { name: "IM 集成" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "集成" })).toHaveAttribute(
       "aria-current",
       "page",
     );
@@ -2064,4 +2078,35 @@ describe("AppShell 伙伴导航", () => {
       screen.queryByRole("button", { name: "工作区" }),
     ).not.toBeInTheDocument();
   });
+});
+
+it("设置草稿阻止模块和分类离开，取消确认不卸载Scene，设置入口自身不询问", async () => {
+  const user = userEvent.setup();
+  renderShell("/im/connection-one", true);
+  await user.type(
+    await screen.findByRole("textbox", { name: "IM配置草稿" }),
+    "未保存",
+  );
+  await user.click(screen.getByRole("button", { name: "设置" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "伙伴" }));
+  expect(
+    screen.getByRole("region", { name: "设置 Scene", hidden: true }),
+  ).toBeInTheDocument();
+  await user.click(await screen.findByRole("button", { name: "继续编辑" }));
+  expect(screen.getByRole("textbox", { name: "IM配置草稿" })).toHaveValue(
+    "未保存",
+  );
+  await user.click(screen.getByRole("button", { name: "通用" }));
+  await user.click(await screen.findByRole("button", { name: "继续编辑" }));
+  expect(screen.getByRole("textbox", { name: "IM配置草稿" })).toHaveValue(
+    "未保存",
+  );
+  await user.click(screen.getByRole("button", { name: "伙伴" }));
+  await user.click(await screen.findByRole("button", { name: "放弃更改" }));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("region", { name: "设置 Scene" }),
+    ).not.toBeInTheDocument(),
+  );
 });

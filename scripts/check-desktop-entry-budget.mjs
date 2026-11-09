@@ -7,7 +7,7 @@ const startupBudgetBytes = 4_500_000;
 const platformKey = "src/platform/index.ts";
 const workspaceKey = "../packages/frontend/src/app/workspace.tsx";
 const welcomeKeys = [
-  "../vendor/companion/renderer.js",
+  "../packages/frontend/src/shared/companion/companion-avatar.tsx",
   "../vendor/elastic-mesh/renderer.js",
   "../packages/frontend/src/app/welcome/elastic-logo.tsx",
 ];

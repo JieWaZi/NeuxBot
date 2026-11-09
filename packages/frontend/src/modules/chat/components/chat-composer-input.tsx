@@ -845,7 +845,7 @@ export function ChatComposerInput({
         "aria-multiline": "true",
         "data-chat-composer-input": "true",
         class: cn(
-          "type-label block max-h-40 min-h-16 w-full overflow-x-hidden overflow-y-auto overscroll-contain px-1 py-0 outline-none [overflow-wrap:anywhere]",
+          "type-label block max-h-40 w-full overflow-x-hidden overflow-y-auto overscroll-contain px-1 py-0 outline-none [overflow-wrap:anywhere]",
           className,
         ),
       },

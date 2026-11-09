@@ -368,14 +368,18 @@ export function ChatWorkspaceSurface({
         data-workbench-side={workbench.side}
         data-testid="chat-page-layout"
       >
-        <main className="bg-surface-scene relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <main
+          className={cn(
+            "relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+            canvasInput !== undefined
+              ? "bg-surface-canvas"
+              : "bg-surface-scene",
+          )}
+        >
           {canvasInput !== undefined ? (
             <div
               aria-hidden="true"
-              className={cn(
-                "surface-pattern-dots surface-pattern-dots-canvas duration-slow ease-ui pointer-events-none absolute inset-0 transition-opacity",
-                canvasInput ? "opacity-100" : "opacity-0",
-              )}
+              className="surface-pattern-dots surface-pattern-dots-canvas pointer-events-none absolute inset-0"
             />
           ) : null}
           {appSceneWorkspace && sceneActive && !fullView ? (
@@ -453,7 +457,13 @@ export function ChatWorkspaceSurface({
               </div>
             }
             sidebar={
-              <div className="relative h-full min-h-0 min-w-0">
+              <div
+                className={cn(
+                  "relative h-full min-h-0 min-w-0",
+                  canvasInput !== undefined &&
+                    "bg-surface-scene/15 backdrop-blur-canvas-glass",
+                )}
+              >
                 {showActivityIndicator && snapshot.isRunning ? (
                   <span
                     className="text-muted-foreground type-caption absolute top-3 right-4 z-20 flex items-center gap-2"

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/shrewx/ginx"
@@ -34,11 +35,14 @@ import (
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
-func pluginAPIContext(t *testing.T) *gin.Context {
+func pluginAPIContext(t *testing.T, publishers ...events.Publisher) *gin.Context {
 	t.Helper()
 	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "plugins.db"), Migrate: true})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(publishers) > 0 {
+		database.DB = controllers.WithEventPublisher(database.DB, publishers[0])
 	}
 	sqlDB, err := database.DB.DB()
 	if err != nil {

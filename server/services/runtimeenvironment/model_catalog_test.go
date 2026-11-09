@@ -62,7 +62,7 @@ func TestModelCatalogReadVerifiesSystemSubjectBeforePersistedCache(t *testing.T)
 }
 
 func TestNativeACPPermissionsRequireAdvertisedModes(t *testing.T) {
-	for _, provider := range []string{"workbuddy", "qoder", "qoder-cn"} {
+	for _, provider := range []string{"workbuddy", "qoder"} {
 		if levels := NativePermissionLevels(provider, agent.AgentChoice{}); len(levels) != 0 {
 			t.Fatalf("%s invented permission menu: %v", provider, levels)
 		}

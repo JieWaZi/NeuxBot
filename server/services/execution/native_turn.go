@@ -108,14 +108,14 @@ func nativeThreadRequest(chatID string, workspace agent.Workspace, instructions 
 		thread.Selection.DefaultFast = environment.DefaultFast
 	}
 	switch thread.Connection.Account.Provider {
-	case constants.RuntimeIDClaude, constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder, constants.RuntimeIDQoderCN:
+	case constants.RuntimeIDClaude, constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder:
 		thread.Mode = "default"
 		if request.runtime.PermissionLevel == constants.PermissionLevelAuto {
 			thread.Mode = "auto"
 		}
 		if request.runtime.PermissionLevel == constants.PermissionLevelFullAccess {
 			thread.Mode = "bypassPermissions"
-			if thread.Connection.Account.Provider == constants.RuntimeIDQoder || thread.Connection.Account.Provider == constants.RuntimeIDQoderCN {
+			if thread.Connection.Account.Provider == constants.RuntimeIDQoder {
 				thread.Mode = "yolo"
 			}
 		}

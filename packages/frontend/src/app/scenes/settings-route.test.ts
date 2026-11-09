@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   legacyIMSettingsHref,
+  integrationSettingsHref,
   settingsSectionFromPath,
 } from "./settings-route";
 import {
@@ -23,16 +24,18 @@ const labels: RouteSceneLabels = {
 
 describe("IM 设置路由", () => {
   it("旧列表与连接链接转到发布集成，并保留聊天授权定位", () => {
-    expect(legacyIMSettingsHref("/im", "")).toBe("/settings/integration-im");
+    expect(legacyIMSettingsHref("/im", "")).toBe(
+      "/settings/integrations?tab=im",
+    );
     expect(legacyIMSettingsHref("/im/connection-1", "?chat=binding-1")).toBe(
-      "/settings/integration-im?connection=connection-1&binding=binding-1",
+      "/settings/integrations?connection=connection-1&binding=binding-1&tab=im",
     );
     expect(legacyIMSettingsHref("/workflows/one", "")).toBeUndefined();
     expect(legacyIMSettingsHref("/im/bad%", "")).toBe(
-      "/settings/integration-im?connection=bad%25",
+      "/settings/integrations?connection=bad%25&tab=im",
     );
     expect(settingsSectionFromPath("/settings/integration-im")).toBe(
-      "integration-im",
+      "integrations",
     );
   });
 
@@ -69,4 +72,32 @@ it("智能体详情深链保留实际配置身份并复用唯一设置 Scene", (
     mountKey: "settings",
     href: "/settings/agents?agent=codex-profile",
   });
+});
+
+it.each(["api", "mcp"])("旧 %s 服务入口保留参数并直接打开对应详情", (tab) => {
+  expect(
+    integrationSettingsHref(
+      `/settings/integration-${tab}`,
+      "?keysPage=3&keep=value",
+    ),
+  ).toBe(
+    `/settings/integrations?keysPage=3&keep=value&tab=${tab}&detail=service`,
+  );
+});
+it("集成详情 Scene 保存平台和服务身份，移除临时授权定位", () => {
+  expect(
+    routeSceneForLocation(
+      {
+        pathname: "/settings/integrations",
+        search: "?tab=im&platform=feishu&connection=one&binding=chat",
+      },
+      labels,
+    ).href,
+  ).toBe("/settings/integrations?tab=im&platform=feishu");
+  expect(
+    routeSceneForLocation(
+      { pathname: "/settings/integrations", search: "?tab=mcp&detail=service" },
+      labels,
+    ).href,
+  ).toBe("/settings/integrations?tab=mcp&detail=service");
 });

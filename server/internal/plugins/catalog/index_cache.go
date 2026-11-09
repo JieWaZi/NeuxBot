@@ -293,8 +293,10 @@ func (index *remoteIndex) fetch(ctx context.Context) error {
 		request.Header.Set("If-Modified-Since", next.LastModified)
 	}
 	client := http.Client{Timeout: 15 * time.Second}
+	started := time.Now()
 	response, err := client.Do(request)
 	if err != nil {
+		logDistributionFailure("index_get", "", index.source, response, started, err)
 		return index.fail(status_error.PluginDistributionUnavailable)
 	}
 	defer response.Body.Close()
@@ -306,6 +308,7 @@ func (index *remoteIndex) fetch(ctx context.Context) error {
 	case http.StatusOK:
 		data, err := io.ReadAll(io.LimitReader(response.Body, 4*1024*1024+1))
 		if err != nil {
+			logDistributionFailure("index_body", "", index.source, response, started, err)
 			return index.fail(status_error.PluginDistributionUnavailable)
 		}
 		if _, err := parseIndex(data); err != nil {
@@ -315,6 +318,7 @@ func (index *remoteIndex) fetch(ctx context.Context) error {
 		next.ETag = response.Header.Get("ETag")
 		next.LastModified = response.Header.Get("Last-Modified")
 	default:
+		logDistributionFailure("index_status", "", index.source, response, started, nil)
 		return index.fail(status_error.PluginDistributionUnavailable)
 	}
 	if ctx.Err() != nil {

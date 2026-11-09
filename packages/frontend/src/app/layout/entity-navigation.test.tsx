@@ -228,7 +228,7 @@ describe("EntityNavigation", () => {
     );
   });
 
-  it("展开态连点两次头像打开伙伴卡片", () => {
+  it("展开态双击头像打开伙伴资料卡", () => {
     const onShowcaseWaker = vi.fn();
     render(
       <EntityNavigation
@@ -245,14 +245,11 @@ describe("EntityNavigation", () => {
         selectedKey="waker:waker-1"
       />,
     );
-
-    const avatar = screen.getByRole("button", { name: "与 伙伴一 互动" });
-    fireEvent.click(avatar);
-    fireEvent.click(avatar);
-
-    expect(onShowcaseWaker).toHaveBeenCalledWith(
+    const avatar = screen.getByRole("button", { name: "查看 伙伴一 的资料" });
+    fireEvent.doubleClick(avatar);
+    expect(onShowcaseWaker).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ id: "waker-1", name: "伙伴一" }),
-      expect.any(HTMLElement),
+      avatar,
     );
   });
 

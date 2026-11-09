@@ -425,7 +425,11 @@ describe("原生会话分叉入口", () => {
         bodies.push(await request.json());
         return bodies.length === 1
           ? HttpResponse.json(
-              { message: "原生结果待对账", code: "CHAT_FORK_INDETERMINATE" },
+              {
+                message: "原生结果待对账",
+                key: "ChatForkIndeterminate",
+                messageSource: "localized",
+              },
               { status: 409 },
             )
           : HttpResponse.json({ chatId: "child" });
@@ -435,7 +439,9 @@ describe("原生会话分叉入口", () => {
     fireEvent.click(await screen.findByRole("button"));
     const { toast } = await import("@/shared/ui/sonner");
     await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith("原生结果待对账"),
+      expect(toast.error).toHaveBeenCalledWith(
+        "原生分叉结果尚未确认，不能重复创建，请先核对运行时会话",
+      ),
     );
     expect(screen.getByRole("status")).toHaveTextContent("/original");
     expect(screen.getByLabelText("draft")).toHaveValue("保留草稿");

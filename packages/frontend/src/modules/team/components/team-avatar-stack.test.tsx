@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import "@/shared/i18n";
 import type { GithubComJieWaZiNeuxBotServerApisChannelsChannelMemberDetail as ChannelMember } from "@/shared/api/generated/types.gen";
@@ -32,18 +32,19 @@ function miniAvatarFrames(container: HTMLElement) {
 
 describe("TeamAvatarStack", () => {
   it("静态选项传递到单人及多人团队的所有成员头像", () => {
+    const raf = vi.spyOn(window, "requestAnimationFrame");
     for (const count of [1, 2, 3, 5]) {
       const view = render(
         <TeamAvatarStack members={members(count)} animated={false} />,
       );
       const avatars = view.container.querySelectorAll(
-        "[data-companion-animated]",
+        "svg[data-companion-avatar]",
       );
       expect(avatars).toHaveLength(Math.min(count, 3));
-      for (const avatar of avatars)
-        expect(avatar).toHaveAttribute("data-companion-animated", "false");
+      expect(raf).not.toHaveBeenCalled();
       view.unmount();
     }
+    raf.mockRestore();
   });
 
   it("单人与多人团队都使用同一尺寸的方框容器", () => {

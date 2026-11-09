@@ -72,7 +72,10 @@ vi.mock("@/shared/api/generated/sdk.gen", async (original) => ({
               id: "model-1",
               name: "模型一",
               permissionLevels: ["default", "auto", "full-access"],
-              reasoningOptions: [{ id: "high", name: "High" }],
+              reasoningOptions: [
+                { id: "low", name: "Low" },
+                { id: "high", name: "High" },
+              ],
             },
           ],
         },
@@ -99,7 +102,10 @@ vi.mock("@/shared/api/generated/sdk.gen", async (original) => ({
           id: "model-1",
           name: "模型一",
           permissionLevels: ["default", "auto", "full-access"],
-          reasoningOptions: [{ id: "high", name: "High" }],
+          reasoningOptions: [
+            { id: "low", name: "Low" },
+            { id: "high", name: "High" },
+          ],
         },
       ],
     },
@@ -110,6 +116,7 @@ vi.mock("@/shared/api/generated/sdk.gen", async (original) => ({
         {
           id: "managed",
           name: "测试账号",
+          runtimeId: "codex",
           enabled: true,
           hasCredential: true,
           authMode: "api-key",

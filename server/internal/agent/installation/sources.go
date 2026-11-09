@@ -64,7 +64,6 @@ var sources = map[string]Source{
 	constants.RuntimeIDGrok:      {RuntimeID: constants.RuntimeIDGrok, URL: "https://grok.com/build", Integrity: "https"},
 	constants.RuntimeIDGemini:    {RuntimeID: constants.RuntimeIDGemini, URL: "https://geminicli.com/docs/get-started/installation/", Integrity: "npm-sha512", RequiresNode: true},
 	constants.RuntimeIDQoder:     {RuntimeID: constants.RuntimeIDQoder, URL: "https://docs.qoder.com/cli/installation", Integrity: "publisher-sha256"},
-	constants.RuntimeIDQoderCN:   {RuntimeID: constants.RuntimeIDQoderCN, URL: "https://docs.qoder.cn/cli/installation", Integrity: "publisher-sha256"},
 	constants.RuntimeIDWorkBuddy: {RuntimeID: constants.RuntimeIDWorkBuddy, URL: "https://www.workbuddy.cn/docs/cli/installation", Integrity: "publisher-sha256"},
 }
 
@@ -192,11 +191,8 @@ func (i *Installer) resolve(ctx context.Context, runtimeID string) (artifact, er
 		platform := map[string]string{"darwin": "macos", "linux": "linux", "windows": "windows"}[i.os]
 		cpu := map[string]string{"amd64": "x86_64", "arm64": "aarch64"}[i.arch]
 		return artifact{version: v, url: "https://x.ai/cli/grok-" + v + "-" + platform + "-" + cpu + ext, format: "binary", binary: "grok" + ext}, nil
-	case constants.RuntimeIDQoder, constants.RuntimeIDQoderCN:
+	case constants.RuntimeIDQoder:
 		base, binary := "https://qoder-ide.oss-accelerate.aliyuncs.com/qodercli", "qodercli"
-		if runtimeID == constants.RuntimeIDQoderCN {
-			base, binary = "https://static.qoder.com.cn/qoder-cli-cn", "qoderclicn"
-		}
 		manifest, err := i.json(ctx, base+"/channels/manifest.json")
 		if err != nil {
 			return artifact{}, err

@@ -27,6 +27,8 @@ import {
 import type { ChatRightPanel } from "@/modules/chat";
 import { listChatsOptions, getChatOptions } from "@/modules/chat";
 import {
+  SettingsNavigationGuardProvider,
+  useSettingsNavigationGuard,
   SettingsContextSidebar,
   SettingsScene,
   type SettingsSection,
@@ -114,6 +116,7 @@ import {
 import { AppSceneWorkspaceProvider } from "../scenes/app-scene-workspace-provider";
 import {
   legacyIMSettingsHref,
+  integrationSettingsHref,
   settingsSectionFromPath,
 } from "../scenes/settings-route";
 import {
@@ -123,6 +126,11 @@ import {
   writePartnerNavigationPreferences,
 } from "./partner-navigation-preferences";
 
+const IMIntegrationBreadcrumbs = lazy(() =>
+  import("../scenes/im-integration-settings-content").then((module) => ({
+    default: module.IMIntegrationBreadcrumbs,
+  })),
+);
 const IMIntegrationSettingsContent = lazy(() =>
   import("../scenes/im-integration-settings-content").then((module) => ({
     default: module.IMIntegrationSettingsContent,
@@ -141,24 +149,30 @@ export function AppShell({
   const navigationType = useNavigationType();
   const navigate = useNavigate();
   useEffect(() => {
-    const href = legacyIMSettingsHref(location.pathname, location.search);
+    const href =
+      legacyIMSettingsHref(location.pathname, location.search) ??
+      integrationSettingsHref(location.pathname, location.search);
     if (href) navigate(href, { replace: true });
   }, [location.pathname, location.search, navigate]);
   return (
     <NotificationNavigationProvider resolveHref={notificationHref}>
       <WorkspaceProvider>
-        <AppSceneWorkspaceProvider
-          navigationType={navigationType}
-          location={{
-            pathname: location.pathname,
-            search: location.search,
-            key: location.key,
-            state: location.state,
-          }}
-          navigate={(href, state) => navigate(href, { flushSync: true, state })}
-        >
-          <AppShellContent RouteScene={RouteScene} />
-        </AppSceneWorkspaceProvider>
+        <SettingsNavigationGuardProvider>
+          <AppSceneWorkspaceProvider
+            navigationType={navigationType}
+            location={{
+              pathname: location.pathname,
+              search: location.search,
+              key: location.key,
+              state: location.state,
+            }}
+            navigate={(href, state) =>
+              navigate(href, { flushSync: true, state })
+            }
+          >
+            <AppShellContent RouteScene={RouteScene} />
+          </AppSceneWorkspaceProvider>
+        </SettingsNavigationGuardProvider>
       </WorkspaceProvider>
     </NotificationNavigationProvider>
   );
@@ -175,6 +189,7 @@ function AppShellContent({
   const queryClient = useQueryClient();
   const navigation = resolveAppNavigation(location);
   const appScenes = useAppSceneWorkspace();
+  const guardSettingsNavigation = useSettingsNavigationGuard();
   const [searchParams] = useSearchParams();
   const [preferences, setPreferences] = useState(
     readPartnerNavigationPreferences,
@@ -201,10 +216,17 @@ function AppShellContent({
     settingsSectionFromPath(location.pathname) ??
     settingsSectionFromPath(settingsTab?.href?.split("?")[0] || "") ??
     lastSettingsSection;
-  const selectSettingsSection = (section: SettingsSection) => {
-    setSettingsSection(section);
-    navigate(`/settings/${section}`, { flushSync: true });
-  };
+  const selectSettingsSection = (section: SettingsSection) =>
+    guardSettingsNavigation(() => {
+      setSettingsSection(section);
+      navigate(
+        section === "integrations" &&
+          settingsTab?.href?.startsWith("/settings/integrations")
+          ? settingsTab.href
+          : `/settings/${section}`,
+        { flushSync: true },
+      );
+    });
   const [chatRightPanel, setChatRightPanel] = useState<
     ChatRightPanel | undefined
   >(undefined);
@@ -407,89 +429,92 @@ function AppShellContent({
     });
   }, [teamChannelId, teamThreadId]);
 
-  const openPartnerDetail = (partnerId: string) => {
-    navigate(`/wakers/${partnerId}`, { flushSync: true });
-  };
+  const openPartnerDetail = (partnerId: string) =>
+    guardSettingsNavigation(() => {
+      navigate(`/wakers/${partnerId}`, { flushSync: true });
+    });
 
-  const selectPartner = (partnerId: string) => {
-    const request = entitySelectionRequestRef.current + 1;
-    entitySelectionRequestRef.current = request;
-    setPreferences((current) => ({
-      ...current,
-      currentPartnerId: partnerId,
-      currentRailKey: `waker:${partnerId}`,
-      entityMode: "waker",
-    }));
-    setChatRightPanel(undefined);
-    void queryClient
-      .fetchQuery({
-        ...listChatsOptions({ query: { wakerId: partnerId, limit: 1 } }),
-        staleTime: 0,
-      })
-      .then((data) => {
-        if (entitySelectionRequestRef.current !== request) return;
-        const latestChatId = data.resources?.[0]?.id;
-        if (
-          !latestChatId &&
-          appScenes.openNewChat?.({ kind: "waker", id: partnerId })
-        )
-          return;
-        navigate(
-          latestChatId
-            ? chatHref(latestChatId, partnerId)
-            : chatDraftHref(partnerId),
-          { flushSync: true },
-        );
-      })
-      .catch(() => {
-        if (entitySelectionRequestRef.current !== request) return;
-        navigate(chatEntryHref(partnerId), { flushSync: true });
-      });
-  };
+  const selectPartner = (partnerId: string) =>
+    guardSettingsNavigation(() => {
+      const request = entitySelectionRequestRef.current + 1;
+      entitySelectionRequestRef.current = request;
+      setPreferences((current) => ({
+        ...current,
+        currentPartnerId: partnerId,
+        currentRailKey: `waker:${partnerId}`,
+        entityMode: "waker",
+      }));
+      setChatRightPanel(undefined);
+      return queryClient
+        .fetchQuery({
+          ...listChatsOptions({ query: { wakerId: partnerId, limit: 1 } }),
+          staleTime: 0,
+        })
+        .then((data) => {
+          if (entitySelectionRequestRef.current !== request) return;
+          const latestChatId = data.resources?.[0]?.id;
+          if (
+            !latestChatId &&
+            appScenes.openNewChat?.({ kind: "waker", id: partnerId })
+          )
+            return;
+          navigate(
+            latestChatId
+              ? chatHref(latestChatId, partnerId)
+              : chatDraftHref(partnerId),
+            { flushSync: true },
+          );
+        })
+        .catch(() => {
+          if (entitySelectionRequestRef.current !== request) return;
+          navigate(chatEntryHref(partnerId), { flushSync: true });
+        });
+    });
 
-  const selectTeam = (channelId: string) => {
-    const request = entitySelectionRequestRef.current + 1;
-    entitySelectionRequestRef.current = request;
-    setPreferences((current) => ({
-      ...current,
-      currentRailKey: `team:${channelId}`,
-      entityMode: "team",
-    }));
-    setChatRightPanel(undefined);
-    void import("@/app/pages/team-thread-page");
-    void queryClient
-      .fetchInfiniteQuery(teamThreadsInfiniteOptions(channelId))
-      .then((data) => {
-        if (entitySelectionRequestRef.current !== request) return;
-        const latestThreadId = data.pages[0]?.resources?.[0]?.id;
-        if (
-          !latestThreadId &&
-          appScenes.openNewChat?.({ kind: "team", id: channelId })
-        )
-          return;
-        navigate(
-          latestThreadId
-            ? `/teams/${channelId}/threads/${latestThreadId}`
-            : `/teams/${channelId}?draftId=${crypto.randomUUID()}`,
-          { flushSync: true },
-        );
-      })
-      .catch(() => {
-        if (entitySelectionRequestRef.current !== request) return;
-        const rememberedThreadId = preferences.lastTeamThreads[channelId];
-        if (
-          !rememberedThreadId &&
-          appScenes.openNewChat?.({ kind: "team", id: channelId })
-        )
-          return;
-        navigate(
-          rememberedThreadId
-            ? `/teams/${channelId}/threads/${rememberedThreadId}`
-            : `/teams/${channelId}?draftId=${crypto.randomUUID()}`,
-          { flushSync: true },
-        );
-      });
-  };
+  const selectTeam = (channelId: string) =>
+    guardSettingsNavigation(() => {
+      const request = entitySelectionRequestRef.current + 1;
+      entitySelectionRequestRef.current = request;
+      setPreferences((current) => ({
+        ...current,
+        currentRailKey: `team:${channelId}`,
+        entityMode: "team",
+      }));
+      setChatRightPanel(undefined);
+      void import("@/app/pages/team-thread-page");
+      return queryClient
+        .fetchInfiniteQuery(teamThreadsInfiniteOptions(channelId))
+        .then((data) => {
+          if (entitySelectionRequestRef.current !== request) return;
+          const latestThreadId = data.pages[0]?.resources?.[0]?.id;
+          if (
+            !latestThreadId &&
+            appScenes.openNewChat?.({ kind: "team", id: channelId })
+          )
+            return;
+          navigate(
+            latestThreadId
+              ? `/teams/${channelId}/threads/${latestThreadId}`
+              : `/teams/${channelId}?draftId=${crypto.randomUUID()}`,
+            { flushSync: true },
+          );
+        })
+        .catch(() => {
+          if (entitySelectionRequestRef.current !== request) return;
+          const rememberedThreadId = preferences.lastTeamThreads[channelId];
+          if (
+            !rememberedThreadId &&
+            appScenes.openNewChat?.({ kind: "team", id: channelId })
+          )
+            return;
+          navigate(
+            rememberedThreadId
+              ? `/teams/${channelId}/threads/${rememberedThreadId}`
+              : `/teams/${channelId}?draftId=${crypto.randomUUID()}`,
+            { flushSync: true },
+          );
+        });
+    });
 
   const routeSceneLabels = useMemo<RouteSceneLabels>(
     () => ({
@@ -511,22 +536,26 @@ function AppShellContent({
     }),
     [t],
   );
-  const openWorkBoard = useCallback(() => {
-    const href = resolveAppModuleHref("work-board");
-    navigate(href, { flushSync: true });
-    appScenes.dispatch({
-      type: "open",
-      tab: routeSceneForLocation(
-        { pathname: href, search: "" },
-        routeSceneLabels,
-      ),
-    });
-  }, [appScenes, navigate, routeSceneLabels]);
+  const openWorkBoard = useCallback(
+    () =>
+      guardSettingsNavigation(() => {
+        const href = resolveAppModuleHref("work-board");
+        navigate(href, { flushSync: true });
+        appScenes.dispatch({
+          type: "open",
+          tab: routeSceneForLocation(
+            { pathname: href, search: "" },
+            routeSceneLabels,
+          ),
+        });
+      }),
+    [appScenes, navigate, routeSceneLabels, guardSettingsNavigation],
+  );
   const workBoardActive = location.pathname === "/work-board" && !settingsOpen;
   const openSettings = useCallback(() => {
     if (settingsOpen) return;
     const href = resolveAppModuleHref("settings", {
-      settingsHref: `/settings/${settingsSection}`,
+      settingsHref: settingsTab?.href ?? `/settings/${settingsSection}`,
     });
     if (`${location.pathname}${location.search}` !== href) {
       navigate(href, { flushSync: true });
@@ -541,6 +570,7 @@ function AppShellContent({
     navigate,
     settingsOpen,
     settingsSection,
+    settingsTab?.href,
     location.pathname,
     location.search,
     t,
@@ -581,42 +611,47 @@ function AppShellContent({
       ? chatHref(validatedLastActive.chatId, validatedLastActive.wakerId)
       : undefined;
   const navigateModule = (moduleId: AppModuleId) => {
-    if (moduleId === "settings") {
-      openSettings();
-      return;
-    }
-    const href = resolveAppModuleHref(moduleId, {
-      partnerHref: validatedPartnerHref ?? chatEntryHref(selectedPartnerId),
-    });
-    navigate(href, { flushSync: true });
-    const [pathname = "/", query] = href.split("?");
-    appScenes.dispatch({
-      type: "open",
-      tab: routeSceneForLocation(
-        { pathname, search: query ? `?${query}` : "" },
-        routeSceneLabels,
-      ),
+    if (moduleId === "settings" && settingsOpen) return;
+    guardSettingsNavigation(() => {
+      if (moduleId === "settings") {
+        openSettings();
+        return;
+      }
+      const href = resolveAppModuleHref(moduleId, {
+        partnerHref: validatedPartnerHref ?? chatEntryHref(selectedPartnerId),
+      });
+      navigate(href, { flushSync: true });
+      const [pathname = "/", query] = href.split("?");
+      appScenes.dispatch({
+        type: "open",
+        tab: routeSceneForLocation(
+          { pathname, search: query ? `?${query}` : "" },
+          routeSceneLabels,
+        ),
+      });
     });
   };
-  const closeSettings = () => {
-    setSettingsSection(settingsSection);
-    appScenes.dispatch({ type: "close", tabId: "settings" });
-    if (
-      appScenes.snapshot.tabs.length === 1 &&
-      settingsSectionFromPath(location.pathname)
-    ) {
-      navigate("/", { replace: true });
-    }
-  };
+  const closeSettings = () =>
+    guardSettingsNavigation(() => {
+      setSettingsSection(settingsSection);
+      appScenes.dispatch({ type: "close", tabId: "settings" });
+      if (
+        appScenes.snapshot.tabs.length === 1 &&
+        settingsSectionFromPath(location.pathname)
+      ) {
+        navigate("/", { replace: true });
+      }
+    });
   useEffect(() => {
-    const openGeneral = () => {
-      setSettingsSection("general");
-      navigate("/settings/general", { flushSync: true });
-    };
+    const openGeneral = () =>
+      guardSettingsNavigation(() => {
+        setSettingsSection("general");
+        navigate("/settings/general", { flushSync: true });
+      });
     window.addEventListener("ally:open-general-settings", openGeneral);
     return () =>
       window.removeEventListener("ally:open-general-settings", openGeneral);
-  }, [navigate]);
+  }, [navigate, guardSettingsNavigation]);
   const chatRouteTabs = appScenes.snapshot.tabs.flatMap((tab) => {
     const match =
       tab.kind === "route" ? /^\/chats\/([^/?]+)/.exec(tab.href ?? "") : null;
@@ -778,12 +813,19 @@ function AppShellContent({
                   separatorBefore: tab.id === memberTabs[0]?.id,
                   label: tab.customLabel ?? tab.label,
                 }))}
-                onSelect={(tabId) =>
-                  appScenes.dispatch({ type: "select", tabId })
-                }
-                onClose={(tabId) =>
-                  appScenes.dispatch({ type: "close", tabId })
-                }
+                onSelect={(tabId) => {
+                  if (tabId === appScenes.snapshot.activeTabId) return;
+                  guardSettingsNavigation(() =>
+                    appScenes.dispatch({ type: "select", tabId }),
+                  );
+                }}
+                onClose={(tabId) => {
+                  const close = () =>
+                    appScenes.dispatch({ type: "close", tabId });
+                  if (tabId === appScenes.snapshot.activeTabId)
+                    guardSettingsNavigation(close);
+                  else close();
+                }}
                 onRename={(tabId, label) =>
                   appScenes.dispatch({ type: "rename-tab", tabId, label })
                 }
@@ -975,6 +1017,7 @@ function AppShellContent({
                     navigate("/settings/agents", { flushSync: true })
                   }
                   imIntegrationContent={<IMIntegrationSettingsContent />}
+                  integrationBreadcrumbs={<IMIntegrationBreadcrumbs />}
                   onClose={closeSettings}
                   onSelectSection={selectSettingsSection}
                   showSceneChrome

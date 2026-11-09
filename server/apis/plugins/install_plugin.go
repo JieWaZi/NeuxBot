@@ -6,6 +6,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
@@ -67,9 +68,11 @@ func (o *InstallPlugin) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
+	commitctx, publish := events.HoldCommitEvents(ctx)
+	defer publish()
 	defer release()
 	if len(account.DeliveryMaterials) > 0 {
-		err := global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
+		err := global.TransactionControllerManager.Transaction(commitctx, func(txctx context.Context) error {
 			revision, err := store.ConfigurationRevision(txctx, resource.ID)
 			if err != nil {
 				return err
@@ -83,6 +86,7 @@ func (o *InstallPlugin) Output(ctx *gin.Context) (interface{}, error) {
 			return nil, ginx.WithStack(err)
 		}
 		account.Generation++
+		commitInstallationAccount([]models.PluginVersion{version}, config.Revision, o.Body.ExpectedAccountGeneration, config.Revision, account.Generation)
 	}
 	response := InstallPluginResponse{PluginID: o.PluginID, Results: []PartnerInstallResult{}}
 	seen := map[string]bool{}
@@ -97,7 +101,7 @@ func (o *InstallPlugin) Output(ctx *gin.Context) (interface{}, error) {
 			response.Results = append(response.Results, item)
 			continue
 		}
-		err := global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
+		err := global.TransactionControllerManager.Transaction(commitctx, func(txctx context.Context) error {
 			current, err := store.Configuration(txctx, resource.ID)
 			if err != nil {
 				return err

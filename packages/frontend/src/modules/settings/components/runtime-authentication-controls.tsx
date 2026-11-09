@@ -238,7 +238,6 @@ export function RuntimeSystemAccountActions({
       ) : !runtime.defaultAccountId &&
         runtime.auth === "missing" &&
         data?.configurationReason &&
-        !data.apiKeySupported &&
         configuration ? (
         <>
           <span className="text-content-secondary type-ui">

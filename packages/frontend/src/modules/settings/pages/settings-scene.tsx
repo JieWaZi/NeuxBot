@@ -6,6 +6,8 @@ import {
   SettingsGroup,
   SettingsRow,
 } from "../components/settings-section-layout";
+import { SettingsPageFooterHost } from "../components/settings-page-footer";
+import { IntegrationBreadcrumbs } from "../components/integration-breadcrumbs";
 import { type SettingsSection } from "../settings-navigation";
 import { useTheme } from "@/shared/theme";
 import { SceneBreadcrumbs } from "@/shared/ui/scene-breadcrumbs";
@@ -25,9 +27,9 @@ const RuntimeEnvironmentsSection = lazy(() =>
     default: module.RuntimeEnvironmentsSection,
   })),
 );
-const APIIntegrationSection = lazy(() =>
-  import("../components/api-integration-section").then((module) => ({
-    default: module.APIIntegrationSection,
+const IntegrationsSection = lazy(() =>
+  import("../components/integrations-section").then((module) => ({
+    default: module.IntegrationsSection,
   })),
 );
 
@@ -94,6 +96,7 @@ function SettingsLoading() {
 
 export function SettingsScene({
   imIntegrationContent,
+  integrationBreadcrumbs,
   onOpenRuntime,
   onRuntimeBack,
   runtimeId,
@@ -108,13 +111,13 @@ export function SettingsScene({
   section: SettingsSection;
   showSceneChrome?: boolean;
   imIntegrationContent?: ReactNode;
+  integrationBreadcrumbs?: ReactNode;
 }) {
   const { t } = useTranslation("appSettings");
   const sectionKey = {
     general: "general",
     agents: "runtimeEnvironments",
-    "integration-api": "integrationAPI",
-    "integration-im": "integrationIM",
+    integrations: "integrations",
   }[section];
 
   return (
@@ -124,44 +127,55 @@ export function SettingsScene({
         aria-label={t("sceneLabel")}
         className="bg-surface-scene @container/settings-scene relative z-10 flex h-full min-h-0 flex-col overflow-hidden"
       >
-        {showSceneChrome && section !== "agents" ? (
+        {showSceneChrome &&
+        section !== "agents" &&
+        section !== "integrations" ? (
           <SceneBreadcrumbs
             ariaLabel={t("sceneLabel")}
             items={[{ label: t(`sections.${sectionKey}`) }]}
           />
         ) : null}
-        <div
-          key={`${section}:${runtimeId ?? ""}`}
-          className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto"
-        >
-          <div className="max-w-settings-content mx-auto w-full px-4 py-6 @[42.5rem]/settings-scene:px-8">
-            <Suspense
-              fallback={
-                <>
-                  {showSceneChrome && section === "agents" ? (
-                    <SceneBreadcrumbs
-                      ariaLabel={t("sceneLabel")}
-                      items={[{ label: t("sections.runtimeEnvironments") }]}
-                    />
-                  ) : null}
-                  <SettingsLoading />
-                </>
-              }
-            >
-              {section === "general" ? <GeneralSettings /> : null}
-              {section === "agents" ? (
-                <RuntimeEnvironmentsSection
-                  runtimeId={runtimeId}
-                  onOpenRuntime={onOpenRuntime ?? (() => undefined)}
-                  onBack={onRuntimeBack ?? (() => undefined)}
-                  showSceneChrome={showSceneChrome}
-                />
-              ) : null}
-              {section === "integration-api" ? <APIIntegrationSection /> : null}
-              {section === "integration-im" ? imIntegrationContent : null}
-            </Suspense>
+        {showSceneChrome && section === "integrations" ? (
+          <Suspense fallback={<IntegrationBreadcrumbs />}>
+            {integrationBreadcrumbs || <IntegrationBreadcrumbs />}
+          </Suspense>
+        ) : null}
+        <SettingsPageFooterHost>
+          <div
+            data-slot="settings-page-viewport"
+            key={`${section}:${runtimeId ?? ""}`}
+            className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto"
+          >
+            <div className="max-w-settings-content mx-auto w-full px-4 py-6 @[42.5rem]/settings-scene:px-8">
+              <Suspense
+                fallback={
+                  <>
+                    {showSceneChrome && section === "agents" ? (
+                      <SceneBreadcrumbs
+                        ariaLabel={t("sceneLabel")}
+                        items={[{ label: t("sections.runtimeEnvironments") }]}
+                      />
+                    ) : null}
+                    <SettingsLoading />
+                  </>
+                }
+              >
+                {section === "general" ? <GeneralSettings /> : null}
+                {section === "agents" ? (
+                  <RuntimeEnvironmentsSection
+                    runtimeId={runtimeId}
+                    onOpenRuntime={onOpenRuntime ?? (() => undefined)}
+                    onBack={onRuntimeBack ?? (() => undefined)}
+                    showSceneChrome={showSceneChrome}
+                  />
+                ) : null}
+                {section === "integrations" ? (
+                  <IntegrationsSection imContent={imIntegrationContent} />
+                ) : null}
+              </Suspense>
+            </div>
           </div>
-        </div>
+        </SettingsPageFooterHost>
       </section>
     </>
   );

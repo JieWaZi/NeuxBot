@@ -67,6 +67,8 @@ export const buttonVariants = cva(
         "icon-sm":
           "size-control-sm rounded-sm p-0 [&_svg:not([data-companion-avatar])]:size-icon-sm",
         icon: "size-control-md rounded-sm p-0 [&_svg:not([data-companion-avatar]):not([data-decoration])]:size-icon-md",
+        "module-rail":
+          "size-control-md rounded-sm p-0 [&_svg:not([data-companion-avatar])]:size-icon-lg",
         dock: "size-dock-button rounded-full p-0 [&_svg:not([data-companion-avatar])]:size-icon-md",
         "icon-lg":
           "size-control-lg rounded-sm p-0 [&_svg:not([data-companion-avatar])]:size-icon-lg",

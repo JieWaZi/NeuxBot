@@ -5,7 +5,6 @@ import {
   Clock3,
   Ellipsis,
   Package,
-  Pin,
   Settings,
 } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
@@ -20,8 +19,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuCheckboxItem,
+  DropdownMenuPinnableItem,
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 import { cn } from "@/shared/lib/cn";
@@ -79,7 +77,7 @@ export function AppModuleRail({
       <TooltipTrigger asChild>
         <Button
           type="button"
-          size="icon"
+          size="module-rail"
           variant="ghost"
           aria-label={label}
           aria-current={activeModule === id ? "page" : undefined}
@@ -135,7 +133,7 @@ export function AppModuleRail({
                 <DropdownMenuTrigger ref={moreRef} asChild>
                   <Button
                     type="button"
-                    size="icon"
+                    size="module-rail"
                     variant="ghost"
                     aria-label={t("appNavigation.more")}
                     aria-current={moreActive ? "page" : undefined}
@@ -161,33 +159,21 @@ export function AppModuleRail({
               className="app-module-menu"
             >
               {pages.map(({ id, label, icon: Icon }) => (
-                <div
-                  role="none"
+                <DropdownMenuPinnableItem
                   key={id}
-                  className="grid grid-cols-[minmax(0,1fr)_var(--spacing-control-md)] items-center"
+                  aria-current={activeModule === id ? "page" : undefined}
+                  onSelect={() => onNavigate(id)}
+                  pinned={pinnedModules.includes(id)}
+                  pinLabel={t("appNavigation.pinModule", { name: label })}
+                  onPinnedChange={
+                    onPinChange
+                      ? (pinned) => onPinChange(id, pinned)
+                      : undefined
+                  }
                 >
-                  <DropdownMenuItem
-                    aria-current={activeModule === id ? "page" : undefined}
-                    onSelect={() => onNavigate(id)}
-                  >
-                    <Icon strokeWidth={1.5} />
-                    {label}
-                  </DropdownMenuItem>
-                  <Button asChild size="icon" variant="ghost">
-                    <DropdownMenuCheckboxItem
-                      className="[&>span]:hidden"
-                      checked={pinnedModules.includes(id)}
-                      disabled={!onPinChange}
-                      aria-label={t("appNavigation.pinModule", { name: label })}
-                      onSelect={(event) => event.preventDefault()}
-                      onCheckedChange={(checked) =>
-                        onPinChange?.(id, checked === true)
-                      }
-                    >
-                      <Pin strokeWidth={1.5} />
-                    </DropdownMenuCheckboxItem>
-                  </Button>
-                </div>
+                  <Icon strokeWidth={1.5} />
+                  {label}
+                </DropdownMenuPinnableItem>
               ))}
             </DropdownMenuContent>
           </DropdownMenu>

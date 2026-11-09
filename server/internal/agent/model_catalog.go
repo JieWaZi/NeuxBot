@@ -41,6 +41,8 @@ type ModelCatalogSnapshot struct {
 	ErrorCode string
 	// QoderLoginVerified is positive native evidence independently of model discovery.
 	QoderLoginVerified bool `json:"-"`
+	// KimiLoginVerified is a successful native credential check, independent of model discovery.
+	KimiLoginVerified bool `json:"-"`
 }
 
 // ModelCatalog owns model discovery and short-lived snapshots. ProviderRuntime
@@ -135,6 +137,7 @@ func (c *ModelCatalog) ReadForRuntime(ctx context.Context, runtimeID string, req
 		previous := entry.result
 		previous.State, previous.ErrorCode = CatalogStale, result.ErrorCode
 		previous.QoderLoginVerified = result.QoderLoginVerified
+		previous.KimiLoginVerified = result.KimiLoginVerified
 		result = previous
 	}
 	entry.result = result
@@ -213,10 +216,12 @@ func (c *ModelCatalog) readNative(ctx context.Context, request ProviderConnectio
 	}
 	capabilities := client.Capabilities()
 	qoderLoginVerified := conn.qoderLoginVerified
+	kimiLoginVerified := false
 	fail := func(err error) ModelCatalogSnapshot {
 		failure := modelCatalogFailure(err)
 		failure.Capabilities = capabilities
 		failure.QoderLoginVerified = qoderLoginVerified && failure.State != CatalogSignedOut
+		failure.KimiLoginVerified = kimiLoginVerified && failure.State != CatalogSignedOut
 		return failure
 	}
 	if !qoderLoginVerified {
@@ -228,7 +233,7 @@ func (c *ModelCatalog) readNative(ctx context.Context, request ProviderConnectio
 		if account.RequiresAuthentication && account.Account == nil {
 			return fail(status_error.RuntimeAuthRequired)
 		}
-		qoderLoginVerified = accountconfig.QoderPeerRuntimeID(request.Account.Provider) != "" && account.Account != nil
+		qoderLoginVerified = request.Account.Provider == constants.RuntimeIDQoder && account.Account != nil
 	}
 	models, err := client.ReadModels(ctx)
 	if err != nil {
@@ -237,8 +242,11 @@ func (c *ModelCatalog) readNative(ctx context.Context, request ProviderConnectio
 	if models.Models == nil {
 		return fail(status_error.AIAccountModelsUnavailable)
 	}
+	// Kimi 2.x discovery is an isolated session/new behind its native auth gate.
+	// This positive receipt differs from providers that publish models while signed out.
+	kimiLoginVerified = request.Account.Provider == constants.RuntimeIDKimi
 	return ModelCatalogSnapshot{AgentModelCatalog: models, Capabilities: client.Capabilities(), State: CatalogFresh,
-		DetectedAt: time.Now().UnixMilli(), QoderLoginVerified: qoderLoginVerified}
+		DetectedAt: time.Now().UnixMilli(), QoderLoginVerified: qoderLoginVerified, KimiLoginVerified: kimiLoginVerified}
 }
 
 func modelCatalogFailure(err error) ModelCatalogSnapshot {

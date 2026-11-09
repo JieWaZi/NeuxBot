@@ -121,54 +121,29 @@ func TestACPSystemWorkBuddyExplicitCredentialPrecedence(t *testing.T) {
 	}
 }
 
-func TestACPSystemQoderRegionalPATIsolation(t *testing.T) {
+func TestACPSystemQoderPATLeaseFencesCredential(t *testing.T) {
 	home := acpAccountTestHome(t)
-	t.Setenv("QODER_PERSONAL_ACCESS_TOKEN", "same-synthetic-token")
-	t.Setenv("QODERCN_PERSONAL_ACCESS_TOKEN", "same-synthetic-token")
+	t.Setenv("QODER_PERSONAL_ACCESS_TOKEN", "synthetic-token")
 	service := New(nil)
-	resolve := func(provider string) agent.AccountRequest {
-		t.Helper()
-		request, err := service.ResolveAccount(t.Context(), agent.AccountRequest{
-			Provider: provider, AccountID: agent.SystemAccountID, CWD: home,
-		}, "")
-		if err != nil {
-			t.Fatal(err)
-		}
-		return request
+	selected, err := service.ResolveAccount(t.Context(), agent.AccountRequest{
+		Provider: constants.RuntimeIDQoder, AccountID: agent.SystemAccountID, CWD: home,
+	}, "")
+	if err != nil {
+		t.Fatal(err)
 	}
-	global := resolve(constants.RuntimeIDQoder)
-	cn := resolve(constants.RuntimeIDQoderCN)
-	if global.Subject == cn.Subject || global.ConfigHome == cn.ConfigHome {
-		t.Fatal("the two editions shared native account or configuration identity")
+	if selected.ConfigHome != filepath.Join(home, ".qoder") {
+		t.Fatalf("unexpected config root: %s", selected.ConfigHome)
 	}
-	for _, tc := range []struct {
-		// request is the admitted regional account.
-		request agent.AccountRequest
-		// token is the region's own credential environment variable.
-		token string
-		// other is the other region's credential environment variable.
-		other string
-	}{
-		{global, "QODER_PERSONAL_ACCESS_TOKEN", "QODERCN_PERSONAL_ACCESS_TOKEN"},
-		{cn, "QODERCN_PERSONAL_ACCESS_TOKEN", "QODER_PERSONAL_ACCESS_TOKEN"},
-	} {
-		lease, err := service.AcquireAccount(t.Context(), tc.request)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if lease.Environment[tc.token] != "same-synthetic-token" || lease.Environment[tc.other] != "" {
-			t.Fatal("a regional account lease projected the other edition's credential")
-		}
+	lease, err := service.AcquireAccount(t.Context(), selected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lease.Environment["QODER_PERSONAL_ACCESS_TOKEN"] != "synthetic-token" {
+		t.Fatal("the lease did not project the selected credential")
 	}
 	t.Setenv("QODER_PERSONAL_ACCESS_TOKEN", "replacement-synthetic-token")
-	if _, err := service.AcquireAccount(t.Context(), global); !errors.Is(err, status_error.RuntimeAuthRequired) {
-		t.Fatalf("the stale global token could still acquire a lease: %v", err)
-	}
-	if _, err := service.AcquireAccount(t.Context(), cn); err != nil {
-		t.Fatalf("the global token change fenced the CN selection: %v", err)
-	}
-	if _, err := service.ResolveAccount(t.Context(), global, cn.ConfigHome); !errors.Is(err, status_error.RuntimeConfigurationInvalid) {
-		t.Fatalf("global Qoder reused the CN account root: %v", err)
+	if _, err := service.AcquireAccount(t.Context(), selected); !errors.Is(err, status_error.RuntimeAuthRequired) {
+		t.Fatalf("the stale token could still acquire a lease: %v", err)
 	}
 }
 
@@ -273,45 +248,25 @@ func TestACPSystemQoderReusesOnlyVerifiedUnchangedLogin(t *testing.T) {
 	}
 	checkStarts(1)
 
-	cnAuth := filepath.Join(home, ".qoder-cn", ".auth")
-	if err := os.MkdirAll(cnAuth, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	write(filepath.Join(cnAuth, "user"), "opaque-credential-a")
-	write(filepath.Join(cnAuth, "machine_id"), "machine-key")
-	cnRequest := request
-	cnRequest.Provider = constants.RuntimeIDQoderCN
-	t.Setenv("NEUX_QODER_ACCOUNT_UID", "native-user-cn")
-	cn, err := s.ResolveAccount(t.Context(), cnRequest, "")
-	if err != nil || cn.Subject == selected.Subject {
-		t.Fatalf("regional account did not receive independent verification: %v", err)
-	}
-	checkStarts(2)
-	t.Setenv("NEUX_QODER_ACCOUNT_UID", "native-user-first")
-	if err := lease.VerifyLogin(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	checkStarts(2)
-
 	previous := s.qoderLogins[constants.RuntimeIDQoder]
 	previous.observedAt = time.Now().Add(-time.Minute)
 	s.qoderLogins[constants.RuntimeIDQoder] = previous
 	if err := lease.VerifyLogin(t.Context()); err != nil {
 		t.Fatalf("expired evidence could not be refreshed: %v", err)
 	}
-	checkStarts(3)
+	checkStarts(2)
 
 	write(credential, "opaque-credential-refreshed")
 	if err := lease.VerifyLogin(t.Context()); err != nil {
 		t.Fatalf("same subject after credential refresh: %v", err)
 	}
-	checkStarts(4)
+	checkStarts(3)
 	t.Setenv("NEUX_QODER_ACCOUNT_UID", "native-user-second")
 	write(credential, "opaque-credential-b")
 	if err := lease.VerifyLogin(t.Context()); !errors.Is(err, status_error.RuntimeAuthRequired) {
 		t.Fatalf("credential changed to a different subject: %v", err)
 	}
-	checkStarts(5)
+	checkStarts(4)
 	t.Setenv("NEUX_QODER_ACCOUNT_UID", "")
 	t.Setenv("NEUX_QODER_ACCOUNT_STATUS", "false")
 	if err := os.Remove(credential); err != nil {
@@ -320,12 +275,12 @@ func TestACPSystemQoderReusesOnlyVerifiedUnchangedLogin(t *testing.T) {
 	if err := lease.VerifyLogin(t.Context()); !errors.Is(err, status_error.RuntimeAuthRequired) {
 		t.Fatalf("deleted credentials did not fence the verified subject: %v", err)
 	}
-	checkStarts(6)
+	checkStarts(5)
 	write(credential, "opaque-credential-b")
 	if _, err := s.ResolveAccount(t.Context(), request, ""); !errors.Is(err, status_error.RuntimeAuthRequired) {
 		t.Fatalf("signed-out observation left an older positive cache entry: %v", err)
 	}
-	checkStarts(7)
+	checkStarts(6)
 }
 
 func TestACPSystemQoderRejectsSubjectSwitchedDuringNativeRead(t *testing.T) {
@@ -434,7 +389,7 @@ func TestACPSystemQoderAccountProcess(t *testing.T) {
 		fmt.Printf("{\"logged_in\":%s}\n", os.Getenv("NEUX_QODER_ACCOUNT_STATUS"))
 		os.Exit(0)
 	}
-	if !strings.Contains(strings.Join(os.Args, " "), "--no-session-persistence") || os.Getenv("QODERCN_PERSONAL_ACCESS_TOKEN") != "" {
+	if !strings.Contains(strings.Join(os.Args, " "), "--no-session-persistence") {
 		os.Exit(2)
 	}
 	if trace := os.Getenv("NEUX_QODER_ACCOUNT_TRACE"); trace != "" {
@@ -515,7 +470,7 @@ func TestACPSystemAccountsRejectUnboundWorkingScope(t *testing.T) {
 
 func TestACPSystemAccountsRejectManagedSelection(t *testing.T) {
 	service := New(nil)
-	for _, provider := range []string{constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder, constants.RuntimeIDQoderCN} {
+	for _, provider := range []string{constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder} {
 		request := agent.AccountRequest{Provider: provider, AccountID: "host-managed"}
 		if _, err := service.ResolveAccount(t.Context(), request, ""); !errors.Is(err, status_error.AIAccountConfigurationInvalid) {
 			t.Fatalf("%s accepted a host-managed selection: %v", provider, err)
@@ -536,7 +491,7 @@ func acpAccountTestHome(t *testing.T) string {
 	}
 	for _, key := range []string{
 		"CODEBUDDY_CONFIG_DIR", "CODEBUDDY_API_KEY", "CODEBUDDY_AUTH_TOKEN", "CODEBUDDY_INTERNET_ENVIRONMENT",
-		"QODER_CONFIG_DIR", "QODER_PERSONAL_ACCESS_TOKEN", "QODERCN_CONFIG_DIR", "QODERCN_PERSONAL_ACCESS_TOKEN",
+		"QODER_CONFIG_DIR", "QODER_PERSONAL_ACCESS_TOKEN",
 	} {
 		t.Setenv(key, "")
 	}

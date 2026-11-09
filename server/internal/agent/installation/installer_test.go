@@ -356,6 +356,16 @@ func TestNPMUsesPrivatePrefixAndFakeRunnerOnly(t *testing.T) {
 	assertNoStaging(t, root, "gemini")
 }
 
+func TestQoderCNInstallationIsUnsupported(t *testing.T) {
+	i := NewWithOptions(t.TempDir(), Options{OS: "darwin", Arch: "arm64"})
+	if _, ok := i.Source("qoder-cn"); ok {
+		t.Fatal("removed runtime still has an installation source")
+	}
+	if _, err := i.Install(context.Background(), "qoder-cn", nil); err != status_error.RuntimeInstallationUnsupported {
+		t.Fatalf("removed runtime installation = %v", err)
+	}
+}
+
 func TestRejectsForeignURLsAndUnsupportedTargets(t *testing.T) {
 	for _, location := range []string{"http://registry.npmjs.org/package", "https://registry.npmjs.org.evil.test/package", "https://user:secret@github.com/release", "https://github.com:443/release", "https://127.0.0.1/release"} {
 		value, _ := url.Parse(location)
@@ -715,14 +725,14 @@ func TestAllOfficialSourceResolvers(t *testing.T) {
 	} {
 		p.put("https://api.github.com/repos/"+row[0]+"/releases/latest", map[string]any{"tag_name": row[1], "assets": []any{map[string]any{"name": row[2], "digest": "sha256:" + digest}}})
 	}
-	for _, row := range [][2]string{{"https://qoder-ide.oss-accelerate.aliyuncs.com/qodercli", "qodercli"}, {"https://static.qoder.com.cn/qoder-cli-cn", "qoderclicn"}} {
+	for _, row := range [][2]string{{"https://qoder-ide.oss-accelerate.aliyuncs.com/qodercli", "qodercli"}} {
 		p.put(row[0]+"/channels/manifest.json", map[string]any{"latest": "1.2.3", "files": []any{map[string]any{"os": "darwin", "arch": "arm64", "url": row[0] + "/releases/1.2.3/" + row[1] + "-darwin-arm64.tar.gz", "sha256": digest}}})
 	}
 	const workbuddy = "https://acc-1258344699.cos.accelerate.myqcloud.com/@tencent-ai/codebuddy-code/releases"
 	p.put(workbuddy+"/latest", []byte("1.2.3"))
 	p.put(workbuddy+"/download/1.2.3/checksums.txt", []byte(digest+"  codebuddy-code_Darwin_arm64.tar.gz\n"))
 	i := NewWithOptions(t.TempDir(), Options{Client: p.client, OS: "darwin", Arch: "arm64"})
-	for _, id := range []string{"codex", "claude", "cursor", "kimi", "opencode", "pi", "grok", "gemini", "qoder", "qoder-cn", "workbuddy"} {
+	for _, id := range []string{"codex", "claude", "cursor", "kimi", "opencode", "pi", "grok", "gemini", "qoder", "workbuddy"} {
 		t.Run(id, func(t *testing.T) {
 			artifact, err := i.resolve(context.Background(), id)
 			if err != nil {

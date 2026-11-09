@@ -92,7 +92,7 @@ func TestCanCompleteStartupSetupUsesExplicitConfiguration(t *testing.T) {
 func TestUpdateRuntimeEnvironmentRejectsManagedACPAccount(t *testing.T) {
 	runtimeUpdateFixture(t)
 	ctx, _ := gin.CreateTestContext(nil)
-	for _, provider := range []string{constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder, constants.RuntimeIDQoderCN} {
+	for _, provider := range []string{constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder} {
 		if err := global.RuntimeEnvironmentControllerManager.Ensure(t.Context(), models.RuntimeEnvironment{
 			ID: provider, RuntimeID: provider, BaseRuntimeID: provider, Binary: provider,
 		}); err != nil {
@@ -151,7 +151,6 @@ func runtimeUpdateFixture(t *testing.T) controllers.AIAccountController {
 	}
 	t.Setenv(homeVariable, t.TempDir())
 	t.Setenv("QODER_CONFIG_DIR", "")
-	t.Setenv("QODERCN_CONFIG_DIR", "")
 	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "runtime.sqlite"), Migrate: true})
 	if err != nil {
 		t.Fatal(err)

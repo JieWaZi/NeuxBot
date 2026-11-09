@@ -16,20 +16,6 @@ func ACPSystemConfigVariable(runtimeID string) string {
 		return "CODEBUDDY_CONFIG_DIR"
 	case constants.RuntimeIDQoder:
 		return "QODER_CONFIG_DIR"
-	case constants.RuntimeIDQoderCN:
-		return "QODERCN_CONFIG_DIR"
-	default:
-		return ""
-	}
-}
-
-// QoderPeerRuntimeID identifies the other Qoder edition, which owns a separate native root.
-func QoderPeerRuntimeID(runtimeID string) string {
-	switch runtimeID {
-	case constants.RuntimeIDQoder:
-		return constants.RuntimeIDQoderCN
-	case constants.RuntimeIDQoderCN:
-		return constants.RuntimeIDQoder
 	default:
 		return ""
 	}
@@ -46,7 +32,7 @@ func IsACPAccountOverride(runtimeID, key string) bool {
 
 func inheritedACPOverride(key string) bool {
 	return strings.HasPrefix(key, "CODEBUDDY_") || strings.HasPrefix(key, "WORKBUDDY_") ||
-		strings.HasPrefix(key, "QODER_") || strings.HasPrefix(key, "QODERCN_") ||
+		strings.HasPrefix(key, "QODER_") ||
 		key == "ACC_PRODUCT_CONFIG" || strings.HasPrefix(key, "ACC_PRODUCT_CONFIG_") ||
 		key == "ENV_PRODUCT_CLI_ACCOUNT_TYPE"
 }

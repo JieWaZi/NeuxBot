@@ -120,3 +120,15 @@ it("More列出所有可pin模块，pin/unpin不导航、不关闭菜单并保持
     "page",
   );
 });
+
+it("置顶图标随固定状态填充，点击不触发导航", async () => {
+  const user = userEvent.setup();
+  render(<PinRail />);
+  await user.click(screen.getByRole("button", { name: "更多模块" }));
+  const pin = screen.getByRole("menuitemcheckbox", { name: "固定知识库" });
+  expect(pin.querySelector("svg")).toHaveAttribute("fill", "none");
+  await user.click(pin);
+  expect(pin.querySelector("svg")).toHaveAttribute("fill", "currentColor");
+  await user.click(pin);
+  expect(pin.querySelector("svg")).toHaveAttribute("fill", "none");
+});

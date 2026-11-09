@@ -314,9 +314,12 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 		return
 	}
 	provided, found := strings.CutPrefix(request.Header.Get("Authorization"), "Bearer ")
+	// Native session initialization needs the frozen tool catalog before durable
+	// admission. Only this metadata route accepts a prepared, inactive grant.
+	catalog := request.Method == http.MethodGet && request.URL.Path == constants.AgentCLIPath+constants.AgentCLIMCPCatalogPath
 	r.mutex.Lock()
 	current := r.leases[tokenKey(provided)]
-	valid := found && provided != "" && current != nil && current.active && !r.closed
+	valid := found && provided != "" && current != nil && (current.active || catalog) && !r.closed
 	if valid {
 		current.calls.Add(1)
 	}
@@ -335,13 +338,15 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 		writeFailure(w, "", status_error.AgentContextUnauthorized)
 		return
 	}
-	if err := current.validate(ctx); err != nil {
-		writeFailure(w, "", err)
-		return
+	if !catalog {
+		if err := current.validate(ctx); err != nil {
+			writeFailure(w, "", err)
+			return
+		}
 	}
 	path := strings.TrimPrefix(request.URL.Path, constants.AgentCLIPath)
 	switch {
-	case request.Method == http.MethodGet && path == "/capabilities":
+	case catalog || request.Method == http.MethodGet && path == "/capabilities":
 		items := []Operation{}
 		for id := range current.bindings {
 			op, _ := Find(id)

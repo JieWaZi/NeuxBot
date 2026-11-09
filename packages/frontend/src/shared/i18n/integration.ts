@@ -1,6 +1,13 @@
 export const integrationZh = {
+  back: "返回集成",
   mcp: {
     title: "MCP",
+    service: "MCP 服务",
+    serviceSettings: "服务",
+    configurationUnknown: "未读到 MCP 开关配置，请重试读取。",
+    configurationUnavailable: "读取服务配置后可获取客户端配置。",
+    configurationDisabled: "开启 API 和 MCP 服务后可获取客户端配置。",
+    openAPI: "配置 API 服务",
     description: "通过 Streamable HTTP MCP，让外部智能体使用本机知识库。",
     loading: "正在读取 MCP 接入信息",
     statusUnknown: "状态未知",
@@ -21,7 +28,18 @@ export const integrationZh = {
   description: "让外部应用安全访问本机知识库与自动任务。",
   service: "API 服务",
   serviceHelp: "停用 API 服务不影响定时任务。",
-  connectionSettings: "连接设置",
+  connectionSettings: "连接配置",
+  editConnection: "编辑连接配置",
+  editConfiguration: "编辑",
+  savedPublicURL: "已保存的访问地址",
+  lastReadPublicURL: "上次读取的访问地址",
+  pendingPublicURL: "地址尚未核对，请重试读取。",
+  unknownValue: "未知",
+  configurationEnabled: "开启",
+  configurationDisabled: "关闭",
+  unsavedChanges: "未保存的更改",
+  savedReadFailed: "配置已保存，但读取最新状态失败。请重试读取。",
+  revoked: "已撤销",
   serviceStatus: "API 服务状态",
   statusAvailable: "运行中",
   statusUnavailable: "不可用",
@@ -47,6 +65,7 @@ export const integrationZh = {
   close: "关闭",
   retry: "重试",
   failed: "操作失败，请重试。",
+  readFailed: "读取失败，已保留上次配置。请重试读取。",
   copy: "复制",
   copied: "已复制",
   create: "创建 API Key",
@@ -118,8 +137,17 @@ export const integrationZh = {
 
 export const integrationEn = {
   ...integrationZh,
+  back: "Back to integrations",
   mcp: {
     title: "MCP",
+    service: "MCP service",
+    serviceSettings: "Service",
+    configurationUnknown: "The MCP setting is unknown. Retry loading it.",
+    configurationUnavailable:
+      "Load the service settings to get the client configuration.",
+    configurationDisabled:
+      "Enable API and MCP services to get the client configuration.",
+    openAPI: "Configure API service",
     description:
       "Connect external agents to local knowledge libraries through Streamable HTTP MCP.",
     loading: "Loading MCP connection details",

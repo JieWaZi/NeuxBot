@@ -157,6 +157,7 @@ export function WorkflowChatPane({
         mainContent,
         canvasInput: id === "new" && !firstMessageSubmitted,
         showSummary: false,
+        showTerminalAction: true,
         showFileChanges: false,
         history,
         onNewChat,

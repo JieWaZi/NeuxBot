@@ -13,6 +13,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
@@ -25,7 +26,7 @@ for await(const line of readline.createInterface({input:process.stdin})){
  const r=JSON.parse(line),p=r.params;appendFileSync(path.join(p.dataDirectory,'calls'),r.method+'\n');let result={};
  if(r.method==='auth/initialize')result={protocol:'neuxbot-auth/1',context:p};
  else if(r.method==='auth/status')result={state:'authorized',account:{configured:true,available:true,id:'reader',scopes:[]}};
- else if(r.method==='auth/resolve')result={bindings:[]};
+ else if(r.method==='auth/resolve')result={bindings:p.components.map(c=>({componentId:c.componentId,headers:{Authorization:'Bearer fixture-private'}}))};
  console.log(JSON.stringify({jsonrpc:'2.0',id:r.id,result}));
  if(r.method==='auth/start'){
  const waiting=existsSync(path.join(p.dataDirectory,'wait'));
@@ -34,12 +35,19 @@ for await(const line of readline.createInterface({input:process.stdin})){
  if(r.method==='auth/cancel'){writeFileSync(path.join(p.dataDirectory,'cancelled'),'yes');process.exit(0);}
 }`
 
-func stageOneAPIFixture(t *testing.T, ctx *gin.Context, name, version string, auth bool) PluginDetailResponse {
+func stageOneAPIFixture(t *testing.T, ctx *gin.Context, name, version string, auth bool, bindings ...packageplugin.AuthenticationBinding) PluginDetailResponse {
 	t.Helper()
 	source := t.TempDir()
 	manifest := map[string]any{"$schema": constants.PluginManifestSchema, "name": name, "version": version}
 	if auth {
-		manifest["extensions"] = map[string]any{constants.PluginExtensionNamespace: map[string]any{"schemaVersion": constants.PluginExtensionSchemaVersion, "authentication": map[string]any{"strategy": constants.PluginAuthCommandStrategy, "protocol": constants.PluginAuthProtocol, "command": "node", "args": []string{".neuxbot/auth.mjs"}}}}
+		declaration := map[string]any{"strategy": constants.PluginAuthCommandStrategy, "protocol": constants.PluginAuthProtocol, "command": "node", "args": []string{".neuxbot/auth.mjs"}}
+		if len(bindings) > 0 {
+			declaration["bindings"] = bindings
+			if err := os.WriteFile(filepath.Join(source, "mcp.json"), []byte(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"service":{"type":"streamable-http","url":"https://example.invalid/mcp"}}}`), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		manifest["extensions"] = map[string]any{constants.PluginExtensionNamespace: map[string]any{"schemaVersion": constants.PluginExtensionSchemaVersion, "authentication": declaration}}
 		if err := os.MkdirAll(filepath.Join(source, ".neuxbot"), 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -72,6 +80,115 @@ func stageOneRegistry(t *testing.T) {
 	previous := global.PluginBridges
 	global.PluginBridges = commandbridge.NewRegistry(context.Background(), nil)
 	t.Cleanup(func() { global.PluginBridges.Close(); global.PluginBridges = previous })
+}
+
+// accountCommitObserver 在公开事件发布时同步核对消费者立即读取到的账号事实。
+type accountCommitObserver func(events.Event)
+
+func (observe accountCommitObserver) Publish(event events.Event) { observe(event) }
+
+func TestAuthorizedInstallationKeepsSharedAccountVisible(t *testing.T) {
+	var onChange func()
+	ctx := pluginAPIContext(t, accountCommitObserver(func(event events.Event) {
+		if onChange != nil && event.Topic == constants.PluginEventTopic {
+			onChange()
+		}
+	}))
+	stageOneRegistry(t)
+	detail := stageOneAPIFixture(t, ctx, "installed-account", "1.0.0", true, packageplugin.AuthenticationBinding{Runtime: "codex", Server: "service", URL: "https://example.invalid/mcp", Header: "Authorization"})
+	id, version := detail.Plugin.ID, detail.ResolvedVersionID
+	value, err := (&StartPluginAuthorization{PluginID: id, VersionID: version}).Output(ctx)
+	if err != nil || value.(authorization.Session).State != constants.PluginAuthorizationStateReady {
+		t.Fatal("authorization did not complete", err)
+	}
+	before, err := (&GetPluginAuthorization{PluginID: id, VersionID: version}).Output(ctx)
+	if err != nil || !before.(PluginAuthorizationResponse).Account.Available {
+		t.Fatal("authorized account not visible before installation", err)
+	}
+	initial := before.(PluginAuthorizationResponse)
+	changes := 0
+	onChange = func() {
+		changes++
+		result, err := (&GetPluginAuthorization{PluginID: id, VersionID: version}).Output(ctx)
+		if err != nil || !result.(PluginAuthorizationResponse).Account.Available || result.(PluginAuthorizationResponse).AccountGeneration != initial.AccountGeneration+1 {
+			t.Fatal("installation event preceded the committed identity handoff", err)
+		}
+	}
+	installed, err := (&InstallPlugin{PluginID: id, Body: InstallPluginRequest{VersionID: version, WakerIDs: []string{"w1"}, ExpectedAccountGeneration: initial.AccountGeneration}}).Output(ctx)
+	if err != nil || !installed.(InstallPluginResponse).Results[0].Installed {
+		t.Fatal("authorized installation failed", err)
+	}
+	if changes == 0 {
+		t.Fatal("installation did not publish committed changes")
+	}
+	account, err := global.PluginControllerManager.Account(ctx, id)
+	if err != nil || len(account.DeliveryMaterials) == 0 || account.Generation != initial.AccountGeneration+1 {
+		t.Fatal("installation did not persist delivery material with its new generation", err)
+	}
+	calls := filepath.Join(global.Config.DataDirectory, "plugins/data", id, "calls")
+	priorCalls, err := os.ReadFile(calls)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := (&GetPluginAuthorization{PluginID: id, VersionID: version}).Output(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := after.(PluginAuthorizationResponse)
+	if !current.Account.Available || current.Account.CheckedAt == 0 || current.Account.ID != "reader" || current.AccountGeneration != account.Generation || current.Session.ID != value.(authorization.Session).ID {
+		t.Fatalf("installation lost verified account or authorization session: %+v", current)
+	}
+	page, err := (&GetPlugin{PluginID: id}).Output(ctx)
+	if err != nil || !page.(PluginDetailResponse).Account.Available || page.(PluginDetailResponse).Account.CheckedAt == 0 {
+		t.Fatal("installed detail lost the authorized identity", err)
+	}
+	afterCalls, err := os.ReadFile(calls)
+	if err != nil || string(afterCalls) != string(priorCalls) {
+		t.Fatal("ordinary detail rechecked authorization instead of retaining the verified summary", err)
+	}
+}
+
+func TestAuthorizedUpdateKeepsSharedAccountVisibleOnlyAfterCommit(t *testing.T) {
+	ctx := pluginAPIContext(t)
+	stageOneRegistry(t)
+	binding := packageplugin.AuthenticationBinding{Runtime: "codex", Server: "service", URL: "https://example.invalid/mcp", Header: "Authorization"}
+	old := stageOneAPIFixture(t, ctx, "updated-account", "1.0.0", true, binding)
+	id := old.Plugin.ID
+	if err := global.PluginControllerManager.Install(ctx, models.WakerPlugin{ID: "installed", PluginID: id, WakerID: "w1", VersionID: old.ResolvedVersionID, Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	next := stageOneAPIFixture(t, ctx, "updated-account", "2.0.0", true, binding)
+	if next.Plugin.ID != id {
+		t.Fatal("update fixture created a different resource")
+	}
+	value, err := (&StartPluginAuthorization{PluginID: id, VersionID: next.ResolvedVersionID}).Output(ctx)
+	if err != nil || value.(authorization.Session).State != constants.PluginAuthorizationStateReady {
+		t.Fatal("update authorization failed", err)
+	}
+	request := UpdatePluginInstallationsRequest{ExpectedAccountGeneration: 1, Switches: []VersionSwitch{{WakerID: "w1", ExpectedVersionID: "stale-version", VersionID: next.ResolvedVersionID}}}
+	if _, err := (&UpdatePluginInstallations{PluginID: id, Body: request}).Output(ctx); !errors.Is(err, status_error.PluginVersionConflict) {
+		t.Fatal("stale update did not roll back", err)
+	}
+	before, err := (&GetPluginAuthorization{PluginID: id, VersionID: next.ResolvedVersionID}).Output(ctx)
+	if err != nil || before.(PluginAuthorizationResponse).AccountGeneration != 1 || before.(PluginAuthorizationResponse).ConfigurationRevision != 0 || !before.(PluginAuthorizationResponse).Account.Available {
+		t.Fatal("failed update advanced or lost the verified identity", err)
+	}
+	request.Switches[0].ExpectedVersionID = old.ResolvedVersionID
+	if _, err := (&UpdatePluginInstallations{PluginID: id, Body: request}).Output(ctx); err != nil {
+		t.Fatal(err)
+	}
+	after, err := (&GetPluginAuthorization{PluginID: id, VersionID: next.ResolvedVersionID}).Output(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := after.(PluginAuthorizationResponse)
+	if !current.Account.Available || current.Account.CheckedAt == 0 || current.AccountGeneration != 2 || current.ConfigurationRevision != 1 {
+		t.Fatalf("successful update lost the verified identity: %+v", current)
+	}
+	page, err := (&GetPlugin{PluginID: id}).Output(ctx)
+	if err != nil || !page.(PluginDetailResponse).Account.Available || page.(PluginDetailResponse).ResolvedVersionID != next.ResolvedVersionID {
+		t.Fatal("updated detail did not retain the verified identity", err)
+	}
 }
 
 func TestStageOneAccountGetIsCachedAndCheckIsExplicit(t *testing.T) {

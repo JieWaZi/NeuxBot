@@ -96,7 +96,7 @@ function show(auth = "missing", runtimeId = "grok") {
   );
   return client;
 }
-function changed() {
+function changed(runtimeId = "grok") {
   const frame: GlobalEventFrame = {
     protocolVersion: 1,
     epoch: "core-1",
@@ -104,7 +104,7 @@ function changed() {
     deliverySequence: 1,
     topic: "runtimes",
     type: "runtimes.event",
-    resource: { kind: "runtime", id: "grok" },
+    resource: { kind: "runtime", id: runtimeId },
     eventId: "auth-1",
     payload: { type: "runtime.authentication.changed" },
   };
@@ -402,4 +402,83 @@ it("验证现有Codex连接期间不提示等待浏览器授权", async () => {
     }),
   );
   expect(cancel).not.toHaveBeenCalled();
+});
+
+it("支持密钥的 Kimi 仍展示内置账号的本机配置入口", async () => {
+  current.snapshot = {
+    ...current.snapshot,
+    methods: [],
+    canAuthenticate: false,
+    apiKeySupported: true,
+    configurationReason: "terminal_authentication",
+  };
+  show("missing", "kimi");
+  expect(
+    await screen.findByRole("button", { name: "官方配置说明" }),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "登录" }),
+  ).not.toBeInTheDocument();
+});
+
+it("Kimi 内置账号用登录入口展示真实设备码并按任务取消", async () => {
+  current.snapshot = {
+    ...current.snapshot,
+    methods: [{ id: "login", name: "Kimi", kind: "agent" }],
+  };
+  show("missing", "kimi");
+  await userEvent.click(await screen.findByRole("button", { name: "登录" }));
+  expect(
+    screen.queryByRole("button", { name: "官方配置说明" }),
+  ).not.toBeInTheDocument();
+  await waitFor(() =>
+    expect(start).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { runtimeId: "kimi" },
+        body: { methodId: "login" },
+      }),
+    ),
+  );
+  current.snapshot = {
+    ...current.snapshot,
+    verificationUrl:
+      "https://www.kimi.com/code/authorize_device?user_code=ABCD-EFGH",
+    userCode: "ABCD-EFGH",
+    revision: 3,
+  };
+  act(() => changed("kimi"));
+  expect(await screen.findByText("ABCD-EFGH")).toBeVisible();
+  expect(screen.getByRole("button", { name: "打开官方授权页" })).toBeVisible();
+  expect(screen.queryByText("登录完成")).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "取消" }));
+  await waitFor(() =>
+    expect(cancel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { runtimeId: "kimi" },
+        query: { jobId: "login-1" },
+      }),
+    ),
+  );
+});
+
+it("Kimi 原生授权完成后显示成功结果并收起设备码", async () => {
+  current.snapshot = {
+    ...current.snapshot,
+    methods: [{ id: "login", name: "Kimi", kind: "agent" }],
+  };
+  show("missing", "kimi");
+  await userEvent.click(await screen.findByRole("button", { name: "登录" }));
+  await waitFor(() => expect(start).toHaveBeenCalledOnce());
+  current.snapshot = {
+    ...current.snapshot,
+    state: "succeeded",
+    result: "authentication_completed",
+    cancelable: false,
+    revision: 3,
+  };
+  act(() => changed("kimi"));
+  expect(await screen.findByText("登录完成")).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "打开官方授权页" }),
+  ).not.toBeInTheDocument();
 });

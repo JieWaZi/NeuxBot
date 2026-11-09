@@ -76,11 +76,6 @@ import type { ResolvedFileReference } from "@/shared/workspace/file-reference";
 import { cn } from "@/shared/lib/cn";
 import { readLayoutMotionTokens } from "@/shared/lib/ui-motion-tokens";
 import { Avatar, StaticAvatar } from "@/shared/ui/avatar";
-import { companionAvatar } from "@/shared/companion/appearance";
-import {
-  CompanionInteraction as ComposerCompanion,
-  CompanionInteractionProvider,
-} from "@/shared/ui/companion-interaction";
 import { Collapsible, CollapsibleContent } from "@/shared/ui/collapsible";
 import { Button } from "@/shared/ui/button";
 import {
@@ -231,7 +226,6 @@ type ChatThreadProps = {
   composerAutoFocus?: boolean;
   composerDisabled?: boolean;
   composerClearRevision?: number;
-  companionScopeRevision?: number;
   composerRestoreRevision?: number;
   terminalEnabled?: boolean;
   onOpenTerminal?: () => void;
@@ -1646,8 +1640,6 @@ const Composer = memo(function Composer({
   draftReference,
   clearRevision,
   restoreRevision,
-  terminalEnabled,
-  onOpenTerminal,
   onOpenFile,
   requestedInteractionId,
   pendingApprovals,
@@ -1698,8 +1690,6 @@ const Composer = memo(function Composer({
   draftReference?: ChatComposerDraftReference;
   clearRevision?: number;
   restoreRevision?: number;
-  terminalEnabled: boolean;
-  onOpenTerminal?: () => void;
   onOpenFile?: (file: ChatFileOpenRequest) => void;
   requestedInteractionId?: string;
   pendingApprovals: PendingApproval[];
@@ -1779,7 +1769,6 @@ const Composer = memo(function Composer({
   const currentElicitation = requestedApproval
     ? undefined
     : (requestedElicitation ?? pendingElicitations[0]);
-  const showComposerSettings = pendingElicitations.length === 0;
   const errorNotices = useChatErrorNotices({
     scopes: errorScopes,
     fallback: sendFailure,
@@ -1791,7 +1780,6 @@ const Composer = memo(function Composer({
   return (
     <div className="w-full">
       <ComposerPrimitive.Root className="w-full">
-        <ComposerCompanion />
         <ComposerSurface
           visualEffect={effects}
           bodyClassName="p-0"
@@ -1954,7 +1942,8 @@ const Composer = memo(function Composer({
                   visible={showUsageMetrics}
                 />
               </div>
-              <div className="flex shrink-0 items-center gap-1">
+              <div className="flex min-w-0 items-center justify-end gap-1">
+                {settings}
                 {primaryAction === "stop" && effectiveIsRunning ? (
                   <ComposerPrimitive.Cancel asChild>
                     <ComposerStopButton
@@ -2007,26 +1996,6 @@ const Composer = memo(function Composer({
           </div>
         </ComposerSurface>
       </ComposerPrimitive.Root>
-      <div
-        data-chat-composer-context-row
-        className="min-h-control-sm mt-1 flex items-center justify-between px-2"
-      >
-        <div className="flex min-w-0 items-center gap-1 overflow-hidden">
-          {showComposerSettings ? settings : null}
-        </div>
-        {terminalEnabled ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t("openTerminal")}
-            title={t("openTerminal")}
-            onClick={onOpenTerminal}
-          >
-            <Terminal />
-          </Button>
-        ) : null}
-      </div>
     </div>
   );
 });
@@ -2091,10 +2060,7 @@ export function ChatThread({
   composerAutoFocus,
   composerDisabled,
   composerClearRevision,
-  companionScopeRevision,
   composerRestoreRevision,
-  terminalEnabled = false,
-  onOpenTerminal,
   onOpenLink,
   linkWorkspaceRoot,
   fileScopeChatId,
@@ -2187,21 +2153,11 @@ export function ChatThread({
     enabled: active && presentation === "thread" && !showDirectEmptyState,
   });
   const latestMessage = messages.at(-1);
-  const latestAuthor = latestMessage
-    ? messageAuthors?.[latestMessage.id ?? ""]
-    : undefined;
   const companionInteraction = isWorkStopping
     ? "stopping"
     : pendingApprovals.length || pendingElicitations.length
       ? "waiting"
       : undefined;
-  const latestView = views.at(-1);
-  const companionActivity =
-    latestView?.message.role === "assistant"
-      ? viewCompanionActivity(latestView, true, companionInteraction)
-      : isWorkRunning
-        ? "starting"
-        : "idle";
 
   const referenceContext = useMemo(
     () => ({
@@ -2245,221 +2201,208 @@ export function ChatThread({
               }),
           }}
         >
-          <CompanionInteractionProvider
-            scope={`${wakerId ?? ""}:${companionScopeRevision ?? 0}`}
-            activeAvatar={companionAvatar(
-              latestAuthor?.avatar ?? wakerAvatar,
-              latestAuthor?.name ?? wakerName,
+          <div
+            className={cn(
+              "flex h-full min-h-0 flex-col",
+              centerEmptyState && "justify-center",
             )}
-            activity={companionActivity}
           >
-            <div
-              className={cn(
-                "flex h-full min-h-0 flex-col",
-                centerEmptyState && "justify-center",
-              )}
-            >
-              {presentation === "thread" &&
-              resultSource &&
-              !isHistoryLoading &&
-              messages.length > 0 &&
-              /^[a-f0-9]{32}$/.test(resultSource.chatId) ? (
-                <ChatWorkResultReader
-                  chatId={resultSource.chatId}
-                  owner={resultSource.owner}
-                  viewport={viewportRef}
-                  hasEarlierMessages={hasEarlierMessages}
-                  onLoadEarlier={loadEarlier}
-                />
-              ) : null}
-              {presentation === "thread" ? (
-                <div
-                  className={cn(
-                    "relative flex min-h-0",
-                    centerEmptyState ? "shrink-0" : "flex-1",
-                  )}
-                >
-                  {showDirectEmptyState ? (
-                    <div
-                      role={isHistoryLoading ? "status" : undefined}
-                      aria-busy={isHistoryLoading ? true : undefined}
-                      className="flex min-h-0 flex-1 flex-col overflow-y-auto"
-                    >
-                      <div className="min-h-0 flex-1">{emptyState}</div>
-                    </div>
-                  ) : (
-                    <>
-                      <div
-                        ref={viewportRef}
-                        data-chat-scroll-viewport
-                        onScroll={historyScroll.onScroll}
-                        className="scrollbar-hidden relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain [overflow-anchor:none]"
-                      >
-                        {messages.length === 0 ? emptyState : null}
-                        <ChatMessageColumn>
-                          {historyError && errorScopes.length === 0 ? (
-                            <ChatErrorCard
-                              id={`history:${errorScopes.join(":")}`}
-                              message={historyError.message}
-                              onRetry={historyError.onRetry}
-                            />
-                          ) : null}
-                          {hasEarlierMessages && (
-                            <div className="flex flex-col items-center gap-1 px-6 pb-2">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                disabled={isLoadingEarlier}
-                                onClick={() => void loadEarlier()}
-                              >
-                                {isLoadingEarlier && (
-                                  <LoaderCircle className="animate-spin" />
-                                )}
-                                {t("loadEarlierMessages")}
-                              </Button>
-                              {loadEarlierError && errorScopes.length === 0 ? (
-                                <ChatErrorCard
-                                  id={`earlier:${errorScopes.join(":")}`}
-                                  message={loadEarlierError}
-                                  onRetry={loadEarlier}
-                                  onDismiss={historyScroll.clearError}
-                                />
-                              ) : null}
-                            </div>
-                          )}
-                          <MarkdownVisibility value={active}>
-                            <ProcessExpansion value={readingState.groups}>
-                              <CompanionInteraction
-                                value={companionInteraction}
-                              >
-                                <ChatMessageList
-                                  views={views}
-                                  forkBoundaryMessageId={forkBoundaryMessageId}
-                                  forkSourceChatId={forkSourceChatId}
-                                  onOpenForkSource={onOpenForkSource}
-                                  name={wakerName}
-                                  avatar={wakerAvatar}
-                                  availableSkillIds={availableSkillIds}
-                                  availableConnectorIds={availableConnectorIds}
-                                  availablePluginIds={availablePluginIds}
-                                  wakerId={wakerId}
-                                  messageAuthors={messageAuthors}
-                                  showUsageMetrics={showUsageMetrics}
-                                  showFileChanges={showFileChanges}
-                                  onOpenCodeReference={onOpenCodeReference}
-                                  onOpenFile={onOpenFile}
-                                  onOpenFileChange={onOpenFileChange}
-                                />
-                              </CompanionInteraction>
-                            </ProcessExpansion>
-                          </MarkdownVisibility>
-                        </ChatMessageColumn>
-                      </div>
-                      <ChatTurnNavigator
-                        viewportRef={viewportRef}
-                        messages={messages}
-                        active={active}
-                      />
-                    </>
-                  )}
-                </div>
-              ) : null}
-              <motion.div
-                data-chat-composer
-                layout={animateComposerSize ? true : "position"}
-                layoutDependency={centerEmptyState}
-                transition={{
-                  layout: reducedMotion
-                    ? { duration: 0 }
-                    : composerLayoutTransition,
-                }}
-                hidden={!showComposer}
-                className="shrink-0 bg-transparent"
+            {presentation === "thread" &&
+            resultSource &&
+            !isHistoryLoading &&
+            messages.length > 0 &&
+            /^[a-f0-9]{32}$/.test(resultSource.chatId) ? (
+              <ChatWorkResultReader
+                chatId={resultSource.chatId}
+                owner={resultSource.owner}
+                viewport={viewportRef}
+                hasEarlierMessages={hasEarlierMessages}
+                onLoadEarlier={loadEarlier}
+              />
+            ) : null}
+            {presentation === "thread" ? (
+              <div
+                className={cn(
+                  "relative flex min-h-0",
+                  centerEmptyState ? "shrink-0" : "flex-1",
+                )}
               >
-                <div
-                  className={cn(
-                    "mx-auto w-full",
-                    presentation === "thread" && "px-6 pb-4",
-                    chatContentColumnClassName,
-                  )}
-                >
-                  {warning ? (
+                {showDirectEmptyState ? (
+                  <div
+                    role={isHistoryLoading ? "status" : undefined}
+                    aria-busy={isHistoryLoading ? true : undefined}
+                    className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+                  >
+                    <div className="min-h-0 flex-1">{emptyState}</div>
+                  </div>
+                ) : (
+                  <>
                     <div
-                      role="status"
-                      data-chat-permission-warning
-                      className="border-border bg-muted text-muted-foreground type-ui mb-2 flex w-full items-start gap-2 rounded-md border px-3 py-2"
+                      ref={viewportRef}
+                      data-chat-scroll-viewport
+                      onScroll={historyScroll.onScroll}
+                      className="scrollbar-hidden relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain [overflow-anchor:none]"
                     >
-                      <AlertTriangle
-                        className="text-destructive size-icon-md mt-0.5 shrink-0"
-                        strokeWidth={1.5}
-                      />
-                      <span className="min-w-0">{warning}</span>
+                      {messages.length === 0 ? emptyState : null}
+                      <ChatMessageColumn>
+                        {historyError && errorScopes.length === 0 ? (
+                          <ChatErrorCard
+                            id={`history:${errorScopes.join(":")}`}
+                            message={historyError.message}
+                            onRetry={historyError.onRetry}
+                          />
+                        ) : null}
+                        {hasEarlierMessages && (
+                          <div className="flex flex-col items-center gap-1 px-6 pb-2">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              disabled={isLoadingEarlier}
+                              onClick={() => void loadEarlier()}
+                            >
+                              {isLoadingEarlier && (
+                                <LoaderCircle className="animate-spin" />
+                              )}
+                              {t("loadEarlierMessages")}
+                            </Button>
+                            {loadEarlierError && errorScopes.length === 0 ? (
+                              <ChatErrorCard
+                                id={`earlier:${errorScopes.join(":")}`}
+                                message={loadEarlierError}
+                                onRetry={loadEarlier}
+                                onDismiss={historyScroll.clearError}
+                              />
+                            ) : null}
+                          </div>
+                        )}
+                        <MarkdownVisibility value={active}>
+                          <ProcessExpansion value={readingState.groups}>
+                            <CompanionInteraction value={companionInteraction}>
+                              <ChatMessageList
+                                views={views}
+                                forkBoundaryMessageId={forkBoundaryMessageId}
+                                forkSourceChatId={forkSourceChatId}
+                                onOpenForkSource={onOpenForkSource}
+                                name={wakerName}
+                                avatar={wakerAvatar}
+                                availableSkillIds={availableSkillIds}
+                                availableConnectorIds={availableConnectorIds}
+                                availablePluginIds={availablePluginIds}
+                                wakerId={wakerId}
+                                messageAuthors={messageAuthors}
+                                showUsageMetrics={showUsageMetrics}
+                                showFileChanges={showFileChanges}
+                                onOpenCodeReference={onOpenCodeReference}
+                                onOpenFile={onOpenFile}
+                                onOpenFileChange={onOpenFileChange}
+                              />
+                            </CompanionInteraction>
+                          </ProcessExpansion>
+                        </MarkdownVisibility>
+                      </ChatMessageColumn>
                     </div>
-                  ) : null}
-                  <AssistantRuntimeProvider runtime={runtime}>
-                    <Composer
-                      autoFocus={composerAutoFocus}
-                      disabled={composerDisabled}
-                      activityStatus={activityStatus}
-                      settings={composerSettings}
-                      actions={composerActions}
-                      effects={composerEffects}
-                      contextReferences={composerReferences}
-                      onContextReferencesChange={onComposerReferencesChange}
-                      renderContextStrip={renderComposerContextStrip}
-                      skills={composerSkills}
-                      skillsError={composerSkillsError}
-                      plugins={composerPlugins}
-                      pluginsError={composerPluginsError}
-                      selectedPluginIds={selectedPluginIds}
-                      onPluginSelectionChange={onPluginSelectionChange}
-                      connectors={composerConnectors}
-                      connectorsError={composerConnectorsError}
-                      fileRoots={composerFileRoots}
-                      fileScopePath={composerFileScopePath}
-                      fileScopeChatId={fileScopeChatId}
-                      members={composerMembers}
-                      selectedSkillIds={selectedSkillIds}
-                      selectedConnectorIds={selectedConnectorIds}
-                      onSkillSelectionChange={onSkillSelectionChange}
-                      onConnectorSelectionChange={onConnectorSelectionChange}
-                      onMemberMentionChange={onMemberMentionChange}
-                      contextMetrics={contextMetrics}
-                      showUsageMetrics={showUsageMetrics}
-                      sendFailure={sendFailure}
-                      errorScopes={errorScopes}
-                      failure={
-                        latestMessage?.status === "failed"
-                          ? latestMessage
-                          : undefined
-                      }
-                      codeReferenceRequest={codeReferenceRequest}
-                      onCodeReferencesChange={onCodeReferencesChange}
-                      draft={composerDraft}
-                      draftReference={composerDraftReference}
-                      clearRevision={composerClearRevision}
-                      restoreRevision={composerRestoreRevision}
-                      isRunning={isRunning}
-                      terminalEnabled={terminalEnabled}
-                      onOpenTerminal={onOpenTerminal}
-                      onOpenFile={onOpenFile}
-                      requestedInteractionId={requestedInteractionId}
-                      pendingApprovals={pendingApprovals}
-                      approvalSubmissionState={approvalSubmissionState}
-                      onResolveApproval={onResolveApproval}
-                      pendingElicitations={pendingElicitations}
-                      elicitationSubmissionState={elicitationSubmissionState}
-                      onResolveElicitation={onResolveElicitation}
-                      isWorkRunning={isWorkRunning}
-                      isWorkStopping={isWorkStopping}
-                      onStopWork={onStopWork}
+                    <ChatTurnNavigator
+                      viewportRef={viewportRef}
+                      messages={messages}
+                      active={active}
                     />
-                  </AssistantRuntimeProvider>
-                </div>
-              </motion.div>
-            </div>
-          </CompanionInteractionProvider>
+                  </>
+                )}
+              </div>
+            ) : null}
+            <motion.div
+              data-chat-composer
+              layout={animateComposerSize ? true : "position"}
+              layoutDependency={centerEmptyState}
+              transition={{
+                layout: reducedMotion
+                  ? { duration: 0 }
+                  : composerLayoutTransition,
+              }}
+              hidden={!showComposer}
+              className="shrink-0 bg-transparent"
+            >
+              <div
+                className={cn(
+                  "mx-auto w-full",
+                  presentation === "thread" && "px-6 pb-4",
+                  chatContentColumnClassName,
+                )}
+              >
+                {warning ? (
+                  <div
+                    role="status"
+                    data-chat-permission-warning
+                    className="border-border bg-muted text-muted-foreground type-ui mb-2 flex w-full items-start gap-2 rounded-md border px-3 py-2"
+                  >
+                    <AlertTriangle
+                      className="text-destructive size-icon-md mt-0.5 shrink-0"
+                      strokeWidth={1.5}
+                    />
+                    <span className="min-w-0">{warning}</span>
+                  </div>
+                ) : null}
+                <AssistantRuntimeProvider runtime={runtime}>
+                  <Composer
+                    autoFocus={composerAutoFocus}
+                    disabled={composerDisabled}
+                    activityStatus={activityStatus}
+                    settings={composerSettings}
+                    actions={composerActions}
+                    effects={composerEffects}
+                    contextReferences={composerReferences}
+                    onContextReferencesChange={onComposerReferencesChange}
+                    renderContextStrip={renderComposerContextStrip}
+                    skills={composerSkills}
+                    skillsError={composerSkillsError}
+                    plugins={composerPlugins}
+                    pluginsError={composerPluginsError}
+                    selectedPluginIds={selectedPluginIds}
+                    onPluginSelectionChange={onPluginSelectionChange}
+                    connectors={composerConnectors}
+                    connectorsError={composerConnectorsError}
+                    fileRoots={composerFileRoots}
+                    fileScopePath={composerFileScopePath}
+                    fileScopeChatId={fileScopeChatId}
+                    members={composerMembers}
+                    selectedSkillIds={selectedSkillIds}
+                    selectedConnectorIds={selectedConnectorIds}
+                    onSkillSelectionChange={onSkillSelectionChange}
+                    onConnectorSelectionChange={onConnectorSelectionChange}
+                    onMemberMentionChange={onMemberMentionChange}
+                    contextMetrics={contextMetrics}
+                    showUsageMetrics={showUsageMetrics}
+                    sendFailure={sendFailure}
+                    errorScopes={errorScopes}
+                    failure={
+                      latestMessage?.status === "failed"
+                        ? latestMessage
+                        : undefined
+                    }
+                    codeReferenceRequest={codeReferenceRequest}
+                    onCodeReferencesChange={onCodeReferencesChange}
+                    draft={composerDraft}
+                    draftReference={composerDraftReference}
+                    clearRevision={composerClearRevision}
+                    restoreRevision={composerRestoreRevision}
+                    isRunning={isRunning}
+                    onOpenFile={onOpenFile}
+                    requestedInteractionId={requestedInteractionId}
+                    pendingApprovals={pendingApprovals}
+                    approvalSubmissionState={approvalSubmissionState}
+                    onResolveApproval={onResolveApproval}
+                    pendingElicitations={pendingElicitations}
+                    elicitationSubmissionState={elicitationSubmissionState}
+                    onResolveElicitation={onResolveElicitation}
+                    isWorkRunning={isWorkRunning}
+                    isWorkStopping={isWorkStopping}
+                    onStopWork={onStopWork}
+                  />
+                </AssistantRuntimeProvider>
+              </div>
+            </motion.div>
+          </div>
         </ChatErrorActions>
       </ChatForkContext>
     </FileReferenceProvider>

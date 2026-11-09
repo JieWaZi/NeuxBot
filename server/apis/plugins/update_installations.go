@@ -5,6 +5,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
@@ -43,6 +44,9 @@ func (o *UpdatePluginInstallations) Output(ctx *gin.Context) (interface{}, error
 	if len(o.Body.Switches) == 0 {
 		return nil, ginx.WithStack(status_error.BadRequest)
 	}
+	var targets []models.PluginVersion
+	commitctx, publish := events.HoldCommitEvents(ctx)
+	defer publish()
 	// 外部内容与认证检查不进入数据库事务；占用保持到版本切换提交完成。
 	if len(o.Body.Switches) > 0 {
 		config, err := store.Configuration(ctx, o.PluginID)
@@ -61,7 +65,6 @@ func (o *UpdatePluginInstallations) Output(ctx *gin.Context) (interface{}, error
 		for _, v := range versions {
 			byID[v.ID] = v
 		}
-		targets := []models.PluginVersion{}
 		seen := map[string]bool{}
 		for _, change := range o.Body.Switches {
 			version, exists := byID[change.VersionID]
@@ -82,7 +85,7 @@ func (o *UpdatePluginInstallations) Output(ctx *gin.Context) (interface{}, error
 		}
 		defer release()
 	}
-	err = global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
+	err = global.TransactionControllerManager.Transaction(commitctx, func(txctx context.Context) error {
 		config, err := store.Configuration(txctx, o.PluginID)
 		if err != nil {
 			return err
@@ -182,5 +185,10 @@ func (o *UpdatePluginInstallations) Output(ctx *gin.Context) (interface{}, error
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
+	generation := o.Body.ExpectedAccountGeneration
+	if len(preparedAccount.DeliveryMaterials) > 0 {
+		generation++
+	}
+	commitInstallationAccount(targets, o.Body.ExpectedRevision, o.Body.ExpectedAccountGeneration, o.Body.ExpectedRevision+1, generation)
 	return ginx.CommonSuccessResponse(), nil
 }

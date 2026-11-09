@@ -551,7 +551,7 @@ func officialURL(value *url.URL) bool {
 		return false
 	}
 	switch value.Hostname() {
-	case "api.github.com", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com", "registry.npmjs.org", "cursor.com", "downloads.cursor.com", "x.ai", "code.kimi.com", "cdn.kimi.com", "qoder-ide.oss-accelerate.aliyuncs.com", "static.qoder.com.cn", "acc-1258344699.cos.accelerate.myqcloud.com":
+	case "api.github.com", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com", "registry.npmjs.org", "cursor.com", "downloads.cursor.com", "x.ai", "code.kimi.com", "cdn.kimi.com", "qoder-ide.oss-accelerate.aliyuncs.com", "acc-1258344699.cos.accelerate.myqcloud.com":
 		return true
 	}
 	return false

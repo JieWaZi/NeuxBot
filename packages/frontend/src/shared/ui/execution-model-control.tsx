@@ -138,7 +138,7 @@ export function ExecutionModelControl({
     setModelQuery("");
     setView("reasoning");
   };
-  const hasReasoning = availableOptions.length > 0 || thinkingPending;
+  const hasReasoning = availableOptions.length > 1 || thinkingPending;
   const hasSettings = hasReasoning || Boolean(onFastChange);
   const fallbackReasoning = allowDefaultReasoning
     ? ""
@@ -161,7 +161,6 @@ export function ExecutionModelControl({
   const maxed =
     !thinkingPending &&
     isMaximumReasoning(reasoningOptions, effectiveReasoning, defaultReasoning);
-  const singleReasoning = choices.length === 1 && maxed;
   useEffect(() => {
     if (open) focusPicker(contentRef.current, showModels);
   }, [open, showModels, showModelSearch]);
@@ -410,7 +409,7 @@ export function ExecutionModelControl({
                       <Zap
                         aria-hidden
                         className={
-                          fast ? "text-success fill-current" : undefined
+                          fast ? "text-accent fill-current" : undefined
                         }
                       />
                     </Button>
@@ -460,22 +459,16 @@ export function ExecutionModelControl({
               />
             </Button>
           </div>
-          {choices.length > 0 ? (
+          {hasReasoning && choices.length > 1 ? (
             <Slider
-              className={
-                singleReasoning && !disabled
-                  ? "mt-2 data-[disabled]:opacity-100"
-                  : "mt-2"
-              }
+              className="mt-2"
               variant="stepped"
               highlighted={maxed}
-              marks={
-                singleReasoning ? undefined : choices.map((option) => option.id)
-              }
+              marks={choices.map((option) => option.id)}
               min={0}
               max={Math.max(choices.length - 1, 1)}
               step={1}
-              value={[singleReasoning ? 1 : Math.max(selectedIndex, 0)]}
+              value={[Math.max(selectedIndex, 0)]}
               thumbLabel={t("chat:modelPicker.chooseReasoning")}
               thumbValueText={reasoningName}
               disabled={

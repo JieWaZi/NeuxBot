@@ -92,8 +92,6 @@ import {
   withStableCreateRequest,
 } from "@/shared/lib/create-request-idempotency";
 import { selectableRuntimes } from "../model/selectable-runtimes";
-import { Avatar } from "@/shared/ui/avatar";
-import { TypedPhrases } from "@/shared/ui/typed-phrases";
 import { useWorkbench } from "../workbench/workbench-store";
 import { useSceneWorkspace } from "@/shared/workspace/workspace-context";
 import type { WorkspaceMemberTab } from "@/shared/workspace/workspace-tab";
@@ -219,7 +217,6 @@ function TeamChatView({
   }, []);
   const {
     composerClearRevision,
-    companionScopeRevision,
     clearComposer,
     markSkipComposerClearOnCreate,
   } = useComposerScopeTransition(
@@ -1043,52 +1040,10 @@ function TeamChatView({
       : defaultPermissionWasDowngraded
         ? t("permissionDowngraded")
         : "";
-  const teamGreetingPhrases = useMemo(
-    () => [
-      t("team.emptyTitle"),
-      t("team.greetingPhrases.goal"),
-      t("team.greetingPhrases.start"),
-      t("team.greetingPhrases.assign"),
-      t("team.greetingPhrases.share"),
-    ],
-    [t],
-  );
-  const memberGreetingPhrases = useMemo(
-    () => [
-      t("greeting"),
-      t("greetingPhrases.start"),
-      t("greetingPhrases.progress"),
-      t("greetingPhrases.next"),
-      t("greetingPhrases.share"),
-    ],
-    [t],
-  );
-
-  const emptyState = (
-    <div className="mx-auto grid w-full max-w-[560px] justify-items-center px-6 pt-[clamp(64px,12vh,140px)] text-center">
-      <Avatar
-        name={wakerName}
-        src={conversationAvatar}
-        size="docked"
-        preview
-        summon={false}
-        activity={chatRuntime.isRunning ? "starting" : "idle"}
-      />
-      <TypedPhrases
-        as="h1"
-        phrases={
-          selectedTeamMember ? memberGreetingPhrases : teamGreetingPhrases
-        }
-        className="type-page-title mt-6 text-center font-semibold"
-      />
-    </div>
-  );
   const historyLoadingState = <ChatHistoryLoadingState />;
   const resolvedMessageEmptyState = historyIsLoading
     ? historyLoadingState
-    : chatRuntime.hasVisibleMessages
-      ? null
-      : emptyState;
+    : null;
   const messageEmptyState = resolvedMessageEmptyState;
   const pinTeamEmptyState = Boolean(
     teamMainChat && !chatRuntime.hasVisibleMessages && !historyIsLoading,
@@ -1303,7 +1258,6 @@ function TeamChatView({
       onMemberMentionChange: (wakerId) => setTeamMentionWakerId(wakerId ?? ""),
       codeReferenceRequest,
       composerClearRevision,
-      companionScopeRevision,
       composerRestoreRevision,
       terminalEnabled: Boolean(activeChatId && workspaceDirectory),
       linkWorkspaceRoot: workspaceDirectory,

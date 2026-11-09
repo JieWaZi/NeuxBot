@@ -28,11 +28,20 @@ func TestUpdateActiveAccountAllowsLabelsAndDefaultsButProtectsCredentials(t *tes
 	sqlDB, _ := database.DB.DB()
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	repo := controllers.NewAIAccountController(database.DB)
+	environments := controllers.NewRuntimeEnvironmentController(database.DB)
+	if err := environments.Ensure(t.Context(), models.RuntimeEnvironment{ID: "claude", RuntimeID: constants.RuntimeIDClaude, BaseRuntimeID: constants.RuntimeIDClaude}); err != nil {
+		t.Fatal(err)
+	}
 	service := aiaccount.New(repo, directory)
 	oldRepo, oldService := global.AIAccountControllerManager, global.AIAccountService
+	oldEnvironments := global.RuntimeEnvironmentControllerManager
 	global.AIAccountControllerManager, global.AIAccountService = repo, service
-	t.Cleanup(func() { global.AIAccountControllerManager, global.AIAccountService = oldRepo, oldService })
-	account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", Name: "before", AuthMode: constants.AccountAuthModeAPIKey, SelectedModels: []string{"model"}, Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://example.invalid"}}
+	global.RuntimeEnvironmentControllerManager = environments
+	t.Cleanup(func() {
+		global.AIAccountControllerManager, global.AIAccountService = oldRepo, oldService
+		global.RuntimeEnvironmentControllerManager = oldEnvironments
+	})
+	account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", RuntimeID: constants.RuntimeIDClaude, Name: "before", AuthMode: constants.AccountAuthModeAPIKey, SelectedModels: []string{"model"}, Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://example.invalid"}}
 	if err := repo.Create(t.Context(), account, "secret"); err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +62,7 @@ func TestUpdateActiveAccountAllowsLabelsAndDefaultsButProtectsCredentials(t *tes
 	service.SetIdleSessionCloser(func(context.Context, string) error { closes++; return status_error.AIAccountBusy })
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	ctx.Request = httptest.NewRequest("PUT", "/", nil)
-	request := UpdateAIAccount{AccountID: account.ID, Body: UpdateAIAccountRequest{Name: "after", Revision: 1, Endpoint: account.Endpoint, SelectedModels: account.SelectedModels, DefaultModel: "model"}}
+	request := UpdateAIAccount{AccountID: account.ID, Body: UpdateAIAccountRequest{RuntimeID: account.RuntimeID, Name: "after", Revision: 1, Endpoint: account.Endpoint, SelectedModels: account.SelectedModels, DefaultModel: "model"}}
 	if _, err := request.Output(ctx); err != nil {
 		t.Fatalf("ordinary active-account save failed: %v", err)
 	}

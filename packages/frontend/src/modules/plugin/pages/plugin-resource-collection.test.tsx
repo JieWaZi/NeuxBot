@@ -5,6 +5,7 @@ import {
   fireEvent,
   cleanup,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ResourcePageSearchField } from "@/shared/ui/resource-page";
@@ -24,6 +25,11 @@ import type { PluginDetail, PluginCatalogEntry } from "../model/plugin-view";
 import type { PluginBrowseEntry } from "../model/plugin-browse";
 import { ApiError } from "@/shared/api/errors";
 import { PluginResourceCollection } from "./plugin-resource-collection";
+type CatalogReply = {
+  data: PluginCatalogEntry;
+  request: Request;
+  response: Response;
+};
 const fixture = vi.hoisted(() => ({
   refresh: vi.fn(),
   fetchedAt: 0,
@@ -98,15 +104,24 @@ vi.mock("../components/plugin-install-dialog", () => ({
     catalog,
     authorizeOnly,
     wakerId,
+    onClose,
+    catalogRead,
+    preview,
   }: {
     detail?: PluginDetail;
     catalog?: PluginCatalogEntry;
     authorizeOnly?: boolean;
     wakerId?: string;
+    onClose: () => void;
+    preview?: PluginBrowseEntry;
+    catalogRead?: { pending: boolean; error?: unknown; onRetry: () => void };
   }) => (
     <div role="dialog">
       {detail?.plugin?.id}:{catalog?.key}:{wakerId}:
       {authorizeOnly ? "reauthorize" : "install"}
+      {preview?.description}
+      {catalogRead?.pending && <span role="status" aria-busy="true" />}
+      <button onClick={onClose}>关闭</button>
     </div>
   ),
 }));
@@ -222,8 +237,10 @@ it("opens a local uninstalled plugin and installs from its saved identity withou
     await screen.findByRole("link", { name: "查看插件 研发组合" }),
   ).toHaveAttribute("href", "/resources/plugins/local-plugin");
   fireEvent.click(screen.getByRole("button", { name: "安装 研发组合" }));
-  expect(await screen.findByRole("dialog")).toHaveTextContent(
-    "local-plugin::w2:install",
+  await waitFor(() =>
+    expect(screen.getByRole("dialog")).toHaveTextContent(
+      "local-plugin::w2:install",
+    ),
   );
   expect(getPlugin).toHaveBeenCalledWith(
     expect.objectContaining({
@@ -238,8 +255,10 @@ it("reads the installed snapshot only when reauthorizing", async () => {
   fixture.entries[0] = { ...fixture.entries[0], requiresAuthorization: true };
   showCatalog();
   fireEvent.click(await screen.findByRole("button", { name: "授权 飞书" }));
-  expect(await screen.findByRole("dialog")).toHaveTextContent(
-    "existing:::reauthorize",
+  await waitFor(() =>
+    expect(screen.getByRole("dialog")).toHaveTextContent(
+      "existing:::reauthorize",
+    ),
   );
   expect(getPlugin).toHaveBeenCalledWith(
     expect.objectContaining({
@@ -256,14 +275,79 @@ it("reads an installed update lazily", async () => {
     expect(screen.getByRole("dialog")).toHaveTextContent("update:existing"),
   );
 });
-it("reports a failed action read without discarding rows or opening a dialog", async () => {
+it("keeps a failed action read inside the dialog and retries there", async () => {
   fixture.failDetail = true;
   fixture.entries[0] = { ...fixture.entries[0], update: { available: true } };
   showCatalog();
   fireEvent.click(await screen.findByRole("button", { name: "更新 飞书" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("详情读取失败");
-  expect(screen.getByText("飞书")).toBeVisible();
+  const dialog = await screen.findByRole("dialog");
+  expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+    "详情读取失败",
+  );
+  expect(screen.getAllByRole("alert")).toHaveLength(1);
+  fixture.failDetail = false;
+  fireEvent.click(within(dialog).getByRole("button", { name: "重试" }));
+  await waitFor(() =>
+    expect(screen.getByRole("dialog")).toHaveTextContent("update:existing"),
+  );
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+it("opens a modal immediately while catalog details are loading", async () => {
+  let complete!: (value: CatalogReply) => void;
+  vi.mocked(getCatalogPlugin).mockImplementationOnce(
+    () =>
+      new Promise<CatalogReply>((resolve) => {
+        complete = resolve;
+      }),
+  );
+  fixture.entries[1] = { ...fixture.entries[1], description: "目录已知简介" };
+  showCatalog();
+  fireEvent.click(await screen.findByRole("button", { name: "安装 新插件" }));
+  const dialog = await screen.findByRole("dialog");
+  expect(
+    within(dialog).getByText("目录已知简介", { exact: false }),
+  ).toBeVisible();
+  expect(within(dialog).getByRole("status")).toHaveAttribute(
+    "aria-busy",
+    "true",
+  );
+  expect(screen.queryByText("正在处理…")).toBeNull();
+  await act(async () =>
+    complete({
+      data: { key: "new", package: { manifest: { name: "新插件" } } },
+      request: new Request("http://localhost/api/v1/plugins/catalog/new"),
+      response: new Response(),
+    }),
+  );
+  await waitFor(() =>
+    expect(screen.getByRole("dialog")).toHaveTextContent(":new::install"),
+  );
+  expect(screen.getAllByRole("dialog")).toHaveLength(1);
+});
+it("does not reopen a dismissed modal when its details arrive", async () => {
+  let complete!: (value: CatalogReply) => void;
+  vi.mocked(getCatalogPlugin).mockImplementationOnce(
+    () =>
+      new Promise<CatalogReply>((resolve) => {
+        complete = resolve;
+      }),
+  );
+  showCatalog();
+  fireEvent.click(await screen.findByRole("button", { name: "安装 新插件" }));
+  fireEvent.click(
+    within(await screen.findByRole("dialog")).getByRole("button", {
+      name: "关闭",
+    }),
+  );
+  await act(async () =>
+    complete({
+      data: { key: "new" },
+      request: new Request("http://localhost/api/v1/plugins/catalog/new"),
+      response: new Response(),
+    }),
+  );
   expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.getByRole("button", { name: "安装 新插件" })).toBeEnabled();
 });
 it("groups the complete list by standard category and sends unknown categories to other", async () => {
   fixture.entries = [

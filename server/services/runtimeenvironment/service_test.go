@@ -964,3 +964,40 @@ func TestStartupKeepsSavedSelectionWithoutProbeEvidence(t *testing.T) {
 		t.Fatal("saved default was blocked by missing probe evidence")
 	}
 }
+
+// TestStartupIgnoresUnregisteredPersistedEvidence 验证历史已移除智能体的安装和默认配置不能跳过初始设置。
+func TestStartupIgnoresUnregisteredPersistedEvidence(t *testing.T) {
+	_, repo, api := newRuntimeEnvironmentTestService(t)
+	if err := repo.Ensure(t.Context(), models.RuntimeEnvironment{ID: "retired-runtime", RuntimeID: "retired-runtime", BaseRuntimeID: "retired-runtime", Enabled: true, IsDefault: true, Binary: "retired-runtime", Detection: agentapi.DetectionResult{ResolvedBinary: "/saved/retired-runtime"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := api.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	defer api.Close()
+	_, _, required := api.StartupDetection()
+	if !required {
+		t.Fatal("unregistered runtime bypassed startup setup")
+	}
+}
+
+// TestEnsureDefaultIgnoresUnregisteredPersistedSelection 验证历史默认值不会阻挡已注册智能体成为默认选择。
+func TestEnsureDefaultIgnoresUnregisteredPersistedSelection(t *testing.T) {
+	_, repo, api := newRuntimeEnvironmentTestService(t)
+	if _, err := api.EnsureInitialized(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Ensure(t.Context(), models.RuntimeEnvironment{ID: "retired-runtime", RuntimeID: "retired-runtime", BaseRuntimeID: "retired-runtime", Enabled: true, IsDefault: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpdateDetection(t.Context(), agentapi.RuntimeIDCodex, agentapi.DetectionResult{State: agentapi.DetectionStateReady}, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := api.(*service).ensureDefault(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	current, err := repo.Get(t.Context(), agentapi.RuntimeIDCodex)
+	if err != nil || !current.IsDefault {
+		t.Fatalf("registered runtime did not become default: %+v %v", current, err)
+	}
+}

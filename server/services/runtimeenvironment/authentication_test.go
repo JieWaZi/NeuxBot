@@ -37,6 +37,10 @@ type authenticationBoundary struct {
 	finish chan struct{}
 	// closeFailures 指定同一客户端的关闭失败次数。
 	closeFailures int
+	// deviceProgress 指定替身是否实际产生设备授权信息。
+	deviceProgress bool
+	// progress 接收原生设备授权进度的任务回调。
+	progress func(string, string)
 	// closes 记录关闭尝试次数。
 	closes int
 }
@@ -58,10 +62,16 @@ func (f *authenticationBoundary) Initialize(ctx context.Context) (agent.NativeAu
 	}
 	return capabilities, err
 }
+func (f *authenticationBoundary) SetAuthenticationProgressHandler(handler func(string, string)) {
+	f.progress = handler
+}
 func (f *authenticationBoundary) Authenticate(ctx context.Context, method string) (constants.RuntimeAuthenticationResult, error) {
 	f.mutex.Lock()
 	f.methods = append(f.methods, method)
 	f.mutex.Unlock()
+	if f.deviceProgress && f.progress != nil {
+		f.progress("https://www.kimi.com/code/authorize_device?user_code=ABCD-EFGH", "ABCD-EFGH")
+	}
 	if f.entered != nil {
 		f.entered <- struct{}{}
 	}
@@ -241,7 +251,7 @@ func TestRuntimeAuthenticationCapabilityMatrix(t *testing.T) {
 		// terminal 表示需要终端或现有 API 配置入口。
 		terminal bool
 	}{
-		{"codex", "chat-gpt", "agent", true, false}, {"codex", "api-key", "agent", false, false}, {"claude", "claudeai", "agent", true, false}, {"cursor", "cursor_login", "agent", true, false}, {"workbuddy", "login", "agent", true, false}, {"qoder", "login", "agent", true, false}, {"qoder-cn", "login", "agent", true, false}, {"gemini", "oauth-personal", "agent", true, false}, {"gemini", "gemini-api-key", "agent", false, false}, {"grok", "grok.com/oidc", "agent", true, false}, {"kimi", "login", "agent", false, true}, {"opencode", "login", "agent", false, true}, {"pi", "pi_terminal_login", "terminal", false, true},
+		{"codex", "chat-gpt", "agent", true, false}, {"codex", "api-key", "agent", false, false}, {"claude", "claudeai", "agent", true, false}, {"cursor", "cursor_login", "agent", true, false}, {"workbuddy", "login", "agent", true, false}, {"qoder", "login", "agent", true, false}, {"gemini", "oauth-personal", "agent", true, false}, {"gemini", "gemini-api-key", "agent", false, false}, {"grok", "grok.com/oidc", "agent", true, false}, {"kimi", "login", "agent", true, false}, {"opencode", "login", "agent", false, true}, {"pi", "pi_terminal_login", "terminal", false, true},
 	} {
 		t.Run(tc.provider+tc.id, func(t *testing.T) {
 			methods, terminal := actionableNativeMethods(tc.provider, agent.NativeAuthenticationCapabilities{Methods: []agent.NativeAuthenticationMethod{{ID: tc.id, Kind: tc.kind}}})
@@ -410,4 +420,20 @@ func TestRuntimeAuthenticationPublishesExplicitConnectionResult(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRuntimeAuthenticationPreservesNativeDeviceProgress(t *testing.T) {
+	fake := &authenticationBoundary{deviceProgress: true, capabilities: agent.NativeAuthenticationCapabilities{Methods: []agent.NativeAuthenticationMethod{{ID: "grok.com/oidc", Kind: "agent"}}}, entered: make(chan struct{}, 1), finish: make(chan struct{})}
+	svc := authenticationFixture(t, fake)
+	initial, err := svc.AuthenticateRuntime(t.Context(), constants.RuntimeIDGrok, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-fake.entered
+	view := waitAuthenticationState(t, svc, constants.RuntimeAuthenticationStateAuthenticating)
+	if view.JobID != initial.JobID || view.VerificationURL != "https://www.kimi.com/code/authorize_device?user_code=ABCD-EFGH" || view.UserCode != "ABCD-EFGH" || view.Revision <= initial.Revision {
+		t.Fatalf("device progress lost: %+v", view)
+	}
+	_ = svc.CancelRuntimeAuthentication(t.Context(), constants.RuntimeIDGrok, initial.JobID)
+	waitAuthenticationState(t, svc, constants.RuntimeAuthenticationStateCancelled)
 }

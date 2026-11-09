@@ -145,8 +145,18 @@
           "build/Release/*.exe",
           "build/Release/conpty/**/*",
           "!lib/*.test.js",
+          "!lib/**/*.test.*",
+          "!**/*.map",
           "!**/*.pdb",
           "!**/*.lib"
+        ]
+      },
+      {
+        "from": "resources/licenses/bloub",
+        "to": "licenses/bloub",
+        "filter": [
+          "LICENSE",
+          "LICENSE.dsh-bloub-mood"
         ]
       }
     ],

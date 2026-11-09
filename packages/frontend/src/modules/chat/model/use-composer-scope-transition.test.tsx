@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { useComposerScopeTransition } from "./use-composer-scope-transition";
 
 describe("useComposerScopeTransition", () => {
-  it("发送清空输入框不释放形象，切换聊天才释放", () => {
+  it("主动清空输入后，切换聊天继续按原策略清空输入", () => {
     const onScopeChange = vi.fn();
     const view = renderHook(
       ({ chatKey, workspaceKey }) =>
@@ -18,13 +18,13 @@ describe("useComposerScopeTransition", () => {
     );
 
     act(() => view.result.current.clearComposer());
-    expect(view.result.current.companionScopeRevision).toBe(0);
+    expect(view.result.current.composerClearRevision).toBe(1);
 
     view.rerender({ chatKey: "chat:two", workspaceKey: "chat:two" });
-    expect(view.result.current.companionScopeRevision).toBe(1);
+    expect(view.result.current.composerClearRevision).toBe(2);
   });
 
-  it("草稿首次持久化保持已展开的形象", () => {
+  it("草稿首次持久化保留输入内容", () => {
     const view = renderHook(
       ({ chatKey, workspaceKey }) =>
         useComposerScopeTransition(workspaceKey, chatKey, vi.fn()),
@@ -38,6 +38,6 @@ describe("useComposerScopeTransition", () => {
 
     act(() => view.result.current.markSkipComposerClearOnCreate());
     view.rerender({ chatKey: "chat:created", workspaceKey: "chat:created" });
-    expect(view.result.current.companionScopeRevision).toBe(0);
+    expect(view.result.current.composerClearRevision).toBe(0);
   });
 });

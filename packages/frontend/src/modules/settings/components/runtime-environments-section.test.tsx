@@ -373,7 +373,7 @@ it("重启使用单图标且仍按真实智能体提交", async () => {
   show("codex");
   const restart = await screen.findByRole("button", { name: "重启Codex" });
   expect(restart.textContent).toBe("");
-  expect(restart.querySelector("svg")).toHaveClass("lucide-rotate-cw");
+  expect(restart.querySelector("svg")).toHaveClass("lucide-power");
   expect(restart).not.toHaveClass("border");
   await userEvent.click(restart);
   await waitFor(() =>

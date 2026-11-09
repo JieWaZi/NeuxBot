@@ -330,6 +330,13 @@ func (m *runtimeAuthenticationManager) run(ctx context.Context, job *runtimeAuth
 				m.change(job, func(view *RuntimeAuthenticationSnapshot) {
 					view.State = constants.RuntimeAuthenticationStateAuthenticating
 				})
+				if progress, ok := job.client.(agent.NativeAuthenticationProgressClient); ok {
+					progress.SetAuthenticationProgressHandler(func(address, code string) {
+						m.change(job, func(view *RuntimeAuthenticationSnapshot) {
+							view.VerificationURL, view.UserCode = address, code
+						})
+					})
+				}
 				result, err = job.client.Authenticate(ctx, methodID)
 				if err == nil && result == constants.RuntimeAuthenticationResultUnspecified {
 					err = status_error.RuntimeProtocolIncompatible
@@ -442,12 +449,12 @@ func nativeAPIKeySupported(provider string) bool {
 
 func actionableNativeMethods(provider string, capabilities agent.NativeAuthenticationCapabilities) ([]RuntimeAuthenticationMethod, bool) {
 	methods := []RuntimeAuthenticationMethod{}
-	terminal := provider == constants.RuntimeIDOpenCode || provider == constants.RuntimeIDPi || provider == constants.RuntimeIDKimi
+	terminal := provider == constants.RuntimeIDOpenCode || provider == constants.RuntimeIDPi
 	for _, method := range capabilities.Methods {
 		if method.Kind == "terminal" {
 			terminal = true
 		}
-		if method.Kind != "agent" || capabilities.APIKeyMode || capabilities.EnvironmentCredential || provider == constants.RuntimeIDKimi || provider == constants.RuntimeIDOpenCode || provider == constants.RuntimeIDPi {
+		if method.Kind != "agent" || capabilities.APIKeyMode || capabilities.EnvironmentCredential || provider == constants.RuntimeIDOpenCode || provider == constants.RuntimeIDPi {
 			continue
 		}
 		// 这些广告是凭据配置或缓存恢复，不能作为用户主动网页登录执行。

@@ -56,6 +56,40 @@ func TestRegistrySummaryNeverCreatesOrSwitchesBridge(t *testing.T) {
 	}
 }
 
+func TestCommittedPreparationPreservesOnlyTheExactVerifiedIdentity(t *testing.T) {
+	registry := NewRegistry(context.Background(), nil)
+	defer registry.Close()
+	fixture := testDriver(t, "ready")
+	auth, driver, release, err := registry.Acquire("plugin-one", "fixed-entry", fixture.config, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	account, err := auth.Status(context.Background(), true)
+	if err != nil || !account.Available {
+		t.Fatal("identity was not verified", err)
+	}
+	expected := driver.OperationContext()
+	registry.CommitPreparation(expected, "different-entry", expected.ConfigurationRevision+1, expected.AccountGeneration+1)
+	if driver.OperationContext() != expected {
+		t.Fatal("another entry advanced this identity")
+	}
+	registry.CommitPreparation(expected, "fixed-entry", expected.ConfigurationRevision+1, expected.AccountGeneration+1)
+	committed := driver.OperationContext()
+	got, _, _ := registry.CachedAuthorization("plugin-one", "fixed-entry", committed)
+	if got.ID != account.ID || got.CheckedAt != account.CheckedAt || !got.Available {
+		t.Fatal("commit discarded verified account", got)
+	}
+	registry.CommitPreparation(expected, "fixed-entry", expected.ConfigurationRevision, expected.AccountGeneration)
+	if driver.OperationContext() != committed {
+		t.Fatal("late old commit rewound the current identity")
+	}
+	old, _, _ := registry.CachedAuthorization("plugin-one", "fixed-entry", expected)
+	if old.CheckedAt != 0 || old.Available {
+		t.Fatal("old operation inherited the new identity")
+	}
+}
+
 func TestIdentityLeaseTracksCurrentRoundWithoutPreparingDriver(t *testing.T) {
 	registry := NewRegistry(context.Background(), nil)
 	defer registry.Close()

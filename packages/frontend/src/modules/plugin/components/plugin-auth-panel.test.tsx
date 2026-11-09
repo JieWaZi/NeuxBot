@@ -65,10 +65,6 @@ vi.mock("qrcode.react", () => ({
 }));
 vi.mock("../api/plugin-queries", () => ({
   checkPluginAccountMutation: () => ({ mutationFn: fixture.check }),
-  getPluginAuthorizationSessionOptions: () => ({
-    queryKey: [{ _id: "getPluginAuthorizationSession" }],
-    queryFn: async () => structuredClone(fixture.status.session),
-  }),
   getPluginAuthorizationOptions: () => ({
     queryKey: [{ _id: "getPluginAuthorization" }],
     queryFn: async () => {
@@ -143,6 +139,21 @@ function show(
   return client;
 }
 describe("shared plugin authorization", () => {
+  it("shows cancelled authorization in a centered notice with a plain retry action", async () => {
+    fixture.status.account.available = false;
+    fixture.status.session.state = "cancelled";
+    fixture.status.session.actions = [];
+    show(true);
+    const notice = await screen.findByText("认证已取消。");
+    expect(notice).toHaveClass("bg-status-warning-surface");
+    expect(notice).toHaveAttribute("role", "status");
+    expect(notice.closest("section")).toHaveClass("text-center");
+    const retry = screen.getByRole("button", { name: "重新授权" });
+    expect(retry.parentElement).toHaveClass("justify-center");
+    expect(retry).not.toHaveClass("border", "bg-button-primary");
+    expect(retry).toHaveClass("text-action-quiet");
+  });
+
   it.each(["expired", "failed", "cancelled", ""])(
     "retries %s installation authorization without closing the dialog",
     async (state) => {

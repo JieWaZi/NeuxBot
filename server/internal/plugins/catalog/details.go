@@ -95,16 +95,20 @@ func detailsLocation(entry Entry) (string, error) {
 		return "", err
 	}
 	client := http.Client{Timeout: 15 * time.Second}
+	started := time.Now()
 	response, err := client.Get(entry.DetailsURL)
 	if err != nil {
+		logDistributionFailure("details_get", entry.Key, entry.DetailsURL, response, started, err)
 		return fail(status_error.PluginDistributionUnavailable)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
+		logDistributionFailure("details_status", entry.Key, entry.DetailsURL, response, started, nil)
 		return fail(status_error.PluginDistributionUnavailable)
 	}
 	raw, err := io.ReadAll(io.LimitReader(response.Body, entry.DetailsSize+1))
 	if err != nil {
+		logDistributionFailure("details_body", entry.Key, entry.DetailsURL, response, started, err)
 		return fail(status_error.PluginDistributionUnavailable)
 	}
 	if err := validateDetailsBytes(raw, entry); err != nil {

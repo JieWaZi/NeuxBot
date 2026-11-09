@@ -57,7 +57,7 @@ func (s *Service) ResolveAccount(ctx context.Context, request agent.AccountReque
 		return s.resolveManagedClaudeAccount(ctx, request)
 	case constants.RuntimeIDCursor:
 		return resolveCursorAccount(ctx, request, systemHome)
-	case constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder, constants.RuntimeIDQoderCN:
+	case constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder:
 		return s.resolveACPSystemAccount(ctx, request, systemHome)
 	case constants.RuntimeIDKimi, constants.RuntimeIDGemini, constants.RuntimeIDGrok, constants.RuntimeIDOpenCode, constants.RuntimeIDPi:
 		if request.AccountID == agent.SystemAccountID {
@@ -87,7 +87,7 @@ func (s *Service) AcquireAccount(ctx context.Context, request agent.AccountReque
 		return s.acquireManagedClaudeAccount(ctx, request)
 	case constants.RuntimeIDCursor:
 		return acquireCursorAccount(ctx, request)
-	case constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder, constants.RuntimeIDQoderCN:
+	case constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder:
 		return s.acquireACPSystemAccount(ctx, request)
 	case constants.RuntimeIDKimi, constants.RuntimeIDGemini, constants.RuntimeIDGrok, constants.RuntimeIDOpenCode, constants.RuntimeIDPi:
 		if request.AccountID == agent.SystemAccountID {

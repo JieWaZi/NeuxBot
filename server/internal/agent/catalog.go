@@ -150,15 +150,6 @@ var baseRuntimeDefinitions = map[string]runtimeDefinition{
 		configHomeEnvironmentVariable: "QODER_CONFIG_DIR",
 		mcpTransports:                 []ConnectorTransport{ConnectorTransportStdio, ConnectorTransportStreamableHTTP, ConnectorTransportSSE},
 	},
-	RuntimeIDQoderCN: {
-		name:                          "Qoder CN",
-		binaryCandidates:              []string{"qodercn", "qoder-cn", "qoderclicn"},
-		userBinaryCandidates:          []string{".qoder-cn/bin/qoderclicn/qoderclicn"},
-		instructionFileName:           "AGENTS.md",
-		skillDirectoryName:            ".qoder",
-		configHomeEnvironmentVariable: "QODERCN_CONFIG_DIR",
-		mcpTransports:                 []ConnectorTransport{ConnectorTransportStdio, ConnectorTransportStreamableHTTP, ConnectorTransportSSE},
-	},
 }
 
 func newRegistry(profiles []ProfileSpec) (map[string]runtimeDefinition, error) {
@@ -433,9 +424,6 @@ var protectedPrefixArguments = map[string]map[string]struct{}{
 // LaunchOverrideArgumentsAllowed checks that leading arguments avoid NeuxBot-managed protocol, model, session, workspace, and permission options.
 func LaunchOverrideArgumentsAllowed(baseRuntimeID string, arguments []string) bool {
 	baseRuntimeID = strings.TrimSpace(baseRuntimeID)
-	if baseRuntimeID == RuntimeIDQoderCN {
-		baseRuntimeID = RuntimeIDQoder
-	}
 	protected, exists := protectedPrefixArguments[baseRuntimeID]
 	if !exists {
 		return false
@@ -477,7 +465,6 @@ func BaseRuntimeIDs() []string {
 		RuntimeIDGrok,
 		RuntimeIDWorkBuddy,
 		RuntimeIDQoder,
-		RuntimeIDQoderCN,
 		RuntimeIDCodex,
 		RuntimeIDClaude,
 		RuntimeIDKimi,

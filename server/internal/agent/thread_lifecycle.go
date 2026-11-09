@@ -746,7 +746,7 @@ func freezeThreadSettings(request *ThreadRequest) (json.RawMessage, error) {
 		request.Session.AdditionalDirectories = nil
 	}
 
-	if request.Selection != nil && (account.Provider == "qoder" || account.Provider == "qoder-cn") {
+	if request.Selection != nil && account.Provider == "qoder" {
 		request.Connection.Launch.QoderContextWindow = 0
 		if window := request.Selection.ContextWindow; window != "" {
 			size, err := strconv.ParseInt(window, 10, 64)

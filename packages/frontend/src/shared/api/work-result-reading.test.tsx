@@ -5,7 +5,13 @@ import {
   QueryClientProvider,
   useQueryClient,
 } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { useRef, useState } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { http, HttpResponse } from "msw";
@@ -150,8 +156,10 @@ function Reader({
 
 function ProductionChat({
   status = "completed",
+  historicalFailure = false,
 }: {
   status?: "running" | "completed" | "failed";
+  historicalFailure?: boolean;
 }) {
   const { runtime, isRunning, messages } = useChatRuntime({
     conversationKey: conversationKeyOf(`chat:${owner}`, owner),
@@ -165,9 +173,24 @@ function ProductionChat({
         displayParts:
           status === "failed" ? [] : [{ type: "text", text: "真实最终正文" }],
         ...(status === "failed"
-          ? { errorCode: "tool_failed", errorMessage: "真实执行失败" }
+          ? {
+              errorCode: "RuntimeExecutionFailed",
+              errorMessage:
+                "400 Invalid max_tokens value, the valid range is [1, 393216]",
+              errorMessageSource: "public" as const,
+            }
           : {}),
       },
+      ...(historicalFailure
+        ? [
+            {
+              id: "following-message",
+              role: "assistant" as const,
+              status: "completed" as const,
+              displayParts: [{ type: "text" as const, text: "后续答复" }],
+            },
+          ]
+        : []),
     ],
     latestSequence: 1,
     activeExecutionId: status === "running" ? "final-message" : undefined,
@@ -901,96 +924,132 @@ it.each(["裁剪外", "inert"])(
   },
 );
 
-it("生产聊天失败消息没有最终文本时，错误正文仍能确认原交付引用", async () => {
-  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
-  vi.stubGlobal(
-    "ResizeObserver",
-    class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    },
-  );
-  Object.defineProperty(HTMLElement.prototype, "scrollTo", {
-    configurable: true,
-    value: vi.fn(),
-  });
-  vi.stubGlobal("matchMedia", () => ({
-    matches: false,
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-  }));
-  let callback: IntersectionObserverCallback | undefined;
-  let target: Element | undefined;
-  vi.stubGlobal(
-    "IntersectionObserver",
-    class {
-      constructor(value: IntersectionObserverCallback) {
-        callback = value;
-      }
-      observe(value: Element) {
-        target = value;
-      }
-      disconnect() {}
-      unobserve() {}
-    },
-  );
-  const viewed = vi.fn();
-  server.use(
-    http.get(`${origin}/api/v1/work-board/results/chat/${owner}`, () =>
-      HttpResponse.json({
-        result: {
-          ownerKind: "chat",
-          ownerId: owner,
-          latestVersion: 1,
-          viewedVersion: 0,
-          reference: {
-            chatId: owner,
-            executionId: "final-message",
-            messageId: "final-message",
-          },
-        },
-      }),
-    ),
-    http.post(
-      `${origin}/api/v1/work-board/results/chat/${owner}/view`,
-      async ({ request }) => {
-        viewed(await request.json());
-        return HttpResponse.json({ success: true });
+it.each([true, false])(
+  "失败消息无最终文本，仅实际呈现的历史错误正文确认原交付引用（历史：%s）",
+  async (historicalFailure) => {
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
       },
-    ),
-  );
-  const queries = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
-  const view = render(
-    <MemoryRouter initialEntries={[`/chats/${owner}`]}>
-      <QueryClientProvider client={queries}>
-        <TooltipProvider>
-          <ChatQueueProvider>
-            <ProductionChat status="failed" />
-          </ChatQueueProvider>
-        </TooltipProvider>
-      </QueryClientProvider>
-    </MemoryRouter>,
-  );
-  await screen.findByText("真实执行失败");
-  await waitFor(() => expect(target).toBeDefined());
-  act(() => {
-    if (target) callback?.([intersection(target)], {} as IntersectionObserver);
-  });
-  await waitFor(() => expect(viewed).toHaveBeenCalledTimes(1));
-  expect(viewed).toHaveBeenLastCalledWith({
-    version: 1,
-    reference: {
-      chatId: owner,
-      executionId: "final-message",
-      messageId: "final-message",
-    },
-  });
-  view.unmount();
-  queries.clear();
-});
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    vi.stubGlobal("matchMedia", () => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+    const observations = new Map<Element, IntersectionObserverCallback>();
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        targets = new Set<Element>();
+        constructor(readonly callback: IntersectionObserverCallback) {}
+        observe(value: Element) {
+          this.targets.add(value);
+          observations.set(value, this.callback);
+        }
+        disconnect() {
+          for (const target of this.targets) observations.delete(target);
+          this.targets.clear();
+        }
+        unobserve(value: Element) {
+          this.targets.delete(value);
+          observations.delete(value);
+        }
+      },
+    );
+    const viewed = vi.fn();
+    server.use(
+      http.get(`${origin}/api/v1/work-board/results/chat/${owner}`, () =>
+        HttpResponse.json({
+          result: {
+            ownerKind: "chat",
+            ownerId: owner,
+            latestVersion: 1,
+            viewedVersion: 0,
+            reference: {
+              chatId: owner,
+              executionId: "final-message",
+              messageId: "final-message",
+            },
+          },
+        }),
+      ),
+      http.post(
+        `${origin}/api/v1/work-board/results/chat/${owner}/view`,
+        async ({ request }) => {
+          viewed(await request.json());
+          return HttpResponse.json({ success: true });
+        },
+      ),
+    );
+    const queries = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    const view = render(
+      <MemoryRouter initialEntries={[`/chats/${owner}`]}>
+        <QueryClientProvider client={queries}>
+          <TooltipProvider>
+            <ChatQueueProvider>
+              <ProductionChat
+                status="failed"
+                historicalFailure={historicalFailure}
+              />
+            </ChatQueueProvider>
+          </TooltipProvider>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(
+        view.container.querySelector('[data-work-result-version="1"]'),
+      ).not.toBeNull(),
+    );
+    const failureText =
+      "400 Invalid max_tokens value, the valid range is [1, 393216]";
+    if (historicalFailure) {
+      expect(viewed).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: "展开失败详情" }));
+      const failure = await screen.findByText(failureText);
+      const body = failure.closest("[data-work-result-body]");
+      if (!body) throw new Error("历史错误正文未挂载阅读目标");
+      await waitFor(() => expect(observations.has(body)).toBe(true));
+    } else {
+      expect(screen.getByText(failureText)).not.toBeVisible();
+      expect(
+        view.container.querySelector("[data-work-result-body]"),
+      ).toBeNull();
+    }
+    await act(async () => {
+      for (const [target, callback] of observations)
+        callback([intersection(target)], {} as IntersectionObserver);
+      await new Promise(requestAnimationFrame);
+    });
+    if (historicalFailure) {
+      await waitFor(() => expect(viewed).toHaveBeenCalledTimes(1));
+      expect(viewed).toHaveBeenLastCalledWith({
+        version: 1,
+        reference: {
+          chatId: owner,
+          executionId: "final-message",
+          messageId: "final-message",
+        },
+      });
+    } else expect(viewed).not.toHaveBeenCalled();
+    view.unmount();
+    queries.clear();
+  },
+);
 
 it.each([true, false])(
   "真实 Reader/Presenter 链路只按成功阅读回执退出待查看（提交成功：%s）",

@@ -18,13 +18,25 @@ export function legacyIMSettingsHref(pathname: string, search: string) {
     params.set("binding", params.get("chat") || "");
     params.delete("chat");
   }
-  return `/settings/integration-im${params.size ? `?${params}` : ""}`;
+  params.set("tab", "im");
+  return `/settings/integrations?${params}`;
 }
 
 export function settingsSectionFromPath(
   pathname: string,
 ): SettingsSection | undefined {
-  if (/^\/im(?:\/[^/]+)?$/.test(pathname)) return "integration-im";
+  if (/^\/im(?:\/[^/]+)?$/.test(pathname)) return "integrations";
   const match = /^\/settings(?:\/([^/]+))?$/.exec(pathname);
   return match ? settingsSectionOf(match[1]) : undefined;
+}
+
+/** 将旧发布集成路径归一到集成 Scene，保留原查询条件。 */
+export function integrationSettingsHref(pathname: string, search: string) {
+  const legacy = /^\/settings\/integration-(im|api|mcp)$/.exec(pathname);
+  if (!legacy) return undefined;
+  const params = new URLSearchParams(search);
+  if (!params.has("tab")) params.set("tab", legacy[1] ?? "im");
+  if (legacy[1] === "api" || legacy[1] === "mcp")
+    params.set("detail", "service");
+  return `/settings/integrations?${params}`;
 }

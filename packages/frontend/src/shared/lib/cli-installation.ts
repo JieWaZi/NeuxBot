@@ -69,12 +69,6 @@ const installationGuides: Record<
     command: "curl -fsSL https://x.ai/cli/install.sh | bash",
     windows: "irm https://x.ai/cli/install.ps1 | iex",
   },
-  "qoder-cn": {
-    url: "https://docs.qoder.cn/cli/installation",
-    command:
-      "curl -fsSL https://static.qoder.com.cn/qoder-cli-cn/install.sh | bash",
-    windows: "irm https://static.qoder.com.cn/qoder-cli-cn/install.ps1 | iex",
-  },
   qoder: {
     url: "https://docs.qoder.com/cli/installation",
     command: "curl -fsSL https://qoder.com/install | bash",

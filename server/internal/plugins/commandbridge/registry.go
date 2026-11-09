@@ -146,3 +146,23 @@ func (r *Registry) CachedAuthorization(id, digest string, context OperationConte
 	}
 	return authorization.Account{Scopes: []string{}}, authorization.Session{}, []authorization.Usage{}
 }
+
+// CommitPreparation 将安装预检已核验的同一身份推进到成功提交后的代次，不替换驱动或丢弃账号摘要。
+// 调用方必须在提交成功后、释放预检身份租约前调用；旧上下文不能推进其他版本或较新的身份。
+func (r *Registry) CommitPreparation(expected OperationContext, digest string, revision, generation int64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	current, ok := r.entries[expected.PluginID]
+	if !ok || current.digest != digest || current.driver == nil || revision < expected.ConfigurationRevision || revision > expected.ConfigurationRevision+1 || generation < expected.AccountGeneration || generation > expected.AccountGeneration+1 {
+		return
+	}
+	driver := current.driver
+	driver.contextMu.Lock()
+	defer driver.contextMu.Unlock()
+	actual := OperationContext{PluginID: driver.config.PluginID, VersionID: driver.config.VersionID, Digest: driver.config.Digest, ConfigurationRevision: driver.config.ConfigurationRevision, AccountGeneration: driver.config.AccountGeneration}
+	if actual != expected {
+		return
+	}
+	driver.config.ConfigurationRevision = revision
+	driver.config.AccountGeneration = generation
+}

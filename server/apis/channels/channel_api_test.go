@@ -277,7 +277,7 @@ func TestChannelAPIFreezesResolvedDefaultsBeforeDispatch(t *testing.T) {
 	accounts := controllers.NewAIAccountController(database.DB)
 	oldAccountID, nextAccountID := util.New(), util.New()
 	for _, id := range []string{oldAccountID, nextAccountID} {
-		if err := accounts.Create(ctx, models.AIAccount{ID: id, Name: id, AuthMode: constants.AccountAuthModeAPIKey,
+		if err := accounts.Create(ctx, models.AIAccount{ID: id, RuntimeID: constants.RuntimeIDCodex, Name: id, AuthMode: constants.AccountAuthModeAPIKey,
 			Endpoint:       models.AIAccountEndpoint{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: constants.AIAccountOpenAIURL},
 			SelectedModels: []string{"old-model", "next-model", "later-model"}, DefaultModel: "old-model"}, "test-key"); err != nil {
 			t.Fatal(err)

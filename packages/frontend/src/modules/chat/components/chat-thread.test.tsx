@@ -1245,9 +1245,10 @@ describe("assistant message shell", () => {
       <PureAssistantMessage view={preparing} latest name="nova" />,
     );
     expect(screen.getByText("正在准备会话")).toBeVisible();
-    expect(
-      view.container.querySelector("[data-companion-activity]"),
-    ).toHaveAttribute("data-companion-activity", "connecting");
+    expect(view.container.querySelector("[data-activity]")).toHaveAttribute(
+      "data-activity",
+      "connecting",
+    );
     expect(screen.getByRole("status")).toHaveClass("agent-grid-spinner");
     expect(screen.getByRole("status").children).toHaveLength(9);
     act(() => {
@@ -1261,9 +1262,10 @@ describe("assistant message shell", () => {
     view.rerender(<PureAssistantMessage view={running} latest name="nova" />);
     expect(screen.queryByText("正在准备会话")).not.toBeInTheDocument();
     expect(screen.getByText("飞速运转")).toBeVisible();
-    expect(
-      view.container.querySelector("[data-companion-activity]"),
-    ).toHaveAttribute("data-companion-activity", "thinking");
+    expect(view.container.querySelector("[data-activity]")).toHaveAttribute(
+      "data-activity",
+      "thinking",
+    );
     view.unmount();
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -1284,11 +1286,12 @@ describe("assistant message shell", () => {
     expect(screen.queryByText("正在准备会话")).not.toBeInTheDocument();
     expect(screen.getByText("飞速运转")).toBeVisible();
     expect(screen.getByRole("status")).toHaveClass("agent-grid-spinner");
-    expect(
-      container.querySelector("[data-companion-activity]"),
-    ).toHaveAttribute("data-companion-activity", "thinking");
+    expect(container.querySelector("[data-activity]")).toHaveAttribute(
+      "data-activity",
+      "thinking",
+    );
   });
-  it("最新助手消息变成历史消息后用普通图片代替动态头像并保留名称", () => {
+  it("最新助手消息变成历史消息后固定头像采样并保留名称", () => {
     messageState.current = {
       role: "assistant",
       id: "assistant-avatar-state",
@@ -1299,21 +1302,23 @@ describe("assistant message shell", () => {
       content: [toolPart("file_read", "running")],
     };
     const view = render(<AssistantMessage name="测试伙伴" />);
-    expect(
-      view.container.querySelector("[data-companion-activity]"),
-    ).toHaveAttribute("data-companion-activity", "searching");
+    expect(view.container.querySelector("[data-activity]")).toHaveAttribute(
+      "data-activity",
+      "searching",
+    );
     messageState.current = { ...messageState.current, isLast: false };
     messageState.messages = [
       { id: messageState.current.id, role: "assistant" },
       { id: "new-assistant", role: "assistant" },
     ];
+    const raf = vi.spyOn(window, "requestAnimationFrame");
     view.rerender(<AssistantMessage name="测试伙伴" />);
+    expect(raf).not.toHaveBeenCalled();
+    raf.mockRestore();
     expect(
-      view.container.querySelector("[data-companion-animated]"),
-    ).toBeNull();
-    const image = view.container.querySelector("img");
-    expect(image).toHaveAttribute("loading", "lazy");
-    expect(image).toHaveAttribute("src", expect.stringMatching(/\.svg/));
+      view.container.querySelector("svg[data-companion-avatar]"),
+    ).toHaveAttribute("data-activity", "idle");
+    expect(view.container.querySelector("img")).toBeNull();
     expect(screen.getByText("测试伙伴")).toBeVisible();
   });
   it("末尾是用户消息时，最近的助手消息仍保留动态头像", () => {
@@ -1332,7 +1337,7 @@ describe("assistant message shell", () => {
     ];
     const { container } = render(<AssistantMessage name="测试伙伴" />);
     expect(
-      container.querySelector('[data-companion-animated="true"]'),
+      container.querySelector("svg[data-companion-avatar]"),
     ).not.toBeNull();
     expect(container.querySelector("img")).toBeNull();
   });

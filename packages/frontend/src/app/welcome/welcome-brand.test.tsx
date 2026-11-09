@@ -5,22 +5,26 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { WelcomeBrand } from "./welcome-brand";
-const loading = vi.hoisted(() => ({ logo: vi.fn(), theme: "light" }));
 vi.mock("@/shared/theme", () => ({
-  useTheme: () => ({ resolvedTheme: loading.theme }),
+  useTheme: () => ({ resolvedTheme: "light" }),
 }));
+const loading = vi.hoisted(() => ({ logo: vi.fn() }));
 vi.mock("@/shared/companion/companion-avatar", () => ({
   CompanionAvatar: ({
+    avatar,
     onReady,
     onError,
   }: {
+    avatar: string;
     onReady: () => void;
     onError: () => void;
   }) => (
     <>
-      <button onClick={onReady}>形象已绘制</button>
+      <button data-avatar={avatar} onClick={onReady}>
+        形象已绘制
+      </button>
       <button onClick={onError}>形象绘制失败</button>
     </>
   ),
@@ -41,22 +45,52 @@ vi.mock("./elastic-logo", () => {
     ),
   };
 });
+beforeEach(() => {
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    fillStyle: "",
+    fillRect: vi.fn(),
+    getImageData: () => ({ data: new Uint8ClampedArray([147, 224, 168, 255]) }),
+  } as unknown as CanvasRenderingContext2D);
+});
 afterEach(() => {
-  loading.theme = "light";
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
-it("形象加载失败后使用新品牌标志，并跟随当前浅暗主题", () => {
-  const view = render(<WelcomeBrand intro={false} />);
-  fireEvent.click(screen.getByText("形象绘制失败"));
+it("欢迎布局先挂载稳定占位，头像模块加载后仍等待实际绘制完成", async () => {
+  const done = vi.fn();
+  const view = render(<WelcomeBrand onIntroComplete={done} />);
+  const character = view.container.querySelector(".welcome-character");
+  expect(screen.queryByText("形象已绘制")).toBeNull();
   expect(
-    view.container.querySelector(".welcome-character img"),
-  ).toHaveAttribute("src", "/ally-logo.svg");
-  loading.theme = "dark";
-  view.rerender(<WelcomeBrand intro={false} />);
-  expect(
-    view.container.querySelector(".welcome-character img"),
-  ).toHaveAttribute("src", "/ally-logo-dark.svg");
+    view.container.querySelector(".welcome-character-appearance > span"),
+  ).toHaveClass("size-full");
+  expect(character).toHaveAttribute("data-ready", "false");
+  await screen.findByText("形象已绘制");
+  expect(character).toHaveAttribute("data-ready", "false");
+  expect(screen.queryByText("字标入场结束")).toBeNull();
+  expect(done).not.toHaveBeenCalled();
+});
+it("纹理失败保留已绘制的形象，并放行字标入场和完成回调", async () => {
+  const done = vi.fn();
+  const view = render(<WelcomeBrand onIntroComplete={done} />);
+  const character = await screen.findByText("形象已绘制");
+  expect(character).toHaveAttribute(
+    "data-avatar",
+    "bloub:v1:particles:pentagone:neutre:93e0a8",
+  );
+  await waitFor(() => expect(loading.logo).toHaveBeenCalledOnce());
+  fireEvent.click(await screen.findByText("形象绘制失败"));
+  expect(character).toBeInTheDocument();
+  expect(view.container.querySelector(".welcome-character img")).toBeNull();
+  expect(view.container.querySelector(".welcome-character")).toHaveAttribute(
+    "data-ready",
+    "true",
+  );
+  const logo = await screen.findByText("字标入场结束");
+  expect(done).not.toHaveBeenCalled();
+  fireEvent.click(logo);
+  expect(done).toHaveBeenCalledOnce();
+  expect(screen.getByText("形象已绘制")).toBe(character);
 });
 it("等待 IP 时已预取字标代码，但不提前展示或播放字标", async () => {
   render(<WelcomeBrand />);
@@ -73,7 +107,7 @@ it("IP 落位后才开始字标，字标结束后再展开右侧引导", async (
   expect(view.container.querySelector(".welcome-eyes")).toBeNull();
   const character = view.container.querySelector(".welcome-character");
   expect(character).toHaveAttribute("data-ready", "false");
-  fireEvent.click(screen.getByText("形象已绘制"));
+  fireEvent.click(await screen.findByText("形象已绘制"));
   expect(character).toHaveAttribute("data-ready", "true");
   expect(screen.queryByText("字标入场结束")).not.toBeInTheDocument();
   // 子节点的动画结束不能提前放行字标。
@@ -118,7 +152,7 @@ it("直接进入引导同样等右侧入场后弹出字标，重新展开会再�
       <h2>智能体设置</h2>
     </WelcomeBrand>,
   );
-  fireEvent.click(screen.getByText("形象已绘制"));
+  fireEvent.click(await screen.findByText("形象已绘制"));
   expect(view.container.querySelector(".welcome-eyes")).toBeNull();
   expect(screen.queryByText("字标入场结束")).not.toBeInTheDocument();
   const guide = view.container.querySelector(".welcome-guide");
@@ -145,7 +179,7 @@ it("欢迎已播完后的界面立即挂载字标，不再次等待 IP 加载才
   expect(await screen.findByText("字标入场结束")).toBeVisible();
   expect(
     view.container.querySelector(".welcome-character-placeholder"),
-  ).not.toBeNull();
+  ).toBeNull();
   expect(view.container.querySelector(".welcome-wordmark")).toHaveAttribute(
     "data-intro",
     "false",
@@ -159,7 +193,7 @@ it("减少动态时，完整 IP 就绪后直接接续字标，不等待 CSS 动�
   }));
   const view = render(<WelcomeBrand />);
   expect(view.container.querySelector(".welcome-eyes")).toBeNull();
-  fireEvent.click(screen.getByText("形象已绘制"));
+  fireEvent.click(await screen.findByText("形象已绘制"));
   expect(view.container.querySelector(".welcome-eyes")).toBeNull();
   expect(await screen.findByText("字标入场结束")).toBeVisible();
 });
@@ -179,7 +213,7 @@ it("减少动态或形象失败时不等待不会触发的 CSS 动画", async ()
       <h2>智能体设置</h2>
     </WelcomeBrand>,
   );
-  fireEvent.click(screen.getByText("形象绘制失败"));
+  fireEvent.click(await screen.findByText("形象绘制失败"));
   fireEvent.click(await screen.findByText("字标入场结束"));
   await waitFor(() => expect(done).toHaveBeenCalledOnce());
   expect(screen.getByText("字标入场结束")).toBeVisible();

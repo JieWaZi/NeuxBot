@@ -51,6 +51,18 @@ describe("应用 Scene 模型", () => {
     expect(snapshot.tabs).toHaveLength(1);
     expect(snapshot.tabs[0]?.id).toBe("chat:latest");
   });
+  it("旧 MCP 设置保留 Scene 身份并归一到服务详情 URL", () => {
+    const scene = routeSceneForLocation({
+      pathname: "/settings/integration-mcp",
+      search: "?search=demo",
+    });
+    expect(scene.id).toBe("settings");
+    expect(scene.mountKey).toBe("settings");
+    expect(scene.href).toBe(
+      "/settings/integrations?search=demo&tab=mcp&detail=service",
+    );
+  });
+
   it.each([
     ["/wakers/w1/projects/p1", "", "waker:w1:resources"],
     ["/teams/t1/threads/c1", "", "team:t1:thread:c1"],
@@ -61,7 +73,6 @@ describe("应用 Scene 模型", () => {
     ["/resources", "?category=workflows&search=demo", "resources"],
     ["/workflows/f1/runs/r1", "?result=1", "workflow:f1"],
     ["/wakers/w1/automatic-tasks/t1", "", "automatic-tasks"],
-    ["/settings/integration-mcp", "?search=demo", "settings"],
     ["/unknown", "?search=demo", "route:/unknown"],
   ])("模块解析接入后 %s 保留 Scene 身份与完整 URL", (pathname, search, id) => {
     const scene = routeSceneForLocation({ pathname, search });

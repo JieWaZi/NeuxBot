@@ -7,7 +7,13 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useSearchParams,
+} from "react-router-dom";
 import {
   afterAll,
   afterEach,
@@ -19,6 +25,8 @@ import {
 } from "vitest";
 import type * as SDK from "@/shared/api/generated/sdk.gen";
 import "@/shared/i18n";
+import { IntegrationBreadcrumbs } from "@/modules/settings";
+import { useIMConnections } from "./queries";
 import { IMPage } from "./im-page";
 import { IMConnectionDetailPage } from "./im-connection-detail-page";
 
@@ -130,8 +138,10 @@ function show(path = "/im") {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[path]}>
         <LocationProbe />
+        <BreadcrumbHarness />
         <Routes>
           <Route path="/im" element={<IMPage />} />
+          <Route path="/settings/integrations" element={<IMPage />} />
           <Route
             path="/im/:connectionId"
             element={<IMConnectionDetailPage />}
@@ -141,160 +151,84 @@ function show(path = "/im") {
     </QueryClientProvider>,
   );
 }
+function BreadcrumbHarness() {
+  const [params] = useSearchParams();
+  const query = useIMConnections();
+  return (
+    <IntegrationBreadcrumbs
+      connection={query.data?.resources?.find(
+        (item) => item.id === params.get("connection"),
+      )}
+    />
+  );
+}
 function LocationProbe() {
   const location = useLocation();
-  return <output data-testid="current-path">{location.pathname}</output>;
+  return (
+    <output data-testid="current-path">
+      {location.pathname}
+      {location.search}
+    </output>
+  );
 }
-async function expandPlatform(platform = "微信") {
+async function openPlatform(platform = "微信") {
   await userEvent.click(
     await screen.findByRole("button", { name: `${platform}连接` }),
   );
 }
-it("设置首屏展示全部平台，连接折叠且不显示资源页工具栏", async () => {
+it.each([
+  ["weixin", "微信"],
+  ["feishu", "飞书"],
+  ["wecom", "企业微信"],
+])(
+  "%s 二级标题的悬停返回恢复集成总览并保留读取条件",
+  async (platform, name) => {
+    const user = userEvent.setup();
+    show(`/settings/integrations?tab=im&platform=${platform}&keep=value`);
+    await user.hover(await screen.findByRole("heading", { name }));
+    await user.click(screen.getByRole("button", { name: "返回集成" }));
+    expect(screen.getByTestId("current-path")).toHaveTextContent(
+      "/settings/integrations?keep=value",
+    );
+    for (const label of ["微信连接", "飞书连接", "企业微信连接"])
+      expect(screen.getByRole("button", { name: label })).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "返回集成" }),
+    ).not.toBeInTheDocument();
+  },
+);
+
+it("平台列表整行进入 URL 二级配置，返回恢复三项列表", async () => {
   show();
   for (const platform of ["微信", "飞书", "企业微信"]) {
     expect(
       screen.getByRole("button", { name: `${platform}连接` }),
-    ).toHaveAttribute("aria-expanded", "false");
+    ).not.toHaveAttribute("aria-expanded");
     expect(
-      screen.getByRole("button", { name: `添加${platform}机器人` }),
-    ).toBeEnabled();
+      screen.queryByRole("button", { name: `添加${platform}机器人` }),
+    ).not.toBeInTheDocument();
   }
-  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-  expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+  await openPlatform();
+  expect(await screen.findByText("我的微信")).toBeVisible();
+  expect(screen.getByRole("heading", { name: "微信" })).toBeVisible();
+  await userEvent.click(screen.getByRole("link", { name: "集成" }));
   expect(screen.queryByText("我的微信")).not.toBeInTheDocument();
-  await expandPlatform();
-  expect(await screen.findByText("我的微信")).toBeInTheDocument();
-  expect(screen.getByText("bot-account")).toBeInTheDocument();
-  expect(screen.getByText("已连接")).toBeInTheDocument();
-  expect(screen.queryByRole("article")).not.toBeInTheDocument();
-  await expandPlatform();
-  expect(screen.queryByText("我的微信")).not.toBeInTheDocument();
-});
-
-it("连接行查看只读详情，关闭后保留平台展开并恢复焦点", async () => {
-  show();
-  await expandPlatform();
-  const view = await screen.findByRole("button", {
-    name: "查看我的微信连接详情",
-  });
-  await userEvent.click(view);
-  const detail = await screen.findByRole("dialog", { name: /我的微信/ });
-  expect(within(detail).getByText("bot-account")).toBeInTheDocument();
-  expect(
-    within(detail).getByRole("heading", { name: "聊天接入" }),
-  ).toBeInTheDocument();
-  expect(
-    within(detail).queryByRole("button", { name: /编辑|授权|新建|删除|切换/ }),
-  ).not.toBeInTheDocument();
-  expect(screen.getAllByRole("dialog")).toHaveLength(1);
-  expect(api.update).not.toHaveBeenCalled();
-  expect(api.bindingUpdate).not.toHaveBeenCalled();
-  expect(api.selectConversation).not.toHaveBeenCalled();
-  expect(api.remove).not.toHaveBeenCalled();
-  expect(screen.getByTestId("current-path")).toHaveTextContent("/im");
-  await userEvent.click(within(detail).getByRole("button", { name: "关闭" }));
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "微信连接" })).toHaveAttribute(
-    "aria-expanded",
-    "true",
-  );
-  await waitFor(() => expect(view).toHaveFocus());
-});
-
-it.each([
-  "查看我的微信连接详情",
-  "编辑我的微信连接",
-  "授权我的微信连接",
-  "为我的微信新建对话",
-  "删除我的微信连接",
-])("图标操作“%s”提供可访问名称和悬停说明", async (label) => {
-  const user = userEvent.setup();
-  show();
-  await expandPlatform();
-  const action = await screen.findByRole("button", { name: label });
-  expect(action).toBeEnabled();
-  await user.hover(action);
-  expect(
-    await screen.findByRole("tooltip", { name: label }),
-  ).toBeInTheDocument();
-});
-
-it("连接行编辑直接打开单层表单，取消返回原行且不提交", async () => {
-  show();
-  await expandPlatform();
-  const edit = await screen.findByRole("button", { name: "编辑我的微信连接" });
-  await userEvent.click(edit);
-  const form = await screen.findByRole("dialog", { name: "编辑" });
-  expect(screen.getAllByRole("dialog")).toHaveLength(1);
-  expect(within(form).getByRole("textbox", { name: "名称" })).toHaveValue(
-    "我的微信",
-  );
-  expect(within(form).getByRole("button", { name: "保存" })).toBeEnabled();
-  expect(
-    within(form).queryByRole("heading", { name: "对话记录" }),
-  ).not.toBeInTheDocument();
-  await userEvent.click(within(form).getByRole("button", { name: "关闭" }));
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  expect(api.update).not.toHaveBeenCalled();
-  await waitFor(() => expect(edit).toHaveFocus());
-});
-
-it("连接行删除需要确认，取消不提交且恢复操作焦点", async () => {
-  show();
-  await expandPlatform();
-  const remove = await screen.findByRole("button", {
-    name: "删除我的微信连接",
-  });
-  await userEvent.click(remove);
-  const dialog = screen.getByRole("dialog", { name: "删除连接" });
-  expect(api.remove).not.toHaveBeenCalled();
-  await userEvent.click(within(dialog).getByRole("button", { name: "取消" }));
-  expect(api.remove).not.toHaveBeenCalled();
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  await waitFor(() => expect(remove).toHaveFocus());
-});
-
-it("确认删除携带当前版本和依赖摘要，刷新后保留所在平台", async () => {
-  show();
-  await expandPlatform();
-  await userEvent.click(
-    await screen.findByRole("button", { name: "删除我的微信连接" }),
-  );
-  const dialog = screen.getByRole("dialog", { name: "删除连接" });
-  api.connections.mockResolvedValue({ data: { resources: [] } });
-  const confirm = within(dialog).getByRole("button", {
-    name: "删除",
-  });
-  await waitFor(() => expect(confirm).toBeEnabled());
-  await userEvent.click(confirm);
-  await waitFor(() => expect(api.remove).toHaveBeenCalledTimes(1));
-  expect(api.remove.mock.calls[0]?.[0]).toMatchObject({
-    path: { connectionId: "connection" },
-    query: { revision: 3, dependencyDigest: "empty" },
-  });
-  await waitFor(() =>
-    expect(screen.queryByText("我的微信")).not.toBeInTheDocument(),
-  );
-  expect(screen.getByRole("button", { name: "微信连接" })).toHaveAttribute(
-    "aria-expanded",
-    "true",
-  );
-  expect(screen.getByTestId("current-path")).toHaveTextContent("/im");
+  expect(screen.getByRole("button", { name: "飞书连接" })).toBeVisible();
 });
 
 it("平台直接添加机器人，保持现有扫码流程", async () => {
   show();
+  await openPlatform("飞书");
   await userEvent.click(screen.getByRole("button", { name: "添加飞书机器人" }));
   expect(await screen.findByTitle("扫码连接")).toBeInTheDocument();
   expect(screen.getAllByRole("dialog")).toHaveLength(1);
   expect(screen.getByTestId("current-path")).toHaveTextContent("/im");
 });
 
-it("没有连接仍展示全部平台，空平台可展开和添加", async () => {
+it("没有连接仍展示全部平台，空平台可进入和添加", async () => {
   api.connections.mockResolvedValue({ data: { resources: [] } });
   show();
-  await expandPlatform("企业微信");
+  await openPlatform("企业微信");
   expect(
     await screen.findByText("尚未添加企业微信连接，点击「添加」开始连接。"),
   ).toBeInTheDocument();
@@ -307,11 +241,12 @@ it("没有连接仍展示全部平台，空平台可展开和添加", async () =
   expect(await screen.findByTitle("扫码连接")).toBeInTheDocument();
 });
 
-it("读取连接期间平台和添加操作立即可用，展开展示加载骨架", async () => {
+it("读取连接期间平台和添加操作立即可用，进入后展示加载骨架", async () => {
   api.connections.mockImplementation(() => new Promise(() => {}));
   show();
-  expect(screen.getByRole("button", { name: "添加飞书机器人" })).toBeEnabled();
-  await expandPlatform();
+  expect(screen.getByRole("button", { name: "飞书连接" })).toBeEnabled();
+  await openPlatform();
+  expect(screen.getByRole("button", { name: "添加微信机器人" })).toBeEnabled();
   expect(screen.getByRole("status", { name: "正在读取…" })).toHaveAttribute(
     "aria-busy",
     "true",
@@ -323,11 +258,8 @@ it("连接读取失败保留平台，重试后才展示真实空状态", async (
   api.connections.mockRejectedValue(new Error("连接读取失败"));
   show();
   await screen.findByRole("alert");
-  await expandPlatform();
-  for (const platform of ["微信", "飞书", "企业微信"])
-    expect(
-      screen.getByRole("button", { name: `添加${platform}机器人` }),
-    ).toBeEnabled();
+  await openPlatform();
+  expect(screen.getByRole("button", { name: "添加微信机器人" })).toBeEnabled();
   expect(screen.queryByText(/尚未添加.*连接/)).not.toBeInTheDocument();
   api.connections.mockResolvedValue({ data: { resources: [] } });
   await userEvent.click(screen.getByRole("button", { name: "重试读取" }));
@@ -337,7 +269,7 @@ it("连接读取失败保留平台，重试后才展示真实空状态", async (
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
 
-it("同平台连接按行展示，展开其他平台不会混入这些连接", async () => {
+it("同平台连接按行展示，进入其他平台不会混入这些连接", async () => {
   api.connections.mockResolvedValue({
     data: {
       resources: [
@@ -359,15 +291,14 @@ it("同平台连接按行展示，展开其他平台不会混入这些连接", a
     },
   });
   show();
-  await expandPlatform();
+  await openPlatform();
   expect(screen.queryByText("研发机器人")).not.toBeInTheDocument();
-  await expandPlatform("飞书");
+  await userEvent.click(screen.getByRole("link", { name: "集成" }));
+  await openPlatform("飞书");
   expect(
-    await screen.findByRole("button", { name: "编辑研发机器人连接" }),
+    await screen.findByRole("button", { name: "研发机器人" }),
   ).toBeEnabled();
-  expect(
-    screen.getByRole("button", { name: "编辑客服机器人连接" }),
-  ).toBeEnabled();
+  expect(screen.getByRole("button", { name: "客服机器人" })).toBeEnabled();
   expect(screen.getByText("cli_first")).toBeInTheDocument();
   expect(screen.getByText("cli_second")).toBeInTheDocument();
 });
@@ -389,9 +320,10 @@ it("外部授权入口打开单层授权配置，取消不批准聊天", async (
     },
   });
   show();
-  await expandPlatform();
+  await openPlatform();
   expect(await screen.findByText("待授权")).toBeInTheDocument();
-  const authorize = screen.getByRole("button", { name: "授权我的微信连接" });
+  await userEvent.click(screen.getByRole("button", { name: "我的微信" }));
+  const authorize = await screen.findByRole("button", { name: "授权" });
   await userEvent.click(authorize);
   const dialog = await screen.findByRole("dialog");
   expect(screen.getAllByRole("dialog")).toHaveLength(1);
@@ -418,10 +350,11 @@ it("行上新对话入口打开单层确认，取消不改变聊天指针", asyn
     },
   });
   show();
-  await expandPlatform();
-  const create = await screen.findByRole("button", {
-    name: "为我的微信新建对话",
-  });
+  await openPlatform();
+  await userEvent.click(
+    await screen.findByRole("button", { name: "我的微信" }),
+  );
+  const create = await screen.findByRole("button", { name: "新建对话" });
   await userEvent.click(create);
   const dialog = await screen.findByRole("dialog", { name: "新建对话" });
   expect(screen.getAllByRole("dialog")).toHaveLength(1);
@@ -469,13 +402,11 @@ it("详情展示真实对话及当前指针，同时隐藏全部变更操作", a
   });
   show("/im/connection");
   expect(await screen.findByText("实际对话")).toBeInTheDocument();
-  const current = screen.getByRole("row", { name: /实际对话/ });
+  const current = screen.getByText("实际对话").closest("li");
+  if (!current) throw new Error("对话应显示在记录行中");
   expect(within(current).getByRole("status")).toHaveTextContent("当前对话");
-  expect(within(current).getByRole("cell", { name: "3" })).toBeInTheDocument();
-  const dialog = screen.getByRole("dialog");
-  expect(
-    within(dialog).queryByRole("button", { name: /编辑|授权|新建|删除|切换/ }),
-  ).not.toBeInTheDocument();
+  expect(within(current).getByText(/3 轮/)).toBeInTheDocument();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(api.bindingUpdate).not.toHaveBeenCalled();
   expect(api.selectConversation).not.toHaveBeenCalled();
 });
@@ -525,16 +456,12 @@ it("企业微信平台入口直接打开扫码弹窗，详情使用 Bot ID 标�
   });
   const user = userEvent.setup();
   show();
-  await expandPlatform("企业微信");
-  await user.click(
-    await screen.findByRole("button", { name: "查看研发企微连接详情" }),
-  );
+  await openPlatform("企业微信");
+  await user.click(await screen.findByRole("button", { name: "研发企微" }));
   expect(await screen.findByText("Bot ID")).toBeInTheDocument();
-  expect(
-    within(screen.getByRole("dialog")).getByText("aibot_example"),
-  ).toBeInTheDocument();
+  expect(screen.getByText("aibot_example")).toBeInTheDocument();
   expect(screen.queryByText("应用 ID")).not.toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "关闭" }));
+  await user.click(screen.getByRole("link", { name: "企业微信" }));
   expect(
     screen.getByText("扫码创建或授权企业微信智能机器人"),
   ).toBeInTheDocument();
@@ -543,4 +470,120 @@ it("企业微信平台入口直接打开扫码弹窗，详情使用 Bot ID 标�
     await screen.findByRole("dialog", { name: "连接企业微信" }),
   ).toBeInTheDocument();
   expect(await screen.findByTitle("扫码连接")).toBeInTheDocument();
+});
+
+it("旧连接深链用真实平台归一 URL，保留聊天授权定位", async () => {
+  show("/im?connection=connection&binding=chat-one&keep=value");
+  expect(await screen.findByText("我的微信", { exact: true })).toBeVisible();
+  await waitFor(() =>
+    expect(screen.getByTestId("current-path")).toHaveTextContent(
+      "platform=weixin",
+    ),
+  );
+  expect(screen.getByTestId("current-path")).toHaveTextContent(
+    "binding=chat-one",
+  );
+  expect(screen.getByTestId("current-path")).toHaveTextContent(
+    "connection=connection",
+  );
+  expect(screen.getByTestId("current-path")).toHaveTextContent("keep=value");
+});
+
+it("旧连接深链首次读取保留顶栏父级路径和详情骨架，不闪平台总览", async () => {
+  api.connections.mockImplementation(() => new Promise(() => {}));
+  show("/im?connection=connection&binding=one");
+  expect(screen.getByText("连接详情", { exact: true })).toBeVisible();
+  expect(screen.getByRole("link", { name: "集成" })).toHaveAttribute("href");
+  expect(screen.getByRole("status", { name: "正在读取…" })).toHaveAttribute(
+    "aria-busy",
+    "true",
+  );
+  expect(
+    screen.queryByRole("button", { name: "微信连接" }),
+  ).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("link", { name: "集成" }));
+  expect(screen.getByRole("button", { name: "微信连接" })).toBeVisible();
+});
+it("旧连接深链读取失败保留顶栏父级路径，错误可重试", async () => {
+  api.connections.mockRejectedValue(new Error("连接读取失败"));
+  show("/im?connection=connection");
+  expect(await screen.findByRole("alert")).toBeVisible();
+  expect(screen.getByText("连接详情", { exact: true })).toBeVisible();
+  expect(screen.getByRole("link", { name: "集成" })).toHaveAttribute("href");
+  expect(
+    screen.queryByRole("button", { name: "微信连接" }),
+  ).not.toBeInTheDocument();
+  api.connections.mockResolvedValue({
+    data: {
+      resources: [{ id: "connection", platform: "feishu", name: "飞书机器人" }],
+    },
+  });
+  await userEvent.click(screen.getByRole("button", { name: "重试" }));
+  expect(await screen.findByText("飞书机器人", { exact: true })).toBeVisible();
+});
+
+it("平台连接整行进入 URL 三级页面，查看与页内编辑不创建 Dialog", async () => {
+  const user = userEvent.setup();
+  show();
+  await openPlatform();
+  const row = await screen.findByRole("button", { name: "我的微信" });
+  expect(
+    screen.queryByRole("button", { name: "编辑我的微信连接" }),
+  ).not.toBeInTheDocument();
+  await user.click(row);
+  expect(await screen.findByText("我的微信", { exact: true })).toBeVisible();
+  expect(screen.getByTestId("current-path")).toHaveTextContent(
+    "connection=connection",
+  );
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "编辑" }));
+  expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue("我的微信");
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  await user.clear(screen.getByRole("textbox", { name: "名称" }));
+  await user.type(screen.getByRole("textbox", { name: "名称" }), "工作微信");
+  api.update.mockImplementation(async () => {
+    const connection = {
+      id: "connection",
+      appId: "bot-account",
+      name: "工作微信",
+      platform: "weixin",
+      enabled: true,
+      keepAwake: true,
+      state: "connected",
+      revision: 4,
+    };
+    api.connections.mockResolvedValue({ data: { resources: [connection] } });
+    return { data: connection };
+  });
+  await user.click(screen.getByRole("button", { name: "保存" }));
+  expect(await screen.findByText("工作微信", { exact: true })).toBeVisible();
+  expect(
+    screen.queryByRole("textbox", { name: "名称" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByTestId("current-path")).toHaveTextContent(
+    "connection=connection",
+  );
+  await user.click(screen.getByRole("link", { name: "微信" }));
+  expect(await screen.findByRole("heading", { name: "微信" })).toBeVisible();
+  expect(screen.getByTestId("current-path")).not.toHaveTextContent(
+    "connection=",
+  );
+});
+it("旧连接授权深链直接进入三级，只读进入不自动登录且取消编辑仍留三级", async () => {
+  const user = userEvent.setup();
+  show("/im?connection=connection&binding=chat-one&platform=weixin");
+  expect(await screen.findByText("我的微信", { exact: true })).toBeVisible();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "编辑" }));
+  await user.clear(screen.getByRole("textbox", { name: "名称" }));
+  await user.type(screen.getByRole("textbox", { name: "名称" }), "未保存名称");
+  await user.click(screen.getByRole("button", { name: "取消" }));
+  expect(screen.getByText("我的微信", { exact: true })).toBeVisible();
+  expect(
+    screen.queryByRole("textbox", { name: "名称" }),
+  ).not.toBeInTheDocument();
+  expect(api.update).not.toHaveBeenCalled();
+  expect(screen.getByTestId("current-path")).toHaveTextContent(
+    "binding=chat-one",
+  );
 });

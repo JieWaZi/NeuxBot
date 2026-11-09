@@ -213,7 +213,7 @@ export function ChatExecutionPicker(props: Props) {
   const contextWindows = (selected?.contextWindowOptions ?? []).flatMap(
     ({ id, tokens }) => (id && tokens ? [{ id, tokens }] : []),
   );
-  const hasEffort = reasoningOptions.some((option) => option.id);
+  const hasEffort = reasoningOptions.filter((option) => option.id).length > 1;
   const showReasoning = !browsing && (hasEffort || Boolean(fixed?.effort));
   const showContextWindow =
     Boolean(props.onContextWindow) && contextWindows.length > 1;
@@ -288,13 +288,13 @@ export function ChatExecutionPicker(props: Props) {
               {triggerAccount.name}
             </span>
           ) : null}
-          {selectedEffort?.id && !browsing ? (
+          {selectedEffort?.id && showReasoning ? (
             <span className="text-content-secondary truncate">
               {effortName(selectedEffort.id, selectedEffort.name)}
             </span>
           ) : null}
           {props.fast ? (
-            <Zap aria-hidden className="text-success fill-current" />
+            <Zap aria-hidden className="text-accent fill-current" />
           ) : null}
           <ChevronDown
             aria-hidden
@@ -381,7 +381,7 @@ export function ChatExecutionPicker(props: Props) {
                         <Zap
                           aria-hidden
                           className={
-                            props.fast ? "text-success fill-current" : undefined
+                            props.fast ? "text-accent fill-current" : undefined
                           }
                         />
                       </Button>

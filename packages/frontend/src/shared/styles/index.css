@@ -14,6 +14,8 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @theme inline {
+  /* 保留画布点阵的轮廓，避免磨砂层把聊天区重新抹成纯色。 */
+  --blur-canvas-glass: 1px;
   --color-resource-canvas: var(--resource-canvas);
   --color-resource-surface: var(--resource-surface);
   --color-resource-control: var(--resource-control);
@@ -570,7 +572,11 @@
   --surface-chrome: var(--surface-scene);
 }
 .shell-header-tab {
+  --shell-header-tab-background: transparent;
+  /* 整项参与鼠标交互，避免标题栏拖拽区域吞掉悬停与关闭槽的事件。 */
+  -webkit-app-region: no-drag;
   position: relative;
+  isolation: isolate;
   display: flex;
   flex: 0 0 var(--spacing-scene-tab);
   align-items: center;
@@ -582,25 +588,43 @@
   border-radius: var(--radius-control);
   background: transparent;
   color: var(--content-secondary);
-  transition:
-    background-color var(--duration-quick) var(--ease-ui),
-    color var(--duration-quick) var(--ease-ui);
+  transition: color var(--duration-quick) var(--ease-ui);
+}
+/* 背景纵向内缩，保留 Tab 与关闭操作原有的完整命中区。 */
+.shell-header-tab::after {
+  position: absolute;
+  z-index: -1;
+  inset-block: calc(var(--spacing) / 2);
+  inset-inline: 0;
+  border-radius: inherit;
+  background: var(--shell-header-tab-background);
+  content: "";
+  pointer-events: none;
+  transition: background-color var(--duration-quick) var(--ease-ui);
 }
 .shell-header-tab[data-selected] {
-  background: var(--shell-control-active);
+  --shell-header-tab-background: var(--shell-control-active);
   color: var(--content-primary);
   font-weight: 500;
 }
 .shell-header-tab:not([data-invalid]):hover {
-  background: var(--shell-control-hover);
+  --shell-header-tab-background: var(--shell-control-hover);
   color: var(--content-primary);
 }
 .shell-header-tab[data-invalid] {
-  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+  --shell-header-tab-background: color-mix(
+    in srgb,
+    var(--destructive) 10%,
+    transparent
+  );
   color: var(--destructive);
 }
 .shell-header-tab[data-invalid]:hover {
-  background: color-mix(in srgb, var(--destructive) 15%, transparent);
+  --shell-header-tab-background: color-mix(
+    in srgb,
+    var(--destructive) 15%,
+    transparent
+  );
 }
 .shell-header-tab + .shell-header-tab::before {
   position: absolute;
@@ -902,7 +926,7 @@ button:disabled {
 [data-chat-composer-input] {
   display: block;
   max-height: 10rem;
-  min-height: 4rem;
+  min-height: 2.5rem;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;

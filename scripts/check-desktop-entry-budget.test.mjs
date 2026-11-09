@@ -46,12 +46,15 @@ const manifest = {
   },
   page: { file: "assets/page.js", imports: ["shared"], size: 40 },
   diff: { file: "assets/diff.js", size: 100 },
-  "../vendor/companion/renderer.js": { file: "assets/companion.js", size: 6 },
   "../vendor/elastic-mesh/renderer.js": { file: "assets/elastic.js", size: 7 },
   "../packages/frontend/src/app/welcome/elastic-logo.tsx": {
     file: "assets/logo.js",
     imports: ["shared"],
     size: 5,
+  },
+  "../packages/frontend/src/shared/companion/companion-avatar.tsx": {
+    file: "assets/companion.js",
+    size: 6,
   },
 };
 

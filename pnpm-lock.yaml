@@ -121,6 +121,9 @@ importers:
 
   packages/frontend:
     dependencies:
+      '@neuxbot/bloub':
+        specifier: github:JieWaZi/bloub#main
+        version: git+https://github.com/JieWaZi/bloub.git#84b02098dbd5822ec7c5e7cd0335952e9c8560e2
       '@paper-design/shaders':
         specifier: 0.0.80
         version: 0.0.80
@@ -532,7 +535,7 @@ importers:
         version: 0.84.1(@modelcontextprotocol/sdk@1.30.1(zod@4.4.3))(ws@8.21.3)(zod@4.4.3)
       pi-auto-approval:
         specifier: github:Europa2061/pi-auto-approval#33de98cb79d8a9a23300e9826504e5b69c6e1b52
-        version: https://codeload.github.com/Europa2061/pi-auto-approval/tar.gz/33de98cb79d8a9a23300e9826504e5b69c6e1b52(@earendil-works/pi-ai@0.84.4(@modelcontextprotocol/sdk@1.30.1(zod@4.4.3))(ws@8.21.3)(zod@4.4.3))(@earendil-works/pi-coding-agent@0.84.1(@modelcontextprotocol/sdk@1.30.1(zod@4.4.3))(ws@8.21.3)(zod@4.4.3))
+        version: git+https://github.com/Europa2061/pi-auto-approval.git#33de98cb79d8a9a23300e9826504e5b69c6e1b52(@earendil-works/pi-ai@0.84.4(@modelcontextprotocol/sdk@1.30.1(zod@4.4.3))(ws@8.21.3)(zod@4.4.3))(@earendil-works/pi-coding-agent@0.84.1(@modelcontextprotocol/sdk@1.30.1(zod@4.4.3))(ws@8.21.3)(zod@4.4.3))
       pi-mcp-adapter:
         specifier: 2.32.1
         version: 2.32.1(@earendil-works/pi-ai@0.84.4(@modelcontextprotocol/sdk@1.30.1(zod@4.4.3))(ws@8.21.3)(zod@4.4.3))(@earendil-works/pi-tui@0.84.4)(@modelcontextprotocol/sdk@1.30.1(zod@4.4.3))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typebox@1.3.7)(zod@4.4.3)
@@ -2226,6 +2229,10 @@ packages:
     resolution: {integrity: sha512-5BUA3ZsF6vCSSmshJml0ScjoDkzMTLc8cs7HtFHazERbhxdMEbBJKD01kLZNtnTgZ9DNL/e/+8WZnwBzOrIO4A==}
     peerDependencies:
       react: ^16.8 || ^17.0 || ^18.0 || ^19.0.0 || ^19.0.0-rc
+
+  '@neuxbot/bloub@git+https://github.com/JieWaZi/bloub.git#84b02098dbd5822ec7c5e7cd0335952e9c8560e2':
+    resolution: {commit: 84b02098dbd5822ec7c5e7cd0335952e9c8560e2, repo: https://github.com/JieWaZi/bloub.git, type: git}
+    version: 0.1.0
 
   '@noble/hashes@1.4.0':
     resolution: {integrity: sha512-V1JJ1WTRUqHHrOSh597hURcMqVKVGL/ea3kv0gSnEdsEZ0/+VyPghM1lMNGc00z7CIQorSvbKpuJkxvuHbvdbg==}
@@ -6902,8 +6909,8 @@ packages:
   perfect-debounce@2.1.0:
     resolution: {integrity: sha512-LjgdTytVFXeUgtHZr9WYViYSM/g8MkcTPYDlPa3cDqMirHjKiSZPYd6DoL7pK8AJQr+uWkQvCjHNdiMqsrJs+g==}
 
-  pi-auto-approval@https://codeload.github.com/Europa2061/pi-auto-approval/tar.gz/33de98cb79d8a9a23300e9826504e5b69c6e1b52:
-    resolution: {gitHosted: true, tarball: https://codeload.github.com/Europa2061/pi-auto-approval/tar.gz/33de98cb79d8a9a23300e9826504e5b69c6e1b52}
+  pi-auto-approval@git+https://github.com/Europa2061/pi-auto-approval.git#33de98cb79d8a9a23300e9826504e5b69c6e1b52:
+    resolution: {commit: 33de98cb79d8a9a23300e9826504e5b69c6e1b52, repo: https://github.com/Europa2061/pi-auto-approval.git, type: git}
     version: 0.1.0
     engines: {node: '>=20'}
     peerDependencies:
@@ -10506,6 +10513,8 @@ snapshots:
   '@ncdai/react-wheel-picker@1.2.2(patch_hash=130e78bbd51826cb5c60ed0b8c8c59bd9d06640ac425c6887e82b15f601051f8)(react@19.2.8)':
     dependencies:
       react: 19.2.8
+
+  '@neuxbot/bloub@git+https://github.com/JieWaZi/bloub.git#84b02098dbd5822ec7c5e7cd0335952e9c8560e2': {}
 
   '@noble/hashes@1.4.0': {}
 
@@ -15889,7 +15898,7 @@ snapshots:
 
   perfect-debounce@2.1.0: {}
 
-  pi-auto-approval@https://codeload.github.com/Europa2061/pi-auto-approval/tar.gz/33de98cb79d8a9a23300e9826504e5b69c6e1b52(@earendil-works/pi-ai@0.84.4(@modelcontextprotocol/sdk@1.30.1(zod@4.4.3))(ws@8.21.3)(zod@4.4.3))(@earendil-works/pi-coding-agent@0.84.1(@modelcontextprotocol/sdk@1.30.1(zod@4.4.3))(ws@8.21.3)(zod@4.4.3)):
+  pi-auto-approval@git+https://github.com/Europa2061/pi-auto-approval.git#33de98cb79d8a9a23300e9826504e5b69c6e1b52(@earendil-works/pi-ai@0.84.4(@modelcontextprotocol/sdk@1.30.1(zod@4.4.3))(ws@8.21.3)(zod@4.4.3))(@earendil-works/pi-coding-agent@0.84.1(@modelcontextprotocol/sdk@1.30.1(zod@4.4.3))(ws@8.21.3)(zod@4.4.3)):
     optionalDependencies:
       '@earendil-works/pi-ai': 0.84.4(@modelcontextprotocol/sdk@1.30.1(zod@4.4.3))(ws@8.21.3)(zod@4.4.3)
       '@earendil-works/pi-coding-agent': 0.84.1(@modelcontextprotocol/sdk@1.30.1(zod@4.4.3))(ws@8.21.3)(zod@4.4.3)

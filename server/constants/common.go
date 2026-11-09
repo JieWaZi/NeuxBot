@@ -17,6 +17,8 @@ const (
 	RuntimeContractChangedEventType = "runtimecontract.changed"
 	// CodexSubscriptionAuthMethod 是 Codex 原生 ChatGPT 认证方法标识。
 	CodexSubscriptionAuthMethod = "chat-gpt"
+	// KimiLoginAuthMethod 是 Kimi 原生 CLI 设备登录方法标识。
+	KimiLoginAuthMethod = "login"
 	// NativeAccountKindAccount 是原生账号目录确认的订阅身份类型。
 	NativeAccountKindAccount = "account"
 	// ClaudeSubscriptionAuthMethod 是 Claude 原生订阅认证方法。
@@ -344,8 +346,6 @@ const (
 	RuntimeIDWorkBuddy = "workbuddy"
 	// RuntimeIDQoder 是官方 Qoder CLI ACP 运行时。
 	RuntimeIDQoder = "qoder"
-	// RuntimeIDQoderCN 是官方 Qoder CN CLI ACP 运行时。
-	RuntimeIDQoderCN = "qoder-cn"
 	// RuntimeQoderDefaultModeID 是 Qoder 的默认权限模式。
 	RuntimeQoderDefaultModeID = "default"
 	// RuntimeQoderBypassModeID 是 Qoder ACP 的跳过权限模式。

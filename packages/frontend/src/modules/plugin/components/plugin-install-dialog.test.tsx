@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import "@/shared/i18n";
 import type { GlobalEventObserver } from "@/shared/api/global-events";
+import { ApiError } from "@/shared/api/errors";
 import { PluginInstallDialog } from "./plugin-install-dialog";
 const fixture = vi.hoisted(() => ({
   detail: {
@@ -185,6 +186,125 @@ function show(
   return onClose;
 }
 describe("plugin installation", () => {
+  it("retries a prepared fixed version when the unrelated catalog refresh fails", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const catalog = {
+      key: "office",
+      archiveSHA256: "fixed-archive",
+      package: { manifest: { name: "办公" } },
+    };
+    fixture.prepare.mockResolvedValue(structuredClone(fixture.detail));
+    fixture.install.mockResolvedValueOnce({
+      results: [{ wakerId: "p1", installed: false }],
+    });
+    const content = (error?: unknown) => (
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <PluginInstallDialog
+            catalog={catalog}
+            catalogRead={{ pending: false, error, onRetry: vi.fn() }}
+            wakerId="p1"
+            onClose={vi.fn()}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const view = render(content());
+    const submit = screen.getByRole("button", { name: "继续" });
+    await waitFor(() => expect(submit).toBeEnabled());
+    fireEvent.click(submit);
+    await waitFor(() => expect(fixture.install).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(submit).toHaveTextContent("重试"));
+    view.rerender(content(new ApiError("目录刷新失败")));
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
+    await waitFor(() => expect(fixture.install).toHaveBeenCalledTimes(2));
+    expect(fixture.prepare).toHaveBeenCalledOnce();
+    expect(fixture.install.mock.calls[1]?.[0]).toMatchObject({
+      body: { versionId: "version-1", wakerIds: ["p1"] },
+    });
+  });
+  it("keeps identity and partner selection while catalog details load, fail and retry", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const retry = vi.fn();
+    const onClose = vi.fn();
+    const preview = { name: "飞书", description: "协作文档与日历" };
+    const content = (pending: boolean, error?: unknown, ready = false) => (
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <PluginInstallDialog
+            preview={preview}
+            catalog={
+              ready
+                ? {
+                    key: "office",
+                    archiveSHA256: "fixed-archive",
+                    package: { manifest: { name: "飞书" } },
+                  }
+                : undefined
+            }
+            catalogRead={{ pending, error, onRetry: retry }}
+            onClose={onClose}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const view = render(content(true));
+    expect(screen.getByRole("heading", { name: "安装 飞书" })).toBeVisible();
+    expect(screen.getByText("协作文档与日历")).toBeVisible();
+    const picker = screen.getByRole("button", { name: "选择伙伴" });
+    expect(picker).toBeEnabled();
+    expect(screen.getByRole("button", { name: "继续" })).toBeDisabled();
+    fireEvent.click(picker);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "伙伴二" }));
+    fireEvent.click(picker);
+    view.rerender(content(false, new ApiError("详情暂不可用")));
+    expect(screen.getByRole("alert")).toHaveTextContent("详情暂不可用");
+    expect(screen.getByRole("button", { name: "选择伙伴" })).toHaveTextContent(
+      "伙伴二",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    expect(retry).toHaveBeenCalledOnce();
+    view.rerender(content(true));
+    expect(screen.getByRole("button", { name: "选择伙伴" })).toHaveTextContent(
+      "伙伴二",
+    );
+    view.rerender(content(true, undefined, true));
+    expect(screen.getByRole("button", { name: "继续" })).toBeDisabled();
+    view.rerender(content(false, new ApiError("详情暂不可用"), true));
+    expect(screen.getByRole("button", { name: "继续" })).toBeDisabled();
+    view.rerender(content(false, undefined, true));
+    expect(screen.getByRole("button", { name: "选择伙伴" })).toHaveTextContent(
+      "伙伴二",
+    );
+    expect(screen.getByRole("button", { name: "继续" })).toBeEnabled();
+    fixture.prepare.mockResolvedValue(structuredClone(fixture.detail));
+    fireEvent.click(screen.getByRole("button", { name: "继续" }));
+    await waitFor(() =>
+      expect(fixture.prepare).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: { key: "office" },
+          body: {
+            trustConfirmed: true,
+            expectedArchiveSHA256: "fixed-archive",
+          },
+        }),
+        expect.anything(),
+      ),
+    );
+    await waitFor(() =>
+      expect(fixture.install).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: expect.objectContaining({ wakerIds: ["p2"] }),
+        }),
+        expect.anything(),
+      ),
+    );
+  });
   it("uses the freshly downloaded authorization declaration when a catalog item only contains metadata", async () => {
     fixture.configuration.ready = false;
     Object.assign(fixture.detail.versions[0]?.package ?? {}, {

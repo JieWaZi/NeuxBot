@@ -91,14 +91,14 @@ describe("应用模块归属", () => {
       "/settings/integration-mcp?search=demo",
       "settings",
       "settings",
-      "/settings/integration-api",
+      "/settings/integrations",
     ],
     ["/settings/unknown", "settings", "settings", "/settings/general"],
     [
       "/im/connection1?chat=binding1",
       "settings",
       "settings",
-      "/settings/integration-im",
+      "/settings/integrations",
     ],
     ["/unknown", "partners", "partners", "/chat"],
     ["/resources-other", "partners", "partners", "/chat"],
@@ -138,13 +138,13 @@ describe("模块入口目标", () => {
       resolveAppModuleHref("settings", {
         settingsHref: "/settings/integration-mcp?search=demo",
       }),
-    ).toBe("/settings/integration-api?search=demo");
+    ).toBe("/settings/integrations?search=demo&tab=mcp&detail=service");
     expect(
       resolveAppModuleHref("settings", {
         settingsHref: "/im/conn%20one?chat=binding1&search=demo",
       }),
     ).toBe(
-      "/settings/integration-im?search=demo&connection=conn+one&binding=binding1",
+      "/settings/integrations?search=demo&connection=conn+one&binding=binding1&tab=im",
     );
   });
 

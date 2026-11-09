@@ -39,37 +39,28 @@ func TestNewNativeRuntimeRegistry(t *testing.T) {
 	}
 }
 
-// TestQoderCNRegistryAndIsolation verifies separate regional commands and user configuration roots with shared project skills and permission contracts.
-func TestQoderCNRegistryAndIsolation(t *testing.T) {
-	definitions, err := newRegistry(nil)
+// TestQoderCNIsUnsupported rejects the removed runtime instead of substituting Qoder.
+func TestQoderCNIsUnsupported(t *testing.T) {
+	catalog, err := NewCatalog(CatalogConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	definition := definitions[RuntimeIDQoderCN]
-	if definition.name != "Qoder CN" || definition.instructionFileName != "AGENTS.md" || definition.skillDirectoryName != ".qoder" || definition.configHomeEnvironmentVariable != "QODERCN_CONFIG_DIR" || !reflect.DeepEqual(definition.binaryCandidates, []string{"qodercn", "qoder-cn", "qoderclicn"}) || len(definition.models) != 0 {
-		t.Fatalf("incorrect CN definition: %+v", definition)
+	if slices.Contains(BaseRuntimeIDs(), "qoder-cn") {
+		t.Fatal("removed runtime is still advertised")
 	}
-	if !slices.Contains(BaseRuntimeIDs(), RuntimeIDQoderCN) {
-		t.Fatal("connector matrix omitted Qoder CN")
-	}
-	for _, transport := range []ConnectorTransport{ConnectorTransportStdio, ConnectorTransportStreamableHTTP, ConnectorTransportSSE} {
-		if supported, _ := ConnectorCompatibility(RuntimeIDQoderCN, transport); !supported {
-			t.Fatalf("missing transport %s", transport)
-		}
-	}
-	for flag := range protectedPrefixArguments[RuntimeIDQoder] {
-		if LaunchOverrideArgumentsAllowed(RuntimeIDQoderCN, []string{flag + "=override"}) {
-			t.Fatalf("unsafe CN override accepted: %s", flag)
-		}
+	_, err = catalog.ResolveExecutable(DetectRequest{RuntimeID: "qoder-cn", HomeDirectory: t.TempDir(), BaseEnvironment: []string{"PATH="}})
+	var stable statuserror.CommonError
+	if !errors.As(err, &stable) || stable.Code() != status_error.RuntimeNotRegistered.Code() {
+		t.Fatalf("removed runtime resolution = %v", err)
 	}
 }
 
-// TestQoderNativeInstallDiscovery verifies official native path resolution without PATH and isolation between regions and explicit path overrides.
+// TestQoderNativeInstallDiscovery verifies official native path resolution without PATH and explicit path overrides.
 func TestQoderNativeInstallDiscovery(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fixture uses POSIX executable scripts")
 	}
-	for _, id := range []string{RuntimeIDQoder, RuntimeIDQoderCN} {
+	for _, id := range []string{RuntimeIDQoder} {
 		t.Run(id, func(t *testing.T) {
 			home := t.TempDir()
 			sdk, err := NewCatalog(CatalogConfig{})
@@ -99,16 +90,6 @@ func TestQoderNativeInstallDiscovery(t *testing.T) {
 			if !found {
 				t.Fatalf("native installation omitted: %+v", installations)
 			}
-			// Never transparently substitute login identities or executables between international and Chinese editions.
-			other := RuntimeIDQoder
-			if id == other {
-				other = RuntimeIDQoderCN
-			}
-			request.RuntimeID = other
-			if _, err := sdk.ResolveExecutable(request); err == nil {
-				t.Fatal("cross-region executable fallback")
-			}
-			request.RuntimeID = id
 			request.LaunchOverride.Binary = filepath.Join(home, "missing-explicit-binary")
 			if _, err := sdk.ResolveExecutable(request); err == nil {
 				t.Fatal("explicit binary silently fell back to native installation")
@@ -122,7 +103,7 @@ func TestQoderDesktopDispatcherIsNotNativeInstall(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fixture uses POSIX executable scripts")
 	}
-	for _, id := range []string{RuntimeIDQoder, RuntimeIDQoderCN} {
+	for _, id := range []string{RuntimeIDQoder} {
 		home := t.TempDir()
 		sdk, err := NewCatalog(CatalogConfig{})
 		if err != nil {
@@ -143,7 +124,7 @@ func TestQoderDesktopDispatcherIsNotNativeInstall(t *testing.T) {
 	}
 }
 
-// TestQoderRegistryPreservesNativeInstallation verifies regional directories, transports, and launch argument constraints.
+// TestQoderRegistryPreservesNativeInstallation verifies native directories, transports, and launch argument constraints.
 func TestQoderRegistryPreservesNativeInstallation(t *testing.T) {
 	definitions, err := newRegistry(nil)
 	if err != nil {
@@ -647,20 +628,20 @@ func TestProfileInstallationUsesItsEnvironment(t *testing.T) {
 	home := t.TempDir()
 	binary := filepath.Join(home, "qoder-profile")
 	probe := "#!/bin/sh\n" +
-		"[ \"$1\" = profile-prefix ] && [ \"$2\" = --version ] && [ \"$QODERCN_CONFIG_DIR\" = \"$PROFILE_HOME\" ] || exit 2\n" +
+		"[ \"$1\" = profile-prefix ] && [ \"$2\" = --version ] && [ \"$QODER_CONFIG_DIR\" = \"$PROFILE_HOME\" ] || exit 2\n" +
 		"printf '2.1.0\\n'\n"
 	if err := os.WriteFile(binary, []byte(probe), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	catalog, err := NewCatalog(CatalogConfig{Profiles: []ProfileSpec{{
-		ID: "qoder-cn-profile", BaseRuntimeID: RuntimeIDQoderCN, BinaryCandidates: []string{binary},
-		PrefixArgs: []string{"profile-prefix"}, Environment: map[string]string{"PROFILE_HOME": home, "QODERCN_CONFIG_DIR": home},
+		ID: "qoder-profile", BaseRuntimeID: RuntimeIDQoder, BinaryCandidates: []string{binary},
+		PrefixArgs: []string{"profile-prefix"}, Environment: map[string]string{"PROFILE_HOME": home, "QODER_CONFIG_DIR": home},
 	}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	request := DetectRequest{
-		RuntimeID: "qoder-cn-profile", HomeDirectory: home, BaseEnvironment: []string{"PATH="},
+		RuntimeID: "qoder-profile", HomeDirectory: home, BaseEnvironment: []string{"PATH="},
 	}
 	for _, summary := range catalog.Runtimes() {
 		if summary.ID == request.RuntimeID && summary.ConfigHome != home {

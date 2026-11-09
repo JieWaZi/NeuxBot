@@ -3,9 +3,6 @@ import i18n from "i18next";
 import { notificationZh, notificationEn } from "./notification";
 import { initReactI18next } from "react-i18next";
 
-import { workflowEn, workflowZh } from "./workflow";
-import { automaticTaskEn, automaticTaskZh } from "./automatic-task";
-
 import { imZh, imEn } from "./im";
 import { workBoardZh, workBoardEn } from "./work-board";
 import { usageZh } from "./usage";
@@ -17,8 +14,6 @@ const resources = {
     im: imZh,
     workBoard: workBoardZh,
     usage: usageZh,
-    automaticTask: automaticTaskZh,
-    workflow: workflowZh,
     common: {
       resourceCategory: {
         label: "分类",
@@ -139,14 +134,60 @@ const resources = {
       },
       companion: {
         interact: "与 {{name}} 互动",
-        hint: "点一下打招呼，连续点三下到输入框上方；键盘 ↑ 也可唤出",
-        showcaseHint: "点一下打招呼，连点两下打开卡片，点空白处收回",
-        tapHint: "点一下，和我互动",
-        expanded: "输入框上方的 {{name}}",
-        hide: "收起形象",
-        touch: "摸摸 {{name}}",
-        expandedHint: "再点一下，看看我的另一种表情",
-        nextStyle: "下一款",
+        showcase: "查看 {{name}} 的资料",
+        picker: {
+          edit: "编辑{{label}}",
+          material: "材质",
+          shape: "形状",
+          expression: "眼睛",
+          color: "颜色",
+          colorOption: "颜色 {{color}}",
+          random: "随机",
+          reset: "重置",
+        },
+        materials: {
+          plush: "毛绒",
+          particles: "粒子",
+        },
+        shapes: {
+          cercle: "圆形",
+          galet: "卵石",
+          squircle: "圆角方形",
+          capsule: "胶囊",
+          triangle: "三角形",
+          hexagone: "六边形",
+          nuage: "云朵",
+          goutte: "水滴",
+          carre: "方形",
+          losange: "菱形",
+          pentagone: "五边形",
+        },
+        expressions: {
+          neutre: "平静",
+          attentif: "专注",
+          surpris: "惊讶",
+          excite: "兴奋",
+          heureux: "开心",
+          hilare: "大笑",
+          colere: "生气",
+          triste: "难过",
+          effraye: "害怕",
+          mefiant: "怀疑",
+          confus: "困惑",
+          curieux: "好奇",
+          fier: "自豪",
+          timide: "害羞",
+          blase: "淡然",
+          somnolent: "困倦",
+          complice: "眨眼",
+          determine: "坚定",
+          reveur: "发呆",
+          inquiet: "忐忑",
+          espiegle: "调皮",
+          meditatif: "冥想",
+          ebloui: "眯眼",
+          gene: "尴尬",
+        },
       },
       welcomeScene: {
         ariaLabel: "欢迎页",
@@ -1019,6 +1060,9 @@ const resources = {
       useAccount: "切换",
       changeKey: "更改 API Key",
       systemDescription: "使用此智能体在本机的登录和配置。",
+      systemSignedOut: "未登录",
+      systemConnected: "已连接（原生客户端未提供账号名称）",
+      systemAuthUnknown: "登录状态未确认",
       loadingAccounts: "正在读取账号",
       apiSection: "API 密钥",
       apiSaved: "已保存 API 账号。",
@@ -1156,7 +1200,7 @@ const resources = {
           removalFailed: "删除失败",
           installFailed: "安装失败",
           signingIn: "正在登录",
-          configurationRequired: "需要配置",
+          configurationRequired: "需配置本机凭据",
           disabled: "已停用",
           loginRequired: "需要登录",
           ready: "已连接",
@@ -1312,6 +1356,7 @@ const resources = {
       sections: {
         general: "通用",
         runtimeEnvironments: "智能体",
+        integrations: "集成",
         integrationAPI: "API 集成",
         integrationIM: "IM 集成",
       },
@@ -1708,13 +1753,6 @@ const resources = {
       entryRetry: "重试",
       recent: "最近对话",
       manageWakers: "管理伙伴",
-      greeting: "今天想一起完成什么？",
-      greetingPhrases: {
-        start: "先从哪一件开始？",
-        progress: "有想推进的计划吗？",
-        next: "我可以先帮你理清下一步",
-        share: "说一件你想完成的事",
-      },
       createWakerFirst: "先创建一位伙伴",
       draftDescription: "选择项目目录和智能体，然后发送第一条消息。",
       working: "工作中",
@@ -2402,13 +2440,6 @@ const resources = {
       sendUnknown:
         "发送结果未知。输入已保留，历史正在重新同步；请核对后再决定是否发送新消息。",
       team: {
-        emptyTitle: "把目标交给团队负责人",
-        greetingPhrases: {
-          goal: "今天想让团队完成什么？",
-          start: "先从哪一件协作开始？",
-          assign: "需要时会分派给成员",
-          share: "说一件你们想一起完成的事",
-        },
         memberConfigUpdateFailed: "成员执行配置保存失败，请稍后重试。",
         memberConfigInvalid: "请检查{{name}}的执行配置后再发送。",
         allMembers: "全部成员",
@@ -2462,8 +2493,6 @@ const resources = {
     notification: notificationEn,
     im: imEn,
     workBoard: workBoardEn,
-    automaticTask: automaticTaskEn,
-    workflow: workflowEn,
     common: {
       resourceCategory: {
         label: "Categories",

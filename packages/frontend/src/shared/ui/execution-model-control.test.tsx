@@ -1,10 +1,4 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState, type ComponentProps } from "react";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -329,43 +323,23 @@ describe("执行模型与强度选择", () => {
     expect(onModelChange).not.toHaveBeenCalled();
   });
 
-  it.each(["high", ""])(
-    "单档位模型以满格展示并禁用滑条，选择值为 %s",
-    async (selectedReasoning) => {
+  it.each([false, true])(
+    "单档位不显示强度控件或最高强度效果，允许默认值为 %s",
+    async (allowDefaultReasoning) => {
       const user = userEvent.setup();
-      const { onReasoningChange } = renderPicker({
-        selectedReasoning,
+      renderPicker({
+        allowDefaultReasoning,
         reasoningOptions: [{ id: "high", name: "High" }],
       });
-      await user.click(screen.getByTestId("composer-model-control"));
-      const dialog = screen.getByRole("dialog", { name: "选择强度" });
-      const slider = within(dialog).getByRole("slider");
-      fireEvent.keyDown(slider, { key: "End" });
-      expect(onReasoningChange).not.toHaveBeenCalled();
-      expect(slider).toHaveAttribute("aria-valuetext", "High");
-      expect(slider).toHaveAttribute("aria-valuenow", "1");
-      expect(slider).toHaveAttribute("aria-valuemax", "1");
-      expect(dialog.querySelector('[data-slot="slider-range"]')).toHaveStyle({
-        right: "0%",
-      });
-      expect(screen.getByTestId("composer-model-control")).toHaveAttribute(
-        "data-effort-max",
-      );
+      const trigger = screen.getByTestId("composer-model-control");
+      expect(trigger).not.toHaveAttribute("data-effort-max");
+      expect(trigger).not.toHaveTextContent("High");
+      await user.click(trigger);
+      expect(screen.getByRole("radio", { name: "模型 B" })).toBeVisible();
+      expect(screen.queryByRole("slider")).not.toBeInTheDocument();
     },
   );
 
-  it("只有 On 开关时不显示满格或最高强度效果", async () => {
-    const user = userEvent.setup();
-    renderPicker({
-      selectedReasoning: "enabled",
-      reasoningOptions: [{ id: "enabled", name: "On (default)" }],
-    });
-    await user.click(screen.getByTestId("composer-model-control"));
-    expect(screen.getByRole("slider")).toHaveAttribute("aria-valuenow", "0");
-    expect(screen.getByTestId("composer-model-control")).not.toHaveAttribute(
-      "data-effort-max",
-    );
-  });
   it("执行配置的默认模型提交空值，返回强度面板且保持浮层", async () => {
     const user = userEvent.setup();
     const { onModelChange } = renderPicker({ allowDefaultModel: true });

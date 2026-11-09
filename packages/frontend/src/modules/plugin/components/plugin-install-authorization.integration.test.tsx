@@ -95,7 +95,7 @@ function account(): GetPluginAuthorizationResponse {
       configured: available,
       checkedAt: available ? Date.now() : 0,
     },
-    session: session ? { ...session, actions: [] } : undefined,
+    session: session ? { ...session } : undefined,
     activeUses: [],
     missingScopes: [],
   };
@@ -276,6 +276,12 @@ it.each(["show-qr", "open-url"])(
       ).toBeVisible();
     else expect(await screen.findByText("CODE-1234")).toBeVisible();
     expect(starts()).toHaveLength(1);
+    expect(
+      requests.filter(
+        ({ method, url }) =>
+          method === "GET" && url.pathname.includes("/account/authorizations/"),
+      ),
+    ).toHaveLength(0);
     expect(installs()).toHaveLength(0);
     expect(cancellations()).toHaveLength(0);
     expect(starts()[0]?.body).toEqual({

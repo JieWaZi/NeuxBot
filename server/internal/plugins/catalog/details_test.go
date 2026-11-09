@@ -1,14 +1,80 @@
 package catalog
 
 import (
+	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	ginxlogx "github.com/shrewx/ginx/pkg/logx"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestDistributionRequestErrorsRedactURLAndReportTimeout(t *testing.T) {
+	var output bytes.Buffer
+	logger := ginxlogx.Instance()
+	prior := logger.Out
+	logger.SetOutput(&output)
+	t.Cleanup(func() { logger.SetOutput(prior) })
+	address := "https://private-user:private-password@example.invalid/details?token=private-token"
+	logDistributionFailure("details_get", "feishu-office", address, nil, time.Now(), &url.Error{Op: "Get", URL: address, Err: context.DeadlineExceeded})
+	log := output.String()
+	if !strings.Contains(log, "timeout=true") || !strings.Contains(log, "context deadline exceeded") || !strings.Contains(log, "https://example.invalid/details") {
+		t.Fatalf("request timeout lost useful diagnostics: %s", log)
+	}
+	if strings.Contains(log, "private-") || strings.Contains(log, "token=") {
+		t.Fatal("request error exposed URL credentials")
+	}
+}
+
+func TestDetailsDistributionFailuresKeepSafeUpstreamDiagnostics(t *testing.T) {
+	for _, stage := range []string{"status", "body"} {
+		t.Run(stage, func(t *testing.T) {
+			var output bytes.Buffer
+			logger := ginxlogx.Instance()
+			prior := logger.Out
+			logger.SetOutput(&output)
+			t.Cleanup(func() { logger.SetOutput(prior) })
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/details" {
+					http.Redirect(w, r, "/asset?signature=private-signed-value", http.StatusFound)
+					return
+				}
+				if stage == "status" {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
+				w.Header().Set("Content-Length", "100")
+				_, _ = w.Write([]byte("short"))
+			}))
+			defer server.Close()
+			_, err := ReadDetails(Entry{Key: "feishu-office", DetailsURL: server.URL + "/details?token=private-source-value", DetailsSHA256: strings.Repeat(map[string]string{"status": "a", "body": "b"}[stage], 64), DetailsSize: 100})
+			if !errors.Is(err, status_error.PluginDistributionUnavailable) {
+				t.Fatal("upstream failure lost its distribution error", err)
+			}
+			log := output.String()
+			want := "upstream_status=503"
+			if stage == "body" {
+				want = "unexpected EOF"
+			}
+			if !strings.Contains(log, want) || !strings.Contains(log, "plugin_key=feishu-office") || !strings.Contains(log, "elapsed_ms=") {
+				t.Fatalf("upstream failure discarded diagnostic context: %s", log)
+			}
+			if strings.Contains(log, "private-") || strings.Contains(log, "signature=") || strings.Contains(log, "token=") {
+				t.Fatal("diagnostics exposed signed URL parameters")
+			}
+		})
+	}
+}
 
 func TestBuiltCatalogDetailsArtifacts(t *testing.T) {
 	directory := os.Getenv("NEUXALLY_PLUGIN_DETAILS_ARTIFACT_DIR")

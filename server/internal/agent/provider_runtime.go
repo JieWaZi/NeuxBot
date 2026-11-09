@@ -440,7 +440,7 @@ func (c *providerConnection) open(ctx context.Context, request ProviderConnectio
 func SupportsProvider(provider string) bool {
 	switch provider {
 	case constants.RuntimeIDCodex, constants.RuntimeIDClaude, constants.RuntimeIDCursor,
-		constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder, constants.RuntimeIDQoderCN,
+		constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder,
 		constants.RuntimeIDKimi, constants.RuntimeIDGemini, constants.RuntimeIDGrok, constants.RuntimeIDOpenCode, constants.RuntimeIDPi:
 		return true
 	}

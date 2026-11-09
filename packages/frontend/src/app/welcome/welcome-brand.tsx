@@ -8,18 +8,20 @@ import {
   type ReactNode,
 } from "react";
 
-import { CompanionAvatar } from "@/shared/companion/companion-avatar";
 import { useTheme } from "@/shared/theme";
-import bodies from "../../../../../vendor/companion/styles.json";
-import plush256 from "../../../../../vendor/companion/assets/bodies/plush-256.png";
-import plush512 from "../../../../../vendor/companion/assets/bodies/plush-512.png";
+
+const CompanionAvatar = lazy(() =>
+  import("@/shared/companion/companion-avatar").then((module) => ({
+    default: module.CompanionAvatar,
+  })),
+);
 
 const ElasticLogo = lazy(() => import("./elastic-logo"));
 let assetsReady: Promise<void> | undefined;
 /** 只预热代码，不提前创建 GPU 或启动字标动画；失败仍由各组件负责静态降级。 */
 export function prepareWelcomeAssets(): Promise<void> {
   return (assetsReady ??= Promise.allSettled([
-    import("../../../../../vendor/companion/renderer"),
+    import("@/shared/companion/companion-avatar"),
     import("../../../../../vendor/elastic-mesh/renderer"),
     import("./elastic-logo"),
   ]).then(() => undefined));
@@ -44,6 +46,7 @@ export function WelcomeBrand({
   onIntroComplete?: () => void;
 }) {
   const { resolvedTheme } = useTheme();
+  const [avatarColor, setAvatarColor] = useState<string>();
   const reducedMotion = useSyncExternalStore(
     watchReducedMotion,
     readReducedMotion,
@@ -53,7 +56,30 @@ export function WelcomeBrand({
   const [characterReady, setCharacterReady] = useState(false);
   const [characterArrived, setCharacterArrived] = useState(false);
   const [logoFinished, setLogoFinished] = useState(false);
-  const [characterFailed, setCharacterFailed] = useState(false);
+  useEffect(() => {
+    // 等待主题提供者将新 Token 应用到根节点后再读取。
+    const frame = requestAnimationFrame(() => {
+      // 头像标识需要 sRGB 十六进制；通过浏览器转换主题 Token，避免维护第二套品牌色。
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 1;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) {
+        setCharacterReady(true);
+        setCharacterArrived(true);
+        return;
+      }
+      context.fillStyle = getComputedStyle(document.documentElement)
+        .getPropertyValue("--accent-default")
+        .trim();
+      context.fillRect(0, 0, 1, 1);
+      setAvatarColor(
+        Array.from(context.getImageData(0, 0, 1, 1).data.slice(0, 3))
+          .map((channel) => channel.toString(16).padStart(2, "0"))
+          .join(""),
+      );
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [resolvedTheme]);
   if (characterReady && reducedMotion && !characterArrived)
     setCharacterArrived(true);
   useEffect(() => {
@@ -91,47 +117,29 @@ export function WelcomeBrand({
               }}
             >
               <div className="welcome-character-appearance size-full">
-                {!intro && !characterReady && !characterFailed && (
-                  <div className="welcome-character-placeholder absolute inset-0 size-full object-contain">
-                    <img
-                      src={plush256}
-                      srcSet={`${plush256} 256w, ${plush512} 512w`}
-                      sizes="clamp(112px, calc(18vw - 17.28px), 192px)"
-                      alt=""
-                      className="size-full object-contain"
+                <Suspense
+                  fallback={
+                    <span aria-hidden="true" className="block size-full" />
+                  }
+                >
+                  {avatarColor ? (
+                    <CompanionAvatar
+                      avatar={`bloub:v1:particles:pentagone:neutre:${avatarColor}`}
+                      onReady={() => {
+                        if (intro)
+                          performance.mark?.("ally.startup.characterReady");
+                        setCharacterReady(true);
+                      }}
+                      onError={() => {
+                        // 纹理失败仍有完整的同色形象，保留实例并接续字标。
+                        setCharacterReady(true);
+                        setCharacterArrived(true);
+                      }}
                     />
-                    <img
-                      src="/welcome-eyes.svg"
-                      alt=""
-                      className="absolute inset-0 size-full"
-                    />
-                  </div>
-                )}
-                {characterFailed ? (
-                  <img
-                    src={
-                      resolvedTheme === "dark"
-                        ? "/ally-logo-dark.svg"
-                        : "/ally-logo.svg"
-                    }
-                    alt=""
-                    className="size-full object-contain"
-                  />
-                ) : (
-                  <CompanionAvatar
-                    avatar={bodies.plush.avatar}
-                    onReady={() => {
-                      if (intro)
-                        performance.mark?.("ally.startup.characterReady");
-                      setCharacterReady(true);
-                    }}
-                    onError={() => {
-                      setCharacterFailed(true);
-                      setCharacterReady(true);
-                      setCharacterArrived(true);
-                    }}
-                  />
-                )}
+                  ) : (
+                    <span aria-hidden="true" className="block size-full" />
+                  )}
+                </Suspense>
               </div>
             </div>
             <div className="welcome-wordmark" data-intro={intro}>

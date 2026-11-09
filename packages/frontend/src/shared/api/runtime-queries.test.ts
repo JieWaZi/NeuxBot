@@ -105,7 +105,6 @@ it.each([
   "cursor",
   "workbuddy",
   "qoder",
-  "qoder-cn",
   "kimi",
   "gemini",
   "grok",

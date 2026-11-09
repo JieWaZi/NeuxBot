@@ -1,5 +1,6 @@
 import {
   legacyIMSettingsHref,
+  integrationSettingsHref,
   settingsSectionFromPath,
 } from "../scenes/settings-route";
 
@@ -167,6 +168,7 @@ export function resolveAppModuleHref(
       if (section)
         return (
           legacyIMSettingsHref(location.pathname, location.search) ??
+          integrationSettingsHref(location.pathname, location.search) ??
           `/settings/${section}${location.search}`
         );
     }

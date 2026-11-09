@@ -82,7 +82,7 @@ func TestOfficialInstallationSmoke(t *testing.T) {
 	selected := strings.Split(os.Getenv("NEUXBOT_INSTALLATION_SMOKE_RUNTIME"), ",")
 	for _, id := range []string{constants.RuntimeIDCodex, constants.RuntimeIDClaude, constants.RuntimeIDCursor, constants.RuntimeIDKimi,
 		constants.RuntimeIDOpenCode, constants.RuntimeIDPi, constants.RuntimeIDGrok, constants.RuntimeIDGemini,
-		constants.RuntimeIDQoder, constants.RuntimeIDQoderCN, constants.RuntimeIDWorkBuddy} {
+		constants.RuntimeIDQoder, constants.RuntimeIDWorkBuddy} {
 		if selected[0] != "" && !slices.Contains(selected, id) {
 			continue
 		}

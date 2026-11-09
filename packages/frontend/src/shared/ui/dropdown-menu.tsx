@@ -1,5 +1,5 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { Check, ChevronRight } from "lucide-react";
+import { Check, ChevronRight, Pin } from "lucide-react";
 import type { ComponentProps } from "react";
 
 import { cn } from "@/shared/lib/cn";
@@ -67,8 +67,10 @@ export function DropdownMenuSubContent({
   );
 }
 
-export const menuItemClass =
-  "type-ui min-h-row-compact flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 outline-none select-none [&>svg]:size-icon-sm data-[disabled]:pointer-events-none data-[disabled]:opacity-45 data-[state=checked]:bg-selection-surface data-[state=checked]:text-content-primary data-[highlighted]:bg-muted data-[highlighted]:text-foreground";
+const menuItemContentClass =
+  "type-ui flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 outline-none select-none [&>svg]:size-icon-sm data-[disabled]:pointer-events-none data-[disabled]:opacity-45 data-[state=checked]:bg-selection-surface data-[state=checked]:text-content-primary data-[highlighted]:bg-muted data-[highlighted]:text-foreground";
+
+export const menuItemClass = `min-h-row-compact ${menuItemContentClass}`;
 
 export function DropdownMenuLabel({
   className,
@@ -132,6 +134,57 @@ export function DropdownMenuCheckboxItem({
         <Check className="size-icon-sm" strokeWidth={1.5} />
       </DropdownMenuPrimitive.ItemIndicator>
     </DropdownMenuPrimitive.CheckboxItem>
+  );
+}
+
+/** 导航与置顶操作共用整行反馈；固定操作保持独立键盘语义且不关闭菜单。 */
+export function DropdownMenuPinnableItem({
+  children,
+  className,
+  pinned,
+  pinLabel,
+  onPinnedChange,
+  ...props
+}: ComponentProps<typeof DropdownMenuPrimitive.Item> & {
+  pinned: boolean;
+  pinLabel: string;
+  onPinnedChange?: (pinned: boolean) => void;
+}) {
+  return (
+    <div
+      role="none"
+      className="group/menu-row hover:bg-muted has-[[data-highlighted]]:bg-muted flex items-center rounded-sm"
+    >
+      <DropdownMenuPrimitive.Item
+        className={cn(
+          menuItemContentClass,
+          "min-h-control-sm min-w-0 flex-1 font-normal data-[highlighted]:bg-transparent",
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </DropdownMenuPrimitive.Item>
+      <DropdownMenuPrimitive.CheckboxItem
+        checked={pinned}
+        disabled={!onPinnedChange}
+        aria-label={pinLabel}
+        onSelect={(event) => event.preventDefault()}
+        onCheckedChange={(checked) => onPinnedChange?.(checked === true)}
+        className={cn(
+          "text-content-tertiary hover:text-content-primary data-[highlighted]:text-content-primary focus-visible:ring-ring size-control-sm grid shrink-0 cursor-pointer place-items-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-inset data-[disabled]:pointer-events-none data-[disabled]:opacity-45",
+          !pinned &&
+            "opacity-0 group-focus-within/menu-row:opacity-100 group-hover/menu-row:opacity-100 [@media(hover:none)]:opacity-100",
+        )}
+      >
+        <Pin
+          className="size-icon-sm rotate-45"
+          strokeWidth={1.5}
+          fill={pinned ? "currentColor" : "none"}
+          aria-hidden="true"
+        />
+      </DropdownMenuPrimitive.CheckboxItem>
+    </div>
   );
 }
 

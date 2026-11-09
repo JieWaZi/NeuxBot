@@ -24,10 +24,10 @@ describe("具体思考强度的最高档判断", () => {
     ).toBe(false);
   });
 
-  it("唯一的具体强度也是最高档，默认继承该档时保持一致", () => {
+  it("唯一的具体强度不展示最高档效果，默认继承时保持一致", () => {
     const options = [{ id: "high", name: "High" }];
-    expect(isMaximumReasoning(options, "high")).toBe(true);
-    expect(isMaximumReasoning(options, "", "high")).toBe(true);
+    expect(isMaximumReasoning(options, "high")).toBe(false);
+    expect(isMaximumReasoning(options, "", "high")).toBe(false);
     expect(isMaximumReasoning(options, "enabled")).toBe(false);
     expect(isMaximumReasoning([], "high")).toBe(false);
   });

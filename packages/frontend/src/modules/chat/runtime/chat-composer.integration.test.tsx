@@ -2093,12 +2093,15 @@ describe("chat composer", () => {
     expect(contextStrip).toContainElement(
       screen.getByTestId("composer-permission-control"),
     );
-    expect(contextRow).toContainElement(
-      screen.getByTestId("composer-runtime-control"),
-    );
-    expect(surface).not.toContainElement(
-      screen.getByTestId("composer-runtime-control"),
-    );
+    expect(contextRow).not.toBeInTheDocument();
+    const runtimeControl = screen.getByTestId("composer-runtime-control");
+    expect(surface).toContainElement(runtimeControl);
+    const sendButton = screen.getByRole("button", { name: "发送消息" });
+    expect(sendButton.parentElement).toContainElement(runtimeControl);
+    expect(
+      runtimeControl.compareDocumentPosition(sendButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: "滚动到底部" }),
     ).not.toBeInTheDocument();
@@ -2354,38 +2357,19 @@ describe("chat composer", () => {
     );
   });
 
-  it("只在已冻结工作范围的对话显示终端入口，并请求打开终端 Tab", async () => {
-    const user = userEvent.setup();
-    const onOpenTerminal = vi.fn();
-    const { rerender } = render(
+  it("输入框不再显示终端入口或预留底部工具行", () => {
+    const { container } = render(
       <ChatQueueProvider>
-        <ChatThreadLayoutHarness />
+        <ChatThreadLayoutHarness terminalEnabled onOpenTerminal={vi.fn()} />
       </ChatQueueProvider>,
     );
 
     expect(
       screen.queryByRole("button", { name: "打开终端" }),
     ).not.toBeInTheDocument();
-
-    rerender(
-      <ChatQueueProvider>
-        <ChatThreadLayoutHarness
-          terminalEnabled
-          onOpenTerminal={onOpenTerminal}
-        />
-      </ChatQueueProvider>,
-    );
-
-    const terminalButton = await screen.findByRole("button", {
-      name: "打开终端",
-    });
-    await user.click(terminalButton);
-    expect(onOpenTerminal).toHaveBeenCalledTimes(1);
     expect(
-      screen
-        .getByTestId("composer-runtime-control")
-        .closest("[data-chat-composer]"),
-    ).not.toHaveTextContent("终端面板");
+      container.querySelector("[data-chat-composer-context-row]"),
+    ).not.toBeInTheDocument();
   });
 
   it("允许从用户消息右下方复制完整命令", async () => {

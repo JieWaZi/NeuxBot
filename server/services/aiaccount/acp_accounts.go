@@ -141,13 +141,7 @@ func newACPSystemAccount(request agent.AccountRequest, nativeConfigHome string) 
 		}
 		return config, nil
 	}
-	if err := config.checkQoderRegionalRoot(request.Provider); err != nil {
-		return acpSystemAccount{}, err
-	}
 	tokenVariable := "QODER_PERSONAL_ACCESS_TOKEN"
-	if request.Provider == constants.RuntimeIDQoderCN {
-		tokenVariable = "QODERCN_PERSONAL_ACCESS_TOKEN"
-	}
 	if token := os.Getenv(tokenVariable); token != "" {
 		config.environment[tokenVariable] = token
 	}
@@ -171,63 +165,10 @@ func acpSystemConfigRoot(provider, userHome, configuredHome string) (string, err
 		defaultDir = ".codebuddy"
 	case constants.RuntimeIDQoder:
 		defaultDir = ".qoder"
-	case constants.RuntimeIDQoderCN:
-		defaultDir = ".qoder-cn"
 	default:
 		return "", status_error.RuntimeNotRegistered
 	}
 	return systemAccountHome(filepath.Join(userHome, defaultDir), true)
-}
-
-func (c acpSystemAccount) checkQoderRegionalRoot(provider string) error {
-	peer := accountconfig.QoderPeerRuntimeID(provider)
-	for _, override := range []string{"", acpSystemConfigOverride(peer, "")} {
-		// An invalid directory in the other installation cannot alias this root.
-		other, err := acpSystemConfigRoot(peer, c.userHome, override)
-		if err == nil && sameACPConfigRoot(c.configHome, other) {
-			return status_error.RuntimeConfigurationInvalid
-		}
-	}
-	return nil
-}
-
-// ValidateQoderConfigHomes applies the runtime's native root rule before saving
-// a selection and checks the other edition's independently saved custom roots.
-func ValidateQoderConfigHomes(provider, configuredHome string, peerConfiguredHomes []string) error {
-	peer := accountconfig.QoderPeerRuntimeID(provider)
-	if peer == "" {
-		return status_error.RuntimeNotRegistered
-	}
-	userHome, err := os.UserHomeDir()
-	if err != nil {
-		return status_error.RuntimeConfigurationInvalid
-	}
-	home, err := acpSystemConfigRoot(provider, userHome, acpSystemConfigOverride(provider, configuredHome))
-	if err != nil {
-		return err
-	}
-	account := acpSystemAccount{configHome: home, userHome: userHome}
-	if err := account.checkQoderRegionalRoot(provider); err != nil {
-		return err
-	}
-	for _, peerHome := range peerConfiguredHomes {
-		other, err := acpSystemConfigRoot(peer, userHome, peerHome)
-		if err == nil && sameACPConfigRoot(home, other) {
-			return status_error.RuntimeConfigurationInvalid
-		}
-	}
-	return nil
-}
-
-func sameACPConfigRoot(first, second string) bool {
-	if relative, err := filepath.Rel(first, second); err == nil && relative == "." {
-		return true
-	}
-	// Existing aliases can name the same directory under different spellings
-	// on case-insensitive filesystems and mounted platform volumes.
-	firstInfo, firstErr := os.Stat(first)
-	secondInfo, secondErr := os.Stat(second)
-	return firstErr == nil && secondErr == nil && os.SameFile(firstInfo, secondInfo)
 }
 
 func (s *Service) acpSystemSubject(ctx context.Context, request agent.AccountRequest, c *acpSystemAccount) (string, error) {
@@ -237,12 +178,10 @@ func (s *Service) acpSystemSubject(ctx context.Context, request agent.AccountReq
 	if request.Provider == constants.RuntimeIDWorkBuddy {
 		return c.workBuddySubject(request.CWD)
 	}
-	for _, key := range []string{"QODER_PERSONAL_ACCESS_TOKEN", "QODERCN_PERSONAL_ACCESS_TOKEN"} {
-		if token := c.environment[key]; token != "" {
-			// The PAT is exact launch evidence. The CLI status command can describe
-			// a different saved login, so it cannot authenticate this PAT for us.
-			return accountSubject(request.Provider+"-system-pat-v1", c.configHome, token), nil
-		}
+	if token := c.environment["QODER_PERSONAL_ACCESS_TOKEN"]; token != "" {
+		// The PAT is exact launch evidence. The CLI status command can describe
+		// a different saved login, so it cannot authenticate this PAT for us.
+		return accountSubject(request.Provider+"-system-pat-v1", c.configHome, token), nil
 	}
 	options := qoder.Options{
 		RuntimeID: request.Provider, Executable: request.Executable, PrefixArgs: request.PrefixArgs,
@@ -317,15 +256,15 @@ func (s *Service) acpSystemSubject(ctx context.Context, request agent.AccountReq
 }
 
 type qoderLoginObservation struct {
-	// scope is the selected regional launcher and configuration root.
+	// scope 标识选中的启动程序和原生配置根目录。
 	scope string
-	// key binds this receipt to the unchanged native credential and launch scope.
+	// key 将原生凭据快照和启动范围绑定到本次验证回执。
 	key string
-	// subject is the hashed native account and organization identity.
+	// subject 保存原生账号和组织身份的摘要。
 	subject string
-	// userID is the exact native ID used to fence management reads.
+	// userID 限定账号管理读取使用的原生用户身份。
 	userID string
-	// observedAt bounds reuse of previously verified login evidence.
+	// observedAt 限定已验证登录证据的复用期限。
 	observedAt time.Time
 }
 

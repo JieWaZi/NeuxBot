@@ -18,15 +18,7 @@ import {
   Trash2,
   Workflow,
 } from "lucide-react";
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useState,
-} from "react";
+import { lazy, Suspense, useCallback, useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Link,
@@ -49,8 +41,6 @@ import { EmptyState } from "@/shared/ui/empty-state";
 import { NavigationItem } from "@/shared/ui/navigation-panel";
 import { SegmentedControl } from "@/shared/ui/segmented-control";
 import { Badge } from "@/shared/ui/badge";
-import { Avatar } from "@/shared/ui/avatar";
-import { TypedPhrases } from "@/shared/ui/typed-phrases";
 import { runOriginKey, runTime } from "../model/run-presentation";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { useWorkflowPaneWidth } from "../model/use-workflow-pane-width";
@@ -108,15 +98,6 @@ const WorkflowRunView = lazy(() =>
 
 export function WorkflowDetailPage() {
   const { t, i18n } = useTranslation("workflow");
-  const welcomePhrases = useMemo(
-    () => [
-      t("welcome"),
-      t("welcomeHelp"),
-      t("welcomePhrases.idea"),
-      t("welcomePhrases.steps"),
-    ],
-    [t],
-  );
   const { workflowId: id = "", runId: routeRunId } = useParams();
   const isNew = id === "new";
   const [params, setParams] = useSearchParams();
@@ -243,18 +224,7 @@ export function WorkflowDetailPage() {
       ...previous,
       expanded: typeof value === "function" ? value(previous.expanded) : value,
     }));
-  const [creationActivity, setCreationActivity] = useState({
-    submitted: false,
-    running: false,
-  });
-  const onCreationRunningChange = useCallback((running: boolean) => {
-    setCreationActivity((previous) =>
-      previous.running === running
-        ? previous
-        : { submitted: previous.submitted || running, running },
-    );
-  }, []);
-  const emptyChat = isNew && !creationActivity.submitted;
+  const [creationRunning, setCreationRunning] = useState(false);
   const {
     available: paneWidth,
     rightWidth,
@@ -562,7 +532,7 @@ export function WorkflowDetailPage() {
           </div>
         ) : (
           <WorkflowCanvasPlaceholder
-            state={creationActivity.running ? "generating" : "empty"}
+            state={creationRunning ? "generating" : "empty"}
             active={active && canvasActive}
           />
         )}
@@ -1058,7 +1028,7 @@ export function WorkflowDetailPage() {
         />
       }
       onConfigurationChange={onConfigurationChange}
-      onRunningChange={onCreationRunningChange}
+      onRunningChange={setCreationRunning}
       draft={
         params.get("optimizeRun")
           ? t("optimizeRunDraft", { runId: params.get("optimizeRun") })
@@ -1067,27 +1037,7 @@ export function WorkflowDetailPage() {
       isHistoryLoading={
         !isNew && detail.isPending && sessionSelection === undefined
       }
-      emptyState={
-        emptyChat
-          ? ({ wakerName, avatar, isRunning }) => (
-              <div className="mx-auto grid w-full max-w-[560px] justify-items-center px-6 pb-5 text-center">
-                <Avatar
-                  name={wakerName}
-                  src={avatar}
-                  size="docked"
-                  preview
-                  summon={false}
-                  activity={isRunning ? "starting" : "idle"}
-                />
-                <TypedPhrases
-                  as="h1"
-                  phrases={welcomePhrases}
-                  className="type-page-title mt-6 text-center font-semibold"
-                />
-              </div>
-            )
-          : null
-      }
+      emptyState={null}
     />
   );
   return (

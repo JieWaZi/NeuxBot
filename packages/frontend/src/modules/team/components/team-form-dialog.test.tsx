@@ -55,6 +55,7 @@ vi.mock("@/shared/api/generated/@tanstack/react-query.gen", () => ({
         {
           id: "managed",
           name: "测试账号",
+          runtimeId: "codex",
           hasCredential: true,
           authMode: "api-key",
           endpoint: { protocol: "openai-responses" },

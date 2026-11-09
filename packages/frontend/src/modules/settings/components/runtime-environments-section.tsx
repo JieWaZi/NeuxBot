@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, RefreshCw, RotateCw } from "lucide-react";
+import { ChevronRight, Power, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -298,7 +298,7 @@ function RuntimeDetail({
                       restart.mutate({ path: { runtimeId: runtime.id ?? "" } })
                     }
                   >
-                    <RotateCw
+                    <Power
                       aria-hidden="true"
                       className={
                         restart.isPending

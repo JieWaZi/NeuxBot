@@ -13,7 +13,7 @@ Execution 拥有业务接纳、执行状态、工具授权与交付；ThreadLife
 | Codex                        | `acp-go/pkg/codex` 的 app-server                                        |
 | Claude                       | `acp-go/pkg/claude` 的 stream-json                                      |
 | Cursor                       | 共享 `acpclient` 独占官方 ACP 执行，Cursor 专有钩子补充单轮结束后的用量 |
-| WorkBuddy、Qoder、Qoder CN   | 独立协议配置接入共享 `acp-go/pkg/acpclient`                             |
+| WorkBuddy、Qoder             | 独立协议配置接入共享 `acp-go/pkg/acpclient`                             |
 | Kimi、Gemini、Grok、OpenCode | `acp-go/pkg/standardacp` 配置启动和已证实差异，共用 ACP 生命周期        |
 | Pi                           | `acp-go/pkg/pi` 的原生 RPC、事件队列与会话文件身份                      |
 
@@ -49,7 +49,7 @@ AIAccount 在所属智能体内以名称唯一。创建必须指定已存在且�
 
 设置里的安装和更新由 Core 的运行时服务管理，每个基础 CLI 只有一个任务，Profile 共用程序、分别保留账号和执行身份。任务独立于 HTTP 请求和页面；显式取消与 Core 关闭会回收下载／验证进程，发布前核验官方制品和实际版本。程序以完整、不可变版本保存在 `runtime-installations/<base>/version-...`；失败与取消不删除旧可用版本。当前任务在 Core 内存中保存，重启后只读恢复完整已发布记录，不把暂存目录视为已安装，也不在 GET 请求中检查网络更新。
 
-安装器提供 Codex、Claude、Cursor、Kimi、Gemini、OpenCode、Pi、Grok、Qoder、Qoder CN 与 WorkBuddy 的官方来源。支持 macOS arm64／amd64、Linux glibc arm64／amd64 和 Windows amd64；Linux musl 仅使用已明确发布的 Codex 静态制品。Gemini 需要 Node.js 20+ 和 npm，依赖安装限于受管目录并禁用生命周期脚本。具备发布方摘要的制品按其摘要验证；Cursor、Grok 上游未提供相同摘要时使用官方 TLS 来源与实际程序版本验证，不伪造发布方校验。实际平台验收与合成 HTTP／运行器测试分别记录。
+安装器提供 Codex、Claude、Cursor、Kimi、Gemini、OpenCode、Pi、Grok、Qoder 与 WorkBuddy 的官方来源。支持 macOS arm64／amd64、Linux glibc arm64／amd64 和 Windows amd64；Linux musl 仅使用已明确发布的 Codex 静态制品。Gemini 需要 Node.js 20+ 和 npm，依赖安装限于受管目录并禁用生命周期脚本。具备发布方摘要的制品按其摘要验证；Cursor、Grok 上游未提供相同摘要时使用官方 TLS 来源与实际程序版本验证，不伪造发布方校验。实际平台验收与合成 HTTP／运行器测试分别记录。
 
 下载进度使用 `runtime.installation.changed` 只唤醒对应安装快照；终态另发 `runtimecontract.changed`。智能体列表和模型目录不因每段下载进度重新探测。
 
@@ -65,11 +65,11 @@ AIAccount 在所属智能体内以名称唯一。创建必须指定已存在且�
 
 系统账号使用所选 CLI 的原生认证；受管账号按账号身份、认证代次和实际原生配置准备目录。账号只有一个请求协议与服务地址。名称、默认模型及强度等普通设置保存不取得进程独占；凭据、端点、重新登录与撤销仍通过实际身份边界协调消费者。Revision 只用于配置并发，AuthGeneration 隔离旧凭据。单一 home 随认证轮换的 CLI 不承诺恢复旧历史；没有可验证真实主体的登录继续保守隔离。
 
-系统账号认证由运行时服务拥有独立原生管理会话，不创建受管订阅账号，也不搬运系统凭据。能力握手只读取真实认证广告；仅可执行的 agent 方法允许网页登录，Kimi 的旧 ACP 登录检查与终端／环境变量方法不能冒充登录。失败的能力读取保留结果，用户显式重试才重新握手。真正授权由 Core 生命周期持有，状态通过 `runtime.authentication.changed` 对账，完成后发布原运行时合同变化；取消匹配精确任务身份，关闭失败保留同一原生进程和维护围栏。
+系统账号认证由运行时服务拥有独立原生管理会话，不创建受管订阅账号，也不搬运系统凭据。能力握手只读取真实认证广告；可执行的 agent 方法允许网页登录，终端／环境变量方法不能冒充登录。Kimi 内置账号通过所选 CLI 的 `login --help` 确认设备授权能力，调用同一程序的 `login`，将原生授权地址和验证码交付已有登录弹窗。命令成功后启动新的 ACP 管理进程，复用现有隔离模型发现流程：Kimi 2.x 在创建空探测会话前执行原生认证门禁，成功后关闭该会话，不提交 Prompt 或创建公开聊天。连接状态以这一原生门禁回执为依据，不以本地凭据或静态模型列表存在作为登录证明。失败的能力读取保留结果，用户显式重试才重新握手。真正授权由 Core 生命周期持有，状态通过 `runtime.authentication.changed` 对账，完成后发布原运行时合同变化；取消匹配精确任务身份，关闭失败保留同一原生进程和维护围栏。
 
 认证结果区分既有登录确认、连接确认和新授权完成。Codex 原生客户端可复用已有 ChatGPT 登录，不保证重新打开浏览器；现有身份仍须经过原生认证中的刷新验证，空成功响应后继续查询原生账号确认身份，API Key 或缺失账号不能当作订阅登录成功。当前公开管理端口不支持强制重新授权，不通过删除系统凭据模拟该能力。
 
-Kimi 分别识别 `KIMI_SHARE_DIR` 和 `KIMI_CODE_HOME`；Gemini 的 `GEMINI_CLI_HOME` 包含 `.gemini`；Pi 使用 `PI_CODING_AGENT_DIR`；Grok 使用 `GROK_HOME`；OpenCode 分别固定 XDG 配置、数据、缓存及状态根。Qoder 与 Qoder CN 保持各自用户配置根。仅改变 OpenCode 配置目录不能被当作凭据隔离。
+Kimi 分别识别 `KIMI_SHARE_DIR` 和 `KIMI_CODE_HOME`；Gemini 的 `GEMINI_CLI_HOME` 包含 `.gemini`；Pi 使用 `PI_CODING_AGENT_DIR`；Grok 使用 `GROK_HOME`；OpenCode 分别固定 XDG 配置、数据、缓存及状态根。Qoder 使用 `QODER_CONFIG_DIR` 指定配置根，默认沿用 `~/.qoder`。仅改变 OpenCode 配置目录不能被当作凭据隔离。
 
 ProviderRuntime 对照账号租约校验原生数据根。模型探测在账号管理接口缺失时继续读取原生目录，明确的登录失败仍单独记录。
 

@@ -17,7 +17,13 @@ import { Button } from "@/shared/ui/button";
 import { Skeleton } from "@/shared/ui/skeleton";
 import type { IMBinding } from "../types";
 
-export function BindingOverview({ binding }: { binding: IMBinding }) {
+export function BindingOverview({
+  binding,
+  compact = false,
+}: {
+  binding: IMBinding;
+  compact?: boolean;
+}) {
   const { t } = useTranslation("im");
   const executors = useWorkExecutors();
   const team = executors.data?.teams.find(
@@ -63,9 +69,9 @@ export function BindingOverview({ binding }: { binding: IMBinding }) {
       value
     );
   }
-  return (
+  const fields = (
     <div className="type-ui text-content-secondary grid min-w-0 gap-4">
-      <SettingsFieldGroup>
+      <SettingsFieldGroup surface="plain">
         <SettingsFieldRow label={t("externalChatId")}>
           <span className="break-all select-text">
             {binding.externalChatId || binding.name || "—"}
@@ -131,5 +137,41 @@ export function BindingOverview({ binding }: { binding: IMBinding }) {
         ) : null}
       </SettingsFieldGroup>
     </div>
+  );
+  return compact ? (
+    <details>
+      <summary className="type-resource-body text-content-secondary focus-visible:ring-ring cursor-pointer rounded-sm outline-none focus-visible:ring-2">
+        <span>
+          {hasConfiguration
+            ? loadedValue(
+                executors.isPending,
+                executors.error,
+                () => void executors.refetch(),
+                target || t("notConfigured"),
+              )
+            : t("notConfigured")}
+        </span>
+        {hasConfiguration ? (
+          <span className="[overflow-wrap:anywhere]">
+            {` · ${binding.channelId ? t("teamDefaults") : [runtimeDisplayName({ id: binding.options?.runtimeId }) || t("managed"), binding.options?.model].filter(Boolean).join(" / ")} · `}
+            {binding.workingDirectory ||
+              (binding.projectId
+                ? loadedValue(
+                    owner ? projects.isPending : executors.isPending,
+                    projects.error || (!owner ? executors.error : null),
+                    () => {
+                      void executors.refetch();
+                      if (owner) void projects.refetch();
+                    },
+                    projects.data?.name || binding.projectId,
+                  )
+                : t("managed"))}
+          </span>
+        ) : null}
+      </summary>
+      {fields}
+    </details>
+  ) : (
+    fields
   );
 }
