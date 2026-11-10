@@ -29,14 +29,14 @@ const presentations: Record<CompanionActivity, AvatarPresentation> = {
     motion: "thinking",
     expression: "attentif",
   },
-  connecting: { state: "swirl", motion: "idle", expression: "attentif" },
+  connecting: { state: "comet", motion: "idle", expression: "attentif" },
   responding: {
     state: "play",
     motion: "idle",
     expression: "heureux",
   },
   waiting: { state: "wide", motion: "notify", expression: "curieux" },
-  completed: { state: "exclaim", motion: "idle", expression: "heureux" },
+  completed: { state: "burst", motion: "idle", expression: "heureux" },
   failed: { state: "idle", motion: "failed" },
   stopped: { state: "idle", motion: "idle", expression: "neutre" },
 };
@@ -49,14 +49,13 @@ export function companionPresentation(
 }
 
 const timelines: Partial<Record<CompanionActivity, readonly StateId[]>> = {
-  // 原生动作拥有自己的眼睛；交错的空闲段呈现轮换表情，
-  // 同时保留原生动作的轮廓和完整时长。
-  thinking: ["idle", "thinking", "idle", "orbit", "idle", "comet"],
-  working: ["idle", "thinking", "idle", "orbit", "idle", "comet"],
-  searching: ["idle", "egg", "idle", "hexagon", "idle", "orbit"],
+  // 原生动作交错可见表情的姿态；comet 仅由连接阶段拥有。
+  thinking: ["thinking", "idle", "orbit", "idle"],
+  working: ["thinking", "idle", "orbit", "idle"],
+  searching: ["egg", "idle", "hexagon", "idle", "orbit", "idle"],
   responding: ["play", "idle"],
   waiting: ["wide", "alert", "notify"],
-  completed: ["exclaim", "notify", "burst"],
+  completed: ["burst"],
 };
 const duration = (state: StateId) => STATE_BY_ID.get(state)?.duration ?? 2.4;
 export const COMPLETION_DURATION = (timelines.completed ?? []).reduce(
@@ -70,10 +69,18 @@ export function companionPlayback(
   elapsed: number,
   animation?: StateId,
 ): { state: StateId; local: number; block: string } {
+  const time = Math.max(0, elapsed);
+  if (!animation && activity === "connecting") {
+    // 原生 comet 的尾段会恢复头像；准备中只循环身体已缩小、轨迹仍完整的中段。
+    return {
+      state: "comet",
+      local: 0.55 + (time % 1),
+      block: `connecting:${Math.floor(time)}`,
+    };
+  }
   const sequence = animation
     ? [animation === "sleep" ? "idle" : animation]
     : timelines[activity];
-  const time = Math.max(0, elapsed);
   if (!sequence)
     return {
       state: presentations[activity].state,

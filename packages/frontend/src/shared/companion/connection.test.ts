@@ -1,13 +1,14 @@
 import { expect, it } from "vitest";
-import { connectionArcs } from "@neuxbot/bloub/effects";
+import { companionPlayback } from "./playback";
 
-it("连接环在固定姿态和持续连接时始终可见，不随一次性入场结束而消失", () => {
-  for (const time of [0, 1.4, 5, 30]) {
-    const arcs = connectionArcs(time);
-    expect(arcs).toHaveLength(3);
-    expect(arcs.every((arc) => arc.opacity > 0 && arc.front.length > 0)).toBe(
-      true,
-    );
+it("准备中只循环原生彗星的圆点轨迹段，不进入头像恢复段", () => {
+  const samples = [0, 0.6, 1.2, 1.9, 2.1, 2.5, 30].map((time) =>
+    companionPlayback("connecting", time),
+  );
+  expect(samples.every((sample) => sample.state === "comet")).toBe(true);
+  expect(samples[0]?.block).not.toEqual(samples[2]?.block);
+  for (const sample of samples) {
+    expect(sample.local).toBeGreaterThanOrEqual(0.55);
+    expect(sample.local).toBeLessThan(1.65);
   }
-  expect(connectionArcs(5)).not.toEqual(connectionArcs(5.2));
 });

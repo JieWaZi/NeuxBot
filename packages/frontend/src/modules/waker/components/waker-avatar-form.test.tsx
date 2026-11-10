@@ -27,7 +27,7 @@ vi.mock("../api/waker-queries", () => ({
 vi.mock("./role-preset-picker", () => ({ RolePresetPicker: () => null }));
 vi.mock("@/shared/ui/avatar", () => ({ Avatar: () => null }));
 
-const savedAvatar = "bloub:v1:plush:nuage:curieux:38bdf8";
+const savedAvatar = "bloub:plush:nuage:curieux:38bdf8";
 function openForm(avatar = savedAvatar) {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false } },
@@ -56,7 +56,7 @@ function openForm(avatar = savedAvatar) {
 beforeEach(() => save.mockClear());
 
 describe("头像编辑保存", () => {
-  it.each([savedAvatar, "companion:v1:0123456789abcdef0123456789abcdef"])(
+  it.each([savedAvatar, "companion:0123456789abcdef0123456789abcdef"])(
     "只改名字时保留已保存头像 %s",
     async (avatar) => {
       const view = openForm(avatar);
@@ -85,7 +85,7 @@ describe("头像编辑保存", () => {
     await user.click(screen.getByRole("button", { name: "保存修改" }));
     await waitFor(() => expect(save).toHaveBeenCalledOnce());
     expect(save.mock.calls[0]?.[0]).toMatchObject({
-      body: { avatar: "bloub:v1:particles:triangle:curieux:38bdf8" },
+      body: { avatar: "bloub:particles:triangle:curieux:38bdf8" },
     });
   });
 
@@ -145,7 +145,7 @@ describe("头像编辑保存", () => {
     await user.click(screen.getByRole("button", { name: "保存角色预设" }));
     await waitFor(() => expect(save).toHaveBeenCalledOnce());
     expect(save.mock.calls[0]?.[0]).toMatchObject({
-      body: { defaultAvatar: "bloub:v1:particles:nuage:curieux:38bdf8" },
+      body: { defaultAvatar: "bloub:particles:nuage:curieux:38bdf8" },
     });
   });
 });

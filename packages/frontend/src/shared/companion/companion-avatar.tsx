@@ -8,12 +8,12 @@ import {
   useState,
 } from "react";
 import { BotEngine, type Look } from "@neuxbot/bloub/engine";
-import { EXPRESSION_BY_ID } from "@neuxbot/bloub/expressions";
+import { avatarExpressionById as EXPRESSION_BY_ID } from "./avatar-expressions";
 import { SHAPE_BY_ID } from "@neuxbot/bloub/skins";
 import { POSES, STATE_BY_ID, type StateId } from "@neuxbot/bloub/states";
 import { faceOf, lookOf, shake } from "@neuxbot/bloub/motion";
 import { usePreparedAppearance } from "./prepared-appearance";
-import { materialViewBox } from "./materials";
+import { alignMaterialDrawing, materialViewBox } from "./materials";
 import type { CompanionActivity } from "./activity";
 import { useWorkingExpression } from "./working-expression";
 import {
@@ -22,8 +22,9 @@ import {
   COMPLETION_DURATION,
 } from "./playback";
 import { nextInteractionExpression } from "./interaction-expressions";
-import { connectionArcs, bodyMovement } from "@neuxbot/bloub/effects";
+import { bodyMovement } from "@neuxbot/bloub/effects";
 import { avatarDrawing, type SvgDrawing } from "@neuxbot/bloub/drawing";
+import { enlargedEyes } from "@neuxbot/bloub/eyes";
 
 function renderDrawing(
   drawing: SvgDrawing,
@@ -72,6 +73,7 @@ export function CompanionAvatar({
   avatar,
   activity = "idle",
   animated = true,
+  preview = false,
   onReady,
   onError,
   interactionRevision,
@@ -107,19 +109,28 @@ export function CompanionAvatar({
   const fixedPose = !animated || reduced;
   const workExpression = useWorkingExpression(
     shown,
-    playing && !animation,
+    playing && !animation && !preview,
     appearance.expression,
   );
-  const baseExpression = animation
-    ? appearance.expression
-    : (workExpression ?? presentation.expression ?? appearance.expression);
+  const baseExpression =
+    animation || preview
+      ? appearance.expression
+      : (workExpression ?? presentation.expression ?? appearance.expression);
   const [reaction, setReaction] = useState<{
     activity: CompanionActivity;
     face: string;
   } | null>(null);
   const allowed =
+    !preview &&
     !animation &&
-    !["starting", "waiting", "completed", "failed", "stopped"].includes(shown);
+    ![
+      "starting",
+      "connecting",
+      "waiting",
+      "completed",
+      "failed",
+      "stopped",
+    ].includes(shown);
   const activeReaction =
     allowed && reaction?.activity === shown ? reaction.face : undefined;
   const expression = activeReaction ?? baseExpression;
@@ -153,6 +164,7 @@ export function CompanionAvatar({
     return () => clearTimeout(timer);
   }, [hovered]);
   const interaction =
+    !preview &&
     !animation &&
     hovered &&
     animated &&
@@ -180,6 +192,7 @@ export function CompanionAvatar({
   }>({ presentation, shown, animation, interactiveState });
   const configured = useRef("");
   const wasFixed = useRef(false);
+  const wasPlaying = useRef(false);
   const timeline = useRef("");
   const block = useRef("");
   const [{ frame, time: sampleTime, elapsed, nativeState }, setSample] =
@@ -275,10 +288,14 @@ export function CompanionAvatar({
     }
     wasFixed.current = fixedPose;
     const blockKey = `${state}:${target.block}`;
-    if (block.current !== blockKey) {
+    // 准备动画恢复播放时重新对齐中段相位，不能从固定帧继续走进原生收尾。
+    const resumeConnection =
+      playing && !wasPlaying.current && shown === "connecting" && !animation;
+    if (block.current !== blockKey || resumeConnection) {
       if (playing) engine.setState(state, now, target.local, true);
       block.current = blockKey;
     }
+    wasPlaying.current = playing;
     setSample({
       frame: engine.sample(clock.current),
       time: clock.current,
@@ -346,10 +363,6 @@ export function CompanionAvatar({
     return () => cancelAnimationFrame(raf);
   }, [engine, playing]);
 
-  const renderedFrame =
-    shown === "connecting" && !animation
-      ? { ...frame, arcs: connectionArcs(sampleTime) }
-      : frame;
   return (
     <span
       ref={host}
@@ -357,7 +370,8 @@ export function CompanionAvatar({
       aria-hidden="true"
       onClick={interactionRevision === undefined ? react : undefined}
       onPointerEnter={() => {
-        if (playing && !animation && shown === "idle") setHovered(true);
+        if (playing && !preview && !animation && shown === "idle")
+          setHovered(true);
       }}
       onPointerLeave={() => setHovered(false)}
     >
@@ -371,24 +385,32 @@ export function CompanionAvatar({
         data-motion={presentation.motion}
         data-expression={expression}
         data-animation={nativeState}
-        viewBox={materialViewBox(appearance.material)}
+        viewBox={materialViewBox()}
         width="100%"
         height="100%"
         overflow="visible"
       >
-        {avatarDrawing(
-          renderedFrame,
+        {alignMaterialDrawing(
+          avatarDrawing(
+            // 小头像仍需清晰的眼睛；沿用原生扩眼以保留眨眼和脸部余量。
+            { ...frame, eyes: enlargedEyes(frame.eyes, 1.3) },
+            appearance.material,
+            appearance.color,
+            id,
+            prepared.texture,
+            [],
+            [],
+            playing &&
+              !animation &&
+              shown !== "completed" &&
+              shown !== "connecting"
+              ? bodyMovement(shown, sampleTime, elapsed)
+              : undefined,
+            appearance.shape,
+            sampleTime,
+          ),
           appearance.material,
-          appearance.color,
-          id,
-          prepared.texture,
-          [],
-          [],
-          playing && !animation
-            ? bodyMovement(shown, sampleTime, elapsed)
-            : undefined,
           appearance.shape,
-          sampleTime,
         ).map(renderDrawing)}
       </svg>
     </span>

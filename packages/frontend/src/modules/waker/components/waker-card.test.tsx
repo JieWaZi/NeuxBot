@@ -14,7 +14,7 @@ const waker = {
   id: "waker-1",
   name: "伙伴",
   roleName: "助理",
-  avatar: "companion:v1:0123456789abcdef0123456789abcdef",
+  avatar: "companion:0123456789abcdef0123456789abcdef",
 };
 
 describe("WakerCard", () => {

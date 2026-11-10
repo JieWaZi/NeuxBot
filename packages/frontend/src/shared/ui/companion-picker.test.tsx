@@ -8,7 +8,7 @@ import { CompanionPicker } from "./companion-picker";
 // 材质纹理和动画生命周期由渲染层测试覆盖；这里验证选择和表单值。
 vi.mock("./avatar", () => ({ Avatar: () => null }));
 
-const savedAvatar = "bloub:v1:plush:nuage:curieux:38bdf8";
+const savedAvatar = "bloub:plush:nuage:curieux:38bdf8";
 
 function Picker({ initialValue = savedAvatar }: { initialValue?: string }) {
   const [value, setValue] = useState(initialValue);
@@ -62,26 +62,26 @@ describe("伙伴头像选择", () => {
     );
     await user.click(screen.getByRole("button", { name: "粒子" }));
     expect(screen.getByLabelText("已选头像")).toHaveTextContent(
-      "bloub:v1:particles:nuage:curieux:38bdf8",
+      "bloub:particles:nuage:curieux:38bdf8",
     );
     await user.click(screen.getByRole("button", { name: "三角形" }));
     expect(screen.getByLabelText("已选头像")).toHaveTextContent(
-      "bloub:v1:particles:triangle:curieux:38bdf8",
+      "bloub:particles:triangle:curieux:38bdf8",
     );
     await user.click(screen.getByRole("button", { name: "开心" }));
     expect(screen.getByLabelText("已选头像")).toHaveTextContent(
-      "bloub:v1:particles:triangle:heureux:38bdf8",
+      "bloub:particles:triangle:heureux:38bdf8",
     );
     await user.click(screen.getByRole("button", { name: "颜色 #ef4444" }));
     expect(screen.getByLabelText("已选头像")).toHaveTextContent(
-      "bloub:v1:particles:triangle:heureux:ef4444",
+      "bloub:particles:triangle:heureux:ef4444",
     );
     expect(
       screen.getByRole("button", { name: "颜色 #ef4444" }),
     ).toHaveAttribute("aria-pressed", "true");
     await user.click(screen.getByRole("button", { name: "毛绒" }));
     expect(screen.getByLabelText("已选头像")).toHaveTextContent(
-      "bloub:v1:plush:triangle:heureux:ef4444",
+      "bloub:plush:triangle:heureux:ef4444",
     );
   });
 
@@ -103,7 +103,7 @@ describe("伙伴头像选择", () => {
       <CompanionPicker
         label="头像"
         name="NeuxBot"
-        value="bloub:v1:particles:triangle:heureux:ef4444"
+        value="bloub:particles:triangle:heureux:ef4444"
         onChange={onChange}
       />,
     );
@@ -121,16 +121,16 @@ describe("伙伴头像选择", () => {
     vi.spyOn(crypto, "getRandomValues").mockReturnValue(
       new Uint32Array([2, 4, 4, 0]),
     );
-    render(<Picker initialValue="bloub:v1:particles:nuage:curieux:38bdf8" />);
+    render(<Picker initialValue="bloub:particles:nuage:curieux:38bdf8" />);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "编辑头像" }));
     await user.click(screen.getByRole("button", { name: "随机" }));
     expect(screen.getByLabelText("已选头像")).toHaveTextContent(
-      "bloub:v1:particles:triangle:heureux:ef4444",
+      "bloub:particles:triangle:heureux:ef4444",
     );
     await user.click(screen.getByRole("button", { name: "重置" }));
     expect(screen.getByLabelText("已选头像")).toHaveTextContent(
-      "bloub:v1:plush:cercle:neutre:8b5cf6",
+      "bloub:plush:cercle:neutre:8b5cf6",
     );
   });
 
@@ -145,7 +145,7 @@ describe("伙伴头像选择", () => {
     expect(screen.getByRole("button", { name: "粒子" })).toHaveFocus();
     await user.keyboard(" ");
     expect(screen.getByLabelText("已选头像")).toHaveTextContent(
-      "bloub:v1:particles:nuage:curieux:38bdf8",
+      "bloub:particles:nuage:curieux:38bdf8",
     );
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("button", { name: "粒子" })).toBeNull();

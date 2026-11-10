@@ -76,7 +76,7 @@ it("纹理失败保留已绘制的形象，并放行字标入场和完成回调"
   const character = await screen.findByText("形象已绘制");
   expect(character).toHaveAttribute(
     "data-avatar",
-    "bloub:v1:particles:pentagone:neutre:93e0a8",
+    "bloub:particles:pentagone:neutre:93e0a8",
   );
   await waitFor(() => expect(loading.logo).toHaveBeenCalledOnce());
   fireEvent.click(await screen.findByText("形象绘制失败"));

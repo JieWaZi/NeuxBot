@@ -23,6 +23,53 @@ afterEach(() => {
 });
 
 describe("通用头像渲染", () => {
+  it("外观预览持续播放轻微动态，但不轮换眼睛或响应悬停点击换表情", () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.6);
+    let next: FrameRequestCallback | undefined;
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    const raf = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        next = callback;
+        return 1;
+      });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    const view = render(
+      <CompanionAvatar avatar="bloub:plush:nuage:curieux:38bdf8" preview />,
+    );
+    const host = view.container.firstElementChild;
+    if (!host) throw new Error("缺少头像容器");
+    fireEvent.pointerEnter(host);
+    fireEvent.click(host);
+    expect(view.container.querySelector("svg")).toHaveAttribute(
+      "data-animation",
+      "idle",
+    );
+    const movement = view.container
+      .querySelector("[data-body-material]")
+      ?.getAttribute("transform");
+    for (let index = 0; index < 210; index++) {
+      now += 100;
+      act(() => {
+        vi.advanceTimersByTime(100);
+        next?.(now);
+      });
+      expect(view.container.querySelector("svg")).toHaveAttribute(
+        "data-expression",
+        "curieux",
+      );
+    }
+    expect(raf.mock.calls.length).toBeGreaterThan(200);
+    expect(
+      view.container
+        .querySelector("[data-body-material]")
+        ?.getAttribute("transform"),
+    ).not.toBe(movement);
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
   it("持续悬停只短暂眨眼，之后实际眼睛轮廓继续自动轮换", () => {
     vi.useFakeTimers();
     vi.spyOn(Math, "random").mockReturnValue(0.6);
@@ -43,7 +90,7 @@ describe("通用头像渲染", () => {
         eye.getAttribute("d"),
       );
     const samples: ReturnType<typeof paths>[] = [];
-    for (const target of [1000, 5000, 9000, 13000, 16000]) {
+    for (const target of [1000, 17000, 33000, 49000, 65000]) {
       while (now < target) {
         now += 100;
         act(() => {
@@ -131,7 +178,7 @@ describe("通用头像渲染", () => {
         eye.getAttribute("d"),
       );
     const first = paths();
-    for (let index = 0; index < 55; index++) {
+    for (let index = 0; index < 155; index++) {
       now += 100;
       act(() => {
         vi.advanceTimersByTime(100);
@@ -150,7 +197,7 @@ describe("通用头像渲染", () => {
     );
     expect(vi.getTimerCount()).toBe(0);
   });
-  it("工作中的轮换表情实际改变眼睛几何，原生动作之间持续有表情段", () => {
+  it("工作先显示思考点，再切换轨道和可见表情，外观变化不重置时间线", () => {
     vi.useFakeTimers();
     vi.spyOn(Math, "random").mockReturnValue(0.24);
     let next: FrameRequestCallback | undefined;
@@ -173,32 +220,124 @@ describe("通用头像渲染", () => {
         });
       }
     };
+    const dots = () =>
+      Array.from(
+        view.container.querySelectorAll("[data-native-dot]"),
+        (dot) => dot.outerHTML,
+      );
     advance(7);
-    expect(view.container.querySelectorAll("[data-eye]")).toHaveLength(2);
-    expect(
-      view.container.querySelector("[data-eye]")?.getAttribute("d"),
-    ).toMatch(/^M-10\.5 -11\.5A10\.5 10\.5/);
+    const first = dots();
+    expect(first).toHaveLength(2);
     advance(12);
+    expect(dots()).toHaveLength(2);
+    expect(dots()).not.toEqual(first);
+    advance(22);
+    expect(view.container.querySelector("svg")).toHaveAttribute(
+      "data-animation",
+      "idle",
+    );
     expect(view.container.querySelectorAll("[data-eye]")).toHaveLength(2);
-    expect(
-      view.container.querySelector("[data-eye]")?.getAttribute("d"),
-    ).toMatch(/^M-8 -9A8 8/);
-    advance(62);
+    advance(40);
     expect(view.container.querySelector("svg")).toHaveAttribute(
       "data-animation",
       "orbit",
     );
     view.rerender(
       <CompanionAvatar
-        avatar="bloub:v1:plush:hexagone:reveur:8b5cf6"
+        avatar="bloub:plush:hexagone:reveur:8b5cf6"
         activity="working"
       />,
     );
     advance(5);
     expect(view.container.querySelector("svg")).toHaveAttribute(
       "data-animation",
-      "orbit",
+      "idle",
     );
+  });
+  it("准备会话持续保持圆点轨迹，不恢复头像，长时间等待后轨迹仍移动", () => {
+    vi.useFakeTimers();
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+    let next: FrameRequestCallback | undefined;
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      next = callback;
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    const view = render(
+      <CompanionAvatar avatar={defaultCompanionAvatar} activity="connecting" />,
+    );
+    const ringPaths = () =>
+      Array.from(
+        view.container.querySelectorAll('path[stroke*="cm"]'),
+        (path) => path.getAttribute("d"),
+      );
+    expect(view.container.querySelector("svg")).toHaveAttribute(
+      "data-animation",
+      "comet",
+    );
+    expect(
+      view.container.querySelectorAll('path[stroke*="connection-"]'),
+    ).toHaveLength(0);
+    const samples: ReturnType<typeof ringPaths>[] = [];
+    for (const target of [5500, 5700, 30000, 30200]) {
+      while (now < target) {
+        now += 100;
+        act(() => {
+          vi.advanceTimersByTime(100);
+          next?.(now);
+        });
+        if (now >= 600) {
+          expect(view.container.querySelectorAll("[data-eye]")).toHaveLength(0);
+          const body =
+            view.container.querySelector("[data-body]")?.getAttribute("d") ??
+            "";
+          const coordinates = body.match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? [];
+          expect(coordinates.length).toBeGreaterThan(0);
+          expect(Math.max(...coordinates.map(Math.abs))).toBeLessThan(40);
+        }
+      }
+      samples.push(ringPaths());
+    }
+    expect(samples.every((paths) => paths.length > 0)).toBe(true);
+    expect(samples[0]).not.toEqual(samples[1]);
+    expect(samples[2]).not.toEqual(samples[3]);
+    const host = view.container.firstElementChild;
+    if (!host) throw new Error("缺少头像容器");
+    fireEvent.click(host);
+    expect(view.container.querySelector("svg")).toHaveAttribute(
+      "data-animation",
+      "comet",
+    );
+    act(() => {
+      hidden.mockReturnValue(true);
+      document.dispatchEvent(new Event("visibilitychange"));
+      vi.advanceTimersByTime(5000);
+    });
+    act(() => {
+      hidden.mockReturnValue(false);
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    for (let index = 0; index < 20; index++) {
+      now += 100;
+      act(() => {
+        vi.advanceTimersByTime(100);
+        next?.(now);
+      });
+      expect(view.container.querySelectorAll("[data-eye]")).toHaveLength(0);
+    }
+    view.rerender(
+      <CompanionAvatar avatar={defaultCompanionAvatar} activity="thinking" />,
+    );
+    for (let index = 0; index < 10; index++) {
+      now += 100;
+      act(() => {
+        vi.advanceTimersByTime(100);
+        next?.(now);
+      });
+    }
+    expect(ringPaths()).toHaveLength(0);
   });
   it("完成动作优先于点击反应", () => {
     vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1);
@@ -213,7 +352,7 @@ describe("通用头像渲染", () => {
     fireEvent.click(host);
     expect(view.container.querySelector("svg")).toHaveAttribute(
       "data-animation",
-      "exclaim",
+      "burst",
     );
   });
   it("点击表情在1.8秒后恢复当前工作动作及其时间位置", () => {
@@ -250,7 +389,7 @@ describe("通用头像渲染", () => {
     );
     expect(
       view.container.querySelector("[data-eye]")?.getAttribute("d"),
-    ).toMatch(/^M-15 0A6 6/);
+    ).toMatch(/^M-15 0A7\.5 7\.5/);
     advance(10);
     expect(view.container.querySelector("svg")).toHaveAttribute(
       "data-animation",
@@ -259,7 +398,12 @@ describe("通用头像渲染", () => {
     advance(2);
     expect(view.container.querySelector("svg")).toHaveAttribute(
       "data-animation",
-      "orbit",
+      "idle",
+    );
+    advance(30);
+    expect(view.container.querySelector("svg")).toHaveAttribute(
+      "data-animation",
+      "thinking",
     );
   });
   it.each(["减少动态", "暂停预览", "隐藏"])(
@@ -297,7 +441,8 @@ describe("通用头像渲染", () => {
       const opening = () =>
         eyes().map((matrix) => {
           const values = matrix?.slice(7, -1).split(",").map(Number);
-          return Math.hypot(values?.[1] ?? 0, values?.[3] ?? 0);
+          // 闭合程度按原尺寸判断，不把可读性放大计入眨眼开合。
+          return Math.hypot(values?.[1] ?? 0, values?.[3] ?? 0) / 1.3;
         });
       for (let index = 0; index < 14; index++) {
         now += 100;
@@ -468,7 +613,7 @@ describe("通用头像渲染", () => {
       />,
     );
     const expected = enlargedEyes(
-      new BotEngine(100, "egg").sample(0.8).eyes,
+      enlargedEyes(new BotEngine(100, "egg").sample(0.8).eyes, 1.3),
     ).map((eye) => eye.matrix);
     expect(
       Array.from(view.container.querySelectorAll("[data-eye]"), (eye) =>
@@ -553,7 +698,7 @@ describe("通用头像渲染", () => {
       expect(vi.getTimerCount()).toBe(0);
     },
   );
-  it("回答超过一秒后完成仍从完成动作起点播放强调", () => {
+  it("回答超过一秒后完成仍从粒子动作起点播放，不叠加跳动", () => {
     let next: FrameRequestCallback | undefined;
     let now = 0;
     vi.spyOn(performance, "now").mockImplementation(() => now);
@@ -580,10 +725,11 @@ describe("通用头像渲染", () => {
     const transform = view.container
       .querySelector("[data-body-material]")
       ?.getAttribute("transform");
-    expect(transform).toMatch(/^translate/);
-    expect(
-      Number(transform?.match(/^translate\([^,]+,([^)]*)/u)?.[1]),
-    ).toBeLessThan(0);
+    expect(view.container.querySelector("svg")).toHaveAttribute(
+      "data-animation",
+      "burst",
+    );
+    expect(transform).toBeNull();
   });
   it("固定帧切回播放不回退已呈现的失败表情", () => {
     const view = render(

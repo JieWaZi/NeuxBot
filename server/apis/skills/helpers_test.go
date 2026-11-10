@@ -37,7 +37,7 @@ func TestWakerSkillResponsesExposeSharedChangeImpact(t *testing.T) {
 	global.WakerControllerManager = controllers.NewWakerController(database.DB)
 	ctx := context.Background()
 	for _, waker := range []models.Waker{
-		{ID: "waker-1", Name: "伙伴一", Avatar: "companion:v2:0123456789abcdef0123456789abcdef"},
+		{ID: "waker-1", Name: "伙伴一", Avatar: "companion:0123456789abcdef0123456789abcdef"},
 		{ID: "waker-2", Name: "伙伴二"},
 		{ID: "waker-3", Name: "未安装伙伴"},
 	} {
@@ -63,7 +63,7 @@ func TestWakerSkillResponsesExposeSharedChangeImpact(t *testing.T) {
 	if responses[1].AffectedWakerCount != 1 {
 		t.Fatalf("second affected wakers = %d, want 1", responses[1].AffectedWakerCount)
 	}
-	if len(responses[0].InstalledPartners) != 2 || responses[0].InstalledPartners[0].ID != "waker-1" || responses[0].InstalledPartners[0].Avatar != "companion:v2:0123456789abcdef0123456789abcdef" {
+	if len(responses[0].InstalledPartners) != 2 || responses[0].InstalledPartners[0].ID != "waker-1" || responses[0].InstalledPartners[0].Avatar != "companion:0123456789abcdef0123456789abcdef" {
 		t.Fatalf("installed partner preview = %+v", responses[0].InstalledPartners)
 	}
 	if len(responses[1].InstalledPartners) != 1 || responses[1].InstalledPartners[0].Name != "伙伴一" {

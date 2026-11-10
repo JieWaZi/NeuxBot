@@ -19,7 +19,9 @@ it("空闲从保存的表情开始轮换，暂停和静态缩略图不启动轮�
   expect(hook.result.current).toBe("curieux");
   expect(vi.getTimerCount()).toBe(0);
   hook.rerender({ playing: true });
-  act(() => vi.advanceTimersByTime(4800));
+  act(() => vi.advanceTimersByTime(14_799));
+  expect(hook.result.current).toBe("curieux");
+  act(() => vi.advanceTimersByTime(1));
   expect(hook.result.current).not.toBe("curieux");
   hook.rerender({ playing: false });
   const paused = hook.result.current;
@@ -44,11 +46,11 @@ it("修改保存表情或重新进入空闲时立即回到当前保存基准", (
       },
     },
   );
-  act(() => vi.advanceTimersByTime(3700));
-  expect(hook.result.current).toBe("reveur");
+  act(() => vi.advanceTimersByTime(14_800));
+  expect(hook.result.current).not.toBe("curieux");
   hook.rerender({ activity: "idle", resting: "timide" });
   expect(hook.result.current).toBe("timide");
-  act(() => vi.advanceTimersByTime(3700));
+  act(() => vi.advanceTimersByTime(14_800));
   expect(hook.result.current).not.toBe("timide");
   hook.rerender({ activity: "working", resting: "timide" });
   hook.rerender({ activity: "idle", resting: "timide" });
@@ -110,3 +112,20 @@ it.each(["waiting", "failed", "stopped"] as const)(
     expect(vi.getTimerCount()).toBe(0);
   },
 );
+
+it("空闲使用全表情池随机抽取并排除当前表情", () => {
+  vi.useFakeTimers();
+  const random = vi.mocked(Math.random);
+  random.mockReturnValue(0.9999);
+  const hook = renderHook(() => useWorkingExpression("idle", true, "curieux"));
+  act(() => vi.advanceTimersByTime(18_000));
+  const high = hook.result.current;
+  expect(high).not.toBe("reveur");
+  expect(high).not.toBe("curieux");
+  random.mockReturnValue(0);
+  act(() => vi.advanceTimersByTime(18_000));
+  expect(hook.result.current).toBe("neutre");
+  expect(hook.result.current).not.toBe(high);
+  act(() => vi.advanceTimersByTime(10_000));
+  expect(hook.result.current).not.toBe("neutre");
+});

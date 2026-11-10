@@ -22,13 +22,13 @@ it("passes the real partner avatar into the static renderer", () => {
         {
           id: "w1",
           name: "伙伴",
-          avatar: "companion:v2:0123456789abcdef0123456789abcdef",
+          avatar: "companion:0123456789abcdef0123456789abcdef",
         },
       ]}
     />,
   );
   expect(avatar.mock.calls[0]?.[0]).toMatchObject({
-    src: "companion:v2:0123456789abcdef0123456789abcdef",
+    src: "companion:0123456789abcdef0123456789abcdef",
     name: "伙伴",
     animated: false,
     interactive: false,

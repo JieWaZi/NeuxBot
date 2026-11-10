@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { BotEngine, type RenderedEye } from "@neuxbot/bloub/engine";
-import { EXPRESSIONS, EXPRESSION_BY_ID } from "@neuxbot/bloub/expressions";
+import {
+  avatarExpressions as EXPRESSIONS,
+  avatarExpressionById as EXPRESSION_BY_ID,
+} from "./avatar-expressions";
 import {
   avatarShapes,
   companionAppearance,
@@ -134,10 +137,10 @@ describe("扩充表情目录", () => {
     }
   });
 
-  it("新增表情在十种身体和视线漂移中保持两眼有限且完整落在身体内", () => {
+  it("校准表情在十种身体和视线漂移中保持两眼有限且完整落在身体内", () => {
     const overflow: string[] = [];
     for (const shape of avatarShapes) {
-      for (const id of addedIds) {
+      for (const { id } of EXPRESSIONS) {
         const expression = EXPRESSION_BY_ID.get(id);
         expect(expression, id).toBeDefined();
         if (!expression) continue;

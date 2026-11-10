@@ -1,12 +1,12 @@
 import { SHAPES, SHAPE_BY_ID, type ShapeId } from "@neuxbot/bloub/skins";
 import {
-  EXPRESSIONS,
   EXPRESSION_BY_ID,
   type ExpressionId,
 } from "@neuxbot/bloub/expressions";
 
 export const avatarShapes = SHAPES.filter(({ id }) => id !== "goutte");
-export const avatarExpressions = EXPRESSIONS;
+export { avatarExpressions } from "./avatar-expressions";
+import { avatarExpressions } from "./avatar-expressions";
 export {
   MATERIALS as avatarMaterials,
   PALETTE as avatarColors,
@@ -24,12 +24,11 @@ export type CompanionAppearance = {
   expression: ExpressionId;
   color: string;
 };
-export const defaultCompanionAvatar = "bloub:v1:plush:cercle:neutre:8b5cf6";
-const legacy = /^companion:v[12]:[0-9a-f]{32}$/;
+export const defaultCompanionAvatar = "bloub:plush:cercle:neutre:8b5cf6";
+const seeded = /^companion:[0-9a-f]{32}$/;
 
 function parse(value: string): CompanionAppearance | undefined {
-  const [kind, version, material, shape, expression, color, extra] =
-    value.split(":");
+  const [kind, material, shape, expression, color, extra] = value.split(":");
   const selectedMaterial =
     avatarMaterials.find((item) => item === material) ??
     (["crystal", "metal", "flat", "flora"].includes(material ?? "")
@@ -37,7 +36,6 @@ function parse(value: string): CompanionAppearance | undefined {
       : undefined);
   if (
     kind !== "bloub" ||
-    version !== "v1" ||
     extra !== undefined ||
     !selectedMaterial ||
     !shape ||
@@ -58,11 +56,11 @@ function parse(value: string): CompanionAppearance | undefined {
 }
 
 export function encodeCompanionAppearance(config: CompanionAppearance): string {
-  const result = `bloub:v1:${config.material}:${config.shape}:${config.expression}:${config.color.replace(/^#/, "").toLowerCase()}`;
+  const result = `bloub:${config.material}:${config.shape}:${config.expression}:${config.color.replace(/^#/, "").toLowerCase()}`;
   return parse(result) ? result : defaultCompanionAvatar;
 }
 
-/** 默认组合只由身份生成；旧标识继续作为稳定身份，不保留旧身体资源。 */
+/** 随机种子按身份稳定生成组合；明确保存的外观直接还原。 */
 export function companionAppearance(avatar: string): CompanionAppearance {
   const saved = parse(avatar);
   if (saved) return saved;
@@ -81,14 +79,14 @@ export function companionAppearance(avatar: string): CompanionAppearance {
 }
 
 export function isCompanionAvatar(value: string): boolean {
-  return Boolean(parse(value) || legacy.test(value));
+  return Boolean(parse(value) || seeded.test(value));
 }
 
 export function companionAvatar(
   value: string | undefined,
   identity: string,
 ): string {
-  if (value && (parse(value) || legacy.test(value))) return value;
+  if (value && (parse(value) || seeded.test(value))) return value;
   return encodeCompanionAppearance(
     companionAppearance(`${identity}:${value?.slice(0, 128) ?? ""}`),
   );

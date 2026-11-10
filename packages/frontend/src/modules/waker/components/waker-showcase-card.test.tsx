@@ -82,7 +82,7 @@ describe("WakerShowcaseCard", () => {
   it("展示形象、名称、擅长和技能连接器数量", () => {
     render(
       <WakerShowcaseCard
-        avatar="bloub:v1:plush:hexagone:neutre:8b5cf6"
+        avatar="bloub:plush:hexagone:neutre:8b5cf6"
         connectorCount={2}
         expertise={[
           { title: "前端实现" },

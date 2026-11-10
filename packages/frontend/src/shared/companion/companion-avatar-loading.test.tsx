@@ -28,11 +28,54 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
+it("同一头像切换材质保持视域和眼睛尺寸位置，不放大整张脸", async () => {
+  mocks.tinted.mockResolvedValue("data:image/png;base64,aligned-material");
+  const view = render(
+    <CompanionAvatar
+      avatar="bloub:plush:carre:complice:121314"
+      animated={false}
+    />,
+  );
+  await waitFor(() =>
+    expect(view.container.querySelector("svg")).toHaveAttribute(
+      "data-texture-state",
+      "ready",
+    ),
+  );
+  const viewport = view.container.querySelector("svg")?.getAttribute("viewBox");
+  const eyes = () =>
+    Array.from(view.container.querySelectorAll("[data-eye]"), (eye) => [
+      eye.getAttribute("d"),
+      eye.getAttribute("transform"),
+    ]);
+  const before = eyes();
+  view.rerender(
+    <CompanionAvatar
+      avatar="bloub:particles:carre:complice:121314"
+      animated={false}
+    />,
+  );
+  await waitFor(() =>
+    expect(view.container.querySelector("svg")).toHaveAttribute(
+      "data-material",
+      "particles",
+    ),
+  );
+  expect(view.container.querySelector("svg")).toHaveAttribute(
+    "viewBox",
+    viewport,
+  );
+  expect(eyes()).toEqual(before);
+  const sprite = view.container.querySelector('[data-body-sprite="carre"]');
+  expect(Number(sprite?.getAttribute("width"))).toBeGreaterThan(316);
+  expect(Number(sprite?.getAttribute("x"))).toBeLessThan(-158);
+});
+
 it("首个纹理未准备好时隐藏整个头像，不显示平面身体或孤立眼睛", () => {
   mocks.tinted.mockReturnValue(new Promise(() => {}));
   const view = render(
     <CompanionAvatar
-      avatar="bloub:v1:plush:cercle:neutre:102030"
+      avatar="bloub:plush:cercle:neutre:102030"
       animated={false}
     />,
   );
@@ -55,7 +98,7 @@ it("切换外观时保留旧的完整身体和眼睛，纹理解码后一次提�
   const ready = vi.fn();
   const view = render(
     <CompanionAvatar
-      avatar="bloub:v1:plush:cercle:neutre:203040"
+      avatar="bloub:plush:cercle:neutre:203040"
       animated={false}
       onReady={ready}
     />,
@@ -68,7 +111,7 @@ it("切换外观时保留旧的完整身体和眼睛，纹理解码后一次提�
   holdDecode = true;
   view.rerender(
     <CompanionAvatar
-      avatar="bloub:v1:particles:hexagone:curieux:203040"
+      avatar="bloub:particles:hexagone:curieux:203040"
       animated={false}
       onReady={ready}
     />,
@@ -125,7 +168,7 @@ it("已准备的纹理重挂载同步可见，相同材质颜色的形状和表�
   const ready = vi.fn();
   const view = render(
     <CompanionAvatar
-      avatar="bloub:v1:plush:cercle:neutre:405060"
+      avatar="bloub:plush:cercle:neutre:405060"
       animated={false}
       onReady={ready}
     />,
@@ -134,7 +177,7 @@ it("已准备的纹理重挂载同步可见，相同材质颜色的形状和表�
   view.unmount();
   const remounted = render(
     <CompanionAvatar
-      avatar="bloub:v1:plush:hexagone:curieux:405060"
+      avatar="bloub:plush:hexagone:curieux:405060"
       animated={false}
     />,
   );
@@ -166,15 +209,15 @@ it("同一纹理的多个缩略图共享换色与解码，只在解码完成后�
   const view = render(
     <>
       <CompanionAvatar
-        avatar="bloub:v1:plush:cercle:neutre:506070"
+        avatar="bloub:plush:cercle:neutre:506070"
         animated={false}
       />
       <CompanionAvatar
-        avatar="bloub:v1:plush:hexagone:curieux:506070"
+        avatar="bloub:plush:hexagone:curieux:506070"
         animated={false}
       />
       <CompanionAvatar
-        avatar="bloub:v1:plush:triangle:reveur:506070"
+        avatar="bloub:plush:triangle:reveur:506070"
         animated={false}
       />
     </>,
@@ -207,17 +250,17 @@ it("超过12个就绪纹理后淘汰最久未用项，保留新近项、当前�
   const waiting = render(
     <>
       <CompanionAvatar
-        avatar="bloub:v1:plush:cercle:neutre:c01000"
+        avatar="bloub:plush:cercle:neutre:c01000"
         animated={false}
       />
       <CompanionAvatar
-        avatar="bloub:v1:plush:triangle:curieux:c01000"
+        avatar="bloub:plush:triangle:curieux:c01000"
         animated={false}
       />
     </>,
   );
   const avatar = (index: number) =>
-    `bloub:v1:plush:cercle:neutre:${(0xc00000 + index).toString(16)}`;
+    `bloub:plush:cercle:neutre:${(0xc00000 + index).toString(16)}`;
   const view = render(<CompanionAvatar avatar={avatar(1)} animated={false} />);
   await waitFor(() =>
     expect(view.container.querySelector("[data-texture]")).toHaveAttribute(
@@ -308,7 +351,7 @@ it("新纹理失败后提交新请求的明确降级，不永久保留旧外观"
   const error = vi.fn();
   const view = render(
     <CompanionAvatar
-      avatar="bloub:v1:plush:cercle:neutre:708090"
+      avatar="bloub:plush:cercle:neutre:708090"
       animated={false}
       onReady={ready}
       onError={error}
@@ -317,7 +360,7 @@ it("新纹理失败后提交新请求的明确降级，不永久保留旧外观"
   await waitFor(() => expect(ready).toHaveBeenCalledOnce());
   view.rerender(
     <CompanionAvatar
-      avatar="bloub:v1:particles:hexagone:curieux:8090a0"
+      avatar="bloub:particles:hexagone:curieux:8090a0"
       animated={false}
       onReady={ready}
       onError={error}
@@ -352,7 +395,7 @@ it("同一请求跨实例恢复成功后，缓存淘汰和再次渲染不会退�
       Promise.resolve(url(color)),
     );
   const avatar = (index: number) =>
-    `bloub:v1:plush:cercle:neutre:${(0xf10000 + index).toString(16)}`;
+    `bloub:plush:cercle:neutre:${(0xf10000 + index).toString(16)}`;
   const original = render(
     <CompanionAvatar avatar={avatar(0)} animated={false} />,
   );
@@ -412,7 +455,7 @@ it("浏览器拒绝解码时不提前报告就绪，并交接明确失败降级"
   const error = vi.fn();
   const view = render(
     <CompanionAvatar
-      avatar="bloub:v1:plush:cercle:neutre:90a0b0"
+      avatar="bloub:plush:cercle:neutre:90a0b0"
       animated={false}
       onReady={ready}
       onError={error}
@@ -452,14 +495,14 @@ it("快速变更颜色后迟到的纹理不会覆盖最新选择", async () => {
   const ready = vi.fn();
   const view = render(
     <CompanionAvatar
-      avatar="bloub:v1:plush:cercle:neutre:8b5cf6"
+      avatar="bloub:plush:cercle:neutre:8b5cf6"
       animated={false}
       onReady={ready}
     />,
   );
   view.rerender(
     <CompanionAvatar
-      avatar="bloub:v1:particles:hexagone:curieux:38bdf8"
+      avatar="bloub:particles:hexagone:curieux:38bdf8"
       animated={false}
       onReady={ready}
     />,
@@ -481,7 +524,7 @@ it("纹理失败保留完整形状与眼睛，并提供失败交接", async () =
   const error = vi.fn();
   const view = render(
     <CompanionAvatar
-      avatar="bloub:v1:particles:cercle:neutre:8b5cf6"
+      avatar="bloub:particles:cercle:neutre:8b5cf6"
       animated={false}
       onError={error}
     />,
@@ -501,7 +544,7 @@ it("卸载后纹理完成不再通知调用方", async () => {
   const ready = vi.fn();
   const view = render(
     <CompanionAvatar
-      avatar="bloub:v1:plush:cercle:neutre:607080"
+      avatar="bloub:plush:cercle:neutre:607080"
       onReady={ready}
     />,
   );

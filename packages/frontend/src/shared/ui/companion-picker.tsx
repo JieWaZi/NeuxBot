@@ -52,7 +52,7 @@ export function CompanionPicker({
             name={name}
             src={avatar}
             size="xl"
-            animated={false}
+            preview
             interactive={false}
           />
         </PopoverTrigger>
@@ -147,7 +147,7 @@ export function CompanionPicker({
                         shape: id,
                       })}
                       size="sm"
-                      animated={false}
+                      preview
                       interactive={false}
                     />
                   </Button>
@@ -179,7 +179,7 @@ export function CompanionPicker({
                         expression: id,
                       })}
                       size="sm"
-                      animated={false}
+                      preview
                       interactive={false}
                     />
                   </Button>
