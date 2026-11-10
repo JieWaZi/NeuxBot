@@ -1,11 +1,6 @@
-import {
-  Cable,
-  Package,
-  Sparkles,
-  TriangleAlert,
-  Workflow,
-} from "lucide-react";
+import { Package, Sparkles, TriangleAlert, Unplug } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { DiagramFlowHorizontal } from "@/shared/ui/diagram-flow-horizontal";
 import {
   usePluginBrowse,
   pluginBrowseHref,
@@ -54,8 +49,8 @@ export function ResourcesContextSidebar({
             [
               { id: "plugins", icon: Package },
               { id: "skills", icon: Sparkles },
-              { id: "connectors", icon: Cable },
-              { id: "workflows", icon: Workflow },
+              { id: "connectors", icon: Unplug },
+              { id: "workflows", icon: DiagramFlowHorizontal },
             ] as const
           ).map(({ id, icon: Icon }) => (
             <NavigationItem

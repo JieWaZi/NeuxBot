@@ -15,6 +15,8 @@ import { useTranslation } from "react-i18next";
 export type ErrorNotice = {
   id: string;
   scope: string;
+  /** session 提示只属于当前Renderer，不从持久存储跨重载恢复。 */
+  lifetime?: "session";
   /** 操作的稳定身份；独立事件提示使用自身身份，不随其他请求成功清理。 */
   operation: string;
   /** 一次真实失败的版本；回调绑定或页面卸载不产生新失败版本。 */
@@ -100,7 +102,10 @@ let notices: ErrorNotice[] = Array.isArray(stored)
           typeof item.message === "string" &&
           typeof item.createdAt === "number",
       )
-      .filter((item) => !isTransientNetworkNotice(item))
+      .filter(
+        (item) =>
+          item.lifetime !== "session" && !isTransientNetworkNotice(item),
+      )
       .map((item) => ({
         ...storedNotice(item),
         action: undefined,
@@ -112,7 +117,10 @@ const listeners = new Set<() => void>();
 const actions = new Map<string, () => void | Promise<void>>();
 function publish() {
   try {
-    localStorage.setItem(storageKey, JSON.stringify(notices));
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify(notices.filter((notice) => notice.lifetime !== "session")),
+    );
   } catch {
     /* 本地存储不可用时，本次应用运行内仍保留提示。 */
   }

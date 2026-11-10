@@ -1063,6 +1063,7 @@ const resources = {
       systemSignedOut: "未登录",
       systemConnected: "已连接（原生客户端未提供账号名称）",
       systemAuthUnknown: "登录状态未确认",
+      systemModelsUnconfigured: "尚无可用模型，请配置账号或模型",
       loadingAccounts: "正在读取账号",
       apiSection: "API 密钥",
       apiSaved: "已保存 API 账号。",
@@ -2291,10 +2292,6 @@ const resources = {
         backToReasoning: "返回强度设置",
         free: "免费",
         creditMultiplier: "{{value}}×",
-        groupLabels: {
-          "qoder/new": "新模型",
-          "qoder/custom": "自定义",
-        },
         maximumContext: "最大上下文 {{size}}",
         fixedReasoning: "{{effort}}（由 {{runtime}} 固定）",
         efforts: {

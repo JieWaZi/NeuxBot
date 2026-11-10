@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { ApiError } from "@/shared/api/errors";
 import type { ListUsageGroupsResponse } from "@/shared/api/generated/types.gen";
+import { listRuntimesOptions } from "@/shared/api/runtime-queries";
 import { useQueryEvents } from "@/shared/api/use-query-events";
 import { useVisibleScene } from "@/shared/api/work-result-reading";
 import { DateRangePicker } from "@/shared/ui/date-range-picker";
@@ -47,6 +48,10 @@ export function UsagePage({
   const { t } = useTranslation("usage");
   const active = useVisibleScene();
   const filters = parseUsageFilters(search);
+  const runtimes = useQuery({
+    ...listRuntimesOptions(),
+    enabled: active && filters.groupBy === "model",
+  });
   const options = usageSummaryOptions(filters);
   const summary = useQuery({ ...options, enabled: active });
   const { refetch: refreshSummary } = summary;
@@ -240,6 +245,7 @@ export function UsagePage({
             groupBy={filters.groupBy}
             groups={rows}
             names={names}
+            runtimes={runtimes.data?.resources}
             totalGroups={pages?.[0]?.totalGroups ?? 0}
             more={displayGroups.hasNextPage}
             loading={displayGroups.isFetchingNextPage}

@@ -36,7 +36,6 @@ import {
 
 const inheritEffort = "__default";
 const tokenCount = new Intl.NumberFormat("en", { notation: "compact" });
-const hiddenComposerModelGroups = new Set(["qoder/default"]);
 const effortLabels = {
   none: "none",
   minimal: "minimal",
@@ -63,12 +62,7 @@ function cursorSettings(provider: string, model?: Model) {
   };
 }
 
-function modelGroups(
-  models: Model[],
-  provider: string,
-  search: string,
-  knownGroups: ReadonlyMap<string, string>,
-) {
+function modelGroups(models: Model[], provider: string, search: string) {
   const groups = new Map<
     string,
     { label: string; rows: { model: Model; free: boolean }[] }
@@ -80,12 +74,11 @@ function modelGroups(
       provider === "opencode" && model.id.includes("/")
         ? (model.id.split("/", 1)[0] ?? "")
         : "";
-    const group = model.group || service;
-    if (hiddenComposerModelGroups.has(group)) continue;
+    const group = provider === "qoder" ? "" : model.group || service;
     const label =
-      knownGroups.get(group) ||
-      model.groupName ||
-      (group === "opencode" ? "OpenCode" : group);
+      provider === "qoder"
+        ? ""
+        : model.groupName || (group === "opencode" ? "OpenCode" : group);
     if (
       !`${model.name ?? ""} ${model.id} ${label}`.toLowerCase().includes(query)
     )
@@ -99,11 +92,6 @@ function modelGroups(
     entry.rows.push({ model, free });
     groups.set(group, entry);
   }
-  const order = [...knownGroups.keys()];
-  const rank = (id: string) => {
-    const index = order.indexOf(id);
-    return index < 0 ? order.length : index;
-  };
   return [...groups.entries()]
     .map(([id, group]) => ({
       id,
@@ -112,7 +100,6 @@ function modelGroups(
     }))
     .sort(
       (a, b) =>
-        rank(a.id) - rank(b.id) ||
         Number(Boolean(b.rows[0]?.free)) - Number(Boolean(a.rows[0]?.free)),
     );
 }
@@ -235,16 +222,7 @@ export function ChatExecutionPicker(props: Props) {
     (item) =>
       item.id === props.accountId && item.runtimeId === props.runtime?.id,
   );
-  const groups = modelGroups(
-    models,
-    provider,
-    search,
-    new Map(
-      Object.entries(
-        t("chat:modelPicker.groupLabels", { returnObjects: true }),
-      ),
-    ),
-  );
+  const groups = modelGroups(models, provider, search);
   const chooseModel = t("chat:modelPicker.chooseModel");
   const runtimeName = runtimeDisplayName(runtime);
   const refreshLabel = t("aiAccounts:refreshModels");

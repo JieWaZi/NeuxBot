@@ -88,7 +88,7 @@
 :root,
 [data-theme="light"] {
   color-scheme: light;
-  /* OpenBot v0.62.0/fcb35746：brand tokens-light.css；供窗口壳层与资源目录共享。 */
+  /* 窗口壳层与资源目录共享的浅色主题 Token。 */
   --shell-surface-frame: #e8e8eb;
   --shell-surface-canvas: #f5f5f6;
   --shell-border-edge: rgba(20, 20, 20, 0.07);
@@ -99,7 +99,7 @@
   --shell-tabs-track: #ececee;
   --shell-tabs-pill: #ffffff;
   --shell-menu-shadow: transparent;
-  /* OpenBot Marketplace / IntegrationPage 的独立表面与文字层级。 */
+  /* 资源目录与详情的表面和文字层级。 */
   --resource-canvas: var(--shell-surface-canvas);
   --resource-surface: #ffffff;
   --resource-control: var(--resource-surface);
@@ -177,6 +177,8 @@
   --companion-card-bloom: 76%;
 
   --content-caption: var(--ref-neutral-650);
+  --user-message-background: var(--ref-neutral-950);
+  --user-message-content: var(--ref-neutral-0);
   --content-primary: rgba(0, 0, 0, 0.8);
   --content-secondary: rgba(0, 0, 0, 0.6);
   --content-muted: var(--ref-neutral-650);
@@ -466,6 +468,8 @@
   --companion-card-bloom: 40%;
 
   --content-caption: var(--ref-neutral-450);
+  --user-message-background: var(--ref-neutral-100);
+  --user-message-content: var(--ref-neutral-950);
   --content-primary: var(--ref-neutral-200);
   --content-secondary: var(--ref-neutral-350);
   --content-muted: var(--ref-neutral-450);

@@ -4,7 +4,7 @@ import { ChatMessagePluginReferences } from "./chat-plugin-reference";
 import { useChatHistoryScroll } from "./use-chat-history-scroll";
 import type { ChatResultSource } from "@/shared/api/notification-presentation";
 import { ChatWorkResultReader } from "@/shared/api/work-result-reading";
-import { ChatMessageContribution } from "./chat-contributions";
+import { useChatMessageContribution } from "./chat-contributions";
 import { ChatForkContext, MessageForkAction } from "./chat-fork";
 import { Link } from "react-router-dom";
 import { chatHref } from "@/shared/lib/chat-navigation";
@@ -75,7 +75,7 @@ import { motion, useReducedMotion } from "motion/react";
 import type { ResolvedFileReference } from "@/shared/workspace/file-reference";
 import { cn } from "@/shared/lib/cn";
 import { readLayoutMotionTokens } from "@/shared/lib/ui-motion-tokens";
-import { Avatar, StaticAvatar } from "@/shared/ui/avatar";
+import { Avatar } from "@/shared/ui/avatar";
 import { Collapsible, CollapsibleContent } from "@/shared/ui/collapsible";
 import { Button } from "@/shared/ui/button";
 import {
@@ -86,7 +86,6 @@ import {
   ComposerSurface,
   ComposerInputBody,
 } from "@/shared/ui/composer";
-import { Spinner } from "@/shared/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { selectFiles } from "@/shared/platform";
 import {
@@ -135,6 +134,7 @@ import { ChatContextUsage } from "./chat-context-usage";
 import {
   ChatMessageAttachments,
   ChatMessageSkillReferences,
+  chatMessageReferenceChipClass,
   type ChatFileOpenRequest,
   type ChatSkillOption,
 } from "./chat-reference-menus";
@@ -852,6 +852,8 @@ function ChatMessageParts({
   showUsageMetrics: boolean;
 }) {
   const terminal = isTerminalMessage(view.message);
+  // 总用时属于整次执行；分散在正文之间的过程段不能各自重复认领。
+  const metricsGroup = view.segments.find((segment) => "kind" in segment);
   const finalSegment = view.segments.at(-1);
   const finalNode =
     finalSegment && "kind" in finalSegment
@@ -871,7 +873,7 @@ function ChatMessageParts({
             currentKey={currentKey}
             completed={view.message.status === "completed"}
             terminal={terminal}
-            metrics={metrics}
+            metrics={segment === metricsGroup ? metrics : undefined}
             showUsageMetrics={showUsageMetrics}
           />
         ) : (
@@ -931,20 +933,6 @@ function formatRunDuration(durationMs: number) {
   if (seconds < 60) return `${durationNumberFormat.format(seconds)}s`;
   const minutes = Math.floor(seconds / 60);
   return `${minutes}m ${durationNumberFormat.format(seconds % 60)}s`;
-}
-
-export function AgentRunningIndicator({
-  preparing = false,
-}: {
-  preparing?: boolean;
-} = {}) {
-  const { t } = useTranslation("chat");
-  return (
-    <div className="text-muted-foreground type-body min-h-control-sm flex items-center gap-2 font-normal">
-      <Spinner className="text-primary/65" />
-      <span>{t(preparing ? "preparingSession" : "agentRunning")}</span>
-    </div>
-  );
 }
 
 function RunMetricsTooltip({
@@ -1051,12 +1039,7 @@ export function MessageRunStatus({
   showUsageDetails?: boolean;
 }) {
   const runMetrics = message.runMetrics;
-  if (message.status === "pending" && message.preparingSession)
-    return <AgentRunningIndicator preparing />;
-  if (!isTerminalMessage(message))
-    return message.displayParts?.at(-1)?.type === "tool" ? null : (
-      <AgentRunningIndicator />
-    );
+  if (!isTerminalMessage(message)) return null;
   const hasCompletedProcess =
     message.status === "completed" &&
     message.displayParts?.some(
@@ -1107,10 +1090,10 @@ function UserMessage({
     <div
       data-message-id={message.id}
       data-role="user"
-      className="group mt-6 px-6"
+      className="group/user-message mt-4 px-6"
     >
-      <div className="ml-auto grid max-w-[78%] min-w-0 justify-items-end gap-2">
-        <div className="bg-surface-tertiary text-foreground type-chat max-w-full min-w-0 overflow-hidden rounded-xl px-4 py-3">
+      <div className="ml-auto grid max-w-[78%] min-w-0 justify-items-end gap-1">
+        <div className="bg-user-message-background text-user-message-content type-chat max-w-full min-w-0 overflow-hidden rounded-xl px-4 py-1.5">
           <div className="flex flex-wrap items-start gap-x-1.5 gap-y-1">
             <ChatMessagePluginReferences
               plugins={message.plugins}
@@ -1141,7 +1124,7 @@ function UserMessage({
                 <button
                   key={`${path}:${reference.startLine}:${reference.endLine}:${reference.content}`}
                   type="button"
-                  className="bg-border/60 hover:bg-border/80 type-body inline-flex max-w-full items-center rounded-md px-2 py-0.5 font-medium"
+                  className={`${chatMessageReferenceChipClass} focus-visible:ring-ring outline-none hover:bg-current/20 focus-visible:ring-2`}
                   onClick={() => onOpenCodeReference?.(reference)}
                 >
                   <span className="max-w-64 truncate">
@@ -1158,7 +1141,9 @@ function UserMessage({
             </div>
           </div>
         </div>
-        <MessageCopyAction message={message} />
+        <div className="duration-quick pointer-events-none opacity-0 transition-opacity group-focus-within/user-message:pointer-events-auto group-focus-within/user-message:opacity-100 group-hover/user-message:pointer-events-auto group-hover/user-message:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
+          <MessageCopyAction message={message} />
+        </div>
       </div>
     </div>
   );
@@ -1166,11 +1151,13 @@ function UserMessage({
 
 function ParticipantMessage({
   message,
+  latest,
   avatar,
   messageAuthors,
   name,
 }: {
   message: AllyChatMessage;
+  latest: boolean;
   avatar?: string;
   messageAuthors?: Readonly<Record<string, ChatMessageAuthor>>;
   name: string;
@@ -1186,9 +1173,13 @@ function ParticipantMessage({
     <div
       data-message-id={message.id}
       data-role="user"
-      className="group mt-6 grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6"
+      className="group mt-4 grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6"
     >
-      <Avatar name={displayName} src={displayAvatar} size="sm" />
+      {latest ? (
+        <Avatar name={displayName} src={displayAvatar} size="sm" />
+      ) : (
+        <div aria-hidden="true" />
+      )}
       <div className="min-w-0">
         <div className="grid justify-items-start">
           <span className="type-body font-medium">{displayName}</span>
@@ -1340,6 +1331,18 @@ export function AssistantMessage({
   const { t } = useTranslation("chat");
   const message = view.message;
   const messageID = message.id ?? "";
+  const contribution = useChatMessageContribution(messageID);
+  const hasFileChanges =
+    showFileChanges &&
+    isTerminalMessage(message) &&
+    message.fileChangeRecord?.state !== "pending" &&
+    (message.fileChangeRecord?.totalFiles ?? 0) > 0;
+  const hasContent =
+    view.segments.length > 0 ||
+    Boolean(contribution) ||
+    hasFileChanges ||
+    (message.status === "canceled" && !continuation?.continued) ||
+    (message.status === "failed" && !last);
   const isLatestAssistant = latest;
   const interaction = useContext(CompanionInteraction);
   const companionActivity = continuation?.activityMessage
@@ -1360,11 +1363,9 @@ export function AssistantMessage({
     <div
       data-message-id={message.id}
       data-role="assistant"
-      className="group mt-6 grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6"
+      className="group mt-4 grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6"
     >
-      {continuation?.continuation ? (
-        <div aria-hidden="true" />
-      ) : isLatestAssistant ? (
+      {isLatestAssistant ? (
         <Avatar
           name={displayName}
           src={displayAvatar}
@@ -1372,57 +1373,68 @@ export function AssistantMessage({
           activity={companionActivity}
         />
       ) : (
-        <StaticAvatar name={displayName} src={displayAvatar} size="sm" />
+        <div aria-hidden="true" />
       )}
-      <div className="min-w-0">
-        {!continuation?.continuation ? (
-          <div className="grid justify-items-start">
-            <span className="type-body font-medium">{displayName}</span>
-            <MessageTimestamp timestamp={message.createdAt} />
+      <div className="group/reply min-w-0">
+        {hasContent && (
+          <div
+            data-chat-message-card
+            className="bg-surface-panel rounded-xl p-4 dark:bg-transparent dark:p-0"
+          >
+            <div className="min-w-0">
+              <ChatMessageParts
+                view={view}
+                metrics={continuation?.footerMessage.runMetrics}
+                showUsageMetrics={showUsageMetrics}
+              />
+              {showFileChanges && message.fileChangeRecord ? (
+                <ExecutionFileChangesCard
+                  message={message}
+                  chatId={author?.sourceChatId}
+                  visible={isTerminalMessage(message)}
+                  onOpenFile={openFileChange}
+                />
+              ) : null}
+              {contribution}
+            </div>
+            {message.status === "canceled" && !continuation?.continued ? (
+              <p className="text-muted-foreground type-body mt-2">
+                {t("canceled")}
+              </p>
+            ) : null}
+            <MessageFailure message={message} last={last} />
           </div>
-        ) : null}
-        <div className="mt-2 min-w-0">
-          <ChatMessageParts
-            view={view}
-            metrics={continuation?.footerMessage.runMetrics}
-            showUsageMetrics={showUsageMetrics}
-          />
-          {showFileChanges && message.fileChangeRecord ? (
-            <ExecutionFileChangesCard
-              message={message}
-              chatId={author?.sourceChatId}
-              visible={isTerminalMessage(message)}
-              onOpenFile={openFileChange}
-            />
-          ) : null}
-          <ChatMessageContribution messageId={messageID} />
-        </div>
-        {message.status === "canceled" && !continuation?.continued ? (
-          <p className="text-muted-foreground type-body mt-2">
-            {t("canceled")}
-          </p>
-        ) : null}
-        <MessageFailure message={message} last={last} />
+        )}
 
-        {!continuation?.continued ? (
-          <div className="mt-2 flex items-center gap-1">
-            <MessageRunStatus
-              message={
-                continuation
-                  ? {
-                      ...message,
-                      runMetrics: continuation.footerMessage.runMetrics,
-                    }
-                  : message
-              }
-              showUsageDetails={showUsageMetrics}
-            />
-            <MessageCopyAction
-              message={continuation?.footerMessage ?? message}
-              hideWhenRunning
-            />
-            <MessageForkAction message={message} />
-          </div>
+        {(hasContent || isTerminalMessage(message)) &&
+        !continuation?.continued ? (
+          <footer className="mt-1 flex items-center gap-1">
+            <div className="duration-quick pointer-events-none flex items-center gap-1 opacity-0 transition-opacity group-focus-within/reply:pointer-events-auto group-focus-within/reply:opacity-100 group-hover/reply:pointer-events-auto group-hover/reply:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
+              {isTerminalMessage(message) && (
+                <MessageRunStatus
+                  message={
+                    continuation
+                      ? {
+                          ...message,
+                          runMetrics: continuation.footerMessage.runMetrics,
+                        }
+                      : message
+                  }
+                  showUsageDetails={showUsageMetrics}
+                />
+              )}
+              <MessageCopyAction
+                message={continuation?.footerMessage ?? message}
+                hideWhenRunning
+              />
+              <MessageForkAction message={message} />
+            </div>
+            <span className="duration-quick ml-auto shrink-0 opacity-0 transition-opacity group-focus-within/reply:opacity-100 group-hover/reply:opacity-100 motion-reduce:transition-none [@media(hover:none)]:opacity-100">
+              <MessageTimestamp
+                timestamp={(continuation?.footerMessage ?? message).createdAt}
+              />
+            </span>
+          </footer>
         ) : null}
       </div>
     </div>
@@ -1469,6 +1481,7 @@ const ChatMessage = memo(function ChatMessage({
     return messageAuthors?.[message.id ?? ""]?.displayAsParticipant ? (
       <ParticipantMessage
         message={message}
+        latest={latest}
         name={name}
         avatar={avatar}
         messageAuthors={messageAuthors}
@@ -1520,7 +1533,7 @@ const ChatMessageList = memo(function ChatMessageList({
   const { t } = useTranslation("chat");
   const [unavailableSourceId, setUnavailableSourceId] = useState<string>();
   const continuations = chatContinuations(views.map((view) => view.message));
-  const latest = views.findLast((view) => view.message.role === "assistant");
+  const latest = views.at(-1);
   return (
     <>
       {views.map((view, index) => (
@@ -1530,11 +1543,7 @@ const ChatMessageList = memo(function ChatMessageList({
             wakerId={wakerId}
             view={view}
             continuation={continuations.get(view.message.id ?? "")}
-            latest={
-              view.key === latest?.key ||
-              continuations.get(view.message.id ?? "")?.activityMessage?.id ===
-                latest?.message.id
-            }
+            latest={view.key === latest?.key}
             last={index === views.length - 1}
           />
           {view.message.id === forkBoundaryMessageId && forkSourceChatId ? (

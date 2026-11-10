@@ -6,10 +6,10 @@ export const chatComposerReferenceChipClass =
   "bg-action-quiet-hover text-content-primary type-body inline-flex max-w-full shrink-0 items-center gap-1 rounded-full px-2.5 py-0.5 font-medium";
 
 export const chatMessageReferenceChipClass =
-  "bg-border/60 text-foreground type-body inline-flex max-w-full shrink-0 items-center gap-1 rounded-md px-2 py-0.5 font-medium";
+  "bg-current/10 text-inherit type-body inline-flex max-w-full shrink-0 items-center gap-1 rounded-md px-2 py-0.5 font-medium";
 
 export const chatMessageConnectorReferenceChipClass =
-  "bg-success/20 text-foreground type-body inline-flex max-w-full shrink-0 items-center gap-1 rounded-md px-2 py-0.5 font-medium";
+  chatMessageReferenceChipClass;
 
 type ChatComposerReferenceChipProps = {
   label: string;
@@ -76,9 +76,7 @@ export function ChatMessageReferenceChip({
     <Link
       to={href}
       aria-label={linkAriaLabel}
-      className={`${className} ${
-        tone === "connector" ? "hover:bg-success/30" : "hover:bg-border/80"
-      }`}
+      className={`${className} focus-visible:ring-ring outline-none hover:bg-current/20 focus-visible:ring-2`}
     >
       {content}
     </Link>

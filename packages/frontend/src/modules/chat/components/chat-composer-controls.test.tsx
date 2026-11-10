@@ -372,18 +372,18 @@ it("聊天切换同协议 Profile 时只展示目标账号，并采用目标默�
           runtimeId: "codex",
           name: "Root Account",
           endpoint: {
-              protocol: "openai-responses",
-              baseUrl: "https://api.example.test/v1",
-            },
+            protocol: "openai-responses",
+            baseUrl: "https://api.example.test/v1",
+          },
         },
         {
           id: "profile-account",
           runtimeId: "profile:work",
           name: "Profile Account",
           endpoint: {
-              protocol: "openai-responses",
-              baseUrl: "https://api.example.test/v1",
-            },
+            protocol: "openai-responses",
+            baseUrl: "https://api.example.test/v1",
+          },
         },
       ]}
       runtime={root}
@@ -469,7 +469,7 @@ it("模型行展示已知的上下文档位，并将 OpenCode 免费模型放到
   expect(changed).not.toHaveBeenCalled();
 });
 
-it("Qoder 可选两份目录的模型，只展示新模型和自定义分组", async () => {
+it("Qoder 直接展示原生模型，不隐藏默认档位或添加新模型分组", async () => {
   const user = userEvent.setup();
   const changed = vi.fn();
   const fixtures = [
@@ -504,13 +504,15 @@ it("Qoder 可选两份目录的模型，只展示新模型和自定义分组", a
   await user.click(screen.getByTestId("composer-model-control"));
   await user.click(screen.getByRole("button", { name: "Qoder" }));
   const sonus = screen.getByRole("radio", { name: "Sonus" });
-  expect(screen.queryByRole("radio", { name: "Auto" })).not.toBeInTheDocument();
-  expect(screen.getByRole("group", { name: "新模型" })).toContainElement(sonus);
+  expect(screen.getByRole("radio", { name: "Auto" })).toBeEnabled();
+  expect(
+    screen.queryByRole("group", { name: "新模型" }),
+  ).not.toBeInTheDocument();
   expect(sonus).toHaveTextContent("8×");
   const custom = screen.getByRole("radio", { name: "Custom Model" });
-  expect(screen.getByRole("group", { name: "自定义" })).toContainElement(
-    custom,
-  );
+  expect(
+    screen.queryByRole("group", { name: "自定义" }),
+  ).not.toBeInTheDocument();
   expect(custom).toBeEnabled();
   const flash = screen.getByRole("radio", { name: "Qwen3.8-Flash" });
   expect(flash).toHaveTextContent("免费");

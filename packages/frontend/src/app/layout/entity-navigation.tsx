@@ -53,7 +53,6 @@ import {
 
 import {
   EntityActivityBadges,
-  EntityActivitySummary,
   entityActivityCounts,
   entityActivitySummaryLabel,
 } from "./entity-activity-summary";
@@ -291,7 +290,6 @@ function EntityRow({
           </span>
         </button>
         <div className="flex items-center gap-0.5 pr-1">
-          <EntityActivitySummary counts={activityCounts} />
           <Tooltip>
             <TooltipTrigger asChild>
               <Button

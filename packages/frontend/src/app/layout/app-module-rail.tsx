@@ -4,7 +4,7 @@ import {
   ChartNoAxesCombined,
   Clock3,
   Ellipsis,
-  Package,
+  LayoutGrid,
   Settings,
 } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
@@ -39,7 +39,7 @@ type AppModuleRailProps = {
   ) => void;
 };
 
-/** OpenBot v0.62.0/fcb35746：packages/ui/src/features/window/PageRail.tsx、page-rail.css；入口按 B03 映射。 */
+/** 模块栏入口按业务归属排列，工作看板使用顶栏通知入口。 */
 export function AppModuleRail({
   activeModule,
   onNavigate,
@@ -114,7 +114,7 @@ export function AppModuleRail({
           {moduleButton({
             id: "resources",
             label: t("plugin:title"),
-            icon: Package,
+            icon: LayoutGrid,
           })}
           {pages
             .filter(({ id }) => pinnedModules.includes(id))

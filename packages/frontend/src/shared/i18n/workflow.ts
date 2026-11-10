@@ -124,6 +124,7 @@ export const workflowZh = {
   editBasicInformation: "编辑基本信息",
   edit: "编辑",
   moreActions: "{{title}} 的更多操作",
+  moreActionsLabel: "更多操作",
   titleHelp: "用简短的标题标识这个工作流。",
   descriptionHelp: "简要说明工作流的用途和目标。",
   descriptionPlaceholder: "例如：整理会议材料，生成议程和行动清单",
@@ -605,6 +606,7 @@ export const workflowEn = {
   editBasicInformation: "Edit basic information",
   edit: "Edit",
   moreActions: "More actions for {{title}}",
+  moreActionsLabel: "More actions",
   titleHelp: "Use a short title to identify this workflow.",
   descriptionHelp: "Briefly describe the workflow’s purpose and goal.",
   descriptionPlaceholder:

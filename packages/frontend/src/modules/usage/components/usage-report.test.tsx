@@ -68,3 +68,32 @@ it("keeps reported input visible without adding it to the known Token subtotal",
   expect(screen.getByText("520")).toBeInTheDocument();
   expect(screen.queryByText("1,720")).not.toBeInTheDocument();
 });
+
+it("resolves native model names within their own runtime and retains unknown IDs", () => {
+  render(
+    <UsageReport
+      groupBy="model"
+      groups={[
+        { provider: "qoder", key: "dfmodel", metrics: { invocations: 1 } },
+        { provider: "workbuddy", key: "dfmodel", metrics: { invocations: 2 } },
+        {
+          provider: "qoder",
+          key: "retired-model",
+          metrics: { invocations: 3 },
+        },
+      ]}
+      runtimes={[
+        { id: "qoder", models: [{ id: "dfmodel", name: "DeepSeek-Flash" }] },
+        { id: "workbuddy", models: [{ id: "dfmodel", name: "Other Model" }] },
+      ]}
+      names={new Map()}
+      totalGroups={3}
+      more={false}
+      loading={false}
+      onLoadMore={() => {}}
+    />,
+  );
+  expect(screen.getByText("qoder / DeepSeek-Flash")).toBeInTheDocument();
+  expect(screen.getByText("workbuddy / Other Model")).toBeInTheDocument();
+  expect(screen.getByText("qoder / retired-model")).toBeInTheDocument();
+});

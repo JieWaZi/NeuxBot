@@ -18,7 +18,7 @@ import {
 import { workbenchPanes, type WorkbenchNode } from "./workbench-pane";
 import { preventUnloadWithDirtyDrafts } from "./document-buffers";
 
-const storagePrefix = "ally.right-workbench.v2.";
+const storagePrefix = "ally.right-workbench.";
 const tabSchema = z.object({
   id: z.string().min(1),
   kind: z.enum([
@@ -87,7 +87,7 @@ const stateSchema = z.object({
   customWidth: z.boolean(),
   side: z.enum(["left", "right"]).optional(),
 });
-const persistedSchema = z.object({ version: z.literal(2), state: stateSchema });
+const persistedSchema = z.object({ state: stateSchema });
 
 export function restoreWorkbenchState(
   raw: unknown,
@@ -197,7 +197,6 @@ export class WorkbenchStore {
       localStorage.setItem(
         storagePrefix + scopeKey,
         JSON.stringify({
-          version: 2,
           state: {
             tabs: state.tabs,
             layout: state.layout,

@@ -428,7 +428,7 @@ describe("ChatWorkspaceSurface right workbench", () => {
     );
     expect(await screen.findByRole("tab", { name: "新标签页" })).toBeVisible();
     const saved = JSON.parse(
-      localStorage.getItem("ally.right-workbench.v2.chat-two") ?? "null",
+      localStorage.getItem("ally.right-workbench.chat-two") ?? "null",
     ) as { state: { tabs: Array<{ kind: string }> } } | null;
     expect(saved?.state.tabs).toHaveLength(1);
   });
@@ -446,7 +446,7 @@ describe("ChatWorkspaceSurface right workbench", () => {
       ).toBeVisible();
       expect(
         document.querySelector("[data-chat-activity-status]"),
-      ).toBeVisible();
+      ).not.toBeInTheDocument();
       expect(screen.getByRole("tab", { name: "a.txt" })).toHaveAttribute(
         "aria-selected",
         "true",
@@ -506,8 +506,7 @@ describe("ChatWorkspaceSurface right workbench", () => {
       );
       await act(async () => resolveClose?.(true));
       const saved = JSON.parse(
-        localStorage.getItem("ally.right-workbench.v2.partner:surface") ??
-          "null",
+        localStorage.getItem("ally.right-workbench.partner:surface") ?? "null",
       ) as { state: { tabs: Array<{ kind: string }> } } | null;
       expect(saved?.state.tabs.some((tab) => tab.kind === "terminal")).toBe(
         false,

@@ -119,7 +119,7 @@ export function ChatWorkspaceSurface({
   openedCodeReference,
   gitRoots = [],
   renderTeamMembers,
-  showActivityIndicator = true,
+  // showActivityIndicator = true,
   taskBoard,
   workspace,
   fileWorkspaceProps,
@@ -464,6 +464,7 @@ export function ChatWorkspaceSurface({
                     "bg-surface-scene/15 backdrop-blur-canvas-glass",
                 )}
               >
+                {/* 暂时隐藏右上角工作状态，保留实现以便恢复。
                 {showActivityIndicator && snapshot.isRunning ? (
                   <span
                     className="text-muted-foreground type-caption absolute top-3 right-4 z-20 flex items-center gap-2"
@@ -489,7 +490,7 @@ export function ChatWorkspaceSurface({
                             ? t("streamUnavailable")
                             : t("working")}
                   </span>
-                ) : null}
+                ) : null} */}
                 <FloatingChat
                   chatId={identity.chatId}
                   fullView={fullView && sceneActive}

@@ -139,7 +139,7 @@ function MarkdownBody({
       className={cn(
         markdownClassName,
         role === "user" &&
-          "[&_code]:text-inherit [&_pre]:max-w-full [&_pre]:overflow-x-auto",
+          "[&_[data-streamdown=code-block]]:bg-surface-tertiary [&_[data-streamdown=code-block]]:text-foreground [&_[data-streamdown=table-wrapper]]:bg-surface-panel [&_[data-streamdown=table-wrapper]]:text-foreground [&_a]:text-inherit [&_a]:decoration-current [&_code]:text-inherit [&_pre]:max-w-full [&_pre]:overflow-x-auto",
       )}
       components={components}
       data-chat-markdown={role}

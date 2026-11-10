@@ -14,6 +14,8 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @theme inline {
+  --color-user-message-background: var(--user-message-background);
+  --color-user-message-content: var(--user-message-content);
   /* 保留画布点阵的轮廓，避免磨砂层把聊天区重新抹成纯色。 */
   --blur-canvas-glass: 1px;
   --color-resource-canvas: var(--resource-canvas);
@@ -174,7 +176,7 @@
   --spacing-icon-xs: 0.75rem;
   --spacing-icon-sm: 0.875rem;
   --spacing-icon-md: 1rem;
-  /* OpenBot agent-threads.css:180；普通话题宽度与收缩下限。 */
+  /* 普通话题宽度与收缩下限。 */
   --spacing-scene-tab: 8.75rem;
   --spacing-scene-tab-min: 6rem;
   --spacing-icon-lg: 1.25rem;
@@ -199,7 +201,7 @@
   /* 连接器内容区与技能卡片的 128px 基线一致，标签固定同行，说明保留两行。 */
   --spacing-connector-card-content: 8rem;
   --spacing-shell-content-top: 1rem;
-  /* 插件目录与详情共用 OpenBot marketplace 的内容几何。 */
+  /* 插件目录与详情共用资源内容宽度和留白。 */
   --container-resource-catalog: 55rem;
   --spacing-resource-content-top: 2.5rem;
   --spacing-resource-icon: 2.5rem;
@@ -375,7 +377,7 @@
   --traffic-light-expand: #28c840;
 }
 
-/* OpenBot v0.62.0/fcb35746：window.css、page-rail.css。统一底板不属于业务 Card。 */
+/* 窗口与模块栏共用底板，不属于业务 Card。 */
 .app-window-shell {
   --surface-canvas: var(--shell-surface-canvas);
   --surface-scene: var(--shell-surface-canvas);
@@ -470,7 +472,7 @@
   pointer-events: none;
 }
 
-/* OpenBot ui/styles/sliding-tabs.css：低对比 inset 轮廓；36px 命中区按本项目约束适配。 */
+/* 分段控件使用低对比内轮廓和 36px 命中区。 */
 .segmented-control-shell {
   height: var(--spacing-control-md);
   gap: 3px;
@@ -535,7 +537,7 @@
   background: var(--shell-tabs-pill);
   box-shadow: none;
 }
-/* OpenBot ui/styles/action-menu.css：仅 Rail More，浅色不画常驻投影。 */
+/* 模块栏更多菜单在浅色主题不显示常驻投影。 */
 .app-module-menu {
   border: 0;
   box-shadow:

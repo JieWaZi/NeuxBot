@@ -386,3 +386,29 @@ it("旧持久通知缺少来源时拒绝正文，已声明的本地提示仍可�
   );
   unmount();
 });
+
+it("会话提示即时可见但重载后无事件不会恢复", async () => {
+  const view = renderHook(useErrorNotices);
+  act(() =>
+    reportErrorNotice({
+      id: "background-failure",
+      scope: "global",
+      lifetime: "session",
+      message: "后台同步失败",
+      messageSource: "public",
+    }),
+  );
+  expect(view.result.current).toHaveLength(1);
+  expect(
+    JSON.parse(localStorage.getItem("ally:error-notices") ?? "[]"),
+  ).toEqual([]);
+  const sessionNotice = view.result.current[0];
+  view.unmount();
+  // 即使上一版本或宿主恢复错误地保留了会话提示，也不能在新Renderer重放。
+  localStorage.setItem("ally:error-notices", JSON.stringify([sessionNotice]));
+  vi.resetModules();
+  const restored = await import("./error-notices");
+  const recovered = renderHook(restored.useErrorNotices);
+  expect(recovered.result.current).toHaveLength(0);
+  recovered.unmount();
+});

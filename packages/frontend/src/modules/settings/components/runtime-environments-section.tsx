@@ -57,7 +57,9 @@ import {
   SettingsRow,
 } from "./settings-section-layout";
 
-type RuntimePatch = Partial<ReturnType<typeof runtimeSettingsBody>>;
+type RuntimePatch = Partial<ReturnType<typeof runtimeSettingsBody>> & {
+  installationPath?: string;
+};
 
 function RuntimeSkeleton() {
   const { t } = useTranslation("aiAccounts");
@@ -100,7 +102,20 @@ function RuntimeDetail({
     ...withLocalErrorMutation(updateRuntimeEnvironmentMutation()),
     onSuccess: async (_data, variables) => {
       await invalidate();
-      if (variables.body.defaultAccountId !== runtime.defaultAccountId) {
+      if (variables.body.installationPath) {
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: runtimeInstallationOptions(runtime.id ?? "").queryKey,
+          }),
+          queryClient.invalidateQueries({
+            queryKey: runtimeAuthenticationOptions(runtime.id ?? "").queryKey,
+          }),
+        ]);
+      }
+      if (
+        variables.body.installationPath ||
+        variables.body.defaultAccountId !== runtime.defaultAccountId
+      ) {
         void queryClient.invalidateQueries({
           queryKey: nativeModelCatalogQueryKey({ runtimeId: runtime.id }),
         });
@@ -166,6 +181,10 @@ function RuntimeDetail({
         : "off";
   const modelDisabled =
     modelPending || selection.loading || selection.models.length === 0;
+  const installations = (runtime.installations ?? []).filter(
+    (item) => item.available && item.path,
+  );
+  const multipleInstallations = installations.length > 1;
   const version = runtimeDisplayVersion(
     installation.data?.version || runtime.version,
   );
@@ -261,11 +280,38 @@ function RuntimeDetail({
             grouped
             title={t("agents.version")}
             description={
-              <span title={installation.data?.installationPath}>
-                {versionDescription}
-              </span>
+              multipleInstallations ? undefined : (
+                <span title={installation.data?.installationPath}>
+                  {versionDescription}
+                </span>
+              )
             }
           >
+            {multipleInstallations ? (
+              <Select
+                value={runtime.resolvedBinary}
+                disabled={pending}
+                onValueChange={(installationPath) =>
+                  void save({ installationPath }).catch(() => undefined)
+                }
+              >
+                <SelectTrigger
+                  aria-label={t("agents.version")}
+                  className="w-64"
+                >
+                  <SelectValue>{versionDescription}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {installations.map((item) => (
+                    <SelectItem key={item.path} value={item.path ?? ""}>
+                      {runtimeDisplayVersion(item.version) ||
+                        t("agents.versionUnknown")}{" "}
+                      · {item.path}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
             <RuntimeInstallationControls
               runtimeId={runtime.id ?? ""}
               baseRuntimeId={runtime.baseRuntimeId}
@@ -274,6 +320,11 @@ function RuntimeDetail({
               disabled={restart.isPending}
             />
           </SettingsRow>
+          {update.error && update.variables?.body.installationPath ? (
+            <p role="alert" className="type-body text-destructive px-4 py-3">
+              {update.error.message}
+            </p>
+          ) : null}
           {programInstalled ? (
             <SettingsRow
               grouped
@@ -476,7 +527,10 @@ function RuntimeDetail({
             <p role="status" className="type-body text-content-secondary">
               {runtime.auth === "missing"
                 ? t("agents.modelsRequireLogin")
-                : t(`common:executionSelection.${selection.catalogIssue}`)}
+                : (runtime.baseRuntimeId || runtime.id) === "pi" &&
+                    selection.catalogIssue === "catalogEmpty"
+                  ? t("aiAccounts:systemModelsUnconfigured")
+                  : t(`common:executionSelection.${selection.catalogIssue}`)}
             </p>
           ) : selection.error ? (
             <p role="alert" className="type-body text-destructive">

@@ -7,7 +7,7 @@ export type ChatContinuation = {
   continued: boolean;
   continuation: boolean;
   footerMessage: AllyChatMessage;
-  /** 分组首头像跟随末段状态，续接段不再重复挂载头像。 */
+  /** 分组活动状态跟随末段；头像是否展示由消息列表的末项决定。 */
   activityMessage?: AllyChatMessage;
 };
 

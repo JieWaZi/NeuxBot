@@ -195,7 +195,7 @@ it("renders installed and catalog summaries without scanning management resource
     "/resources/plugins/existing",
   );
 });
-it("keeps a delisted installed row and explains unavailable catalog totals", async () => {
+it("keeps a delisted installed row without persistent catalog warnings", async () => {
   fixture.sourceState = "unavailable";
   fixture.unknownTotal = true;
   fixture.entries = fixture.entries
@@ -208,10 +208,10 @@ it("keeps a delisted installed row and explains unavailable catalog totals", asy
     screen.getByRole("heading", { level: 2, name: "其他" }),
   ).toHaveTextContent(/^其他$/);
   expect(
-    screen.getByText(
+    screen.queryByText(
       "暂时无法获取插件目录，当前无法确认是否有更新。已安装插件仍可使用。",
     ),
-  ).toBeVisible();
+  ).not.toBeInTheDocument();
 });
 it("opens a catalog install lazily and preserves the target partner", async () => {
   showCatalog(false, "w2");
@@ -397,7 +397,7 @@ it("groups the complete list by standard category and sends unknown categories t
   ]);
   expect(screen.queryByRole("button", { name: "加载更多" })).toBeNull();
 });
-it("refreshes browse summaries after an explicit catalog check", async () => {
+it("waits for background events before refreshing browse summaries", async () => {
   const client = showCatalog();
   await screen.findByText("飞书");
   fixture.entries = [
@@ -409,8 +409,13 @@ it("refreshes browse summaries after an explicit catalog check", async () => {
     },
   ];
   fireEvent.click(await screen.findByRole("button", { name: "检查更新" }));
-  await screen.findByText("更新后的插件");
-  expect(browsePlugins).toHaveBeenCalledTimes(2);
+  await waitFor(() => expect(fixture.refresh).toHaveBeenCalledOnce());
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "检查更新" })).toBeEnabled(),
+  );
+  expect(screen.getByText("飞书")).toBeVisible();
+  expect(screen.queryByText("更新后的插件")).not.toBeInTheDocument();
+  expect(browsePlugins).toHaveBeenCalledTimes(1);
   client.clear();
 });
 it("keeps installed summaries after a failed manual catalog check", async () => {
@@ -419,8 +424,21 @@ it("keeps installed summaries after a failed manual catalog check", async () => 
   showCatalog();
   await screen.findByText("飞书");
   fireEvent.click(await screen.findByRole("button", { name: "检查更新" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("目录暂不可用");
+  await waitFor(() => expect(fixture.refresh).toHaveBeenCalledOnce());
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "检查更新" })).toBeEnabled(),
+  );
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.queryByText("目录暂不可用")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText(
+      "目录更新失败，继续显示上次缓存的插件。已安装插件仍可使用。",
+    ),
+  ).not.toBeInTheDocument();
   expect(screen.getByText("飞书")).toBeVisible();
+  expect(fixture.refresh.mock.calls[0]?.[0]).not.toHaveProperty(
+    "headers.X-NeuxAlly-Error-Surface",
+  );
 });
 it("refreshes directly after search without showing the last check time on hover", async () => {
   fixture.fetchedAt = Date.UTC(2026, 9, 19, 0, 0, 0);

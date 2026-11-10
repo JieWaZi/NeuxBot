@@ -8,6 +8,7 @@ import {
   useState,
   type CSSProperties,
   type ReactNode,
+  type RefCallback,
 } from "react";
 import { createPortal } from "react-dom";
 
@@ -15,12 +16,12 @@ import { cn } from "@/shared/lib/cn";
 import { useSceneChromeActions } from "./scene-chrome-actions";
 
 type SceneChromePortalContextValue = {
-  setTarget: (target: HTMLDivElement | null) => void;
+  setTarget: RefCallback<HTMLDivElement>;
   target: HTMLDivElement | null;
   paneActionsTarget: HTMLDivElement | null;
-  setPaneActionsTarget: (target: HTMLDivElement | null) => void;
+  setPaneActionsTarget: RefCallback<HTMLDivElement>;
   accessoryTarget: HTMLDivElement | null;
-  setAccessoryTarget: (target: HTMLDivElement | null) => void;
+  setAccessoryTarget: RefCallback<HTMLDivElement>;
   accessoryWidth: number | null;
   accessoryFullscreen: boolean;
   accessorySide: "left" | "right";
@@ -35,17 +36,25 @@ type SceneChromePortalContextValue = {
 const SceneChromePortalContext =
   createContext<SceneChromePortalContextValue | null>(null);
 
+/** 新旧顶栏交接时，旧节点卸载不能清空新节点已登记的位置。 */
+function useChromeTarget() {
+  const [target, setTarget] = useState<HTMLDivElement | null>(null);
+  const registerTarget = useCallback<RefCallback<HTMLDivElement>>((node) => {
+    if (!node) return;
+    setTarget(node);
+    return () => setTarget((current) => (current === node ? null : current));
+  }, []);
+  return [target, registerTarget] as const;
+}
+
 export function SceneChromePortalProvider({
   children,
 }: {
   children: ReactNode;
 }) {
-  const [target, setTarget] = useState<HTMLDivElement | null>(null);
-  const [paneActionsTarget, setPaneActionsTarget] =
-    useState<HTMLDivElement | null>(null);
-  const [accessoryTarget, setAccessoryTarget] = useState<HTMLDivElement | null>(
-    null,
-  );
+  const [target, setTarget] = useChromeTarget();
+  const [paneActionsTarget, setPaneActionsTarget] = useChromeTarget();
+  const [accessoryTarget, setAccessoryTarget] = useChromeTarget();
   const [accessory, setAccessory] = useState<{
     owner: string;
     width: number;
@@ -81,7 +90,16 @@ export function SceneChromePortalProvider({
       accessorySide: accessory?.side ?? "right",
       setAccessoryWidth,
     }),
-    [target, paneActionsTarget, accessoryTarget, accessory, setAccessoryWidth],
+    [
+      target,
+      setTarget,
+      paneActionsTarget,
+      setPaneActionsTarget,
+      accessoryTarget,
+      setAccessoryTarget,
+      accessory,
+      setAccessoryWidth,
+    ],
   );
 
   return (

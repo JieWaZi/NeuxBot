@@ -399,3 +399,52 @@ it("程序快照确认已删除时不沿用旧列表的连接状态和可编辑�
   ).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "默认权限" })).toBeDisabled();
 });
+
+it("Pi 空模型目录提供配置提示而非重试提示", async () => {
+  runtimeRows.current = [
+    {
+      id: "pi",
+      baseRuntimeId: "pi",
+      name: "Pi",
+      installed: true,
+      enabled: true,
+      state: "ready",
+      auth: "unknown",
+      models: [],
+    },
+  ];
+  modelCatalog.mockResolvedValue({
+    data: { runtimeId: "pi", accountId: "system", state: "fresh", models: [] },
+  });
+  show("pi");
+  expect(
+    await screen.findByText("尚无可用模型，请配置账号或模型"),
+  ).toBeVisible();
+});
+
+it("多个本机版本可在版本行切换并保留默认设置", async () => {
+  const user = userEvent.setup();
+  runtimeRows.current[0] = {
+    ...runtimeRows.current[0],
+    resolvedBinary: "/cli/old/codex",
+    installations: [
+      { path: "/cli/old/codex", version: "1.2.3", available: true },
+      { path: "/cli/new/codex", version: "2.0.0", available: true },
+    ],
+  };
+  show("codex");
+  await user.click(await screen.findByRole("combobox", { name: "版本" }));
+  await user.click(await screen.findByRole("option", { name: /2.0.0/ }));
+  await waitFor(() =>
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          installationPath: "/cli/new/codex",
+          defaultModel: "model-a",
+          defaultReasoning: "high",
+        }),
+      }),
+      expect.anything(),
+    ),
+  );
+});

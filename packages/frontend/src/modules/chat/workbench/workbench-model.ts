@@ -417,8 +417,24 @@ export function reduceWorkbench(
         command.paneId,
       );
     case "open-browser": {
+      if (!command.newTab && command.url) {
+        const existing = state.tabs.find(
+          (tab) => tab.kind === "browser" && tab.url === command.url,
+        );
+        // 打开已有网址只切换标签，保留网页的导航与阅读状态。
+        if (existing)
+          return reduceWorkbench(
+            state,
+            { type: "focus", tabId: existing.id },
+            mint,
+          );
+      }
       const active = activeWorkbenchTab(state);
-      if (!command.newTab && active?.kind === "browser") {
+      if (
+        !command.newTab &&
+        active?.kind === "browser" &&
+        (!command.url || !active.url)
+      ) {
         return open("browser", active.contentId, active.title, {
           url: command.url ?? active.url,
           rootPath: command.rootPath ?? active.rootPath,

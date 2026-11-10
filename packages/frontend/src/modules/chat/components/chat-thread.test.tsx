@@ -11,7 +11,6 @@ import type {
 import "@/shared/i18n";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import {
-  AgentRunningIndicator,
   AssistantMessage as PureAssistantMessage,
   ComposerContextUsage,
   MessageRunStatus as PureMessageRunStatus,
@@ -133,9 +132,7 @@ function AssistantMessage(
 ) {
   const view = new ChatMessageProjection().update([canonicalMessage()])[0];
   if (!view) throw new Error("missing test message");
-  const latest =
-    messageState.messages?.findLast((message) => message.role === "assistant")
-      ?.id ?? view.message.id;
+  const latest = messageState.messages?.at(-1)?.id ?? view.message.id;
   return (
     <PureAssistantMessage
       {...props}
@@ -948,15 +945,7 @@ describe("chat work process", () => {
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
 
-  it("运行中只展示网格动画和飞速运转，不展示计时", () => {
-    render(<AgentRunningIndicator />);
-
-    expect(screen.getByText("飞速运转")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveClass("agent-grid-spinner");
-    expect(screen.queryByText(/\d+(?:\.\d+)?(?:ms|s)/)).not.toBeInTheDocument();
-  });
-
-  it("当前处于工具过程时隐藏飞速运转和图标，离开工具过程后恢复", () => {
+  it("工具过程及普通运行状态均不额外展示飞速运转和图标", () => {
     messageState.current = {
       role: "assistant",
       id: "message-running-process",
@@ -975,8 +964,8 @@ describe("chat work process", () => {
     };
     view.rerender(<MessageRunStatus />);
 
-    expect(screen.getByText("飞速运转")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveClass("agent-grid-spinner");
+    expect(screen.queryByText("飞速运转")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("完成后展示耗时入口并提供 Token 用量详情", () => {
@@ -1221,13 +1210,78 @@ describe("execution file changes", () => {
       />,
     );
 
-    expect(screen.getByText("项目经理")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "与 项目经理 互动" }),
+    ).toBeVisible();
     expect(screen.queryByText("负责人")).not.toBeInTheDocument();
   });
 });
 
 describe("assistant message shell", () => {
-  it("仅草稿首发使用准备文案，复用飞速运转样式并在接纳后切换", () => {
+  it("续接回复只在最后一段显示头像，历史段不保留静态头像", () => {
+    const messages: AllyChatMessage[] = [
+      { id: "previous-segment", role: "assistant", status: "canceled" },
+      { id: "latest-segment", role: "assistant", status: "completed" },
+    ];
+    const views = new ChatMessageProjection().update(messages);
+    const { container } = render(
+      <TooltipProvider>
+        {views.map((view, index) => (
+          <PureAssistantMessage
+            key={view.key}
+            view={view}
+            latest={index === views.length - 1}
+            name="伙伴"
+            continuation={{
+              continued: index === 0,
+              continuation: index === 1,
+              footerMessage: view.message,
+            }}
+          />
+        ))}
+      </TooltipProvider>,
+    );
+    expect(
+      container.querySelectorAll("svg[data-companion-avatar]"),
+    ).toHaveLength(1);
+    expect(
+      container.querySelector(
+        '[data-message-id="previous-segment"] svg[data-companion-avatar]',
+      ),
+    ).toBeNull();
+    expect(
+      container.querySelector(
+        '[data-message-id="latest-segment"] svg[data-companion-avatar]',
+      ),
+    ).not.toBeNull();
+  });
+  it("正文隔开的多个过程段只展示一次整次执行用时", () => {
+    const message: AllyChatMessage = {
+      id: "multiple-processes",
+      role: "assistant",
+      status: "completed",
+      runMetrics: { durationMs: 32300 },
+      displayParts: [
+        { id: "reason-1", type: "reasoning", text: "先检查插件" },
+        { id: "text-1", type: "text", text: "插件已就绪" },
+        { id: "reason-2", type: "reasoning", text: "再确认使用方式" },
+        { id: "text-2", type: "text", text: "可以直接使用" },
+      ],
+    };
+    const view = new ChatMessageProjection().update([message])[0];
+    if (!view) throw new Error("missing test message");
+    render(
+      <TooltipProvider>
+        <PureAssistantMessage name="伙伴" view={view} />
+      </TooltipProvider>,
+    );
+    expect(screen.getAllByText("用时 32.3s")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "查看过程" }));
+    expect(screen.getByText("再确认使用方式")).toBeVisible();
+    expect(screen.getByText("插件已就绪")).toBeVisible();
+    expect(screen.getByText("可以直接使用")).toBeVisible();
+  });
+  it("准备和接纳阶段只由头像反馈状态，不显示空消息卡", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-11-06T03:00:00Z"));
     const pending: AllyChatMessage & { preparingSession: boolean } = {
@@ -1244,13 +1298,12 @@ describe("assistant message shell", () => {
     const view = render(
       <PureAssistantMessage view={preparing} latest name="nova" />,
     );
-    expect(screen.getByText("正在准备会话")).toBeVisible();
+    expect(screen.queryByText("正在准备会话")).not.toBeInTheDocument();
     expect(view.container.querySelector("[data-activity]")).toHaveAttribute(
       "data-activity",
       "connecting",
     );
-    expect(screen.getByRole("status")).toHaveClass("agent-grid-spinner");
-    expect(screen.getByRole("status").children).toHaveLength(9);
+    expect(screen.queryByRole("status")).toBeNull();
     act(() => {
       vi.advanceTimersByTime(5_000);
     });
@@ -1261,7 +1314,7 @@ describe("assistant message shell", () => {
     if (!running) throw new Error("missing running message");
     view.rerender(<PureAssistantMessage view={running} latest name="nova" />);
     expect(screen.queryByText("正在准备会话")).not.toBeInTheDocument();
-    expect(screen.getByText("飞速运转")).toBeVisible();
+    expect(screen.queryByText("飞速运转")).not.toBeInTheDocument();
     expect(view.container.querySelector("[data-activity]")).toHaveAttribute(
       "data-activity",
       "thinking",
@@ -1269,7 +1322,7 @@ describe("assistant message shell", () => {
     view.unmount();
     expect(vi.getTimerCount()).toBe(0);
   });
-  it("已有会话续发尚未接纳也继续展示飞速运转", () => {
+  it("已有会话续发尚未接纳时只保留头像", () => {
     const projection = new ChatMessageProjection();
     const pending = projection.update([
       {
@@ -1284,14 +1337,14 @@ describe("assistant message shell", () => {
       <PureAssistantMessage view={pending} latest name="nova" />,
     );
     expect(screen.queryByText("正在准备会话")).not.toBeInTheDocument();
-    expect(screen.getByText("飞速运转")).toBeVisible();
-    expect(screen.getByRole("status")).toHaveClass("agent-grid-spinner");
+    expect(screen.queryByText("飞速运转")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).toBeNull();
     expect(container.querySelector("[data-activity]")).toHaveAttribute(
       "data-activity",
       "thinking",
     );
   });
-  it("最新助手消息变成历史消息后固定头像采样并保留名称", () => {
+  it("最新助手消息变成历史消息后移除头像，名称不重复展示且时间位于底部", () => {
     messageState.current = {
       role: "assistant",
       id: "assistant-avatar-state",
@@ -1317,11 +1370,14 @@ describe("assistant message shell", () => {
     raf.mockRestore();
     expect(
       view.container.querySelector("svg[data-companion-avatar]"),
-    ).toHaveAttribute("data-activity", "idle");
+    ).toBeNull();
     expect(view.container.querySelector("img")).toBeNull();
-    expect(screen.getByText("测试伙伴")).toBeVisible();
+    expect(screen.queryByText("测试伙伴")).not.toBeInTheDocument();
+    const timestamp = view.container.querySelector("time");
+    expect(timestamp).toBeInTheDocument();
+    expect(timestamp?.closest("footer")).not.toBeNull();
   });
-  it("末尾是用户消息时，最近的助手消息仍保留动态头像", () => {
+  it("末尾是用户消息时，之前的助手消息不再保留头像", () => {
     messageState.current = {
       role: "assistant",
       id: "last-assistant",
@@ -1336,12 +1392,10 @@ describe("assistant message shell", () => {
       { id: "new-user", role: "user" },
     ];
     const { container } = render(<AssistantMessage name="测试伙伴" />);
-    expect(
-      container.querySelector("svg[data-companion-avatar]"),
-    ).not.toBeNull();
+    expect(container.querySelector("svg[data-companion-avatar]")).toBeNull();
     expect(container.querySelector("img")).toBeNull();
   });
-  it("尚无输出时立即展示伙伴身份和原有飞速运转动画", () => {
+  it("尚无输出时保留伙伴头像，隐藏空卡片与底部占位", () => {
     messageState.current = {
       role: "assistant",
       createdAt: new Date("2026-09-05T01:58:48.000Z"),
@@ -1353,14 +1407,13 @@ describe("assistant message shell", () => {
 
     const { container } = render(<AssistantMessage name="测试伙伴" />);
 
-    expect(screen.getByText("测试伙伴")).toBeVisible();
-    expect(container.querySelector("time")).toHaveAttribute(
-      "datetime",
-      "2026-09-05T01:58:48.000Z",
-    );
-    expect(screen.getByText("飞速运转")).toBeVisible();
-    expect(screen.getByRole("status")).toHaveClass("agent-grid-spinner");
-    expect(screen.getByRole("status").children).toHaveLength(9);
+    expect(screen.queryByText("测试伙伴")).not.toBeInTheDocument();
+    expect(container.querySelector("time")).toBeNull();
+    expect(container.querySelector("footer")).toBeNull();
+    expect(container.querySelector("[data-activity]")).not.toBeNull();
+    expect(screen.queryByText("飞速运转")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(container.querySelector("[data-chat-message-card]")).toBeNull();
   });
 });
 

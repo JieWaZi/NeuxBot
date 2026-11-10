@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import {
@@ -11,11 +11,7 @@ import { useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import { useQueryEvents } from "@/shared/api/use-query-events";
-import {
-  withLocalErrorMutation,
-  withLocalErrorSurface,
-  localApiErrorMessage,
-} from "@/shared/api/local-error-surface";
+import { withLocalErrorSurface } from "@/shared/api/local-error-surface";
 import { ResourceCardGrid } from "@/shared/ui/resource-page";
 import { ResourceCatalogGroup } from "@/shared/ui/resource-catalog";
 import { listWakerPlugins } from "@/shared/api/generated/sdk.gen";
@@ -31,7 +27,6 @@ import {
   getPluginOptions,
   getCatalogPluginOptions,
   listWakerPluginsQueryKey,
-  invalidatePluginQueries,
 } from "../api/plugin-queries";
 import {
   pluginInstalledVersion,
@@ -44,7 +39,6 @@ import {
   PLUGIN_CATEGORY_LABELS,
   type PluginBrowseEntry,
 } from "../model/plugin-browse";
-import { StatusNotice } from "@/shared/ui/status-notice";
 import { PluginCard } from "../components/plugin-card";
 import {
   PluginUpdateDialog,
@@ -69,14 +63,10 @@ export function PluginResourceCollection({
   searchField,
 }: Props) {
   const { t } = useTranslation("plugin");
-  const client = useQueryClient();
   const active = useRouteSceneActive();
   const groupId = useId();
   const [intent, setIntent] = useState<LoadIntent | null>(null);
-  const refresh = useMutation({
-    ...withLocalErrorMutation(refreshPluginCatalogMutation()),
-    onSettled: () => invalidatePluginQueries(client),
-  });
+  const refresh = useMutation(refreshPluginCatalogMutation());
   const browse = usePluginBrowsePages({ search, active: active && !wakerId });
   const installedKey = listWakerPluginsQueryKey(
     withLocalErrorSurface({
@@ -114,7 +104,6 @@ export function PluginResourceCollection({
   const details = installed.items.filter((detail) =>
     Boolean(detail.plugin?.id),
   );
-  const source = wakerId ? installed.metadata : browse.source;
   const itemCount = wakerId ? details.length : browse.entries.length;
   const groups = pluginBrowseGroups(browse.entries);
   const manage = (entry: PluginBrowseEntry, kind: "install" | "update") => {
@@ -166,19 +155,6 @@ export function PluginResourceCollection({
         </TooltipProvider>
       </div>
       <div className="grid min-w-0 gap-6">
-        {source?.state === "stale" && (
-          <StatusNotice>{t("catalogStale")}</StatusNotice>
-        )}
-        {source &&
-          source.state !== "stale" &&
-          (source.errorCode || source.state === "unavailable") && (
-            <StatusNotice>{t("catalogUnavailable")}</StatusNotice>
-          )}
-        {refresh.error && (
-          <p role="alert" className="type-resource-body text-destructive">
-            {localApiErrorMessage(refresh.error, t("catalogUnavailable"))}
-          </p>
-        )}
         {query.isPending || itemCount === 0 ? (
           <QueryState
             loadingLayout="rows"

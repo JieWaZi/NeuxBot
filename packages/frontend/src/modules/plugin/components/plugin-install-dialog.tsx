@@ -24,7 +24,10 @@ import { Dialog, DialogContent } from "@/shared/ui/dialog";
 import { StatusNotice } from "@/shared/ui/status-notice";
 import { Button } from "@/shared/ui/button";
 import { QueryState } from "@/shared/ui/query-state";
-import { useQueryEvents } from "@/shared/api/use-query-events";
+import {
+  refreshQueryFromEvent,
+  useQueryEvents,
+} from "@/shared/api/use-query-events";
 import {
   localApiErrorMessage,
   withLocalErrorMutation,
@@ -204,16 +207,21 @@ export function PluginInstallDialog({
       current.resolvedVersionId ?? current.versions?.[0]?.id ?? "";
     setStartingAuthorization(true);
     try {
-      const account = await client.fetchQuery({
-        ...getPluginAuthorizationOptions(
-          withLocalErrorSurface({
-            path: { pluginId: id },
-            query: { wakerId, versionId: selectedVersion },
-          }),
-        ),
-        staleTime: 0,
-      });
-      const context = pluginAccountContext(account);
+      const accountOptions = getPluginAuthorizationOptions(
+        withLocalErrorSurface({
+          path: { pluginId: id },
+          query: { wakerId, versionId: selectedVersion },
+        }),
+      );
+      // 首次准备会同时发布插件事件；上下文读取与事件共用 owner，旧 GET 被替换后继续等待最新事实。
+      await refreshQueryFromEvent(client, accountOptions.queryKey, () =>
+        client.fetchQuery({ ...accountOptions, staleTime: 0 }),
+      );
+      const state = client.getQueryState<GetPluginAuthorizationResponse>(
+        accountOptions.queryKey,
+      );
+      if (state?.status === "error") throw state.error;
+      const context = pluginAccountContext(state?.data);
       if (!context) throw new Error(t("failed"));
       if (!alive.current) return;
       const session = await authorization.mutateAsync({

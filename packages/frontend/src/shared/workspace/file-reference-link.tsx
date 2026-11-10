@@ -135,6 +135,46 @@ function ResolvedReferenceText({
   );
 }
 
+/** 网站图标不读取页面元数据；失败保留随主题继承颜色的链接图标。 */
+function WebsiteLinkIcon({ url }: { url: string }) {
+  const [status, setStatus] = useState<"pending" | "loaded" | "failed">(
+    "pending",
+  );
+  let iconURL: string | undefined;
+  try {
+    const target = new URL(url);
+    if (target.protocol === "https:" || target.protocol === "http:")
+      iconURL = `${target.origin}/favicon.ico`;
+  } catch {
+    // 无效目标沿用链接图标，不发起图标请求。
+  }
+  return (
+    <span
+      aria-hidden="true"
+      className="size-icon-inline relative mr-1 inline-block align-middle"
+    >
+      {status !== "loaded" && <Link2 className="size-full" />}
+      {iconURL && status !== "failed" && (
+        <img
+          src={iconURL}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="no-referrer"
+          className={cn(
+            "absolute inset-0 size-full rounded-xs object-contain",
+            status === "loaded"
+              ? "bg-surface-panel dark:bg-content-primary"
+              : "opacity-0",
+          )}
+          onLoad={() => setStatus("loaded")}
+          onError={() => setStatus("failed")}
+        />
+      )}
+    </span>
+  );
+}
+
 /** 消息与文档共享的引用呈现；语法入口只传引用，不再自行判断路径所属关系。 */
 export function ReferenceLink({
   reference,
@@ -166,7 +206,7 @@ export function ReferenceLink({
       rel="noopener noreferrer"
       data-chat-link="web"
       className={cn(
-        "text-link decoration-link/50 hover:decoration-link focus-visible:ring-ring rounded-xs wrap-anywhere underline underline-offset-4 transition-colors outline-none focus-visible:ring-2",
+        "text-link decoration-link/50 hover:decoration-link focus-visible:ring-ring rounded-xs font-semibold wrap-anywhere underline underline-offset-4 transition-colors outline-none focus-visible:ring-2",
         className,
       )}
       onClick={(event) => {
@@ -176,10 +216,7 @@ export function ReferenceLink({
         else void openExternalURL(reference.url);
       }}
     >
-      <Link2
-        aria-hidden="true"
-        className="size-icon-inline mr-1 inline-block align-middle"
-      />
+      <WebsiteLinkIcon key={reference.url} url={reference.url} />
       {children || reference.url}
     </a>
   );

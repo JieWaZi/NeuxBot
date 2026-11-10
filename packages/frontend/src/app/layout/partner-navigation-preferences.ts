@@ -45,7 +45,7 @@ export type AppPinnableModuleId = Exclude<
   AppModuleId,
   "partners" | "resources" | "settings" | "work-board"
 >;
-// 工作看板由顶栏通知入口打开；其余模块的 pin 参照 OpenBot src/renderer/src/layout.tsx。
+// 工作看板由顶栏通知入口打开；其余模块按用户偏好固定到模块栏。
 export const appPinnableModules = [
   "usage",
   "knowledge",

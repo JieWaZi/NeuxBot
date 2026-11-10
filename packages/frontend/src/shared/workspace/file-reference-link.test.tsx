@@ -59,6 +59,61 @@ afterEach(() => {
   for (const client of clients.splice(0)) client.clear();
 });
 
+describe("网站图标", () => {
+  it.each(["light", "dark"])(
+    "%s 下成功加载同源 favicon，失败恢复链条且不改变链接名称",
+    (theme) => {
+      const view = renderReference(
+        <div data-theme={theme}>
+          <ReferenceLink
+            reference={{
+              kind: "web",
+              url: "https://example.com/news?q=secret#item",
+            }}
+          >
+            新闻来源
+          </ReferenceLink>
+        </div>,
+      );
+      const link = screen.getByRole("link", { name: "新闻来源" });
+      const image = link.querySelector("img");
+      if (!image) throw new Error("缺少网站图标");
+      expect(image).toHaveAttribute("src", "https://example.com/favicon.ico");
+      expect(image).toHaveAttribute("referrerpolicy", "no-referrer");
+      expect(link.querySelector("svg")).not.toBeNull();
+      fireEvent.load(image);
+      expect(link.querySelector("svg")).toBeNull();
+      fireEvent.error(image);
+      expect(link.querySelector("img")).toBeNull();
+      expect(link.querySelector("svg")).not.toBeNull();
+      view.unmount();
+    },
+  );
+  it("切换目标网站后重新加载图标，不沿用上个网站的失败状态", () => {
+    const view = render(
+      <ReferenceLink
+        reference={{ kind: "web", url: "https://old.example/news" }}
+      >
+        来源
+      </ReferenceLink>,
+    );
+    const image = view.container.querySelector("img");
+    if (!image) throw new Error("缺少网站图标");
+    fireEvent.error(image);
+    view.rerender(
+      <ReferenceLink
+        reference={{ kind: "web", url: "https://new.example/news" }}
+      >
+        来源
+      </ReferenceLink>,
+    );
+    expect(view.container.querySelector("img")).toHaveAttribute(
+      "src",
+      "https://new.example/favicon.ico",
+    );
+  });
+});
+
 describe("reference link activation", () => {
   it("delegates ordinary HTTP(S) clicks and preserves native modified and auxiliary gestures", () => {
     const open = vi.fn();

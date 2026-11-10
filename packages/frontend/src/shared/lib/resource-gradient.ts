@@ -1,7 +1,5 @@
-// Adapted from OpenBot v0.62.0 packages/brand/src/article-gradient.ts.
-// Source and license: THIRD_PARTY_NOTICES.md.
 // NeuxBot 的浅暗调色板由共享主题层维护；CSS 直接引用，WebGL 按当前主题解析。
-// 颜色分组、标题哈希与所有 mesh 参数保持源端算法，主题只改变色值。
+// 颜色分组、标题哈希与 mesh 参数保持稳定，主题只改变色值。
 
 const LILAC = "var(--resource-artwork-lilac)";
 const EMBER = "var(--resource-artwork-ember)";
@@ -121,13 +119,7 @@ function round(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-/**
- * The mesh gradient's uniforms. Takes the colour converter as an argument rather
- * than importing it, so that this module — which the sitemap route and the feed
- * also pull in — never drags the shader library into the Worker bundle. The
- * browser component and the build-time generator both call this, which is what
- * makes the live shader and the baked image the same picture.
- */
+/** 通过调用方的颜色解析器构造 Shader 参数，避免纯参数模块依赖渲染库。 */
 export function articleGradientUniforms(
   gradient: ArticleGradient,
   toShaderColor: (hex: string) => number[],
@@ -153,12 +145,7 @@ export function articleGradientUniforms(
   };
 }
 
-/**
- * A plain CSS approximation of the same colours, used as the layer underneath the
- * generated image. It renders during SSR, covers the moment before the PNG
- * decodes, and is what the card falls back to if the image is ever missing — so a
- * failed generation degrades to a duller card rather than an empty grey box.
- */
+/** 以同一组主题颜色生成静态 CSS 渐变，供 Shader 不可用或动画停用时显示。 */
 export function articleGradientCss(gradient: ArticleGradient): string {
   const [first, second, third, fourth] = gradient.colors;
   // The last entry of a family is always the page colour, so it is the base the

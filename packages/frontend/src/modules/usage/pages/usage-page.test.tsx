@@ -23,6 +23,17 @@ const fixture = vi.hoisted(() => ({
 }));
 
 vi.mock("@/shared/api/use-query-events", () => ({ useQueryEvents: () => {} }));
+vi.mock("@/shared/api/runtime-queries", () => ({
+  listRuntimesOptions: () => ({
+    queryKey: ["runtimes"],
+    queryFn: async () => ({
+      resources: [
+        { id: "qoder", models: [{ id: "dfmodel", name: "DeepSeek-Flash" }] },
+      ],
+    }),
+  }),
+}));
+
 vi.mock("../api/usage-queries", () => ({
   usageSummaryOptions: () => ({
     queryKey: ["usage-summary"],
@@ -60,14 +71,14 @@ function deferred() {
   return { promise, resolve };
 }
 
-function openPage() {
+function openPage(search = "timezone=UTC") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, retryDelay: 0 } },
   });
   const page = () => (
     <QueryClientProvider client={client}>
       <UsagePage
-        search={new URLSearchParams("timezone=UTC")}
+        search={new URLSearchParams(search)}
         onSearchChange={() => {}}
       />
     </QueryClientProvider>
@@ -152,4 +163,15 @@ it("retains the published overview and rows when replacement groups fail", async
   expect(screen.getByText("retained row")).toBeInTheDocument();
   expect(screen.getByText("11")).toBeInTheDocument();
   expect(screen.queryByText("22")).not.toBeInTheDocument();
+});
+
+it("uses the existing runtime directory to label model statistics", async () => {
+  fixture.groups.mockResolvedValue({
+    ...page("old", "dfmodel"),
+    groups: [
+      { key: "dfmodel", provider: "qoder", metrics: { invocations: 1 } },
+    ],
+  });
+  openPage("timezone=UTC&groupBy=model");
+  expect(await screen.findByText("qoder / DeepSeek-Flash")).toBeInTheDocument();
 });

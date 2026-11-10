@@ -420,7 +420,7 @@ export function SkillDetailPage() {
                 )}
               </DetailSection>
             )}
-            {/* 文件与版本是本项目在 OpenBot 文档区上的明确扩展，切换保留未提交内容。 */}
+            {/* 文档、文件与版本共用详情区域，切换保留未提交内容。 */}
             <section className="min-w-0 space-y-4">
               <div className="min-w-0 overflow-x-auto">
                 <SegmentedControl

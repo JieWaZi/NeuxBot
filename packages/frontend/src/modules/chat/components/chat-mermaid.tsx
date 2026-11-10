@@ -76,18 +76,18 @@ function Diagram({ fullscreen, svg }: { fullscreen?: boolean; svg: string }) {
     const naturalHeight = viewBox?.[3] ?? 0;
     if (!(naturalWidth > 0 && naturalHeight > 0)) return;
 
-    // 基准尺寸只取 SVG 坐标和可用视口，不能测量已被 zoom 改变的元素。
+    // 视口无边框，使用不随滚动条变化的外尺寸，避免 zoom → 滚动条 → 重新 fit 的反馈。
     const measureDiagram = () => {
       const style = getComputedStyle(scroll);
       const availableWidth =
-        scroll.clientWidth -
+        scroll.offsetWidth -
         (Number.parseFloat(style.paddingLeft) || 0) -
         (Number.parseFloat(style.paddingRight) || 0);
       if (availableWidth <= 0) return;
       let scale = Math.min(1, availableWidth / naturalWidth);
       if (fullscreen) {
         const availableHeight =
-          scroll.clientHeight -
+          scroll.offsetHeight -
           (Number.parseFloat(style.paddingTop) || 0) -
           (Number.parseFloat(style.paddingBottom) || 0);
         if (availableHeight <= 0) return;
@@ -107,7 +107,7 @@ function Diagram({ fullscreen, svg }: { fullscreen?: boolean; svg: string }) {
       return () => window.removeEventListener("resize", measureDiagram);
     }
     const observer = new ResizeObserver(measureDiagram);
-    observer.observe(scroll);
+    observer.observe(scroll, { box: "border-box" });
     return () => observer.disconnect();
   }, [fullscreen, svg, visible]);
 

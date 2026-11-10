@@ -200,15 +200,37 @@ it("目录条目只保留名称和说明，详情链接保留资源搜索上下�
   expect(screen.getByText("生成通用议程和材料清单")).toBeVisible();
   expect(screen.queryByText("版本 1")).not.toBeInTheDocument();
   expect(screen.queryByText("全部工作流")).not.toBeInTheDocument();
-  expect(
-    screen.queryByRole("button", { name: /更多操作/ }),
-  ).not.toBeInTheDocument();
   await user.click(link);
   expect(
     JSON.parse(screen.getByRole("status").textContent ?? "{}").state,
   ).toEqual({
     resourceBack: "/resources?category=workflows&search=周会",
   });
+});
+
+it("工作流详情操作保留资源搜索上下文", async () => {
+  const user = userEvent.setup();
+  renderList("/resources?category=workflows");
+  await screen.findByRole("heading", { name: "周会准备流程" });
+  await user.click(screen.getByRole("button", { name: "更多操作" }));
+  await user.click(screen.getByRole("menuitem", { name: "详情" }));
+  expect(screen.getByRole("status")).toHaveTextContent("/workflows/flow");
+  expect(
+    JSON.parse(screen.getByRole("status").textContent ?? "{}").state,
+  ).toEqual({ resourceBack: "/resources?category=workflows" });
+});
+
+it("工作流删除操作打开确认弹窗", async () => {
+  const user = userEvent.setup();
+  renderList("/resources?category=workflows");
+  await screen.findByRole("heading", { name: "周会准备流程" });
+  await user.click(screen.getByRole("button", { name: "更多操作" }));
+  await user.click(screen.getByRole("menuitem", { name: "删除" }));
+  const dialog = await screen.findByRole("dialog");
+  expect(dialog).toHaveTextContent("删除工作流");
+  expect(dialog).toHaveTextContent(
+    "删除定义并保留版本与运行记录。请先停止未结束的运行，并移除关联的自动任务。",
+  );
 });
 
 it("首次加载保留搜索并使用目录行骨架，失败提供重试而不显示空库", async () => {

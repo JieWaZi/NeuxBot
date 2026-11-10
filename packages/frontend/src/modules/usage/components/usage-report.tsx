@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type {
   GetUsageSummaryResponse as Summary,
   ListUsageGroupsResponse,
+  ListRuntimesResponse,
 } from "@/shared/api/generated/types.gen";
 import { Button } from "@/shared/ui/button";
 import {
@@ -105,6 +106,7 @@ export function UsageReport({
   groupBy,
   groups,
   names,
+  runtimes = [],
   totalGroups,
   more,
   loading,
@@ -113,6 +115,7 @@ export function UsageReport({
   groupBy: UsageGroupBy;
   groups: readonly Group[];
   names: ReadonlyMap<string, string>;
+  runtimes?: NonNullable<ListRuntimesResponse["resources"]>;
   totalGroups: number;
   more: boolean;
   loading: boolean;
@@ -143,7 +146,12 @@ export function UsageReport({
             const label = group.key
               ? groupBy === "waker"
                 ? (names.get(group.key) ?? group.key)
-                : group.key
+                : groupBy === "model"
+                  ? runtimes
+                      .find((runtime) => runtime.id === group.provider)
+                      ?.models?.find((model) => model.id === group.key)?.name ||
+                    group.key
+                  : group.key
               : t("unknown");
             return (
               <TableRow key={JSON.stringify([group.provider, group.key])}>

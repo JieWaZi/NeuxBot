@@ -76,7 +76,7 @@ async function createWindow(): Promise<BrowserWindow> {
     minHeight: 600,
     show: false,
     titleBarStyle: "hidden",
-    // OpenBot v0.62.0/fcb35746 原生窗口几何：38px 区域顶行对应 traffic lights x12/y13。
+    // 原生窗口几何：38px 区域顶行对应 traffic lights x12/y13。
     trafficLightPosition: { x: 12, y: 13 },
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),

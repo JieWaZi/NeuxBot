@@ -1374,7 +1374,12 @@ export function AIAccountsSection({
                       ? "systemSignedOut"
                       : runtime.auth === "ok"
                         ? "systemConnected"
-                        : "systemAuthUnknown",
+                        : (runtime.baseRuntimeId || runtime.id) === "pi" &&
+                            runtime.state === "ready" &&
+                            runtime.models?.length === 0 &&
+                            !runtime.diagnostics?.length
+                          ? "systemModelsUnconfigured"
+                          : "systemAuthUnknown",
                   )
             }
           >

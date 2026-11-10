@@ -31,7 +31,6 @@ function persistedState() {
     mint,
   );
   return {
-    version: 2,
     state: {
       tabs: split.tabs,
       layout: split.layout,
@@ -43,7 +42,7 @@ function persistedState() {
   };
 }
 
-describe("工作台 v2 状态恢复", () => {
+describe("工作台状态恢复", () => {
   it("首条接纳绑定正式 Chat 时保留工具身份、布局和选择并保存正式范围", () => {
     const store = new WorkbenchStore();
     const draft = "draft:workflow:first";
@@ -70,8 +69,8 @@ describe("工作台 v2 状态恢复", () => {
     expect(reopened.layout).toEqual(before.layout);
     expect(reopened.width).toBe(520);
     expect(reopened.customWidth).toBe(true);
-    expect(localStorage.getItem(`ally.right-workbench.v2.${draft}`)).toBeNull();
-    localStorage.removeItem(`ally.right-workbench.v2.${chat}`);
+    expect(localStorage.getItem(`ally.right-workbench.${draft}`)).toBeNull();
+    localStorage.removeItem(`ally.right-workbench.${chat}`);
   });
   it("恢复固定内容及所选工具时保持不可关闭规则", () => {
     const content = reduceWorkbench(emptyWorkbenchState(), {
@@ -84,7 +83,7 @@ describe("工作台 v2 状态恢复", () => {
       title: "工具",
       newTab: true,
     });
-    const restored = restoreWorkbenchState({ version: 2, state: tools });
+    const restored = restoreWorkbenchState({ state: tools });
     expect(restored).toBeDefined();
     if (!restored) return;
     expect(restored.tabs[0]?.closeable).toBe(false);
@@ -116,7 +115,6 @@ describe("工作台 v2 状态恢复", () => {
     };
     expect(
       restoreWorkbenchState({
-        version: 2,
         state: {
           ...content,
           tabs: [tab, duplicate],
@@ -169,9 +167,9 @@ describe("工作台 v2 状态恢复", () => {
     ).toBe(persisted.state.tabs[0]?.id);
   });
 
-  it("拒绝旧版和重复节点、遗漏标签、失效焦点", () => {
+  it("拒绝损坏结构和重复节点、遗漏标签、失效焦点", () => {
     const persisted = persistedState();
-    expect(restoreWorkbenchState({ ...persisted, version: 1 })).toBeUndefined();
+    expect(restoreWorkbenchState({ state: null })).toBeUndefined();
     expect(
       restoreWorkbenchState({
         ...persisted,

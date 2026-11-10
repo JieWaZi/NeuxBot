@@ -1,7 +1,10 @@
 import type { AllyChatMessage } from "./chat-projection";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { messageCompanionActivity } from "./companion-activity";
-import { companionPresentation } from "@/shared/companion/playback";
+import {
+  companionPlayback,
+  companionPresentation,
+} from "@/shared/companion/playback";
 
 afterEach(() => vi.useRealTimers());
 
@@ -21,12 +24,40 @@ function message(
 }
 
 describe("消息驱动形象", () => {
-  it("准备期间持续显示环绕圈圈，原生接纳后才进入思考", () => {
+  it("准备期间播放原生彗星，原生接纳后才进入思考", () => {
     const pending = messageCompanionActivity(message([], "pending", true));
-    expect(companionPresentation(pending).state).toBe("swirl");
+    expect(companionPresentation(pending).state).toBe("comet");
     const accepted = messageCompanionActivity(message([]));
     expect(companionPresentation(accepted).motion).toBe("thinking");
     expect(companionPresentation(accepted).state).toBe("thinking");
+  });
+  it("首次发送从准备直接进入思考、工具和回复，完成前不插入空闲", () => {
+    const stages = [
+      message([], "pending", true),
+      message([]),
+      message([{ type: "reasoning", text: "规划" }]),
+      message([tool("execute_command")]),
+      message([tool("search_web")]),
+      message([{ type: "text", text: "答复" }]),
+      message([{ type: "text", text: "答复" }], "completed"),
+    ];
+    expect(
+      stages.map(
+        (stage) => companionPlayback(messageCompanionActivity(stage), 0).state,
+      ),
+    ).toEqual([
+      "comet",
+      "thinking",
+      "thinking",
+      "thinking",
+      "egg",
+      "play",
+      "burst",
+    ]);
+    expect(
+      companionPlayback(messageCompanionActivity(message([], "completed")), 2.7)
+        .state,
+    ).toBe("idle");
   });
   it("会话等待与停止只影响最新消息，历史消息即使保留 running 也保持空闲", () => {
     const messages = [

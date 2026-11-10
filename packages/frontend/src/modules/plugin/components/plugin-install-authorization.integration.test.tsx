@@ -310,6 +310,33 @@ it.each(["show-qr", "open-url"])(
   },
 );
 
+it("continues the initial authorization when a plugin event replaces its pending account read", async () => {
+  preferredAction = "show-qr";
+  let finish: (() => void) | undefined;
+  let reads = 0;
+  server.use(
+    http.get(`${base}/plugins/plugin-1/account`, async ({ request }) => {
+      await record(request);
+      if (++reads === 1)
+        await new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+      return HttpResponse.json(account());
+    }),
+  );
+  show();
+  fireEvent.click(await screen.findByRole("button", { name: "继续" }));
+  await waitFor(() => expect(finish).toBeDefined());
+  await act(async () => resync());
+  await waitFor(() => expect(reads).toBeGreaterThan(1));
+  await act(async () => finish?.());
+  await waitFor(() => expect(starts()).toHaveLength(1));
+  expect(
+    await screen.findByRole("button", { name: "刷新二维码" }),
+  ).toBeVisible();
+  expect(installs()).toHaveLength(0);
+});
+
 it("clears the first start failure after a successful retry", async () => {
   let attempt = 0;
   server.use(

@@ -997,3 +997,36 @@ it.each([
   expect(await screen.findByText(label)).toBeVisible();
   expect(screen.getByText("当前账号")).toBeVisible();
 });
+
+it("Pi 空目录明确提示配置账号和模型", async () => {
+  renderAccounts({
+    id: "pi",
+    baseRuntimeId: "pi",
+    installed: true,
+    auth: "unknown",
+    state: "ready",
+    models: [],
+  });
+  expect(
+    await screen.findByText("尚无可用模型，请配置账号或模型"),
+  ).toBeVisible();
+  expect(screen.queryByText("登录状态未确认")).not.toBeInTheDocument();
+});
+
+it("Pi 探测失败不冒充未配置", async () => {
+  renderAccounts({
+    id: "pi",
+    baseRuntimeId: "pi",
+    installed: true,
+    auth: "unknown",
+    state: "ready",
+    models: [],
+    diagnostics: [
+      { code: "ACP_OPTIONS_UNAVAILABLE", level: "warning", message: "timeout" },
+    ],
+  });
+  expect(await screen.findByText("登录状态未确认")).toBeVisible();
+  expect(
+    screen.queryByText("尚无可用模型，请配置账号或模型"),
+  ).not.toBeInTheDocument();
+});

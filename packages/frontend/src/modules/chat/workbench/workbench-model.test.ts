@@ -18,6 +18,82 @@ function mintSequence() {
 }
 
 describe("right workbench tab domain", () => {
+  it("不同网站分别开标签，再次打开已有网址只聚焦且不重新导航", () => {
+    const mint = mintSequence();
+    const first = reduceWorkbench(
+      emptyWorkbenchState(),
+      {
+        type: "open-browser",
+        title: "浏览器",
+        url: "https://example.com/one",
+      },
+      mint,
+    );
+    const firstTab = first.tabs[0];
+    if (!firstTab) throw new Error("缺少第一个浏览器标签");
+    const second = reduceWorkbench(
+      first,
+      {
+        type: "open-browser",
+        title: "浏览器",
+        url: "https://example.com/two",
+      },
+      mint,
+    );
+    expect(second.tabs).toHaveLength(2);
+    expect(second.tabs[0]).toBe(firstTab);
+    expect(second.tabs[1]?.url).toBe("https://example.com/two");
+    const reopened = reduceWorkbench(
+      second,
+      {
+        type: "open-browser",
+        title: "浏览器",
+        url: "https://example.com/one",
+      },
+      mint,
+    );
+    expect(reopened.tabs).toHaveLength(2);
+    expect(focusedTabId(reopened)).toBe(firstTab.id);
+    expect(reopened.tabs[0]).toBe(firstTab);
+    expect(reopened.tabs[0]?.navigationRevision).toBe(
+      firstTab.navigationRevision,
+    );
+  });
+  it("首次打开链接复用当前空白标签，显式新建仍产生独立标签", () => {
+    const mint = mintSequence();
+    const blank = reduceWorkbench(
+      emptyWorkbenchState(),
+      {
+        type: "open-browser",
+        title: "新标签页",
+        newTab: true,
+      },
+      mint,
+    );
+    const opened = reduceWorkbench(
+      blank,
+      {
+        type: "open-browser",
+        title: "浏览器",
+        url: "https://example.com/",
+      },
+      mint,
+    );
+    expect(opened.tabs).toHaveLength(1);
+    expect(opened.tabs[0]?.id).toBe(blank.tabs[0]?.id);
+    const duplicate = reduceWorkbench(
+      opened,
+      {
+        type: "open-browser",
+        title: "浏览器",
+        url: "https://example.com/",
+        newTab: true,
+      },
+      mint,
+    );
+    expect(duplicate.tabs).toHaveLength(2);
+  });
+
   it("同一工作台更新内容贡献身份时仍只保留一个固定画布", () => {
     const mint = mintSequence();
     const first = reduceWorkbench(
