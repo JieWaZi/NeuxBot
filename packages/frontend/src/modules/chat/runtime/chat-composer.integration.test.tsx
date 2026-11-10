@@ -2422,15 +2422,26 @@ describe("chat composer", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("我")).not.toBeInTheDocument();
     expect(container.querySelector('img[src="/ally-logo.png"]')).toBeNull();
-    expect(screen.getByText("测试伙伴")).toBeInTheDocument();
+    const userMessage = container.querySelector(
+      '[data-message-id="user-layout"]',
+    );
+    const assistantMessage = container.querySelector(
+      '[data-message-id="assistant-layout"]',
+    );
+    expect(userMessage).not.toBeNull();
+    expect(
+      userMessage?.querySelector("[data-companion-avatar], img, time"),
+    ).toBeNull();
+    expect(
+      assistantMessage?.querySelector("[data-companion-avatar]"),
+    ).toBeVisible();
+    expect(screen.queryByText("测试伙伴")).not.toBeInTheDocument();
     const timestamps = container.querySelectorAll("time");
     expect(timestamps).toHaveLength(1);
-    expect(timestamps[0]?.parentElement).toHaveClass(
-      "grid",
-      "justify-items-start",
-    );
+    expect(assistantMessage).toContainElement(timestamps.item(0));
+    expect(timestamps[0]?.closest("footer")).not.toBeNull();
     const userMarkdown = container.querySelector('[data-chat-markdown="user"]');
-    expect(userMarkdown?.closest(".bg-surface-tertiary")).not.toBeNull();
+    expect(userMarkdown?.closest(".bg-user-message-background")).not.toBeNull();
     expect(userMarkdown?.closest(".bg-primary")).toBeNull();
   });
 

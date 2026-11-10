@@ -622,11 +622,11 @@ describe("chat markdown", () => {
         }
       },
     );
-    const clientWidth = vi
-      .spyOn(HTMLElement.prototype, "clientWidth", "get")
+    const offsetWidth = vi
+      .spyOn(HTMLElement.prototype, "offsetWidth", "get")
       .mockImplementation(() => viewportWidth);
-    const clientHeight = vi
-      .spyOn(HTMLElement.prototype, "clientHeight", "get")
+    const offsetHeight = vi
+      .spyOn(HTMLElement.prototype, "offsetHeight", "get")
       .mockReturnValue(600);
     // jsdom 没有布局引擎：模拟 SVG 受父容器 max-width 与 transform 影响后的尺寸。
     const bounds = vi
@@ -681,8 +681,8 @@ describe("chat markdown", () => {
     } finally {
       layoutStyles.remove();
       bounds.mockRestore();
-      clientWidth.mockRestore();
-      clientHeight.mockRestore();
+      offsetWidth.mockRestore();
+      offsetHeight.mockRestore();
       getMermaid.mockRestore();
     }
   });

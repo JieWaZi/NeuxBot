@@ -375,7 +375,11 @@ describe("团队首发完整路由交接", () => {
         }),
       );
       expect(screen.getByText(text)).toBeVisible();
-      expect(view.container.querySelector(".agent-grid-spinner")).toBeVisible();
+      const activeAvatar = () =>
+        view.container.querySelector(
+          '[data-chat-scroll-viewport] [data-role="assistant"] svg[data-companion-avatar]:not([data-activity="idle"])',
+        );
+      expect(activeAvatar()).toHaveAttribute("data-activity", "connecting");
 
       const frames: Array<{
         loading: boolean;
@@ -393,7 +397,7 @@ describe("团队首发完整路由交接", () => {
               .querySelector("[data-chat-scroll-viewport]")
               ?.textContent?.includes(text),
           ),
-          running: Boolean(view.container.querySelector(".agent-grid-spinner")),
+          running: Boolean(activeAvatar()),
           composer: Boolean(view.container.querySelector('[role="textbox"]')),
         });
       const observer = new MutationObserver(observe);
@@ -419,9 +423,7 @@ describe("团队首发完整路由交接", () => {
           ),
         );
         expect(screen.getByText(text)).toBeVisible();
-        expect(
-          view.container.querySelector(".agent-grid-spinner"),
-        ).toBeVisible();
+        expect(activeAvatar()).toBeVisible();
         expect(
           frames.filter(
             (frame) =>
@@ -499,10 +501,7 @@ describe("团队首发完整路由交接", () => {
           await screen.findByText("负责人的真实回复", {}, { timeout: 5_000 }),
         ).toBeVisible();
         expect(screen.getAllByText(text)).toHaveLength(1);
-        if (status === "completed")
-          expect(
-            view.container.querySelector(".agent-grid-spinner"),
-          ).toBeNull();
+        if (status === "completed") expect(activeAvatar()).toBeNull();
       } finally {
         observer.disconnect();
         view.unmount();
