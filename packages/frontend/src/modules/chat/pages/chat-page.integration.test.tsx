@@ -2350,10 +2350,18 @@ describe("ChatPage", () => {
 
     await waitFor(() => expect(onCreateThread).toHaveBeenCalledTimes(1));
     expect(screen.getByText("开始工作")).toBeVisible();
-    expect(screen.getByText("正在准备会话")).toBeVisible();
     expect(
-      screen.getByText("团队负责人", { selector: "span.type-body" }),
+      document.querySelector(
+        '[data-chat-scroll-viewport] [data-role="assistant"] svg[data-companion-avatar]',
+      ),
+    ).toHaveAttribute("data-activity", "connecting");
+    expect(
+      document.querySelector('[data-chat-primary-action="stop"]'),
     ).toBeVisible();
+    expect(screen.getByRole("tab", { name: "团队负责人" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     expect(screen.queryByText("把目标交给团队负责人")).not.toBeInTheDocument();
     expect(
       document.querySelector('[role="status"][aria-busy="true"]'),
@@ -2827,7 +2835,9 @@ describe("ChatPage", () => {
             .querySelector("[data-chat-primary-action]")
             ?.getAttribute("data-chat-primary-action") ?? null,
         working: Boolean(
-          container.querySelector("[data-chat-activity-status]"),
+          container.querySelector(
+            '[data-chat-scroll-viewport] svg[data-companion-avatar][data-activity]:not([data-activity="idle"])',
+          ),
         ),
       }));
       await user.click(screen.getByRole("button", { name: "发送消息" }));
@@ -2836,8 +2846,13 @@ describe("ChatPage", () => {
         expect(screen.getByText("修复首条消息闪屏")).toBeVisible(),
       );
       expect(
-        container.querySelector("[data-chat-activity-status]"),
-      ).toBeVisible();
+        container.querySelector(
+          "[data-chat-scroll-viewport] svg[data-companion-avatar]",
+        ),
+      ).toHaveAttribute(
+        "data-activity",
+        expect.stringMatching(/^(connecting|thinking)$/),
+      );
       expect(
         screen.queryByRole("heading", { name: "今天想一起完成什么？" }),
       ).not.toBeInTheDocument();
@@ -2853,7 +2868,13 @@ describe("ChatPage", () => {
         }),
       );
       expect(screen.getByText("修复首条消息闪屏")).toBeVisible();
-      expect(screen.getByText("飞速运转")).toBeVisible();
+      await waitFor(() =>
+        expect(
+          container.querySelector(
+            "[data-chat-scroll-viewport] svg[data-companion-avatar]",
+          ),
+        ).toHaveAttribute("data-activity", "thinking"),
+      );
       expect(
         container.querySelector('[role="status"][aria-busy="true"]'),
       ).not.toBeInTheDocument();
@@ -3178,7 +3199,8 @@ describe("ChatPage", () => {
     ).toBeVisible();
   });
 
-  it("执行正在等待工具授权时展示等待审批状态", async () => {
+  it("执行等待工具授权时保留可操作的审批卡", async () => {
+    const user = userEvent.setup();
     chatActiveExecutionID.current = "execution-1";
     chatPendingApprovals.current = [
       {
@@ -3214,18 +3236,17 @@ describe("ChatPage", () => {
       </QueryClientProvider>,
     );
 
-    const status = await waitFor(() => {
-      const element = document.querySelector<HTMLElement>(
-        "[data-chat-activity-status]",
-      );
-      if (!element) throw new Error("chat activity status not found");
-      expect(element).toHaveTextContent("等待审批");
-      return element;
-    });
-    expect(status.querySelector(".bg-warning")).toHaveClass(
-      "block",
-      "size-1.5",
-    );
+    const allow = await screen.findByRole("button", { name: /允许本次/ });
+    const card = allow.closest("[data-chat-approval-card]");
+    expect(card).toBeVisible();
+    expect(card).toHaveTextContent("等待审批");
+    expect(card).toHaveTextContent("允许执行命令吗？");
+    expect(allow).toBeEnabled();
+    expect(screen.getByRole("button", { name: /拒绝/ })).toBeEnabled();
+    await user.click(allow);
+    await waitFor(() => expect(resolveApproval).toHaveBeenCalledOnce());
+    expect(await screen.findByText("结果确认中")).toBeVisible();
+    expect(allow).toBeDisabled();
   });
 
   it("审批提交失败后允许重试，成功后才进入结果确认中", async () => {
@@ -4810,7 +4831,7 @@ describe("ChatPage", () => {
 
     await waitFor(() => expect(container.querySelector("pre")).not.toBeNull());
     const markdown = container.querySelector('[data-chat-markdown="user"]');
-    const bubble = markdown?.closest(".bg-surface-tertiary");
+    const bubble = markdown?.closest(".bg-user-message-background");
     expect(bubble?.parentElement).toHaveClass("min-w-0", "max-w-[78%]");
     expect(bubble).toHaveClass("min-w-0", "max-w-full");
     expect(markdown).toHaveClass(

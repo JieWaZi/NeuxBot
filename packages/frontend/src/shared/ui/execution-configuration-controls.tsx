@@ -47,6 +47,7 @@ export function ExecutionConfigurationControls({
             model: "",
             reasoning: "",
             fast: undefined,
+            contextWindow: undefined,
           })
         }
       />

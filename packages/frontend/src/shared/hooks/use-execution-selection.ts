@@ -362,14 +362,16 @@ export function useExecutionSelection({
               : !nativeSelection?.modelListed
                 ? "catalogModelUnavailable"
                 : undefined;
-  const error =
-    runtimesQuery.error || accountsQuery.error || catalogQuery.error;
+  const runtimeError = fixedRuntime ? null : runtimesQuery.error;
+  const accountError = accountId === "system" ? null : accountsQuery.error;
+  const error = runtimeError || accountError || catalogQuery.error;
   const loading =
-    (!fixedRuntime && runtimesQuery.isPending) || accountsQuery.isPending;
+    (!fixedRuntime && runtimesQuery.isPending) ||
+    (accountId !== "system" && accountsQuery.isPending);
   const configurationValid =
     !loading &&
-    !runtimesQuery.error &&
-    !accountsQuery.error &&
+    !runtimeError &&
+    !accountError &&
     (nativeSelection
       ? nativeSelection.configurationValid
       : Boolean(

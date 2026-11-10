@@ -1,11 +1,21 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import {
+  act,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { client } from "@/shared/api/generated/client.gen";
+import { listRuntimesOptions } from "@/shared/api/runtime-queries";
+import { withLocalErrorSurface } from "@/shared/api/local-error-surface";
+import { ExecutionConfigurationControls } from "@/shared/ui/execution-configuration-controls";
 import {
   useExecutionSelection,
   useNativeExecutionSelections,
@@ -967,3 +977,164 @@ it("缺少凭据的兼容账号仍不能执行", async () => {
   );
   expect(result.current.valid).toBe(false);
 });
+
+it("系统账号不被无关账号目录的加载或失败阻断", async () => {
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  server.use(
+    http.get(`${origin}/api/v1/ai-accounts`, async () => {
+      await pending;
+      return HttpResponse.json({ code: "DATABASE_ERROR" }, { status: 503 });
+    }),
+  );
+  const { result } = selection({ runtimeId: "codex", accountId: "system" });
+  try {
+    await waitFor(() => expect(result.current.catalogState).toBe("fresh"));
+    expect(result.current.accountsQuery.isPending).toBe(true);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.valid).toBe(true);
+  } finally {
+    release();
+  }
+  await waitFor(() => expect(result.current.accountsQuery.isError).toBe(true));
+  expect(result.current.error).toBeNull();
+  expect(result.current.loading).toBe(false);
+  expect(result.current.configurationValid).toBe(true);
+  expect(result.current.valid).toBe(true);
+});
+
+it("已选受管账号仍等待账号目录并保留读取失败边界", async () => {
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  server.use(
+    http.get(`${origin}/api/v1/ai-accounts`, async () => {
+      await pending;
+      return HttpResponse.json({ code: "DATABASE_ERROR" }, { status: 503 });
+    }),
+  );
+  const { result } = selection({ runtimeId: "codex", accountId: "work" });
+  try {
+    await waitFor(() =>
+      expect(result.current.runtimesQuery.isSuccess).toBe(true),
+    );
+    expect(result.current.accountsQuery.isPending).toBe(true);
+    expect(result.current.loading).toBe(true);
+    expect(result.current.valid).toBe(false);
+  } finally {
+    release();
+  }
+  await waitFor(() => expect(result.current.accountsQuery.isError).toBe(true));
+  expect(result.current.error).toBe(result.current.accountsQuery.error);
+  expect(result.current.configurationValid).toBe(false);
+  expect(result.current.valid).toBe(false);
+});
+
+it("固定智能体不被共享智能体目录的既有错误阻断", async () => {
+  server.use(
+    http.get(`${origin}/api/v1/runtimes`, () =>
+      HttpResponse.json({ code: "DATABASE_ERROR" }, { status: 503 }),
+    ),
+  );
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  await queryClient
+    .fetchQuery(listRuntimesOptions(withLocalErrorSurface({})))
+    .catch(() => undefined);
+  const { result } = renderHook(
+    () =>
+      useExecutionSelection({
+        runtime: { id: "codex", enabled: true, defaultPermissionLevel: "auto" },
+        value: { runtimeId: "codex", accountId: "system" },
+      }),
+    {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      ),
+    },
+  );
+  await waitFor(() => expect(result.current.catalogState).toBe("fresh"));
+  await waitFor(() =>
+    expect(result.current.accountsQuery.isSuccess).toBe(true),
+  );
+  expect(result.current.runtimesQuery.isError).toBe(true);
+  expect(result.current.loading).toBe(false);
+  expect(result.current.error).toBeNull();
+  expect(result.current.configurationValid).toBe(true);
+  expect(result.current.valid).toBe(true);
+});
+
+function ConfigurationControlsFixture() {
+  const [value, setValue] = useState<ExecutionSelection>({
+    runtimeId: "codex",
+    accountId: "system",
+    model: "native",
+    reasoning: "high",
+    permissionLevel: "auto",
+    fast: true,
+    contextWindow: "1m",
+  });
+  const state = useExecutionSelection({ value });
+  return (
+    <>
+      <ExecutionConfigurationControls state={state} onChange={setValue} />
+      <output data-testid="configuration">{JSON.stringify(value)}</output>
+    </>
+  );
+}
+
+it.each(["runtime", "account"])(
+  "切换%s清除原选择的上下文窗口和Fast",
+  async (target) => {
+    server.use(
+      http.get(`${origin}/api/v1/runtimes`, () =>
+        HttpResponse.json({
+          resources: [
+            { id: "codex", enabled: true, name: "Codex" },
+            { id: "pi", enabled: true, name: "Pi" },
+          ],
+        }),
+      ),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ConfigurationControlsFixture />
+      </QueryClientProvider>,
+    );
+    const user = userEvent.setup();
+    await waitFor(() =>
+      expect(screen.getByTestId("composer-runtime-control")).toBeEnabled(),
+    );
+    expect(
+      JSON.parse(screen.getByTestId("configuration").textContent || "{}"),
+    ).toHaveProperty("contextWindow", "1m");
+    await user.click(screen.getByTestId("composer-runtime-control"));
+    await user.click(
+      screen.getByRole("menuitemradio", {
+        name: target === "runtime" ? /Pi/ : /Codex/,
+      }),
+    );
+    if (target === "account")
+      await user.click(screen.getByRole("menuitemradio", { name: "Work" }));
+    const configured: unknown = JSON.parse(
+      screen.getByTestId("configuration").textContent || "{}",
+    );
+    expect(configured).toMatchObject({
+      runtimeId: target === "runtime" ? "pi" : "codex",
+      accountId: target === "runtime" ? "system" : "work",
+      model: "",
+      reasoning: "",
+    });
+    expect(configured).not.toHaveProperty("fast");
+    expect(configured).not.toHaveProperty("contextWindow");
+  },
+);
