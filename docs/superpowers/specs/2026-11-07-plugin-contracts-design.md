@@ -11,7 +11,7 @@
 
 官方包说明支持根 `plugin.json`、`skills/`、`mcp.json` 与 `extensions.com.openai`；官方也允许兼容 overlay。本产品选择唯一根格式并移除 overlay 输入，属于 NeuxBot 的范围选择。每个 MCP 服务的认证声明位于该服务的 `extensions.com.openai.auth`，不能放到插件身份的 OpenAI 扩展中。[OpenAI 包说明](https://developers.openai.com/plugins/build/plugins)
 
-`com.neuxbot`、`.neuxbot` 和 `neuxbot-auth/1` 是本轮实现的 NeuxBot 自有扩展；`neuxbot-management/1` 是阶段二拟定协议名，尚未实现。不能把这些命名或下面的账号模型描述为 OpenAI、Agent Plugins 或 OpenBot 的现有协议。
+`com.neuxbot`、`.neuxbot` 和 `neuxbot-auth/1` 是本轮实现的 NeuxBot 自有扩展；`neuxbot-management/1` 是阶段二拟定协议名，尚未实现。不能把这些命名或下面的账号模型描述为 OpenAI 或 Agent Plugins 的现有协议。
 
 ## 2. 当前实现与职责
 

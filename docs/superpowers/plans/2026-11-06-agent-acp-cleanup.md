@@ -34,12 +34,12 @@
 
 ## 源码对照与边界结论
 
-固定 OpenBot `f44dbe116c89a944f8d7d085e092c967b3fce0df` 的 `src/backend/agent/developer-instructions.ts` 通过统一函数生成稳定指令；本地正式链路却只把指令写到工作区文件，`nativeThreadRequest` 没有交付 DeveloperInstructions。按本项目方案 4.2 节，当前改由相同原生 Session 入口消费稳定文本，历史接力保持原所有者。原生协议降级继续由 acp-go 决定。
+本地原正式链路只把指令写到工作区文件，`nativeThreadRequest` 没有交付 DeveloperInstructions。按本项目方案 4.2 节，当前改由相同原生 Session 入口消费稳定文本，历史接力保持原所有者。原生协议降级继续由 acp-go 决定。
 
 同版本 `src/main/managed-skill-service.ts` 在安装边界拒绝软链接并使用临时文件后 rename 发布。旧 `resources.go` 创建链接、清空整个发现目录，无法满足本项目方案 4.3 节。当前通过既有技能复制和摘要函数、安装清单及暂存回滚实现受管安装，不复制上游 Effect 状态或引入新连接对象。跨技能集合的清单与回滚属于本项目文件布局的实现约束，不声称是上游的原样算法。
 
 旧链接没有安装清单。首次准备只认领指向当前授权源或宿主明确给出的应用专有源根（system-skills、skills/versions、plugins/content）的链接，覆盖版本变化、Runtime 切换及停用。目录和无关用户链接不认领；内容源本身不被迁移删除。源根来自既有程序数据目录，不由模型或 HTTP 参数提供。以后只依据安装清单更新和删除，不重复扫描认领。
 
-CLI 授权协议属于本项目，不从 OpenBot 推导兼容规则；真实 CLI 回归证明无 `--context` 的隐式环境回退确实存在，再移除回退和注入。原生进程边界过滤继承的 `ALLYCLI_` 宿主配置，继续保留账号、插件及普通工具环境。
+CLI 授权协议由本项目维护，兼容规则以真实 CLI 为准；真实 CLI 回归证明无 `--context` 的隐式环境回退确实存在，再移除回退和注入。原生进程边界过滤继承的 `ALLYCLI_` 宿主配置，继续保留账号、插件及普通工具环境。
 
 未发现需在本工作包改写的 acp-go 生命周期；NeuxBot 通过现有直接 Client 合同消费它。未改独立仓库中的并行工作，发布版本和平台／真实模型验收不属于本次代码清理完成证明。

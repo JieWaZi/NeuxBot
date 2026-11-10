@@ -2,7 +2,7 @@
 
 > **For agentic workers:** Use superpowers:subagent-driven-development task-by-task. 用户已要求按照设计开发，直接实施，不另设审批步骤。
 
-**Goal:** 将已实现的集成导航及三级页，完整落实到获准的 OpenBot 设置 UI/UX 设计。
+**Goal:** 将已实现的集成导航及三级页，完整落实到获准的 本项目设置 UI/UX 设计。
 
 **Spec:** [设置与集成 UIUX 设计](../specs/2026-11-09-settings-integration-uiux-design.md)。该设计是本轮实施权威，早期迁移计划不覆盖它。
 

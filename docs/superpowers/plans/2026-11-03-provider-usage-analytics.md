@@ -23,7 +23,7 @@
 - SQL单表、有界日期和批次、稳定分页；金额不得用SQLite REAL求和，不加载全历史到内存。不启用WAL、不设置额外连接参数。
 - 三种耐久保证：未落盘receipt仅进程内可补写，崩溃后unknown；JSONL/journal任一耐久可重建索引；两源同ID/hash幂等，异hash拒绝。没有原生证据不能恢复未耐久Token。
 - 原生费用与Token独立scope/coverage/complete；缺baseline、发行方、实际模型、tier、TTL或逐请求阈值时不可估算；历史消费无法证明适用价格时不得回填。未知CLI保留partial，不开展无限来源研究。
-- 不复制OpenBot代码/价表；枚举、错误、API只通过对应命令生成。所有新增或修改Go结构体的全部字段有准确中文注释。
+- 价格以官方资料为准；枚举、错误、API只通过对应命令生成。所有新增或修改Go结构体的全部字段有准确中文注释。
 - 仅定向验证，不运行全量检查。此计划不授权真实账号/CLI/模型消费或浏览器、桌面操作；真实平台和视觉证据单列。任务完成不等于总体项目完成。
 
 ## Review Focus
@@ -114,7 +114,7 @@
 
 **Dependencies:** Tasks 1–3；模型计划提供真实service tier回执，缺失时不可推导。
 
-**Files:** Modify `server/internal/agent/native/{contract.go,connection.go}`及测试、`server/internal/agent/{contract.go,session.go}`及用量映射测试；Create `server/internal/usage/pricing.go`、`pricing_test.go`及版本化小目录数据（同包）；Modify receipt构造与相关测试。价格出处统一引用费用来源文档，不复制OpenBot价表。
+**Files:** Modify `server/internal/agent/native/{contract.go,connection.go}`及测试、`server/internal/agent/{contract.go,session.go}`及用量映射测试；Create `server/internal/usage/pricing.go`、`pricing_test.go`及版本化小目录数据（同包）；Modify receipt构造与相关测试。价格出处统一引用费用来源文档，价表使用官方版本化来源。
 
 **Interfaces:**
 

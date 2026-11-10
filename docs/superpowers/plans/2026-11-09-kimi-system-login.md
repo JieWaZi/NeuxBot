@@ -40,7 +40,7 @@
 
 ## 执行记录
 
-- 当前分支 `codex/openbot-ui-alignment` 有既存功能修改；按用户连续修复请求原处执行。
+- 当前分支 `当前工作分支` 有既存功能修改；按用户连续修复请求原处执行。
 - 本机 `kimi login --help` 确认设备码流程及 `--region`，未执行真实用户登录或打开浏览器。
 
 - Ruling: 本机 Kimi 2.0.2 使用 terminal 认证广告，现有 acp-go 不允许通过 Authenticate 调用 terminal 方法。改用已有隔离模型发现路径，官方 Kimi 2.x `session/new` 在创建会话前调用 `ensureAuthed`，作为实际认证回执。

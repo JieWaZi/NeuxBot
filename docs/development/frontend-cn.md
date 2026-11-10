@@ -86,7 +86,7 @@ app -> modules -> shared
 - 普通文字 Button 通过 `size="sm | md | lg"` 使用既有阶梯，普通页面操作和 Dialog 默认使用 `md`；资源目录、详情与表单按[角色矩阵](resource-ui-cn.md#2-组件角色与操作矩阵)选择共享变体及宿主上下文，不将同一个 catalog 尺寸当作所有操作规范。业务页面不得用 `h-*`、`text-*`、`px-*` 或 `rounded-*` 复刻按钮尺寸；
 - 普通文字 Button、Scene Tab 和分段控件外轨统一使用 `radius-control`，分段选项使用 `radius-control-inner`；只有圆形图标操作、头像、开关、状态点或显式 `shape="capsule"` 才使用全圆角；
 - 项目、记忆、技能、连接器、伙伴和团队等列表页必须复用 `ResourcePageSurface`、`ResourcePageHeader`、`ResourcePageToolbar`、`ResourcePageSearchField` 和 `ResourceCardGrid` 中适用的部分；日期范围与枚举筛选分别复用 `DateRangePicker` 和 `ResourceFilterSelect`；
-- 插件、技能、连接器的目录、详情与添加页，以及工作流资源目录，按[资源 UI 标准](resource-ui-cn.md)的固定来源、组件角色、Shell 和业务扩展实现；当前组件偏差以[源码审计](../discussions/openbot-ui-source-alignment-cn.md#6-资源界面的实施差异)单列，不从现有 React 值反推源端；
+- 插件、技能、连接器的目录、详情与添加页，以及工作流资源目录，按[资源 UI 标准](resource-ui-cn.md)的组件角色、Shell 和业务约束实现；验证边界见[界面核对](../discussions/workbench-ui-review-cn.md)；
 - 普通资源卡片网格按所属 Scene 内容容器使用三列、两列、单列的等分轨道响应，卡片不设置固定宽度；资源 catalog 浏览行另按专用规范，不能互套；不得使用会让不足三张的普通卡片自动拉伸为半屏的 `auto-fit`；
 - Scene 内页面的响应式判断以主内容容器的实际宽度为准，不能只使用 `sm:`、`md:`、`lg:`、`xl:` 等视口断点决定卡片列数或工具栏布局；侧栏、分屏和检查器都可能让 Scene 内容显著窄于窗口；
 - `html`、`body`、`#root` 必须填满并服从实际窗口尺寸，保持 `min-width: 0` 与 `min-height: 0`；桌面窗口最小尺寸属于 Electron 窗口配置，禁止通过 DOM 根节点固定最小宽高，否则会让全部容器查询在窄窗口中按错误尺寸计算；

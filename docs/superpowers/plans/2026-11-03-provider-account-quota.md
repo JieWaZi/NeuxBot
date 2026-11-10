@@ -14,7 +14,7 @@
 
 ## Global Constraints
 
-- 原生协议依据[核验记录](../../discussions/provider-runtime-parity/quota-protocol-cn.md)，不得复制OpenBot实现。
+- 原生协议依据[核验记录](../../discussions/provider-runtime-parity/quota-protocol-cn.md)，按原生协议独立实现。
 - GPT‑6.1 high子代理，定向测试，禁止继续派生、真实账号查询和UI控制。
 - 配额请求不接受token、任意URL、原生method或账号切换参数；身份只能来自当前LaunchLease。
 - 不创建模型Prompt、不自动消耗reset credit、不充值、不更换账号。
@@ -62,6 +62,7 @@
 **Files:** `server/internal/agent/native/management.go`及测试、`launch.go`/`registry.go`必要注入、`server/internal/agent/catalog.go`窄管理端口；`server/services/aiaccount/quota.go`及测试；`server/apis/runtime_options/quota.go`、router与测试；`server/global/config.go`装配；生成契约。
 
 **Interfaces:**
+
 - `native.Management.ReadQuota(ctx context.Context, request QuotaRequest) (quota.ReadResponse,error)`；QuotaRequest只含WorkspaceScope。按metadata决定是否临时NewSession，所有关闭沿原Management/LaunchLease可重试清理。
 - `AIAccountService.ReadQuota(ctx, runtimeID, accountID string, refresh bool)` 的实际环境/配置由装配端口读取，不让API重建租约逻辑。accountID使用现有`system`哨兵或受管32位ID，不以空值猜另一个账号。
 - `GET /runtimes/:runtimeId/quota?accountId=...` 读缓存或首次有界读取；`POST /runtimes/:runtimeId/quota/refresh`显式刷新。返回主体、status/reason、可空snapshot、observedAt、stale；HTTP/厂商失败不清空同主体旧snapshot。

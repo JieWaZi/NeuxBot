@@ -1,12 +1,12 @@
-# OpenBot 界面分阶段对齐执行计划
+# 工作台界面分阶段实施计划
 
 > 实施方式：根代理直接完成本轮修复，Terra 已执行原生 UI 核对。按最新授权提交并推送独立分支交接，当前仅执行第一阶段。
 
-**目标：** 复用现有左侧、中间、右侧、主区顶部 Tab 与右侧顶部 Tab，直接按 OpenBot 固定版本源码调整。先框架，再逐模块整改。
+**目标：** 复用现有左侧、中间、右侧、主区顶部 Tab 与右侧顶部 Tab，按本项目 UI 标准和共享组件调整。先框架，再逐模块整改。
 
-**基线：** `codex/provider-runtime-parity` 的 `3a10bc53a8f2fa06b3fb5213e163d3acdb70c002`；独立分支 `codex/openbot-ui-alignment`。保留当前 WIP，不复制原工作目录脏改动。
+**基线：** `codex/provider-runtime-parity` 的 `3a10bc53a8f2fa06b3fb5213e163d3acdb70c002`；独立分支 `当前工作分支`。保留当前 WIP，不复制原工作目录脏改动。
 
-**规格：** [设计与按钮确认表](../specs/2026-11-06-openbot-ui-alignment-design.md)、[固定版本源码对照](../../discussions/openbot-ui-source-alignment-cn.md)。
+**规格：** [设计与按钮确认表](../specs/2026-11-06-workbench-ui-design.md)、[工作台界面核对](../../discussions/workbench-ui-review-cn.md)。
 
 ## 全局约束
 
@@ -14,9 +14,9 @@
 - 按确认表最新结论实施；新发现的按钮位置、分组、作用域或显示条件不确定时，先给用户具体选项，等待确认再修改。
 - 复用现有组件、SceneChrome、Scene、workspace 与查询；不另建通用布局引擎、全局导航状态或第二份打开内容模型。
 - 数据、执行、授权、事件、原生内容身份和无关修改保持原所有者；普通布局变更不触发阅读、关闭、取消或重建。
-- 共享样式 Token 与组件是唯一尺寸／圆角／焦点入口。真实命中区至少 36px，不能互相覆盖；必要适配与源端差异明确记录。
+- 共享样式 Token 与组件是唯一尺寸／圆角／焦点入口。真实命中区至少 36px，不能互相覆盖；必要布局例外明确记录。
 - 本轮问题由根代理直接修复，按用户最新要求不再派子代理改代码；Terra 负责的原生 UI 验收与根代理的 Web 验收分别记录。
-- 本轮问题处理完成后，按最新授权提交并推送 `codex/openbot-ui-alignment` 交接；后续阶段仍需用户验收，不自动进入第二阶段。
+- 本轮问题处理完成后，按最新授权提交并推送 `当前工作分支` 交接；后续阶段仍需用户验收，不自动进入第二阶段。
 - 只跑定向检查；不运行 pnpm check、desktop check、全量测试或 go test ./...。
 
 ## 执行入口与当前边界
@@ -25,13 +25,13 @@
 
 第一阶段已存在未提交 WIP。逐项保留有依据的路由解析、有效目标回退和生命周期修复；被用户否定的全局顶栏、全局菜单与错误尺寸必须修正。过去的测试通过或内部审阅不等于源码对齐，也不等于用户验收。
 
-本计划中的路径未写仓库根时均相对 `packages/frontend/src`。新组件名称仅为实现建议；优先复用现有组件，不为对应源端名称机械复制整棵树。
+本计划中的路径未写仓库根时均相对 `packages/frontend/src`。新组件名称仅为实现建议；优先复用现有组件，不按外部组件名称机械拆分文件。
 
 ## 第一阶段：整体框架
 
 ### 任务 1：固定来源、操作确认与 WIP 整理
 
-- [x] **1.1 固定源码。** OpenBot v0.62.0 / fcb35746；核对安装包版本，保留二进制精确对应尚未证明的边界。
+- [x] **1.1 确认基线。** 核对已有工作台结构与共享样式；源码检查不替代真实界面验收。
 - [x] **1.2 核对实现。** 覆盖 WorkspaceShell／Frame、SidebarTopbar、PageRail、layout、页面覆盖、路径、会话和右面板；形成源码对照。
 - [x] **1.3 确认独有操作。** 用户确认 B01–B10；右下历史原位保留，全局打开内容菜单删除。
 - [x] **1.4 整理 WIP。** 核对 app-navigation-model、app-route-scene-model、资源分类参数及已有 owner-close 修复，保留真实业务行为与稳定 mountKey；不恢复旧的布局决策。
@@ -40,8 +40,6 @@
 ### 任务 2：调整既有框架与侧栏
 
 **主要文件：** `app/layout/partner-navigation-layout.tsx`、`partner-navigation-preferences.ts`、`entity-navigation.tsx`、`app-module-rail.tsx`、`resources-context-sidebar.tsx`、`shared/styles/index.css`、`theme.css`；必要的 `desktop/electron/main/index.ts`。
-
-**源端：** WorkspaceFrame、SidebarTopbar、PageRail、layout-constants、layout、window.css 和 page-rail.css；以源码对照所列固定提交为准。
 
 - [x] **2.1 对行为变化写定向失败用例。** 覆盖最小宽度 216px、有效旧宽度迁移、旧 collapsed 偏好忽略、无收起控件、Rail pin／unpin、设置／资源导航最小 220px、覆盖页隐藏 resizer，保持用户偏好与选择。
 - [x] **2.2 修正外框。** Rail 为整窗第一列；38px 区域顶行；主内容是统一底板。复用现有三栏及共享槽，不再跨全窗渲染 AppTitlebar。
@@ -53,8 +51,6 @@
 ### 任务 3：把现有主区／右侧顶部 Tab 调回所属区域
 
 **主要文件：** `app/layout/app-shell.tsx`、原 WIP `app-titlebar.tsx`、`shared/ui/scene-chrome-portal.tsx`、`scene-tab-strip.tsx`、`modules/chat/components/chat-workspace-surface.tsx`、`modules/chat/workbench/right-workbench.tsx`、`workbench-pane-canvas.tsx` 和其实际 Tab 组件。
-
-**源端：** ConversationHeader、ThreadHeader、ThreadMenu、SidePanel、PanelResizer、conversation-scope、side-panel.css。
 
 - [x] **3.1 保留行为覆盖并换测试入口。** 移除全局菜单后，用已有模块入口、所属聊天／右面板 Tab 触发原生命周期测试；不得删除原用例来消除失败。新增用户可见作用域回归，先确认失败。
 - [x] **3.2 删除错误入口。** 移除全局打开内容菜单及仅服务它的代码、文案、测试；保留 Scene 存储与原关闭／重命名命令。删除或重写错误的全局 AppTitlebar，不保留废弃 Router history。
@@ -68,11 +64,9 @@
 
 **主要文件：** `app/layout/app-shell.tsx`、现有布局和 SceneChrome、设置／资源页面及其已有路径元数据；仅在确有两个消费者时增加共享展示原语。
 
-**源端：** navigation、chat-history、SettingsPageFrame、SettingsDialogShell、MarketplaceHeader／nav stack。
-
 - [x] **4.1 实现确认的伙伴／团队访问历史。** 最多 50 条纯交互记录，正常新访问截断 forward，重复当前目标不追加，失效目标跳过。历史不记录所有 URL 和文件；进入设置详情 Back 优先明确父级。
 - [x] **4.2 页面覆盖接入。** 复用现有保持挂载的 Scene；设置、目录导航覆盖伙伴正文，保留左上操作；原内容 inert／aria-hidden，框架变化不增加请求或阅读副作用。
-- [x] **4.3 路径归所属页面。** 设置和资源详情按源端输出父级／当前项；一级目录不显示冗余路径；已有伙伴、资源与工作流层级采用真实 Query 名称、明确祖先 href 及列表条件。普通聊天保留身份／Tab，不通用塞 route label。
+- [x] **4.3 路径归所属页面。** 设置和资源详情展示真实父级／当前项；一级目录不显示冗余路径；已有伙伴、资源与工作流层级采用真实 Query 名称、明确祖先 href 及列表条件。普通聊天保留身份／Tab，不通用塞 route label。
 - [x] **4.4 定向回归。** 深链、含筛选返回、多层详情、名称迟到、删除目标、后台 Scene 名称变化、历史分支及替换；只跑涉及的页面／布局测试。
 
 ### 任务 5：保持内容身份并收敛实现
@@ -86,7 +80,7 @@
 ### 任务 6：真实对照、交付验收
 
 - [x] **6.1 检查实际受影响范围。** 定向测试、共享前端 typecheck、desktop ui:check、改动文件 ESLint／Prettier、docs:check、git diff --check。不运行项目总 check 或全量测试。
-- [x] **6.2 Computer Use 核对 Web 与 macOS。** 使用独立测试数据，按源端同一状态对照三栏、顶行、最小宽度、覆盖页面、主／右 Tab、历史、摘要／工作区和所有 +／更多菜单；不以截图反推实现。
+- [x] **6.2 Computer Use 核对 Web 与 macOS。** 使用独立测试数据，按相同状态核对三栏、顶行、最小宽度、覆盖页面、主／右 Tab、历史、摘要／工作区和所有 +／更多菜单；不以截图反推实现。
 - [ ] **6.3 核对容器与键盘。** 1440×900、1024×768、768×700，主内容 480／320px，长名称、浅暗主题；逐按钮检查命中区、显示条件、焦点和 native drag 区。没有源码或确认的额外位置先问用户。
 - [x] **6.4 更新实际规则与验收记录。** 只把已经落地的变化同步 UI／前端／相关架构文档，分别列自动化、平台、视觉、约束适配与未验证边界。
 - **6.5 独立分支交接。** 完成本轮修复与定向、真实 UI 验证后，按最新授权提交并 push 当前独立分支，记录提交、验证结果和剩余平台边界；不进入第二阶段。
@@ -103,14 +97,14 @@ Windows／Linux、原生窗口拖动、真实 PTY 与嵌入浏览器的完整回
 
 ### 任务 7：目录与已安装列表
 
-- [ ] 阅读 Marketplace、MarketplaceNav、apps／skills 列表、搜索／筛选／安装调用和全部相关样式；形成源端状态及 NeuxBot 字段映射。
+- [ ] 阅读 Marketplace、MarketplaceNav、apps／skills 列表、搜索／筛选／安装调用和全部相关样式；核对状态与 NeuxBot 字段映射。
 - [ ] 用户确认所有没有一一来源的动作位置；保留插件／技能／连接器现有分类、分页、伙伴启用与版本事实。
 - [ ] 迁移 ResourcePageSurface／Header／Toolbar 及相关 collection，使用居中内容、两列轻条目、窄容器单列；共享原语承载尺寸，修改实际对应的 UI 规则。
 - [ ] 针对分类、搜索、来源、空／错误、安装状态及返回条件跑定向测试和真实界面对照。
 
 ### 任务 8：详情与管理
 
-- [ ] 阅读源端身份／操作头、正文、信息及管理、返回、错误路径，逐个对应现有六类资源详情与插件设置弹窗。
+- [ ] 核对共享身份／操作头、正文、信息及管理、返回、错误路径，逐个对应现有六类资源详情与插件设置弹窗。
 - [ ] 保留只读插件组件、独立资源管理、共享配置、版本固定与伙伴启用；有争议操作先确认，不新增空壳试用能力。
 - [ ] 按状态完成详情、编辑、安装和返回路径，定向验证并交用户验收；通过后才提交第二阶段并进入第三阶段。
 
@@ -129,7 +123,7 @@ Windows／Linux、原生窗口拖动、真实 PTY 与嵌入浏览器的完整回
 
 ### 任务 9：入口、列表与工作区
 
-- [ ] 阅读源端实际 Workflows／Routines 调用，明确本项目 DSL、创作聊天、版本、运行、节点和检查器差异，确认独有动作位置。
+- [ ] 核对本项目工作流实际调用，明确本项目 DSL、创作聊天、版本、运行、节点和检查器差异，确认独有动作位置。
 - [ ] 统一现有工作流列表入口与旧分类兼容跳转，保留搜索、定义、revision、run 与创作 owner。
 - [ ] 调整既有 workflow-list／detail／run、canvas、chat-pane、detail-dock、node-inspector 的布局，不改执行、编译或连线规则。
 - [ ] 定向验证进入、创作、运行、历史、返回、面板与窄容器；用户验收后才提交并进入第四阶段。
@@ -140,14 +134,14 @@ Windows／Linux、原生窗口拖动、真实 PTY 与嵌入浏览器的完整回
 
 - [ ] 阅读 SettingsPageFrame、SettingsDialogShell、SettingsModal／ServerSettingsModal 及账号／服务商相关真实调用；不从截图推断同名业务。
 - [ ] 保留 general、ai-accounts、runtime-environments、integration-im、integration-api；分类搜索只过滤现有名称，账号与环境分开持有事实。
-- [ ] 调整已有 SettingsContextSidebar、SettingsGroup／Row 和各 section，使用源端 nav／path／content、分组行及容器换行；按钮新映射先确认，不加统一保存。
+- [ ] 调整已有 SettingsContextSidebar、SettingsGroup／Row 和各 section，使用导航／路径／正文、分组行及容器换行；按钮新映射先确认，不加统一保存。
 - [ ] 定向验证编辑、测试、登录错误、更新、Key／监听流程和真实浅暗／窄容器；用户验收后才提交并进入第五阶段。
 
 ## 第五阶段：其他模块逐个验收
 
 ### 任务 11：伙伴／团队、聊天、知识库、工作看板、自动任务、用量
 
-- [ ] 每次只选择一个模块，先固定源端组件、调用、样式覆盖和状态路径；无对应业务的按钮先确认，再将修改文件、行为和用例细化到当前任务。
+- [ ] 每次只选择一个模块，先核对共享组件、调用、样式覆盖和状态路径；无对应业务的按钮先确认，再将修改文件、行为和用例细化到当前任务。
 - [ ] 复用已落地三栏、区域顶栏及原模块查询，调整原有页面、列表、详情、编辑、错误和空状态；不改消息接纳、知识检索、调度和计量。
 - [ ] 聊天阶段逐项确认 runtime／账号／模型／权限选择迁移；右下独有历史入口保持用户已确认的位置，除非用户再次要求调整。
 - [ ] 每模块完成定向检查、真实对照和用户验收后才提交，再进入下一模块。

@@ -1,18 +1,18 @@
 # Claude、Cursor 账号与完整聊天链路验收
 
-本轮在已确认的 [隔离重建架构](../../superpowers/specs/2026-11-04-agentruntime-rebuild-design.md) 上接入 Claude 与 Cursor。固定 OpenBot 参考为 `f44dbe116c89a944f8d7d085e092c967b3fce0df`。Go 实现独立迁移其行为与职责，不复制受不同许可约束的 TypeScript 实现。
+本轮在已确认的 [隔离重建架构](../../superpowers/specs/2026-11-04-agentruntime-rebuild-design.md) 上接入 Claude 与 Cursor。Go 实现按原生协议与职责边界组织。
 
 ## 架构与来源
 
 普通聊天使用 `Execution → ThreadLifecycle/Turn → ProviderRuntime → 原生 Client`。账号服务冻结凭据主体、认证代次与模型配置；ProviderRuntime 独占真实进程、租约和资源释放。模型目录复用同一个 ProviderRuntime，不另起探测执行器。ThreadLifecycle 只管理公开聊天绑定、配置兼容和历史交接，Turn 拥有接纳、执行和终态。聊天引用唯一的规范原生终态，用量 SQLite 是可删除重建的查询投影。
 
-| OpenBot 实现依据 | 本轮迁移行为 | Go 落点 |
-| --- | --- | --- |
-| `agent/provider-runtime.ts`、`provider-drivers.ts` | 账号选择与进程资源生命周期一致；目录与执行使用同一凭据来源 | `internal/agent_next/provider_runtime.go`、`services/aiaccount` |
-| `claude-client.ts` 的 `openTurn` | 模型先于依赖的强度；应用失败不发送输入；再验证目标权限 | `session_settings.go`、acp-go Claude owning adapter |
-| `acp-client.ts`、`acp-configuration.ts` 与 Cursor flavor | ACP 会话与配置复用；Cursor 原生扩展目录、参数默认值和进程权限由 Cursor adapter 解释 | acp-go `acpclient`、`cursor` |
-| `agent/model-catalog.ts`、`agent/session-settings.ts` | 账号目录缓存、模型相关选项、明确默认／关闭／开启、同步设置与异步观察 | `model_catalog.go`、`session_settings.go` |
-| `database/conversation-writer.ts`、`database/agent-usage.ts` | 原生终态去重、已知值与缺失区分、按后端与模型分组 | `eventlog_next`、`services/usage` |
+| 本轮迁移行为                                                                        | Go 落点                                                         |
+| ----------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| 账号选择与进程资源生命周期一致；目录与执行使用同一凭据来源                          | `internal/agent_next/provider_runtime.go`、`services/aiaccount` |
+| 模型先于依赖的强度；应用失败不发送输入；再验证目标权限                              | `session_settings.go`、acp-go Claude owning adapter             |
+| ACP 会话与配置复用；Cursor 原生扩展目录、参数默认值和进程权限由 Cursor adapter 解释 | acp-go `acpclient`、`cursor`                                    |
+| 账号目录缓存、模型相关选项、明确默认／关闭／开启、同步设置与异步观察                | `model_catalog.go`、`session_settings.go`                       |
+| 原生终态去重、已知值与缺失区分、按后端与模型分组                                    | `eventlog_next`、`services/usage`                               |
 
 原生切换继续保留 NeuxBot 的最近五个完整对话轮次，或旧会话总结后交接。恢复原会话只发送本轮新增内容。没有通过恢复旧 Manager 实现兼容。
 
@@ -22,11 +22,11 @@ Claude 支持系统原生登录和受管 API 凭据。系统认证区分原生�
 
 Cursor 将登录主体、配置目录和会话数据目录分别处理。状态探测使用原生账号信息，额度读取在同一个令牌上先调用原生 Dashboard `GetMe` 核验主体，再查询额度。订阅额度与原生调用消费不相互替代。
 
-| 产品权限 | Claude | Cursor |
-| --- | --- | --- |
-| 默认权限 | 原生 `default` 审批模式 | 默认 ACP 进程权限 |
+| 产品权限 | Claude                        | Cursor                            |
+| -------- | ----------------------------- | --------------------------------- |
+| 默认权限 | 原生 `default` 审批模式       | 默认 ACP 进程权限                 |
 | 自动审批 | 原生模型明确支持时使用 `auto` | 当前原生 ACP 不支持，不展示为可选 |
-| 完全访问 | 原生 `bypassPermissions` | 原生 `--force` 对应的进程模式 |
+| 完全访问 | 原生 `bypassPermissions`      | 原生 `--force` 对应的进程模式     |
 
 Claude／Cursor 默认权限不宣称具有 Codex 的只读沙箱语义。独立的 `WorkspaceReadOnly` 请求在取得账号租约前拒绝。Claude 模型切换可能自动降级权限，因此模型设置回执中的 mode 与独立通知都纳入有效会话状态；冲突回执不能授权发送。
 
@@ -40,7 +40,7 @@ Claude 默认操作清除已经确认的宿主覆盖，并保留原生配置的�
 
 设置页可以给停用的智能体预配置已确认的默认值；聊天和团队执行另行要求已启用且就绪。手动刷新真正请求 Core 更新目录，未知配置不能保存或发送。
 
-Cursor 的远程模型目录采用 15 秒的独立预算，并受调用方 20 秒总截止时间约束。OpenBot 的 ACP 普通请求默认预算是 30 秒，其 ModelCatalog 对普通后端使用 5 秒并通过会话探测目录；本实现调用 Cursor 的私有原生模型目录接口。真实冷探测约 6–8 秒，因此为这条接口保留专属预算，不套用共享层此前的 3 秒短探测。
+Cursor 的远程模型目录采用 15 秒的独立预算，并受调用方 20 秒总截止时间约束。本实现调用 Cursor 的私有原生模型目录接口。真实冷探测约 6–8 秒，因此为这条接口保留专属预算，不套用共享层此前的 3 秒短探测。
 
 ## 用量投影
 

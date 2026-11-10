@@ -2,17 +2,17 @@
 
 本文为账号额度实现的协议证据与接口建议，不代表账号额度能力已实现；未启动 CLI、未访问真实账号或读取凭据。基础证据为[用量审计](usage-audit-cn.md)，并重新核对当前源码和官方发布物。
 
-源码标识：Neux `aea9265a0233fafc77e18510fa8a1ff33bb4d696`；acp-go `a58342da0ddd1e3ec5d022a0f911b82eba02107d`（其他 agent 正在修改 usage，本调研未改任何产品文件）；OpenBot 按现有只读源码作行为对照。OpenBot 的 PolyForm Noncommercial 1.0.0 实现正文不迁移。
+源码标识：Neux `aea9265a0233fafc77e18510fa8a1ff33bb4d696`；acp-go `a58342da0ddd1e3ec5d022a0f911b82eba02107d`（其他 agent 正在修改 usage，本调研未改任何产品文件）。
 
 ## 1. 能否原生实现
 
-| Provider | 结论 | 已证明的原生入口 | 仍未证明的范围 |
-| --- | --- | --- | --- |
-| Codex | 可以；协议最明确，优先实施 | app-server `account/rateLimits/read`，无 Prompt、无 thread 参数 | 本机每个 CLI 版本和实际账号的服务响应；API key 不应当作订阅 quota |
-| Claude | 可以实现 Go control 调用；以明确版本和运行时失败降级交付 | 官方 SDK **0.3.309**，对应 `claudeCodeVersion: 2.1.309`；实际 control subtype **`get_usage`**，参数 **`skip_behaviors: true`** | 最早支持版本，以及更旧 CLI 是否支持；不能写成任意 Claude CLI 均可用 |
-| Grok | 可以；复用官方 ACP 扩展，不复制登录或刷新实现 | wire method **`_x.ai/billing`**；官方 Rust dispatcher 内部匹配去下划线后的 `x.ai/billing` | 实际安装版本、服务认证模式与当前套餐；XAI API key 不当然拥有 grok.com 订阅额度 |
-| Cursor | 可写受控 Go HTTP reader，但应标记为私有协议、条件支持 | OpenBot 记录 DashboardService 两个只读 POST；本次没有查到官方公开 schema/服务端源码 | 官方稳定性、当前字段完整语义和原生认证源版本；缺少脱敏原生 fixture 前不宣称完整支持 |
-| OpenCode | 可以实现 **OpenCode Go** 额度读取；不代表所有 OpenCode 后端 | 官方历史路由 `GET /zen/go/v1/usage`，Bearer key，三个窗口；后续迁移为 inference proxy | 新后端当前完整响应、Console 新认证形态和旧 key 等价性；非 Go provider 的 quota 仍 unsupported |
+| Provider | 结论                                                        | 已证明的原生入口                                                                                                               | 仍未证明的范围                                                                                |
+| -------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| Codex    | 可以；协议最明确，优先实施                                  | app-server `account/rateLimits/read`，无 Prompt、无 thread 参数                                                                | 本机每个 CLI 版本和实际账号的服务响应；API key 不应当作订阅 quota                             |
+| Claude   | 可以实现 Go control 调用；以明确版本和运行时失败降级交付    | 官方 SDK **0.3.309**，对应 `claudeCodeVersion: 2.1.309`；实际 control subtype **`get_usage`**，参数 **`skip_behaviors: true`** | 最早支持版本，以及更旧 CLI 是否支持；不能写成任意 Claude CLI 均可用                           |
+| Grok     | 可以；复用官方 ACP 扩展，不复制登录或刷新实现               | wire method **`_x.ai/billing`**；官方 Rust dispatcher 内部匹配去下划线后的 `x.ai/billing`                                      | 实际安装版本、服务认证模式与当前套餐；XAI API key 不当然拥有 grok.com 订阅额度                |
+| Cursor   | 可写受控 Go HTTP reader，但应标记为私有协议、条件支持       | DashboardService 候选包含两个只读 POST；本次没有查到官方公开 schema/服务端源码                                                 | 官方稳定性、当前字段完整语义和原生认证源版本；缺少脱敏原生 fixture 前不宣称完整支持           |
+| OpenCode | 可以实现 **OpenCode Go** 额度读取；不代表所有 OpenCode 后端 | 官方历史路由 `GET /zen/go/v1/usage`，Bearer key，三个窗口；后续迁移为 inference proxy                                          | 新后端当前完整响应、Console 新认证形态和旧 key 等价性；非 Go provider 的 quota 仍 unsupported |
 
 ## 2. 现有边界与建议接入位置
 
@@ -125,14 +125,18 @@ type Window struct {
 
 ## 5. Claude：真正的 control subtype 与明确版本
 
-核验的是官方 npm 发布物 [claude-agent-sdk 0.3.309](https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk/0.3.309)，其 tarball `package/package.json` 的 **`claudeCodeVersion` 为 `2.1.309`**；完整 npm integrity 与 OpenBot `bun.lock` 相同：
+核验的是官方 npm 发布物 [claude-agent-sdk 0.3.309](https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk/0.3.309)，其 tarball `package/package.json` 的 **`claudeCodeVersion` 为 `2.1.309`**；完整 npm integrity 为：
 
 `sha512-Tou0fXBkxKJDcgT09v3Iv/Jd7bNgapgfAiHxGPctAADPFQhidfhZbcv7at1cVL0Lon5sbs+OzP/pEOigw2TI0A==`
 
 发布包 `sdk.mjs`、`core.mjs` 与 `browser-sdk.js` 一致：实验方法通过现有 request transport 发送 subtype `get_usage`；只有 `skipBehaviors=true` 才加入 `skip_behaviors:true`。因此 Go 不需要 Node sidecar，也不调用 JS 函数本身。原生 wire 应为：
 
 ```json
-{"type":"control_request","request_id":"fixture-quota-1","request":{"subtype":"get_usage","skip_behaviors":true}}
+{
+  "type": "control_request",
+  "request_id": "fixture-quota-1",
+  "request": { "subtype": "get_usage", "skip_behaviors": true }
+}
 ```
 
 响应沿既有 `control_response.response.response` payload，`request_id` 必须精确匹配。`pkg/claude/transport.go:Call` 已负责 pending 请求、取消、`control_cancel_request`、迟到响应忽略，应该直接复用。
@@ -158,20 +162,20 @@ Claude 现有 `Initialize` 不启动 CLI，`NewSession/openSession` 才建 trans
 
 typed decoder建议只接：`config.creditUsagePercent`、`config.currentPeriod.{type,start,end}`、旧版 `monthlyLimit.val`、`used.val`、`billingPeriodStart/End`；可接 `subscription_tier`，顶层Rust DTO未camelCase，所以注意它与config内camelCase的差异。`isUnifiedBillingUser`可保留为来源事实，但不能仅因它为true就跨Cursor/Grok账号合并统计。
 
-`Cent.val` 在官方源码明确 `serde(default)`，所以**已确认存在的Cent对象 `{}` 是0**。但 `creditUsagePercent` 是 `Option<f64>`，缺失不天然等于0%；OpenBot将“缺百分比且无正monthlyLimit”也当0，是额外行为推断。Go第一版宜更保守：有有效百分比优先；否则仅有明确正monthlyLimit并已确认used/Cent时计算；缺少这两条来源就unknown。保留新旧字段优先级，window结束时间优先currentPeriod.end，旧字段只在新字段缺失时fallback。只读接口不接auto-topup、cap变更等兄弟扩展。
+`Cent.val` 在官方源码明确 `serde(default)`，所以**已确认存在的Cent对象 `{}` 是0**。但 `creditUsagePercent` 是 `Option<f64>`，缺失不天然等于0%；不能将缺百分比且无正 monthlyLimit 推断为零。Go第一版宜更保守：有有效百分比优先；否则仅有明确正monthlyLimit并已确认used/Cent时计算；缺少这两条来源就unknown。保留新旧字段优先级，window结束时间优先currentPeriod.end，旧字段只在新字段缺失时fallback。只读接口不接auto-topup、cap变更等兄弟扩展。
 
-可测fixture：官方Rust类型与同仓billing测试字段生成synthetic JSON，再通过 `pkg/nativeacp` fake connection证明下游唯一 `_x.ai/billing`、上游统一方法不会循环转发；覆盖config=null、Cent={}、缺百分比、非法时间、weekly/monthly、RPC auth error和method-not-found。不按OpenBot的Math.clamp静默修正错误百分比。
+可测fixture：官方Rust类型与同仓billing测试字段生成synthetic JSON，再通过 `pkg/nativeacp` fake connection证明下游唯一 `_x.ai/billing`、上游统一方法不会循环转发；覆盖config=null、Cent={}、缺百分比、非法时间、weekly/monthly、RPC auth error和method-not-found。不使用 Math.clamp 静默修正错误百分比。
 
 ## 7. Cursor：HTTP可接，账号来源是主要实施前置
 
-本次仅从 `OpenBot:src/backend/cursor-usage.ts` 核验到私有协议记录，没有官方schema证据，不能用该项目实现作为官方兼容承诺。它记录的请求是POST JSON `{}`、Bearer token，路径：
+本次仅从 核验到私有协议记录，没有官方schema证据，不能用该项目实现作为官方兼容承诺。它记录的请求是POST JSON `{}`、Bearer token，路径：
 
 - `/aiserver.v1.DashboardService/GetCurrentPeriodUsage`：`billingCycleStart/End`为Unix毫秒，可是JSON数字或int64字符串；`planUsage.autoPercentUsed/apiPercentUsed/totalPercentUsed`可缺失。
 - `/aiserver.v1.DashboardService/GetPlanInfo`：`isMerged`。两个请求仍是只读，GetPlanInfo失败时总百分比与split的关系未确认，应保留raw分类并降低complete，不制造merged=false的事实。
 
 Go DTO可以为时间使用受限number-or-string解码、百分比`*float64`、`IsMerged *bool`，然后按周期建立`auto/api/total`来源窗口。不要在未知套餐结构时自动把总值与子值相加，或未经原生fixture把merged套餐标成与Grok共享。
 
-当前Neux Credential只交付Environment，acp Cursor Config未提供额外认证reader。因此接入前要明确当前账号lease的凭据端口：已有账号保存的token优先；系统原生账号模式才允许从该lease指定的CLI配置目录/受控平台credential provider读。OpenBot在macOS读固定Keychain项，再fallback auth.json的逻辑**不可直接移植为多账号发现逻辑**；它无法单凭固定item证明读取的是产品选择的账号。显式自定义API key也不等价于Dashboard的accessToken。无法证明身份时返回 `unsupported` 或 `unauthenticated`，不能偷换系统默认账号。
+当前Neux Credential只交付Environment，acp Cursor Config未提供额外认证reader。因此接入前要明确当前账号lease的凭据端口：已有账号保存的token优先；系统原生账号模式才允许从该lease指定的CLI配置目录/受控平台credential provider读。macOS 读取固定 Keychain 项再 fallback auth.json 的逻辑**不可直接移植为多账号发现逻辑**；它无法单凭固定item证明读取的是产品选择的账号。显式自定义API key也不等价于Dashboard的accessToken。无法证明身份时返回 `unsupported` 或 `unauthenticated`，不能偷换系统默认账号。
 
 HTTP timeout、endpoint override均只能来自冻结的可信启动配置；不接收扩展调用者URL。复用`ctx`，独立10秒上界、限制响应体、非HTTPS拒绝（显式测试loopback除外）、禁止携带Authorization跨origin重定向；401未认证，403需区分授权/套餐而不是一律已知0。错误/日志不回显response body或Authorization。
 
@@ -185,7 +189,7 @@ HTTP timeout、endpoint override均只能来自冻结的可信启动配置；不
 
 typed DTO：`Usage *struct{Rolling,Weekly,Monthly *GoWindow}`，`GoWindow{Status *string,Percent *float64,ResetsAt *string}`，三窗全部保留；不要只选binding window丢掉第三个约束。历史返回不包含窗口时长，第一版可只填WindowID与reset；不要硬编码月=30天后当作原生报告。
 
-认证按当前lease：显式账号key优先；只有选择原生认证模式时才读lease有效 `OPENCODE_AUTH_CONTENT`、指定data home的auth.json/指定console credential。inline auth存在时禁止读磁盘fallback；选择的credential是OAuth或self-hosted时不能扫描下一个账号。OpenBot的Console DB查询是版本特定权宜来源，首版建议**不做全用户DB发现**；若必须支持，增加只读窄凭据provider、schema版本判断、100ms busy timeout和“选中credential先定位、再验证”的规则，且不把user-controlledserver的key送至官方域名。
+认证按当前lease：显式账号key优先；只有选择原生认证模式时才读lease有效 `OPENCODE_AUTH_CONTENT`、指定data home的auth.json/指定console credential。inline auth存在时禁止读磁盘fallback；选择的credential是OAuth或self-hosted时不能扫描下一个账号。Console DB 查询是版本特定的凭据来源，首版建议**不做全用户DB发现**；若必须支持，增加只读窄凭据provider、schema版本判断、100ms busy timeout和“选中credential先定位、再验证”的规则，且不把user-controlledserver的key送至官方域名。
 
 可测fixture：固定官方历史handler产生synthetic JSON，验证401、403(no_entitlement)、三个窗口、过期reset、字符串/空日期、malformed response；httptest验证只发GET和指定Bearer。CLI auth fixtures只用临时目录，不读实际HOME。其他OpenCode自选provider与Zen现金余额都保持unsupported，不能用Go quota代表所有模型余额。
 

@@ -14,7 +14,7 @@
 
 ## Global Constraints
 
-- 来源依据[官方安装源核查](../../discussions/provider-runtime-parity/installer-sources-cn.md)，不用OpenBot旧锁版本或复制其实现。
+- 来源依据[官方安装源核查](../../discussions/provider-runtime-parity/installer-sources-cn.md)，按官方当前制品核验版本。
 - GPT‑6.1 high子代理；不派生子代理；Go结构字段中文注释；定向验证，不控制UI。
 - 只写应用私有runtime目录，不写系统PATH、shell配置、CLI原生HOME；不执行npm lifecycle/install脚本。
 - 解析offer和下载执行分离，任务使用冻结版本/URL/digest，不在安装途中重新选择latest。

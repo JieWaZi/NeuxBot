@@ -13,30 +13,30 @@
 ## Global Constraints
 
 - 用户已授权三家在独立 worktree 并行；本任务从已提交共同基线开始，遵守[五项审查与并行边界](../../discussions/agentruntime-rebuild/module-review-cn.md)。未验收的 Codex 合同不能作为整体验收证据。
-- 实现者必须实际阅读 OpenBot `f44dbe116c89a944f8d7d085e092c967b3fce0df` 对应 owning 源码与测试，不能只读摘要。以原生声明交叉验证其兼容判断。
+- 实现依据为官方协议、锁定依赖版本和本项目实际调用链，测试使用独立样本。
 - 用户指定开发使用 GPT-6.1 Sol high；Terra 仅用于简单工作和核对，不能替代产品实现。实现者不派生子代理，根协调安排独立 review。
 - 整个模块重构、验证、立即提交后再审查；不把字段、helper 或注释翻译单独当作重构交付。
 - 文件 snake_case；类型、Options、私有状态、转换和专属 helper 就近内聚；不因行数机械拆分，不增加无消费者接口或转发层。
 - 新写与重写代码、测试使用英文注释，公开标识符注释以标识符开头。文档正文中文，许可与生成来源准确保留。
 - 不以旧 Agent/Session/Store 层数和命名作为约束；保留有依据的行为及回归，删除被替代路径。
-- OpenBot 与官方 SDK 用作协议和行为参照，独立 Go 实现和 synthetic 测试，不复制源码、测试或夹具。
+- 实现依据为官方协议、锁定依赖版本和本项目实际调用链，测试使用独立样本。
 - 不访问真实账号、登录或付费模型，不控制 UI；只做定向检查，不推送、合并或发布。
 
 ## 文件与职责
 
 具体对象与命名在编码前写入实施报告；下表明确拆分依据，不要求保留旧对象或为每行创建 struct。
 
-| 归属 | 完整职责 | 状态与边界 |
-| --- | --- | --- |
-| `pkg/claude/agent.go` | ACP 组合、能力协商、连接注入和根关闭接纳 | 根关闭状态与会话登记；不继续堆放配置、认证、事件细节 |
-| `pkg/claude/session.go` | new/load/resume/fork 的准备、原生会话身份、安装与释放 | 同一 session 代次、打开串行化、部分资源和可重试释放；取消/关闭失败不得先移除所有者 |
+| 归属                                                    | 完整职责                                                               | 状态与边界                                                                         |
+| ------------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `pkg/claude/agent.go`                                   | ACP 组合、能力协商、连接注入和根关闭接纳                               | 根关闭状态与会话登记；不继续堆放配置、认证、事件细节                               |
+| `pkg/claude/session.go`                                 | new/load/resume/fork 的准备、原生会话身份、安装与释放                  | 同一 session 代次、打开串行化、部分资源和可重试释放；取消/关闭失败不得先移除所有者 |
 | `pkg/claude/turn.go`、`turn_events.go`、`turn_usage.go` | 输入/steer、当前原生回合、原生后台回合、完成/取消、消息/工具归属、计数 | 只有一份回合身份与终态；状态和转换就近，旧 session/events/usage 主流程按此归属重组 |
-| `pkg/claude/session_configuration.go` | 模型目录、setter 值映射、逐模型选项、请求/回执/观测 | 替代旧 config 中的混合推断；不按 model/effort/Fast 拆控制器 |
-| `pkg/claude/launch.go`、`transport.go`、`process*.go` | 原生启动交付、control 配对、读写/背压、进程退出 | 各有真实协议或进程生命周期；专属 Options 和 helper 同文件 |
-| `pkg/claude/auth.go` | 原生认证命令与无 Prompt 的模型/配额管理探测 | 完整管理操作；无账号数据库、租约调度或缓存策略 |
-| 现有权限、表单、历史、工具与内容映射文件 | 真实外部交互和协议转换边界 | 继续保持消息/工具稳定身份，整合只做转发或单 helper 的拆分 |
-| `pkg/claude/protocol/protocol.go` | 有来源的原生声明与 presence | 新增字段留原生层；公共事实经 acpmeta 转换后消费 |
-| `pkg/acpmeta` | 三家真正共用且有消费者的技术事实 | 复用 Codex 已交付合同；不能放 Claude 任意 payload 或通用业务对象 |
+| `pkg/claude/session_configuration.go`                   | 模型目录、setter 值映射、逐模型选项、请求/回执/观测                    | 替代旧 config 中的混合推断；不按 model/effort/Fast 拆控制器                        |
+| `pkg/claude/launch.go`、`transport.go`、`process*.go`   | 原生启动交付、control 配对、读写/背压、进程退出                        | 各有真实协议或进程生命周期；专属 Options 和 helper 同文件                          |
+| `pkg/claude/auth.go`                                    | 原生认证命令与无 Prompt 的模型/配额管理探测                            | 完整管理操作；无账号数据库、租约调度或缓存策略                                     |
+| 现有权限、表单、历史、工具与内容映射文件                | 真实外部交互和协议转换边界                                             | 继续保持消息/工具稳定身份，整合只做转发或单 helper 的拆分                          |
+| `pkg/claude/protocol/protocol.go`                       | 有来源的原生声明与 presence                                            | 新增字段留原生层；公共事实经 acpmeta 转换后消费                                    |
+| `pkg/acpmeta`                                           | 三家真正共用且有消费者的技术事实                                       | 复用 Codex 已交付合同；不能放 Claude 任意 payload 或通用业务对象                   |
 
 ## Review Focus
 
@@ -48,7 +48,7 @@
 
 ### Task 1: 完整重构 Claude 原生接入模块
 
-**Read first:** OpenBot `docs/architecture/providers.md`、`src/backend/claude-client.ts`、`claude-workspace-sandbox.ts`、`provider-drivers.ts` 的 Claude 段、`cli.ts` 的版本 gate、`agent/thread-lifecycle.ts`、`agent/usage-collection.ts`、`provider-history.ts` 的 Claude 路径，以及 `scripts/claude-usage-resume-e2e.ts` 和对应 conformance 测试。读 acp-go 当前 Claude owning 主流程与直接生产消费者；已存在的研究笔记只是导航。
+**Read first:** 阅读本项目对应 CLI 的原生适配器、运行时调用链和相关测试，并核对官方协议与锁定依赖版本。
 
 **Scope:** `pkg/claude` 全部手写生产职责及必要回归、模块 README/UPSTREAM 和必要直接调用编译适配。共享 `pkg/acpmeta` / SDK 变更先向主线提出具体合同与消费者，由主线指定实现者统一修改；不在本分支建立同义公共合同。不修改 NeuxBot 产品模块，不重写其他 CLI。
 
@@ -56,10 +56,10 @@
 
 **Architecture and behavior requirements:**
 
-1. 写清核心类型保留/替换的理由、唯一状态、接纳与释放顺序及 OpenBot 参照。不要只把旧方法拆文件；取消、完成、后台、输出和用量必须围绕相同原生身份组织。临时管理连接与运行连接分别释放，不让管理探测借用正在执行的会话。
-2. new/load/resume/fork 交付明确的原生 system append；缺省不覆盖、明确空可清除。恢复时处理旧 prompt snapshot；OpenBot 已验证 `--system-prompt-snapshot off` 的版本 gate 为 2.1.263，不能推断所有版本都支持或仅设置 SDK 同名选项就生效。版本不支持必须如实限制，而非偷偷落回生成 CLAUDE.md。
+1. 写清核心类型保留/替换的理由、唯一状态、接纳与释放顺序及 职责边界。不要只把旧方法拆文件；取消、完成、后台、输出和用量必须围绕相同原生身份组织。临时管理连接与运行连接分别释放，不让管理探测借用正在执行的会话。
+2. new/load/resume/fork 交付明确的原生 system append；缺省不覆盖、明确空可清除。恢复时处理旧 prompt snapshot；`--system-prompt-snapshot off` 需要按实际 CLI 版本核验，不能推断所有版本都支持或仅设置 SDK 同名选项就生效。版本不支持必须如实限制，而非偷偷落回生成 CLAUDE.md。
 3. cwd 与额外目录是真实路径；设置源、严格 MCP、CLI 内置工具、原生 plugin 目录和权限各自表达。显式空 MCP 仍用空配置及 strict，不能继承任意服务器。资源复制由 runtime 完成；Adapter 只传真实入口及加载诊断。必要约束无法执行时拒绝，不用提示词声称隔离。管理探测不发 Prompt、不持久化会话、不启动用户 MCP。
-4. 模型以原生 resolved ID 对外、实际 setter value 对内，支持缺省/未知/已知空；不因 OpenBot 有 medium/high 产品 fallback 就虚构能力。模型/effort/Fast 的请求、ACK、观测分别处理；换模型失效 effort 通过原生 null 清除或解释拒绝。已有已证实 Fast 不因固定 OpenBot 未暴露而删除。失败配置不能写成生效，部分应用必须保留实际事实。
+4. 模型以原生 resolved ID 对外、实际 setter value 对内，支持缺省/未知/已知空；不以 medium/high 默认值虚构原生能力。模型/effort/Fast 的请求、ACK、观测分别处理；换模型失效 effort 通过原生 null 清除或解释拒绝。保留已有已证实的 Fast 能力。失败配置不能写成生效，部分应用必须保留实际事实。
 5. 认证 status/login/logout/cancel 用真实命令和账号环境，API key 与订阅身份分开；`CLAUDE_CONFIG_DIR` 与 macOS Keychain 对应关系留清晰技术边界。登录状态的 timeout/spawn/malformed 不当作 signed out；退出 1 加可解析 `loggedIn:false` 与未知区别。管理 quota 采用官方 `get_usage`、`skip_behaviors:true`，将 ISO reset 转为明确单位，保留全部窗口与未知/零，余额与套餐限额分开，不把 session 累计当账号消耗。
 6. 原生输入、stream、assistant、result、idle、背景任务与 steer 有明确身份；使用 `user_message_uuid` 及存在时的已消费 UUID 列表。前台结束不等于所有后台工作已结束，无新宿主 Prompt 的后续原生回合仍保留身份、消息与用量。旧 producer 缺字段不能猜关联；进程 `result_index` 不能冒充跨进程稳定 ID。主代理与子代理内容不能互相去重或重复拼接。
 7. result 是原生完成依据；`subtype:success` 加 `is_error:true` 仍为失败，明确 `terminal_reason` 支持真实取消。`api_retry` 仅为原生重试事实；rate-limit rejected 可能继续 overage，不能仅此提前结束/重发。压缩使用已支持原生机制并等待真实结束；post_tokens 与完整 Context 不混同。

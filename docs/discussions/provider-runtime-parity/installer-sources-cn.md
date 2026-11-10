@@ -1,21 +1,21 @@
 # CLI 官方安装源核查与受管安装边界
 
-本文是来源调研与实现建议，未实现安装器。访问日期统一为 **2026-11-03（Asia/Shanghai）**。只读取官方文档、npm registry 元数据、GitHub 发布元数据和少量发布源码；读取了 Claude、Grok、OpenCode 的小型顶层 npm 包以核查安装脚本，未下载平台大包、执行脚本、启动 CLI、使用账号或控制浏览器。已有审计基线见 [Runtime 安装、模型能力与结构化错误审计](runtime-models-errors-audit-cn.md)。OpenBot 仅用于定位候选来源，不复制其实现、固定版本或校验值。
+本文是来源调研与实现建议，未实现安装器。访问日期统一为 **2026-11-03（Asia/Shanghai）**。只读取官方文档、npm registry 元数据、GitHub 发布元数据和少量发布源码；读取了 Claude、Grok、OpenCode 的小型顶层 npm 包以核查安装脚本，未下载平台大包、执行脚本、启动 CLI、使用账号或控制浏览器。已有审计基线见 [Runtime 安装、模型能力与结构化错误审计](runtime-models-errors-audit-cn.md)。安装来源、版本与校验值以官方发行资料为准。
 
 ## 1. 结论与支持矩阵
 
 **Codex、Claude、OpenCode、Pi、Kimi 有可实施的官方强摘要来源。Grok 有官方 npm SHA-512 来源，但必须处理原始／Brotli 二进制格式；Cursor 暂时只提供 external 安装入口。** 下面的“候选”指来源和平台资产成立，不表示本项目已完成安装、协议或真实平台验收。旧版本和未来版本必须逐次解析，不能沿用本表摘要。
 
-| Runtime | 本次观察到的官方版本 | macOS amd64/arm64 | Linux amd64/arm64 | Windows amd64/arm64 | Go 受管安装候选来源与限制 |
-| --- | --- | --- | --- | --- | --- |
-| Codex | `rust-v0.166.0` / npm `0.166.0` | 均有 | 均有 musl target | 均有 | GitHub `codex-package-<target>.tar.gz` + asset `digest`；必须保留规范包完整目录 |
-| Claude | latest `2.1.317`，stable `2.1.311` | 均有 | glibc、musl 均有 | 均有 | 官方版本 manifest + SHA-256；可进一步验证官方 GPG 签名；npm 原生子包是备用源 |
-| OpenCode 1 | `v1.19.5` / npm `1.19.5` | 均有，x64 有 baseline | glibc、musl 均有，x64 有 baseline | 均有，x64 有 baseline | GitHub 精确 CLI asset + SHA-256；不自动迁移 OpenCode 2 |
-| Pi | `earendil-works/pi` `v1.5.0` | 均有 | 均有；此处未核定 musl 兼容 | 均有 | GitHub 完整 standalone archive + SHA-256；旧 `@mariozechner` 不是当前发布线 |
-| Kimi | `1.52.0` | 均有 | 均有 GNU/glibc target；没有观察到 musl asset | 均有 | GitHub `-onedir` archive + SHA-256；整个 PyInstaller 目录保留 |
-| Grok | stable / npm `1.0.70` | 均有原生子包 | 均有原生子包；未核定 musl | 均有原生子包；README 仍只列 Windows x64 | npm 精确平台子包 + SHA-512；核验实际成员与解码能力后才可安装 |
-| Cursor | 脚本 `2026.10.22-27dcf5f` | 官方脚本均映射 | 官方脚本均映射；未核定 musl | 官方 PowerShell 脚本均映射 | 本次未发现可信公开强摘要；六个资产 HEAD 均 403，保持 external |
-| Gemini / WorkBuddy / Qoder | 本次未核查 | external | external | external | 不因存在 npm 同名包或 OpenBot 相似 runtime 就补成受管安装 |
+| Runtime                    | 本次观察到的官方版本               | macOS amd64/arm64     | Linux amd64/arm64                            | Windows amd64/arm64                     | Go 受管安装候选来源与限制                                                       |
+| -------------------------- | ---------------------------------- | --------------------- | -------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------- |
+| Codex                      | `rust-v0.166.0` / npm `0.166.0`    | 均有                  | 均有 musl target                             | 均有                                    | GitHub `codex-package-<target>.tar.gz` + asset `digest`；必须保留规范包完整目录 |
+| Claude                     | latest `2.1.317`，stable `2.1.311` | 均有                  | glibc、musl 均有                             | 均有                                    | 官方版本 manifest + SHA-256；可进一步验证官方 GPG 签名；npm 原生子包是备用源    |
+| OpenCode 1                 | `v1.19.5` / npm `1.19.5`           | 均有，x64 有 baseline | glibc、musl 均有，x64 有 baseline            | 均有，x64 有 baseline                   | GitHub 精确 CLI asset + SHA-256；不自动迁移 OpenCode 2                          |
+| Pi                         | `earendil-works/pi` `v1.5.0`       | 均有                  | 均有；此处未核定 musl 兼容                   | 均有                                    | GitHub 完整 standalone archive + SHA-256；旧 `@mariozechner` 不是当前发布线     |
+| Kimi                       | `1.52.0`                           | 均有                  | 均有 GNU/glibc target；没有观察到 musl asset | 均有                                    | GitHub `-onedir` archive + SHA-256；整个 PyInstaller 目录保留                   |
+| Grok                       | stable / npm `1.0.70`              | 均有原生子包          | 均有原生子包；未核定 musl                    | 均有原生子包；README 仍只列 Windows x64 | npm 精确平台子包 + SHA-512；核验实际成员与解码能力后才可安装                    |
+| Cursor                     | 脚本 `2026.10.22-27dcf5f`          | 官方脚本均映射        | 官方脚本均映射；未核定 musl                  | 官方 PowerShell 脚本均映射              | 本次未发现可信公开强摘要；六个资产 HEAD 均 403，保持 external                   |
+| Gemini / WorkBuddy / Qoder | 本次未核查                         | external              | external                                     | external                                | 不因存在 npm 同名包或相似运行时 就补成受管安装                                  |
 
 平台须包含 OS、真实进程架构／原生架构、Linux libc，OpenCode 还要考虑 CPU baseline。`runtime.GOOS=windows` 不能拼成所有厂商的相同字符串：Claude/Grok npm 使用 `win32`，OpenCode asset 使用 `windows`，Codex/Kimi 使用 Rust triple。不存在目标资产时返回 unsupported，不用 amd64、glibc 或其他 provider 的包静默替代。
 
@@ -61,7 +61,7 @@
 
 - [Kimi 官方入门文档](https://www.kimi.com/code/docs/en/kimi-code-cli/guides/getting-started)与 [MoonshotAI/kimi-cli 发布源](https://github.com/MoonshotAI/kimi-cli/releases)属于同一产品。[latest API](https://api.github.com/repos/MoonshotAI/kimi-cli/releases/latest)本次为 `1.52.0`。
 - 六个 Rust target 为 `aarch64/x86_64-apple-darwin`、`aarch64/x86_64-unknown-linux-gnu`、`aarch64/x86_64-pc-windows-msvc`；各有 onefile 与 `-onedir`，以及对应 `.sha256` 小文件。本次全部 archive 也有 GitHub SHA-256 digest。推荐 `kimi-<version>-<target>-onedir.tar.gz` 或 Windows `-onedir.zip`。例如 darwin arm64 onedir 为 `1d87d0c6d39e30593e44571ce6f78b20345735e6e836c1b175283ddabf5b9028`。
-- [该 tag release workflow](https://github.com/MoonshotAI/kimi-cli/blob/1.52.0/.github/workflows/release-kimi-cli.yml)明确 PyInstaller onedir 的 `kimi/` 根，入口 `kimi/kimi` 或 `kimi/kimi.exe`，其他库和资源与入口相邻。必须保持完整树；macOS 还包括已签名动态库／framework，不能拆散或改写。来源层面支持 Windows arm64，不应沿用 OpenBot 的较窄 target 列表。
+- [该 tag release workflow](https://github.com/MoonshotAI/kimi-cli/blob/1.52.0/.github/workflows/release-kimi-cli.yml)明确 PyInstaller onedir 的 `kimi/` 根，入口 `kimi/kimi` 或 `kimi/kimi.exe`，其他库和资源与入口相邻。必须保持完整树；macOS 还包括已签名动态库／framework，不能拆散或改写。来源层面支持 Windows arm64，平台列表应按官方制品分别核验。
 - 许可为 [Apache-2.0 LICENSE](https://github.com/MoonshotAI/kimi-cli/blob/1.52.0/LICENSE)及 [NOTICE](https://github.com/MoonshotAI/kimi-cli/blob/1.52.0/NOTICE)。workflow 的 archive 打包只遍历 runtime 产物，不能假定附带根许可；必要时从固定 tag commit 补齐这两个小文件。未检查 Linux 最低 glibc 或真实平台启动，musl 不在本次候选范围。
 
 ### 2.6 Grok
@@ -71,7 +71,7 @@
 - npm 顶层 `1.0.70` 有 `postinstall: node bin/postinstall.js` 与 `@iarna/toml` 依赖；脚本会写用户 Grok 目录、配置及入口，不能整体执行为受管安装。平台子包为 `@xai-official/grok-{darwin,linux,win32}-{x64,arm64}`。本次 6 个精确版本 registry 元数据全部有 SHA-512、无 scripts、无 dependencies；[darwin-arm64 示例](https://registry.npmjs.org/@xai-official/grok-darwin-arm64/1.0.70)为 4 个文件。
 - 已读的小型顶层脚本明确从平台包 `bin/grok` / `bin/grok.exe` **或对应 `.br`** 取得 binary；遇 `.br` 使用 `zlib.brotliDecompressSync`。本次未读取平台大包，因此不声称具体平台成员已实测。Go 方案须在校验整个 tgz 后识别白名单成员；原始 binary 可直接落地，Brotli 需内置受限 decoder，输出大小和内存有上限。若无该 decoder、出现未知压缩格式或布局，不得启动 Node/postinstall 兜底，应返回 blocked。解压／解码完成不等于版本、平台或协议验收。
 - 顶层 README 仅列 Windows x64，但实际 1.0.70 optionalDependencies、platform metadata 和安装脚本含 win32-arm64；本表仅声明存在官方包，尚无实际 Windows arm64 运行证据。
-- npm metadata 标为 Apache-2.0，官方仓库 [LICENSE](https://github.com/xai-org/grok-build/blob/main/LICENSE)与 [THIRD-PARTY-NOTICES](https://github.com/xai-org/grok-build/blob/main/THIRD-PARTY-NOTICES)存在，但本次 `v1.0.70/LICENSE` 为 404。不要把未绑定当前发行的 main 许可文件或 OpenBot 旧 commit 当作当前 binary 的组成证明。安装时要求经校验平台包中的许可／声明；若缺失，须建立当前发行到固定官方源码 commit 的对应关系后补齐，否则 license_unresolved。仅顶层 README 链接不满足开源声明保留。
+- npm metadata 标为 Apache-2.0，官方仓库 [LICENSE](https://github.com/xai-org/grok-build/blob/main/LICENSE)与 [THIRD-PARTY-NOTICES](https://github.com/xai-org/grok-build/blob/main/THIRD-PARTY-NOTICES)存在，但本次 `v1.0.70/LICENSE` 为 404。不要把未绑定当前发行的 main 许可文件或无关旧 commit 当作当前 binary 的组成证明。安装时要求经校验平台包中的许可／声明；若缺失，须建立当前发行到固定官方源码 commit 的对应关系后补齐，否则 license_unresolved。仅顶层 README 链接不满足开源声明保留。
 
 ### 2.7 Cursor
 
@@ -85,18 +85,18 @@
 
 由现有 Catalog／RuntimeEnvironment 管理“安装事实与默认路径”，只给它补安装来源解析与一次安装操作，不另建 provider 状态源。下面是建议字段与流程，不是已经存在的接口。
 
-| 字段／输入 | 含义与约束 |
-| --- | --- |
-| runtime、sourceID、sourcePolicyVersion | 明确产品与经审阅的官方分发路线；不接受前端任意传入 download URL |
-| requestedChannel / requestedVersion、compatibilityPolicy | channel 与具体版本分开；精确版本优先；来源 latest 还须满足 adapter 已核定的主版本范围 |
-| platform | OS、arch、libc、CPU 需求；来源 target 由受控映射计算 |
-| disposition、reason | `managed` / `external` / `unsupported` / `blocked`；网络失败、缺 digest、未知 layout、许可不明、未支持解码分别表达，不混成“未安装” |
-| version、sourceReference、resolvedCommit | 固化 version、release tag/ID 或 npm name+version；小型源码附件也固定 commit |
-| assets[] | 每个 URL、size、格式、摘要算法和值、摘要来源；许可证等附件也纳入下载集合 |
-| layoutID、entrypoint、requiredPaths | 受控版本布局；入口路径须在安装根内，不能由远端任意指定绝对路径 |
-| integrityLevel、signatureEvidence | 区分 official-TLS SHA 摘要、已验证的发布者签名、本地安装后 hash；不能混写成“签名已验证” |
-| licenseEvidence、termsURL | 文件位置、官方来源、版本关联及许可类型；下载可行与许可齐备分开判断 |
-| resolvedAt、expiresAt、metadataValidator | 有时效的解析快照；用于缓存、重试和重新展示；不是永久相信 `latest` |
+| 字段／输入                                               | 含义与约束                                                                                                                         |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| runtime、sourceID、sourcePolicyVersion                   | 明确产品与经审阅的官方分发路线；不接受前端任意传入 download URL                                                                    |
+| requestedChannel / requestedVersion、compatibilityPolicy | channel 与具体版本分开；精确版本优先；来源 latest 还须满足 adapter 已核定的主版本范围                                              |
+| platform                                                 | OS、arch、libc、CPU 需求；来源 target 由受控映射计算                                                                               |
+| disposition、reason                                      | `managed` / `external` / `unsupported` / `blocked`；网络失败、缺 digest、未知 layout、许可不明、未支持解码分别表达，不混成“未安装” |
+| version、sourceReference、resolvedCommit                 | 固化 version、release tag/ID 或 npm name+version；小型源码附件也固定 commit                                                        |
+| assets[]                                                 | 每个 URL、size、格式、摘要算法和值、摘要来源；许可证等附件也纳入下载集合                                                           |
+| layoutID、entrypoint、requiredPaths                      | 受控版本布局；入口路径须在安装根内，不能由远端任意指定绝对路径                                                                     |
+| integrityLevel、signatureEvidence                        | 区分 official-TLS SHA 摘要、已验证的发布者签名、本地安装后 hash；不能混写成“签名已验证”                                            |
+| licenseEvidence、termsURL                                | 文件位置、官方来源、版本关联及许可类型；下载可行与许可齐备分开判断                                                                 |
+| resolvedAt、expiresAt、metadataValidator                 | 有时效的解析快照；用于缓存、重试和重新展示；不是永久相信 `latest`                                                                  |
 
 推荐 source policy：
 

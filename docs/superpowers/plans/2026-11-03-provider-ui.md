@@ -20,7 +20,7 @@
 - “归一化 Token 分量为未缓存输入、缓存读取、缓存写入、输出，推理 Token 作为输出的子集单独记录，绝不再次加到输出上。”
 - “字段未知与真实零不同，保留缺失状态。”；“不同币种不直接相加。”
 - “订阅 Token 的 API 等价估算不是实际账单。”
-- “采用截图的信息结构而不是逐像素复刻”；不复制 OpenBot 代码、样式和资产。
+- “采用截图的信息结构而不是逐像素复刻”；使用项目共享组件与语义 Token。
 - `Avoid unnecessary secondary labels and descriptions.Let the layout do the explaining`。只在真实错误、时效、计价来源或表单含义需要时增加说明。
 - 复用当前账号加密/CRUD/登录、Runtime API、共享语义 Token 与控件；模块遵守 `app -> modules -> shared`，不跨模块内部导入。
 - 只在生成 API 完成后写依赖这些类型的产品代码；不手改 generated、不用 `as` 补造接口、不在 UI 开发后端协议。

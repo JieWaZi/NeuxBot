@@ -1,17 +1,17 @@
 # Execution 的 Codex 产品调用链
 
-以 NeuxBot 已确认的 Agent Runtime 设计、当前工作树和 OpenBot `f44dbe116c89a944f8d7d085e092c967b3fce0df` 为依据。验收入口是 `execution.Service.Start`，测试用临时 SQLite、共享 Conversation Store 和通过管道通信的 Codex app-server 夹具。
+以 NeuxBot 已确认的 Agent Runtime 设计、当前工作树 为依据。验收入口是 `execution.Service.Start`，测试用临时 SQLite、共享 Conversation Store 和通过管道通信的 Codex app-server 夹具。
 
 ## 职责对应
 
-| OpenBot 固定源码 | Execution 的接法 |
-| --- | --- |
-| `provider-runtime.ts` 的 provider client 创建、初始化及退出清理 | `agent_next.ProviderRuntime` 独占原生连接和账号租约。Execution 解析已冻结账号，冷路径交付技能、MCP 和插件资源，由同一连接关闭释放。 |
-| `thread-lifecycle.ts` 的 `ensureThread`、`resumeThread`、`rotateProviderSession`、`buildProviderHandoff` | `ThreadLifecycle.Prepare` 处理兼容热复用、重启续接和显式替换。已有原生会话只收本轮输入。可用旧会话生成私有交接，无法生成时从共享日志选择最近五个完整轮次。 |
-| `drain-scheduler.ts` 的 `startDelivery` | Execution 保留业务单 Chat 占用、首发幂等、续发回执、附件回滚和编排入口的 pending 接纳。NeuxBot 的 BeforeSubmit 批次按确认设计先写业务启动、绑定与实际输入身份，再投影接纳并激活本轮短期授权。接纳后即使取消也可按已提交回执完成投影。 |
-| `turn-lifecycle.ts` 的 `handleNotification` 和 `completeTurn` | `Turn.Run` 收敛原生输入、正文、原生结果和用量。Chat 从已提交检查点投影订阅和历史。Execution 在此之后提交唯一业务终态，释放占用后发布，文件采集仍独立收尾。 |
+| Execution 的接法                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent_next.ProviderRuntime` 独占原生连接和账号租约。Execution 解析已冻结账号，冷路径交付技能、MCP 和插件资源，由同一连接关闭释放。                                                                                                   |
+| `ThreadLifecycle.Prepare` 处理兼容热复用、重启续接和显式替换。已有原生会话只收本轮输入。可用旧会话生成私有交接，无法生成时从共享日志选择最近五个完整轮次。                                                                            |
+| Execution 保留业务单 Chat 占用、首发幂等、续发回执、附件回滚和编排入口的 pending 接纳。NeuxBot 的 BeforeSubmit 批次按确认设计先写业务启动、绑定与实际输入身份，再投影接纳并激活本轮短期授权。接纳后即使取消也可按已提交回执完成投影。 |
+| `Turn.Run` 收敛原生输入、正文、原生结果和用量。Chat 从已提交检查点投影订阅和历史。Execution 在此之后提交唯一业务终态，释放占用后发布，文件采集仍独立收尾。                                                                            |
 
-OpenBot 的 `AttentionRegistry.respondToApproval` 在向原请求交付决定后发出 resolved 通知。NeuxBot 保留既有的落盘、投影、回传顺序。取消与投影重叠时，原生回调从同一等待者接收已提交决定，避免再次作废或误报超时。
+NeuxBot 保留既有的落盘、投影、回传顺序。取消与投影重叠时，原生回调从同一等待者接收已提交决定，避免再次作废或误报超时。
 
 生产的 Start 路径移除了旧 `PrepareSession/Bind/PreparedChatRun`、旧 Runtime 消息 Sink、重复的 Session 句柄记录与旧终态用量归档。旧包的纯配置 DTO、静态探测判断及不启动进程的工作区文件准备仍供宿主复用。
 

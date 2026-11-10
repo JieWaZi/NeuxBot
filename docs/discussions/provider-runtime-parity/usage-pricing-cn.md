@@ -1,6 +1,6 @@
 # 原生费用与定价来源调研
 
-状态：只读源码与官方公开资料调研，核对日期 **2026-11-03**。本文是实施建议，不代表费用能力已经实现或真实模型验收通过。未启动 CLI、访问真实账号、打开或控制浏览器；未复制 OpenBot 价表。acp-go 工作区同时有其他任务修改，以下源码观察不当作固定提交验收。
+状态：只读源码与官方公开资料调研，核对日期 **2026-11-03**。本文是实施建议，不代表费用能力已经实现或真实模型验收通过。未启动 CLI、访问真实账号、打开或控制浏览器；价表以官方资料为准。acp-go 工作区同时有其他任务修改，以下源码观察不当作固定提交验收。
 
 依据：[统一设计](../../superpowers/specs/2026-11-03-provider-runtime-parity-design.md)、[既有审计](usage-audit-cn.md)。源码路径的 `acp-go:` 前缀表示独立仓库，`NeuxBot:` 表示本仓库。
 
@@ -41,20 +41,20 @@
 
 建议新增独立 `acpmeta.CostObservation`，使用新的 `acp-go/cost-observation` 元数据 key，**不要藏进 Token 的 TurnUsage 作用域**。标准 ACP 的 cost 保持原语义；Claude/Pi 的归一化费用经新 key 发送。以下是字段合同建议，不是已提交接口：
 
-| 字段 | 语义 |
-| --- | --- |
-| `amount` | 非负规范十进制字符串；缺观察与字符串 `"0"` 分开 |
-| `currency` | ISO 4217，例如 USD；不同币种独立聚合 |
-| `source` | 精确来源，例如 `claude.result.total_cost_usd`、`pi.message.usage.cost.total`、`acp.usage_update.cost` |
-| `origin` | `native_report` 或 `local_estimate`，描述金额由谁交付 |
-| `valuation` | `provider_reported` / `cli_estimate` / `api_equivalent` / `unknown`，描述金额是什么 |
-| `scope` | `request` / `turn` / `session_cumulative`，绝不从 Token scope 推断 |
-| `counter_id` | adapter 定义的 session/epoch，配合冻结 account/runtime，不含凭据 |
-| `observation_id` | 原生事件/消息身份；无身份则用已定义的累计 snapshot 替换，禁止逐通知相加 |
-| `coverage` | `main_loop` / `whole_tree` / `unknown`，与完整性正交 |
-| `complete` | 仅声明已覆盖其明确范围；不能表示其他范围或所有字段已知 |
-| `model` | 只在原生确认时填写；多模型不能用用户选择的一个模型代替 |
-| `price_version` | 仅本地估算填写；CLI未报告价表版本时留空，另外保留CLI版本 |
+| 字段             | 语义                                                                                                  |
+| ---------------- | ----------------------------------------------------------------------------------------------------- |
+| `amount`         | 非负规范十进制字符串；缺观察与字符串 `"0"` 分开                                                       |
+| `currency`       | ISO 4217，例如 USD；不同币种独立聚合                                                                  |
+| `source`         | 精确来源，例如 `claude.result.total_cost_usd`、`pi.message.usage.cost.total`、`acp.usage_update.cost` |
+| `origin`         | `native_report` 或 `local_estimate`，描述金额由谁交付                                                 |
+| `valuation`      | `provider_reported` / `cli_estimate` / `api_equivalent` / `unknown`，描述金额是什么                   |
+| `scope`          | `request` / `turn` / `session_cumulative`，绝不从 Token scope 推断                                    |
+| `counter_id`     | adapter 定义的 session/epoch，配合冻结 account/runtime，不含凭据                                      |
+| `observation_id` | 原生事件/消息身份；无身份则用已定义的累计 snapshot 替换，禁止逐通知相加                               |
+| `coverage`       | `main_loop` / `whole_tree` / `unknown`，与完整性正交                                                  |
+| `complete`       | 仅声明已覆盖其明确范围；不能表示其他范围或所有字段已知                                                |
+| `model`          | 只在原生确认时填写；多模型不能用用户选择的一个模型代替                                                |
+| `price_version`  | 仅本地估算填写；CLI未报告价表版本时留空，另外保留CLI版本                                              |
 
 本轮费用用独立可空 `CostData` 保存差分后的金额，另存来源 scope 和计数依据；Token完整与费用完整必须分别标记。金额可独立存在，不需要先有 Token。API 等价估算与原生报告可同时保存用于核对，最终已知小计只能对同一消费选一个口径，不能把两个金额相加。
 
@@ -86,16 +86,16 @@ sequenceDiagram
 
 USD / 1M tokens。下表顺序为 `普通输入 / 输出 / cache read / cache write 30m / cache write 12h`。原始 HTML 折叠表易漏长上下文；本次另实际获取同页 `.md` 的完整 `Standard pricing data` 和 `Fast pricing data` 交叉核对。
 
-| 精确模型 | 档位与逐请求输入长度 | 价格 |
-| --- | --- | --- |
-| `gpt-5.2` | standard | 1.75 / 14 / 0.175 / 不适用 / 不适用 |
-| `gpt-5.2` | fast | 3.50 / 28 / 0.35 / 不适用 / 不适用 |
-| `gpt-5.3-codex` | standard | 1.75 / 14 / 0.175 / 不适用 / 不适用 |
-| `gpt-5.3-codex` | fast | 3.50 / 28 / 0.35 / 不适用 / 不适用 |
-| `gpt-6.1-sol` | standard，≤272K | 2 / 10 / 0.10 / 2.50 / 5 |
-| `gpt-6.1-sol` | standard，>272K | 4 / 15 / 0.20 / 5 / 10 |
-| `gpt-6.1-sol` | fast，≤272K | 4 / 20 / 0.20 / 5 / 10 |
-| `gpt-6.1-sol` | fast，>272K | 8 / 30 / 0.40 / 10 / 20 |
+| 精确模型        | 档位与逐请求输入长度 | 价格                                |
+| --------------- | -------------------- | ----------------------------------- |
+| `gpt-5.2`       | standard             | 1.75 / 14 / 0.175 / 不适用 / 不适用 |
+| `gpt-5.2`       | fast                 | 3.50 / 28 / 0.35 / 不适用 / 不适用  |
+| `gpt-5.3-codex` | standard             | 1.75 / 14 / 0.175 / 不适用 / 不适用 |
+| `gpt-5.3-codex` | fast                 | 3.50 / 28 / 0.35 / 不适用 / 不适用  |
+| `gpt-6.1-sol`   | standard，≤272K      | 2 / 10 / 0.10 / 2.50 / 5            |
+| `gpt-6.1-sol`   | standard，>272K      | 4 / 15 / 0.20 / 5 / 10              |
+| `gpt-6.1-sol`   | fast，≤272K          | 4 / 20 / 0.20 / 5 / 10              |
+| `gpt-6.1-sol`   | fast，>272K          | 8 / 30 / 0.40 / 10 / 20             |
 
 来源：[官方 Pricing](https://developers.openai.com/api/docs/pricing)、[同页 Markdown](https://developers.openai.com/api/docs/pricing.md)，核对 2026-11-03。官方当前确有 GPT‑6 型号定价；只接入上表精确 ID，**不存在一个可推到任意 `gpt-6*` 的通用价格**。地区/FedRAMP/Bulk等条件未冻结时不要默认为上表。
 
@@ -107,13 +107,13 @@ GPT‑5.6+ 的输入包含 cache read/write；写入按30m或12h互斥分量计�
 
 USD / 1M tokens，顺序为 `普通输入 / 输出 / cache read / cache write 5m / cache write 1h`。
 
-| 精确 Claude API ID | 条件 | 价格 |
-| --- | --- | --- |
-| `claude-opus-5-5` | standard | 4 / 20 / 0.20 / 5 / 8 |
-| `claude-opus-5-5` | fast | 8 / 40 / 0.40 / 10 / 16 |
-| `claude-sonnet-5-5` | standard | 2 / 10 / 0.10 / 2.50 / 4 |
-| `claude-opus-4-6` | standard | 5 / 25 / 0.50 / 6.25 / 10 |
-| `claude-sonnet-4-6` | standard | 3 / 15 / 0.30 / 3.75 / 6 |
+| 精确 Claude API ID  | 条件     | 价格                      |
+| ------------------- | -------- | ------------------------- |
+| `claude-opus-5-5`   | standard | 4 / 20 / 0.20 / 5 / 8     |
+| `claude-opus-5-5`   | fast     | 8 / 40 / 0.40 / 10 / 16   |
+| `claude-sonnet-5-5` | standard | 2 / 10 / 0.10 / 2.50 / 4  |
+| `claude-opus-4-6`   | standard | 5 / 25 / 0.50 / 6.25 / 10 |
+| `claude-sonnet-4-6` | standard | 3 / 15 / 0.30 / 3.75 / 6  |
 
 4.6+（Haiku 5.5 例外）长上下文不加价；不要沿用旧 Sonnet >200K 规则。不要把 fast 套在全部 Claude 型号上。混合 cache TTL 缺分项时不估价；地区或平台不同需独立目录。[官方 Pricing](https://platform.claude.com/docs/en/about-claude/pricing)、[官方模型 ID](https://platform.claude.com/docs/en/models/overview)，核对 2026-11-03。
 
@@ -121,9 +121,9 @@ USD / 1M tokens，顺序为 `普通输入 / 输出 / cache read / cache write 5m
 
 USD / 1M tokens，顺序为 `cache miss / cache hit / output`。直接官方 OpenAI/Anthropic 兼容端点使用同一发行方身份。
 
-| 精确模型 | 时段 | 价格 |
-| --- | --- | --- |
-| `deepseek-flash` | peak / off-peak | 0.30 / 0.006 / 1.20；0.15 / 0.003 / 0.60 |
+| 精确模型          | 时段            | 价格                                     |
+| ----------------- | --------------- | ---------------------------------------- |
+| `deepseek-flash`  | peak / off-peak | 0.30 / 0.006 / 1.20；0.15 / 0.003 / 0.60 |
 | `deepseek-v4-pro` | peak / off-peak | 1.32 / 0.044 / 3.96；0.66 / 0.022 / 1.98 |
 
 当前映射分别为 V4.1-Flash-1017 / V4-Pro-0813。peak 为非中国法定节假日的周一至周五 UTC 01:00–04:00、06:00–10:00，其余 off-peak；缺可靠请求时间或节假日判定不估价。没有独立 cache-write 报价，不凭空套 Anthropic multiplier。工具按请求另计，Token金额不宣称覆盖工具账单。[官方 Models & Pricing](https://api-docs.deepseek.com/quick_start/pricing/)，核对 2026-11-03。

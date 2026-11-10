@@ -10,16 +10,16 @@ NeuxBot 与 acp-go 均使用独立工作区的 `codex/provider-runtime-parity` �
 
 ## 阶段
 
-| 阶段                                 | 状态                                | 实施依据                                                                                           |
-| ------------------------------------ | ----------------------------------- | -------------------------------------------------------------------------------------------------- |
-| 源码审计和官方协议核验               | 已完成研究，非运行验收              | 本目录专项审计与来源报告                                                                           |
+| 阶段                                 | 状态                                 | 实施依据                                                                                           |
+| ------------------------------------ | ------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| 源码审计和官方协议核验               | 已完成研究，非运行验收               | 本目录专项审计与来源报告                                                                           |
 | 原生Token、缺失语义、失败归档        | 旧实现公开终态归档修复已复审，未发布 | [用量基础计划](../../superpowers/plans/2026-11-03-provider-usage-foundation.md)                    |
-| 模型、Fast、账号目录和结构错误       | 计划已审查，未实施                  | [模型能力计划](../../superpowers/plans/2026-11-03-provider-model-capabilities.md)                  |
-| 账号额度与重置时间                   | 计划已审查，未实施                  | [额度计划](../../superpowers/plans/2026-11-03-provider-account-quota.md)                           |
-| 受管安装、更新与重启                 | 计划已审查，未实施                  | [安装计划](../../superpowers/plans/2026-11-03-managed-provider-runtimes.md)                        |
-| 耐久统计和费用估算                   | 计划已审查，未实施           | [统计计划](../../superpowers/plans/2026-11-03-provider-usage-analytics.md)                                                                    |
-| 服务商详情、模型选择、统计与配额界面 | 计划已审查，未实施                  | [界面计划](../../superpowers/plans/2026-11-03-provider-ui.md)与[界面审计](accounts-ui-audit-cn.md) |
-| 集成及真实验收                       | 未完成                              | 后续逐provider/平台记录                                                                            |
+| 模型、Fast、账号目录和结构错误       | 计划已审查，未实施                   | [模型能力计划](../../superpowers/plans/2026-11-03-provider-model-capabilities.md)                  |
+| 账号额度与重置时间                   | 计划已审查，未实施                   | [额度计划](../../superpowers/plans/2026-11-03-provider-account-quota.md)                           |
+| 受管安装、更新与重启                 | 计划已审查，未实施                   | [安装计划](../../superpowers/plans/2026-11-03-managed-provider-runtimes.md)                        |
+| 耐久统计和费用估算                   | 计划已审查，未实施                   | [统计计划](../../superpowers/plans/2026-11-03-provider-usage-analytics.md)                         |
+| 服务商详情、模型选择、统计与配额界面 | 计划已审查，未实施                   | [界面计划](../../superpowers/plans/2026-11-03-provider-ui.md)与[界面审计](accounts-ui-audit-cn.md) |
+| 集成及真实验收                       | 未完成                               | 后续逐provider/平台记录                                                                            |
 
 ## 已有验证
 
@@ -33,4 +33,4 @@ NeuxBot 与 acp-go 均使用独立工作区的 `codex/provider-runtime-parity` �
 
 两个仓库通过工作区外的临时 Go workspace 联调，不提交机器绝对路径 replace。依赖发布、固定远端版本、合并和产品发布均尚未执行。
 
-当前重建按用户提供的云端方案执行，OpenBot参考版本改为`f44dbe116c89a944f8d7d085e092c967b3fce0df`；首批Codex、Claude Code、Cursor。`da99a092`公开终态用量归档修复已完成一次独立窄复审，唯一Important已关闭。它及先前测试只作为旧实现行为证据，新底座P0职责与三家差距核对仍在进行，P1-P6尚未完成。用户明确本次重写范围代码和测试注释使用英文。
+当前重建按用户提供的云端方案执行；首批Codex、Claude Code、Cursor。`da99a092`公开终态用量归档修复已完成一次独立窄复审，唯一Important已关闭。它及先前测试只作为旧实现行为证据，新底座P0职责与三家差距核对仍在进行，P1-P6尚未完成。用户明确本次重写范围代码和测试注释使用英文。

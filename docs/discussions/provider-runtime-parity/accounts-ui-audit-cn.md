@@ -1,6 +1,6 @@
 # 服务商、账号与用量界面专项审计
 
-本文是后续规格与实施的审计输入，建议部分尚未实现。研究基线：NeuxBot `e18a0d6e377eda9cdc96954321fb1f0788691a5f`、acp-go `a58342da0ddd1e3ec5d022a0f911b82eba02107d`、OpenBot `21369e1eec420772a7db9f6bbfeae2ef9b3ab83a`。只读分析产品源码，不启动 CLI、模型、浏览器或桌面应用。OpenBot 使用 PolyForm Noncommercial；本文仅提取行为与接口边界，不复制实现代码、样式或素材。
+本文是后续规格与实施的审计输入，建议部分尚未实现。研究基线：NeuxBot `e18a0d6e377eda9cdc96954321fb1f0788691a5f`、acp-go `a58342da0ddd1e3ec5d022a0f911b82eba02107d`。只读分析产品源码，不启动 CLI、模型、浏览器或桌面应用。
 
 ## 1. 结论与边界
 
@@ -11,60 +11,17 @@ NeuxBot 已有可复用的账号与执行安全基础：数据库加密凭据、
 1. 现有“AI 账号”和“智能体”两个设置入口需要聚合成服务商总览与详情。程序安装/版本、系统登录、受管账号、默认选择仍是不同事实；不能用“已安装”代替“已连接”。
 2. 聊天已有 Runtime→兼容账号，以及模型/effort 两个菜单，需组合为一个 provider/account/model/effort/fast 浮层，并让一组选择原子提交。Fast 需要补真实 capability 与执行参数，不能只增加开关。
 3. 已有回合 token 与上下文事件，但没有查到全局费用分析、账号配额读取/reset 的完整产品链路。Token、费用估算、订阅配额和 reset credit 是四种数据，不能共用一组数字。
-4. 模型目录必须按实际认证主体区分。OpenBot 的目录仍以 provider 为键，不能借鉴成“所有账号的模型权限已经独立”。NeuxBot 的 Codex 订阅目录接口也存在从 Runtime 默认探测快照回答任意 accountId 的身份边界，实施时需补明确的目录作用域。
+4. 模型目录必须按实际认证主体区分。不能按 provider 共享目录就声称所有账号权限已经独立。NeuxBot 的 Codex 订阅目录接口也存在从 Runtime 默认探测快照回答任意 accountId 的身份边界，实施时需补明确的目录作用域。
 
 本报告覆盖用户指定的行为目标：服务商已连接/其他分组，详情中的账号/API Key/Runtime 管理、启停和默认；聊天模型组合选择；token/费用/完整性页面；账号配额 popup 与 reset banner。没有做截图像素或真实视觉验收。
 
-## 2. OpenBot 多账号的真实行为
+## 2. 账号隔离设计
 
-### 2.1 账号目录与进程
+系统账号与受管账号分别持有凭据范围。受管目录与进程复用键包含实际账号身份，认证变更后不得复用旧主体会话。登录取消只清理本次拥有的资源。
 
-OpenBot 的首个账号继续使用 CLI 原生默认配置目录；额外账号由 ProviderAccountStore 生成稳定 ID，在专属根下建 `0700` 目录。列表只存 ID/provider/label，认证内容留在原生配置目录，而非列表。创建/写入由 semaphore 串行：`OpenBot:src/backend/agent/provider-account-store.ts:19-24,47-64,97-115,127-145,193-209`。
+## 3. 模型、额度与界面
 
-这里的 home 是 CLI 配置根，不能写成“每个账号有独立操作系统 HOME”。适配声明仅四种内置 provider 提供多账号能力：
-
-| Provider | 专属配置变量 | 行为限制 |
-|---|---|---|
-| Codex | `CODEX_HOME` | CLI login/logout；API-key login 不读取订阅配额 |
-| Claude | `CLAUDE_CONFIG_DIR` | macOS Keychain item 也按目录命名，删除目录前需原生 logout |
-| Grok | `GROK_HOME` | 独立 CLI login；账号目录删除时移除认证文件 |
-| Antigravity | `GEMINI_HOME` | 需版本确实支持此变量；独立 usage 读取会留 session，因此无运行中进程时保留上次读数 |
-
-证据：`OpenBot:src/backend/provider-drivers.ts:108-127,743-746,776-781,823-830,934-939`。其他 provider descriptor/Client 的存在不构成多账号支持证据。
-
-Agent 指定额外账号时，即便 Full access，也会有自己的一条 provider client/process；不是所有使用同一账号的 Agent 共用一个新进程。复用键包括 executable、version、provider activation、writable roots、excluded folders 和 account ID；键不变才复用。一个账号可被多个 Agent process 使用，同一 Agent 的多 thread 可由 client 管理：`OpenBot:src/backend/agent/provider-runtime.ts:2313-2342,2350-2385,2388-2426`。
-
-### 2.2 登录、凭据并发与活跃切换
-
-新增登录有 connecting/checking/connected/signed-out/error 状态；新账号登录失败或取消会删除新目录，旧账号取消变为 signed-out。检测会拒绝同一 provider 重复 email：`OpenBot:src/backend/agent/provider-accounts.ts:181-298,305-324,562-609`。
-
-重新登录的部分 ACP authenticate 路径先检查账号是否 busy，随后停止该账号的 Agent clients；移除账号前也停止 clients、logout、再删目录。CLI command 路径的保护与 ACP 路径并不完全相同，因此不能概括为“所有登录修改都有一个完整的账号读写锁”。ProviderAccountStore 的 semaphore 保护账号列表文件，ProviderAccounts 中的 sign-in/check maps 管理任务；在所读 provider-account/runtime 文件中未发现类似 NeuxBot CredentialGate 的“刷新轮换结果统一提交”边界。原生 CLI 自身是否另有凭据锁未运行验证。证据：`provider-accounts.ts:217-224,346-365`。
-
-用户修改 provider/account 时，OpenBot 按 provider change 对待：账号 session 存储位于不同目录，不能把旧账号 session ID 直接给新账号。只改 runtime 字段且 busy 时可保存 pendingRuntime，在后续 drain 生效；一些旧 Team API 路径不支持 pending 而要求 idle。见 `OpenBot:src/backend/agent-service.ts:2690-2716,2771-2805,2818-2859`。
-
-这一交互可以借鉴，但 NeuxBot 已有“已接纳工作范围/执行配置不被后续设置改写”的语义。建议 UI 区分当前执行实际值与下一轮草稿，不用服务商设置修改正在生成的工作。
-
-### 2.3 模型目录与配额不是同一作用域
-
-OpenBot ModelCatalog 的输入是 `client(provider)`，保存的选项仅带 provider/model；刷新遍历内置 provider，保留失败时的旧目录。ProviderModelPicker 的账号 rail 也复用同一 provider 模型集合。证据：`OpenBot:src/backend/agent/model-catalog.ts:22-27,33-68,134-148,171-190`；`OpenBot:packages/ui/src/components/ProviderModelPicker.tsx:193-214,235-238`。不能据此保证额外账号拥有相同模型权限。
-
-配额则不同：ProviderAccounts 以 accountId 存 last usage、reset credits、UsageReadGate；读取优先复用该账号某个运行中的 Agent client，否则短开认证 client 后关闭。按 model quota group 选 primary/secondary window；有的 provider 无运行进程时不主动读取。见 `OpenBot:src/backend/agent/provider-accounts.ts:106-109,494-508,615-648`。因此模型目录与 quota 缓存不能互相替代。
-
-reset 是 provider 可声明的一种消耗 credit 的原生操作，并非清空本地统计。执行后重读配额，返回 reset/nothingToReset/noCredit/alreadyRedeemed 等结果，通知所有视图与限额 gate。见 `OpenBot:src/backend/agent/provider-runtime.ts:1120-1158`、`OpenBot:packages/ui/src/features/settings/ProviderSettingsPage.tsx:607-650,772-787`。
-
-## 3. OpenBot UI 可以借鉴的行为
-
-| 用户目标 | 源码行为 | 证据 |
-|---|---|---|
-| 已连接/其他 | 根据连接状态分组，搜索覆盖 provider 名及账号 label/email，保留 reconnect 时的 Connected 分组 | `OpenBot:packages/ui/src/features/settings/ProviderSettingsPage.tsx:223-237,258-292,478-492` |
-| 服务商详情 | 一个详情组合 Accounts/SignIn、API key 和 Runtime sections，能力不支持时不硬展示操作 | 同文件 `:501-522,590-702` |
-| 账号动作 | 添加、重连、重命名、移除、必要时 sign-out、带确认的 reset；usedBy 说明实际影响 | 同文件 `:652-702,725-787,807-817,929-932` |
-| 模型 picker | provider/account rail + 模型列表 + effort；有 Fast tier 且存在修改回调才显示 Fast | `OpenBot:packages/ui/src/components/ProviderModelPicker.tsx:80-113,193-214,295-307,430-454` |
-| Codex Fast | 模型目录读取 serviceTiers 中名为 Fast 的原生 ID，兼容旧 additionalSpeedTiers；关闭用 null 清原 thread tier | `OpenBot:src/backend/agent/provider-models.ts:272-280`；`drain-scheduler.ts:1152-1166` |
-| 配额 popup | 显示剩余百分比、窗口重置时间；未报告/不可用/加载区分，不能用 0 假装无额度 | `OpenBot:packages/ui/src/features/account/AccountUsageDetails.tsx:69-106,111-134` |
-| 统计页完整性 | 分开 missingUsageTurns、unpricedRecords、incompleteRecords，cost/token 切换；“估算费用/已知 token”语义 | `OpenBot:packages/ui/src/features/usage/AgentUsageReport.tsx:115-154` |
-
-OpenBot 累计计数采用稳定 counter ID/checkpoint 求增量，基线不算新用量，禁止负增量当新消费；重连、SDK session cost 和每 prompt token 的计数范围分别处理。统计不随聊天删除而消失：`OpenBot:src/backend/database/agent-usage.ts:23-47,58-59,88-190`。费用是原生报告或有来源、日期的 API 等价估算；无价格、分量未知、长上下文归属不明时保持 null，而不是猜测：`OpenBot:src/backend/agent/usage-pricing.ts:3-7,152-205`。本文不复用其中价格，也未验证其时效。
+模型目录按智能体、账号和原生版本区分；额度读取使用同一账号租约。未知、读取失败、已知零分别展示。Fast 使用原生档位身份，关闭与未设置分别表达。累计 Token 通过稳定调用身份去重，不随聊天删除而丢失。
 
 ## 4. NeuxBot 当前可复用能力
 
@@ -76,16 +33,16 @@ OpenBot 累计计数采用稳定 counter ID/checkpoint 求增量，基线不算�
 
 凭据与生命周期必须保留：
 
-| 已有能力 | 源码 | 实施要求 |
-|---|---|---|
-| 数据库加密、列表不带 ciphertext、revision 乐观更新 | `server/repositories/controllers/ai_account_controller.go:47-66,70-105` | 继续使用同一账号 ID/Repository；UI 默认显示脱敏状态 |
-| 同账号可并发执行，登录/配置改动独占 | `server/services/aiaccount/service.go:98-173` | 不把 account busy 误改成“同账号禁止两个聊天” |
-| 获取独占前回收 idle session，活动 session 不强停 | 同文件 `:91-115`；`server/internal/agent/agent.go:219-239` | 当前生成时就近报 busy，或显式排队；不能偷偷 kill |
-| prepare 前短锁，模型期间不持凭据锁；关闭保留可重试 lease | `service.go:239-310` | quota probe 与模型目录读取也复用租约边界 |
-| session config key 不含秘密或单纯凭据 revision | `service.go:190-198` | 正常 token 轮换不导致连接重建/丢 cache |
-| refresh 合并与旧投射保护 | `server/services/aiaccount/login.go:399-438` | 不用复制原生目录绕过当前权威 |
-| 环境清洗与原生配置根投射 | `server/internal/accountconfig/config.go:88-131,230-269` | 保留系统 HOME，清除其他账号 key/home 环境污染 |
-| Kimi per-account 持久登录目录 | `server/services/aiaccount/kimi.go:64-95` | 不统一改成每 chat 临时目录而丢原生会话 |
+| 已有能力                                                 | 源码                                                                    | 实施要求                                            |
+| -------------------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------- |
+| 数据库加密、列表不带 ciphertext、revision 乐观更新       | `server/repositories/controllers/ai_account_controller.go:47-66,70-105` | 继续使用同一账号 ID/Repository；UI 默认显示脱敏状态 |
+| 同账号可并发执行，登录/配置改动独占                      | `server/services/aiaccount/service.go:98-173`                           | 不把 account busy 误改成“同账号禁止两个聊天”        |
+| 获取独占前回收 idle session，活动 session 不强停         | 同文件 `:91-115`；`server/internal/agent/agent.go:219-239`              | 当前生成时就近报 busy，或显式排队；不能偷偷 kill    |
+| prepare 前短锁，模型期间不持凭据锁；关闭保留可重试 lease | `service.go:239-310`                                                    | quota probe 与模型目录读取也复用租约边界            |
+| session config key 不含秘密或单纯凭据 revision           | `service.go:190-198`                                                    | 正常 token 轮换不导致连接重建/丢 cache              |
+| refresh 合并与旧投射保护                                 | `server/services/aiaccount/login.go:399-438`                            | 不用复制原生目录绕过当前权威                        |
+| 环境清洗与原生配置根投射                                 | `server/internal/accountconfig/config.go:88-131,230-269`                | 保留系统 HOME，清除其他账号 key/home 环境污染       |
+| Kimi per-account 持久登录目录                            | `server/services/aiaccount/kimi.go:64-95`                               | 不统一改成每 chat 临时目录而丢原生会话              |
 
 OpenCode/Gemini/Grok API-key 配置按账号 ID+revision 派生隔离目录，OpenCode 分开 XDG data/config/cache/state；见 `server/internal/accountconfig/native.go:71-124`。其余 Codex/Claude/Pi/Kimi 的投射以受管 workspace 下的 accounts/runtime 为根；不能泛化成已经拥有所有 provider 的全局持久账号目录。
 
@@ -117,17 +74,17 @@ RuntimeEnvironment 已持久化 enabled/isDefault/defaultAccountId/binary/prefix
 
 下面是规格建议，不是当前已实现结构。
 
-| 对象/作用域 | 应拥有的事实 | 不应拥有 |
-|---|---|---|
-| Provider 展示入口 | provider 展示 ID、品牌/名称、适用 runtime IDs、连接摘要的派生关系 | 第二套进程、秘密、账号 CRUD 数据 |
-| Runtime/安装 | binary/version/source、supported actions、enabled/default、检测状态/时间 | 用户账号额度、全局费用 |
-| AIAccount | 稳定 ID、authMode、issuer/endpoint/protocol、credential revision、auth state | 强行绑定单一 harness；凭空的 quota |
-| AccountModelCatalog | runtime+account identity、model/effort/fast 能力、fresh/stale/error 与时间 | 另一个账号的上次成功目录 |
-| ExecutionSelectionDraft | provider/runtime/account/model/effort/fast 的一组候选 | 覆盖正在运行 execution 的实际配置 |
-| Accepted execution | 已冻结选择、实际回执、account identity、native session、usage provenance | 跟随设置默认值实时改变 |
-| AccountQuotaSnapshot | provider+account+quota group、windows、reported/resetAt/readAt/stale、reset capability/credits | 本地 token 日志累计值 |
-| UsageRecord | execution/turn/counter identity、实际 provider/runtime/account/model、token known mask、reported cost 或估价依据 | 密钥、请求正文、当前可变默认模型 |
-| UsageAggregate | 按日期/provider/account/model/伙伴派生 totals 与缺失计数 | 另一套执行状态或 token 累计权威 |
+| 对象/作用域             | 应拥有的事实                                                                                                     | 不应拥有                           |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Provider 展示入口       | provider 展示 ID、品牌/名称、适用 runtime IDs、连接摘要的派生关系                                                | 第二套进程、秘密、账号 CRUD 数据   |
+| Runtime/安装            | binary/version/source、supported actions、enabled/default、检测状态/时间                                         | 用户账号额度、全局费用             |
+| AIAccount               | 稳定 ID、authMode、issuer/endpoint/protocol、credential revision、auth state                                     | 强行绑定单一 harness；凭空的 quota |
+| AccountModelCatalog     | runtime+account identity、model/effort/fast 能力、fresh/stale/error 与时间                                       | 另一个账号的上次成功目录           |
+| ExecutionSelectionDraft | provider/runtime/account/model/effort/fast 的一组候选                                                            | 覆盖正在运行 execution 的实际配置  |
+| Accepted execution      | 已冻结选择、实际回执、account identity、native session、usage provenance                                         | 跟随设置默认值实时改变             |
+| AccountQuotaSnapshot    | provider+account+quota group、windows、reported/resetAt/readAt/stale、reset capability/credits                   | 本地 token 日志累计值              |
+| UsageRecord             | execution/turn/counter identity、实际 provider/runtime/account/model、token known mask、reported cost 或估价依据 | 密钥、请求正文、当前可变默认模型   |
+| UsageAggregate          | 按日期/provider/account/model/伙伴派生 totals 与缺失计数                                                         | 另一套执行状态或 token 累计权威    |
 
 服务商总览可以按 harness/官方服务入口分组；一个可跨 Runtime 的 API 账号通过引用出现在兼容详情中，而非复制。自定义 endpoint 保留独立服务身份，不能仅凭包含 openai/anthropic 的协议名冒用官方“已连接”身份。
 
@@ -137,15 +94,15 @@ RuntimeEnvironment 已持久化 enabled/isDefault/defaultAccountId/binary/prefix
 
 ## 6. 必须改动与可复用触点
 
-| 范围 | 可复用 | 必须补齐/调整 |
-|---|---|---|
-| Provider 总览/详情 | settings Scene、SettingsContentShell、共享 Card/List/Popover/Button、账号 CRUD 与 Runtime Query | 同一入口聚合 connected/other；详情 accounts/key/runtime；通过 URL 保存选中 provider；窄容器重排 |
-| 账号生命周期 | AIAccount controller/service、login job、CredentialGate、LaunchLease | 每新增 provider 官方登录需独立能力声明、原生 logout/clear 范围、版本支持、取消/重连状态；不能先画成功按钮 |
-| 模型目录 | Catalog、DetectModel、现有账号 models/thinking API | 账号作用域与 revision、加载/陈旧/失败、同主体旧目录 fallback；前后端能力模型一致 |
-| Runtime 维护 | 安装路径探测、默认/启停 API、Session owner | 真正 update/restart API、operation state、managed/system 区分；运行中任务等待策略；探测不能冒充更新 |
-| 组合模型选择 | ExecutionRuntimeControl、ExecutionModelControl、兼容过滤、聊天选择 callback | 一个浮层持有组合草稿，确认时原子 patch；Fast 从原生 capability 贯穿契约与执行；provider/account/model切换后重新校验 effort/fast |
-| Token/费用 | Usage event、JSONL、实际执行配置、generated client | 有界持久 usage records/幂等 counter、nullable known mask、聚合 API/Query、费用来源日期/覆盖率；历史未知不伪造 |
-| Quota/reset | AIAccount lease、Management、统一资源事件 | 原生只读 quota/reset port、per-account/group 缓存、popup/banner、reset confirmed outcome、真实 re-read；不支持则不展示可执行 reset |
+| 范围               | 可复用                                                                                          | 必须补齐/调整                                                                                                                      |
+| ------------------ | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Provider 总览/详情 | settings Scene、SettingsContentShell、共享 Card/List/Popover/Button、账号 CRUD 与 Runtime Query | 同一入口聚合 connected/other；详情 accounts/key/runtime；通过 URL 保存选中 provider；窄容器重排                                    |
+| 账号生命周期       | AIAccount controller/service、login job、CredentialGate、LaunchLease                            | 每新增 provider 官方登录需独立能力声明、原生 logout/clear 范围、版本支持、取消/重连状态；不能先画成功按钮                          |
+| 模型目录           | Catalog、DetectModel、现有账号 models/thinking API                                              | 账号作用域与 revision、加载/陈旧/失败、同主体旧目录 fallback；前后端能力模型一致                                                   |
+| Runtime 维护       | 安装路径探测、默认/启停 API、Session owner                                                      | 真正 update/restart API、operation state、managed/system 区分；运行中任务等待策略；探测不能冒充更新                                |
+| 组合模型选择       | ExecutionRuntimeControl、ExecutionModelControl、兼容过滤、聊天选择 callback                     | 一个浮层持有组合草稿，确认时原子 patch；Fast 从原生 capability 贯穿契约与执行；provider/account/model切换后重新校验 effort/fast    |
+| Token/费用         | Usage event、JSONL、实际执行配置、generated client                                              | 有界持久 usage records/幂等 counter、nullable known mask、聚合 API/Query、费用来源日期/覆盖率；历史未知不伪造                      |
+| Quota/reset        | AIAccount lease、Management、统一资源事件                                                       | 原生只读 quota/reset port、per-account/group 缓存、popup/banner、reset confirmed outcome、真实 re-read；不支持则不展示可执行 reset |
 
 主要文件：
 
@@ -157,32 +114,32 @@ RuntimeEnvironment 已持久化 enabled/isDefault/defaultAccountId/binary/prefix
 
 ## 7. 验收矩阵
 
-| 场景 | 必须观察到的结果 | 验证层 |
-|---|---|---|
-| 空库/CLI 未发现 | Shell 即时挂载，其他列表可见，显示未探测/未安装真实状态 | 前端行为 + 真实平台 |
-| 已安装但未登录 | 不进入已连接，不提供可执行模型；连接动作可达 | DTO/前端/真实 CLI |
-| 一个已连接账号，多账号 checking | provider 保留已连接；账号状态独立，失败不污染其他账号 | 账号服务 + UI |
-| API Key 保存/编辑/取消 | 默认脱敏；错误就近；取消不保存；列表/事件/日志无密钥 | API/脱敏测试 + UI |
-| Codex A/B 并发执行 | 使用不同认证主体；不写真实用户配置；允许同账号合理并发 | 服务测试 + 真实 CLI |
-| Token 轮换并发/取消 | 一次协调刷新；已收到的新 token 耐久保存；旧投射不覆盖 | CredentialGate/刷新测试 |
-| 登录/删除/改配置时忙 | 活跃执行保持 owner；明确 busy 或下一轮生效；不隐式 kill/replay | Session+账号集成 |
-| 账号切换后的目录 | 请求/缓存 identity 都是新账号；无跨账号 fallback | API/Query race 测试 |
-| 账号 A 有模型、B 无权限 | B 不借用 A 的可用结论；实际 setter 拒绝准确展示 | 目录+真实账号 |
-| 修改默认/禁用 provider | 影响后续接纳；已接纳执行事实不变；反向启用/更换默认可恢复 | API/执行回归 |
-| 点击重新探测 | 只发生 probe；不声称程序已更新或任务已重启 | API/UI |
-| 更新 Runtime | 显示下载/校验/安装/失败/可重试真实状态；失败保留原版本 | 平台安装集成 |
-| 重启时存在活跃 turn | 等待或明确说明须停止；无丢失 ownership/重复 Prompt | 生命周期集成 |
-| 组合选择 provider/account/model | 一次 patch；不可观察到错配中间态；当前执行与下一轮值区分 | RTL+执行接纳 |
-| 模型切换 effort 不支持 | 重选明确默认或要求选择，不发送旧模型档位 | 能力/前端行为 |
-| Fast 支持/不支持/关闭 | 仅支持时出现；原生收到真实 setting/tier；关闭显式清除 | acp-go协议+宿主集成+真实模型 |
-| Token 累计重复/恢复/重启 | counter 幂等；基线不算消费；不出现负数或重复费用 | Repository/事件回放 |
-| 用量缺失/部分分量未知 | 显示完整性与未知值；已知零仍可区分 | 统计 API/UI |
-| 无价格/自定义模型/长上下文未知 | 保持未估价；不显示免费；估价依据可查 | 定价规则/统计 UI |
-| 配额无读取能力或离线 | 未报告/不可用/陈旧分别显示，不能显示 100% 或 0 的伪读数 | Adapter/API/UI |
-| 两账号不同模型 quota group | popup 读取并显示各自窗口/resetAt，账号间不串数据 | 配额服务+真实账号 |
-| Reset credit=0/未知/支持 | 只在真实可用时给动作，确认后调用一次；失败/无操作正确说明 | 原生边界/前端 |
-| reset 完成 | 依据重读结果更新 quota/banner/hold，不把 toast 当额度事实 | 事件集成 |
-| Light/dark/窄容器/长中文/键盘 | 无普通 Card 常驻边框阴影、无全容器焦点框；有可达焦点、返回/恢复、Skeleton | 样式检查+真实视觉 |
+| 场景                            | 必须观察到的结果                                                          | 验证层                       |
+| ------------------------------- | ------------------------------------------------------------------------- | ---------------------------- |
+| 空库/CLI 未发现                 | Shell 即时挂载，其他列表可见，显示未探测/未安装真实状态                   | 前端行为 + 真实平台          |
+| 已安装但未登录                  | 不进入已连接，不提供可执行模型；连接动作可达                              | DTO/前端/真实 CLI            |
+| 一个已连接账号，多账号 checking | provider 保留已连接；账号状态独立，失败不污染其他账号                     | 账号服务 + UI                |
+| API Key 保存/编辑/取消          | 默认脱敏；错误就近；取消不保存；列表/事件/日志无密钥                      | API/脱敏测试 + UI            |
+| Codex A/B 并发执行              | 使用不同认证主体；不写真实用户配置；允许同账号合理并发                    | 服务测试 + 真实 CLI          |
+| Token 轮换并发/取消             | 一次协调刷新；已收到的新 token 耐久保存；旧投射不覆盖                     | CredentialGate/刷新测试      |
+| 登录/删除/改配置时忙            | 活跃执行保持 owner；明确 busy 或下一轮生效；不隐式 kill/replay            | Session+账号集成             |
+| 账号切换后的目录                | 请求/缓存 identity 都是新账号；无跨账号 fallback                          | API/Query race 测试          |
+| 账号 A 有模型、B 无权限         | B 不借用 A 的可用结论；实际 setter 拒绝准确展示                           | 目录+真实账号                |
+| 修改默认/禁用 provider          | 影响后续接纳；已接纳执行事实不变；反向启用/更换默认可恢复                 | API/执行回归                 |
+| 点击重新探测                    | 只发生 probe；不声称程序已更新或任务已重启                                | API/UI                       |
+| 更新 Runtime                    | 显示下载/校验/安装/失败/可重试真实状态；失败保留原版本                    | 平台安装集成                 |
+| 重启时存在活跃 turn             | 等待或明确说明须停止；无丢失 ownership/重复 Prompt                        | 生命周期集成                 |
+| 组合选择 provider/account/model | 一次 patch；不可观察到错配中间态；当前执行与下一轮值区分                  | RTL+执行接纳                 |
+| 模型切换 effort 不支持          | 重选明确默认或要求选择，不发送旧模型档位                                  | 能力/前端行为                |
+| Fast 支持/不支持/关闭           | 仅支持时出现；原生收到真实 setting/tier；关闭显式清除                     | acp-go协议+宿主集成+真实模型 |
+| Token 累计重复/恢复/重启        | counter 幂等；基线不算消费；不出现负数或重复费用                          | Repository/事件回放          |
+| 用量缺失/部分分量未知           | 显示完整性与未知值；已知零仍可区分                                        | 统计 API/UI                  |
+| 无价格/自定义模型/长上下文未知  | 保持未估价；不显示免费；估价依据可查                                      | 定价规则/统计 UI             |
+| 配额无读取能力或离线            | 未报告/不可用/陈旧分别显示，不能显示 100% 或 0 的伪读数                   | Adapter/API/UI               |
+| 两账号不同模型 quota group      | popup 读取并显示各自窗口/resetAt，账号间不串数据                          | 配额服务+真实账号            |
+| Reset credit=0/未知/支持        | 只在真实可用时给动作，确认后调用一次；失败/无操作正确说明                 | 原生边界/前端                |
+| reset 完成                      | 依据重读结果更新 quota/banner/hold，不把 toast 当额度事实                 | 事件集成                     |
+| Light/dark/窄容器/长中文/键盘   | 无普通 Card 常驻边框阴影、无全容器焦点框；有可达焦点、返回/恢复、Skeleton | 样式检查+真实视觉            |
 
 专项回归应首先复用 `aiaccount/service_test.go`、`prepare_wait_test.go`、`login_test.go`、账号 controller 测试、`runtimeenvironment/service_test.go`、执行账号/原生账号验证测试，以及已有 settings/composer/model-control 的定向测试。测试不得镜像组件内部 state；应覆盖主体隔离、原生调用参数、用户可见结果和反向恢复。
 

@@ -18,7 +18,9 @@ CI 在 Windows 上编译真实 sidecar，并使用与安装包共用的 `scripts
 
 API 生成器从锁定 ginx 模块的临时源码副本构建，应用 `scripts/patches/ginx-openapi-recursive-errors.patch` 并先验证递归错误图回归。补丁以反向依赖传播补全调用环的错误闭包，避免生成结果受接口扫描顺序影响；不改写模块缓存或运行时依赖。上游版本变化导致补丁无法应用或回归失败时，生成立即停止，已有契约保持不变；生成结果仍由 `pnpm api:check` 完整比较。
 
-插件包、授权桥接与程序依赖由独立 [neux-plugins](https://github.com/JieWaZi/neux-plugins) 仓库构建和发布。Core 通过 HTTP 目录读取元数据，安装时按目录摘要下载包；应用开发和打包不下载、编译或内置供应商 CLI，也不生成插件安装 ZIP 或来源副本。目录、安装、配置与授权边界见 [插件资源](../architecture/plugin-resources-cn.md)。
+插件包、授权桥接与程序依赖由独立 [neux-plugins](https://github.com/JieWaZi/neux-plugins) 仓库构建和发布。Core 从外部轻索引和按需公开详情读取展示资料，启动后后台核验索引并独立预取完整包，安装优先读取本地缓存并允许联网兜底；应用开发和打包不下载、编译或内置供应商 CLI，也不生成插件安装 ZIP。目录、安装、配置与授权边界见 [插件资源](../architecture/plugin-resources-cn.md)。
+
+插件数据不进入 Go 常量、embed、应用安装资源或源码快照。`server/cmd/pluginpack` 是宿主与插件仓库共用生成器的命令入口；插件仓库通过固定版本／摘要的工具配置构建 portable 包和各 CLI 自包含工件，显式 `NEUX_PLUGIN_PACKAGER` 仅用于开发验证。正式工具资产尚未发布时不能将本地覆盖路径当作可复现的正式构建。独立 CLI 工件保留共享技能、MCP、真实 setup／launcher、许可和来源信息，使用者不需要运行 Core。
 
 本地跨仓库开发需明确选择插件源码：在插件仓库先运行 `npm ci`，再在主仓库运行 `pnpm dev:native:plugins --plugins ../neux-plugins`。启动器调用插件仓库的 `build-review-snapshot.mjs`，将未提交源码复制到独立临时 Git 快照，按新规范构建到插件仓库 `.cache/development/catalog`；真实仓库的提交和索引不变。它只重写开发目录中的下载地址到本机回环服务，摘要、版本及来源隔离保持不变，服务随开发子进程退出。输出持久保留，每次启动重新构建并更新下载端口；普通 `dev:native` 和正式包仍使用默认发布源。
 
@@ -34,7 +36,7 @@ NEUX_VERIFY_LOCAL_PLUGIN_ARTIFACTS=1 pnpm dev:native:plugins --plugins ../neux-p
 
 原生发布前将 Renderer 资源装配到 `desktop/dist-native`，对超过 1 KiB 的 JS、CSS、JSON、SVG 使用 Brotli 无损压缩。`ally` 协议恢复原字节与 MIME，HTML 保留 CSP 校验；开发模式仍使用原 `dist`。资源冒烟逐项比对压缩发布与原始构建字节。启动预算始终统计未压缩产物。
 
-首屏静态 JS 预算为 500,000 bytes，工作台启动 JS 预算为 4,500,000 bytes；统计包含启动前等待或预热的动态依赖。启动错误面板仅在失败时加载，Mermaid 引擎仅在实际绘图时加载。打包检查安装包 170 MiB、安装文件 450 MiB、Resources 215 MiB 的体积上限，输出机器可读报告。Resources 包含 Core、CLI、前端产物及必要原生模块；插件业务包在安装时独立获取。各平台体积以当前构建报告为准。Windows 即使超限也输出三项实测体积及最大的 30 个文件，失败构建的报告由发布工作流单独保存。实际文件名与默认平台以打包脚本为准。
+首屏静态 JS 预算为 500,000 bytes，工作台启动 JS 预算为 4,500,000 bytes；统计包含启动前等待或预热的动态依赖。启动错误面板仅在失败时加载，Mermaid 引擎仅在实际绘图时加载。打包检查安装包 170 MiB、安装文件 450 MiB、Resources 215 MiB 的体积上限，输出机器可读报告。Resources 包含 Core、CLI、前端产物及必要原生模块；插件业务包由启动后台任务独立预取，安装缺包时才联网兜底。各平台体积以当前构建报告为准。Windows 即使超限也输出三项实测体积及最大的 30 个文件，失败构建的报告由发布工作流单独保存。实际文件名与默认平台以打包脚本为准。
 
 发布矩阵在原生 runner 上分别构建 macOS arm64、macOS x64（amd64）与 Windows x64，并校验构建机架构。GitHub Release 直接提供用户可安装的 NeuxBot-mac-arm64.dmg、NeuxBot-mac-x64.dmg 和 NeuxBot-windows-x64.exe，附带分架构体积报告及 SHA256SUMS。Actions 中以 NeuxBot 命名的 artifact 仅用于 CI 暂存与跨任务传输，用户下载入口为 Release 中的 DMG 或 EXE。代码签名、公证及签名密钥由发布环境管理；本地签名不表示完成发行签名与公证。
 

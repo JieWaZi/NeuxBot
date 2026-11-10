@@ -75,7 +75,7 @@
 
 **Interfaces:** Binding.Configuration 仅保存 session 兼容事实；当前连接持有进程启动事实。保留唯一 Thread 决策入口。
 
-- [x] 核对固定本地 OpenBot thread-lifecycle.ts 的 reload/session 规则及锁定 acp-go 实际能力。
+- [x] 核对 ThreadLifecycle 的配置重载／会话规则及锁定 acp-go 实际能力。
 - [x] 添加目录/诊断/账号标签变化不替换 session、进程配置改变但历史兼容时 resume 的失败用例。
 - [x] 删除整个 DetectionResult/Revision 等宽 hash；显式比较实际启动环境、交付、主体、历史存储及不能重载的原生配置。
 - [x] Claude 已证实可重载资源时保留 session；Codex 按原生限制替换；其他 CLI 不虚构支持能力或新增静态策略表。
@@ -140,46 +140,44 @@
 - [x] 独立代码审查检查并发、恢复、资源租约和公开序列化；修复实际问题后仅复跑受影响验证。
 - [x] 更新原架构与验收记录为实际行为，报告本地修改、提交/发布状态和剩余真实验收边界。
 
-
 ## 实施验收记录
 
 以下为定向自动化与源码审查结果；协议子进程使用测试替身，不代表真实 CLI、模型或 GUI 验收。真实 CLI/模型/GUI 仍待用户验收。真实 Core → 原生 fork → 子聊天续聊与重启已贯通，原生位置与历史身份来自同一 Store 的规范输入、结果和 Binding；旧调用终态、专属枚举与定位列已删除。Kimi 本轮只修成功提交与并发元数据保存；失败或取消维持原处理，原生 home 副作用仍需真实验收。
 
 ### 删除与保留
 
-| ID | 实际结果与证据 |
-| --- | --- |
-| D01–D03 | 删除旧执行合同及 Journal 旧入口；保留 Thread/Turn、BeforeSubmit 和提交身份。[work_test.go](../../../server/services/execution/work_test.go) 的 `TestNativeContinuationKeepsLastEffectiveSelection`；[thread_lifecycle_test.go](../../../server/internal/agent/thread_lifecycle_test.go) 的 `TestThreadTurnResumesAfterUnconfirmedNativeSubmission`。 |
-| D04 | 删除旧 RuntimeSession 表链、旧调用终态与专属定位列；[native_fork_test.go](../../../server/services/execution/native_fork_test.go) 的 `TestNativeProductCanonicalFork` 贯通首发、旧 Session 精确分叉、子续聊、来源删除和重启再次分叉。 |
-| D05–D06 | 删除普通重试及不可达原生插件成功路径；保留实际 Skill/MCP 投射与 native-only 拒绝。[plugins_test.go](../../../server/services/execution/plugins_test.go) 的 `TestPluginRestrictedEntryFiltersMCPAndRejectsProviderCLI`。 |
-| D07–D09 | 系统技能预发布、热声明与冷获取分离；禁用 MCP 不提前解密。[work_test.go](../../../server/services/execution/work_test.go) 的 `TestNativeTwoTurnsUsePublishedSystemSkill`；[mcp_connector_controller_test.go](../../../server/repositories/controllers/mcp_connector_controller_test.go) 的 `TestMCPExecutionDeclarationsExcludeDisabledSecretsAndDeferDecryption`。 |
+| ID      | 实际结果与证据                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D01–D03 | 删除旧执行合同及 Journal 旧入口；保留 Thread/Turn、BeforeSubmit 和提交身份。[work_test.go](../../../server/services/execution/work_test.go) 的 `TestNativeContinuationKeepsLastEffectiveSelection`；[thread_lifecycle_test.go](../../../server/internal/agent/thread_lifecycle_test.go) 的 `TestThreadTurnResumesAfterUnconfirmedNativeSubmission`。                                                                                                                                                                                                                                            |
+| D04     | 删除旧 RuntimeSession 表链、旧调用终态与专属定位列；[native_fork_test.go](../../../server/services/execution/native_fork_test.go) 的 `TestNativeProductCanonicalFork` 贯通首发、旧 Session 精确分叉、子续聊、来源删除和重启再次分叉。                                                                                                                                                                                                                                                                                                                                                           |
+| D05–D06 | 删除普通重试及不可达原生插件成功路径；保留实际 Skill/MCP 投射与 native-only 拒绝。[plugins_test.go](../../../server/services/execution/plugins_test.go) 的 `TestPluginRestrictedEntryFiltersMCPAndRejectsProviderCLI`。                                                                                                                                                                                                                                                                                                                                                                         |
+| D07–D09 | 系统技能预发布、热声明与冷获取分离；禁用 MCP 不提前解密。[work_test.go](../../../server/services/execution/work_test.go) 的 `TestNativeTwoTurnsUsePublishedSystemSkill`；[mcp_connector_controller_test.go](../../../server/repositories/controllers/mcp_connector_controller_test.go) 的 `TestMCPExecutionDeclarationsExcludeDisabledSecretsAndDeferDecryption`。                                                                                                                                                                                                                              |
 | D10–D11 | 分开进程与历史兼容；Runtime 普通配置保存及账号元数据保存不独占，真实认证变更仍受保护。[update_runtime_environment_test.go](../../../server/apis/runtime_options/update_runtime_environment_test.go) 的 `TestUpdateRuntimeEnvironmentKeepsActiveAccountLease` 验证活动租约及闲置消费者不被普通保存回收。[thread_lifecycle_test.go](../../../server/internal/agent/thread_lifecycle_test.go) 的 `TestThreadTurnHotProcessChangeResumesSameHistory`；[update_test.go](../../../server/apis/ai_accounts/update_test.go) 的 `TestUpdateActiveAccountAllowsLabelsAndDefaultsButProtectsCredentials`。 |
-| D12–D13 | 删除旧失效合同、Codex-only 失效转发包装及重复比较；登录、更新、删除与退出统一使用现有 `InvalidateAccountAuth`；保留实际租约和冷获取复核。[plugins_test.go](../../../server/services/execution/plugins_test.go) 的 `TestColdPluginResourcesRejectInstallationChangesBeforeAdmission`。 |
+| D12–D13 | 删除旧失效合同、Codex-only 失效转发包装及重复比较；登录、更新、删除与退出统一使用现有 `InvalidateAccountAuth`；保留实际租约和冷获取复核。[plugins_test.go](../../../server/services/execution/plugins_test.go) 的 `TestColdPluginResourcesRejectInstallationChangesBeforeAdmission`。                                                                                                                                                                                                                                                                                                           |
 
 ### 公开合同
 
-| ID | 实际结果与证据 |
-| --- | --- |
-| API-01、API-05 | 删除普通重试入口及公开 submissionHash；保留内部幂等事实与 workflow.retry。[native_turn_test.go](../../../server/services/execution/native_turn_test.go) 的提交回执用例；[public_runs_test.go](../../../server/apis/workflows/public_runs_test.go) 的 `TestPublicRunAcceptanceAndRetryKeepIndependentRunEvidence`。 |
-| API-02–04、API-06 | 统一模型目录和单 endpoint；保留推理、Fast 与内部目录事实。[model_catalog_test.go](../../../server/services/runtimeenvironment/model_catalog_test.go) 的 `TestModelCatalogReadVerifiesSystemSubjectBeforePersistedCache`；[update_test.go](../../../server/apis/ai_accounts/update_test.go) 的账号保存用例。 |
-| API-07–09 | 移除公开 componentIds、Skill contentPath 和 Package 内部执行字段；保留内部组件、摘要和目标配置。[resources_test.go](../../../server/apis/plugins/resources_test.go) 的 `TestPluginResourceResponsesKeepPublicCapabilitiesWithoutExecutionMetadata`；内部交付由 [plugins_test.go](../../../server/services/execution/plugins_test.go) 的 `TestPluginAdmissionPinsResourcesAndDoesNotSelectEveryComponent` 验证。 |
-| API-10 | 删除 questionVersion，保留 Human 身份、快照与状态防重。[human_answer_test.go](../../../server/apis/workflows/human_answer_test.go) 的 `TestHumanAnswerRequiresOriginalSnapshotCAS` 重新独立运行通过。 |
-| API-11–12 | Run 暴露 triggerSource，Attempts 收窄；内部 Context、恢复与当前 effect 保留。[public_runs_test.go](../../../server/apis/workflows/public_runs_test.go) 的 `TestPublicRunQueriesKeepBusinessOriginAndInternalRecovery`、`TestPublicAttemptHistoryPreservesFailureAndCurrentControls`。 |
+| ID                | 实际结果与证据                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API-01、API-05    | 删除普通重试入口及公开 submissionHash；保留内部幂等事实与 workflow.retry。[native_turn_test.go](../../../server/services/execution/native_turn_test.go) 的提交回执用例；[public_runs_test.go](../../../server/apis/workflows/public_runs_test.go) 的 `TestPublicRunAcceptanceAndRetryKeepIndependentRunEvidence`。                                                                                              |
+| API-02–04、API-06 | 统一模型目录和单 endpoint；保留推理、Fast 与内部目录事实。[model_catalog_test.go](../../../server/services/runtimeenvironment/model_catalog_test.go) 的 `TestModelCatalogReadVerifiesSystemSubjectBeforePersistedCache`；[update_test.go](../../../server/apis/ai_accounts/update_test.go) 的账号保存用例。                                                                                                     |
+| API-07–09         | 移除公开 componentIds、Skill contentPath 和 Package 内部执行字段；保留内部组件、摘要和目标配置。[resources_test.go](../../../server/apis/plugins/resources_test.go) 的 `TestPluginResourceResponsesKeepPublicCapabilitiesWithoutExecutionMetadata`；内部交付由 [plugins_test.go](../../../server/services/execution/plugins_test.go) 的 `TestPluginAdmissionPinsResourcesAndDoesNotSelectEveryComponent` 验证。 |
+| API-10            | 删除 questionVersion，保留 Human 身份、快照与状态防重。[human_answer_test.go](../../../server/apis/workflows/human_answer_test.go) 的 `TestHumanAnswerRequiresOriginalSnapshotCAS` 重新独立运行通过。                                                                                                                                                                                                           |
+| API-11–12         | Run 暴露 triggerSource，Attempts 收窄；内部 Context、恢复与当前 effect 保留。[public_runs_test.go](../../../server/apis/workflows/public_runs_test.go) 的 `TestPublicRunQueriesKeepBusinessOriginAndInternalRecovery`、`TestPublicAttemptHistoryPreservesFailureAndCurrentControls`。                                                                                                                           |
 
 ### 行为验收
 
-| ID | 自动化证据与边界 |
-| --- | --- |
-| A01–A02 | [work_test.go](../../../server/services/execution/work_test.go) 的 `TestNativeTwoTurnsUsePublishedSystemSkill`；[mcp_connector_controller_test.go](../../../server/repositories/controllers/mcp_connector_controller_test.go) 的 `TestMCPExecutionDeclarationsExcludeDisabledSecretsAndDeferDecryption`。 |
-| A03–A05 | [native_turn_test.go](../../../server/services/execution/native_turn_test.go) 的 `TestNativeProductMCPDisplayRenameKeepsCodexSession`；[thread_lifecycle_test.go](../../../server/internal/agent/thread_lifecycle_test.go) 的 `TestThreadTurnResourceRefreshUsesNegotiatedReload`。真实 CLI 能力仍待验收。 |
-| A06–A07 | [plugins_test.go](../../../server/services/execution/plugins_test.go) 的 `TestColdPluginResourcesRejectInstallationChangesBeforeAdmission`、`TestDeduplicatedPluginSkillKeepsLeasedImmutableSource`。 |
+| ID      | 自动化证据与边界                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A01–A02 | [work_test.go](../../../server/services/execution/work_test.go) 的 `TestNativeTwoTurnsUsePublishedSystemSkill`；[mcp_connector_controller_test.go](../../../server/repositories/controllers/mcp_connector_controller_test.go) 的 `TestMCPExecutionDeclarationsExcludeDisabledSecretsAndDeferDecryption`。                                                                                                                                         |
+| A03–A05 | [native_turn_test.go](../../../server/services/execution/native_turn_test.go) 的 `TestNativeProductMCPDisplayRenameKeepsCodexSession`；[thread_lifecycle_test.go](../../../server/internal/agent/thread_lifecycle_test.go) 的 `TestThreadTurnResourceRefreshUsesNegotiatedReload`。真实 CLI 能力仍待验收。                                                                                                                                        |
+| A06–A07 | [plugins_test.go](../../../server/services/execution/plugins_test.go) 的 `TestColdPluginResourcesRejectInstallationChangesBeforeAdmission`、`TestDeduplicatedPluginSkillKeepsLeasedImmutableSource`。                                                                                                                                                                                                                                             |
 | A08–A10 | [update_test.go](../../../server/apis/ai_accounts/update_test.go) 的 `TestUpdateActiveAccountAllowsLabelsAndDefaultsButProtectsCredentials`；[kimi_test.go](../../../server/services/aiaccount/kimi_test.go) 的 `TestKimiLoginCommitsNativeIdentityAcrossConcurrentMetadataSave`；[model_catalog_test.go](../../../server/services/runtimeenvironment/model_catalog_test.go) 的 `TestModelCatalogReadVerifiesSystemSubjectBeforePersistedCache`。 |
-| A11 | [thread_lifecycle_test.go](../../../server/internal/agent/thread_lifecycle_test.go) 的 `TestThreadTurnResumesAfterUnconfirmedNativeSubmission`、`TestThreadTurnPartialAcquisitionClosesSameOwnerBeforeRetry`。 |
-| A12 | [native_fork_test.go](../../../server/services/execution/native_fork_test.go) 的 `TestNativeProductCanonicalFork`、`TestNativeProductForkNegotiatesLatestAndUnsupported` 验证旧精确回合、末轮精度、无能力拒绝、子续聊、来源删除、自有附件与成果、重启和再次分叉；同文件覆盖冷失败重试、未知回执与清理恢复。 |
-| A13 | [managed_workspace_test.go](../../../server/services/execution/managed_workspace_test.go) 的 `TestHostDirectoriesFreezeRealPathsAndPreserveBusinessScope`。 |
-| A14 | [team_md_test.go](../../../server/services/channel/team_md_test.go) 的 `TestTeamDispatchReadsCurrentProfilesWithoutChangingAdmittedMembership`；[inbox_missing_conversation_test.go](../../../server/services/im/inbox_missing_conversation_test.go) 的 `TestQueuedConversationKeepsAdmittedExecutionSelectionAndChecksCurrentAuthorization`。 |
-| A15–A17 | 最终生成、契约检查、公开字段核对及前端类型检查通过；独立审查发现的问题均已修正复核。[public_runs_test.go](../../../server/apis/workflows/public_runs_test.go) 的公开与内部事实测试，以及上述账号、资源和提交回执用例提供定向证据；真实产品界面和模型能力待验收。 |
-
+| A11     | [thread_lifecycle_test.go](../../../server/internal/agent/thread_lifecycle_test.go) 的 `TestThreadTurnResumesAfterUnconfirmedNativeSubmission`、`TestThreadTurnPartialAcquisitionClosesSameOwnerBeforeRetry`。                                                                                                                                                                                                                                    |
+| A12     | [native_fork_test.go](../../../server/services/execution/native_fork_test.go) 的 `TestNativeProductCanonicalFork`、`TestNativeProductForkNegotiatesLatestAndUnsupported` 验证旧精确回合、末轮精度、无能力拒绝、子续聊、来源删除、自有附件与成果、重启和再次分叉；同文件覆盖冷失败重试、未知回执与清理恢复。                                                                                                                                       |
+| A13     | [managed_workspace_test.go](../../../server/services/execution/managed_workspace_test.go) 的 `TestHostDirectoriesFreezeRealPathsAndPreserveBusinessScope`。                                                                                                                                                                                                                                                                                       |
+| A14     | [team_md_test.go](../../../server/services/channel/team_md_test.go) 的 `TestTeamDispatchReadsCurrentProfilesWithoutChangingAdmittedMembership`；[inbox_missing_conversation_test.go](../../../server/services/im/inbox_missing_conversation_test.go) 的 `TestQueuedConversationKeepsAdmittedExecutionSelectionAndChecksCurrentAuthorization`。                                                                                                    |
+| A15–A17 | 最终生成、契约检查、公开字段核对及前端类型检查通过；独立审查发现的问题均已修正复核。[public_runs_test.go](../../../server/apis/workflows/public_runs_test.go) 的公开与内部事实测试，以及上述账号、资源和提交回执用例提供定向证据；真实产品界面和模型能力待验收。                                                                                                                                                                                  |
 
 ### 最终验证
 
@@ -192,7 +190,6 @@
 - 独立审查已关闭账号/进程、资源和分叉发现的问题；分叉补充独立复核了旧 Session 精确分叉、同主体换历史根拒绝及登录门禁。
 - `pnpm docs:check`、修改字段注释、Go 格式与 `git diff --check` 通过。未运行全仓前后端套件。
 
-
 ### 默认选择接纳复核
 
 原清单的勾选不能代替入口证据。本次复查补齐 Runtime 设置保存仍取独占、Codex-only 转发包装残留，以及团队配置校验后丢弃解析结果、自动机会与创作输入在派发时再次读取默认的遗漏。
@@ -204,7 +201,6 @@
 - [x] 补齐批次完成独立审查与直接消费者定向验证。
 - [x] 最终注释同步后 `pnpm api:generate`、`pnpm api:check` 通过；生成合同与源码一致。
 - [ ] 真实 CLI、账号、模型与桌面验收完成；未启动运行界面、未重建或重启用户正在运行的 Core。
-
 
 补齐批次的定向证据：
 
