@@ -72,7 +72,7 @@ type AccountLease struct {
 	CodexCredentialKind string
 	// VerifyCodexCredential checks Codex process receipts against the selected credentials.
 	VerifyCodexCredential func(context.Context, [sha256.Size]byte) error
-	// VerifyLogin checks observable external login changes before submission.
+	// VerifyLogin checks local account selection only; it must not start diagnostics or perform network requests.
 	VerifyLogin func(context.Context) error
 	// CursorQuota binds quota queries to the current Cursor login identity.
 	CursorQuota *CursorQuotaLease
@@ -122,8 +122,10 @@ type ResourceLease struct {
 	Environment map[string]string
 	// MCPServers contains the materialized server configuration.
 	MCPServers []AgentMCPServer
-	// ClaudePluginDirectories identifies physical native plugin directories.
-	ClaudePluginDirectories []string
+	// NativePlugins identifies the isolated, complete plugin roots accepted by this adapter.
+	NativePlugins []NativePlugin
+	// codexPluginConfig contains only per-process marketplace and enablement settings.
+	codexPluginConfig map[string]json.RawMessage
 	// Close releases active MCP and other materialized resources.
 	Close func(context.Context) error
 	// CloseFiles releases temporary files after every native and lease consumer is gone.
@@ -528,6 +530,23 @@ func (c *providerConnection) initialize(ctx context.Context, request ProviderCon
 			return err
 		}
 	}
+	if len(c.resources.NativePlugins) > 0 && account.Provider == constants.RuntimeIDCodex {
+		var closeCache func(context.Context) error
+		c.resources.codexPluginConfig, closeCache, err = prepareCodexPluginCache(ctx, account, c.accountLease, c.resources.NativePlugins)
+		if err != nil {
+			return err
+		}
+		closeViews := c.resources.CloseFiles
+		c.resources.CloseFiles = func(ctx context.Context) error {
+			if err := closeCache(ctx); err != nil {
+				return err
+			}
+			if closeViews != nil {
+				return closeViews(ctx)
+			}
+			return nil
+		}
+	}
 	c.qoderLoginVerified = c.accountLease.QoderLoginVerified
 	if build := c.runtime.options.NewClient; build != nil {
 		c.client, err = build(ctx, account, request.Launch, c.accountLease, c.launchAuth, c.resources, ports.Callbacks)
@@ -570,16 +589,9 @@ func (c *providerConnection) verifyCodexCredential(ctx context.Context, verify f
 	if !ok {
 		return status_error.AIAccountConfigurationInvalid
 	}
-	account, err := c.client.ReadAccount(ctx)
-	if err != nil {
-		return err
-	}
 	kind := c.accountLease.CodexCredentialKind
 	if kind == "" {
 		kind = "account"
-	}
-	if account.Account == nil || account.Account.Kind != kind {
-		return status_error.RuntimeAuthRequired
 	}
 	reportedRoot, proof, err := native.CredentialProof(ctx, kind)
 	if err != nil {

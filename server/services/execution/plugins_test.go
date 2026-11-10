@@ -817,16 +817,21 @@ func TestNativePluginSkillSelectionIsReadOnly(t *testing.T) {
 	}
 }
 
-func TestOptionalPluginDeclarationsSkipUndeliverableComponents(t *testing.T) {
-	for _, kind := range []string{"native-only", "missing-skill-support"} {
+func TestOptionalPluginDeclarationsSelectOnlyDeliverableStandardComponents(t *testing.T) {
+	for _, kind := range []string{"native-only", "missing-skill-support", "native-capable-standard"} {
 		t.Run(kind, func(t *testing.T) {
 			data := t.TempDir()
 			state := executionPlugin(t, data, "p1", "fixed skill", false)
 			state.Configuration.Secrets = nil
 			detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex", SkillDirectoryName: ".agents"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
-			if kind == "native-only" {
+			want := 0
+			switch kind {
+			case "native-only":
+				state.Versions[0].Package.Format = "native-only"
+			case "native-capable-standard":
 				detection.Version = "0.161.0"
-			} else {
+				want = 1
+			case "missing-skill-support":
 				detection.Runtime.SkillDirectoryName = ""
 			}
 			core := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data}
@@ -835,8 +840,8 @@ func TestOptionalPluginDeclarationsSkipUndeliverableComponents(t *testing.T) {
 				t.Fatal(err)
 			}
 			selected, err := core.selectNativePluginSkills(t.Context(), frozen)
-			if err != nil || len(selected) != 0 {
-				t.Fatalf("optional undeliverable declaration entered native skills: %+v %v", selected, err)
+			if err != nil || len(selected) != want {
+				t.Fatalf("optional standard skills = %+v, want %d: %v", selected, want, err)
 			}
 		})
 	}
@@ -892,5 +897,148 @@ func TestPluginAccountGenerationInvalidatesFrozenResources(t *testing.T) {
 	core.pluginController = installedPluginFixture{states: []models.PluginState{state}}
 	if _, err := core.preparePlugins(t.Context(), "w1", request, detection); !errors.Is(err, status_error.PluginPackageUnsupported) {
 		t.Fatal("old contract executed", err)
+	}
+}
+
+func TestNativeDirectoryRoutesExcludeOrdinarySkillsAndRespectRestrictions(t *testing.T) {
+	data := t.TempDir()
+	state := executionPlugin(t, data, "office-one", "fixed skill", false)
+	manager := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data}
+	for _, tc := range []struct {
+		// cli 是本次选定的 CLI。
+		cli string
+		// version 是已证实目录入口的版本或未知版本。
+		version string
+		// restricted 表示入口只允许列出的连接器。
+		restricted bool
+		// native 表示目标应作为实际原生目录交付。
+		native bool
+	}{{"cursor", "2026.11.05-86047df", false, true}, {"workbuddy", "2.181.0", false, true}, {"qoder", "1.1.83", false, true}, {"claude", "2.1.159", false, true}, {"cursor", "2026.11.05-86047df", true, false}, {"cursor", "unknown", false, false}, {"kimi", "2.0.2", false, false}} {
+		t.Run(tc.cli+tc.version+fmt.Sprint(tc.restricted), func(t *testing.T) {
+			req := pendingMessage{message: userMessage{PluginIDs: []string{"office-one"}}}
+			if tc.restricted {
+				req.allowedConnectorIDs = &[]string{}
+			}
+			detect := authenticatedPluginDetection(tc.cli, tc.version)
+			frozen, err := manager.freezePluginResources(t.Context(), "w1", req, detect)
+			if err != nil {
+				t.Fatal(err)
+			}
+			projected, err := manager.selectNativePluginSkills(t.Context(), frozen)
+			if err != nil {
+				t.Fatal(err)
+			}
+			actual, err := manager.acquirePluginResources(t.Context(), frozen)
+			if actual.release != nil {
+				defer actual.release()
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(actual.snapshots) != 1 {
+				t.Fatal(actual.snapshots)
+			}
+			snapshot := actual.snapshots[0]
+			wantProfile := tc.cli + "/skill-mcp"
+			if tc.native {
+				wantProfile = tc.cli
+			}
+			if snapshot.Runtime != tc.cli || snapshot.SourceDigest != state.Versions[0].Digest || snapshot.Profile != wantProfile {
+				t.Fatalf("wrong public delivery identity: %+v", snapshot)
+			}
+			native := snapshot.Delivery == constants.PluginDeliveryNative
+			if native != tc.native || (len(projected) == 0) != tc.native || (len(actual.skills) == 0) != tc.native {
+				t.Fatalf("native=%v preflight=%v leased skills=%v", native, projected, actual.skills)
+			}
+		})
+	}
+}
+
+func TestHotNativeDeclarationReusesMetadataWithoutOpeningSourceOrGeneratingTargets(t *testing.T) {
+	data := t.TempDir()
+	state := executionPlugin(t, data, "office", "fixed text", false)
+	service := &service{skillDataDirectory: data, pluginController: installedPluginFixture{states: []models.PluginState{state}}}
+	detect := authenticatedPluginDetection("cursor", "2026.11.05-86047df")
+	req := pendingMessage{message: userMessage{PluginIDs: []string{"office"}}}
+	initial, err := service.freezePluginResources(t.Context(), "w1", req, detect)
+	if err != nil {
+		t.Fatal(err)
+	}
+	material, err := service.acquirePluginResources(t.Context(), initial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer material.release()
+	if len(material.targets) != 1 {
+		t.Fatal("cold preparation did not generate a target")
+	}
+	paths := []string{filepath.Join(data, state.Versions[0].ContentPath), filepath.Join(data, "plugins", "targets")}
+	for _, path := range paths {
+		if err := os.Rename(path, path+"-offline"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 2; i++ {
+		hot, err := service.freezePluginResources(t.Context(), "w1", req, detect)
+		if err != nil || hot.key != initial.key {
+			t.Fatal("hot fingerprint changed", err)
+		}
+		skills, err := service.selectNativePluginSkills(t.Context(), hot)
+		if err != nil || len(skills) != 0 {
+			t.Fatalf("native selection reopened plugin data: %+v %v", skills, err)
+		}
+	}
+	for _, path := range paths {
+		if _, err := os.Lstat(path); !os.IsNotExist(err) {
+			t.Fatal("hot selection materialized files", err)
+		}
+	}
+}
+
+func TestNativeMCPIsRegisteredOnlyByItsOwningPlugin(t *testing.T) {
+	data, source := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "plugin.json"), []byte(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"network","version":"1.0.0"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "mcp.json"), []byte(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"service":{"type":"streamable-http","url":"https://example.invalid/mcp"}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	stage, err := plugins.Stage(filepath.Join(data, "plugins/staging"), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := plugins.CopyContent(filepath.Join(data, "plugins/content"), stage.Root, stage.Digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relative, _ := filepath.Rel(data, root)
+	version := models.PluginVersion{ID: "v", PluginID: "network", Version: "1.0.0", Digest: stage.Digest, ContentPath: relative, Package: stage.Package, TrustedAt: 1}
+	state := models.PluginState{Plugin: models.Plugin{ID: "network"}, Versions: []models.PluginVersion{version}, Installations: []models.WakerPlugin{{PluginID: "network", VersionID: "v", WakerID: "w", Enabled: true}}}
+	svc := &service{skillDataDirectory: data, pluginController: installedPluginFixture{states: []models.PluginState{state}}}
+	detection := authenticatedPluginDetection("cursor", "2026.11.05-86047df")
+	component := plugins.ComponentID("network", "mcp:service")
+	for _, restricted := range []bool{false, true} {
+		request := pendingMessage{message: userMessage{PluginIDs: []string{"network"}}}
+		if restricted {
+			request.allowedConnectorIDs = &[]string{component}
+		}
+		result, err := svc.preparePlugins(t.Context(), "w", request, detection)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer result.release()
+		if (len(result.targets) == 1) == restricted || (len(result.connectors) == 1) != restricted || len(result.snapshots) != 1 || !slices.Equal(result.snapshots[0].ComponentIDs, []string{component}) {
+			t.Fatalf("duplicate or missing MCP: targets=%d connectors=%d snapshot=%+v", len(result.targets), len(result.connectors), result.snapshots)
+		}
+	}
+}
+
+func TestPluginNativeEligibilityHonorsDeclaredProjectionFormat(t *testing.T) {
+	state := executionPlugin(t, t.TempDir(), "office", "Guide", false)
+	pkg := state.Versions[0].Package
+	pkg.Manifest.Name = "office.docs"
+	detection := authenticatedPluginDetection("grok", "1.0.45")
+	if nativePluginEligible("grok", detection.Version, pkg, pluginResourceSelection{}, detection) {
+		t.Fatal("selected a native route for a projection-only package name")
 	}
 }

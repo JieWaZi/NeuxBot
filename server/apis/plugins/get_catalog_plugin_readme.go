@@ -33,7 +33,7 @@ func (o *GetCatalogPluginReadme) Output(ctx *gin.Context) (interface{}, error) {
 	if (o.SourceCommit != "" && o.SourceCommit != entry.SourceCommit) || (o.ArchiveSHA256 != "" && o.ArchiveSHA256 != entry.ArchiveSHA256) {
 		return nil, ginx.WithStack(status_error.PluginVersionConflict)
 	}
-	details, err := catalog.ReadDetails(entry)
+	details, err := catalog.ReadDetails(ctx.Request.Context(), entry)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}

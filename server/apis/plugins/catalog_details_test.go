@@ -94,8 +94,10 @@ func newDetailsFixture(t *testing.T, invalid string) *detailsFixture {
 	}))
 	t.Cleanup(f.source.Close)
 	location := f.source.URL + "/catalog.json"
-	stop := catalog.Start(context.Background(), location, t.TempDir(), nil)
-	t.Cleanup(stop)
+	// 端点读取测试仅固定目录，不把独立启动预取算作读取副作用。
+	if err := catalog.Refresh(context.Background(), location); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("ALLY_PLUGIN_CATALOG_URL", location)
 	return f
 }
@@ -226,8 +228,10 @@ func TestCurrentDetailsRecoversMetadataButPinnedReadsStayBound(t *testing.T) {
 			}))
 			defer source.Close()
 			location := source.URL + "/catalog.json"
-			stop := catalog.Start(context.Background(), location, t.TempDir(), nil)
-			defer stop()
+			// 该用例隔离安装／读取的分发恢复；完整启动预取由 catalog 生命周期用例验证。
+			if err := catalog.Refresh(context.Background(), location); err != nil {
+				t.Fatal(err)
+			}
 			t.Setenv("ALLY_PLUGIN_CATALOG_URL", location)
 			if _, err := catalog.Find(location, "recovery"); err != nil {
 				t.Fatal(err)

@@ -108,7 +108,7 @@ func (m *service) prepareNativeFork(ctx context.Context, input chatservice.Nativ
 		selection.ConnectorIDs = append(selection.ConnectorIDs, item.ID)
 	}
 	slices.Sort(selection.ConnectorIDs)
-	pluginSkills, err := m.selectNativePluginSkills(ctx, frozen)
+	pluginSkills, err := m.selectNativePluginSkills(ctx, frozen, skills...)
 	if err != nil {
 		return fail(err)
 	}
@@ -120,7 +120,7 @@ func (m *service) prepareNativeFork(ctx context.Context, input chatservice.Nativ
 	if err != nil {
 		return fail(err)
 	}
-	metadata, err := json.Marshal([]any{instructions, skills, connectors, workspace})
+	metadata, err := json.Marshal([]any{instructions, skills, connectors, workspace, frozen.native})
 	if err != nil {
 		return fail(status_error.RuntimeConfigurationInvalid)
 	}

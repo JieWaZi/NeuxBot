@@ -168,17 +168,21 @@ func TestNativeProductWorkBuddyQoderContinueCancelAndRecover(t *testing.T) {
 					t.Fatalf("CodeBuddy native turn identity was lost: %+v", result.Turn)
 				}
 				usage := result.Turn.Usage
+				// 同次 prompt 的 usage 与 quota 精确匹配，只证明本轮输出小计；原生输入可能重叠缓存。
 				if provider == constants.RuntimeIDWorkBuddy || status == constants.ExecutionStatusCanceled {
 					if usage != nil {
 						t.Fatalf("provider supplied no billable counters: %+v", usage)
 					}
-				} else if usage == nil || usage.InputTokens != nil || usage.OutputTokens != nil || usage.Complete ||
-					len(usage.Observations) != 1 || usage.Observations[0].Coverage != "unknown" ||
-					usage.Observations[0].Tokens.InputTokens != nil || usage.Observations[0].Tokens.OutputTokens == nil ||
-					*usage.Observations[0].Tokens.OutputTokens != reportedOutput ||
+				} else if usage == nil || usage.InputTokens != nil || usage.OutputTokens == nil || *usage.OutputTokens != reportedOutput ||
+					usage.CacheReadTokens != nil || usage.CacheWriteTokens != nil || usage.ReasoningTokens != nil || usage.Complete ||
+					usage.Source != "qoder.prompt.quota" || usage.Coverage != "query_pipeline" || len(usage.Models) != 0 ||
+					len(usage.Observations) != 1 || usage.Observations[0].Source != usage.Source || usage.Observations[0].Coverage != "query_pipeline_raw" ||
+					usage.Observations[0].Complete || usage.Observations[0].Tokens.InputTokens != nil || usage.Observations[0].Tokens.OutputTokens != nil ||
+					usage.Observations[0].Tokens.CacheReadTokens != nil || usage.Observations[0].Tokens.CacheWriteTokens != nil ||
+					usage.Observations[0].Tokens.ReasoningTokens != nil || usage.Observations[0].Tokens.Cost != nil ||
 					usage.Observations[0].InputTotalTokens == nil || *usage.Observations[0].InputTotalTokens != reportedOutput*2 ||
 					usage.Observations[0].TotalTokens == nil || *usage.Observations[0].TotalTokens != reportedOutput*3 {
-					t.Fatalf("Qoder sample with unknown scope must be retained without billing: %+v", usage)
+					t.Fatalf("Qoder output subtotal or raw overlapping counters changed: %+v", usage)
 				}
 				return consumed.Result
 			}
@@ -236,8 +240,18 @@ func TestNativeProductWorkBuddyQoderContinueCancelAndRecover(t *testing.T) {
 			if err != nil || metrics.Metrics.Invocations != 4 || metrics.Metrics.KnownTokens.Input != nil {
 				t.Fatalf("usage projection did not retain one native record per execution: %+v %v", metrics, err)
 			}
-			if metrics.Metrics.KnownTokens.Output != nil || metrics.Metrics.MissingUsageInvocations != 4 {
-				t.Fatalf("unattributed native samples became billable counters: %+v", metrics.Metrics)
+			if provider == constants.RuntimeIDQoder {
+				// 三次完成调用分别报告 4、9、12；取消调用没有计数，原生输入不加入总量。
+				if metrics.Metrics.KnownTokens.Output == nil || *metrics.Metrics.KnownTokens.Output != 25 ||
+					metrics.Metrics.KnownTokens.ReportedInput == nil || *metrics.Metrics.KnownTokens.ReportedInput != 50 ||
+					metrics.Metrics.KnownTotalWithCacheRead == nil || *metrics.Metrics.KnownTotalWithCacheRead != 25 ||
+					metrics.Metrics.KnownTokens.CacheRead != nil || metrics.Metrics.KnownTokens.CacheWrite != nil || metrics.Metrics.KnownTokens.Reasoning != nil ||
+					metrics.Metrics.Tokens.Output != nil || metrics.Metrics.TotalWithCacheRead != nil || metrics.Metrics.TotalWithoutCacheRead != nil ||
+					metrics.Metrics.MissingUsageInvocations != 1 || metrics.Metrics.IncompleteUsageInvocations != 3 {
+					t.Fatalf("Qoder projection lost measured subtotals or invented complete counters: %+v", metrics.Metrics)
+				}
+			} else if metrics.Metrics.KnownTokens.Output != nil || metrics.Metrics.MissingUsageInvocations != 4 || metrics.Metrics.IncompleteUsageInvocations != 0 {
+				t.Fatalf("provider without token evidence acquired counters: %+v", metrics.Metrics)
 			}
 			assertACPNativeProductWire(t, fixture.trace, firstResult.Session.SessionID, 2)
 			history, err = chats.ReadMessageHistory(ctx, first.Chat.ID, 0, 12)

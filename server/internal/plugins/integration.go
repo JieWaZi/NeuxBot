@@ -128,7 +128,7 @@ func (p *Package) loadIntegration(root string) error {
 	if err := validateSkillAuthenticationBindings(*p); err != nil {
 		return err
 	}
-	for _, cli := range []string{"codex", "claude"} {
+	for _, cli := range targetRuntimes {
 		if _, err := authenticationTarget(*p, *p, cli); err != nil {
 			return err
 		}

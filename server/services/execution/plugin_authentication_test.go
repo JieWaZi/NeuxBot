@@ -27,6 +27,8 @@ func authenticatedPluginFixture(t *testing.T, override ...string) (*service, mod
 }
 
 type authenticationFixtureShape struct {
+	// RootPackage 将逻辑包放在来源的根目录。
+	RootPackage bool
 	// RejectStatus 使桥接拒绝聊天不应触发的远端身份预检。
 	RejectStatus bool
 	// Canonical 使用单一标准包及自身授权绑定。
@@ -46,9 +48,13 @@ func authenticatedPluginSourceFixture(t *testing.T, shape authenticationFixtureS
 	if err != nil {
 		t.Fatal(err)
 	}
+	entry := "logical"
+	if shape.RootPackage {
+		entry = "."
+	}
 	write := func(path, body string) {
 		t.Helper()
-		path = filepath.Join(source, path)
+		path = filepath.Join(source, entry, path)
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -76,21 +82,28 @@ for await (const line of readline.createInterface({input:process.stdin})) {
 	manifest := map[string]any{"$schema": constants.PluginManifestSchema, "name": "logical", "version": "2"}
 	auth := plugins.Authentication{Strategy: constants.PluginAuthCommandStrategy, Protocol: constants.PluginAuthProtocol, Command: "node", Args: []string{"bridge.mjs"}}
 	if shape.SkillBridge {
-		write("logical/skills/review/SKILL.md", "---\nname: review\ndescription: Review changes\n---\n# Bound complete guide\n")
-		skillScript := `import readline from 'node:readline';
+		write("skills/review/SKILL.md", "---\nname: review\ndescription: Review changes\n---\n# Bound complete guide\n")
+		skillScript := `import readline from 'node:readline';import {writeFileSync} from 'node:fs';import path from 'node:path';
 for await(const line of readline.createInterface({input:process.stdin})){
 const r=JSON.parse(line);let result;
-if(r.method==='auth/initialize')result={protocol:'neuxbot-auth/1',context:r.params};
+if(r.method==='auth/initialize'){writeFileSync(path.join(r.params.dataDirectory,'fixture-bridge-started'),'started');result={protocol:'neuxbot-auth/1',context:r.params};}
 else if(r.method==='auth/status')result={state:'authorized',account:{configured:true,available:true,id:'skill-user',scopes:[]}};
 else if(r.method==='auth/resolve')result={bindings:r.params.components.map(c=>{if(c.key!=='skills/review'||c.target!=='skill')throw Error('unexpected target');return {componentId:c.componentId,environment:{BUSINESS_TOKEN:'skill-secret'}};})};
 console.log(JSON.stringify({jsonrpc:'2.0',id:r.id,result}));}`
 		if len(override) > 0 {
 			skillScript = strings.Replace(skillScript, "environment:{BUSINESS_TOKEN:'skill-secret'}", override[0], 1)
 		}
-		write("logical/bridge.mjs", skillScript)
-		for _, cli := range []string{"codex", "claude"} {
-			auth.SkillBindings = append(auth.SkillBindings, plugins.SkillAuthenticationBinding{Runtime: cli, Skill: "skills/review", EnvironmentKeys: []string{"BUSINESS_TOKEN", "PATH", "WECOM_CLI_CONFIG_DIR"}, PrivatePathKeys: []string{"PATH", "WECOM_CLI_CONFIG_DIR"}})
+		write("bridge.mjs", skillScript)
+		keys, paths := []string{}, []string{}
+		for _, key := range []string{"BUSINESS_TOKEN", "PATH", "WECOM_CLI_CONFIG_DIR"} {
+			if strings.Contains(skillScript, key+":") {
+				keys = append(keys, key)
+				if key != "BUSINESS_TOKEN" {
+					paths = append(paths, key)
+				}
+			}
 		}
+		auth.SkillBindings = []plugins.SkillAuthenticationBinding{{Skill: "skills/review", EnvironmentKeys: keys, PrivatePathKeys: paths}}
 	} else {
 		key, address := "service", "https://example.invalid/mcp/"
 		if shape.Canonical {
@@ -102,13 +115,13 @@ console.log(JSON.stringify({jsonrpc:'2.0',id:r.id,result}));}`
 			manifest["extensions"] = map[string]any{constants.PluginExtensionNamespace: map[string]any{"schemaVersion": constants.PluginExtensionSchemaVersion, "configuration": map[string]any{"fields": []any{map[string]any{"key": "OTHER_TOKEN", "secret": true, "required": true}}, "bindings": []any{map[string]any{"server": key, "target": "header", "name": "X-Business", "value": shape.ConfiguredHeader}}}}}
 		}
 		mcp, _ := json.Marshal(map[string]any{"$schema": constants.PluginMCPSchema, "mcpServers": map[string]any{key: server}})
-		write("logical/mcp.json", string(mcp))
-		write("logical/bridge.mjs", strings.NewReplacer("c.key!=='service'", "c.key!=='"+key+"'", "https://example.invalid/mcp/", address).Replace(script))
-		for _, cli := range []string{"codex", "claude"} {
-			auth.Bindings = append(auth.Bindings, plugins.AuthenticationBinding{Runtime: cli, Server: key, URL: address, Header: "Authorization"})
+		write("mcp.json", string(mcp))
+		write("bridge.mjs", strings.NewReplacer("c.key!=='service'", "c.key!=='"+key+"'", "https://example.invalid/mcp/", address).Replace(script))
+		{
+			auth.Bindings = append(auth.Bindings, plugins.AuthenticationBinding{Server: key, URL: address, Header: "Authorization"})
 		}
 		if shape.Skills {
-			write("logical/skills/review/SKILL.md", "---\nname: review\ndescription: Review changes\n---\n# Canonical complete guide\n")
+			write("skills/review/SKILL.md", "---\nname: review\ndescription: Review changes\n---\n# Canonical complete guide\n")
 		}
 	}
 	extensions, _ := manifest["extensions"].(map[string]any)
@@ -118,8 +131,8 @@ console.log(JSON.stringify({jsonrpc:'2.0',id:r.id,result}));}`
 	extensions[constants.PluginExtensionNamespace].(map[string]any)["authentication"] = auth
 	manifest["extensions"] = extensions
 	body, _ := json.Marshal(manifest)
-	write("logical/plugin.json", string(body))
-	stage, err := plugins.StageSource(filepath.Join(data, "plugins/staging"), source, "logical")
+	write("plugin.json", string(body))
+	stage, err := plugins.StageSource(filepath.Join(data, "plugins/staging"), source, entry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,31 +166,24 @@ func resolveFixtureDelivery(t *testing.T, manager *service, state models.PluginS
 	return state
 }
 
-func TestBoundAuthenticationRejectsUndeclaredRuntimeBeforeStartingBridge(t *testing.T) {
-	for _, required := range []bool{true, false} {
-		t.Run(fmt.Sprintf("required=%t", required), func(t *testing.T) {
-			manager, _, _ := authenticatedPluginSourceFixture(t, authenticationFixtureShape{Canonical: true})
-			request := pendingMessage{}
-			if required {
-				request.message.PluginIDs = []string{"p"}
+func TestStandardAuthenticationProjectsStoredMCPIdentityAcrossRuntimes(t *testing.T) {
+	for _, cli := range []string{"codex", "claude", "pi", "cursor", "gemini", "grok", "kimi", "opencode", "workbuddy", "qoder"} {
+		t.Run(cli, func(t *testing.T) {
+			manager, _, _ := authenticatedPluginSourceFixture(t, authenticationFixtureShape{Canonical: true, RejectStatus: true})
+			prepared, err := manager.preparePlugins(t.Context(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, authenticatedPluginDetection(cli, ""))
+			if err != nil {
+				t.Fatal(err)
 			}
-			detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "pi", SkillDirectoryName: ".pi"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilityMCPStreamableHTTP: true}}
-			prepared, err := manager.preparePlugins(context.Background(), "w", request, detection)
-			if required && !errors.Is(err, status_error.PluginForbidden) {
-				prepared.release()
-				t.Fatal("undeclared runtime was not explicitly refused", err)
+			defer prepared.release()
+			if len(prepared.connectors) != 1 || len(prepared.snapshots) != 1 {
+				t.Fatal("standard MCP projection disappeared")
 			}
-			if !required {
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer prepared.release()
-				if len(prepared.connectors) != 0 || len(prepared.environment) != 0 || len(prepared.snapshots) != 0 {
-					t.Fatal("optional undeclared runtime received authenticated components")
-				}
+			connector := prepared.connectors[0]
+			if connector.URL != "https://api.githubcopilot.com/mcp/" || len(connector.Headers) != 1 || connector.Headers[0].Value != "Bearer oauth-device-token" {
+				t.Fatal("standard target lost its exact authenticated endpoint")
 			}
 			if _, err := os.Stat(filepath.Join(manager.skillDataDirectory, "plugins", "data", "p", "fixture-bridge-started")); !os.IsNotExist(err) {
-				t.Fatal("undeclared runtime started bridge before rejection")
+				t.Fatal("chat started an authorization bridge")
 			}
 		})
 	}
@@ -196,32 +202,27 @@ func TestBoundSkillBridgeProjectsForDeclaredRuntime(t *testing.T) {
 	}
 }
 
-func TestSkillAuthenticationRejectsUndeclaredRuntimes(t *testing.T) {
-	manager, _, _ := authenticatedPluginSourceFixture(t, authenticationFixtureShape{SkillBridge: true})
-	for _, cli := range []string{"pi", "cursor", "gemini", "grok", "kimi", "opencode", "workbuddy"} {
+func TestStandardSkillAuthenticationProjectsStoredIdentityAcrossRuntimes(t *testing.T) {
+	for _, cli := range []string{"codex", "claude", "pi", "cursor", "gemini", "grok", "kimi", "opencode", "workbuddy", "qoder"} {
 		t.Run(cli, func(t *testing.T) {
-			detection := authenticatedPluginDetection(cli, "")
-			prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, detection)
-			if prepared.release != nil {
-				defer prepared.release()
-			}
-			if !errors.Is(err, status_error.PluginForbidden) || len(prepared.skills) != 0 || len(prepared.environment) != 0 || len(prepared.snapshots) != 0 {
-				t.Fatal("undeclared runtime received scoped skill identity", err)
-			}
-			optional, err := manager.preparePlugins(context.Background(), "w", pendingMessage{}, detection)
+			manager, _, _ := authenticatedPluginSourceFixture(t, authenticationFixtureShape{SkillBridge: true})
+			prepared, err := manager.preparePlugins(t.Context(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, authenticatedPluginDetection(cli, ""))
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer optional.release()
-			if len(optional.skills) != 0 || len(optional.environment) != 0 || len(optional.snapshots) != 0 {
-				t.Fatal("optional skill bypassed its runtime binding")
+			defer prepared.release()
+			if len(prepared.skills) != 1 || len(prepared.snapshots) != 1 || prepared.environment["BUSINESS_TOKEN"] != "skill-secret" {
+				t.Fatal("standard skill target lost its authenticated environment")
+			}
+			if _, err := os.Stat(filepath.Join(manager.skillDataDirectory, "plugins", "data", "p", "fixture-bridge-started")); !os.IsNotExist(err) {
+				t.Fatal("chat started an authorization bridge")
 			}
 		})
 	}
 }
 
-func TestSkillCommandBridgeProjectsManagedCLIForDeclaredRuntimes(t *testing.T) {
-	for _, cli := range []string{"codex", "claude"} {
+func TestSkillCommandBridgeProjectsManagedCLIAcrossStandardRuntimes(t *testing.T) {
+	for _, cli := range []string{"codex", "claude", "pi", "cursor", "gemini", "grok", "kimi", "opencode", "workbuddy", "qoder"} {
 		t.Run(cli, func(t *testing.T) {
 			binding := `environment:{PATH:r.params.dataDirectory+(process.env.PATH?process.platform==='win32'?';':':':'')+(process.env.PATH??''),WECOM_CLI_CONFIG_DIR:r.params.dataDirectory}`
 			manager, _, _ := authenticatedPluginSourceFixture(t, authenticationFixtureShape{SkillBridge: true}, binding)
@@ -308,25 +309,22 @@ func TestSkillCommandBridgesMergePrivatePathsAndKeepOtherConflicts(t *testing.T)
 	}
 }
 
-func TestBoundAuthenticationAllowsMissingCredentialDuringChat(t *testing.T) {
-	for _, reply := range []string{`headers:{}`, `headers:{Authorization:''}`} {
-		t.Run(reply, func(t *testing.T) {
-			manager, _, _ := authenticatedPluginFixture(t, reply)
-			prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilityMCPStreamableHTTP: true}})
-			if err != nil {
-				t.Fatalf("missing authorization prevented plugin delivery: %v", err)
-			}
-			defer prepared.release()
-			if len(prepared.connectors) != 1 || len(prepared.snapshots) != 1 {
-				t.Fatalf("plugin delivery was lost without credentials: %+v", prepared.snapshots)
-			}
-			for _, header := range prepared.connectors[0].Headers {
-				value := header.Value
-				if value != "" {
-					t.Fatal("missing credential invented an authorization header")
-				}
-			}
-		})
+func TestBoundAuthenticationNeverDispatchesMCPWithoutRequiredHeader(t *testing.T) {
+	manager, state, _ := authenticatedPluginSourceFixture(t, authenticationFixtureShape{Canonical: true, Skills: true})
+	state.Account.DeliveryMaterials = nil
+	manager.pluginController = installedPluginFixture{states: []models.PluginState{state}}
+	detection := authenticatedPluginDetection("cursor", "2026.11.05-86047df")
+	explicit, err := manager.preparePlugins(t.Context(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, detection)
+	if err != status_error.PluginNotReady || len(explicit.connectors) != 0 {
+		t.Fatalf("accepted missing explicit authorization: %v", err)
+	}
+	automatic, err := manager.preparePlugins(t.Context(), "w", pendingMessage{}, detection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer automatic.release()
+	if len(automatic.skills) != 1 || len(automatic.connectors) != 0 || len(automatic.snapshots) != 1 || len(automatic.snapshots[0].ComponentIDs) != 1 {
+		t.Fatalf("automatic components: %+v", automatic.snapshots)
 	}
 }
 
@@ -361,7 +359,7 @@ func TestChatPluginLoadingNeverStartsAuthorizationBridge(t *testing.T) {
 	manager, state, _ := authenticatedPluginFixture(t)
 	state.Account.DeliveryMaterials = nil
 	manager.pluginController = installedPluginFixture{states: []models.PluginState{state}}
-	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilityMCPStreamableHTTP: true}})
+	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilityMCPStreamableHTTP: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,14 +367,8 @@ func TestChatPluginLoadingNeverStartsAuthorizationBridge(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(manager.skillDataDirectory, "plugins/data/p/fixture-bridge-started")); !os.IsNotExist(err) {
 		t.Fatal("chat started the authorization program")
 	}
-	if len(prepared.connectors) != 1 {
-		t.Fatal("missing private material prevented capability delivery")
-	}
-	for _, header := range prepared.connectors[0].Headers {
-		value := header.Value
-		if value != "" {
-			t.Fatal("chat invented a credential instead of loading existing material")
-		}
+	if len(prepared.connectors) != 0 {
+		t.Fatal("private MCP received an anonymous connection")
 	}
 }
 
@@ -403,17 +395,17 @@ func TestChatPluginLoadingKeepsMaterialAcrossOrdinaryConfigurationRevision(t *te
 	}
 }
 
-func TestChatDeliversBoundSkillWithoutPrivateMaterial(t *testing.T) {
+func TestBoundSkillWithoutPrivateMaterialStopsBeforeLaunchingNativeCLI(t *testing.T) {
 	manager, state, _ := authenticatedPluginSourceFixture(t, authenticationFixtureShape{SkillBridge: true})
 	state.Account.DeliveryMaterials = nil
 	manager.pluginController = installedPluginFixture{states: []models.PluginState{state}}
-	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex", SkillDirectoryName: ".agents"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer prepared.release()
-	if len(prepared.skills) != 1 || len(prepared.environment) != 0 {
-		t.Fatal("missing material prevented skill delivery")
+	for _, selected := range [][]string{nil, {"p"}} {
+		for _, version := range []string{"", "2026.11.05-86047df"} {
+			actual, err := manager.preparePlugins(t.Context(), "w", pendingMessage{message: userMessage{PluginIDs: selected}}, authenticatedPluginDetection("cursor", version))
+			if err != status_error.PluginNotReady || len(actual.skills) != 0 || len(actual.targets) != 0 {
+				t.Fatalf("unbound private skill: %+v %v", actual.skills, err)
+			}
+		}
 	}
 }
 
@@ -459,7 +451,7 @@ func authenticatedPluginDetection(cli, version string) agentapi.DetectionResult 
 	return agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: cli, SkillDirectoryName: ".agents"}, Version: version, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true, agentapi.CapabilityMCPStreamableHTTP: true}}
 }
 
-func TestCanonicalAuthenticatedPluginRejectsUnsupportedNativeExecution(t *testing.T) {
+func TestCanonicalAuthenticatedPluginUsesStandardProjectionForNativeCapableVersions(t *testing.T) {
 	for _, cli := range []string{"codex", "claude"} {
 		t.Run(cli, func(t *testing.T) {
 			manager, _, _ := authenticatedPluginSourceFixture(t, authenticationFixtureShape{Canonical: true, Skills: true})
@@ -468,8 +460,89 @@ func TestCanonicalAuthenticatedPluginRejectsUnsupportedNativeExecution(t *testin
 			if prepared.release != nil {
 				defer prepared.release()
 			}
-			if !errors.Is(err, status_error.PluginNotReady) || len(prepared.skills) != 0 || len(prepared.connectors) != 0 || len(prepared.snapshots) != 0 {
-				t.Fatal("unsupported native plugin execution was admitted", err)
+			if err != nil || len(prepared.skills) != 1 || len(prepared.connectors) != 1 || len(prepared.snapshots) != 1 {
+				t.Fatal("native packaging support blocked the standard authenticated projection", err)
+			}
+		})
+	}
+}
+
+func TestNativeSkillKeepsSharedBusinessCredentialAndOutOfWorkspace(t *testing.T) {
+	manager, _, _ := authenticatedPluginSourceFixture(t, authenticationFixtureShape{SkillBridge: true})
+	prepared, err := manager.preparePlugins(t.Context(), "w", pendingMessage{}, authenticatedPluginDetection("cursor", "2026.11.05-86047df"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prepared.release()
+	if len(prepared.targets) != 1 || len(prepared.skills) != 0 || prepared.environment["BUSINESS_TOKEN"] != "skill-secret" {
+		t.Fatalf("native plugin did not receive its scoped skill credential")
+	}
+	if err := filepath.WalkDir(prepared.targets[0].Root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		body, err := os.ReadFile(path)
+		if err == nil && strings.Contains(string(body), "skill-secret") && !strings.HasSuffix(path, "bridge.mjs") {
+			t.Fatal("private credential was persisted")
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRestrictedMixedPluginKeepsUnboundSkillsWithoutPrivateMCP(t *testing.T) {
+	manager, _, _ := authenticatedPluginSourceFixture(t, authenticationFixtureShape{Canonical: true, Skills: true})
+	req := pendingMessage{allowedConnectorIDs: &[]string{}, message: userMessage{PluginIDs: []string{"p"}}}
+	result, err := manager.preparePlugins(t.Context(), "w", req, authenticatedPluginDetection("cursor", "2026.11.05-86047df"))
+	if result.release != nil {
+		defer result.release()
+	}
+	if err != nil || len(result.skills) != 1 || len(result.connectors) != 0 || len(result.targets) != 0 || len(result.environment) != 0 {
+		t.Fatalf("wrong restricted component plan: %v", err)
+	}
+}
+
+func TestPluginBindingForOtherRuntimeCannotDeliverAnonymousMixedComponent(t *testing.T) {
+	pkg := plugins.Package{
+		Skills:  []plugins.Skill{{Key: "skills/review"}},
+		Servers: []plugins.Server{{Key: "business", Type: "streamable-http"}},
+		Integration: plugins.Integration{Authentication: &plugins.Authentication{
+			Bindings:      []plugins.AuthenticationBinding{{Server: "business", Runtime: "codex"}},
+			SkillBindings: []plugins.SkillAuthenticationBinding{{Skill: "skills/review"}},
+		}},
+	}
+	detect := authenticatedPluginDetection("cursor", "2026.11.05-86047df")
+	require := pluginResourceSelection{selectedPluginIDs: []string{"p"}}
+	if err := pluginProjectionError("p", pkg, pkg, require, detect, "", true); !errors.Is(err, status_error.PluginCapabilityUnsupported) {
+		t.Fatal("common skill opened runtime-specific MCP without its identity", err)
+	}
+	pkg.Integration.Authentication.Bindings[0].Runtime = ""
+	pkg.Integration.Authentication.SkillBindings[0].Runtime = "codex"
+	if err := pluginProjectionError("p", pkg, pkg, require, detect, "", false); !errors.Is(err, status_error.PluginCapabilityUnsupported) {
+		t.Fatal("common MCP opened runtime-specific skill without its identity", err)
+	}
+}
+
+func TestRootPortableSkillAuthenticationUsesSameStoredMaterialForNativeAndProjection(t *testing.T) {
+	manager, state, _ := authenticatedPluginSourceFixture(t, authenticationFixtureShape{RootPackage: true, SkillBridge: true})
+	if state.Versions[0].Package.SourcePath != "" || len(state.Account.DeliveryMaterials) != 1 {
+		t.Fatal("expected one authorized portable root package")
+	}
+	for _, cli := range []string{"cursor", "kimi"} {
+		t.Run(cli, func(t *testing.T) {
+			request := pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}
+			detection := authenticatedPluginDetection(cli, map[string]string{"cursor": "2026.11.05-86047df", "kimi": "2.0.2"}[cli])
+			result, err := manager.preparePlugins(t.Context(), "w", request, detection)
+			if err != nil {
+				t.Fatal("failed to use the authorized root package", err)
+			}
+			defer result.release()
+			if (len(result.targets) == 1) != (cli == "cursor") || (len(result.skills) == 1) != (cli == "kimi") || result.environment["BUSINESS_TOKEN"] != "skill-secret" {
+				t.Fatal("stored private skill material did not reach its selected route")
+			}
+			if _, err := os.Stat(filepath.Join(manager.skillDataDirectory, "plugins/data/p/fixture-bridge-started")); !os.IsNotExist(err) {
+				t.Fatal("runtime started the authorization bridge", err)
 			}
 		})
 	}

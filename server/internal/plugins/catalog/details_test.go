@@ -57,7 +57,7 @@ func TestDetailsDistributionFailuresKeepSafeUpstreamDiagnostics(t *testing.T) {
 				_, _ = w.Write([]byte("short"))
 			}))
 			defer server.Close()
-			_, err := ReadDetails(Entry{Key: "feishu-office", DetailsURL: server.URL + "/details?token=private-source-value", DetailsSHA256: strings.Repeat(map[string]string{"status": "a", "body": "b"}[stage], 64), DetailsSize: 100})
+			_, err := ReadDetails(context.Background(), Entry{Key: "feishu-office", DetailsURL: server.URL + "/details?token=private-source-value", DetailsSHA256: strings.Repeat(map[string]string{"status": "a", "body": "b"}[stage], 64), DetailsSize: 100})
 			if !errors.Is(err, status_error.PluginDistributionUnavailable) {
 				t.Fatal("upstream failure lost its distribution error", err)
 			}

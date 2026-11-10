@@ -57,8 +57,10 @@ func TestCatalogDetailAndRawReadmeAreReadOnlyAndSourceBound(t *testing.T) {
 			}))
 			defer source.Close()
 			location := source.URL + "/catalog.json"
-			stopCatalog := catalog.Start(context.Background(), location, t.TempDir(), nil)
-			defer stopCatalog()
+			// 本用例只验证读取端点副作用，启动预取由 catalog 的独立生命周期回归覆盖。
+			if err := catalog.Refresh(context.Background(), location); err != nil {
+				t.Fatal(err)
+			}
 			t.Setenv("ALLY_PLUGIN_CATALOG_URL", location)
 			output, err := (&GetCatalogPlugin{Key: "demo"}).Output(ctx)
 			if err != nil {

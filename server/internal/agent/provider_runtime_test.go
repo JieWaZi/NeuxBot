@@ -36,12 +36,15 @@ func TestProviderRuntimeVerifiesCodexSystemCredentialBeforePublishing(t *testing
 		wrongRoot bool
 		// wrongReportedRoot overrides the actual root reported by the native process.
 		wrongReportedRoot bool
+		// rejectAccountRead makes the independent account diagnostic unavailable.
+		rejectAccountRead bool
 		// wantErr is the public startup failure.
 		wantErr error
 	}{
 		{name: "matching api key", credentialKind: "api_key", account: "apiKey", accessToken: "fixture-selected"},
 		{name: "api key wrong mode", credentialKind: "api_key", account: "chatgpt", accessToken: "fixture-selected", wantErr: status_error.RuntimeAuthRequired},
 		{name: "matching", account: "chatgpt", accessToken: "fixture-selected"},
+		{name: "account diagnostic unavailable", account: "chatgpt", accessToken: "fixture-selected", rejectAccountRead: true},
 		{name: "wrong native credential", account: "chatgpt", accessToken: "fixture-other", wantErr: status_error.RuntimeAuthRequired},
 		{name: "wrong native login kind", account: "apiKey", accessToken: "fixture-selected", wantErr: status_error.RuntimeAuthRequired},
 		{name: "conflicting native root", account: "chatgpt", accessToken: "fixture-selected", wrongRoot: true, wantErr: status_error.AIAccountConfigurationInvalid},
@@ -53,6 +56,9 @@ func TestProviderRuntimeVerifiesCodexSystemCredentialBeforePublishing(t *testing
 			req.Account.ConfigHome = req.Account.CWD
 			req.Launch.Environment["FIXTURE_CODEX_ACCOUNT"] = tc.account
 			req.Launch.Environment["FIXTURE_CODEX_TOKEN"] = tc.accessToken
+			if tc.rejectAccountRead {
+				req.Launch.Environment["FIXTURE_REJECT_ACCOUNT_READ"] = "1"
+			}
 			if tc.wrongRoot {
 				req.Launch.ConfigHome = t.TempDir()
 			}
@@ -683,6 +689,10 @@ func TestProviderRuntimeChild(t *testing.T) {
 				}
 				reply["result"] = map[string]any{"userAgent": "codex/0.163.0", "codexHome": home}
 			case "account/read":
+				if os.Getenv("FIXTURE_REJECT_ACCOUNT_READ") == "1" {
+					reply["error"] = map[string]any{"code": -32000, "message": "account diagnostic unavailable"}
+					break
+				}
 				result := map[string]any{}
 				if kind := os.Getenv("FIXTURE_CODEX_ACCOUNT"); kind != "" {
 					result["requiresOpenaiAuth"] = true

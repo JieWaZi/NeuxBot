@@ -76,8 +76,10 @@ func TestCurrentCatalogRecoversStaleArchiveWithoutRelaxingPinnedReads(t *testing
 				}))
 				defer source.Close()
 				location := source.URL + "/catalog.json"
-				stop := catalog.Start(context.Background(), location, t.TempDir(), nil)
-				defer stop()
+				// 该用例隔离安装／读取的分发恢复；完整启动预取由 catalog 生命周期用例验证。
+				if err := catalog.Refresh(context.Background(), location); err != nil {
+					t.Fatal(err)
+				}
 				t.Setenv("ALLY_PLUGIN_CATALOG_URL", location)
 				original, err := catalog.Find(location, "recovery")
 				if err != nil {

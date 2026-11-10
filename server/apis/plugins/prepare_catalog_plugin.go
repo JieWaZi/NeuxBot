@@ -39,7 +39,7 @@ func (*PrepareCatalogPlugin) Path() string { return "/catalog/:key/prepare" }
 
 // Output 核验目录固定归档后登记资源与版本，不建立伙伴安装关系。
 func (o *PrepareCatalogPlugin) Output(ctx *gin.Context) (interface{}, error) {
-	entry, directory, err := catalog.ResolveCurrent(global.PluginCatalogSource(), o.Key)
+	entry, directory, err := catalog.ResolveCurrent(ctx.Request.Context(), global.PluginCatalogSource(), o.Key)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
@@ -95,9 +95,50 @@ func persistPreparedResource(ctx context.Context, stage packageplugin.StagedPack
 	if _, err := packageplugin.ClientExtension(stage.Package); err != nil {
 		return models.Plugin{}, "", err
 	}
-	if global.PluginContents != nil {
-		release := global.PluginContents.Guard()
+	root, err := packageplugin.PackageRoot(stage.Root, stage.Package)
+	if err != nil {
+		return models.Plugin{}, "", err
+	}
+	guard := func() func() {
+		if global.PluginContents != nil {
+			return global.PluginContents.Guard()
+		}
+		return func() {}
+	}
+	// 在内容边界内固定资源身份，随后在边界外生成暂存目标。
+	// 并发准备可能先提交另一身份；发布原包前复核，并按实际身份重试生成。
+	for attempt := 0; ; attempt++ {
+		release := guard()
+		existing, err := global.PluginControllerManager.FindSource(ctx, resource.SourceKey)
+		if existing.ID != "" {
+			resource = existing
+		}
+		release()
+		if err != nil {
+			return models.Plugin{}, "", err
+		}
+		if err := ctx.Err(); err != nil {
+			return models.Plugin{}, "", err
+		}
+		if _, err := packageplugin.PrepareTargets(ctx, filepath.Join(global.Config.DataDirectory, "plugins", "targets"), resource.ID, stage.Package, root); err != nil {
+			return models.Plugin{}, "", err
+		}
+		release = guard()
+		current, err := global.PluginControllerManager.FindSource(ctx, resource.SourceKey)
+		if err != nil {
+			release()
+			return models.Plugin{}, "", err
+		}
+		if current.ID != "" && current.ID != resource.ID {
+			resource = current
+			release()
+			if attempt == 2 {
+				return models.Plugin{}, "", status_error.PluginVersionConflict
+			}
+			continue
+		}
 		defer release()
+		break
 	}
 	content, err := packageplugin.CopyContent(filepath.Join(global.Config.DataDirectory, "plugins", "content"), stage.Root, stage.Digest)
 	if err != nil {

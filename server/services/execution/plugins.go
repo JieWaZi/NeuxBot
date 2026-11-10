@@ -21,12 +21,15 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/plugininstallation"
 )
 
 // preparedPlugins 是原生消费者租约保护的能力投射，不创建独立 Skill/MCP 资源。
 type preparedPlugins struct {
+	// targets 是已核验且本次只经原生入口加载的不可变组件。
+	targets []plugins.NativeTarget
 	// skills 是可按需读取的原始插件技能。
 	skills []agentapi.Skill
 	// connectors 是经过配置和传输能力检查的派生连接器。
@@ -43,6 +46,8 @@ type preparedPlugins struct {
 
 // pluginResourceSelection 冻结插件交付约束，不持有消息、附件或本轮执行能力。
 type pluginResourceSelection struct {
+	// managedAccount 允许在已选择的应用托管账号下准备 Codex 插件缓存。
+	managedAccount bool
 	// selectedPluginIDs 是必须成功交付的显式插件身份。
 	selectedPluginIDs []string
 	// allowedConnectorIDs 是交付连接器的冻结白名单。
@@ -53,6 +58,8 @@ type pluginResourceSelection struct {
 
 // frozenPluginResources 固定廉价仓储事实，资源方法只消费这些描述值。
 type frozenPluginResources struct {
+	// native 记录本次接纳选用原生格式的插件，在技能去重后固定。
+	native map[string]bool
 	// wakerID 是声明所属伙伴，冷获取时沿同一安装范围复核。
 	wakerID string
 	// pluginIDs 是冷准备占位期间即保护管理回收的候选插件身份。
@@ -71,6 +78,7 @@ type frozenPluginResources struct {
 
 func pluginSelection(request pendingMessage) pluginResourceSelection {
 	return pluginResourceSelection{
+		managedAccount:      request.runtime.AccountID != "" && request.runtime.AccountID != agentapi.SystemAccountID,
 		selectedPluginIDs:   slices.Clone(request.message.PluginIDs),
 		allowedConnectorIDs: cloneConnectorAllowlist(request.allowedConnectorIDs),
 		allowedAgentDomains: cloneConnectorAllowlist(request.allowedAgentDomains),
@@ -121,13 +129,21 @@ func (m *service) freezePluginResources(ctx context.Context, waker string, reque
 	if cli == "" {
 		cli = detection.Runtime.ID
 	}
-	delivery := []any{cli, nativePluginVersionSupported(cli, detection.Version), detection.Runtime.SkillDirectoryName}
+	selection := pluginSelection(request)
+	native := map[string]bool{}
+	for _, declaration := range fixed {
+		pkg, _, err := plugins.DeclaredTarget(declaration.Package, cli)
+		if err == nil && nativePluginEligible(cli, detection.Version, pkg, selection, detection) {
+			native[declaration.ID] = true
+		}
+	}
+	delivery := []any{cli, detection.Runtime.ID, detection.ResolvedBinary, detection.Version, native, detection.Runtime.SkillDirectoryName}
 	body, err := json.Marshal([]any{waker, delivery, identities, request.allowedConnectorIDs, request.allowedAgentDomains})
 	if err != nil {
 		return frozenPluginResources{}, status_error.BadRequest
 	}
 	digest := sha256.Sum256(body)
-	return frozenPluginResources{wakerID: waker, pluginIDs: pluginIDs, key: hex.EncodeToString(digest[:]), selected: selected, selection: pluginSelection(request), detection: detection, declarations: fixed}, nil
+	return frozenPluginResources{wakerID: waker, pluginIDs: pluginIDs, key: hex.EncodeToString(digest[:]), selected: selected, selection: selection, native: native, detection: detection, declarations: fixed}, nil
 }
 
 // acquirePluginResources 核对发布声明后取得真实内容与共享身份租约。
@@ -329,23 +345,23 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			}
 			continue
 		}
-		snapshot := plugins.Snapshot{TargetDigest: targetDigest, TargetVersion: version.Package.Manifest.Version, Delivery: constants.PluginDeliveryProjection, LoadStage: constants.PluginLoadStagePrepared, ID: id, Name: declaration.Name, VersionID: version.ID, Version: version.Version, ConfigurationRevision: configuration.Revision, AccountGeneration: declaration.AccountGeneration, ComponentIDs: []string{}}
+		snapshot := plugins.Snapshot{
+			ID: id, Name: declaration.Name, VersionID: version.ID, Version: version.Version,
+			Runtime: cli, Profile: cli + "/skill-mcp", SourceDigest: logicalVersion.Digest,
+			TargetDigest: targetDigest, TargetVersion: version.Package.Manifest.Version,
+			Delivery: constants.PluginDeliveryProjection, LoadStage: constants.PluginLoadStagePrepared,
+			ConfigurationRevision: configuration.Revision, AccountGeneration: declaration.AccountGeneration, ComponentIDs: []string{},
+		}
+		native := frozen.native[id]
 		authenticationBindings := plugins.TargetAuthenticationBindings(logicalVersion.Package, cli)
-		if err := pluginProjectionError(id, logicalVersion.Package, version.Package, request, detection, m.pluginLauncher); err != nil {
+		if err := pluginProjectionError(id, logicalVersion.Package, version.Package, request, detection, m.pluginLauncher, native); err != nil {
 			if required {
 				return result, err
 			}
 			continue
 		}
-		authVersion := logicalVersion
-		if len(authenticationBindings) == 0 {
-			authVersion.Package = version.Package
-			authVersion.Package.SourcePath, err = filepath.Rel(sourceRoot, root)
-			if err != nil {
-				return result, status_error.PluginContentInvalid
-			}
-		}
-		hasAuthentication := authVersion.Package.Integration.Authentication != nil
+		// 授权材料归属已固定的逻辑版本；目标目录只参与组件交付。
+		hasAuthentication := logicalVersion.Package.Integration.Authentication != nil
 		accountState := models.PluginAccount{PluginID: id, Generation: declaration.AccountGeneration}
 		bridgeRelease := func() {}
 		candidateEnvironment := map[string]string{}
@@ -372,13 +388,22 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 
 		}
 
+		bindings, accountID, bindErr := plugininstallation.DeliveryAuthentication(logicalVersion, configuration, accountState, cli)
+		if bindErr != nil {
+			return result, bindErr
+		}
+		if native || detection.Runtime.SkillDirectoryName != "" {
+			for _, skill := range plugins.TargetSkillAuthenticationBindings(version.Package, cli) {
+				if !plugininstallation.SkillDeliveryReady(id, skill, bindings, data) {
+					return result, status_error.PluginNotReady
+				}
+			}
+		}
 		candidateSkills := []agentapi.Skill{}
 		candidateConnectors := []models.MCPConnector{}
-		available := map[string]bool{}
-		if detection.Runtime.SkillDirectoryName != "" {
+		if native || detection.Runtime.SkillDirectoryName != "" {
 			for _, skill := range version.Package.Skills {
 				candidateSkills = append(candidateSkills, agentapi.Skill{Name: skill.Name, Path: filepath.Join(root, skill.Path), Digest: skill.Digest})
-				available[skill.Key] = true
 				snapshot.ComponentIDs = append(snapshot.ComponentIDs, plugins.ComponentID(id, "skill:"+skill.Key))
 			}
 		}
@@ -393,6 +418,16 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 				continue
 			}
 			if supported, _ := agentapi.ConnectorCompatibility(cli, transport); !supported {
+				continue
+			}
+			if !plugininstallation.MCPDeliveryReady(id, server.Key, authenticationBindings, bindings) {
+				if required {
+					return result, status_error.PluginNotReady
+				}
+				continue
+			}
+			if native {
+				snapshot.ComponentIDs = append(snapshot.ComponentIDs, componentID)
 				continue
 			}
 			resolved, resolveErr := plugins.ResolveServer(version.Package, server, root, data, values)
@@ -422,15 +457,9 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 				connector.Headers = append(connector.Headers, models.MCPSecretDefinition{Name: name, Value: value, Configured: true})
 			}
 			candidateConnectors = append(candidateConnectors, connector)
-			available[server.Key] = true
 			snapshot.ComponentIDs = append(snapshot.ComponentIDs, componentID)
 		}
 
-		bindings, accountID, bindErr := plugininstallation.DeliveryAuthentication(authVersion, configuration, accountState, cli)
-		snapshot.ProviderAccountID = accountID
-		if bindErr != nil {
-			return result, bindErr
-		}
 		if hasAuthentication && len(authenticationBindings) > 0 {
 			plugininstallation.ProjectBoundAuthentication(id, authenticationBindings, false, candidateConnectors, candidateEnvironment, bindings)
 		}
@@ -472,6 +501,11 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			}
 		}
 
+		if slices.ContainsFunc(bindings, func(binding commandbridge.Binding) bool {
+			return slices.Contains(snapshot.ComponentIDs, binding.ComponentID)
+		}) {
+			snapshot.ProviderAccountID = accountID
+		}
 		if len(snapshot.ComponentIDs) == 0 {
 			if required {
 				return result, status_error.PluginNotReady
@@ -491,7 +525,25 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			}
 			result.environment[key] = value
 		}
-		result.skills = append(result.skills, candidateSkills...)
+		if native {
+			target, err := plugins.PrepareNativeTargetWithDigest(ctx, filepath.Join(m.skillDataDirectory, "plugins", "targets"), id, version.Package, root, cli, targetDigest)
+			if err != nil {
+				return result, err
+			}
+			if target.Format == "projection" {
+				return result, status_error.PluginVersionConflict
+			}
+			if slices.ContainsFunc(result.targets, func(existing plugins.NativeTarget) bool { return strings.EqualFold(existing.Name, target.Name) }) {
+				return result, status_error.PluginVersionConflict
+			}
+			result.targets = append(result.targets, target)
+			snapshot.Delivery = constants.PluginDeliveryNative
+			snapshot.NativePluginID = target.Name
+			snapshot.Profile = target.Profile
+			snapshot.TargetDigest, snapshot.TargetVersion = target.Digest, target.Version
+		} else {
+			result.skills = append(result.skills, candidateSkills...)
+		}
 		result.connectors = append(result.connectors, candidateConnectors...)
 		result.snapshots = append(result.snapshots, snapshot)
 		found[id] = true
@@ -538,7 +590,10 @@ func pluginSelectionHint(selected []plugins.Snapshot) string {
 	return "\n\n用户本轮明确选择插件：" + strings.Join(names, "、") + "。请按任务需要使用其可用技能或连接器。"
 }
 
-// nativePluginVersionSupported 标识当前必须完整原生交付的版本组合；执行侧明确拒绝该组合。
+var pluginCLIVersion = regexp.MustCompile(`([0-9]+)\.([0-9]+)\.([0-9]+)`)
+var cursorPluginBuild = regexp.MustCompile(`^[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[[:xdigit:]]+$`)
+
+// nativePluginVersionSupported 根据已核实的 CLI 版本判断是否可以选择原生安装入口。
 func nativePluginVersionSupported(cli, version string) bool {
 	minimum := []int{}
 	switch cli {
@@ -546,10 +601,23 @@ func nativePluginVersionSupported(cli, version string) bool {
 		minimum = []int{0, 161, 0}
 	case agentapi.RuntimeIDClaude:
 		minimum = []int{2, 1, 159}
+	case constants.RuntimeIDWorkBuddy:
+		minimum = []int{2, 181, 0}
+	case constants.RuntimeIDQoder:
+		minimum = []int{1, 1, 83}
+	case constants.RuntimeIDGrok:
+		minimum = []int{1, 0, 45}
+	case constants.RuntimeIDPi:
+		minimum = []int{0, 85, 1}
+	case constants.RuntimeIDCursor:
+		if !cursorPluginBuild.MatchString(version) {
+			return false
+		}
+		minimum = []int{2026, 11, 5}
 	default:
 		return false
 	}
-	match := regexp.MustCompile(`([0-9]+)\.([0-9]+)\.([0-9]+)`).FindStringSubmatch(version)
+	match := pluginCLIVersion.FindStringSubmatch(version)
 	if len(match) != 4 {
 		return false
 	}
@@ -565,35 +633,69 @@ func nativePluginVersionSupported(cli, version string) bool {
 	return true
 }
 
+// nativePluginEligible 在冻结阶段判定整包原生加载能否兑现当前组件、身份和权限。
+func nativePluginEligible(cli, version string, pkg plugins.Package, selection pluginResourceSelection, detection agentapi.DetectionResult) bool {
+	if !nativePluginVersionSupported(cli, version) || selection.allowedConnectorIDs != nil || selection.allowedAgentDomains != nil {
+		return false
+	}
+	if cli == constants.RuntimeIDCodex && !selection.managedAccount {
+		return false
+	}
+	if cli == constants.RuntimeIDQoder {
+		executable := strings.ToLower(filepath.Base(detection.ResolvedBinary))
+		if strings.Contains(strings.ToLower(detection.Runtime.ID), "qoder-cn") || strings.HasPrefix(executable, "qoderclicn") || strings.HasPrefix(executable, "qodercn") || strings.HasPrefix(executable, "qoder-cn") {
+			return false
+		}
+	}
+	format, err := plugins.TargetFormat(pkg, cli)
+	if err != nil || format == "projection" || len(plugins.TargetAuthenticationBindings(pkg, cli)) > 0 {
+		return false
+	}
+	// Claude 同时注册宿主 MCP 时使用 strict-mcp-config；Pi 的 package 声明不包含 MCP。
+	if (cli == constants.RuntimeIDClaude || cli == constants.RuntimeIDPi) && len(pkg.Servers) > 0 {
+		return false
+	}
+	for _, server := range pkg.Servers {
+		transport := constants.RuntimeConnectorTransport(server.Type)
+		if server.Type == "streamable-http" {
+			transport = constants.RuntimeConnectorTransportStreamableHTTP
+		}
+		if supported, _ := agentapi.ConnectorCompatibility(cli, transport); !supported {
+			return false
+		}
+	}
+	return len(pkg.Skills) > 0 || len(pkg.Servers) > 0
+}
+
 // pluginProjectionError 共用目标交付约束；实际内容和秘密仍由冷获取验证。
-func pluginProjectionError(pluginID string, logical, target plugins.Package, request pluginResourceSelection, detection agentapi.DetectionResult, launcher string) error {
-	extension, err := plugins.ClientExtension(logical)
-	if err != nil {
-		return err
-	}
-	targetExtension, err := plugins.ClientExtension(target)
-	if err != nil {
-		return err
-	}
+func pluginProjectionError(pluginID string, logical, target plugins.Package, request pluginResourceSelection, detection agentapi.DetectionResult, launcher string, native bool) error {
 	cli := detection.Runtime.BaseRuntimeID
 	if cli == "" {
 		cli = detection.Runtime.ID
 	}
 	bindings := plugins.TargetAuthenticationBindings(logical, cli)
+	skillBindings := plugins.TargetSkillAuthenticationBindings(logical, cli)
 	auth := logical.Integration.Authentication
-	if auth != nil && (len(auth.Bindings) > 0 || len(auth.SkillBindings) > 0) && len(bindings) == 0 && len(plugins.TargetSkillAuthenticationBindings(logical, cli)) == 0 {
+	if auth != nil && (len(auth.Bindings) > 0 || len(auth.SkillBindings) > 0) && len(bindings) == 0 && len(skillBindings) == 0 {
+		return status_error.PluginCapabilityUnsupported
+	}
+	// 已绑定技能会把业务账号环境交给整个 CLI，受限任务无法将它压缩到单个工具。
+	if (request.allowedConnectorIDs != nil || request.allowedAgentDomains != nil) && len(skillBindings) > 0 {
 		return status_error.PluginForbidden
 	}
-	hasAuthentication := auth != nil || target.Integration.Authentication != nil
-	if nativePluginVersionSupported(cli, detection.Version) && request.allowedConnectorIDs == nil && request.allowedAgentDomains == nil && len(extension.Bindings) == 0 && len(targetExtension.Bindings) == 0 && (len(extension.Config) == 0 || target.Format != constants.PluginFormatPortable) && (!hasAuthentication || len(target.Servers) == 0 || len(bindings) > 0) {
-		return status_error.PluginNotReady
-	}
-	if hasAuthentication && (request.allowedConnectorIDs != nil || request.allowedAgentDomains != nil) && len(target.Skills) > 0 {
-		return status_error.PluginForbidden
-	}
+	required := slices.Contains(request.selectedPluginIDs, pluginID)
 	available := map[string]bool{}
-	if detection.Runtime.SkillDirectoryName != "" {
+	if !native && detection.Runtime.SkillDirectoryName == "" && required && len(target.Skills) > 0 {
+		return status_error.PluginCapabilityUnsupported
+	}
+	if native || detection.Runtime.SkillDirectoryName != "" {
 		for _, skill := range target.Skills {
+			if auth != nil {
+				matches := func(b plugins.SkillAuthenticationBinding) bool { return b.Skill == skill.Key }
+				if slices.ContainsFunc(auth.SkillBindings, matches) && !slices.ContainsFunc(skillBindings, matches) {
+					return status_error.PluginCapabilityUnsupported
+				}
+			}
 			available[skill.Key] = true
 		}
 	}
@@ -605,8 +707,17 @@ func pluginProjectionError(pluginID string, logical, target plugins.Package, req
 		if server.Type == "streamable-http" {
 			transport = constants.RuntimeConnectorTransportStreamableHTTP
 		}
-		if supported, _ := agentapi.ConnectorCompatibility(cli, transport); !supported || (transport == constants.RuntimeConnectorTransportStdio && launcher == "") {
+		if supported, _ := agentapi.ConnectorCompatibility(cli, transport); !supported || (!native && transport == constants.RuntimeConnectorTransportStdio && launcher == "") {
+			if required {
+				return status_error.PluginCapabilityUnsupported
+			}
 			continue
+		}
+		if auth != nil {
+			matches := func(b plugins.AuthenticationBinding) bool { return b.Server == server.Key }
+			if slices.ContainsFunc(auth.Bindings, matches) && !slices.ContainsFunc(bindings, matches) {
+				return status_error.PluginCapabilityUnsupported
+			}
 		}
 		available[server.Key] = true
 	}
@@ -617,7 +728,7 @@ func pluginProjectionError(pluginID string, logical, target plugins.Package, req
 }
 
 // selectNativePluginSkills 只从发布的不可变目标与配置声明选择技能，不读取来源正文或秘密。
-func (m *service) selectNativePluginSkills(ctx context.Context, frozen frozenPluginResources) ([]agentapi.Skill, error) {
+func (m *service) selectNativePluginSkills(ctx context.Context, frozen frozenPluginResources, independent ...agentapi.Skill) ([]agentapi.Skill, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -625,6 +736,27 @@ func (m *service) selectNativePluginSkills(ctx context.Context, frozen frozenPlu
 	cli := frozen.detection.Runtime.BaseRuntimeID
 	if cli == "" {
 		cli = frozen.detection.Runtime.ID
+	}
+	// 相同技能跨原生根和普通发现目录只投射一次；不同正文继续由合并阶段明确报告冲突。
+	skillOwners := map[string][]string{}
+	for _, skill := range independent {
+		skillOwners[skill.Name] = append(skillOwners[skill.Name], "")
+	}
+	for _, decl := range frozen.declarations {
+		pkg, _, err := plugins.DeclaredTarget(decl.Package, cli)
+		if err != nil {
+			continue
+		}
+		for _, skill := range pkg.Skills {
+			skillOwners[skill.Name] = append(skillOwners[skill.Name], decl.ID)
+		}
+	}
+	for _, owners := range skillOwners {
+		if len(owners) > 1 {
+			for _, id := range owners {
+				delete(frozen.native, id)
+			}
+		}
 	}
 	for _, declaration := range frozen.declarations {
 		required := slices.Contains(frozen.selection.selectedPluginIDs, declaration.ID)
@@ -672,13 +804,13 @@ func (m *service) selectNativePluginSkills(ctx context.Context, frozen frozenPlu
 			}
 			continue
 		}
-		if err := pluginProjectionError(declaration.ID, declaration.Package, pkg, frozen.selection, frozen.detection, m.pluginLauncher); err != nil {
+		if err := pluginProjectionError(declaration.ID, declaration.Package, pkg, frozen.selection, frozen.detection, m.pluginLauncher, frozen.native[declaration.ID]); err != nil {
 			if required {
 				return nil, err
 			}
 			continue
 		}
-		if frozen.detection.Runtime.SkillDirectoryName == "" {
+		if frozen.native[declaration.ID] || frozen.detection.Runtime.SkillDirectoryName == "" {
 			continue
 		}
 		for _, skill := range pkg.Skills {

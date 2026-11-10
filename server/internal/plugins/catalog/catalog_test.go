@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -13,7 +14,7 @@ import (
 )
 
 func TestCatalogRejectsLegacyLocalZIPInputs(t *testing.T) {
-	if _, err := ResolveEntry(Entry{ArchiveSHA256: strings.Repeat("a", 64)}); err == nil {
+	if _, err := ResolveEntry(context.Background(), Entry{ArchiveSHA256: strings.Repeat("a", 64)}); err == nil {
 		t.Fatal("legacy local ZIP input was admitted")
 	}
 	for _, version := range []int{2, 3} {

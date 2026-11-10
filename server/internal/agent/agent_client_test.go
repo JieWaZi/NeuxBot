@@ -4,11 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	acp "github.com/JieWaZi/acp-go-sdk"
@@ -648,5 +652,281 @@ func TestNativeToolCollectionsKeepOmittedEmptyAndNonemptyPresence(t *testing.T) 
 				t.Fatalf("coalescing changed collection presence: %s", merged)
 			}
 		})
+	}
+}
+
+func TestNativeLaunchPluginPathPreservesCLIInterpreter(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX env shebang regression")
+	}
+	tools, private := t.TempDir(), t.TempDir()
+	interpreter := filepath.Join(tools, "neux-test-interpreter")
+	if err := os.WriteFile(interpreter, []byte("#!/bin/sh\nprintf initialized"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	cli := filepath.Join(t.TempDir(), "native-cli")
+	if err := os.WriteFile(cli, []byte("#!/usr/bin/env neux-test-interpreter\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, provider := range []string{"codex", "claude", "cursor", "workbuddy", "qoder", "kimi", "gemini", "grok", "opencode", "pi"} {
+		t.Run(provider, func(t *testing.T) {
+			launch := ProviderLaunch{BaseEnvironment: map[string]string{"PATH": tools}}
+			resources := ResourceLease{Environment: map[string]string{"PATH": private}}
+			env, err := nativeLaunchEnvironment(provider, launch, AccountLease{}, LaunchAuthLease{}, resources)
+			if err != nil {
+				t.Fatal(err)
+			}
+			command := exec.Command(cli)
+			command.Env = env
+			output, err := command.CombinedOutput()
+			if err != nil || string(output) != "initialized" {
+				t.Fatalf("plugin PATH broke native CLI interpreter: %v %s", err, output)
+			}
+			var path string
+			for _, entry := range env {
+				if key, value, ok := strings.Cut(entry, "="); ok && strings.EqualFold(key, "PATH") {
+					path = value
+				}
+			}
+			if path != private+string(filepath.ListSeparator)+tools {
+				t.Fatalf("private tooling lost precedence or inherited interpreter path: %s", path)
+			}
+			if launch.BaseEnvironment["PATH"] != tools || resources.Environment["PATH"] != private {
+				t.Fatal("launch environment inputs were mutated")
+			}
+		})
+	}
+}
+
+func TestNativeLaunchPluginPathMergesSelectedAccountPathAndDeduplicates(t *testing.T) {
+	private, selected, inherited := t.TempDir(), t.TempDir(), t.TempDir()
+	for _, provider := range []string{"codex", "workbuddy", "kimi"} {
+		env, err := nativeLaunchEnvironment(provider,
+			ProviderLaunch{BaseEnvironment: map[string]string{"PATH": inherited}, Environment: map[string]string{"PATH": selected}},
+			AccountLease{Environment: map[string]string{"PATH": selected}}, LaunchAuthLease{},
+			ResourceLease{Environment: map[string]string{"PATH": private + string(filepath.ListSeparator) + selected + string(filepath.ListSeparator) + private}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, entry := range env {
+			if key, value, _ := strings.Cut(entry, "="); strings.EqualFold(key, "PATH") && value != private+string(filepath.ListSeparator)+selected {
+				t.Fatalf("%s used ambient or duplicate paths: %s", provider, value)
+			}
+		}
+	}
+}
+
+func TestNativePluginViewsAreIsolatedAndHoldFilesUntilLastConsumer(t *testing.T) {
+	source := t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "plugin.json"), []byte(`{"name":"one"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	digest, err := plugins.ContentDigest(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targets := []plugins.NativeTarget{{ID: "id-a", Name: "one", Version: "1", Root: source, Digest: digest, Runtime: "cursor"}, {ID: "id-b", Name: "two", Version: "1", Root: source, Digest: digest, Runtime: "cursor"}}
+	cwd, other := t.TempDir(), t.TempDir()
+	first, release, err := AcquirePluginViews(t.Context(), Workspace{Managed: true, Path: cwd}, targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, releaseSecond, err := AcquirePluginViews(t.Context(), Workspace{Managed: true, Path: cwd}, targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	third, releaseThird, err := AcquirePluginViews(t.Context(), Workspace{Managed: true, Path: other}, targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer releaseThird(t.Context())
+	if len(first) != 2 || first[0].Directory == first[1].Directory || first[0].Directory != second[0].Directory || first[0].Directory == third[0].Directory {
+		t.Fatal(first, second, third)
+	}
+	if err := release(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(first[0].Directory, "plugin.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := releaseSecond(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(first[0].Directory); !os.IsNotExist(err) {
+		t.Fatalf("last release retained view: %v", err)
+	}
+}
+
+func TestCodexPluginsUseOnlyLeasedAccountCacheAndLaunchConfiguration(t *testing.T) {
+	source := t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "plugin.json"), []byte(`{"name":"office","version":"1"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	digest, err := plugins.ContentDigest(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cwd := t.TempDir()
+	targets, release, err := AcquirePluginViews(t.Context(), Workspace{Managed: true, Path: cwd}, []plugins.NativeTarget{{ID: "one", Name: "office", Version: "1", Root: source, Digest: digest, Runtime: "codex"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release(t.Context())
+	account := AccountRequest{AccountID: "managed", Provider: "codex", ConfigHome: t.TempDir()}
+	lease := AccountLease{ConfigHome: account.ConfigHome}
+	config, done, err := prepareCodexPluginCache(t.Context(), account, lease, targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer done(t.Context())
+	if config["features.plugins"] == nil || config["plugins"] == nil {
+		t.Fatal(config)
+	}
+	if _, err := os.Stat(filepath.Join(account.ConfigHome, "plugins", "cache", targets[0].Marketplace, "office", "1", "plugin.json")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(account.ConfigHome, "config.toml")); !os.IsNotExist(err) {
+		t.Fatal("account config changed")
+	}
+	if _, err := os.Stat(filepath.Join(targets[0].MarketplaceRoot, ".agents", "plugins", "marketplace.json")); err != nil {
+		t.Fatal(err)
+	}
+	account.AccountID = SystemAccountID
+	if _, _, err := prepareCodexPluginCache(t.Context(), account, lease, targets); err == nil {
+		t.Fatal("system account cache write permitted")
+	}
+}
+
+// TestResourceLeasePluginDirectoriesReachNativeClient exercises the production ProviderRuntime factory.
+func TestResourceLeasePluginDirectoriesReachNativeClient(t *testing.T) {
+	for _, provider := range []string{"cursor", "claude", "workbuddy", "qoder"} {
+		t.Run(provider, func(t *testing.T) {
+			req := providerTestRequest(t, provider)
+			first, _ := filepath.EvalSymlinks(t.TempDir())
+			second, _ := filepath.EvalSymlinks(t.TempDir())
+			owner := NewProviderRuntime(ProviderRuntimeOptions{AcquireAccount: providerTestAccount})
+			t.Cleanup(func() { _ = owner.Close(context.Background()) })
+			conn, err := owner.Open(t.Context(), req, ProviderConnectionPorts{AcquireResources: func(context.Context, ResourceSelection) (ResourceLease, error) {
+				return ResourceLease{NativePlugins: []NativePlugin{{Provider: provider, Directory: first}, {Provider: provider, Directory: second}}}, nil
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if provider == "claude" {
+				client, err := conn.Client()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err = client.NewSession(t.Context(), AgentSessionOptions{}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			trace, err := os.ReadFile(filepath.Join(req.Account.CWD, "trace"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(trace), "--plugin-dir") || !strings.Contains(string(trace), first) || !strings.Contains(string(trace), second) {
+				t.Fatalf("typed plugin roots missing from launch: %s", trace)
+			}
+		})
+	}
+}
+
+func TestPluginViewReleaseNeverRemovesAReplacementDirectory(t *testing.T) {
+	source := t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "plugin.json"), []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	digest, err := plugins.ContentDigest(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targets, closeFiles, err := AcquirePluginViews(t.Context(), Workspace{Path: t.TempDir(), Managed: true}, []plugins.NativeTarget{{ID: "id", Name: "one", Version: "1", Root: source, Digest: digest, Runtime: "cursor"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := filepath.Dir(targets[0].Directory)
+	if err = os.Rename(original, original+"-moved"); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Mkdir(original, 0700); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(original, "user-file")
+	if err = os.WriteFile(sentinel, []byte("user content"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = closeFiles(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(sentinel); err != nil {
+		t.Fatalf("lease deleted a different workspace directory: %v", err)
+	}
+}
+
+func TestPluginDirectoryBusyViewDoesNotBlockAnotherWorkspace(t *testing.T) {
+	busy, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	unlock, err := lockPluginDirectory(t.Context(), filepath.Join(busy, "view"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed := make(chan error, 1)
+	other := t.TempDir()
+	go func() {
+		_, release, err := acquirePluginDirectory(t.Context(), other, "view", nil, map[string][]byte{"plugin.json": []byte("{}")})
+		if err == nil {
+			err = release(t.Context())
+		}
+		completed <- err
+	}()
+	select {
+	case err := <-completed:
+		unlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		unlock()
+		<-completed
+		t.Fatal("an unrelated workspace waited for the busy plugin view")
+	}
+}
+
+func TestPluginDirectoryWaitAndReleaseHonorCancellation(t *testing.T) {
+	parent, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, release, err := acquirePluginDirectory(t.Context(), parent, "view", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unlock, err := lockPluginDirectory(t.Context(), filepath.Join(parent, "view"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	completed := make(chan error, 1)
+	go func() { completed <- release(ctx) }()
+	select {
+	case err := <-completed:
+		unlock()
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("cancelled release = %v", err)
+		}
+	case <-time.After(time.Second):
+		unlock()
+		<-completed
+		t.Error("cancelled release waited for busy plugin files")
+	}
+	if _, err := os.Stat(filepath.Join(parent, "view")); err != nil {
+		t.Fatal("cancelled release removed a leased view", err)
+	}
+	if err := release(t.Context()); err != nil {
+		t.Fatal(err)
 	}
 }

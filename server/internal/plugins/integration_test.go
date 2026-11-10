@@ -66,7 +66,7 @@ func TestStandardNativeDerivationUsesDeclaredComponentsOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	target, err := PrepareNativeTarget(t.TempDir(), "p", pkg, root, "claude")
+	target, err := PrepareNativeTarget(t.Context(), t.TempDir(), "p", pkg, root, "claude")
 	if err != nil {
 		t.Fatal(err)
 	}

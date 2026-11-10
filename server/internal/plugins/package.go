@@ -155,7 +155,10 @@ func Load(root string) (pkg Package, resultErr error) {
 		}
 	}()
 	pkg = Package{ContractVersion: constants.PluginTargetContractVersion, Format: constants.PluginFormatPortable, Skills: []Skill{}, Servers: []Server{}, Diagnostics: []Diagnostic{}}
-	for _, legacy := range []string{".codex-plugin", ".claude-plugin", ".neuxally", ".mcp.json", ".app.json", "hooks", "agents", "commands", ".lsp.json"} {
+	if err := validateLinks(root); err != nil {
+		return pkg, err
+	}
+	for _, legacy := range []string{".codex-plugin", ".neuxally", ".app.json", "hooks", "agents", "commands", ".lsp.json", ".opencode", "extensions", "prompts", "themes", "output-styles", "workflows", "GEMINI.md", "rules", "policies", "monitors", "SKILL.md"} {
 		if _, err := os.Lstat(filepath.Join(root, legacy)); !os.IsNotExist(err) {
 			return pkg, status_error.PluginManifestInvalid
 		}
@@ -217,6 +220,9 @@ func Load(root string) (pkg Package, resultErr error) {
 		return pkg, err
 	}
 	if err := pkg.loadIntegration(root); err != nil {
+		return pkg, err
+	}
+	if err := validateNativeEntries(root, pkg); err != nil {
 		return pkg, err
 	}
 	if err := pkg.loadPresentation(root); err != nil {

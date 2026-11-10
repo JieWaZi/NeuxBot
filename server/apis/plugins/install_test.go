@@ -782,8 +782,10 @@ func TestCatalogInstallRevalidatesCachedArchiveWhenDistributionIsUnavailable(t *
 	}))
 	defer source.Close()
 	location := source.URL + "/catalog.json"
-	stopCatalog := catalog.Start(context.Background(), location, t.TempDir(), nil)
-	defer stopCatalog()
+	// 该用例隔离安装／读取的分发恢复；完整启动预取由 catalog 生命周期用例验证。
+	if err := catalog.Refresh(context.Background(), location); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("ALLY_PLUGIN_CATALOG_URL", location)
 	value, err := (&PrepareCatalogPlugin{Key: "cached-owned"}).Output(ctx)
 	if err != nil {

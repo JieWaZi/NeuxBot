@@ -76,7 +76,7 @@ func TestStandardClaudeAuthenticationDerivesOnlyBoundHeaderTemplate(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	native, err := PrepareNativeTarget(t.TempDir(), "plugin-id", pkg, root, "claude", binding)
+	native, err := PrepareNativeTarget(t.Context(), t.TempDir(), "plugin-id", pkg, root, "claude", binding)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,12 +107,30 @@ func TestStandardCodexKeepsPortableRootAndRejectsUnprovedSecretOverlay(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	native, err := PrepareNativeTarget(t.TempDir(), "plugin-id", pkg, root, "codex")
-	if err != nil || native.Root != root {
+	native, err := PrepareNativeTarget(t.Context(), t.TempDir(), "plugin-id", pkg, root, "codex")
+	expectedRoot, resolveErr := filepath.EvalSymlinks(root)
+	if err != nil || resolveErr != nil || native.Root != expectedRoot {
 		t.Fatalf("Codex standard root replaced: %+v %v", native, err)
 	}
 	binding := AuthenticationBinding{Runtime: "codex", Server: "remote", URL: "https://example.com/mcp", Header: "Authorization"}
-	if _, err := PrepareNativeTarget(t.TempDir(), "plugin-id", pkg, root, "codex", binding); err == nil {
+	if _, err := PrepareNativeTarget(t.Context(), t.TempDir(), "plugin-id", pkg, root, "codex", binding); err == nil {
 		t.Fatal("unproved Codex secret overlay was admitted")
+	}
+}
+
+func TestStandardProjectionSharesOnlyComponentAuthenticationDeclarations(t *testing.T) {
+	mcp := []AuthenticationBinding{{Server: "remote", URL: "https://example.com/mcp", Header: "Authorization"}}
+	skills := []SkillAuthenticationBinding{{Skill: "skills/tool", EnvironmentKeys: []string{"TOKEN", "TOOL_HOME"}, PrivatePathKeys: []string{"TOOL_HOME"}}}
+	root := t.TempDir()
+	authenticationInput(t, root, mcp, skills)
+	fixtureFile(t, root, "skills/tool/SKILL.md", "---\nname: tool\ndescription: Use tool\n---\nInstructions")
+	pkg, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, runtime := range []string{"codex", "claude", "workbuddy", "qoder", "pi", "cursor", "gemini", "grok", "kimi", "opencode"} {
+		if len(TargetAuthenticationBindings(pkg, runtime)) != 1 || len(TargetSkillAuthenticationBindings(pkg, runtime)) != 1 || AuthenticationTargetRuntime(pkg, runtime) != "" {
+			t.Fatal("shared component declarations withheld", runtime)
+		}
 	}
 }

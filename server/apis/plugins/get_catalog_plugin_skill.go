@@ -42,7 +42,7 @@ func (o *GetCatalogPluginSkill) Output(ctx *gin.Context) (interface{}, error) {
 	if o.FilePath != "" && o.FilePath != "SKILL.md" {
 		return nil, ginx.WithStack(status_error.PluginContentInvalid)
 	}
-	details, err := catalog.ReadDetails(entry)
+	details, err := catalog.ReadDetails(ctx.Request.Context(), entry)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}

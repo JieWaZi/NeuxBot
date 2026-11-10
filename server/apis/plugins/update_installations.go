@@ -72,7 +72,7 @@ func (o *UpdatePluginInstallations) Output(ctx *gin.Context) (interface{}, error
 				return nil, ginx.WithStack(status_error.PluginVersionConflict)
 			}
 			if !seen[version.ID] {
-				if err := validatePluginInstallationSource(resource, version); err != nil {
+				if err := validatePluginInstallationSource(ctx.Request.Context(), resource, version); err != nil {
 					return nil, ginx.WithStack(err)
 				}
 				targets = append(targets, version)

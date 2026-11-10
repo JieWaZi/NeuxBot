@@ -617,7 +617,7 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 	}
 	if launch.RequireNoTools {
 		claude := &launch.Claude
-		if len(resources.MCPServers) != 0 || len(resources.ClaudePluginDirectories) != 0 || len(resources.Environment) != 0 ||
+		if len(resources.MCPServers) != 0 || len(resources.NativePlugins) != 0 || len(resources.Environment) != 0 ||
 			len(claude.Tools) != 0 || len(claude.SettingSources) != 0 || claude.SettingsPath != "" || claude.WorkspaceOnly {
 			return nil, status_error.RuntimePolicyUnsupported
 		}
@@ -632,6 +632,13 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 	mcp, err := nativeMCP(resources.MCPServers)
 	if err != nil {
 		return nil, err
+	}
+	directories := make([]string, 0, len(resources.NativePlugins))
+	for _, plugin := range resources.NativePlugins {
+		if plugin.Provider != account.Provider || !filepath.IsAbs(plugin.Directory) {
+			return nil, status_error.RuntimeConfigurationInvalid
+		}
+		directories = append(directories, plugin.Directory)
 	}
 	host := nativeHostCallbacks(callbacks)
 	client := &directAgentClient{
@@ -656,12 +663,19 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 		if config == nil {
 			config = make(map[string]json.RawMessage)
 		}
-		for key, value := range lease.CodexConfig {
+		startup := maps.Clone(lease.CodexConfig)
+		if startup == nil {
+			startup = map[string]json.RawMessage{}
+		}
+		for key, value := range resources.codexPluginConfig {
+			startup[key] = value
+		}
+		for key, value := range startup {
 			config[key] = value
 		}
 		client.native, err = codex.NewClient(ctx, codex.Options{
 			Executable: launch.Executable, PrefixArgs: launch.PrefixArgs, WorkingDirectory: account.CWD,
-			Environment: env, StartupConfig: lease.CodexConfig, ConfigOverrides: config,
+			Environment: env, StartupConfig: startup, ConfigOverrides: config,
 		}, host)
 	case constants.RuntimeIDClaude:
 		if lease.ConfigHome != "" {
@@ -677,14 +691,14 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 				SettingSources: launch.Claude.SettingSources, Tools: launch.Claude.Tools,
 				SettingsPath: launch.Claude.SettingsPath, WorkspaceOnly: launch.Claude.WorkspaceOnly,
 				ExcludedWriteDirectories: launch.Claude.ExcludedWriteDirectories,
-				PluginDirectories:        resources.ClaudePluginDirectories,
+				PluginDirectories:        directories, LoadPluginMCP: len(directories) > 0,
 			},
 		}, host)
 	case constants.RuntimeIDCursor:
 		options := cursor.Options{
 			Executable: launch.Executable, PrefixArgs: launch.PrefixArgs, WorkingDirectory: account.CWD,
 			Environment: env, PermissionMode: launch.CursorPermissionMode, RequireVerifiedMCP: launch.RequireVerifiedMCP,
-			UsageHook: true,
+			PluginDirectories: directories, UsageHook: true,
 		}
 		if quota := lease.CursorQuota; quota != nil && quota.ReadAccessToken != nil {
 			binding := cursor.CredentialSelection{ID: account.AccountID, Source: cursor.DefaultLogin}
@@ -709,13 +723,14 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 	case constants.RuntimeIDWorkBuddy:
 		client.native, err = workbuddy.NewClient(ctx, workbuddy.Options{
 			Executable: launch.Executable, PrefixArgs: acpDirectoryArguments(launch, account.Provider), WorkingDirectory: account.CWD,
-			Environment: env, CatalogConfigHome: launch.WorkBuddyCatalogHome, ExplicitCredential: lease.Environment["CODEBUDDY_AUTH_TOKEN"] != "" || lease.Environment["CODEBUDDY_API_KEY"] != "",
+			PluginDirectories: directories, Environment: env, CatalogConfigHome: launch.WorkBuddyCatalogHome, ExplicitCredential: lease.Environment["CODEBUDDY_AUTH_TOKEN"] != "" || lease.Environment["CODEBUDDY_API_KEY"] != "",
 		}, host)
 	case constants.RuntimeIDQoder:
+		nativeID, _, _ := accountconfig.QoderNativeScope(launch.Executable)
 		client.native, err = qoder.NewClient(ctx, qoder.Options{
-			RuntimeID: account.Provider, Executable: launch.Executable, PrefixArgs: acpDirectoryArguments(launch, account.Provider),
+			RuntimeID: nativeID, Executable: launch.Executable, PrefixArgs: acpDirectoryArguments(launch, account.Provider),
 			WorkingDirectory: account.CWD, Environment: env, ExpectedUserID: lease.QoderUserID, Model: account.Model,
-			ContextWindow: launch.QoderContextWindow,
+			ContextWindow: launch.QoderContextWindow, PluginDirectories: directories,
 		}, host)
 	case constants.RuntimeIDKimi, constants.RuntimeIDGemini, constants.RuntimeIDGrok, constants.RuntimeIDOpenCode:
 		if account.Provider == constants.RuntimeIDGrok && launch.ProcessPermissionMode == string(constants.PermissionLevelAuto) {
@@ -727,7 +742,7 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 			args = acpDirectoryArguments(launch, account.Provider)
 		}
 		client.native, err = standardacp.NewClient(ctx, standardacp.Options{
-			Provider: standardacp.Provider(account.Provider), Executable: launch.Executable, PrefixArgs: args,
+			Provider: standardacp.Provider(account.Provider), PluginDirectories: directories, Executable: launch.Executable, PrefixArgs: args,
 			WorkingDirectory: account.CWD, Environment: env, PermissionMode: launch.ProcessPermissionMode,
 			RequireVerifiedMCP: launch.RequireVerifiedMCP,
 		}, host)
@@ -740,7 +755,7 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 		}
 		client.native, err = pi.NewClient(ctx, pi.Options{
 			Executable: launch.Executable, PrefixArgs: launch.PrefixArgs, WorkingDirectory: account.CWD,
-			Environment: env, PermissionMode: launch.ProcessPermissionMode, MCPModulePath: module,
+			Environment: env, PermissionMode: launch.ProcessPermissionMode, MCPModulePath: module, PluginDirectories: directories,
 		}, host)
 	default:
 		return nil, status_error.RuntimeNotRegistered
@@ -779,7 +794,8 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 	}
 
 	environment := make(map[string]string, len(launch.BaseEnvironment)+len(launch.Environment)+len(lease.Environment))
-	merge := func(source map[string]string) error {
+	resourcePath := ""
+	merge := func(source map[string]string, resource bool) error {
 		var names map[string]struct{}
 		if runtime.GOOS == "windows" {
 			names = make(map[string]struct{}, len(source))
@@ -799,12 +815,33 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 				}
 				names[key] = struct{}{}
 			}
+			if resource && key == "PATH" {
+				// Resource launchers extend the selected runtime path; they never
+				// replace the interpreter path that starts the native CLI itself.
+				resourcePath = value
+				continue
+			}
 			environment[key] = value
 		}
 		return nil
 	}
+	applyResourcePath := func() {
+		if resourcePath == "" {
+			return
+		}
+		seen := map[string]bool{}
+		paths := []string{}
+		for _, directory := range append(filepath.SplitList(resourcePath), filepath.SplitList(environment["PATH"])...) {
+			key := normalizedPathForComparison(directory)
+			if directory != "" && !seen[key] {
+				seen[key] = true
+				paths = append(paths, directory)
+			}
+		}
+		environment["PATH"] = strings.Join(paths, string(filepath.ListSeparator))
+	}
 
-	if err := merge(launch.BaseEnvironment); err != nil {
+	if err := merge(launch.BaseEnvironment, false); err != nil {
 		return nil, err
 	}
 	base := make([]string, 0, len(environment))
@@ -816,17 +853,17 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 		key, value, _ := strings.Cut(entry, "=")
 		environment[key] = value
 	}
-	if err := merge(launch.Environment); err != nil {
+	if err := merge(launch.Environment, false); err != nil {
 		return nil, err
 	}
 	home := launch.ConfigHome
 	if home == "" {
 		home = environment[homeVariable]
 	}
-	if err := merge(resources.Environment); err != nil {
+	if err := merge(resources.Environment, true); err != nil {
 		return nil, err
 	}
-	if err := merge(auth.Environment); err != nil {
+	if err := merge(auth.Environment, false); err != nil {
 		return nil, err
 	}
 	if profileScope {
@@ -841,9 +878,10 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 			key, value, _ := strings.Cut(entry, "=")
 			environment[key] = value
 		}
-		if err := merge(lease.Environment); err != nil {
+		if err := merge(lease.Environment, false); err != nil {
 			return nil, err
 		}
+		applyResourcePath()
 		result := make([]string, 0, len(environment))
 		for _, key := range slices.Sorted(maps.Keys(environment)) {
 			result = append(result, key+"="+environment[key])
@@ -883,7 +921,7 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 		}
 	}
 	delete(environment, homeVariable)
-	if err := merge(lease.Environment); err != nil {
+	if err := merge(lease.Environment, false); err != nil {
 		return nil, err
 	}
 	if selected := environment[homeVariable]; selected != "" {
@@ -913,6 +951,7 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 		environment["CODEBUDDY_CODE_DISABLE_TERMINAL_TITLE"] = "1"
 	}
 
+	applyResourcePath()
 	env := make([]string, 0, len(environment))
 	for _, key := range slices.Sorted(maps.Keys(environment)) {
 		env = append(env, key+"="+environment[key])
@@ -1251,6 +1290,10 @@ func (c *directAgentClient) ReadModels(ctx context.Context) (AgentModelCatalog, 
 	})
 	if !ok {
 		return AgentModelCatalog{}, status_error.RuntimePolicyUnsupported
+	}
+	if native, ok := c.native.(*qoder.Client); ok {
+		// Qoder model discovery uses its ACP session options without an SDK catalog union.
+		reader = native.Client
 	}
 	result, err := reader.ReadModels(ctx)
 	if err != nil {

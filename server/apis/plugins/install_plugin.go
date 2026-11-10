@@ -44,7 +44,7 @@ func (o *InstallPlugin) Output(ctx *gin.Context) (interface{}, error) {
 	if version.PluginID != resource.ID {
 		return nil, ginx.WithStack(status_error.PluginVersionConflict)
 	}
-	if err := validatePluginInstallationSource(resource, version); err != nil {
+	if err := validatePluginInstallationSource(ctx.Request.Context(), resource, version); err != nil {
 		return nil, ginx.WithStack(err)
 	}
 	if err := packageplugin.ValidateContract(version.Package); err != nil {
@@ -128,7 +128,7 @@ func (o *InstallPlugin) Output(ctx *gin.Context) (interface{}, error) {
 }
 
 // validatePluginInstallationSource 分别核验可信目录归档和明确生成的本地技能插件。
-func validatePluginInstallationSource(resource models.Plugin, version models.PluginVersion) error {
+func validatePluginInstallationSource(ctx context.Context, resource models.Plugin, version models.PluginVersion) error {
 	if strings.HasPrefix(resource.SourceKey, constants.PluginLocalSkillSourcePrefix) {
 		return packageplugin.ValidateSkillBundle(resource.SourceKey, resource.ID, version.Package, version.Provenance)
 	}
@@ -150,7 +150,7 @@ func validatePluginInstallationSource(resource models.Plugin, version models.Plu
 	if err != nil {
 		return err
 	}
-	location, err := catalog.ResolveEntry(entry)
+	location, err := catalog.ResolveEntry(ctx, entry)
 	if err != nil {
 		return err
 	}

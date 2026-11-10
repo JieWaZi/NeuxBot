@@ -21,11 +21,11 @@ func (*GetCatalogPlugin) Path() string { return "/catalog/:key" }
 
 // Output 按需核验固定来源的公开资料，不下载归档、创建资源或安装。
 func (o *GetCatalogPlugin) Output(ctx *gin.Context) (interface{}, error) {
-	entry, _, err := catalog.ResolveDocumentation(global.PluginCatalogSource(), o.Key)
+	entry, _, err := catalog.ResolveDocumentation(ctx.Request.Context(), global.PluginCatalogSource(), o.Key)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	details, err := catalog.ReadDetails(entry)
+	details, err := catalog.ReadDetails(ctx.Request.Context(), entry)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}

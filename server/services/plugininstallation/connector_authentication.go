@@ -44,8 +44,14 @@ func materialKey(version models.PluginVersion, config models.PluginConfiguration
 			endpoints = append(endpoints, server.Key+"\x00"+address)
 		}
 	}
+	for _, binding := range plugins.TargetSkillAuthenticationBindings(version.Package, target) {
+		keys, paths := slices.Clone(binding.EnvironmentKeys), slices.Clone(binding.PrivatePathKeys)
+		slices.Sort(keys)
+		slices.Sort(paths)
+		endpoints = append(endpoints, strings.Join([]string{"skill", binding.Skill, strings.Join(keys, "\x01"), strings.Join(paths, "\x01")}, "\x00"))
+	}
 	sort.Strings(endpoints)
-	body, _ := json.Marshal([]any{version.ID, version.Digest, filepath.ToSlash(version.Package.SourcePath), target, endpoints})
+	body, _ := json.Marshal([]any{"component-delivery", version.Package.ContractVersion, version.PluginID, version.ID, version.Digest, filepath.ToSlash(version.Package.SourcePath), target, endpoints})
 	sum := sha256.Sum256(body)
 	return hex.EncodeToString(sum[:])
 }
@@ -97,11 +103,11 @@ func ResolveDeliveryMaterials(ctx context.Context, driver *commandbridge.Driver,
 			}
 			allowed[id] = append(allowed[id], binding)
 		}
-		skills := map[string]bool{}
+		skills := map[string]plugins.SkillAuthenticationBinding{}
 		for _, binding := range plugins.TargetSkillAuthenticationBindings(version.Package, target) {
 			id := plugins.ComponentID(version.PluginID, "skill:"+binding.Skill)
 			components = append(components, commandbridge.Component{ComponentID: id, Key: binding.Skill, Target: "skill", EnvironmentKeys: binding.EnvironmentKeys, PrivatePathKeys: binding.PrivatePathKeys})
-			skills[id] = true
+			skills[id] = binding
 		}
 		if len(components) == 0 {
 			continue
@@ -115,9 +121,12 @@ func ResolveDeliveryMaterials(ctx context.Context, driver *commandbridge.Driver,
 		}
 		for _, binding := range bindings {
 			declarations := allowed[binding.ComponentID]
-			if skills[binding.ComponentID] {
+			if declaration, ok := skills[binding.ComponentID]; ok {
 				if len(binding.Headers) > 0 {
 					return nil, status_error.PluginForbidden
+				}
+				if !skillEnvironmentReady(declaration, binding.Environment) {
+					return nil, status_error.PluginNotReady
 				}
 				continue
 			}
@@ -345,7 +354,7 @@ func (s *Service) clearDelivery(ctx context.Context, id string, expected int64) 
 	})
 }
 
-// DeliveryAuthentication 只读取与版本、目标及授权端点匹配的已有私有材料；缺失继续交付能力。
+// DeliveryAuthentication 只读取与版本、组件及授权端点匹配的私有材料。
 func DeliveryAuthentication(version models.PluginVersion, config models.PluginConfiguration, account models.PluginAccount, target string) ([]commandbridge.Binding, string, error) {
 	if err := plugins.ValidateContract(version.Package); err != nil {
 		return nil, "", err
@@ -356,6 +365,8 @@ func DeliveryAuthentication(version models.PluginVersion, config models.PluginCo
 	if len(version.Package.Integration.Authentication.Bindings) == 0 && len(version.Package.Integration.Authentication.SkillBindings) == 0 {
 		return nil, "", nil
 	}
+	// 公共组件使用同一账号材料，显式目标差异使用其声明的槽位。
+	target = plugins.AuthenticationTargetRuntime(version.Package, target)
 	key := materialKey(version, config, target)
 	for _, material := range account.DeliveryMaterials {
 		if material.Name != key || !material.Configured {
@@ -370,6 +381,76 @@ func DeliveryAuthentication(version models.PluginVersion, config models.PluginCo
 	return nil, "", nil
 }
 
+// skillEnvironmentReady 要求账号声明的环境均有值，禁止受管工具回落到继承的账号配置。
+func skillEnvironmentReady(declaration plugins.SkillAuthenticationBinding, environment map[string]string) bool {
+	for _, key := range declaration.EnvironmentKeys {
+		if strings.TrimSpace(environment[key]) == "" {
+			return false
+		}
+	}
+	return len(declaration.EnvironmentKeys) > 0
+}
+
+// SkillDeliveryReady 复核冷租约中的技能材料，以及受管 PATH 的第一个搜索目录。
+func SkillDeliveryReady(id string, declaration plugins.SkillAuthenticationBinding, bindings []commandbridge.Binding, data string) bool {
+	for _, binding := range bindings {
+		if binding.ComponentID != plugins.ComponentID(id, "skill:"+declaration.Skill) {
+			continue
+		}
+		if !skillEnvironmentReady(declaration, binding.Environment) {
+			return false
+		}
+		for _, key := range declaration.PrivatePathKeys {
+			path := binding.Environment[key]
+			if key == "PATH" {
+				parts := filepath.SplitList(path)
+				if len(parts) == 0 {
+					return false
+				}
+				path = parts[0]
+			}
+			root, err := filepath.EvalSymlinks(data)
+			if err != nil {
+				return false
+			}
+			real, err := filepath.EvalSymlinks(path)
+			if err != nil {
+				return false
+			}
+			rel, err := filepath.Rel(root, real)
+			if err != nil || !filepath.IsLocal(rel) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// MCPDeliveryReady 核实组件要求的每个私有头均已在本版本的授权材料中提供。
+func MCPDeliveryReady(id, server string, declarations []plugins.AuthenticationBinding, bindings []commandbridge.Binding) bool {
+	component := plugins.ComponentID(id, "mcp:"+server)
+	for _, declaration := range declarations {
+		if declaration.Server == server && boundHeader(component, declaration.Header, bindings) == "" {
+			return false
+		}
+	}
+	return true
+}
+
+func boundHeader(component, name string, bindings []commandbridge.Binding) string {
+	for _, binding := range bindings {
+		if binding.ComponentID == component {
+			for key, value := range binding.Headers {
+				if strings.EqualFold(key, name) && strings.TrimSpace(value) != "" {
+					return value
+				}
+			}
+		}
+	}
+	return ""
+}
+
 // ProjectBoundAuthentication 将已保存材料按本次真实交付的连接白名单投射，不启动授权程序。
 func ProjectBoundAuthentication(id string, declarations []plugins.AuthenticationBinding, native bool, connectors []models.MCPConnector, environment map[string]string, bindings []commandbridge.Binding) {
 	for _, declaration := range declarations {
@@ -379,15 +460,9 @@ func ProjectBoundAuthentication(id string, declarations []plugins.Authentication
 		}) {
 			continue
 		}
-		value := ""
-		for _, binding := range bindings {
-			if binding.ComponentID == componentID {
-				for key, header := range binding.Headers {
-					if strings.EqualFold(key, declaration.Header) {
-						value = header
-					}
-				}
-			}
+		value := boundHeader(componentID, declaration.Header, bindings)
+		if value == "" {
+			continue
 		}
 		if native {
 			environment[plugins.AuthenticationEnvironmentKey(id, declaration)] = value

@@ -293,9 +293,9 @@ func Load(ctx context.Context, configuration *Configuration, handlerFactory sche
 		func() error { return loadNotifications(ctx) },
 		func() error { return loadIntegrationAPI(ctx) },
 		func() error {
-			hub := EventHub
-			closePluginCatalog = catalog.Start(ctx, PluginCatalogSource(), filepath.Join(configuration.DataDirectory, "plugins", "catalog"), func() {
-				_ = events.Emit(hub, constants.PluginEventTopic, "plugins.changed", events.Resource{Kind: "global"}, nil)
+			hub, source := EventHub, PluginCatalogSource()
+			closePluginCatalog = catalog.Start(ctx, source, filepath.Join(configuration.ManagedFilesDirectory, "Plugins"), func() {
+				publishPluginCatalogChange(hub, source)
 			})
 			return nil
 		},
@@ -934,6 +934,16 @@ func loadKnowledge(ctx context.Context, configuration *Configuration) error {
 	var err error
 	KnowledgeEngine, err = knowledgebridge.Open(ctx, configuration.DataDirectory, configuration.ManagedFilesDirectory)
 	return err
+}
+
+// publishPluginCatalogChange 只在一次真实后台同步结束时发布结果，缓存恢复不重放失败提示。
+func publishPluginCatalogChange(hub events.Publisher, source string) {
+	state := catalog.State(source)
+	if state.ErrorCode != "" {
+		_ = events.Emit(hub, constants.PluginEventTopic, "plugins.catalog.sync.failed", events.Resource{Kind: "global"}, map[string]string{"errorCode": state.ErrorCode})
+		return
+	}
+	_ = events.Emit(hub, constants.PluginEventTopic, "plugins.catalog.sync.succeeded", events.Resource{Kind: "global"}, nil)
 }
 
 // closePluginCatalog 取消并等待启动时的目录更新，先于事件通道关闭。

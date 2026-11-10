@@ -178,13 +178,18 @@ func TestStageOneAccountMaterialLifecycleAndRestart(t *testing.T) {
 }
 
 func TestStageOneMaterialBoundToExactEndpointAndVersion(t *testing.T) {
-	version := models.PluginVersion{ID: "v", PluginID: "p", Digest: strings.Repeat("a", 64), Package: plugins.Package{ContractVersion: constants.PluginTargetContractVersion, Format: constants.PluginFormatPortable, Manifest: plugins.Manifest{Schema: constants.PluginManifestSchema}, Integration: plugins.Integration{Authentication: &plugins.Authentication{Strategy: constants.PluginAuthCommandStrategy, Protocol: constants.PluginAuthProtocol, Bindings: []plugins.AuthenticationBinding{{Runtime: "codex", Server: "service", URL: "https://first.invalid/mcp", Header: "Authorization"}}}}, Servers: []plugins.Server{{Key: "service", URL: "https://first.invalid/mcp"}}}}
+	version := models.PluginVersion{ID: "v", PluginID: "p", Digest: strings.Repeat("a", 64), Package: plugins.Package{ContractVersion: constants.PluginTargetContractVersion, Format: constants.PluginFormatPortable, Manifest: plugins.Manifest{Schema: constants.PluginManifestSchema}, Integration: plugins.Integration{Authentication: &plugins.Authentication{Strategy: constants.PluginAuthCommandStrategy, Protocol: constants.PluginAuthProtocol, Bindings: []plugins.AuthenticationBinding{{Server: "service", URL: "https://first.invalid/mcp", Header: "Authorization"}}}}, Servers: []plugins.Server{{Key: "service", URL: "https://first.invalid/mcp"}}}}
 	config := models.PluginConfiguration{}
-	key := materialKey(version, config, "codex")
+	key := materialKey(version, config, "")
 	account := models.PluginAccount{PluginID: "p", Generation: 1, DeliveryMaterials: []models.MCPSecretDefinition{{Name: key, Configured: true, Value: `{"accountId":"first-user","bindings":[{"componentId":"component","headers":{"Authorization":"private"}}]}`}}}
+	// 同一组件的公共约束只生成一个材料槽位。
+	bindings, subject, err := DeliveryAuthentication(version, config, account, "workbuddy")
+	if err != nil || len(bindings) != 1 || subject != "first-user" || bindings[0].Headers["Authorization"] != "private" {
+		t.Fatal("equivalent standard target lost its existing encrypted material", subject, err)
+	}
 	version.Package.Servers[0].URL = "https://second.invalid/mcp"
 	version.Package.Integration.Authentication.Bindings[0].URL = "https://second.invalid/mcp"
-	bindings, subject, err := DeliveryAuthentication(version, config, account, "codex")
+	bindings, subject, err = DeliveryAuthentication(version, config, account, "codex")
 	if err != nil || len(bindings) != 0 || subject != "" {
 		t.Fatal("credential crossed the endpoint boundary", subject, err)
 	}
@@ -197,5 +202,14 @@ func TestStageOneMaterialBoundToExactEndpointAndVersion(t *testing.T) {
 	}
 	if _, _, err := New(Config{}).Bridge(context.Background(), models.PluginVersion{}); err != status_error.PluginPackageUnsupported {
 		t.Fatal("old persisted package was accepted", err)
+	}
+}
+
+func TestMaterialIdentityIncludesSkillComponentAndPermittedEnvironment(t *testing.T) {
+	version := models.PluginVersion{ID: "v", Digest: "fixed", Package: plugins.Package{Format: constants.PluginFormatPortable, ContractVersion: constants.PluginTargetContractVersion, Integration: plugins.Integration{Authentication: &plugins.Authentication{SkillBindings: []plugins.SkillAuthenticationBinding{{Skill: "skills/review", EnvironmentKeys: []string{"PATH"}, PrivatePathKeys: []string{"PATH"}}}}}}}
+	key := materialKey(version, models.PluginConfiguration{}, "")
+	version.Package.Integration.Authentication.SkillBindings[0].EnvironmentKeys = append(version.Package.Integration.Authentication.SkillBindings[0].EnvironmentKeys, "EXTRA_KEY")
+	if next := materialKey(version, models.PluginConfiguration{}, ""); next == key {
+		t.Fatal("material reused after skill environment constraint changed")
 	}
 }

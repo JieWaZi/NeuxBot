@@ -25,8 +25,10 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 	usageservice "github.com/JieWaZi/NeuxBot/server/services/usage"
+	acp "github.com/JieWaZi/acp-go-sdk"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
@@ -103,6 +105,11 @@ type nativeProductFixture struct {
 
 func newNativeProductFixture(t *testing.T, ctx context.Context, providerID, child string, permission constants.PermissionLevel) nativeProductFixture {
 	t.Helper()
+	return newNativeProductFixtureWithAccounts(t, ctx, providerID, child, permission, nil)
+}
+
+func newNativeProductFixtureWithAccounts(t *testing.T, ctx context.Context, providerID, child string, permission constants.PermissionLevel, accountService *aiaccount.Service) nativeProductFixture {
+	t.Helper()
 	root, trace := t.TempDir(), filepath.Join(t.TempDir(), providerID+"-trace.jsonl")
 	t.Setenv("NEUX_EXECUTION_FIXTURE_TRACE", trace)
 	t.Setenv("PWD", filepath.Join(root, "first-host-directory"))
@@ -176,13 +183,16 @@ func newNativeProductFixture(t *testing.T, ctx context.Context, providerID, chil
 			t.Fatal(err)
 		}
 		provider := agent.NewProviderRuntime(agent.ProviderRuntimeOptions{
-			AcquireAccount: func(_ context.Context, account agent.AccountRequest) (agent.AccountLease, error) {
-				if account.Provider != providerID || account.Subject != "fixture-subject" {
+			AcquireAccount: func(ctx context.Context, account agent.AccountRequest) (agent.AccountLease, error) {
+				if account.Provider != providerID || accountService == nil && account.Subject != "fixture-subject" {
 					return agent.AccountLease{}, status_error.AIAccountConfigurationInvalid
 				}
 				leaseNumber := accounts.Add(1)
 				if failAccountAcquire.Load() == leaseNumber {
 					return agent.AccountLease{}, status_error.RuntimeUnavailable
+				}
+				if accountService != nil {
+					return accountService.AcquireAccount(ctx, account)
 				}
 				if providerID == constants.RuntimeIDPi {
 					return agent.AccountLease{Environment: map[string]string{"PI_CODING_AGENT_DIR": filepath.Join(root, "pi-fixture-account")}}, nil
@@ -207,7 +217,10 @@ func newNativeProductFixture(t *testing.T, ctx context.Context, providerID, chil
 		if err := chats.Start(ctx); err != nil {
 			t.Fatal(err)
 		}
-		core, err := New(Config{Threads: threads, ResolveAccount: func(_ context.Context, request agent.AccountRequest, _ string) (agent.AccountRequest, error) {
+		core, err := New(Config{Threads: threads, ResolveAccount: func(ctx context.Context, request agent.AccountRequest, home string) (agent.AccountRequest, error) {
+			if accountService != nil {
+				return accountService.ResolveAccount(ctx, request, home)
+			}
 			request.Subject = "fixture-subject"
 			request.DataHome = os.Getenv("NEUX_EXECUTION_FIXTURE_ACCOUNT_HOME")
 			return request, nil
@@ -1072,6 +1085,10 @@ func serveNativeExecutionCursor(out *json.Encoder, read func() (map[string]any, 
 			}
 			reply(id, map[string]any{"configOptions": settings()})
 		case "session/prompt":
+			if strings.Contains(line, "reject-with-native-auth-error") {
+				_ = out.Encode(map[string]any{"jsonrpc": "2.0", "id": id, "error": acp.NewAuthRequired(nil)})
+				continue
+			}
 			text := "native fixture answer"
 			if strings.Contains(line, "hold-for-native-cancel") {
 				held, text = id, "native fixture partial"

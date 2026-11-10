@@ -14,6 +14,12 @@ import (
 
 // Snapshot 保存执行接纳时的插件事实，不包含配置值或凭据。
 type Snapshot struct {
+	// SourceDigest 是已核验原包的完整摘要。
+	SourceDigest string `json:"sourceDigest,omitempty"`
+	// Runtime 是本次实际选择的 CLI 家族。
+	Runtime string `json:"runtime,omitempty"`
+	// Profile 是本次目标或通用投射的格式配置档。
+	Profile string `json:"profile,omitempty"`
 	// ID 是稳定资源身份。
 	ID string `json:"id"`
 	// Name 是接纳时展示名称。

@@ -30,7 +30,7 @@ func TestHTTPQueriesReturnCachedIndexWhileNetworkWaits(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(cache), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(cache, []byte(`{"schemaVersion":1,"entries":[]}`), 0600); err != nil {
+	if err := os.WriteFile(cache, []byte(`{"content":{"schemaVersion":1,"entries":[]},"fetchedAt":1}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.Remove(cache) })
@@ -93,7 +93,7 @@ func TestHTTPMetadataAndDigestDownload(t *testing.T) {
 	if err != nil || len(entries) != 1 || entries[0].Package.Manifest.Version != "2" || downloads != 0 {
 		t.Fatalf("metadata fetch downloaded package: %+v %v", entries, err)
 	}
-	location, err := Resolve(source.URL+"/catalog.json", "github")
+	location, err := Resolve(context.Background(), source.URL+"/catalog.json", "github")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestHTTPMetadataAndDigestDownload(t *testing.T) {
 	}
 	archive = []byte("tampered")
 	os.Remove(location)
-	if _, err := Resolve(source.URL+"/catalog.json", "github"); err == nil {
+	if _, err := Resolve(context.Background(), source.URL+"/catalog.json", "github"); err == nil {
 		t.Fatal("accepted digest mismatch")
 	}
 }
@@ -116,7 +116,7 @@ func TestHTTPDirectoryFailurePreservesStaleMetadata(t *testing.T) {
 	}
 	source.Close()
 	updated := make(chan struct{}, 1)
-	stop := Start(context.Background(), location, filepath.Dir(indexCache(location)), func() { updated <- struct{}{} })
+	stop := startIndexForTest(context.Background(), location, filepath.Dir(filepath.Dir(indexCache(location))), func() { updated <- struct{}{} })
 	<-updated
 	stop()
 	if entries, err := List(location); err != nil || len(entries) != 0 || State(location).State != "stale" {
@@ -192,10 +192,10 @@ func TestStartupCachePersistsAndRevalidatesOnce(t *testing.T) {
 	directory := t.TempDir()
 	location := source.URL + "/catalog.json"
 	changed := make(chan struct{}, 3)
-	stop := Start(context.Background(), location, directory, func() { changed <- struct{}{} })
+	stop := startIndexForTest(context.Background(), location, directory, func() { changed <- struct{}{} })
 	awaitCatalogSignal(t, changed)
 	stop()
-	if filepath.Dir(indexCache(location)) != directory {
+	if filepath.Dir(indexCache(location)) != filepath.Join(directory, "catalog") {
 		t.Fatal("catalog was not stored in application data directory")
 	}
 	if _, err := os.Stat(indexCache(location)); err != nil {
@@ -203,7 +203,7 @@ func TestStartupCachePersistsAndRevalidatesOnce(t *testing.T) {
 	}
 
 	// 重启后已知内容立即可读；更新等待期间的查询和搜索不会再次拉取远端。
-	stop = Start(context.Background(), location, directory, func() { changed <- struct{}{} })
+	stop = startIndexForTest(context.Background(), location, directory, func() { changed <- struct{}{} })
 	awaitCatalogSignal(t, entered)
 	done := make(chan error, 1)
 	go func() {
@@ -234,7 +234,7 @@ func TestStartupCachePersistsAndRevalidatesOnce(t *testing.T) {
 		t.Fatalf("new snapshot not published: %+v %v", entries, err)
 	}
 
-	stop = Start(context.Background(), location, directory, func() { changed <- struct{}{} })
+	stop = startIndexForTest(context.Background(), location, directory, func() { changed <- struct{}{} })
 	awaitCatalogSignal(t, changed)
 	stop()
 	entries, err = List(location)
@@ -261,7 +261,7 @@ func TestColdStartupConcurrentQueriesShareOneRequest(t *testing.T) {
 	}))
 	defer source.Close()
 	location := source.URL + "/catalog.json"
-	stop := Start(context.Background(), location, t.TempDir(), nil)
+	stop := startIndexForTest(context.Background(), location, t.TempDir(), nil)
 	awaitCatalogSignal(t, entered)
 	var clients sync.WaitGroup
 	failures := make(chan error, 20)
@@ -306,7 +306,7 @@ func TestStartupRefreshFailureNeverReplacesGoodSnapshot(t *testing.T) {
 	location := source.URL + "/catalog.json"
 	directory := t.TempDir()
 	changed := make(chan struct{}, 1)
-	stop := Start(context.Background(), location, directory, func() { changed <- struct{}{} })
+	stop := startIndexForTest(context.Background(), location, directory, func() { changed <- struct{}{} })
 	awaitCatalogSignal(t, changed)
 	stop()
 	before, err := os.ReadFile(indexCache(location))
@@ -315,7 +315,7 @@ func TestStartupRefreshFailureNeverReplacesGoodSnapshot(t *testing.T) {
 	}
 	for _, failureMode := range []int32{1, 2} {
 		mode.Store(failureMode)
-		stop = Start(context.Background(), location, directory, func() { changed <- struct{}{} })
+		stop = startIndexForTest(context.Background(), location, directory, func() { changed <- struct{}{} })
 		awaitCatalogSignal(t, changed)
 		stop()
 		entries, err := List(location)
@@ -339,7 +339,7 @@ func TestStartupCloseCancelsRefreshAndDoesNotRetryOnQuery(t *testing.T) {
 	}))
 	defer source.Close()
 	location := source.URL + "/catalog.json"
-	stop := Start(context.Background(), location, t.TempDir(), nil)
+	stop := startIndexForTest(context.Background(), location, t.TempDir(), nil)
 	awaitCatalogSignal(t, entered)
 	closed := make(chan struct{})
 	go func() { stop(); close(closed) }()
@@ -355,7 +355,7 @@ func TestStartupCloseCancelsRefreshAndDoesNotRetryOnQuery(t *testing.T) {
 func TestArchiveNetworkFailureDoesNotRequirePluginAuthorization(t *testing.T) {
 	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNotFound) }))
 	defer source.Close()
-	_, err := ResolveEntry(Entry{ArchiveURL: source.URL + "/gone.zip", ArchiveSHA256: fmt.Sprintf("%x", sha256.Sum256([]byte(t.TempDir())))})
+	_, err := ResolveEntry(context.Background(), Entry{ArchiveURL: source.URL + "/gone.zip", ArchiveSHA256: fmt.Sprintf("%x", sha256.Sum256([]byte(t.TempDir())))})
 	if !errors.Is(err, status_error.PluginDistributionUnavailable) {
 		t.Fatalf("archive HTTP failure was reported as plugin readiness: %v", err)
 	}
@@ -389,7 +389,7 @@ func TestCurrentResolutionCoalescesRecoveryAndDoesNotRetryUnchangedArchive(t *te
 			}))
 			defer source.Close()
 			location := source.URL + "/catalog.json"
-			stop := Start(context.Background(), location, t.TempDir(), nil)
+			stop := startIndexForTest(context.Background(), location, t.TempDir(), nil)
 			defer stop()
 			if _, err := Find(location, "current"); err != nil {
 				t.Fatal(err)
@@ -401,7 +401,7 @@ func TestCurrentResolutionCoalescesRecoveryAndDoesNotRetryUnchangedArchive(t *te
 				clients.Add(1)
 				go func() {
 					defer clients.Done()
-					entry, archive, err := ResolveCurrent(location, "current")
+					entry, archive, err := ResolveCurrent(context.Background(), location, "current")
 					if changed {
 						if err == nil {
 							content, readErr := os.ReadFile(archive)
@@ -474,19 +474,26 @@ func TestSlowArchiveDoesNotBlockCurrentDocumentation(t *testing.T) {
 			var releaseGate sync.Once
 			defer releaseGate.Do(func() { close(gate) })
 			location := source.URL + "/catalog.json"
-			stop := Start(context.Background(), location, t.TempDir(), nil)
+			stop := startIndexForTest(context.Background(), location, t.TempDir(), nil)
 			defer stop()
 			if cached {
-				if _, _, err := ResolveDocumentation(location, "current"); err != nil {
+				if _, _, err := ResolveDocumentation(context.Background(), location, "current"); err != nil {
 					t.Fatal(err)
 				}
 			}
 			archiveDone := make(chan error, 1)
-			go func() { _, _, err := ResolveCurrent(location, "current"); archiveDone <- err; close(archiveDone) }()
+			go func() {
+				_, _, err := ResolveCurrent(context.Background(), location, "current")
+				archiveDone <- err
+				close(archiveDone)
+			}()
 			defer func() { releaseGate.Do(func() { close(gate) }); <-archiveDone }()
 			awaitCatalogSignal(t, entered)
 			documentationDone := make(chan error, 1)
-			go func() { _, _, err := ResolveDocumentation(location, "current"); documentationDone <- err }()
+			go func() {
+				_, _, err := ResolveDocumentation(context.Background(), location, "current")
+				documentationDone <- err
+			}()
 			select {
 			case err := <-documentationDone:
 				if err != nil {
@@ -589,7 +596,7 @@ func TestCloseWaitsForExplicitRefreshAfterStartup(t *testing.T) {
 	}))
 	defer source.Close()
 	location := source.URL + "/catalog.json"
-	stop := Start(context.Background(), location, t.TempDir(), nil)
+	stop := startIndexForTest(context.Background(), location, t.TempDir(), nil)
 	if _, err := List(location); err != nil {
 		t.Fatal(err)
 	}
@@ -618,5 +625,23 @@ func TestCloseWaitsForExplicitRefreshAfterStartup(t *testing.T) {
 	}
 	if requests.Load() != 2 {
 		t.Fatalf("closed source started another request: %d", requests.Load())
+	}
+}
+
+// startIndexForTest 只驱动索引边界，完整资产生命周期由 Start 的独立用例验证。
+func startIndexForTest(ctx context.Context, source, directory string, changed func()) func() {
+	ctx, cancel := context.WithCancel(ctx)
+	index := newRemoteIndex(ctx, source, cacheFilename(directory, source), changed)
+	remoteIndexes.Store(source, index)
+	go index.refresh(ctx)
+	return func() {
+		cancel()
+		<-index.done
+		index.mu.RLock()
+		flight := index.flight
+		index.mu.RUnlock()
+		if flight != nil {
+			<-flight.done
+		}
 	}
 }

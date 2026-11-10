@@ -16,10 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
-	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -250,66 +248,61 @@ func TestPluginUpdateSemanticOrderingAndCatalogRollback(t *testing.T) {
 	}
 }
 
-func TestRefreshCatalogPublishesLocalSuccessAndFailure(t *testing.T) {
+func TestRefreshCatalogReturnsBeforeUpstreamAndCoreOwnsCancellation(t *testing.T) {
 	ctx := pluginAPIContext(t)
-	previous := global.EventHub
-	global.EventHub = events.New()
-	t.Cleanup(func() { global.EventHub.Close(); global.EventHub = previous })
-	subscription := global.EventHub.Subscribe(constants.PluginEventTopic, events.Resource{Kind: "global"})
-	defer subscription.Close()
-	writeUpdateCatalog(t, global.PluginCatalogSource(), "2.0.0")
-	if _, err := (&RefreshPluginCatalog{}).Output(ctx); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case event := <-subscription.Events:
-		if event.Type != "plugins.changed" {
-			t.Fatalf("wrong refresh event: %+v", event)
-		}
-	default:
-		t.Fatal("successful catalog check did not wake plugin queries")
-	}
-	if err := os.Remove(filepath.Join(global.PluginCatalogSource(), "catalog.json")); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := (&RefreshPluginCatalog{}).Output(ctx); !errors.Is(err, status_error.PluginStorageError) {
-		t.Fatalf("failed catalog check hid source error: %v", err)
-	}
-	select {
-	case <-subscription.Events:
-	default:
-		t.Fatal("failed catalog check did not wake plugin queries")
-	}
-	value, err := (&ListPlugins{}).Output(ctx)
-	if err != nil || value.(ListPluginsResponse).CatalogSource.State != "unavailable" {
-		t.Fatalf("empty local library lost source error: %+v %v", value, err)
-	}
-}
-
-func TestRefreshCatalogUsesHTTPRequestCancellation(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
-	ctx := pluginAPIContext(t)
-	entered := make(chan struct{})
-	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { close(entered); <-r.Context().Done() }))
+	entered, cancelled := make(chan struct{}, 4), make(chan struct{}, 4)
+	var requests atomic.Int32
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		entered <- struct{}{}
+		<-r.Context().Done()
+		cancelled <- struct{}{}
+	}))
 	defer source.Close()
-	t.Setenv("ALLY_PLUGIN_CATALOG_URL", source.URL+"/catalog.json")
+	location := source.URL + "/catalog.json"
+	t.Setenv("ALLY_PLUGIN_CATALOG_URL", location)
+	stop := catalog.Start(context.Background(), location, t.TempDir(), nil)
+	defer stop()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("startup did not reach upstream")
+	}
 	request, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ctx.Request = ctx.Request.WithContext(request)
 	done := make(chan error, 1)
 	go func() { _, err := (&RefreshPluginCatalog{}).Output(ctx); done <- err }()
 	select {
-	case <-entered:
-	case <-time.After(time.Second):
-		t.Fatal("refresh request did not reach controlled upstream")
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		cancel()
+		t.Fatal("refresh waited for the existing network synchronization")
 	}
 	cancel()
-	select {
-	case err := <-done:
-		if !errors.Is(err, status_error.PluginDistributionUnavailable) {
-			t.Fatalf("cancelled refresh hid source error: %v", err)
+	for range 5 {
+		if _, err := (&RefreshPluginCatalog{}).Output(ctx); err != nil {
+			t.Fatal(err)
 		}
+	}
+	select {
+	case <-cancelled:
+		t.Fatal("HTTP request cancellation stopped Core background sync")
+	default:
+	}
+	if requests.Load() != 1 {
+		t.Fatal("refresh duplicated startup synchronization")
+	}
+	stop()
+	select {
+	case <-cancelled:
 	case <-time.After(time.Second):
-		t.Fatal("HTTP cancellation did not end explicit catalog refresh")
+		t.Fatal("Core close did not cancel upstream")
+	}
+	if _, err := (&RefreshPluginCatalog{}).Output(ctx); !errors.Is(err, status_error.PluginDistributionUnavailable) {
+		t.Fatal("closed Core accepted refresh", err)
 	}
 }

@@ -15,7 +15,7 @@ import (
 // AuthenticationBinding 将桥接秘密限定到一个原生运行目标的远端请求头。
 type AuthenticationBinding struct {
 	// Runtime 是原生目标标识。
-	Runtime string `json:"runtime"`
+	Runtime string `json:"runtime,omitempty"`
 	// Server 是原生包已有的 MCP 连接键。
 	Server string `json:"server"`
 	// URL 是允许接收秘密的精确 HTTPS 地址。
@@ -32,7 +32,7 @@ func validateAuthenticationBindings(integration Integration) error {
 	for _, binding := range integration.Authentication.Bindings {
 		address, err := url.Parse(binding.URL)
 		identity := binding.Runtime + "\x00" + binding.Server + "\x00" + strings.ToLower(binding.Header)
-		if (binding.Runtime != "codex" && binding.Runtime != "claude") || binding.Server == "" || err != nil || address.Scheme != "https" || address.Host == "" || address.User != nil || address.Fragment != "" || !validRemote(binding.URL, map[string]string{binding.Header: ""}) || binding.Header == "" || seen[identity] {
+		if (binding.Runtime != "" && !registeredTarget(binding.Runtime)) || binding.Server == "" || err != nil || address.Scheme != "https" || address.Host == "" || address.User != nil || address.Fragment != "" || !validRemote(binding.URL, map[string]string{binding.Header: ""}) || binding.Header == "" || seen[identity] {
 			return status_error.PluginManifestInvalid
 		}
 		seen[identity] = true
@@ -40,12 +40,19 @@ func validateAuthenticationBindings(integration Integration) error {
 	return nil
 }
 
-// TargetAuthenticationBindings 返回当前目标的声明；未声明目标不能借用其他目标授权。
+// TargetAuthenticationBindings 返回当前目标实际可用的组件授权声明。
 func TargetAuthenticationBindings(logical Package, cli string) []AuthenticationBinding {
+	cli = AuthenticationTargetRuntime(logical, cli)
 	result := []AuthenticationBinding{}
 	if logical.Integration.Authentication != nil {
+		specialized := map[string]bool{}
 		for _, binding := range logical.Integration.Authentication.Bindings {
-			if binding.Runtime == cli {
+			if binding.Runtime == cli && cli != "" {
+				specialized[binding.Server] = true
+			}
+		}
+		for _, binding := range logical.Integration.Authentication.Bindings {
+			if binding.Runtime == cli || binding.Runtime == "" && !specialized[binding.Server] {
 				result = append(result, binding)
 			}
 		}
@@ -85,7 +92,7 @@ func AuthenticationEnvironmentKey(id string, binding AuthenticationBinding) stri
 // SkillAuthenticationBinding 只向明确技能交付声明的账号环境。
 type SkillAuthenticationBinding struct {
 	// Runtime 是受支持的原生运行目标。
-	Runtime string `json:"runtime"`
+	Runtime string `json:"runtime,omitempty"`
 	// Skill 是已发现技能的稳定组件键。
 	Skill string `json:"skill"`
 	// EnvironmentKeys 是允许账号驱动提供的环境键。
@@ -105,7 +112,7 @@ func validateSkillAuthenticationBindings(pkg Package) error {
 	identities := map[string]bool{}
 	for _, binding := range pkg.Integration.Authentication.SkillBindings {
 		identity := binding.Runtime + "\x00" + binding.Skill
-		if (binding.Runtime != "codex" && binding.Runtime != "claude") || !known[binding.Skill] || identities[identity] {
+		if (binding.Runtime != "" && !registeredTarget(binding.Runtime)) || !known[binding.Skill] || identities[identity] {
 			return status_error.PluginManifestInvalid
 		}
 		identities[identity] = true
@@ -144,15 +151,46 @@ func forbiddenSkillEnvironment(key string) bool {
 	return slices.Contains([]string{"HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "PWD", "OLDPWD", "SHELL", "ENV", "BASH_ENV", "ZDOTDIR", "PLUGIN_ROOT", "PLUGIN_DATA", "GOROOT", "GOPATH"}, key)
 }
 
-// TargetSkillAuthenticationBindings 返回当前运行目标的显式技能绑定。
+// TargetSkillAuthenticationBindings 返回当前目标实际可用的技能授权声明。
 func TargetSkillAuthenticationBindings(pkg Package, cli string) []SkillAuthenticationBinding {
+	cli = AuthenticationTargetRuntime(pkg, cli)
 	result := []SkillAuthenticationBinding{}
 	if pkg.Integration.Authentication != nil {
+		specialized := map[string]bool{}
 		for _, binding := range pkg.Integration.Authentication.SkillBindings {
-			if binding.Runtime == cli {
+			if binding.Runtime == cli && cli != "" {
+				specialized[binding.Skill] = true
+			}
+		}
+		for _, binding := range pkg.Integration.Authentication.SkillBindings {
+			if binding.Runtime == cli || binding.Runtime == "" && !specialized[binding.Skill] {
 				result = append(result, binding)
 			}
 		}
 	}
 	return result
+}
+
+// AuthenticationTargetRuntime 选择组件共用或显式目标的材料槽位。
+// 省略 Runtime 的声明才可共享，显式目标不隐式扩大到其他 CLI。
+func AuthenticationTargetRuntime(pkg Package, cli string) string {
+	auth := pkg.Integration.Authentication
+	if auth != nil {
+		explicit, shared := false, false
+		for _, binding := range auth.Bindings {
+			explicit = explicit || binding.Runtime == cli
+			shared = shared || binding.Runtime == ""
+		}
+		for _, binding := range auth.SkillBindings {
+			explicit = explicit || binding.Runtime == cli
+			shared = shared || binding.Runtime == ""
+		}
+		if explicit {
+			return cli
+		}
+		if shared {
+			return ""
+		}
+	}
+	return cli
 }

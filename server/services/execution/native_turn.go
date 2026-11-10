@@ -264,7 +264,7 @@ func (m *service) startNativeExecution(
 		selection.ConnectorIDs = append(selection.ConnectorIDs, connector.ID)
 	}
 	slices.Sort(selection.ConnectorIDs)
-	pluginSkills, err := m.selectNativePluginSkills(ctx, frozen)
+	pluginSkills, err := m.selectNativePluginSkills(ctx, frozen, skills...)
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
@@ -277,7 +277,7 @@ func (m *service) startNativeExecution(
 		return AcceptedExecution{}, err
 	}
 
-	metadata, err := json.Marshal([]any{instructions, skills, connectors, workspace})
+	metadata, err := json.Marshal([]any{instructions, skills, connectors, workspace, frozen.native})
 	if err != nil {
 		return AcceptedExecution{}, status_error.RuntimeConfigurationInvalid
 	}
@@ -380,6 +380,10 @@ func (m *service) acquireNativeResources(
 		}
 		return nil
 	}}
+	if err != nil {
+		return lease, err
+	}
+	lease.NativePlugins, lease.CloseFiles, err = agent.AcquirePluginViews(ctx, workspace, materialized.targets)
 	if err != nil {
 		return lease, err
 	}
