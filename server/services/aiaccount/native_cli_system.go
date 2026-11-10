@@ -112,10 +112,10 @@ func nativeCLISystemSelection(ctx context.Context, request agent.AccountRequest,
 	defer clear(environment)
 	environmentDigest := sha256.Sum256(environment)
 	request.ConfigHome, request.NativeConfigHome, request.DataHome = profile.configHome, configuredHome, profile.dataHome
-	request.ConfigFingerprint = accountSubject("native-cli-system-config-v1", append(profile.roots, profile.settings...)...)
+	request.ConfigFingerprint = accountSubject("native-cli-system-config", append(profile.roots, profile.settings...)...)
 	// This opaque identity fences observable changes. The native CLI remains the
 	// authority for signed-out state and for credentials stored outside these paths.
-	request.Subject = accountSubject("native-cli-system-scope-v1", append([]string{
+	request.Subject = accountSubject("native-cli-system-scope", append([]string{
 		request.Provider, request.ConfigHome, request.DataHome, hex.EncodeToString(environmentDigest[:]),
 	}, profile.credentials...)...)
 	request.AuthGeneration = systemAccountGeneration

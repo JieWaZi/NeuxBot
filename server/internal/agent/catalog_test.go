@@ -131,7 +131,7 @@ func TestQoderRegistryPreservesNativeInstallation(t *testing.T) {
 		t.Fatal(err)
 	}
 	definition := definitions[RuntimeIDQoder]
-	if definition.name != "Qoder" || definition.instructionFileName != "AGENTS.md" || definition.skillDirectoryName != ".qoder" || definition.configHomeEnvironmentVariable != "QODER_CONFIG_DIR" || !reflect.DeepEqual(definition.binaryCandidates, []string{"qoder", "qodercli"}) || len(definition.models) != 0 {
+	if definition.name != "Qoder" || definition.instructionFileName != "AGENTS.md" || definition.skillDirectoryName != ".qoder" || definition.configHomeEnvironmentVariable != "QODER_CONFIG_DIR" || !reflect.DeepEqual(definition.binaryCandidates, []string{"qoder", "qodercli", "qoderclicn"}) || len(definition.models) != 0 {
 		t.Fatalf("native definition: %+v", definition)
 	}
 	for _, transport := range []ConnectorTransport{ConnectorTransportStdio, ConnectorTransportStreamableHTTP, ConnectorTransportSSE} {
@@ -655,5 +655,25 @@ func TestProfileInstallationUsesItsEnvironment(t *testing.T) {
 	installations := catalog.DiscoverInstallations(t.Context(), request, nil)
 	if !slices.Contains(installations, CLIInstallation{Path: binary, Version: "2.1.0", Available: true}) {
 		t.Fatalf("profile installation was not probed with its launch configuration: %+v", installations)
+	}
+}
+
+// TestQoderDiscoversCNBinaryUnderUnifiedRuntime keeps the CN executable in the Qoder installation list.
+func TestQoderDiscoversCNBinaryUnderUnifiedRuntime(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX fixture")
+	}
+	root := t.TempDir()
+	path := filepath.Join(root, "qoderclicn")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nprintf '1.2.3\\n'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := NewCatalog(CatalogConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := catalog.DiscoverInstallations(t.Context(), DetectRequest{RuntimeID: RuntimeIDQoder, HomeDirectory: t.TempDir(), BaseEnvironment: []string{"PATH=" + root}}, nil)
+	if len(got) != 1 || got[0].Path != path || !got[0].Available {
+		t.Fatalf("CN installation missing: %+v", got)
 	}
 }

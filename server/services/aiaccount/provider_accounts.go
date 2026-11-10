@@ -237,14 +237,18 @@ func systemAccountHome(path string, allowAbsent bool) (string, error) {
 	return canonical, nil
 }
 
-// readNativeAccountFile only reads the bounded regular file selected by its caller.
+// readNativeAccountFile 将实际原生凭据文件限制为 1 MiB。
 func readNativeAccountFile(path string) ([]byte, error) {
-	const maxCredentialBytes = 1 << 20
+	return readNativeAccountFileBounded(path, 1<<20)
+}
+
+// readNativeAccountFileBounded 有界读取选中的普通文件，并核对打开前后的文件身份。
+func readNativeAccountFileBounded(path string, maxBytes int64) ([]byte, error) {
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, status_error.RuntimeAuthRequired
 	}
-	if err != nil || !info.Mode().IsRegular() || info.Size() > maxCredentialBytes {
+	if err != nil || !info.Mode().IsRegular() || info.Size() > maxBytes {
 		return nil, status_error.AIAccountCredentialError
 	}
 	file, err := os.Open(path)
@@ -256,8 +260,8 @@ func readNativeAccountFile(path string) ([]byte, error) {
 	if err != nil || !os.SameFile(info, opened) {
 		return nil, status_error.AIAccountCredentialError
 	}
-	data, err := io.ReadAll(io.LimitReader(file, maxCredentialBytes+1))
-	if err != nil || len(data) > maxCredentialBytes {
+	data, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
+	if err != nil || int64(len(data)) > maxBytes {
 		clear(data)
 		return nil, status_error.AIAccountCredentialError
 	}

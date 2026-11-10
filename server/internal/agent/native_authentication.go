@@ -8,6 +8,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
 	acp "github.com/JieWaZi/acp-go-sdk"
 )
 
@@ -57,6 +58,9 @@ func NewSystemAuthenticationClient(ctx context.Context, account AccountRequest, 
 	environment := systemAuthenticationEnvironment(account.Provider, launch)
 	if account.NativeConfigHome != "" {
 		variable := systemAuthenticationHomeVariable(account.Provider)
+		if account.Provider == constants.RuntimeIDQoder {
+			_, variable, _ = accountconfig.QoderNativeScope(launch.Executable)
+		}
 		if variable == "" {
 			return nil, status_error.RuntimeConfigurationInvalid
 		}
@@ -87,7 +91,7 @@ func systemAuthenticationHasCredential(provider string, environment map[string]s
 	case constants.RuntimeIDWorkBuddy:
 		variables = []string{"CODEBUDDY_AUTH_TOKEN", "CODEBUDDY_API_KEY"}
 	case constants.RuntimeIDQoder:
-		variables = []string{"QODER_PERSONAL_ACCESS_TOKEN"}
+		variables = []string{"QODER_PERSONAL_ACCESS_TOKEN", "QODERCN_PERSONAL_ACCESS_TOKEN"}
 	case constants.RuntimeIDKimi:
 		variables = []string{"KIMI_API_KEY", "KIMI_MODEL_API_KEY"}
 	case constants.RuntimeIDGemini:
@@ -130,7 +134,8 @@ func systemAuthenticationEnvironment(provider string, launch ProviderLaunch) map
 		case constants.RuntimeIDWorkBuddy:
 			keep = strings.HasPrefix(upper, "CODEBUDDY_")
 		case constants.RuntimeIDQoder:
-			keep = strings.HasPrefix(upper, "QODER_")
+			_, variable, _ := accountconfig.QoderNativeScope(launch.Executable)
+			keep = strings.HasPrefix(upper, strings.TrimSuffix(variable, "CONFIG_DIR"))
 		case constants.RuntimeIDKimi:
 			keep = strings.HasPrefix(upper, "KIMI_")
 		case constants.RuntimeIDGemini:

@@ -3,6 +3,7 @@ package accountconfig
 import (
 	"bytes"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -32,7 +33,7 @@ func IsACPAccountOverride(runtimeID, key string) bool {
 
 func inheritedACPOverride(key string) bool {
 	return strings.HasPrefix(key, "CODEBUDDY_") || strings.HasPrefix(key, "WORKBUDDY_") ||
-		strings.HasPrefix(key, "QODER_") ||
+		strings.HasPrefix(key, "QODER_") || strings.HasPrefix(key, "QODERCN_") ||
 		key == "ACC_PRODUCT_CONFIG" || strings.HasPrefix(key, "ACC_PRODUCT_CONFIG_") ||
 		key == "ENV_PRODUCT_CLI_ACCOUNT_TYPE"
 }
@@ -70,4 +71,16 @@ func ValidateWorkBuddyCredentialSettings(data []byte) error {
 func nonemptyJSON(value json.RawMessage) bool {
 	value = bytes.TrimSpace(value)
 	return len(value) != 0 && !bytes.Equal(value, []byte("null")) && !bytes.Equal(value, []byte(`""`))
+}
+
+// QoderNativeScope 根据所选程序确定原生协议、配置变量与凭据变量。
+func QoderNativeScope(executable string) (runtimeID, configVariable, tokenVariable string) {
+	name := strings.ToLower(filepath.Base(executable))
+	for _, suffix := range []string{".exe", ".cmd", ".bat", ".ps1"} {
+		name = strings.TrimSuffix(name, suffix)
+	}
+	if name == "qoderclicn" || strings.HasPrefix(name, "qoderclicn-") {
+		return constants.RuntimeQoderCNProtocolID, "QODERCN_CONFIG_DIR", "QODERCN_PERSONAL_ACCESS_TOKEN"
+	}
+	return constants.RuntimeIDQoder, "QODER_CONFIG_DIR", "QODER_PERSONAL_ACCESS_TOKEN"
 }

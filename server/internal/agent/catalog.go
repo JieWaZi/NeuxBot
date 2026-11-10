@@ -143,7 +143,7 @@ var baseRuntimeDefinitions = map[string]runtimeDefinition{
 	},
 	RuntimeIDQoder: {
 		name:                          "Qoder",
-		binaryCandidates:              []string{"qoder", "qodercli"},
+		binaryCandidates:              []string{"qoder", "qodercli", "qoderclicn"},
 		userBinaryCandidates:          []string{".qoder/bin/qodercli/qodercli"},
 		instructionFileName:           "AGENTS.md",
 		skillDirectoryName:            ".qoder",

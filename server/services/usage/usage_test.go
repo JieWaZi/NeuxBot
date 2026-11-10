@@ -84,15 +84,15 @@ func verifyCanonicalUsageRebuildAndSnapshot(t *testing.T, provider string) {
 		t.Fatal(err)
 	}
 	// Preserve existing rows and checkpoints across supported projection upgrades.
-	previous := "providers-v2:fixture"
+	previous := "obsolete-projection:fixture"
 	if provider == "codex" {
-		previous = "providers-v1:fixture"
+		previous = "missing-provider:fixture"
 		if err := db.Exec("ALTER TABLE usage_records DROP COLUMN provider").Error; err != nil {
 			t.Fatal(err)
 		}
 	}
 	if provider == "cursor" {
-		previous = "providers-v3:fixture"
+		previous = "cost-only:fixture"
 		// Older SQLite databases can retain both the amount column and a cost-only row.
 		if err := db.Exec("ALTER TABLE usage_records ADD COLUMN amount text").Error; err != nil {
 			t.Fatal(err)
@@ -176,7 +176,7 @@ func TestReportedInputSurvivesProjectionRebuild(t *testing.T) {
 		if len(groups.Groups) != 1 || groups.Groups[0].Metrics.KnownTokens.ReportedInput == nil || *groups.Groups[0].Metrics.KnownTokens.ReportedInput != 1200 {
 			t.Fatalf("single-model input lost: %+v", groups)
 		}
-		if err := db.Model(&models.UsageCheckpoint{}).Where("shard = -1").Update("generation", "tokens-v4:old").Error; err != nil {
+		if err := db.Model(&models.UsageCheckpoint{}).Where("shard = -1").Update("generation", "unrecognized-projection:fixture").Error; err != nil {
 			t.Fatal(err)
 		}
 	}

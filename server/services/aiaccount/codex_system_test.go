@@ -89,8 +89,16 @@ func TestCodexSystemAccountScopeAndValidation(t *testing.T) {
 	if _, err := ResolveCodexSystemAccount(ctx, managed, home); !errors.Is(err, status_error.AIAccountConfigurationInvalid) {
 		t.Fatalf("managed account accepted: %v", err)
 	}
-	if _, err := ResolveCodexSystemAccount(ctx, request, t.TempDir()); !errors.Is(err, status_error.RuntimeAuthRequired) {
-		t.Fatalf("missing file accepted: %v", err)
+	unknown, err := ResolveCodexSystemAccount(ctx, request, t.TempDir())
+	if err != nil {
+		t.Fatalf("unobserved native login was blocked before execution: %v", err)
+	}
+	native, err := AcquireCodexSystemAccount(ctx, unknown)
+	if err != nil || native.VerifyCodexCredential != nil || native.VerifyLogin == nil {
+		t.Fatalf("unknown login required native authentication proof: %v", err)
+	}
+	if err := native.VerifyLogin(ctx); err != nil {
+		t.Fatalf("local selection check required native login: %v", err)
 	}
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()

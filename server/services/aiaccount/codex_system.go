@@ -20,7 +20,7 @@ import (
 // switches are represented by a different subject, and token refresh preserves it.
 const codexSystemAuthGeneration = 1
 
-// ResolveCodexSystemAccount freezes the selected native configuration root and file-backed ChatGPT principal.
+// ResolveCodexSystemAccount 冻结原生配置根与可观察的文件账号；缺失登录文件由实际 CLI 判定。
 func ResolveCodexSystemAccount(ctx context.Context, request agent.AccountRequest, configHome string) (agent.AccountRequest, error) {
 	if request.Provider != constants.RuntimeIDCodex || request.AccountID != agent.SystemAccountID {
 		return agent.AccountRequest{}, status_error.AIAccountConfigurationInvalid
@@ -41,13 +41,11 @@ func ResolveCodexSystemAccount(ctx context.Context, request agent.AccountRequest
 	if !filepath.IsAbs(configHome) {
 		return agent.AccountRequest{}, status_error.RuntimeConfigurationInvalid
 	}
-	canonical, err := filepath.EvalSymlinks(configHome)
-	if errors.Is(err, os.ErrNotExist) {
-		return agent.AccountRequest{}, status_error.RuntimeAuthRequired
-	}
+	canonical, err := systemAccountHome(configHome, true)
 	if err != nil {
-		return agent.AccountRequest{}, status_error.AIAccountCredentialError
+		return agent.AccountRequest{}, err
 	}
+
 	subject, _, err := readCodexSystemCredential(ctx, canonical)
 	if err != nil {
 		return agent.AccountRequest{}, err
@@ -56,19 +54,33 @@ func ResolveCodexSystemAccount(ctx context.Context, request agent.AccountRequest
 	return request, nil
 }
 
-// AcquireCodexSystemAccount revalidates admission and requires proof from the initialized process.
+// AcquireCodexSystemAccount 核对本地选择；仅已知文件账号要求实际原生进程的凭据隔离证明。
 func AcquireCodexSystemAccount(ctx context.Context, request agent.AccountRequest) (agent.AccountLease, error) {
 	if request.Provider != constants.RuntimeIDCodex || request.AccountID != agent.SystemAccountID ||
 		request.AuthGeneration != codexSystemAuthGeneration || request.Subject == "" || !filepath.IsAbs(request.ConfigHome) {
 		return agent.AccountLease{}, status_error.AIAccountConfigurationInvalid
 	}
-	subject, _, err := readCodexSystemCredential(ctx, request.ConfigHome)
+	subject, proof, err := readCodexSystemCredential(ctx, request.ConfigHome)
 	if err != nil {
 		return agent.AccountLease{}, err
 	}
 	if subject != request.Subject {
 		return agent.AccountLease{}, status_error.RuntimeAuthRequired
 	}
+	if proof == ([sha256.Size]byte{}) {
+		// 无本地登录文件时不要求独立登录回执；只隔离可观察的后续选择变更。
+		return agent.AccountLease{ConfigHome: request.ConfigHome, VerifyLogin: func(ctx context.Context) error {
+			current, _, err := readCodexSystemCredential(ctx, request.ConfigHome)
+			if err != nil {
+				return err
+			}
+			if current != request.Subject {
+				return status_error.RuntimeAuthRequired
+			}
+			return nil
+		}}, nil
+	}
+
 	return agent.AccountLease{
 		ConfigHome: request.ConfigHome,
 		VerifyCodexCredential: func(ctx context.Context, active [sha256.Size]byte) error {
@@ -89,6 +101,16 @@ func readCodexSystemCredential(ctx context.Context, home string) (string, [sha25
 	if err := ctx.Err(); err != nil {
 		return "", noProof, err
 	}
+	canonical, err := systemAccountHome(home, true)
+	if err != nil || canonical != home {
+		return "", noProof, status_error.AIAccountCredentialError
+	}
+	if _, err := os.Lstat(filepath.Join(home, "auth.json")); errors.Is(err, os.ErrNotExist) {
+		return accountSubject("codex-system-unobserved", home), noProof, nil
+	} else if err != nil {
+		return "", noProof, status_error.AIAccountCredentialError
+	}
+
 	credential, err := readCodexChatGPTCredential(home)
 	if err != nil {
 		return "", noProof, err
@@ -96,7 +118,7 @@ func readCodexSystemCredential(ctx context.Context, home string) (string, [sha25
 	if err := ctx.Err(); err != nil {
 		return "", noProof, err
 	}
-	scope, _ := json.Marshal([]string{"codex-system-chatgpt-v1", home, credential.Tokens.Identity()})
+	scope, _ := json.Marshal([]string{"codex-system-chatgpt", home, credential.Tokens.Identity()})
 	digest := sha256.Sum256(scope)
 	return "codex-system:" + hex.EncodeToString(digest[:]), sha256.Sum256([]byte(credential.Tokens.AccessToken)), nil
 }

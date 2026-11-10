@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	indexFilename   = "conversation-index-v3.sqlite"
+	indexFilename   = "conversation-index.sqlite"
 	indexWriteBatch = 128
 	indexReadBatch  = 256
 )

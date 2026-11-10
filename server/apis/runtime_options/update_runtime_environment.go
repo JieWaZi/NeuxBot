@@ -8,6 +8,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 	"github.com/gin-gonic/gin"
@@ -16,6 +17,8 @@ import (
 
 // 默认执行设置请求
 type UpdateRuntimeEnvironmentRequest struct {
+	// 安装实例
+	InstallationPath string `json:"installationPath,omitempty" validate:"max=4096"`
 	// 默认账号
 	DefaultAccountID string `json:"defaultAccountId" validate:"max=32"`
 	// 启用状态
@@ -93,10 +96,41 @@ func (u *UpdateRuntimeEnvironment) Output(ctx *gin.Context) (interface{}, error)
 		DefaultFast:            u.Body.DefaultFast,
 		DefaultPermissionLevel: u.Body.DefaultPermissionLevel,
 	}
-	if err := updateRuntimeEnvironment(ctx, environment, u.Body.IsDefault); err != nil {
+	selectionChanged := u.Body.InstallationPath != "" && u.Body.InstallationPath != current.Detection.ResolvedBinary
+	var selected agent.CLIInstallation
+	if selectionChanged {
+		for _, installation := range current.Detection.Installations {
+			if installation.Path == u.Body.InstallationPath && installation.Available {
+				selected = installation
+				break
+			}
+		}
+		if selected.Path == "" {
+			return nil, ginx.WithStack(status_error.RuntimeConfigurationInvalid)
+		}
+	}
+	if err := global.TransactionControllerManager.Transaction(ctx, func(tx context.Context) error {
+		if err := updateRuntimeEnvironment(tx, environment, u.Body.IsDefault); err != nil {
+			return err
+		}
+		if selectionChanged {
+			summary := current.Detection.Runtime
+			if global.RuntimeCatalog != nil {
+				for _, candidate := range global.RuntimeCatalog.Runtimes() {
+					if candidate.ID == u.RuntimeID {
+						summary = candidate
+						break
+					}
+				}
+			}
+			detection := agent.DetectionResult{Runtime: summary, Installations: current.Detection.Installations, ResolvedBinary: selected.Path, Version: selected.Version, State: agent.DetectionStateReady, Auth: agent.AuthStatusUnknown}
+			return global.RuntimeEnvironmentControllerManager.UpdateDetection(tx, u.RuntimeID, detection, current.DetectedAt)
+		}
+		return nil
+	}); err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	if current.DefaultAccountID != environment.DefaultAccountID {
+	if selectionChanged || current.DefaultAccountID != environment.DefaultAccountID {
 		if err := global.RuntimeEnvironmentService.RefreshOne(ctx, u.RuntimeID); err != nil {
 			return nil, ginx.WithStack(err)
 		}

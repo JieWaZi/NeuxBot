@@ -54,8 +54,6 @@ type Service struct {
 	closeIdleSessions func(context.Context, string) error
 	// invalidateAccountAuth 在凭据提交后使旧消费者和目录缓存失效。
 	invalidateAccountAuth func(context.Context, string, string, uint64)
-	// qoderLogins 为每个 Qoder 发行版保存至多一份原生身份回执。
-	qoderLogins map[string]qoderLoginObservation
 	// credentials 仅在准备、刷新和回收时串行同账号凭据，不覆盖模型调用。
 	credentials sync.Map
 	// leaseChanged 在租约释放时唤醒能力查询和后台调用，不轮询账号使用状态。

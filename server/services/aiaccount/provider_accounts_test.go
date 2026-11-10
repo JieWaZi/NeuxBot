@@ -270,58 +270,35 @@ func TestCursorAPIKeyLeaseDoesNotUseNativeDashboard(t *testing.T) {
 	}
 }
 
-func TestCursorSystemSubjectUsesNativeUserID(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fixture uses a shell executable")
-	}
-	home := t.TempDir()
-	cli := filepath.Join(t.TempDir(), "cursor-agent")
-	if err := os.WriteFile(cli, []byte("#!/bin/sh\n[ \"$*\" = '--fixture status --format json' ] || exit 2\ncat \"$CURSOR_CONFIG_DIR/status\"\n"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("CURSOR_API_KEY", "")
-	t.Setenv("AGENT_CLI_CREDENTIAL_STORE", "file")
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("CURSOR_DATA_DIR", t.TempDir())
-	writeStatus := func(settings, id, email string) {
-		t.Helper()
-		body := `{"isAuthenticated":true,"userInfo":{"userId":` + id + `,"email":"` + email + `"}}`
-		if err := os.WriteFile(filepath.Join(settings, "status"), []byte(body), 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
+func TestCursorLocalIdentityIsIndependentOfSettingsAndStorage(t *testing.T) {
+	input, _ := executionAccountFixture(t, constants.RuntimeIDCursor)
 	service := New(nil)
-	selection := agent.AccountRequest{Provider: constants.RuntimeIDCursor, AccountID: agent.SystemAccountID, Executable: cli, PrefixArgs: []string{"--fixture"}, CWD: t.TempDir()}
-	writeStatus(home, "77", "first@example.invalid")
-	first, err := service.ResolveAccount(t.Context(), selection, home)
+	config, err := cursorSystemConfiguration("")
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeStatus(home, "77", "new-label@example.invalid")
-	renamed, err := service.ResolveAccount(t.Context(), selection, home)
-	if err != nil || renamed.Subject != first.Subject {
-		t.Fatalf("an updated Cursor label changed the subject: %v", err)
+	if err := os.MkdirAll(filepath.Dir(config.authPath), 0700); err != nil {
+		t.Fatal(err)
 	}
-	otherHome := t.TempDir()
-	writeStatus(otherHome, "77", "new-label@example.invalid")
-	reconfigured, err := service.ResolveAccount(t.Context(), selection, otherHome)
+	if err := os.WriteFile(config.authPath, []byte(`{"accessToken":"opaque-fixture"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	first, err := service.ResolveAccount(t.Context(), input, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	reconfigured, err := service.ResolveAccount(t.Context(), input, t.TempDir())
 	if err != nil || reconfigured.Subject != first.Subject || reconfigured.ConfigHome == first.ConfigHome {
-		t.Fatalf("changing only Cursor's settings root changed its native login identity: %v", err)
+		t.Fatalf("settings root conflated credential identity: %v", err)
 	}
-	writeStatus(home, "78", "new-label@example.invalid")
-	if _, err := service.AcquireAccount(t.Context(), first); !errors.Is(err, status_error.RuntimeAuthRequired) {
-		t.Fatalf("a different Cursor user acquired the old subject: %v", err)
-	}
-	writeStatus(home, "77", "new-label@example.invalid")
 	if runtime.GOOS == "darwin" {
 		t.Setenv("HOME", t.TempDir())
 	} else {
 		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	}
-	otherLoginRoot, err := service.ResolveAccount(t.Context(), selection, home)
-	if err != nil || otherLoginRoot.Subject == first.Subject || otherLoginRoot.DataHome != first.DataHome {
-		t.Fatalf("the credential scope was not frozen independently of Cursor's storage: %v", err)
+	switched, err := service.ResolveAccount(t.Context(), input, first.ConfigHome)
+	if err != nil || switched.Subject == first.Subject || switched.DataHome != first.DataHome {
+		t.Fatalf("credential store scope did not isolate native login: %v", err)
 	}
 }
 
@@ -407,56 +384,32 @@ func TestCursorSystemLaunchRootsDoNotChangeCredentialIdentity(t *testing.T) {
 	}
 }
 
-func TestCursorQuotaLeaseNamesSelectedUserAndReadsTokenOnDemand(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fixture uses a shell executable")
+func TestCursorLocalIdentityDoesNotFabricateQuotaUser(t *testing.T) {
+	input, trace := executionAccountFixture(t, constants.RuntimeIDCursor)
+	config, err := cursorSystemConfiguration("")
+	if err != nil {
+		t.Fatal(err)
 	}
-	home := t.TempDir()
-	xdg := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", xdg)
-	t.Setenv("CURSOR_API_KEY", "")
-	t.Setenv("AGENT_CLI_CREDENTIAL_STORE", "file")
-	authRoot := filepath.Join(xdg, "cursor")
-	if runtime.GOOS == "darwin" {
-		authRoot = filepath.Join(home, ".cursor")
+	if err := os.MkdirAll(filepath.Dir(config.authPath), 0700); err != nil {
+		t.Fatal(err)
 	}
-	cli := filepath.Join(t.TempDir(), "cursor-agent")
-	if err := os.WriteFile(cli, []byte("#!/bin/sh\nprintf '%s' '{\"isAuthenticated\":true,\"userInfo\":{\"userId\":77}}'\n"), 0700); err != nil {
+	if err := os.WriteFile(config.authPath, []byte(`{"accessToken":"opaque-fixture"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	service := New(nil)
-	request, err := service.ResolveAccount(t.Context(), agent.AccountRequest{
-		Provider: constants.RuntimeIDCursor, AccountID: agent.SystemAccountID, Executable: cli, CWD: t.TempDir(),
-	}, t.TempDir())
+	selected, err := service.ResolveAccount(t.Context(), input, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	lease, err := service.AcquireAccount(t.Context(), request)
+	lease, err := service.AcquireAccount(t.Context(), selected)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if lease.CursorQuota == nil || lease.CursorQuota.NativeUserID != "77" || lease.Environment["AGENT_CLI_CREDENTIAL_STORE"] != "file" {
-		t.Fatal("lease did not carry the native user and explicit credential source")
+	if lease.CursorQuota != nil {
+		t.Fatal("local credential bytes cannot identify the quota API numeric user")
 	}
-	if lease.VerifyLogin == nil {
-		t.Fatal("native Cursor system lease omitted its submission-time identity check")
-	}
-	if err := os.WriteFile(cli, []byte("#!/bin/sh\nprintf '%s' '{\"isAuthenticated\":true,\"userInfo\":{\"userId\":78}}'\n"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := lease.VerifyLogin(t.Context()); !errors.Is(err, status_error.RuntimeAuthRequired) {
-		t.Fatalf("the submission-time check accepted a different Cursor login: %v", err)
-	}
-	if err := os.MkdirAll(authRoot, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(authRoot, "auth.json"), []byte("{\"accessToken\":\"fixture-key\"}"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	token, err := lease.CursorQuota.ReadAccessToken(t.Context())
-	if err != nil || token != "fixture-key" {
-		t.Fatalf("quota lease did not defer reading its selected store: %v", err)
+	if _, err := os.Stat(trace); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("quota preparation launched a native identity probe")
 	}
 }
 

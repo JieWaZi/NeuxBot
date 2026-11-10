@@ -168,7 +168,7 @@ func TestOfficialInstallationSmoke(t *testing.T) {
 }
 
 // TestLegacyKimiExtractionComparison preserves the deprecated Python artifact's
-// diagnosis against OpenBot's tar layout; it is never a managed installation source.
+// tar-layout diagnosis; it is never a managed installation source.
 func TestLegacyKimiExtractionComparison(t *testing.T) {
 	if os.Getenv("NEUXBOT_INSTALLATION_SMOKE_DIAGNOSTIC") != "1" || runtime.GOOS != "darwin" {
 		t.Skip("opt-in macOS diagnosis only; uses official files and private temporary homes")

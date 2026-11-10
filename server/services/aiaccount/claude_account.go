@@ -13,15 +13,12 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
-	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
-	claude "github.com/JieWaZi/acp-go/pkg/claude"
 )
 
 func (service *Service) resolveClaudeSystemAccount(ctx context.Context, request agent.AccountRequest, home string) (agent.AccountRequest, error) {
@@ -34,7 +31,7 @@ func (service *Service) resolveClaudeSystemAccount(ctx context.Context, request 
 	}
 	request.ConfigHome, request.NativeConfigHome = selected.configHome, home
 	request.ConfigFingerprint = selected.provider.ModelFingerprint
-	request.Subject, err = selected.subject(ctx, request, service)
+	request.Subject, err = selected.subject(ctx, request)
 	if err != nil {
 		return agent.AccountRequest{}, err
 	}
@@ -57,7 +54,7 @@ func (service *Service) acquireClaudeSystemAccount(ctx context.Context, request 
 		return agent.AccountLease{}, status_error.RuntimeConfigurationInvalid
 	}
 	verify := func(ctx context.Context) error {
-		subject, err := selected.subject(ctx, request, service)
+		subject, err := selected.subject(ctx, request)
 		if err != nil {
 			return err
 		}
@@ -130,6 +127,18 @@ func readClaudeSystemSettings(home string) ([]byte, error) {
 	return readNativeAccountFile(path)
 }
 
+// readClaudeSystemMetadata 保留原生 CLI 的 16 MiB 元数据上限；凭据仍由独立入口限制为 1 MiB。
+func readClaudeSystemMetadata(path string) ([]byte, error) {
+	canonical, err := filepath.EvalSymlinks(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, status_error.AIAccountCredentialError
+	}
+	return readNativeAccountFileBounded(canonical, 16<<20)
+}
+
 // claudeAccountEnvironment clears ambient overrides before selecting native subscription or managed API authentication.
 func claudeAccountEnvironment(home string) map[string]string {
 	environment := accountconfig.HomeEnvironment(constants.RuntimeIDClaude, home)
@@ -143,7 +152,7 @@ func claudeAccountEnvironment(home string) map[string]string {
 	return environment
 }
 
-func (s claudeSystemSelection) subject(ctx context.Context, request agent.AccountRequest, service *Service) (string, error) {
+func (s claudeSystemSelection) subject(ctx context.Context, request agent.AccountRequest) (string, error) {
 	nativeHome := request.NativeConfigHome
 	if nativeHome == "" {
 		userHome := s.environment["HOME"]
@@ -156,58 +165,45 @@ func (s claudeSystemSelection) subject(ctx context.Context, request agent.Accoun
 	if err != nil || canonical != request.ConfigHome {
 		return "", status_error.RuntimeAuthRequired
 	}
-	client, err := service.newClaudeClient(ctx, claude.Options{
-		Executable: request.Executable, PrefixArgs: request.PrefixArgs, WorkingDirectory: request.CWD,
-		Environment: nativeAccountEnvironment(s.environment),
-	})
-	if err != nil {
-		return "", nativeAccountStatusError(ctx, constants.RuntimeIDClaude, err)
+	if err := ctx.Err(); err != nil {
+		return "", err
 	}
-	login, err := client.ReadLoginStatus(ctx)
-	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-	defer cancel()
-	if closeErr := client.Close(closeCtx); closeErr != nil {
-		service.retainProgramCleanup(constants.RuntimeIDClaude, client)
-		logx.Errorf("native account status cleanup failed: provider=%s", constants.RuntimeIDClaude)
-		return "", status_error.RuntimeShutdownFailed
-	}
-	if err != nil {
-		return "", nativeAccountStatusError(ctx, constants.RuntimeIDClaude, err)
-	}
-	if !login.Authenticated {
-		return "", status_error.RuntimeAuthRequired
-	}
-	if login.ConfigDirectory != "" {
-		root, err := systemAccountHome(login.ConfigDirectory, true)
-		if err != nil || root != request.ConfigHome {
-			return "", status_error.RuntimeAuthRequired
-		}
-	}
+
 	if key := s.provider.CredentialVariable; key != "" {
-		switch key {
-		case "ANTHROPIC_API_KEY":
-			if login.Kind != "api_key" || login.AuthMethod != "api_key" && login.AuthMethod != "apiKey" {
-				return "", status_error.RuntimeAuthRequired
-			}
-		case "ANTHROPIC_AUTH_TOKEN":
-			if login.Kind != "api_key" || login.AuthMethod != "oauth_token" {
-				return "", status_error.RuntimeAuthRequired
-			}
-		case "CLAUDE_CODE_OAUTH_TOKEN":
-			if login.Kind != "subscription" || login.AuthMethod != "oauth_token" {
-				return "", status_error.RuntimeAuthRequired
-			}
-		}
 		endpoint := s.environment["ANTHROPIC_BASE_URL"]
 		if endpoint == "" {
 			endpoint = constants.AIAccountAnthropicURL
 		}
-		return accountSubject("claude-system-environment-v1", request.ConfigHome, request.NativeConfigHome, key, endpoint, s.environment[key]), nil
+		return accountSubject("claude-system-environment", request.ConfigHome, request.NativeConfigHome, key, endpoint, s.environment[key]), nil
 	}
-	if login.Kind != "subscription" || login.AccountID == "" || login.OrganizationID == "" {
-		return "", status_error.RuntimeAuthRequired
+	facts := []string{request.ConfigHome, request.NativeConfigHome}
+	// 系统登录只观察本地元数据，不要求宿主读取默认 Keychain 或证明在线状态。
+	// account/org 保持令牌刷新兼容；缺少可观察身份时原生 CLI 自行认证。
+	metadataRoot := request.NativeConfigHome
+	if metadataRoot == "" {
+		metadataRoot = s.environment["HOME"]
+		if runtime.GOOS == "windows" {
+			metadataRoot = s.environment["USERPROFILE"]
+		}
 	}
-	return accountSubject("claude-system-v1", request.ConfigHome, request.NativeConfigHome, login.AccountID, login.OrganizationID), nil
+	for _, path := range []string{filepath.Join(request.ConfigHome, constants.ClaudeLegacyMetadataFileName), filepath.Join(metadataRoot, constants.ClaudeAccountMetadataFileName)} {
+		data, err := readClaudeSystemMetadata(path)
+		if err != nil {
+			return "", err
+		}
+		defer clear(data)
+		if data == nil {
+			continue
+		}
+		account, organization := claudeMetadataIdentity(data)
+		if account != "" && organization != "" {
+			return accountSubject("claude-system-local", append(facts, account, organization)...), nil
+		}
+		// 原生优先使用已存在的 legacy 文件，不用另一份元数据补造身份。
+		facts = append(facts, path, accountSubject("claude-local-metadata", string(data)))
+		break
+	}
+	return accountSubject("claude-system-local", facts...), nil
 }
 
 func (s *Service) resolveManagedClaudeAccount(ctx context.Context, request agent.AccountRequest) (agent.AccountRequest, error) {
@@ -251,9 +247,9 @@ func (s *Service) resolveManagedClaude(ctx context.Context, request agent.Accoun
 		if err != nil {
 			return agent.AccountRequest{}, account, endpoint, err
 		}
-		request.Subject = accountSubject("claude-managed-subscription-v1", account.ID, snapshot.AccountID, snapshot.OrganizationID)
+		request.Subject = accountSubject("claude-managed-subscription", account.ID, snapshot.AccountID, snapshot.OrganizationID)
 	} else {
-		request.Subject = accountSubject("claude-managed-api-v1", account.ID)
+		request.Subject = accountSubject("claude-managed-api", account.ID)
 	}
 	request.ConfigHome, request.AuthGeneration = home, account.AuthGeneration
 	request.ConfigFingerprint = ManagedClaudeModelFingerprint(account)

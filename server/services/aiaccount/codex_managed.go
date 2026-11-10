@@ -112,7 +112,7 @@ func (s *Service) resolveManagedCodex(ctx context.Context, request agent.Account
 	default:
 		return managedCodexSelection{}, status_error.AIAccountConfigurationInvalid
 	}
-	scope, _ := json.Marshal([]string{"codex-managed-v1", account.ID, string(account.AuthMode), identity})
+	scope, _ := json.Marshal([]string{"codex-managed", account.ID, string(account.AuthMode), identity})
 	digest := sha256.Sum256(scope)
 	request.Subject = "codex-managed:" + hex.EncodeToString(digest[:])
 	request.ConfigHome, request.AuthGeneration, request.ConfigFingerprint = home, account.AuthGeneration, ""

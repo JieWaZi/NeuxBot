@@ -14,7 +14,7 @@ import (
 )
 
 // usageProjectionFormat changes when the derived rows must be rebuilt from native terminals.
-const usageProjectionFormat = "tokens-v5:"
+const usageProjectionFormat = "tokens:"
 
 // UsageController manages the disposable terminal usage projection.
 type UsageController struct {

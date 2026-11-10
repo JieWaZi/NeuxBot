@@ -60,10 +60,10 @@ func (s *Service) resolveManagedNativeCLI(ctx context.Context, request agent.Acc
 		return agent.AccountRequest{}, account, endpoint, err
 	}
 	request.NativeConfigHome, request.DataHome = "", ""
-	request.Subject = accountSubject("native-cli-managed-v1", request.Provider, account.ID, string(account.AuthMode))
+	request.Subject = accountSubject("native-cli-managed", request.Provider, account.ID, string(account.AuthMode))
 	if account.AuthMode == constants.AccountAuthModeSubscription {
 		// Kimi 的登录回执没有可验证的真实主体；稳定 home 不能证明重新登录仍属于同一人。
-		request.Subject = accountSubject("native-cli-managed-unverified-login-v1", request.Provider, account.ID, strconv.FormatUint(account.AuthGeneration, 10))
+		request.Subject = accountSubject("native-cli-managed-unverified-login", request.Provider, account.ID, strconv.FormatUint(account.AuthGeneration, 10))
 	}
 	request.AuthGeneration = account.AuthGeneration
 	request.ConfigFingerprint = key

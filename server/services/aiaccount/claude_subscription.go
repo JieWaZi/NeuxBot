@@ -300,20 +300,34 @@ func (s *Service) prepareClaudeSubscription(ctx context.Context, request agent.A
 	if err != nil || home != request.ConfigHome {
 		return agent.AccountLease{}, status_error.RuntimeAuthRequired
 	}
-	// 同一世代的并行消费者共用原生刷新结果，不能把旧数据库投射覆盖到正在使用的目录。
-	if _, readErr := s.claudeCredentials.Read(ctx, home); readErr != nil {
-		// 不可读的已存在 Keychain/文件必须保留；只有明确缺失才允许初次投射。
+	// 同一代次的并发消费者共用本地刷新结果；准备只读取一次所选存储。
+	// macOS 沿用精确受管 Keychain 项，其他平台读取原生凭据文件，不运行 CLI 诊断。
+	current, readErr := s.readClaudeLocalSnapshot(ctx, home)
+	defer clear(current.Credential)
+	defer clear(current.Metadata)
+	defer clear(current.LegacyMetadata)
+	if readErr != nil {
 		if !errors.Is(readErr, status_error.RuntimeAuthRequired) {
 			return agent.AccountLease{}, readErr
 		}
-		// credentialGate 串行首次物化；共享租约计数也包含正在等待准备的消费者。
+		// 仅明确缺失才允许物化；credentialGate 防止覆盖其他消费者的刷新。
 		if err := s.claudeCredentials.Write(ctx, home, snapshot); err != nil {
 			return agent.AccountLease{}, err
 		}
+		current = snapshot
 	}
-	observation := &claudeLeaseObservation{service: s, home: home, options: claude.Options{Executable: request.Executable, PrefixArgs: request.PrefixArgs, WorkingDirectory: request.CWD, Environment: nativeAccountEnvironment(claudeAccountEnvironment(home))}}
+	if current.AccountID != snapshot.AccountID || current.OrganizationID != snapshot.OrganizationID {
+		return agent.AccountLease{}, status_error.RuntimeAuthRequired
+	}
+	observe := func(ctx context.Context) (accountconfig.ClaudeCredentialSnapshot, error) {
+		return s.readClaudeLocalSnapshot(ctx, home)
+	}
+
 	verify := func(ctx context.Context) error {
-		observed, err := observation.read(ctx)
+		observed, err := observe(ctx)
+		defer clear(observed.Credential)
+		defer clear(observed.Metadata)
+		defer clear(observed.LegacyMetadata)
 		if err != nil {
 			return err
 		}
@@ -322,18 +336,25 @@ func (s *Service) prepareClaudeSubscription(ctx context.Context, request agent.A
 		}
 		return nil
 	}
-	if err := verify(ctx); err != nil {
-		if observation.pending() {
-			return agent.AccountLease{Close: observation.retire}, err
-		}
-		return agent.AccountLease{}, err
+	return agent.AccountLease{ConfigHome: home, Environment: claudeAccountEnvironment(home), VerifyLogin: verify,
+		Close: func(ctx context.Context) error { return s.persistClaudeSubscription(ctx, request, observe) }}, nil
+}
+
+// readClaudeLocalSnapshot 只同步所选本地存储；主体由原生元数据提供，不执行在线认证。
+func (s *Service) readClaudeLocalSnapshot(ctx context.Context, home string) (accountconfig.ClaudeCredentialSnapshot, error) {
+	current, err := s.claudeCredentials.Read(ctx, home)
+	if err != nil {
+		return current, err
 	}
-	return agent.AccountLease{ConfigHome: home, Environment: claudeAccountEnvironment(home), VerifyLogin: verify, Close: func(ctx context.Context) error {
-		if err := observation.close(ctx); err != nil {
-			return err
-		}
-		return s.persistClaudeSubscription(ctx, request, observation.read)
-	}}, nil
+	metadata := current.LegacyMetadata
+	if len(metadata) == 0 {
+		metadata = current.Metadata
+	}
+	current.AccountID, current.OrganizationID = claudeMetadataIdentity(metadata)
+	if !current.Valid() {
+		return current, status_error.AIAccountCredentialError
+	}
+	return current, nil
 }
 
 func (s *Service) persistClaudeSubscription(ctx context.Context, request agent.AccountRequest, observe func(context.Context) (accountconfig.ClaudeCredentialSnapshot, error)) error {
@@ -438,64 +459,6 @@ func sameClaudeRoot(first, second string) bool {
 	return errA == nil && errB == nil && a == b
 }
 
-// claudeLeaseObservation 保留原生探测进程及其未确认关闭的同一所有者。
-type claudeLeaseObservation struct {
-	// mutex 串行验证、回收和失败关闭重试。
-	mutex sync.Mutex
-	// service 提供原生客户端和受管快照搬运器。
-	service *Service
-	// home 固定为本租约认证世代的受管目录。
-	home string
-	// options 冻结本租约原生进程的启动范围。
-	options claude.Options
-	// client 仅在原生关闭尚未确认时保留。
-	client claudeSubscriptionClient
-}
-
-func (o *claudeLeaseObservation) closeLocked(ctx context.Context) error {
-	if o.client == nil {
-		return nil
-	}
-	if err := closeClaudeClient(ctx, o.client); err != nil {
-		return err
-	}
-	o.client = nil
-	return nil
-}
-func (o *claudeLeaseObservation) close(ctx context.Context) error {
-	o.mutex.Lock()
-	defer o.mutex.Unlock()
-	return o.closeLocked(ctx)
-}
-func (o *claudeLeaseObservation) pending() bool {
-	o.mutex.Lock()
-	defer o.mutex.Unlock()
-	return o.client != nil
-}
-func (o *claudeLeaseObservation) retire(ctx context.Context) error { return o.close(ctx) }
-
-func (o *claudeLeaseObservation) read(ctx context.Context) (accountconfig.ClaudeCredentialSnapshot, error) {
-	o.mutex.Lock()
-	defer o.mutex.Unlock()
-	if err := o.closeLocked(ctx); err != nil {
-		return accountconfig.ClaudeCredentialSnapshot{}, err
-	}
-	client, err := o.service.newClaudeClient(ctx, o.options)
-	if err != nil {
-		return accountconfig.ClaudeCredentialSnapshot{}, nativeAccountStatusError(ctx, constants.RuntimeIDClaude, err)
-	}
-	o.client = client
-	snapshot, readErr := o.service.readClaudeSnapshot(ctx, o.home, client)
-	if err := o.closeLocked(ctx); err != nil {
-		// 未关闭的客户端继续由本所有者持有，旧观察绝不能在稍后借用新数据库修订提交。
-		clear(snapshot.Credential)
-		clear(snapshot.Metadata)
-		clear(snapshot.LegacyMetadata)
-		return accountconfig.ClaudeCredentialSnapshot{}, err
-	}
-	return snapshot, readErr
-}
-
 // claudeLeaseCleanup 接管准入失败后仍然持有原生客户端的共享租约。
 type claudeLeaseCleanup struct {
 	// mutex 确保并发重试只清理和释放一次。
@@ -547,4 +510,21 @@ func (s *Service) retryClaudeLeaseCleanups(ctx context.Context, id string) error
 		owner.mutex.Unlock()
 	}
 	return nil
+}
+
+// claudeMetadataIdentity 只读取原生元数据中的稳定主体，不以令牌存在或有效期证明认证。
+func claudeMetadataIdentity(data []byte) (string, string) {
+	var metadata struct {
+		// Account 是 CLI 保存的账号及组织归属。
+		Account struct {
+			// ID 是原生账号标识。
+			ID string `json:"accountUuid"`
+			// Organization 是原生组织标识。
+			Organization string `json:"organizationUuid"`
+		} `json:"oauthAccount"`
+	}
+	if json.Unmarshal(data, &metadata) != nil {
+		return "", ""
+	}
+	return metadata.Account.ID, metadata.Account.Organization
 }

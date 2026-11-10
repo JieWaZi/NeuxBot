@@ -485,7 +485,11 @@ func (s *service) detect(
 	preferManaged := environment.Detection.ResolvedBinary == ""
 	if s.installer != nil && !preferManaged {
 		maintenance, err := s.installer.Inspect(ctx, summary.BaseRuntimeID, environment.Detection.ResolvedBinary, programArguments)
-		preferManaged = err == nil && maintenance.Method == "managed"
+		if err == nil && maintenance.Method == "managed" {
+			installed, readErr := s.installer.Installed(summary.BaseRuntimeID)
+			// 显式选择历史版本时保留其路径；仅当前发布版本恢复受管启动参数。
+			preferManaged = readErr == nil && installed.Binary == environment.Detection.ResolvedBinary
+		}
 	}
 	if s.installer != nil && preferManaged {
 		installed, err := s.installer.Installed(summary.BaseRuntimeID)

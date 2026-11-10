@@ -10,7 +10,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
-	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/acp-go/pkg/claude"
 )
 
@@ -54,7 +53,7 @@ func TestProgramMaintenanceRetainsIndependentClaudeOwnerUntilConfirmedClose(t *t
 	}
 }
 
-func TestProgramMaintenanceRetriesExactSystemStatusCleanupOwner(t *testing.T) {
+func TestProgramMaintenanceRetriesExplicitManagementCleanupOwner(t *testing.T) {
 	home := t.TempDir()
 	home, _ = filepath.EvalSymlinks(home)
 	root := filepath.Join(home, ".claude")
@@ -65,8 +64,14 @@ func TestProgramMaintenanceRetriesExactSystemStatusCleanupOwner(t *testing.T) {
 		created++
 		return &subscriptionClaudeClient{home: root, closeFailures: &failures, snapshot: accountconfig.ClaudeCredentialSnapshot{AccountID: "fixture", OrganizationID: "fixture-org"}}, nil
 	}}
-	selection := claudeSystemSelection{configHome: root, environment: map[string]string{"HOME": home, "USERPROFILE": home}}
-	_, err := selection.subject(t.Context(), agent.AccountRequest{ConfigHome: root, CWD: home}, service)
+	client, err := service.newClaudeClient(t.Context(), claude.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = client.Close(t.Context())
+	if err != nil {
+		service.retainProgramCleanup(constants.RuntimeIDClaude, client)
+	}
 	if !errors.Is(err, status_error.RuntimeShutdownFailed) {
 		t.Fatalf("system observer close=%v", err)
 	}

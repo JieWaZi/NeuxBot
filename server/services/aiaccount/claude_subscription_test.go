@@ -472,7 +472,7 @@ func TestClaudeSubscriptionConcurrentFirstLeasesShareOneProjection(t *testing.T)
 	release()
 }
 
-func claudeFailProbeCloses(service *Service, failures int32) *atomic.Int32 {
+func claudeFailManagementCloses(service *Service, failures int32) *atomic.Int32 {
 	original := service.claudeFactory
 	remaining := &atomic.Int32{}
 	remaining.Store(failures)
@@ -504,76 +504,6 @@ func assertClaudeRetainedReaders(t *testing.T, service *Service, id string, want
 		t.Fatalf("native owner released before close confirmation: readers=%d want=%d", actual, want)
 	}
 }
-func TestClaudeSubscriptionPrepareCloseFailureTransfersOriginalOwner(t *testing.T) {
-	service, account, _ := claudeSubscriptionFixture(t)
-	account = loginClaudeFixture(t, service, account)
-	request := claudeReadyRequest(t, service, account)
-	created := claudeFailProbeCloses(service, 2)
-	if _, err := service.AcquireAccount(t.Context(), request); !errors.Is(err, status_error.RuntimeShutdownFailed) {
-		t.Fatalf("prepare close failure not reported: %v", err)
-	}
-	assertClaudeRetainedReaders(t, service, account.ID, 1)
-	if _, err := service.Exclusive(account.ID); !errors.Is(err, status_error.RuntimeShutdownFailed) {
-		t.Fatalf("unconfirmed close did not block mutation: %v", err)
-	}
-	assertClaudeRetainedReaders(t, service, account.ID, 1)
-	release, err := service.Exclusive(account.ID)
-	if err != nil {
-		t.Fatal("same-owner cleanup did not recover", err)
-	}
-	release()
-	if created.Load() != 1 {
-		t.Fatal("cleanup created a replacement native client")
-	}
-	assertClaudeRetainedReaders(t, service, account.ID, 0)
-}
-func TestClaudeSubscriptionVerifyCloseFailureRetainsLeaseAndObservation(t *testing.T) {
-	service, account, _ := claudeSubscriptionFixture(t)
-	account = loginClaudeFixture(t, service, account)
-	request := claudeReadyRequest(t, service, account)
-	lease, err := service.AcquireAccount(t.Context(), request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	created := claudeFailProbeCloses(service, 2)
-	if err := lease.VerifyLogin(t.Context()); !errors.Is(err, status_error.RuntimeShutdownFailed) {
-		t.Fatalf("verify close failure not reported: %v", err)
-	}
-	if err := lease.Close(t.Context()); !errors.Is(err, status_error.RuntimeShutdownFailed) {
-		t.Fatalf("failed retry released lease: %v", err)
-	}
-	assertClaudeRetainedReaders(t, service, account.ID, 1)
-	if err := lease.Close(t.Context()); err != nil {
-		t.Fatal("same observation did not finish closing", err)
-	}
-	if created.Load() != 2 {
-		t.Fatal("verification close retry did not close its original owner before one fresh persistence read")
-	}
-	assertClaudeRetainedReaders(t, service, account.ID, 0)
-}
-func TestClaudeSubscriptionPersistCloseFailureRetainsLeaseAndObservation(t *testing.T) {
-	service, account, _ := claudeSubscriptionFixture(t)
-	account = loginClaudeFixture(t, service, account)
-	request := claudeReadyRequest(t, service, account)
-	lease, err := service.AcquireAccount(t.Context(), request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	created := claudeFailProbeCloses(service, 2)
-	for range 2 {
-		if err := lease.Close(t.Context()); !errors.Is(err, status_error.RuntimeShutdownFailed) {
-			t.Fatalf("persist close failure released native owner: %v", err)
-		}
-		assertClaudeRetainedReaders(t, service, account.ID, 1)
-	}
-	if err := lease.Close(t.Context()); err != nil {
-		t.Fatal("persist same-owner retry failed", err)
-	}
-	if created.Load() != 2 {
-		t.Fatal("persistence retry did not close its original owner before one fresh read")
-	}
-	assertClaudeRetainedReaders(t, service, account.ID, 0)
-}
 func TestClaudeSubscriptionLogoutCloseFailureKeepsExclusiveOwner(t *testing.T) {
 	service, account, _ := claudeSubscriptionFixture(t)
 	account = loginClaudeFixture(t, service, account)
@@ -581,7 +511,7 @@ func TestClaudeSubscriptionLogoutCloseFailureKeepsExclusiveOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created := claudeFailProbeCloses(service, 2)
+	created := claudeFailManagementCloses(service, 2)
 	if err := service.LogoutClaudeSubscription(t.Context(), account); !errors.Is(err, status_error.RuntimeShutdownFailed) {
 		t.Fatalf("logout close failure not reported: %v", err)
 	}
@@ -603,7 +533,32 @@ func TestClaudeSubscriptionLogoutCloseFailureKeepsExclusiveOwner(t *testing.T) {
 	assertClaudeRetainedReaders(t, service, account.ID, 0)
 }
 
-func TestClaudeSubscriptionFailedPersistCannotOverwriteAnotherLeaseRefresh(t *testing.T) {
+func blockClaudeProjectionRead(t *testing.T, service *Service, home string) func() {
+	t.Helper()
+	if runtime.GOOS == "darwin" {
+		original := service.claudeCredentials
+		service.claudeCredentials = accountconfig.NewClaudeCredentialStore(filepath.Join(service.dataDirectory, "ai-accounts", constants.RuntimeIDClaude), &subscriptionClaudeKeychain{readErr: status_error.AIAccountCredentialError})
+		return func() { service.claudeCredentials = original }
+	}
+	path := filepath.Join(home, constants.ClaudeCredentialsFileName)
+	backup := path + ".fixture-backup"
+	if err := os.Rename(path, backup); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	return func() {
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(backup, path); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestClaudeSubscriptionLocalReadFailureRetainsLeaseUntilFreshPersistence(t *testing.T) {
 	service, account, snapshot := claudeSubscriptionFixture(t)
 	account = loginClaudeFixture(t, service, account)
 	request := claudeReadyRequest(t, service, account)
@@ -615,10 +570,15 @@ func TestClaudeSubscriptionFailedPersistCannotOverwriteAnotherLeaseRefresh(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	claudeFailProbeCloses(service, 1)
-	if err := first.Close(t.Context()); !errors.Is(err, status_error.RuntimeShutdownFailed) {
-		t.Fatalf("first observation was not retained: %v", err)
+	restore := blockClaudeProjectionRead(t, service, request.ConfigHome)
+	if err := first.VerifyLogin(t.Context()); !errors.Is(err, status_error.AIAccountCredentialError) {
+		t.Fatalf("unreadable local credentials were accepted: %v", err)
 	}
+	if err := first.Close(t.Context()); !errors.Is(err, status_error.AIAccountCredentialError) {
+		t.Fatalf("failed local synchronization released the account lease: %v", err)
+	}
+	assertClaudeRetainedReaders(t, service, account.ID, 2)
+	restore()
 	latest := *snapshot
 	latest.Credential = json.RawMessage(`{"claudeAiOauth":{"accessToken":"other-lease-newest","refreshToken":"other-refresh","expiresAt":800}}`)
 	if err := service.claudeCredentials.Write(t.Context(), request.ConfigHome, latest); err != nil {
@@ -629,49 +589,14 @@ func TestClaudeSubscriptionFailedPersistCannotOverwriteAnotherLeaseRefresh(t *te
 	}
 	before, err := service.accounts.Credential(t.Context(), account.ID)
 	if err != nil || !strings.Contains(before, "other-lease-newest") {
-		t.Fatal("second lease did not commit its native refresh", err)
-	}
-	if err := first.Close(t.Context()); err != nil {
-		t.Fatal("first close retry failed", err)
-	}
-	after, err := service.accounts.Credential(t.Context(), account.ID)
-	if err != nil || after != before {
-		t.Fatal("old persistence observation overwrote the other lease refresh", err)
-	}
-}
-func TestClaudeSubscriptionFailedVerifyCannotAuthorizeOldSnapshotForPersistence(t *testing.T) {
-	service, account, snapshot := claudeSubscriptionFixture(t)
-	account = loginClaudeFixture(t, service, account)
-	request := claudeReadyRequest(t, service, account)
-	first, err := service.AcquireAccount(t.Context(), request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := service.AcquireAccount(t.Context(), request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	claudeFailProbeCloses(service, 1)
-	if err := first.VerifyLogin(t.Context()); !errors.Is(err, status_error.RuntimeShutdownFailed) {
-		t.Fatalf("verification observation was not retained: %v", err)
-	}
-	latest := *snapshot
-	latest.Credential = json.RawMessage(`{"claudeAiOauth":{"accessToken":"after-verify-newest","refreshToken":"verified-refresh","expiresAt":900}}`)
-	if err := service.claudeCredentials.Write(t.Context(), request.ConfigHome, latest); err != nil {
-		t.Fatal(err)
-	}
-	if err := second.Close(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	before, err := service.accounts.Credential(t.Context(), account.ID)
-	if err != nil || !strings.Contains(before, "after-verify-newest") {
-		t.Fatal("second lease refresh missing", err)
+		t.Fatal("second lease did not persist current credentials", err)
 	}
 	if err := first.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	after, err := service.accounts.Credential(t.Context(), account.ID)
 	if err != nil || after != before {
-		t.Fatal("old verification observation was reused as fresh persistence authority", err)
+		t.Fatal("retry overwrote a newer native refresh", err)
 	}
+	assertClaudeRetainedReaders(t, service, account.ID, 0)
 }

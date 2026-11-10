@@ -105,29 +105,13 @@ func TestQoderCatalogReusesVerifiedLoginAndHonorsNativeSignOut(t *testing.T) {
 			t.Cleanup(func() { _ = runtime.Close(context.Background()) })
 			result := NewModelCatalog(runtime).ReadForRuntime(t.Context(), "qoder", request, "", "", false)
 			if mode == "available" {
-				if result.State != CatalogFresh || !result.QoderLoginVerified || result.DefaultID != "fixture-qoder-model" || len(result.Models) != 4 {
+				if result.State != CatalogFresh || !result.QoderLoginVerified || result.DefaultID != "fixture-qoder-model" || len(result.Models) != 3 {
 					t.Fatalf("verified login did not produce the native model catalog: %+v", result)
 				}
-				if model := result.Models[0]; model.Group != "qoder/new" || !model.Free {
-					t.Fatalf("SDK did not enrich the executable model: %+v", model)
-				}
-				for id, group := range map[string]string{
-					"fixture-acp-only": "qoder/new", "fixture-sdk-only": "qoder/new", "fixture-custom": "qoder/custom",
-				} {
-					if !slices.ContainsFunc(result.Models, func(row AgentChoice) bool { return row.ID == id && row.Group == group }) {
-						t.Fatalf("Qoder union lost %s in %s: %+v", id, group, result.Models)
+				for _, id := range []string{"fixture-qoder-model", "fixture-acp-only", "fixture-qoder-auto"} {
+					if !slices.ContainsFunc(result.Models, func(row AgentChoice) bool { return row.ID == id && row.Group == "" }) {
+						t.Fatalf("ACP model missing or host grouping retained: %s %+v", id, result.Models)
 					}
-				}
-				sdk := result.Models[slices.IndexFunc(result.Models, func(row AgentChoice) bool {
-					return row.ID == "fixture-sdk-only"
-				})]
-				if sdk.CreditMultiplier == nil || *sdk.CreditMultiplier != 0.1 || sdk.Config == nil || len(sdk.Config.Options) != 1 {
-					t.Fatalf("SDK model metadata was lost: %+v", sdk)
-				}
-				effort := sdk.Config.Options[0]
-				if effort.Value.ID != "high" || len(effort.Choices) != 3 ||
-					effort.Choices[0].ID != "low" || effort.Choices[2].ID != "max" {
-					t.Fatalf("unexpected SDK effort menu: %+v", effort)
 				}
 			} else if result.State != CatalogSignedOut || result.QoderLoginVerified || len(result.Models) != 0 {
 				t.Fatalf("native sign-out did not invalidate earlier login evidence: %+v", result)
@@ -136,8 +120,8 @@ func TestQoderCatalogReusesVerifiedLoginAndHonorsNativeSignOut(t *testing.T) {
 			if err != nil || !strings.Contains(string(trace), "session/new") || strings.Contains(string(trace), "--print") {
 				t.Fatalf("unexpected Qoder management launches: %s (%v)", trace, err)
 			}
-			if mode == "available" && !strings.Contains(string(trace), "daemon.get_models") {
-				t.Fatalf("missing Qoder SDK directory read: %s", trace)
+			if strings.Contains(string(trace), "daemon.get_models") {
+				t.Fatalf("Qoder discovery still queried SDK models: %s", trace)
 			}
 		})
 	}

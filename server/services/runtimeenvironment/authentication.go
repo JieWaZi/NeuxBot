@@ -15,6 +15,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // 原生认证方法
@@ -97,6 +98,8 @@ type runtimeAuthenticationJob struct {
 	release func()
 	// signature 固定本次程序和原生配置范围，防止旧程序广告跨安装复用。
 	signature string
+	// verifiedSubject 将已完成的 WorkBuddy 原生登录回执绑定到当前账号主体。
+	verifiedSubject string
 }
 
 func newRuntimeAuthenticationManager(svc *service, before func(context.Context, string) (func(), error)) *runtimeAuthenticationManager {
@@ -195,6 +198,9 @@ func (m *runtimeAuthenticationManager) start(ctx context.Context, runtimeID, met
 		job.snapshot.Cancelable = false
 	}
 	if previous != nil {
+		if !authenticate && previous.signature == signature {
+			job.verifiedSubject = previous.verifiedSubject
+		}
 		job.snapshot.Revision = previous.snapshot.Revision + 1
 		job.snapshot.Methods = slices.Clone(previous.snapshot.Methods)
 		job.snapshot.CanAuthenticate = previous.snapshot.CanAuthenticate
@@ -357,6 +363,17 @@ func (m *runtimeAuthenticationManager) run(ctx context.Context, job *runtimeAuth
 		err = closeErr
 	}
 	if err == nil && authenticate {
+		if account.Provider == constants.RuntimeIDWorkBuddy {
+			environment, readErr := m.service.environments.Get(ctx, job.snapshot.RuntimeID)
+			if readErr == nil {
+				selected, resolveErr := m.service.resolveModelCatalogAccount(ctx, environment, agent.SystemAccountID)
+				if resolveErr == nil {
+					m.mutex.Lock()
+					job.verifiedSubject = selected.Subject
+					m.mutex.Unlock()
+				}
+			}
+		}
 		err = m.service.RefreshOne(ctx, job.snapshot.RuntimeID)
 		if err == nil {
 			// 重检可能确认另一处等价程序路径，不能把刚完成的登录误作新能力任务覆盖。
@@ -482,4 +499,23 @@ func authenticationErrorCode(err error) string {
 		return status.Key()
 	}
 	return status_error.RuntimeAuthRequired.Key()
+}
+
+// workBuddyLoginVerified 只复用当前程序及系统主体的原生成功登录回执。
+func (s *service) workBuddyLoginVerified(ctx context.Context, environment models.RuntimeEnvironment) bool {
+	if s.authentication == nil || environment.DefaultAccountID != "" && environment.DefaultAccountID != agent.SystemAccountID {
+		return false
+	}
+	_, _, signature, err := s.authentication.launch(ctx, environment.RuntimeID)
+	if err != nil {
+		return false
+	}
+	selected, err := s.resolveModelCatalogAccount(ctx, environment, agent.SystemAccountID)
+	if err != nil || selected.Subject == "" {
+		return false
+	}
+	s.authentication.mutex.Lock()
+	defer s.authentication.mutex.Unlock()
+	job := s.authentication.jobs[environment.RuntimeID]
+	return job != nil && job.signature == signature && job.verifiedSubject == selected.Subject
 }

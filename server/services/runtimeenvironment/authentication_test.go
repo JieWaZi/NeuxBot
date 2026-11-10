@@ -96,21 +96,25 @@ func (f *authenticationBoundary) Close(context.Context) error {
 	}
 	return nil
 }
-func authenticationFixture(t *testing.T, fake *authenticationBoundary) *service {
+func authenticationFixture(t *testing.T, fake *authenticationBoundary, providers ...string) *service {
+	provider := constants.RuntimeIDGrok
+	if len(providers) > 0 {
+		provider = providers[0]
+	}
 	t.Helper()
 	catalog, repo, value := newRuntimeEnvironmentTestService(t)
 	svc := value.(*service)
-	catalog.summaries = []agent.RuntimeSummary{{ID: constants.RuntimeIDGrok, BaseRuntimeID: constants.RuntimeIDGrok, Name: "Grok Build"}}
+	catalog.summaries = []agent.RuntimeSummary{{ID: provider, BaseRuntimeID: provider, Name: "Grok Build"}}
 	if _, err := svc.EnsureInitialized(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.UpdateDetection(t.Context(), constants.RuntimeIDGrok, agent.DetectionResult{ResolvedBinary: "/fixture/grok", Auth: agent.AuthStatusMissing}, 1); err != nil {
+	if err := repo.UpdateDetection(t.Context(), provider, agent.DetectionResult{ResolvedBinary: "/fixture/" + provider, Auth: agent.AuthStatusMissing}, 1); err != nil {
 		t.Fatal(err)
 	}
 	svc.lifecycleContext, svc.cancelLifecycle = context.WithCancel(t.Context())
 	svc.authentication = newRuntimeAuthenticationManager(svc, func(context.Context, string) (func(), error) { return func() {}, nil })
 	svc.authentication.factory = func(_ context.Context, account agent.AccountRequest, launch agent.ProviderLaunch) (agent.NativeAuthenticationClient, error) {
-		if account.AccountID != agent.SystemAccountID || account.Provider != constants.RuntimeIDGrok || account.Subject != "" || launch.Executable != "/fixture/grok" {
+		if account.AccountID != agent.SystemAccountID || account.Provider != provider || account.Subject != "" || launch.Executable != "/fixture/"+provider {
 			t.Errorf("crossed system/program scope: account=%s provider=%s executable=%s", account.AccountID, account.Provider, launch.Executable)
 		}
 		return fake, nil
@@ -118,11 +122,15 @@ func authenticationFixture(t *testing.T, fake *authenticationBoundary) *service 
 	t.Cleanup(svc.Close)
 	return svc
 }
-func waitAuthenticationState(t *testing.T, svc *service, state constants.RuntimeAuthenticationState) RuntimeAuthenticationSnapshot {
+func waitAuthenticationState(t *testing.T, svc *service, state constants.RuntimeAuthenticationState, runtimeIDs ...string) RuntimeAuthenticationSnapshot {
+	runtimeID := constants.RuntimeIDGrok
+	if len(runtimeIDs) > 0 {
+		runtimeID = runtimeIDs[0]
+	}
 	t.Helper()
 	deadline := time.After(5 * time.Second)
 	for {
-		view, err := svc.AuthenticationSnapshot(t.Context(), constants.RuntimeIDGrok, false)
+		view, err := svc.AuthenticationSnapshot(t.Context(), runtimeID, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -436,4 +444,72 @@ func TestRuntimeAuthenticationPreservesNativeDeviceProgress(t *testing.T) {
 	}
 	_ = svc.CancelRuntimeAuthentication(t.Context(), constants.RuntimeIDGrok, initial.JobID)
 	waitAuthenticationState(t, svc, constants.RuntimeAuthenticationStateCancelled)
+}
+
+// TestWorkBuddyLoginReceiptIsBoundToCurrentAccount 验证成功回执不能跨账号或程序复用。
+func TestWorkBuddyLoginReceiptIsBoundToCurrentAccount(t *testing.T) {
+	svc := authenticationFixture(t, &authenticationBoundary{}, constants.RuntimeIDWorkBuddy)
+	svc.accountWorkspaceDirectory = t.TempDir()
+	if err := svc.environments.UpdateDetection(t.Context(), "workbuddy", agent.DetectionResult{ResolvedBinary: "/usr/local/bin/workbuddy"}, 1); err != nil {
+		t.Fatal(err)
+	}
+	current := "signed-in-subject"
+	svc.resolveAccount = func(_ context.Context, request agent.AccountRequest, _ string) (agent.AccountRequest, error) {
+		request.Subject = current
+		return request, nil
+	}
+	environment, err := svc.environments.Get(t.Context(), "workbuddy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, signature, err := svc.authentication.launch(t.Context(), "workbuddy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.authentication.jobs["workbuddy"] = &runtimeAuthenticationJob{signature: signature, verifiedSubject: current}
+	if !svc.workBuddyLoginVerified(t.Context(), environment) {
+		t.Fatal("successful login receipt was lost")
+	}
+	current = "another-account"
+	if svc.workBuddyLoginVerified(t.Context(), environment) {
+		t.Fatal("receipt crossed accounts")
+	}
+	current = "signed-in-subject"
+	svc.authentication.jobs["workbuddy"].signature = "another-program"
+	if svc.workBuddyLoginVerified(t.Context(), environment) {
+		t.Fatal("receipt crossed programs")
+	}
+}
+
+// TestWorkBuddyAuthenticationUpdatesDetection 验证真实登录任务成功后的重检使用成功回执。
+func TestWorkBuddyAuthenticationUpdatesDetection(t *testing.T) {
+	fake := &authenticationBoundary{capabilities: agent.NativeAuthenticationCapabilities{Methods: []agent.NativeAuthenticationMethod{{ID: "browser", Kind: "agent"}}}}
+	svc := authenticationFixture(t, fake, constants.RuntimeIDWorkBuddy)
+	svc.authentication.factory = func(context.Context, agent.AccountRequest, agent.ProviderLaunch) (agent.NativeAuthenticationClient, error) {
+		return fake, nil
+	}
+	svc.accountWorkspaceDirectory = t.TempDir()
+	svc.resolveAccount = func(_ context.Context, request agent.AccountRequest, _ string) (agent.AccountRequest, error) {
+		request.Subject = "confirmed-account"
+		return request, nil
+	}
+	svc.probeProvider = svc.detectNative
+	if _, err := svc.AuthenticateRuntime(t.Context(), constants.RuntimeIDWorkBuddy, "browser"); err != nil {
+		t.Fatal(err)
+	}
+	waitAuthenticationState(t, svc, constants.RuntimeAuthenticationStateSucceeded, constants.RuntimeIDWorkBuddy)
+	environment, err := svc.environments.Get(t.Context(), constants.RuntimeIDWorkBuddy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if environment.Detection.Auth != agent.AuthStatusOK {
+		t.Fatalf("login success still unconfirmed: %+v", environment.Detection)
+	}
+	if _, err := svc.AuthenticationSnapshot(t.Context(), constants.RuntimeIDWorkBuddy, true); err != nil {
+		t.Fatal(err)
+	}
+	waitAuthenticationState(t, svc, constants.RuntimeAuthenticationStateIdle, constants.RuntimeIDWorkBuddy)
+	if !svc.workBuddyLoginVerified(t.Context(), environment) {
+		t.Fatal("read-only capability refresh lost successful login")
+	}
 }

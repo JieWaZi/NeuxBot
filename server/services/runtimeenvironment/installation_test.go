@@ -625,3 +625,14 @@ func TestProgramMaintenanceCommitsVerifiedLaunchBeforeReprobe(t *testing.T) {
 		})
 	}
 }
+
+// TestDetectionRetainsSelectedOlderManagedVersion 验证重新探测不能把用户选择的旧版本切回当前发布版本。
+func TestDetectionRetainsSelectedOlderManagedVersion(t *testing.T) {
+	svc, fake, catalog := installationLifecycleFixture(t)
+	fake.published = installation.Result{Binary: "/managed/new", Version: "2"}
+	summary := catalog.Runtimes()[1]
+	svc.detect(t.Context(), summary, models.RuntimeEnvironment{RuntimeID: summary.ID, BaseRuntimeID: summary.BaseRuntimeID, Binary: "/managed/old", Detection: agent.DetectionResult{ResolvedBinary: "/managed/old"}})
+	if got := catalog.lastRequest(summary.ID).LaunchOverride.Binary; got != "/managed/old" {
+		t.Fatalf("selected version replaced: %s", got)
+	}
+}
