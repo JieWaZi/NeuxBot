@@ -14,7 +14,7 @@ type ownerMarker struct {
 	// Kind 区分受管目录种类，例如对话执行工作区或消息附件目录。
 	Kind string `json:"kind"`
 	// ChatID 是受管目录所属 Chat 标识。
-	ChatID string `json:"chatId"`
+	ChatID string `json:"chatId,omitempty"`
 	// ThreadID 是 thread 级共享执行工作区归属标记中的团队对话标识。
 	ThreadID string `json:"threadId,omitempty"`
 	// WakerID 保留工作区创建者伙伴标识。

@@ -15,6 +15,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/profile"
@@ -67,6 +68,7 @@ func TestWakerAPICopiesPresetAndMaintainsIndependentDocuments(t *testing.T) {
 	previousMCPConnectors := global.MCPConnectorControllerManager
 	previousTransactions := global.TransactionControllerManager
 	previousDataDirectory := global.Config.DataDirectory
+	previousManaged := global.Config.ManagedFilesDirectory
 	previousChatService := global.ChatService
 	t.Cleanup(func() {
 		global.WakerControllerManager = previousWakers
@@ -78,6 +80,7 @@ func TestWakerAPICopiesPresetAndMaintainsIndependentDocuments(t *testing.T) {
 		global.MCPConnectorControllerManager = previousMCPConnectors
 		global.TransactionControllerManager = previousTransactions
 		global.Config.DataDirectory = previousDataDirectory
+		global.Config.ManagedFilesDirectory = previousManaged
 		global.ChatService = previousChatService
 	})
 
@@ -92,13 +95,13 @@ func TestWakerAPICopiesPresetAndMaintainsIndependentDocuments(t *testing.T) {
 		dbhelper.NewGormTransactionManager(database.DB),
 	)
 	global.Config.DataDirectory = t.TempDir()
-	chatLogDirectory := filepath.Join(t.TempDir(), constants.ChatLogDirectoryName)
+	chatLogDirectory := t.TempDir()
+	global.Config.ManagedFilesDirectory = chatLogDirectory
 	createdChatService, err := chatservice.New(chatservice.Config{
 		StorageDirectory: chatLogDirectory,
 		Projects:         global.ProjectControllerManager,
 		QueryIndexes: chatservice.QueryIndexDependencies{
 			Chats:           global.ChatControllerManager,
-			RuntimeSessions: controllers.NewRuntimeSessionController(database.DB),
 			DeletionIntents: controllers.NewChatDeletionIntentController(database.DB),
 			Transactions:    global.TransactionControllerManager,
 		},
@@ -399,41 +402,39 @@ func TestWakerAPICopiesPresetAndMaintainsIndependentDocuments(t *testing.T) {
 			ConfirmationName: waker.Name,
 		},
 	}
-	privateSkill := models.SkillPackage{
+	librarySkill := models.SkillPackage{
 		ID:               util.New(),
-		Name:             "private-review",
-		Description:      "Review privately",
-		Scope:            constants.SkillScopePrivate,
+		Name:             "library-review",
+		Description:      "Library review",
 		Source:           constants.SkillSourceZip,
-		OwnerWakerID:     waker.ID,
 		CurrentVersionID: util.New(),
 	}
-	privateVersionPath := filepath.Join("skills", "versions", privateSkill.ID, "1.0.0")
-	privateVersion := models.SkillVersion{
-		ID:             privateSkill.CurrentVersionID,
-		SkillPackageID: privateSkill.ID,
+	libraryVersionPath := filepath.Join("skills", "versions", librarySkill.ID, "1.0.0")
+	libraryVersion := models.SkillVersion{
+		ID:             librarySkill.CurrentVersionID,
+		SkillPackageID: librarySkill.ID,
 		Version:        "1.0.0",
-		Name:           privateSkill.Name,
-		Description:    privateSkill.Description,
-		ContentPath:    privateVersionPath,
+		Name:           librarySkill.Name,
+		Description:    librarySkill.Description,
+		ContentPath:    libraryVersionPath,
 		ContentDigest:  "digest",
 	}
-	if err := global.SkillControllerManager.CreatePackage(ctx, privateSkill); err != nil {
-		t.Fatalf("create private skill: %v", err)
+	if err := global.SkillControllerManager.CreatePackage(ctx, librarySkill); err != nil {
+		t.Fatalf("create library skill: %v", err)
 	}
-	if err := global.SkillControllerManager.CreateVersion(ctx, privateVersion, true, privateVersion.ID); err != nil {
-		t.Fatalf("create private skill version: %v", err)
+	if err := global.SkillControllerManager.CreateVersion(ctx, libraryVersion, true, libraryVersion.ID); err != nil {
+		t.Fatalf("create library skill version: %v", err)
 	}
 	if err := global.SkillControllerManager.UpsertWakerSkill(ctx, models.WakerSkill{
-		ID: util.New(), WakerID: waker.ID, SkillPackageID: privateSkill.ID, Enabled: true,
+		ID: util.New(), WakerID: waker.ID, SkillPackageID: librarySkill.ID, Enabled: true,
 	}); err != nil {
-		t.Fatalf("enable private skill: %v", err)
+		t.Fatalf("enable library skill: %v", err)
 	}
-	privateVersionDirectory := filepath.Join(global.Config.DataDirectory, privateVersionPath)
-	if err := os.MkdirAll(privateVersionDirectory, 0o700); err != nil {
+	libraryVersionDirectory := filepath.Join(global.Config.DataDirectory, libraryVersionPath)
+	if err := os.MkdirAll(libraryVersionDirectory, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(privateVersionDirectory, "marker"), []byte("managed"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(libraryVersionDirectory, "marker"), []byte("managed"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	project := models.Project{
@@ -457,24 +458,21 @@ func TestWakerAPICopiesPresetAndMaintainsIndependentDocuments(t *testing.T) {
 	); err != nil {
 		t.Fatalf("create waker project binding: %v", err)
 	}
-	chatLog, err := eventlog.NewStore(chatLogDirectory)
-	if err != nil {
-		t.Fatalf("open chat authority: %v", err)
-	}
+	chatLog := conversationfixture.New(t, chatLogDirectory)
 	chatID := "97979797979797979797979797979797"
 	authorityExecutionID := "98989898989898989898989898989898"
 	layout, err := chatstorage.NewLayout(chatLogDirectory)
 	if err != nil {
 		t.Fatalf("create chat storage layout: %v", err)
 	}
-	workspaceDirectory, err := layout.ChatWorkspace(chatID)
+	workspaceDirectory, err := layout.AgentWorkspace(waker.ID)
 	if err != nil {
 		t.Fatalf("resolve chat workspace: %v", err)
 	}
-	if err := workspace.EnsureExecutionWorkspace(workspaceDirectory, chatID, waker.ID, nil); err != nil {
+	if err := workspace.EnsureAgentWorkspace(workspaceDirectory, waker.ID); err != nil {
 		t.Fatalf("create chat workspace: %v", err)
 	}
-	if _, err := chatLog.Create(chatID, []eventlog.AppendInput{
+	if _, err := conversationfixture.CommitFacts(t.Context(), chatLog, chatID, []eventlog.AppendInput{
 		{
 			Type: constants.ChatEventTypeCreated,
 			Data: mustMarshalWakerAPIEvent(t, eventlog.ChatCreatedData{
@@ -494,7 +492,7 @@ func TestWakerAPICopiesPresetAndMaintainsIndependentDocuments(t *testing.T) {
 	if _, err := deleteWaker.Output(ctx); !errors.Is(err, status_error.WakerHasRunningWork) {
 		t.Fatalf("delete running waker error = %v, want WakerHasRunningWork", err)
 	}
-	if _, err := chatLog.Append(chatID, []eventlog.AppendInput{{
+	if _, err := conversationfixture.CommitFacts(t.Context(), chatLog, chatID, []eventlog.AppendInput{{
 		Type:        constants.ChatEventTypeExecutionCompleted,
 		ExecutionID: authorityExecutionID,
 		Data: mustMarshalWakerAPIEvent(t, eventlog.ExecutionFinishedData{
@@ -529,11 +527,18 @@ func TestWakerAPICopiesPresetAndMaintainsIndependentDocuments(t *testing.T) {
 			remainingProjectBindings,
 		)
 	}
-	if _, err := global.SkillControllerManager.GetPackage(ctx, privateSkill.ID); err == nil {
-		t.Fatal("deleted waker private skill still exists")
+	if _, err := global.SkillControllerManager.GetPackage(ctx, librarySkill.ID); err != nil {
+		t.Fatalf("deleting partner removed library skill: %v", err)
 	}
-	if _, err := os.Stat(privateVersionDirectory); !os.IsNotExist(err) {
-		t.Fatalf("deleted waker skill directory %q still exists: %v", privateVersionDirectory, err)
+	if _, err := global.SkillControllerManager.GetVersion(ctx, libraryVersion.ID); err != nil {
+		t.Fatalf("deleting partner removed library version: %v", err)
+	}
+	if _, err := os.Stat(libraryVersionDirectory); err != nil {
+		t.Fatalf("deleting partner removed library version directory: %v", err)
+	}
+	installed, err := global.SkillControllerManager.ListInstalled(ctx, waker.ID, "")
+	if err != nil || len(installed) != 0 {
+		t.Fatalf("deleted partner retained installation: %+v %v", installed, err)
 	}
 }
 

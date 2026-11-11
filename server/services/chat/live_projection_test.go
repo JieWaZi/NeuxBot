@@ -203,7 +203,6 @@ func TestTerminalCommitCatchesUpLaggingProjection(t *testing.T) {
 	if _, err := manager.logStore.Append(chatID, []eventlog.AppendInput{
 		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: executionID, Data: marshalData(eventlog.ExecutionCreatedData{})},
 		{Type: constants.ChatEventTypeAgentCommandCommitted, ExecutionID: executionID, Data: marshalData(eventlog.AgentCommandData{CommandID: "ready", Operation: "knowledge.search"})},
-		{Type: constants.ChatEventTypeInvocationFinished, ExecutionID: executionID, Data: marshalData(eventlog.InvocationFinishedData{RecoveryStrategy: constants.InvocationRecoveryInitial, TerminationReason: constants.RuntimeTerminationReasonNormal})},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +215,7 @@ func TestTerminalCommitCatchesUpLaggingProjection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if indexed.LatestSequence != 5 || indexed.ActiveExecutionID != "" || indexed.LastEndedExecutionID != executionID || indexed.LastEndedExecutionStatus != constants.ExecutionStatusCompleted {
+	if indexed.LatestSequence != commit.records[len(commit.records)-1].Sequence || indexed.ActiveExecutionID != "" || indexed.LastEndedExecutionID != executionID || indexed.LastEndedExecutionStatus != constants.ExecutionStatusCompleted {
 		t.Fatalf("durable terminal did not repair lagging projection: %+v", indexed)
 	}
 }

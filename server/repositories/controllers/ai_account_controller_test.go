@@ -24,7 +24,7 @@ func TestAIAccountCredentialsAndRevision(t *testing.T) {
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	controller := NewAIAccountController(database.DB)
 	ctx := context.Background()
-	account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", Name: "Kimi", AuthMode: constants.AccountAuthModeAPIKey, Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://api.kimi.com/coding"}, {Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: "https://api.kimi.com/coding/v1"}}}
+	account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", Name: "Kimi", AuthMode: constants.AccountAuthModeAPIKey, Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://api.kimi.com/coding"}}
 	if err := controller.Create(ctx, account, "secret-for-test"); err != nil {
 		t.Fatal(err)
 	}
@@ -62,8 +62,8 @@ func TestAIAccountCredentialsAndRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Endpoints) != 2 {
-		t.Fatal("protocols were not retained")
+	if current.Endpoint != account.Endpoint {
+		t.Fatal("endpoint was not retained")
 	}
 	if err := controller.Update(ctx, current, "replacement"); err != nil {
 		t.Fatal(err)
@@ -95,11 +95,11 @@ func TestAIAccountNamesAreUnique(t *testing.T) {
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	controller := NewAIAccountController(database.DB)
 	ctx := context.Background()
-	first := models.AIAccount{ID: "first", Name: "OpenAI", AuthMode: constants.AccountAuthModeAPIKey}
+	first := models.AIAccount{ID: "first", RuntimeID: "codex", Name: "OpenAI", AuthMode: constants.AccountAuthModeAPIKey}
 	if err := controller.Create(ctx, first, "first-key"); err != nil {
 		t.Fatal(err)
 	}
-	second := models.AIAccount{ID: "second", Name: first.Name, AuthMode: constants.AccountAuthModeAPIKey}
+	second := models.AIAccount{ID: "second", RuntimeID: first.RuntimeID, Name: first.Name, AuthMode: constants.AccountAuthModeAPIKey}
 	if err := controller.Create(ctx, second, "second-key"); !errors.Is(err, status_error.AIAccountNameConflict) {
 		t.Fatalf("duplicate account name accepted: %v", err)
 	}
@@ -128,5 +128,114 @@ func TestAIAccountNamesAreUnique(t *testing.T) {
 	}
 	if err := controller.Update(ctx, unchanged, ""); err != nil {
 		t.Fatalf("keeping the same account name should succeed: %v", err)
+	}
+	otherRuntime := models.AIAccount{ID: "other-runtime", RuntimeID: "codex-profile", Name: first.Name, AuthMode: constants.AccountAuthModeAPIKey}
+	if err := controller.Create(ctx, otherRuntime, "profile-key"); err != nil {
+		t.Fatalf("independent runtimes cannot reuse an account name: %v", err)
+	}
+	listed, err := controller.ListForRuntime(ctx, otherRuntime.RuntimeID)
+	if err != nil || len(listed) != 1 || listed[0].ID != otherRuntime.ID || listed[0].CredentialCiphertext != "" {
+		t.Fatalf("runtime list mixed accounts or exposed credentials: %+v %v", listed, err)
+	}
+	otherRuntime, err = controller.Get(ctx, otherRuntime.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherRuntime.RuntimeID = first.RuntimeID
+	if err := controller.Update(ctx, otherRuntime, ""); !errors.Is(err, status_error.AIAccountConfigurationInvalid) {
+		t.Fatalf("account ownership can be reassigned: %v", err)
+	}
+}
+
+func TestAIAccountAuthGenerationTracksCredentialBoundaries(t *testing.T) {
+	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "accounts.db"), Migrate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, _ := database.DB.DB()
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	repo := NewAIAccountController(database.DB)
+	ctx := t.Context()
+	account := models.AIAccount{
+		ID: "0123456789abcdef0123456789abcdef", Name: "account", AuthMode: constants.AccountAuthModeAPIKey,
+		Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: constants.AIAccountOpenAIURL},
+	}
+	if err := repo.Create(ctx, account, "first"); err != nil {
+		t.Fatal(err)
+	}
+	read := func(expected uint64) models.AIAccount {
+		t.Helper()
+		actual, err := repo.Get(ctx, account.ID)
+		if err != nil || actual.AuthGeneration != expected {
+			t.Fatalf("auth generation = %d, expected %d: %v", actual.AuthGeneration, expected, err)
+		}
+		return actual
+	}
+	current := read(1)
+	current.Name = "renamed"
+	current.SelectedModels = []string{"selected"}
+	if err := repo.Update(ctx, current, ""); err != nil {
+		t.Fatal(err)
+	}
+	current = read(1)
+	if err := repo.StoreCredential(ctx, current.ID, current.Revision, "refreshed"); err != nil {
+		t.Fatal(err)
+	}
+	current = read(1)
+	if err := repo.Update(ctx, current, "replacement"); err != nil {
+		t.Fatal(err)
+	}
+	current = read(2)
+	current.Endpoint = models.AIAccountEndpoint{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: "https://different.example/v1"}
+	if err := repo.Update(ctx, current, ""); err != nil {
+		t.Fatal(err)
+	}
+	current = read(3)
+	if err := repo.ClearCredential(ctx, current.ID, current.Revision); err != nil {
+		t.Fatal(err)
+	}
+	current = read(4)
+	if current.HasCredential {
+		t.Fatal("logout left the credential marked available")
+	}
+	if secret, err := repo.Credential(ctx, current.ID); err != nil || secret != "" {
+		t.Fatal("logout left a decryptable credential")
+	}
+	if err := repo.StoreLoginCredential(ctx, current.ID, current.Revision, "new-login"); err != nil {
+		t.Fatal(err)
+	}
+	if current = read(5); !current.HasCredential {
+		t.Fatal("login did not persist the replacement")
+	}
+	if err := repo.ClearCredential(ctx, current.ID, current.Revision-1); !errors.Is(err, status_error.AIAccountRevisionConflict) {
+		t.Fatalf("stale logout accepted: %v", err)
+	}
+	read(5)
+}
+
+func TestAIAccountAuthGenerationMigratesExistingRows(t *testing.T) {
+	db, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "accounts.db"), Migrate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, _ := db.DB.DB()
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	repo := NewAIAccountController(db.DB)
+	account := models.AIAccount{ID: "old-account", Name: "Existing account", AuthMode: constants.AccountAuthModeAPIKey}
+	if err := repo.Create(t.Context(), account, "existing-key"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.DB.Exec("ALTER TABLE ai_accounts DROP COLUMN auth_generation").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.DB.AutoMigrate(&models.AIAccount{}); err != nil {
+		t.Fatal(err)
+	}
+	current, err := repo.Get(t.Context(), account.ID)
+	if err != nil || current.AuthGeneration != 1 || current.Revision != 1 || !current.HasCredential {
+		t.Fatalf("existing account did not retain its baseline: %+v %v", current, err)
+	}
+	if secret, err := repo.Credential(t.Context(), account.ID); err != nil || secret != "existing-key" {
+		t.Fatal("migration lost the encrypted credential")
 	}
 }

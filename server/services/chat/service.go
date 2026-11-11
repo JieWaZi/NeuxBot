@@ -9,6 +9,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/changes"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
@@ -73,8 +74,8 @@ type Service interface {
 	DeleteChatsAtomically(ctx context.Context, chatIDs []string, finalize func(context.Context) error) error
 	// DeleteProvisionalTeam 回滚未 ready 的 Team 聚合和可能只完成一部分的成员 Chat。
 	DeleteProvisionalTeam(ctx context.Context, threadID string, provisioningID string, chatIDs []string) error
-	// DeleteWakerChats 从权威日志枚举并删除一位伙伴的全部独立 Chat，保留团队历史快照。
-	DeleteWakerChats(ctx context.Context, wakerID string) error
+	// DeleteWakerChats 持有伙伴与 Chat 排他边界，原子删除普通 Chat 索引及 finalize 的伙伴事实。
+	DeleteWakerChats(ctx context.Context, wakerID string, prepare func([]string) (func() error, error), finalize func(context.Context) error) error
 }
 
 // Module 是组合根同时交给查询入口和 Execution Core 的完整 Chat 模块。
@@ -98,7 +99,7 @@ type service struct {
 	// deletionIntents 持久化 prepared/committed 删除提交事实。
 	deletionIntents controllers.ChatDeletionIntentController
 	// logStore 持久化每个对话的权威追加日志。
-	logStore *eventlog.Store
+	logStore chatJournalStorage
 	// eventCommitter 固化 JSONL 提交后的发布和消息位置索引顺序。
 	eventCommitter *eventCommitter
 	// projectController 解析首次发送选择的项目和冻结目录范围。
@@ -116,6 +117,8 @@ var _ Module = (*service)(nil)
 
 // Config 声明构造 Chat Service 所需的稳定外部依赖。
 type Config struct {
+	// Conversations is the shared native and public conversation authority.
+	Conversations *conversation.Store
 	// Results 保存用户阅读事实与可重放交付引用，不能在索引修复中删除。
 	Results controllers.WorkResultController
 	// StorageDirectory 是 Chat 与 Team 聚合目录共同使用的应用数据根目录。
@@ -130,8 +133,6 @@ type Config struct {
 type QueryIndexDependencies struct {
 	// Chats 持久化 Chat 主查询索引。
 	Chats controllers.ChatController
-	// RuntimeSessions 持久化 Runtime 原生会话续接查询索引。
-	RuntimeSessions controllers.RuntimeSessionController
 	// Transactions 提供跨查询索引替换的数据库事务边界。
 	Transactions controllers.TransactionController
 	// DeletionIntents 持久化文件 staging 与数据库事务之间的提交标记。
@@ -142,7 +143,6 @@ type QueryIndexDependencies struct {
 func New(config Config) (Module, error) {
 	if config.Projects == nil ||
 		config.QueryIndexes.Chats == nil ||
-		config.QueryIndexes.RuntimeSessions == nil ||
 		config.QueryIndexes.Transactions == nil ||
 		config.QueryIndexes.DeletionIntents == nil {
 		return nil, status_error.BadRequest
@@ -160,10 +160,16 @@ func newService(config Config) (*service, error) {
 	if err != nil {
 		return nil, err
 	}
-	logStore, err := eventlog.NewStore(storageDirectory)
-	if err != nil {
-		return nil, err
+	store := config.Conversations
+	if store == nil {
+		store, err = conversation.NewStore(storageDirectory)
+		if err != nil {
+			return nil, err
+		}
+	} else if store.Root() != storage.Root() {
+		return nil, status_error.ChatLogError
 	}
+	logStore := &conversationJournal{Store: store}
 	deletions, err := chatstorage.NewDeletionCoordinator(storage)
 	if err != nil {
 		return nil, err
@@ -172,7 +178,6 @@ func newService(config Config) (*service, error) {
 	subscriptions := newSubscriptionHub()
 	queryIndexes := newQueryIndexStore(
 		config.QueryIndexes.Chats,
-		config.QueryIndexes.RuntimeSessions,
 		config.QueryIndexes.Transactions,
 	)
 	queryIndexes.results = config.Results
@@ -240,6 +245,9 @@ func (m *service) Start(ctx context.Context) error {
 // Close 关闭全部进程内事件订阅。
 func (m *service) Close() {
 	m.subscriptions.closeAll()
+	if journal, ok := m.logStore.(*conversationJournal); ok {
+		journal.Store.Close()
+	}
 }
 
 func marshalData(value interface{}) json.RawMessage {

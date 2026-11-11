@@ -9,7 +9,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -84,13 +83,7 @@ func removalAuth(t *testing.T, logoutError error) *removalAuthFixture {
 func removalPlugin(t *testing.T, ctx *gin.Context, name string, fixture *removalAuthFixture) PluginDetailResponse {
 	t.Helper()
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "plugin.json"), []byte(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"`+name+`","version":"1.0.0"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(root, ".neuxally"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, ".neuxally/integration.json"), []byte(`{"authentication":{"strategy":"plugin-command","protocol":"neuxally-auth/1","command":"./auth","scopes":["read"]}}`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "plugin.json"), []byte(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"`+name+`","version":"1.0.0","extensions":{"com.neuxbot":{"schemaVersion":1,"authentication":{"strategy":"plugin-command","protocol":"neuxbot-auth/1","command":"./auth","scopes":["read"]}}}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "auth"), []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
@@ -100,7 +93,7 @@ func removalPlugin(t *testing.T, ctx *gin.Context, name string, fixture *removal
 	if err != nil {
 		t.Fatal(err)
 	}
-	detail, err := prepareCatalogFixture(t, ctx, stage, "", "", true)
+	detail, err := prepareCatalogFixture(t, ctx, stage, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +101,7 @@ func removalPlugin(t *testing.T, ctx *gin.Context, name string, fixture *removal
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture.auth, _, err = installationService().Bridge(version)
+	fixture.auth, _, err = installationService().Bridge(context.Background(), version)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,11 +293,11 @@ func TestLegacyProviderResourcesCanBeUninstalledAndDeleted(t *testing.T) {
 			if err := store.Install(ctx, models.WakerPlugin{PluginID: "legacy", VersionID: "legacy-v1", WakerID: "w1", Enabled: true}); err != nil {
 				t.Fatal(err)
 			}
-			listed, err := listPluginResources(ctx, "", "", 1, 50, false)
-			if err != nil || len(listed.Resources) != 1 || listed.Resources[0].Ready || !slices.Contains(listed.Resources[0].Blockers, status_error.PluginManifestInvalid.Key()) {
+			listed, err := listPluginResources(ctx, "", "", 1, 50)
+			if err != nil || len(listed.Resources) != 1 {
 				t.Fatalf("legacy resource cannot be inspected for removal: %+v %v", listed, err)
 			}
-			if _, err := (&GetPluginAuthorization{PluginID: "legacy"}).Output(ctx); !errors.Is(err, status_error.PluginManifestInvalid) {
+			if _, err := (&GetPluginAuthorization{PluginID: "legacy", VersionID: "legacy-v1"}).Output(ctx); !errors.Is(err, status_error.PluginPackageUnsupported) {
 				t.Fatalf("legacy auth was accepted: %v", err)
 			}
 			if _, err := (&UninstallWakerPlugin{PluginID: "legacy", WakerID: "w1"}).Output(ctx); err != nil {

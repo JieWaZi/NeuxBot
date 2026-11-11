@@ -32,6 +32,7 @@ import { saveBlob } from "@/shared/platform";
 import { CompanionPicker } from "@/shared/ui/companion-picker";
 import {
   companionAvatar,
+  isCompanionAvatar,
   randomCompanionAvatar,
 } from "@/shared/companion/appearance";
 import { Button } from "@/shared/ui/button";
@@ -46,10 +47,7 @@ const schema = z.object({
     .trim()
     .min(1, "请输入角色名称")
     .max(80, "角色名称不能超过 80 字"),
-  defaultAvatar: z
-    .string()
-    .trim()
-    .regex(/^companion:v[12]:[0-9a-f]{32}$/, "请重新生成形象"),
+  defaultAvatar: z.string().trim().refine(isCompanionAvatar, "请重新生成形象"),
   description: z
     .string()
     .trim()

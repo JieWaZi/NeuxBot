@@ -28,8 +28,6 @@ type PrepareCatalogPlugin struct {
 
 // 目录准备请求
 type PrepareCatalogPluginRequest struct {
-	// 所属伙伴
-	OwnerWakerID string `json:"ownerWakerId,omitempty"`
 	// 运行确认
 	TrustConfirmed bool `json:"trustConfirmed"`
 	// 预期归档摘要
@@ -41,7 +39,7 @@ func (*PrepareCatalogPlugin) Path() string { return "/catalog/:key/prepare" }
 
 // Output 核验目录固定归档后登记资源与版本，不建立伙伴安装关系。
 func (o *PrepareCatalogPlugin) Output(ctx *gin.Context) (interface{}, error) {
-	entry, directory, err := catalog.ResolveCurrent(global.PluginCatalogSource(), o.Key)
+	entry, directory, err := catalog.ResolveCurrent(ctx.Request.Context(), global.PluginCatalogSource(), o.Key)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
@@ -54,7 +52,7 @@ func (o *PrepareCatalogPlugin) Output(ctx *gin.Context) (interface{}, error) {
 		return nil, ginx.WithStack(err)
 	}
 	defer os.RemoveAll(filepath.Join(stagedRoot(), stage.Token))
-	resource, version, err := prepareCatalogResource(ctx, stage, o.Body.OwnerWakerID, o.Body.TrustConfirmed, entry)
+	resource, version, err := prepareCatalogResource(ctx, stage, o.Body.TrustConfirmed, entry)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
@@ -62,37 +60,85 @@ func (o *PrepareCatalogPlugin) Output(ctx *gin.Context) (interface{}, error) {
 }
 
 // prepareCatalogResource 仅接收当前目录核验的来源快照，不暴露任意导入入口。
-func prepareCatalogResource(ctx context.Context, stage packageplugin.StagedPackage, owner string, trusted bool, entry catalog.Entry) (models.Plugin, string, error) {
+func prepareCatalogResource(ctx context.Context, stage packageplugin.StagedPackage, trusted bool, entry catalog.Entry) (models.Plugin, string, error) {
 	if stage.Package.RequiresTrust() && !trusted {
 		return models.Plugin{}, "", status_error.MCPConnectorTrustRequired
 	}
-	if owner != "" {
-		if _, err := global.WakerControllerManager.Get(ctx, owner); err != nil {
+	_, err := packageplugin.ClientExtension(stage.Package)
+	if err != nil {
+		return models.Plugin{}, "", err
+	}
+	provenance := map[string]any{}
+	if data, readErr := os.ReadFile(filepath.Join(stage.Root, "provenance.json")); readErr == nil {
+		if json.Unmarshal(data, &provenance) != nil {
+			return models.Plugin{}, "", status_error.PluginContentInvalid
+		}
+	}
+	if provenance == nil {
+		return models.Plugin{}, "", status_error.PluginContentInvalid
+	}
+	provenance["sourceCommit"] = entry.SourceCommit
+	provenance["archiveSHA256"] = entry.ArchiveSHA256
+	provenance["archiveURL"] = entry.ArchiveURL
+	name := stage.Package.Presentation.DisplayName
+	if name == "" {
+		name = stage.Package.Manifest.Name
+	}
+	return persistPreparedResource(ctx, stage, trusted, models.Plugin{ID: util.New(), Name: name, Description: stage.Package.Manifest.Description, SourceKey: entry.SourceKey}, provenance)
+}
+
+// persistPreparedResource 为目录准备和本地技能封装复用不可变内容与资源提交边界。
+func persistPreparedResource(ctx context.Context, stage packageplugin.StagedPackage, trusted bool, resource models.Plugin, provenance map[string]any) (models.Plugin, string, error) {
+	if stage.Package.RequiresTrust() && !trusted {
+		return models.Plugin{}, "", status_error.MCPConnectorTrustRequired
+	}
+	if _, err := packageplugin.ClientExtension(stage.Package); err != nil {
+		return models.Plugin{}, "", err
+	}
+	root, err := packageplugin.PackageRoot(stage.Root, stage.Package)
+	if err != nil {
+		return models.Plugin{}, "", err
+	}
+	guard := func() func() {
+		if global.PluginContents != nil {
+			return global.PluginContents.Guard()
+		}
+		return func() {}
+	}
+	// 在内容边界内固定资源身份，随后在边界外生成暂存目标。
+	// 并发准备可能先提交另一身份；发布原包前复核，并按实际身份重试生成。
+	for attempt := 0; ; attempt++ {
+		release := guard()
+		existing, err := global.PluginControllerManager.FindSource(ctx, resource.SourceKey)
+		if existing.ID != "" {
+			resource = existing
+		}
+		release()
+		if err != nil {
 			return models.Plugin{}, "", err
 		}
-	}
-	extension, err := packageplugin.ClientExtension(stage.Package)
-	if err != nil {
-		return models.Plugin{}, "", err
-	}
-	source := entry.SourceKey
-	resource, err := global.PluginControllerManager.FindSource(ctx, owner, source)
-	if err != nil {
-		return models.Plugin{}, "", err
-	}
-	if resource.ID == "" {
-		name := extension.DisplayName
-		if name == "" {
-			name = stage.Package.Presentation.DisplayName
+		if err := ctx.Err(); err != nil {
+			return models.Plugin{}, "", err
 		}
-		if name == "" {
-			name = stage.Package.Manifest.Name
+		if _, err := packageplugin.PrepareTargets(ctx, filepath.Join(global.Config.DataDirectory, "plugins", "targets"), resource.ID, stage.Package, root); err != nil {
+			return models.Plugin{}, "", err
 		}
-		resource = models.Plugin{ID: util.New(), Name: name, Description: stage.Package.Manifest.Description, SourceKey: source, OwnerWakerID: owner}
-	}
-	if global.PluginContents != nil {
-		release := global.PluginContents.Guard()
+		release = guard()
+		current, err := global.PluginControllerManager.FindSource(ctx, resource.SourceKey)
+		if err != nil {
+			release()
+			return models.Plugin{}, "", err
+		}
+		if current.ID != "" && current.ID != resource.ID {
+			resource = current
+			release()
+			if attempt == 2 {
+				return models.Plugin{}, "", status_error.PluginVersionConflict
+			}
+			continue
+		}
 		defer release()
+		break
 	}
 	content, err := packageplugin.CopyContent(filepath.Join(global.Config.DataDirectory, "plugins", "content"), stage.Root, stage.Digest)
 	if err != nil {
@@ -106,24 +152,13 @@ func prepareCatalogResource(ctx context.Context, stage packageplugin.StagedPacka
 	if versionName == "" {
 		versionName = stage.Digest[:12]
 	}
-	version := models.PluginVersion{ID: util.New(), PluginID: resource.ID, Version: versionName, ContentPath: filepath.ToSlash(relative), Digest: stage.Digest, Package: stage.Package, Provenance: map[string]any{}}
+	version := models.PluginVersion{ID: util.New(), PluginID: resource.ID, Version: versionName, ContentPath: filepath.ToSlash(relative), Digest: stage.Digest, Package: stage.Package, Provenance: provenance}
 	if trusted {
 		version.TrustedAt = time.Now().UnixMilli()
 	}
-	if data, readErr := os.ReadFile(filepath.Join(stage.Root, "provenance.json")); readErr == nil {
-		if json.Unmarshal(data, &version.Provenance) != nil {
-			return models.Plugin{}, "", status_error.PluginContentInvalid
-		}
-	}
-	if version.Provenance == nil {
-		return models.Plugin{}, "", status_error.PluginContentInvalid
-	}
-	version.Provenance["sourceCommit"] = entry.SourceCommit
-	version.Provenance["archiveSHA256"] = entry.ArchiveSHA256
-	version.Provenance["archiveURL"] = entry.ArchiveURL
 	preparedVersionID := ""
 	err = global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
-		existing, err := global.PluginControllerManager.FindSource(txctx, resource.OwnerWakerID, resource.SourceKey)
+		existing, err := global.PluginControllerManager.FindSource(txctx, resource.SourceKey)
 		if err != nil {
 			return err
 		}

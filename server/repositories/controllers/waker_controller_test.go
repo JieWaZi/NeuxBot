@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -15,6 +16,58 @@ import (
 	"github.com/shrewx/ginx/pkg/statuserror"
 	"gorm.io/gorm"
 )
+
+func TestWakerControllerListByIDsKeepsRequestedProfilesAndBatchesReads(t *testing.T) {
+	db := newTestDB(t)
+	controller := NewWakerController(db)
+	ctx := context.Background()
+	profiles := make([]models.Waker, 550)
+	ids := make([]string, len(profiles))
+	for index := range profiles {
+		ids[index] = fmt.Sprintf("%032d", index+1)
+		profiles[index] = models.Waker{ID: ids[index], Name: fmt.Sprintf("成员-%d", index), RoleName: "当前角色", Bio: "当前简介", Expertise: []profile.Expertise{{Title: "当前专长"}}}
+	}
+	if err := db.CreateInBatches(profiles, 100).Error; err != nil {
+		t.Fatal(err)
+	}
+	queries := 0
+	if err := db.Callback().Query().Before("gorm:query").Register("test_waker_batch_reads", func(*gorm.DB) { queries++ }); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		// name 标识空集合、小集合与跨批查询场景。
+		name string
+		// requested 是实际允许读取的伙伴身份。
+		requested []string
+		// count 是手工确定的存在伙伴数量。
+		count int
+		// maximumQueries 限制批量查询次数，防止逐成员查询。
+		maximumQueries int
+	}{
+		{name: "empty", count: 0, maximumQueries: 0},
+		{name: "missing_and_duplicate", requested: []string{ids[1], "missing", ids[1]}, count: 1, maximumQueries: 1},
+		{name: "many", requested: ids, count: 550, maximumQueries: 3},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			queries = 0
+			items, err := controller.ListByIDs(ctx, test.requested)
+			if err != nil || len(items) != test.count || queries > test.maximumQueries {
+				t.Fatalf("读取获准伙伴 count=%d queries=%d error=%v", len(items), queries, err)
+			}
+			for _, item := range items {
+				if item.RoleName != "当前角色" || item.Bio != "当前简介" || len(item.Expertise) != 1 || item.Expertise[0].Title != "当前专长" {
+					t.Fatalf("批量读取丢失当前档案: %+v", item)
+				}
+			}
+		})
+	}
+	if err := db.Migrator().DropTable(&models.Waker{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.ListByIDs(ctx, []string{ids[0]}); !errors.Is(err, status_error.DatabaseError) {
+		t.Fatalf("数据库故障被伪装成伙伴缺失: %v", err)
+	}
+}
 
 func TestWakerControllerCRUD(t *testing.T) {
 	db := newTestDB(t)

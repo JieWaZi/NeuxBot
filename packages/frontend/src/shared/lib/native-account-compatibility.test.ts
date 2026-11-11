@@ -5,12 +5,10 @@ import { runtimeDisplayName } from "./runtime-display-name";
 it("Google 账号只显示实际支持 GenerateContent 的原生运行时", () => {
   const account = {
     authMode: "api-key" as const,
-    endpoints: [
-      {
-        baseUrl: "https://example.test/v1beta",
-        protocol: "google-generative-ai" as const,
-      },
-    ],
+    endpoint: {
+      baseUrl: "https://example.test/v1beta",
+      protocol: "google-generative-ai" as const,
+    },
   };
   expect(accountSupportsRuntime(account, "gemini")).toBe(true);
   expect(accountSupportsRuntime(account, "opencode")).toBe(true);
@@ -23,9 +21,10 @@ it("Grok 只接受已验证认证路径的 Chat 和 Responses 账号", () => {
     accountSupportsRuntime(
       {
         authMode: "api-key",
-        endpoints: [
-          { protocol: "openai-responses", baseUrl: "https://example.test/v1" },
-        ],
+        endpoint: {
+          protocol: "openai-responses",
+          baseUrl: "https://example.test/v1",
+        },
       },
       "grok",
     ),
@@ -34,12 +33,10 @@ it("Grok 只接受已验证认证路径的 Chat 和 Responses 账号", () => {
     accountSupportsRuntime(
       {
         authMode: "api-key",
-        endpoints: [
-          {
-            protocol: "openai-completions",
-            baseUrl: "https://example.test/v1",
-          },
-        ],
+        endpoint: {
+          protocol: "openai-completions",
+          baseUrl: "https://example.test/v1",
+        },
       },
       "grok",
     ),
@@ -48,12 +45,10 @@ it("Grok 只接受已验证认证路径的 Chat 和 Responses 账号", () => {
     accountSupportsRuntime(
       {
         authMode: "api-key",
-        endpoints: [
-          {
-            protocol: "anthropic-messages",
-            baseUrl: "https://example.test/v1",
-          },
-        ],
+        endpoint: {
+          protocol: "anthropic-messages",
+          baseUrl: "https://example.test/v1",
+        },
       },
       "grok",
     ),

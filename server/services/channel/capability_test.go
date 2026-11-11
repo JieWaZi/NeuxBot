@@ -505,7 +505,7 @@ func TestLeaderWorkOptionsPreserveSelectedPermission(t *testing.T) {
 		for _, level := range []constants.PermissionLevel{constants.PermissionLevelDefault, constants.PermissionLevelAuto, constants.PermissionLevelFullAccess} {
 			t.Run(runtimeID+"/"+string(level), func(t *testing.T) {
 				for _, direct := range []bool{false, true} {
-					options := leaderWorkOptions(runtimeID, "model", "default", level, execution.ToolCapability{}, agentapi.Instruction{}, direct)
+					options := leaderWorkOptions(runtimeID, "model", "default", nil, level, execution.ToolCapability{}, agentapi.Instruction{}, direct)
 					if options.PermissionLevel != level || options.WorkspaceReadOnly {
 						t.Fatalf("direct=%t selected permission=%s, actual permission=%s workspaceReadOnly=%t", direct, level, options.PermissionLevel, options.WorkspaceReadOnly)
 					}

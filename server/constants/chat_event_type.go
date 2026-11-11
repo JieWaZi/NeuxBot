@@ -39,16 +39,10 @@ const (
 	ChatEventTypeToolMessage ChatEventType = "tool.message"
 	// ChatEventTypeFileChanges 表示独立工作区采集结果及其不可变内容已经提交。
 	ChatEventTypeFileChanges ChatEventType = "workspace.changes"
-	// ChatEventTypeInvocationFinished 表示一次 Runtime Invocation 的实际事实已经持久化。
-	ChatEventTypeInvocationFinished ChatEventType = "invocation.finished"
 	// ChatEventTypeExecutionCompleted 表示一次执行已经成功结束。
 	ChatEventTypeExecutionCompleted ChatEventType = "execution.completed"
 	// ChatEventTypeExecutionFailed 表示一次执行因错误结束。
 	ChatEventTypeExecutionFailed ChatEventType = "execution.failed"
 	// ChatEventTypeExecutionCanceled 表示一次执行已经被用户或进程关闭取消。
 	ChatEventTypeExecutionCanceled ChatEventType = "execution.canceled"
-	// ChatEventTypeNativeSessionUpdated 表示原生 Runtime Session 句柄已经更新。
-	ChatEventTypeNativeSessionUpdated ChatEventType = "native_session.updated"
-	// ChatEventTypeNativeSessionCleared 表示失效的原生 Session 句柄已经清除。
-	ChatEventTypeNativeSessionCleared ChatEventType = "native_session.cleared"
 )

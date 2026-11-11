@@ -19,10 +19,20 @@ import (
 
 // AIAccountController 读写账号元数据，并只向执行侧解密凭据。
 type AIAccountController interface {
-	// StoreCredential 按版本原子保存完整凭据与最近一次原生认证文件位置。
-	StoreCredential(context.Context, string, int64, string, string) error
+	// StoreCredential 按版本保存同一身份的刷新结果。
+	StoreCredential(context.Context, string, int64, string) error
+	// StoreRefreshedCredential 以当前配置和认证代次保存同主体刷新。
+	StoreRefreshedCredential(context.Context, string, int64, uint64, string) error
+	// StoreNativeLoginCredential 按实际认证代次提交已发生的原生登录，保留并发普通配置。
+	StoreNativeLoginCredential(context.Context, string, uint64, string) error
+	// StoreLoginCredential 按版本保存新授权并递增认证代次。
+	StoreLoginCredential(context.Context, string, int64, string) error
+	// ClearCredential 按版本移除凭据并递增认证代次。
+	ClearCredential(context.Context, string, int64) error
 	// List 返回全部不含凭据的账号。
 	List(context.Context) ([]models.AIAccount, error)
+	// ListForRuntime 返回指定智能体内不含凭据的账号。
+	ListForRuntime(context.Context, string) ([]models.AIAccount, error)
 	// Get 返回账号元数据。
 	Get(context.Context, string) (models.AIAccount, error)
 	// Create 原子保存账号与加密 API Key。
@@ -53,6 +63,15 @@ func (c *aiAccountController) List(ctx context.Context) ([]models.AIAccount, err
 	return accounts, nil
 }
 
+// ListForRuntime 在数据库中按实际智能体归属过滤账号。
+func (c *aiAccountController) ListForRuntime(ctx context.Context, runtimeID string) ([]models.AIAccount, error) {
+	accounts := []models.AIAccount{}
+	if err := controllerDB(ctx, c.db).Omit("CredentialCiphertext").Where("runtime_id = ?", runtimeID).Order("created_at ASC, id ASC").Find(&accounts).Error; err != nil {
+		return nil, databaseError("list_runtime_ai_accounts", runtimeID, err)
+	}
+	return accounts, nil
+}
+
 // Get 返回账号元数据，不查询加密凭据。
 func (c *aiAccountController) Get(ctx context.Context, id string) (models.AIAccount, error) {
 	var account models.AIAccount
@@ -69,6 +88,7 @@ func (c *aiAccountController) Get(ctx context.Context, id string) (models.AIAcco
 // Create 加密凭据并保存新账号。
 func (c *aiAccountController) Create(ctx context.Context, account models.AIAccount, secret string) error {
 	account.Revision = 1
+	account.AuthGeneration = 1
 	account.HasCredential = secret != ""
 	if secret != "" {
 		encrypted, err := c.encrypt(ctx, account.ID, secret)
@@ -88,10 +108,24 @@ func (c *aiAccountController) Create(ctx context.Context, account models.AIAccou
 
 // Update 使用乐观锁保存用户配置，空 Key 保留已有凭据。
 func (c *aiAccountController) Update(ctx context.Context, account models.AIAccount, secret string) error {
-	fields := []string{"Name", "Endpoints", "ModelCatalog", "SelectedModels", "CustomModels", "ModelContextSizes", "ModelDisplayNames", "ModelReasoningLevels", "ClaudeModelRoles", "DefaultModel", "DefaultReasoning", "Revision", "UpdatedAt"}
+	fields := []string{"Name", "Endpoint", "ModelCatalog", "SelectedModels", "CustomModels", "ModelContextSizes", "ModelDisplayNames", "ModelReasoningLevels", "ClaudeModelRoles", "DefaultModel", "DefaultReasoning", "Revision", "UpdatedAt"}
 	revision := account.Revision
+	current, err := c.Get(ctx, account.ID)
+	if err != nil {
+		return err
+	}
+	if current.RuntimeID != account.RuntimeID {
+		return status_error.AIAccountConfigurationInvalid
+	}
+	if current.Revision != revision {
+		return status_error.AIAccountRevisionConflict
+	}
 	account.Revision++
 	account.UpdatedAt = time.Now().UnixMilli()
+	if secret != "" || current.Endpoint != account.Endpoint {
+		account.AuthGeneration = current.AuthGeneration + 1
+		fields = append(fields, "AuthGeneration")
+	}
 	if secret != "" {
 		encrypted, err := c.encrypt(ctx, account.ID, secret)
 		if err != nil {
@@ -202,12 +236,83 @@ func (c *aiAccountController) aead(ctx context.Context, create bool) (cipher.AEA
 }
 
 // StoreCredential 保护登录、刷新与原生凭据回收不覆盖较新的账号版本。
-func (c *aiAccountController) StoreCredential(ctx context.Context, id string, revision int64, secret, path string) error {
+func (c *aiAccountController) StoreCredential(ctx context.Context, id string, revision int64, secret string) error {
 	encrypted, err := c.encrypt(ctx, id, secret)
 	if err != nil {
 		return err
 	}
-	result := controllerDB(ctx, c.db).Model(&models.AIAccount{}).Where("id = ? AND revision = ?", id, revision).Updates(map[string]any{"credential_ciphertext": encrypted, "has_credential": true, "live_auth_path": path, "revision": revision + 1, "updated_at": time.Now().UnixMilli()})
+	return c.writeCredential(ctx, id, revision, map[string]any{
+		"credential_ciphertext": encrypted, "has_credential": true,
+	})
+}
+
+// StoreRefreshedCredential 保留用户配置的修订及修改时间。
+func (c *aiAccountController) StoreRefreshedCredential(ctx context.Context, id string, revision int64, generation uint64, secret string) error {
+	if secret == "" {
+		return status_error.AIAccountCredentialError
+	}
+	encrypted, err := c.encrypt(ctx, id, secret)
+	if err != nil {
+		return err
+	}
+	result := controllerDB(ctx, c.db).Model(&models.AIAccount{}).
+		Where("id = ? AND revision = ? AND auth_generation = ? AND has_credential = ?", id, revision, generation, true).
+		UpdateColumns(map[string]any{"credential_ciphertext": encrypted})
+	if result.Error != nil {
+		return databaseError("store_refreshed_ai_account_credential", id, result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return status_error.AIAccountRevisionConflict
+	}
+	return nil
+}
+
+// StoreLoginCredential 保存显式登录并使旧的认证代次失效。
+func (c *aiAccountController) StoreLoginCredential(ctx context.Context, id string, revision int64, secret string) error {
+	if secret == "" {
+		return status_error.AIAccountCredentialError
+	}
+	encrypted, err := c.encrypt(ctx, id, secret)
+	if err != nil {
+		return err
+	}
+	return c.writeCredential(ctx, id, revision, map[string]any{
+		"credential_ciphertext": encrypted, "has_credential": true,
+		"auth_generation": gorm.Expr("auth_generation + 1"),
+	})
+}
+
+// StoreNativeLoginCredential 以凭据代次对账原生登录，不让普通配置 CAS 丢弃已经写入原生 home 的新身份。
+func (c *aiAccountController) StoreNativeLoginCredential(ctx context.Context, id string, generation uint64, secret string) error {
+	if secret == "" {
+		return status_error.AIAccountCredentialError
+	}
+	encrypted, err := c.encrypt(ctx, id, secret)
+	if err != nil {
+		return err
+	}
+	result := controllerDB(ctx, c.db).Model(&models.AIAccount{}).Where("id = ? AND auth_generation = ?", id, generation).UpdateColumns(map[string]any{"credential_ciphertext": encrypted, "has_credential": true, "auth_generation": gorm.Expr("auth_generation + 1"), "revision": gorm.Expr("revision + 1"), "updated_at": time.Now().UnixMilli()})
+	if result.Error != nil {
+		return databaseError("store_native_login_ai_account_credential", id, result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return status_error.AIAccountRevisionConflict
+	}
+	return nil
+}
+
+// ClearCredential 清除选定账号的凭据，并使旧的认证代次失效。
+func (c *aiAccountController) ClearCredential(ctx context.Context, id string, revision int64) error {
+	return c.writeCredential(ctx, id, revision, map[string]any{
+		"credential_ciphertext": "", "has_credential": false,
+		"auth_generation": gorm.Expr("auth_generation + 1"),
+	})
+}
+
+func (c *aiAccountController) writeCredential(ctx context.Context, id string, revision int64, fields map[string]any) error {
+	fields["revision"] = revision + 1
+	fields["updated_at"] = time.Now().UnixMilli()
+	result := controllerDB(ctx, c.db).Model(&models.AIAccount{}).Where("id = ? AND revision = ?", id, revision).Updates(fields)
 	if result.Error != nil {
 		return databaseError("store_ai_account_credential", id, result.Error)
 	}

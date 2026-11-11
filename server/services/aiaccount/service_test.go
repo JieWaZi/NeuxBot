@@ -8,13 +8,14 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
-func TestAccountsAreIndependentAndOnlyFailAtExecution(t *testing.T) {
+func TestAccountsRequireRuntimeOwnershipAndKeepExecutionLeases(t *testing.T) {
 	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "accounts.db"), Migrate: true})
 	if err != nil {
 		t.Fatal(err)
@@ -22,41 +23,43 @@ func TestAccountsAreIndependentAndOnlyFailAtExecution(t *testing.T) {
 	sqlDB, _ := database.DB.DB()
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	accounts := controllers.NewAIAccountController(database.DB)
-	service := New(accounts)
+	service := New(accounts, t.TempDir())
 	service.Start(context.Background())
 	t.Cleanup(service.Close)
-	account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", Name: "Kimi Code", AuthMode: constants.AccountAuthModeAPIKey, Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://api.kimi.com/coding"}}}
+	account := models.AIAccount{ID: "0123456789abcdef0123456789abcdef", RuntimeID: constants.RuntimeIDClaude, Name: "Kimi Code", AuthMode: constants.AccountAuthModeAPIKey, SelectedModels: []string{"model"}, Endpoint: models.AIAccountEndpoint{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://api.kimi.com/coding"}}
 	ctx := context.Background()
 	if err := accounts.Create(ctx, account, "one-shared-key"); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.Validate(ctx, account.ID); err != nil {
-		t.Fatal("association should only require an existing account")
+	if err := ValidateRuntimeAccount(account, models.RuntimeEnvironment{RuntimeID: account.RuntimeID, BaseRuntimeID: constants.RuntimeIDClaude}); err != nil {
+		t.Fatal("a compatible account in the selected runtime was rejected")
 	}
-	claude, releaseClaude, err := service.PrepareQueuedLease(ctx, account.ID, constants.RuntimeIDClaude, t.TempDir(), "model")
+	if err := ValidateRuntimeAccount(account, models.RuntimeEnvironment{RuntimeID: "claude-profile", BaseRuntimeID: constants.RuntimeIDClaude}); !errors.Is(err, status_error.AIAccountConfigurationInvalid) {
+		t.Fatalf("another profile accepted the account: %v", err)
+	}
+	request := agent.AccountRequest{Provider: constants.RuntimeIDClaude, AccountID: account.ID, Model: "model", CWD: t.TempDir()}
+	resolved, err := service.ResolveAccount(ctx, request, "")
+	if err != nil || resolved.AccountID != account.ID || resolved.Subject == "" {
+		t.Fatalf("account identity was lost: %v", err)
+	}
+	claude, err := service.AcquireAccount(ctx, resolved)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if claude.CloseAfterRun {
-		t.Fatal("managed account forced the native owner to close after every turn")
-	}
-	if claude.AccountID != account.ID {
-		t.Fatal("account identity was lost")
 	}
 	if _, err := service.Exclusive(account.ID); !errors.Is(err, status_error.AIAccountBusy) {
 		t.Fatal("mutation allowed during execution")
 	}
-	closeAccountLease(t, releaseClaude)
+	closeAccountLease(t, claude.Close)
 	release, err := service.Exclusive(account.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	release()
-	if _, _, err := service.PrepareQueuedLease(ctx, account.ID, constants.RuntimeIDCursor, t.TempDir(), "model"); !errors.Is(err, status_error.AIAccountConfigurationInvalid) {
-		t.Fatal("unsupported adapter must fail at execution")
-	}
-	if _, _, err := service.PrepareQueuedLease(ctx, account.ID, constants.RuntimeIDCodex, t.TempDir(), "model"); !errors.Is(err, status_error.AIAccountConfigurationInvalid) {
-		t.Fatal("a different protocol must fail at execution")
+	for _, provider := range []string{constants.RuntimeIDCursor, constants.RuntimeIDCodex} {
+		request.Provider = provider
+		if _, err := service.ResolveAccount(ctx, request, ""); !errors.Is(err, status_error.AIAccountConfigurationInvalid) {
+			t.Fatalf("unsupported provider %s accepted the account: %v", provider, err)
+		}
 	}
 }
 

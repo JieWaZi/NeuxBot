@@ -89,6 +89,7 @@ it("已由 API 报告的错误不重复投递，旧读取恢复不能清除较�
   error.noticeId = "api:existing";
   act(() =>
     reportErrorNotice({
+      messageSource: "public",
       id: "api:existing",
       operation: "GET:pages",
       scope: "global",
@@ -102,6 +103,7 @@ it("已由 API 报告的错误不重复投递，旧读取恢复不能清除较�
   expect(notices.result.current[0]?.version).toBe(version);
   act(() =>
     reportErrorNotice({
+      messageSource: "public",
       id: "api:existing",
       operation: "GET:pages",
       scope: "global",

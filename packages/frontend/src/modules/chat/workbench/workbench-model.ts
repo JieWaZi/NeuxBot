@@ -1,5 +1,9 @@
 import { absoluteFileAddress, sessionFileAddress } from "./file-address";
 import {
+  matchesWorkspacePath,
+  workspacePathAtRoot,
+} from "../model/project-files-scope";
+import {
   adjacentWorkbenchPane,
   clampWorkbenchRatio,
   mapWorkbenchPane,
@@ -294,18 +298,6 @@ function activeWorkbenchTab(state: WorkbenchState): WorkbenchTab | undefined {
   return state.tabs.find((tab) => tab.id === activeTabId);
 }
 
-function renamedCanonicalPath(
-  tab: WorkbenchTab,
-  nextPath: string,
-): string | undefined {
-  if (!tab.canonicalPath || !tab.path) return undefined;
-  const separator = tab.canonicalPath.includes("\\") ? "\\" : "/";
-  const oldRelative = tab.path.replace(/[\\/]/g, separator);
-  if (!tab.canonicalPath.endsWith(`${separator}${oldRelative}`))
-    return undefined;
-  return `${tab.canonicalPath.slice(0, -oldRelative.length)}${nextPath.replace(/[\\/]/g, separator)}`;
-}
-
 export function reduceWorkbench(
   state: WorkbenchState,
   command: WorkbenchCommand,
@@ -417,8 +409,24 @@ export function reduceWorkbench(
         command.paneId,
       );
     case "open-browser": {
+      if (!command.newTab && command.url) {
+        const existing = state.tabs.find(
+          (tab) => tab.kind === "browser" && tab.url === command.url,
+        );
+        // 打开已有网址只切换标签，保留网页的导航与阅读状态。
+        if (existing)
+          return reduceWorkbench(
+            state,
+            { type: "focus", tabId: existing.id },
+            mint,
+          );
+      }
       const active = activeWorkbenchTab(state);
-      if (!command.newTab && active?.kind === "browser") {
+      if (
+        !command.newTab &&
+        active?.kind === "browser" &&
+        (!command.url || !active.url)
+      ) {
         return open("browser", active.contentId, active.title, {
           url: command.url ?? active.url,
           rootPath: command.rootPath ?? active.rootPath,
@@ -595,60 +603,48 @@ export function reduceWorkbench(
     case "rename-file":
       return {
         ...state,
-        tabs: state.tabs.map((tab) =>
-          tab.kind === "file" &&
-          tab.fileMode !== "diff" &&
-          ((command.oldCanonicalPath &&
-            (tab.canonicalPath === command.oldCanonicalPath ||
-              (command.directory &&
-                tab.canonicalPath?.startsWith(
-                  `${command.oldCanonicalPath}/`,
-                )))) ||
-            (tab.rootPath === command.rootPath &&
-              (tab.path === command.oldPath ||
-                (command.directory &&
-                  tab.path?.startsWith(`${command.oldPath}/`)))))
-            ? (() => {
-                const nextPath = command.directory
-                  ? `${command.newPath}${tab.path?.slice(command.oldPath.length) ?? ""}`
-                  : tab.rootPath === command.rootPath
-                    ? command.newPath
-                    : tab.path?.replace(/[^/\\]+$/, command.title);
-                const nextCanonicalPath = command.directory
-                  ? command.oldCanonicalPath && command.newCanonicalPath
-                    ? `${command.newCanonicalPath}${tab.canonicalPath?.slice(command.oldCanonicalPath.length) ?? ""}`
-                    : renamedCanonicalPath(tab, nextPath ?? command.newPath)
-                  : command.newCanonicalPath;
-                return {
-                  ...tab,
-                  path: nextPath,
-                  title: command.directory ? tab.title : command.title,
-                  canonicalPath: nextCanonicalPath,
-                  contentId: nextCanonicalPath
-                    ? absoluteFileAddress(nextCanonicalPath)
-                    : sessionFileAddress(
-                        command.rootPath,
-                        nextPath ?? command.newPath,
-                      ),
-                  navigationRevision: tab.navigationRevision + 1,
-                };
-              })()
-            : tab,
-        ),
+        tabs: state.tabs.map((tab) => {
+          const canonical =
+            tab.canonicalPath ?? workspacePathAtRoot(tab.rootPath, tab.path);
+          const oldCanonical =
+            command.oldCanonicalPath ??
+            workspacePathAtRoot(command.rootPath, command.oldPath);
+          const newCanonical =
+            command.newCanonicalPath ??
+            workspacePathAtRoot(command.rootPath, command.newPath);
+          if (
+            tab.kind !== "file" ||
+            tab.fileMode === "diff" ||
+            !canonical ||
+            !oldCanonical ||
+            !newCanonical ||
+            !matchesWorkspacePath(canonical, oldCanonical, command.directory)
+          )
+            return tab;
+          const nextCanonicalPath = `${newCanonical}${canonical.slice(oldCanonical.length)}`;
+          const rootPrefix = `${command.rootPath.replaceAll("\\", "/").replace(/\/+$/, "")}/`;
+          return {
+            ...tab,
+            rootPath: command.rootPath,
+            path: nextCanonicalPath.slice(rootPrefix.length),
+            title: command.directory ? tab.title : command.title,
+            canonicalPath: nextCanonicalPath,
+            contentId: absoluteFileAddress(nextCanonicalPath),
+            navigationRevision: tab.navigationRevision + 1,
+          };
+        }),
       };
     case "delete-file": {
       const affected = state.tabs.filter(
         (tab) =>
           tab.kind === "file" &&
           tab.fileMode !== "diff" &&
-          ((command.canonicalPath &&
-            (tab.canonicalPath === command.canonicalPath ||
-              (command.directory &&
-                tab.canonicalPath?.startsWith(`${command.canonicalPath}/`)))) ||
-            (tab.rootPath === command.rootPath &&
-              (tab.path === command.path ||
-                (command.directory &&
-                  tab.path?.startsWith(`${command.path}/`))))),
+          matchesWorkspacePath(
+            tab.canonicalPath ?? workspacePathAtRoot(tab.rootPath, tab.path),
+            command.canonicalPath ??
+              workspacePathAtRoot(command.rootPath, command.path),
+            command.directory,
+          ),
       );
       return affected.reduce(
         (current, tab) =>

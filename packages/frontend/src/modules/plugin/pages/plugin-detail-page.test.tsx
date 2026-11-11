@@ -7,68 +7,99 @@ import {
   within,
   waitFor,
 } from "@testing-library/react";
-import { MemoryRouter, Routes, Route } from "react-router-dom";
+import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { it, expect, vi, afterEach } from "vitest";
+import { it, expect, vi, afterEach, beforeAll } from "vitest";
 import { i18n } from "@/shared/i18n";
 import { PluginDetailPage } from "./plugin-detail-page";
 
 const { togglePlugin, renamePlugin, fixture } = vi.hoisted(() => ({
-  fixture: { updateAvailable: false },
+  fixture: {
+    updateAvailable: false,
+    unsupported: false,
+    readError: false,
+    hold: false,
+    request: vi.fn(),
+  },
   togglePlugin: vi.fn(),
   renamePlugin: vi.fn<(input: unknown) => Promise<{ success: boolean }>>(
     async () => ({ success: true }),
   ),
 }));
 
+vi.mock("../components/plugin-presentation", () => ({
+  PluginPresentation: () => null,
+}));
 vi.mock("@/shared/api/use-query-events", () => ({
   useQueryEvents: () => undefined,
 }));
 vi.mock("../api/plugin-queries", () => ({
+  getPluginConfigurationOptions: () => ({
+    queryKey: [{ _id: "getPluginConfiguration" }],
+    queryFn: async () => ({
+      versionId: "v1",
+      fields: [],
+      values: {},
+      configuredSecrets: [],
+      configurationRevision: 0,
+      accountGeneration: 0,
+      ready: true,
+    }),
+  }),
   cancelPluginAuthorizationMutation: () => ({ mutationFn: vi.fn() }),
   prepareCatalogPluginMutation: () => ({ mutationFn: vi.fn() }),
-  getPluginOptions: (options: { query?: { locale?: string } }) => ({
+  getPluginOptions: (options: {
+    query?: { locale?: string; wakerId?: string; versionId?: string };
+  }) => ({
     queryKey: ["test-plugin", options.query?.locale],
-    queryFn: async () => ({
-      plugin: { id: "p", name: "办公室" },
-      resolvedVersionId: "v1",
-      ready: true,
-      update: {
-        available: fixture.updateAvailable,
-        catalogKey: "office",
-        archiveSHA256: "fixed",
-      },
-      installations: [{ wakerId: "w1", versionId: "v1", enabled: true }],
-      partnerNames: { w1: "工作伙伴" },
-      versions: [
-        {
-          id: "v1",
-          version: "1.0",
-          package: {
-            manifest: {
-              name: "office",
-              version: "1.0",
-              author: { name: "作者" },
-              license: "MIT",
-            },
-            presentation: {
-              shortDescription: "整理笔记和办公资料",
-              localizedDescriptions: {
-                en: "Office tasks",
-                "zh-CN": "整理笔记和办公资料",
-              },
-              developerName: "作者",
-            },
-            upstream: { author: "作者", tag: "1.0" },
-            readme:
-              options.query?.locale === "en"
-                ? "English business guide"
-                : "按任务整理笔记，协助处理办公资料。",
-            skills: [{ key: "notes", name: "笔记" }],
-          },
+    queryFn: async () => {
+      fixture.request(options);
+      if (fixture.readError) throw new Error("详情暂不可用");
+      if (fixture.hold) await new Promise(() => undefined);
+      return {
+        plugin: { id: "p", name: "办公室" },
+        resolvedVersionId: "v1",
+        packageStatus: fixture.unsupported ? "unsupported" : "available",
+        packageErrorCode: fixture.unsupported
+          ? "PluginPackageUnsupported"
+          : undefined,
+        update: {
+          available: fixture.updateAvailable,
+          catalogKey: "office",
+          archiveSHA256: "fixed",
         },
-      ],
-    }),
+        installations: [{ wakerId: "w1", versionId: "v1", enabled: true }],
+        partnerNames: { w1: "工作伙伴" },
+        versions: [
+          {
+            id: "v1",
+            version: "1.0",
+            package: {
+              manifest: {
+                name: "office",
+                version: "1.0",
+                author: { name: "作者" },
+                license: "MIT",
+              },
+              presentation: {
+                shortDescription: "整理笔记和办公资料",
+                localizedDescriptions: {
+                  en: "Office tasks",
+                  "zh-CN": "整理笔记和办公资料",
+                },
+                developerName: "作者",
+              },
+              upstream: { author: "作者", tag: "1.0" },
+              readme:
+                options.query?.locale === "en"
+                  ? "English business guide"
+                  : "按任务整理笔记，协助处理办公资料。",
+              skills: [{ key: "notes", name: "笔记" }],
+            },
+          },
+        ],
+      };
+    },
   }),
   setWakerPluginEnabledMutation: () => ({ mutationFn: togglePlugin }),
   updatePluginMutation: () => ({ mutationFn: renamePlugin }),
@@ -88,20 +119,42 @@ vi.mock("../components/plugin-removal-dialog", () => ({
     </div>
   ),
 }));
+// 页面行为用例先准备实际正文模块，避免将开发环境模块编译时间当作读取失败。
+beforeAll(async () => {
+  await import("../components/plugin-overview");
+});
+
 afterEach(async () => {
   cleanup();
   vi.clearAllMocks();
   fixture.updateAvailable = false;
+  fixture.unsupported = false;
+  fixture.readError = false;
+  fixture.hold = false;
   await i18n.changeLanguage("zh-CN");
 });
-function open(path: string) {
+function CurrentRoute() {
+  const location = useLocation();
+  return (
+    <p data-testid="current-route">
+      {location.pathname}
+      {location.search}
+    </p>
+  );
+}
+function open(path: string, resourceBack?: string) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[path]}>
+      <MemoryRouter
+        initialEntries={[
+          resourceBack ? { pathname: path, state: { resourceBack } } : path,
+        ]}
+      >
         <Routes>
+          <Route path="resources" element={<CurrentRoute />} />
           <Route
             path="resources/plugins/:pluginId"
             element={<PluginDetailPage />}
@@ -114,6 +167,7 @@ function open(path: string) {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return client;
 }
 
 it.each(["/resources/plugins/p", "/wakers/w1/plugins/p"])(
@@ -131,7 +185,7 @@ it.each(["/resources/plugins/p", "/wakers/w1/plugins/p"])(
   },
 );
 
-it("shows partner plugin information and keeps enable controls in the page header", async () => {
+it("keeps partner enable controls in the header and uninstall in the final section", async () => {
   open("/wakers/w1/plugins/p?tab=configuration");
   await screen.findByRole("heading", { name: "办公室" });
   expect(
@@ -161,14 +215,27 @@ it("shows partner plugin information and keeps enable controls in the page heade
   });
   expect(screen.getByRole("button", { name: "查看技能 笔记" })).toBeVisible();
   const uninstall = screen.getByRole("button", { name: "从伙伴卸载" });
-  expect(uninstall).toHaveClass("text-destructive");
-  expect(uninstall).not.toHaveTextContent("从伙伴卸载");
+  expect(uninstall).toHaveTextContent("从伙伴卸载");
+  expect(header).not.toContainElement(uninstall);
+  expect(uninstall.closest("section")).toContainElement(
+    screen.getByRole("heading", { name: "危险操作" }),
+  );
+  expect(
+    screen.queryByRole("button", { name: "编辑插件" }),
+  ).not.toBeInTheDocument();
   fireEvent.click(uninstall);
   expect(screen.getByRole("dialog")).toHaveTextContent("installation:w1");
 });
 it("global detail keeps its reading layout and opens shared settings from the edit action", async () => {
   open("/resources/plugins/p?tab=configuration");
   await screen.findByRole("heading", { name: "办公室" });
+  expect(screen.getByRole("link", { name: "插件" })).toHaveAttribute(
+    "href",
+    "/resources",
+  );
+  expect(
+    screen.queryByRole("link", { name: "资源库" }),
+  ).not.toBeInTheDocument();
   expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
   const summary = screen.getByText("整理笔记和办公资料");
   expect(summary).toHaveClass("truncate");
@@ -176,11 +243,16 @@ it("global detail keeps its reading layout and opens shared settings from the ed
   expect(
     screen.queryByRole("textbox", { name: "展示名称" }),
   ).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "编辑插件" }));
+  const edit = await screen.findByRole("button", { name: "编辑插件" });
+  expect(
+    screen.getByRole("heading", { name: "办公室" }).closest("header"),
+  ).toContainElement(edit);
+  expect(screen.queryByRole("heading", { name: "展示名称" })).toBeNull();
+  fireEvent.click(edit);
   const dialog = await screen.findByRole("dialog", { name: "编辑 办公室" });
-  expect(within(dialog).getByRole("textbox", { name: "展示名称" })).toHaveValue(
-    "办公室",
-  );
+  expect(
+    await within(dialog).findByRole("textbox", { name: "展示名称" }),
+  ).toHaveValue("办公室");
   expect(within(dialog).getByRole("button", { name: "保存" })).toBeDisabled();
   expect(
     within(dialog).queryByRole("button", { name: "保存名称" }),
@@ -225,5 +297,103 @@ it.each(["/resources/plugins/p", "/wakers/w1/plugins/p"])(
     ).toBeVisible();
     expect(screen.getByText("将更新全部 1 个伙伴")).toBeVisible();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  },
+);
+
+it("mounts the detail shell and back action while its content is still loading", () => {
+  fixture.hold = true;
+  open("/resources/plugins/p");
+  expect(screen.getByRole("heading", { name: "插件" })).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: "返回资源库" }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveAttribute("aria-busy", "true");
+  expect(
+    screen.queryByRole("button", { name: "删除资源" }),
+  ).not.toBeInTheDocument();
+});
+
+it("keeps installed content visible after a failed background read and retries in place", async () => {
+  const client = open("/resources/plugins/p");
+  await screen.findByRole("heading", { name: "办公室" });
+  fixture.readError = true;
+  await act(() => client.invalidateQueries());
+  expect(await screen.findByRole("alert")).toBeVisible();
+  expect(screen.getByText("按任务整理笔记，协助处理办公资料。")).toBeVisible();
+  fixture.readError = false;
+  fireEvent.click(screen.getByRole("button", { name: "重试" }));
+  await waitFor(() =>
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
+  );
+});
+
+it("reads partner scope without accepting a global version override", async () => {
+  open("/wakers/w1/plugins/p?version=other-version");
+  await screen.findByRole("heading", { name: "办公室" });
+  expect(fixture.request).toHaveBeenCalledWith(
+    expect.objectContaining({
+      query: expect.objectContaining({ wakerId: "w1", versionId: undefined }),
+    }),
+  );
+  expect(
+    screen.queryByRole("heading", { name: "管理" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "删除资源" }),
+  ).not.toBeInTheDocument();
+});
+
+it.each([undefined, "/resources?query=office"])(
+  "returns to the unified resource list preserving the supplied search: %s",
+  async (resourceBack) => {
+    open("/resources/plugins/p", resourceBack);
+    await screen.findByRole("heading", { name: "办公室" });
+    fireEvent.click(screen.getByRole("button", { name: "返回资源库" }));
+    expect(screen.getByTestId("current-route")).toHaveTextContent(
+      resourceBack ?? "/resources",
+    );
+  },
+);
+
+it("opens global deletion from the final section with the original resource scope", async () => {
+  open("/resources/plugins/p");
+  await screen.findByRole("heading", { name: "办公室" });
+  const remove = screen.getByRole("button", { name: "删除资源" });
+  expect(screen.getAllByRole("heading", { level: 2 }).at(-1)).toHaveTextContent(
+    "危险操作",
+  );
+  fireEvent.click(remove);
+  expect(screen.getByRole("dialog")).toHaveTextContent("resource:");
+});
+
+it.each(["/resources/plugins/p", "/wakers/w1/plugins/p"])(
+  "%s exposes an unsupported snapshot as unavailable while preserving removal",
+  async (path) => {
+    fixture.unsupported = true;
+    fixture.updateAvailable = true;
+    open(path);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "当前插件包不受支持，请从插件目录重新安装。",
+    );
+    expect(screen.getByText("不可用")).toBeVisible();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: /安装到伙伴|可更新|编辑插件|查看技能|查看连接器/,
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "插件信息" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("按任务整理笔记，协助处理办公资料。"),
+    ).not.toBeInTheDocument();
+    const remove = screen.getByRole("button", {
+      name: path.startsWith("/resources") ? "删除资源" : "从伙伴卸载",
+    });
+    fireEvent.click(remove);
+    expect(screen.getByRole("dialog")).toHaveTextContent(
+      path.startsWith("/resources") ? "resource:" : "installation:w1",
+    );
   },
 );

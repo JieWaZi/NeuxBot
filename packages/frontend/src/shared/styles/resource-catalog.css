@@ -1,0 +1,114 @@
+/* 资源文档预览、试用卡与引用标签的共享样式。 */
+.catalog-try-card {
+  position: relative;
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  min-height: 160px;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: 20px;
+  padding: 24px;
+}
+.catalog-try-gradient,
+.catalog-try-gradient canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: inherit;
+  clip-path: inset(0 round 20px);
+}
+.catalog-try-card > :not(.catalog-try-gradient) {
+  position: relative;
+}
+.catalog-try-request {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(100%, 560px);
+  min-width: 0;
+  border-radius: 14px;
+  background: var(--resource-canvas);
+  padding: 12px;
+  color: var(--resource-secondary);
+  font-size: 14px;
+  line-height: 24px;
+}
+.catalog-try-request p {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.catalog-try-chip {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: top;
+  gap: 4px;
+  height: 24px;
+  max-width: 100%;
+  margin-inline-end: 2px;
+  padding: 4px 6px 4px 4px;
+  border-radius: 6px;
+  color: color-mix(
+    in srgb,
+    var(--resource-accent-text),
+    var(--resource-content) 35%
+  );
+  background: color-mix(in srgb, var(--resource-accent-text) 18%, transparent);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+.catalog-try-chip-icon {
+  display: inline-grid;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 4px;
+}
+.catalog-try-chip-icon > span,
+.catalog-try-chip-icon img,
+.catalog-try-chip-icon svg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.catalog-try-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.catalog-try-request .catalog-try-arrow {
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--resource-border, var(--shell-border-edge));
+}
+
+/* Marketplace 的 SKILL.md 与 message-content 标题阶梯，独立于普通 Markdown。 */
+.catalog-document {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.catalog-document :is(h1, h2, h3, h4, h5, h6) {
+  color: inherit;
+  font-weight: 600;
+}
+.catalog-document h1 {
+  font-size: 20px;
+  line-height: 24px;
+}
+.catalog-document h2 {
+  font-size: 16px;
+  line-height: 22px;
+}
+.catalog-document :is(h3, h4, h5, h6) {
+  font-size: 14px;
+  line-height: 20px;
+}

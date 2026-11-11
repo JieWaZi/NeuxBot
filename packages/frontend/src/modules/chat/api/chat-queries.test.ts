@@ -154,13 +154,12 @@ describe("chat query cursors", () => {
     queryClient.clear();
   });
 
-  it("缺口批次不提交部分消息和游标，transient 也不写入持久缓存", () => {
+  it("稀疏持久游标合并完整消息，无效批次和 transient 不推进缓存", () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(chatMessagesKey("gap"), {
       pages: [{ resources: [], latestSequence: 4, hasMore: false }],
       pageParams: [undefined],
     });
-    const before = queryClient.getQueryData(chatMessagesKey("gap"));
     expect(
       mergeChatHistoryEvents(queryClient, "gap", [
         {
@@ -174,6 +173,18 @@ describe("chat query cursors", () => {
           message: { id: "assistant", role: "assistant", status: "completed" },
         },
       ]),
+    ).toBe(7);
+    const before = queryClient.getQueryData(chatMessagesKey("gap"));
+    expect(before).toMatchObject({
+      pages: [
+        { latestSequence: 7, resources: [{ id: "new" }, { id: "assistant" }] },
+      ],
+    });
+    expect(
+      mergeChatHistoryEvents(queryClient, "gap", [
+        { sequence: 9, message: { id: "not-committed", role: "user" } },
+        { sequence: Number.NaN },
+      ]),
     ).toBeUndefined();
     expect(queryClient.getQueryData(chatMessagesKey("gap"))).toBe(before);
     expect(
@@ -184,7 +195,7 @@ describe("chat query cursors", () => {
           message: { id: "live", role: "assistant" },
         },
       ]),
-    ).toBe(4);
+    ).toBe(7);
     expect(queryClient.getQueryData(chatMessagesKey("gap"))).toBe(before);
     expect(
       mergeChatHistoryEvents(queryClient, "unknown", [{ sequence: 1 }]),

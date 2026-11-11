@@ -9,6 +9,18 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
+        "settings-outline":
+          "border border-resource-border bg-resource-raised text-resource-secondary hover:bg-resource-hover hover:text-resource-content active:bg-resource-active",
+        "catalog-outline":
+          "border border-resource-border bg-resource-control text-resource-secondary hover:bg-resource-hover hover:text-resource-content active:bg-resource-active",
+        "catalog-danger":
+          "text-destructive hover:text-destructive hover:bg-destructive/8 active:bg-destructive/12",
+        "catalog-primary":
+          "bg-resource-primary text-resource-on-primary hover:opacity-90 active:opacity-80",
+        "catalog-secondary":
+          "bg-resource-hover text-resource-content hover:bg-resource-active active:bg-resource-active",
+        "catalog-ghost":
+          "text-resource-muted hover:bg-resource-hover hover:text-resource-content active:bg-resource-active",
         primary:
           "bg-button-primary text-primary-foreground hover:bg-button-primary-hover active:bg-button-primary-pressed",
         secondary:
@@ -36,6 +48,16 @@ export const buttonVariants = cva(
           "bg-accent-surface text-accent-content hover:bg-accent-surface-strong active:bg-accent-border",
       },
       size: {
+        settings:
+          "h-button-md gap-1.5 px-3 type-label [&_svg:not([data-companion-avatar])]:size-icon-sm",
+        "catalog-icon-lg":
+          "catalog-focus size-control-catalog-lg rounded-xl p-0 disabled:opacity-42 [&_svg:not([data-companion-avatar])]:size-icon-md",
+        catalog:
+          "catalog-focus h-control-catalog gap-1.5 rounded-control px-3 type-resource-button disabled:opacity-42 [&_svg:not([data-companion-avatar])]:size-icon-md",
+        "catalog-form":
+          "catalog-focus h-control-catalog gap-1.5 rounded-control px-3 type-label disabled:opacity-42 [&_svg:not([data-companion-avatar])]:size-icon-md",
+        "catalog-icon":
+          "catalog-focus size-control-catalog rounded-control p-0 disabled:opacity-42 [&_svg:not([data-companion-avatar])]:size-icon-md",
         option:
           "min-h-control-sm w-full items-start justify-start gap-2 px-2 py-1.5 type-body [&_svg:not([data-companion-avatar])]:size-icon-md",
         row: "min-h-row-compact w-full items-center justify-start gap-3 px-0 py-1.5 type-body [&_svg:not([data-companion-avatar])]:size-icon-md",
@@ -45,6 +67,8 @@ export const buttonVariants = cva(
         "icon-sm":
           "size-control-sm rounded-sm p-0 [&_svg:not([data-companion-avatar])]:size-icon-sm",
         icon: "size-control-md rounded-sm p-0 [&_svg:not([data-companion-avatar]):not([data-decoration])]:size-icon-md",
+        "module-rail":
+          "size-control-md rounded-sm p-0 [&_svg:not([data-companion-avatar])]:size-icon-lg",
         dock: "size-dock-button rounded-full p-0 [&_svg:not([data-companion-avatar])]:size-icon-md",
         "icon-lg":
           "size-control-lg rounded-sm p-0 [&_svg:not([data-companion-avatar])]:size-icon-lg",
@@ -78,12 +102,16 @@ export const buttonVariants = cva(
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean;
+    /** 提交中保留键盘焦点，同时阻断重复激活。 */
+    loading?: boolean;
   };
 
 export function Button({
   asChild = false,
   attached,
   className,
+  loading = false,
+  onClickCapture,
   shape,
   size,
   variant,
@@ -92,11 +120,23 @@ export function Button({
   const Component = asChild ? Slot : "button";
   return (
     <Component
+      {...props}
+      aria-busy={loading || props["aria-busy"] || undefined}
+      aria-disabled={loading || props["aria-disabled"] || undefined}
+      data-loading={loading || undefined}
       className={cn(
         buttonVariants({ attached, shape, size, variant }),
+        loading && "cursor-wait opacity-42",
         className,
       )}
-      {...props}
+      onClickCapture={(event) => {
+        if (loading) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        onClickCapture?.(event);
+      }}
     />
   );
 }

@@ -18,32 +18,31 @@ const {
   deleteWorkspaceResource,
   renameWorkspaceDirectory,
   deleteWorkspaceDirectory,
-  importWorkspaceResources,
   importDroppedWorkspaceFiles,
   saveWorkspaceResourceAs,
   observeWorkspaceResource,
 } = vi.hoisted(() => ({
   listWorkspaceDirectory: vi.fn(async (_root: string, relativePath = "") =>
-    relativePath === "projects"
+    relativePath === ""
       ? [
           {
             name: "share",
-            relativePath: "projects/share",
+            relativePath: "share",
             isDirectory: true,
           },
         ]
-      : relativePath === "projects/share"
+      : relativePath === "share"
         ? [
             {
               name: "src",
-              relativePath: "projects/share/src",
+              relativePath: "share/src",
               isDirectory: true,
             },
           ]
         : [
             {
               name: "main.ts",
-              relativePath: "projects/share/src/main.ts",
+              relativePath: "share/src/main.ts",
               isDirectory: false,
               size: 24,
             },
@@ -55,8 +54,8 @@ const {
       return [
         {
           name: "main.ts",
-          relativePath: "projects/share/src/main.ts",
-          path: "/tmp/projects/share/src/main.ts",
+          relativePath: "share/src/main.ts",
+          path: "/tmp/share/src/main.ts",
         },
       ];
     },
@@ -102,9 +101,8 @@ const {
     mediaType: "text/markdown",
   })),
   deleteWorkspaceResource: vi.fn(async () => true),
-  renameWorkspaceDirectory: vi.fn(async () => "projects/新资料"),
+  renameWorkspaceDirectory: vi.fn(async () => "新资料"),
   deleteWorkspaceDirectory: vi.fn(async () => true),
-  importWorkspaceResources: vi.fn(async () => ({ imported: [], failed: [] })),
   importDroppedWorkspaceFiles: vi.fn(async () => ({
     imported: [],
     failed: [],
@@ -142,14 +140,13 @@ vi.mock("@/shared/platform", () => ({
   deleteWorkspaceResource,
   renameWorkspaceDirectory,
   deleteWorkspaceDirectory,
-  importWorkspaceResources,
   importDroppedWorkspaceFiles,
   saveWorkspaceResourceAs,
   observeWorkspaceResource,
 }));
 
 describe("WorkspaceFileBrowser", () => {
-  it("默认展开项目文件夹，只继续懒加载更深目录并保留完整逻辑路径", async () => {
+  it("从真实根目录懒加载文件夹并保留相对路径", async () => {
     const user = userEvent.setup();
     const onOpenFile = vi.fn();
     const queryClient = new QueryClient({
@@ -161,7 +158,7 @@ describe("WorkspaceFileBrowser", () => {
           onOpenFile={onOpenFile}
           query=""
           rootPath="/tmp/ally"
-          scopePath="projects"
+          scopePath=""
         />
       </QueryClientProvider>,
     );
@@ -169,16 +166,17 @@ describe("WorkspaceFileBrowser", () => {
     expect(
       await screen.findByRole("button", { name: "share" }),
     ).toBeInTheDocument();
-    expect(screen.queryByText("attachments")).not.toBeInTheDocument();
     expect(
-      screen.queryByText("projects", { selector: "button" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "share" }).querySelector("img"),
+    ).toBeNull();
+    expect(screen.queryByText("attachments")).not.toBeInTheDocument();
 
     expect(
       (await screen.findByRole("button", { name: "share" })).closest(
         '[role="treeitem"]',
       ),
-    ).toHaveAttribute("aria-expanded", "true");
+    ).toHaveAttribute("aria-expanded", "false");
+    await user.click(await screen.findByRole("button", { name: "share" }));
     expect(
       (await screen.findByRole("button", { name: "src" })).closest(
         '[role="treeitem"]',
@@ -186,33 +184,29 @@ describe("WorkspaceFileBrowser", () => {
     ).toHaveAttribute("aria-expanded", "false");
     expect(listWorkspaceDirectory).not.toHaveBeenCalledWith(
       "/tmp/ally",
-      "projects/share/src",
+      "share/src",
     );
     await user.click(await screen.findByRole("button", { name: "src" }));
     await user.click(await screen.findByRole("treeitem", { name: "main.ts" }));
 
-    expect(listWorkspaceDirectory).toHaveBeenNthCalledWith(
-      1,
-      "/tmp/ally",
-      "projects",
-    );
+    expect(listWorkspaceDirectory).toHaveBeenNthCalledWith(1, "/tmp/ally", "");
     expect(listWorkspaceDirectory).toHaveBeenNthCalledWith(
       2,
       "/tmp/ally",
-      "projects/share",
+      "share",
     );
     expect(listWorkspaceDirectory).toHaveBeenNthCalledWith(
       3,
       "/tmp/ally",
-      "projects/share/src",
+      "share/src",
     );
     expect(onOpenFile).toHaveBeenCalledWith({
       name: "main.ts",
-      path: "projects/share/src/main.ts",
+      path: "share/src/main.ts",
     });
   });
 
-  it("搜索时将范围限制在 projects", async () => {
+  it("搜索限定在当前真实根目录", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -222,7 +216,7 @@ describe("WorkspaceFileBrowser", () => {
           onOpenFile={vi.fn()}
           query="main"
           rootPath="/tmp/ally"
-          scopePath="projects"
+          scopePath=""
         />
       </QueryClientProvider>,
     );
@@ -232,7 +226,7 @@ describe("WorkspaceFileBrowser", () => {
         "/tmp/ally",
         "main",
         200,
-        "projects",
+        "",
       ),
     );
     expect(
@@ -244,8 +238,8 @@ describe("WorkspaceFileBrowser", () => {
     searchWorkspaceResourceFiles.mockResolvedValueOnce([
       {
         name: "main.ts",
-        relativePath: "projects/share/src/main.ts",
-        path: "/tmp/projects/share/src/main.ts",
+        relativePath: "share/src/main.ts",
+        path: "/tmp/share/src/main.ts",
       },
     ]);
     render(
@@ -255,7 +249,7 @@ describe("WorkspaceFileBrowser", () => {
           query="main"
           rootPath="/tmp/ally"
           scopeChatId="chat-id"
-          scopePath="projects"
+          scopePath=""
         />
       </QueryClientProvider>,
     );
@@ -269,7 +263,7 @@ describe("WorkspaceFileBrowser", () => {
       JSON.stringify({
         chatId: "chat-id",
         rootPath: "/tmp/ally",
-        path: "projects/share/src/main.ts",
+        path: "share/src/main.ts",
       }),
     );
   });
@@ -285,14 +279,14 @@ describe("WorkspaceFileBrowser", () => {
           query=""
           rootPath="/tmp/ally"
           scopeChatId="chat-id"
-          scopePath="projects"
+          scopePath=""
         />
       </QueryClientProvider>,
     );
     await waitFor(() =>
       expect(listWorkspaceResourceDirectory).toHaveBeenCalledWith(
         "chat-id",
-        "projects",
+        "",
         "/tmp/ally",
       ),
     );
@@ -313,7 +307,7 @@ describe("WorkspaceFileBrowser", () => {
           query="source"
           rootPath="/tmp/ally"
           scopeChatId="chat-id"
-          scopePath="projects"
+          scopePath=""
         />
       </QueryClientProvider>,
     );
@@ -322,7 +316,7 @@ describe("WorkspaceFileBrowser", () => {
         "chat-id",
         "source",
         200,
-        "projects",
+        "",
         "/tmp/ally",
       ),
     );
@@ -432,7 +426,7 @@ describe("WorkspaceFileBrowser", () => {
     listWorkspaceResourceDirectory.mockResolvedValueOnce([
       {
         name: "资料",
-        relativePath: "projects/资料",
+        relativePath: "资料",
         isDirectory: true,
       },
     ]);
@@ -445,7 +439,7 @@ describe("WorkspaceFileBrowser", () => {
           query=""
           rootPath="/tmp/ally"
           scopeChatId="chat-id"
-          scopePath="projects"
+          scopePath=""
         />
       </QueryClientProvider>,
     );
@@ -461,8 +455,8 @@ describe("WorkspaceFileBrowser", () => {
     await user.click(screen.getByRole("button", { name: "重命名目录" }));
     await waitFor(() =>
       expect(onPathRenamed).toHaveBeenCalledWith(
-        "projects/资料",
-        "projects/新资料",
+        "资料",
+        "新资料",
         "新资料",
         undefined,
         true,
@@ -471,7 +465,7 @@ describe("WorkspaceFileBrowser", () => {
     );
     expect(renameWorkspaceDirectory).toHaveBeenCalledWith(
       "chat-id",
-      "projects/资料",
+      "资料",
       "新资料",
       "/tmp/ally",
     );
@@ -482,7 +476,7 @@ describe("WorkspaceFileBrowser", () => {
     listWorkspaceResourceDirectory.mockResolvedValueOnce([
       {
         name: "资料",
-        relativePath: "projects/资料",
+        relativePath: "资料",
         isDirectory: true,
       },
     ]);
@@ -497,7 +491,7 @@ describe("WorkspaceFileBrowser", () => {
           query=""
           rootPath="/tmp/ally"
           scopeChatId="chat-id"
-          scopePath="projects"
+          scopePath=""
         />
       </QueryClientProvider>,
     );
@@ -505,11 +499,7 @@ describe("WorkspaceFileBrowser", () => {
       await screen.findByRole("button", { name: "资料 的目录操作" }),
     );
     await user.click(screen.getByRole("menuitem", { name: "删除目录" }));
-    expect(isPathDirty).toHaveBeenCalledWith(
-      "projects/资料",
-      undefined,
-      "/tmp/ally",
-    );
+    expect(isPathDirty).toHaveBeenCalledWith("资料", undefined, "/tmp/ally");
     expect(deleteWorkspaceDirectory).not.toHaveBeenCalled();
     isPathDirty.mockReturnValue(false);
     await user.click(screen.getByRole("button", { name: "资料 的目录操作" }));
@@ -518,7 +508,7 @@ describe("WorkspaceFileBrowser", () => {
     await user.click(await screen.findByRole("button", { name: "确认删除" }));
     await waitFor(() =>
       expect(onPathDeleted).toHaveBeenCalledWith(
-        "projects/资料",
+        "资料",
         undefined,
         true,
         "/tmp/ally",
@@ -526,17 +516,16 @@ describe("WorkspaceFileBrowser", () => {
     );
     expect(deleteWorkspaceDirectory).toHaveBeenCalledWith(
       "chat-id",
-      "projects/资料",
+      "资料",
       "/tmp/ally",
     );
   });
 
-  it("目录导入使用受限文件选择器和当前目录路径", async () => {
-    const user = userEvent.setup();
+  it("目录行不再展示上传箭头，保留目录操作菜单", async () => {
     listWorkspaceResourceDirectory.mockResolvedValueOnce([
       {
         name: "资料 #1",
-        relativePath: "projects/资料 #1",
+        relativePath: "资料 #1",
         isDirectory: true,
       },
     ]);
@@ -547,27 +536,24 @@ describe("WorkspaceFileBrowser", () => {
           query=""
           rootPath="/tmp/ally"
           scopeChatId="chat-id"
-          scopePath="projects"
+          scopePath=""
         />
       </QueryClientProvider>,
     );
-    await user.click(
-      await screen.findByRole("button", {
-        name: "导入文件到“资料 #1”",
-      }),
-    );
-    expect(importWorkspaceResources).toHaveBeenCalledWith(
-      "chat-id",
-      "projects/资料 #1",
-      "/tmp/ally",
-    );
+    await screen.findByRole("button", { name: "资料 #1" });
+    expect(
+      screen.queryByRole("button", { name: "导入文件到“资料 #1”" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "资料 #1 的目录操作" }),
+    ).toBeInTheDocument();
   });
 
   it("拖入目录时将浏览器 File 送到该目录的 Chat 范围", async () => {
     listWorkspaceResourceDirectory.mockResolvedValueOnce([
       {
         name: "资料 #1",
-        relativePath: "projects/资料 #1",
+        relativePath: "资料 #1",
         isDirectory: true,
       },
     ]);
@@ -578,7 +564,7 @@ describe("WorkspaceFileBrowser", () => {
           query=""
           rootPath="/tmp/ally"
           scopeChatId="chat-id"
-          scopePath="projects"
+          scopePath=""
         />
       </QueryClientProvider>,
     );
@@ -593,7 +579,7 @@ describe("WorkspaceFileBrowser", () => {
     await waitFor(() =>
       expect(importDroppedWorkspaceFiles).toHaveBeenCalledWith(
         "chat-id",
-        "projects/资料 #1",
+        "资料 #1",
         [file],
         "/tmp/ally",
       ),

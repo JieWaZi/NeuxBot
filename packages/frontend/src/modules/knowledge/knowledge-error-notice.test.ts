@@ -25,6 +25,7 @@ it("预检错误进入全局通知，已由 API 报告和取消的错误不重�
   reported.noticeId = "api:reported";
   act(() => {
     reportErrorNotice({
+      messageSource: "public",
       id: reported.noticeId ?? "",
       scope: "global",
       message: reported.message,

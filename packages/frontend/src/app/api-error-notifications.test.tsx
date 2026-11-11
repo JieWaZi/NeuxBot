@@ -11,11 +11,15 @@ const { error, dismissErrorNotice, dismissToast, notices } = vi.hoisted(() => ({
     current: [{ id: "api-error", scope: "global", message: "保存失败" }],
   },
 }));
+vi.mock("@/shared/api/global-events", () => ({
+  subscribeGlobalEvents: () => () => {},
+}));
 vi.mock("@/shared/ui/sonner", () => ({
   toast: { error, dismiss: dismissToast },
 }));
 vi.mock("@/shared/api/error-notices", () => ({
   dismissErrorNotice,
+  reportErrorNotice: vi.fn(),
   useErrorNotices: () => notices.current,
 }));
 

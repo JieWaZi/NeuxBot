@@ -5,4 +5,5 @@ export default createFrontendViteConfig({
   root: fileURLToPath(new URL(".", import.meta.url)),
   port: 1420,
   base: "./",
+  host: "native",
 });

@@ -16,13 +16,13 @@ func TestEmitNativeAcceptance(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := filepath.Join(root, "source")
-	fixtureFile(t, source, ".codex-plugin/plugin.json", `{"name":"acceptance","version":"1.0.0","description":"Production derived package"}`)
+	standardInput(t, source, map[string]any{"name": "acceptance", "version": "1.0.0", "description": "Production standard package"})
 	fixtureFile(t, source, "skills/native-probe/SKILL.md", "---\nname: native-probe\ndescription: Verify native session loading.\n---\nProbe")
 	pkg, err := Load(source)
 	if err != nil {
 		t.Fatal(err)
 	}
-	native, err := PrepareNativeTarget(filepath.Join(root, "derived"), "plugin-acceptance", pkg, source, "codex")
+	native, err := PrepareNativeTarget(t.Context(), filepath.Join(root, "derived"), "plugin-acceptance", pkg, source, "codex")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestEmitNativeAcceptance(t *testing.T) {
 	if err := PrepareCodexWorkspace(workspace, []NativeTarget{native}); err != nil {
 		t.Fatal(err)
 	}
-	claude, err := PrepareNativeTarget(filepath.Join(root, "derived"), "plugin-acceptance", pkg, source, "claude")
+	claude, err := PrepareNativeTarget(t.Context(), filepath.Join(root, "derived"), "plugin-acceptance", pkg, source, "claude")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,9 +42,9 @@ func TestEmitNativeAcceptance(t *testing.T) {
 	t.Log(string(bytes))
 }
 
-func TestPrepareNativeTargetWithDigestDoesNotReReadVerifiedRoot(t *testing.T) {
+func TestPrepareNativeTargetWithDigestRejectsUnavailableVerifiedRoot(t *testing.T) {
 	root := t.TempDir()
-	fixtureFile(t, root, ".codex-plugin/plugin.json", `{"name":"verified","version":"1.0.0"}`)
+	standardInput(t, root, map[string]any{"name": "verified", "version": "1.0.0"})
 	pkg, err := Load(root)
 	if err != nil {
 		t.Fatal(err)
@@ -56,11 +56,7 @@ func TestPrepareNativeTargetWithDigestDoesNotReReadVerifiedRoot(t *testing.T) {
 	if err := os.RemoveAll(root); err != nil {
 		t.Fatal(err)
 	}
-	native, err := PrepareNativeTargetWithDigest(t.TempDir(), "verified", pkg, root, "codex", digest)
-	if err != nil {
-		t.Fatalf("verified digest should avoid a second root scan: %v", err)
-	}
-	if native.Digest != digest {
-		t.Fatalf("native digest = %q, want %q", native.Digest, digest)
+	if _, err := PrepareNativeTargetWithDigest(t.Context(), t.TempDir(), "verified", pkg, root, "codex", digest); err == nil {
+		t.Fatal("a verified digest must not hide a missing source during relocation checks")
 	}
 }

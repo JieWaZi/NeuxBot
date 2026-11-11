@@ -21,14 +21,40 @@ type LocalInput struct {
 	Digest string
 }
 
-// FreezeLocalInput 只从认证层冻结的目录读取，并将字节复制为本次 Run 的输入。
-func FreezeLocalInput(ctx context.Context, roots []string, reference, workingDirectory, runID, pointer string) (LocalInput, error) {
+// FreezeLocalInput 只从认证层冻结的目录或精确文件读取，并将字节复制为本次 Run 的输入。
+func FreezeLocalInput(ctx context.Context, roots, files []string, reference, workingDirectory, runID, pointer, managedSpace string) (LocalInput, error) {
 	var source *os.File
 	for _, root := range roots {
-		file, err := OpenScopeFile(root, reference)
+		file, err := openAuthorizedScopeFile(root, reference, managedSpace)
 		if err == nil {
 			source = file
 			break
+		}
+	}
+	if source == nil && filepath.IsAbs(reference) {
+		actual, err := filepath.EvalSymlinks(reference)
+		if err == nil {
+			for _, selected := range files {
+				if !filepath.IsAbs(selected) || actual != selected {
+					continue
+				}
+				current, err := filepath.EvalSymlinks(selected)
+				if err != nil || current != selected {
+					continue
+				}
+				file, err := openAuthorizedScopeFile(filepath.Dir(selected), reference, managedSpace)
+				if err != nil {
+					continue
+				}
+				info, statErr := os.Lstat(selected)
+				opened, openErr := file.Stat()
+				if statErr != nil || openErr != nil || !info.Mode().IsRegular() || !os.SameFile(info, opened) {
+					file.Close()
+					continue
+				}
+				source = file
+				break
+			}
 		}
 	}
 	if source == nil {

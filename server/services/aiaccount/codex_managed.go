@@ -1,0 +1,308 @@
+package aiaccount
+
+import (
+	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"slices"
+	"sync"
+
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+)
+
+type managedCodexSelection struct {
+	// request freezes identity and native configuration root.
+	request agent.AccountRequest
+	// account supplies selected models and the credential CAS revision.
+	account models.AIAccount
+	// apiKey is populated only for a selected API key account.
+	apiKey string
+	// chatGPT is populated only for a selected ChatGPT subscription.
+	chatGPT codexCredential
+}
+
+// ResolveCodexAccount freezes native account identity before a Thread or model query admits work.
+func (s *Service) ResolveCodexAccount(ctx context.Context, request agent.AccountRequest, systemHome string) (agent.AccountRequest, error) {
+	if request.AccountID == agent.SystemAccountID {
+		return ResolveCodexSystemAccount(ctx, request, systemHome)
+	}
+	if request.Provider != constants.RuntimeIDCodex || !isManagedAccountID(request.AccountID) {
+		return agent.AccountRequest{}, status_error.AIAccountConfigurationInvalid
+	}
+	release, err := s.acquireLease(ctx, request.AccountID, false, false)
+	if err != nil {
+		return agent.AccountRequest{}, err
+	}
+	defer release()
+	unlock, err := s.credentialGate(request.AccountID).Lock(ctx)
+	if err != nil {
+		return agent.AccountRequest{}, err
+	}
+	defer unlock()
+	selected, err := s.resolveManagedCodex(ctx, request)
+	return selected.request, err
+}
+
+// AcquireCodexAccount pins managed credentials until the native consumer exits and cleanup succeeds.
+func (s *Service) AcquireCodexAccount(ctx context.Context, request agent.AccountRequest) (agent.AccountLease, error) {
+	if request.AccountID == agent.SystemAccountID {
+		return AcquireCodexSystemAccount(ctx, request)
+	}
+	if request.Provider != constants.RuntimeIDCodex || !isManagedAccountID(request.AccountID) {
+		return agent.AccountLease{}, status_error.AIAccountConfigurationInvalid
+	}
+	release, err := s.acquireLease(ctx, request.AccountID, false, false)
+	if err != nil {
+		return agent.AccountLease{}, err
+	}
+	lease, err := s.acquireManagedCodex(ctx, request, release)
+	if err != nil {
+		release()
+	}
+	return lease, err
+}
+
+func (s *Service) resolveManagedCodex(ctx context.Context, request agent.AccountRequest) (managedCodexSelection, error) {
+	account, err := s.accounts.Get(ctx, request.AccountID)
+	if err != nil {
+		return managedCodexSelection{}, err
+	}
+	_, ok := accountEndpoint(account, constants.RuntimeIDCodex)
+	if !ok {
+		return managedCodexSelection{}, status_error.AIAccountConfigurationInvalid
+	}
+	if !account.HasCredential {
+		return managedCodexSelection{}, status_error.RuntimeAuthRequired
+	}
+	if account.AuthMode == constants.AccountAuthModeAPIKey && (len(account.SelectedModels) == 0 ||
+		request.Model != "" && !slices.Contains(account.SelectedModels, request.Model)) {
+		return managedCodexSelection{}, status_error.AIAccountConfigurationInvalid
+	}
+	secret, err := s.accounts.Credential(ctx, account.ID)
+	if err != nil {
+		return managedCodexSelection{}, err
+	}
+	if secret == "" {
+		return managedCodexSelection{}, status_error.RuntimeAuthRequired
+	}
+	home, err := s.managedAccountHome(constants.RuntimeIDCodex, account, false)
+	if err != nil {
+		return managedCodexSelection{}, err
+	}
+	selected := managedCodexSelection{account: account}
+	identity := ""
+	switch account.AuthMode {
+	case constants.AccountAuthModeAPIKey:
+		selected.apiKey = secret
+	case constants.AccountAuthModeSubscription:
+		if json.Unmarshal([]byte(secret), &selected.chatGPT) != nil || !selected.chatGPT.Tokens.Valid() {
+			return managedCodexSelection{}, status_error.AIAccountCredentialError
+		}
+		identity = selected.chatGPT.Tokens.Identity()
+	default:
+		return managedCodexSelection{}, status_error.AIAccountConfigurationInvalid
+	}
+	scope, _ := json.Marshal([]string{"codex-managed", account.ID, string(account.AuthMode), identity})
+	digest := sha256.Sum256(scope)
+	request.Subject = "codex-managed:" + hex.EncodeToString(digest[:])
+	request.ConfigHome, request.AuthGeneration, request.ConfigFingerprint = home, account.AuthGeneration, ""
+	if account.AuthMode == constants.AccountAuthModeAPIKey {
+		request.ConfigFingerprint, err = accountconfig.NativeConfigurationFingerprint(managedCodexConfigurationSpec(account))
+		if err != nil {
+			return managedCodexSelection{}, err
+		}
+	}
+	selected.request = request
+	return selected, nil
+}
+
+func (s *Service) acquireManagedCodex(ctx context.Context, request agent.AccountRequest, release func()) (agent.AccountLease, error) {
+	unlock, err := s.credentialGate(request.AccountID).Lock(ctx)
+	if err != nil {
+		return agent.AccountLease{}, err
+	}
+	defer unlock()
+	selected, err := s.resolveManagedCodex(ctx, request)
+	if err != nil {
+		return agent.AccountLease{}, err
+	}
+	if selected.request.Subject != request.Subject || selected.request.AuthGeneration != request.AuthGeneration {
+		return agent.AccountLease{}, status_error.RuntimeAuthRequired
+	}
+	if !selected.request.Equal(request) {
+		return agent.AccountLease{}, status_error.RuntimeConfigurationInvalid
+	}
+	account := selected.account
+	home, err := s.managedAccountHome(constants.RuntimeIDCodex, account, true)
+	if err != nil {
+		return agent.AccountLease{}, err
+	}
+	if home != request.ConfigHome {
+		return agent.AccountLease{}, status_error.AIAccountConfigurationInvalid
+	}
+	spec := managedCodexConfigurationSpec(account)
+	spec.APIKey = selected.apiKey
+	config, err := accountconfig.PrepareCodexHome(home, spec)
+	if err != nil {
+		return agent.AccountLease{}, err
+	}
+
+	lease := agent.AccountLease{ConfigHome: home, Environment: config.Environment, CodexConfig: config.Overrides}
+	if account.AuthMode == constants.AccountAuthModeAPIKey {
+		expected := sha256.Sum256([]byte(selected.apiKey))
+		lease.CodexCredentialKind = "api_key"
+		lease.VerifyCodexCredential = func(ctx context.Context, proof [sha256.Size]byte) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if subtle.ConstantTimeCompare(proof[:], expected[:]) != 1 {
+				return status_error.RuntimeAuthRequired
+			}
+			return nil
+		}
+		lease.Close = func(context.Context) error { release(); return nil }
+		return lease, nil
+	}
+	saved := selected.chatGPT
+	if err := s.prepareManagedCodexAuth(ctx, account, home, saved); err != nil {
+		return agent.AccountLease{}, err
+	}
+	identity := saved.Tokens.Identity()
+	lease.CodexCredentialKind = "account"
+	lease.VerifyCodexCredential = func(ctx context.Context, proof [sha256.Size]byte) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		current, err := readCodexChatGPTCredential(home)
+		if err != nil {
+			return err
+		}
+		expected := sha256.Sum256([]byte(current.Tokens.AccessToken))
+		if current.Tokens.Identity() != identity || subtle.ConstantTimeCompare(proof[:], expected[:]) != 1 {
+			return status_error.RuntimeAuthRequired
+		}
+		return nil
+	}
+	var closeMu sync.Mutex
+	closed := false
+	lease.Close = func(ctx context.Context) error {
+		closeMu.Lock()
+		defer closeMu.Unlock()
+		if closed {
+			return nil
+		}
+		if err := s.recoverManagedCodexAuth(ctx, account.ID, home, identity); err != nil {
+			return err
+		}
+		release()
+		closed = true
+		return nil
+	}
+	return lease, nil
+}
+
+func (s *Service) prepareManagedCodexAuth(ctx context.Context, account models.AIAccount, home string, saved codexCredential) error {
+	latest := saved
+	current, err := readCodexChatGPTCredential(home)
+	if err == nil {
+		if current.Tokens.Identity() != saved.Tokens.Identity() {
+			return status_error.RuntimeAuthRequired
+		}
+		if current.LastRefresh.After(saved.LastRefresh) {
+			latest = current
+		}
+	} else if _, statErr := os.Lstat(filepath.Join(home, "auth.json")); !errors.Is(statErr, os.ErrNotExist) {
+		return err
+	}
+	if latest.LastRefresh.After(saved.LastRefresh) {
+		if persistErr := s.persistManagedCodexRefresh(ctx, account, latest); persistErr != nil {
+			return persistErr
+		}
+	}
+	if err == nil && !latest.LastRefresh.After(current.LastRefresh) {
+		return nil
+	}
+	return writeCodexChatGPTCredential(home, latest)
+}
+
+func (s *Service) recoverManagedCodexAuth(ctx context.Context, id, home, identity string) error {
+	unlock, err := s.credentialGate(id).Lock(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	data, err := readCodexAuthFile(home)
+	if errors.Is(err, status_error.RuntimeAuthRequired) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer clear(data)
+	current, err := decodeCodexChatGPTCredential(data)
+	if err != nil || current.Tokens.Identity() != identity {
+		// No usable rotation was lost. Release the exited owner so an
+		// explicit logout or sign-in can replace the invalid projection.
+		logx.Warnf("discarded invalid managed Codex auth refresh: account_id=%s", id)
+		return nil
+	}
+	account, err := s.accounts.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	encoded, err := s.accounts.Credential(ctx, id)
+	if err != nil {
+		return err
+	}
+	var saved codexCredential
+	if json.Unmarshal([]byte(encoded), &saved) != nil || saved.Tokens.Identity() != identity {
+		return status_error.AIAccountCredentialError
+	}
+	if !current.LastRefresh.After(saved.LastRefresh) {
+		return nil
+	}
+	return s.persistManagedCodexRefresh(ctx, account, current)
+}
+
+func (s *Service) persistManagedCodexRefresh(ctx context.Context, account models.AIAccount, current codexCredential) error {
+	encoded, _ := json.Marshal(current)
+	return s.accounts.StoreRefreshedCredential(ctx, account.ID, account.Revision, account.AuthGeneration, string(encoded))
+}
+
+// RemoveCodexCredentialFiles removes the current native projection before a credential
+// mutation commits. The caller must hold the account's exclusive lease.
+func (s *Service) RemoveCodexCredentialFiles(_ context.Context, account models.AIAccount) error {
+	if _, ok := accountEndpoint(account, constants.RuntimeIDCodex); !ok || s.dataDirectory == "" {
+		return nil
+	}
+	home, err := s.managedAccountHome(constants.RuntimeIDCodex, account, false)
+	if err != nil {
+		return err
+	}
+	for _, name := range []string{"auth.json", "config.toml"} {
+		err := os.Remove(filepath.Join(home, name))
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return managedAccountStorageError(constants.RuntimeIDCodex, account.ID, err)
+		}
+	}
+	return nil
+}
+
+// managedCodexConfigurationSpec 为启动配置比较和实际物化提供同一份稳定模型目录。
+func managedCodexConfigurationSpec(account models.AIAccount) accountconfig.Spec {
+	spec := accountconfig.Spec{ID: account.ID, RuntimeID: constants.RuntimeIDCodex, AuthMode: account.AuthMode, Protocol: account.Endpoint.Protocol, BaseURL: account.Endpoint.BaseURL, SelectedModels: account.SelectedModels, ModelContextSizes: account.ModelContextSizes, ModelDisplayNames: account.ModelDisplayNames, ModelReasoningLevels: account.ModelReasoningLevels}
+	if account.AuthMode == constants.AccountAuthModeAPIKey && len(account.SelectedModels) > 0 {
+		spec.Model = account.SelectedModels[0]
+	}
+	return spec
+}

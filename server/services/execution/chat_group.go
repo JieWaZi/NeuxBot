@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -57,10 +58,12 @@ func (m *service) PrepareChatGroup(
 			return PreparedChatGroup{}, err
 		}
 		if err := m.ValidateConfiguration(ctx, ExecutionConfiguration{
+			Resolved:                   true,
 			RuntimeID:                  member.RuntimeID,
 			AccountID:                  member.AccountID,
 			Model:                      member.Model,
 			Reasoning:                  member.Reasoning,
+			Fast:                       member.Fast,
 			PermissionLevel:            member.PermissionLevel,
 			RequiredConnectorTransport: teamConnectorTransport(member.WakerID == intent.Scope.WakerID),
 		}); err != nil {
@@ -89,27 +92,22 @@ func (m *service) PrepareChatGroup(
 	if err != nil {
 		return PreparedChatGroup{}, err
 	}
-	threadProjectsDirectory, err := stagingLayout.TeamProjects(intent.ThreadID)
-	if err != nil {
-		return PreparedChatGroup{}, err
-	}
 	if err := workspace.EnsureThreadExecutionWorkspace(
 		threadWorkspaceDirectory,
 		intent.ThreadID,
 		intent.Scope.WakerID,
-		resolved.projectLinks,
 	); err != nil {
 		_ = m.storage.RollbackTeamProvisioning(intent.ProvisioningID, intent.ThreadID)
 		return PreparedChatGroup{}, err
 	}
-	if len(resolved.additionalDirectories) == 0 {
-		// 未选外部来源时，以本次团队会话的共享项目目录冻结临时工作范围。
-		managedDirectory, pathErr := m.storage.TeamProjects(intent.ThreadID)
-		if pathErr != nil {
-			_ = m.storage.RollbackTeamProvisioning(intent.ProvisioningID, intent.ThreadID)
-			return PreparedChatGroup{}, pathErr
-		}
-		resolved.additionalDirectories = []string{managedDirectory}
+	// 真正共享文件目录是团队工作范围的一部分，不能被外部项目选择覆盖。
+	sharedDirectory, pathErr := m.storage.TeamSharedDirectory(intent.ThreadID)
+	if pathErr != nil {
+		_ = m.storage.RollbackTeamProvisioning(intent.ProvisioningID, intent.ThreadID)
+		return PreparedChatGroup{}, pathErr
+	}
+	if !slices.Contains(resolved.additionalDirectories, sharedDirectory) {
+		resolved.additionalDirectories = append(resolved.additionalDirectories, sharedDirectory)
 	}
 	plannedChatIDs := make([]string, 0, len(intent.Members))
 	for _, member := range intent.Members {
@@ -148,7 +146,6 @@ func (m *service) PrepareChatGroup(
 			intent.ThreadID,
 			chatID,
 			wakerID,
-			threadProjectsDirectory,
 		); workspaceErr != nil {
 			rollbackThreadWorkspace()
 			return PreparedChatGroup{}, workspaceErr

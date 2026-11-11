@@ -1,7 +1,7 @@
-import { retryChatExecution } from "@/shared/api/generated/sdk.gen";
 import { ApiError } from "@/shared/api/errors";
 import {
   reportErrorNotice,
+  apiErrorNoticePresentation,
   clearErrorNoticeActions,
   captureErrorNoticeRecovery,
   resolveErrorNoticeRecovery,
@@ -126,7 +126,6 @@ type ChatRuntimeResult = {
   isRunning: boolean;
   hasVisibleMessages: boolean;
   sendFailure: ChatSendFailure;
-  retryExecution: (executionId: string) => Promise<void>;
   contextMetrics?: ChatRunMetrics;
   pendingApprovals: PendingApproval[];
   pendingElicitations: PendingElicitation[];
@@ -429,61 +428,6 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
   }, []);
   useEffect(() => () => clearErrorNoticeActions(queueKey), [queueKey]);
 
-  const retryExecution = useCallback(
-    async (executionId: string) => {
-      if (!options.chatId || runningRef.current || options.isSendDisabled)
-        return;
-      const chatId = options.chatId;
-      const key = options.conversationKey;
-      runningRef.current = true;
-      setSending({ queueKey });
-      try {
-        const { data } = await retryChatExecution({
-          path: { chatId, executionId },
-          throwOnError: true,
-        });
-        if (mountedRef.current && observedChatKeyRef.current === key) {
-          const execution = data.execution;
-          if (
-            execution?.status === "pending" ||
-            execution?.status === "running"
-          ) {
-            setOverlay((previous) => ({
-              chatId,
-              messages: applyChatEvent(
-                previous.chatId === chatId ? previous.messages : [],
-                {
-                  message: {
-                    id: execution.id,
-                    executionId: execution.id,
-                    role: "assistant",
-                    status: execution.status,
-                  },
-                },
-              ),
-            }));
-          }
-          onStarted(data, { chatId, key, queueKey });
-          reconcileHistory();
-          terminalRef.current();
-        }
-      } finally {
-        if (observedChatKeyRef.current === key) runningRef.current = false;
-        setSending((value) =>
-          value?.queueKey === queueKey ? undefined : value,
-        );
-      }
-    },
-    [
-      options.chatId,
-      options.conversationKey,
-      options.isSendDisabled,
-      queueKey,
-      onStarted,
-      reconcileHistory,
-    ],
-  );
-
   const currentSendFailure =
     sendFailure.chatId === options.chatId ? sendFailure.value : NO_SEND_FAILURE;
 
@@ -502,6 +446,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
             : "");
       if (!text) return;
 
+      const now = Date.now();
       const prepared = snapshot.prepareSubmission(
         text,
         snapshot.chatId,
@@ -511,7 +456,6 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       currentSubmissionRef.current = prepared;
       if (prepared.submissionId)
         pendingSubmissionsRef.current.set(prepared.submissionId, prepared);
-      const now = Date.now();
       const operation = `send:${snapshot.queueKey}`;
       const recovery = captureErrorNoticeRecovery(operation);
       const userID = optimisticID("user");
@@ -559,6 +503,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           role: "assistant",
           content: "",
           status: "pending",
+          preparingSession: !snapshot.chatId,
           steerExecutionId: snapshot.selection.steerExecutionId,
           createdAt: now,
           updatedAt: now,
@@ -688,8 +633,11 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
             id: `send:${userID}`,
             scope: snapshot.queueKey,
             operation,
-            message: sendFailureDisplayText(failure, (key) =>
-              i18n.t(key, { ns: "chat" }),
+            ...apiErrorNoticePresentation(
+              error,
+              sendFailureDisplayText(failure, (key) =>
+                i18n.t(key, { ns: "chat" }),
+              ),
             ),
             action: canRetry ? "retry" : canCheck ? "check" : undefined,
           },
@@ -936,7 +884,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     let liveTracker = new ChatLiveTracker();
     const eventBatcher = createChatEventBatcher((events) => {
       if (!isCurrentSubscription()) return;
-      // 在原始持久事件上校验连续性；UI 批次会折叠同一消息的中间快照。
+      // 原始持久事件使用递增的稀疏游标；UI 批次会折叠同一消息的中间快照。
       // 接收不等于投影，隐藏时丢弃的批次不能推进原历史游标。
       if (pendingDurableEvents.length > 0 && options.chatId) {
         const sequence = sourceRef.current.commit(pendingDurableEvents);
@@ -1198,6 +1146,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           scope: `chat:${options.chatId}`,
           operation: streamOperation,
           message: i18n.t("runtimeFailure.networkError", { ns: "chat" }),
+          messageSource: "public",
         });
         streamRecovery = captureErrorNoticeRecovery(streamOperation);
         setApprovalOverlay({
@@ -1363,7 +1312,6 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     isRunning,
     hasVisibleMessages: messages.length > 0,
     sendFailure: currentSendFailure,
-    retryExecution,
     contextMetrics: latestContextMetrics(messages),
     pendingApprovals,
     pendingElicitations,

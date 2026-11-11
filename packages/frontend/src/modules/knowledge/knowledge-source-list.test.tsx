@@ -40,7 +40,12 @@ it("原件目录仅展示图标与可截断文件名，完整名称可悬停查�
   expect(row).toHaveAttribute("title", name);
   expect(row).toHaveAttribute("aria-selected", "true");
   expect(screen.getByText(name)).toHaveClass("truncate");
-  expect(row.querySelector("svg")).not.toBeNull();
+  const icon = row.querySelector("img");
+  expect(icon).toHaveAttribute(
+    "src",
+    expect.stringContaining("/material-icon-theme/markdown.svg"),
+  );
+  expect(icon).toHaveAttribute("alt", "");
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
   expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   expect(screen.queryByText("internal failure")).not.toBeInTheDocument();

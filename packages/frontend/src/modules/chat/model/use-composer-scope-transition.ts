@@ -9,7 +9,6 @@ export function useComposerScopeTransition(
   onScopeChange: () => void,
 ) {
   const [composerClearRevision, setComposerClearRevision] = useState(0);
-  const [companionScopeRevision, setCompanionScopeRevision] = useState(0);
   const skipComposerClearOnScopeChangeRef = useRef(false);
   const previousComposerScopeKey = useRef(currentChatKey);
   const previousWorkspaceScopeKey = useRef(workspaceScopeKey);
@@ -33,14 +32,12 @@ export function useComposerScopeTransition(
     skipComposerClearOnScopeChangeRef.current = false;
     if (!skipClear) {
       clearComposer();
-      setCompanionScopeRevision((revision) => revision + 1);
     }
     onScopeChange();
   }, [clearComposer, currentChatKey, onScopeChange, workspaceScopeKey]);
 
   return {
     composerClearRevision,
-    companionScopeRevision,
     clearComposer,
     markSkipComposerClearOnCreate,
   };

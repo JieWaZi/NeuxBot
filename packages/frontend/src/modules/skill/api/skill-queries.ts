@@ -19,10 +19,6 @@ import {
   listLibrarySkillVersionsOptions,
   createSkillVersionMutation as partnerCreateSkillVersionMutation,
   createLibrarySkillVersionMutation,
-  importWakerSkillMutation as partnerImportWakerSkillMutation,
-  importLibrarySkillsMutation,
-  scanWakerSkillImportMutation as partnerScanWakerSkillImportMutation,
-  scanLibrarySkillImportMutation,
   pullSkillUpdateMutation as partnerPullSkillUpdateMutation,
   pullLibrarySkillUpdateMutation,
   restoreSkillVersionMutation as partnerRestoreSkillVersionMutation,
@@ -32,7 +28,11 @@ import {
   updateWakerSkillMutation as partnerUpdateWakerSkillMutation,
   updateLibrarySkillMutation,
 } from "@/shared/api/generated/@tanstack/react-query.gen";
-import type { QueryClient, UseQueryOptions } from "@tanstack/react-query";
+import type {
+  MutationFunctionContext,
+  QueryClient,
+  UseQueryOptions,
+} from "@tanstack/react-query";
 
 export {
   getSkillVersionQueryKey,
@@ -62,7 +62,10 @@ export async function invalidateVisibleSkillQueries(
 ): Promise<void> {
   await queryClient.invalidateQueries({
     predicate: (query) => {
-      const descriptor = query.queryKey[0] as { _id?: string } | undefined;
+      const descriptor = query.queryKey[0] as
+        { _id?: string; query?: { type?: string } } | undefined;
+      if (descriptor?._id === "listResourceCategories")
+        return descriptor.query?.type === "skill";
       return Boolean(
         descriptor?._id && visibleSkillQueryIds.has(descriptor._id),
       );
@@ -164,44 +167,6 @@ export function createSkillVersionMutation(
 }
 
 /** 同一专业表单按资源入口提交，不复制伙伴或共享设置。 */
-export function importWakerSkillMutation(
-  options?: Parameters<typeof partnerImportWakerSkillMutation>[0],
-) {
-  const partner = partnerImportWakerSkillMutation(options);
-  const library = importLibrarySkillsMutation();
-  const partnerFn = partner.mutationFn;
-  const libraryFn = library.mutationFn;
-  if (!partnerFn || !libraryFn) throw new Error("资源操作尚未配置");
-  return {
-    ...partner,
-    mutationFn: ((input, context) => {
-      if (input.path.wakerId) return partnerFn(input, context);
-      const globalInput = { ...input, path: undefined };
-      return libraryFn(globalInput, context);
-    }) as NonNullable<typeof partner.mutationFn>,
-  };
-}
-
-/** 同一专业表单按资源入口提交，不复制伙伴或共享设置。 */
-export function scanWakerSkillImportMutation(
-  options?: Parameters<typeof partnerScanWakerSkillImportMutation>[0],
-) {
-  const partner = partnerScanWakerSkillImportMutation(options);
-  const library = scanLibrarySkillImportMutation();
-  const partnerFn = partner.mutationFn;
-  const libraryFn = library.mutationFn;
-  if (!partnerFn || !libraryFn) throw new Error("资源操作尚未配置");
-  return {
-    ...partner,
-    mutationFn: ((input, context) => {
-      if (input.path.wakerId) return partnerFn(input, context);
-      const globalInput = { ...input, path: undefined };
-      return libraryFn(globalInput, context);
-    }) as NonNullable<typeof partner.mutationFn>,
-  };
-}
-
-/** 同一专业表单按资源入口提交，不复制伙伴或共享设置。 */
 export function pullSkillUpdateMutation(
   options?: Parameters<typeof partnerPullSkillUpdateMutation>[0],
 ) {
@@ -253,11 +218,19 @@ export function uninstallSkillMutation(
   if (!partnerFn || !libraryFn) throw new Error("资源操作尚未配置");
   return {
     ...partner,
-    mutationFn: ((input, context) => {
-      if (input.path.wakerId) return partnerFn(input, context);
-      const resourcePath = { skillId: input.path.skillId };
-      return libraryFn({ ...input, path: resourcePath }, context);
-    }) as NonNullable<typeof partner.mutationFn>,
+    mutationFn: (
+      input: {
+        path: { wakerId: string; skillId: string };
+        query?: { confirmed?: boolean; expectedAffectedCount?: number };
+      },
+      context: MutationFunctionContext,
+    ) => {
+      if (input.path.wakerId) return partnerFn({ path: input.path }, context);
+      return libraryFn(
+        { path: { skillId: input.path.skillId }, query: input.query },
+        context,
+      );
+    },
   };
 }
 

@@ -132,7 +132,7 @@ func TestKnowledgeRouterBindingProcess(t *testing.T) {
 	fixture := global.KnowledgeConnectionControllerManager.(connectionFixture)
 	global.KnowledgeConnectionControllerManager = bindingConnections{fixture}
 	directory := t.TempDir()
-	if err := workspace.EnsureExecutionWorkspace(directory, "actual", "actual-waker", nil); err != nil {
+	if err := workspace.EnsureIsolatedExecutionWorkspace(directory, "actual", "actual-waker"); err != nil {
 		t.Fatal(err)
 	}
 	global.KnowledgeService = knowledgeService.New(knowledgeService.Config{Chats: bindingChat{value: models.Chat{ID: "actual", WakerID: "actual-waker", WorkspaceDirectory: directory}}, Connections: global.KnowledgeConnectionControllerManager, References: global.KnowledgeControllerManager})

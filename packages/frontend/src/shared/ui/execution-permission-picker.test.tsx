@@ -47,7 +47,7 @@ describe("ExecutionPermissionPicker", () => {
     expect(document.querySelector(".lucide-shield-alert")).toBeInTheDocument();
   });
 
-  it("不支持的权限档展示不可用说明", async () => {
+  it("仅展示智能体支持的权限档", async () => {
     const user = userEvent.setup();
     render(
       <TooltipProvider delayDuration={0}>
@@ -62,8 +62,11 @@ describe("ExecutionPermissionPicker", () => {
     await user.click(
       screen.getByRole("button", { name: "执行权限：默认权限" }),
     );
-    expect(screen.getAllByText("当前智能体或模型不支持此权限。")).toHaveLength(
-      2,
-    );
+    expect(
+      screen.getByRole("menuitemradio", { name: /默认权限/ }),
+    ).toBeEnabled();
+    expect(
+      screen.queryByRole("menuitemradio", { name: /自动审批|完全访问/ }),
+    ).not.toBeInTheDocument();
   });
 });

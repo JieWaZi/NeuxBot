@@ -5,6 +5,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 	"regexp"
+	"slices"
 )
 
 // 发起插件授权
@@ -15,24 +16,32 @@ type StartPluginAuthorization struct {
 	// 插件标识
 	PluginID string `in:"path" name:"pluginId" validate:"required"`
 	// 所选版本
-	VersionID string `in:"query" name:"versionId"`
+	VersionID string `in:"query" name:"versionId" validate:"required"`
 	// 所属伙伴
 	WakerID string `in:"query" name:"wakerId"`
 }
 
 // Path 返回共享授权发起入口。
-func (*StartPluginAuthorization) Path() string { return "/:pluginId/authorization" }
+func (*StartPluginAuthorization) Path() string { return "/:pluginId/account/authorizations" }
 
 // Output 创建或恢复唯一设备等待，由 Core 生命周期继续等待官方结果。
 func (o *StartPluginAuthorization) Output(ctx *gin.Context) (interface{}, error) {
+	if _, err := validateAccountRequest(ctx, o.PluginID, o.WakerID, o.VersionID, o.Body.PluginAccountRequest); err != nil {
+		return nil, ginx.WithStack(err)
+	}
 	if err := closeIdlePlugin(ctx, o.PluginID); err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	auth, extension, err := pluginAuthorizer(ctx, o.PluginID, o.WakerID, o.VersionID)
+	auth, extension, err := pluginAuthorizer(ctx, o.PluginID, o.WakerID, o.VersionID, o.Body.PluginAccountRequest)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
 	scopes := auth.RequiredScopes(extension.Scopes...)
+	for _, scope := range o.Body.AdditionalScopes {
+		if !slices.Contains(extension.Scopes, scope) {
+			return nil, ginx.WithStack(status_error.PluginForbidden)
+		}
+	}
 	scopes = append(scopes, o.Body.AdditionalScopes...)
 	result, err := auth.Login(ctx, scopes...)
 	if err != nil {

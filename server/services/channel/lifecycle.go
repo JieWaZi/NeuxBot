@@ -160,7 +160,7 @@ func (s *service) acceptAttemptTerminal(
 	if err != nil {
 		return false, err
 	}
-	message := messageview.Message{ID: attempt.ExecutionID, ExecutionID: attempt.ExecutionID, Role: constants.MessageRoleAssistant, Status: event.ExecutionStatus, ErrorCode: event.ErrorCode, ErrorMessage: event.ErrorMessage}
+	message := messageview.Message{ID: attempt.ExecutionID, ExecutionID: attempt.ExecutionID, Role: constants.MessageRoleAssistant, Status: event.ExecutionStatus, ErrorCode: event.ErrorCode, ErrorMessage: event.ErrorMessage, ErrorParams: event.ErrorParams, ErrorMessageSource: event.ErrorMessageSource}
 	for _, candidate := range messages {
 		if candidate.ExecutionID == attempt.ExecutionID && candidate.Role == constants.MessageRoleAssistant {
 			message = candidate
@@ -216,12 +216,8 @@ func (s *service) handleAttemptTerminal(
 	if submittedReport := strings.TrimSpace(currentAttempt.Result); submittedReport != "" {
 		result = submittedReport
 	}
-	changedPaths := make([]string, 0, len(message.FileChanges))
-	for _, change := range message.FileChanges {
-		if path := strings.TrimSpace(change.Path); path != "" {
-			changedPaths = append(changedPaths, path)
-		}
-	}
+	// The file snapshot has its own lifecycle and may finish after the task terminal.
+	changedPaths := []string{}
 	taskStatus := constants.ChannelTaskStatusCompleted
 	if message.Status == constants.ExecutionStatusFailed {
 		taskStatus = constants.ChannelTaskStatusFailed
@@ -235,13 +231,15 @@ func (s *service) handleAttemptTerminal(
 	}
 	reportContent, _ := teammateReportContent(taskStatus, result, message.ErrorMessage, changedPaths)
 	payload, marshalErr := json.Marshal(map[string]interface{}{
-		"taskId":       task.ID,
-		"attemptId":    attempt.ID,
-		"status":       taskStatus,
-		"result":       result,
-		"errorCode":    message.ErrorCode,
-		"errorMessage": message.ErrorMessage,
-		"changedPaths": changedPaths,
+		"taskId":             task.ID,
+		"attemptId":          attempt.ID,
+		"status":             taskStatus,
+		"result":             result,
+		"errorCode":          message.ErrorCode,
+		"errorMessage":       message.ErrorMessage,
+		"errorParams":        message.ErrorParams,
+		"errorMessageSource": message.ErrorMessageSource,
+		"changedPaths":       changedPaths,
 	})
 	if marshalErr != nil {
 		return status_error.InternalServerError

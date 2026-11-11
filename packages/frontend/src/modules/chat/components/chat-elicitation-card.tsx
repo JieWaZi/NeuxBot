@@ -477,7 +477,10 @@ function ElicitationChoice({
         ) : null}
       </span>
       {selected ? (
-        <Check aria-hidden="true" className="mt-0.5 shrink-0" />
+        <Check
+          aria-hidden="true"
+          className="text-accent-content mt-0.5 shrink-0"
+        />
       ) : null}
     </Button>
   );

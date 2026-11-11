@@ -1,64 +1,38 @@
-import { listRuntimesOptions } from "@/shared/api/runtime-queries";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronRight, Power, RefreshCw } from "lucide-react";
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
+
+import {
+  listRuntimesOptions,
+  nativeModelCatalogQueryKey,
+} from "@/shared/api/runtime-queries";
 import {
   withLocalErrorMutation,
   withLocalErrorSurface,
 } from "@/shared/api/local-error-surface";
 import {
-  Check,
-  ChevronRight,
-  CircleAlert,
-  Loader2,
-  RefreshCw,
-} from "lucide-react";
-import { useState } from "react";
-import { useTranslation } from "react-i18next";
-
-import { ApiError } from "@/shared/api/errors";
-import {
-  listAiAccountsQueryKey,
   listRuntimesQueryKey,
-  refreshRuntimeMutation,
   refreshRuntimesMutation,
+  restartRuntimeMutation,
   updateRuntimeEnvironmentMutation,
 } from "@/shared/api/generated/@tanstack/react-query.gen";
-import type {
-  GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption as RuntimeOption,
-  GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccount as AIAccount,
-} from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption as RuntimeOption } from "@/shared/api/generated/types.gen";
 import { useExecutionSelection } from "@/shared/hooks/use-execution-selection";
-import { ExecutionConfigurationFields } from "@/shared/ui/execution-configuration-fields";
-import { FieldLabel } from "@/shared/ui/field-label";
 import {
   runtimeDisplayName,
   runtimeDisplayVersion,
 } from "@/shared/lib/runtime-display-name";
-import {
-  SettingsContentShell,
-  SettingsGroup,
-  SettingsRow,
-} from "./settings-section-layout";
+import { StatusPill } from "@/shared/ui/status-pill";
+import { runtimeHeaderState } from "../lib/runtime-status";
 import { Button } from "@/shared/ui/button";
-import { Badge } from "@/shared/ui/badge";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/shared/ui/collapsible";
-import { Skeleton } from "@/shared/ui/skeleton";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogFooter,
-} from "@/shared/ui/dialog";
+import { FieldLabel } from "@/shared/ui/field-label";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/shared/ui/tooltip";
 import { ExecutionPermissionPicker } from "@/shared/ui/execution-permission-picker";
-import {
-  formatCommandLineArguments,
-  parseCommandLineArguments,
-} from "@/shared/lib/command-line-arguments";
 import { RuntimeCliIcon } from "@/shared/ui/runtime-cli-icon";
-import { Switch } from "@/shared/ui/switch";
+import { SceneBreadcrumbs } from "@/shared/ui/scene-breadcrumbs";
+import { PageHeader } from "@/shared/ui/page-header";
+import { SearchField } from "@/shared/ui/search-field";
 import {
   Select,
   SelectContent,
@@ -66,894 +40,748 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/ui/select";
-import { SegmentedControl } from "@/shared/ui/segmented-control";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
+import { Skeleton } from "@/shared/ui/skeleton";
+import { Switch } from "@/shared/ui/switch";
+import { permissionLevelOf } from "@/shared/lib/runtime-permissions";
+import { runtimeSettingsBody } from "../lib/runtime-settings";
+import { AIAccountsSection } from "./ai-accounts-section";
 import {
-  type PermissionLevel,
-  permissionLevelTranslationKeys,
-  permissionLevelOf,
-  runtimeDefaultPermissionLevels,
-} from "@/shared/lib/runtime-permissions";
+  RuntimeInstallationControls,
+  runtimeInstallationOptions,
+} from "./runtime-installation-controls";
+import { runtimeAuthenticationOptions } from "./runtime-authentication-controls";
+import { RuntimeProgramRemoval } from "./runtime-program-removal";
+import {
+  SettingsContentShell,
+  SettingsGroup,
+  SettingsRow,
+} from "./settings-section-layout";
 
-type RuntimeDraft = {
-  defaultAccountId: string;
-  binary: string;
-  configHome: string;
-  customModels: string[];
-  defaultModel: string;
-  defaultReasoning: string;
-  defaultPermissionLevel: PermissionLevel;
-  prefixArgs: string;
+type RuntimePatch = Partial<ReturnType<typeof runtimeSettingsBody>> & {
+  installationPath?: string;
 };
 
-type RuntimeIssueKind =
-  | "cliLogin"
-  | "accountMissing"
-  | "accountSubscriptionLogin"
-  | "accountKeyMissing"
-  | "accountUnavailable"
-  | "accountAuth"
-  | "protocol"
-  | "connection"
-  | "modelCatalog";
-
-function runtimeIssueKind(
-  runtime: RuntimeOption,
-  linkedAccount: AIAccount | undefined,
-  accountsLoaded: boolean,
-): RuntimeIssueKind | undefined {
-  if (!runtime.installed) return undefined;
-  const linked = Boolean(runtime.defaultAccountId);
-  if (linked && accountsLoaded && !linkedAccount) return "accountMissing";
-  if (linkedAccount?.hasCredential === false) {
-    return linkedAccount.authMode === "subscription"
-      ? "accountSubscriptionLogin"
-      : "accountKeyMissing";
-  }
-  if (
-    linked &&
-    runtime.diagnostics?.some((item) => item.code === "AI_ACCOUNT_UNAVAILABLE")
-  ) {
-    return "accountUnavailable";
-  }
-  if (runtime.auth === "missing") return linked ? "accountAuth" : "cliLogin";
-  if (runtime.state === "incompatible") return "protocol";
-  if (runtime.state !== "ready") return "connection";
-  if (
-    runtime.diagnostics?.some((item) => item.code === "ACP_OPTIONS_UNAVAILABLE")
-  ) {
-    return "modelCatalog";
-  }
-  return undefined;
-}
-
-function runtimeDraft(runtime: RuntimeOption): RuntimeDraft {
-  return {
-    defaultAccountId: runtime.defaultAccountId ?? "",
-    binary: runtime.binary ?? "",
-    configHome: runtime.configHome ?? "",
-    customModels: [...(runtime.customModels ?? [])],
-    defaultModel: runtime.defaultModel ?? "",
-    defaultReasoning: runtime.defaultReasoning ?? "",
-    defaultPermissionLevel:
-      permissionLevelOf(runtime.defaultPermissionLevel) ?? "auto",
-    prefixArgs: formatCommandLineArguments(runtime.prefixArgs ?? []),
-  };
-}
-
-function modelsForDraft(runtime: RuntimeOption, draft: RuntimeDraft) {
-  const customModelIDs = new Set(draft.customModels);
-  const models = (runtime.models ?? []).filter(
-    (model) => !model.custom || customModelIDs.has(model.id ?? ""),
+function RuntimeSkeleton() {
+  const { t } = useTranslation("aiAccounts");
+  return (
+    <div
+      role="status"
+      aria-label={t("agents.loading")}
+      aria-busy="true"
+      className="bg-resource-surface overflow-hidden rounded-lg"
+    >
+      {[0, 1, 2].map((index) => (
+        <div
+          aria-hidden="true"
+          key={index}
+          className="min-h-row-detail flex items-center gap-4 px-4 py-3"
+        >
+          <Skeleton className="size-8 rounded-lg" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-3 w-48" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
-  const seen = new Set(models.map((model) => model.id));
-  for (const modelID of draft.customModels) {
-    if (seen.has(modelID)) continue;
-    seen.add(modelID);
-    models.push({
-      id: modelID,
-      name: modelID,
-      custom: true,
-      reasoningOptions: runtime.reasoningOptions ?? [],
-    });
-  }
-  return models;
 }
 
-function reasoningOptionsForModel(
-  runtime: RuntimeOption,
-  modelID: string,
-  models = runtime.models ?? [],
-) {
-  const model = models.find((option) => option.id === modelID);
-  return model?.reasoningOptions?.length
-    ? model.reasoningOptions
-    : (runtime.reasoningOptions ?? []);
-}
-
-function normalizedRuntimeDraft(
-  runtime: RuntimeOption,
-  draft: RuntimeDraft,
-): RuntimeDraft {
-  const models = modelsForDraft(runtime, draft);
-  const defaultModel = models.some((model) => model.id === draft.defaultModel)
-    ? draft.defaultModel
-    : (models[0]?.id ?? "");
-  const reasoningOptions = reasoningOptionsForModel(
-    runtime,
-    defaultModel,
-    models,
-  );
-  const defaultReasoning = reasoningOptions.some(
-    (option) => option.id === draft.defaultReasoning,
-  )
-    ? draft.defaultReasoning
-    : (reasoningOptions[0]?.id ?? "");
-  return { ...draft, defaultModel, defaultReasoning };
-}
-
-function runtimeBody(
-  runtime: RuntimeOption,
-  draft: RuntimeDraft,
-  patch: Partial<{ enabled: boolean; isDefault: boolean }> = {},
-) {
-  return {
-    enabled: patch.enabled ?? runtime.enabled ?? false,
-    isDefault: patch.isDefault ?? runtime.isDefault ?? false,
-    defaultAccountId: draft.defaultAccountId,
-    binary: draft.binary.trim(),
-    prefixArgs: parseCommandLineArguments(draft.prefixArgs),
-    configHome: draft.configHome.trim(),
-    customModels: draft.customModels,
-    defaultModel: draft.defaultModel,
-    defaultReasoning: draft.defaultReasoning,
-    defaultPermissionLevel: draft.defaultPermissionLevel,
-  };
-}
-
-function errorMessage(error: unknown) {
-  if (error instanceof ApiError) return error.message;
-  if (error instanceof Error) return error.message;
-  return "操作失败，请稍后重试。";
-}
-
-function RuntimeEnvironmentRow({
-  onOpenAccounts,
-  permissionEditingEnabled,
+function RuntimeDetail({
   runtime,
+  onBack,
 }: {
-  onOpenAccounts?: () => void;
-  permissionEditingEnabled: boolean;
   runtime: RuntimeOption;
+  onBack: () => void;
 }) {
-  const { t } = useTranslation("common");
+  const { t } = useTranslation(["aiAccounts", "common"]);
   const queryClient = useQueryClient();
-  const [expanded, setExpanded] = useState(false);
-  const [issueOpen, setIssueOpen] = useState(false);
-  const [draft, setDraft] = useState(() => runtimeDraft(runtime));
-  const [draftError, setDraftError] = useState("");
-  const invalidate = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: listRuntimesQueryKey() }),
-      queryClient.invalidateQueries({ queryKey: listAiAccountsQueryKey() }),
-    ]);
-  };
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: listRuntimesQueryKey() });
   const update = useMutation({
     ...withLocalErrorMutation(updateRuntimeEnvironmentMutation()),
+    onSuccess: async (_data, variables) => {
+      await invalidate();
+      if (variables.body.installationPath) {
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: runtimeInstallationOptions(runtime.id ?? "").queryKey,
+          }),
+          queryClient.invalidateQueries({
+            queryKey: runtimeAuthenticationOptions(runtime.id ?? "").queryKey,
+          }),
+        ]);
+      }
+      if (
+        variables.body.installationPath ||
+        variables.body.defaultAccountId !== runtime.defaultAccountId
+      ) {
+        void queryClient.invalidateQueries({
+          queryKey: nativeModelCatalogQueryKey({ runtimeId: runtime.id }),
+        });
+      }
+    },
+  });
+  const restart = useMutation({
+    ...withLocalErrorMutation(restartRuntimeMutation()),
     onSuccess: invalidate,
   });
-  const refresh = useMutation({
-    ...withLocalErrorMutation(refreshRuntimeMutation()),
-    onSuccess: invalidate,
+  const installation = useQuery(runtimeInstallationOptions(runtime.id ?? ""));
+  const programInstalled = installation.data?.installed ?? runtime.installed;
+  const authentication = useQuery({
+    ...runtimeAuthenticationOptions(runtime.id ?? ""),
+    enabled: Boolean(programInstalled),
   });
-  const pending = update.isPending || refresh.isPending;
-  const optionsUnavailable = runtime.diagnostics?.some(
-    (item) => item.code === "ACP_OPTIONS_UNAVAILABLE",
+  const installing = installation.data?.state === "installing";
+  const authenticatingSystem = Boolean(
+    authentication.data?.jobId &&
+    authentication.data.scope === "system" &&
+    authentication.data.cancelable &&
+    (authentication.data.state === "authenticating" ||
+      authentication.data.state === "checking"),
   );
-  const usingPreviousOptions = runtime.diagnostics?.some(
-    (item) => item.code === "ACP_OPTIONS_FALLBACK",
-  );
-  const ready = runtime.state === "ready";
-  const runtimeID = runtime.id ?? "";
+  const pending =
+    update.isPending || installing || restart.isPending || authenticatingSystem;
+  const modelPending =
+    update.isPending ||
+    installing ||
+    restart.isPending ||
+    (authenticatingSystem && !runtime.defaultAccountId);
   const selection = useExecutionSelection({
-    runtime: { ...runtime, models: modelsForDraft(runtime, draft) },
+    runtime,
+    enabled: Boolean(programInstalled),
     value: {
       runtimeId: runtime.id,
-      accountId: draft.defaultAccountId || "system",
-      model: draft.defaultModel || undefined,
-      reasoning: draft.defaultReasoning,
-      permissionLevel: draft.defaultPermissionLevel,
+      accountId: runtime.defaultAccountId || "system",
+      model: runtime.defaultModel,
+      reasoning: runtime.defaultReasoning,
+      fast: runtime.defaultFast,
+      permissionLevel: runtime.defaultPermissionLevel,
     },
-    enabled: true,
-    defaults: true,
   });
-  const accountsQuery = selection.accountsQuery;
-  const linkedAccount = (accountsQuery.data?.resources ?? []).find(
-    (account) => account.id === runtime.defaultAccountId,
-  );
-  const issueKind = runtimeIssueKind(
+  const save = async (patch: RuntimePatch) => {
+    await update.mutateAsync({
+      path: { runtimeId: runtime.id ?? "" },
+      body: { ...runtimeSettingsBody(runtime), ...patch },
+    });
+  };
+  const name = runtimeDisplayName(runtime);
+  const status = runtimeHeaderState(
     runtime,
-    linkedAccount,
-    accountsQuery.isSuccess,
+    installation.data,
+    authentication.data,
   );
-  const accountName =
-    linkedAccount?.name || t("runtimeEnvironment.issues.accountFallback");
-  const issueMessages = {
-    cliLogin: {
-      title: t("runtimeEnvironment.issues.cliLogin.title"),
-      guidance: t("runtimeEnvironment.issues.cliLogin.guidance", {
-        runtime: runtimeDisplayName(runtime),
-      }),
-      accountRelated: false,
-    },
-    accountMissing: {
-      title: t("runtimeEnvironment.issues.accountMissing.title"),
-      guidance: t("runtimeEnvironment.issues.accountMissing.guidance"),
-      accountRelated: true,
-    },
-    accountSubscriptionLogin: {
-      title: t("runtimeEnvironment.issues.accountSubscriptionLogin.title"),
-      guidance: t(
-        "runtimeEnvironment.issues.accountSubscriptionLogin.guidance",
-        { account: accountName },
-      ),
-      accountRelated: true,
-    },
-    accountKeyMissing: {
-      title: t("runtimeEnvironment.issues.accountKeyMissing.title"),
-      guidance: t("runtimeEnvironment.issues.accountKeyMissing.guidance", {
-        account: accountName,
-      }),
-      accountRelated: true,
-    },
-    accountUnavailable: {
-      title: t("runtimeEnvironment.issues.accountUnavailable.title"),
-      guidance: t("runtimeEnvironment.issues.accountUnavailable.guidance", {
-        account: accountName,
-      }),
-      accountRelated: true,
-    },
-    accountAuth: {
-      title: t("runtimeEnvironment.issues.accountAuth.title"),
-      guidance: t("runtimeEnvironment.issues.accountAuth.guidance", {
-        account: accountName,
-      }),
-      accountRelated: true,
-    },
-    protocol: {
-      title: t("runtimeEnvironment.issues.protocol.title"),
-      guidance: t("runtimeEnvironment.issues.protocol.guidance"),
-      accountRelated: false,
-    },
-    connection: {
-      title: t("runtimeEnvironment.issues.connection.title"),
-      guidance: t("runtimeEnvironment.issues.connection.guidance"),
-      accountRelated: false,
-    },
-    modelCatalog: {
-      title: t("runtimeEnvironment.issues.modelCatalog.title"),
-      guidance: t("runtimeEnvironment.issues.modelCatalog.guidance"),
-      accountRelated: Boolean(runtime.defaultAccountId),
-    },
-  };
-  const issue = issueKind ? issueMessages[issueKind] : undefined;
-  const normalizedDraft = {
-    ...draft,
-    defaultModel: selection.selection.model,
-    defaultReasoning: selection.selection.reasoning,
-  };
+  const modelValue = selection.selection.model || "__native_default";
+  const reasoningValue = selection.selection.reasoning || "__native_default";
+  const fastValue =
+    selection.selection.fast === undefined
+      ? "__native_default"
+      : selection.selection.fast
+        ? "on"
+        : "off";
+  const modelDisabled =
+    modelPending || selection.loading || selection.models.length === 0;
   const installations = (runtime.installations ?? []).filter(
-    (installation): installation is typeof installation & { path: string } =>
-      Boolean(installation.path),
+    (item) => item.available && item.path,
   );
-  const selectedPath = installations.find(
-    (installation) =>
-      installation.path === draft.binary ||
-      (draft.binary === runtime.binary &&
-        installation.path === runtime.resolvedBinary),
-  )?.path;
-  const selectedInstallation = installations.find(
-    (installation) => installation.path === selectedPath,
+  const multipleInstallations = installations.length > 1;
+  const version = runtimeDisplayVersion(
+    installation.data?.version || runtime.version,
   );
-  const supportedPermissions = runtimeDefaultPermissionLevels(runtime);
-  const selectedPermissionLevel =
-    permissionLevelOf(runtime.defaultPermissionLevel) ?? "auto";
-  const selectedPermissionLabel = t(
-    permissionLevelTranslationKeys[selectedPermissionLevel].label,
-  );
-  const permissionDefaultDowngraded = runtime.diagnostics?.some(
-    (item) => item.code === "PERMISSION_DEFAULT_DOWNGRADED",
-  );
-  const fullAccessUnavailable =
-    supportedPermissions.size > 0 && !supportedPermissions.has("full-access");
-  const pendingDetection = runtime.detectedAt === 0 && runtime.state === "";
-  const unavailableStatus = pendingDetection
-    ? t("runtimeEnvironment.status.detecting")
-    : !runtime.installed
-      ? t("runtimeEnvironment.status.notInstalled")
-      : runtime.auth === "missing"
-        ? t("runtimeEnvironment.status.loginRequired")
-        : runtime.state === "incompatible"
-          ? t("runtimeEnvironment.status.incompatible")
-          : t("runtimeEnvironment.status.notReady");
-  const version = runtimeDisplayVersion(runtime.version);
-  const detectionStatus =
-    (runtime.installed && version ? version : undefined) ??
-    issue?.title ??
-    (!runtime.installed
-      ? unavailableStatus
-      : runtime.auth === "missing"
-        ? t("runtimeEnvironment.status.loginRequired")
-        : ready
-          ? version || t("runtimeEnvironment.status.versionUnknown")
-          : unavailableStatus);
-  const mutate = (
-    nextDraft: RuntimeDraft,
-    patch?: Partial<{ enabled: boolean; isDefault: boolean }>,
-    onError?: () => void,
-  ) => {
-    try {
-      update.mutate(
-        {
-          path: { runtimeId: runtimeID },
-          body: runtimeBody(runtime, nextDraft, patch),
-        },
-        { onError },
-      );
-      setDraftError("");
-    } catch {
-      setDraftError("参数格式无效，请检查引号和转义。");
-    }
-  };
-
+  const versionDescription = !programInstalled
+    ? t("agents.status.notInstalled")
+    : !version
+      ? t("agents.versionUnknown")
+      : installation.data?.updateAvailable && installation.data.latestVersion
+        ? t("agents.versionAvailable", {
+            version,
+            latest: installation.data.latestVersion,
+          })
+        : installation.data?.source === "managed"
+          ? t("agents.versionManaged", { version })
+          : installation.data?.source === "system"
+            ? t("agents.versionSystem", { version })
+            : version;
   return (
-    <Collapsible
-      open={expanded}
-      onOpenChange={(open) => {
-        if (open) {
-          setDraft(runtimeDraft(runtime));
-          setDraftError("");
+    <>
+      <PageHeader
+        appearance="compact"
+        layout="detail"
+        title={name}
+        status={
+          <StatusPill tone={status.tone}>
+            {t(`agents.status.${status.label}`)}
+          </StatusPill>
         }
-        setExpanded(open);
-      }}
-      className="bg-surface-tertiary overflow-hidden rounded-lg"
-    >
-      <div className="min-h-row-rich flex flex-wrap items-center gap-x-2">
-        <CollapsibleTrigger
-          aria-label={
-            expanded
-              ? `收起${runtimeDisplayName(runtime)}智能体设置`
-              : `展开${runtimeDisplayName(runtime)}智能体设置`
+        backAction={{ label: t("agents.back"), onClick: onBack }}
+        description={runtime.isDefault ? t("agents.defaultHint") : undefined}
+        visual={
+          <div className="bg-resource-surface flex size-12 shrink-0 items-center justify-center rounded-lg">
+            <RuntimeCliIcon
+              runtimeId={runtime.baseRuntimeId || runtime.id}
+              size={24}
+            />
+          </div>
+        }
+        actions={
+          <div className="flex items-center gap-2">
+            <Switch
+              hitArea="comfortable"
+              aria-label={t("agents.enabled")}
+              checked={runtime.enabled ?? false}
+              disabled={
+                pending ||
+                (!runtime.enabled &&
+                  (!programInstalled || runtime.state !== "ready"))
+              }
+              onClick={() =>
+                void save({ enabled: !runtime.enabled }).catch(() => undefined)
+              }
+            />
+            <ExecutionPermissionPicker
+              hitArea="comfortable"
+              ariaLabel={t("agents.permission")}
+              value={
+                permissionLevelOf(runtime.defaultPermissionLevel) ?? "auto"
+              }
+              supported={selection.supportedPermissions}
+              disabled={
+                pending || !programInstalled || runtime.state !== "ready"
+              }
+              onChange={(defaultPermissionLevel) =>
+                void save({ defaultPermissionLevel }).catch(() => undefined)
+              }
+            />
+          </div>
+        }
+      />
+      {!programInstalled ? (
+        <SettingsGroup title={t("login")}>
+          <SettingsRow title={t("agents.status.notInstalled")} />
+        </SettingsGroup>
+      ) : null}
+      {programInstalled ? (
+        <AIAccountsSection
+          runtime={runtime}
+          disabled={pending}
+          onSelectAccount={(defaultAccountId) =>
+            save({
+              defaultAccountId,
+              defaultModel: "",
+              defaultReasoning: "",
+              defaultFast: undefined,
+            })
           }
-          className="group text-content-primary hover:bg-action-quiet-hover focus-visible:ring-ring flex min-w-0 flex-1 basis-48 items-center gap-2 self-stretch px-4 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
-        >
-          <ChevronRight
-            aria-hidden="true"
-            className="size-icon-sm text-content-muted shrink-0 group-data-[state=open]:rotate-90"
-          />
-          <RuntimeCliIcon runtimeId={runtimeID} />
-          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="type-body font-medium break-words">
-              {runtimeDisplayName(runtime)}
-            </span>
-            {detectionStatus ? (
-              <span
-                className="type-ui text-content-secondary min-w-0 truncate"
-                title={detectionStatus}
+        />
+      ) : null}
+      <SettingsGroup title={t("agents.runtime")}>
+        <div className="bg-resource-surface overflow-hidden rounded-lg">
+          <SettingsRow
+            grouped
+            title={t("agents.version")}
+            description={
+              multipleInstallations ? undefined : (
+                <span title={installation.data?.installationPath}>
+                  {versionDescription}
+                </span>
+              )
+            }
+          >
+            {multipleInstallations ? (
+              <Select
+                value={runtime.resolvedBinary}
+                disabled={pending}
+                onValueChange={(installationPath) =>
+                  void save({ installationPath }).catch(() => undefined)
+                }
               >
-                {detectionStatus}
-              </span>
+                <SelectTrigger
+                  aria-label={t("agents.version")}
+                  className="w-64"
+                >
+                  <SelectValue>{versionDescription}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {installations.map((item) => (
+                    <SelectItem key={item.path} value={item.path ?? ""}>
+                      {runtimeDisplayVersion(item.version) ||
+                        t("agents.versionUnknown")}{" "}
+                      · {item.path}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             ) : null}
-          </span>
-        </CollapsibleTrigger>
-        <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2 px-3 py-2">
-          {issue ? (
+            <RuntimeInstallationControls
+              runtimeId={runtime.id ?? ""}
+              baseRuntimeId={runtime.baseRuntimeId}
+              installed={programInstalled ?? false}
+              version={runtime.version}
+              disabled={restart.isPending}
+            />
+          </SettingsRow>
+          {update.error && update.variables?.body.installationPath ? (
+            <p role="alert" className="type-body text-destructive px-4 py-3">
+              {update.error.message}
+            </p>
+          ) : null}
+          {programInstalled ? (
+            <SettingsRow
+              grouped
+              title={t("agents.restart")}
+              content={
+                restart.error ? (
+                  <p role="alert" className="text-destructive type-body mt-2">
+                    {restart.error.message}
+                  </p>
+                ) : undefined
+              }
+            >
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="plain"
+                    disabled={pending}
+                    aria-label={t("agents.restartNamed", { name })}
+                    aria-busy={restart.isPending}
+                    onClick={() =>
+                      restart.mutate({ path: { runtimeId: runtime.id ?? "" } })
+                    }
+                  >
+                    <Power
+                      aria-hidden="true"
+                      className={
+                        restart.isPending
+                          ? "motion-safe:animate-spin"
+                          : undefined
+                      }
+                    />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {t(
+                    restart.isPending ? "agents.restarting" : "agents.restart",
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            </SettingsRow>
+          ) : null}
+        </div>
+      </SettingsGroup>
+      {programInstalled ? (
+        <SettingsGroup
+          title={t("agents.models")}
+          trailing={
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  className="text-status-warning-content hover:text-status-warning-content"
-                  aria-label={`${runtimeDisplayName(runtime)}：${issue.title}，查看处理建议`}
-                  onClick={() => setIssueOpen(true)}
+                  size="icon"
+                  variant="plain"
+                  disabled={selection.catalogRefreshing || modelPending}
+                  aria-label={t("agents.refreshModels")}
+                  onClick={() => void selection.refreshCatalog()}
                 >
-                  <CircleAlert />
+                  <RefreshCw
+                    className={
+                      selection.catalogRefreshing ? "animate-spin" : undefined
+                    }
+                  />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{issue.title}</TooltipContent>
+              <TooltipContent>{t("agents.refreshModels")}</TooltipContent>
             </Tooltip>
-          ) : null}
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={ready && (runtime.enabled ?? false)}
-              disabled={pending || !ready}
-              aria-label={`${runtimeDisplayName(runtime)}启用状态`}
-              onClick={() =>
-                mutate(normalizedRuntimeDraft(runtime, runtimeDraft(runtime)), {
-                  enabled: !runtime.enabled,
-                })
-              }
-            />
-            <span className="text-content-secondary type-ui whitespace-nowrap">
-              {t(
-                !ready
-                  ? "runtimeEnvironment.status.unavailable"
-                  : runtime.enabled
-                    ? "runtimeEnvironment.status.enabled"
-                    : "runtimeEnvironment.status.disabled",
-              )}
-            </span>
-          </div>
-          <ExecutionPermissionPicker
-            value={selectedPermissionLevel}
-            supported={supportedPermissions}
-            disabled={
-              pending ||
-              !ready ||
-              !permissionEditingEnabled ||
-              supportedPermissions.size === 0
-            }
-            ariaLabel={t("permission.runtimePickerAria", {
-              runtime: runtimeDisplayName(runtime),
-              name: selectedPermissionLabel,
-            })}
-            onChange={(value) => {
-              setDraft((current) => ({
-                ...current,
-                defaultPermissionLevel: value,
-              }));
-              mutate(
-                normalizedRuntimeDraft(runtime, {
-                  ...runtimeDraft(runtime),
-                  defaultPermissionLevel: value,
-                }),
-              );
-            }}
-          />
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={
-              pending || !runtime.enabled || !ready || runtime.isDefault
-            }
-            onClick={() =>
-              mutate(normalizedRuntimeDraft(runtime, runtimeDraft(runtime)), {
-                isDefault: true,
-              })
-            }
+          }
+        >
+          <fieldset
+            aria-label={t("agents.models")}
+            className="border-field-border bg-resource-surface @container/runtime-models min-w-0 rounded-lg border p-4"
           >
-            {runtime.isDefault ? <Check /> : null}
-            {runtime.isDefault ? "默认" : "设为默认"}
-          </Button>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            disabled={pending}
-            aria-label={`重新探测${runtimeDisplayName(runtime)}`}
-            onClick={() => refresh.mutate({ path: { runtimeId: runtimeID } })}
-          >
-            <RefreshCw className={pending ? "animate-spin" : undefined} />
-          </Button>
-        </div>
-      </div>
-      {ready && (permissionDefaultDowngraded || fullAccessUnavailable) ? (
-        <p className="text-content-secondary type-caption px-4 pb-3">
-          {t("permission.defaultDowngraded")}
-        </p>
-      ) : null}
-
-      <CollapsibleContent>
-        <div className="border-border-subtle border-t p-4">
-          <ExecutionConfigurationFields
-            state={selection}
-            runtimeHidden
-            permissionHidden
-            defaults
-            disabled={pending}
-            leadingField={
-              installations.length > 1 ? (
-                <div className="relative grid min-w-0 gap-2">
-                  <FieldLabel htmlFor={`${runtimeID}-version`}>版本</FieldLabel>
+            {selection.loading ? (
+              <div
+                role="status"
+                aria-busy="true"
+                aria-label={t("loadingNativeModels")}
+              >
+                <Skeleton className="h-control-md w-full" />
+              </div>
+            ) : (
+              <div className="grid min-w-0 grid-cols-1 gap-4 @min-[20rem]/runtime-models:grid-cols-2">
+                <div className="grid min-w-0 gap-2">
+                  <FieldLabel htmlFor="runtime-default-model">
+                    {t("agents.defaultModel")}
+                  </FieldLabel>
                   <Select
-                    value={selectedPath ?? ""}
-                    disabled={pending}
-                    onValueChange={(path) => {
-                      const nextDraft = normalizedRuntimeDraft(runtime, {
-                        ...runtimeDraft(runtime),
-                        binary: path,
-                      });
-                      setDraft(nextDraft);
-                      mutate(nextDraft, undefined, () =>
-                        setDraft(runtimeDraft(runtime)),
-                      );
-                    }}
+                    value={modelValue}
+                    disabled={modelDisabled}
+                    onValueChange={(model) =>
+                      void save({
+                        defaultModel: model === "__native_default" ? "" : model,
+                        defaultReasoning: "",
+                        defaultFast: undefined,
+                      }).catch(() => undefined)
+                    }
                   >
                     <SelectTrigger
-                      id={`${runtimeID}-version`}
-                      aria-label={`${runtimeDisplayName(runtime)}版本`}
+                      id="runtime-default-model"
+
+                      aria-label={t("agents.defaultModel")}
                     >
-                      <SelectValue placeholder="选择版本" />
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {installations.map((installation) => (
-                        <SelectItem
-                          key={installation.path}
-                          value={installation.path}
-                          disabled={!installation.available}
-                        >
-                          {runtimeDisplayVersion(installation.version) ||
-                            "未知版本"}
-                          {!installation.available ? " · 路径已失效" : ""}
-                          {` · ${installation.path}`}
-                        </SelectItem>
-                      ))}
+                      <SelectItem value="__native_default">
+                        {t("nativeDefault")}
+                      </SelectItem>
+                      {selection.models
+                        .filter((model) => model.id)
+                        .map((model) => (
+                          <SelectItem key={model.id} value={model.id ?? ""}>
+                            {model.name || model.id}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
-                  {selectedInstallation && !selectedInstallation.available ? (
-                    <p className="type-caption text-status-warning-content">
-                      当前版本的安装路径已失效，请选择其他版本。
-                    </p>
-                  ) : null}
                 </div>
-              ) : undefined
-            }
-            onChange={(next) =>
-              setDraft((current) => ({
-                ...current,
-                defaultAccountId:
-                  next.accountId === "system" ? "" : next.accountId,
-                defaultModel: next.model,
-                defaultReasoning: next.reasoning,
-                defaultPermissionLevel: next.permissionLevel,
-              }))
-            }
-          />
+                {selection.reasoningOptions.length ? (
+                  <div className="grid min-w-0 gap-2">
+                    <FieldLabel htmlFor="runtime-default-reasoning">
+                      {t("agents.reasoning")}
+                    </FieldLabel>
+                    <Select
+                      value={reasoningValue}
+                      disabled={modelDisabled}
+                      onValueChange={(defaultReasoning) =>
+                        void save({
+                          defaultReasoning:
+                            defaultReasoning === "__native_default"
+                              ? ""
+                              : defaultReasoning,
+                        }).catch(() => undefined)
+                      }
+                    >
+                      <SelectTrigger
+                        id="runtime-default-reasoning"
 
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="text-muted-foreground type-caption flex items-center gap-2">
-              {pending ? (
-                <Loader2 className="size-icon-sm animate-spin" />
-              ) : null}
-              {pending
-                ? "正在保存并重新探测…"
-                : runtime.auth === "missing"
-                  ? t("runtimeEnvironment.status.loginRequired")
-                  : usingPreviousOptions
-                    ? "模型目录刷新失败，已保留上次结果"
-                    : optionsUnavailable
-                      ? "模型目录刷新失败，当前使用 Default 兜底"
-                      : ready
-                        ? `已发现${version ? ` · ${version}` : ""}`
-                        : unavailableStatus}
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={pending}
-                onClick={() => {
-                  setDraft(runtimeDraft(runtime));
-                  setDraftError("");
-                }}
-              >
-                取消
-              </Button>
-              <Button
-                size="sm"
-                disabled={pending || !draft.binary.trim()}
-                onClick={() => mutate(normalizedDraft)}
-              >
-                保存
-              </Button>
-            </div>
-          </div>
-          {draftError || update.isError || refresh.isError ? (
-            <p className="text-destructive type-caption mt-3 flex items-center gap-2">
-              <CircleAlert className="size-icon-sm" />
-              {draftError || errorMessage(update.error ?? refresh.error)}
+                        aria-label={t("agents.reasoning")}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__native_default">
+                          {t("nativeDefault")}
+                        </SelectItem>
+                        {selection.reasoningOptions
+                          .filter((option) => option.id)
+                          .map((option) => (
+                            <SelectItem key={option.id} value={option.id ?? ""}>
+                              {option.name || option.id}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
+                {selection.fastSupported ? (
+                  <div className="grid min-w-0 gap-2">
+                    <FieldLabel htmlFor="runtime-default-fast">
+                      {t("agents.fast")}
+                    </FieldLabel>
+                    <Select
+                      value={fastValue}
+                      disabled={modelDisabled}
+                      onValueChange={(value) =>
+                        void save({
+                          defaultFast:
+                            value === "__native_default"
+                              ? undefined
+                              : value === "on",
+                        }).catch(() => undefined)
+                      }
+                    >
+                      <SelectTrigger
+                        id="runtime-default-fast"
+
+                        aria-label={t("agents.fast")}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__native_default">
+                          {t("nativeDefault")}
+                        </SelectItem>
+                        <SelectItem value="off">
+                          {t("common:executionSelection.fastOff")}
+                        </SelectItem>
+                        <SelectItem value="on">
+                          {t("common:executionSelection.fastOn")}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </fieldset>
+          {selection.catalogIssue ? (
+            <p role="status" className="type-body text-content-secondary">
+              {runtime.auth === "missing"
+                ? t("agents.modelsRequireLogin")
+                : (runtime.baseRuntimeId || runtime.id) === "pi" &&
+                    selection.catalogIssue === "catalogEmpty"
+                  ? t("aiAccounts:systemModelsUnconfigured")
+                  : t(`common:executionSelection.${selection.catalogIssue}`)}
+            </p>
+          ) : selection.error ? (
+            <p role="alert" className="type-body text-destructive">
+              {t("agents.catalogFailed")}
             </p>
           ) : null}
-        </div>
-      </CollapsibleContent>
-      {issue ? (
-        <Dialog open={issueOpen} onOpenChange={setIssueOpen}>
-          <DialogContent
-            size="sm"
-            title={issue.title}
-            description={issue.guidance}
-          >
-            {issue.accountRelated && onOpenAccounts ? (
-              <DialogFooter>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => {
-                    setIssueOpen(false);
-                    onOpenAccounts();
-                  }}
-                >
-                  {t("runtimeEnvironment.issues.openAccounts")}
-                </Button>
-              </DialogFooter>
-            ) : null}
-          </DialogContent>
-        </Dialog>
+        </SettingsGroup>
       ) : null}
-    </Collapsible>
-  );
-}
-
-function RuntimeGroupCount({ count }: { count: number | "loading" }) {
-  return <Badge variant="secondary">{count === "loading" ? "—" : count}</Badge>;
-}
-
-function RuntimeGroupSkeleton({
-  rows,
-  title,
-}: {
-  rows: number;
-  title: string;
-}) {
-  return (
-    <SettingsGroup
-      title={title}
-      trailing={<RuntimeGroupCount count="loading" />}
-    >
-      <div
-        aria-busy="true"
-        aria-label="正在读取智能体"
-        className="flex flex-col gap-3"
-        role="status"
-      >
-        {Array.from({ length: rows }, (_, index) => (
-          <div
-            key={index}
-            className="bg-surface-tertiary min-h-row-rich flex flex-wrap items-center gap-3 rounded-lg px-4 py-3"
-          >
-            <Skeleton className="size-icon-sm shrink-0 rounded-sm" />
-            <div className="flex min-w-0 flex-1 basis-40 flex-wrap items-center gap-2">
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-3 w-20" />
-            </div>
-            <Skeleton className="h-row-navigation w-48 shrink-0 rounded-md" />
-          </div>
-        ))}
-      </div>
-    </SettingsGroup>
-  );
-}
-
-function RuntimeGroup({
-  empty,
-  onOpenAccounts,
-  permissionEditingEnabled,
-  runtimes,
-  title,
-}: {
-  empty: string;
-  onOpenAccounts?: () => void;
-  permissionEditingEnabled: boolean;
-  runtimes: RuntimeOption[];
-  title: string;
-}) {
-  return (
-    <SettingsGroup
-      title={title}
-      trailing={<RuntimeGroupCount count={runtimes.length} />}
-    >
-      {runtimes.length ? (
-        <div className="flex flex-col gap-3">
-          {runtimes.map((runtime) => (
-            <RuntimeEnvironmentRow
-              key={runtime.id}
-              onOpenAccounts={onOpenAccounts}
-              permissionEditingEnabled={permissionEditingEnabled}
-              runtime={runtime}
-            />
-          ))}
-        </div>
-      ) : (
-        <p className="text-content-secondary type-body bg-surface-tertiary rounded-lg px-4 py-6 text-center">
-          {empty}
+      {installation.data?.canUninstall || programInstalled ? (
+        <RuntimeProgramRemoval
+          runtimeId={runtime.id ?? ""}
+          name={name}
+          installation={installation.data}
+          disabled={pending}
+        />
+      ) : null}
+      {update.error ? (
+        <p role="alert" className="type-body text-destructive">
+          {update.error.message}
         </p>
-      )}
-    </SettingsGroup>
+      ) : null}
+    </>
   );
 }
 
 export function RuntimeEnvironmentsSection({
-  onOpenAccounts,
+  runtimeId,
+  onOpenRuntime,
+  onBack,
+  showSceneChrome = true,
 }: {
-  onOpenAccounts?: () => void;
+  runtimeId?: string;
+  onOpenRuntime: (runtimeId: string) => void;
+  onBack: () => void;
+  showSceneChrome?: boolean;
 }) {
-  const { t } = useTranslation("common");
+  const { t } = useTranslation(["aiAccounts", "common"]);
   const queryClient = useQueryClient();
+  const [search, setSearch] = useState("");
   const runtimesQuery = useQuery(
     listRuntimesOptions(withLocalErrorSurface({})),
   );
-  const [manualEditing, setManualEditing] = useState(false);
-  const [yoloConfirmOpen, setYoloConfirmOpen] = useState(false);
-  const [yoloSaving, setYoloSaving] = useState(false);
-  const [yoloError, setYoloError] = useState("");
+  const update = useMutation({
+    ...withLocalErrorMutation(updateRuntimeEnvironmentMutation()),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: listRuntimesQueryKey() }),
+  });
   const refresh = useMutation({
     ...withLocalErrorMutation(refreshRuntimesMutation()),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: listRuntimesQueryKey() });
-    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: listRuntimesQueryKey() }),
   });
   const runtimes = runtimesQuery.data?.resources ?? [];
-  const discovered = runtimes.filter((runtime) => runtime.installed);
-  const undiscovered = runtimes.filter((runtime) => !runtime.installed);
-  const yoloCapable =
-    discovered.some((runtime) => runtime.state === "ready") &&
-    discovered
-      .filter((runtime) => runtime.state === "ready")
-      .every((runtime) =>
-        runtimeDefaultPermissionLevels(runtime).has("full-access"),
-      );
-  const allDiscoveredUseFullAccess =
-    yoloCapable &&
-    discovered
-      .filter((runtime) => runtime.state === "ready")
-      .every((runtime) => runtime.defaultPermissionLevel === "full-access");
-  const permissionMode =
-    allDiscoveredUseFullAccess && !manualEditing ? "yolo" : "manual";
-  const yoloUpdate = useMutation(
-    withLocalErrorMutation(updateRuntimeEnvironmentMutation()),
+  const selected = runtimes.find((runtime) => runtime.id === runtimeId);
+  const currentDefault = runtimes.find((runtime) => runtime.isDefault);
+  const status = (runtime: RuntimeOption) =>
+    t(`agents.status.${runtimeHeaderState(runtime).label}`);
+  const filtered = runtimes.filter((runtime) =>
+    `${runtimeDisplayName(runtime)} ${status(runtime)}`
+      .toLowerCase()
+      .includes(search.trim().toLowerCase()),
   );
-  const enableYolo = async () => {
-    setYoloSaving(true);
-    setYoloError("");
-    try {
-      await Promise.all(
-        discovered.flatMap((runtime) =>
-          runtime.id &&
-          runtime.state === "ready" &&
-          runtimeDefaultPermissionLevels(runtime).has("full-access")
-            ? [
-                yoloUpdate.mutateAsync({
-                  path: { runtimeId: runtime.id },
-                  body: runtimeBody(runtime, {
-                    ...runtimeDraft(runtime),
-                    defaultPermissionLevel: "full-access",
-                  }),
-                }),
-              ]
-            : [],
-        ),
-      );
-      await queryClient.invalidateQueries({
-        queryKey: listRuntimesQueryKey(),
-      });
-      setManualEditing(false);
-      setYoloConfirmOpen(false);
-    } catch (error) {
-      setYoloError(errorMessage(error));
-      await queryClient.invalidateQueries({
-        queryKey: listRuntimesQueryKey(),
-      });
-    } finally {
-      setYoloSaving(false);
-    }
-  };
-
-  return (
-    <SettingsContentShell
-      title="智能体"
-      description="管理本机智能体、默认模型和启动设置。"
-      actions={
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={refresh.isPending}
-          onClick={() => refresh.mutate({})}
-        >
-          <RefreshCw
-            className={refresh.isPending ? "animate-spin" : undefined}
-          />
-          刷新
-        </Button>
-      }
+  const row = (runtime: RuntimeOption) => (
+    <button
+      key={runtime.id}
+      type="button"
+      aria-label={t("agents.open", { name: runtimeDisplayName(runtime) })}
+      onClick={() => onOpenRuntime(runtime.id ?? "")}
+      className="before:bg-border-subtle min-h-row-detail hover:bg-action-quiet-hover focus-visible:ring-ring relative flex w-full items-center gap-4 px-4 py-3 text-left outline-none before:absolute before:inset-x-4 before:top-0 before:h-px first:before:hidden focus-visible:ring-2 focus-visible:ring-inset"
     >
-      <SettingsRow
-        title={t("permission.sectionTitle")}
-        description={
-          discovered.length > 0 && !yoloCapable
-            ? t("permission.yoloUnavailable")
-            : undefined
-        }
-      >
-        <SegmentedControl
-          size="sm"
-          ariaLabel={t("permission.modeAria")}
-          value={permissionMode}
-          options={[
-            { value: "manual", label: t("permission.manual") },
-            {
-              value: "yolo",
-              label: t("permission.yolo"),
-              disabled: !yoloCapable,
-            },
-          ]}
-          onValueChange={(mode) => {
-            if (mode === "manual") {
-              setManualEditing(true);
-              return;
-            }
-            if (permissionMode === "manual") {
-              setYoloError("");
-              setYoloConfirmOpen(true);
-            }
-          }}
-        />
-      </SettingsRow>
-
-      {runtimesQuery.isLoading ? (
-        <>
-          <RuntimeGroupSkeleton title="已发现" rows={3} />
-          <RuntimeGroupSkeleton title="未发现" rows={1} />
-        </>
-      ) : runtimesQuery.isError ? (
-        <p className="text-destructive type-body flex items-center gap-2">
-          <CircleAlert className="size-icon-md" />
-          {errorMessage(runtimesQuery.error)}
-        </p>
-      ) : (
-        <>
-          <RuntimeGroup
-            title="已发现"
-            runtimes={discovered}
-            empty="尚未发现可用智能体。"
-            onOpenAccounts={onOpenAccounts}
-            permissionEditingEnabled={permissionMode === "manual"}
-          />
-          <RuntimeGroup
-            title="未发现"
-            runtimes={undiscovered}
-            empty="没有其他受支持的智能体。"
-            permissionEditingEnabled={false}
-          />
-        </>
-      )}
-
-      {refresh.isError ? (
-        <p className="text-destructive type-caption flex items-center gap-2">
-          <CircleAlert className="size-icon-sm" />
-          {errorMessage(refresh.error)}
-        </p>
+      <RuntimeCliIcon
+        runtimeId={runtime.baseRuntimeId || runtime.id}
+        size={24}
+      />
+      <span className="min-w-0 flex-1">
+        <span className="type-label text-content-primary block font-medium">
+          {runtimeDisplayName(runtime)}
+        </span>
+        <span className="type-body text-content-secondary block">
+          {status(runtime)}
+        </span>
+      </span>
+      {runtime.installed && runtime.auth === "missing" ? (
+        <StatusPill tone="attention">{t("needsLogin")}</StatusPill>
       ) : null}
-
-      <Dialog
-        open={yoloConfirmOpen}
-        onOpenChange={(open) => {
-          if (!yoloSaving) setYoloConfirmOpen(open);
-        }}
-      >
-        <DialogContent
-          size="sm"
-          title={t("permission.yoloConfirmTitle")}
-          description={t("permission.yoloConfirmDescription")}
-        >
-          {yoloError ? (
-            <p className="text-destructive type-body px-6 py-3">{yoloError}</p>
-          ) : null}
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="secondary" disabled={yoloSaving}>
-                {t("common:cancel")}
-              </Button>
-            </DialogClose>
+      <ChevronRight
+        aria-hidden="true"
+        className="size-icon-md text-content-tertiary shrink-0"
+      />
+    </button>
+  );
+  return (
+    <>
+      {showSceneChrome ? (
+        <SceneBreadcrumbs
+          ariaLabel={t("agents.title")}
+          items={
+            runtimeId
+              ? [
+                  { label: t("agents.title"), href: "/settings/agents" },
+                  {
+                    label: selected
+                      ? runtimeDisplayName(selected)
+                      : t("agents.detail"),
+                  },
+                ]
+              : [{ label: t("agents.title") }]
+          }
+        />
+      ) : null}
+      <SettingsContentShell showHeader={false}>
+        {runtimesQuery.isError ? (
+          <div role="alert" className="flex flex-wrap items-center gap-2">
+            <p className="type-body text-destructive">
+              {runtimesQuery.error.message}
+            </p>
             <Button
-              type="button"
-              disabled={yoloSaving}
-              onClick={() => void enableYolo()}
+              size="settings"
+              variant="settings-outline"
+              onClick={() => void runtimesQuery.refetch()}
             >
-              {yoloSaving ? <Loader2 className="animate-spin" /> : null}
-              {t("permission.yoloConfirm")}
+              {t("common:retry")}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </SettingsContentShell>
+          </div>
+        ) : null}
+        {runtimeId ? (
+          selected ? (
+            <RuntimeDetail key={runtimeId} runtime={selected} onBack={onBack} />
+          ) : runtimesQuery.isPending ? (
+            <RuntimeSkeleton />
+          ) : runtimesQuery.isError ? null : (
+            <div className="space-y-3">
+              <p className="type-body text-content-secondary">
+                {t("agents.notFound")}
+              </p>
+              <Button
+                size="settings"
+                variant="settings-outline"
+                onClick={onBack}
+              >
+                {t("agents.back")}
+              </Button>
+            </div>
+          )
+        ) : (
+          <>
+            <div className="bg-resource-surface overflow-hidden rounded-lg">
+              <SettingsRow
+                grouped
+                title={t("agents.defaultAgent")}
+                description={t("agents.defaultHint")}
+              >
+                <Select
+                  value={currentDefault?.id ?? ""}
+                  disabled={update.isPending}
+                  onValueChange={(id) => {
+                    const runtime = runtimes.find((item) => item.id === id);
+                    if (runtime)
+                      update.mutate({
+                        path: { runtimeId: id },
+                        body: {
+                          ...runtimeSettingsBody(runtime),
+                          isDefault: true,
+                        },
+                      });
+                  }}
+                >
+                  <SelectTrigger
+                    size="settings"
+                    appearance="settings"
+                    aria-label={t("agents.defaultAgent")}
+                  >
+                    <SelectValue placeholder={t("agents.chooseAgent")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {runtimes
+                      .filter(
+                        (runtime) =>
+                          runtime.isDefault ||
+                          (runtime.enabled && runtime.state === "ready"),
+                      )
+                      .map((runtime) => (
+                        <SelectItem key={runtime.id} value={runtime.id ?? ""}>
+                          {runtimeDisplayName(runtime)}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </SettingsRow>
+            </div>
+            <SettingsGroup
+              title={t("agents.installed")}
+              trailing={
+                <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="plain"
+                        disabled={refresh.isPending}
+                        aria-label={t("agents.check")}
+                        onClick={() => refresh.mutate({})}
+                      >
+                        <RefreshCw
+                          className={
+                            refresh.isPending ? "animate-spin" : undefined
+                          }
+                        />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{t("agents.check")}</TooltipContent>
+                  </Tooltip>
+                  <SearchField
+                    width="toolbar"
+                    aria-label={t("agents.search")}
+                    placeholder={t("agents.search")}
+                    clearLabel={t("clearSearch")}
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                  />
+                </div>
+              }
+            >
+              {runtimesQuery.isPending ? (
+                <RuntimeSkeleton />
+              ) : (
+                <div className="bg-resource-surface overflow-hidden rounded-lg">
+                  {filtered.filter((runtime) => runtime.installed).map(row)}
+                  {!filtered.some((runtime) => runtime.installed) ? (
+                    <p className="type-body text-content-secondary px-4 py-5">
+                      {t(search ? "agents.noMatches" : "agents.noneInstalled")}
+                    </p>
+                  ) : null}
+                </div>
+              )}
+            </SettingsGroup>
+            {filtered.some((runtime) => !runtime.installed) ? (
+              <SettingsGroup title={t("agents.other")}>
+                <div className="bg-resource-surface overflow-hidden rounded-lg">
+                  {filtered.filter((runtime) => !runtime.installed).map(row)}
+                </div>
+              </SettingsGroup>
+            ) : null}
+            {update.error || refresh.error ? (
+              <p role="alert" className="type-body text-destructive">
+                {(update.error ?? refresh.error)?.message}
+              </p>
+            ) : null}
+          </>
+        )}
+      </SettingsContentShell>
+    </>
   );
 }

@@ -15,7 +15,7 @@ func TestPresentationSeparatesPackageAndDeclaredUpstreamVersion(t *testing.T) {
 	} {
 		t.Run(source, func(t *testing.T) {
 			root := t.TempDir()
-			fixtureFile(t, root, ".codex-plugin/plugin.json", `{"name":"office","version":"0.1.0","author":{"name":"NeuxBot contributors"}}`)
+			standardInput(t, root, map[string]any{"name": "office", "version": "0.1.0", "author": map[string]string{"name": "NeuxBot contributors"}})
 			fixtureFile(t, root, "provenance.json", source)
 			pkg, err := Load(root)
 			if err != nil {
@@ -40,7 +40,7 @@ func TestPresentationSeparatesPackageAndDeclaredUpstreamVersion(t *testing.T) {
 
 func TestPackageUsesDeclaredUpstreamIdentityInsteadOfWrapperBrand(t *testing.T) {
 	root := t.TempDir()
-	fixtureFile(t, root, ".codex-plugin/plugin.json", `{"name":"office","version":"0.1.0","author":{"name":"NeuxBot contributors"},"interface":{"developerName":"飞书"}}`)
+	standardInput(t, root, map[string]any{"name": "office", "version": "0.1.0", "author": map[string]string{"name": "NeuxBot contributors"}, "extensions": map[string]any{"com.openai": map[string]any{"interface": map[string]string{"developerName": "飞书"}}}})
 	fixtureFile(t, root, "provenance.json", `{"upstream":{"author":"Lark Suite CLI contributors","tag":"v1.0.98","repository":"https://github.com/larksuite/cli","license":"MIT"}}`)
 	pkg, err := Load(root)
 	if err != nil {

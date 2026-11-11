@@ -1,19 +1,27 @@
-import { ChevronRight, Plus } from "lucide-react";
-import { useState } from "react";
+import { MessageCircle, Plus } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { SettingsContentShell } from "@/modules/settings";
+import { useSearchParams } from "react-router-dom";
+import {
+  SettingsCard,
+  SettingsContentShell,
+  SettingsGroup,
+  SettingsNavigationRow,
+} from "@/modules/settings";
 import { localApiErrorMessage } from "@/shared/api/local-error-surface";
 import { Button } from "@/shared/ui/button";
+import { PageHeader } from "@/shared/ui/page-header";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/shared/ui/collapsible";
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/shared/ui/tooltip";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { ConnectionDialog } from "./components/connection-dialog";
 import { ConnectionSettingsRow } from "./components/connection-settings-row";
 import { PlatformIcon } from "./components/platform-icon";
-import { IMConnectionDetailDialog } from "./im-connection-detail-dialog";
+import { IMConnectionDetailPage } from "./im-connection-detail-page";
 import { useIMBindings, useIMConnections } from "./queries";
 import type { IMPlatform } from "./types";
 
@@ -23,158 +31,215 @@ export function IMPage() {
   const { t } = useTranslation("im");
   const query = useIMConnections();
   const bindings = useIMBindings();
-  const [expandedPlatforms, setExpandedPlatforms] = useState<IMPlatform[]>([]);
+  const [params, setParams] = useSearchParams();
+  const requested = params.get("platform");
+  const selectedPlatform =
+    supportedPlatforms.find((item) => item === requested) ??
+    query.data?.resources?.find((item) => item.id === params.get("connection"))
+      ?.platform;
+  const selected = supportedPlatforms.find((item) => item === selectedPlatform);
+  useEffect(() => {
+    if (!requested && selected && params.has("connection")) {
+      const next = new URLSearchParams(params);
+      next.set("platform", selected);
+      setParams(next, { replace: true });
+    }
+  }, [params, requested, selected, setParams]);
+  function openPlatform(value?: IMPlatform) {
+    const next = new URLSearchParams(params);
+    if (value) {
+      next.set("platform", value);
+      next.set("tab", "im");
+    } else {
+      for (const key of [
+        "platform",
+        "tab",
+        "detail",
+        "connection",
+        "binding",
+        "chat",
+      ])
+        next.delete(key);
+    }
+    setParams(next);
+  }
   const [platform, setPlatform] = useState<IMPlatform>();
-  const [detail, setDetail] = useState<{
-    connectionId: string;
-    trigger: HTMLElement;
-  }>();
+
+  if (params.has("connection"))
+    return (
+      <IMConnectionDetailPage
+        connectionId={params.get("connection") || ""}
+        initialBindingId={
+          params.get("binding") || params.get("chat") || undefined
+        }
+        onBack={(parent) => {
+          const next = new URLSearchParams(params);
+          for (const key of ["connection", "binding", "chat"]) next.delete(key);
+          if (parent) next.set("platform", parent);
+          setParams(next);
+        }}
+      />
+    );
 
   return (
-    <SettingsContentShell title={t("title")} description={t("description")}>
+    <SettingsContentShell showHeader={false}>
       {query.error ? (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p role="alert" className="type-body text-destructive">
             {localApiErrorMessage(query.error, t("operationFailed"))}
           </p>
           <Button
-            size="sm"
-            variant="secondary"
+            size="settings"
+            variant="settings-outline"
             onClick={() => void query.refetch()}
           >
             {t("reload")}
           </Button>
         </div>
       ) : null}
-      <div className="flex flex-col gap-3">
-        {supportedPlatforms.map((item) => {
-          const connections =
-            query.data?.resources?.filter(
-              (connection) => connection.platform === item,
-            ) || [];
-          return (
-            <Collapsible
-              key={item}
-              className="bg-surface-tertiary overflow-hidden rounded-lg"
-              open={expandedPlatforms.includes(item)}
-              onOpenChange={(open) =>
-                setExpandedPlatforms((current) =>
-                  open
-                    ? [...current, item]
-                    : current.filter((value) => value !== item),
-                )
-              }
-            >
-              <div className="min-h-row-rich flex flex-wrap items-center gap-x-2">
-                <CollapsibleTrigger
-                  aria-label={t("platformConnections", { platform: t(item) })}
-                  className="group text-content-primary hover:bg-action-quiet-hover focus-visible:ring-ring flex min-w-0 flex-1 basis-48 items-center gap-2 self-stretch px-4 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
-                >
-                  <ChevronRight
-                    aria-hidden="true"
-                    className="size-icon-sm text-content-muted shrink-0 transition-transform group-data-[state=open]:rotate-90 motion-reduce:transition-none"
-                  />
-                  <PlatformIcon platform={item} compact />
-                  <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className="type-body font-medium break-words">
-                      {t(item)}
-                    </span>
-                    <span className="type-ui text-content-secondary min-w-0 break-words">
-                      {t("platformDescription." + item)}
-                    </span>
-                  </span>
-                  <span className="type-ui text-content-secondary shrink-0 tabular-nums">
-                    {query.isPending ? (
-                      <Skeleton className="h-4 w-12" />
-                    ) : query.data ? (
-                      t("connectionCount", { count: connections.length })
-                    ) : (
-                      t("connections")
-                    )}
-                  </span>
-                </CollapsibleTrigger>
-                <div className="ml-auto flex max-w-full items-center px-3 py-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-label={t("addPlatformBot", { platform: t(item) })}
-                    onClick={() => setPlatform(item)}
-                  >
-                    <Plus />
-                    {t("addBot")}
-                  </Button>
-                </div>
+      {selected ? (
+        <>
+          <PageHeader
+            appearance="compact"
+            layout="detail"
+            title={t(selected)}
+            backAction={{
+              label: t("backToIntegrations"),
+              onClick: () => openPlatform(),
+            }}
+            visual={
+              <div className="bg-resource-surface flex size-12 shrink-0 items-center justify-center rounded-lg">
+                <PlatformIcon platform={selected} />
               </div>
-              <CollapsibleContent>
-                <div className="border-border-subtle divide-border-subtle divide-y border-t">
-                  {query.isPending ? (
-                    <div
-                      role="status"
-                      aria-busy="true"
-                      aria-label={t("loading")}
-                      className="grid gap-3 px-4 py-3"
+            }
+            description={t("platformDescription." + selected)}
+          />
+          <SettingsGroup
+            title={t("connections")}
+            trailing={
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="plain"
+                      size="icon"
+                      aria-label={t("addPlatformBot", {
+                        platform: t(selected),
+                      })}
+                      onClick={() => setPlatform(selected)}
                     >
-                      <Skeleton className="h-4 w-1/3" />
-                      <Skeleton className="h-4 w-2/3" />
-                    </div>
-                  ) : connections.length ? (
-                    connections.map((connection) => (
-                      <ConnectionSettingsRow
-                        key={connection.id}
-                        connection={connection}
-                        bindings={
-                          bindings.data?.filter(
-                            (binding) => binding.connectionId === connection.id,
-                          ) || []
-                        }
-                        onSaved={() => void query.refresh()}
-                        onView={(trigger) => {
-                          if (connection.id)
-                            setDetail({ connectionId: connection.id, trigger });
-                        }}
-                      />
-                    ))
-                  ) : !query.error ? (
-                    <p className="type-ui text-content-secondary px-4 py-3">
-                      {t("empty.platformConnections", { platform: t(item) })}
-                    </p>
-                  ) : null}
+                      <Plus />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {t("addPlatformBot", { platform: t(selected) })}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            }
+          >
+            <SettingsCard>
+              {query.isPending ? (
+                <div
+                  role="status"
+                  aria-busy="true"
+                  aria-label={t("loading")}
+                  className="grid gap-3 px-4 py-3"
+                >
+                  <Skeleton className="h-4 w-1/3" />
+                  <Skeleton className="h-row-detail w-full" />
                 </div>
-              </CollapsibleContent>
-            </Collapsible>
-          );
-        })}
-      </div>
+              ) : query.data?.resources?.filter(
+                  (connection) => connection.platform === selected,
+                ).length ? (
+                query.data.resources
+                  .filter((connection) => connection.platform === selected)
+                  .map((connection) => (
+                    <ConnectionSettingsRow
+                      key={connection.id}
+                      connection={connection}
+                      bindings={
+                        bindings.data?.filter(
+                          (binding) => binding.connectionId === connection.id,
+                        ) || []
+                      }
+                      onView={() => {
+                        const next = new URLSearchParams(params);
+                        next.set("connection", connection.id || "");
+                        next.set("platform", selected);
+                        setParams(next);
+                      }}
+                    />
+                  ))
+              ) : !query.error ? (
+                <p className="type-body text-content-secondary px-4 py-3">
+                  {t("empty.platformConnections", { platform: t(selected) })}
+                </p>
+              ) : null}
+            </SettingsCard>
+          </SettingsGroup>
+        </>
+      ) : params.has("connection") ? (
+        <>
+          <PageHeader
+            appearance="compact"
+            layout="detail"
+            title="IM"
+            visual={
+              <div className="bg-resource-surface flex size-12 shrink-0 items-center justify-center rounded-lg">
+                <MessageCircle className="size-icon-xl" />
+              </div>
+            }
+          />
+          {query.isPending ? (
+            <div
+              role="status"
+              aria-busy="true"
+              aria-label={t("loading")}
+              className="bg-resource-surface grid gap-3 rounded-lg px-4 py-3"
+            >
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-row-detail w-full" />
+            </div>
+          ) : !query.error ? (
+            <p className="type-body text-content-secondary">
+              {t("connectionNotFound")}
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <div className="bg-resource-surface overflow-hidden rounded-lg">
+          {supportedPlatforms.map((item) => (
+            <SettingsNavigationRow
+              key={item}
+              title={t(item)}
+              ariaLabel={t("platformConnections", { platform: t(item) })}
+              description={t("platformDescription." + item)}
+              visual={<PlatformIcon platform={item} />}
+              onClick={() => openPlatform(item)}
+            />
+          ))}
+        </div>
+      )}
       {bindings.error ? (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p role="alert" className="type-body text-destructive">
             {localApiErrorMessage(bindings.error, t("authorizationReadFailed"))}
           </p>
           <Button
-            size="sm"
-            variant="secondary"
+            size="settings"
+            variant="settings-outline"
             onClick={() => void bindings.refetch()}
           >
             {t("reload")}
           </Button>
         </div>
       ) : null}
-      {detail ? (
-        <IMConnectionDetailDialog
-          key={detail.connectionId}
-          connectionId={detail.connectionId}
-          returnFocusTo={detail.trigger}
-          onClose={() => setDetail(undefined)}
-        />
-      ) : null}
       {platform ? (
         <ConnectionDialog
           platform={platform}
           onClose={() => setPlatform(undefined)}
           onSaved={() => {
-            setExpandedPlatforms((current) =>
-              current.includes(platform) ? current : [...current, platform],
-            );
             void query.refresh();
           }}
         />

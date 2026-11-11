@@ -13,6 +13,7 @@ import { Button } from "@/shared/ui/button";
 type ComposerSurfaceProps = ComponentProps<"div"> & {
   bodyClassName?: string;
   context?: ReactNode;
+  contextTone?: "neutral" | "danger";
   contextLayers?: ReactNode;
   leadingActions?: ReactNode;
   trailingActions?: ReactNode;
@@ -22,7 +23,7 @@ type ComposerSurfaceProps = ComponentProps<"div"> & {
 };
 
 const composerSurfaceClassName =
-  "border-field-border bg-surface-raised focus-within:border-field-border-active focus-within:ring-ring shadow-composer data-[invalid]:border-destructive relative rounded-2xl border transition-[border-color,box-shadow] focus-within:ring-2";
+  "border-field-border bg-surface-raised shadow-composer data-[invalid]:border-destructive relative rounded-2xl border transition-[border-color,box-shadow]";
 
 /** Composer 的叠层容器，按 DOM 顺序让后面的表面覆盖前面的底边。 */
 export function ComposerStack({ className, ...props }: ComponentProps<"div">) {
@@ -135,6 +136,7 @@ export function ComposerSurface({
   children,
   className,
   context,
+  contextTone = "neutral",
   contextLayers,
   expanded = false,
   invalid = false,
@@ -186,7 +188,12 @@ export function ComposerSurface({
     <ComposerStack
       data-has-context="true"
       data-chat-composer-frame
-      className="bg-composer-context rounded-2xl"
+      className={cn(
+        "rounded-2xl",
+        contextTone === "danger"
+          ? "bg-status-danger-surface"
+          : "bg-composer-context",
+      )}
     >
       {contextLayers}
       {contextLayers && context ? (

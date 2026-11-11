@@ -4,7 +4,6 @@ import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
-	"encoding/json"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -15,14 +14,17 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/agentfixture"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
 	"github.com/JieWaZi/NeuxBot/server/services/workflow"
@@ -30,42 +32,23 @@ import (
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
-// fixtureRuntime 替代完整运行端口，验证业务 Core、JSONL、CLI 授权、SQLite 与真实文件；独立 Runtime 另做组合验收。
+// fixtureRuntime 生成领域 worker 结果并执行测试中的实际文件操作。
 type fixtureRuntime struct {
-	// service 提供当前进程的真实效果查询。
-	service *workflowFixture
 	// mutex 保护并行 Runtime 收到的身份与顺序。
 	mutex sync.Mutex
 	// calls 保存节点实际调用次数。
 	calls map[string]int
-	// workspaces 验证不同 Chat 使用独立 cwd 并共用批准的业务目录。
-	workspaces []agentapi.Workspace
 }
 
-func (*fixtureRuntime) ForkSession(context.Context, agentapi.ForkSessionRequest) (agentapi.ForkSessionResult, error) {
-	return agentapi.ForkSessionResult{}, status_error.WorkflowCapabilityUnsupported
-}
-func (*fixtureRuntime) Runtimes() []agentapi.RuntimeSummary {
-	return []agentapi.RuntimeSummary{{ID: "codex", BaseRuntimeID: "codex", InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"}}
-}
-func (r *fixtureRuntime) Run(ctx context.Context, request fixtureInvocation, sink agentapi.EventSink) agentapi.Result {
-	invocation := util.New()
-	started, _ := json.Marshal(agentapi.InvocationStartedData{InvocationID: invocation})
-	failed := func(err error) agentapi.Result {
-		return agentapi.Result{ExitCode: 1, Failure: &agentapi.Failure{Code: agentapi.FailureCodeProcessExited, Stage: "runtime", Message: err.Error(), Transience: agentapi.FailureTransiencePermanent}}
-	}
-	if err := sink.Accept(ctx, agentapi.Event{Type: agentapi.EventTypeInvocationStarted, Data: started}); err != nil {
-		return failed(err)
-	}
-	contract, err := fixtureCLI(ctx, request, []string{"workflow", "results", "schema"}, nil)
+func (r *fixtureRuntime) Run(ctx context.Context, request fixtureInvocation) (*string, error) {
+	contract, err := request.callResult(ctx, "workflow.results.schema", nil)
 	if err != nil {
-		return failed(err)
+		return nil, err
 	}
 	nodeID, _ := contract["nodeId"].(string)
 	r.mutex.Lock()
 	r.calls[nodeID]++
 	count := r.calls[nodeID]
-	r.workspaces = append(r.workspaces, request.Workspace)
 	r.mutex.Unlock()
 	markdown := "## 本周进展\n- 完成导出\n## 风险与阻塞\n- 依赖待确认\n## 下周计划\n- 上线灰度\n"
 	draft := map[string]any{"title": "周报", "period": "2026-09-28~2026-10-04", "oneLiner": "完成导出", "progress": []string{"完成导出"}, "risks": []any{map[string]any{"text": "依赖待确认", "impact": "拖慢灰度"}}, "nextWeek": []string{"上线灰度"}, "markdown": markdown, "omitted": []string{}}
@@ -81,39 +64,39 @@ func (r *fixtureRuntime) Run(ctx context.Context, request fixtureInvocation, sin
 		data = map[string]any{"coverageGaps": []string{}, "wordingIssues": []string{}, "mustFix": []string{}, "verdict": "pass"}
 	case "revise-report":
 		if count == 1 {
-			return failed(status_error.WorkflowEffectFailed)
+			return nil, status_error.WorkflowEffectFailed
 		}
 		data = draft
 	case "write-report":
-		path := filepath.Join(request.Workspace.AdditionalWritableDirectories[0], "reports", "周报-个人-2026-09-28~2026-10-04.md")
-		if !strings.Contains(request.Message.Text, request.Workspace.AdditionalWritableDirectories[0]) {
-			return failed(status_error.WorkflowStateInvalid.WithField("path", "write prompt omitted the approved business directory"))
+		path := filepath.Join(request.businessDirectory, "reports", "周报-个人-2026-09-28~2026-10-04.md")
+		if !strings.Contains(request.prompt, request.businessDirectory) {
+			return nil, status_error.WorkflowStateInvalid.WithField("path", "write prompt omitted the approved business directory")
 		}
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-			return failed(err)
+			return nil, err
 		}
 		if err := os.WriteFile(path, []byte(markdown), 0600); err != nil {
-			return failed(err)
+			return nil, err
 		}
 		data = map[string]any{"reportPath": path, "written": true, "bytes": len([]byte(markdown))}
 	case "verify-report":
-		path := filepath.Join(request.Workspace.AdditionalWritableDirectories[0], "reports", "周报-个人-2026-09-28~2026-10-04.md")
-		if !strings.Contains(request.Message.Text, path) {
-			return failed(status_error.WorkflowStateInvalid.WithField("path", "read prompt omitted the shared report path"))
+		path := filepath.Join(request.businessDirectory, "reports", "周报-个人-2026-09-28~2026-10-04.md")
+		if !strings.Contains(request.prompt, path) {
+			return nil, status_error.WorkflowStateInvalid.WithField("path", "read prompt omitted the shared report path")
 		}
 		content, err := os.ReadFile(path)
 		if err != nil {
-			return failed(err)
+			return nil, err
 		}
 		data = map[string]any{"exists": true, "hasAllSections": strings.Contains(string(content), "## 下周计划"), "ok": string(content) == markdown, "issues": []string{}}
 	default:
-		return failed(status_error.WorkflowStateInvalid.WithField("node", nodeID))
+		return nil, status_error.WorkflowStateInvalid.WithField("node", nodeID)
 	}
-	if _, err := fixtureCLI(ctx, request, []string{"workflow", "results", "submit", "--request-id", "result"}, map[string]any{"data": data}); err != nil {
-		return failed(err)
+	if _, err := request.callResult(ctx, "workflow.results.submit", map[string]any{"data": data}); err != nil {
+		return nil, err
 	}
 
-	return agentapi.Result{StopReason: "end_turn", TerminationReason: constants.RuntimeTerminationReasonNormal, Facts: agentapi.InvocationFacts{InvocationID: invocation, RuntimeID: "codex", BaseRuntimeID: "codex"}, ProtocolHealthy: true}
+	return nil, nil
 }
 
 // fixtureEnvironment 返回真实 Core 会校验的固定能力目录，不替代接纳逻辑。
@@ -140,106 +123,8 @@ func (fixtureEnvironment) Get(context.Context, string) (models.RuntimeEnvironmen
 }
 
 func openCoreWorkflowFixture(t *testing.T, directory string, runtime *fixtureRuntime) (*workflowFixture, func()) {
-	s, close := openCoreWorkflowPorts(t, directory, runtime, fixtureEnvironment{})
-	runtime.service = s
-	return s, close
+	return openCoreWorkflowPorts(t, directory, runtime, fixtureEnvironment{})
 }
-
-// coreRuntimeMetadata 是真实宿主和业务替身共有的目录与分叉端口。
-type coreRuntimeMetadata interface {
-	// ForkSession 复用实际会话分叉协议。
-	ForkSession(context.Context, agentapi.ForkSessionRequest) (agentapi.ForkSessionResult, error)
-	// Runtimes 提供真实工作区集成目录约定。
-	Runtimes() []agentapi.RuntimeSummary
-}
-
-// coreTestRuntime 仅替代外部模型调用，输入由测试准备对象显式组合。
-type coreTestRuntime interface {
-	coreRuntimeMetadata
-	// Run 通过协议交付模型执行事件。
-	Run(context.Context, fixtureInvocation, agentapi.EventSink) agentapi.Result
-}
-
-// coreExecutionRuntime 与执行核心共用明确的资源生命周期；真实 Host 直接实现此接口。
-type coreExecutionRuntime interface {
-	// ForkSession 是原生分叉端口。
-	ForkSession(context.Context, agentapi.ForkSessionRequest) (agentapi.ForkSessionResult, error)
-	// Runtimes 是原生目录约定。
-	Runtimes() []agentapi.RuntimeSummary
-	// PrepareSession 在权威日志之前取得实际资源。
-	PrepareSession(context.Context, agentapi.SessionPlan, agentapi.SessionDirective) (agentapi.PreparedChatRun, error)
-	// CloseWorkspace 释放原生会话所有者。
-	CloseWorkspace(context.Context, string) error
-}
-
-// coreRuntimeStub 仅给既有业务层单测显式声明同步替身的释放边界；组合测试直接使用真实 Host。
-type coreRuntimeStub struct {
-	// coreTestRuntime 保留最外层替身的 Run，避免嵌入基类吞掉派生业务行为。
-	coreTestRuntime
-}
-
-// fixtureInvocation 在测试边界同时保留会话事实和本轮输入，便于业务断言。
-type fixtureInvocation struct {
-	// SessionPlan 是实际绑定后的会话配置。
-	agentapi.SessionPlan
-	// TurnInput 是本轮新增输入和交互。
-	agentapi.TurnInput
-	// Resources 是实际租约保护的启动与连接事实。
-	Resources agentapi.SessionResources
-	// Session 是实际会话动作。
-	Session agentapi.SessionDirective
-}
-
-// fixturePreparedRun 只替代模型边界，领域资源仍由接纳流程显式交接。
-type fixturePreparedRun struct {
-	// runtime 保留当前业务替身。
-	runtime coreTestRuntime
-	// ctx 约束准备与执行。
-	ctx context.Context
-	// plan 是接纳时固定的会话声明。
-	plan agentapi.SessionPlan
-	// session 是实际新建或恢复动作。
-	session agentapi.SessionDirective
-	// resources 是显式 Bind 交接的领域资源。
-	resources agentapi.SessionResources
-	// bound 表示当前替身已收到领域资源。
-	bound bool
-	// closed 表示资源已成功释放。
-	closed bool
-}
-
-func (r coreRuntimeStub) PrepareSession(ctx context.Context, plan agentapi.SessionPlan, session agentapi.SessionDirective) (agentapi.PreparedChatRun, error) {
-	return &fixturePreparedRun{runtime: r.coreTestRuntime, ctx: ctx, plan: plan, session: session}, nil
-}
-func (p *fixturePreparedRun) Context() context.Context { return p.ctx }
-func (p *fixturePreparedRun) NeedsResources() bool     { return !p.bound }
-func (p *fixturePreparedRun) Bind(_ context.Context, resources agentapi.SessionResources) error {
-	p.resources, p.bound = resources, true
-	p.plan.Target, p.plan.Skills, p.plan.Connectors = agentapi.DeclareTarget(resources.Target), resources.Skills, agentapi.DeclareConnectors(resources.Connectors)
-	if resources.Session != nil {
-		p.session = *resources.Session
-	}
-	return nil
-}
-func (p *fixturePreparedRun) Resources() agentapi.SessionResources { return p.resources }
-func (p *fixturePreparedRun) Session() agentapi.SessionDirective   { return p.session }
-func (p *fixturePreparedRun) Close(ctx context.Context) error {
-	if p.closed {
-		return nil
-	}
-	if p.resources.Close != nil {
-		if err := p.resources.Close(ctx); err != nil {
-			return err
-		}
-	}
-	p.closed = true
-	return nil
-}
-func (p *fixturePreparedRun) Run(ctx context.Context, turn agentapi.TurnInput, sink agentapi.EventSink) agentapi.Result {
-	defer func() { _ = p.Close(context.WithoutCancel(ctx)) }()
-	return p.runtime.Run(ctx, fixtureInvocation{SessionPlan: p.plan, TurnInput: turn, Resources: p.resources, Session: p.session}, sink)
-}
-func (coreRuntimeStub) CloseWorkspace(context.Context, string) error { return nil }
 
 // coreTestEnvironment 是运行配置的唯一探测查询接缝。
 type coreTestEnvironment interface {
@@ -247,7 +132,7 @@ type coreTestEnvironment interface {
 	Get(context.Context, string) (models.RuntimeEnvironment, error)
 }
 
-func openCoreWorkflowPorts(t *testing.T, directory string, runtime coreRuntimeMetadata, environment coreTestEnvironment) (*workflowFixture, func()) {
+func openCoreWorkflowPorts(t *testing.T, directory string, runtime workflowFixtureModel, environment coreTestEnvironment, domain ...bool) (*workflowFixture, func()) {
 	t.Helper()
 	ctx := context.Background()
 	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(directory, "fixture.db"), Migrate: true})
@@ -291,23 +176,33 @@ func openCoreWorkflowPorts(t *testing.T, directory string, runtime coreRuntimeMe
 	); err != nil {
 		t.Fatal(err)
 	}
-	chats, err := chatservice.New(chatservice.Config{StorageDirectory: directory, Projects: projects, QueryIndexes: chatservice.QueryIndexDependencies{Chats: controllers.NewChatController(database.DB), RuntimeSessions: controllers.NewRuntimeSessionController(database.DB), DeletionIntents: controllers.NewChatDeletionIntentController(database.DB), Transactions: transactions}})
+	conversations, err := conversation.NewStore(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chats, err := chatservice.New(chatservice.Config{StorageDirectory: directory, Conversations: conversations, Projects: projects, QueryIndexes: chatservice.QueryIndexDependencies{Chats: controllers.NewChatController(database.DB), DeletionIntents: controllers.NewChatDeletionIntentController(database.DB), Transactions: transactions}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := chats.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	runner, ok := runtime.(coreExecutionRuntime)
-	if !ok {
-		model, implements := runtime.(coreTestRuntime)
-		if !implements {
-			t.Fatal("fixture runtime has no execution boundary")
-		}
-		runner = coreRuntimeStub{coreTestRuntime: model}
+	catalog, err := agentapi.NewCatalog(agentapi.CatalogConfig{})
+	if err != nil {
+		t.Fatal(err)
 	}
+	accounts := aiaccount.New(controllers.NewAIAccountController(database.DB), directory)
+	resolve := accounts.ResolveAccount
+	providerOptions := agentapi.ProviderRuntimeOptions{AcquireAccount: accounts.AcquireAccount}
+	if runtime != nil {
+		resolve = agentfixture.ResolveAccount
+		providerOptions = rejectUnexpectedWorkflowNative(t)
+	}
+	providers := agentapi.NewProviderRuntime(providerOptions)
+	threads := agentapi.NewThreadLifecycle(providers, conversations)
 	core, err := execution.New(execution.Config{
-		Runtime: runner, Journal: chats, DormantChats: chats,
+		Threads: threads, Accounts: accounts, ResolveAccount: resolve, RuntimeSummaries: catalog.Runtimes(),
+		Journal: chats, DormantChats: chats,
 		Agent: registry, AgentEndpoint: endpoint.URL + constants.AgentCLIPath, AgentBinary: fixtureCLIBinary, Events: hub,
 		Wakers: wakers, Profiles: profiles, Projects: projects,
 		Skills: skills, SkillDataDirectory: directory,
@@ -319,7 +214,11 @@ func openCoreWorkflowPorts(t *testing.T, directory string, runtime coreRuntimeMe
 	if err := core.Open(ctx); err != nil {
 		t.Fatal(err)
 	}
-	s := workflowTestNew(workflow.Config{Commands: controllers.NewAgentCommandController(database.DB), Events: hub, Store: controllers.NewWorkflowController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), CreationSessions: controllers.NewWorkflowCreationController(database.DB), Transactions: transactions, Executions: core, Chats: chats, Worker: workflow.CoreWorkerAdapter{Executions: core, Chats: chats}, Wakers: wakers, Projects: projects, DataDirectory: directory})
+	var worker workflow.WorkerPort = workflow.CoreWorkerAdapter{Executions: core, Chats: chats}
+	if len(domain) != 0 && domain[0] {
+		worker = domainWorkflowWorker{CoreWorkerAdapter: workflow.CoreWorkerAdapter{Executions: core, Chats: chats}, model: runtime}
+	}
+	s := workflowTestNew(workflow.Config{Commands: controllers.NewAgentCommandController(database.DB), Events: hub, Store: controllers.NewWorkflowController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), CreationSessions: controllers.NewWorkflowCreationController(database.DB), Transactions: transactions, Executions: core, Chats: chats, Worker: worker, Wakers: wakers, Projects: projects, DataDirectory: directory})
 	if err := s.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -328,11 +227,13 @@ func openCoreWorkflowPorts(t *testing.T, directory string, runtime coreRuntimeMe
 		once.Do(func() {
 			s.Close()
 			core.Close()
-			if owner, ok := runtime.(interface{ Close(context.Context) error }); ok {
-				if err := owner.Close(context.Background()); err != nil {
-					t.Error(err)
-				}
+			if err := threads.Close(context.Background()); err != nil {
+				t.Error(err)
 			}
+			if err := providers.Close(context.Background()); err != nil {
+				t.Error(err)
+			}
+			accounts.Close()
 			registry.Close()
 			endpoint.Close()
 			hub.Close()
@@ -387,10 +288,10 @@ func awaitFixtureState(t *testing.T, s *workflowFixture, id string, ready func(c
 	return state
 }
 
-func TestF1WholeCoreWeeklyRestartFailedRevisionThenActualWriteRead(t *testing.T) {
+func TestF1DomainWeeklyRestartFailedRevisionThenActualWriteRead(t *testing.T) {
 	directory := t.TempDir()
 	runtime := &fixtureRuntime{calls: map[string]int{}}
-	s, close := openCoreWorkflowFixture(t, directory, runtime)
+	s, close := openCoreWorkflowPorts(t, directory, runtime, fixtureEnvironment{}, true)
 	ctx := context.Background()
 	source, err := os.ReadFile("../../internal/workflow/dsl/testdata/weekly-report.workflow.js")
 	if err != nil {
@@ -426,7 +327,7 @@ func TestF1WholeCoreWeeklyRestartFailedRevisionThenActualWriteRead(t *testing.T)
 	}
 	originalHuman := pendingHuman(state)
 	close()
-	s, _ = openCoreWorkflowFixture(t, directory, runtime)
+	s, _ = openCoreWorkflowPorts(t, directory, runtime, fixtureEnvironment{}, true)
 	state = awaitFixtureState(t, s, run.ID, waiting)
 	if pendingHuman(state).ID != originalHuman.ID {
 		t.Fatal("restart replaced pending approval")
@@ -466,14 +367,6 @@ func TestF1WholeCoreWeeklyRestartFailedRevisionThenActualWriteRead(t *testing.T)
 	if runtime.calls["revise-report"] != 2 || runtime.calls["write-report"] != 1 || runtime.calls["verify-report"] != 1 {
 		t.Fatal("unexpected actual calls", runtime.calls)
 	}
-	workspaces := map[string]bool{}
-	for _, workspace := range runtime.workspaces {
-		assertWorkflowChatWorkspace(t, workspace, state.Run.ScopeBinding.WorkingDirectory)
-		workspaces[workspace.Path] = true
-	}
-	if len(workspaces) != len(runtime.workspaces) {
-		t.Fatal("workers reused runtime cwd")
-	}
 	for _, effect := range state.Effects {
 		if effect.Boundary.NodeID == "revise-report" && effect.Status == constants.WorkflowStepStatusFailed && effect.Failure == nil {
 			t.Fatal("failed revision evidence missing")
@@ -481,26 +374,7 @@ func TestF1WholeCoreWeeklyRestartFailedRevisionThenActualWriteRead(t *testing.T)
 	}
 }
 
-func assertWorkflowChatWorkspace(t *testing.T, workspace agentapi.Workspace, businessDirectory string) {
-	t.Helper()
-	if !workspace.Managed || workspace.Path == businessDirectory || len(workspace.AdditionalWritableDirectories) < 1 || workspace.AdditionalWritableDirectories[0] != businessDirectory {
-		t.Fatalf("workflow must use the common managed chat cwd and authorize its business directory: %+v", workspace)
-	}
-	for _, project := range workspace.ProjectDirectories {
-		if !project.Default {
-			continue
-		}
-		actual, err := filepath.EvalSymlinks(filepath.Join(workspace.Path, project.Path))
-		expected, expectedErr := filepath.EvalSymlinks(businessDirectory)
-		if err != nil || expectedErr != nil || actual != expected {
-			t.Fatalf("workflow business directory is not reachable from chat cwd: %q %v", actual, err)
-		}
-		return
-	}
-	t.Fatal("workflow chat has no default project source")
-}
-
-func TestWorkerSystemControlReferenceRunsThroughCoreWithoutMissingConnector(t *testing.T) {
+func TestWorkerScopedConnectorPolicyRejectsBeforeNativeDispatch(t *testing.T) {
 	directory := t.TempDir()
 	runtime := &fixtureRuntime{calls: map[string]int{}}
 	s, _ := openCoreWorkflowFixture(t, directory, runtime)
@@ -512,19 +386,18 @@ func TestWorkerSystemControlReferenceRunsThroughCoreWithoutMissingConnector(t *t
 		t.Fatal("system capability blocked run admission", err)
 	}
 	state := awaitFixtureState(t, s, run.ID, func(state controllers.WorkflowRunState) bool {
-		return state.Run.Status == constants.WorkflowRunStatusSucceeded
+		return workflowstate.TerminalRun(state.Run.Status)
 	})
-	if len(state.Effects) != 1 || state.Effects[0].ChatID == "" || state.Effects[0].Candidate == nil {
-		t.Fatal("worker did not create a chat and submit its real result", state)
+	if len(state.Effects) != 1 || state.Effects[0].Failure == nil || state.Run.Status != constants.WorkflowRunStatusFailed {
+		t.Fatalf("scoped worker escaped resource admission: %+v", state.Effects)
 	}
-	revision, err := s.Store.GetRevision(ctx, definition.ID, run.RevisionID)
-	if err != nil || revision.Source != source {
-		t.Fatal("immutable source changed", err)
+	failure, _ := state.Effects[0].Failure.Data.(map[string]any)
+	if failure["code"] != status_error.RuntimePolicyUnsupported.Key() || state.Effects[0].Candidate != nil {
+		t.Fatalf("unexpected scope failure: %+v", failure)
 	}
 	runtime.mutex.Lock()
-	calls := runtime.calls["facts"]
-	runtime.mutex.Unlock()
-	if calls != 1 {
-		t.Fatal("worker was not dispatched exactly once", calls)
+	defer runtime.mutex.Unlock()
+	if len(runtime.calls) != 0 {
+		t.Fatal("rejected worker submitted a native prompt")
 	}
 }

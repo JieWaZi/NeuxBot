@@ -39,6 +39,8 @@ type MCPConnector struct {
 	ID string `gorm:"column:id;type:varchar(32);primaryKey" json:"id"`
 	// Name 是连接器显示名称，不参与资源身份判断。
 	Name string `gorm:"column:name;type:varchar(120);not null" json:"name"`
+	// Categories 是用户选择的分类，与资源原始内容独立保存。
+	Categories []string `gorm:"column:categories;type:text;not null;default:'[]';serializer:json" json:"categories"`
 	// RuntimeKey 是创建时生成并持久化的 Runtime 注入名称，后续不随显示名称变化。
 	RuntimeKey string `gorm:"column:runtime_key;type:varchar(64);not null;uniqueIndex" json:"-"`
 	// Description 是连接器的简短用途说明。

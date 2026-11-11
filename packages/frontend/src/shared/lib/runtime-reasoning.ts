@@ -33,7 +33,7 @@ const unrankedReasoningIds = new Set([
   "auto",
 ]);
 
-/** 最高档只取具体强度目录；开关、自动和模型默认值不参与强度排序。 */
+/** 至少有两个具体强度时才展示最高档效果；开关、自动和模型默认值不参与强度排序。 */
 export function isMaximumReasoning(
   options: RuntimeReasoningOption[] | undefined,
   reasoning: string,
@@ -43,7 +43,7 @@ export function isMaximumReasoning(
     (option) => option.id && !unrankedReasoningIds.has(option.id.toLowerCase()),
   );
   return (
-    available.length > 0 &&
+    available.length > 1 &&
     available.at(-1)?.id === (reasoning || defaultReasoning)
   );
 }

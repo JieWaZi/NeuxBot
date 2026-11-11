@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { BundledLanguage } from "shiki";
+import type { SelectableCodeLanguage } from "./selectable-code-highlighter";
 
 import { cn } from "@/shared/lib/cn";
 
@@ -56,16 +56,12 @@ export function SelectableCodeViewer({
       ((callback) => window.setTimeout(callback, 0));
     const cancel = window.cancelIdleCallback ?? window.clearTimeout;
     const task = schedule(() => {
-      void import("shiki")
-        .then(({ codeToTokens }) =>
-          codeToTokens(content, {
-            lang: language as BundledLanguage,
-            theme: theme === "dark" ? "one-dark-pro" : "one-light",
-          }),
+      void import("./selectable-code-highlighter")
+        .then(({ highlightSelectableCode }) =>
+          highlightSelectableCode(content, language, theme),
         )
-        .then((result) => {
+        .then((highlighted) => {
           if (cancelled) return;
-          const highlighted = result.tokens as HighlightedCode;
           rememberHighlight(highlightKey, highlighted);
           setHighlighted({ key: highlightKey, lines: highlighted });
         })
@@ -167,49 +163,48 @@ function countLinesUpTo(content: string, limit: number): number {
   return lines;
 }
 
-function languageFromFileName(fileName: string): string {
+export function languageFromFileName(
+  fileName: string,
+): SelectableCodeLanguage | "text" {
   const baseName = fileName.split("/").at(-1)?.toLowerCase() ?? "";
   if (baseName === "dockerfile") return "dockerfile";
   if (baseName === "makefile") return "makefile";
   const extension = baseName.split(".").at(-1) ?? "";
-  return (
-    (
-      {
-        c: "c",
-        cc: "cpp",
-        cpp: "cpp",
-        cs: "csharp",
-        css: "css",
-        go: "go",
-        h: "c",
-        hpp: "cpp",
-        html: "html",
-        java: "java",
-        js: "javascript",
-        jsx: "jsx",
-        json: "json",
-        jsonc: "jsonc",
-        kt: "kotlin",
-        less: "less",
-        lua: "lua",
-        py: "python",
-        rb: "ruby",
-        rs: "rust",
-        scss: "scss",
-        sh: "bash",
-        sql: "sql",
-        svelte: "svelte",
-        toml: "toml",
-        ts: "typescript",
-        tsx: "tsx",
-        vue: "vue",
-        xml: "xml",
-        yaml: "yaml",
-        yml: "yaml",
-        zsh: "bash",
-      } as Record<string, string>
-    )[extension] ?? "text"
-  );
+  const languages: Readonly<Record<string, SelectableCodeLanguage>> = {
+    c: "c",
+    cc: "cpp",
+    cpp: "cpp",
+    cs: "csharp",
+    css: "css",
+    go: "go",
+    h: "c",
+    hpp: "cpp",
+    html: "html",
+    java: "java",
+    js: "javascript",
+    jsx: "jsx",
+    json: "json",
+    jsonc: "jsonc",
+    kt: "kotlin",
+    less: "less",
+    lua: "lua",
+    py: "python",
+    rb: "ruby",
+    rs: "rust",
+    scss: "scss",
+    sh: "bash",
+    sql: "sql",
+    svelte: "svelte",
+    toml: "toml",
+    ts: "typescript",
+    tsx: "tsx",
+    vue: "vue",
+    xml: "xml",
+    yaml: "yaml",
+    yml: "yaml",
+    zsh: "bash",
+  };
+  return languages[extension] ?? "text";
 }
 
 function hashContent(content: string): string {

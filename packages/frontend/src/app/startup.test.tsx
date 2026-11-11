@@ -95,10 +95,8 @@ it("入口脚本执行前已有加载状态，首帧主题读取当前偏好", (
     parsed.querySelector(".welcome-character")?.getAttribute("data-ready"),
   ).toBe("false");
   expect(
-    parsed
-      .querySelector('link[as="image"][imagesrcset]')
-      ?.getAttribute("imagesrcset"),
-  ).toContain("plush-512.png 512w");
+    parsed.querySelector('link[as="image"]')?.getAttribute("href"),
+  ).toContain("@neuxbot/bloub/assets/body-plush.png");
 });
 
 it("桌面首帧样式的浏览器地址落在 Vite 根目录内，并加载共享样式", () => {

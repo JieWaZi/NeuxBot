@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	channeltool "github.com/JieWaZi/NeuxBot/server/internal/teamcapability"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -16,6 +17,104 @@ import (
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
+
+func TestTeamAdmittedNativeDefaultsSurviveEnvironmentChanges(t *testing.T) {
+	on, off := true, false
+	for _, fast := range []*bool{nil, &on, &off} {
+		for _, route := range []string{"lead", "member", "notification"} {
+			t.Run(route, func(t *testing.T) {
+				fixture := newDeletionFixture(t)
+				ctx := t.Context()
+				wakers := controllers.NewWakerController(fixture.db)
+				createChannelTestWakers(t, ctx, wakers, "lead", "member")
+				projects := controllers.NewProjectController(fixture.db)
+				storage := t.TempDir()
+				journal, err := chatservice.New(chatservice.Config{StorageDirectory: storage, Projects: projects,
+					QueryIndexes: chatservice.QueryIndexDependencies{Chats: controllers.NewChatController(fixture.db), Transactions: fixture.service.transactions, DeletionIntents: controllers.NewChatDeletionIntentController(fixture.db)},
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(journal.Close)
+				environments := controllers.NewRuntimeEnvironmentController(fixture.db)
+				environment := models.RuntimeEnvironment{DefaultFast: fast, ID: "environment", RuntimeID: "codex", BaseRuntimeID: "codex", Enabled: true, Detection: agentapi.DetectionResult{State: agentapi.DetectionStateReady,
+					Models: []agentapi.ModelOption{{ID: "future-model", ReasoningOptions: []agentapi.ReasoningOption{{ID: "high"}}}},
+				}}
+				if err := environments.Ensure(ctx, environment); err != nil {
+					t.Fatal(err)
+				}
+				// 只使用真实 Core 的配置解析入口，不创建原生连接或调用模型。
+				resolver, err := execution.New(execution.Config{Journal: journal, Threads: &agentapi.ThreadLifecycle{}, ResolveAccount: func(_ context.Context, request agentapi.AccountRequest, _ string) (agentapi.AccountRequest, error) {
+					return request, nil
+				},
+					Wakers: wakers, Profiles: controllers.NewProfileDocumentController(fixture.db), Projects: projects, RuntimeEnvironments: environments, StorageDirectory: storage,
+					RuntimeSummaries: []agentapi.RuntimeSummary{{ID: "codex", BaseRuntimeID: "codex", InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"}},
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(resolver.Close)
+				admitted, err := resolver.ResolveConfiguration(ctx, execution.ExecutionConfiguration{RuntimeID: "codex", PermissionLevel: constants.PermissionLevelDefault})
+				if err != nil || admitted.Model != "" || admitted.Reasoning != "" {
+					t.Fatalf("原配置不是合法原生默认: %+v %v", admitted, err)
+				}
+				if err := fixture.channels.Create(ctx, models.Channel{ID: "team", Name: "原生默认团队", LeadWakerID: "lead"}, []models.ChannelMember{{ChannelID: "team", WakerID: "lead"}, {ChannelID: "team", WakerID: "member"}}); err != nil {
+					t.Fatal(err)
+				}
+				thread := models.ChannelThread{ID: "thread", ChannelID: "team", LeadWakerID: "lead", LeadChatID: "lead-chat", ReadyAt: testTimestamp(1), MaxParallel: 2, MaxTasks: 10}
+				members := []models.ChannelThreadMember{{ThreadID: thread.ID, WakerID: "lead", ChatID: "lead-chat", IsLead: true}, {ThreadID: thread.ID, WakerID: "member", ChatID: "member-chat", Position: 1}}
+				for index := range members {
+					members[index].RuntimeID, members[index].AccountID, members[index].Model, members[index].Reasoning, members[index].PermissionLevel = admitted.RuntimeID, admitted.AccountID, admitted.Model, admitted.Reasoning, admitted.PermissionLevel
+					members[index].Fast = admitted.Fast
+				}
+				if err := fixture.threads.Create(ctx, thread, members); err != nil {
+					t.Fatal(err)
+				}
+				environment.DefaultModel, environment.DefaultReasoning = "future-model", "high"
+				laterFast := fast == nil || !*fast
+				environment.DefaultFast = &laterFast
+				if err := environments.UpdateConfiguration(ctx, environment); err != nil {
+					t.Fatal(err)
+				}
+				chats := &postTurnChatFake{summaries: map[string]chatservice.ChatSummary{"lead-chat": {Chat: models.Chat{ID: "lead-chat"}}, "member-chat": {Chat: models.Chat{ID: "member-chat"}}}}
+				captured := &postTurnExecutionFake{}
+				sut := fixture.service
+				sut.wakers, sut.tasks = wakers, controllers.NewChannelTaskController(fixture.db)
+				sut.chats, sut.executions, sut.capabilities = chats, captured, channeltool.NewRegistry()
+				t.Cleanup(sut.capabilities.Close)
+				switch route {
+				case "lead":
+					_, err = sut.sendMessage(ctx, SendMessageInput{ThreadID: thread.ID, Input: execution.WorkInput{Content: "继续原工作"}})
+				case "member":
+					_, err = sut.CreateTask(ctx, CreateTaskInput{ThreadID: thread.ID, SenderWakerID: "lead", AssigneeWakerID: "member", Subject: "继续原工作", Description: "使用原生默认执行"})
+				case "notification":
+					task := models.ChannelTask{ID: "reported-task", ThreadID: thread.ID, AssigneeWakerID: "member", Subject: "成员结果", Status: constants.ChannelTaskStatusCompleted, Result: "已核验", CurrentFence: 1}
+					if err := sut.tasks.Create(ctx, task, nil); err != nil {
+						t.Fatal(err)
+					}
+					if err := sut.tasks.CreateAttempt(ctx, models.ChannelTaskAttempt{ID: "reported-attempt", TaskID: task.ID, ChatID: "member-chat", ExecutionID: "reported-execution", AssigneeWakerID: "member", Fence: 1, Reason: constants.ChannelAttemptReasonInitial, Status: constants.ExecutionStatusCompleted}); err != nil {
+						t.Fatal(err)
+					}
+					if err := sut.tasks.CreateNotification(ctx, models.ChannelLeadNotification{ID: "notification", ThreadID: thread.ID, TaskID: task.ID, AttemptID: "reported-attempt", Payload: task.Result, Status: constants.ChannelNotificationStatusPending}); err != nil {
+						t.Fatal(err)
+					}
+					err = sut.drainNotifications(ctx, thread.ID)
+				}
+				if err != nil || captured.startCount() != 1 {
+					t.Fatalf("团队派发 count=%d error=%v", captured.startCount(), err)
+				}
+				options := captured.firstStart().Options
+				if (options.Fast == nil) != (fast == nil) || fast != nil && *options.Fast != *fast {
+					t.Fatalf("派发改变 Fast: %+v expected=%v", options, fast)
+				}
+				effective, err := resolver.ResolveConfiguration(ctx, execution.ExecutionConfiguration{Resolved: options.ConfigurationResolved, RuntimeID: options.RuntimeID, AccountID: options.AccountID, Model: options.Model, Reasoning: options.Reasoning, Fast: options.Fast, PermissionLevel: options.PermissionLevel})
+				if err != nil || effective.Model != "" || effective.Reasoning != "" || effective.AccountID != constants.AiAccountSystemID {
+					t.Fatalf("已接纳原生空选择被新环境默认值覆盖: %+v error=%v", effective, err)
+				}
+			})
+		}
+	}
+}
 
 // leaderTurnChatGroupFake 提供首发路由测试使用的成员 Chat，不启动真实 Runtime。
 type leaderTurnChatGroupFake struct {
@@ -159,8 +258,12 @@ func assertLeaderTurnIntent(t *testing.T, intent execution.WorkIntent, content s
 	if direct {
 		want, unwanted = unwanted, want
 	}
-	if !strings.Contains(instructions[0].Content, want) || strings.Contains(instructions[0].Content, unwanted) {
-		t.Fatalf("direct=%t instructions did not preserve turn mode: %s", direct, instructions[0].Content)
+	if strings.Contains(instructions[0].Content, "## Current Lead Turn") {
+		t.Fatal("current turn mode polluted stable TEAM")
+	}
+	context := intent.Input.ContextInstructions
+	if len(context) == 0 || !strings.Contains(context[len(context)-1].Content, want) || strings.Contains(context[len(context)-1].Content, unwanted) {
+		t.Fatalf("direct=%t current input lost mode: %+v", direct, context)
 	}
 }
 

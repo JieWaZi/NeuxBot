@@ -18,8 +18,8 @@ const compatibleProtocols: Record<string, readonly string[]> = {
 export function isKimiSubscription(account?: AIAccount): boolean {
   return Boolean(
     account?.authMode === "subscription" &&
-    account.endpoints?.[0]?.protocol === "openai-completions" &&
-    account.endpoints?.[0]?.baseUrl === "https://api.kimi.com/coding/v1",
+    account.endpoint?.protocol === "openai-completions" &&
+    account.endpoint?.baseUrl === "https://api.kimi.com/coding/v1",
   );
 }
 
@@ -28,13 +28,16 @@ export function accountSupportsRuntime(
   account: AIAccount,
   runtimeId: string,
 ): boolean {
-  const endpoint = account.endpoints?.[0];
+  const endpoint = account.endpoint;
   if (!endpoint?.protocol) return false;
   if (account.authMode === "subscription") {
     return (
       (runtimeId === "codex" &&
         endpoint.protocol === "openai-responses" &&
         endpoint.baseUrl === "https://api.openai.com/v1") ||
+      (runtimeId === "claude" &&
+        endpoint.protocol === "anthropic-messages" &&
+        endpoint.baseUrl === "https://api.anthropic.com") ||
       (runtimeId === "kimi" && isKimiSubscription(account))
     );
   }

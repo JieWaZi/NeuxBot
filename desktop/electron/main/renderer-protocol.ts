@@ -36,7 +36,8 @@ export async function rendererCSP(file: string): Promise<string> {
         );
     }
   }
-  return `default-src 'self'; script-src 'self' ${hashes.join(" ")}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://127.0.0.1:*; font-src 'self' data:; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*; worker-src 'self' blob:; object-src 'none'; frame-src blob: http: https:`;
+  // 网站链接仅请求站点根路径图标，不开放任意远程图片、脚本或连接。
+  return `default-src 'self'; script-src 'self' ${hashes.join(" ")}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://127.0.0.1:* http://*/favicon.ico https://*/favicon.ico; font-src 'self' data:; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*; worker-src 'self' blob:; object-src 'none'; frame-src blob: http: https:`;
 }
 
 const decompress = promisify(brotliDecompress);

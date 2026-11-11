@@ -1,13 +1,17 @@
 import { type Dispatch, type ReactNode, type SetStateAction } from "react";
 import {
   Navigate,
+  parsePath,
   Outlet,
   Route,
   Routes,
   useParams,
   useLocation,
+  useSearchParams,
 } from "react-router-dom";
 
+import { ConnectorAddPage } from "@/modules/connector";
+import { SkillAddPage } from "@/modules/skill";
 import { ResourcesPage } from "@/app/pages/resources-page";
 import { KnowledgeScene } from "./knowledge-scene";
 import {
@@ -16,6 +20,9 @@ import {
   PluginSkillDetailPage,
   PluginConnectorDetailPage,
 } from "@/modules/plugin";
+import { UsagePage } from "@/modules/usage";
+import { useQuery } from "@tanstack/react-query";
+import { listWakersOptions } from "@/modules/waker";
 import { WorkBoardPage } from "@/modules/work-board";
 
 import type { ChatRightPanel } from "@/modules/chat";
@@ -51,11 +58,30 @@ export type AppRouteOutletContext = {
 
 export type AppRouteSceneProps = {
   location: string;
+  locationState?: unknown;
   outletContext: AppRouteOutletContext;
 };
 
 function RouteSceneOutlet({ context }: { context: AppRouteOutletContext }) {
   return <Outlet context={context} />;
+}
+
+function UsageScene() {
+  const [search, setSearch] = useSearchParams();
+  const wakers = useQuery(
+    listWakersOptions({ query: { pageNum: 1, pageSize: 100 } }),
+  );
+  return (
+    <UsagePage
+      search={search}
+      onSearchChange={setSearch}
+      wakerOptions={
+        wakers.data?.resources?.flatMap((waker) =>
+          waker.id ? [{ value: waker.id, label: waker.name || waker.id }] : [],
+        ) ?? []
+      }
+    />
+  );
 }
 
 function LegacyAutomaticTaskRoute() {
@@ -76,9 +102,13 @@ function LegacyAutomaticTaskRoute() {
 }
 
 /** 页面随工作台初始化就绪，重型编辑器、文件预览与弹窗在内容区按需加载。 */
-export function AppRouteScene({ location, outletContext }: AppRouteSceneProps) {
+export function AppRouteScene({
+  location,
+  locationState,
+  outletContext,
+}: AppRouteSceneProps) {
   return (
-    <Routes location={location}>
+    <Routes location={{ ...parsePath(location), state: locationState }}>
       <Route element={<RouteSceneOutlet context={outletContext} />}>
         <Route element={<ChatEntryPage />}>
           <Route index element={<></>} />
@@ -93,6 +123,10 @@ export function AppRouteScene({ location, outletContext }: AppRouteSceneProps) {
           element={<PluginCatalogDetailPage />}
         />
         <Route
+          path="resources/plugins/catalog/:catalogKey/skills/:skillKey"
+          element={<PluginSkillDetailPage />}
+        />
+        <Route
           path="resources/plugins/:pluginId"
           element={<PluginDetailPage />}
         />
@@ -104,6 +138,25 @@ export function AppRouteScene({ location, outletContext }: AppRouteSceneProps) {
           path="wakers/:wakerId/plugins/:pluginId/connectors/:connectorKey"
           element={<PluginConnectorDetailPage />}
         />
+        <Route
+          path="resources/plugins/catalog/:catalogKey/connectors/:connectorKey"
+          element={<PluginConnectorDetailPage />}
+        />
+        <Route path="resources/connectors/new" element={<ConnectorAddPage />} />
+        <Route
+          path="wakers/:wakerId/resources/connectors/new"
+          element={<ConnectorAddPage />}
+        />
+        <Route
+          path="wakers/:wakerId/connectors/new"
+          element={<ConnectorAddPage />}
+        />
+        <Route path="resources/skills/new" element={<SkillAddPage />} />
+        <Route
+          path="wakers/:wakerId/resources/skills/new"
+          element={<SkillAddPage />}
+        />
+        <Route path="wakers/:wakerId/skills/new" element={<SkillAddPage />} />
         <Route path="resources/skills/:skillId" element={<SkillDetailPage />} />
         <Route
           path="resources/plugins/:pluginId/skills/:skillKey"
@@ -122,6 +175,7 @@ export function AppRouteScene({ location, outletContext }: AppRouteSceneProps) {
           path="wakers/:wakerId/plugins/:pluginId/skills/:skillKey"
           element={<PluginSkillDetailPage />}
         />
+        <Route path="usage" element={<UsageScene />} />
         <Route path="work-board" element={<WorkBoardPage />} />
         <Route path="wakers" element={<WakerListPage />} />
         <Route path="wakers/:wakerId" element={<WakerDetailPage />} />

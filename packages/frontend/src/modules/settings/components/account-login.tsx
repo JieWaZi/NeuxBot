@@ -1,11 +1,17 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { withLocalErrorMutation } from "@/shared/api/local-error-surface";
-import { useEffect, useState } from "react";
+import { nativeModelCatalogQueryKey } from "@/shared/api/runtime-queries";
+import { refreshRuntime } from "@/shared/api/generated/sdk.gen";
+import {
+  withLocalErrorMutation,
+  withLocalErrorSurface,
+} from "@/shared/api/local-error-surface";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   cancelAiAccountLoginMutation,
   startAiAccountLoginMutation,
   listAiAccountsQueryKey,
+  listRuntimesQueryKey,
 } from "@/shared/api/generated/@tanstack/react-query.gen";
 import type { GithubComJieWaZiNeuxBotServerServicesAiaccountLogin as Login } from "@/shared/api/generated/types.gen";
 import { openExternalURL } from "@/shared/platform";
@@ -13,12 +19,20 @@ import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
 
 import { useAccountLoginQuery } from "../lib/account-login-query";
+import {
+  LoginAuthorizationDetails,
+  LoginStatusPanel,
+} from "./login-status-panel";
 
 export function AccountLogin({
   accountId,
+  browserAuthorization = false,
+  runtimeId,
   onClose,
 }: {
   accountId: string;
+  browserAuthorization?: boolean;
+  runtimeId?: string;
   onClose: () => void;
 }) {
   const { t } = useTranslation(["aiAccounts", "common"]);
@@ -31,6 +45,8 @@ export function AccountLogin({
   );
   const [startedLogin, setLogin] = useState<Login>();
   const [closing, setClosing] = useState(false);
+  const closed = useRef(false);
+  const [runtimeRefreshError, setRuntimeRefreshError] = useState<unknown>();
   const [authorizationOpenFailed, setAuthorizationOpenFailed] = useState(false);
   const { query: poll, queryKey } = useAccountLoginQuery(
     accountId,
@@ -39,10 +55,16 @@ export function AccountLogin({
   );
   const login = poll.data ?? startedLogin;
   const startLogin = async () => {
+    setRuntimeRefreshError(undefined);
     const result = await start.mutateAsync({ path: { accountId } });
+    if (closed.current) {
+      if (result.id && !result.complete)
+        await cancel.mutateAsync({ path: { accountId, loginId: result.id } });
+      return;
+    }
     setLogin(result);
     if (!result.verificationUrl) {
-      setAuthorizationOpenFailed(true);
+      setAuthorizationOpenFailed(!browserAuthorization);
       return;
     }
     try {
@@ -61,12 +83,26 @@ export function AccountLogin({
     }
   };
   useEffect(() => {
-    if (login?.complete)
-      void queryClient.invalidateQueries({
+    if (!login?.complete) return;
+    void (async () => {
+      await queryClient.invalidateQueries({
         queryKey: listAiAccountsQueryKey(),
       });
-  }, [login?.complete, queryClient]);
+      await queryClient.invalidateQueries({
+        queryKey: nativeModelCatalogQueryKey({ accountId }),
+      });
+      if (runtimeId) {
+        await refreshRuntime(
+          withLocalErrorSurface({ path: { runtimeId }, throwOnError: true }),
+        );
+        await queryClient.invalidateQueries({
+          queryKey: listRuntimesQueryKey(),
+        });
+      }
+    })().catch((error: unknown) => setRuntimeRefreshError(error));
+  }, [accountId, runtimeId, login?.complete, queryClient]);
   const close = () => {
+    closed.current = true;
     setClosing(true);
     void queryClient.cancelQueries({ queryKey });
     if (login?.id && !login.complete)
@@ -75,10 +111,39 @@ export function AccountLogin({
         .catch(() => undefined);
     onClose();
   };
-  const error =
-    start.error ??
-    poll.error ??
-    (login?.errorCode ? new Error(t("loginFailed")) : undefined);
+  const error = start.isPending
+    ? undefined
+    : (start.error ??
+      poll.error ??
+      runtimeRefreshError ??
+      (login?.errorCode
+        ? new Error(t("loginStatus.failedDescription"))
+        : undefined));
+  const phase = start.isPending
+    ? "pending"
+    : login?.complete
+      ? "success"
+      : login?.errorCode || start.isError
+        ? "error"
+        : login
+          ? "pending"
+          : "ready";
+  const statusTitle = start.isPending
+    ? t("agents.authentication.preparing")
+    : login?.complete
+      ? t("loginStatus.connected")
+      : login?.errorCode || start.isError
+        ? t("loginStatus.failed")
+        : login
+          ? t("waiting")
+          : t("loginStatus.ready");
+  const statusDescription = start.isPending
+    ? undefined
+    : login?.complete
+      ? t("loginComplete")
+      : login
+        ? t(login.userCode ? "deviceInstruction" : "loginStatus.browserHint")
+        : t("subscriptionDescription");
   return (
     <Dialog
       open
@@ -86,31 +151,40 @@ export function AccountLogin({
         if (!open) close();
       }}
     >
-      <DialogContent
-        title={t("login")}
-        description={t("subscriptionDescription")}
-      >
-        <div className="flex flex-col gap-4 px-6 pb-6">
-          {login?.complete ? (
-            <p className="type-body">{t("loginComplete")}</p>
-          ) : login ? (
+      <DialogContent title={t("login")} size="sm">
+        <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-6 pb-6">
+          <LoginStatusPanel
+            state={phase}
+            title={statusTitle}
+            description={statusDescription}
+          >
+            {login &&
+            !start.isPending &&
+            !login.complete &&
+            !login.errorCode ? (
+              <LoginAuthorizationDetails
+                userCode={login.userCode}
+                verificationUrl={login.verificationUrl}
+                onOpen={() => void openAuthorization()}
+              />
+            ) : null}
+          </LoginStatusPanel>
+          {!login ? (
+            <Button
+              size="settings"
+              disabled={start.isPending}
+              onClick={() => void startLogin().catch(() => undefined)}
+            >
+              {t(browserAuthorization ? "startBrowserLogin" : "startLogin")}
+            </Button>
+          ) : null}
+          {login && !login.complete ? (
             <>
-              <p className="type-body">{t("deviceInstruction")}</p>
-              <code className="bg-muted type-title rounded-lg p-4 text-center select-all">
-                {login.userCode}
-              </code>
-              {login.verificationUrl ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => void openAuthorization()}
-                >
-                  {t("openAuthorization")}
-                </Button>
-              ) : null}
               {authorizationOpenFailed ? (
-                <div role="alert" className="type-body text-destructive">
+                <div
+                  role="alert"
+                  className="type-body text-destructive break-all"
+                >
                   <p>
                     {t(
                       login.verificationUrl
@@ -125,8 +199,8 @@ export function AccountLogin({
               ) : null}
               {poll.isError ? (
                 <Button
-                  size="sm"
-                  variant="secondary"
+                  size="settings"
+                  variant="settings-outline"
                   disabled={poll.isFetching}
                   onClick={() => void poll.refetch()}
                 >
@@ -134,26 +208,15 @@ export function AccountLogin({
                 </Button>
               ) : login.errorCode ? (
                 <Button
-                  size="sm"
-                  variant="secondary"
+                  size="settings"
+                  disabled={start.isPending}
                   onClick={() => void startLogin().catch(() => undefined)}
                 >
-                  {t("startLogin")}
+                  {t("common:retry")}
                 </Button>
-              ) : (
-                <p className="type-caption text-content-secondary">
-                  {t("waiting")}
-                </p>
-              )}
+              ) : null}
             </>
-          ) : (
-            <Button
-              disabled={start.isPending}
-              onClick={() => void startLogin().catch(() => undefined)}
-            >
-              {t("startLogin")}
-            </Button>
-          )}
+          ) : null}
           {error ? (
             <p role="alert" className="type-body text-destructive">
               {error instanceof Error
@@ -163,7 +226,11 @@ export function AccountLogin({
           ) : null}
         </div>
         <DialogFooter>
-          <Button variant="secondary" onClick={close}>
+          <Button
+            size="settings"
+            variant={login?.complete ? "primary" : "settings-outline"}
+            onClick={close}
+          >
             {t(login?.complete ? "confirm" : "common:cancel")}
           </Button>
         </DialogFooter>

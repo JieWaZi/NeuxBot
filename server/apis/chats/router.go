@@ -10,7 +10,6 @@ func init() {
 	Router.Register(&ForkChat{})
 	Router.Register(&CreateChat{})
 	Router.Register(&SendMessage{})
-	Router.Register(&RetryChatExecution{})
 	Router.Register(&GetChat{})
 	Router.Register(&ListChatMessages{})
 	Router.Register(&GetChatMessageFileChange{})

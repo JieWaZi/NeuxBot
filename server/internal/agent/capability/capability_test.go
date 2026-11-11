@@ -77,6 +77,64 @@ func TestGrantActivationScopeAndRevocation(t *testing.T) {
 	}
 }
 
+func TestPreparedGrantOnlyExposesMCPToolCatalog(t *testing.T) {
+	registry := New(nil)
+	defer registry.Close()
+	validations, calls := 0, 0
+	grant, _, revoke, err := registry.Prepare(GrantSpec{ExecutionID: "preparing", Bindings: []Binding{{
+		Operation: "workflow.source.get",
+		Call: func(context.Context, Request) (Result, error) {
+			calls++
+			return Result{}, nil
+		},
+	}}, Validate: func(context.Context) error {
+		validations++
+		return status_error.AgentContextUnauthorized
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer revoke()
+	send := func(method, path, token, origin string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(method, constants.AgentCLIPath+path, strings.NewReader(`{"operation":"workflow.source.get","params":{}}`))
+		request.RemoteAddr = "127.0.0.1:12345"
+		request.Header.Set("Authorization", "Bearer "+token)
+		request.Header.Set("Origin", origin)
+		response := httptest.NewRecorder()
+		registry.ServeHTTP(response, request)
+		return response
+	}
+	response := send(http.MethodGet, constants.AgentCLIMCPCatalogPath, grant.Token, "")
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "workflow.source.get") || strings.Contains(response.Body.String(), "workflow.source.save") {
+		t.Fatalf("prepared grant did not expose exactly its tool contracts: %d %s", response.Code, response.Body)
+	}
+	for _, path := range []string{"/capabilities", "/operations/workflow.source.get", "/guides/workflow.authoring", "/receipts?operation=workflow.source.save&requestId=one", constants.AgentCLIMCPCatalogPath + "/", "/other" + constants.AgentCLIMCPCatalogPath} {
+		if response := send(http.MethodGet, path, grant.Token, ""); response.Code != http.StatusUnauthorized {
+			t.Fatalf("prepared grant accessed %s: %d", path, response.Code)
+		}
+	}
+	for _, path := range []string{"/commands", constants.AgentCLIMCPCatalogPath} {
+		if response := send(http.MethodPost, path, grant.Token, ""); response.Code != http.StatusUnauthorized {
+			t.Fatalf("prepared grant posted to %s: %d", path, response.Code)
+		}
+	}
+	for _, token := range []string{"", "unknown"} {
+		if response := send(http.MethodGet, constants.AgentCLIMCPCatalogPath, token, ""); response.Code != http.StatusUnauthorized {
+			t.Fatal("tool catalog accepted invalid authentication")
+		}
+	}
+	if response := send(http.MethodGet, constants.AgentCLIMCPCatalogPath, grant.Token, "https://example.com"); response.Code != http.StatusUnauthorized {
+		t.Fatal("tool catalog accepted a browser origin")
+	}
+	if validations != 0 || calls != 0 {
+		t.Fatalf("catalog bootstrap touched business state: validations=%d calls=%d", validations, calls)
+	}
+	revoke()
+	if response := send(http.MethodGet, constants.AgentCLIMCPCatalogPath, grant.Token, ""); response.Code != http.StatusUnauthorized {
+		t.Fatal("revoked grant retained its tool catalog")
+	}
+}
+
 func TestCurrentConnectionAndRemoteAddressRejection(t *testing.T) {
 	base := Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: "http://127.0.0.1:8432/agent/v1", CoreEpoch: "epoch", GrantID: "grant", Token: "private"}
 	for _, endpoint := range []string{"http://example.com:8432/agent/v1", "http://127.0.0.1:8432/api/v1", "https://127.0.0.1:8432/agent/v1", "http://user:password@127.0.0.1:8432/agent/v1", "http://127.0.0.1:8432/agent/v1?forward=1"} {
@@ -134,13 +192,13 @@ func TestObserveSubscribesBeforeReadingAndReleasesOnCompletion(t *testing.T) {
 
 func TestObserveBoundsWaitAndDistinguishesInvalidation(t *testing.T) {
 	for _, test := range []struct {
-		// name 区分观察结束的真实原因。
+		// name distinguishes the actual reason an observation ended.
 		name string
-		// cancelled 表示调用授权已被撤销。
+		// cancelled reports whether invocation authorization was revoked.
 		cancelled bool
-		// invalidated 表示事件缓冲已不可恢复。
+		// invalidated reports whether the event buffer is unrecoverable.
 		invalidated bool
-		// want 是对应原因的稳定错误；期限到达没有错误。
+		// want is the stable error for the termination reason; reaching the deadline is not an error.
 		want error
 	}{
 		{name: "timeout"},
@@ -199,7 +257,7 @@ func TestConnectionPublicationAndPrivateFileBoundary(t *testing.T) {
 		t.Fatalf("relative connection was accepted: %v", err)
 	}
 	if runtime.GOOS == "windows" {
-		// Windows 通过专属目录的继承 DACL 管理访问；POSIX 模式仅在 Unix 检验。
+		// Windows controls access through the dedicated directory's inherited DACL; POSIX modes are checked only on Unix.
 		return
 	}
 	if err := os.Chmod(path, 0o644); err != nil {
@@ -219,7 +277,7 @@ func TestConnectionPublicationAndPrivateFileBoundary(t *testing.T) {
 	}
 }
 
-// receiptMemoryStore 只模拟领域仓储端口，不模拟命令编排或回执摘要。
+// receiptMemoryStore fakes only the domain repository port, not command orchestration or receipt digests.
 type receiptMemoryStore map[string]Receipt
 
 func (s receiptMemoryStore) Find(_ context.Context, id string) (Receipt, bool, error) {

@@ -53,6 +53,8 @@ type ChannelMember struct {
 	Model string `gorm:"column:model;type:varchar(200);not null;default:''" json:"model"`
 	// Reasoning 是新团队对话为该成员选择的默认推理强度。
 	Reasoning string `gorm:"column:reasoning;type:varchar(80);not null;default:''" json:"reasoning"`
+	// Fast 是保存边界冻结的加速选择；nil 保留原生默认。
+	Fast *bool `gorm:"column:fast" json:"fast,omitempty"`
 	// PermissionLevel 是新团队对话为该成员选择的默认权限等级。
 	PermissionLevel constants.PermissionLevel `gorm:"column:permission_level;type:varchar(24);not null" json:"permissionLevel"`
 	// Position 是成员在团队配置和头像列表中的稳定顺序。

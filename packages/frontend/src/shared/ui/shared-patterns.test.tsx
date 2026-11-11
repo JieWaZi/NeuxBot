@@ -345,7 +345,7 @@ describe("共享界面模式", () => {
     expect(onClose).toHaveBeenCalledWith("file");
   });
 
-  it("Scene Tab 支持方向键导航和溢出菜单", async () => {
+  it("Scene Tab 支持方向键导航，溢出标签留在可横向滚动的轨道内", async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();
     render(
@@ -375,8 +375,10 @@ describe("共享界面模式", () => {
     expect(onSelect).toHaveBeenCalledWith("file");
     expect(screen.getByRole("tab", { name: "文件" })).toHaveFocus();
 
-    await user.click(screen.getByRole("button", { name: "场景中的其他标签" }));
-    await user.click(screen.getByRole("menuitemradio", { name: "浏览器" }));
+    const track = tabList.closest("[data-scene-tab-scroll]");
+    expect(track).toHaveClass("overflow-x-auto", "min-w-0");
+    await user.keyboard("{End}");
+    expect(screen.getByRole("tab", { name: "浏览器" })).toHaveFocus();
     expect(onSelect).toHaveBeenCalledWith("browser");
   });
 
@@ -408,9 +410,10 @@ describe("共享界面模式", () => {
     fireEvent.resize(window);
 
     expect(screen.getByRole("button", { name: "添加内容" })).toBeVisible();
-    expect(
-      screen.getByRole("button", { name: "场景中的其他标签" }),
-    ).toBeVisible();
+    const track = tabList.closest("[data-scene-tab-scroll]");
+    expect(track).toContainElement(
+      screen.getByRole("button", { name: "添加内容" }),
+    );
     expect(
       document.querySelector("[data-scene-tab-trailing]"),
     ).not.toContainElement(tabList);
@@ -458,7 +461,7 @@ describe("共享界面模式", () => {
     const sceneTab = screen.getByRole("tab", { name: "会话" });
     expect(sceneTab.parentElement).toHaveClass(
       "rounded-control",
-      "duration-quick",
+      "shell-header-tab",
     );
     expect(sceneTab).toHaveClass("rounded-control");
     const control = screen.getByRole("switch", { name: "功能开关" });

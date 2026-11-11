@@ -13,6 +13,8 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	channeltool "github.com/JieWaZi/NeuxBot/server/internal/teamcapability"
@@ -1197,10 +1199,7 @@ func TestExecutionObservationHotReadBudgetIgnoresLongPublicHistory(t *testing.T)
 	measure := func(prefix int) float64 {
 		fixture := newDeletionFixture(t)
 		root := t.TempDir()
-		store, err := eventlog.NewStore(root)
-		if err != nil {
-			t.Fatal(err)
-		}
+		store := conversationfixture.New(t, root)
 		marshal := func(value interface{}) json.RawMessage {
 			data, err := json.Marshal(value)
 			if err != nil {
@@ -1208,20 +1207,25 @@ func TestExecutionObservationHotReadBudgetIgnoresLongPublicHistory(t *testing.T)
 			}
 			return data
 		}
-		records := []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated, Data: marshal(eventlog.ChatCreatedData{WorkspaceDirectory: t.TempDir()})}}
+		chatID := "91919191919191919191919191919191"
+		records := conversationfixture.Facts([]eventlog.AppendInput{{Type: constants.ChatEventTypeCreated, Data: marshal(eventlog.ChatCreatedData{WorkspaceDirectory: t.TempDir()})}})
 		for index := 0; index <= prefix; index++ {
 			id := fmt.Sprintf("round-%d", index)
-			records = append(records,
-				eventlog.AppendInput{Type: constants.ChatEventTypeUserMessageCreated, MessageID: "user-" + id, Data: marshal(eventlog.MessageCreatedData{Role: constants.MessageRoleUser, Actor: string(constants.ChannelMessageActorUser), Content: strings.Repeat("historical input ", 128)})},
-				eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: id, Data: marshal(eventlog.ExecutionCreatedData{UserMessageID: "user-" + id})},
-				eventlog.AppendInput{Type: constants.ChatEventTypeAssistantMessage, ExecutionID: id, Data: marshal(eventlog.RuntimeMessageData{MessageRevision: 1, Content: []eventlog.RuntimeMessageContent{{Type: "text_delta", Data: marshal(map[string]interface{}{"text": strings.Repeat("historical result ", 128)})}}})},
-				eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: id, Data: marshal(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})})
+			records = append(records, conversationfixture.Facts([]eventlog.AppendInput{
+				{Type: constants.ChatEventTypeUserMessageCreated, MessageID: "user-" + id, Data: marshal(eventlog.MessageCreatedData{Role: constants.MessageRoleUser, Actor: string(constants.ChannelMessageActorUser), Content: strings.Repeat("historical input ", 128)})},
+				{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: id, Data: marshal(eventlog.ExecutionCreatedData{UserMessageID: "user-" + id})},
+			})...)
+			records = append(records, conversationfixture.NativeMessage(t, store, chatID, id, agent.MessageChange{
+				Kind: agent.MessageAppend, ContentType: constants.RuntimeEventTypeTextDelta, Text: strings.Repeat("historical result ", 128),
+			}))
+			records = append(records, agent.ConversationChange{Fact: &agent.ChatFact{
+				Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: id, Data: marshal(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted}),
+			}})
 		}
-		chatID := "91919191919191919191919191919191"
-		if _, err := store.Create(chatID, records); err != nil {
+		if _, err := conversationfixture.Commit(t.Context(), store, chatID, records); err != nil {
 			t.Fatal(err)
 		}
-		module, err := chatservice.New(chatservice.Config{StorageDirectory: root, Projects: controllers.NewProjectController(fixture.db), QueryIndexes: chatservice.QueryIndexDependencies{Chats: controllers.NewChatController(fixture.db), RuntimeSessions: controllers.NewRuntimeSessionController(fixture.db), DeletionIntents: controllers.NewChatDeletionIntentController(fixture.db), Transactions: fixture.service.transactions}})
+		module, err := chatservice.New(chatservice.Config{StorageDirectory: root, Conversations: store, Projects: controllers.NewProjectController(fixture.db), QueryIndexes: chatservice.QueryIndexDependencies{Chats: controllers.NewChatController(fixture.db), DeletionIntents: controllers.NewChatDeletionIntentController(fixture.db), Transactions: fixture.service.transactions}})
 		if err != nil {
 			t.Fatal(err)
 		}

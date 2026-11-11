@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { WorkbenchProvider, useWorkbench } from "./workbench-store";
 
-const storageKey = "ally.right-workbench.v2.chat:one";
+const storageKey = "ally.right-workbench.chat:one";
 
 function Probe() {
   const { snapshot } = useWorkbench("chat:one");
@@ -35,7 +35,6 @@ describe("工作台重载边界", () => {
     localStorage.setItem(
       storageKey,
       JSON.stringify({
-        version: 2,
         state: {
           tabs: [
             {
@@ -83,7 +82,7 @@ describe("工作台重载边界", () => {
   });
 
   it("损坏的持久状态被清除后使用空工作台", () => {
-    localStorage.setItem(storageKey, '{"version":2,"state":{');
+    localStorage.setItem(storageKey, '{"state":{');
     const view = renderProbe();
     expect(screen.getByTestId("tab-id")).toHaveTextContent("empty");
     expect(localStorage.getItem(storageKey)).toBeNull();

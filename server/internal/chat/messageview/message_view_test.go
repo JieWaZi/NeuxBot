@@ -43,44 +43,6 @@ func TestReplayMessagesPreservesSelectedCapabilitySnapshots(t *testing.T) {
 	}
 }
 
-func TestReplayMessagesRestoresRecordedInnermostFailure(t *testing.T) {
-	t.Parallel()
-
-	invocationFinished := json.RawMessage(
-		`{"failureMessage":"{\"code\":-32603,\"message\":\"Internal error\",\"data\":{\"error\":\"可执行文件 codex 不存在\"}}"}`,
-	)
-	executionFinished, _ := eventlog.MarshalData(eventlog.ExecutionFinishedData{
-		ErrorCode: "RUNTIME_UNAVAILABLE",
-		Status:    constants.ExecutionStatusFailed,
-	})
-	messages, err := ReplayMessages([]eventlog.Record{
-		chatCreatedRecord(1, "/workspace/project"),
-		executionCreatedRecord(2, "execution-1"),
-		{
-			ChatID:      "chat-1",
-			Sequence:    3,
-			RecordedAt:  300,
-			Type:        constants.ChatEventTypeInvocationFinished,
-			ExecutionID: "execution-1",
-			Data:        invocationFinished,
-		},
-		{
-			ChatID:      "chat-1",
-			Sequence:    4,
-			RecordedAt:  400,
-			Type:        constants.ChatEventTypeExecutionFailed,
-			ExecutionID: "execution-1",
-			Data:        executionFinished,
-		},
-	})
-	if err != nil {
-		t.Fatalf("ReplayMessages() error = %v", err)
-	}
-	if len(messages) != 1 || messages[0].ErrorMessage != "可执行文件 codex 不存在" {
-		t.Fatalf("messages = %#v", messages)
-	}
-}
-
 func TestReplayMessagesKeepsWholeFileCodeReferencesSeparateFromAttachments(t *testing.T) {
 	t.Parallel()
 
@@ -461,7 +423,7 @@ func TestReplayMessagesDoesNotBuildFileOutcomesFromToolDiffs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReplayMessages() error = %v", err)
 	}
-	if len(messages) != 1 || len(messages[0].FileChanges) != 0 || len(messages[0].FileChangeDiffs) != 0 || messages[0].FileChangeRecord != nil {
+	if len(messages) != 1 || len(messages[0].FileChangeDiffs) != 0 || messages[0].FileChangeRecord != nil {
 		t.Fatalf("CLI diff created independent file outcome: %+v", messages)
 	}
 	if len(messages[0].RuntimeEvents) != 4 || messages[0].DisplayParts[0].ToolStatus != constants.MessageToolStatusCompleted {
@@ -537,7 +499,7 @@ func TestPublicMessageViewDiscardsRuntimeHistoryPreservingDisplay(t *testing.T) 
 			"content": []any{map[string]any{"type": "diff", "path": "/workspace/main.go", "oldText": "a\n", "newText": "b\nc\n"}},
 		}))
 	}
-	if got := public.PublicMessage("execution-1"); len(got.FileChanges) != 0 || got.FileChangeRecord != nil {
+	if got := public.PublicMessage("execution-1"); got.FileChangeRecord != nil {
 		t.Fatal("tool payload generated independent file outcome")
 	}
 	apply(runtimeRecord(103, "execution-1", "execution-1", "invocation-1", "tool_result", map[string]any{"toolCallId": "write-1", "status": "completed"}))
@@ -555,7 +517,7 @@ func TestPublicMessageViewPreservesInheritedFileReference(t *testing.T) {
 	t.Parallel()
 	data, err := eventlog.MarshalData(InheritedMessage{
 		SourceMessageID: "source-message",
-		Message:         Message{Role: constants.MessageRoleAssistant, Content: "已更新文件", FileChanges: []ToolFileChangeSummary{{Path: "main.go", AddedLines: 1}}, FileChangeRecord: &eventlog.FileChangesData{RecordID: "inherited-record", Version: 2, State: "ready", TotalFiles: 1}},
+		Message:         Message{Role: constants.MessageRoleAssistant, Content: "已更新文件", FileChangeRecord: &eventlog.FileChangesData{RecordID: "inherited-record", Version: 2, State: "ready", TotalFiles: 1}},
 		Diffs:           []MessageFileChangeDiff{{Path: "main.go", NewContent: "private content\n"}},
 	})
 	if err != nil {
@@ -566,7 +528,7 @@ func TestPublicMessageViewPreservesInheritedFileReference(t *testing.T) {
 		t.Fatal(err)
 	}
 	message := builder.Messages()[0]
-	if len(message.FileChanges) != 0 || message.FileChangeRecord == nil || message.FileChangeRecord.RecordID != "inherited-record" || message.Content != "已更新文件" {
+	if message.FileChangeRecord == nil || message.FileChangeRecord.RecordID != "inherited-record" || message.Content != "已更新文件" {
 		t.Fatalf("inherited public snapshot lost display: %+v", message)
 	}
 	if len(builder.messages[0].FileChangeDiffs) != 0 {
@@ -581,7 +543,6 @@ func TestReplayPublicMessagesPreservesInheritedFileReference(t *testing.T) {
 		SourceMessageID: "source-message",
 		Message: Message{
 			Inherited: true, Role: constants.MessageRoleAssistant, Content: "已更新文件",
-			FileChanges:      []ToolFileChangeSummary{{Path: "main.go", AddedLines: 1}},
 			FileChangeRecord: &eventlog.FileChangesData{RecordID: "inherited-record", Version: 2, State: "ready", TotalFiles: 1},
 		},
 		Diffs: []MessageFileChangeDiff{{Path: "main.go", NewContent: "package main\n"}},
@@ -653,7 +614,7 @@ func TestReplayMessagesDoesNotPromoteRealProjectToolDiffToFileOutcome(t *testing
 	if err != nil {
 		t.Fatalf("ReplayMessages() error = %v", err)
 	}
-	if len(messages) != 1 || len(messages[0].FileChanges) != 0 || messages[0].FileChangeRecord != nil || len(messages[0].RuntimeEvents) != 1 {
+	if len(messages) != 1 || messages[0].FileChangeRecord != nil || len(messages[0].RuntimeEvents) != 1 {
 		t.Fatal("project tool diff must preserve canonical history without generating file outcomes")
 	}
 
@@ -913,16 +874,6 @@ func TestBuildToolPhraseUsesBoundedSemanticRules(t *testing.T) {
 			name: "workflow result schema query",
 			data: map[string]interface{}{"name": "mcp__ally_workflow__workflow", "input": map[string]interface{}{"action": "query", "type": "result_schema"}},
 			want: "查看步骤结果格式",
-		},
-		{
-			name: "saved legacy workflow result remains readable",
-			data: map[string]interface{}{"name": "ally_workflow_result_workflow_result", "input": map[string]interface{}{"action": "submit"}},
-			want: "提交步骤结果",
-		},
-		{
-			name: "saved legacy workflow directory remains readable",
-			data: map[string]interface{}{"name": "mcp__ally_workflow_use__workflow_use", "input": map[string]interface{}{"action": "workflows.list"}},
-			want: "查看可用工作流",
 		},
 		{
 			name: "builtin channel task create",
@@ -1692,5 +1643,14 @@ func TestReplayMessagesPreservesSteerContinuation(t *testing.T) {
 	}
 	if len(messages) != 1 || messages[0].SteerExecutionID != "previous" {
 		t.Fatalf("steer relation lost on replay: %+v", messages)
+	}
+}
+
+func TestWorkflowToolPhraseRejectsRetiredServerIdentities(t *testing.T) {
+	for _, name := range []string{"ally_workflow_result_workflow_result", "mcp__ally_workflow_use__workflow_use"} {
+		data := map[string]interface{}{"name": name, "input": map[string]interface{}{"action": "workflows.list"}}
+		if phrase := builtinWorkflowToolPhrase(data, name); phrase != "" {
+			t.Fatalf("retired service %q gained builtin workflow semantics: %q", name, phrase)
+		}
 	}
 }

@@ -93,10 +93,11 @@ func (s *Service) route(ctx context.Context, input models.IMInbox) error {
 		}
 		if linkID == "" {
 			linkID = protocol.StableID("link", input.ID)
-			frozen := binding
-			frozen.ContextToken = ""
-			frozen.ContextCiphertext = ""
-			link := models.IMConversationLink{ID: linkID, BindingID: binding.ID, Title: shortTitle(input.Content), Configuration: frozen}
+			link := models.IMConversationLink{ID: linkID, BindingID: binding.ID, Title: shortTitle(input.Content), Configuration: models.IMConversationConfiguration{
+				WakerID: binding.WakerID, ChannelID: binding.ChannelID,
+				ProjectID: binding.ProjectID, WorkingDirectory: binding.WorkingDirectory,
+				Options: binding.Options,
+			}}
 			if err := s.config.Store.SaveLink(ctx, link); err != nil {
 				return err
 			}
@@ -307,7 +308,7 @@ func (s *Service) accept(ctx context.Context, input models.IMInbox) error {
 	if strings.TrimSpace(workInput.Content) == "" {
 		workInput.Content = "请处理附带的文件。"
 	}
-	workInput.ContextInstructions = []workinput.Instruction{{Name: "IM_DELIVERY.md", Content: "完成后文字结果会自动回复到本聊天。如果生成了需要交付的文件，请使用 im_delivery：先 targets.list 查验授权目标，再把文件登记到当前聊天目标 " + binding.ID + "，等待 deliveries.get 返回 sent。文件只能来自当前工作目录。不要通过该工具重复发送完整文字结论。"}}
+	workInput.ContextInstructions = []workinput.Instruction{{Name: "IM_DELIVERY.md", Content: "完成后文字结果会自动回复到本聊天。如果生成了需要交付的文件，请使用 im_delivery：先 targets.list 查验授权目标，再把文件登记到当前聊天目标 " + binding.ID + "，等待 deliveries.get 返回 sent。文件使用本轮成果目录或获准项目中的真实路径。不要通过该工具重复发送完整文字结论。"}}
 	for _, file := range input.Files {
 		workInput.Attachments = append(workInput.Attachments, execution.AttachmentInput{SourcePath: file.Path})
 	}
@@ -315,14 +316,7 @@ func (s *Service) accept(ctx context.Context, input models.IMInbox) error {
 		submission := channel.SubmitMessageInput{}
 		if link.ThreadID == "" {
 			submission.Create = &channel.CreateThreadInput{ChannelID: link.Configuration.ChannelID, ClientRequestID: link.ID, ExecutionID: input.ExecutionID, ProjectID: link.Configuration.ProjectID, WorkingDirectory: link.Configuration.WorkingDirectory, Input: workInput}
-			if submission.Create.ProjectID == "" && submission.Create.WorkingDirectory == "" {
-				// 团队首发需要确定的共享目录，受管模式由入口按对话身份稳定分配。
-				directory := filepath.Join(s.config.DataDirectory, "im", "workspaces", link.ID)
-				if err := os.MkdirAll(directory, 0700); err != nil {
-					return status_error.IMFileInvalid
-				}
-				submission.Create.WorkingDirectory = directory
-			}
+
 		} else {
 			submission.Continue = &channel.SendMessageInput{ThreadID: link.ThreadID, Input: workInput}
 		}

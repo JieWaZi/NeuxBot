@@ -43,6 +43,7 @@ const memberSchema = z.object({
   model: z.string(),
   permissionLevel: permissionLevelSchema,
   reasoning: z.string(),
+  fast: z.boolean().optional(),
   runtimeId: z.string().min(1),
   wakerId: z.string().min(1),
 });
@@ -93,6 +94,7 @@ function initialValues(detail?: ChannelDetail): TeamFormValues {
               runtimeId: member.runtimeId ?? "",
               model: member.model ?? "",
               reasoning: member.reasoning ?? "",
+              fast: member.fast,
               permissionLevel: permissionLevel(member.permissionLevel),
             },
           ]
@@ -343,7 +345,7 @@ export function TeamFormDialog({
                             </span>
                           </span>
                           {checked ? (
-                            <Check className="text-primary size-icon-sm" />
+                            <Check className="text-accent-content size-icon-sm" />
                           ) : null}
                         </label>
                       );

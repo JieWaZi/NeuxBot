@@ -8,6 +8,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/profile"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
@@ -27,9 +28,9 @@ func (s *service) teamInstruction(
 	}, nil
 }
 
-// leaderTurnInstruction 将当前负责人回合的路由意图写入虚拟 TEAM.md，不改变执行权限。
-func leaderTurnInstruction(instruction agentapi.Instruction, directExecution bool) agentapi.Instruction {
-	instruction.Content += "\n\n## Current Lead Turn\nThis section applies only to the current execution and replaces the execution mode from earlier turns.\n"
+// leaderTurnInstruction 仅描述当前负责人的执行模式，不改变稳定 TEAM 或执行权限。
+func leaderTurnInstruction(directExecution bool) workinput.Instruction {
+	instruction := workinput.Instruction{Name: "Current Lead Turn", Content: "This section applies only to the current execution and replaces the execution mode from earlier turns.\n"}
 	if directExecution {
 		instruction.Content += "This is a direct-execution turn: the user mentioned you through the structured `@` mechanism. Execute the current request in this Chat. You may delegate independent subtasks to non-lead members, but do not create a team task for yourself."
 	} else {
@@ -48,7 +49,7 @@ func (s *service) buildTeamMD(
 	if err != nil {
 		return "", err
 	}
-	members, err := s.threads.ListMembers(ctx, thread.ID)
+	members, err := s.currentThreadMemberProfiles(ctx, thread.ID)
 	if err != nil {
 		return "", err
 	}
@@ -121,6 +122,37 @@ func (s *service) buildTeamMD(
 	return builder.String(), nil
 }
 
+// currentThreadMemberProfiles 只刷新已接纳成员的公开档案，缺失伙伴保留历史展示资料。
+func (s *service) currentThreadMemberProfiles(ctx context.Context, threadID string) ([]models.ChannelThreadMember, error) {
+	members, err := s.threads.ListMembers(ctx, threadID)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(members))
+	for _, member := range members {
+		ids = append(ids, member.WakerID)
+	}
+	wakers, err := s.wakers.ListByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	profiles := make(map[string]models.Waker, len(wakers))
+	for _, waker := range wakers {
+		profiles[waker.ID] = waker
+	}
+	for index := range members {
+		waker, exists := profiles[members[index].WakerID]
+		if !exists {
+			continue
+		}
+		members[index].DisplayName = rosterText(waker.Name, constants.ChannelRosterMaximumNameRunes, "Not provided")
+		members[index].RoleName = rosterText(waker.RoleName, constants.ChannelRosterMaximumRoleNameRunes, "")
+		members[index].Bio = rosterText(waker.Bio, constants.ChannelRosterMaximumBioRunes, "")
+		members[index].Expertise = snapshotMemberExpertise(waker.Expertise)
+	}
+	return members, nil
+}
+
 // memberRoster 组装有界成员列表；负责人看到完整分派摘要，成员看到简表。
 func memberRoster(
 	members []models.ChannelThreadMember,
@@ -164,7 +196,7 @@ func memberRoster(
 	return roster.String()
 }
 
-// snapshotMemberExpertise 冻结有界专长摘要，避免旧团队依赖后续可变伙伴资料。
+// snapshotMemberExpertise 提取有界专长摘要，供当前指令与缺失伙伴的历史展示使用。
 func snapshotMemberExpertise(expertise []profile.Expertise) []profile.Expertise {
 	result := make([]profile.Expertise, 0, constants.ChannelRosterMaximumExpertiseCount)
 	for _, item := range expertise {
@@ -221,7 +253,7 @@ func teamWorkspaceSection(workspaceDirectory string) string {
 		return ""
 	}
 	return "## Team Workspace\nYour working directory `" + path +
-		"` is the shared execution workspace for this team Chat; project-related reads and writes are visible to the lead and members."
+		"` is the team scope root. Each member has an isolated cwd under leader/ or members/. The shared/ directory contains true shared files; authorized projects remain at their original absolute paths."
 }
 
 // rosterText 把成员公开资料压成单行并按字符数截断，避免破坏 roster 结构。

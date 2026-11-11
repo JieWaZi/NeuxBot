@@ -1,6 +1,9 @@
 import { getWakerRecentProjectOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { useInstalledPluginReferences } from "@/modules/plugin";
-import { useExecutionSelection } from "@/shared/hooks/use-execution-selection";
+import {
+  useExecutionSelection,
+  useNativeExecutionSelections,
+} from "@/shared/hooks/use-execution-selection";
 import { useDraftWorkspaceSelections } from "./use-draft-workspace-selections";
 import {
   useInfiniteQuery,
@@ -42,13 +45,16 @@ import {
   ChatWorkspaceSurface,
   type ChatWorkspaceAdapter,
 } from "../components/chat-workspace-surface";
-import { useChatComposerControls } from "../components/chat-composer-controls";
+import {
+  useChatComposerControls,
+  type ChatExecutionSelectionPatch,
+} from "../components/chat-composer-controls";
 import { workspaceFilesOf } from "../model/chat-workspace-files";
 import { resolveGitWorkspaceDirectories } from "../model/git-workspace-directories";
 import { useChatWorkspaceBindings } from "../components/use-chat-workspace-bindings";
 import { useComposerScopeTransition } from "../model/use-composer-scope-transition";
 import { useChatViewState } from "../model/use-chat-view-state";
-import { projectFilesScopePath } from "../model/project-files-scope";
+import { chatFileRoots } from "../model/project-files-scope";
 import {
   conversationKeyOf,
   useChatInvocationGuard,
@@ -86,8 +92,6 @@ import {
   withStableCreateRequest,
 } from "@/shared/lib/create-request-idempotency";
 import { selectableRuntimes } from "../model/selectable-runtimes";
-import { Avatar } from "@/shared/ui/avatar";
-import { TypedPhrases } from "@/shared/ui/typed-phrases";
 import { useWorkbench } from "../workbench/workbench-store";
 import { useSceneWorkspace } from "@/shared/workspace/workspace-context";
 import type { WorkspaceMemberTab } from "@/shared/workspace/workspace-tab";
@@ -213,7 +217,6 @@ function TeamChatView({
   }, []);
   const {
     composerClearRevision,
-    companionScopeRevision,
     clearComposer,
     markSkipComposerClearOnCreate,
   } = useComposerScopeTransition(
@@ -498,11 +501,36 @@ function TeamChatView({
     value: {
       ...teamExecutionConfig,
       permissionLevel:
-        detailQuery.data?.chat?.lastPermissionLevel ||
-        teamExecutionConfig?.permissionLevel,
+        teamExecutionConfig?.permissionLevel ||
+        detailQuery.data?.chat?.lastPermissionLevel,
     },
     enabled: Boolean(configuredRuntime),
-    defaults: true,
+  });
+  const draftMemberValues = teamContext.threadId
+    ? []
+    : teamContext.members.map(
+        (member) => draftTeamMemberConfigs[member.id] ?? member,
+      );
+  const nativeMembers = useNativeExecutionSelections(
+    draftMemberValues,
+    runtimes,
+    executionSelection.accountsQuery.data?.resources ?? [],
+  );
+  const invalidNativeMemberIndex = nativeMembers.findIndex(
+    (member) => member && !member.valid,
+  );
+  const invalidNativeMember = teamContext.members[invalidNativeMemberIndex];
+  const memberConfigs = draftMemberValues.map((draft, index) => {
+    const config = nativeMembers[index]?.selection ?? draft;
+    return {
+      accountId: config.accountId,
+      model: config.model,
+      permissionLevel: config.permissionLevel,
+      reasoning: config.reasoning,
+      fast: config.fast,
+      runtimeId: config.runtimeId,
+      wakerId: teamContext.members[index]?.id ?? "",
+    };
   });
   const historicalRuntime = runtimes.find(
     (item) => item.id === detailQuery.data?.chat?.lastRuntimeId,
@@ -526,9 +554,7 @@ function TeamChatView({
   );
   const availableReasoningOptions = executionSelection.reasoningOptions;
   const selectedReasoning = executionSelection.selection.reasoning;
-  const updateExecutionSelection = (
-    patch: Partial<TeamMemberExecutionConfig>,
-  ) => {
+  const updateExecutionSelection = (patch: ChatExecutionSelectionPatch) => {
     const targetWakerIds = effectiveTeamConfigTargetWakerId
       ? [effectiveTeamConfigTargetWakerId]
       : [];
@@ -543,6 +569,7 @@ function TeamChatView({
         model: patch.model ?? current.model,
         permissionLevel: patch.permissionLevel ?? current.permissionLevel,
         reasoning: patch.reasoning ?? current.reasoning,
+        fast: patch.fast === null ? undefined : (patch.fast ?? current.fast),
         runtimeId: patch.runtimeId ?? current.runtimeId,
       };
       return [{ ...config, wakerId }];
@@ -608,15 +635,19 @@ function TeamChatView({
   const terminalWorkingDirectory =
     teamContext.additionalWorkingDirectories?.[0] ??
     detailQuery.data?.chat?.additionalWorkingDirectories?.[0] ??
-    "";
+    workspaceDirectory;
   const fileRoots = (() => {
     if (teamContext.workspaceDirectory) {
-      return [
+      return chatFileRoots(
         teamContext.workspaceDirectory,
-        ...(teamContext.additionalWorkingDirectories ?? []),
-      ].filter(Boolean);
+        teamContext.additionalWorkingDirectories,
+      );
     }
-    if (activeChatId && workspaceDirectory) return [workspaceDirectory];
+    if (activeChatId && workspaceDirectory)
+      return chatFileRoots(
+        workspaceDirectory,
+        detailQuery.data?.chat?.additionalWorkingDirectories,
+      );
     const project = selectedDraftProject;
     const projectRoots = (project?.sources ?? [])
       .filter((source) => source.available && source.path)
@@ -677,7 +708,8 @@ function TeamChatView({
       teamContext.isStopping ||
       !selectedWakerID ||
       !effectiveRuntimeID ||
-      selectedPermissionUnsupported ||
+      invalidNativeMemberIndex !== -1 ||
+      (executionSelection.usesNativeCatalog && !executionSelection.valid) ||
       (!activeChatId && !workspaceDirectory && !selectedDraftProject),
     ),
     serverManagedQueue: isTeamMainChat,
@@ -688,8 +720,9 @@ function TeamChatView({
     selection: {
       accountId: executionSelection.selection.accountId,
       runtimeId: selectedRuntime?.id ?? "",
-      model: selectedModel,
+      model: executionSelection.selection.model,
       reasoning: selectedReasoning,
+      fast: executionSelection.selection.fast,
       permissionLevel: selectedPermissionLevel,
       skillIds: selectedSkillIDs,
       selectedSkills,
@@ -762,6 +795,7 @@ function TeamChatView({
           runtimeId: selection?.runtimeId ?? "",
           model: selection?.model ?? "",
           reasoning: selection?.reasoning ?? "",
+          fast: selection?.fast,
           permissionLevel: selection?.permissionLevel ?? "auto",
           attachments: attachmentPaths.map((sourcePath) => ({ sourcePath })),
           skillIds: selection?.skillIds ?? [],
@@ -814,19 +848,20 @@ function TeamChatView({
               }),
         };
       }
+      if (invalidNativeMemberIndex !== -1) {
+        return {
+          accept: async () => {
+            throw new Error(
+              t("team.memberConfigInvalid", {
+                name: invalidNativeMember?.name,
+              }),
+            );
+          },
+        };
+      }
       const createRequest = withStableCreateRequest(workspaceScopeKey, {
         ...body,
-        memberConfigs: teamContext.members.map((member) => {
-          const config = draftTeamMemberConfigs[member.id] ?? member;
-          return {
-            accountId: config.accountId,
-            model: config.model,
-            permissionLevel: config.permissionLevel,
-            reasoning: config.reasoning,
-            runtimeId: config.runtimeId,
-            wakerId: member.id,
-          };
-        }),
+        memberConfigs,
         projectId: selectedDraftProject?.id || undefined,
         workingDirectory: selectedDraftProject ? undefined : workspaceDirectory,
       });
@@ -997,57 +1032,18 @@ function TeamChatView({
     selectedDraftProject?.name ||
     (workspaceDirectory ? workspaceDirectory.split(/[\\/]/).pop() : "") ||
     t("selectWorkspace");
-  const permissionWarning = selectedPermissionUnsupported
-    ? t("permissionUnsupported")
-    : defaultPermissionWasDowngraded
-      ? t("permissionDowngraded")
-      : "";
-  const teamGreetingPhrases = useMemo(
-    () => [
-      t("team.emptyTitle"),
-      t("team.greetingPhrases.goal"),
-      t("team.greetingPhrases.start"),
-      t("team.greetingPhrases.assign"),
-      t("team.greetingPhrases.share"),
-    ],
-    [t],
-  );
-  const memberGreetingPhrases = useMemo(
-    () => [
-      t("greeting"),
-      t("greetingPhrases.start"),
-      t("greetingPhrases.progress"),
-      t("greetingPhrases.next"),
-      t("greetingPhrases.share"),
-    ],
-    [t],
-  );
-
-  const emptyState = (
-    <div className="mx-auto grid w-full max-w-[560px] justify-items-center px-6 pt-[clamp(64px,12vh,140px)] text-center">
-      <Avatar
-        name={wakerName}
-        src={conversationAvatar}
-        size="docked"
-        preview
-        summon={false}
-        activity={chatRuntime.isRunning ? "starting" : "idle"}
-      />
-      <TypedPhrases
-        as="h1"
-        phrases={
-          selectedTeamMember ? memberGreetingPhrases : teamGreetingPhrases
-        }
-        className="type-page-title mt-6 text-center font-semibold"
-      />
-    </div>
-  );
+  const permissionEvidenceReady = supportedPermissions.size > 0;
+  const permissionWarning = !permissionEvidenceReady
+    ? ""
+    : selectedPermissionUnsupported
+      ? t("permissionUnsupported")
+      : defaultPermissionWasDowngraded
+        ? t("permissionDowngraded")
+        : "";
   const historyLoadingState = <ChatHistoryLoadingState />;
   const resolvedMessageEmptyState = historyIsLoading
     ? historyLoadingState
-    : chatRuntime.hasVisibleMessages
-      ? null
-      : emptyState;
+    : null;
   const messageEmptyState = resolvedMessageEmptyState;
   const pinTeamEmptyState = Boolean(
     teamMainChat && !chatRuntime.hasVisibleMessages && !historyIsLoading,
@@ -1062,7 +1058,15 @@ function TeamChatView({
     availableReasoningOptions,
     selectedAccountId: executionSelection.selection.accountId,
     modelOptionsOverride: executionSelection.models,
-    thinkingPending: executionSelection.thinkingQuery.isFetching,
+    defaultModel: executionSelection.defaultModel,
+    catalogState: executionSelection.catalogState,
+    catalogIssue: executionSelection.catalogIssue,
+    catalogPending: executionSelection.catalogPending,
+    catalogRefreshing: executionSelection.catalogRefreshing,
+    fastSupported: executionSelection.fastSupported,
+    selectedFast: executionSelection.selection.fast ?? false,
+    refreshCatalog: executionSelection.refreshCatalog,
+    thinkingPending: executionSelection.catalogPending,
     historicalRuntime,
     historicalRuntimeDisabled,
     onPickDirectory: pickDirectory,
@@ -1099,6 +1103,7 @@ function TeamChatView({
     changesProps,
   } = useChatWorkspaceBindings({
     additionalWorkingDirectories: linkAdditionalWorkingDirectories,
+    draftWorkingDirectories: activeChatId ? undefined : fileRoots,
     activeChatId,
     fileSource,
     query: workspaceQuery,
@@ -1211,7 +1216,19 @@ function TeamChatView({
       pinEmptyState: pinTeamEmptyState,
       isHistoryLoading: historyIsLoading,
       historyError: teamContext.loadError,
-      composerSettings,
+      composerSettings: (
+        <>
+          {composerSettings}
+          {invalidNativeMember &&
+          !nativeMembers[invalidNativeMemberIndex]?.pending ? (
+            <span role="status" className="text-content-secondary type-caption">
+              {t("team.memberConfigInvalid", {
+                name: invalidNativeMember.name,
+              })}
+            </span>
+          ) : null}
+        </>
+      ),
       composerEffects,
       renderComposerContextStrip,
       composerSkills: enabledSkills,
@@ -1223,7 +1240,6 @@ function TeamChatView({
       composerConnectors: enabledConnectors,
       composerConnectorsError: connectorsQuery.isError,
       composerFileRoots: fileRoots,
-      composerFileScopePath: projectFilesScopePath(activeChatId) || undefined,
       composerMembers: activeMemberTab
         ? []
         : teamContext.members.map((member) => ({
@@ -1243,7 +1259,6 @@ function TeamChatView({
       onMemberMentionChange: (wakerId) => setTeamMentionWakerId(wakerId ?? ""),
       codeReferenceRequest,
       composerClearRevision,
-      companionScopeRevision,
       composerRestoreRevision,
       terminalEnabled: Boolean(activeChatId && workspaceDirectory),
       linkWorkspaceRoot: workspaceDirectory,
@@ -1265,7 +1280,6 @@ function TeamChatView({
         `chat:${activeChatId}`,
         `team:${teamContext.threadId}`,
       ],
-      onRetryExecution: chatRuntime.retryExecution,
       hasEarlierMessages:
         sceneActive &&
         (teamMainChat
@@ -1295,6 +1309,7 @@ function TeamChatView({
 
   return (
     <ChatWorkspaceSurface
+      chatOwner={{ kind: "team", id: teamContext.channelId }}
       activeRightPanel={chatRightPanel}
       adapter={chatAdapter}
       onAddCodeReference={addCodeReference}

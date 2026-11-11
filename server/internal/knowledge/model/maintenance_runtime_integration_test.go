@@ -1,310 +1,208 @@
 package model
 
 import (
+	"bufio"
 	"context"
-	"errors"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
-	"github.com/JieWaZi/NeuxBot/server/internal/agent/native"
-	sdk "github.com/JieWaZi/acp-go/sdk"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 )
 
-// maintenanceACPAgent 只替换原生 Agent 边界，公开 ACP 传输、原生连接和产品会话均使用真实实现。
-type maintenanceACPAgent struct {
-	// connection 保存公开 acpserver 注入的 Agent 端连接。
-	connection atomic.Pointer[sdk.AgentSideConnection]
-	// bound 保证 Initialize 不越过连接注入。
-	bound chan struct{}
-	// newSession 核验真实 ACP 新建请求。
-	newSession func(sdk.NewSessionRequest)
-	// prompt 执行当前回归的工具循环与消息通知。
-	prompt func(context.Context, sdk.PromptRequest) (sdk.PromptResponse, error)
-	// closeNative 核验原生消费者退出前的授权及文件状态。
-	closeNative func()
-	// options 保存原生实际确认的模型、推理和权限目录。
-	options []sdk.SessionConfigOption
-	// prompts 统计真实提交，防止工具循环或清理重放任务。
-	prompts atomic.Int32
-	// closes 统计原生退出次数。
-	closes atomic.Int32
-}
-
-// SetAgentConnection 接收公开 ACP 服务创建的唯一连接。
-func (agent *maintenanceACPAgent) SetAgentConnection(connection *sdk.AgentSideConnection) {
-	agent.connection.Store(connection)
-	close(agent.bound)
-}
-
-// Initialize 等待连接准备并确认公开协议版本。
-func (agent *maintenanceACPAgent) Initialize(ctx context.Context, _ sdk.InitializeRequest) (sdk.InitializeResponse, error) {
-	select {
-	case <-agent.bound:
-		return sdk.InitializeResponse{ProtocolVersion: sdk.ProtocolVersionNumber}, nil
-	case <-ctx.Done():
-		return sdk.InitializeResponse{}, ctx.Err()
+// TestMaintenanceRuntimeIntegratesScopedTask 通过正式 ProviderRuntime 核验审批、领域调用和清理顺序。
+func TestMaintenanceRuntimeIntegratesScopedTask(t *testing.T) {
+	registry := capability.New(nil)
+	t.Cleanup(registry.Close)
+	endpoint := httptest.NewServer(registry)
+	t.Cleanup(endpoint.Close)
+	store, err := conversation.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
 	}
-}
+	t.Cleanup(store.Close)
+	trace := filepath.Join(t.TempDir(), "bridge-path")
+	var calls atomic.Int32
+	var releases atomic.Int32
+	var workspace, connectionPath string
+	provider := agent.NewProviderRuntime(agent.ProviderRuntimeOptions{AcquireAccount: func(_ context.Context, request agent.AccountRequest) (agent.AccountLease, error) {
+		workspace = request.CWD
+		return agent.AccountLease{Close: func(context.Context) error {
+			releases.Add(1)
+			value, err := os.ReadFile(trace)
+			if err != nil {
+				t.Error(err)
+				return err
+			}
+			connectionPath = string(value)
+			connection, err := capability.ReadConnection(connectionPath)
+			if err != nil {
+				t.Error("连接文件先于账号租约释放", err)
+				return err
+			}
+			if response := maintenanceCapabilities(registry, connection); response.Code != http.StatusUnauthorized {
+				t.Errorf("账号释放时维护授权尚未撤销: %d", response.Code)
+			}
+			return nil
+		}}, nil
+	}})
+	t.Cleanup(func() { _ = provider.Close(context.Background()) })
+	host := agent.NewThreadLifecycle(provider, store)
+	t.Cleanup(func() { _ = host.Close(context.Background()) })
 
-// NewSession 确认全新工作区并提供真实可选配置。
-func (agent *maintenanceACPAgent) NewSession(_ context.Context, request sdk.NewSessionRequest) (sdk.NewSessionResponse, error) {
-	agent.newSession(request)
-	return sdk.NewSessionResponse{SessionId: "wiki-native-session", ConfigOptions: agent.options}, nil
-}
-
-// SetSessionConfigOption 返回实际应用后的完整配置目录。
-func (agent *maintenanceACPAgent) SetSessionConfigOption(_ context.Context, request sdk.SetSessionConfigOptionRequest) (sdk.SetSessionConfigOptionResponse, error) {
-	for _, option := range agent.options {
-		if option.Select.Id == request.ValueId.ConfigId {
-			option.Select.CurrentValue = request.ValueId.Value
+	input := maintenanceInput()
+	input.Bindings[0].Call = func(_ context.Context, request capability.Request) (capability.Result, error) {
+		calls.Add(1)
+		if request.Params["libraryId"] != "library" {
+			t.Errorf("维护丢失单库作用域: %+v", request)
+		}
+		return capability.Result{Data: map[string]bool{"checked": true}}, nil
+	}
+	runner := NewMaintenanceRunner(MaintenanceConfig{
+		Runtime: host, Registry: registry, Binary: os.Args[0], Endpoint: endpoint.URL + constants.AgentCLIPath,
+		Connection: agent.ProviderConnectionRequest{
+			Account: agent.AccountRequest{Provider: constants.RuntimeIDClaude, AccountID: "test-account", Subject: "test-subject"},
+			Launch: agent.ProviderLaunch{Executable: os.Args[0], PrefixArgs: []string{"-test.run=^TestMaintenanceNativeFixture$", "--"},
+				Environment: map[string]string{"NEUX_MAINTENANCE_FIXTURE_TRACE": trace, "GORACE": "atexit_sleep_ms=0"}},
+		},
+	})
+	report, err := runner.Run(t.Context(), input)
+	if err != nil || report != "verified maintenance report" || calls.Load() != 1 || releases.Load() != 1 {
+		debug, _ := os.ReadFile(trace + ".debug")
+		t.Fatalf("报告=%q 调用=%d 账号释放=%d 错误=%v 记录=%s", report, calls.Load(), releases.Load(), err, debug)
+	}
+	for _, path := range []string{workspace, connectionPath} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("任务结束后仍有临时资源 %s: %v", path, err)
 		}
 	}
-	return sdk.SetSessionConfigOptionResponse{ConfigOptions: agent.options}, nil
 }
 
-// Prompt 通过真实协议执行一次独立任务。
-func (agent *maintenanceACPAgent) Prompt(ctx context.Context, request sdk.PromptRequest) (sdk.PromptResponse, error) {
-	agent.prompts.Add(1)
-	return agent.prompt(ctx, request)
-}
-
-// Close 在原生资源仍存在时核验授权撤销顺序。
-func (agent *maintenanceACPAgent) Close(context.Context) error {
-	agent.closes.Add(1)
-	agent.closeNative()
-	return nil
-}
-
-// Cancel 由公开 SDK 管理请求取消，本替身不增加第二套状态。
-func (*maintenanceACPAgent) Cancel(context.Context, sdk.CancelNotification) error { return nil }
-
-// Authenticate 拒绝独立任务没有申请的认证。
-func (*maintenanceACPAgent) Authenticate(context.Context, sdk.AuthenticateRequest) (sdk.AuthenticateResponse, error) {
-	return sdk.AuthenticateResponse{}, sdk.NewMethodNotFound(sdk.AgentMethodAuthenticate)
-}
-
-// Logout 拒绝独立任务没有申请的登出。
-func (*maintenanceACPAgent) Logout(context.Context, sdk.LogoutRequest) (sdk.LogoutResponse, error) {
-	return sdk.LogoutResponse{}, sdk.NewMethodNotFound(sdk.AgentMethodLogout)
-}
-
-// CloseSession 拒绝本回归未使用的单会话关闭扩展。
-func (*maintenanceACPAgent) CloseSession(context.Context, sdk.CloseSessionRequest) (sdk.CloseSessionResponse, error) {
-	return sdk.CloseSessionResponse{}, sdk.NewMethodNotFound(sdk.AgentMethodSessionClose)
-}
-
-// ListSessions 拒绝独立任务枚举其他会话。
-func (*maintenanceACPAgent) ListSessions(context.Context, sdk.ListSessionsRequest) (sdk.ListSessionsResponse, error) {
-	return sdk.ListSessionsResponse{}, sdk.NewMethodNotFound(sdk.AgentMethodSessionList)
-}
-
-// ResumeSession 拒绝恢复其他会话，维护必须使用全新会话。
-func (*maintenanceACPAgent) ResumeSession(context.Context, sdk.ResumeSessionRequest) (sdk.ResumeSessionResponse, error) {
-	return sdk.ResumeSessionResponse{}, sdk.NewMethodNotFound(sdk.AgentMethodSessionResume)
-}
-
-// SetSessionMode 拒绝绕过已声明配置目录切换权限。
-func (*maintenanceACPAgent) SetSessionMode(context.Context, sdk.SetSessionModeRequest) (sdk.SetSessionModeResponse, error) {
-	return sdk.SetSessionModeResponse{}, sdk.NewMethodNotFound(sdk.AgentMethodSessionSetMode)
-}
-
-// TestMaintenanceRuntimeIntegratesScopedACPTask 串联维护领域、共享宿主、真实内核及公开 ACP，保护授权证据和最终报告。
-func TestMaintenanceRuntimeIntegratesScopedACPTask(t *testing.T) {
-	for _, callKnowledge := range []bool{true, false} {
-		t.Run(map[bool]string{true: "authorized-knowledge-operation", false: "discovery-cannot-prove-maintenance"}[callKnowledge], func(t *testing.T) {
-			registry := capability.New(nil)
-			t.Cleanup(registry.Close)
-			binary := filepath.Join(t.TempDir(), "allycli")
-			if err := os.WriteFile(binary, []byte("bundled-test-allycli"), 0700); err != nil {
-				t.Fatal(err)
-			}
-			var workspace, accountFile, connectionPath, skillPath string
-			var connection capability.Connection
-			var domainCalls, accountReleases atomic.Int32
-			agent := &maintenanceACPAgent{bound: make(chan struct{})}
-			for _, choice := range []struct {
-				category sdk.SessionConfigOptionCategory // category 是公开原生配置分类。
-				id       string                          // id 是公开配置身份。
-				value    string                          // value 是任务实际要求的值。
-			}{{sdk.SessionConfigOptionCategoryMode, "mode", "agent-full-access"}, {sdk.SessionConfigOptionCategoryModel, "model", "wiki-model"}, {sdk.SessionConfigOptionCategoryThoughtLevel, "reasoning", "high"}} {
-				choices := sdk.SessionConfigSelectOptionsUngrouped{{Value: sdk.SessionConfigValueId(choice.value), Name: choice.value}}
-				category := choice.category
-				agent.options = append(agent.options, sdk.SessionConfigOption{Select: &sdk.SessionConfigOptionSelect{Id: sdk.SessionConfigId(choice.id), Name: choice.id, Category: &category, CurrentValue: sdk.SessionConfigValueId(choice.value), Options: sdk.SessionConfigSelectOptions{Ungrouped: &choices}}})
-			}
-			agent.newSession = func(request sdk.NewSessionRequest) {
-				if request.Cwd != workspace || len(request.McpServers) != 0 {
-					t.Errorf("native session lost task workspace or inherited unsupported MCP: %+v", request)
-				}
-			}
-			agent.closeNative = func() {
-				if response := maintenanceCapabilities(registry, connection); response.Code != http.StatusUnauthorized {
-					t.Errorf("native close began before grant revocation: status=%d", response.Code)
-				}
-				if accountReleases.Load() != 0 {
-					t.Error("account lease released before native consumer stopped")
-				}
-				for _, path := range []string{accountFile, connectionPath, skillPath} {
-					if _, err := os.ReadFile(path); err != nil {
-						t.Errorf("live native dependency removed before close: %s: %v", path, err)
-					}
-				}
-			}
-			input := maintenanceInput()
-			input.Instructions = "WIKI_FIXER_INSTRUCTIONS: inspect the existing library before repairing its pages."
-			input.Message = "MAINTENANCE_TASK: maintain this library's existing Wiki."
-			input.Bindings[0].Call = func(_ context.Context, request capability.Request) (capability.Result, error) {
-				domainCalls.Add(1)
-				if request.Operation != "knowledge.audit.get" || request.Params["libraryId"] != "library" {
-					t.Errorf("domain scope changed: %+v", request)
-				}
-				return capability.Result{Data: map[string]any{"checked": true}}, nil
-			}
-			const finalReport = "维护完成：已检查现有 Wiki。"
-			agent.prompt = func(ctx context.Context, request sdk.PromptRequest) (sdk.PromptResponse, error) {
-				if len(request.Prompt) != 1 || request.Prompt[0].Text == nil {
-					t.Errorf("task did not reach the public ACP text Prompt: %+v", request.Prompt)
-					return sdk.PromptResponse{}, sdk.NewInvalidParams(nil)
-				}
-				prompt := request.Prompt[0].Text.Text
-				for _, supplied := range []string{input.Instructions, input.Message, skillPath, "Read the supplied ally skill."} {
-					if strings.Count(prompt, supplied) != 1 {
-						t.Errorf("supplied context must reach native Prompt exactly once: %q in %q", supplied, prompt)
-					}
-				}
-				if strings.Contains(prompt, connection.Token) {
-					t.Error("invocation credential leaked into model-visible instructions")
-				}
-				if response := maintenanceCapabilities(registry, connection); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "knowledge.audit.get") || strings.Contains(response.Body.String(), "im.targets.list") {
-					t.Errorf("prepared invocation has the wrong authorized commands: status=%d body=%s", response.Code, response.Body)
-					return sdk.PromptResponse{}, sdk.NewInternalError(nil)
-				}
-				id := "maintenance-commentary"
-				updates := []sdk.SessionUpdate{
-					{AgentMessageChunk: &sdk.SessionUpdateAgentMessageChunk{MessageId: &id, Content: sdk.TextBlock("过程说明不能进入维护报告"), Meta: map[string]any{"acp-go/message": map[string]any{"phase": "commentary", "complete": true, "source": "native_phase"}}}},
-					sdk.StartToolCall("maintenance-command", "knowledge.audit.get", sdk.WithStartStatus(sdk.ToolCallStatusInProgress)),
-				}
-				for _, update := range updates {
-					if err := agent.connection.Load().SessionUpdate(ctx, sdk.SessionNotification{SessionId: request.SessionId, Update: update}); err != nil {
-						return sdk.PromptResponse{}, err
-					}
-				}
-				if callKnowledge {
-					if response := maintenanceAudit(registry, connection); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"ok":true`) || !strings.Contains(response.Body.String(), `"checked":true`) {
-						t.Errorf("actual authorized knowledge command failed: status=%d body=%s", response.Code, response.Body)
-						return sdk.PromptResponse{}, sdk.NewInternalError(nil)
-					}
-				}
-				if err := agent.connection.Load().SessionUpdate(ctx, sdk.SessionNotification{SessionId: request.SessionId, Update: sdk.UpdateToolCall("maintenance-command", sdk.WithUpdateStatus(sdk.ToolCallStatusCompleted))}); err != nil {
-					return sdk.PromptResponse{}, err
-				}
-				id = "maintenance-final"
-				for index, text := range []string{"维护完成：", "已检查现有 Wiki。"} {
-					update := sdk.SessionUpdate{AgentMessageChunk: &sdk.SessionUpdateAgentMessageChunk{MessageId: &id, Content: sdk.TextBlock(text), Meta: map[string]any{"acp-go/message": map[string]any{"phase": "final", "complete": index == 1, "source": "native_phase"}}}}
-					if err := agent.connection.Load().SessionUpdate(ctx, sdk.SessionNotification{SessionId: request.SessionId, Update: update}); err != nil {
-						return sdk.PromptResponse{}, err
-					}
-				}
-				return sdk.PromptResponse{StopReason: sdk.StopReasonEndTurn}, nil
-			}
-			host := agentapi.NewManager(agentapi.ManagerConfig{
-				Resolve: func(context.Context, agentapi.TextRequest) (agentapi.Environment, error) {
-					return agentapi.Environment{BaseRuntimeID: agentapi.RuntimeIDCodex, Target: agentapi.RuntimeTarget{RuntimeID: "wiki-profile", Binary: "/selected/codex"}}, nil
-				},
-				Prepare: func(_ context.Context, request agentapi.TextRequest, environment agentapi.Environment, root string) (agentapi.RuntimeTarget, func(context.Context) error, error) {
-					workspace = root
-					if request.RuntimeID != "wiki-profile" || request.AccountID != "wiki-account" || request.Model != "wiki-model" || request.Reasoning != "high" {
-						t.Errorf("accepted model/account selection changed: %+v", request)
-					}
-					accountDirectory := filepath.Join(root, "account-home")
-					if err := os.Mkdir(accountDirectory, 0700); err != nil {
-						return agentapi.RuntimeTarget{}, nil, err
-					}
-					accountFile = filepath.Join(accountDirectory, "account.token")
-					if err := os.WriteFile(accountFile, []byte("selected-test-account"), 0600); err != nil {
-						return agentapi.RuntimeTarget{}, nil, err
-					}
-					target := environment.Target
-					target.Isolated = true
-					target.Environment = map[string]string{"ACCOUNT_FILE": accountFile, "PATH": "native-tools"}
-					return target, func(context.Context) error {
-						accountReleases.Add(1)
-						return os.RemoveAll(accountDirectory)
-					}, nil
-				},
-				Launch: func(target agentapi.RuntimeTarget, _ agentapi.DetectionResult) (agentapi.LaunchFacts, error) {
-					return agentapi.LaunchFacts{BaseRuntimeID: agentapi.RuntimeIDCodex, Executable: target.Binary, Environment: []string{"ACCOUNT_FILE=" + target.Environment["ACCOUNT_FILE"], "PATH=" + target.Environment["PATH"]}}, nil
-				},
-				Open: func(ctx context.Context, config native.ConnectionConfig, request native.OpenRequest) (agentapi.NativeConnection, error) {
-					config.CompletionPolicy = native.CompletionNativePhase
-					config.ModeCandidates = []string{"agent-full-access"}
-					config.Factory = func(_ context.Context, request native.OpenRequest) (sdk.Agent, error) {
-						if request.Session.Mode != native.SessionNew || request.Policies.Tools.Mode != native.ToolsAllowAll || request.Policies.NativeConfig != native.NativeConfigInherit {
-							t.Errorf("maintenance execution policy changed: %+v", request)
-						}
-						if request.Credential.Environment["ACCOUNT_FILE"] != accountFile || !strings.HasSuffix(request.Credential.Environment["PATH"], "native-tools") || len(request.Resources) != 1 || request.Resources[0].ID != "ally" {
-							t.Errorf("task launch lost account facts or skill binding: %+v", request)
-							return nil, status_error.RuntimeConfigurationInvalid
-						}
-						connectionPath = request.Credential.Environment[constants.AgentCLIContextEnvironment]
-						var err error
-						connection, err = capability.ReadConnection(connectionPath)
-						if err != nil {
-							return nil, err
-						}
-						skillPath = filepath.Join(request.Resources[0].Path, "SKILL.md")
-						relative, err := filepath.Rel(workspace, skillPath)
-						if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-							t.Errorf("supplied skill escaped the native workspace: %s", skillPath)
-						}
-						if skill, err := os.ReadFile(skillPath); err != nil || !strings.Contains(string(skill), "allycli") {
-							t.Errorf("supplied ally skill is unreadable or empty: %v", err)
-						}
-						if cli, err := os.ReadFile(request.Credential.Environment[constants.AgentCLIBinaryEnvironment]); err != nil || string(cli) != "bundled-test-allycli" {
-							t.Errorf("supplied CLI source changed: %v", err)
-						}
-						return agent, nil
-					}
-					return native.Open(ctx, config, request)
-				},
-			})
-			t.Cleanup(func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				if err := host.Close(ctx); err != nil {
-					t.Error(err)
-				}
-			})
-			runner := NewMaintenanceRunner(MaintenanceConfig{Runtime: host, Registry: registry, Endpoint: "http://127.0.0.1:8432" + constants.AgentCLIPath, Binary: binary, RuntimeID: "wiki-profile", AccountID: "wiki-account", Model: "wiki-model", Reasoning: "high"})
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			report, err := runner.Run(ctx, input)
-			if callKnowledge {
-				if err != nil || report != finalReport || domainCalls.Load() != 1 {
-					t.Fatalf("authorized maintenance report=%q err=%v domain calls=%d", report, err, domainCalls.Load())
-				}
-			} else {
-				var coded interface{ Code() int64 }
-				if report != "" || !errors.As(err, &coded) || coded.Code() != status_error.RuntimeExecutionFailed.Code() || domainCalls.Load() != 0 {
-					t.Fatalf("discovery and native narrative bypassed domain proof: report=%q err=%v domain calls=%d", report, err, domainCalls.Load())
-				}
-			}
-			if agent.prompts.Load() != 1 || agent.closes.Load() != 1 || accountReleases.Load() != 1 {
-				t.Fatalf("task or cleanup replayed: prompts=%d native closes=%d account releases=%d", agent.prompts.Load(), agent.closes.Load(), accountReleases.Load())
-			}
-			for _, path := range []string{workspace, accountFile, connectionPath, skillPath} {
-				if _, err := os.Stat(path); !os.IsNotExist(err) {
-					t.Errorf("closed native task retained dependency: %s: %v", path, err)
-				}
-			}
-		})
+// TestMaintenanceNativeFixture 模拟 Claude 原生协议，保留真实审批和授权调用。
+func TestMaintenanceNativeFixture(t *testing.T) {
+	trace := os.Getenv("NEUX_MAINTENANCE_FIXTURE_TRACE")
+	if trace == "" {
+		return
 	}
+	if slices.Contains(os.Args, "--version") {
+		fmt.Println("2.1.309 (Claude Code)")
+		os.Exit(0)
+	}
+	var session, path string
+	for i, arg := range os.Args {
+		if strings.HasPrefix(arg, "--session-id=") {
+			session = strings.TrimPrefix(arg, "--session-id=")
+		}
+		if arg == "--mcp-config" && i+1 < len(os.Args) {
+			var cfg struct {
+				// Servers 是原生进程收到的严格连接器配置。
+				Servers map[string]struct {
+					// Args 指向服务端拥有的本次连接文件。
+					Args []string `json:"args"`
+				} `json:"mcpServers"`
+			}
+			if json.Unmarshal([]byte(os.Args[i+1]), &cfg) != nil || len(cfg.Servers) != 1 {
+				os.Exit(2)
+			}
+			if args := cfg.Servers["ally_capabilities"].Args; len(args) == 4 {
+				path = args[3]
+			}
+		}
+	}
+	if session == "" || path == "" || !slices.Contains(os.Args, "--tools=") || !slices.Contains(os.Args, "--strict-mcp-config") {
+		os.Exit(2)
+	}
+	if os.WriteFile(trace, []byte(path), 0600) != nil {
+		os.Exit(2)
+	}
+	cwd, _ := os.Getwd()
+	out := json.NewEncoder(os.Stdout)
+	emit := func(frame map[string]any) {
+		frame["session_id"] = session
+		_ = out.Encode(frame)
+	}
+	var user string
+	in := bufio.NewScanner(os.Stdin)
+	for in.Scan() {
+		var frame map[string]any
+		if json.Unmarshal(in.Bytes(), &frame) != nil {
+			os.Exit(2)
+		}
+		switch frame["type"] {
+		case "control_request":
+			request, _ := frame["request"].(map[string]any)
+			response := map[string]any{}
+			switch request["subtype"] {
+			case "initialize":
+				emit(map[string]any{"type": "system", "subtype": "init", "cwd": cwd, "model": "sonnet", "permissionMode": "default", "claude_code_version": "2.1.309"})
+				response["models"] = []map[string]string{{"value": "sonnet", "displayName": "Sonnet"}}
+			case "get_settings":
+				response["applied"] = map[string]string{"model": "sonnet"}
+			case "mcp_status":
+				response["mcpServers"] = []map[string]string{{"name": "ally_capabilities", "status": "connected"}}
+			}
+			_ = out.Encode(map[string]any{"type": "control_response", "response": map[string]any{
+				"subtype": "success", "request_id": frame["request_id"], "response": response,
+			}})
+		case "user":
+			user, _ = frame["uuid"].(string)
+			emit(map[string]any{"type": "assistant", "user_message_uuid": user, "parent_tool_use_id": nil,
+				"message": map[string]any{"id": "wiki-tool-turn", "model": "sonnet",
+					"content": []map[string]any{{"type": "tool_use", "id": "knowledge-tool", "name": "mcp__ally_capabilities__knowledge_audit_get",
+						"input": map[string]string{"libraryId": "library"}}}}})
+			emit(map[string]any{"type": "control_request", "request_id": "approved-wiki", "request": map[string]any{
+				"subtype": "can_use_tool", "tool_name": "mcp__ally_capabilities__knowledge_audit_get", "tool_use_id": "knowledge-tool",
+				"input": map[string]string{"libraryId": "library"},
+			}})
+		case "control_response":
+			_ = os.WriteFile(trace+".debug", []byte(in.Text()), 0600)
+			if user == "" || !strings.Contains(in.Text(), `"behavior":"allow"`) {
+				os.Exit(2)
+			}
+			if err := fixtureCallKnowledge(path); err != nil {
+				os.Exit(2)
+			}
+			usage := map[string]int{"input_tokens": 2, "output_tokens": 1, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}
+			emit(map[string]any{"type": "assistant", "user_message_uuid": user, "parent_tool_use_id": nil,
+				"message": map[string]any{"id": "wiki-report", "model": "sonnet", "usage": usage,
+					"content": []map[string]string{{"type": "text", "text": "verified maintenance report"}}}})
+			emit(map[string]any{"type": "result", "subtype": "success", "uuid": "wiki-terminal", "result_index": 0,
+				"user_message_uuid": user, "terminal_reason": "completed", "result": "verified maintenance report", "usage": usage})
+		}
+	}
+	os.Exit(0)
+}
+
+func fixtureCallKnowledge(path string) error {
+	connection, err := capability.ReadConnection(path)
+	if err != nil {
+		return err
+	}
+	request, err := http.NewRequest(http.MethodPost, connection.Endpoint+"/commands", strings.NewReader(`{"operation":"knowledge.audit.get","params":{"libraryId":"library"}}`))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Authorization", "Bearer "+connection.Token)
+	request.Header.Set("Content-Type", "application/json")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	var payload capability.Response
+	if response.StatusCode != http.StatusOK || json.NewDecoder(response.Body).Decode(&payload) != nil || !payload.OK {
+		return status_error.KnowledgeForbidden
+	}
+	return nil
 }

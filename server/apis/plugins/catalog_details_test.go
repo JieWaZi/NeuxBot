@@ -43,13 +43,16 @@ func newDetailsFixture(t *testing.T, invalid string) *detailsFixture {
 	t.Setenv("TMPDIR", t.TempDir())
 	archive := recoveryArchive(t, "2.0.0", "English public README")
 	f.archiveHash = fmt.Sprintf("%x", sha256.Sum256(archive))
-	auth := map[string]any{"strategy": "plugin-command", "protocol": "neuxally-auth/1", "preferredAction": "open-url", "scopes": []string{"read"}}
+	auth := map[string]any{"strategy": "plugin-command", "protocol": "neuxbot-auth/1", "preferredAction": "open-url", "scopes": []string{"read"}}
 	for _, field := range []string{"command", "args", "env", "headers", "secret"} {
 		if invalid == field || (invalid == "execution-field" && field == "command") {
 			auth[field] = "secret-program"
 		}
 	}
-	doc := map[string]any{"schemaVersion": 1, "sourceCommit": f.commit, "archiveSHA256": f.archiveHash, "packagePath": "entry", "package": map[string]any{"manifest": map[string]any{"name": "recovery", "version": "2.0.0", "description": "Public docs"}, "format": "codex", "presentation": map[string]any{"displayName": "Recovery"}, "skills": []map[string]any{{"key": "skills/demo", "name": "demo", "description": "Public demo", "path": "skills/demo"}}, "servers": []map[string]any{{"key": "remote", "type": "streamable-http", "url": "https://example.invalid/mcp"}}, "integration": map[string]any{"authentication": auth}, "diagnostics": []any{}}, "readmes": map[string]string{"en": "English public README", "zh-CN": "中文公开说明"}, "skillContents": map[string]string{"skills/demo": f.skill}}
+	doc := map[string]any{"schemaVersion": 1, "sourceCommit": f.commit, "archiveSHA256": f.archiveHash, "packagePath": "entry", "package": map[string]any{"manifest": map[string]any{"$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", "name": "recovery", "version": "2.0.0", "description": "Public docs"}, "contractVersion": "neuxbot-plugin/1", "format": "agent-plugins", "presentation": map[string]any{"displayName": "Recovery"}, "skills": []map[string]any{{"key": "skills/demo", "name": "demo", "description": "Public demo", "path": "skills/demo"}}, "servers": []map[string]any{{"key": "remote", "type": "streamable-http", "url": "https://example.invalid/mcp"}}, "integration": map[string]any{"authentication": auth}, "diagnostics": []any{}}, "readmes": map[string]string{"en": "English public README", "zh-CN": "中文公开说明"}, "skillContents": map[string]string{"skills/demo": f.skill}}
+	if invalid == "api-key" {
+		doc["package"].(map[string]any)["servers"].([]map[string]any)[0]["authentication"] = map[string]string{"type": "api_key", "headerScheme": "bearer"}
+	}
 	if invalid == "binding" {
 		doc["sourceCommit"] = strings.Repeat("e", 40)
 	}
@@ -74,7 +77,7 @@ func newDetailsFixture(t *testing.T, invalid string) *detailsFixture {
 	f.source = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/catalog.json":
-			_, _ = fmt.Fprintf(w, `{"schemaVersion":2,"entries":[{"key":"recovery","name":"recovery","version":"2.0.0","format":"codex","sourceCommit":%q,"archiveURL":%q,"archiveSHA256":%q,"packagePath":"entry","detailsURL":%q,"detailsSHA256":%q,"detailsSize":%d}]}`, f.commit, f.source.URL+"/owned.zip", f.archiveHash, f.source.URL+"/recovery.details.json", hash, size)
+			_, _ = fmt.Fprintf(w, `{"schemaVersion":1,"entries":[{"key":"recovery","name":"recovery","version":"2.0.0","format":"agent-plugins","sourceCommit":%q,"archiveURL":%q,"archiveSHA256":%q,"packagePath":"entry","detailsURL":%q,"detailsSHA256":%q,"detailsSize":%d}]}`, f.commit, f.source.URL+"/owned.zip", f.archiveHash, f.source.URL+"/recovery.details.json", hash, size)
 		case "/recovery.details.json":
 			f.detailsRequests.Add(1)
 			if invalid == "network" {
@@ -91,8 +94,10 @@ func newDetailsFixture(t *testing.T, invalid string) *detailsFixture {
 	}))
 	t.Cleanup(f.source.Close)
 	location := f.source.URL + "/catalog.json"
-	stop := catalog.Start(context.Background(), location, t.TempDir(), nil)
-	t.Cleanup(stop)
+	// 端点读取测试仅固定目录，不把独立启动预取算作读取副作用。
+	if err := catalog.Refresh(context.Background(), location); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("ALLY_PLUGIN_CATALOG_URL", location)
 	return f
 }
@@ -117,10 +122,10 @@ func TestCatalogDetailsReadmeAndSkillNeedNoInstallationOrArchive(t *testing.T) {
 		}
 	}
 	value, err := (&GetCatalogPlugin{Key: "recovery", Locale: "zh-CN"}).Output(f.ctx)
-	if err != nil || value.(catalog.Entry).Package.Readme != "中文公开说明" {
+	if err != nil || value.(PluginCatalogEntryResponse).Package.Readme != "中文公开说明" {
 		t.Fatalf("public localized details failed: %+v %v", value, err)
 	}
-	publicJSON, err := json.Marshal(value.(catalog.Entry).Package)
+	publicJSON, err := json.Marshal(value.(PluginCatalogEntryResponse).Package)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +145,7 @@ func TestCatalogDetailsReadmeAndSkillNeedNoInstallationOrArchive(t *testing.T) {
 	if f.archiveRequests.Load() != 0 || f.detailsRequests.Load() != 1 {
 		t.Fatalf("public reads downloaded full archive or duplicated metadata: zip=%d details=%d", f.archiveRequests.Load(), f.detailsRequests.Load())
 	}
-	_, total, err := global.PluginControllerManager.List(f.ctx, "", "", "", 0, 100, false)
+	_, total, err := global.PluginControllerManager.List(f.ctx, "", "", 0, 100)
 	if err != nil || total != 0 {
 		t.Fatalf("public read registered resources: %d %v", total, err)
 	}
@@ -152,7 +157,12 @@ func TestCatalogDetailsReadmeAndSkillNeedNoInstallationOrArchive(t *testing.T) {
 		t.Fatal(err)
 	}
 	prepared := value.(PluginDetailResponse)
-	if f.archiveRequests.Load() != 1 || prepared.Ready || len(prepared.Fields) != 1 || prepared.Fields[0].Key != "TOKEN" {
+	configuration, configErr := (&GetPluginConfiguration{PluginID: prepared.Plugin.ID, VersionID: prepared.ResolvedVersionID}).Output(f.ctx)
+	if configErr != nil {
+		t.Fatal(configErr)
+	}
+	settings := configuration.(PluginConfigurationResponse)
+	if f.archiveRequests.Load() != 1 || settings.Ready || len(settings.Fields) != 1 || settings.Fields[0].Key != "TOKEN" {
 		t.Fatalf("prepare used public metadata as executable truth: zip=%d %+v", f.archiveRequests.Load(), prepared)
 	}
 }
@@ -190,7 +200,7 @@ func TestCurrentDetailsRecoversMetadataButPinnedReadsStayBound(t *testing.T) {
 			commits := []string{strings.Repeat("a", 40), strings.Repeat("b", 40)}
 			bodies := make([][]byte, 2)
 			for revision := range 2 {
-				bodies[revision] = []byte(fmt.Sprintf(`{"schemaVersion":1,"sourceCommit":%q,"archiveSHA256":%q,"packagePath":"entry","package":{"manifest":{"name":"recovery","version":"%d.0.0"},"format":"codex","skills":[],"servers":[],"diagnostics":[]},"readmes":{"en":"revision-%d"},"skillContents":{}}`, commits[revision], archiveHash, revision+1, revision))
+				bodies[revision] = []byte(fmt.Sprintf(`{"schemaVersion":1,"sourceCommit":%q,"archiveSHA256":%q,"packagePath":"entry","package":{"contractVersion":"neuxbot-plugin/1","manifest":{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"recovery","version":"%d.0.0"},"format":"agent-plugins","skills":[],"servers":[],"diagnostics":[]},"readmes":{"en":"revision-%d"},"skillContents":{}}`, commits[revision], archiveHash, revision+1, revision))
 			}
 			var mode, indexRequests, archiveRequests, detailsRequests atomic.Int32
 			var source *httptest.Server
@@ -203,7 +213,7 @@ func TestCurrentDetailsRecoversMetadataButPinnedReadsStayBound(t *testing.T) {
 					if failure == "removed-url" {
 						path = []string{"/old.details.json", "/new.details.json"}[revision]
 					}
-					_, _ = fmt.Fprintf(w, `{"schemaVersion":2,"entries":[{"key":"recovery","name":"recovery","version":"%d.0.0","format":"codex","sourceCommit":%q,"archiveURL":%q,"archiveSHA256":%q,"packagePath":"entry","detailsURL":%q,"detailsSHA256":"%x","detailsSize":%d}]}`, revision+1, commits[revision], source.URL+"/owned.zip", archiveHash, source.URL+path, sha256.Sum256(bodies[revision]), len(bodies[revision]))
+					_, _ = fmt.Fprintf(w, `{"schemaVersion":1,"entries":[{"key":"recovery","name":"recovery","version":"%d.0.0","format":"agent-plugins","sourceCommit":%q,"archiveURL":%q,"archiveSHA256":%q,"packagePath":"entry","detailsURL":%q,"detailsSHA256":"%x","detailsSize":%d}]}`, revision+1, commits[revision], source.URL+"/owned.zip", archiveHash, source.URL+path, sha256.Sum256(bodies[revision]), len(bodies[revision]))
 				case "/owned.zip":
 					archiveRequests.Add(1)
 					w.WriteHeader(http.StatusNotFound)
@@ -218,8 +228,10 @@ func TestCurrentDetailsRecoversMetadataButPinnedReadsStayBound(t *testing.T) {
 			}))
 			defer source.Close()
 			location := source.URL + "/catalog.json"
-			stop := catalog.Start(context.Background(), location, t.TempDir(), nil)
-			defer stop()
+			// 该用例隔离安装／读取的分发恢复；完整启动预取由 catalog 生命周期用例验证。
+			if err := catalog.Refresh(context.Background(), location); err != nil {
+				t.Fatal(err)
+			}
 			t.Setenv("ALLY_PLUGIN_CATALOG_URL", location)
 			if _, err := catalog.Find(location, "recovery"); err != nil {
 				t.Fatal(err)
@@ -232,7 +244,7 @@ func TestCurrentDetailsRecoversMetadataButPinnedReadsStayBound(t *testing.T) {
 				t.Fatal("pinned raw request refreshed catalog")
 			}
 			value, err := (&GetCatalogPlugin{Key: "recovery"}).Output(ctx)
-			if err != nil || value.(catalog.Entry).Package.Readme != "revision-1" {
+			if err != nil || value.(PluginCatalogEntryResponse).Package.Readme != "revision-1" {
 				t.Fatalf("current metadata did not recover: %+v %v", value, err)
 			}
 			if indexRequests.Load() != 2 || detailsRequests.Load() != 2 || archiveRequests.Load() != 0 {

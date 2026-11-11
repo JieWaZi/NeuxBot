@@ -13,6 +13,10 @@ type ListWorkflows struct {
 	ginx.MethodGet
 	// 搜索文字
 	Search string `in:"query" name:"search" validate:"max=200"`
+	// 分类名称
+	Category string `in:"query" name:"category" validate:"max=120"`
+	// 仅未分类
+	Uncategorized bool `in:"query" name:"uncategorized"`
 	// 时间游标
 	Before int64 `in:"query" name:"before" validate:"min=0"`
 	// 身份游标
@@ -33,7 +37,14 @@ type WorkflowListResponse struct {
 
 func (*ListWorkflows) Path() string { return "" }
 func (o *ListWorkflows) Output(ctx *gin.Context) (interface{}, error) {
-	items, err := global.WorkflowControllerManager.ListDefinitions(ctx, o.Search, o.Before, o.BeforeID, o.Limit)
+	var category *string
+	if o.Uncategorized {
+		empty := ""
+		category = &empty
+	} else if o.Category != "" {
+		category = &o.Category
+	}
+	items, err := global.WorkflowControllerManager.ListDefinitions(ctx, o.Search, o.Before, o.BeforeID, o.Limit, category)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}

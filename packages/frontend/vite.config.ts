@@ -6,7 +6,9 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 import type { Plugin } from "vite";
+import { bloubTexturePreload } from "./bloub-assets.ts";
 import { graphVendorScope } from "./knowledge-graph-vendor.ts";
+import { nativeRendererAssets, unusedNativePdfAsset } from "./native-assets.ts";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const pdfAssetsDirectory = path.join(
@@ -16,7 +18,7 @@ const pdfAssetsDirectory = path.join(
 const pdfAssetKinds = ["cmaps", "standard_fonts", "wasm"] as const;
 
 /** Keep PDF.js's version-matched CMaps, fonts and WASM local in dev and builds. */
-function pdfAssets(): Plugin {
+function pdfAssets(host: "native" | "web"): Plugin {
   return {
     name: "ally-pdfjs-assets",
     configureServer(server) {
@@ -62,6 +64,7 @@ function pdfAssets(): Plugin {
     async generateBundle() {
       for (const kind of pdfAssetKinds) {
         for (const name of await readdir(path.join(pdfAssetsDirectory, kind))) {
+          if (host === "native" && unusedNativePdfAsset(kind, name)) continue;
           const source = await readFile(
             path.join(pdfAssetsDirectory, kind, name),
           );
@@ -76,47 +79,67 @@ function pdfAssets(): Plugin {
   };
 }
 
-export function createFrontendViteConfig(options: {root: string; port: number; base: string}) { return defineConfig({
-  root: options.root,
-  publicDir: path.join(currentDirectory, "public"),
-  plugins: [react(), tailwindcss(), pdfAssets(), graphVendorScope()],
-  resolve: {
-    dedupe: ["react", "react-dom", "@tanstack/react-query"],
-    alias: {
-      "@": path.resolve(currentDirectory, "src"),
-    },
-  },
-  base: options.base,
-  build: {
-    // 启动预算读取构建器生成的依赖图，涵盖启动时等待的工作台模块。
-    manifest: true,
-  },
-  optimizeDeps: {
-    // 只扫描真实 Renderer 入口，避免构建产物或外部软链接成为依赖入口。
-    entries: ["index.html"],
-  },
-  server: {
-    host: "127.0.0.1",
-    port: options.port,
-    fs: { allow: [path.resolve(currentDirectory, "../..")] },
-    strictPort: true,
-  },
-  clearScreen: false,
-  test: {
-    // jsdom 与真实桌面验收共享资源；可进一步限制文件并发，保留原有超时。
-    maxWorkers: process.env.VITEST_MAX_WORKERS || 2,
-    environment: "jsdom",
-    exclude: ["**/node_modules/**", "electron/**", "release/**"],
-    setupFiles: [path.join(currentDirectory, "src/test/setup.ts")],
-    css: true,
-    testTimeout: 15_000,
-    server: {
-      deps: {
-        inline: [/@lobehub\//],
+export function createFrontendViteConfig(options: {
+  root: string;
+  port: number;
+  base: string;
+  host: "native" | "web";
+}) {
+  return defineConfig({
+    root: options.root,
+    publicDir: path.join(currentDirectory, "public"),
+    plugins: [
+      react(),
+      tailwindcss(),
+      bloubTexturePreload(currentDirectory),
+      pdfAssets(options.host),
+      graphVendorScope(),
+      options.host === "native" && nativeRendererAssets(),
+    ],
+    resolve: {
+      dedupe: ["react", "react-dom", "@tanstack/react-query"],
+      alias: {
+        "@": path.resolve(currentDirectory, "src"),
       },
     },
-  },
-});
+    base: options.base,
+    build: {
+      // 启动预算读取构建器生成的依赖图，涵盖启动时等待的工作台模块。
+      manifest: true,
+    },
+    optimizeDeps: {
+      // 只扫描真实 Renderer 入口，避免构建产物或外部软链接成为依赖入口。
+      entries: ["index.html"],
+      // 二维码库已提供原生 ESM，直接按需加载，避免授权过程中命中过期预构建。
+      exclude: ["qrcode.react"],
+    },
+    server: {
+      host: "127.0.0.1",
+      port: options.port,
+      fs: { allow: [path.resolve(currentDirectory, "../..")] },
+      strictPort: true,
+    },
+    clearScreen: false,
+    test: {
+      // jsdom 与真实桌面验收共享资源；可进一步限制文件并发，保留原有超时。
+      maxWorkers: process.env.VITEST_MAX_WORKERS || 2,
+      environment: "jsdom",
+      exclude: ["**/node_modules/**", "electron/**", "release/**"],
+      setupFiles: [path.join(currentDirectory, "src/test/setup.ts")],
+      css: true,
+      testTimeout: 15_000,
+      server: {
+        deps: {
+          inline: [/@lobehub\//],
+        },
+      },
+    },
+  });
 }
 
-export default createFrontendViteConfig({root: currentDirectory, port: 1420, base: "./"});
+export default createFrontendViteConfig({
+  root: currentDirectory,
+  port: 1420,
+  base: "./",
+  host: "web",
+});

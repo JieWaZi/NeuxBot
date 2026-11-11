@@ -15,7 +15,7 @@ func TestCLIInputFreezesOnlyApprovedFilesForTheRun(t *testing.T) {
 	if err := os.WriteFile(path, []byte("original"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	frozen, err := FreezeLocalInput(context.Background(), []string{approved}, path, workspace, "run", "/file")
+	frozen, err := FreezeLocalInput(context.Background(), []string{approved}, nil, path, workspace, "run", "/file", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +29,7 @@ func TestCLIInputFreezesOnlyApprovedFilesForTheRun(t *testing.T) {
 	if err := os.WriteFile(outside, []byte("private"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := FreezeLocalInput(context.Background(), []string{approved}, outside, workspace, "run", "/outside"); err == nil {
+	if _, err := FreezeLocalInput(context.Background(), []string{approved}, nil, outside, workspace, "run", "/outside", ""); err == nil {
 		t.Fatal("CLI widened its approved file roots")
 	}
 }

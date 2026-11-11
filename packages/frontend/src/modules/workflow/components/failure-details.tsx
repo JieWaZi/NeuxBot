@@ -1,33 +1,6 @@
+import { applicationErrorMessage } from "@/shared/api/error-presentation";
 import { useTranslation } from "react-i18next";
 import { record } from "../model/types";
-
-const reasons = [
-  {
-    code: "WorkflowBusinessCheckFailed",
-    key: "failureCauses.businessCheckFailed",
-  },
-  {
-    code: "WorkflowIMTargetNotDeclared",
-    key: "failureCauses.undeclaredTarget",
-  },
-  { code: "IMTargetUnavailable", key: "failureCauses.targetUnavailable" },
-  { code: "IMResourceNotFound", key: "failureCauses.targetUnavailable" },
-  {
-    code: "IMWorkflowDeliveryNotAllowed",
-    key: "failureCauses.deliveryNotAllowed",
-  },
-  { code: "IMTargetNotAuthorized", key: "failureCauses.chatNotAuthorized" },
-  { code: "IMChatNotAuthorized", key: "failureCauses.chatNotAuthorized" },
-  { code: "IMConnectionDisabled", key: "failureCauses.connectionDisabled" },
-  { code: "IMLoginRequired", key: "failureCauses.loginRequired" },
-  {
-    code: "IMDeliveryContextUnavailable",
-    key: "failureCauses.contextUnavailable",
-  },
-  { code: "IMPlatformUnavailable", key: "failureCauses.platformUnavailable" },
-  { code: "IMProtocolInvalid", key: "failureCauses.protocolInvalid" },
-  { code: "IMFileInvalid", key: "failureCauses.fileInvalid" },
-] as const;
 
 /** 先展示稳定原因和处理办法，不将内部协议封套直接呈现给用户。 */
 export function WorkflowFailure({ value }: { value: unknown }) {
@@ -37,15 +10,27 @@ export function WorkflowFailure({ value }: { value: unknown }) {
   const delivery = record(failure.delivery ?? failure.data) ?? {};
   const code =
     failure.reason ?? cause.code ?? delivery.errorCode ?? failure.code;
-  const reason = reasons.find((item) => item.code === code);
+  const owner =
+    typeof code === "string" && cause.code === code
+      ? cause
+      : typeof code === "string" && delivery.errorCode === code
+        ? delivery
+        : failure;
+  const detail = owner.message ?? owner.errorMessage;
+  const source = owner.messageSource ?? owner.errorMessageSource;
+  const message = applicationErrorMessage({
+    code: typeof code === "string" ? code : undefined,
+    params: record(owner.params ?? owner.errorParams) ?? undefined,
+    message: typeof detail === "string" ? detail : undefined,
+    messageSource: source === "public" ? "public" : "localized",
+    fallback: t("failureCauses.generic"),
+  });
   return (
     <div className="grid min-w-0 gap-3">
       <p role="alert" className="text-destructive type-body wrap-anywhere">
-        {t(
-          failure.code === "EFFECT_OUTCOME_UNKNOWN"
-            ? "uncertainFailureHelp"
-            : (reason?.key ?? "failureCauses.generic"),
-        )}
+        {failure.code === "EFFECT_OUTCOME_UNKNOWN"
+          ? t("uncertainFailureHelp")
+          : message}
       </p>
       {delivery.state === "unknown" ? (
         <p className="type-body">{t("failureDeliveryUnknown")}</p>
@@ -58,11 +43,6 @@ export function WorkflowFailure({ value }: { value: unknown }) {
               typeof delivery.partsSent === "number" ? delivery.partsSent : 0,
           })}
         </p>
-      ) : null}
-      {typeof failure.message === "string" ? (
-        <p className="type-body whitespace-pre-wrap">{failure.message}</p>
-      ) : typeof cause.message === "string" ? (
-        <p className="type-body whitespace-pre-wrap">{cause.message}</p>
       ) : null}
     </div>
   );

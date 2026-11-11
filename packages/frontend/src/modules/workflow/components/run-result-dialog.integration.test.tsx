@@ -31,7 +31,7 @@ it("展开摘要步骤时读取真实输入输出，不把列表省略字段显�
           completedAt: 100,
           args: { client: "客户 A", enabled: false, nested: { count: 0 } },
           result: { summary: "最终结果", items: ["第一项", "第二项"] },
-          flowContext: { triggerSource: "agent" },
+          triggerSource: "agent",
         },
         manifest: {
           sdk: "ally.workflow",

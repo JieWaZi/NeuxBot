@@ -11,13 +11,15 @@ func init() { dbhelper.RegisterTable(&AIAccount{}); dbhelper.RegisterTable(&AIAc
 type AIAccount struct {
 	// ID 是账号的稳定标识。
 	ID string `gorm:"type:varchar(32);primaryKey" json:"id"`
-	// Name 是去除首尾空白后全局唯一的账号名称。
-	Name string `gorm:"type:varchar(120);not null;uniqueIndex" json:"name"`
+	// RuntimeID 是拥有该账号的实际智能体环境标识，包含独立启动配置。
+	RuntimeID string `gorm:"type:varchar(120);not null;index;uniqueIndex:idx_ai_account_runtime_name,priority:1" json:"runtimeId"`
+	// Name 是去除首尾空白后在所属智能体内唯一的账号名称。
+	Name string `gorm:"type:varchar(120);not null;uniqueIndex:idx_ai_account_runtime_name,priority:2" json:"name"`
 	// AuthMode 区分 API Key 与官方订阅登录。
 	AuthMode constants.AccountAuthMode `gorm:"type:varchar(24);not null" json:"authMode"`
 
-	// Endpoints 保存账号唯一的请求协议及服务地址；数组形式兼容已有存储。
-	Endpoints []AIAccountEndpoint `gorm:"type:text;not null;serializer:json" json:"endpoints"`
+	// Endpoint 保存账号唯一的请求协议及服务地址。
+	Endpoint AIAccountEndpoint `gorm:"type:text;not null;serializer:json" json:"endpoint"`
 	// ModelCatalog 保存最近一次从该账号服务获取的模型标识。
 	ModelCatalog []string `gorm:"type:text;not null;default:'[]';serializer:json" json:"modelCatalog"`
 	// SelectedModels 保存用户允许在聊天中使用的该账号模型标识。
@@ -36,10 +38,10 @@ type AIAccount struct {
 	DefaultModel string `gorm:"type:varchar(200);not null;default:''" json:"defaultModel"`
 	// DefaultReasoning 是选择该账号时优先使用的推理强度标识。
 	DefaultReasoning string `gorm:"type:varchar(80);not null;default:''" json:"defaultReasoning"`
-	// LiveAuthPath 仅保留旧版单执行认证投射的恢复入口，新调用通过账号刷新权威持久化。
-	LiveAuthPath string `gorm:"type:text;not null;default:''" json:"-"`
-	// Revision 用于更新冲突检测和隔离进程缓存。
+	// Revision 仅用于用户配置更新冲突检测。
 	Revision int64 `gorm:"not null" json:"revision"`
+	// 认证代次
+	AuthGeneration uint64 `gorm:"not null;default:1" json:"authGeneration"`
 	// CredentialCiphertext 是绑定账号身份加密后的 Key 或订阅令牌，不对外返回。
 	CredentialCiphertext string `gorm:"type:text;not null" json:"-"`
 	// HasCredential 表示已保存 API Key 或完整订阅令牌。

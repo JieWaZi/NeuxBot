@@ -27,7 +27,7 @@ it("文件预览与目录共享容器宽度，拖动和键盘可调整分隔线"
   );
   if (!split) throw new Error("缺少分屏容器");
   expect(split).toHaveStyle({
-    gridTemplateColumns: "minmax(0, 1fr) 8px 240px",
+    gridTemplateColumns: "minmax(0, 1fr) 1px 240px",
   });
   const separator = screen.getByRole("separator", { name: "调整分屏比例" });
   Object.defineProperties(separator, {
@@ -46,9 +46,9 @@ it("文件预览与目录共享容器宽度，拖动和键盘可调整分隔线"
 
   containerWidth = 360;
   fireEvent.resize(window);
-  expect(separator).toHaveAttribute("aria-valuenow", "211");
+  expect(separator).toHaveAttribute("aria-valuenow", "215");
   expect(split).toHaveStyle({
-    gridTemplateColumns: "minmax(0, 1fr) 8px 211px",
+    gridTemplateColumns: "minmax(0, 1fr) 1px 215px",
   });
 });
 
@@ -66,7 +66,7 @@ it("窄工作台按容器宽度收窄目录，给预览保留空间", () => {
     />,
   );
   expect(container.querySelector("[data-workspace-detail-split]")).toHaveStyle({
-    gridTemplateColumns: "minmax(0, 1fr) 8px 189px",
+    gridTemplateColumns: "minmax(0, 1fr) 1px 189px",
   });
 });
 

@@ -1,17 +1,37 @@
-import { ConnectorDetails } from "../components/connector-details";
-import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
-import { useQueryEvents } from "@/shared/api/use-query-events";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pencil, Play } from "lucide-react";
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
+import { WakerDetailLayout } from "@/modules/waker";
 import {
   localApiErrorMessage,
   withLocalErrorMutation,
   withLocalErrorSurface,
 } from "@/shared/api/local-error-surface";
-import { Cable, Pencil, Play, Terminal, Trash2 } from "lucide-react";
-import { useState } from "react";
-import { useTranslation } from "react-i18next";
-import { useNavigate, useParams, useLocation } from "react-router-dom";
-
+import { useQueryEvents } from "@/shared/api/use-query-events";
+import {
+  getWakerOptions,
+  getWakerQueryKey,
+} from "@/shared/api/generated/@tanstack/react-query.gen";
+import { resourceListBack } from "@/shared/lib/resource-navigation";
+import { Button } from "@/shared/ui/button";
+import { DetailSection } from "@/shared/ui/detail-section";
+import { QueryRefreshError, QueryState } from "@/shared/ui/query-state";
+import {
+  ResourceCatalogRow,
+  ResourceCatalogStatus,
+} from "@/shared/ui/resource-catalog";
+import { ResourcePageSurface } from "@/shared/ui/resource-page";
+import { ResourcePartnerAvatar } from "@/shared/ui/resource-management-card";
+import { Switch } from "@/shared/ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/shared/ui/tooltip";
+import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import {
   getWakerConnectorOptions,
   invalidateVisibleConnectorQueries,
@@ -19,15 +39,15 @@ import {
   testWakerConnectorMutation,
 } from "../api/connector-queries";
 import { ConnectorDeleteDialog } from "../components/connector-delete-dialog";
+import { ConnectorDetailHeader } from "../components/connector-detail-header";
+import { ConnectorDetails } from "../components/connector-details";
 import { ConnectorFormDialog } from "../components/connector-form-dialog";
-import { connectorTransportOf } from "../model/connector-view";
-import { WakerDetailLayout } from "@/modules/waker";
-import { Badge } from "@/shared/ui/badge";
-import { PageHeader } from "@/shared/ui/page-header";
-import { PageAction } from "@/shared/ui/resource-page";
-import { QueryState } from "@/shared/ui/query-state";
-import { ResourcePageSurface } from "@/shared/ui/resource-page";
-import { Switch } from "@/shared/ui/switch";
+import { ConnectorPresentation } from "../components/connector-presentation";
+import {
+  connectorReferenceAvailable,
+  connectorSelectableInComposer,
+  connectorTransportOf,
+} from "../model/connector-view";
 
 export function ConnectorDetailPage() {
   const { t } = useTranslation("connector");
@@ -35,14 +55,22 @@ export function ConnectorDetailPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const active = useRouteSceneActive();
+  const listPath = wakerId
+    ? `/wakers/${encodeURIComponent(wakerId)}/resources?category=connectors`
+    : "/resources?category=connectors";
+  const candidate = (location.state as { resourceBack?: string } | null)
+    ?.resourceBack;
+  const directList = `/wakers/${encodeURIComponent(wakerId)}/connectors`;
   const back =
-    (location.state as { resourceBack?: string } | null)?.resourceBack ??
-    (wakerId
-      ? `/wakers/${wakerId}/resources?category=connectors`
-      : "/resources?category=connectors");
+    wakerId &&
+    candidate &&
+    resourceListBack(candidate, directList) === candidate
+      ? candidate
+      : resourceListBack(candidate, listPath);
   const queryClient = useQueryClient();
-  const [editOpen, setEditOpen] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
+  const identity = JSON.stringify([connectorId, wakerId]);
+  const [editingIdentity, setEditingIdentity] = useState<string | null>(null);
+  const [deletingIdentity, setDeletingIdentity] = useState<string | null>(null);
   const detailOptions = getWakerConnectorOptions(
     withLocalErrorSurface({ path: { connectorId, wakerId } }),
   );
@@ -50,6 +78,13 @@ export function ConnectorDetailPage() {
     ...detailOptions,
     enabled: active && Boolean(connectorId),
   });
+  const partner = useQuery({
+    ...getWakerOptions(withLocalErrorSurface({ path: { wakerId } })),
+    queryKey: getWakerQueryKey({ path: { wakerId } }),
+    enabled: active && Boolean(wakerId),
+  });
+  const partnerName =
+    partner.data?.name || t("common:partnerNavigation.partner");
   useQueryEvents({
     topic: "resources",
     resource: { kind: "global" },
@@ -65,6 +100,12 @@ export function ConnectorDetailPage() {
     ...withLocalErrorMutation(testWakerConnectorMutation()),
     onSuccess: refresh,
   });
+  const currentTest =
+    testConnector.variables?.path.connectorId === connectorId &&
+    testConnector.variables.path.wakerId === wakerId;
+  const currentToggle =
+    toggleConnector.variables?.path.connectorId === connectorId &&
+    toggleConnector.variables.path.wakerId === wakerId;
   const connector = detailQuery.data?.connector?.id
     ? detailQuery.data.connector
     : undefined;
@@ -76,107 +117,66 @@ export function ConnectorDetailPage() {
       ? (connector?.environment ?? [])
       : (connector?.headers ?? []);
   const canEdit = !builtIn || definitions.length > 0;
+  const removingInstallation = Boolean(wakerId && !connector?.ownerWakerId);
 
   return (
-    <WakerDetailLayout active="connectors">
-      <ResourcePageSurface>
-        <PageHeader
-          layout="detail"
+    <WakerDetailLayout
+      active="connectors"
+      breadcrumbItems={[
+        { label: t("title"), href: back },
+        { label: connector?.name || t("title") },
+      ]}
+    >
+      <ResourcePageSurface appearance="catalog">
+        <ConnectorDetailHeader
+          title={connector?.name ?? t("title")}
+          description={connector?.description}
+          categories={connector?.categories}
           backAction={{
             label: t("common:backToList"),
             onClick: () => navigate(back),
           }}
-          title={
-            <span className="inline-flex max-w-full flex-wrap items-center gap-2">
-              <span className="min-w-0 [overflow-wrap:anywhere]">
-                {connector?.name ?? t("title")}
-              </span>
-              {connector ? (
-                <Badge variant="secondary">
-                  {t(`scope.${builtIn ? "built_in" : "public"}`)}
-                </Badge>
-              ) : null}
-            </span>
-          }
-          description={connector?.description || undefined}
-          visual={
-            <span className="bg-muted text-muted-foreground grid size-10 place-items-center rounded-md">
-              {transport === "stdio" ? (
-                <Terminal className="size-icon-md" strokeWidth={1.5} />
-              ) : (
-                <Cable className="size-icon-md" strokeWidth={1.5} />
-              )}
-            </span>
+          status={
+            connector && wakerId ? (
+              <ResourceCatalogStatus
+                pill
+                tone={detailQuery.data?.enabled ? "success" : "neutral"}
+              >
+                {t(
+                  systemManaged
+                    ? "systemManaged"
+                    : detailQuery.data?.enabled
+                      ? "enabled"
+                      : "disabled",
+                )}
+              </ResourceCatalogStatus>
+            ) : undefined
           }
           actions={
-            <div className="grid max-w-full justify-items-end gap-2">
-              <div className="flex max-w-full flex-wrap items-center gap-2">
-                {wakerId && !systemManaged ? (
-                  <Switch
-                    checked={detailQuery.data?.enabled ?? false}
-                    disabled={!connector || toggleConnector.isPending}
-                    aria-label={t(
-                      detailQuery.data?.enabled
-                        ? "detail.disable"
-                        : "detail.enable",
-                      { name: connector?.name ?? t("title") },
-                    )}
-                    onClick={() =>
-                      toggleConnector.mutate({
-                        path: { connectorId, wakerId },
-                        body: {
-                          enabled: !(detailQuery.data?.enabled ?? false),
-                        },
-                      })
-                    }
-                  />
-                ) : null}
-                {connector && wakerId ? (
-                  <span className="text-content-secondary type-body">
-                    {systemManaged
-                      ? t("systemManaged")
-                      : detailQuery.data?.enabled
-                        ? t("enabled")
-                        : t("disabled")}
-                  </span>
-                ) : null}
-                {canEdit ? (
-                  <PageAction
-                    intent="edit"
-                    disabled={!connector}
-                    label={t("detail.edit")}
-                    onClick={() => setEditOpen(true)}
-                  >
-                    <Pencil />
-                  </PageAction>
-                ) : null}
-                {!builtIn ? (
-                  <PageAction
-                    intent="delete"
-                    disabled={!connector}
-                    label={t("detail.delete")}
-                    onClick={() => setDeleteOpen(true)}
-                  >
-                    <Trash2 />
-                  </PageAction>
-                ) : null}
-              </div>
-              {toggleConnector.isError ? (
-                <p role="alert" className="text-destructive type-body">
-                  {localApiErrorMessage(
-                    toggleConnector.error,
-                    t("toggleFailed"),
-                  )}
-                </p>
-              ) : null}
-            </div>
+            canEdit && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="catalog-icon"
+                      variant="catalog-ghost"
+                      disabled={!connector}
+                      aria-label={t("detail.edit")}
+                      onClick={() => setEditingIdentity(identity)}
+                    >
+                      <Pencil />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{t("detail.edit")}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )
           }
         />
-
-        <main className="mt-6 grid min-w-0 gap-8">
+        <main className="mt-6 min-w-0 space-y-6">
           {!connector ? (
             <QueryState
-              loadingLayout="detail"
+              loadingLayout="catalog-detail"
               pending={detailQuery.isPending}
               error={detailQuery.error}
               emptyLabel={t("detail.notFound")}
@@ -184,58 +184,177 @@ export function ConnectorDetailPage() {
             />
           ) : (
             <>
-              {detailQuery.isError ? (
-                <QueryState
+              {detailQuery.isError && (
+                <QueryRefreshError
                   error={detailQuery.error}
+                  pending={detailQuery.isFetching}
                   onRetry={() => void detailQuery.refetch()}
                 />
-              ) : null}
+              )}
+              <ConnectorPresentation
+                key={identity}
+                name={connector.name ?? ""}
+                context={{ kind: "connector", connectorId }}
+                wakerId={wakerId}
+                usable={Boolean(
+                  !detailQuery.isError &&
+                  connectorReferenceAvailable(detailQuery.data, connectorId),
+                )}
+                systemManaged={
+                  !connectorSelectableInComposer(connector.activationPolicy)
+                }
+              />
+              {wakerId && !systemManaged && (
+                <DetailSection
+                  appearance="catalog"
+                  title={t("detail.currentPartner")}
+                >
+                  <ResourceCatalogRow>
+                    <ResourcePartnerAvatar
+                      name={partnerName}
+                      avatar={partner.data?.avatar}
+                      size="md"
+                    />
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <h3
+                        className="type-resource-body text-resource-content truncate font-medium"
+                        title={partnerName}
+                      >
+                        {partnerName}
+                      </h3>
+                      <p className="type-resource-caption text-resource-muted">
+                        {t(detailQuery.data?.enabled ? "enabled" : "disabled")}
+                      </p>
+                    </div>
+                    <Switch
+                      hitArea="comfortable"
+                      checked={detailQuery.data?.enabled ?? false}
+                      disabled={currentToggle && toggleConnector.isPending}
+                      aria-label={t(
+                        detailQuery.data?.enabled
+                          ? "detail.disable"
+                          : "detail.enable",
+                        { name: connector.name },
+                      )}
+                      onClick={() =>
+                        toggleConnector.mutate({
+                          path: { connectorId, wakerId },
+                          body: {
+                            enabled: !(detailQuery.data?.enabled ?? false),
+                          },
+                        })
+                      }
+                    />
+                    {removingInstallation && !builtIn && (
+                      <Button
+                        size="catalog"
+                        variant="catalog-danger"
+                        onClick={() => setDeletingIdentity(identity)}
+                      >
+                        {t("detail.removeConnector")}
+                      </Button>
+                    )}
+                  </ResourceCatalogRow>
+                  {currentToggle && toggleConnector.isError && (
+                    <p
+                      role="alert"
+                      className="text-destructive type-resource-caption px-4 pb-3"
+                    >
+                      {localApiErrorMessage(
+                        toggleConnector.error,
+                        t("toggleFailed"),
+                      )}
+                    </p>
+                  )}
+                </DetailSection>
+              )}
               <ConnectorDetails
                 connector={connector}
-                compatibility={detailQuery.data?.compatibility}
-                testing={testConnector.isPending}
-                testError={testConnector.error}
+                testing={currentTest && testConnector.isPending}
+                testError={currentTest ? testConnector.error : null}
                 testAction={
-                  <PageAction
-                    disabled={testConnector.isPending}
-                    intent="primary"
-                    label={t(
-                      testConnector.isPending
-                        ? "detail.testing"
-                        : "detail.test",
-                    )}
+                  <Button
+                    size="catalog"
+                    variant="catalog-outline"
+                    disabled={currentTest && testConnector.isPending}
                     onClick={() =>
                       testConnector.mutate({ path: { connectorId, wakerId } })
                     }
                   >
                     <Play />
-                  </PageAction>
+                    {t(
+                      currentTest && testConnector.isPending
+                        ? "detail.testing"
+                        : "detail.test",
+                    )}
+                  </Button>
                 }
               />
+              {!builtIn && !removingInstallation && (
+                <DetailSection
+                  appearance="catalog"
+                  title={t("detail.dangerZone")}
+                >
+                  <ResourceCatalogRow className="flex-wrap">
+                    <div className="min-w-0 flex-1 basis-60 space-y-1">
+                      <h3 className="type-resource-body text-resource-content font-medium">
+                        {t(
+                          removingInstallation
+                            ? "detail.removeConnector"
+                            : "detail.delete",
+                        )}
+                      </h3>
+                      <p className="type-resource-caption text-resource-muted">
+                        {t(
+                          removingInstallation
+                            ? "detail.removeHelp"
+                            : connector.ownerWakerId
+                              ? "detail.privateDeleteHelp"
+                              : "detail.deleteHelp",
+                          { count: detailQuery.data?.affectedWakerCount ?? 0 },
+                        )}
+                      </p>
+                    </div>
+                    <Button
+                      size="catalog"
+                      variant="catalog-danger"
+                      onClick={() => setDeletingIdentity(identity)}
+                    >
+                      {t(
+                        removingInstallation
+                          ? "detail.removeConnector"
+                          : "detail.delete",
+                      )}
+                    </Button>
+                  </ResourceCatalogRow>
+                </DetailSection>
+              )}
             </>
           )}
         </main>
       </ResourcePageSurface>
-
-      {connector ? (
+      {connector && (
         <ConnectorFormDialog
-          open={editOpen}
+          key={identity}
+          open={editingIdentity === identity}
           connector={connector}
           wakerId={wakerId}
-          onOpenChange={setEditOpen}
+          onOpenChange={(open) => setEditingIdentity(open ? identity : null)}
         />
-      ) : null}
-      {connector && !builtIn ? (
+      )}
+      {connector && !builtIn && (
         <ConnectorDeleteDialog
-          open={deleteOpen}
+          key={identity}
+          open={deletingIdentity === identity}
           affectedWakerCount={detailQuery.data?.affectedWakerCount ?? 0}
           connectorId={connectorId}
           name={connector.name ?? ""}
+          ownerWakerId={connector.ownerWakerId}
           wakerId={wakerId}
-          onOpenChange={setDeleteOpen}
+          onOpenChange={(open) => setDeletingIdentity(open ? identity : null)}
           onDeleted={() => navigate(back)}
         />
-      ) : null}
+      )}
     </WakerDetailLayout>
   );
 }

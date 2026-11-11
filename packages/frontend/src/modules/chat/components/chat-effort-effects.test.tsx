@@ -90,13 +90,13 @@ function content(active: boolean) {
     </ComposerSurface>
   );
 }
-it("只用真实档位中的最高档触发，单档位及有效默认值保持一致", () => {
+it("只用真实档位中的最高档触发，单档位不触发且有效默认值保持一致", () => {
   const options = [{ id: "medium" }, { id: "xhigh" }];
   expect(isMaximumReasoning(options, "xhigh")).toBe(true);
   expect(isMaximumReasoning(options, "", "xhigh")).toBe(true);
   expect(isMaximumReasoning(options, "medium")).toBe(false);
   expect(isMaximumReasoning(options, "", "unknown")).toBe(false);
-  expect(isMaximumReasoning([{ id: "high" }], "high")).toBe(true);
+  expect(isMaximumReasoning([{ id: "high" }], "high")).toBe(false);
   expect(isMaximumReasoning([], "max")).toBe(false);
 });
 it("最高档增强当前编辑器输入的粒子，退出最高档保持草稿与输入框实例并清理动画", () => {

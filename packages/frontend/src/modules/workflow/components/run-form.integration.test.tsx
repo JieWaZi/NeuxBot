@@ -128,7 +128,7 @@ it("运行只收集参数，区分必填与选填并沿用已保存配置", asyn
 });
 
 it.each([true, false])(
-  "没有创作聊天时独立解析运行配置，可用=%s",
+  "没有创作聊天时目录失败不决定运行配置可用=%s",
   async (available) => {
     let body: unknown;
     server.use(
@@ -154,8 +154,29 @@ it.each([true, false])(
             : [],
         }),
       ),
+      http.get(`${origin}/api/v1/runtimes/codex/models`, () =>
+        HttpResponse.json(
+          { code: "AI_ACCOUNT_MODELS_UNAVAILABLE" },
+          { status: 503 },
+        ),
+      ),
       http.get(`${origin}/api/v1/ai-accounts`, () =>
         HttpResponse.json({ resources: [] }),
+      ),
+      http.get(`${origin}/api/v1/runtimes/codex/models`, () =>
+        HttpResponse.json({
+          runtimeId: "codex",
+          accountId: "system",
+          state: "fresh",
+          defaultModel: "native",
+          models: [
+            {
+              id: "native",
+              name: "Native",
+              permissionLevels: ["default"],
+            },
+          ],
+        }),
       ),
       http.post(`${origin}/api/v1/workflows/flow/runs`, async ({ request }) => {
         body = await request.json();

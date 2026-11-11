@@ -1,4 +1,5 @@
 export const workflowZh = {
+  breadcrumb: "工作流路径",
   failureDetails: "查看失败详情",
   failureDeliveryUnknown:
     "发送结果不确定，请先核对微信或飞书是否收到消息，避免重复发送。",
@@ -6,21 +7,6 @@ export const workflowZh = {
   failureDeliveryProgress:
     "已确认发送 {{count}} 个片段；后续处理应保留已有发送记录。",
   failureCauses: {
-    businessCheckFailed:
-      "步骤已执行，但结果未通过业务检查，后续步骤已停止。请检查数据或调整检查条件后重试。",
-    undeclaredTarget:
-      "发送目标未声明为工作流依赖，请通过优化工作流补充允许发送的目标范围。",
-    targetUnavailable: "发送目标已不存在，请通过优化工作流重新选择获准聊天。",
-    deliveryNotAllowed:
-      "此聊天未允许工作流发送，请在聊天配置中开启“工作流发送”。",
-    chatNotAuthorized: "此聊天尚未授权或授权已撤销，请在聊天配置中恢复授权。",
-    connectionDisabled: "发送连接已停用，请在连接设置中启用后重试。",
-    loginRequired: "发送连接的登录已失效，请重新登录。",
-    contextUnavailable: "微信聊天缺少发送上下文，请先给机器人发一条消息。",
-    platformUnavailable:
-      "消息平台暂时不可用，请检查连接状态；发送结果不确定时先核对是否已收到。",
-    protocolInvalid: "消息平台返回了无法识别的响应，请查看失败详情并检查连接。",
-    fileInvalid: "发送文件不存在或超出工作范围，请通过优化工作流修正文件。",
     generic: "工作流执行失败，请查看失败详情，或通过优化工作流分析原因并调整。",
   },
 
@@ -138,6 +124,7 @@ export const workflowZh = {
   editBasicInformation: "编辑基本信息",
   edit: "编辑",
   moreActions: "{{title}} 的更多操作",
+  moreActionsLabel: "更多操作",
   titleHelp: "用简短的标题标识这个工作流。",
   descriptionHelp: "简要说明工作流的用途和目标。",
   descriptionPlaceholder: "例如：整理会议材料，生成议程和行动清单",
@@ -263,18 +250,12 @@ export const workflowZh = {
   applyAnnotation: "发送修改要求",
   annotationSaved: "已记录修改要求，发送消息后开始修改。",
   newTitle: "新建工作流",
-  welcome: "欢迎使用工作流",
-  welcomeHelp: "描述你的想法，让工作流完成复杂任务。",
-  welcomePhrases: {
-    idea: "想把什么重复任务交给工作流？",
-    steps: "说说目标，我来帮你梳理步骤",
-  },
   conversation: "对话",
   collapseChat: "收起对话",
   expandChat: "展开对话",
   title: "工作流",
   subtitle: "把可重复的工作交给伙伴协作完成。",
-  create: "新建工作流",
+  create: "添加工作流",
   search: "搜索工作流",
   library: "全部工作流",
   count: "{{count}} 个工作流",
@@ -492,6 +473,7 @@ type WorkflowTranslation = {
     : { [P in keyof (typeof workflowZh)[K]]: string };
 };
 export const workflowEn = {
+  breadcrumb: "Workflow path",
   failureDetails: "View failure details",
   failureDeliveryUnknown:
     "Delivery is uncertain. Check whether the chat received the message before sending again.",
@@ -500,27 +482,6 @@ export const workflowEn = {
   failureDeliveryProgress:
     "{{count}} parts are confirmed sent. Preserve the existing delivery receipts.",
   failureCauses: {
-    businessCheckFailed:
-      "The step ran, but its result did not pass the business check. Later steps have stopped. Check the data or adjust the check condition, then retry.",
-    undeclaredTarget:
-      "The delivery target is not declared as a workflow dependency. Optimize the workflow to declare the allowed target scope.",
-    targetUnavailable:
-      "The delivery target no longer exists. Optimize the workflow and select an approved chat.",
-    deliveryNotAllowed:
-      "Workflow delivery is disabled for this chat. Enable it in the chat configuration.",
-    chatNotAuthorized:
-      "This chat is not authorized or its authorization was revoked. Restore authorization in the chat configuration.",
-    connectionDisabled:
-      "The delivery connection is disabled. Enable it in connection settings and retry.",
-    loginRequired: "The delivery connection is signed out. Sign in again.",
-    contextUnavailable:
-      "The WeChat delivery context is missing. Send the bot a message first.",
-    platformUnavailable:
-      "The messaging platform is unavailable. Check the connection and verify uncertain delivery before sending again.",
-    protocolInvalid:
-      "The messaging platform returned an unsupported response. Inspect the failure details and connection.",
-    fileInvalid:
-      "The delivery file is missing or outside the approved workspace. Optimize the workflow to correct it.",
     generic:
       "The workflow failed. Inspect the failure details or optimize the workflow to diagnose and correct it.",
   },
@@ -645,6 +606,7 @@ export const workflowEn = {
   editBasicInformation: "Edit basic information",
   edit: "Edit",
   moreActions: "More actions for {{title}}",
+  moreActionsLabel: "More actions",
   titleHelp: "Use a short title to identify this workflow.",
   descriptionHelp: "Briefly describe the workflow’s purpose and goal.",
   descriptionPlaceholder:
@@ -776,18 +738,12 @@ export const workflowEn = {
   applyAnnotation: "Send change request",
   annotationSaved: "Change request saved. Send a message to begin editing.",
   newTitle: "New workflow",
-  welcome: "Welcome to workflows",
-  welcomeHelp: "Describe your idea to build a repeatable workflow.",
-  welcomePhrases: {
-    idea: "What would you like to turn into a workflow?",
-    steps: "Tell me the goal, and we'll map out the steps.",
-  },
   conversation: "Chat",
   collapseChat: "Collapse conversation",
   expandChat: "Expand conversation",
   title: "Workflows",
   subtitle: "Let workers collaborate on repeatable work.",
-  create: "New workflow",
+  create: "Add workflow",
   search: "Search workflows",
   library: "All workflows",
   count: "{{count}} workflows",

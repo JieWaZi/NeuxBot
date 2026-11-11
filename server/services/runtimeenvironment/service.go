@@ -2,28 +2,51 @@
 package runtimeenvironment
 
 import (
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-
 	"context"
+	"errors"
 	"os"
-	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/installation"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
+	"golang.org/x/sync/singleflight"
 )
 
 // Service 提供运行时环境条目的初始化和探测生命周期能力。
 type Service interface {
+	// CheckRuntimeUpdates 显式检查官方版本，不下载程序。
+	CheckRuntimeUpdates(context.Context, string) error
+	// RestartRuntime 排空闲置原生进程并重新探测，活动工作明确拒绝。
+	RestartRuntime(context.Context, string) error
+	// AuthenticationSnapshot 读取当前系统账号的原生认证能力和任务。
+	AuthenticationSnapshot(context.Context, string, bool) (RuntimeAuthenticationSnapshot, error)
+	// AuthenticateRuntime 接纳原生系统账号登录或重新连接。
+	AuthenticateRuntime(context.Context, string, string) (RuntimeAuthenticationSnapshot, error)
+	// CancelRuntimeAuthentication 取消精确任务身份对应的原生登录。
+	CancelRuntimeAuthentication(context.Context, string, string) error
+	// InstallationSnapshot 读取安装任务及已发布程序快照。
+	InstallationSnapshot(context.Context, string) (RuntimeInstallationSnapshot, error)
+	// InstallRuntime 接纳安装、重试或更新程序任务。
+	InstallRuntime(context.Context, string) error
+	// UninstallRuntime 卸载同一基础智能体的程序，保留账号和配置。
+	UninstallRuntime(context.Context, string) error
+	// CancelRuntimeInstallation 请求取消当前安装任务。
+	CancelRuntimeInstallation(context.Context, string) error
+	// ReadModelCatalog 读取指定账号的原生模型与能力。
+	ReadModelCatalog(context.Context, string, string, bool) (AccountModelCatalog, error)
+	// InvalidateModelCatalog 移除已撤销认证代次的发现结果。
+	InvalidateModelCatalog(string, uint64)
 	// Start 对账内置 Runtime 并启动后台探测生命周期。
 	Start(ctx context.Context) error
 	// Close 取消后台探测并等待所有资源退出。
@@ -32,7 +55,7 @@ type Service interface {
 	EnsureInitialized(ctx context.Context) (bool, error)
 	// StartupDetection 返回本次启动探测是否仍在进行及是否发生持久化故障。
 	StartupDetection() (pending bool, failed bool, setupRequired bool)
-	// CompleteStartupSetup 在用户保存已安装智能体的默认选择后解除本次启动引导。
+	// CompleteStartupSetup 在用户保存合法的智能体默认配置后解除本次启动引导。
 	CompleteStartupSetup()
 	// RefreshAll 重新探测全部已注册 Runtime。
 	RefreshAll(ctx context.Context) error
@@ -42,14 +65,28 @@ type Service interface {
 
 // Config 声明运行时环境服务所需的外部依赖。
 type Config struct {
+	// BeforeRuntimeMaintenance 排空闲置进程并持有程序维护围栏。
+	BeforeRuntimeMaintenance func(context.Context, string) (func(), error)
+	// RestartProvider 由原生生命周期关闭指定基础智能体的闲置进程。
+	RestartProvider func(context.Context, string) error
+	// BeforeRuntimeAuthentication 阻止新系统消费者并排空已有空闲消费者。
+	BeforeRuntimeAuthentication func(context.Context, string) (func(), error)
+	// Installer 管理与账号目录分离的受管程序存储。
+	Installer *installation.Installer
+	// ProviderRuntime 提供与执行共享的原生进程所有者。
+	ProviderRuntime *agent.ProviderRuntime
+	// ResolveAccount 解析受管 Codex 账号的稳定认证选择。
+	ResolveAccount func(context.Context, agent.AccountRequest, string) (agent.AccountRequest, error)
 	// Accounts 为所选默认账号提供受管配置。
 	Accounts *aiaccount.Service
 	// AccountWorkspaceDirectory 保存仅用于探测的受管工作区。
 	AccountWorkspaceDirectory string
-	// RuntimeCatalog 执行不触发模型推理的探测并提供 Runtime 摘要。
-	RuntimeCatalog *agentapi.Catalog
+	// RuntimeCatalog 提供 Runtime 摘要和本机安装位置。
+	RuntimeCatalog *agent.Catalog
 	// Environments 持久化运行时环境条目。
 	Environments controllers.RuntimeEnvironmentController
+	// ModelCatalogs 保存按运行时和账号隔离的目录快照。
+	ModelCatalogs controllers.RuntimeModelCatalogController
 	// Transactions 提供跨条目默认值替换的事务边界。
 	Transactions controllers.TransactionController
 	// Events 在启动探测结束后唤醒已有的运行时资源订阅。
@@ -58,12 +95,38 @@ type Config struct {
 
 // service 是运行时环境服务的生命周期和并发协调实现。
 type service struct {
+	// beforeRuntimeMaintenance 将程序维护绑定到同一原生进程所有者。
+	beforeRuntimeMaintenance func(context.Context, string) (func(), error)
+	// restartProvider 复用实际原生进程所有者的重启边界。
+	restartProvider func(context.Context, string) error
+	// restarting 防止同一基础智能体的重启请求与安装交错。
+	restarting map[string]bool
+	// authentication 拥有系统账号原生管理会话与登录任务。
+	authentication *runtimeAuthenticationManager
+	// installer 下载及校验程序，本服务独占后台任务生命周期。
+	installer runtimeInstaller
+	// installationMutex 串行安装任务接纳、取消、快照及退出。
+	installationMutex sync.Mutex
+	// installationJobs 按基础智能体合并所有启动配置的程序任务。
+	installationJobs map[string]*runtimeInstallationJob
+	// installationClosing 在退出等待前拒绝新的安装任务。
+	installationClosing bool
+	// modelCatalog 保存按账号隔离的原生模型发现结果。
+	modelCatalog *agent.ModelCatalog
+	// modelCatalogs 为普通读取提供最近探测的持久快照。
+	modelCatalogs controllers.RuntimeModelCatalogController
+	// modelCatalogRefreshes 合并同一启动配置的首次读取和主动刷新。
+	modelCatalogRefreshes singleflight.Group
+	// resolveAccount 复用受管账号认证选择。
+	resolveAccount func(context.Context, agent.AccountRequest, string) (agent.AccountRequest, error)
 	// accounts 生成默认账号的受管探测配置。
 	accounts *aiaccount.Service
 	// accountWorkspaceDirectory 是认证探测的受管目录。
 	accountWorkspaceDirectory string
-	// runtimeCatalog 提供 Runtime 摘要和 ACP 探测。
+	// runtimeCatalog 提供 Runtime 摘要和本机安装位置。
 	runtimeCatalog runtimeCatalog
+	// probeProvider 读取已选账号的原生安装状态与目录。
+	probeProvider func(context.Context, agent.RuntimeSummary, models.RuntimeEnvironment, agent.DetectRequest) agent.DetectionResult
 	// environments 持久化条目与探测快照。
 	environments controllers.RuntimeEnvironmentController
 	// transactions 提供原子默认值替换。
@@ -98,14 +161,14 @@ type service struct {
 
 // runtimeCatalog 是运行时环境服务所需的只读 Runtime SDK 视图。
 type runtimeCatalog interface {
+	// ProbeInstallationVersion 只检查当前选中程序的实际版本，不使用账号或模型。
+	ProbeInstallationVersion(context.Context, agent.DetectRequest) (agent.CLIInstallation, error)
 	// Runtimes 返回全部可持久化的 Runtime 摘要。
-	Runtimes() []agentapi.RuntimeSummary
+	Runtimes() []agent.RuntimeSummary
 	// ResolveExecutable 仅检查 CLI 是否存在，不依赖账号准备。
-	ResolveExecutable(agentapi.DetectRequest) (string, error)
-	// Detect 对指定 Runtime 执行不触发模型推理的能力探测。
-	Detect(context.Context, agentapi.DetectRequest) agentapi.DetectionResult
+	ResolveExecutable(agent.DetectRequest) (string, error)
 	// DiscoverInstallations 枚举可切换的 CLI 安装路径及版本。
-	DiscoverInstallations(context.Context, agentapi.DetectRequest, []agentapi.CLIInstallation) []agentapi.CLIInstallation
+	DiscoverInstallations(context.Context, agent.DetectRequest, []agent.CLIInstallation) []agent.CLIInstallation
 }
 
 var _ Service = (*service)(nil)
@@ -120,7 +183,19 @@ func New(config Config) (Service, error) {
 		return nil, err
 	}
 	concrete := created.(*service)
+	concrete.restartProvider = config.RestartProvider
+	concrete.beforeRuntimeMaintenance = config.BeforeRuntimeMaintenance
+	concrete.authentication = newRuntimeAuthenticationManager(concrete, config.BeforeRuntimeAuthentication)
+	if config.Installer != nil {
+		concrete.installer = config.Installer
+	}
 	concrete.accounts = config.Accounts
+	concrete.modelCatalogs = config.ModelCatalogs
+	if config.ProviderRuntime != nil {
+		concrete.modelCatalog = agent.NewModelCatalog(config.ProviderRuntime)
+		concrete.probeProvider = concrete.detectNative
+	}
+	concrete.resolveAccount = config.ResolveAccount
 	concrete.accountWorkspaceDirectory = config.AccountWorkspaceDirectory
 	concrete.eventPublisher = config.Events
 	return concrete, nil
@@ -150,7 +225,7 @@ func (s *service) Start(ctx context.Context) error {
 		return status_error.RuntimeEnvironmentServiceUnavailable
 	}
 	s.lifecycleContext, s.cancelLifecycle = context.WithCancel(ctx)
-	// 启动准入只读取持久化安装证据，不等待 CLI 或模型进程。
+	// 启动准入读取已有默认配置或安装证据，不等待 CLI 或模型进程。
 	if _, err := s.EnsureInitialized(ctx); err != nil {
 		s.cancelLifecycle()
 		return err
@@ -162,8 +237,9 @@ func (s *service) Start(ctx context.Context) error {
 	}
 	s.startupMutex.Lock()
 	s.startupPending, s.startupFailed, s.startupSetupRequired = true, false, true
-	for _, environment := range previous {
-		if environment.Detection.ResolvedBinary != "" {
+	for _, environment := range s.registeredEnvironments(previous) {
+		if environment.Detection.ResolvedBinary != "" ||
+			(environment.Enabled && environment.IsDefault && strings.TrimSpace(environment.Binary) != "") {
 			s.startupSetupRequired = false
 			break
 		}
@@ -199,10 +275,16 @@ func (s *service) CompleteStartupSetup() {
 
 // Close 取消后台探测并等待所有资源退出。
 func (s *service) Close() {
+	if s != nil && s.authentication != nil {
+		s.authentication.Close()
+	}
 	if s == nil || s.cancelLifecycle == nil {
 		return
 	}
+	s.installationMutex.Lock()
+	s.installationClosing = true
 	s.cancelLifecycle()
+	s.installationMutex.Unlock()
 	s.waitGroup.Wait()
 	s.cancelLifecycle = nil
 }
@@ -240,6 +322,13 @@ func (s *service) RefreshAll(ctx context.Context) (err error) {
 // RefreshOne 重新探测指定 Runtime。
 func (s *service) RefreshOne(ctx context.Context, runtimeID string) error {
 	runtimeID = strings.TrimSpace(runtimeID)
+	lock := s.runtimeRefreshLock(runtimeID)
+	lock.Lock()
+	defer lock.Unlock()
+	return s.refreshOneLocked(ctx, runtimeID)
+}
+
+func (s *service) runtimeRefreshLock(runtimeID string) *sync.Mutex {
 	s.runtimeMutex.Lock()
 	if s.runtimeRefreshLocks == nil {
 		s.runtimeRefreshLocks = make(map[string]*sync.Mutex)
@@ -250,9 +339,7 @@ func (s *service) RefreshOne(ctx context.Context, runtimeID string) error {
 		s.runtimeRefreshLocks[runtimeID] = lock
 	}
 	s.runtimeMutex.Unlock()
-	lock.Lock()
-	defer lock.Unlock()
-	return s.refreshOneLocked(ctx, runtimeID)
+	return lock
 }
 
 func (s *service) initialize(ctx context.Context) error {
@@ -306,7 +393,7 @@ func (s *service) refreshOneLocked(ctx context.Context, runtimeID string) error 
 	if err != nil {
 		return err
 	}
-	var summary agentapi.RuntimeSummary
+	var summary agent.RuntimeSummary
 	for _, candidate := range s.runtimeCatalog.Runtimes() {
 		if candidate.ID == runtimeID {
 			summary = candidate
@@ -339,7 +426,7 @@ func (s *service) refreshOneLocked(ctx context.Context, runtimeID string) error 
 // reconcileEnvironment 只同步注册表管理的产品名称，不改写用户配置的启动命令。
 func (s *service) reconcileEnvironment(
 	ctx context.Context,
-	summary agentapi.RuntimeSummary,
+	summary agent.RuntimeSummary,
 	environment models.RuntimeEnvironment,
 ) (models.RuntimeEnvironment, error) {
 	fields := map[string]any{}
@@ -353,38 +440,27 @@ func (s *service) reconcileEnvironment(
 	return environment, s.environments.UpdateFields(ctx, environment.RuntimeID, fields)
 }
 
-// persistDetection 原子保存探测快照，在目录刷新失败时保留上次结果，并清理失效默认选择。
+// persistDetection 原子保存探测快照与安装定位；模型、推理和权限默认值只由用户配置用例修改。
 func (s *service) persistDetection(
 	ctx context.Context,
 	environment models.RuntimeEnvironment,
-	detection agentapi.DetectionResult,
+	detection agent.DetectionResult,
 	detectedAt int64,
 ) error {
-	detection = agentapi.PreservePreviousOptionsOnFailure(
-		environment.Detection,
-		detection,
-	)
-	defaultModel, defaultReasoning := agentapi.NormalizeDetectedDefaults(
-		detection,
-		environment.CustomModels,
-		environment.DefaultModel,
-		environment.DefaultReasoning,
-	)
-	nextPermission, degraded := agentapi.SafePermissionLevel(
-		environment.DefaultPermissionLevel,
-		agentapi.ModelPermissionLevels(
-			detection,
-			environment.CustomModels,
-			defaultModel,
-		),
-	)
-	if degraded {
-		detection.Diagnostics = append(detection.Diagnostics, agentapi.Diagnostic{
-			Code:  agentapi.DiagnosticCodePermissionDefaultDowngraded,
-			Level: agentapi.DiagnosticLevelWarning,
-			Message: "default permission level was reduced to a " +
-				"level the current model can express",
-		})
+	nativeCatalog := usesNativeCatalog(environment.BaseRuntimeID) && s.modelCatalog != nil
+	if nativeCatalog {
+		current, err := s.environments.Get(ctx, environment.RuntimeID)
+		if err != nil {
+			return err
+		}
+		// A response from the prior account or launch cannot update the new selection.
+		if current.DefaultAccountID != environment.DefaultAccountID || current.Binary != environment.Binary ||
+			current.ConfigHome != environment.ConfigHome || !slices.Equal(current.PrefixArgs, environment.PrefixArgs) {
+			return nil
+		}
+		environment = current
+	} else {
+		detection = agent.PreservePreviousOptionsOnFailure(environment.Detection, detection)
 	}
 	if err := s.environments.UpdateDetection(
 		ctx,
@@ -394,42 +470,53 @@ func (s *service) persistDetection(
 	); err != nil {
 		return err
 	}
-	fields := map[string]any{}
-	if environment.Binary == firstBinary(environment.Detection.Runtime.BinaryCandidates) && detection.ResolvedBinary != "" {
-		fields["binary"] = detection.ResolvedBinary
-	}
-	if defaultModel != environment.DefaultModel {
-		fields["default_model"] = defaultModel
-	}
-	if defaultReasoning != environment.DefaultReasoning {
-		fields["default_reasoning"] = defaultReasoning
-	}
-	if nextPermission != environment.DefaultPermissionLevel {
-		fields["default_permission_level"] = nextPermission
-	}
-	if len(fields) == 0 {
-		return nil
-	}
-	return s.environments.UpdateFields(ctx, environment.RuntimeID, fields)
+	return nil
 }
 
 func (s *service) detect(
 	ctx context.Context,
-	summary agentapi.RuntimeSummary,
+	summary agent.RuntimeSummary,
 	environment models.RuntimeEnvironment,
-) agentapi.DetectionResult {
+) agent.DetectionResult {
+	managedSelected := false
+	programArguments := s.programSelectionArguments(environment)
+	environment.PrefixArgs = append(append([]string(nil), programArguments...), summary.PrefixArgs...)
+	environment.ConfigHome = summary.ConfigHome
+	preferManaged := environment.Detection.ResolvedBinary == ""
+	if s.installer != nil && !preferManaged {
+		maintenance, err := s.installer.Inspect(ctx, summary.BaseRuntimeID, environment.Detection.ResolvedBinary, programArguments)
+		if err == nil && maintenance.Method == "managed" {
+			installed, readErr := s.installer.Installed(summary.BaseRuntimeID)
+			// 显式选择历史版本时保留其路径；仅当前发布版本恢复受管启动参数。
+			preferManaged = readErr == nil && installed.Binary == environment.Detection.ResolvedBinary
+		}
+	}
+	if s.installer != nil && preferManaged {
+		installed, err := s.installer.Installed(summary.BaseRuntimeID)
+		if err == nil {
+			managedSelected = true
+			environment.Binary = installed.Binary
+			environment.PrefixArgs = append(append([]string(nil), installed.PrefixArgs...), summary.PrefixArgs...)
+			summary.BinaryCandidates, summary.PrefixArgs = []string{installed.Binary}, environment.PrefixArgs
+		} else if !errors.Is(err, os.ErrNotExist) && !errors.Is(err, status_error.RuntimeInstallationUnsupported) {
+			return agent.DetectionResult{Runtime: summary, State: agent.DetectionStateUnavailable, Auth: agent.AuthStatusUnknown,
+				Diagnostics: []agent.Diagnostic{{Code: status_error.RuntimeInstallationFailed.Key(), Level: agent.DiagnosticLevelError, Message: "managed agent installation failed verification"}}}
+		}
+	}
 	request := runtimeDetectRequest(summary, environment)
-	if request.LaunchOverride.Binary == firstBinary(summary.BinaryCandidates) && environment.Detection.ResolvedBinary != "" {
+	if !managedSelected && request.LaunchOverride.Binary == firstBinary(summary.BinaryCandidates) && environment.Detection.ResolvedBinary != "" {
 		request.LaunchOverride.Binary = environment.Detection.ResolvedBinary
 	}
 	// 安装版本命令只使用设备级启动配置，不依赖短期账号目录的存活。
 	installationRequest := request
-	finish := func(result agentapi.DetectionResult) agentapi.DetectionResult {
-		result.Version = agentapi.NormalizeRuntimeVersion(result.Version)
+	finish := func(result agent.DetectionResult) agent.DetectionResult {
+		// 目录适配器可返回静态声明；实际已验证的启动前缀归当前探测请求所有。
+		result.Runtime.PrefixArgs = append([]string(nil), request.LaunchOverride.PrefixArgs...)
+		result.Version = agent.NormalizeRuntimeVersion(result.Version)
 		result.Installations = s.runtimeCatalog.DiscoverInstallations(ctx, installationRequest, environment.Detection.Installations)
 		// 可执行检查短暂失败时只保留明确选中的同一路径版本，不恢复安装或就绪状态。
 		if result.Version == "" && result.ResolvedBinary == "" && environment.Detection.ResolvedBinary != "" && request.LaunchOverride.Binary == environment.Detection.ResolvedBinary {
-			result.Version = agentapi.NormalizeRuntimeVersion(environment.Detection.Version)
+			result.Version = agent.NormalizeRuntimeVersion(environment.Detection.Version)
 		}
 		if result.ResolvedBinary != "" {
 			found := false
@@ -437,10 +524,10 @@ func (s *service) detect(
 				if result.Installations[index].Path == result.ResolvedBinary {
 					found = true
 					if result.Version == "" {
-						result.Version = agentapi.NormalizeRuntimeVersion(result.Installations[index].Version)
+						result.Version = agent.NormalizeRuntimeVersion(result.Installations[index].Version)
 					}
 					if result.Version == "" && result.ResolvedBinary == environment.Detection.ResolvedBinary {
-						result.Version = agentapi.NormalizeRuntimeVersion(environment.Detection.Version)
+						result.Version = agent.NormalizeRuntimeVersion(environment.Detection.Version)
 					}
 					result.Installations[index].Version = result.Version
 					break
@@ -448,80 +535,31 @@ func (s *service) detect(
 			}
 			if !found {
 				if result.Version == "" && result.ResolvedBinary == environment.Detection.ResolvedBinary {
-					result.Version = agentapi.NormalizeRuntimeVersion(environment.Detection.Version)
+					result.Version = agent.NormalizeRuntimeVersion(environment.Detection.Version)
 				}
-				result.Installations = append(result.Installations, agentapi.CLIInstallation{
+				result.Installations = append(result.Installations, agent.CLIInstallation{
 					Path: result.ResolvedBinary, Version: result.Version, Available: true,
 				})
 			}
 		}
 		return result
 	}
-	if environment.DefaultAccountID != "" && s.accounts != nil {
-		workspace := filepath.Join(s.accountWorkspaceDirectory, summary.ID)
-		directoryErr := os.MkdirAll(workspace, 0700)
-		var target agentapi.RuntimeTarget
-		var release func(context.Context) error
-		err := directoryErr
-		if err == nil {
-			model := environment.DefaultModel
-			if accountconfig.IsNativeAccountRuntime(summary.BaseRuntimeID) {
-				account, accountErr := s.accounts.Get(ctx, environment.DefaultAccountID)
-				if accountErr != nil {
-					err = accountErr
-				} else if len(account.SelectedModels) > 0 {
-					selected := false
-					for _, id := range account.SelectedModels {
-						selected = selected || id == model
-					}
-					if !selected {
-						model = account.SelectedModels[0]
-					}
-				}
-			}
-			if err == nil {
-				target, release, err = s.accounts.PrepareQueuedLease(ctx, environment.DefaultAccountID, summary.BaseRuntimeID, workspace, model)
-			}
-			request.WorkingDirectory = workspace
-			if accountconfig.IsNativeAccountRuntime(summary.BaseRuntimeID) {
-				request.Model = accountconfig.NativeModelID(summary.BaseRuntimeID, model)
-			}
-		}
-		if err != nil {
-			result := environment.Detection
-			result.ResolvedBinary, _ = s.runtimeCatalog.ResolveExecutable(request)
-			if result.ResolvedBinary != environment.Detection.ResolvedBinary {
-				result.Version = ""
-			}
-			if result.State == "" || result.ResolvedBinary == "" {
-				result.State = agentapi.DetectionStateUnavailable
-			}
-			result.Auth = agentapi.AuthStatusMissing
-			result.Diagnostics = append(result.Diagnostics, agentapi.Diagnostic{Code: constants.AIAccountDiagnosticUnavailable, Level: agentapi.DiagnosticLevelWarning, Message: "account configuration is unavailable"})
-			return finish(result)
-		}
-		request.UseNativeAuth = false
-		request.ReleaseResources = release
-		request.RefreshCredentials = target.RefreshCredentials
-		request.BaseEnvironment = accountconfig.Environment(request.BaseEnvironment)
-		request.LaunchOverride.Environment = target.Environment
+	if usesNativeCatalog(summary.BaseRuntimeID) && s.probeProvider != nil {
+		return finish(s.probeProvider(ctx, summary, environment, request))
 	}
-	result := s.runtimeCatalog.Detect(ctx, request)
-	if environment.DefaultAccountID != "" {
-		for index := range result.Models {
-			result.Models[index].ID = accountconfig.AccountModelID(summary.BaseRuntimeID, result.Models[index].ID)
-		}
-		result.DetectedDefaultModel = accountconfig.AccountModelID(summary.BaseRuntimeID, result.DetectedDefaultModel)
-	}
-	return finish(result)
+	binary, _ := s.runtimeCatalog.ResolveExecutable(request)
+	return finish(agent.DetectionResult{
+		Runtime: summary, State: agent.DetectionStateUnavailable, Auth: agent.AuthStatusUnknown,
+		ResolvedBinary: binary,
+	})
 }
 
 // runtimeDetectRequest 把持久化配置投影为 ACP Agent 构造使用的受控启动输入。
 func runtimeDetectRequest(
-	summary agentapi.RuntimeSummary,
+	summary agent.RuntimeSummary,
 	environment models.RuntimeEnvironment,
-) agentapi.DetectRequest {
-	launchOverride := agentapi.LaunchOverride{
+) agent.DetectRequest {
+	launchOverride := agent.LaunchOverride{
 		Binary:      environment.Binary,
 		PrefixArgs:  append([]string(nil), environment.PrefixArgs...),
 		Environment: map[string]string{},
@@ -530,9 +568,9 @@ func runtimeDetectRequest(
 		launchOverride.Environment[summary.ConfigHomeEnvironmentVariable] = environment.ConfigHome
 	}
 	homeDirectory, _ := os.UserHomeDir()
-	return agentapi.DetectRequest{UseNativeAuth: true,
+	return agent.DetectRequest{
 		RuntimeID:       summary.ID,
-		BaseEnvironment: os.Environ(),
+		BaseEnvironment: accountconfig.Environment(os.Environ()),
 		HomeDirectory:   homeDirectory,
 		LaunchOverride:  launchOverride,
 	}
@@ -545,13 +583,15 @@ func (s *service) ensureDefault(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		environments = s.registeredEnvironments(environments)
 		for _, environment := range environments {
-			if environment.IsDefault && environment.Enabled && environment.Detection.State == agentapi.DetectionStateReady {
+			// 已保存的默认选择不由后台探测重新决策，包括用户主动禁用的条目。
+			if environment.IsDefault {
 				return nil
 			}
 		}
 		for _, environment := range environments {
-			if !environment.Enabled || environment.Detection.State != agentapi.DetectionStateReady {
+			if !environment.Enabled || environment.Detection.State != agent.DetectionStateReady {
 				continue
 			}
 			if err := s.environments.ClearDefault(transactionContext); err != nil {
@@ -559,11 +599,26 @@ func (s *service) ensureDefault(ctx context.Context) error {
 			}
 			return s.environments.UpdateFields(transactionContext, environment.RuntimeID, map[string]any{"is_default": true})
 		}
-		return s.environments.ClearDefault(transactionContext)
+		return nil
 	})
 }
 
-func newEnvironment(summary agentapi.RuntimeSummary) models.RuntimeEnvironment {
+// registeredEnvironments 只让当前目录中的智能体及配置参与启动和默认选择。
+func (s *service) registeredEnvironments(environments []models.RuntimeEnvironment) []models.RuntimeEnvironment {
+	registered := make(map[string]struct{})
+	for _, summary := range s.runtimeCatalog.Runtimes() {
+		registered[summary.ID] = struct{}{}
+	}
+	result := make([]models.RuntimeEnvironment, 0, len(environments))
+	for _, environment := range environments {
+		if _, exists := registered[environment.RuntimeID]; exists {
+			result = append(result, environment)
+		}
+	}
+	return result
+}
+
+func newEnvironment(summary agent.RuntimeSummary) models.RuntimeEnvironment {
 	return models.RuntimeEnvironment{
 		ID:                     util.New(),
 		RuntimeID:              summary.ID,
@@ -572,13 +627,13 @@ func newEnvironment(summary agentapi.RuntimeSummary) models.RuntimeEnvironment {
 		Enabled:                true,
 		Binary:                 firstBinary(summary.BinaryCandidates),
 		PrefixArgs:             append([]string(nil), summary.PrefixArgs...),
-		CustomModels:           []string{},
+		ConfigHome:             summary.ConfigHome,
 		DefaultModel:           summary.DefaultModel,
 		DefaultReasoning:       firstReasoning(summary.ReasoningOptions),
-		DefaultPermissionLevel: agentapi.PermissionLevelFullAccess,
-		Detection: agentapi.DetectionResult{
+		DefaultPermissionLevel: agent.PermissionLevelFullAccess,
+		Detection: agent.DetectionResult{
 			Runtime: summary,
-			Auth:    agentapi.AuthStatusUnknown,
+			Auth:    agent.AuthStatusUnknown,
 		},
 	}
 }
@@ -590,7 +645,7 @@ func firstBinary(candidates []string) string {
 	return candidates[0]
 }
 
-func firstReasoning(options []agentapi.ReasoningOption) string {
+func firstReasoning(options []agent.ReasoningOption) string {
 	if len(options) == 0 {
 		return ""
 	}

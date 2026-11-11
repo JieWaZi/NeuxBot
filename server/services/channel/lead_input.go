@@ -137,12 +137,14 @@ func (s *service) drainLeadInputs(
 		lead.RuntimeID,
 		lead.Model,
 		lead.Reasoning,
+		lead.Fast,
 		lead.PermissionLevel,
 		capability,
 		teamInstruction,
 		queued.DirectExecution,
 	)
 	workOptions.AccountID = lead.AccountID
+	workInput.ContextInstructions = append(workInput.ContextInstructions, leaderTurnInstruction(queued.DirectExecution))
 
 	accepted, err := s.executions.Start(ctx, execution.WorkIntent{AutomaticRunID: automaticRunID,
 		ExecutionID: leadExecutionID,

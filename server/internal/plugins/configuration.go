@@ -43,23 +43,36 @@ type ConfigurationBinding struct {
 
 // Extension 定义客户端共享配置，不改变标准发现规则。
 type Extension struct {
-	// DisplayName 是初始产品展示名。
-	DisplayName string `json:"displayName,omitempty"`
 	// Config 是该版本支持的配置字段。
 	Config []ConfigurationField `json:"config"`
 	// Bindings 是客户端明确管理的共享配置绑定。
 	Bindings []ConfigurationBinding `json:"bindings"`
-	// RequiredComponents 是必须可用的组件键。
-	RequiredComponents []string `json:"requiredComponents"`
 }
 
-// ClientExtension 读取本机配置和 MCP 占位变量，并汇总原生目标的可选共享配置。
+// ClientExtension 只读取新扩展显式字段及绑定，不从模板推导配置事实。
 func ClientExtension(pkg Package) (Extension, error) {
-	result := Extension{Config: []ConfigurationField{}, Bindings: []ConfigurationBinding{}, RequiredComponents: []string{}}
-	if value, ok := pkg.Manifest.Extensions[constants.PluginExtensionNamespace]; ok {
-		if !validClientExtension(value) || json.Unmarshal(value, &result) != nil {
+	if err := ValidateContract(pkg); err != nil {
+		return Extension{}, err
+	}
+	result := Extension{Config: []ConfigurationField{}, Bindings: []ConfigurationBinding{}}
+	raw, err := neuxExtensionObject(pkg)
+	if err != nil {
+		return result, err
+	}
+	if value, ok := raw["configuration"]; ok {
+		var configuration struct {
+			// Fields 是作者明确声明的可编辑配置。
+			Fields []ConfigurationField `json:"fields"`
+			// Bindings 只注入已经发现的组件。
+			Bindings []ConfigurationBinding `json:"bindings"`
+		}
+		decoder := json.NewDecoder(strings.NewReader(string(value)))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&configuration) != nil {
 			return result, status_error.PluginManifestInvalid
 		}
+		result.Config = configuration.Fields
+		result.Bindings = configuration.Bindings
 	}
 	keys := map[string]bool{}
 	for index := range result.Config {
@@ -97,66 +110,13 @@ func ClientExtension(pkg Package) (Extension, error) {
 			return result, status_error.PluginManifestInvalid
 		}
 		for _, match := range placeholderPattern.FindAllStringSubmatch(binding.Value, -1) {
-			key := match[1]
-			if key == "PLUGIN_ROOT" || key == "PLUGIN_DATA" || keys[key] {
-				continue
-			}
-			keys[key] = true
-			result.Config = append(result.Config, ConfigurationField{Key: key, Label: key, Secret: true, Required: true})
-		}
-	}
-	if pkg.compatibilityFormat() {
-		for _, server := range pkg.Servers {
-			values := []string{server.Command, server.Cwd, server.URL}
-			values = append(values, server.Args...)
-			for _, value := range server.Env {
-				values = append(values, value)
-			}
-			for name, value := range server.Headers {
-				if !selfHeaderAuthenticationCovered(pkg, server, name) {
-					values = append(values, value)
-				}
-			}
-			for _, value := range values {
-				for _, match := range placeholderPattern.FindAllStringSubmatch(value, -1) {
-					key := match[1]
-					if key == "PLUGIN_ROOT" || key == "PLUGIN_DATA" || key == "CLAUDE_PLUGIN_ROOT" || key == "CLAUDE_PLUGIN_DATA" || keys[key] {
-						continue
-					}
-					keys[key] = true
-					result.Config = append(result.Config, ConfigurationField{Key: key, Label: key, Secret: true, Required: true})
-				}
-			}
-		}
-	}
-	fields := map[string]ConfigurationField{}
-	for _, field := range result.Config {
-		fields[field.Key] = field
-	}
-	targets := make([]string, 0, len(pkg.NativeImplementations))
-	for target := range pkg.NativeImplementations {
-		targets = append(targets, target)
-	}
-	sort.Strings(targets)
-	for _, target := range targets {
-		for _, field := range pkg.NativeImplementations[target].Config {
-			if !configurationKeyPattern.MatchString(field.Key) || field.Key == "PLUGIN_ROOT" || field.Key == "PLUGIN_DATA" || (field.Secret && field.Default != "") {
+			if !keys[match[1]] {
 				return result, status_error.PluginManifestInvalid
 			}
-			if previous, exists := fields[field.Key]; exists {
-				if previous.Secret != field.Secret || previous.Default != field.Default {
-					return result, status_error.PluginManifestInvalid
-				}
-				continue
-			}
-			// 不同目标各自校验必填项，逻辑资源只负责识别并受保护地保存共享值。
-			field.Required = false
-			if field.Label == "" {
-				field.Label = field.Key
-			}
-			fields[field.Key] = field
-			result.Config = append(result.Config, field)
 		}
+	}
+	if err := validateMCPAuthenticationBindings(pkg, result); err != nil {
+		return result, err
 	}
 	sort.Slice(result.Config, func(i, j int) bool { return result.Config[i].Key < result.Config[j].Key })
 	return result, nil
@@ -219,74 +179,4 @@ func Expand(value string, variables map[string]string) (string, error) {
 // ExpandPortable 只替换标准保留变量，未知占位文本保持字面量且不递归展开。
 func ExpandPortable(value, root, data string) string {
 	return strings.NewReplacer("${PLUGIN_ROOT}", root, "${PLUGIN_DATA}", data).Replace(value)
-}
-
-// validClientExtension 拒绝把显式 null 当作未配置，其他命名空间仍由上游保留。
-func validClientExtension(value json.RawMessage) bool {
-	var fields map[string]json.RawMessage
-	if json.Unmarshal(value, &fields) != nil || fields == nil {
-		return false
-	}
-	// 旧宿主供应商适配已经移至独立插件包，拒绝声明以免静默丢失认证。
-	if raw, exists := fields["provider"]; exists {
-		var provider string
-		if !validString(raw) || json.Unmarshal(raw, &provider) != nil || provider != "" {
-			return false
-		}
-	}
-	for _, key := range []string{"displayName"} {
-		if raw, ok := fields[key]; ok && !validString(raw) {
-			return false
-		}
-	}
-	for _, key := range []string{"scopes", "requiredComponents"} {
-		if raw, ok := fields[key]; ok && !validStringArray(raw) {
-			return false
-		}
-	}
-	for _, key := range []string{"config", "bindings"} {
-		raw, exists := fields[key]
-		if !exists {
-			continue
-		}
-		var items []json.RawMessage
-		if json.Unmarshal(raw, &items) != nil || items == nil {
-			return false
-		}
-		for _, item := range items {
-			var object map[string]json.RawMessage
-			if json.Unmarshal(item, &object) != nil || object == nil {
-				return false
-			}
-			for _, raw := range object {
-				if string(raw) == "null" {
-					return false
-				}
-			}
-		}
-	}
-	return true
-}
-
-// selfHeaderAuthenticationCovered 只豁免所有自身运行目标都由桥接接管的同一位置。
-// 引用其他包的目标不使用此处内容；同名变量在其他位置仍由正常配置扫描校验。
-func selfHeaderAuthenticationCovered(pkg Package, server Server, name string) bool {
-	covered := false
-	for _, cli := range []string{"codex", "claude"} {
-		if _, referenced := pkg.Integration.NativePlugins[cli]; referenced {
-			continue
-		}
-		found := false
-		for _, binding := range TargetAuthenticationBindings(pkg, cli) {
-			if binding.Server == server.Key && binding.URL == server.URL && server.Type != "stdio" && strings.EqualFold(binding.Header, name) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return false
-		}
-		covered = true
-	}
-	return covered
 }

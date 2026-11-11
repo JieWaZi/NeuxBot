@@ -13,34 +13,72 @@ type PluginDetailResponse struct {
 	Plugin models.Plugin `json:"plugin"`
 	// 当前解析版本
 	ResolvedVersionID string `json:"resolvedVersionId"`
+	// 当前版本包状态
+	PackageStatus string `json:"packageStatus"`
+	// 当前版本包错误标识
+	PackageErrorCode string `json:"packageErrorCode,omitempty"`
 	// 保留版本
-	Versions []models.PluginVersion `json:"versions"`
-	// 组件授权标识
-	ComponentIDs map[string]string `json:"componentIds"`
+	Versions []PluginVersionResponse `json:"versions"`
 	// 安装伙伴名称
 	PartnerNames map[string]string `json:"partnerNames"`
 	// 伙伴头像
 	PartnerAvatars map[string]string `json:"partnerAvatars"`
 	// 安装关系
 	Installations []models.WakerPlugin `json:"installations"`
-	// 普通配置
-	Values map[string]string `json:"values"`
-	// 配置定义
-	Fields []packageplugin.ConfigurationField `json:"fields"`
-	// 已配置密钥
-	ConfiguredSecrets []string `json:"configuredSecrets"`
 	// 配置修订
 	ConfigurationRevision int64 `json:"configurationRevision"`
-	// 当前就绪
-	Ready bool `json:"ready"`
-	// 阻塞原因
-	Blockers []string `json:"blockers"`
+	// 账号代次
+	AccountGeneration int64 `json:"accountGeneration"`
 	// 共享身份
 	Account authorization.Account `json:"account"`
 	// 更新摘要
 	Update PluginUpdateResponse `json:"update"`
 	// 目录状态
 	CatalogSource catalog.SourceState `json:"catalogSource"`
+}
+
+// 插件公开版本
+type PluginVersionResponse struct {
+	// 版本标识
+	ID string `json:"id"`
+	// 插件标识
+	PluginID string `json:"pluginId"`
+	// 版本名称
+	Version string `json:"version"`
+	// 内容摘要
+	Digest string `json:"digest"`
+	// 展示资料
+	Package packageplugin.PublicPackage `json:"package"`
+	// 信任时间
+	TrustedAt int64 `json:"trustedAt"`
+	// 分发来源
+	Provenance map[string]any `json:"provenance"`
+	// 创建时间
+	CreatedAt int64 `json:"createdAt"`
+}
+
+// 插件目录条目
+type PluginCatalogEntryResponse struct {
+	// 来源身份
+	SourceKey string `json:"sourceKey"`
+	// 目录标识
+	Key string `json:"key"`
+	// 来源提交
+	SourceCommit string `json:"sourceCommit"`
+	// 归档摘要
+	ArchiveSHA256 string `json:"archiveSHA256"`
+	// 归档地址
+	ArchiveURL string `json:"archiveURL,omitempty"`
+	// 逻辑入口
+	PackagePath string `json:"packagePath,omitempty"`
+	// 资料地址
+	DetailsURL string `json:"detailsURL,omitempty"`
+	// 资料摘要
+	DetailsSHA256 string `json:"detailsSHA256,omitempty"`
+	// 资料大小
+	DetailsSize int64 `json:"detailsSize,omitempty"`
+	// 展示资料
+	Package packageplugin.PublicPackage `json:"package"`
 }
 
 // 插件更新摘要
@@ -78,7 +116,9 @@ type InstallPluginRequest struct {
 	// 所选伙伴
 	WakerIDs []string `json:"wakerIds" validate:"required,min=1,max=100"`
 	// 预期配置修订
-	ExpectedConfigurationRevision int64 `json:"expectedConfigurationRevision"`
+	ExpectedConfigurationRevision int64 `json:"expectedConfigurationRevision" validate:"min=0"`
+	// 账号代次
+	ExpectedAccountGeneration int64 `json:"expectedAccountGeneration" validate:"min=0"`
 }
 
 // 伙伴安装结果
@@ -122,17 +162,21 @@ type VersionSwitch struct {
 // 插件配置请求
 type UpdateConfigurationRequest struct {
 	// 预期修订
-	ExpectedRevision int64 `json:"expectedRevision"`
+	ExpectedRevision int64 `json:"expectedRevision" validate:"min=0"`
 	// 普通配置
 	Values map[string]string `json:"values"`
 	// 密钥更新
 	Secrets []SecretValue `json:"secrets"`
-	// 版本切换
-	Switches []VersionSwitch `json:"switches"`
 }
 
 // 插件授权响应
 type PluginAuthorizationResponse struct {
+	// 所选版本
+	VersionID string `json:"versionId"`
+	// 配置修订
+	ConfigurationRevision int64 `json:"configurationRevision"`
+	// 账号代次
+	AccountGeneration int64 `json:"accountGeneration"`
 	// 授权提供者
 	Provider string `json:"provider"`
 	// 所需权限
@@ -149,6 +193,8 @@ type PluginAuthorizationResponse struct {
 
 // 插件资料请求
 type UpdatePluginRequest struct {
+	// 用户分类
+	Categories *[]string `json:"categories,omitempty"`
 	// 展示名称
 	Name string `json:"name"`
 	// 用途说明
@@ -171,6 +217,34 @@ type PluginEnabledRequest struct {
 
 // AuthorizationScopeRequest 描述用户明确请求的补充权限。
 type AuthorizationScopeRequest struct {
+	// 账号上下文
+	PluginAccountRequest
 	// 补充权限
 	AdditionalScopes []string `json:"additionalScopes" validate:"max=100,dive,max=200"`
+}
+
+// 账号上下文请求
+type PluginAccountRequest struct {
+	// 配置修订
+	ExpectedConfigurationRevision int64 `json:"expectedConfigurationRevision" validate:"min=0"`
+	// 账号代次
+	ExpectedAccountGeneration int64 `json:"expectedAccountGeneration" validate:"min=0"`
+}
+
+// 插件统一更新请求
+type UpdatePluginInstallationsRequest struct {
+	// 配置修订
+	ExpectedRevision int64 `json:"expectedRevision" validate:"min=0"`
+	// 账号代次
+	ExpectedAccountGeneration int64 `json:"expectedAccountGeneration" validate:"min=0"`
+	// 普通配置
+	Values map[string]string `json:"values"`
+	// 密钥更新
+	Secrets []SecretValue `json:"secrets"`
+	// 版本切换
+	Switches []VersionSwitch `json:"switches" validate:"required,min=1,max=100"`
+}
+
+func (r UpdatePluginInstallationsRequest) configuration() UpdateConfigurationRequest {
+	return UpdateConfigurationRequest{ExpectedRevision: r.ExpectedRevision, Values: r.Values, Secrets: r.Secrets}
 }

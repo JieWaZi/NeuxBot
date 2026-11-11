@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 )
@@ -19,22 +20,30 @@ const (
 	deletionIntentVersion        = 1
 )
 
-// AggregateKind 区分普通 Chat 与 Team 整体聚合目录。
+// AggregateKind 区分 Chat、团队、伙伴及 Chat 项目入口的受管删除目标。
 type AggregateKind string
 
 const (
-	// AggregateKindChat 表示 `chat/<chatID>` 聚合目录。
+	// AggregateKindChat 表示 Conversations/<chatID> 私有目录。
 	AggregateKindChat AggregateKind = "chat"
-	// AggregateKindTeam 表示 `team/<threadID>` 聚合目录。
+	// AggregateKindChatProjectEntries 表示 Chat 自己拥有的项目入口命名空间。
+	AggregateKindChatProjectEntries AggregateKind = "chat-project-entries"
+	// AggregateKindWaker 表示由伙伴删除用例单独拥有的 Agents/<wakerID> 目录。
+	AggregateKindWaker AggregateKind = "waker"
+	// AggregateKindTeam 表示 Workspaces/<threadID> 团队目录。
 	AggregateKindTeam AggregateKind = "team"
 )
 
 // DeletionTarget 是经过业务层归属预检的一个完整聚合目录。
 type DeletionTarget struct {
-	// Kind 是普通 Chat 或 Team 聚合类型。
+	// Kind 是已完成归属预检的受管目标类型。
 	Kind AggregateKind
-	// AggregateID 是 Chat ID 或 Thread ID。
+	// AggregateID 是该目标的 Chat、Thread 或 Waker 身份。
 	AggregateID string
+	// WakerID 仅在项目入口目标中保存原 ChatCreated 的伙伴身份。
+	WakerID string
+	// WorkspaceDirectory 仅保存该删除操作冻结的真实 cwd，不形成长期映射。
+	WorkspaceDirectory string
 }
 
 // StagedDeletion 是一次可提交或回滚的持久删除意图。
@@ -73,10 +82,14 @@ type deletionIntent struct {
 
 // deletionIntentTarget 保存一个聚合目录 rename 的两端地址。
 type deletionIntentTarget struct {
-	// Kind 是普通 Chat 或 Team 聚合类型。
+	// Kind 是已完成归属预检的受管目标类型。
 	Kind AggregateKind `json:"kind"`
-	// AggregateID 是 Chat ID 或 Thread ID。
+	// AggregateID 是该目标的 Chat、Thread 或 Waker 身份。
 	AggregateID string `json:"aggregateId"`
+	// WakerID 是项目入口所属 Chat 的权威伙伴身份快照。
+	WakerID string `json:"wakerId,omitempty"`
+	// WorkspaceDirectory 是已完成归属预检的 cwd 操作快照。
+	WorkspaceDirectory string `json:"workspaceDirectory,omitempty"`
 	// OriginalPath 是正式聚合目录。
 	OriginalPath string `json:"originalPath"`
 	// StagedPath 是同文件系统临时目录。
@@ -104,7 +117,7 @@ func (c *DeletionCoordinator) Stage(
 	targets []DeletionTarget,
 	chatIDs []string,
 ) (*StagedDeletion, error) {
-	if c == nil || !safeSegment(intentID) || len(targets) == 0 || len(chatIDs) == 0 {
+	if c == nil || !safeSegment(intentID) || len(targets) == 0 || (len(chatIDs) == 0 && !wakerDeletionTargets(targets)) {
 		return nil, status_error.BadRequest
 	}
 	intent := deletionIntent{
@@ -129,7 +142,7 @@ func (c *DeletionCoordinator) Stage(
 	}
 	seen := make(map[string]struct{}, len(targets))
 	for _, target := range targets {
-		originalPath, pathErr := c.aggregatePath(target.Kind, target.AggregateID)
+		originalPath, pathErr := c.aggregatePath(target.Kind, target.AggregateID, target.WakerID, target.WorkspaceDirectory)
 		if pathErr != nil {
 			return nil, pathErr
 		}
@@ -139,10 +152,12 @@ func (c *DeletionCoordinator) Stage(
 		}
 		seen[key] = struct{}{}
 		intent.Targets = append(intent.Targets, deletionIntentTarget{
-			Kind:         target.Kind,
-			AggregateID:  target.AggregateID,
-			OriginalPath: originalPath,
-			StagedPath:   filepath.Join(intentStagingRoot, string(target.Kind)+"-"+target.AggregateID),
+			Kind:               target.Kind,
+			AggregateID:        target.AggregateID,
+			WakerID:            target.WakerID,
+			WorkspaceDirectory: target.WorkspaceDirectory,
+			OriginalPath:       originalPath,
+			StagedPath:         filepath.Join(intentStagingRoot, string(target.Kind)+"-"+target.AggregateID),
 		})
 	}
 	if len(intent.Targets) == 0 {
@@ -153,7 +168,9 @@ func (c *DeletionCoordinator) Stage(
 		return nil, err
 	}
 	for _, target := range intent.Targets {
-		if _, statErr := os.Stat(target.OriginalPath); statErr != nil {
+		info, statErr := os.Lstat(target.OriginalPath)
+		parent, parentErr := filepath.EvalSymlinks(filepath.Dir(target.OriginalPath))
+		if statErr != nil || parentErr != nil || info == nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || filepath.Clean(parent) != filepath.Clean(filepath.Dir(target.OriginalPath)) {
 			_ = staged.Rollback()
 			logx.Errorf("stage deletion aggregate missing: intent_id=%s path=%s error=%v", intent.ID, target.OriginalPath, statErr)
 			return nil, status_error.ManagedWorkspaceError
@@ -235,6 +252,25 @@ func (c *DeletionCoordinator) Resume(
 	if decideCommitted == nil {
 		return status_error.BadRequest
 	}
+	return c.resume(func(intent deletionIntent) (bool, error) {
+		return decideCommitted(intent.ID, append([]string(nil), intent.ChatIDs...))
+	}, completed, false)
+}
+
+// StageWaker 将伙伴自身目录纳入同一耐久 rename 协议，不扩大 Chat 级联。
+func (c *DeletionCoordinator) StageWaker(intentID, wakerID string) (*StagedDeletion, error) {
+	return c.Stage(intentID, []DeletionTarget{{Kind: AggregateKindWaker, AggregateID: wakerID}}, nil)
+}
+
+// ResumeWakers 按伙伴是否已经从权威领域删除恢复伙伴目录，Chat 恢复不会处理这些目标。
+func (c *DeletionCoordinator) ResumeWakers(decideCommitted func(string) (bool, error)) error {
+	if decideCommitted == nil {
+		return status_error.BadRequest
+	}
+	return c.resume(func(intent deletionIntent) (bool, error) { return decideCommitted(intent.Targets[0].AggregateID) }, nil, true)
+}
+
+func (c *DeletionCoordinator) resume(decideCommitted func(deletionIntent) (bool, error), completed func(string) error, wakers bool) error {
 	entries, err := os.ReadDir(c.intentRoot)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -257,7 +293,10 @@ func (c *DeletionCoordinator) Resume(
 			logx.Errorf("decode deletion intent failed: file=%s decode_error=%v validation_error=%v", entry.Name(), jsonErr, validationErr)
 			return status_error.ManagedWorkspaceError
 		}
-		committed, decideErr := decideCommitted(intent.ID, append([]string(nil), intent.ChatIDs...))
+		if (intent.Targets[0].Kind == AggregateKindWaker) != wakers {
+			continue
+		}
+		committed, decideErr := decideCommitted(intent)
 		if decideErr != nil {
 			return decideErr
 		}
@@ -278,15 +317,35 @@ func (c *DeletionCoordinator) Resume(
 	return nil
 }
 
-func (c *DeletionCoordinator) aggregatePath(kind AggregateKind, aggregateID string) (string, error) {
+func (c *DeletionCoordinator) aggregatePath(kind AggregateKind, aggregateID, wakerID, workspaceDirectory string) (string, error) {
 	if !safeSegment(aggregateID) {
 		return "", status_error.BadRequest
 	}
 	switch kind {
 	case AggregateKindChat:
 		return c.layout.ChatRoot(aggregateID)
+	case AggregateKindChatProjectEntries:
+		if !safeSegment(wakerID) || !filepath.IsAbs(workspaceDirectory) {
+			return "", status_error.BadRequest
+		}
+		agentRoot, err := c.layout.AgentWorkspace(wakerID)
+		if err != nil {
+			return "", err
+		}
+		if filepath.Clean(workspaceDirectory) != agentRoot {
+			// 隔离 worker 目录继续归原工作流；这里只允许删除它的 Chat 入口子树。
+			workflowRoot := filepath.Join(c.layout.Root(), constants.WorkflowWorkspaceDirectoryName)
+			relative, err := filepath.Rel(workflowRoot, workspaceDirectory)
+			parts := strings.Split(filepath.ToSlash(relative), "/")
+			if err != nil || len(parts) != 4 || !safeSegment(parts[0]) || parts[1] != constants.WorkflowTemporaryDirectoryName || parts[2] != constants.WorkflowWorkerDirectoryName || !safeSegment(parts[3]) {
+				return "", status_error.BadRequest
+			}
+		}
+		return filepath.Join(workspaceDirectory, constants.ProjectEntriesDirectoryName, aggregateID), nil
 	case AggregateKindTeam:
 		return c.layout.TeamRoot(aggregateID)
+	case AggregateKindWaker:
+		return c.layout.AgentWorkspace(aggregateID)
 	default:
 		return "", status_error.BadRequest
 	}
@@ -348,10 +407,17 @@ func (c *DeletionCoordinator) removeIntent(intent deletionIntent) error {
 
 func (c *DeletionCoordinator) validateIntent(intent deletionIntent) error {
 	if intent.Version != deletionIntentVersion || !safeSegment(intent.ID) ||
-		len(intent.ChatIDs) == 0 || len(intent.Targets) == 0 {
+		len(intent.Targets) == 0 {
 		return status_error.ManagedWorkspaceError
 	}
 	if intent.State != "prepared" && intent.State != "staged" && intent.State != "committed" {
+		return status_error.ManagedWorkspaceError
+	}
+	if intent.Targets[0].Kind == AggregateKindWaker {
+		if len(intent.Targets) != 1 || len(intent.ChatIDs) != 0 {
+			return status_error.ManagedWorkspaceError
+		}
+	} else if len(intent.ChatIDs) == 0 {
 		return status_error.ManagedWorkspaceError
 	}
 	previousChatID := ""
@@ -363,7 +429,7 @@ func (c *DeletionCoordinator) validateIntent(intent deletionIntent) error {
 	}
 	seenTargets := make(map[string]struct{}, len(intent.Targets))
 	for _, target := range intent.Targets {
-		expected, err := c.aggregatePath(target.Kind, target.AggregateID)
+		expected, err := c.aggregatePath(target.Kind, target.AggregateID, target.WakerID, target.WorkspaceDirectory)
 		if err != nil || filepath.Clean(expected) != filepath.Clean(target.OriginalPath) {
 			return status_error.ManagedWorkspaceError
 		}
@@ -439,4 +505,8 @@ func syncDirectory(path string) error {
 		return syncErr
 	}
 	return closeErr
+}
+
+func wakerDeletionTargets(targets []DeletionTarget) bool {
+	return len(targets) == 1 && targets[0].Kind == AggregateKindWaker && safeSegment(targets[0].AggregateID)
 }

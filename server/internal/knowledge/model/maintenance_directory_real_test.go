@@ -73,19 +73,16 @@ func TestRealWikiMaintenanceDirectoryPagination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sdk.Close(context.Background())
-	detection := sdk.Detect(ctx, agentapi.DetectRequest{RuntimeID: agentapi.RuntimeIDWorkBuddy, BaseEnvironment: os.Environ()})
-	if detection.State != agentapi.DetectionStateReady {
-		t.Fatal(detection.Diagnostics)
+	executable, err := sdk.ResolveExecutable(agentapi.DetectRequest{RuntimeID: constants.RuntimeIDClaude, BaseEnvironment: os.Environ()})
+	if err != nil {
+		t.Fatal(err)
 	}
 	registry := capability.New(nil)
 	defer registry.Close()
 	endpoint := httptest.NewServer(registry)
 	defer endpoint.Close()
-	host := maintenanceTransportHost(agentapi.RuntimeIDWorkBuddy, detection, sdk)
-	defer host.Close(context.Background())
-	runner := NewMaintenanceRunner(MaintenanceConfig{Runtime: host, Registry: registry, Binary: os.Getenv(constants.AgentCLIBinaryEnvironment), Endpoint: endpoint.URL + constants.AgentCLIPath, RuntimeID: agentapi.RuntimeIDWorkBuddy, Model: "deepseek-v4.1-flash", Reasoning: "low"})
-	report, err := runner.Run(ctx, MaintenanceRequest{JobID: "directory-transport", Bindings: bindings, Validate: func(context.Context) error { return nil }, Instructions: "This is a read-only synthetic transport check. Use only advertised knowledge commands. Do not inspect files outside the selected skill or attempt edits.", Message: "Read the selected ally skill. Use capabilities and describe for exact inputs. List ALL pages of library " + libraryID + " using knowledge pages list --limit 10 and the returned nextOffset until hasMore is false. Then read ONE listed page with knowledge pages get, and report its first line marker and the total number of listed pages. Do not read all bodies or use Python, shell pipelines, files or external services."})
+	runner := NewMaintenanceRunner(realMaintenanceConfig(t, registry, endpoint.URL, os.Getenv(constants.AgentCLIBinaryEnvironment), executable, os.Getenv("ALLY_WIKI_MODEL"), os.Getenv("ALLY_WIKI_REASONING")))
+	report, err := runner.Run(ctx, MaintenanceRequest{JobID: "directory-transport", Bindings: bindings, Validate: func(context.Context) error { return nil }, Instructions: "This is a read-only synthetic transport check. Use only advertised read-only knowledge MCP tools.", Message: "Use the schemas of the provided MCP tools. List ALL pages of library " + libraryID + " using knowledge_pages_list with limit 10 and the returned nextOffset until hasMore is false. Then read ONE listed page with knowledge_pages_get, and report its first line marker and the total number of listed pages. Do not read all bodies or use Python, shell pipelines, files or external services."})
 	if err != nil || listed.Load() < 21 || bodies.Load() < 1 || !strings.Contains(report, "DIRECTORY_BODY_OK") {
 		t.Fatalf("directory transport failed: listed=%d bodies=%d err=%v report=%q", listed.Load(), bodies.Load(), err, report)
 	}

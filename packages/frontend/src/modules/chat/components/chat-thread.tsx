@@ -4,7 +4,7 @@ import { ChatMessagePluginReferences } from "./chat-plugin-reference";
 import { useChatHistoryScroll } from "./use-chat-history-scroll";
 import type { ChatResultSource } from "@/shared/api/notification-presentation";
 import { ChatWorkResultReader } from "@/shared/api/work-result-reading";
-import { ChatMessageContribution } from "./chat-contributions";
+import { useChatMessageContribution } from "./chat-contributions";
 import { ChatForkContext, MessageForkAction } from "./chat-fork";
 import { Link } from "react-router-dom";
 import { chatHref } from "@/shared/lib/chat-navigation";
@@ -17,7 +17,7 @@ import {
 import {
   ChatErrorActions,
   ChatErrorCard,
-  ChatErrorNotices,
+  useChatErrorNotices,
   MessageFailure,
   useChatHistoryError,
 } from "./chat-error-card";
@@ -75,12 +75,7 @@ import { motion, useReducedMotion } from "motion/react";
 import type { ResolvedFileReference } from "@/shared/workspace/file-reference";
 import { cn } from "@/shared/lib/cn";
 import { readLayoutMotionTokens } from "@/shared/lib/ui-motion-tokens";
-import { Avatar, StaticAvatar } from "@/shared/ui/avatar";
-import { companionAvatar } from "@/shared/companion/appearance";
-import {
-  CompanionInteraction as ComposerCompanion,
-  CompanionInteractionProvider,
-} from "@/shared/ui/companion-interaction";
+import { Avatar } from "@/shared/ui/avatar";
 import { Collapsible, CollapsibleContent } from "@/shared/ui/collapsible";
 import { Button } from "@/shared/ui/button";
 import {
@@ -91,7 +86,6 @@ import {
   ComposerSurface,
   ComposerInputBody,
 } from "@/shared/ui/composer";
-import { Spinner } from "@/shared/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { selectFiles } from "@/shared/platform";
 import {
@@ -128,6 +122,7 @@ import {
 import {
   ChatComposerInput,
   type ChatMemberMentionOption,
+  type ChatComposerDraftReference,
   type ChatComposerContextReference,
 } from "./chat-composer-input";
 import { chatContentColumnClassName } from "./chat-layout";
@@ -139,6 +134,7 @@ import { ChatContextUsage } from "./chat-context-usage";
 import {
   ChatMessageAttachments,
   ChatMessageSkillReferences,
+  chatMessageReferenceChipClass,
   type ChatFileOpenRequest,
   type ChatSkillOption,
 } from "./chat-reference-menus";
@@ -223,13 +219,13 @@ type ChatThreadProps = {
   onMemberMentionChange?: (wakerId?: string) => void;
   codeReferenceRequest?: ChatCodeReference;
   composerDraft?: string;
+  composerDraftReference?: ChatComposerDraftReference;
   showComposer?: boolean;
   /** 完整输入区可独立用于业务指令，不呈现消息列表或产生阅读事实。 */
   presentation?: "thread" | "composer";
   composerAutoFocus?: boolean;
   composerDisabled?: boolean;
   composerClearRevision?: number;
-  companionScopeRevision?: number;
   composerRestoreRevision?: number;
   terminalEnabled?: boolean;
   onOpenTerminal?: () => void;
@@ -246,7 +242,6 @@ type ChatThreadProps = {
   contextMetrics?: ChatRunMetrics;
   sendFailure: ChatSendFailure;
   errorScopes?: readonly string[];
-  onRetryExecution?: (executionId: string) => Promise<void>;
   onRecoverSession?: () => void;
   hasEarlierMessages: boolean;
   isLoadingEarlier: boolean;
@@ -857,6 +852,8 @@ function ChatMessageParts({
   showUsageMetrics: boolean;
 }) {
   const terminal = isTerminalMessage(view.message);
+  // 总用时属于整次执行；分散在正文之间的过程段不能各自重复认领。
+  const metricsGroup = view.segments.find((segment) => "kind" in segment);
   const finalSegment = view.segments.at(-1);
   const finalNode =
     finalSegment && "kind" in finalSegment
@@ -876,7 +873,7 @@ function ChatMessageParts({
             currentKey={currentKey}
             completed={view.message.status === "completed"}
             terminal={terminal}
-            metrics={metrics}
+            metrics={segment === metricsGroup ? metrics : undefined}
             showUsageMetrics={showUsageMetrics}
           />
         ) : (
@@ -938,16 +935,6 @@ function formatRunDuration(durationMs: number) {
   return `${minutes}m ${durationNumberFormat.format(seconds % 60)}s`;
 }
 
-export function AgentRunningIndicator() {
-  const { t } = useTranslation("chat");
-  return (
-    <div className="text-muted-foreground type-body min-h-control-sm flex items-center gap-2 font-normal">
-      <Spinner className="text-primary/65" />
-      <span>{t("agentRunning")}</span>
-    </div>
-  );
-}
-
 function RunMetricsTooltip({
   metrics,
   children,
@@ -957,6 +944,17 @@ function RunMetricsTooltip({
 }) {
   const { t } = useTranslation("chat");
   const durationMs = metrics.durationMs ?? 0;
+  const usage = metrics.tokenUsage;
+  const tokens = usage
+    ? usage.knownTokens
+    : {
+        reportedInput: undefined,
+        input: metrics.inputTokens || undefined,
+        output: metrics.outputTokens || undefined,
+        reasoning: metrics.reasoningOutputTokens || undefined,
+        cacheWrite: metrics.cacheCreationTokens || undefined,
+        cacheRead: metrics.cacheReadTokens || undefined,
+      };
   const rows = [
     metrics.contextUsedTokens && metrics.contextWindowTokens
       ? [
@@ -965,34 +963,38 @@ function RunMetricsTooltip({
         ]
       : undefined,
     [t("runMetrics.duration"), formatRunDuration(durationMs)],
-    metrics.inputTokens
-      ? [
-          t("runMetrics.inputTokens"),
-          tokenNumberFormat.format(metrics.inputTokens),
-        ]
-      : undefined,
-    metrics.outputTokens
-      ? [
-          t("runMetrics.outputTokens"),
-          tokenNumberFormat.format(metrics.outputTokens),
-        ]
-      : undefined,
-    metrics.reasoningOutputTokens
+    tokens?.input != null
+      ? [t("runMetrics.inputTokens"), tokenNumberFormat.format(tokens.input)]
+      : tokens?.reportedInput != null
+        ? [
+            t("runMetrics.reportedInputTokens"),
+            tokenNumberFormat.format(tokens.reportedInput),
+          ]
+        : undefined,
+    tokens?.output != null
+      ? [t("runMetrics.outputTokens"), tokenNumberFormat.format(tokens.output)]
+      : metrics.latestRequestOutputTokens != null
+        ? [
+            t("runMetrics.latestRequestOutputTokens"),
+            tokenNumberFormat.format(metrics.latestRequestOutputTokens),
+          ]
+        : undefined,
+    tokens?.reasoning != null
       ? [
           t("runMetrics.reasoningOutputTokens"),
-          tokenNumberFormat.format(metrics.reasoningOutputTokens),
+          tokenNumberFormat.format(tokens.reasoning),
         ]
       : undefined,
-    metrics.cacheCreationTokens
+    tokens?.cacheWrite != null
       ? [
           t("runMetrics.cacheCreationTokens"),
-          tokenNumberFormat.format(metrics.cacheCreationTokens),
+          tokenNumberFormat.format(tokens.cacheWrite),
         ]
       : undefined,
-    metrics.cacheReadTokens
+    tokens?.cacheRead != null
       ? [
           t("runMetrics.cacheReadTokens"),
-          tokenNumberFormat.format(metrics.cacheReadTokens),
+          tokenNumberFormat.format(tokens.cacheRead),
         ]
       : undefined,
   ].filter((row): row is string[] => Boolean(row));
@@ -1037,10 +1039,7 @@ export function MessageRunStatus({
   showUsageDetails?: boolean;
 }) {
   const runMetrics = message.runMetrics;
-  if (!isTerminalMessage(message))
-    return message.displayParts?.at(-1)?.type === "tool" ? null : (
-      <AgentRunningIndicator />
-    );
+  if (!isTerminalMessage(message)) return null;
   const hasCompletedProcess =
     message.status === "completed" &&
     message.displayParts?.some(
@@ -1091,10 +1090,10 @@ function UserMessage({
     <div
       data-message-id={message.id}
       data-role="user"
-      className="group mt-6 px-6"
+      className="group/user-message mt-1 px-6"
     >
-      <div className="ml-auto grid max-w-[78%] min-w-0 justify-items-end gap-2">
-        <div className="bg-surface-tertiary text-foreground type-chat max-w-full min-w-0 overflow-hidden rounded-xl px-4 py-3">
+      <div className="ml-auto grid w-fit max-w-[78%] min-w-0 justify-items-end gap-1">
+        <div className="bg-user-message-background text-user-message-content type-chat max-w-full min-w-0 overflow-hidden rounded-xl px-4 py-1.5">
           <div className="flex flex-wrap items-start gap-x-1.5 gap-y-1">
             <ChatMessagePluginReferences
               plugins={message.plugins}
@@ -1125,7 +1124,7 @@ function UserMessage({
                 <button
                   key={`${path}:${reference.startLine}:${reference.endLine}:${reference.content}`}
                   type="button"
-                  className="bg-border/60 hover:bg-border/80 type-body inline-flex max-w-full items-center rounded-md px-2 py-0.5 font-medium"
+                  className={`${chatMessageReferenceChipClass} focus-visible:ring-ring outline-none hover:bg-current/20 focus-visible:ring-2`}
                   onClick={() => onOpenCodeReference?.(reference)}
                 >
                   <span className="max-w-64 truncate">
@@ -1142,7 +1141,9 @@ function UserMessage({
             </div>
           </div>
         </div>
-        <MessageCopyAction message={message} />
+        <div className="duration-quick pointer-events-none opacity-0 transition-opacity group-focus-within/user-message:pointer-events-auto group-focus-within/user-message:opacity-100 group-hover/user-message:pointer-events-auto group-hover/user-message:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
+          <MessageCopyAction message={message} />
+        </div>
       </div>
     </div>
   );
@@ -1150,11 +1151,13 @@ function UserMessage({
 
 function ParticipantMessage({
   message,
+  latest,
   avatar,
   messageAuthors,
   name,
 }: {
   message: AllyChatMessage;
+  latest: boolean;
   avatar?: string;
   messageAuthors?: Readonly<Record<string, ChatMessageAuthor>>;
   name: string;
@@ -1170,9 +1173,13 @@ function ParticipantMessage({
     <div
       data-message-id={message.id}
       data-role="user"
-      className="group mt-6 grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6"
+      className="group mt-4 grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6"
     >
-      <Avatar name={displayName} src={displayAvatar} size="sm" />
+      {latest ? (
+        <Avatar name={displayName} src={displayAvatar} size="sm" />
+      ) : (
+        <div aria-hidden="true" />
+      )}
       <div className="min-w-0">
         <div className="grid justify-items-start">
           <span className="type-body font-medium">{displayName}</span>
@@ -1324,6 +1331,18 @@ export function AssistantMessage({
   const { t } = useTranslation("chat");
   const message = view.message;
   const messageID = message.id ?? "";
+  const contribution = useChatMessageContribution(messageID);
+  const hasFileChanges =
+    showFileChanges &&
+    isTerminalMessage(message) &&
+    message.fileChangeRecord?.state !== "pending" &&
+    (message.fileChangeRecord?.totalFiles ?? 0) > 0;
+  const hasContent =
+    view.segments.length > 0 ||
+    Boolean(contribution) ||
+    hasFileChanges ||
+    (message.status === "canceled" && !continuation?.continued) ||
+    (message.status === "failed" && !last);
   const isLatestAssistant = latest;
   const interaction = useContext(CompanionInteraction);
   const companionActivity = continuation?.activityMessage
@@ -1344,11 +1363,9 @@ export function AssistantMessage({
     <div
       data-message-id={message.id}
       data-role="assistant"
-      className="group mt-6 grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6"
+      className="group mt-1 grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6"
     >
-      {continuation?.continuation ? (
-        <div aria-hidden="true" />
-      ) : isLatestAssistant ? (
+      {isLatestAssistant ? (
         <Avatar
           name={displayName}
           src={displayAvatar}
@@ -1356,57 +1373,68 @@ export function AssistantMessage({
           activity={companionActivity}
         />
       ) : (
-        <StaticAvatar name={displayName} src={displayAvatar} size="sm" />
+        <div aria-hidden="true" />
       )}
-      <div className="min-w-0">
-        {!continuation?.continuation ? (
-          <div className="grid justify-items-start">
-            <span className="type-body font-medium">{displayName}</span>
-            <MessageTimestamp timestamp={message.createdAt} />
+      <div className="group/reply w-fit max-w-full min-w-0">
+        {hasContent && (
+          <div
+            data-chat-message-card
+            className="bg-surface-panel w-fit max-w-full min-w-0 rounded-xl px-4 py-1.5 dark:bg-transparent dark:p-0"
+          >
+            <div className="min-w-0">
+              <ChatMessageParts
+                view={view}
+                metrics={continuation?.footerMessage.runMetrics}
+                showUsageMetrics={showUsageMetrics}
+              />
+              {showFileChanges && message.fileChangeRecord ? (
+                <ExecutionFileChangesCard
+                  message={message}
+                  chatId={author?.sourceChatId}
+                  visible={isTerminalMessage(message)}
+                  onOpenFile={openFileChange}
+                />
+              ) : null}
+              {contribution}
+            </div>
+            {message.status === "canceled" && !continuation?.continued ? (
+              <p className="text-muted-foreground type-body mt-2">
+                {t("canceled")}
+              </p>
+            ) : null}
+            <MessageFailure message={message} last={last} />
           </div>
-        ) : null}
-        <div className="mt-2 min-w-0">
-          <ChatMessageParts
-            view={view}
-            metrics={continuation?.footerMessage.runMetrics}
-            showUsageMetrics={showUsageMetrics}
-          />
-          {showFileChanges && message.fileChangeRecord ? (
-            <ExecutionFileChangesCard
-              message={message}
-              chatId={author?.sourceChatId}
-              visible={isTerminalMessage(message)}
-              onOpenFile={openFileChange}
-            />
-          ) : null}
-          <ChatMessageContribution messageId={messageID} />
-        </div>
-        {message.status === "canceled" && !continuation?.continued ? (
-          <p className="text-muted-foreground type-body mt-2">
-            {t("canceled")}
-          </p>
-        ) : null}
-        <MessageFailure message={message} last={last} />
+        )}
 
-        {!continuation?.continued ? (
-          <div className="mt-2 flex items-center gap-1">
-            <MessageRunStatus
-              message={
-                continuation
-                  ? {
-                      ...message,
-                      runMetrics: continuation.footerMessage.runMetrics,
-                    }
-                  : message
-              }
-              showUsageDetails={showUsageMetrics}
-            />
-            <MessageCopyAction
-              message={continuation?.footerMessage ?? message}
-              hideWhenRunning
-            />
-            <MessageForkAction message={message} />
-          </div>
+        {(hasContent || isTerminalMessage(message)) &&
+        !continuation?.continued ? (
+          <footer className="mt-1 flex items-center gap-1">
+            <div className="duration-quick pointer-events-none flex items-center gap-1 opacity-0 transition-opacity group-focus-within/reply:pointer-events-auto group-focus-within/reply:opacity-100 group-hover/reply:pointer-events-auto group-hover/reply:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
+              {isTerminalMessage(message) && (
+                <MessageRunStatus
+                  message={
+                    continuation
+                      ? {
+                          ...message,
+                          runMetrics: continuation.footerMessage.runMetrics,
+                        }
+                      : message
+                  }
+                  showUsageDetails={showUsageMetrics}
+                />
+              )}
+              <MessageCopyAction
+                message={continuation?.footerMessage ?? message}
+                hideWhenRunning
+              />
+              <MessageForkAction message={message} />
+            </div>
+            <span className="duration-quick ml-auto shrink-0 opacity-0 transition-opacity group-focus-within/reply:opacity-100 group-hover/reply:opacity-100 motion-reduce:transition-none [@media(hover:none)]:opacity-100">
+              <MessageTimestamp
+                timestamp={(continuation?.footerMessage ?? message).createdAt}
+              />
+            </span>
+          </footer>
         ) : null}
       </div>
     </div>
@@ -1453,6 +1481,7 @@ const ChatMessage = memo(function ChatMessage({
     return messageAuthors?.[message.id ?? ""]?.displayAsParticipant ? (
       <ParticipantMessage
         message={message}
+        latest={latest}
         name={name}
         avatar={avatar}
         messageAuthors={messageAuthors}
@@ -1504,7 +1533,7 @@ const ChatMessageList = memo(function ChatMessageList({
   const { t } = useTranslation("chat");
   const [unavailableSourceId, setUnavailableSourceId] = useState<string>();
   const continuations = chatContinuations(views.map((view) => view.message));
-  const latest = views.findLast((view) => view.message.role === "assistant");
+  const latest = views.at(-1);
   return (
     <>
       {views.map((view, index) => (
@@ -1514,11 +1543,7 @@ const ChatMessageList = memo(function ChatMessageList({
             wakerId={wakerId}
             view={view}
             continuation={continuations.get(view.message.id ?? "")}
-            latest={
-              view.key === latest?.key ||
-              continuations.get(view.message.id ?? "")?.activityMessage?.id ===
-                latest?.message.id
-            }
+            latest={view.key === latest?.key}
             last={index === views.length - 1}
           />
           {view.message.id === forkBoundaryMessageId && forkSourceChatId ? (
@@ -1616,13 +1641,14 @@ const Composer = memo(function Composer({
   contextMetrics,
   showUsageMetrics,
   sendFailure,
+  errorScopes,
+  failure,
   codeReferenceRequest,
   onCodeReferencesChange,
   draft,
+  draftReference,
   clearRevision,
   restoreRevision,
-  terminalEnabled,
-  onOpenTerminal,
   onOpenFile,
   requestedInteractionId,
   pendingApprovals,
@@ -1665,13 +1691,14 @@ const Composer = memo(function Composer({
   contextMetrics?: ChatRunMetrics;
   showUsageMetrics: boolean;
   sendFailure: ChatSendFailure;
+  errorScopes: readonly string[];
+  failure?: AllyChatMessage;
   codeReferenceRequest?: ChatCodeReference;
   onCodeReferencesChange?: (references: ChatCodeReference[]) => void;
   draft?: string;
+  draftReference?: ChatComposerDraftReference;
   clearRevision?: number;
   restoreRevision?: number;
-  terminalEnabled: boolean;
-  onOpenTerminal?: () => void;
   onOpenFile?: (file: ChatFileOpenRequest) => void;
   requestedInteractionId?: string;
   pendingApprovals: PendingApproval[];
@@ -1751,18 +1778,23 @@ const Composer = memo(function Composer({
   const currentElicitation = requestedApproval
     ? undefined
     : (requestedElicitation ?? pendingElicitations[0]);
-  const showComposerSettings = pendingElicitations.length === 0;
-  const composerContext = renderContextStrip?.();
+  const errorNotices = useChatErrorNotices({
+    scopes: errorScopes,
+    fallback: sendFailure,
+    failure,
+    appearance: "composer",
+  });
+  const composerContext = errorNotices ?? renderContextStrip?.();
 
   return (
     <div className="w-full">
       <ComposerPrimitive.Root className="w-full">
-        <ComposerCompanion />
         <ComposerSurface
           visualEffect={effects}
           bodyClassName="p-0"
           className="overflow-hidden"
           context={composerContext}
+          contextTone={errorNotices ? "danger" : "neutral"}
           expanded={!composerIsEmpty}
           contextLayers={
             queuedMessageCount > 0 || activityStatus ? (
@@ -1901,6 +1933,7 @@ const Composer = memo(function Composer({
                 codeReferenceRequest={codeReferenceRequest}
                 onCodeReferencesChange={onCodeReferencesChange}
                 draft={draft}
+                draftReference={draftReference}
                 clearRevision={clearRevision}
                 restoreRevision={restoreRevision}
                 className="placeholder:text-muted-foreground type-label resize-none bg-transparent outline-none disabled:opacity-55"
@@ -1918,7 +1951,8 @@ const Composer = memo(function Composer({
                   visible={showUsageMetrics}
                 />
               </div>
-              <div className="flex shrink-0 items-center gap-1">
+              <div className="flex min-w-0 items-center justify-end gap-1">
+                {settings}
                 {primaryAction === "stop" && effectiveIsRunning ? (
                   <ComposerPrimitive.Cancel asChild>
                     <ComposerStopButton
@@ -1971,26 +2005,6 @@ const Composer = memo(function Composer({
           </div>
         </ComposerSurface>
       </ComposerPrimitive.Root>
-      <div
-        data-chat-composer-context-row
-        className="min-h-control-sm mt-1 flex items-center justify-between px-2"
-      >
-        <div className="flex min-w-0 items-center gap-1 overflow-hidden">
-          {showComposerSettings ? settings : null}
-        </div>
-        {terminalEnabled ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t("openTerminal")}
-            title={t("openTerminal")}
-            onClick={onOpenTerminal}
-          >
-            <Terminal />
-          </Button>
-        ) : null}
-      </div>
     </div>
   );
 });
@@ -2049,15 +2063,13 @@ export function ChatThread({
   onMemberMentionChange,
   codeReferenceRequest,
   composerDraft,
+  composerDraftReference,
   showComposer = true,
   presentation = "thread",
   composerAutoFocus,
   composerDisabled,
   composerClearRevision,
-  companionScopeRevision,
   composerRestoreRevision,
-  terminalEnabled = false,
-  onOpenTerminal,
   onOpenLink,
   linkWorkspaceRoot,
   fileScopeChatId,
@@ -2075,7 +2087,6 @@ export function ChatThread({
   onLoadEarlier,
   sendFailure,
   errorScopes = emptyList,
-  onRetryExecution,
   onRecoverSession,
   warning,
   requestedInteractionId,
@@ -2151,21 +2162,11 @@ export function ChatThread({
     enabled: active && presentation === "thread" && !showDirectEmptyState,
   });
   const latestMessage = messages.at(-1);
-  const latestAuthor = latestMessage
-    ? messageAuthors?.[latestMessage.id ?? ""]
-    : undefined;
   const companionInteraction = isWorkStopping
     ? "stopping"
     : pendingApprovals.length || pendingElicitations.length
       ? "waiting"
       : undefined;
-  const latestView = views.at(-1);
-  const companionActivity =
-    latestView?.message.role === "assistant"
-      ? viewCompanionActivity(latestView, true, companionInteraction)
-      : isWorkRunning
-        ? "starting"
-        : "idle";
 
   const referenceContext = useMemo(
     () => ({
@@ -2191,7 +2192,6 @@ export function ChatThread({
       <ChatForkContext value={fork}>
         <ChatErrorActions
           value={{
-            retry: onRetryExecution,
             recover: onRecoverSession,
             disabled: isRunning,
             begin: (operation) => {
@@ -2206,231 +2206,212 @@ export function ChatThread({
                 scope: errorScopes[0] ?? "global",
                 operation: `${operation}:${errorScopes[0] ?? "global"}`,
                 message,
+                messageSource: "public",
               }),
           }}
         >
-          <CompanionInteractionProvider
-            scope={`${wakerId ?? ""}:${companionScopeRevision ?? 0}`}
-            activeAvatar={companionAvatar(
-              latestAuthor?.avatar ?? wakerAvatar,
-              latestAuthor?.name ?? wakerName,
+          <div
+            className={cn(
+              "flex h-full min-h-0 flex-col",
+              centerEmptyState && "justify-center",
             )}
-            activity={companionActivity}
           >
-            <div
-              className={cn(
-                "flex h-full min-h-0 flex-col",
-                centerEmptyState && "justify-center",
-              )}
-            >
-              {presentation === "thread" &&
-              resultSource &&
-              !isHistoryLoading &&
-              messages.length > 0 &&
-              /^[a-f0-9]{32}$/.test(resultSource.chatId) ? (
-                <ChatWorkResultReader
-                  chatId={resultSource.chatId}
-                  owner={resultSource.owner}
-                  viewport={viewportRef}
-                  hasEarlierMessages={hasEarlierMessages}
-                  onLoadEarlier={loadEarlier}
-                />
-              ) : null}
-              {presentation === "thread" ? (
-                <div
-                  className={cn(
-                    "relative flex min-h-0",
-                    centerEmptyState ? "shrink-0" : "flex-1",
-                  )}
-                >
-                  {showDirectEmptyState ? (
-                    <div
-                      role={isHistoryLoading ? "status" : undefined}
-                      aria-busy={isHistoryLoading ? true : undefined}
-                      className="flex min-h-0 flex-1 flex-col overflow-y-auto"
-                    >
-                      <div className="min-h-0 flex-1">{emptyState}</div>
-                      <div className="px-6">
-                        <ChatErrorNotices
-                          scopes={errorScopes}
-                          fallback={sendFailure}
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div
-                        ref={viewportRef}
-                        data-chat-scroll-viewport
-                        onScroll={historyScroll.onScroll}
-                        className="scrollbar-hidden relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain [overflow-anchor:none]"
-                      >
-                        {messages.length === 0 ? emptyState : null}
-                        <ChatMessageColumn>
-                          {historyError && errorScopes.length === 0 ? (
-                            <ChatErrorCard
-                              id={`history:${errorScopes.join(":")}`}
-                              message={historyError.message}
-                              onRetry={historyError.onRetry}
-                            />
-                          ) : null}
-                          {hasEarlierMessages && (
-                            <div className="flex flex-col items-center gap-1 px-6 pb-2">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                disabled={isLoadingEarlier}
-                                onClick={() => void loadEarlier()}
-                              >
-                                {isLoadingEarlier && (
-                                  <LoaderCircle className="animate-spin" />
-                                )}
-                                {t("loadEarlierMessages")}
-                              </Button>
-                              {loadEarlierError && errorScopes.length === 0 ? (
-                                <ChatErrorCard
-                                  id={`earlier:${errorScopes.join(":")}`}
-                                  message={loadEarlierError}
-                                  onRetry={loadEarlier}
-                                  onDismiss={historyScroll.clearError}
-                                />
-                              ) : null}
-                            </div>
-                          )}
-                          <MarkdownVisibility value={active}>
-                            <ProcessExpansion value={readingState.groups}>
-                              <CompanionInteraction
-                                value={companionInteraction}
-                              >
-                                <ChatMessageList
-                                  views={views}
-                                  forkBoundaryMessageId={forkBoundaryMessageId}
-                                  forkSourceChatId={forkSourceChatId}
-                                  onOpenForkSource={onOpenForkSource}
-                                  name={wakerName}
-                                  avatar={wakerAvatar}
-                                  availableSkillIds={availableSkillIds}
-                                  availableConnectorIds={availableConnectorIds}
-                                  availablePluginIds={availablePluginIds}
-                                  wakerId={wakerId}
-                                  messageAuthors={messageAuthors}
-                                  showUsageMetrics={showUsageMetrics}
-                                  showFileChanges={showFileChanges}
-                                  onOpenCodeReference={onOpenCodeReference}
-                                  onOpenFile={onOpenFile}
-                                  onOpenFileChange={onOpenFileChange}
-                                />
-                              </CompanionInteraction>
-                            </ProcessExpansion>
-                          </MarkdownVisibility>
-                          <div className="px-6">
-                            <ChatErrorNotices
-                              scopes={errorScopes}
-                              fallback={sendFailure}
-                            />
-                          </div>
-                        </ChatMessageColumn>
-                      </div>
-                      <ChatTurnNavigator
-                        viewportRef={viewportRef}
-                        messages={messages}
-                        active={active}
-                      />
-                    </>
-                  )}
-                </div>
-              ) : (
-                <ChatErrorNotices scopes={errorScopes} fallback={sendFailure} />
-              )}
-              <motion.div
-                data-chat-composer
-                layout={animateComposerSize ? true : "position"}
-                layoutDependency={centerEmptyState}
-                transition={{
-                  layout: reducedMotion
-                    ? { duration: 0 }
-                    : composerLayoutTransition,
-                }}
-                hidden={!showComposer}
-                className="shrink-0 bg-transparent"
+            {presentation === "thread" &&
+            resultSource &&
+            !isHistoryLoading &&
+            messages.length > 0 &&
+            /^[a-f0-9]{32}$/.test(resultSource.chatId) ? (
+              <ChatWorkResultReader
+                chatId={resultSource.chatId}
+                owner={resultSource.owner}
+                viewport={viewportRef}
+                hasEarlierMessages={hasEarlierMessages}
+                onLoadEarlier={loadEarlier}
+              />
+            ) : null}
+            {presentation === "thread" ? (
+              <div
+                className={cn(
+                  "relative flex min-h-0",
+                  centerEmptyState ? "shrink-0" : "flex-1",
+                )}
               >
-                <div
-                  className={cn(
-                    "mx-auto w-full",
-                    presentation === "thread" && "px-6 pb-4",
-                    chatContentColumnClassName,
-                  )}
-                >
-                  {warning ? (
+                {showDirectEmptyState ? (
+                  <div
+                    role={isHistoryLoading ? "status" : undefined}
+                    aria-busy={isHistoryLoading ? true : undefined}
+                    className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+                  >
+                    <div className="min-h-0 flex-1">{emptyState}</div>
+                  </div>
+                ) : (
+                  <>
                     <div
-                      role="status"
-                      data-chat-permission-warning
-                      className="border-border bg-muted text-muted-foreground type-ui mb-2 flex w-full items-start gap-2 rounded-md border px-3 py-2"
+                      ref={viewportRef}
+                      data-chat-scroll-viewport
+                      onScroll={historyScroll.onScroll}
+                      className="scrollbar-hidden relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain [overflow-anchor:none]"
                     >
-                      <AlertTriangle
-                        className="text-destructive size-icon-md mt-0.5 shrink-0"
-                        strokeWidth={1.5}
-                      />
-                      <span className="min-w-0">{warning}</span>
+                      {messages.length === 0 ? emptyState : null}
+                      <ChatMessageColumn>
+                        {historyError && errorScopes.length === 0 ? (
+                          <ChatErrorCard
+                            id={`history:${errorScopes.join(":")}`}
+                            message={historyError.message}
+                            onRetry={historyError.onRetry}
+                          />
+                        ) : null}
+                        {hasEarlierMessages && (
+                          <div className="flex flex-col items-center gap-1 px-6 pb-2">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              disabled={isLoadingEarlier}
+                              onClick={() => void loadEarlier()}
+                            >
+                              {isLoadingEarlier && (
+                                <LoaderCircle className="animate-spin" />
+                              )}
+                              {t("loadEarlierMessages")}
+                            </Button>
+                            {loadEarlierError && errorScopes.length === 0 ? (
+                              <ChatErrorCard
+                                id={`earlier:${errorScopes.join(":")}`}
+                                message={loadEarlierError}
+                                onRetry={loadEarlier}
+                                onDismiss={historyScroll.clearError}
+                              />
+                            ) : null}
+                          </div>
+                        )}
+                        <MarkdownVisibility value={active}>
+                          <ProcessExpansion value={readingState.groups}>
+                            <CompanionInteraction value={companionInteraction}>
+                              <ChatMessageList
+                                views={views}
+                                forkBoundaryMessageId={forkBoundaryMessageId}
+                                forkSourceChatId={forkSourceChatId}
+                                onOpenForkSource={onOpenForkSource}
+                                name={wakerName}
+                                avatar={wakerAvatar}
+                                availableSkillIds={availableSkillIds}
+                                availableConnectorIds={availableConnectorIds}
+                                availablePluginIds={availablePluginIds}
+                                wakerId={wakerId}
+                                messageAuthors={messageAuthors}
+                                showUsageMetrics={showUsageMetrics}
+                                showFileChanges={showFileChanges}
+                                onOpenCodeReference={onOpenCodeReference}
+                                onOpenFile={onOpenFile}
+                                onOpenFileChange={onOpenFileChange}
+                              />
+                            </CompanionInteraction>
+                          </ProcessExpansion>
+                        </MarkdownVisibility>
+                      </ChatMessageColumn>
                     </div>
-                  ) : null}
-                  <AssistantRuntimeProvider runtime={runtime}>
-                    <Composer
-                      autoFocus={composerAutoFocus}
-                      disabled={composerDisabled}
-                      activityStatus={activityStatus}
-                      settings={composerSettings}
-                      actions={composerActions}
-                      effects={composerEffects}
-                      contextReferences={composerReferences}
-                      onContextReferencesChange={onComposerReferencesChange}
-                      renderContextStrip={renderComposerContextStrip}
-                      skills={composerSkills}
-                      skillsError={composerSkillsError}
-                      plugins={composerPlugins}
-                      pluginsError={composerPluginsError}
-                      selectedPluginIds={selectedPluginIds}
-                      onPluginSelectionChange={onPluginSelectionChange}
-                      connectors={composerConnectors}
-                      connectorsError={composerConnectorsError}
-                      fileRoots={composerFileRoots}
-                      fileScopePath={composerFileScopePath}
-                      fileScopeChatId={fileScopeChatId}
-                      members={composerMembers}
-                      selectedSkillIds={selectedSkillIds}
-                      selectedConnectorIds={selectedConnectorIds}
-                      onSkillSelectionChange={onSkillSelectionChange}
-                      onConnectorSelectionChange={onConnectorSelectionChange}
-                      onMemberMentionChange={onMemberMentionChange}
-                      contextMetrics={contextMetrics}
-                      showUsageMetrics={showUsageMetrics}
-                      sendFailure={sendFailure}
-                      codeReferenceRequest={codeReferenceRequest}
-                      onCodeReferencesChange={onCodeReferencesChange}
-                      draft={composerDraft}
-                      clearRevision={composerClearRevision}
-                      restoreRevision={composerRestoreRevision}
-                      isRunning={isRunning}
-                      terminalEnabled={terminalEnabled}
-                      onOpenTerminal={onOpenTerminal}
-                      onOpenFile={onOpenFile}
-                      requestedInteractionId={requestedInteractionId}
-                      pendingApprovals={pendingApprovals}
-                      approvalSubmissionState={approvalSubmissionState}
-                      onResolveApproval={onResolveApproval}
-                      pendingElicitations={pendingElicitations}
-                      elicitationSubmissionState={elicitationSubmissionState}
-                      onResolveElicitation={onResolveElicitation}
-                      isWorkRunning={isWorkRunning}
-                      isWorkStopping={isWorkStopping}
-                      onStopWork={onStopWork}
+                    <ChatTurnNavigator
+                      viewportRef={viewportRef}
+                      messages={messages}
+                      active={active}
                     />
-                  </AssistantRuntimeProvider>
-                </div>
-              </motion.div>
-            </div>
-          </CompanionInteractionProvider>
+                  </>
+                )}
+              </div>
+            ) : null}
+            <motion.div
+              data-chat-composer
+              layout={animateComposerSize ? true : "position"}
+              layoutDependency={centerEmptyState}
+              transition={{
+                layout: reducedMotion
+                  ? { duration: 0 }
+                  : composerLayoutTransition,
+              }}
+              hidden={!showComposer}
+              className="shrink-0 bg-transparent"
+            >
+              <div
+                className={cn(
+                  "mx-auto w-full",
+                  presentation === "thread" && "px-6 pb-4",
+                  chatContentColumnClassName,
+                )}
+              >
+                {warning ? (
+                  <div
+                    role="status"
+                    data-chat-permission-warning
+                    className="border-border bg-muted text-muted-foreground type-ui mb-2 flex w-full items-start gap-2 rounded-md border px-3 py-2"
+                  >
+                    <AlertTriangle
+                      className="text-destructive size-icon-md mt-0.5 shrink-0"
+                      strokeWidth={1.5}
+                    />
+                    <span className="min-w-0">{warning}</span>
+                  </div>
+                ) : null}
+                <AssistantRuntimeProvider runtime={runtime}>
+                  <Composer
+                    autoFocus={composerAutoFocus}
+                    disabled={composerDisabled}
+                    activityStatus={activityStatus}
+                    settings={composerSettings}
+                    actions={composerActions}
+                    effects={composerEffects}
+                    contextReferences={composerReferences}
+                    onContextReferencesChange={onComposerReferencesChange}
+                    renderContextStrip={renderComposerContextStrip}
+                    skills={composerSkills}
+                    skillsError={composerSkillsError}
+                    plugins={composerPlugins}
+                    pluginsError={composerPluginsError}
+                    selectedPluginIds={selectedPluginIds}
+                    onPluginSelectionChange={onPluginSelectionChange}
+                    connectors={composerConnectors}
+                    connectorsError={composerConnectorsError}
+                    fileRoots={composerFileRoots}
+                    fileScopePath={composerFileScopePath}
+                    fileScopeChatId={fileScopeChatId}
+                    members={composerMembers}
+                    selectedSkillIds={selectedSkillIds}
+                    selectedConnectorIds={selectedConnectorIds}
+                    onSkillSelectionChange={onSkillSelectionChange}
+                    onConnectorSelectionChange={onConnectorSelectionChange}
+                    onMemberMentionChange={onMemberMentionChange}
+                    contextMetrics={contextMetrics}
+                    showUsageMetrics={showUsageMetrics}
+                    sendFailure={sendFailure}
+                    errorScopes={errorScopes}
+                    failure={
+                      latestMessage?.status === "failed"
+                        ? latestMessage
+                        : undefined
+                    }
+                    codeReferenceRequest={codeReferenceRequest}
+                    onCodeReferencesChange={onCodeReferencesChange}
+                    draft={composerDraft}
+                    draftReference={composerDraftReference}
+                    clearRevision={composerClearRevision}
+                    restoreRevision={composerRestoreRevision}
+                    isRunning={isRunning}
+                    onOpenFile={onOpenFile}
+                    requestedInteractionId={requestedInteractionId}
+                    pendingApprovals={pendingApprovals}
+                    approvalSubmissionState={approvalSubmissionState}
+                    onResolveApproval={onResolveApproval}
+                    pendingElicitations={pendingElicitations}
+                    elicitationSubmissionState={elicitationSubmissionState}
+                    onResolveElicitation={onResolveElicitation}
+                    isWorkRunning={isWorkRunning}
+                    isWorkStopping={isWorkStopping}
+                    onStopWork={onStopWork}
+                  />
+                </AssistantRuntimeProvider>
+              </div>
+            </motion.div>
+          </div>
         </ChatErrorActions>
       </ChatForkContext>
     </FileReferenceProvider>

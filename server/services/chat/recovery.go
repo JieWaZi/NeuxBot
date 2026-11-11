@@ -59,7 +59,7 @@ type RecoveryHealth struct {
 // recoveryCoordinator 隔离启动恢复职责，正常路径只读取 SQLite 游标后的 JSONL 尾部。
 type recoveryCoordinator struct {
 	// logStore 读取、修复并索引权威 Chat JSONL。
-	logStore *eventlog.Store
+	logStore chatJournalStorage
 	// queryIndexes 提供可从 JSONL 重建的 SQLite 当前投影。
 	queryIndexes *queryIndexStore
 	// healthMutex 保护最近一次恢复健康快照。
@@ -72,15 +72,13 @@ type recoveryCoordinator struct {
 type currentProjection struct {
 	// chat 是一 Chat 一行的当前查询状态。
 	chat models.Chat
-	// runtimeSessions 是每个 Runtime 最多一行的当前续接状态。
-	runtimeSessions map[string]models.RuntimeSession
 	// result 是事务外准备的原成果引用，不承载正文。
 	result *models.WorkResultReceipt
 }
 
 // newRecoveryCoordinator 创建仅在 Chat 模块启动阶段运行的恢复器。
 func newRecoveryCoordinator(
-	logStore *eventlog.Store,
+	logStore chatJournalStorage,
 	queryIndexes *queryIndexStore,
 ) *recoveryCoordinator {
 	return &recoveryCoordinator{logStore: logStore, queryIndexes: queryIndexes}
@@ -150,21 +148,11 @@ func (c *recoveryCoordinator) reconcileChat(
 	chatID string,
 ) (RecoveryDiagnostic, error) {
 	diagnostic := RecoveryDiagnostic{ChatID: chatID, State: constants.ChatRecoveryStateHealthy}
-	indexRecovery, err := c.logStore.RecoverIndex(chatID)
+	latest, err := c.logStore.ReadLatestSequence(chatID)
 	if err != nil {
 		return diagnostic, err
 	}
-	diagnostic.LogLatestSequence = indexRecovery.LatestSequence
-	diagnostic.TailBytesRemoved = indexRecovery.TailBytesRemoved
-	diagnostic.TailRepairedAt = indexRecovery.TailRepairedAt
-	if indexRecovery.Rebuilt {
-		diagnostic.Issues = appendIssue(diagnostic.Issues, constants.ChatRecoveryIssueFileIndexRebuilt)
-		diagnostic.State = constants.ChatRecoveryStateRepaired
-	}
-	if indexRecovery.TailBytesRemoved > 0 {
-		diagnostic.Issues = appendIssue(diagnostic.Issues, constants.ChatRecoveryIssueTailRepaired)
-		diagnostic.State = constants.ChatRecoveryStateRepaired
-	}
+	diagnostic.LogLatestSequence = latest
 
 	indexed, missing, err := c.queryIndexes.inspectChat(ctx, chatID)
 	if err != nil {
@@ -175,7 +163,7 @@ func (c *recoveryCoordinator) reconcileChat(
 		return c.rebuildProjection(ctx, chatID, diagnostic)
 	}
 	diagnostic.IndexedSequence = indexed.LatestSequence
-	if indexed.LatestSequence > indexRecovery.LatestSequence {
+	if indexed.LatestSequence > latest {
 		diagnostic.Issues = appendIssue(diagnostic.Issues, constants.ChatRecoveryIssueChatProjectionAhead)
 		return c.rebuildProjection(ctx, chatID, diagnostic)
 	}
@@ -186,14 +174,7 @@ func (c *recoveryCoordinator) reconcileChat(
 		return c.rebuildProjection(ctx, chatID, diagnostic)
 	}
 
-	sessions, err := c.queryIndexes.runtimeSessionController.ListByChat(ctx, chatID)
-	if err != nil {
-		return diagnostic, err
-	}
-	projection := currentProjection{
-		chat:            indexed,
-		runtimeSessions: runtimeSessionsByID(sessions),
-	}
+	projection := currentProjection{chat: indexed}
 	tail, err := c.logStore.ReadAfter(chatID, indexed.LatestSequence, 0)
 	if err != nil {
 		return diagnostic, err
@@ -272,8 +253,7 @@ func (c *recoveryCoordinator) rebuildProjection(
 		)
 	}
 	projection := currentProjection{
-		chat:            state.chat,
-		runtimeSessions: state.runtimeSessions,
+		chat: state.chat,
 	}
 	if err := c.queryIndexes.replaceCurrentProjection(ctx, projection); err != nil {
 		return diagnostic, err
@@ -334,6 +314,8 @@ func applyProjectionTail(projection *currentProjection, records []eventlog.Recor
 			projection.chat.LastRuntimeID = data.RuntimeID
 			projection.chat.LastModel = data.Model
 			projection.chat.LastReasoning = data.Reasoning
+			projection.chat.LastFast = data.Fast
+			projection.chat.LastContextWindow = data.ContextWindow
 			projection.chat.LastPermissionLevel = data.PermissionLevel
 		case constants.ChatEventTypeApprovalRequested:
 			var data eventlog.ApprovalRequestedData
@@ -400,37 +382,12 @@ func applyProjectionTail(projection *currentProjection, records []eventlog.Recor
 			projection.chat.WaitingApproval = false
 			projection.chat.PendingElicitations = []models.PendingElicitation{}
 			projection.chat.WaitingElicitation = false
-		case constants.ChatEventTypeNativeSessionUpdated,
-			constants.ChatEventTypeNativeSessionCleared:
-			var data eventlog.RuntimeSessionData
-			if err := json.Unmarshal(record.Data, &data); err != nil {
-				return err
-			}
-			if record.Type == constants.ChatEventTypeNativeSessionCleared {
-				delete(projection.runtimeSessions, data.RuntimeID)
-				break
-			}
-			projection.runtimeSessions[data.RuntimeID] = models.RuntimeSession{
-				ChatID:          record.ChatID,
-				RuntimeID:       data.RuntimeID,
-				SessionID:       data.SessionID,
-				LastExecutionID: data.LastExecutionID,
-				UpdatedAt:       record.RecordedAt,
-			}
+
 		}
 		projection.chat.LatestSequence = record.Sequence
 		projection.chat.UpdatedAt = record.RecordedAt
 	}
 	return nil
-}
-
-// runtimeSessionsByID 把数据库结果转换为按 Runtime 标识索引的当前状态。
-func runtimeSessionsByID(sessions []models.RuntimeSession) map[string]models.RuntimeSession {
-	result := make(map[string]models.RuntimeSession, len(sessions))
-	for _, session := range sessions {
-		result[session.RuntimeID] = session
-	}
-	return result
 }
 
 // inspectChat 区分当前投影缺失和数据库读取故障。
@@ -459,22 +416,11 @@ func (p *queryIndexStore) replaceCurrentProjection(
 		}
 	}
 	return p.transactionController.Transaction(ctx, func(transactionContext context.Context) error {
-		if err := p.runtimeSessionController.DeleteByChat(
-			transactionContext,
-			projection.chat.ID,
-		); err != nil {
-			return err
-		}
 		if err := p.chatController.Delete(transactionContext, projection.chat.ID); err != nil {
 			return err
 		}
 		if err := p.chatController.Create(transactionContext, projection.chat); err != nil {
 			return err
-		}
-		for _, session := range projection.runtimeSessions {
-			if err := p.runtimeSessionController.Upsert(transactionContext, session); err != nil {
-				return err
-			}
 		}
 		return p.publishResult(transactionContext, projection.result)
 	})

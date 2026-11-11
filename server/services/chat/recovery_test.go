@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"slices"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -19,10 +19,7 @@ import (
 
 func TestStartIsolatesCorruptChatLog(t *testing.T) {
 	t.Parallel()
-	logStore, err := eventlog.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewStore() error = %v", err)
-	}
+	logStore := newTestConversationJournal(t, t.TempDir())
 	chatID := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	logPath, err := logStore.LogPath(chatID)
 	if err != nil {
@@ -52,10 +49,7 @@ func TestStartIsolatesCorruptChatLog(t *testing.T) {
 func TestStartRebuildsMissingCurrentProjectionWithoutHistoricalRows(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	logStore, err := eventlog.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewStore() error = %v", err)
-	}
+	logStore := newTestConversationJournal(t, t.TempDir())
 	chatID := "71717171717171717171717171717171"
 	executionID := "72727272727272727272727272727272"
 	records, err := logStore.Create(chatID, []eventlog.AppendInput{
@@ -107,13 +101,10 @@ func TestStartRebuildsMissingCurrentProjectionWithoutHistoricalRows(t *testing.T
 	}
 }
 
-func TestStartReportsRebuiltDerivedFileIndex(t *testing.T) {
+func TestStartReopensWithoutDerivedConversationIndex(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	logStore, err := eventlog.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewStore() error = %v", err)
-	}
+	logStore := newTestConversationJournal(t, t.TempDir())
 	chatID := "81818181818181818181818181818181"
 	wakerID := "82828282828282828282828282828282"
 	workspaceDirectory := t.TempDir()
@@ -132,6 +123,7 @@ func TestStartReportsRebuiltDerivedFileIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IndexPath() error = %v", err)
 	}
+	logStore.Store.Close()
 	if err := os.Remove(indexPath); err != nil {
 		t.Fatalf("Remove(index) error = %v", err)
 	}
@@ -151,22 +143,19 @@ func TestStartReportsRebuiltDerivedFileIndex(t *testing.T) {
 	if err := manager.Start(ctx); err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
-	health := manager.RecoveryHealth()
-	if health.Rebuilt != 1 || health.Repaired != 1 || health.Isolated != 0 ||
-		len(health.Chats) != 1 ||
-		health.Chats[0].State != constants.ChatRecoveryStateRepaired ||
-		!slices.Contains(health.Chats[0].Issues, constants.ChatRecoveryIssueFileIndexRebuilt) {
-		t.Fatalf("RecoveryHealth() = %+v", health)
+	version, err := manager.logStore.(*conversationJournal).ReadVersion(ctx, chatID)
+	if err != nil || version != records[0].Sequence {
+		t.Fatalf("reopened version = %d, %v", version, err)
+	}
+	if health := manager.RecoveryHealth(); health.Isolated != 0 {
+		t.Fatalf("recovered current log was isolated: %+v", health)
 	}
 }
 
 func TestStartReplaysOnlyLaggingCurrentTailAndCancelsInterruptedExecution(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	logStore, err := eventlog.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewStore() error = %v", err)
-	}
+	logStore := newTestConversationJournal(t, t.TempDir())
 	chatID := "11111111111111111111111111111111"
 	executionID := "22222222222222222222222222222222"
 	wakerID := "33333333333333333333333333333333"
@@ -182,7 +171,7 @@ func TestStartReplaysOnlyLaggingCurrentTailAndCancelsInterruptedExecution(t *tes
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
-	database, manager := newRecoveryTestService(t, logStore.Root())
+	database, manager := newRecoveryTestService(t, logStore.Root(), logStore.Store)
 	chatController := controllers.NewChatController(database)
 	if err := chatController.Create(ctx, models.Chat{
 		ID:                 chatID,
@@ -243,7 +232,7 @@ func TestStartReplaysOnlyLaggingCurrentTailAndCancelsInterruptedExecution(t *tes
 	}
 }
 
-func newRecoveryTestService(t *testing.T, logDirectory string) (*gorm.DB, *service) {
+func newRecoveryTestService(t *testing.T, logDirectory string, stores ...*conversation.Store) (*gorm.DB, *service) {
 	t.Helper()
 	database, err := dbhelper.NewDB(conf.DB{
 		Type:    conf.Sqlite,
@@ -258,11 +247,15 @@ func newRecoveryTestService(t *testing.T, logDirectory string) (*gorm.DB, *servi
 		t.Fatalf("DB() error = %v", err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
+	var store *conversation.Store
+	if len(stores) > 0 {
+		store = stores[0]
+	}
 	manager := newTestService(t, Config{
+		Conversations:    store,
 		StorageDirectory: logDirectory,
 		QueryIndexes: QueryIndexDependencies{
 			Chats:           controllers.NewChatController(database.DB),
-			RuntimeSessions: controllers.NewRuntimeSessionController(database.DB),
 			DeletionIntents: controllers.NewChatDeletionIntentController(database.DB),
 			Transactions: controllers.NewTransactionController(
 				dbhelper.NewGormTransactionManager(database.DB),

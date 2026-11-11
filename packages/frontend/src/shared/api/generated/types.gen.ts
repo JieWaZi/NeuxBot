@@ -35,20 +35,6 @@ export type GithubComJieWaZiNeuxBotServerApisAiAccountsAiAccountModel = {
 };
 
 /**
- * AccountThinkingOption 是原生 ACP 返回的模型专属档位。
- */
-export type GithubComJieWaZiNeuxBotServerApisAiAccountsAccountThinkingOption = {
-    /**
-     * ID 是 CLI 接受的推理强度标识。
-     */
-    id?: string;
-    /**
-     * Name 是 CLI 提供的展示名称。
-     */
-    name?: string;
-};
-
-/**
  * 新增账号请求
  */
 export type GithubComJieWaZiNeuxBotServerApisAiAccountsCreateAiAccountRequest = {
@@ -75,10 +61,7 @@ export type GithubComJieWaZiNeuxBotServerApisAiAccountsCreateAiAccountRequest = 
      * 默认推理强度
      */
     defaultReasoning?: string;
-    /**
-     * 协议入口
-     */
-    endpoints: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccountEndpoint>;
+    endpoint: GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccountEndpoint & unknown;
     /**
      * 最近一次获取的模型目录
      */
@@ -106,6 +89,10 @@ export type GithubComJieWaZiNeuxBotServerApisAiAccountsCreateAiAccountRequest = 
      */
     name: string;
     /**
+     * 智能体标识
+     */
+    runtimeId: string;
+    /**
      * 用户选择的账号模型
      */
     selectedModels?: Array<string>;
@@ -129,34 +116,6 @@ export type GithubComJieWaZiNeuxBotServerApisAiAccountsGetAiAccountCredentialRes
      * APIKey 是已解密密钥。
      */
     apiKey?: string;
-};
-
-/**
- * GetAIAccountNativeModelsResponse 是订阅账号本地模型目录。
- */
-export type GithubComJieWaZiNeuxBotServerApisAiAccountsGetAiAccountNativeModelsResponse = {
-    /**
-     * DefaultModel 是该账号原生配置声明的默认模型。
-     */
-    defaultModel?: string;
-    /**
-     * Models 是该账号原生配置可选的模型标识。
-     */
-    models?: Array<string>;
-};
-
-/**
- * GetAIAccountThinkingResponse 区分探测成功与没有可靠模型专属回执。
- */
-export type GithubComJieWaZiNeuxBotServerApisAiAccountsGetAiAccountThinkingResponse = {
-    /**
-     * Available 表示获得了当前模型的原生能力目录。
-     */
-    available?: boolean;
-    /**
-     * Options 只含当前选中模型原生返回的档位。
-     */
-    options?: Array<GithubComJieWaZiNeuxBotServerApisAiAccountsAccountThinkingOption>;
 };
 
 /**
@@ -205,10 +164,7 @@ export type GithubComJieWaZiNeuxBotServerApisAiAccountsUpdateAiAccountRequest = 
      * 默认推理强度
      */
     defaultReasoning?: string;
-    /**
-     * 协议入口
-     */
-    endpoints: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccountEndpoint>;
+    endpoint: GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccountEndpoint & unknown;
     /**
      * 最近一次获取的模型目录
      */
@@ -239,6 +195,10 @@ export type GithubComJieWaZiNeuxBotServerApisAiAccountsUpdateAiAccountRequest = 
      * 配置版本
      */
     revision?: number;
+    /**
+     * 智能体标识
+     */
+    runtimeId: string;
     /**
      * 用户选择的账号模型
      */
@@ -416,6 +376,10 @@ export type GithubComJieWaZiNeuxBotServerApisChannelsChannelMemberDetail = {
      */
     accountId?: string;
     /**
+     * Fast 模式
+     */
+    fast?: boolean;
+    /**
      * 模型
      */
     model?: string;
@@ -443,6 +407,10 @@ export type GithubComJieWaZiNeuxBotServerApisChannelsChannelMemberInput = {
      * 账号标识
      */
     accountId?: string;
+    /**
+     * Fast 模式
+     */
+    fast?: boolean;
     /**
      * 模型
      */
@@ -822,6 +790,14 @@ export type GithubComJieWaZiNeuxBotServerApisChatsMessageRequest = {
      * 连接器列表
      */
     connectorIds?: Array<string>;
+    /**
+     * 上下文档位
+     */
+    contextWindow?: string;
+    /**
+     * Fast
+     */
+    fast?: boolean;
     historyMode?: GithubComJieWaZiNeuxBotServerConstantsHistoryMode & unknown;
     /**
      * 最近对话轮数
@@ -3247,6 +3223,10 @@ export type GithubComJieWaZiNeuxBotServerApisMcpConnectorInput = {
      */
     arguments?: Array<string>;
     /**
+     * 用户分类
+     */
+    categories?: Array<string>;
+    /**
      * 启动命令
      */
     command?: string;
@@ -3290,6 +3270,10 @@ export type GithubComJieWaZiNeuxBotServerApisMcpConnectorResource = {
      * 命令参数
      */
     arguments?: Array<string>;
+    /**
+     * 用户分类
+     */
+    categories?: Array<string>;
     /**
      * 启动命令
      */
@@ -3703,6 +3687,31 @@ export type GithubComJieWaZiNeuxBotServerApisMemoryUpdateMemorySettingsRequest =
 };
 
 /**
+ * 应用错误响应
+ */
+export type GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter = {
+    /**
+     * 错误数值码
+     */
+    code?: number;
+    /**
+     * 错误身份
+     */
+    key?: string;
+    /**
+     * 可读原因
+     */
+    message?: string;
+    messageSource?: GithubComJieWaZiNeuxBotServerConstantsErrorMessageSource & unknown;
+    /**
+     * 模板参数
+     */
+    params?: {
+        [key: string]: unknown;
+    };
+};
+
+/**
  * 通知分页响应
  */
 export type GithubComJieWaZiNeuxBotServerApisNotificationsListNotificationsResponse = {
@@ -3751,14 +3760,64 @@ export type GithubComJieWaZiNeuxBotServerApisNotificationsViewNotificationReques
     version?: number;
 };
 
-/**
- * AuthorizationScopeRequest 描述用户明确请求的补充权限。
- */
-export type GithubComJieWaZiNeuxBotServerApisPluginsAuthorizationScopeRequest = {
+export type GithubComJieWaZiNeuxBotServerApisPluginsAuthorizationScopeRequest = GithubComJieWaZiNeuxBotServerApisPluginsPluginAccountRequest & {
     /**
      * 补充权限
      */
     additionalScopes?: Array<string>;
+};
+
+/**
+ * 插件浏览响应
+ */
+export type GithubComJieWaZiNeuxBotServerApisPluginsBrowsePluginsResponse = {
+    catalogSource?: GithubComJieWaZiNeuxBotServerInternalPluginsCatalogSourceState & unknown;
+    /**
+     * 浏览条目
+     */
+    entries?: Array<GithubComJieWaZiNeuxBotServerApisPluginsPluginBrowseEntry>;
+    /**
+     * 还有条目
+     */
+    hasMore?: boolean;
+    /**
+     * 安装总数
+     */
+    installedTotalSize?: number;
+    /**
+     * 当前页码
+     */
+    pageNum?: number;
+    /**
+     * 每页数量
+     */
+    pageSize?: number;
+    /**
+     * 完整总数
+     */
+    totalSize?: number;
+};
+
+/**
+ * 创建技能插件请求
+ */
+export type GithubComJieWaZiNeuxBotServerApisPluginsCreatePluginFromSkillsRequest = {
+    /**
+     * 候选标识
+     */
+    candidateIds: Array<string>;
+    /**
+     * 插件说明
+     */
+    description?: string;
+    /**
+     * 插件名称
+     */
+    name: string;
+    /**
+     * 批次令牌
+     */
+    token: string;
 };
 
 /**
@@ -3779,6 +3838,10 @@ export type GithubComJieWaZiNeuxBotServerApisPluginsDeletePluginRequest = {
  * 插件安装请求
  */
 export type GithubComJieWaZiNeuxBotServerApisPluginsInstallPluginRequest = {
+    /**
+     * 账号代次
+     */
+    expectedAccountGeneration?: number;
     /**
      * 预期配置修订
      */
@@ -3805,29 +3868,6 @@ export type GithubComJieWaZiNeuxBotServerApisPluginsInstallPluginResponse = {
      * 逐伙伴结果
      */
     results?: Array<GithubComJieWaZiNeuxBotServerApisPluginsPartnerInstallResult>;
-};
-
-/**
- * 插件目录响应
- */
-export type GithubComJieWaZiNeuxBotServerApisPluginsListPluginCatalogResponse = {
-    /**
-     * 本地条目
-     */
-    entries?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsCatalogEntry>;
-    /**
-     * 当前页码
-     */
-    pageNum?: number;
-    /**
-     * 每页数量
-     */
-    pageSize?: number;
-    source?: GithubComJieWaZiNeuxBotServerInternalPluginsCatalogSourceState & unknown;
-    /**
-     * 准确总数
-     */
-    totalSize?: number;
 };
 
 /**
@@ -3872,14 +3912,36 @@ export type GithubComJieWaZiNeuxBotServerApisPluginsPartnerInstallResult = {
 };
 
 /**
+ * 账号上下文请求
+ */
+export type GithubComJieWaZiNeuxBotServerApisPluginsPluginAccountRequest = {
+    /**
+     * 账号代次
+     */
+    expectedAccountGeneration?: number;
+    /**
+     * 配置修订
+     */
+    expectedConfigurationRevision?: number;
+};
+
+/**
  * 插件授权响应
  */
 export type GithubComJieWaZiNeuxBotServerApisPluginsPluginAuthorizationResponse = {
     account?: GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationAccount & unknown;
     /**
+     * 账号代次
+     */
+    accountGeneration?: number;
+    /**
      * 占用工作
      */
     activeUses?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationUsage>;
+    /**
+     * 配置修订
+     */
+    configurationRevision?: number;
     /**
      * 缺少权限
      */
@@ -3893,24 +3955,137 @@ export type GithubComJieWaZiNeuxBotServerApisPluginsPluginAuthorizationResponse 
      */
     requiredScopes?: Array<string>;
     session?: GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationSession & unknown;
+    /**
+     * 所选版本
+     */
+    versionId?: string;
 };
 
 /**
- * 插件详情
+ * 插件浏览条目
  */
-export type GithubComJieWaZiNeuxBotServerApisPluginsPluginDetailResponse = {
-    account?: GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationAccount & unknown;
+export type GithubComJieWaZiNeuxBotServerApisPluginsPluginBrowseEntry = {
+    /**
+     * 目录标识
+     */
+    catalogKey?: string;
+    /**
+     * 分类
+     */
+    category?: string;
+    /**
+     * 简短介绍
+     */
+    description?: string;
+    /**
+     * 插件图标
+     */
+    icon?: string;
+    icons?: GithubComJieWaZiNeuxBotServerInternalPluginsThemeValues & unknown;
+    /**
+     * 安装伙伴数
+     */
+    installedCount?: number;
+    /**
+     * 展示名称
+     */
+    name?: string;
+    /**
+     * 插件标识
+     */
+    pluginId?: string;
+    /**
+     * 需要授权
+     */
+    requiresAuthorization?: boolean;
+    /**
+     * 来源身份
+     */
+    sourceKey?: string;
+    update?: GithubComJieWaZiNeuxBotServerApisPluginsPluginBrowseUpdate & unknown;
+    /**
+     * 展示版本
+     */
+    versionId?: string;
+};
+
+/**
+ * 插件浏览更新
+ */
+export type GithubComJieWaZiNeuxBotServerApisPluginsPluginBrowseUpdate = {
+    /**
+     * 归档摘要
+     */
+    archiveSHA256?: string;
+    /**
+     * 存在更新
+     */
+    available?: boolean;
+    /**
+     * 目录标识
+     */
+    catalogKey?: string;
+    /**
+     * 目标版本
+     */
+    version?: string;
+};
+
+/**
+ * 插件目录条目
+ */
+export type GithubComJieWaZiNeuxBotServerApisPluginsPluginCatalogEntryResponse = {
+    /**
+     * 归档摘要
+     */
+    archiveSHA256?: string;
+    /**
+     * 归档地址
+     */
+    archiveURL?: string;
+    /**
+     * 资料摘要
+     */
+    detailsSHA256?: string;
+    /**
+     * 资料大小
+     */
+    detailsSize?: number;
+    /**
+     * 资料地址
+     */
+    detailsURL?: string;
+    /**
+     * 目录标识
+     */
+    key?: string;
+    package?: GithubComJieWaZiNeuxBotServerInternalPluginsPublicPackage & unknown;
+    /**
+     * 逻辑入口
+     */
+    packagePath?: string;
+    /**
+     * 来源提交
+     */
+    sourceCommit?: string;
+    /**
+     * 来源身份
+     */
+    sourceKey?: string;
+};
+
+/**
+ * 插件配置响应
+ */
+export type GithubComJieWaZiNeuxBotServerApisPluginsPluginConfigurationResponse = {
+    /**
+     * 账号代次
+     */
+    accountGeneration?: number;
     /**
      * 阻塞原因
      */
     blockers?: Array<string>;
-    catalogSource?: GithubComJieWaZiNeuxBotServerInternalPluginsCatalogSourceState & unknown;
-    /**
-     * 组件授权标识
-     */
-    componentIds?: {
-        [key: string]: string;
-    };
     /**
      * 配置修订
      */
@@ -3924,9 +4099,47 @@ export type GithubComJieWaZiNeuxBotServerApisPluginsPluginDetailResponse = {
      */
     fields?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsConfigurationField>;
     /**
+     * 当前就绪
+     */
+    ready?: boolean;
+    /**
+     * 普通配置
+     */
+    values?: {
+        [key: string]: string;
+    };
+    /**
+     * 所选版本
+     */
+    versionId?: string;
+};
+
+/**
+ * 插件详情
+ */
+export type GithubComJieWaZiNeuxBotServerApisPluginsPluginDetailResponse = {
+    account?: GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationAccount & unknown;
+    /**
+     * 账号代次
+     */
+    accountGeneration?: number;
+    catalogSource?: GithubComJieWaZiNeuxBotServerInternalPluginsCatalogSourceState & unknown;
+    /**
+     * 配置修订
+     */
+    configurationRevision?: number;
+    /**
      * 安装关系
      */
     installations?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerPlugin>;
+    /**
+     * 当前版本包错误标识
+     */
+    packageErrorCode?: string;
+    /**
+     * 当前版本包状态
+     */
+    packageStatus?: string;
     /**
      * 伙伴头像
      */
@@ -3941,24 +4154,14 @@ export type GithubComJieWaZiNeuxBotServerApisPluginsPluginDetailResponse = {
     };
     plugin?: GithubComJieWaZiNeuxBotServerRepositoriesModelsPlugin & unknown;
     /**
-     * 当前就绪
-     */
-    ready?: boolean;
-    /**
      * 当前解析版本
      */
     resolvedVersionId?: string;
     update?: GithubComJieWaZiNeuxBotServerApisPluginsPluginUpdateResponse & unknown;
     /**
-     * 普通配置
-     */
-    values?: {
-        [key: string]: string;
-    };
-    /**
      * 保留版本
      */
-    versions?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsPluginVersion>;
+    versions?: Array<GithubComJieWaZiNeuxBotServerApisPluginsPluginVersionResponse>;
 };
 
 /**
@@ -4048,6 +4251,43 @@ export type GithubComJieWaZiNeuxBotServerApisPluginsPluginUpdateResponse = {
 };
 
 /**
+ * 插件公开版本
+ */
+export type GithubComJieWaZiNeuxBotServerApisPluginsPluginVersionResponse = {
+    /**
+     * 创建时间
+     */
+    createdAt?: number;
+    /**
+     * 内容摘要
+     */
+    digest?: string;
+    /**
+     * 版本标识
+     */
+    id?: string;
+    package?: GithubComJieWaZiNeuxBotServerInternalPluginsPublicPackage & unknown;
+    /**
+     * 插件标识
+     */
+    pluginId?: string;
+    /**
+     * 分发来源
+     */
+    provenance?: {
+        [key: string]: unknown;
+    };
+    /**
+     * 信任时间
+     */
+    trustedAt?: number;
+    /**
+     * 版本名称
+     */
+    version?: string;
+};
+
+/**
  * 目录准备请求
  */
 export type GithubComJieWaZiNeuxBotServerApisPluginsPrepareCatalogPluginRequest = {
@@ -4055,10 +4295,6 @@ export type GithubComJieWaZiNeuxBotServerApisPluginsPrepareCatalogPluginRequest 
      * 预期归档摘要
      */
     expectedArchiveSHA256?: string;
-    /**
-     * 所属伙伴
-     */
-    ownerWakerId?: string;
     /**
      * 运行确认
      */
@@ -4096,9 +4332,33 @@ export type GithubComJieWaZiNeuxBotServerApisPluginsUpdateConfigurationRequest =
      */
     secrets?: Array<GithubComJieWaZiNeuxBotServerApisPluginsSecretValue>;
     /**
+     * 普通配置
+     */
+    values?: {
+        [key: string]: string;
+    };
+};
+
+/**
+ * 插件统一更新请求
+ */
+export type GithubComJieWaZiNeuxBotServerApisPluginsUpdatePluginInstallationsRequest = {
+    /**
+     * 账号代次
+     */
+    expectedAccountGeneration?: number;
+    /**
+     * 配置修订
+     */
+    expectedRevision?: number;
+    /**
+     * 密钥更新
+     */
+    secrets?: Array<GithubComJieWaZiNeuxBotServerApisPluginsSecretValue>;
+    /**
      * 版本切换
      */
-    switches?: Array<GithubComJieWaZiNeuxBotServerApisPluginsVersionSwitch>;
+    switches: Array<GithubComJieWaZiNeuxBotServerApisPluginsVersionSwitch>;
     /**
      * 普通配置
      */
@@ -4111,6 +4371,10 @@ export type GithubComJieWaZiNeuxBotServerApisPluginsUpdateConfigurationRequest =
  * 插件资料请求
  */
 export type GithubComJieWaZiNeuxBotServerApisPluginsUpdatePluginRequest = {
+    /**
+     * 用户分类
+     */
+    categories?: Array<string>;
     /**
      * 用途说明
      */
@@ -4319,6 +4583,16 @@ export type GithubComJieWaZiNeuxBotServerApisRolePresetsRolePresetWriteRequest =
 };
 
 /**
+ * 原生登录请求
+ */
+export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsAuthenticateRuntimeRequest = {
+    /**
+     * 原生认证方法
+     */
+    methodId?: string;
+};
+
+/**
  * 运行时列表响应
  */
 export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsListRuntimesResponse = {
@@ -4338,6 +4612,20 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsListRuntimesResponse 
      * 启动需要引导
      */
     startupSetupRequired?: boolean;
+};
+
+/**
+ * 上下文窗口选项
+ */
+export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeContextWindowOption = {
+    /**
+     * 原生档位标识
+     */
+    id?: string;
+    /**
+     * 窗口 token 数
+     */
+    tokens?: number;
 };
 
 /**
@@ -4377,17 +4665,99 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeInstallation =
 };
 
 /**
+ * 原生模型目录
+ */
+export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelCatalogResponse = {
+    /**
+     * 账号标识
+     */
+    accountId?: string;
+    /**
+     * 认证代次
+     */
+    authGeneration?: number;
+    /**
+     * 原生默认模型
+     */
+    defaultModel?: string;
+    /**
+     * 刷新错误
+     */
+    errorCode?: string;
+    /**
+     * 模型
+     */
+    models?: Array<GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelOption>;
+    /**
+     * 智能体标识
+     */
+    runtimeId?: string;
+    /**
+     * 发现状态
+     */
+    state?: string;
+};
+
+/**
  * 模型选项
  */
 export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelOption = {
+    /**
+     * 可选上下文档位
+     */
+    contextWindowOptions?: Array<GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeContextWindowOption>;
+    /**
+     * 当前上下文
+     */
+    contextWindowTokens?: number;
+    /**
+     * 积分倍率
+     */
+    creditMultiplier?: number;
     /**
      * 自定义模型
      */
     custom?: boolean;
     /**
+     * 默认上下文档位
+     */
+    defaultContextWindow?: string;
+    /**
+     * 原生默认 Fast
+     */
+    defaultFast?: boolean;
+    /**
+     * 默认推理
+     */
+    defaultReasoning?: string;
+    /**
+     * 描述
+     */
+    description?: string;
+    /**
+     * 支持 Fast
+     */
+    fastSupported?: boolean;
+    /**
+     * 免费模型
+     */
+    free?: boolean;
+    /**
+     * 分组标识
+     */
+    group?: string;
+    /**
+     * 分组名称
+     */
+    groupName?: string;
+    /**
      * 标识
      */
     id?: string;
+    /**
+     * 最大上下文
+     */
+    maxContextWindowTokens?: number;
     /**
      * 名称
      */
@@ -4407,34 +4777,22 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelOption = 
  */
 export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption = {
     /**
-     * 鉴权结论
+     * 最近鉴权探测结论
      */
     auth?: string;
     /**
      * 基础 CLI 类型，用于账号协议兼容性判断。
      */
     baseRuntimeId?: string;
-    /**
-     * 可执行路径
-     */
-    binary?: string;
     capabilities?: GithubComJieWaZiNeuxBotServerInternalAgentCapabilitySet & unknown;
-    /**
-     * 配置目录
-     */
-    configHome?: string;
-    /**
-     * 支持配置目录
-     */
-    configHomeSupported?: boolean;
-    /**
-     * 自定义模型
-     */
-    customModels?: Array<string>;
     /**
      * 默认账号
      */
     defaultAccountId?: string;
+    /**
+     * 默认 Fast
+     */
+    defaultFast?: boolean;
     /**
      * 默认模型
      */
@@ -4481,10 +4839,6 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption = {
      */
     name?: string;
     /**
-     * 前置参数
-     */
-    prefixArgs?: Array<string>;
-    /**
      * 推理选项
      */
     reasoningOptions?: Array<GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeReasoningOption>;
@@ -4493,7 +4847,7 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption = {
      */
     resolvedBinary?: string;
     /**
-     * 运行状态
+     * 最近探测结论
      */
     state?: string;
     /**
@@ -4517,25 +4871,17 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeReasoningOptio
 };
 
 /**
- * 环境变量请求
+ * 默认执行设置请求
  */
 export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsUpdateRuntimeEnvironmentRequest = {
-    /**
-     * 可执行路径
-     */
-    binary: string;
-    /**
-     * 配置目录
-     */
-    configHome?: string;
-    /**
-     * 自定义模型
-     */
-    customModels?: Array<string>;
     /**
      * 默认账号
      */
     defaultAccountId?: string;
+    /**
+     * 默认 Fast
+     */
+    defaultFast?: boolean;
     /**
      * 默认模型
      */
@@ -4550,13 +4896,13 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsUpdateRuntimeEnvironm
      */
     enabled?: boolean;
     /**
+     * 安装实例
+     */
+    installationPath?: string;
+    /**
      * 是否默认
      */
     isDefault?: boolean;
-    /**
-     * 前置参数
-     */
-    prefixArgs?: Array<string>;
 };
 
 /**
@@ -4743,11 +5089,11 @@ export type GithubComJieWaZiNeuxBotServerApisSkillsSkillImportCandidate = {
      */
     id?: string;
     /**
-     * 已安装
+     * 已入库
      */
     installed?: boolean;
     /**
-     * 已装技能
+     * 已有技能
      */
     installedSkillId?: string;
     /**
@@ -4873,9 +5219,13 @@ export type GithubComJieWaZiNeuxBotServerApisSkillsSkillVersionResponse = {
  */
 export type GithubComJieWaZiNeuxBotServerApisSkillsUpdateWakerSkillRequest = {
     /**
+     * 分类
+     */
+    categories?: Array<string>;
+    /**
      * 名称
      */
-    name: string;
+    name?: string;
 };
 
 /**
@@ -4892,7 +5242,7 @@ export type GithubComJieWaZiNeuxBotServerApisSkillsWakerSkillResponse = {
      */
     enabled?: boolean;
     /**
-     * 安装伙伴预览
+     * 安装伙伴
      */
     installedPartners?: Array<GithubComJieWaZiNeuxBotServerApisSkillsSkillPartnerResponse>;
     skill?: GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillPackage & unknown;
@@ -5302,10 +5652,6 @@ export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkResultResponse = {
  */
 export type GithubComJieWaZiNeuxBotServerApisWorkflowsAnswerHumanCommand = {
     /**
-     * 问题版本
-     */
-    questionVersion: number;
-    /**
      * 提交标识
      */
     requestId?: string;
@@ -5566,6 +5912,16 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsSkipWorkerCommand = {
 };
 
 /**
+ * 工作流分类请求
+ */
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsUpdateWorkflowCategoriesRequest = {
+    /**
+     * 分类标签
+     */
+    categories?: Array<string>;
+};
+
+/**
  * 源码校验请求
  */
 export type GithubComJieWaZiNeuxBotServerApisWorkflowsValidateWorkflowSourceRequest = {
@@ -5603,6 +5959,26 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowAnnotationRequest 
      * 修改要求
      */
     text: string;
+};
+
+/**
+ * WorkflowAttemptResponse 保留历史尝试的身份、结果和可访问的伙伴对话。
+ */
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowAttemptResponse = {
+    /**
+     * 尝试代际
+     */
+    attemptGeneration?: number;
+    /**
+     * 伙伴对话
+     */
+    chatId?: string;
+    failure?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslValue & unknown;
+    /**
+     * 尝试标识
+     */
+    id?: string;
+    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus & unknown;
 };
 
 /**
@@ -5673,7 +6049,7 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowInstanceResponse =
     /**
      * 尝试历史
      */
-    attempts?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowEffect>;
+    attempts?: Array<GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowAttemptResponse>;
     chat?: GithubComJieWaZiNeuxBotServerServicesChatChatSummary & unknown;
     effect?: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowEffectView & unknown;
     execution?: GithubComJieWaZiNeuxBotServerRepositoriesModelsExecution & unknown;
@@ -5848,7 +6224,7 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunDetailResponse 
     /**
      * 子运行
      */
-    children?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun>;
+    children?: Array<GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunResponse>;
     /**
      * 成果文件
      */
@@ -5882,7 +6258,7 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunDetailResponse 
      * 操作许可
      */
     operationRequests?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowOperationRequest>;
-    run?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun & unknown;
+    run?: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunResponse & unknown;
     /**
      * 源码摘要
      */
@@ -5896,7 +6272,7 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunListResponse = 
     /**
      * 运行列表
      */
-    items?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun>;
+    items?: Array<GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunResponse>;
     /**
      * 时间游标
      */
@@ -5905,6 +6281,85 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunListResponse = 
      * 身份游标
      */
     nextBeforeId?: string;
+};
+
+/**
+ * WorkflowRunResponse 只公开运行的业务事实，执行上下文与恢复帧留在仓储。
+ */
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunResponse = {
+    /**
+     * 运行参数
+     */
+    args?: unknown;
+    /**
+     * 完成时间
+     */
+    completedAt?: number;
+    /**
+     * 接纳时间
+     */
+    createdAt?: number;
+    /**
+     * 截止时间
+     */
+    deadlineAt?: number;
+    defaults?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowExecutionDefaults & unknown;
+    /**
+     * 工作流标识
+     */
+    definitionId?: string;
+    /**
+     * 调用层级
+     */
+    depth?: number;
+    failure?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslValue & unknown;
+    /**
+     * 运行标识
+     */
+    id?: string;
+    /**
+     * 跟随父运行
+     */
+    joined?: boolean;
+    limits?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslLimits & unknown;
+    /**
+     * 父运行标识
+     */
+    parentRunId?: string;
+    /**
+     * 运行结果
+     */
+    result?: unknown;
+    /**
+     * 版本标识
+     */
+    revisionId?: string;
+    /**
+     * 版本序号
+     */
+    revisionOrdinal?: number;
+    /**
+     * 调用树根运行
+     */
+    rootRunId?: string;
+    scopeBinding?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowScopeBinding & unknown;
+    /**
+     * 开始时间
+     */
+    startedAt?: number;
+    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowRunStatus & unknown;
+    /**
+     * 触发来源
+     */
+    triggerSource?: string;
+    /**
+     * 更新时间
+     */
+    updatedAt?: number;
+    /**
+     * 运行版本
+     */
+    version?: number;
 };
 
 /**
@@ -6553,17 +7008,14 @@ export type GithubComJieWaZiNeuxBotServerConstantsChannelTaskStatus = 'cancelled
  * * `execution.created` - ChatEventTypeExecutionCreated 表示一次执行已经建立。
  * * `execution.failed` - ChatEventTypeExecutionFailed 表示一次执行因错误结束。
  * * `execution.started` - ChatEventTypeExecutionStarted 表示一次执行已经启动 Runtime。
- * * `invocation.finished` - ChatEventTypeInvocationFinished 表示一次 Runtime Invocation 的实际事实已经持久化。
  * * `message.inherited` - ChatEventTypeMessageInherited 表示分叉复制的历史展示快照，不创建新的 Execution。
  * * `message.user_created` - ChatEventTypeUserMessageCreated 表示一条用户消息已经持久化。
- * * `native_session.cleared` - ChatEventTypeNativeSessionCleared 表示失效的原生 Session 句柄已经清除。
- * * `native_session.updated` - ChatEventTypeNativeSessionUpdated 表示原生 Runtime Session 句柄已经更新。
  * * `runtime.event` - ChatEventTypeRuntimeEvent 表示仅用于实时投影、不会进入权威日志的 Runtime 增量。
  * * `tool.message` - ChatEventTypeToolMessage 表示 Runtime 已完整形成一条工具结果执行消息。
  * * `workspace.changes` - ChatEventTypeFileChanges 表示独立工作区采集结果及其不可变内容已经提交。
  *
  */
-export type GithubComJieWaZiNeuxBotServerConstantsChatEventType = '' | 'agent.command_committed' | 'approval.requested' | 'approval.resolved' | 'assistant.message' | 'chat.created' | 'chat.title_updated' | 'elicitation.requested' | 'elicitation.resolved' | 'execution.canceled' | 'execution.completed' | 'execution.created' | 'execution.failed' | 'execution.started' | 'invocation.finished' | 'message.inherited' | 'message.user_created' | 'native_session.cleared' | 'native_session.updated' | 'runtime.event' | 'tool.message' | 'workspace.changes';
+export type GithubComJieWaZiNeuxBotServerConstantsChatEventType = '' | 'agent.command_committed' | 'approval.requested' | 'approval.resolved' | 'assistant.message' | 'chat.created' | 'chat.title_updated' | 'elicitation.requested' | 'elicitation.resolved' | 'execution.canceled' | 'execution.completed' | 'execution.created' | 'execution.failed' | 'execution.started' | 'message.inherited' | 'message.user_created' | 'runtime.event' | 'tool.message' | 'workspace.changes';
 
 /**
  * >
@@ -6600,6 +7052,15 @@ export type GithubComJieWaZiNeuxBotServerConstantsChatRecoveryState = '' | 'heal
  *
  */
 export type GithubComJieWaZiNeuxBotServerConstantsElicitationResult = '' | 'accepted' | 'cancelled' | 'declined' | 'invalidated';
+
+/**
+ * >
+ * * `` - ErrorMessageSourceUnspecified 只用于尚无来源标记的历史记录。
+ * * `localized` - ErrorMessageSourceLocalized 表示正文必须由稳定身份与安全参数按当前语言呈现。
+ * * `public` - ErrorMessageSourcePublic 表示原生协议已明确允许展示的可读原因。
+ *
+ */
+export type GithubComJieWaZiNeuxBotServerConstantsErrorMessageSource = '' | 'localized' | 'public';
 
 /**
  * >
@@ -6890,6 +7351,17 @@ export type GithubComJieWaZiNeuxBotServerConstantsRemoteTransferState = 'accepte
 
 /**
  * >
+ * * `` - ResourceCategoryTypeUnspecified 表示未指定资源类型。
+ * * `connector` - ResourceCategoryTypeConnector 表示独立连接器分类。
+ * * `plugin` - ResourceCategoryTypePlugin 表示插件分类。
+ * * `skill` - ResourceCategoryTypeSkill 表示独立技能分类。
+ * * `workflow` - ResourceCategoryTypeWorkflow 表示工作流目录分类。
+ *
+ */
+export type GithubComJieWaZiNeuxBotServerConstantsResourceCategoryType = '' | 'connector' | 'plugin' | 'skill' | 'workflow';
+
+/**
+ * >
  * * `manual` - RolePresetInputModeManual 表示使用结构化字段 Patch 三份档案。
  * * `markdown` - RolePresetInputModeMarkdown 表示直接提交三份完整 Markdown。
  *
@@ -6904,6 +7376,29 @@ export type GithubComJieWaZiNeuxBotServerConstantsRolePresetInputMode = 'manual'
  *
  */
 export type GithubComJieWaZiNeuxBotServerConstantsRolePresetSource = '' | 'system' | 'user';
+
+/**
+ * >
+ * * `` - RuntimeAuthenticationResultUnspecified 表示尚未取得认证结果。
+ * * `authentication_completed` - RuntimeAuthenticationResultAuthenticationCompleted 表示原生认证原语确认完成。
+ * * `connection_verified` - RuntimeAuthenticationResultConnectionVerified 表示原生确认了连接，未证明完成新的交互授权。
+ * * `existing_login_verified` - RuntimeAuthenticationResultExistingLoginVerified 表示原生确认了原有账号连接。
+ *
+ */
+export type GithubComJieWaZiNeuxBotServerConstantsRuntimeAuthenticationResult = '' | 'authentication_completed' | 'connection_verified' | 'existing_login_verified';
+
+/**
+ * >
+ * * `` - RuntimeAuthenticationStateUnspecified 表示尚未建立状态。
+ * * `authenticating` - RuntimeAuthenticationStateAuthenticating 表示正在进行用户触发的原生认证。
+ * * `cancelled` - RuntimeAuthenticationStateCancelled 表示原生认证已取消并完成回收。
+ * * `checking` - RuntimeAuthenticationStateChecking 表示正在读取原生认证能力。
+ * * `failed` - RuntimeAuthenticationStateFailed 表示原生认证失败。
+ * * `idle` - RuntimeAuthenticationStateIdle 表示当前没有认证任务。
+ * * `succeeded` - RuntimeAuthenticationStateSucceeded 表示原生认证已确认成功。
+ *
+ */
+export type GithubComJieWaZiNeuxBotServerConstantsRuntimeAuthenticationState = '' | 'authenticating' | 'cancelled' | 'checking' | 'failed' | 'idle' | 'succeeded';
 
 /**
  * >
@@ -6924,6 +7419,39 @@ export type GithubComJieWaZiNeuxBotServerConstantsRuntimeCapability = '' | 'add_
 
 /**
  * >
+ * * `` - RuntimeInstallationSourceUnspecified 表示尚未建立来源快照。
+ * * `managed` - RuntimeInstallationSourceManaged 表示使用应用验证并发布的程序。
+ * * `system` - RuntimeInstallationSourceSystem 表示使用本机已有安装。
+ * * `unknown` - RuntimeInstallationSourceUnknown 表示尚未确认程序来源。
+ *
+ */
+export type GithubComJieWaZiNeuxBotServerConstantsRuntimeInstallationSource = '' | 'managed' | 'system' | 'unknown';
+
+/**
+ * >
+ * * `` - RuntimeInstallationStateUnspecified 表示尚未建立安装快照。
+ * * `cancelled` - RuntimeInstallationStateCancelled 表示安装已取消并完成回收。
+ * * `failed` - RuntimeInstallationStateFailed 表示最近的安装任务失败。
+ * * `idle` - RuntimeInstallationStateIdle 表示尚未安装受管程序。
+ * * `installed` - RuntimeInstallationStateInstalled 表示程序已校验并完成发布。
+ * * `installing` - RuntimeInstallationStateInstalling 表示安装任务正在处理。
+ *
+ */
+export type GithubComJieWaZiNeuxBotServerConstantsRuntimeInstallationState = '' | 'cancelled' | 'failed' | 'idle' | 'installed' | 'installing';
+
+/**
+ * >
+ * * `` - RuntimeUpdateCheckStateUnspecified 表示尚未建立检查状态。
+ * * `checked` - RuntimeUpdateCheckStateChecked 表示已经取得官方版本。
+ * * `checking` - RuntimeUpdateCheckStateChecking 表示正在读取官方元数据。
+ * * `failed` - RuntimeUpdateCheckStateFailed 表示本次检查失败，不能判定是否最新。
+ * * `unknown` - RuntimeUpdateCheckStateUnknown 表示尚未显式检查。
+ *
+ */
+export type GithubComJieWaZiNeuxBotServerConstantsRuntimeUpdateCheckState = '' | 'checked' | 'checking' | 'failed' | 'unknown';
+
+/**
+ * >
  * * `delete` - SkillResourceActionDelete 表示删除一个资源文件或目录。
  * * `mkdir` - SkillResourceActionMkdir 表示创建一个资源目录。
  * * `move` - SkillResourceActionMove 表示移动一个资源文件或目录。
@@ -6931,15 +7459,6 @@ export type GithubComJieWaZiNeuxBotServerConstantsRuntimeCapability = '' | 'add_
  *
  */
 export type GithubComJieWaZiNeuxBotServerConstantsSkillResourceAction = 'delete' | 'mkdir' | 'move' | 'write';
-
-/**
- * >
- * * `` - SkillScopeUnspecified 表示数据库或框架产生的空范围。
- * * `private` - SkillScopePrivate 表示只属于单个伙伴的私有技能。
- * * `public` - SkillScopePublic 表示所有伙伴都可见的公开技能。
- *
- */
-export type GithubComJieWaZiNeuxBotServerConstantsSkillScope = '' | 'private' | 'public';
 
 /**
  * >
@@ -7031,7 +7550,7 @@ export type GithubComJieWaZiNeuxBotServerConstantsWorkflowRunStatus = 'cancelled
 export type GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus = 'unknown' | 'answered' | 'cancelled' | 'failed' | 'prepared' | 'ready' | 'running' | 'skipped' | 'succeeded' | 'timed_out' | 'unknown' | 'waiting';
 
 /**
- * CapabilitySet 保存一次探测确认可用的 Runtime 能力。
+ * CapabilitySet holds runtime capabilities confirmed by a detection pass.
  */
 export type GithubComJieWaZiNeuxBotServerInternalAgentCapabilitySet = {
     [key: string]: boolean;
@@ -7204,6 +7723,10 @@ export type GithubComJieWaZiNeuxBotServerInternalChatChangesRoot = {
      */
     boundaries?: Array<GithubComJieWaZiNeuxBotServerInternalChatChangesCoverage>;
     /**
+     * File 表示只采集此文件，父目录仅用于安全打开该文件。
+     */
+    file?: boolean;
+    /**
      * ID 是规范路径的稳定摘要。
      */
     id?: string;
@@ -7212,7 +7735,7 @@ export type GithubComJieWaZiNeuxBotServerInternalChatChangesRoot = {
      */
     kind?: string;
     /**
-     * Path 是规范绝对目录路径。
+     * Path 是规范绝对目录或精确文件路径。
      */
     path?: string;
     /**
@@ -7462,6 +7985,13 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage = {
      * ErrorMessage 是失败时供用户诊断的简明说明。
      */
     errorMessage?: string;
+    errorMessageSource?: GithubComJieWaZiNeuxBotServerConstantsErrorMessageSource & unknown;
+    /**
+     * ErrorParams 是稳定错误模板使用的安全参数。
+     */
+    errorParams?: {
+        [key: string]: unknown;
+    };
     /**
      * ExecutionID 是 Assistant 消息对应的执行标识。
      */
@@ -7484,10 +8014,6 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage = {
      * Plugins 是接纳时冻结的插件身份、版本与配置修订。
      */
     plugins?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsSnapshot>;
-    /**
-     * Retryable 表示后端允许用户安全重试该失败回合。
-     */
-    retryable?: boolean;
     /**
      * Revision 是最后一次改变公开消息快照的权威事件序号。
      */
@@ -7663,6 +8189,10 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageRunMetric
      */
     inputTokens?: number;
     /**
+     * LatestRequestOutputTokens 是末次输出量。
+     */
+    latestRequestOutputTokens?: number;
+    /**
      * OutputTokens 是 Runtime 报告的输出 Token 数。
      */
     outputTokens?: number;
@@ -7674,6 +8204,26 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageRunMetric
      * StartedAt 是 Host 确认执行开始的 Unix 毫秒时间。
      */
     startedAt?: number;
+    tokenUsage?: GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageTokenUsage & unknown;
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageTokenUsage = GithubComJieWaZiNeuxBotServerInternalUsageTokenMetrics & {
+    /**
+     * Complete says the invocation and its additive counters are fully covered.
+     */
+    complete?: boolean;
+    /**
+     * Coverage describes the scope of the primary observation.
+     */
+    coverage?: string;
+    /**
+     * InvocationID is the canonical digest for deduplication across continuations.
+     */
+    invocationId?: string;
+    /**
+     * Source identifies the primary native usage observation.
+     */
+    source?: string;
 };
 
 /**
@@ -7851,62 +8401,6 @@ export type GithubComJieWaZiNeuxBotServerInternalPackagefilesResourceFile = {
 };
 
 /**
- * Authentication 声明包内授权桥接，不复制供应商协议。
- */
-export type GithubComJieWaZiNeuxBotServerInternalPluginsAuthentication = {
-    /**
-     * Args 是独立传递的入口参数。
-     */
-    args?: Array<string>;
-    /**
-     * Bindings 将授权秘密限定到明确的原生目标和远端连接。
-     */
-    bindings?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsAuthenticationBinding>;
-    /**
-     * Command 是已安装包内的固定入口。
-     */
-    command?: string;
-    /**
-     * PreferredAction 是首次等待时的交互类型，不替代实际授权消息。
-     */
-    preferredAction?: string;
-    /**
-     * Protocol 是桥接消息版本。
-     */
-    protocol?: string;
-    /**
-     * Scopes 是插件明确需要的权限。
-     */
-    scopes?: Array<string>;
-    /**
-     * Strategy 是宿主支持的认证策略。
-     */
-    strategy?: string;
-};
-
-/**
- * AuthenticationBinding 将桥接秘密限定到一个原生运行目标的远端请求头。
- */
-export type GithubComJieWaZiNeuxBotServerInternalPluginsAuthenticationBinding = {
-    /**
-     * Header 是允许桥接提供的请求头名称。
-     */
-    header?: string;
-    /**
-     * Runtime 是原生目标标识。
-     */
-    runtime?: string;
-    /**
-     * Server 是原生包已有的 MCP 连接键。
-     */
-    server?: string;
-    /**
-     * URL 是允许接收秘密的精确 HTTPS 地址。
-     */
-    url?: string;
-};
-
-/**
  * Author 保存包作者的公开署名资料。
  */
 export type GithubComJieWaZiNeuxBotServerInternalPluginsAuthor = {
@@ -8052,49 +8546,6 @@ export type GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationUsage = {
 };
 
 /**
- * Entry 描述一个本地目录项及其不可变来源。
- */
-export type GithubComJieWaZiNeuxBotServerInternalPluginsCatalogEntry = {
-    /**
-     * ArchiveSHA256 是完整压缩包摘要。
-     */
-    archiveSHA256?: string;
-    /**
-     * ArchiveURL 是不可变 HTTP 下载地址。
-     */
-    archiveURL?: string;
-    /**
-     * DetailsSHA256 固定公开资料的完整字节摘要。
-     */
-    detailsSHA256?: string;
-    /**
-     * DetailsSize 是公开资料的完整字节数。
-     */
-    detailsSize?: number;
-    /**
-     * DetailsURL 是目录明确声明的公开资料地址。
-     */
-    detailsURL?: string;
-    /**
-     * Key 是目录项稳定身份。
-     */
-    key?: string;
-    package?: GithubComJieWaZiNeuxBotServerInternalPluginsPackage & unknown;
-    /**
-     * PackagePath 是完整来源中的逻辑入口。
-     */
-    packagePath?: string;
-    /**
-     * SourceCommit 是独立插件源固定提交。
-     */
-    sourceCommit?: string;
-    /**
-     * SourceKey 是来源限定的逻辑身份，不凭同名合并。
-     */
-    sourceKey?: string;
-};
-
-/**
  * SourceState 描述目录缓存与本次同步状态，不把同步失败伪装为空库。
  */
 export type GithubComJieWaZiNeuxBotServerInternalPluginsCatalogSourceState = {
@@ -8157,245 +8608,28 @@ export type GithubComJieWaZiNeuxBotServerInternalPluginsDiagnostic = {
 };
 
 /**
- * Integration 只保存原生引用和授权扩展，不重复包身份和组件。
- */
-export type GithubComJieWaZiNeuxBotServerInternalPluginsIntegration = {
-    authentication?: GithubComJieWaZiNeuxBotServerInternalPluginsAuthentication & unknown;
-    /**
-     * NativePlugins 按目标选择完整原生实现。
-     */
-    nativePlugins?: {
-        [key: string]: GithubComJieWaZiNeuxBotServerInternalPluginsNativeReference;
-    };
-};
-
-/**
- * Manifest 保存标准元数据；客户端扩展不覆盖标准组件发现。
- */
-export type GithubComJieWaZiNeuxBotServerInternalPluginsManifest = {
-    /**
-     * Schema 是固定规范标识。
-     */
-    $schema?: string;
-    author?: GithubComJieWaZiNeuxBotServerInternalPluginsAuthor & unknown;
-    /**
-     * Description 是能力说明。
-     */
-    description?: string;
-    /**
-     * Extensions 是按命名空间保留的客户端扩展。
-     */
-    extensions?: {
-        [key: string]: EncodingJsonRawMessage;
-    };
-    /**
-     * Homepage 是公开说明入口。
-     */
-    homepage?: string;
-    /**
-     * Keywords 是包声明标签。
-     */
-    keywords?: Array<string>;
-    /**
-     * License 是清单声明的插件包许可标识。
-     */
-    license?: string;
-    /**
-     * Name 是包声明名称。
-     */
-    name?: string;
-    /**
-     * Repository 是清单声明的源码或能力来源。
-     */
-    repository?: string;
-    /**
-     * Version 是标准清单声明的插件包版本。
-     */
-    version?: string;
-};
-
-/**
- * NativeComponent 描述原生完整保留的组件；投射路径不宣称支持其执行语义。
- */
-export type GithubComJieWaZiNeuxBotServerInternalPluginsNativeComponent = {
-    /**
-     * Kind 是原生组件类别。
-     */
-    kind?: string;
-    /**
-     * Paths 是声明或默认发现的包内路径。
-     */
-    paths?: Array<string>;
-};
-
-/**
- * NativeImplementation 是精确目标来源摘要，不表示已经加载。
- */
-export type GithubComJieWaZiNeuxBotServerInternalPluginsNativeImplementation = {
-    /**
-     * Components 是保留的原生组成。
-     */
-    components?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsNativeComponent>;
-    /**
-     * Config 是实际原生包所需配置，必填约束只用于选中该目标时。
-     */
-    config?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsConfigurationField>;
-    /**
-     * Digest 是实际原生完整摘要。
-     */
-    digest?: string;
-    /**
-     * Format 是实际原生格式。
-     */
-    format?: string;
-    /**
-     * Name 是实际原生名称。
-     */
-    name?: string;
-    /**
-     * Path 是固定来源内的原生目录。
-     */
-    path?: string;
-    /**
-     * ServerCount 是已发现连接器数量。
-     */
-    serverCount?: number;
-    /**
-     * 连接摘要
-     */
-    servers?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsNativeServerSummary>;
-    /**
-     * SkillCount 是已发现技能数量。
-     */
-    skillCount?: number;
-    /**
-     * 技能摘要
-     */
-    skills?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsNativeSkillSummary>;
-    /**
-     * TrustRequired 表示实际原生包包含需要执行信任的组件或授权入口。
-     */
-    trustRequired?: boolean;
-    /**
-     * Version 是实际原生版本。
-     */
-    version?: string;
-};
-
-/**
- * NativeReference 指向同一已核验来源快照中的原生包。
- */
-export type GithubComJieWaZiNeuxBotServerInternalPluginsNativeReference = {
-    /**
-     * Path 是相对完整来源根的目录。
-     */
-    path?: string;
-};
-
-/**
- * 上游连接摘要
- */
-export type GithubComJieWaZiNeuxBotServerInternalPluginsNativeServerSummary = {
-    /**
-     * 服务源站
-     */
-    endpoint?: string;
-    /**
-     * 组件标识
-     */
-    key?: string;
-    /**
-     * 连接名称
-     */
-    name?: string;
-    /**
-     * 传输方式
-     */
-    transport?: string;
-};
-
-/**
- * 上游技能摘要
- */
-export type GithubComJieWaZiNeuxBotServerInternalPluginsNativeSkillSummary = {
-    /**
-     * 技能说明
-     */
-    description?: string;
-    /**
-     * 组件标识
-     */
-    key?: string;
-    /**
-     * 技能名称
-     */
-    name?: string;
-};
-
-/**
- * 插件包
- */
-export type GithubComJieWaZiNeuxBotServerInternalPluginsPackage = {
-    /**
-     * 兼容性说明
-     */
-    diagnostics?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsDiagnostic>;
-    /**
-     * 包格式
-     */
-    format?: string;
-    /**
-     * 软件图标
-     */
-    icon?: string;
-    integration?: GithubComJieWaZiNeuxBotServerInternalPluginsIntegration & unknown;
-    manifest?: GithubComJieWaZiNeuxBotServerInternalPluginsManifest & unknown;
-    /**
-     * 原生组成
-     */
-    nativeComponents?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsNativeComponent>;
-    /**
-     * 目标实现
-     */
-    nativeImplementations?: {
-        [key: string]: GithubComJieWaZiNeuxBotServerInternalPluginsNativeImplementation;
-    };
-    presentation?: GithubComJieWaZiNeuxBotServerInternalPluginsPresentation & unknown;
-    /**
-     * 插件说明
-     */
-    readme?: string;
-    /**
-     * 正文路径
-     */
-    readmePath?: string;
-    /**
-     * 正文状态
-     */
-    readmeStatus?: string;
-    /**
-     * 包含连接器
-     */
-    servers?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsServer>;
-    /**
-     * 包含技能
-     */
-    skills?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsSkill>;
-    /**
-     * 来源入口
-     */
-    sourcePath?: string;
-    upstream?: GithubComJieWaZiNeuxBotServerInternalPluginsUpstreamSource & unknown;
-};
-
-/**
- * 插件展示资料
+ * Presentation 保存标准 interface 与显式本地化资料。
  */
 export type GithubComJieWaZiNeuxBotServerInternalPluginsPresentation = {
+    brandColor?: GithubComJieWaZiNeuxBotServerInternalPluginsThemeValues & unknown;
+    /**
+     * Capabilities 只描述业务能力，不授予权限。
+     */
+    capabilities?: Array<string>;
     /**
      * 分类
      */
     category?: string;
+    /**
+     * DefaultPrompt 是按固定索引归一的作者提示词。
+     */
+    defaultPrompt?: Array<string>;
+    /**
+     * DefaultPromptLocalizations 与标准提示词按索引等长对应。
+     */
+    defaultPromptLocalizations?: {
+        [key: string]: Array<string>;
+    };
     /**
      * 开发者
      */
@@ -8410,6 +8644,7 @@ export type GithubComJieWaZiNeuxBotServerInternalPluginsPresentation = {
     displayNames?: {
         [key: string]: string;
     };
+    icons?: GithubComJieWaZiNeuxBotServerInternalPluginsThemeValues & unknown;
     /**
      * 本地简介
      */
@@ -8424,10 +8659,15 @@ export type GithubComJieWaZiNeuxBotServerInternalPluginsPresentation = {
      * 隐私政策
      */
     privacyPolicyURL?: string;
+    setup?: GithubComJieWaZiNeuxBotServerInternalPluginsSetupPresentation & unknown;
     /**
      * 简短介绍
      */
     shortDescription?: string;
+    /**
+     * SupportURL 是公开支持入口。
+     */
+    supportURL?: string;
     /**
      * 服务条款
      */
@@ -8439,45 +8679,151 @@ export type GithubComJieWaZiNeuxBotServerInternalPluginsPresentation = {
 };
 
 /**
- * Server 保存插件内 MCP 连接定义，不包含本机共享凭据。
+ * PublicAuthentication 保留授权交互提示，排除程序入口与交付绑定。
  */
-export type GithubComJieWaZiNeuxBotServerInternalPluginsServer = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsPublicAuthentication = {
     /**
-     * Args 是保持原序的程序参数。
+     * 首选交互
      */
-    args?: Array<string>;
+    preferredAction?: string;
     /**
-     * Command 是程序令牌或包内相对程序。
+     * 授权协议
      */
-    command?: string;
+    protocol?: string;
     /**
-     * Cwd 是规范允许的工作目录。
+     * 所需权限
      */
-    cwd?: string;
+    scopes?: Array<string>;
     /**
-     * Env 是待展开的环境定义。
+     * 授权策略
      */
-    env?: {
-        [key: string]: string;
-    };
+    strategy?: string;
+};
+
+/**
+ * PublicIntegration 是公开授权交互声明。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalPluginsPublicIntegration = {
+    authentication?: GithubComJieWaZiNeuxBotServerInternalPluginsPublicAuthentication & unknown;
+};
+
+/**
+ * PublicManifest 是目录与已安装插件共用的公开元数据。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalPluginsPublicManifest = {
     /**
-     * Headers 是待展开的请求头定义。
+     * 规范标识
      */
-    headers?: {
-        [key: string]: string;
-    };
+    $schema?: string;
+    author?: GithubComJieWaZiNeuxBotServerInternalPluginsAuthor & unknown;
     /**
-     * Key 是清单内稳定服务键。
+     * 能力说明
+     */
+    description?: string;
+    /**
+     * 项目主页
+     */
+    homepage?: string;
+    /**
+     * 包标签
+     */
+    keywords?: Array<string>;
+    /**
+     * 许可标识
+     */
+    license?: string;
+    /**
+     * 包名称
+     */
+    name?: string;
+    /**
+     * 源码仓库
+     */
+    repository?: string;
+    /**
+     * 包版本
+     */
+    version?: string;
+};
+
+/**
+ * PublicPackage 是全部资源公开出口共用的展示字段集。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalPluginsPublicPackage = {
+    /**
+     * 解析契约
+     */
+    contractVersion?: string;
+    /**
+     * 兼容性说明
+     */
+    diagnostics?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsDiagnostic>;
+    /**
+     * 包格式
+     */
+    format?: string;
+    /**
+     * 是否声明用户可编辑配置
+     */
+    hasConfiguration?: boolean;
+    /**
+     * 软件图标
+     */
+    icon?: string;
+    integration?: GithubComJieWaZiNeuxBotServerInternalPluginsPublicIntegration & unknown;
+    manifest?: GithubComJieWaZiNeuxBotServerInternalPluginsPublicManifest & unknown;
+    presentation?: GithubComJieWaZiNeuxBotServerInternalPluginsPresentation & unknown;
+    /**
+     * 插件说明
+     */
+    readme?: string;
+    /**
+     * 正文状态
+     */
+    readmeStatus?: string;
+    /**
+     * 包含连接器
+     */
+    servers?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsPublicServer>;
+    /**
+     * 包含技能
+     */
+    skills?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsSkill>;
+    upstream?: GithubComJieWaZiNeuxBotServerInternalPluginsUpstreamSource & unknown;
+};
+
+/**
+ * PublicServer 是连接器展示摘要，不提供执行配置。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalPluginsPublicServer = {
+    /**
+     * 组件标识
      */
     key?: string;
     /**
-     * Type 是标准 MCP 传输。
+     * 传输方式
      */
     type?: string;
     /**
-     * URL 是待展开的外部服务地址。
+     * 服务源站
      */
     url?: string;
+};
+
+/**
+ * SetupPresentation 保存安全的静态连接说明，不包含驱动能力。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalPluginsSetupPresentation = {
+    /**
+     * HelpURL 是作者公开的 HTTPS 帮助地址。
+     */
+    helpURL?: string;
+    /**
+     * Instructions 是固定语言的安全 Markdown 说明。
+     */
+    instructions?: {
+        [key: string]: string;
+    };
 };
 
 /**
@@ -8511,6 +8857,10 @@ export type GithubComJieWaZiNeuxBotServerInternalPluginsSkill = {
  */
 export type GithubComJieWaZiNeuxBotServerInternalPluginsSnapshot = {
     /**
+     * AccountGeneration 是接纳时固定的共享账号身份代次。
+     */
+    accountGeneration?: number;
+    /**
      * ComponentIDs 是本次交付组件的稳定授权身份。
      */
     componentIds?: Array<string>;
@@ -8539,9 +8889,21 @@ export type GithubComJieWaZiNeuxBotServerInternalPluginsSnapshot = {
      */
     nativePluginId?: string;
     /**
+     * Profile 是本次目标或通用投射的格式配置档。
+     */
+    profile?: string;
+    /**
      * ProviderAccountID 是本次共享提供者账号身份，不含凭据。
      */
     providerAccountId?: string;
+    /**
+     * Runtime 是本次实际选择的 CLI 家族。
+     */
+    runtime?: string;
+    /**
+     * SourceDigest 是已核验原包的完整摘要。
+     */
+    sourceDigest?: string;
     /**
      * TargetDigest 是当前CLI实际完整内容摘要。
      */
@@ -8558,6 +8920,20 @@ export type GithubComJieWaZiNeuxBotServerInternalPluginsSnapshot = {
      * VersionID 是固定版本身份。
      */
     versionId?: string;
+};
+
+/**
+ * ThemeValues 分别保存作者明确声明的默认与暗色展示值。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalPluginsThemeValues = {
+    /**
+     * Dark 是可选暗色主题资源或颜色。
+     */
+    dark?: string;
+    /**
+     * Default 是默认主题资源或颜色。
+     */
+    default?: string;
 };
 
 /**
@@ -8671,6 +9047,72 @@ export type GithubComJieWaZiNeuxBotServerInternalProfileWorkMethod = {
      * Steps 是按执行顺序排列的步骤。
      */
     steps?: Array<string>;
+};
+
+/**
+ * TokenMetrics keeps complete counts and known subtotals separately.
+ */
+export type GithubComJieWaZiNeuxBotServerInternalUsageTokenMetrics = {
+    /**
+     * IncompleteUsageInvocations counts observations with incomplete scope or additive counters.
+     */
+    incompleteUsageInvocations?: number;
+    /**
+     * Invocations counts canonical native invocations.
+     */
+    invocations?: number;
+    knownTokens?: GithubComJieWaZiNeuxBotServerInternalUsageTokens & unknown;
+    /**
+     * KnownTotalWithCacheRead is the known subtotal including cache reads.
+     */
+    knownTotalWithCacheRead?: number | null;
+    /**
+     * KnownTotalWithoutCacheRead is the known subtotal excluding cache reads.
+     */
+    knownTotalWithoutCacheRead?: number | null;
+    /**
+     * MissingUsageInvocations counts invocations without token evidence.
+     */
+    missingUsageInvocations?: number;
+    tokens?: GithubComJieWaZiNeuxBotServerInternalUsageTokens & unknown;
+    /**
+     * TotalWithCacheRead is the complete total including cache reads.
+     */
+    totalWithCacheRead?: number | null;
+    /**
+     * TotalWithoutCacheRead is the complete total excluding cache reads.
+     */
+    totalWithoutCacheRead?: number | null;
+};
+
+/**
+ * Tokens 保存已规范化计数和原生输入；ReportedInput 不参与互斥计数求和。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalUsageTokens = {
+    /**
+     * 缓存读取
+     */
+    cacheRead?: number | null;
+    /**
+     * 缓存写入
+     */
+    cacheWrite?: number | null;
+    /**
+     * 普通输入
+     */
+    input?: number | null;
+    /**
+     * 输出用量
+     */
+    output?: number | null;
+    /**
+     * 推理用量
+     */
+    reasoning?: number | null;
+    /**
+     * 原生输入
+     */
+    reportedInput?: number;
 };
 
 export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslActionDeclaration = {
@@ -9225,7 +9667,7 @@ export type GithubComJieWaZiNeuxBotServerInternalWorkspacefilesChangeEvent = {
  */
 export type GithubComJieWaZiNeuxBotServerInternalWorkspacefilesChatFiles = {
     /**
-     * Generated 是受管生成附件。
+     * Generated 保留显式交付附件的列表字段；执行成果由文件结果事实提供。
      */
     generated?: Array<GithubComJieWaZiNeuxBotServerInternalWorkspacefilesFileMatch>;
     /**
@@ -9489,11 +9931,11 @@ export type GithubComJieWaZiNeuxBotServerInternalWorkspacefilesResource = {
  */
 export type GithubComJieWaZiNeuxBotServerInternalWorkspacefilesScope = {
     /**
-     * ID 是重启后失效的不透明范围标识。
+     * 范围标识
      */
     id?: string;
     /**
-     * Root 是聊天受管工作区的真实目录。
+     * 工作目录
      */
     root?: string;
 };
@@ -9543,6 +9985,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesControllersWorkflowNodeCoun
  * AIAccount 保存可由智能体默认配置及聊天选择的受管账号。
  */
 export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccount = {
+    /**
+     * 认证代次
+     */
+    authGeneration?: number;
     authMode?: GithubComJieWaZiNeuxBotServerConstantsAccountAuthMode & unknown;
     /**
      * ClaudeModelRoles 保存 Claude Code 各内置模型角色对应的实际请求模型 ID。
@@ -9566,10 +10012,7 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccount = {
      * DefaultReasoning 是选择该账号时优先使用的推理强度标识。
      */
     defaultReasoning?: string;
-    /**
-     * Endpoints 保存账号唯一的请求协议及服务地址；数组形式兼容已有存储。
-     */
-    endpoints?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccountEndpoint>;
+    endpoint?: GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccountEndpoint & unknown;
     /**
      * HasCredential 表示已保存 API Key 或完整订阅令牌。
      */
@@ -9601,13 +10044,17 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccount = {
         [key: string]: Array<string>;
     };
     /**
-     * Name 是去除首尾空白后全局唯一的账号名称。
+     * Name 是去除首尾空白后在所属智能体内唯一的账号名称。
      */
     name?: string;
     /**
-     * Revision 用于更新冲突检测和隔离进程缓存。
+     * Revision 仅用于用户配置更新冲突检测。
      */
     revision?: number;
+    /**
+     * RuntimeID 是拥有该账号的实际智能体环境标识，包含独立启动配置。
+     */
+    runtimeId?: string;
     /**
      * SelectedModels 保存用户允许在聊天中使用的该账号模型标识。
      */
@@ -9748,16 +10195,20 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskConfigur
      */
     executorWakerId?: string;
     /**
+     * Fast 在计划中为空时于机会接纳读取智能体默认；运行记录中的空值保持原生默认。
+     */
+    fast?: boolean;
+    /**
      * Instruction 是每次执行发送给伙伴的完整工作指令。
      */
     instruction?: string;
     knowledge?: GithubComJieWaZiNeuxBotServerRepositoriesModelsKnowledgeMaintenanceAuthorization & unknown;
     /**
-     * MemberConfigs 是团队成员的任务专属覆盖；未列出的成员沿用运行时团队设置。
+     * MemberConfigs 在任务配置中保存成员覆盖，在运行记录中保存接纳时的完整成员选择。
      */
     memberConfigs?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskMemberConfiguration>;
     /**
-     * Model 是执行使用的模型，空值使用智能体默认值。
+     * Model 是计划选择的模型；运行记录保存接纳时有效选择，空值保持原生默认。
      */
     model?: string;
     /**
@@ -9817,6 +10268,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskMemberCo
      * AccountID 是此成员选用的账号。
      */
     accountId?: string;
+    /**
+     * Fast 是成员覆盖的加速选择；机会接纳后 nil 保留原生默认。
+     */
+    fast?: boolean;
     /**
      * Model 是此成员选用的模型，空值使用智能体默认模型。
      */
@@ -10112,6 +10567,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelThreadMember =
      */
     expertise?: Array<GithubComJieWaZiNeuxBotServerInternalProfileExpertise>;
     /**
+     * Fast 是该成员后续新执行使用的加速选择；nil 保留原生默认。
+     */
+    fast?: boolean;
+    /**
      * IsLead 表示该成员是否为首发时冻结的唯一团队负责人。
      */
     isLead?: boolean;
@@ -10187,6 +10646,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsChat = {
      */
     lastAccountId?: string;
     /**
+     * LastContextWindow 是最近一次执行冻结的上下文档位。
+     */
+    lastContextWindow?: string;
+    /**
      * LastEndedExecutionAt 是最近结束回合的权威日志时间。
      */
     lastEndedExecutionAt?: number;
@@ -10195,6 +10658,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsChat = {
      */
     lastEndedExecutionId?: string;
     lastEndedExecutionStatus?: GithubComJieWaZiNeuxBotServerConstantsExecutionStatus & unknown;
+    /**
+     * LastFast 是最近执行冻结的 Fast 意图。
+     */
+    lastFast?: boolean;
     /**
      * LastModel 是最近一次执行选择的模型标识。
      */
@@ -10277,6 +10744,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsExecution = {
      */
     completedAt?: number;
     /**
+     * ContextWindow 是执行冻结的原生上下文档位。
+     */
+    contextWindow?: string;
+    /**
      * CreatedAt 是领域对象建立时的 Unix 毫秒时间。
      */
     createdAt?: number;
@@ -10284,6 +10755,21 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsExecution = {
      * ErrorCode 是失败时供调用方本地化的稳定错误码。
      */
     errorCode?: string;
+    /**
+     * ErrorMessage 是明确公开的原生可读原因。
+     */
+    errorMessage?: string;
+    errorMessageSource?: GithubComJieWaZiNeuxBotServerConstantsErrorMessageSource & unknown;
+    /**
+     * ErrorParams 是应用错误模板的安全参数。
+     */
+    errorParams?: {
+        [key: string]: unknown;
+    };
+    /**
+     * Fast 是本次执行冻结的 Fast 意图，空值使用原生行为。
+     */
+    fast?: boolean;
     /**
      * ID 是 32 位无连字符 UUID。
      */
@@ -10314,10 +10800,6 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsExecution = {
      */
     runtimeId?: string;
     status?: GithubComJieWaZiNeuxBotServerConstantsExecutionStatus & unknown;
-    /**
-     * SubmissionHash 是规范化输入和冻结配置的摘要，拒绝同键异内容。
-     */
-    submissionHash?: string;
     /**
      * SubmissionID 是入口无关的稳定输入身份，写入同一权威执行事实。
      */
@@ -10510,7 +10992,7 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsImConversationLink = 
  */
 export type GithubComJieWaZiNeuxBotServerRepositoriesModelsImExecutionOptions = {
     /**
-     * AccountID 是选择的账号，空值沿用智能体设置。
+     * AccountID 是已解析的账号选择，合法空值保留原生默认。
      */
     accountId?: string;
     /**
@@ -10989,9 +11471,13 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingElicitation = 
 };
 
 /**
- * Plugin 保存稳定的本机插件资源与归属，展示名不参与身份判断。
+ * Plugin 保存稳定的本机插件资源，展示名不参与身份判断。
  */
 export type GithubComJieWaZiNeuxBotServerRepositoriesModelsPlugin = {
+    /**
+     * Categories 是用户选择的分类，与资源原始内容独立保存。
+     */
+    categories?: Array<string>;
     /**
      * CreatedAt 是创建时间的 Unix 毫秒值。
      */
@@ -11008,10 +11494,6 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsPlugin = {
      * Name 是用户可修改的展示名称。
      */
     name?: string;
-    /**
-     * OwnerWakerID 是所属伙伴，空值表示全局资源。
-     */
-    ownerWakerId?: string;
     /**
      * SourceKey 是明确来源身份；来源未核验时使用内容身份而非展示名称。
      */
@@ -11049,40 +11531,22 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsPluginReference = {
 };
 
 /**
- * PluginVersion 保存完整不可变内容和由其解析的组件快照。
+ * ResourceCategory 保存各类型资源可重复选择的用户分类，移除资源标签不会删除分类。
  */
-export type GithubComJieWaZiNeuxBotServerRepositoriesModelsPluginVersion = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsResourceCategory = {
     /**
-     * CreatedAt 是版本登记时间的 Unix 毫秒值。
+     * CreatedAt 是首次创建时间的 Unix 毫秒值。
      */
     createdAt?: number;
     /**
-     * Digest 是完整内容摘要。
-     */
-    digest?: string;
-    /**
-     * ID 是版本标识。
+     * ID 是分类的稳定标识。
      */
     id?: string;
-    package?: GithubComJieWaZiNeuxBotServerInternalPluginsPackage & unknown;
     /**
-     * PluginID 是所属资源。
+     * Name 是用户设置的分类名称，同类型内唯一。
      */
-    pluginId?: string;
-    /**
-     * Provenance 是分发来源原始记录，不包含凭据。
-     */
-    provenance?: {
-        [key: string]: unknown;
-    };
-    /**
-     * TrustedAt 是用户对该不可变 MCP 内容确认执行配置的时间。
-     */
-    trustedAt?: number;
-    /**
-     * Version 是原包版本或明确的本机版本号。
-     */
-    version?: string;
+    name?: string;
+    type?: GithubComJieWaZiNeuxBotServerConstantsResourceCategoryType & unknown;
 };
 
 /**
@@ -11137,6 +11601,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillPackage = {
      */
     builtIn?: boolean;
     /**
+     * Categories 是用户选择的多个分类，不属于技能版本内容。
+     */
+    categories?: Array<string>;
+    /**
      * CreatedAt 是创建时间的 Unix 毫秒值。
      */
     createdAt?: number;
@@ -11168,11 +11636,6 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillPackage = {
      * Name 是技能包展示名称。
      */
     name?: string;
-    /**
-     * OwnerWakerID 是私有技能所属伙伴，公开技能为空。
-     */
-    ownerWakerId?: string;
-    scope?: GithubComJieWaZiNeuxBotServerConstantsSkillScope & unknown;
     source?: GithubComJieWaZiNeuxBotServerConstantsSkillSource & unknown;
     /**
      * UpdatedAt 是最近更新时间的 Unix 毫秒值。
@@ -11188,10 +11651,6 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillVersion = {
      * ContentDigest 是完整技能包内容的 SHA-256 摘要。
      */
     contentDigest?: string;
-    /**
-     * ContentPath 是应用数据目录内完整技能包的相对路径。
-     */
-    contentPath?: string;
     /**
      * CreatedAt 是创建时间的 Unix 毫秒值。
      */
@@ -11645,9 +12104,13 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowCreationSessi
 };
 
 /**
- * WorkflowDefinition 只拥有稳定身份、当前版本及创作和范围关系。
+ * WorkflowDefinition 拥有稳定身份、目录资料、当前版本及创作和范围关系。
  */
 export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition = {
+    /**
+     * Categories 是用户维护的目录分类，不属于版本源码。
+     */
+    categories?: Array<string>;
     /**
      * CreatedAt 是建立时间的 Unix 毫秒。
      */
@@ -11681,63 +12144,6 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition = 
      * WhenToUse 是当前版本的使用场景。
      */
     whenToUse?: string;
-};
-
-/**
- * WorkflowEffect 是派发前持久保存的 outbox 与不可变效果收据。
- */
-export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowEffect = {
-    /**
-     * AttemptGeneration 区分真实尝试，不随 Runner 所有者改变。
-     */
-    attemptGeneration?: number;
-    /**
-     * ChatID 是 Core 接纳后的稳定对话身份。
-     */
-    chatId?: string;
-    /**
-     * ChildRunID 是已接纳的真实子运行身份，不能从普通 JSON 伪造。
-     */
-    childRunId?: string;
-    /**
-     * CreatedAt 是准备时间。
-     */
-    createdAt?: number;
-    /**
-     * DeadlineAt 是本效果的期限。
-     */
-    deadlineAt?: number;
-    /**
-     * ExecutionID 是派发前预分配的 Core 执行身份。
-     */
-    executionId?: string;
-    executionStatus?: GithubComJieWaZiNeuxBotServerConstantsExecutionStatus & unknown;
-    failure?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslValue & unknown;
-    /**
-     * FiberID 是等待此效果的执行帧。
-     */
-    fiberId?: string;
-    /**
-     * FinalMessageID 绑定本次成功执行的权威最终助手消息，续聊不会替换此锚点。
-     */
-    finalMessageId?: string;
-    /**
-     * ID 是幂等派发身份。
-     */
-    id?: string;
-    /**
-     * InstanceID 是所属节点实例。
-     */
-    instanceId?: string;
-    /**
-     * OutputRepairs 是已持久接纳的无工具输出纠正次数，重启不重置。
-     */
-    outputRepairs?: number;
-    /**
-     * RunID 是所属运行。
-     */
-    runId?: string;
-    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus & unknown;
 };
 
 /**
@@ -11784,6 +12190,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowExecutionDefa
      * AccountID 是账号身份，空值交给该智能体的既有账号规则。
      */
     accountId?: string;
+    /**
+     * Fast 是接纳时冻结的快速模式意图；空值保留原生行为，后续派发不重新读取默认值。
+     */
+    fast?: boolean;
     /**
      * Model 是选定模型。
      */
@@ -11841,10 +12251,6 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowHumanRequest 
      * Prompt 是已求值的问题正文。
      */
     prompt?: string;
-    /**
-     * QuestionVersion 是当前冻结问题的乐观并发版本。
-     */
-    questionVersion?: number;
     /**
      * RunID 是所属运行。
      */
@@ -12010,91 +12416,6 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowOperationRequ
 };
 
 /**
- * WorkflowRun 固定版本、参数、执行配置和租约，不读取后续创作修改。
- */
-export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun = {
-    /**
-     * Args 是已填显式默认值并校验的运行输入。
-     */
-    args?: unknown;
-    /**
-     * CompletedAt 是真实终态时间。
-     */
-    completedAt?: number;
-    /**
-     * CreatedAt 是接纳时间。
-     */
-    createdAt?: number;
-    /**
-     * DeadlineAt 是运行总预算期限。
-     */
-    deadlineAt?: number;
-    defaults?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowExecutionDefaults & unknown;
-    /**
-     * DefinitionID 是所属定义。
-     */
-    definitionId?: string;
-    /**
-     * Depth 是调用树深度。
-     */
-    depth?: number;
-    failure?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslValue & unknown;
-    /**
-     * Context 是只读流程上下文，不包含账号密钥。
-     */
-    flowContext?: {
-        [key: string]: unknown;
-    };
-    /**
-     * ID 是运行身份。
-     */
-    id?: string;
-    /**
-     * Joined 表示父运行取消时也应停止本运行。
-     */
-    joined?: boolean;
-    limits?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslLimits & unknown;
-    /**
-     * ParentRunID 是 joined 或 detached 子运行的来源。
-     */
-    parentRunId?: string;
-    /**
-     * Result 是通过最终输出 schema 的返回 JSON。
-     */
-    result?: unknown;
-    /**
-     * RevisionID 是本次不可变版本。
-     */
-    revisionId?: string;
-    /**
-     * RevisionOrdinal 是展示所需的冻结版本号。
-     */
-    revisionOrdinal?: number;
-    /**
-     * RootFiberID 是主程序的执行帧。
-     */
-    rootFiberId?: string;
-    /**
-     * RootRunID 绑定调用树，统一限制全部后代的数量。
-     */
-    rootRunId?: string;
-    scopeBinding?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowScopeBinding & unknown;
-    /**
-     * StartedAt 是冻结的时间来源。
-     */
-    startedAt?: number;
-    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowRunStatus & unknown;
-    /**
-     * UpdatedAt 是最后提交时间。
-     */
-    updatedAt?: number;
-    /**
-     * Version 是每次持久提交增加的 CAS 版本。
-     */
-    version?: number;
-};
-
-/**
  * WorkflowScopeBinding 是用户选定的工作范围，不是流程逻辑的副本。
  */
 export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowScopeBinding = {
@@ -12109,7 +12430,7 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowScopeBinding 
 };
 
 /**
- * Login 保存前端完成设备授权需要的非秘密信息。
+ * Login 保存前端观察原生设备或浏览器授权所需的非秘密状态。
  */
 export type GithubComJieWaZiNeuxBotServerServicesAiaccountLogin = {
     /**
@@ -12470,6 +12791,13 @@ export type GithubComJieWaZiNeuxBotServerServicesChatPublicEvent = {
      * ErrorMessage 是可以安全暴露给调用方的错误说明。
      */
     errorMessage?: string;
+    errorMessageSource?: GithubComJieWaZiNeuxBotServerConstantsErrorMessageSource & unknown;
+    /**
+     * ErrorParams 是稳定错误模板使用的安全参数。
+     */
+    errorParams?: {
+        [key: string]: unknown;
+    };
     executionStatus?: GithubComJieWaZiNeuxBotServerConstantsExecutionStatus & unknown;
     fileChanges?: GithubComJieWaZiNeuxBotServerInternalChatEventstreamFileChangesUpdate & unknown;
     live?: GithubComJieWaZiNeuxBotServerInternalChatEventstreamLiveMessageIncrement & unknown;
@@ -12704,11 +13032,221 @@ export type GithubComJieWaZiNeuxBotServerServicesNotificationSnapshot = {
     unreadResultCount?: number;
 };
 
+/**
+ * 原生认证方法
+ */
+export type GithubComJieWaZiNeuxBotServerServicesRuntimeenvironmentRuntimeAuthenticationMethod = {
+    /**
+     * 方法标识
+     */
+    id?: string;
+    /**
+     * 交互方式
+     */
+    kind?: string;
+    /**
+     * 方法名称
+     */
+    name?: string;
+};
+
+/**
+ * 系统账号认证状态
+ */
+export type GithubComJieWaZiNeuxBotServerServicesRuntimeenvironmentRuntimeAuthenticationSnapshot = {
+    /**
+     * 支持密钥配置
+     */
+    apiKeySupported?: boolean;
+    /**
+     * 支持原生登录
+     */
+    canAuthenticate?: boolean;
+    /**
+     * 允许取消
+     */
+    cancelable?: boolean;
+    /**
+     * 本机配置限制
+     */
+    configurationReason?: string;
+    /**
+     * 失败代码
+     */
+    errorCode?: string;
+    /**
+     * 登录任务标识
+     */
+    jobId?: string;
+    /**
+     * 原生认证方法
+     */
+    methods?: Array<GithubComJieWaZiNeuxBotServerServicesRuntimeenvironmentRuntimeAuthenticationMethod>;
+    result?: GithubComJieWaZiNeuxBotServerConstantsRuntimeAuthenticationResult & unknown;
+    /**
+     * 快照修订
+     */
+    revision?: number;
+    /**
+     * 智能体标识
+     */
+    runtimeId?: string;
+    /**
+     * 账号范围
+     */
+    scope?: string;
+    state?: GithubComJieWaZiNeuxBotServerConstantsRuntimeAuthenticationState & unknown;
+    /**
+     * 需要终端认证
+     */
+    terminalRequired?: boolean;
+    /**
+     * 更新时间
+     */
+    updatedAt?: number;
+    /**
+     * 原生授权码
+     */
+    userCode?: string;
+    /**
+     * 原生授权地址
+     */
+    verificationUrl?: string;
+};
+
+/**
+ * 智能体安装状态
+ */
+export type GithubComJieWaZiNeuxBotServerServicesRuntimeenvironmentRuntimeInstallationSnapshot = {
+    /**
+     * 允许安装
+     */
+    canInstall?: boolean;
+    /**
+     * 允许卸载
+     */
+    canUninstall?: boolean;
+    /**
+     * 允许更新
+     */
+    canUpdate?: boolean;
+    /**
+     * 允许取消
+     */
+    cancelable?: boolean;
+    /**
+     * 检查失败代码
+     */
+    checkErrorCode?: string;
+    checkState?: GithubComJieWaZiNeuxBotServerConstantsRuntimeUpdateCheckState & unknown;
+    /**
+     * 成功检查时间
+     */
+    checkedAt?: number;
+    /**
+     * 失败代码
+     */
+    errorCode?: string;
+    /**
+     * 失败操作
+     */
+    errorOperation?: string;
+    /**
+     * 失败原因
+     */
+    errorReason?: string;
+    /**
+     * 上游响应状态
+     */
+    errorStatus?: number;
+    /**
+     * 安装方式
+     */
+    installationMethod?: string;
+    /**
+     * 程序安装位置
+     */
+    installationPath?: string;
+    /**
+     * 已安装程序
+     */
+    installed?: boolean;
+    /**
+     * 官方最新版本
+     */
+    latestVersion?: string;
+    /**
+     * 维护限制原因
+     */
+    maintenanceReason?: string;
+    /**
+     * 官方维护说明
+     */
+    officialUrl?: string;
+    /**
+     * 当前维护操作
+     */
+    operation?: string;
+    /**
+     * 当前阶段
+     */
+    phase?: string;
+    /**
+     * 下载进度
+     */
+    progress?: number;
+    /**
+     * 已下载字节
+     */
+    receivedBytes?: number;
+    /**
+     * 快照修订
+     */
+    revision?: number;
+    /**
+     * 智能体标识
+     */
+    runtimeId?: string;
+    source?: GithubComJieWaZiNeuxBotServerConstantsRuntimeInstallationSource & unknown;
+    state?: GithubComJieWaZiNeuxBotServerConstantsRuntimeInstallationState & unknown;
+    /**
+     * 支持受管安装
+     */
+    supported?: boolean;
+    /**
+     * 总下载字节
+     */
+    totalBytes?: number;
+    /**
+     * 存在可用更新
+     */
+    updateAvailable?: boolean;
+    /**
+     * 更新时间
+     */
+    updatedAt?: number;
+    /**
+     * 已安装版本
+     */
+    version?: string;
+};
+
 export type GithubComJieWaZiNeuxBotServerServicesScheduleRunView = GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticRun & {
     /**
      * CompletedAt 是首次独立执行或团队整体运行结束的 Unix 毫秒时间。
      */
     completedAt?: number;
+    /**
+     * ErrorMessage 是既有执行或工作流事实中的公开原因。
+     */
+    errorMessage?: string;
+    errorMessageSource?: GithubComJieWaZiNeuxBotServerConstantsErrorMessageSource & unknown;
+    /**
+     * ErrorParams 是同一失败事实的安全模板参数。
+     */
+    errorParams?: {
+        [key: string]: unknown;
+    };
     state?: GithubComJieWaZiNeuxBotServerConstantsAutomaticRunState & unknown;
 };
 
@@ -12750,6 +13288,117 @@ export type GithubComJieWaZiNeuxBotServerServicesScheduleTaskView = GithubComJie
      */
     runCount?: number;
     workflowInputContract?: GithubComJieWaZiNeuxBotServerInternalWorkflowInputContract & unknown;
+};
+
+/**
+ * Coverage describes which canonical evidence was available.
+ */
+export type GithubComJieWaZiNeuxBotServerServicesUsageCoverage = {
+    /**
+     * EarliestRetainedAt is the oldest retained terminal commit time in this snapshot.
+     */
+    earliestRetainedAt?: number | null;
+    /**
+     * IndeterminateInvocations counts dispatched work without terminal evidence when known.
+     */
+    indeterminateInvocations?: number | null;
+    /**
+     * LegacyBackgroundUnknown marks the gap before canonical terminal collection.
+     */
+    legacyBackgroundUnknown?: boolean;
+    /**
+     * Reasons lists structured coverage gaps.
+     */
+    reasons?: Array<string>;
+    /**
+     * State reports whether coverage has known gaps.
+     */
+    state?: string;
+};
+
+/**
+ * Filter selects a half-open time range and optional admission attribution.
+ */
+export type GithubComJieWaZiNeuxBotServerServicesUsageFilter = {
+    /**
+     * AccountID 是用于筛选的原始宿主账号标识。
+     */
+    accountId?: string;
+    /**
+     * ChatID 是用于筛选的原始对话标识。
+     */
+    chatId?: string;
+    /**
+     * From 是包含的 Unix 毫秒下界。
+     */
+    from?: number;
+    /**
+     * Provider 是用于筛选的原生后端标识。
+     */
+    provider?: string;
+    /**
+     * Source 是用于筛选的调用入口。
+     */
+    source?: string;
+    /**
+     * Timezone 是自然日分组的 IANA 时区。
+     */
+    timezone?: string;
+    /**
+     * To 是排除的 Unix 毫秒上界。
+     */
+    to?: number;
+    /**
+     * WakerIDs 是用于筛选的原始伙伴标识。
+     */
+    wakerIds?: Array<string>;
+};
+
+/**
+ * Group contains usage for one group in this snapshot.
+ */
+export type GithubComJieWaZiNeuxBotServerServicesUsageGroup = {
+    /**
+     * Key 是分组标识，空值表示归属未知。
+     */
+    key?: string;
+    metrics?: GithubComJieWaZiNeuxBotServerInternalUsageTokenMetrics & unknown;
+    /**
+     * Provider 是模型分组对应的原生后端。
+     */
+    provider?: string;
+};
+
+export type GithubComJieWaZiNeuxBotServerServicesUsageGroupsPage = GithubComJieWaZiNeuxBotServerServicesUsageSummary & {
+    /**
+     * Groups is the current group page.
+     */
+    groups?: Array<GithubComJieWaZiNeuxBotServerServicesUsageGroup>;
+    /**
+     * HasMore reports whether another group page exists.
+     */
+    hasMore?: boolean;
+    /**
+     * NextCursor is the signed anchor for the next page.
+     */
+    nextCursor?: string;
+    /**
+     * TotalGroups counts all groups in the same filter.
+     */
+    totalGroups?: number;
+};
+
+/**
+ * Summary reports exact known subtotals for a snapshot.
+ */
+export type GithubComJieWaZiNeuxBotServerServicesUsageSummary = {
+    coverage?: GithubComJieWaZiNeuxBotServerServicesUsageCoverage & unknown;
+    metrics?: GithubComJieWaZiNeuxBotServerInternalUsageTokenMetrics & unknown;
+    range?: GithubComJieWaZiNeuxBotServerServicesUsageFilter & unknown;
+    /**
+     * Snapshot fixes the projection boundary for subsequent grouped reads.
+     */
+    snapshot?: string;
 };
 
 /**
@@ -13938,21 +14587,6 @@ export type GithubComShrewxGinxCommonResponse = {
     result?: string;
 };
 
-export type GithubComShrewxGinxPkgStatuserrorStatusErr = {
-    /**
-     * 状态码
-     */
-    code?: number;
-    /**
-     * 错误名称
-     */
-    key?: string;
-    /**
-     * 消息
-     */
-    message?: string;
-};
-
 export type TimeTime = string;
 
 export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionAction = {
@@ -14081,6 +14715,7 @@ export type ReadErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -14100,7 +14735,7 @@ export type ReadErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -14112,7 +14747,7 @@ export type ReadErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -14126,7 +14761,7 @@ export type ReadErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -14139,6 +14774,7 @@ export type ReadErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -14160,7 +14796,7 @@ export type ReadErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -14168,7 +14804,7 @@ export type ReadErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -14196,13 +14832,14 @@ export type ReadErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -14217,13 +14854,19 @@ export type ReadErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -14237,27 +14880,31 @@ export type ReadErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -14313,8 +14960,11 @@ export type ReadErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -14331,7 +14981,7 @@ export type ReadErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -14345,10 +14995,12 @@ export type ReadErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -14358,13 +15010,13 @@ export type ReadErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ReadError = ReadErrors[keyof ReadErrors];
@@ -14411,6 +15063,7 @@ export type CommandErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -14430,7 +15083,7 @@ export type CommandErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -14442,7 +15095,7 @@ export type CommandErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -14456,7 +15109,7 @@ export type CommandErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -14469,6 +15122,7 @@ export type CommandErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -14490,7 +15144,7 @@ export type CommandErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -14498,7 +15152,7 @@ export type CommandErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -14526,13 +15180,14 @@ export type CommandErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -14547,13 +15202,19 @@ export type CommandErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -14567,27 +15228,31 @@ export type CommandErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -14643,8 +15308,11 @@ export type CommandErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -14661,7 +15329,7 @@ export type CommandErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -14675,10 +15343,12 @@ export type CommandErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -14688,13 +15358,13 @@ export type CommandErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CommandError = CommandErrors[keyof CommandErrors];
@@ -14708,7 +15378,12 @@ export type CommandResponse = CommandResponses[keyof CommandResponses];
 export type ListAiAccountsData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * 智能体标识
+         */
+        runtimeId?: string;
+    };
     url: '/api/v1/ai-accounts';
 };
 
@@ -14724,6 +15399,17 @@ export type CreateAiAccountData = {
     query?: never;
     url: '/api/v1/ai-accounts';
 };
+
+export type CreateAiAccountErrors = {
+    /**
+     * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type CreateAiAccountError = CreateAiAccountErrors[keyof CreateAiAccountErrors];
 
 export type CreateAiAccountResponses = {
     200: GithubComJieWaZiNeuxBotServerApisAiAccountsCreateAiAccountResponse;
@@ -14758,20 +15444,20 @@ export type PreviewAiAccountModelsErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
      * * `[AIAccountModelsUnavailable][50200000003]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type PreviewAiAccountModelsError = PreviewAiAccountModelsErrors[keyof PreviewAiAccountModelsErrors];
@@ -14802,11 +15488,25 @@ export type DeleteAiAccountData = {
 export type DeleteAiAccountErrors = {
     /**
      * >
-     * * `[AIAccountBusy][40900000027]`
-     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountConfigurationInvalid][40000000020]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteAiAccountError = DeleteAiAccountErrors[keyof DeleteAiAccountErrors];
@@ -14835,13 +15535,21 @@ export type UpdateAiAccountErrors = {
      * * `[AIAccountConfigurationInvalid][40000000020]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountRevisionConflict][40900000028]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountWorkspaceError][50000000047]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateAiAccountError = UpdateAiAccountErrors[keyof UpdateAiAccountErrors];
@@ -14851,6 +15559,57 @@ export type UpdateAiAccountResponses = {
 };
 
 export type UpdateAiAccountResponse = UpdateAiAccountResponses[keyof UpdateAiAccountResponses];
+
+export type LogoutAiAccountData = {
+    body?: never;
+    path: {
+        /**
+         * 账号标识
+         */
+        accountId: string;
+    };
+    query?: {
+        /**
+         * 配置版本
+         */
+        revision?: number;
+    };
+    url: '/api/v1/ai-accounts/{accountId}/credential';
+};
+
+export type LogoutAiAccountErrors = {
+    /**
+     * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type LogoutAiAccountError = LogoutAiAccountErrors[keyof LogoutAiAccountErrors];
+
+export type LogoutAiAccountResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type LogoutAiAccountResponse = LogoutAiAccountResponses[keyof LogoutAiAccountResponses];
 
 export type GetAiAccountCredentialData = {
     body?: never;
@@ -14870,7 +15629,7 @@ export type GetAiAccountCredentialErrors = {
      * * `[AIAccountConfigurationInvalid][40000000020]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetAiAccountCredentialError = GetAiAccountCredentialErrors[keyof GetAiAccountCredentialErrors];
@@ -14922,6 +15681,7 @@ export type StartAiAccountLoginErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -14941,7 +15701,7 @@ export type StartAiAccountLoginErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -14953,7 +15713,7 @@ export type StartAiAccountLoginErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -14967,7 +15727,7 @@ export type StartAiAccountLoginErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -14980,6 +15740,7 @@ export type StartAiAccountLoginErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -15001,7 +15762,7 @@ export type StartAiAccountLoginErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -15009,7 +15770,7 @@ export type StartAiAccountLoginErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -15037,13 +15798,14 @@ export type StartAiAccountLoginErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -15058,13 +15820,19 @@ export type StartAiAccountLoginErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -15078,27 +15846,31 @@ export type StartAiAccountLoginErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -15154,8 +15926,11 @@ export type StartAiAccountLoginErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -15172,7 +15947,7 @@ export type StartAiAccountLoginErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -15186,10 +15961,12 @@ export type StartAiAccountLoginErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -15199,13 +15976,13 @@ export type StartAiAccountLoginErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type StartAiAccountLoginError = StartAiAccountLoginErrors[keyof StartAiAccountLoginErrors];
@@ -15261,6 +16038,7 @@ export type CancelAiAccountLoginErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -15280,7 +16058,7 @@ export type CancelAiAccountLoginErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -15292,7 +16070,7 @@ export type CancelAiAccountLoginErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -15306,7 +16084,7 @@ export type CancelAiAccountLoginErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -15319,6 +16097,7 @@ export type CancelAiAccountLoginErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -15340,7 +16119,7 @@ export type CancelAiAccountLoginErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -15348,7 +16127,7 @@ export type CancelAiAccountLoginErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -15376,13 +16155,14 @@ export type CancelAiAccountLoginErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -15397,13 +16177,19 @@ export type CancelAiAccountLoginErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -15417,27 +16203,31 @@ export type CancelAiAccountLoginErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -15493,8 +16283,11 @@ export type CancelAiAccountLoginErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -15511,7 +16304,7 @@ export type CancelAiAccountLoginErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -15525,10 +16318,12 @@ export type CancelAiAccountLoginErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -15538,13 +16333,13 @@ export type CancelAiAccountLoginErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CancelAiAccountLoginError = CancelAiAccountLoginErrors[keyof CancelAiAccountLoginErrors];
@@ -15577,13 +16372,13 @@ export type GetAiAccountLoginErrors = {
      * * `[OperationCanceled][40800000001]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountLoginFailed][50000000048]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetAiAccountLoginError = GetAiAccountLoginErrors[keyof GetAiAccountLoginErrors];
@@ -15593,47 +16388,6 @@ export type GetAiAccountLoginResponses = {
 };
 
 export type GetAiAccountLoginResponse = GetAiAccountLoginResponses[keyof GetAiAccountLoginResponses];
-
-export type GetAiAccountNativeModelsData = {
-    body?: never;
-    path: {
-        /**
-         * AccountID 是当前选择的订阅账号。
-         */
-        accountId: string;
-    };
-    query: {
-        /**
-         * RuntimeID 是聊天当前选择的运行环境。
-         */
-        runtimeId: string;
-    };
-    url: '/api/v1/ai-accounts/{accountId}/models/native';
-};
-
-export type GetAiAccountNativeModelsErrors = {
-    /**
-     * >
-     * * `[AIAccountConfigurationInvalid][40000000020]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type GetAiAccountNativeModelsError = GetAiAccountNativeModelsErrors[keyof GetAiAccountNativeModelsErrors];
-
-export type GetAiAccountNativeModelsResponses = {
-    200: GithubComJieWaZiNeuxBotServerApisAiAccountsGetAiAccountNativeModelsResponse;
-};
-
-export type GetAiAccountNativeModelsResponse = GetAiAccountNativeModelsResponses[keyof GetAiAccountNativeModelsResponses];
 
 export type RefreshAiAccountModelsData = {
     body?: never;
@@ -15654,20 +16408,20 @@ export type RefreshAiAccountModelsErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
      * * `[AIAccountModelsUnavailable][50200000003]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type RefreshAiAccountModelsError = RefreshAiAccountModelsErrors[keyof RefreshAiAccountModelsErrors];
@@ -15677,68 +16431,6 @@ export type RefreshAiAccountModelsResponses = {
 };
 
 export type RefreshAiAccountModelsResponse = RefreshAiAccountModelsResponses[keyof RefreshAiAccountModelsResponses];
-
-export type GetAiAccountThinkingData = {
-    body?: never;
-    path: {
-        /**
-         * AccountID 是聊天当前选择的受管账号。
-         */
-        accountId: string;
-    };
-    query: {
-        /**
-         * Model 是聊天当前选择的服务端模型 ID。
-         */
-        model: string;
-        /**
-         * RuntimeID 是聊天当前选择的 CLI 环境。
-         */
-        runtimeId: string;
-    };
-    url: '/api/v1/ai-accounts/{accountId}/thinking';
-};
-
-export type GetAiAccountThinkingErrors = {
-    /**
-     * >
-     * * `[AIAccountConfigurationInvalid][40000000020]`
-     * * `[BadRequest][40000000001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountBusy][40900000027]`
-     *
-     */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountCredentialError][50000000046]`
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type GetAiAccountThinkingError = GetAiAccountThinkingErrors[keyof GetAiAccountThinkingErrors];
-
-export type GetAiAccountThinkingResponses = {
-    200: GithubComJieWaZiNeuxBotServerApisAiAccountsGetAiAccountThinkingResponse;
-};
-
-export type GetAiAccountThinkingResponse = GetAiAccountThinkingResponses[keyof GetAiAccountThinkingResponses];
 
 export type ListGlobalAutomaticTasksData = {
     body?: never;
@@ -15798,6 +16490,7 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -15817,7 +16510,7 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -15829,7 +16522,7 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -15843,7 +16536,7 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -15856,6 +16549,7 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -15877,7 +16571,7 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -15885,7 +16579,7 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -15913,13 +16607,14 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -15934,13 +16629,19 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -15954,27 +16655,31 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -16030,8 +16735,11 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -16048,7 +16756,7 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -16062,10 +16770,12 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -16075,13 +16785,13 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListGlobalAutomaticTasksError = ListGlobalAutomaticTasksErrors[keyof ListGlobalAutomaticTasksErrors];
@@ -16114,14 +16824,14 @@ export type CreateWorkflowAutomaticTaskErrors = {
      * * `[WorkflowSchemaInvalid][40000003002]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskNotFound][40400000018]`
      * * `[ChannelMemberNotFound][40400000014]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskAdmissionRevoked][40900000037]`
@@ -16129,13 +16839,13 @@ export type CreateWorkflowAutomaticTaskErrors = {
      * * `[AutomaticTaskRevisionConflict][40900000036]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskServiceInvalid][50000001001]`
@@ -16143,7 +16853,7 @@ export type CreateWorkflowAutomaticTaskErrors = {
      * * `[ProjectSourceUnavailable][50000000005]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateWorkflowAutomaticTaskError = CreateWorkflowAutomaticTaskErrors[keyof CreateWorkflowAutomaticTaskErrors];
@@ -16167,7 +16877,7 @@ export type PreviewGlobalAutomaticScheduleErrors = {
      * * `[AutomaticScheduleInvalid][40000001001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type PreviewGlobalAutomaticScheduleError = PreviewGlobalAutomaticScheduleErrors[keyof PreviewGlobalAutomaticScheduleErrors];
@@ -16219,6 +16929,7 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -16238,7 +16949,7 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -16250,7 +16961,7 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -16264,7 +16975,7 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -16277,6 +16988,7 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -16298,7 +17010,7 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -16306,7 +17018,7 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -16334,13 +17046,14 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -16355,13 +17068,19 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -16375,27 +17094,31 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -16451,8 +17174,11 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -16469,7 +17195,7 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -16483,10 +17209,12 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -16496,13 +17224,13 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetGlobalAutomaticTaskError = GetGlobalAutomaticTaskErrors[keyof GetGlobalAutomaticTaskErrors];
@@ -16554,6 +17282,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -16573,7 +17302,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -16585,7 +17314,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -16599,7 +17328,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -16612,6 +17341,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -16633,7 +17363,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -16641,7 +17371,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -16669,13 +17399,14 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -16690,13 +17421,19 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -16710,27 +17447,31 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -16786,8 +17527,11 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -16804,7 +17548,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -16818,10 +17562,12 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -16831,13 +17577,13 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateWorkflowAutomaticTaskError = UpdateWorkflowAutomaticTaskErrors[keyof UpdateWorkflowAutomaticTaskErrors];
@@ -16888,20 +17634,20 @@ export type CreateChannelErrors = {
      * * `[ChannelMemberCountInvalid][40000000019]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChannelNameConflict][40900000015]`
      * * `[ChannelNameConflict][40900000016]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChatServiceNotStarted][50000000003]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateChannelError = CreateChannelErrors[keyof CreateChannelErrors];
@@ -16930,21 +17676,21 @@ export type DeleteChannelErrors = {
      * * `[ChannelNotFound][40400000012]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChannelHasActiveWork][40900000016]`
      * * `[ChatHasActiveExecution][40900000006]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
      * * `[ChatLogError][50000000004]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteChannelError = DeleteChannelErrors[keyof DeleteChannelErrors];
@@ -16973,7 +17719,7 @@ export type GetChannelErrors = {
      * * `[ChannelNotFound][40400000012]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetChannelError = GetChannelErrors[keyof GetChannelErrors];
@@ -17002,26 +17748,26 @@ export type UpdateChannelErrors = {
      * * `[ChannelNotFound][40400000012]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[OperationCanceled][40800000001]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChannelNameConflict][40900000015]`
      * * `[ChannelNameConflict][40900000016]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChatServiceNotStarted][50000000003]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateChannelError = UpdateChannelErrors[keyof UpdateChannelErrors];
@@ -17076,7 +17822,7 @@ export type ListChannelThreadsErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListChannelThreadsError = ListChannelThreadsErrors[keyof ListChannelThreadsErrors];
@@ -17105,7 +17851,7 @@ export type CreateChannelThreadErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateChannelThreadError = CreateChannelThreadErrors[keyof CreateChannelThreadErrors];
@@ -17139,21 +17885,21 @@ export type DeleteChannelThreadErrors = {
      * * `[ChannelThreadNotFound][40400000013]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChannelHasActiveWork][40900000016]`
      * * `[ChatHasActiveExecution][40900000006]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
      * * `[ChatLogError][50000000004]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteChannelThreadError = DeleteChannelThreadErrors[keyof DeleteChannelThreadErrors];
@@ -17186,7 +17932,7 @@ export type GetChannelThreadErrors = {
      * * `[ChannelThreadNotFound][40400000013]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetChannelThreadError = GetChannelThreadErrors[keyof GetChannelThreadErrors];
@@ -17228,7 +17974,7 @@ export type ListChannelEventsErrors = {
      * * `[ChannelThreadNotFound][40400000013]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListChannelEventsError = ListChannelEventsErrors[keyof ListChannelEventsErrors];
@@ -17261,26 +18007,26 @@ export type UpdateChannelThreadMemberConfigsErrors = {
      * * `[ChannelThreadNotFound][40400000013]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[OperationCanceled][40800000001]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChannelTaskStateConflict][40900000018]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChatServiceNotStarted][50000000003]`
      * * `[InternalServerError][50000000001]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateChannelThreadMemberConfigsError = UpdateChannelThreadMemberConfigsErrors[keyof UpdateChannelThreadMemberConfigsErrors];
@@ -17313,13 +18059,13 @@ export type SendChannelMessageErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChannelThreadNotFound][40400000013]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type SendChannelMessageError = SendChannelMessageErrors[keyof SendChannelMessageErrors];
@@ -17352,13 +18098,13 @@ export type CreateChannelTaskErrors = {
      * * `[ChannelThreadNotFound][40400000013]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChannelTaskStateConflict][40900000018]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateChannelTaskError = CreateChannelTaskErrors[keyof CreateChannelTaskErrors];
@@ -17396,13 +18142,13 @@ export type FollowUpChannelTaskErrors = {
      * * `[ChannelThreadNotFound][40400000013]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChannelTaskStateConflict][40900000018]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type FollowUpChannelTaskError = FollowUpChannelTaskErrors[keyof FollowUpChannelTaskErrors];
@@ -17439,32 +18185,32 @@ export type ReviewChannelTaskErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[OperationCanceled][40800000001]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChannelTaskStateConflict][40900000018]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[InternalServerError][50000000001]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ReviewChannelTaskError = ReviewChannelTaskErrors[keyof ReviewChannelTaskErrors];
@@ -17502,13 +18248,13 @@ export type StopChannelTaskErrors = {
      * * `[ChannelThreadNotFound][40400000013]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChannelTaskStateConflict][40900000018]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type StopChannelTaskError = StopChannelTaskErrors[keyof StopChannelTaskErrors];
@@ -17550,7 +18296,7 @@ export type ListChannelTimelineErrors = {
      * * `[ChannelThreadNotFound][40400000013]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListChannelTimelineError = ListChannelTimelineErrors[keyof ListChannelTimelineErrors];
@@ -17626,7 +18372,7 @@ export type CreateChatErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateChatError = CreateChatErrors[keyof CreateChatErrors];
@@ -17655,20 +18401,20 @@ export type DeleteChatErrors = {
      * * `[ChatNotFound][40400000005]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChatHasActiveExecution][40900000006]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
      * * `[ChatLogError][50000000004]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteChatError = DeleteChatErrors[keyof DeleteChatErrors];
@@ -17715,19 +18461,19 @@ export type UpdateChatErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChatNotFound][40400000005]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChatLogError][50000000004]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateChatError = UpdateChatErrors[keyof UpdateChatErrors];
@@ -17823,7 +18569,7 @@ export type ListChatEventsErrors = {
      * * `[ChatLogError][50000000004]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListChatEventsError = ListChatEventsErrors[keyof ListChatEventsErrors];
@@ -17833,28 +18579,6 @@ export type ListChatEventsResponses = {
 };
 
 export type ListChatEventsResponse = ListChatEventsResponses[keyof ListChatEventsResponses];
-
-export type RetryChatExecutionData = {
-    body?: never;
-    path: {
-        /**
-         * 对话标识
-         */
-        chatId: string;
-        /**
-         * 执行标识
-         */
-        executionId: string;
-    };
-    query?: never;
-    url: '/api/v1/chats/{chatId}/executions/{executionId}/retry';
-};
-
-export type RetryChatExecutionResponses = {
-    200: GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution;
-};
-
-export type RetryChatExecutionResponse = RetryChatExecutionResponses[keyof RetryChatExecutionResponses];
 
 export type ForkChatData = {
     body: GithubComJieWaZiNeuxBotServerApisChatsForkChatRequest & unknown;
@@ -17901,13 +18625,13 @@ export type ListChatMessagesErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChatLogError][50000000004]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListChatMessagesError = ListChatMessagesErrors[keyof ListChatMessagesErrors];
@@ -17936,7 +18660,7 @@ export type SendMessageErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type SendMessageError = SendMessageErrors[keyof SendMessageErrors];
@@ -17974,20 +18698,20 @@ export type GetChatMessageFileChangeErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatNotFound][40400000005]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChatLogError][50000000004]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetChatMessageFileChangeError = GetChatMessageFileChangeErrors[keyof GetChatMessageFileChangeErrors];
@@ -18020,14 +18744,14 @@ export type GetChatMessageFileChangesErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatNotFound][40400000005]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetChatMessageFileChangesError = GetChatMessageFileChangesErrors[keyof GetChatMessageFileChangesErrors];
@@ -18077,19 +18801,19 @@ export type CreateLibraryConnectorErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[MCPConnectorNotFound][40400000009]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateLibraryConnectorError = CreateLibraryConnectorErrors[keyof CreateLibraryConnectorErrors];
@@ -18127,14 +18851,14 @@ export type DeleteLibraryConnectorErrors = {
      * * `[MCPConnectorNotFound][40400000009]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[PluginConfigurationConflict][40900006502]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteLibraryConnectorError = DeleteLibraryConnectorErrors[keyof DeleteLibraryConnectorErrors];
@@ -18163,7 +18887,7 @@ export type GetLibraryConnectorErrors = {
      * * `[MCPConnectorNotFound][40400000009]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetLibraryConnectorError = GetLibraryConnectorErrors[keyof GetLibraryConnectorErrors];
@@ -18192,20 +18916,20 @@ export type UpdateLibraryConnectorErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[MCPConnectorNotFound][40400000009]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateLibraryConnectorError = UpdateLibraryConnectorErrors[keyof UpdateLibraryConnectorErrors];
@@ -18234,13 +18958,13 @@ export type InstallLibraryConnectorErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type InstallLibraryConnectorError = InstallLibraryConnectorErrors[keyof InstallLibraryConnectorErrors];
@@ -18269,13 +18993,13 @@ export type TestLibraryConnectorErrors = {
      * * `[MCPConnectorNotFound][40400000009]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type TestLibraryConnectorError = TestLibraryConnectorErrors[keyof TestLibraryConnectorErrors];
@@ -18322,6 +19046,7 @@ export type StreamEventsErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -18341,7 +19066,7 @@ export type StreamEventsErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -18353,7 +19078,7 @@ export type StreamEventsErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -18367,7 +19092,7 @@ export type StreamEventsErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -18380,6 +19105,7 @@ export type StreamEventsErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -18401,7 +19127,7 @@ export type StreamEventsErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -18409,7 +19135,7 @@ export type StreamEventsErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -18437,13 +19163,14 @@ export type StreamEventsErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -18458,13 +19185,19 @@ export type StreamEventsErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -18478,27 +19211,31 @@ export type StreamEventsErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -18554,8 +19291,11 @@ export type StreamEventsErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -18572,7 +19312,7 @@ export type StreamEventsErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -18586,10 +19326,12 @@ export type StreamEventsErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -18599,13 +19341,13 @@ export type StreamEventsErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type StreamEventsError = StreamEventsErrors[keyof StreamEventsErrors];
@@ -18656,7 +19398,7 @@ export type UpdateImBindingErrors = {
      * * `[IMConfigurationInvalid][40000004001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateImBindingError = UpdateImBindingErrors[keyof UpdateImBindingErrors];
@@ -18685,13 +19427,13 @@ export type SelectImConversationErrors = {
      * * `[IMChatNotAuthorized][40300004001]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[IMResourceNotFound][40400004001]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type SelectImConversationError = SelectImConversationErrors[keyof SelectImConversationErrors];
@@ -18721,7 +19463,7 @@ export type ListImConversationsErrors = {
      * * `[ChatNotFound][40400000005]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListImConversationsError = ListImConversationsErrors[keyof ListImConversationsErrors];
@@ -18758,19 +19500,19 @@ export type CreateImConnectionErrors = {
      * * `[IMConfigurationInvalid][40000004001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[IMLoginRequired][40100004001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[IMConfigurationConflict][40900004001]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateImConnectionError = CreateImConnectionErrors[keyof CreateImConnectionErrors];
@@ -18808,7 +19550,7 @@ export type DeleteImConnectionErrors = {
      * * `[IMConnectionInUse][40900004004]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteImConnectionError = DeleteImConnectionErrors[keyof DeleteImConnectionErrors];
@@ -18837,19 +19579,19 @@ export type UpdateImConnectionErrors = {
      * * `[IMConfigurationInvalid][40000004001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[IMLoginRequired][40100004001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[IMConfigurationConflict][40900004001]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateImConnectionError = UpdateImConnectionErrors[keyof UpdateImConnectionErrors];
@@ -18897,38 +19639,38 @@ export type StartImLoginErrors = {
      * * `[IMFileInvalid][40000004002]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[IMLoginRequired][40100004001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[IMConfigurationConflict][40900004001]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[IMCredentialError][50000004001]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[IMPlatformUnavailable][50200004001]`
      * * `[IMProtocolInvalid][50200004002]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[IMServiceUnavailable][50300004001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type StartImLoginError = StartImLoginErrors[keyof StartImLoginErrors];
@@ -18957,7 +19699,7 @@ export type CancelImLoginErrors = {
      * * `[IMResourceNotFound][40400004001]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CancelImLoginError = CancelImLoginErrors[keyof CancelImLoginErrors];
@@ -18986,7 +19728,7 @@ export type GetImLoginErrors = {
      * * `[IMResourceNotFound][40400004001]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetImLoginError = GetImLoginErrors[keyof GetImLoginErrors];
@@ -19015,19 +19757,19 @@ export type VerifyImLoginErrors = {
      * * `[IMConfigurationInvalid][40000004001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[IMResourceNotFound][40400004001]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[IMConfigurationConflict][40900004001]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type VerifyImLoginError = VerifyImLoginErrors[keyof VerifyImLoginErrors];
@@ -19074,26 +19816,26 @@ export type ListApiKeysErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskNotFound][40400000018]`
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -19102,27 +19844,27 @@ export type ListApiKeysErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      * * `[IntegrationListenerError][50300009601]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListApiKeysError = ListApiKeysErrors[keyof ListApiKeysErrors];
@@ -19148,25 +19890,25 @@ export type CreateApiKeyErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -19175,14 +19917,14 @@ export type CreateApiKeyErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[IntegrationCredentialError][50000009601]`
@@ -19190,14 +19932,14 @@ export type CreateApiKeyErrors = {
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      * * `[IntegrationListenerError][50300009601]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateApiKeyError = CreateApiKeyErrors[keyof CreateApiKeyErrors];
@@ -19226,13 +19968,13 @@ export type DeleteApiKeyErrors = {
      * * `[DatabaseOperationCancelled][40800001001]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[IntegrationListenerError][50300009601]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteApiKeyError = DeleteApiKeyErrors[keyof DeleteApiKeyErrors];
@@ -19262,25 +20004,25 @@ export type UpdateApiKeyErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[IntegrationConflict][40900009601]`
@@ -19290,27 +20032,27 @@ export type UpdateApiKeyErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      * * `[IntegrationListenerError][50300009601]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateApiKeyError = UpdateApiKeyErrors[keyof UpdateApiKeyErrors];
@@ -19357,6 +20099,7 @@ export type UpdateMcpServiceErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -19376,7 +20119,7 @@ export type UpdateMcpServiceErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -19388,7 +20131,7 @@ export type UpdateMcpServiceErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -19402,7 +20145,7 @@ export type UpdateMcpServiceErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -19415,6 +20158,7 @@ export type UpdateMcpServiceErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -19436,7 +20180,7 @@ export type UpdateMcpServiceErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -19444,7 +20188,7 @@ export type UpdateMcpServiceErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -19472,13 +20216,14 @@ export type UpdateMcpServiceErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -19493,13 +20238,19 @@ export type UpdateMcpServiceErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -19513,27 +20264,31 @@ export type UpdateMcpServiceErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -19589,8 +20344,11 @@ export type UpdateMcpServiceErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -19607,7 +20365,7 @@ export type UpdateMcpServiceErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -19621,10 +20379,12 @@ export type UpdateMcpServiceErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -19634,13 +20394,13 @@ export type UpdateMcpServiceErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateMcpServiceError = UpdateMcpServiceErrors[keyof UpdateMcpServiceErrors];
@@ -19675,19 +20435,19 @@ export type ListPublishableResourcesErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -19696,26 +20456,26 @@ export type ListPublishableResourcesErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListPublishableResourcesError = ListPublishableResourcesErrors[keyof ListPublishableResourcesErrors];
@@ -19739,7 +20499,7 @@ export type GetApiServiceErrors = {
      * * `[IntegrationListenerError][50300009601]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetApiServiceError = GetApiServiceErrors[keyof GetApiServiceErrors];
@@ -19786,6 +20546,7 @@ export type UpdateApiServiceErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -19805,7 +20566,7 @@ export type UpdateApiServiceErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -19817,7 +20578,7 @@ export type UpdateApiServiceErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -19831,7 +20592,7 @@ export type UpdateApiServiceErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -19844,6 +20605,7 @@ export type UpdateApiServiceErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -19865,7 +20627,7 @@ export type UpdateApiServiceErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -19873,7 +20635,7 @@ export type UpdateApiServiceErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -19901,13 +20663,14 @@ export type UpdateApiServiceErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -19922,13 +20685,19 @@ export type UpdateApiServiceErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -19942,27 +20711,31 @@ export type UpdateApiServiceErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -20018,8 +20791,11 @@ export type UpdateApiServiceErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -20036,7 +20812,7 @@ export type UpdateApiServiceErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -20050,10 +20826,12 @@ export type UpdateApiServiceErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -20063,13 +20841,13 @@ export type UpdateApiServiceErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateApiServiceError = UpdateApiServiceErrors[keyof UpdateApiServiceErrors];
@@ -20102,25 +20880,25 @@ export type ChatLibrariesErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -20129,39 +20907,39 @@ export type ChatLibrariesErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ChatLibrariesError = ChatLibrariesErrors[keyof ChatLibrariesErrors];
@@ -20195,25 +20973,25 @@ export type GetRemoteChatOperationErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -20222,39 +21000,39 @@ export type GetRemoteChatOperationErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetRemoteChatOperationError = GetRemoteChatOperationErrors[keyof GetRemoteChatOperationErrors];
@@ -20285,25 +21063,25 @@ export type OrganizeRemoteChatErrors = {
      * * `[MessageAttachmentInvalid][40000000017]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -20312,14 +21090,14 @@ export type OrganizeRemoteChatErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -20328,26 +21106,26 @@ export type OrganizeRemoteChatErrors = {
      * * `[MessageAttachmentStorageError][50000000032]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type OrganizeRemoteChatError = OrganizeRemoteChatErrors[keyof OrganizeRemoteChatErrors];
@@ -20385,13 +21163,13 @@ export type ListRemoteChatOperationsErrors = {
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListRemoteChatOperationsError = ListRemoteChatOperationsErrors[keyof ListRemoteChatOperationsErrors];
@@ -20415,26 +21193,26 @@ export type PreviewChunkingErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[OperationCanceled][40800000001]`
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -20443,25 +21221,25 @@ export type PreviewChunkingErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type PreviewChunkingError = PreviewChunkingErrors[keyof PreviewChunkingErrors];
@@ -20485,7 +21263,7 @@ export type ListConnectionsErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListConnectionsError = ListConnectionsErrors[keyof ListConnectionsErrors];
@@ -20509,52 +21287,52 @@ export type CreateConnectionErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateConnectionError = CreateConnectionErrors[keyof CreateConnectionErrors];
@@ -20592,25 +21370,25 @@ export type ListAvailableLibrariesErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -20619,40 +21397,40 @@ export type ListAvailableLibrariesErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseError][50000000002]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListAvailableLibrariesError = ListAvailableLibrariesErrors[keyof ListAvailableLibrariesErrors];
@@ -20677,58 +21455,58 @@ export type AddRemoteLibraryErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[InternalServerError][50000000001]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type AddRemoteLibraryError = AddRemoteLibraryErrors[keyof AddRemoteLibraryErrors];
@@ -20762,7 +21540,7 @@ export type RemoveRemoteMountErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type RemoveRemoteMountError = RemoveRemoteMountErrors[keyof RemoveRemoteMountErrors];
@@ -20791,52 +21569,52 @@ export type UpdateConnectionErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateConnectionError = UpdateConnectionErrors[keyof UpdateConnectionErrors];
@@ -20865,52 +21643,52 @@ export type CheckConnectionErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CheckConnectionError = CheckConnectionErrors[keyof CheckConnectionErrors];
@@ -20939,52 +21717,52 @@ export type RedetectConnectionErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type RedetectConnectionError = RedetectConnectionErrors[keyof RedetectConnectionErrors];
@@ -21023,52 +21801,52 @@ export type ListRemoteLibrariesErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListRemoteLibrariesError = ListRemoteLibrariesErrors[keyof ListRemoteLibrariesErrors];
@@ -21097,52 +21875,52 @@ export type CreateRemoteLibraryErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateRemoteLibraryError = CreateRemoteLibraryErrors[keyof CreateRemoteLibraryErrors];
@@ -21175,52 +21953,52 @@ export type DeleteRemoteLibraryErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteRemoteLibraryError = DeleteRemoteLibraryErrors[keyof DeleteRemoteLibraryErrors];
@@ -21253,52 +22031,52 @@ export type GetRemoteLibraryErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetRemoteLibraryError = GetRemoteLibraryErrors[keyof GetRemoteLibraryErrors];
@@ -21331,52 +22109,52 @@ export type UpdateRemoteLibraryErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateRemoteLibraryError = UpdateRemoteLibraryErrors[keyof UpdateRemoteLibraryErrors];
@@ -21430,52 +22208,52 @@ export type ListRemoteLibraryActivityErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListRemoteLibraryActivityError = ListRemoteLibraryActivityErrors[keyof ListRemoteLibraryActivityErrors];
@@ -21508,52 +22286,52 @@ export type AuditRemoteLibraryErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type AuditRemoteLibraryError = AuditRemoteLibraryErrors[keyof AuditRemoteLibraryErrors];
@@ -21586,52 +22364,52 @@ export type GetRemoteCapabilitiesErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetRemoteCapabilitiesError = GetRemoteCapabilitiesErrors[keyof GetRemoteCapabilitiesErrors];
@@ -21664,52 +22442,52 @@ export type GetRemoteLibraryDeletionErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetRemoteLibraryDeletionError = GetRemoteLibraryDeletionErrors[keyof GetRemoteLibraryDeletionErrors];
@@ -21742,52 +22520,52 @@ export type RecoverRemoteLibraryDeletionErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type RecoverRemoteLibraryDeletionError = RecoverRemoteLibraryDeletionErrors[keyof RecoverRemoteLibraryDeletionErrors];
@@ -21837,52 +22615,52 @@ export type GetRemoteGraphErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetRemoteGraphError = GetRemoteGraphErrors[keyof GetRemoteGraphErrors];
@@ -21925,52 +22703,52 @@ export type ListRemoteJobsErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListRemoteJobsError = ListRemoteJobsErrors[keyof ListRemoteJobsErrors];
@@ -22007,52 +22785,52 @@ export type GetRemoteJobErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetRemoteJobError = GetRemoteJobErrors[keyof GetRemoteJobErrors];
@@ -22085,52 +22863,52 @@ export type MaintainRemoteErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type MaintainRemoteError = MaintainRemoteErrors[keyof MaintainRemoteErrors];
@@ -22168,52 +22946,52 @@ export type ExportRemoteLibraryMarkdownErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ExportRemoteLibraryMarkdownError = ExportRemoteLibraryMarkdownErrors[keyof ExportRemoteLibraryMarkdownErrors];
@@ -22256,7 +23034,7 @@ export type ListRemoteOperationsErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListRemoteOperationsError = ListRemoteOperationsErrors[keyof ListRemoteOperationsErrors];
@@ -22293,13 +23071,13 @@ export type GetRemoteOperationErrors = {
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetRemoteOperationError = GetRemoteOperationErrors[keyof GetRemoteOperationErrors];
@@ -22332,52 +23110,52 @@ export type OrganizeRemoteErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type OrganizeRemoteError = OrganizeRemoteErrors[keyof OrganizeRemoteErrors];
@@ -22415,52 +23193,52 @@ export type GetRemotePageBySlugErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetRemotePageBySlugError = GetRemotePageBySlugErrors[keyof GetRemotePageBySlugErrors];
@@ -22502,52 +23280,52 @@ export type ListRemotePageDirectoryErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListRemotePageDirectoryError = ListRemotePageDirectoryErrors[keyof ListRemotePageDirectoryErrors];
@@ -22602,52 +23380,52 @@ export type ListRemotePagesErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListRemotePagesError = ListRemotePagesErrors[keyof ListRemotePagesErrors];
@@ -22680,52 +23458,52 @@ export type CreateRemotePageErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateRemotePageError = CreateRemotePageErrors[keyof CreateRemotePageErrors];
@@ -22767,52 +23545,52 @@ export type GetRemotePageErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetRemotePageError = GetRemotePageErrors[keyof GetRemotePageErrors];
@@ -22849,52 +23627,52 @@ export type WriteRemotePageErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type WriteRemotePageError = WriteRemotePageErrors[keyof WriteRemotePageErrors];
@@ -22931,52 +23709,52 @@ export type RestoreRemotePageErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type RestoreRemotePageError = RestoreRemotePageErrors[keyof RestoreRemotePageErrors];
@@ -23027,52 +23805,52 @@ export type ListRemoteRevisionsErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListRemoteRevisionsError = ListRemoteRevisionsErrors[keyof ListRemoteRevisionsErrors];
@@ -23118,52 +23896,52 @@ export type GetRemoteRevisionErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetRemoteRevisionError = GetRemoteRevisionErrors[keyof GetRemoteRevisionErrors];
@@ -23200,52 +23978,52 @@ export type GetRemoteReceiptErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetRemoteReceiptError = GetRemoteReceiptErrors[keyof GetRemoteReceiptErrors];
@@ -23287,52 +24065,52 @@ export type ListRemoteSourcePurgesErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListRemoteSourcePurgesError = ListRemoteSourcePurgesErrors[keyof ListRemoteSourcePurgesErrors];
@@ -23365,52 +24143,52 @@ export type ConfirmRemoteSourcePurgeErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ConfirmRemoteSourcePurgeError = ConfirmRemoteSourcePurgeErrors[keyof ConfirmRemoteSourcePurgeErrors];
@@ -23448,52 +24226,52 @@ export type PreviewRemoteSourcePurgeErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type PreviewRemoteSourcePurgeError = PreviewRemoteSourcePurgeErrors[keyof PreviewRemoteSourcePurgeErrors];
@@ -23530,52 +24308,52 @@ export type GetRemoteSourcePurgeErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetRemoteSourcePurgeError = GetRemoteSourcePurgeErrors[keyof GetRemoteSourcePurgeErrors];
@@ -23612,52 +24390,52 @@ export type RecoverRemoteSourcePurgeErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type RecoverRemoteSourcePurgeError = RecoverRemoteSourcePurgeErrors[keyof RecoverRemoteSourcePurgeErrors];
@@ -23711,52 +24489,52 @@ export type ListRemoteSourcesErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListRemoteSourcesError = ListRemoteSourcesErrors[keyof ListRemoteSourcesErrors];
@@ -23789,52 +24567,52 @@ export type ImportRemoteSourceErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ImportRemoteSourceError = ImportRemoteSourceErrors[keyof ImportRemoteSourceErrors];
@@ -23871,52 +24649,52 @@ export type GetRemoteSourceErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetRemoteSourceError = GetRemoteSourceErrors[keyof GetRemoteSourceErrors];
@@ -23953,52 +24731,52 @@ export type ArchiveRemoteSourceErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ArchiveRemoteSourceError = ArchiveRemoteSourceErrors[keyof ArchiveRemoteSourceErrors];
@@ -24035,52 +24813,52 @@ export type GetRemoteSourceChunksErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetRemoteSourceChunksError = GetRemoteSourceChunksErrors[keyof GetRemoteSourceChunksErrors];
@@ -24117,52 +24895,52 @@ export type GetRemoteRawErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetRemoteRawError = GetRemoteRawErrors[keyof GetRemoteRawErrors];
@@ -24204,52 +24982,52 @@ export type ListRemoteThemesErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListRemoteThemesError = ListRemoteThemesErrors[keyof ListRemoteThemesErrors];
@@ -24282,52 +25060,52 @@ export type CreateRemoteThemeErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateRemoteThemeError = CreateRemoteThemeErrors[keyof CreateRemoteThemeErrors];
@@ -24364,52 +25142,52 @@ export type WriteRemoteThemeErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type WriteRemoteThemeError = WriteRemoteThemeErrors[keyof WriteRemoteThemeErrors];
@@ -24442,52 +25220,52 @@ export type UploadRemoteSourceErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UploadRemoteSourceError = UploadRemoteSourceErrors[keyof UploadRemoteSourceErrors];
@@ -24524,52 +25302,52 @@ export type GetRemoteUploadStatusErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
      * * `[KnowledgeConflict][40900009501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetRemoteUploadStatusError = GetRemoteUploadStatusErrors[keyof GetRemoteUploadStatusErrors];
@@ -24593,26 +25371,26 @@ export type TestLibraryEmbeddingErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[OperationCanceled][40800000001]`
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -24621,7 +25399,7 @@ export type TestLibraryEmbeddingErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
@@ -24629,26 +25407,26 @@ export type TestLibraryEmbeddingErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type TestLibraryEmbeddingError = TestLibraryEmbeddingErrors[keyof TestLibraryEmbeddingErrors];
@@ -24682,19 +25460,19 @@ export type ListLibrariesErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -24703,26 +25481,26 @@ export type ListLibrariesErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListLibrariesError = ListLibrariesErrors[keyof ListLibrariesErrors];
@@ -24746,19 +25524,19 @@ export type CreateLibraryErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -24767,7 +25545,7 @@ export type CreateLibraryErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
@@ -24775,19 +25553,19 @@ export type CreateLibraryErrors = {
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateLibraryError = CreateLibraryErrors[keyof CreateLibraryErrors];
@@ -24816,25 +25594,25 @@ export type DeleteLibraryErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -24843,26 +25621,26 @@ export type DeleteLibraryErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteLibraryError = DeleteLibraryErrors[keyof DeleteLibraryErrors];
@@ -24891,19 +25669,19 @@ export type GetLibraryErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -24912,26 +25690,26 @@ export type GetLibraryErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetLibraryError = GetLibraryErrors[keyof GetLibraryErrors];
@@ -24960,19 +25738,19 @@ export type UpdateLibraryErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -24981,26 +25759,26 @@ export type UpdateLibraryErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateLibraryError = UpdateLibraryErrors[keyof UpdateLibraryErrors];
@@ -25050,19 +25828,19 @@ export type ListLibraryActivityErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -25071,26 +25849,26 @@ export type ListLibraryActivityErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListLibraryActivityError = ListLibraryActivityErrors[keyof ListLibraryActivityErrors];
@@ -25119,19 +25897,19 @@ export type AuditLibraryErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -25140,26 +25918,26 @@ export type AuditLibraryErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type AuditLibraryError = AuditLibraryErrors[keyof AuditLibraryErrors];
@@ -25188,19 +25966,19 @@ export type GetLibraryDeletionErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -25209,26 +25987,26 @@ export type GetLibraryDeletionErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetLibraryDeletionError = GetLibraryDeletionErrors[keyof GetLibraryDeletionErrors];
@@ -25257,25 +26035,25 @@ export type RecoverLibraryDeletionErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -25284,26 +26062,26 @@ export type RecoverLibraryDeletionErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type RecoverLibraryDeletionError = RecoverLibraryDeletionErrors[keyof RecoverLibraryDeletionErrors];
@@ -25332,19 +26110,19 @@ export type GetLibraryEmbeddingProfileErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -25353,26 +26131,26 @@ export type GetLibraryEmbeddingProfileErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetLibraryEmbeddingProfileError = GetLibraryEmbeddingProfileErrors[keyof GetLibraryEmbeddingProfileErrors];
@@ -25401,19 +26179,19 @@ export type UpdateLibraryEmbeddingProfileErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -25422,26 +26200,26 @@ export type UpdateLibraryEmbeddingProfileErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateLibraryEmbeddingProfileError = UpdateLibraryEmbeddingProfileErrors[keyof UpdateLibraryEmbeddingProfileErrors];
@@ -25470,19 +26248,19 @@ export type GetLibraryExecutionDefaultsErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -25491,26 +26269,26 @@ export type GetLibraryExecutionDefaultsErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetLibraryExecutionDefaultsError = GetLibraryExecutionDefaultsErrors[keyof GetLibraryExecutionDefaultsErrors];
@@ -25539,19 +26317,19 @@ export type UpdateLibraryExecutionDefaultsErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -25560,26 +26338,26 @@ export type UpdateLibraryExecutionDefaultsErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateLibraryExecutionDefaultsError = UpdateLibraryExecutionDefaultsErrors[keyof UpdateLibraryExecutionDefaultsErrors];
@@ -25618,19 +26396,19 @@ export type ListJobsErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -25639,26 +26417,26 @@ export type ListJobsErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListJobsError = ListJobsErrors[keyof ListJobsErrors];
@@ -25691,19 +26469,19 @@ export type GetJobErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -25712,26 +26490,26 @@ export type GetJobErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetJobError = GetJobErrors[keyof GetJobErrors];
@@ -25767,26 +26545,26 @@ export type ResumeJobErrors = {
      * * `[SkillContentInvalid][40000000013]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -25795,40 +26573,40 @@ export type ResumeJobErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      * * `[SkillUnavailable][50000000008]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ResumeJobError = ResumeJobErrors[keyof ResumeJobErrors];
@@ -25864,26 +26642,26 @@ export type RetryJobErrors = {
      * * `[SkillContentInvalid][40000000013]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -25892,40 +26670,40 @@ export type RetryJobErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      * * `[SkillUnavailable][50000000008]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type RetryJobError = RetryJobErrors[keyof RetryJobErrors];
@@ -25957,26 +26735,26 @@ export type MaintainWikiErrors = {
      * * `[SkillContentInvalid][40000000013]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -25985,40 +26763,40 @@ export type MaintainWikiErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      * * `[SkillUnavailable][50000000008]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type MaintainWikiError = MaintainWikiErrors[keyof MaintainWikiErrors];
@@ -26052,19 +26830,19 @@ export type ExportLibraryMarkdownErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -26073,26 +26851,26 @@ export type ExportLibraryMarkdownErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ExportLibraryMarkdownError = ExportLibraryMarkdownErrors[keyof ExportLibraryMarkdownErrors];
@@ -26124,26 +26902,26 @@ export type OrganizeErrors = {
      * * `[SkillContentInvalid][40000000013]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteUnauthorized][40100009501]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -26152,40 +26930,40 @@ export type OrganizeErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      * * `[SkillUnavailable][50000000008]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type OrganizeError = OrganizeErrors[keyof OrganizeErrors];
@@ -26219,19 +26997,19 @@ export type GetPageBySlugErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -26240,26 +27018,26 @@ export type GetPageBySlugErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetPageBySlugError = GetPageBySlugErrors[keyof GetPageBySlugErrors];
@@ -26297,19 +27075,19 @@ export type ListPageDirectoryErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -26318,26 +27096,26 @@ export type ListPageDirectoryErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListPageDirectoryError = ListPageDirectoryErrors[keyof ListPageDirectoryErrors];
@@ -26388,19 +27166,19 @@ export type ListPagesErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -26409,26 +27187,26 @@ export type ListPagesErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListPagesError = ListPagesErrors[keyof ListPagesErrors];
@@ -26457,19 +27235,19 @@ export type CreatePageErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -26478,26 +27256,26 @@ export type CreatePageErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreatePageError = CreatePageErrors[keyof CreatePageErrors];
@@ -26530,19 +27308,19 @@ export type GetPageErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -26551,26 +27329,26 @@ export type GetPageErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetPageError = GetPageErrors[keyof GetPageErrors];
@@ -26603,19 +27381,19 @@ export type WritePageErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -26624,26 +27402,26 @@ export type WritePageErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type WritePageError = WritePageErrors[keyof WritePageErrors];
@@ -26676,19 +27454,19 @@ export type RestorePageErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -26697,26 +27475,26 @@ export type RestorePageErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type RestorePageError = RestorePageErrors[keyof RestorePageErrors];
@@ -26759,19 +27537,19 @@ export type ListRevisionsErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -26780,26 +27558,26 @@ export type ListRevisionsErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListRevisionsError = ListRevisionsErrors[keyof ListRevisionsErrors];
@@ -26837,19 +27615,19 @@ export type ListSourcePurgesErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -26858,26 +27636,26 @@ export type ListSourcePurgesErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListSourcePurgesError = ListSourcePurgesErrors[keyof ListSourcePurgesErrors];
@@ -26906,19 +27684,19 @@ export type ConfirmSourcePurgeErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -26927,26 +27705,26 @@ export type ConfirmSourcePurgeErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ConfirmSourcePurgeError = ConfirmSourcePurgeErrors[keyof ConfirmSourcePurgeErrors];
@@ -26980,19 +27758,19 @@ export type PreviewSourcePurgeErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -27001,26 +27779,26 @@ export type PreviewSourcePurgeErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type PreviewSourcePurgeError = PreviewSourcePurgeErrors[keyof PreviewSourcePurgeErrors];
@@ -27053,19 +27831,19 @@ export type GetSourcePurgeErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -27074,26 +27852,26 @@ export type GetSourcePurgeErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetSourcePurgeError = GetSourcePurgeErrors[keyof GetSourcePurgeErrors];
@@ -27126,19 +27904,19 @@ export type RecoverSourcePurgeErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -27147,26 +27925,26 @@ export type RecoverSourcePurgeErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type RecoverSourcePurgeError = RecoverSourcePurgeErrors[keyof RecoverSourcePurgeErrors];
@@ -27216,19 +27994,19 @@ export type ListSourcesErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -27237,26 +28015,26 @@ export type ListSourcesErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListSourcesError = ListSourcesErrors[keyof ListSourcesErrors];
@@ -27285,19 +28063,19 @@ export type ImportSourceErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -27306,26 +28084,26 @@ export type ImportSourceErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ImportSourceError = ImportSourceErrors[keyof ImportSourceErrors];
@@ -27358,19 +28136,19 @@ export type GetSourceErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -27379,26 +28157,26 @@ export type GetSourceErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetSourceError = GetSourceErrors[keyof GetSourceErrors];
@@ -27431,19 +28209,19 @@ export type ArchiveSourceErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -27452,26 +28230,26 @@ export type ArchiveSourceErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ArchiveSourceError = ArchiveSourceErrors[keyof ArchiveSourceErrors];
@@ -27504,19 +28282,19 @@ export type GetSourceChunksErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -27525,26 +28303,26 @@ export type GetSourceChunksErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetSourceChunksError = GetSourceChunksErrors[keyof GetSourceChunksErrors];
@@ -27577,19 +28355,19 @@ export type GetRawErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -27598,26 +28376,26 @@ export type GetRawErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetRawError = GetRawErrors[keyof GetRawErrors];
@@ -27646,19 +28424,19 @@ export type ListThemesErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -27667,26 +28445,26 @@ export type ListThemesErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListThemesError = ListThemesErrors[keyof ListThemesErrors];
@@ -27715,19 +28493,19 @@ export type CreateThemeErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -27736,26 +28514,26 @@ export type CreateThemeErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateThemeError = CreateThemeErrors[keyof CreateThemeErrors];
@@ -27788,19 +28566,19 @@ export type WriteThemeErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -27809,26 +28587,26 @@ export type WriteThemeErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type WriteThemeError = WriteThemeErrors[keyof WriteThemeErrors];
@@ -27870,19 +28648,19 @@ export type GetWikiIndexErrors = {
      * * `[KnowledgeInvalid][40000009501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeNotFound][40400009501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCancelled][40900009502]`
@@ -27891,26 +28669,26 @@ export type GetWikiIndexErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetWikiIndexError = GetWikiIndexErrors[keyof GetWikiIndexErrors];
@@ -27935,7 +28713,7 @@ export type ReindexMemoryIndexErrors = {
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseError][50000000002]`
@@ -27944,7 +28722,7 @@ export type ReindexMemoryIndexErrors = {
      * * `[MemoryServiceUnavailable][50000000036]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ReindexMemoryIndexError = ReindexMemoryIndexErrors[keyof ReindexMemoryIndexErrors];
@@ -27969,7 +28747,7 @@ export type GetMemorySettingsErrors = {
      * * `[MemoryCredentialError][50000000019]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetMemorySettingsError = GetMemorySettingsErrors[keyof GetMemorySettingsErrors];
@@ -27994,14 +28772,14 @@ export type UpdateMemorySettingsErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseError][50000000002]`
      * * `[MemoryCredentialError][50000000019]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateMemorySettingsError = UpdateMemorySettingsErrors[keyof UpdateMemorySettingsErrors];
@@ -28025,13 +28803,13 @@ export type TestMemoryEmbeddingErrors = {
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseError][50000000002]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type TestMemoryEmbeddingError = TestMemoryEmbeddingErrors[keyof TestMemoryEmbeddingErrors];
@@ -28055,7 +28833,7 @@ export type GetMemoryStatusErrors = {
      * * `[DatabaseError][50000000002]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetMemoryStatusError = GetMemoryStatusErrors[keyof GetMemoryStatusErrors];
@@ -28110,19 +28888,19 @@ export type ListMemoriesErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ProjectNotFound][40400000006]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseError][50000000002]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListMemoriesError = ListMemoriesErrors[keyof ListMemoriesErrors];
@@ -28154,25 +28932,25 @@ export type CreateMemoryErrors = {
      * * `[MemoryProjectNotBound][40000000008]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ProjectNotFound][40400000006]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentCommandRequestConflict][40900009002]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseError][50000000002]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateMemoryError = CreateMemoryErrors[keyof CreateMemoryErrors];
@@ -28212,26 +28990,26 @@ export type DeleteMemoryErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[MemoryNotFound][40400000010]`
      * * `[ProjectNotFound][40400000006]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentCommandRequestConflict][40900009002]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseError][50000000002]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteMemoryError = DeleteMemoryErrors[keyof DeleteMemoryErrors];
@@ -28266,26 +29044,26 @@ export type UpdateMemoryErrors = {
      * * `[MemoryEmbeddingConflict][40000000009]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[MemoryNotFound][40400000010]`
      * * `[ProjectNotFound][40400000006]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentCommandRequestConflict][40900009002]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseError][50000000002]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateMemoryError = UpdateMemoryErrors[keyof UpdateMemoryErrors];
@@ -28332,19 +29110,19 @@ export type ListTimelineErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ProjectNotFound][40400000006]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseError][50000000002]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListTimelineError = ListTimelineErrors[keyof ListTimelineErrors];
@@ -28397,7 +29175,7 @@ export type ListNotificationsErrors = {
      * * `[InternalServerError][50000000001]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListNotificationsError = ListNotificationsErrors[keyof ListNotificationsErrors];
@@ -28421,7 +29199,7 @@ export type GetNotificationSnapshotErrors = {
      * * `[InternalServerError][50000000001]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetNotificationSnapshotError = GetNotificationSnapshotErrors[keyof GetNotificationSnapshotErrors];
@@ -28499,7 +29277,7 @@ export type ViewNotificationErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ViewNotificationError = ViewNotificationErrors[keyof ViewNotificationErrors];
@@ -28514,10 +29292,6 @@ export type ListPluginsData = {
     body?: never;
     path?: never;
     query?: {
-        /**
-         * 仅已安装
-         */
-        installedOnly?: boolean;
         /**
          * 当前页码
          */
@@ -28567,6 +29341,7 @@ export type ListPluginsErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -28586,7 +29361,7 @@ export type ListPluginsErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -28598,7 +29373,7 @@ export type ListPluginsErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -28612,7 +29387,7 @@ export type ListPluginsErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -28625,6 +29400,7 @@ export type ListPluginsErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -28646,7 +29422,7 @@ export type ListPluginsErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -28654,7 +29430,7 @@ export type ListPluginsErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -28682,13 +29458,14 @@ export type ListPluginsErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -28703,13 +29480,19 @@ export type ListPluginsErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -28723,27 +29506,31 @@ export type ListPluginsErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -28799,8 +29586,11 @@ export type ListPluginsErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -28817,7 +29607,7 @@ export type ListPluginsErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -28831,10 +29621,12 @@ export type ListPluginsErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -28844,13 +29636,13 @@ export type ListPluginsErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListPluginsError = ListPluginsErrors[keyof ListPluginsErrors];
@@ -28861,10 +29653,18 @@ export type ListPluginsResponses = {
 
 export type ListPluginsResponse = ListPluginsResponses[keyof ListPluginsResponses];
 
-export type ListPluginCatalogData = {
+export type BrowsePluginsData = {
     body?: never;
     path?: never;
     query?: {
+        /**
+         * 仅已安装
+         */
+        installedOnly?: boolean;
+        /**
+         * 展示语言
+         */
+        locale?: string;
         /**
          * 当前页码
          */
@@ -28878,38 +29678,349 @@ export type ListPluginCatalogData = {
          */
         query?: string;
     };
-    url: '/api/v1/plugins/catalog';
+    url: '/api/v1/plugins/browse';
 };
 
-export type ListPluginCatalogErrors = {
+export type BrowsePluginsErrors = {
     /**
      * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
      * * `[PluginContentInvalid][40000006502]`
      * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
      * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
+     * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
-export type ListPluginCatalogError = ListPluginCatalogErrors[keyof ListPluginCatalogErrors];
+export type BrowsePluginsError = BrowsePluginsErrors[keyof BrowsePluginsErrors];
 
-export type ListPluginCatalogResponses = {
-    200: GithubComJieWaZiNeuxBotServerApisPluginsListPluginCatalogResponse;
+export type BrowsePluginsResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisPluginsBrowsePluginsResponse;
 };
 
-export type ListPluginCatalogResponse = ListPluginCatalogResponses[keyof ListPluginCatalogResponses];
+export type BrowsePluginsResponse = BrowsePluginsResponses[keyof BrowsePluginsResponses];
 
 export type RefreshPluginCatalogData = {
     body?: never;
@@ -28921,23 +30032,334 @@ export type RefreshPluginCatalogData = {
 export type RefreshPluginCatalogErrors = {
     /**
      * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
      * * `[PluginContentInvalid][40000006502]`
      * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
      * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
+     * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type RefreshPluginCatalogError = RefreshPluginCatalogErrors[keyof RefreshPluginCatalogErrors];
@@ -28968,45 +30390,340 @@ export type GetCatalogPluginData = {
 export type GetCatalogPluginErrors = {
     /**
      * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
      * * `[PluginContentInvalid][40000006502]`
      * * `[PluginContentLimitExceeded][40000006503]`
      * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
      * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
      * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetCatalogPluginError = GetCatalogPluginErrors[keyof GetCatalogPluginErrors];
 
 export type GetCatalogPluginResponses = {
-    200: GithubComJieWaZiNeuxBotServerInternalPluginsCatalogEntry;
+    200: GithubComJieWaZiNeuxBotServerApisPluginsPluginCatalogEntryResponse;
 };
 
 export type GetCatalogPluginResponse = GetCatalogPluginResponses[keyof GetCatalogPluginResponses];
@@ -29039,39 +30756,334 @@ export type GetCatalogPluginConnectorData = {
 export type GetCatalogPluginConnectorErrors = {
     /**
      * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
      * * `[PluginContentInvalid][40000006502]`
      * * `[PluginContentLimitExceeded][40000006503]`
      * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
      * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
      * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetCatalogPluginConnectorError = GetCatalogPluginConnectorErrors[keyof GetCatalogPluginConnectorErrors];
@@ -29123,6 +31135,7 @@ export type PrepareCatalogPluginErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -29142,7 +31155,7 @@ export type PrepareCatalogPluginErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -29154,7 +31167,7 @@ export type PrepareCatalogPluginErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -29168,7 +31181,7 @@ export type PrepareCatalogPluginErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -29181,6 +31194,7 @@ export type PrepareCatalogPluginErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -29202,7 +31216,7 @@ export type PrepareCatalogPluginErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -29210,7 +31224,7 @@ export type PrepareCatalogPluginErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -29238,13 +31252,14 @@ export type PrepareCatalogPluginErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -29259,13 +31274,19 @@ export type PrepareCatalogPluginErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -29279,27 +31300,31 @@ export type PrepareCatalogPluginErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -29355,8 +31380,11 @@ export type PrepareCatalogPluginErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -29373,7 +31401,7 @@ export type PrepareCatalogPluginErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -29387,10 +31415,12 @@ export type PrepareCatalogPluginErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -29400,13 +31430,13 @@ export type PrepareCatalogPluginErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type PrepareCatalogPluginError = PrepareCatalogPluginErrors[keyof PrepareCatalogPluginErrors];
@@ -29445,39 +31475,334 @@ export type GetCatalogPluginReadmeData = {
 export type GetCatalogPluginReadmeErrors = {
     /**
      * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
      * * `[PluginContentInvalid][40000006502]`
      * * `[PluginContentLimitExceeded][40000006503]`
      * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
      * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
      * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetCatalogPluginReadmeError = GetCatalogPluginReadmeErrors[keyof GetCatalogPluginReadmeErrors];
@@ -29513,10 +31838,6 @@ export type GetCatalogPluginSkillData = {
          * 来源提交
          */
         sourceCommit?: string;
-        /**
-         * 适用智能体
-         */
-        target?: string;
     };
     url: '/api/v1/plugins/catalog/{key}/skill';
 };
@@ -29524,39 +31845,334 @@ export type GetCatalogPluginSkillData = {
 export type GetCatalogPluginSkillErrors = {
     /**
      * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
      * * `[PluginContentInvalid][40000006502]`
      * * `[PluginContentLimitExceeded][40000006503]`
      * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
      * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
      * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetCatalogPluginSkillError = GetCatalogPluginSkillErrors[keyof GetCatalogPluginSkillErrors];
@@ -29566,6 +32182,354 @@ export type GetCatalogPluginSkillResponses = {
 };
 
 export type GetCatalogPluginSkillResponse = GetCatalogPluginSkillResponses[keyof GetCatalogPluginSkillResponses];
+
+export type CreatePluginFromSkillsData = {
+    body: GithubComJieWaZiNeuxBotServerApisPluginsCreatePluginFromSkillsRequest & unknown;
+    path?: never;
+    query?: never;
+    url: '/api/v1/plugins/from-skills';
+};
+
+export type CreatePluginFromSkillsErrors = {
+    /**
+     * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
+     * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
+     * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
+     * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
+     *
+     */
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type CreatePluginFromSkillsError = CreatePluginFromSkillsErrors[keyof CreatePluginFromSkillsErrors];
+
+export type CreatePluginFromSkillsResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisPluginsPluginDetailResponse;
+};
+
+export type CreatePluginFromSkillsResponse = CreatePluginFromSkillsResponses[keyof CreatePluginFromSkillsResponses];
 
 export type DeletePluginData = {
     body: GithubComJieWaZiNeuxBotServerApisPluginsDeletePluginRequest & unknown;
@@ -29592,42 +32556,56 @@ export type DeletePluginErrors = {
      * * `[PluginManifestInvalid][40000006501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[PluginForbidden][40300006501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[OperationCanceled][40800000001]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginVersionConflict][40900006501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
-     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[PluginStorageError][50000006501]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
      * * `[RuntimeShutdownFailed][50000000041]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeletePluginError = DeletePluginErrors[keyof DeletePluginErrors];
@@ -29692,6 +32670,7 @@ export type GetPluginErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -29711,7 +32690,7 @@ export type GetPluginErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -29723,7 +32702,7 @@ export type GetPluginErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -29737,7 +32716,7 @@ export type GetPluginErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -29750,6 +32729,7 @@ export type GetPluginErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -29771,7 +32751,7 @@ export type GetPluginErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -29779,7 +32759,7 @@ export type GetPluginErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -29807,13 +32787,14 @@ export type GetPluginErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -29828,13 +32809,19 @@ export type GetPluginErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -29848,27 +32835,31 @@ export type GetPluginErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -29924,8 +32915,11 @@ export type GetPluginErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -29942,7 +32936,7 @@ export type GetPluginErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -29956,10 +32950,12 @@ export type GetPluginErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -29969,13 +32965,13 @@ export type GetPluginErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetPluginError = GetPluginErrors[keyof GetPluginErrors];
@@ -30009,13 +33005,7 @@ export type UpdatePluginErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[PluginForbidden][40300006501]`
-     *
-     */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdatePluginError = UpdatePluginErrors[keyof UpdatePluginErrors];
@@ -30026,87 +33016,6 @@ export type UpdatePluginResponses = {
 
 export type UpdatePluginResponse = UpdatePluginResponses[keyof UpdatePluginResponses];
 
-export type LogoutPluginAuthorizationData = {
-    body?: never;
-    path: {
-        /**
-         * 插件标识
-         */
-        pluginId: string;
-    };
-    query?: {
-        /**
-         * 所选版本
-         */
-        versionId?: string;
-        /**
-         * 所属伙伴
-         */
-        wakerId?: string;
-    };
-    url: '/api/v1/plugins/{pluginId}/account';
-};
-
-export type LogoutPluginAuthorizationErrors = {
-    /**
-     * >
-     * * `[BadRequest][40000000001]`
-     * * `[PluginContentInvalid][40000006502]`
-     * * `[PluginManifestInvalid][40000006501]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[PluginForbidden][40300006501]`
-     *
-     */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[PluginNotFound][40400006501]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[OperationCanceled][40800000001]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[MCPConnectorTrustRequired][40900000013]`
-     * * `[PluginBusy][40900006505]`
-     * * `[PluginNotReady][40900006503]`
-     * * `[PluginVersionConflict][40900006501]`
-     *
-     */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[PluginStorageError][50000006501]`
-     * * `[RuntimeShutdownFailed][50000000041]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[PluginAuthorizationFailed][50200006501]`
-     *
-     */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type LogoutPluginAuthorizationError = LogoutPluginAuthorizationErrors[keyof LogoutPluginAuthorizationErrors];
-
-export type LogoutPluginAuthorizationResponses = {
-    200: GithubComShrewxGinxCommonResponse;
-};
-
-export type LogoutPluginAuthorizationResponse = LogoutPluginAuthorizationResponses[keyof LogoutPluginAuthorizationResponses];
-
 export type GetPluginAuthorizationData = {
     body?: never;
     path: {
@@ -30115,70 +33024,39 @@ export type GetPluginAuthorizationData = {
          */
         pluginId: string;
     };
-    query?: {
-        /**
-         * 在线验证
-         */
-        verify?: boolean;
+    query: {
         /**
          * 所选版本
          */
-        versionId?: string;
+        versionId: string;
         /**
          * 所属伙伴
          */
         wakerId?: string;
     };
-    url: '/api/v1/plugins/{pluginId}/authorization';
+    url: '/api/v1/plugins/{pluginId}/account';
 };
 
 export type GetPluginAuthorizationErrors = {
     /**
      * >
-     * * `[PluginContentInvalid][40000006502]`
      * * `[PluginManifestInvalid][40000006501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
-     * * `[PluginForbidden][40300006501]`
-     *
-     */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[PluginNotFound][40400006501]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[OperationCanceled][40800000001]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[MCPConnectorTrustRequired][40900000013]`
-     * * `[PluginBusy][40900006505]`
-     * * `[PluginNotReady][40900006503]`
      * * `[PluginVersionConflict][40900006501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
-     * * `[PluginStorageError][50000006501]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[PluginAuthorizationFailed][50200006501]`
-     *
-     */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetPluginAuthorizationError = GetPluginAuthorizationErrors[keyof GetPluginAuthorizationErrors];
@@ -30197,69 +33075,350 @@ export type StartPluginAuthorizationData = {
          */
         pluginId: string;
     };
-    query?: {
+    query: {
         /**
          * 所选版本
          */
-        versionId?: string;
+        versionId: string;
         /**
          * 所属伙伴
          */
         wakerId?: string;
     };
-    url: '/api/v1/plugins/{pluginId}/authorization';
+    url: '/api/v1/plugins/{pluginId}/account/authorizations';
 };
 
 export type StartPluginAuthorizationErrors = {
     /**
      * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
      * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
      * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginContentLimitExceeded][40000006503]`
      * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
      * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
      * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[DatabaseOperationCancelled][40800001001]`
      * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
      * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
      * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
+     * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
+     * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
+     * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type StartPluginAuthorizationError = StartPluginAuthorizationErrors[keyof StartPluginAuthorizationErrors];
@@ -30271,7 +33430,7 @@ export type StartPluginAuthorizationResponses = {
 export type StartPluginAuthorizationResponse = StartPluginAuthorizationResponses[keyof StartPluginAuthorizationResponses];
 
 export type CancelPluginAuthorizationData = {
-    body?: never;
+    body: GithubComJieWaZiNeuxBotServerApisPluginsPluginAccountRequest & unknown;
     path: {
         /**
          * 插件标识
@@ -30282,66 +33441,52 @@ export type CancelPluginAuthorizationData = {
          */
         sessionId: string;
     };
-    query?: {
+    query: {
         /**
          * 所选版本
          */
-        versionId?: string;
+        versionId: string;
         /**
          * 所属伙伴
          */
         wakerId?: string;
     };
-    url: '/api/v1/plugins/{pluginId}/authorization/{sessionId}';
+    url: '/api/v1/plugins/{pluginId}/account/authorizations/{sessionId}';
 };
 
 export type CancelPluginAuthorizationErrors = {
     /**
      * >
-     * * `[PluginContentInvalid][40000006502]`
      * * `[PluginManifestInvalid][40000006501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[PluginForbidden][40300006501]`
-     *
-     */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[PluginNotFound][40400006501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[OperationCanceled][40800000001]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
-     * * `[MCPConnectorTrustRequired][40900000013]`
-     * * `[PluginBusy][40900006505]`
-     * * `[PluginNotReady][40900006503]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginVersionConflict][40900006501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
-     * * `[PluginStorageError][50000006501]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[PluginAuthorizationFailed][50200006501]`
-     *
-     */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CancelPluginAuthorizationError = CancelPluginAuthorizationErrors[keyof CancelPluginAuthorizationErrors];
@@ -30351,6 +33496,601 @@ export type CancelPluginAuthorizationResponses = {
 };
 
 export type CancelPluginAuthorizationResponse = CancelPluginAuthorizationResponses[keyof CancelPluginAuthorizationResponses];
+
+export type GetPluginAuthorizationSessionData = {
+    body?: never;
+    path: {
+        /**
+         * 插件标识
+         */
+        pluginId: string;
+        /**
+         * 会话标识
+         */
+        sessionId: string;
+    };
+    query: {
+        /**
+         * 所选版本
+         */
+        versionId: string;
+        /**
+         * 所属伙伴
+         */
+        wakerId?: string;
+    };
+    url: '/api/v1/plugins/{pluginId}/account/authorizations/{sessionId}';
+};
+
+export type GetPluginAuthorizationSessionErrors = {
+    /**
+     * >
+     * * `[PluginManifestInvalid][40000006501]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[PluginNotFound][40400006501]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[PluginVersionConflict][40900006501]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type GetPluginAuthorizationSessionError = GetPluginAuthorizationSessionErrors[keyof GetPluginAuthorizationSessionErrors];
+
+export type GetPluginAuthorizationSessionResponses = {
+    200: GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationSession;
+};
+
+export type GetPluginAuthorizationSessionResponse = GetPluginAuthorizationSessionResponses[keyof GetPluginAuthorizationSessionResponses];
+
+export type CheckPluginAccountData = {
+    body: GithubComJieWaZiNeuxBotServerApisPluginsPluginAccountRequest & unknown;
+    path: {
+        /**
+         * 插件标识
+         */
+        pluginId: string;
+    };
+    query: {
+        /**
+         * 所选版本
+         */
+        versionId: string;
+        /**
+         * 所属伙伴
+         */
+        wakerId?: string;
+    };
+    url: '/api/v1/plugins/{pluginId}/account/check';
+};
+
+export type CheckPluginAccountErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginManifestInvalid][40000006501]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[PluginForbidden][40300006501]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[OperationCanceled][40800000001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginVersionConflict][40900006501]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[PluginStorageError][50000006501]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
+     *
+     */
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type CheckPluginAccountError = CheckPluginAccountErrors[keyof CheckPluginAccountErrors];
+
+export type CheckPluginAccountResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisPluginsPluginAuthorizationResponse;
+};
+
+export type CheckPluginAccountResponse = CheckPluginAccountResponses[keyof CheckPluginAccountResponses];
+
+export type LogoutPluginAuthorizationData = {
+    body: GithubComJieWaZiNeuxBotServerApisPluginsPluginAccountRequest & unknown;
+    path: {
+        /**
+         * 插件标识
+         */
+        pluginId: string;
+    };
+    query: {
+        /**
+         * 所选版本
+         */
+        versionId: string;
+        /**
+         * 所属伙伴
+         */
+        wakerId?: string;
+    };
+    url: '/api/v1/plugins/{pluginId}/account/logout';
+};
+
+export type LogoutPluginAuthorizationErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginManifestInvalid][40000006501]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[PluginForbidden][40300006501]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[OperationCanceled][40800000001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginVersionConflict][40900006501]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[PluginStorageError][50000006501]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
+     *
+     */
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type LogoutPluginAuthorizationError = LogoutPluginAuthorizationErrors[keyof LogoutPluginAuthorizationErrors];
+
+export type LogoutPluginAuthorizationResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type LogoutPluginAuthorizationResponse = LogoutPluginAuthorizationResponses[keyof LogoutPluginAuthorizationResponses];
+
+export type GetPluginConfigurationData = {
+    body?: never;
+    path: {
+        /**
+         * 插件标识
+         */
+        pluginId: string;
+    };
+    query: {
+        /**
+         * 所选版本
+         */
+        versionId: string;
+        /**
+         * 所属伙伴
+         */
+        wakerId?: string;
+    };
+    url: '/api/v1/plugins/{pluginId}/configuration';
+};
+
+export type GetPluginConfigurationErrors = {
+    /**
+     * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
+     * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
+     * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
+     * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
+     *
+     */
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type GetPluginConfigurationError = GetPluginConfigurationErrors[keyof GetPluginConfigurationErrors];
+
+export type GetPluginConfigurationResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisPluginsPluginConfigurationResponse;
+};
+
+export type GetPluginConfigurationResponse = GetPluginConfigurationResponses[keyof GetPluginConfigurationResponses];
 
 export type UpdatePluginConfigurationData = {
     body: GithubComJieWaZiNeuxBotServerApisPluginsUpdateConfigurationRequest & unknown;
@@ -30372,56 +34112,30 @@ export type UpdatePluginConfigurationData = {
 export type UpdatePluginConfigurationErrors = {
     /**
      * >
-     * * `[PluginContentInvalid][40000006502]`
-     * * `[PluginContentLimitExceeded][40000006503]`
      * * `[PluginManifestInvalid][40000006501]`
-     * * `[SkillContentInvalid][40000000013]`
-     * * `[SkillContentLimitExceeded][40000000014]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[PluginForbidden][40300006501]`
-     *
-     */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[PluginNotFound][40400006501]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
-     * * `[OperationCanceled][40800000001]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[MCPConnectorTrustRequired][40900000013]`
-     * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
-     * * `[PluginVersionConflict][40900006501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
-     * * `[PluginStorageError][50000006501]`
-     * * `[SkillUnavailable][50000000008]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[PluginAuthorizationFailed][50200006501]`
-     * * `[PluginDistributionUnavailable][50200006502]`
-     *
-     */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdatePluginConfigurationError = UpdatePluginConfigurationErrors[keyof UpdatePluginConfigurationErrors];
@@ -30464,19 +34178,26 @@ export type GetPluginConnectorErrors = {
      * * `[PluginManifestInvalid][40000006501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[PluginForbidden][40300006501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[PluginVersionConflict][40900006501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetPluginConnectorError = GetPluginConnectorErrors[keyof GetPluginConnectorErrors];
@@ -30525,52 +34246,61 @@ export type TestPluginConnectorErrors = {
      * >
      * * `[BadRequest][40000000001]`
      * * `[PluginContentInvalid][40000006502]`
-     * * `[PluginContentLimitExceeded][40000006503]`
      * * `[PluginManifestInvalid][40000006501]`
-     * * `[SkillContentInvalid][40000000013]`
-     * * `[SkillContentLimitExceeded][40000000014]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[PluginForbidden][40300006501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[OperationCanceled][40800000001]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginVersionConflict][40900006501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[MCPConnectorCredentialError][50000000022]`
-     * * `[PluginStorageError][50000006501]`
-     * * `[RuntimeShutdownFailed][50000000041]`
-     * * `[SkillUnavailable][50000000008]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[PluginStorageError][50000006501]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type TestPluginConnectorError = TestPluginConnectorErrors[keyof TestPluginConnectorErrors];
@@ -30622,6 +34352,7 @@ export type InstallPluginErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -30641,7 +34372,7 @@ export type InstallPluginErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -30653,7 +34384,7 @@ export type InstallPluginErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -30667,7 +34398,7 @@ export type InstallPluginErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -30680,6 +34411,7 @@ export type InstallPluginErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -30701,7 +34433,7 @@ export type InstallPluginErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -30709,7 +34441,7 @@ export type InstallPluginErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -30737,13 +34469,14 @@ export type InstallPluginErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -30758,13 +34491,19 @@ export type InstallPluginErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -30778,27 +34517,31 @@ export type InstallPluginErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -30854,8 +34597,11 @@ export type InstallPluginErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -30872,7 +34618,7 @@ export type InstallPluginErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -30886,10 +34632,12 @@ export type InstallPluginErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -30899,13 +34647,13 @@ export type InstallPluginErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type InstallPluginError = InstallPluginErrors[keyof InstallPluginErrors];
@@ -30946,28 +34694,30 @@ export type GetPluginReadmeErrors = {
      * >
      * * `[PluginContentInvalid][40000006502]`
      * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[PluginForbidden][40300006501]`
-     *
-     */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[PluginNotReady][40900006503]`
      * * `[PluginVersionConflict][40900006501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[PluginStorageError][50000006501]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetPluginReadmeError = GetPluginReadmeErrors[keyof GetPluginReadmeErrors];
@@ -30996,10 +34746,6 @@ export type GetPluginSkillData = {
          */
         path?: string;
         /**
-         * 适用智能体
-         */
-        target?: string;
-        /**
          * 版本标识
          */
         versionId: string;
@@ -31017,31 +34763,35 @@ export type GetPluginSkillErrors = {
      * * `[PluginContentInvalid][40000006502]`
      * * `[PluginContentLimitExceeded][40000006503]`
      * * `[PluginManifestInvalid][40000006501]`
-     * * `[SkillContentInvalid][40000000013]`
-     * * `[SkillContentLimitExceeded][40000000014]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[PluginForbidden][40300006501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[PluginNotReady][40900006503]`
      * * `[PluginVersionConflict][40900006501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[PluginStorageError][50000006501]`
-     * * `[SkillUnavailable][50000000008]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetPluginSkillError = GetPluginSkillErrors[keyof GetPluginSkillErrors];
@@ -31051,6 +34801,390 @@ export type GetPluginSkillResponses = {
 };
 
 export type GetPluginSkillResponse = GetPluginSkillResponses[keyof GetPluginSkillResponses];
+
+export type UpdatePluginInstallationsData = {
+    body: GithubComJieWaZiNeuxBotServerApisPluginsUpdatePluginInstallationsRequest & unknown;
+    path: {
+        /**
+         * 插件标识
+         */
+        pluginId: string;
+    };
+    query?: {
+        /**
+         * 所属伙伴
+         */
+        wakerId?: string;
+    };
+    url: '/api/v1/plugins/{pluginId}/updates';
+};
+
+export type UpdatePluginInstallationsErrors = {
+    /**
+     * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
+     * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
+     * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
+     * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
+     *
+     */
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type UpdatePluginInstallationsError = UpdatePluginInstallationsErrors[keyof UpdatePluginInstallationsErrors];
+
+export type UpdatePluginInstallationsResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type UpdatePluginInstallationsResponse = UpdatePluginInstallationsResponses[keyof UpdatePluginInstallationsResponses];
+
+export type ListResourceCategoriesData = {
+    body?: never;
+    path?: never;
+    query: {
+        type: GithubComJieWaZiNeuxBotServerConstantsResourceCategoryType & unknown;
+    };
+    url: '/api/v1/resource-categories';
+};
+
+export type ListResourceCategoriesErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type ListResourceCategoriesError = ListResourceCategoriesErrors[keyof ListResourceCategoriesErrors];
+
+export type ListResourceCategoriesResponses = {
+    200: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsResourceCategory>;
+};
+
+export type ListResourceCategoriesResponse = ListResourceCategoriesResponses[keyof ListResourceCategoriesResponses];
 
 export type ListRolePresetsData = {
     body?: never;
@@ -31093,13 +35227,13 @@ export type CreateRolePresetErrors = {
      * * `[ProfileDocumentTooLarge][40000000003]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[RolePresetNameConflict][40900000003]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateRolePresetError = CreateRolePresetErrors[keyof CreateRolePresetErrors];
@@ -31123,7 +35257,7 @@ export type ExportProfileTemplateErrors = {
      * * `[ProfileArchiveGenerationFailed][50000000037]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ExportProfileTemplateError = ExportProfileTemplateErrors[keyof ExportProfileTemplateErrors];
@@ -31152,7 +35286,7 @@ export type DeleteRolePresetErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteRolePresetError = DeleteRolePresetErrors[keyof DeleteRolePresetErrors];
@@ -31202,20 +35336,20 @@ export type UpdateRolePresetErrors = {
      * * `[ProfileDocumentTooLarge][40000000003]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ProfileDocumentNotFound][40400000003]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[RolePresetNameConflict][40900000003]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateRolePresetError = UpdateRolePresetErrors[keyof UpdateRolePresetErrors];
@@ -31244,13 +35378,13 @@ export type ListRolePresetDocumentsErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ProfileDocumentNotFound][40400000003]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListRolePresetDocumentsError = ListRolePresetDocumentsErrors[keyof ListRolePresetDocumentsErrors];
@@ -31279,19 +35413,19 @@ export type ExportRolePresetErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ProfileDocumentNotFound][40400000003]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ProfileArchiveGenerationFailed][50000000037]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ExportRolePresetError = ExportRolePresetErrors[keyof ExportRolePresetErrors];
@@ -31308,6 +35442,17 @@ export type ListRuntimesData = {
     query?: never;
     url: '/api/v1/runtimes';
 };
+
+export type ListRuntimesErrors = {
+    /**
+     * >
+     * * `[RuntimeUnavailable][50000000006]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type ListRuntimesError = ListRuntimesErrors[keyof ListRuntimesErrors];
 
 export type ListRuntimesResponses = {
     200: GithubComJieWaZiNeuxBotServerApisRuntimeOptionsListRuntimesResponse;
@@ -31343,16 +35488,16 @@ export type UpdateRuntimeEnvironmentData = {
 export type UpdateRuntimeEnvironmentErrors = {
     /**
      * >
-     * * `[BadRequest][40000000001]`
+     * * `[AIAccountConfigurationInvalid][40000000020]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
-     * * `[AIAccountBusy][40900000027]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateRuntimeEnvironmentError = UpdateRuntimeEnvironmentErrors[keyof UpdateRuntimeEnvironmentErrors];
@@ -31362,6 +35507,187 @@ export type UpdateRuntimeEnvironmentResponses = {
 };
 
 export type UpdateRuntimeEnvironmentResponse = UpdateRuntimeEnvironmentResponses[keyof UpdateRuntimeEnvironmentResponses];
+
+export type CancelRuntimeAuthenticationData = {
+    body?: never;
+    path: {
+        /**
+         * 智能体标识
+         */
+        runtimeId: string;
+    };
+    query: {
+        /**
+         * 登录任务标识
+         */
+        jobId: string;
+    };
+    url: '/api/v1/runtimes/{runtimeId}/authentication';
+};
+
+export type CancelRuntimeAuthenticationResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type CancelRuntimeAuthenticationResponse = CancelRuntimeAuthenticationResponses[keyof CancelRuntimeAuthenticationResponses];
+
+export type GetRuntimeAuthenticationData = {
+    body?: never;
+    path: {
+        /**
+         * 智能体标识
+         */
+        runtimeId: string;
+    };
+    query?: {
+        /**
+         * 重新读取原生能力
+         */
+        refresh?: boolean;
+    };
+    url: '/api/v1/runtimes/{runtimeId}/authentication';
+};
+
+export type GetRuntimeAuthenticationResponses = {
+    200: GithubComJieWaZiNeuxBotServerServicesRuntimeenvironmentRuntimeAuthenticationSnapshot;
+};
+
+export type GetRuntimeAuthenticationResponse = GetRuntimeAuthenticationResponses[keyof GetRuntimeAuthenticationResponses];
+
+export type AuthenticateRuntimeData = {
+    body: GithubComJieWaZiNeuxBotServerApisRuntimeOptionsAuthenticateRuntimeRequest & unknown;
+    path: {
+        /**
+         * 智能体标识
+         */
+        runtimeId: string;
+    };
+    query?: never;
+    url: '/api/v1/runtimes/{runtimeId}/authentication';
+};
+
+export type AuthenticateRuntimeResponses = {
+    200: GithubComJieWaZiNeuxBotServerServicesRuntimeenvironmentRuntimeAuthenticationSnapshot;
+};
+
+export type AuthenticateRuntimeResponse = AuthenticateRuntimeResponses[keyof AuthenticateRuntimeResponses];
+
+export type CheckRuntimeUpdatesData = {
+    body?: never;
+    path: {
+        /**
+         * 智能体标识
+         */
+        runtimeId: string;
+    };
+    query?: never;
+    url: '/api/v1/runtimes/{runtimeId}/check-updates';
+};
+
+export type CheckRuntimeUpdatesResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type CheckRuntimeUpdatesResponse = CheckRuntimeUpdatesResponses[keyof CheckRuntimeUpdatesResponses];
+
+export type CancelRuntimeInstallationData = {
+    body?: never;
+    path: {
+        /**
+         * 智能体标识
+         */
+        runtimeId: string;
+    };
+    query?: never;
+    url: '/api/v1/runtimes/{runtimeId}/installation';
+};
+
+export type CancelRuntimeInstallationResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type CancelRuntimeInstallationResponse = CancelRuntimeInstallationResponses[keyof CancelRuntimeInstallationResponses];
+
+export type GetRuntimeInstallationData = {
+    body?: never;
+    path: {
+        /**
+         * 智能体标识
+         */
+        runtimeId: string;
+    };
+    query?: never;
+    url: '/api/v1/runtimes/{runtimeId}/installation';
+};
+
+export type GetRuntimeInstallationResponses = {
+    200: GithubComJieWaZiNeuxBotServerServicesRuntimeenvironmentRuntimeInstallationSnapshot;
+};
+
+export type GetRuntimeInstallationResponse = GetRuntimeInstallationResponses[keyof GetRuntimeInstallationResponses];
+
+export type InstallRuntimeData = {
+    body?: never;
+    path: {
+        /**
+         * 智能体标识
+         */
+        runtimeId: string;
+    };
+    query?: never;
+    url: '/api/v1/runtimes/{runtimeId}/installation';
+};
+
+export type InstallRuntimeResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type InstallRuntimeResponse = InstallRuntimeResponses[keyof InstallRuntimeResponses];
+
+export type GetRuntimeModelCatalogData = {
+    body?: never;
+    path: {
+        /**
+         * 智能体标识
+         */
+        runtimeId: string;
+    };
+    query?: {
+        /**
+         * 账号标识
+         */
+        accountId?: string;
+        /**
+         * 主动刷新
+         */
+        refresh?: boolean;
+    };
+    url: '/api/v1/runtimes/{runtimeId}/models';
+};
+
+export type GetRuntimeModelCatalogResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelCatalogResponse;
+};
+
+export type GetRuntimeModelCatalogResponse = GetRuntimeModelCatalogResponses[keyof GetRuntimeModelCatalogResponses];
+
+export type UninstallRuntimeData = {
+    body?: never;
+    path: {
+        /**
+         * 智能体标识
+         */
+        runtimeId: string;
+    };
+    query?: never;
+    url: '/api/v1/runtimes/{runtimeId}/program';
+};
+
+export type UninstallRuntimeResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type UninstallRuntimeResponse = UninstallRuntimeResponses[keyof UninstallRuntimeResponses];
 
 export type RefreshRuntimeData = {
     body?: never;
@@ -31380,6 +35706,24 @@ export type RefreshRuntimeResponses = {
 };
 
 export type RefreshRuntimeResponse = RefreshRuntimeResponses[keyof RefreshRuntimeResponses];
+
+export type RestartRuntimeData = {
+    body?: never;
+    path: {
+        /**
+         * 智能体标识
+         */
+        runtimeId: string;
+    };
+    query?: never;
+    url: '/api/v1/runtimes/{runtimeId}/restart';
+};
+
+export type RestartRuntimeResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type RestartRuntimeResponse = RestartRuntimeResponses[keyof RestartRuntimeResponses];
 
 export type ListLibrarySkillsData = {
     body?: never;
@@ -31424,20 +35768,20 @@ export type ImportLibrarySkillsErrors = {
      * * `[SkillImportIntegrityInvalid][40000000016]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[Conflict][40900000001]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ImportLibrarySkillsError = ImportLibrarySkillsErrors[keyof ImportLibrarySkillsErrors];
@@ -31465,14 +35809,14 @@ export type ScanLibrarySkillImportErrors = {
      * * `[SkillImportSourceInvalid][40000000015]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ScanLibrarySkillImportError = ScanLibrarySkillImportErrors[keyof ScanLibrarySkillImportErrors];
@@ -31510,26 +35854,26 @@ export type DeleteLibrarySkillErrors = {
      * * `[SkillContentInvalid][40000000013]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillNotFound][40400000007]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[BuiltInSkillCannotUninstall][40900000009]`
      * * `[PluginConfigurationConflict][40900006502]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillStorageError][50000000031]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteLibrarySkillError = DeleteLibrarySkillErrors[keyof DeleteLibrarySkillErrors];
@@ -31558,7 +35902,7 @@ export type GetLibrarySkillErrors = {
      * * `[SkillNotFound][40400000007]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetLibrarySkillError = GetLibrarySkillErrors[keyof GetLibrarySkillErrors];
@@ -31587,7 +35931,7 @@ export type UpdateLibrarySkillErrors = {
      * * `[SkillNotFound][40400000007]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateLibrarySkillError = UpdateLibrarySkillErrors[keyof UpdateLibrarySkillErrors];
@@ -31616,7 +35960,7 @@ export type InstallLibrarySkillErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type InstallLibrarySkillError = InstallLibrarySkillErrors[keyof InstallLibrarySkillErrors];
@@ -31647,25 +35991,25 @@ export type PullLibrarySkillUpdateErrors = {
      * * `[SkillImportFailed][40000000006]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillNotFound][40400000007]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[Conflict][40900000001]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillStorageError][50000000031]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type PullLibrarySkillUpdateError = PullLibrarySkillUpdateErrors[keyof PullLibrarySkillUpdateErrors];
@@ -31694,7 +36038,7 @@ export type ListLibrarySkillVersionsErrors = {
      * * `[SkillNotFound][40400000007]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListLibrarySkillVersionsError = ListLibrarySkillVersionsErrors[keyof ListLibrarySkillVersionsErrors];
@@ -31724,26 +36068,26 @@ export type CreateLibrarySkillVersionErrors = {
      * * `[SkillContentLimitExceeded][40000000014]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillNotFound][40400000007]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[Conflict][40900000001]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateLibrarySkillVersionError = CreateLibrarySkillVersionErrors[keyof CreateLibrarySkillVersionErrors];
@@ -31776,20 +36120,20 @@ export type GetLibrarySkillVersionErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillNotFound][40400000007]`
      * * `[SkillVersionNotFound][40400000008]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillStorageError][50000000031]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetLibrarySkillVersionError = GetLibrarySkillVersionErrors[keyof GetLibrarySkillVersionErrors];
@@ -31827,20 +36171,20 @@ export type GetLibrarySkillVersionFileErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillNotFound][40400000007]`
      * * `[SkillVersionNotFound][40400000008]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillStorageError][50000000031]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetLibrarySkillVersionFileError = GetLibrarySkillVersionFileErrors[keyof GetLibrarySkillVersionFileErrors];
@@ -31875,27 +36219,27 @@ export type RestoreLibrarySkillVersionErrors = {
      * * `[SkillContentLimitExceeded][40000000014]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillNotFound][40400000007]`
      * * `[SkillVersionNotFound][40400000008]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[Conflict][40900000001]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type RestoreLibrarySkillVersionError = RestoreLibrarySkillVersionErrors[keyof RestoreLibrarySkillVersionErrors];
@@ -31955,6 +36299,7 @@ export type SetAutomaticTaskApiErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -31974,7 +36319,7 @@ export type SetAutomaticTaskApiErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -31986,7 +36331,7 @@ export type SetAutomaticTaskApiErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -32000,7 +36345,7 @@ export type SetAutomaticTaskApiErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -32013,6 +36358,7 @@ export type SetAutomaticTaskApiErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -32034,7 +36380,7 @@ export type SetAutomaticTaskApiErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -32042,7 +36388,7 @@ export type SetAutomaticTaskApiErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -32070,13 +36416,14 @@ export type SetAutomaticTaskApiErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -32091,13 +36438,19 @@ export type SetAutomaticTaskApiErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -32111,27 +36464,31 @@ export type SetAutomaticTaskApiErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -32187,8 +36544,11 @@ export type SetAutomaticTaskApiErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -32205,7 +36565,7 @@ export type SetAutomaticTaskApiErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -32219,10 +36579,12 @@ export type SetAutomaticTaskApiErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -32232,13 +36594,13 @@ export type SetAutomaticTaskApiErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type SetAutomaticTaskApiError = SetAutomaticTaskApiErrors[keyof SetAutomaticTaskApiErrors];
@@ -32262,7 +36624,7 @@ export type SetAutomaticTaskSuspendedErrors = {
      * * `[AutomaticScheduleInvalid][40000001001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type SetAutomaticTaskSuspendedError = SetAutomaticTaskSuspendedErrors[keyof SetAutomaticTaskSuspendedErrors];
@@ -32317,7 +36679,7 @@ export type CloseTerminalErrors = {
      * * `[TerminalInvalid][40000007109]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CloseTerminalError = CloseTerminalErrors[keyof CloseTerminalErrors];
@@ -32341,19 +36703,19 @@ export type StartTerminalErrors = {
      * * `[TerminalInvalid][40000007109]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[TerminalForbidden][40300007111]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type StartTerminalError = StartTerminalErrors[keyof StartTerminalErrors];
@@ -32382,7 +36744,7 @@ export type StreamTerminalErrors = {
      * * `[CoreConfigurationInvalid][50000000023]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type StreamTerminalError = StreamTerminalErrors[keyof StreamTerminalErrors];
@@ -32411,7 +36773,7 @@ export type DeleteUploadErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteUploadError = DeleteUploadErrors[keyof DeleteUploadErrors];
@@ -32440,7 +36802,7 @@ export type StageUploadErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type StageUploadError = StageUploadErrors[keyof StageUploadErrors];
@@ -32450,6 +36812,198 @@ export type StageUploadResponses = {
 };
 
 export type StageUploadResponse = StageUploadResponses[keyof StageUploadResponses];
+
+export type ListUsageGroupsData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * AccountID 是原始宿主账号标识。
+         */
+        accountId?: string;
+        /**
+         * ChatID 是原始对话标识。
+         */
+        chatId?: string;
+        /**
+         * Cursor 是同一快照的下一页游标。
+         */
+        cursor?: string;
+        /**
+         * From 是包含的 Unix 毫秒下界。
+         */
+        from: number;
+        /**
+         * GroupBy 是分组维度。
+         */
+        groupBy: string;
+        /**
+         * Limit 是页大小，零使用默认值 50。
+         */
+        limit?: number;
+        /**
+         * Provider 是原生后端标识。
+         */
+        provider?: string;
+        /**
+         * Snapshot 是概要返回的不透明快照。
+         */
+        snapshot: string;
+        /**
+         * Source 是原始调用入口。
+         */
+        source?: string;
+        /**
+         * Timezone 是 IANA 时区。
+         */
+        timezone: string;
+        /**
+         * To 是排除的 Unix 毫秒上界。
+         */
+        to: number;
+        /**
+         * WakerIDs 是逗号分隔的原始伙伴标识。
+         */
+        wakerIds?: string;
+    };
+    url: '/api/v1/usage/groups';
+};
+
+export type ListUsageGroupsErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[Conflict][40900000001]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[DatabaseError][50000000002]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseBusy][50300001001]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type ListUsageGroupsError = ListUsageGroupsErrors[keyof ListUsageGroupsErrors];
+
+export type ListUsageGroupsResponses = {
+    200: GithubComJieWaZiNeuxBotServerServicesUsageGroupsPage;
+};
+
+export type ListUsageGroupsResponse = ListUsageGroupsResponses[keyof ListUsageGroupsResponses];
+
+export type GetUsageSummaryData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * AccountID 是原始宿主账号标识。
+         */
+        accountId?: string;
+        /**
+         * ChatID 是原始对话标识。
+         */
+        chatId?: string;
+        /**
+         * From 是包含的 Unix 毫秒下界。
+         */
+        from: number;
+        /**
+         * Provider 是原生后端标识。
+         */
+        provider?: string;
+        /**
+         * Snapshot 是概要返回的不透明快照。
+         */
+        snapshot?: string;
+        /**
+         * Source 是原始调用入口。
+         */
+        source?: string;
+        /**
+         * Timezone 是 IANA 时区。
+         */
+        timezone: string;
+        /**
+         * To 是排除的 Unix 毫秒上界。
+         */
+        to: number;
+        /**
+         * WakerIDs 是逗号分隔的原始伙伴标识。
+         */
+        wakerIds?: string;
+    };
+    url: '/api/v1/usage/summary';
+};
+
+export type GetUsageSummaryErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[Conflict][40900000001]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[DatabaseError][50000000002]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseBusy][50300001001]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type GetUsageSummaryError = GetUsageSummaryErrors[keyof GetUsageSummaryErrors];
+
+export type GetUsageSummaryResponses = {
+    200: GithubComJieWaZiNeuxBotServerServicesUsageSummary;
+};
+
+export type GetUsageSummaryResponse = GetUsageSummaryResponses[keyof GetUsageSummaryResponses];
 
 export type ListWakersData = {
     body?: never;
@@ -32491,25 +37045,25 @@ export type CreateWakerErrors = {
      * * `[SkillContentInvalid][40000000013]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ProfileDocumentNotFound][40400000003]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WakerNameConflict][40900000002]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillUnavailable][50000000008]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateWakerError = CreateWakerErrors[keyof CreateWakerErrors];
@@ -32537,31 +37091,44 @@ export type DeleteWakerErrors = {
      * >
      * * `[AgentInputInvalid][40000009001]`
      * * `[BadRequest][40000000001]`
-     * * `[SkillContentInvalid][40000000013]`
+     * * `[ChatIDInvalid][40000000010]`
      * * `[WakerDeleteConfirmationMismatch][40000000005]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[WakerNotFound][40400000001]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[WakerHasRunningWork][40900000005]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
      * * `[DatabaseError][50000000002]`
-     * * `[SkillStorageError][50000000031]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeShutdownFailed][50000000041]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteWakerError = DeleteWakerErrors[keyof DeleteWakerErrors];
@@ -32608,7 +37175,7 @@ export type UpdateWakerErrors = {
      * * `[WakerNameConflict][40900000002]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateWakerError = UpdateWakerErrors[keyof UpdateWakerErrors];
@@ -32678,6 +37245,7 @@ export type ListAutomaticTasksErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -32697,7 +37265,7 @@ export type ListAutomaticTasksErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -32709,7 +37277,7 @@ export type ListAutomaticTasksErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -32723,7 +37291,7 @@ export type ListAutomaticTasksErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -32736,6 +37304,7 @@ export type ListAutomaticTasksErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -32757,7 +37326,7 @@ export type ListAutomaticTasksErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -32765,7 +37334,7 @@ export type ListAutomaticTasksErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -32793,13 +37362,14 @@ export type ListAutomaticTasksErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -32814,13 +37384,19 @@ export type ListAutomaticTasksErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -32834,27 +37410,31 @@ export type ListAutomaticTasksErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -32910,8 +37490,11 @@ export type ListAutomaticTasksErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -32928,7 +37511,7 @@ export type ListAutomaticTasksErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -32942,10 +37525,12 @@ export type ListAutomaticTasksErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -32955,13 +37540,13 @@ export type ListAutomaticTasksErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListAutomaticTasksError = ListAutomaticTasksErrors[keyof ListAutomaticTasksErrors];
@@ -32999,14 +37584,14 @@ export type CreateAutomaticTaskErrors = {
      * * `[WorkflowSchemaInvalid][40000003002]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskNotFound][40400000018]`
      * * `[ChannelMemberNotFound][40400000014]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskAdmissionRevoked][40900000037]`
@@ -33014,13 +37599,13 @@ export type CreateAutomaticTaskErrors = {
      * * `[AutomaticTaskRevisionConflict][40900000036]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskServiceInvalid][50000001001]`
@@ -33028,7 +37613,7 @@ export type CreateAutomaticTaskErrors = {
      * * `[ProjectSourceUnavailable][50000000005]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateAutomaticTaskError = CreateAutomaticTaskErrors[keyof CreateAutomaticTaskErrors];
@@ -33080,6 +37665,7 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -33099,7 +37685,7 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -33111,7 +37697,7 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -33125,7 +37711,7 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -33138,6 +37724,7 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -33159,7 +37746,7 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -33167,7 +37754,7 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -33195,13 +37782,14 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -33216,13 +37804,19 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -33236,27 +37830,31 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -33312,8 +37910,11 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -33330,7 +37931,7 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -33344,10 +37945,12 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -33357,13 +37960,13 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListAutomaticTaskAttentionError = ListAutomaticTaskAttentionErrors[keyof ListAutomaticTaskAttentionErrors];
@@ -33392,7 +37995,7 @@ export type PreviewAutomaticScheduleErrors = {
      * * `[AutomaticScheduleInvalid][40000001001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type PreviewAutomaticScheduleError = PreviewAutomaticScheduleErrors[keyof PreviewAutomaticScheduleErrors];
@@ -33448,6 +38051,7 @@ export type DeleteAutomaticTaskErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -33467,7 +38071,7 @@ export type DeleteAutomaticTaskErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -33479,7 +38083,7 @@ export type DeleteAutomaticTaskErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -33493,7 +38097,7 @@ export type DeleteAutomaticTaskErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -33506,6 +38110,7 @@ export type DeleteAutomaticTaskErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -33527,7 +38132,7 @@ export type DeleteAutomaticTaskErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -33535,7 +38140,7 @@ export type DeleteAutomaticTaskErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -33563,13 +38168,14 @@ export type DeleteAutomaticTaskErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -33584,13 +38190,19 @@ export type DeleteAutomaticTaskErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -33604,27 +38216,31 @@ export type DeleteAutomaticTaskErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -33680,8 +38296,11 @@ export type DeleteAutomaticTaskErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -33698,7 +38317,7 @@ export type DeleteAutomaticTaskErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -33712,10 +38331,12 @@ export type DeleteAutomaticTaskErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -33725,13 +38346,13 @@ export type DeleteAutomaticTaskErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteAutomaticTaskError = DeleteAutomaticTaskErrors[keyof DeleteAutomaticTaskErrors];
@@ -33787,6 +38408,7 @@ export type GetAutomaticTaskErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -33806,7 +38428,7 @@ export type GetAutomaticTaskErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -33818,7 +38440,7 @@ export type GetAutomaticTaskErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -33832,7 +38454,7 @@ export type GetAutomaticTaskErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -33845,6 +38467,7 @@ export type GetAutomaticTaskErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -33866,7 +38489,7 @@ export type GetAutomaticTaskErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -33874,7 +38497,7 @@ export type GetAutomaticTaskErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -33902,13 +38525,14 @@ export type GetAutomaticTaskErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -33923,13 +38547,19 @@ export type GetAutomaticTaskErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -33943,27 +38573,31 @@ export type GetAutomaticTaskErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -34019,8 +38653,11 @@ export type GetAutomaticTaskErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -34037,7 +38674,7 @@ export type GetAutomaticTaskErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -34051,10 +38688,12 @@ export type GetAutomaticTaskErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -34064,13 +38703,13 @@ export type GetAutomaticTaskErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetAutomaticTaskError = GetAutomaticTaskErrors[keyof GetAutomaticTaskErrors];
@@ -34112,14 +38751,14 @@ export type UpdateAutomaticTaskErrors = {
      * * `[WorkflowSchemaInvalid][40000003002]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskNotFound][40400000018]`
      * * `[ChannelMemberNotFound][40400000014]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskAdmissionRevoked][40900000037]`
@@ -34127,13 +38766,13 @@ export type UpdateAutomaticTaskErrors = {
      * * `[AutomaticTaskRevisionConflict][40900000036]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskServiceInvalid][50000001001]`
@@ -34141,7 +38780,7 @@ export type UpdateAutomaticTaskErrors = {
      * * `[ProjectSourceUnavailable][50000000005]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateAutomaticTaskError = UpdateAutomaticTaskErrors[keyof UpdateAutomaticTaskErrors];
@@ -34183,14 +38822,14 @@ export type SetAutomaticTaskEnabledErrors = {
      * * `[WorkflowSchemaInvalid][40000003002]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskNotFound][40400000018]`
      * * `[ChannelMemberNotFound][40400000014]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskAdmissionRevoked][40900000037]`
@@ -34198,13 +38837,13 @@ export type SetAutomaticTaskEnabledErrors = {
      * * `[AutomaticTaskRevisionConflict][40900000036]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskServiceInvalid][50000001001]`
@@ -34212,7 +38851,7 @@ export type SetAutomaticTaskEnabledErrors = {
      * * `[ProjectSourceUnavailable][50000000005]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type SetAutomaticTaskEnabledError = SetAutomaticTaskEnabledErrors[keyof SetAutomaticTaskEnabledErrors];
@@ -34277,6 +38916,7 @@ export type ListAutomaticRunsErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -34296,7 +38936,7 @@ export type ListAutomaticRunsErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -34308,7 +38948,7 @@ export type ListAutomaticRunsErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -34322,7 +38962,7 @@ export type ListAutomaticRunsErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -34335,6 +38975,7 @@ export type ListAutomaticRunsErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -34356,7 +38997,7 @@ export type ListAutomaticRunsErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -34364,7 +39005,7 @@ export type ListAutomaticRunsErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -34392,13 +39033,14 @@ export type ListAutomaticRunsErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -34413,13 +39055,19 @@ export type ListAutomaticRunsErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -34433,27 +39081,31 @@ export type ListAutomaticRunsErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -34509,8 +39161,11 @@ export type ListAutomaticRunsErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -34527,7 +39182,7 @@ export type ListAutomaticRunsErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -34541,10 +39196,12 @@ export type ListAutomaticRunsErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -34554,13 +39211,13 @@ export type ListAutomaticRunsErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListAutomaticRunsError = ListAutomaticRunsErrors[keyof ListAutomaticRunsErrors];
@@ -34616,6 +39273,7 @@ export type TriggerAutomaticTaskErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -34635,7 +39293,7 @@ export type TriggerAutomaticTaskErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -34647,7 +39305,7 @@ export type TriggerAutomaticTaskErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -34661,7 +39319,7 @@ export type TriggerAutomaticTaskErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -34674,6 +39332,7 @@ export type TriggerAutomaticTaskErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -34695,7 +39354,7 @@ export type TriggerAutomaticTaskErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -34703,7 +39362,7 @@ export type TriggerAutomaticTaskErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -34731,13 +39390,14 @@ export type TriggerAutomaticTaskErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -34752,13 +39412,19 @@ export type TriggerAutomaticTaskErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -34772,27 +39438,31 @@ export type TriggerAutomaticTaskErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -34848,8 +39518,11 @@ export type TriggerAutomaticTaskErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -34866,7 +39539,7 @@ export type TriggerAutomaticTaskErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -34880,10 +39553,12 @@ export type TriggerAutomaticTaskErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -34893,13 +39568,13 @@ export type TriggerAutomaticTaskErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type TriggerAutomaticTaskError = TriggerAutomaticTaskErrors[keyof TriggerAutomaticTaskErrors];
@@ -34990,19 +39665,19 @@ export type CreateWakerConnectorErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[MCPConnectorNotFound][40400000009]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateWakerConnectorError = CreateWakerConnectorErrors[keyof CreateWakerConnectorErrors];
@@ -35044,14 +39719,14 @@ export type DeleteWakerConnectorErrors = {
      * * `[MCPConnectorNotFound][40400000009]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[PluginConfigurationConflict][40900006502]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteWakerConnectorError = DeleteWakerConnectorErrors[keyof DeleteWakerConnectorErrors];
@@ -35084,7 +39759,7 @@ export type GetWakerConnectorErrors = {
      * * `[MCPConnectorNotFound][40400000009]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetWakerConnectorError = GetWakerConnectorErrors[keyof GetWakerConnectorErrors];
@@ -35117,20 +39792,20 @@ export type UpdateWakerConnectorErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[MCPConnectorNotFound][40400000009]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateWakerConnectorError = UpdateWakerConnectorErrors[keyof UpdateWakerConnectorErrors];
@@ -35163,7 +39838,7 @@ export type SetWakerConnectorEnabledErrors = {
      * * `[MCPConnectorNotFound][40400000009]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type SetWakerConnectorEnabledError = SetWakerConnectorEnabledErrors[keyof SetWakerConnectorEnabledErrors];
@@ -35196,13 +39871,13 @@ export type TestWakerConnectorErrors = {
      * * `[MCPConnectorNotFound][40400000009]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type TestWakerConnectorError = TestWakerConnectorErrors[keyof TestWakerConnectorErrors];
@@ -35231,13 +39906,13 @@ export type ListWakerDocumentsErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ProfileDocumentNotFound][40400000003]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListWakerDocumentsError = ListWakerDocumentsErrors[keyof ListWakerDocumentsErrors];
@@ -35267,13 +39942,13 @@ export type GetWakerDocumentErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ProfileDocumentNotFound][40400000003]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetWakerDocumentError = GetWakerDocumentErrors[keyof GetWakerDocumentErrors];
@@ -35305,13 +39980,13 @@ export type UpdateWakerDocumentErrors = {
      * * `[ProfileDocumentTooLarge][40000000003]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ProfileDocumentNotFound][40400000003]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateWakerDocumentError = UpdateWakerDocumentErrors[keyof UpdateWakerDocumentErrors];
@@ -35394,6 +40069,7 @@ export type ListWakerPluginsErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -35413,7 +40089,7 @@ export type ListWakerPluginsErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -35425,7 +40101,7 @@ export type ListWakerPluginsErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -35439,7 +40115,7 @@ export type ListWakerPluginsErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -35452,6 +40128,7 @@ export type ListWakerPluginsErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -35473,7 +40150,7 @@ export type ListWakerPluginsErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -35481,7 +40158,7 @@ export type ListWakerPluginsErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -35509,13 +40186,14 @@ export type ListWakerPluginsErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -35530,13 +40208,19 @@ export type ListWakerPluginsErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -35550,27 +40234,31 @@ export type ListWakerPluginsErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -35626,8 +40314,11 @@ export type ListWakerPluginsErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -35644,7 +40335,7 @@ export type ListWakerPluginsErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -35658,10 +40349,12 @@ export type ListWakerPluginsErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -35671,13 +40364,13 @@ export type ListWakerPluginsErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListWakerPluginsError = ListWakerPluginsErrors[keyof ListWakerPluginsErrors];
@@ -35707,47 +40400,60 @@ export type UninstallWakerPluginData = {
 export type UninstallWakerPluginErrors = {
     /**
      * >
-     * * `[BadRequest][40000000001]`
      * * `[PluginContentInvalid][40000006502]`
      * * `[PluginManifestInvalid][40000006501]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[PluginForbidden][40300006501]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[OperationCanceled][40800000001]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginVersionConflict][40900006501]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
-     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[PluginStorageError][50000006501]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
      * * `[RuntimeShutdownFailed][50000000041]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UninstallWakerPluginError = UninstallWakerPluginErrors[keyof UninstallWakerPluginErrors];
@@ -35774,17 +40480,6 @@ export type SetWakerPluginEnabledData = {
     url: '/api/v1/wakers/{wakerId}/plugins/{pluginId}/enabled';
 };
 
-export type SetWakerPluginEnabledErrors = {
-    /**
-     * >
-     * * `[PluginForbidden][40300006501]`
-     *
-     */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type SetWakerPluginEnabledError = SetWakerPluginEnabledErrors[keyof SetWakerPluginEnabledErrors];
-
 export type SetWakerPluginEnabledResponses = {
     200: GithubComShrewxGinxCommonResponse;
 };
@@ -35809,19 +40504,19 @@ export type ExportWakerProfileErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ProfileDocumentNotFound][40400000003]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ProfileArchiveGenerationFailed][50000000037]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ExportWakerProfileError = ExportWakerProfileErrors[keyof ExportWakerProfileErrors];
@@ -35863,7 +40558,7 @@ export type ListProjectsErrors = {
      * * `[ProjectSourceUnavailable][50000000005]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListProjectsError = ListProjectsErrors[keyof ListProjectsErrors];
@@ -35892,13 +40587,13 @@ export type CreateProjectErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ProjectSourceUnavailable][50000000005]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateProjectError = CreateProjectErrors[keyof CreateProjectErrors];
@@ -35932,19 +40627,19 @@ export type DeleteProjectErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ProjectNotFound][40400000006]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseError][50000000002]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteProjectError = DeleteProjectErrors[keyof DeleteProjectErrors];
@@ -35977,13 +40672,13 @@ export type GetProjectErrors = {
      * * `[ProjectNotFound][40400000006]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ProjectSourceUnavailable][50000000005]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetProjectError = GetProjectErrors[keyof GetProjectErrors];
@@ -36016,19 +40711,19 @@ export type UpdateProjectErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ProjectNotFound][40400000006]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ProjectSourceUnavailable][50000000005]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateProjectError = UpdateProjectErrors[keyof UpdateProjectErrors];
@@ -36080,92 +40775,6 @@ export type ListWakerSkillsResponses = {
 
 export type ListWakerSkillsResponse = ListWakerSkillsResponses[keyof ListWakerSkillsResponses];
 
-export type ImportWakerSkillData = {
-    body: GithubComJieWaZiNeuxBotServerApisSkillsImportSkillRequest & unknown;
-    path: {
-        /**
-         * 伙伴标识
-         */
-        wakerId: string;
-    };
-    query?: never;
-    url: '/api/v1/wakers/{wakerId}/skills/import';
-};
-
-export type ImportWakerSkillErrors = {
-    /**
-     * >
-     * * `[BadRequest][40000000001]`
-     * * `[SkillContentInvalid][40000000013]`
-     * * `[SkillContentLimitExceeded][40000000014]`
-     * * `[SkillImportFailed][40000000006]`
-     * * `[SkillImportIntegrityInvalid][40000000016]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[Conflict][40900000001]`
-     *
-     */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[SkillStorageError][50000000031]`
-     * * `[SkillUnavailable][50000000008]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type ImportWakerSkillError = ImportWakerSkillErrors[keyof ImportWakerSkillErrors];
-
-export type ImportWakerSkillResponses = {
-    200: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillPackage>;
-};
-
-export type ImportWakerSkillResponse = ImportWakerSkillResponses[keyof ImportWakerSkillResponses];
-
-export type ScanWakerSkillImportData = {
-    body: GithubComJieWaZiNeuxBotServerApisSkillsScanSkillImportRequest & unknown;
-    path: {
-        /**
-         * 伙伴标识
-         */
-        wakerId: string;
-    };
-    query?: never;
-    url: '/api/v1/wakers/{wakerId}/skills/import/scan';
-};
-
-export type ScanWakerSkillImportErrors = {
-    /**
-     * >
-     * * `[BadRequest][40000000001]`
-     * * `[SkillContentInvalid][40000000013]`
-     * * `[SkillContentLimitExceeded][40000000014]`
-     * * `[SkillImportFailed][40000000006]`
-     * * `[SkillImportSourceInvalid][40000000015]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[SkillStorageError][50000000031]`
-     * * `[SkillUnavailable][50000000008]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type ScanWakerSkillImportError = ScanWakerSkillImportErrors[keyof ScanWakerSkillImportErrors];
-
-export type ScanWakerSkillImportResponses = {
-    200: GithubComJieWaZiNeuxBotServerApisSkillsSkillImportBatch;
-};
-
-export type ScanWakerSkillImportResponse = ScanWakerSkillImportResponses[keyof ScanWakerSkillImportResponses];
-
 export type UninstallSkillData = {
     body?: never;
     path: {
@@ -36197,26 +40806,26 @@ export type UninstallSkillErrors = {
      * * `[SkillContentInvalid][40000000013]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillNotFound][40400000007]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[BuiltInSkillCannotUninstall][40900000009]`
      * * `[PluginConfigurationConflict][40900006502]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillStorageError][50000000031]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UninstallSkillError = UninstallSkillErrors[keyof UninstallSkillErrors];
@@ -36249,7 +40858,7 @@ export type GetWakerSkillErrors = {
      * * `[SkillNotFound][40400000007]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetWakerSkillError = GetWakerSkillErrors[keyof GetWakerSkillErrors];
@@ -36282,7 +40891,7 @@ export type UpdateWakerSkillErrors = {
      * * `[SkillNotFound][40400000007]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateWakerSkillError = UpdateWakerSkillErrors[keyof UpdateWakerSkillErrors];
@@ -36315,7 +40924,7 @@ export type SetWakerSkillEnabledErrors = {
      * * `[SkillNotFound][40400000007]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type SetWakerSkillEnabledError = SetWakerSkillEnabledErrors[keyof SetWakerSkillEnabledErrors];
@@ -36350,25 +40959,25 @@ export type PullSkillUpdateErrors = {
      * * `[SkillImportFailed][40000000006]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillNotFound][40400000007]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[Conflict][40900000001]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillStorageError][50000000031]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type PullSkillUpdateError = PullSkillUpdateErrors[keyof PullSkillUpdateErrors];
@@ -36401,7 +41010,7 @@ export type ListSkillVersionsErrors = {
      * * `[SkillNotFound][40400000007]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListSkillVersionsError = ListSkillVersionsErrors[keyof ListSkillVersionsErrors];
@@ -36435,26 +41044,26 @@ export type CreateSkillVersionErrors = {
      * * `[SkillContentLimitExceeded][40000000014]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillNotFound][40400000007]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[Conflict][40900000001]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateSkillVersionError = CreateSkillVersionErrors[keyof CreateSkillVersionErrors];
@@ -36491,20 +41100,20 @@ export type GetSkillVersionErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillNotFound][40400000007]`
      * * `[SkillVersionNotFound][40400000008]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillStorageError][50000000031]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetSkillVersionError = GetSkillVersionErrors[keyof GetSkillVersionErrors];
@@ -36546,20 +41155,20 @@ export type GetSkillVersionFileErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillNotFound][40400000007]`
      * * `[SkillVersionNotFound][40400000008]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillStorageError][50000000031]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetSkillVersionFileError = GetSkillVersionFileErrors[keyof GetSkillVersionFileErrors];
@@ -36598,27 +41207,27 @@ export type RestoreSkillVersionErrors = {
      * * `[SkillContentLimitExceeded][40000000014]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillNotFound][40400000007]`
      * * `[SkillVersionNotFound][40400000008]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[Conflict][40900000001]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type RestoreSkillVersionError = RestoreSkillVersionErrors[keyof RestoreSkillVersionErrors];
@@ -36707,7 +41316,7 @@ export type ListWorkBoardErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListWorkBoardError = ListWorkBoardErrors[keyof ListWorkBoardErrors];
@@ -36787,7 +41396,7 @@ export type ViewWorkResultErrors = {
      * * `[BadRequest][40000000001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ViewWorkResultError = ViewWorkResultErrors[keyof ViewWorkResultErrors];
@@ -36841,6 +41450,10 @@ export type ListWorkflowsData = {
          */
         beforeId?: string;
         /**
+         * 分类名称
+         */
+        category?: string;
+        /**
          * 每页条数
          */
         limit?: number;
@@ -36848,6 +41461,10 @@ export type ListWorkflowsData = {
          * 搜索文字
          */
         search?: string;
+        /**
+         * 仅未分类
+         */
+        uncategorized?: boolean;
     };
     url: '/api/v1/workflows';
 };
@@ -36894,6 +41511,7 @@ export type CreateWorkflowErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -36913,7 +41531,7 @@ export type CreateWorkflowErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -36925,7 +41543,7 @@ export type CreateWorkflowErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -36939,7 +41557,7 @@ export type CreateWorkflowErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -36952,6 +41570,7 @@ export type CreateWorkflowErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -36973,7 +41592,7 @@ export type CreateWorkflowErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -36981,7 +41600,7 @@ export type CreateWorkflowErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -37009,13 +41628,14 @@ export type CreateWorkflowErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -37030,13 +41650,19 @@ export type CreateWorkflowErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -37050,27 +41676,31 @@ export type CreateWorkflowErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -37126,8 +41756,11 @@ export type CreateWorkflowErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -37144,7 +41777,7 @@ export type CreateWorkflowErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -37158,10 +41791,12 @@ export type CreateWorkflowErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -37171,13 +41806,13 @@ export type CreateWorkflowErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateWorkflowError = CreateWorkflowErrors[keyof CreateWorkflowErrors];
@@ -37242,6 +41877,7 @@ export type DeleteWorkflowErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -37261,7 +41897,7 @@ export type DeleteWorkflowErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -37273,7 +41909,7 @@ export type DeleteWorkflowErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -37287,7 +41923,7 @@ export type DeleteWorkflowErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -37300,6 +41936,7 @@ export type DeleteWorkflowErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -37321,7 +41958,7 @@ export type DeleteWorkflowErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -37329,7 +41966,7 @@ export type DeleteWorkflowErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -37357,13 +41994,14 @@ export type DeleteWorkflowErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -37378,13 +42016,19 @@ export type DeleteWorkflowErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -37398,27 +42042,31 @@ export type DeleteWorkflowErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -37474,8 +42122,11 @@ export type DeleteWorkflowErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -37492,7 +42143,7 @@ export type DeleteWorkflowErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -37506,10 +42157,12 @@ export type DeleteWorkflowErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -37519,13 +42172,13 @@ export type DeleteWorkflowErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteWorkflowError = DeleteWorkflowErrors[keyof DeleteWorkflowErrors];
@@ -37600,6 +42253,7 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -37619,7 +42273,7 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -37631,7 +42285,7 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -37645,7 +42299,7 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -37658,6 +42312,7 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -37679,7 +42334,7 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -37687,7 +42342,7 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -37715,13 +42370,14 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -37736,13 +42392,19 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -37756,27 +42418,31 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -37832,8 +42498,11 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -37850,7 +42519,7 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -37864,10 +42533,12 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -37877,13 +42548,13 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateWorkflowAnnotationError = CreateWorkflowAnnotationErrors[keyof CreateWorkflowAnnotationErrors];
@@ -37893,6 +42564,35 @@ export type CreateWorkflowAnnotationResponses = {
 };
 
 export type CreateWorkflowAnnotationResponse = CreateWorkflowAnnotationResponses[keyof CreateWorkflowAnnotationResponses];
+
+export type UpdateWorkflowCategoriesData = {
+    body: GithubComJieWaZiNeuxBotServerApisWorkflowsUpdateWorkflowCategoriesRequest & unknown;
+    path: {
+        /**
+         * 工作流标识
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/workflows/{id}/categories';
+};
+
+export type UpdateWorkflowCategoriesErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type UpdateWorkflowCategoriesError = UpdateWorkflowCategoriesErrors[keyof UpdateWorkflowCategoriesErrors];
+
+export type UpdateWorkflowCategoriesResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type UpdateWorkflowCategoriesResponse = UpdateWorkflowCategoriesResponses[keyof UpdateWorkflowCategoriesResponses];
 
 export type EditWorkflowConfigurationData = {
     body: GithubComJieWaZiNeuxBotServerApisWorkflowsEditConfigurationCommand & unknown;
@@ -37935,6 +42635,7 @@ export type EditWorkflowConfigurationErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -37954,7 +42655,7 @@ export type EditWorkflowConfigurationErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -37966,7 +42667,7 @@ export type EditWorkflowConfigurationErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -37980,7 +42681,7 @@ export type EditWorkflowConfigurationErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -37993,6 +42694,7 @@ export type EditWorkflowConfigurationErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -38014,7 +42716,7 @@ export type EditWorkflowConfigurationErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -38022,7 +42724,7 @@ export type EditWorkflowConfigurationErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -38050,13 +42752,14 @@ export type EditWorkflowConfigurationErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -38071,13 +42774,19 @@ export type EditWorkflowConfigurationErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -38091,27 +42800,31 @@ export type EditWorkflowConfigurationErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -38167,8 +42880,11 @@ export type EditWorkflowConfigurationErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -38185,7 +42901,7 @@ export type EditWorkflowConfigurationErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -38199,10 +42915,12 @@ export type EditWorkflowConfigurationErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -38212,13 +42930,13 @@ export type EditWorkflowConfigurationErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type EditWorkflowConfigurationError = EditWorkflowConfigurationErrors[keyof EditWorkflowConfigurationErrors];
@@ -38270,6 +42988,7 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -38289,7 +43008,7 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -38301,7 +43020,7 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -38315,7 +43034,7 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -38328,6 +43047,7 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -38349,7 +43069,7 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -38357,7 +43077,7 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -38385,13 +43105,14 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -38406,13 +43127,19 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -38426,27 +43153,31 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -38502,8 +43233,11 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -38520,7 +43254,7 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -38534,10 +43268,12 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -38547,13 +43283,13 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type SendWorkflowCreationMessageError = SendWorkflowCreationMessageErrors[keyof SendWorkflowCreationMessageErrors];
@@ -38595,7 +43331,7 @@ export type ListWorkflowEventsErrors = {
      * * `[WorkflowNotFound][40400003001]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListWorkflowEventsError = ListWorkflowEventsErrors[keyof ListWorkflowEventsErrors];
@@ -38634,14 +43370,14 @@ export type UploadWorkflowFileErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowFileStorageError][50000003005]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UploadWorkflowFileError = UploadWorkflowFileErrors[keyof UploadWorkflowFileErrors];
@@ -38693,6 +43429,7 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -38712,7 +43449,7 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -38724,7 +43461,7 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -38738,7 +43475,7 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -38751,6 +43488,7 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -38772,7 +43510,7 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -38780,7 +43518,7 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -38808,13 +43546,14 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -38829,13 +43568,19 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -38849,27 +43594,31 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -38925,8 +43674,11 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -38943,7 +43695,7 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -38957,10 +43709,12 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -38970,13 +43724,13 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type RestoreWorkflowRevisionError = RestoreWorkflowRevisionErrors[keyof RestoreWorkflowRevisionErrors];
@@ -39059,6 +43813,7 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -39078,7 +43833,7 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -39090,7 +43845,7 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -39104,7 +43859,7 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -39117,6 +43872,7 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -39138,7 +43894,7 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -39146,7 +43902,7 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -39174,13 +43930,14 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -39195,13 +43952,19 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -39215,27 +43978,31 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -39291,8 +44058,11 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -39309,7 +44079,7 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -39323,10 +44093,12 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -39336,13 +44108,13 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteWorkflowRevisionError = DeleteWorkflowRevisionErrors[keyof DeleteWorkflowRevisionErrors];
@@ -39425,6 +44197,7 @@ export type StartWorkflowRunErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -39444,7 +44217,7 @@ export type StartWorkflowRunErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -39456,7 +44229,7 @@ export type StartWorkflowRunErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -39470,7 +44243,7 @@ export type StartWorkflowRunErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -39483,6 +44256,7 @@ export type StartWorkflowRunErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -39504,7 +44278,7 @@ export type StartWorkflowRunErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -39512,7 +44286,7 @@ export type StartWorkflowRunErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -39540,13 +44314,14 @@ export type StartWorkflowRunErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -39561,13 +44336,19 @@ export type StartWorkflowRunErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -39581,27 +44362,31 @@ export type StartWorkflowRunErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -39657,8 +44442,11 @@ export type StartWorkflowRunErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -39675,7 +44463,7 @@ export type StartWorkflowRunErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -39689,10 +44477,12 @@ export type StartWorkflowRunErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -39702,19 +44492,19 @@ export type StartWorkflowRunErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type StartWorkflowRunError = StartWorkflowRunErrors[keyof StartWorkflowRunErrors];
 
 export type StartWorkflowRunResponses = {
-    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun;
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunResponse;
 };
 
 export type StartWorkflowRunResponse = StartWorkflowRunResponses[keyof StartWorkflowRunResponses];
@@ -39764,6 +44554,7 @@ export type DeleteWorkflowRunErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -39783,7 +44574,7 @@ export type DeleteWorkflowRunErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -39795,7 +44586,7 @@ export type DeleteWorkflowRunErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -39809,7 +44600,7 @@ export type DeleteWorkflowRunErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -39822,6 +44613,7 @@ export type DeleteWorkflowRunErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -39843,7 +44635,7 @@ export type DeleteWorkflowRunErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -39851,7 +44643,7 @@ export type DeleteWorkflowRunErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -39879,13 +44671,14 @@ export type DeleteWorkflowRunErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -39900,13 +44693,19 @@ export type DeleteWorkflowRunErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -39920,27 +44719,31 @@ export type DeleteWorkflowRunErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -39996,8 +44799,11 @@ export type DeleteWorkflowRunErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -40014,7 +44820,7 @@ export type DeleteWorkflowRunErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -40028,10 +44834,12 @@ export type DeleteWorkflowRunErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -40041,13 +44849,13 @@ export type DeleteWorkflowRunErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteWorkflowRunError = DeleteWorkflowRunErrors[keyof DeleteWorkflowRunErrors];
@@ -40087,26 +44895,28 @@ export type GetWorkflowRunErrors = {
      * * `[WorkflowSchemaInvalid][40000003002]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkflowFileNotFound][40400003002]`
      * * `[WorkflowNotFound][40400003001]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkflowStateConflict][40900003003]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ManagedWorkspaceError][50000000033]`
      * * `[WorkflowStateInvalid][50000003004]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetWorkflowRunError = GetWorkflowRunErrors[keyof GetWorkflowRunErrors];
@@ -40139,19 +44949,19 @@ export type CancelWorkflowRunErrors = {
      * * `[WorkflowNotFound][40400003001]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkflowFenceConflict][40900003004]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkflowStateInvalid][50000003004]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CancelWorkflowRunError = CancelWorkflowRunErrors[keyof CancelWorkflowRunErrors];
@@ -40211,6 +45021,7 @@ export type AnswerWorkflowHumanErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -40230,7 +45041,7 @@ export type AnswerWorkflowHumanErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -40242,7 +45053,7 @@ export type AnswerWorkflowHumanErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -40256,7 +45067,7 @@ export type AnswerWorkflowHumanErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -40269,6 +45080,7 @@ export type AnswerWorkflowHumanErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -40290,7 +45102,7 @@ export type AnswerWorkflowHumanErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -40298,7 +45110,7 @@ export type AnswerWorkflowHumanErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -40326,13 +45138,14 @@ export type AnswerWorkflowHumanErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -40347,13 +45160,19 @@ export type AnswerWorkflowHumanErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -40367,27 +45186,31 @@ export type AnswerWorkflowHumanErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -40443,8 +45266,11 @@ export type AnswerWorkflowHumanErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -40461,7 +45287,7 @@ export type AnswerWorkflowHumanErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -40475,10 +45301,12 @@ export type AnswerWorkflowHumanErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -40488,13 +45316,13 @@ export type AnswerWorkflowHumanErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type AnswerWorkflowHumanError = AnswerWorkflowHumanErrors[keyof AnswerWorkflowHumanErrors];
@@ -40554,6 +45382,7 @@ export type GetWorkflowInstanceErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -40573,7 +45402,7 @@ export type GetWorkflowInstanceErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -40585,7 +45414,7 @@ export type GetWorkflowInstanceErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -40599,7 +45428,7 @@ export type GetWorkflowInstanceErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -40612,6 +45441,7 @@ export type GetWorkflowInstanceErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -40633,7 +45463,7 @@ export type GetWorkflowInstanceErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -40641,7 +45471,7 @@ export type GetWorkflowInstanceErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -40669,13 +45499,14 @@ export type GetWorkflowInstanceErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -40690,13 +45521,19 @@ export type GetWorkflowInstanceErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -40710,27 +45547,31 @@ export type GetWorkflowInstanceErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -40786,8 +45627,11 @@ export type GetWorkflowInstanceErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -40804,7 +45648,7 @@ export type GetWorkflowInstanceErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -40818,10 +45662,12 @@ export type GetWorkflowInstanceErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -40831,13 +45677,13 @@ export type GetWorkflowInstanceErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetWorkflowInstanceError = GetWorkflowInstanceErrors[keyof GetWorkflowInstanceErrors];
@@ -40897,6 +45743,7 @@ export type SkipWorkflowWorkerErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -40916,7 +45763,7 @@ export type SkipWorkflowWorkerErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -40928,7 +45775,7 @@ export type SkipWorkflowWorkerErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -40942,7 +45789,7 @@ export type SkipWorkflowWorkerErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -40955,6 +45802,7 @@ export type SkipWorkflowWorkerErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -40976,7 +45824,7 @@ export type SkipWorkflowWorkerErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -40984,7 +45832,7 @@ export type SkipWorkflowWorkerErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -41012,13 +45860,14 @@ export type SkipWorkflowWorkerErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -41033,13 +45882,19 @@ export type SkipWorkflowWorkerErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -41053,27 +45908,31 @@ export type SkipWorkflowWorkerErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -41129,8 +45988,11 @@ export type SkipWorkflowWorkerErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -41147,7 +46009,7 @@ export type SkipWorkflowWorkerErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -41161,10 +46023,12 @@ export type SkipWorkflowWorkerErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -41174,13 +46038,13 @@ export type SkipWorkflowWorkerErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type SkipWorkflowWorkerError = SkipWorkflowWorkerErrors[keyof SkipWorkflowWorkerErrors];
@@ -41240,6 +46104,7 @@ export type AnswerWorkflowOperationErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -41259,7 +46124,7 @@ export type AnswerWorkflowOperationErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -41271,7 +46136,7 @@ export type AnswerWorkflowOperationErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -41285,7 +46150,7 @@ export type AnswerWorkflowOperationErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -41298,6 +46163,7 @@ export type AnswerWorkflowOperationErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -41319,7 +46185,7 @@ export type AnswerWorkflowOperationErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -41327,7 +46193,7 @@ export type AnswerWorkflowOperationErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -41355,13 +46221,14 @@ export type AnswerWorkflowOperationErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -41376,13 +46243,19 @@ export type AnswerWorkflowOperationErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -41396,27 +46269,31 @@ export type AnswerWorkflowOperationErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -41472,8 +46349,11 @@ export type AnswerWorkflowOperationErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -41490,7 +46370,7 @@ export type AnswerWorkflowOperationErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -41504,10 +46384,12 @@ export type AnswerWorkflowOperationErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -41517,13 +46399,13 @@ export type AnswerWorkflowOperationErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type AnswerWorkflowOperationError = AnswerWorkflowOperationErrors[keyof AnswerWorkflowOperationErrors];
@@ -41579,6 +46461,7 @@ export type RetryWorkflowRunErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -41598,7 +46481,7 @@ export type RetryWorkflowRunErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -41610,7 +46493,7 @@ export type RetryWorkflowRunErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -41624,7 +46507,7 @@ export type RetryWorkflowRunErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -41637,6 +46520,7 @@ export type RetryWorkflowRunErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -41658,7 +46542,7 @@ export type RetryWorkflowRunErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -41666,7 +46550,7 @@ export type RetryWorkflowRunErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -41694,13 +46578,14 @@ export type RetryWorkflowRunErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -41715,13 +46600,19 @@ export type RetryWorkflowRunErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -41735,27 +46626,31 @@ export type RetryWorkflowRunErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -41811,8 +46706,11 @@ export type RetryWorkflowRunErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -41829,7 +46727,7 @@ export type RetryWorkflowRunErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -41843,10 +46741,12 @@ export type RetryWorkflowRunErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -41856,19 +46756,19 @@ export type RetryWorkflowRunErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type RetryWorkflowRunError = RetryWorkflowRunErrors[keyof RetryWorkflowRunErrors];
 
 export type RetryWorkflowRunResponses = {
-    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun;
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunResponse;
 };
 
 export type RetryWorkflowRunResponse = RetryWorkflowRunResponses[keyof RetryWorkflowRunResponses];
@@ -41895,7 +46795,7 @@ export type GetWorkflowRetryPlanErrors = {
      * * `[WorkflowNotFound][40400003001]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetWorkflowRetryPlanError = GetWorkflowRetryPlanErrors[keyof GetWorkflowRetryPlanErrors];
@@ -41930,13 +46830,13 @@ export type GetWorkflowSourceErrors = {
      * * `[WorkflowSourceInvalid][40000003001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkflowStateInvalid][50000003004]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetWorkflowSourceError = GetWorkflowSourceErrors[keyof GetWorkflowSourceErrors];
@@ -41988,6 +46888,7 @@ export type SaveWorkflowSourceErrors = {
      * * `[ProfileDocumentKindInvalid][40000000002]`
      * * `[ProfileDocumentTooLarge][40000000003]`
      * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
      * * `[SkillContentLimitExceeded][40000000014]`
      * * `[SkillImportFailed][40000000006]`
@@ -42007,7 +46908,7 @@ export type SaveWorkflowSourceErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentContextUnauthorized][40100009001]`
@@ -42019,7 +46920,7 @@ export type SaveWorkflowSourceErrors = {
      * * `[Unauthorized][40100000001]`
      *
      */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentOperationForbidden][40300009001]`
@@ -42033,7 +46934,7 @@ export type SaveWorkflowSourceErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountNotFound][40400000017]`
@@ -42046,6 +46947,7 @@ export type SaveWorkflowSourceErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -42067,7 +46969,7 @@ export type SaveWorkflowSourceErrors = {
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[DatabaseOperationCancelled][40800001001]`
@@ -42075,7 +46977,7 @@ export type SaveWorkflowSourceErrors = {
      * * `[OperationTimeout][40800000002]`
      *
      */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
@@ -42103,13 +47005,14 @@ export type SaveWorkflowSourceErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
      * * `[ElicitationAlreadyResolved][40900000015]`
-     * * `[ExecutionRetryInProgress][40900000032]`
-     * * `[ExecutionRetryUnavailable][40900000031]`
      * * `[IMConfigurationConflict][40900004001]`
      * * `[IMConnectionDisabled][40900004006]`
      * * `[IMConnectionHasWorkflowDependencies][40900004005]`
@@ -42124,13 +47027,19 @@ export type SaveWorkflowSourceErrors = {
      * * `[KnowledgeFolderHasPages][40900009504]`
      * * `[MCPConnectorNameConflict][40900000010]`
      * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
      * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
@@ -42144,27 +47053,31 @@ export type SaveWorkflowSourceErrors = {
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeCandidateInvalid][42200009501]`
      * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
      * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskRateLimited][42900001001]`
      *
      */
-    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountCredentialError][50000000046]`
@@ -42220,8 +47133,11 @@ export type SaveWorkflowSourceErrors = {
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
      * * `[RuntimePolicyUnsupported][50000000011]`
      * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
@@ -42238,7 +47154,7 @@ export type SaveWorkflowSourceErrors = {
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AIAccountModelsResponseInvalid][50200000004]`
@@ -42252,10 +47168,12 @@ export type SaveWorkflowSourceErrors = {
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
      * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
      *
      */
-    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentConnectionUnavailable][50300009001]`
@@ -42265,13 +47183,13 @@ export type SaveWorkflowSourceErrors = {
      * * `[TerminalUnavailable][50300007108]`
      *
      */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
      *
      */
-    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type SaveWorkflowSourceError = SaveWorkflowSourceErrors[keyof SaveWorkflowSourceErrors];
@@ -42327,14 +47245,14 @@ export type SaveWorkflowTriggersErrors = {
      * * `[WorkflowSchemaInvalid][40000003002]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskNotFound][40400000018]`
      * * `[ChannelMemberNotFound][40400000014]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskAdmissionRevoked][40900000037]`
@@ -42343,13 +47261,13 @@ export type SaveWorkflowTriggersErrors = {
      * * `[AutomaticTaskRevisionConflict][40900000036]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeUnsupported][42200009502]`
      *
      */
-    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AutomaticTaskServiceInvalid][50000001001]`
@@ -42357,7 +47275,7 @@ export type SaveWorkflowTriggersErrors = {
      * * `[ProjectSourceUnavailable][50000000005]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type SaveWorkflowTriggersError = SaveWorkflowTriggersErrors[keyof SaveWorkflowTriggersErrors];
@@ -42387,13 +47305,13 @@ export type ValidateWorkflowSourceErrors = {
      * * `[WorkflowSourceInvalid][40000003001]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkflowStateInvalid][50000003004]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ValidateWorkflowSourceError = ValidateWorkflowSourceErrors[keyof ValidateWorkflowSourceErrors];
@@ -42430,31 +47348,37 @@ export type DeleteChatFileErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteChatFileError = DeleteChatFileErrors[keyof DeleteChatFileErrors];
@@ -42487,31 +47411,31 @@ export type ListChatFilesErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListChatFilesError = ListChatFilesErrors[keyof ListChatFilesErrors];
@@ -42535,37 +47459,37 @@ export type DeleteFileErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteFileError = DeleteFileErrors[keyof DeleteFileErrors];
@@ -42589,31 +47513,31 @@ export type DeleteDirectoryErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteDirectoryError = DeleteDirectoryErrors[keyof DeleteDirectoryErrors];
@@ -42637,37 +47561,37 @@ export type RenameDirectoryErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type RenameDirectoryError = RenameDirectoryErrors[keyof RenameDirectoryErrors];
@@ -42691,25 +47615,25 @@ export type OpenDraftScopeErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type OpenDraftScopeError = OpenDraftScopeErrors[keyof OpenDraftScopeErrors];
@@ -42746,32 +47670,32 @@ export type GitBranchesErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceGitFailed][50000007107]`
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GitBranchesError = GitBranchesErrors[keyof GitBranchesErrors];
@@ -42795,38 +47719,38 @@ export type GitCheckoutErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceGitFailed][50000007107]`
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GitCheckoutError = GitCheckoutErrors[keyof GitCheckoutErrors];
@@ -42867,32 +47791,32 @@ export type GitCheckoutPreviewErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceGitFailed][50000007107]`
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GitCheckoutPreviewError = GitCheckoutPreviewErrors[keyof GitCheckoutPreviewErrors];
@@ -42916,38 +47840,38 @@ export type GitCommitErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceGitFailed][50000007107]`
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GitCommitError = GitCommitErrors[keyof GitCommitErrors];
@@ -42988,32 +47912,32 @@ export type GitCommitDiffErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceGitFailed][50000007107]`
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GitCommitDiffError = GitCommitDiffErrors[keyof GitCommitDiffErrors];
@@ -43058,32 +47982,32 @@ export type GitDiffErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceGitFailed][50000007107]`
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GitDiffError = GitDiffErrors[keyof GitDiffErrors];
@@ -43107,38 +48031,38 @@ export type GitDiscardErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceGitFailed][50000007107]`
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GitDiscardError = GitDiscardErrors[keyof GitDiscardErrors];
@@ -43183,32 +48107,32 @@ export type GitLogErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceGitFailed][50000007107]`
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GitLogError = GitLogErrors[keyof GitLogErrors];
@@ -43253,32 +48177,32 @@ export type GitShowErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceGitFailed][50000007107]`
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GitShowError = GitShowErrors[keyof GitShowErrors];
@@ -43302,38 +48226,38 @@ export type GitStageErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceGitFailed][50000007107]`
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GitStageError = GitStageErrors[keyof GitStageErrors];
@@ -43370,32 +48294,32 @@ export type GitStatusErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceGitFailed][50000007107]`
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GitStatusError = GitStatusErrors[keyof GitStatusErrors];
@@ -43419,38 +48343,38 @@ export type GitUnstageErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceGitFailed][50000007107]`
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GitUnstageError = GitUnstageErrors[keyof GitUnstageErrors];
@@ -43474,37 +48398,37 @@ export type ImportFileErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ImportFileError = ImportFileErrors[keyof ImportFileErrors];
@@ -43541,31 +48465,39 @@ export type ListDirectoryErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ManagedWorkspaceError][50000000033]`
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListDirectoryError = ListDirectoryErrors[keyof ListDirectoryErrors];
@@ -43602,37 +48534,37 @@ export type ReadFileErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ReadFileError = ReadFileErrors[keyof ReadFileErrors];
@@ -43656,37 +48588,37 @@ export type RenameFileErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type RenameFileError = RenameFileErrors[keyof RenameFileErrors];
@@ -43710,25 +48642,25 @@ export type ResolveReferenceErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ResolveReferenceError = ResolveReferenceErrors[keyof ResolveReferenceErrors];
@@ -43749,28 +48681,31 @@ export type OpenScopeData = {
 export type OpenScopeErrors = {
     /**
      * >
+     * * `[BadRequest][40000000001]`
+     * * `[ChatIDInvalid][40000000010]`
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ManagedWorkspaceError][50000000033]`
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type OpenScopeError = OpenScopeErrors[keyof OpenScopeErrors];
@@ -43815,31 +48750,39 @@ export type SearchFilesErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ManagedWorkspaceError][50000000033]`
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type SearchFilesError = SearchFilesErrors[keyof SearchFilesErrors];
@@ -43876,37 +48819,37 @@ export type StatFileErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type StatFileError = StatFileErrors[keyof StatFileErrors];
@@ -43948,13 +48891,13 @@ export type WatchResourceErrors = {
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type WatchResourceError = WatchResourceErrors[keyof WatchResourceErrors];
@@ -43978,37 +48921,37 @@ export type WriteFileErrors = {
      * * `[WorkspacePathInvalid][40000007102]`
      *
      */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceScopeInvalid][40300007101]`
      *
      */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
-    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type WriteFileError = WriteFileErrors[keyof WriteFileErrors];

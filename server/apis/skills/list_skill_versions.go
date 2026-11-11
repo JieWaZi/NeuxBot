@@ -26,7 +26,7 @@ func (l *ListSkillVersions) Output(ctx *gin.Context) (interface{}, error) {
 
 // listSkillVersions 复用相同资源用例，空伙伴范围表示全局库。
 func listSkillVersions(ctx *gin.Context, l *ListSkillVersions) ([]models.SkillVersion, error) {
-	if _, err := visibleSkill(ctx, l.WakerID, l.SkillID); err != nil {
+	if _, err := resourceSkill(ctx, l.WakerID, l.SkillID); err != nil {
 		return nil, ginx.WithStack(err)
 	}
 	versions, err := global.SkillControllerManager.ListVersions(ctx, l.SkillID)

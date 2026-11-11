@@ -129,6 +129,7 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 	if source == constants.AutomaticRunSourceAPI && !exists && !s.rateAllowed(task.ID, now) {
 		return RunView{}, status_error.AutomaticTaskRateLimited
 	}
+	var configurationError error
 	if !exists {
 		run = models.AutomaticRun{ID: util.New(), TaskID: task.ID, WakerID: task.WakerID, OccurrenceKey: occurrence, RequestHash: hash, Input: input,
 			IntegrationInvocation: command.IntegrationInvocation, Source: source, Configuration: task.AutomaticTaskConfiguration, ConfigurationRevision: task.ConfigurationVersion,
@@ -158,6 +159,24 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 			run.Configuration.WorkflowRevisionID = revision.ID
 			run.Configuration.WorkflowRevisionPolicy = constants.WorkflowRevisionPolicyPinned
 			run.ExecutionID = ""
+		} else if run.Configuration.ChannelID != "" {
+			members, err := s.resolveTeamConfiguration(ctx, run.Configuration, false)
+			configurationError = err
+			if err == nil {
+				run.Configuration.MemberConfigs = members
+			}
+		} else {
+			// 默认选择在机会创建时固定，计划保存与 pending 恢复均不改写本次选择。
+			resolved, err := s.config.Executions.ResolveConfiguration(ctx, execution.ExecutionConfiguration{
+				RuntimeID: run.Configuration.RuntimeID, AccountID: run.Configuration.AccountID,
+				Model: run.Configuration.Model, Reasoning: run.Configuration.Reasoning, Fast: run.Configuration.Fast, PermissionLevel: run.Configuration.PermissionLevel,
+			})
+			configurationError = err
+			if err == nil {
+				run.Configuration.RuntimeID, run.Configuration.AccountID = resolved.RuntimeID, resolved.AccountID
+				run.Configuration.Model, run.Configuration.Reasoning, run.Configuration.Fast = resolved.Model, resolved.Reasoning, resolved.Fast
+				run.Configuration.PermissionLevel = resolved.PermissionLevel
+			}
 		}
 	}
 	if task.ActiveRunID == "" {
@@ -192,8 +211,11 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 			return RunView{}, err
 		}
 	}
-	// 在持久领取后执行可用性检查，依赖后来失效会留下一条可修复的失败记录。
-	if err := s.validateConfiguration(ctx, run.WakerID, &run.Configuration); err != nil {
+	// 在持久领取后记录解析或依赖故障，保留原机会的失败记录。
+	if configurationError != nil {
+		return RunView{}, s.failAdmission(ctx, &run, configurationError)
+	}
+	if err := s.validateConfiguration(ctx, run.WakerID, &run.Configuration, true); err != nil {
 		return RunView{}, s.failAdmission(ctx, &run, err)
 	}
 	if run.Configuration.WorkflowID != "" {
@@ -233,7 +255,7 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 			AutomaticRunID: run.ID, ClientRequestID: run.ID, ExecutionID: run.ExecutionID, Admission: constants.ExecutionAdmissionCommitBeforeDispatch,
 			Chat:    execution.ChatTarget{Create: &execution.CreateChatSpec{WakerID: run.WakerID, ProjectID: run.Configuration.ProjectID, WorkingDirectory: run.Configuration.WorkingDirectory, HiddenFromWakerHistory: true}},
 			Input:   execution.WorkInput{Actor: constants.AutomaticTaskActor, Content: content},
-			Options: execution.WorkOptions{RuntimeID: run.Configuration.RuntimeID, AccountID: run.Configuration.AccountID, Model: run.Configuration.Model, Reasoning: run.Configuration.Reasoning, PermissionLevel: run.Configuration.PermissionLevel},
+			Options: execution.WorkOptions{ConfigurationResolved: true, RuntimeID: run.Configuration.RuntimeID, AccountID: run.Configuration.AccountID, Model: run.Configuration.Model, Reasoning: run.Configuration.Reasoning, Fast: run.Configuration.Fast, PermissionLevel: run.Configuration.PermissionLevel},
 		}
 		if run.Configuration.Knowledge != nil {
 			if s.config.BindKnowledge == nil {
@@ -358,7 +380,7 @@ func (s *Service) rateAllowed(taskID string, now time.Time) bool {
 
 // startTeam 复用团队首发的幂等、成员快照和负责人编排，不额外建立独立伙伴会话。
 func (s *Service) startTeam(ctx context.Context, run models.AutomaticRun, content string) (execution.AcceptedExecution, string, error) {
-	result, err := s.config.Teams.SubmitMessage(ctx, channelservice.SubmitMessageInput{Create: &channelservice.CreateThreadInput{AutomaticRunID: run.ID, ChannelID: run.Configuration.ChannelID, ClientRequestID: run.ID, ExecutionID: run.ExecutionID, ProjectID: run.Configuration.ProjectID, WorkingDirectory: run.Configuration.WorkingDirectory, MemberConfigs: teamMemberOverrides(run.Configuration), Input: execution.WorkInput{Actor: constants.AutomaticTaskActor, Content: content}}})
+	result, err := s.config.Teams.SubmitMessage(ctx, channelservice.SubmitMessageInput{Create: &channelservice.CreateThreadInput{ConfigurationResolved: true, AutomaticRunID: run.ID, ChannelID: run.Configuration.ChannelID, ClientRequestID: run.ID, ExecutionID: run.ExecutionID, ProjectID: run.Configuration.ProjectID, WorkingDirectory: run.Configuration.WorkingDirectory, MemberConfigs: teamMemberOverrides(run.Configuration), Input: execution.WorkInput{Actor: constants.AutomaticTaskActor, Content: content}}})
 	if err != nil {
 		return execution.AcceptedExecution{}, "", err
 	}
@@ -556,6 +578,10 @@ func (s *Service) workflowRunView(ctx context.Context, run models.AutomaticRun) 
 	if value.Failure != nil {
 		if data, ok := value.Failure.Data.(map[string]any); ok {
 			view.ErrorCode, _ = data["code"].(string)
+			view.ErrorParams, _ = data["params"].(map[string]interface{})
+			view.ErrorMessage, _ = data["message"].(string)
+			source, _ := data["messageSource"].(string)
+			view.ErrorMessageSource = constants.ErrorMessageSource(source)
 		}
 	}
 	switch value.Status {
@@ -586,6 +612,12 @@ func (s *Service) workflowRunView(ctx context.Context, run models.AutomaticRun) 
 
 // RunView 组合不可变机会记录与独立执行或团队整体运行的展示状态。
 type RunView struct {
+	// ErrorMessage 是既有执行或工作流事实中的公开原因。
+	ErrorMessage string `json:"errorMessage,omitempty"`
+	// ErrorMessageSource 是公开原因或应用本地化的来源标记。
+	ErrorMessageSource constants.ErrorMessageSource `json:"errorMessageSource,omitempty"`
+	// ErrorParams 是同一失败事实的安全模板参数。
+	ErrorParams map[string]interface{} `json:"errorParams,omitempty"`
 	// AutomaticRun 是该机会的持久身份、来源与冻结配置。
 	models.AutomaticRun
 	// State 是首次独立执行或团队整体运行的状态，结束后的手动续聊不改变它。
@@ -644,6 +676,9 @@ func (s *Service) ReadRunWithSnapshots(ctx context.Context, run models.Automatic
 		view.State = constants.AutomaticRunState(initial.Status)
 		view.CompletedAt = initial.CompletedAt
 		view.ErrorCode = initial.ErrorCode
+		view.ErrorMessage = initial.ErrorMessage
+		view.ErrorParams = initial.ErrorParams
+		view.ErrorMessageSource = initial.ErrorMessageSource
 		if state.Chat.ActiveExecutionID == run.ExecutionID {
 			if state.Chat.WaitingApproval {
 				view.State = constants.AutomaticRunStateWaitingApproval

@@ -154,11 +154,8 @@ func TestTeamManagedScopeAndDeliveryInstructionsSurviveRouting(t *testing.T) {
 	if err := s.accept(ctx, input); err != nil {
 		t.Fatal(err)
 	}
-	if teams.input.Create == nil || teams.input.Create.WorkingDirectory == "" {
-		t.Fatal("团队受管模式未解析为共享目录")
-	}
-	if _, err := os.Stat(teams.input.Create.WorkingDirectory); err != nil {
-		t.Fatal(err)
+	if teams.input.Create == nil || teams.input.Create.WorkingDirectory != "" {
+		t.Fatal("IM must let the common team executor allocate its owned workspace")
 	}
 	work := teams.input.Create.Input
 	if work.Content != "你是谁" || len(work.ContextInstructions) != 1 || work.ContextInstructions[0].Name != "IM_DELIVERY.md" {

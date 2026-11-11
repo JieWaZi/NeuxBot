@@ -1,6 +1,29 @@
 /* NeuxBot 语义主题；业务组件不得直接依赖参考色阶。 */
 
 :root {
+  /* 文件类型色板：普通正文与反色用户气泡分别选择适合的明度。 */
+  --ref-file-neutral-light: #555555;
+  --ref-file-neutral-dark: #c9c9cc;
+  --ref-file-blue-light: #185abc;
+  --ref-file-blue-dark: #80b5ff;
+  --ref-file-cyan-light: #066777;
+  --ref-file-cyan-dark: #63cddd;
+  --ref-file-green-light: #217346;
+  --ref-file-green-dark: #74c991;
+  --ref-file-amber-light: #80600a;
+  --ref-file-amber-dark: #d9bc66;
+  --ref-file-orange-light: #a54815;
+  --ref-file-orange-dark: #efa477;
+  --ref-file-red-light: #b42332;
+  --ref-file-red-dark: #f18c96;
+  --ref-file-purple-light: #7047a3;
+  --ref-file-purple-dark: #c0a0ef;
+  --ref-file-teal-light: #086b61;
+  --ref-file-teal-dark: #65caba;
+  --ref-file-lime-light: #626c0a;
+  --ref-file-lime-dark: #c5cc65;
+
+  --surface-module-rail: var(--surface-chrome);
   /* 欢迎字标浅色绿到黑、暗色绿到白，两种渲染方式共用同一组颜色。 */
   --welcome-wordmark-start: var(--accent-default);
   --welcome-wordmark-end: var(--ref-neutral-1000);
@@ -87,6 +110,82 @@
 :root,
 [data-theme="light"] {
   color-scheme: light;
+  /* 文件引用文字与图标主色协调，并适配正文及悬停表面的对比度。 */
+  --file-link-neutral: var(--ref-file-neutral-light);
+  --user-file-link-neutral: var(--ref-file-neutral-dark);
+  --file-link-blue: var(--ref-file-blue-light);
+  --user-file-link-blue: var(--ref-file-blue-dark);
+  --file-link-cyan: var(--ref-file-cyan-light);
+  --user-file-link-cyan: var(--ref-file-cyan-dark);
+  --file-link-green: var(--ref-file-green-light);
+  --user-file-link-green: var(--ref-file-green-dark);
+  --file-link-amber: var(--ref-file-amber-light);
+  --user-file-link-amber: var(--ref-file-amber-dark);
+  --file-link-orange: var(--ref-file-orange-light);
+  --user-file-link-orange: var(--ref-file-orange-dark);
+  --file-link-red: var(--ref-file-red-light);
+  --user-file-link-red: var(--ref-file-red-dark);
+  --file-link-purple: var(--ref-file-purple-light);
+  --user-file-link-purple: var(--ref-file-purple-dark);
+  --file-link-teal: var(--ref-file-teal-light);
+  --user-file-link-teal: var(--ref-file-teal-dark);
+  --file-link-lime: var(--ref-file-lime-light);
+  --user-file-link-lime: var(--ref-file-lime-dark);
+
+  /* 窗口壳层与资源目录共享的浅色主题 Token。 */
+  --shell-surface-frame: #e8e8eb;
+  --shell-surface-canvas: #f5f5f6;
+  --shell-border-edge: rgba(20, 20, 20, 0.07);
+  --shell-separator: rgba(20, 20, 20, 0.07);
+  --shell-separator-strong: rgba(20, 20, 20, 0.1);
+  --shell-control-hover: #f0f0f2;
+  --shell-control-active: #e8e8eb;
+  --shell-tabs-track: #ececee;
+  --shell-tabs-pill: #ffffff;
+  --shell-menu-shadow: transparent;
+  /* 资源目录与详情的表面和文字层级。 */
+  --resource-canvas: var(--shell-surface-canvas);
+  --resource-surface: #ffffff;
+  --resource-control: var(--resource-surface);
+  --resource-raised: #fcfcfc;
+  --resource-content: #141414;
+  --resource-secondary: #3a3a3c;
+  --resource-muted: #6b6b70;
+  --resource-placeholder: #5c5c61;
+  --resource-accent-text: #0064c8;
+  --resource-category-code: #466c99;
+  --resource-category-design: #8764a2;
+  --resource-category-data: #4c8077;
+  --resource-category-writing: #aa6b4e;
+  --resource-category-research: #626eac;
+  --resource-category-web: #397e91;
+  --resource-category-automation: #99704a;
+  --resource-category-business: #788045;
+  --resource-category-communication: #a6586f;
+  --resource-category-tools: #65778e;
+  --resource-category-content: #ffffff;
+  /* NeuxBot 试用卡：浅色柔和、暗色沉静，CSS 与 shader 共用同一套主题配色。 */
+  --resource-artwork-lilac: #c4bce5;
+  --resource-artwork-ember: #e4c194;
+  --resource-artwork-mint: #a6d7c2;
+  --resource-artwork-blue: #a3c5df;
+  --resource-artwork-sky: #c1dce7;
+  --resource-artwork-indigo: #a8b6dc;
+  --resource-artwork-cyan: #a5d4d4;
+  --resource-artwork-terracotta: #d9b5a0;
+  --resource-artwork-coral: #dfb6b2;
+  --resource-artwork-magenta: #d3b3ce;
+  --resource-artwork-dim: #aab8bc;
+  --resource-artwork-canvas: var(--resource-canvas);
+  --resource-artwork-violet-deep: #a99acb;
+  --resource-artwork-red-deep: #c99b98;
+  --resource-artwork-green-deep: #83b6a4;
+  --resource-artwork-blue-deep: #87a9c3;
+  --resource-artwork-plum-deep: #b79bb8;
+  --resource-artwork-silver: #d6e0df;
+
+  --resource-primary: #1c1c1e;
+  --resource-on-primary: #ffffff;
 
   --editor-syntax-black: #383a42;
   --editor-syntax-gray: #a0a1a7;
@@ -122,6 +221,8 @@
   --companion-card-bloom: 76%;
 
   --content-caption: var(--ref-neutral-650);
+  --user-message-background: var(--ref-neutral-950);
+  --user-message-content: var(--ref-neutral-0);
   --content-primary: rgba(0, 0, 0, 0.8);
   --content-secondary: rgba(0, 0, 0, 0.6);
   --content-muted: var(--ref-neutral-650);
@@ -206,13 +307,13 @@
   --field-placeholder: var(--content-muted);
   --field-border: rgba(0, 0, 0, 0.08);
   --field-border-hover: rgba(0, 0, 0, 0.2);
-  --field-border-focus: var(--ref-neutral-550);
+  --field-border-focus: var(--focus-ring);
   --field-border-active: var(--field-border-hover);
-  --focus-ring: var(--ref-neutral-650);
+  --focus-ring: var(--accent-content);
   --overlay-scrim: rgba(16, 26, 39, 0.2);
   --scrollbar-thumb: var(--action-neutral-pressed);
   --control-highlight-background: var(--accent-default);
-  --control-highlight-content: var(--ref-neutral-1000);
+  --control-highlight-content: var(--ref-neutral-0);
   --control-launcher-background: var(--action-neutral-hover);
   --control-launcher-background-hover: color-mix(
     in srgb,
@@ -318,6 +419,79 @@
 
 [data-theme="dark"] {
   color-scheme: dark;
+  /* 文件引用文字与图标主色协调，并适配正文及悬停表面的对比度。 */
+  --file-link-neutral: var(--ref-file-neutral-dark);
+  --user-file-link-neutral: var(--ref-file-neutral-light);
+  --file-link-blue: var(--ref-file-blue-dark);
+  --user-file-link-blue: var(--ref-file-blue-light);
+  --file-link-cyan: var(--ref-file-cyan-dark);
+  --user-file-link-cyan: var(--ref-file-cyan-light);
+  --file-link-green: var(--ref-file-green-dark);
+  --user-file-link-green: var(--ref-file-green-light);
+  --file-link-amber: var(--ref-file-amber-dark);
+  --user-file-link-amber: var(--ref-file-amber-light);
+  --file-link-orange: var(--ref-file-orange-dark);
+  --user-file-link-orange: var(--ref-file-orange-light);
+  --file-link-red: var(--ref-file-red-dark);
+  --user-file-link-red: var(--ref-file-red-light);
+  --file-link-purple: var(--ref-file-purple-dark);
+  --user-file-link-purple: var(--ref-file-purple-light);
+  --file-link-teal: var(--ref-file-teal-dark);
+  --user-file-link-teal: var(--ref-file-teal-light);
+  --file-link-lime: var(--ref-file-lime-dark);
+  --user-file-link-lime: var(--ref-file-lime-light);
+
+  /* 对应桌面 tokens.css，不读取 React Native 专属 tokens-native.css。 */
+  --shell-surface-frame: #0d0d0d;
+  --shell-surface-canvas: #1a1a1a;
+  --resource-canvas: var(--shell-surface-canvas);
+  --resource-surface: #212121;
+  --resource-control: var(--resource-surface);
+  --resource-raised: #242424;
+  --resource-content: #ffffff;
+  --resource-secondary: #dcdcdc;
+  --resource-muted: #979797;
+  --resource-placeholder: #bfbfbf;
+  --resource-accent-text: #42a0ff;
+  --resource-category-code: #547aa5;
+  --resource-category-design: #9572b0;
+  --resource-category-data: #578b81;
+  --resource-category-writing: #b57659;
+  --resource-category-research: #707cb8;
+  --resource-category-web: #478c9d;
+  --resource-category-automation: #a67d57;
+  --resource-category-business: #858e51;
+  --resource-category-communication: #b2657c;
+  --resource-category-tools: #73869e;
+  --resource-category-content: #ffffff;
+  --resource-artwork-lilac: #786794;
+  --resource-artwork-ember: #967749;
+  --resource-artwork-mint: #4f907c;
+  --resource-artwork-blue: #4f7e9c;
+  --resource-artwork-sky: #648f9f;
+  --resource-artwork-indigo: #656f9c;
+  --resource-artwork-cyan: #4b8e92;
+  --resource-artwork-terracotta: #976f5d;
+  --resource-artwork-coral: #9a6c70;
+  --resource-artwork-magenta: #8b6689;
+  --resource-artwork-dim: #526568;
+  --resource-artwork-violet-deep: #403653;
+  --resource-artwork-red-deep: #583d3c;
+  --resource-artwork-green-deep: #2c544a;
+  --resource-artwork-blue-deep: #2c455d;
+  --resource-artwork-plum-deep: #50384e;
+  --resource-artwork-silver: #798d8b;
+  --resource-primary: #f0f0f0;
+  --resource-on-primary: #141414;
+  --shell-border-edge: rgba(255, 255, 255, 0.035);
+  --shell-separator: rgba(255, 255, 255, 0.035);
+  --shell-separator-strong: rgba(255, 255, 255, 0.045);
+  --shell-control-hover: #242424;
+  --shell-control-active: #2a2a2a;
+  --shell-tabs-track: #212121;
+  --shell-tabs-pill: #2a2a2a;
+  --shell-menu-shadow: rgba(0, 0, 0, 0.45);
+
   --welcome-wordmark-end: var(--ref-neutral-0);
 
   --editor-syntax-black: #282c34;
@@ -360,6 +534,8 @@
   --companion-card-bloom: 40%;
 
   --content-caption: var(--ref-neutral-450);
+  --user-message-background: var(--ref-neutral-100);
+  --user-message-content: var(--ref-neutral-950);
   --content-primary: var(--ref-neutral-200);
   --content-secondary: var(--ref-neutral-350);
   --content-muted: var(--ref-neutral-450);
@@ -436,13 +612,13 @@
   --field-placeholder: var(--ref-neutral-550);
   --field-border: rgba(255, 255, 255, 0.18);
   --field-border-hover: rgba(255, 255, 255, 0.24);
-  --field-border-focus: var(--ref-neutral-550);
+  --field-border-focus: var(--focus-ring);
   --field-border-active: var(--field-border-focus);
   --focus-ring: var(--accent-default);
   --overlay-scrim: rgba(0, 0, 0, 0.56);
   --scrollbar-thumb: var(--action-neutral-pressed);
   --control-highlight-background: var(--accent-default);
-  --control-highlight-content: var(--ref-neutral-1000);
+  --control-highlight-content: var(--ref-neutral-0);
   --control-launcher-background: var(--action-neutral-pressed);
   --control-launcher-background-hover: color-mix(
     in srgb,

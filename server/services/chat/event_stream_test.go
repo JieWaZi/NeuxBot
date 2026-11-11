@@ -88,10 +88,8 @@ func TestSubscriptionHubClearsLatestLiveSnapshotAtExecutionTerminal(t *testing.T
 }
 
 func TestExecutionSubscriptionNeverReceivesLiveOrMessageBodies(t *testing.T) {
-	manager, chatID, _ := eventCursorService(t, 64)
-	indexed, _ := forkFixture(t)
-	manager.queryIndexes = indexed.queryIndexes
-	manager.queryIndexes.logStore = manager.logStore
+	source, chatID, _ := eventCursorService(t, 64)
+	_, manager := newRecoveryTestService(t, source.logStore.Root())
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	subscription, err := manager.SubscribeExecutionEvents(ctx, chatID, "active")

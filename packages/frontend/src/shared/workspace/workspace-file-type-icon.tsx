@@ -1,14 +1,6 @@
 import { memo } from "react";
-import {
-  File,
-  FileArchive,
-  FileCode2,
-  FileImage,
-  FileJson,
-  FileText,
-  Folder,
-  FolderOpen,
-} from "lucide-react";
+import { cn } from "@/shared/lib/cn";
+import { workspaceFileAppearance } from "./workspace-file-icons";
 
 type WorkspaceFileTypeIconProps = {
   name: string;
@@ -19,7 +11,7 @@ type WorkspaceFileTypeIconProps = {
 };
 
 /**
- * 使用 VS Code 风格文件和目录图标，统一所有工作区来源的图标尺寸与布局。
+ * 工作区和消息引用共用精选 Material Icon Theme 原始素材与尺寸。
  */
 export const WorkspaceFileTypeIcon = memo(function WorkspaceFileTypeIcon({
   className,
@@ -28,52 +20,25 @@ export const WorkspaceFileTypeIcon = memo(function WorkspaceFileTypeIcon({
   name,
   size = 16,
 }: WorkspaceFileTypeIconProps) {
-  const Icon = isDirectory ? (isOpen ? FolderOpen : Folder) : iconForFile(name);
+  const { src } = workspaceFileAppearance(name, isDirectory, isOpen);
   return (
     <span
       aria-hidden="true"
-      className={className ?? "text-muted-foreground"}
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center",
+        className,
+      )}
       style={{
-        alignItems: "center",
-        display: "inline-flex",
-        flexShrink: 0,
         height: size,
-        justifyContent: "center",
         width: size,
       }}
     >
-      <Icon size={typeof size === "string" ? "100%" : size} strokeWidth={1.5} />
+      <img
+        src={src}
+        alt=""
+        draggable={false}
+        className="size-full object-contain"
+      />
     </span>
   );
 });
-
-function iconForFile(name: string) {
-  const extension = name.split(".").at(-1)?.toLowerCase();
-  if (
-    extension &&
-    ["js", "jsx", "ts", "tsx", "go", "rs", "py", "css", "html", "vue"].includes(
-      extension,
-    )
-  ) {
-    return FileCode2;
-  }
-  if (
-    extension &&
-    ["json", "jsonl", "yaml", "yml", "toml"].includes(extension)
-  ) {
-    return FileJson;
-  }
-  if (extension && ["md", "markdown", "txt", "log"].includes(extension)) {
-    return FileText;
-  }
-  if (
-    extension &&
-    ["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(extension)
-  ) {
-    return FileImage;
-  }
-  if (extension && ["zip", "tar", "gz", "tgz"].includes(extension)) {
-    return FileArchive;
-  }
-  return File;
-}

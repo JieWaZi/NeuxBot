@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/go-git/go-billy/v5/osfs"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -531,12 +532,16 @@ func (worker *collector) trackedPaths(ctx context.Context, scope Root, metadata 
 
 func (worker *collector) collectRoot(ctx context.Context, root Root, phase string) (snapshot, error) {
 	result := snapshot{RootID: root.ID, Entries: map[string]entry{}}
-	canonical, err := filepath.EvalSymlinks(root.Path)
-	if err != nil || canonical != root.Path {
+	directory := root.Path
+	if root.File {
+		directory = filepath.Dir(root.Path)
+	}
+	canonical, err := filepath.EvalSymlinks(directory)
+	if err != nil || canonical != directory {
 		result.Missing = append(result.Missing, Coverage{Path: ".", Reason: "root_unavailable"})
 		return result, nil
 	}
-	handle, err := os.OpenRoot(root.Path)
+	handle, err := os.OpenRoot(directory)
 	if err != nil {
 		result.Missing = append(result.Missing, Coverage{Path: ".", Reason: "root_unreadable"})
 		return result, nil
@@ -547,16 +552,21 @@ func (worker *collector) collectRoot(ctx context.Context, root Root, phase strin
 		result.Missing = append(result.Missing, Coverage{Path: ".", Reason: "root_replaced"})
 		return result, nil
 	}
-	patterns, prefix, tracked, err := worker.initialPatterns(ctx, root)
-	if err != nil {
-		result.Missing = append(result.Missing, Coverage{Path: ".", Reason: "ignore_rules_unreadable"})
-		return result, nil
+	var patterns []gitignore.Pattern
+	var prefix string
+	var tracked map[string]string
+	if !root.File {
+		patterns, prefix, tracked, err = worker.initialPatterns(ctx, root)
+		if err != nil {
+			result.Missing = append(result.Missing, Coverage{Path: ".", Reason: "ignore_rules_unreadable"})
+			return result, nil
+		}
 	}
 	if worker.exhausted {
 		result.Missing = append(result.Missing, Coverage{Path: ".", Reason: "capture_budget"})
 		return result, nil
 	}
-	err = worker.walkBounded(handle, func(path string, item fs.DirEntry, walkErr error) error {
+	visit := func(path string, item fs.DirEntry, walkErr error) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -571,10 +581,10 @@ func (worker *collector) collectRoot(ctx context.Context, root Root, phase strin
 			result.Missing = append(result.Missing, Coverage{Path: path, Reason: "unreadable"})
 			return nil
 		}
-		full := filepath.Join(root.Path, filepath.FromSlash(path))
+		full := root.absolutePath(path)
 		if path != "." {
 			reason := ""
-			if excludedPath(path) || inside(base(worker.capture.owned), full) {
+			if excludedPath(path) || root.File && excludedPath(filepath.ToSlash(full)) || inside(base(worker.capture.owned), full) || workspace.IsInternalExecutionPath(worker.capture.options.ManagedSpace, full) {
 				reason = "internal"
 			}
 			for _, excluded := range worker.capture.options.ExcludePaths {
@@ -637,6 +647,10 @@ func (worker *collector) collectRoot(ctx context.Context, root Root, phase strin
 			result.Missing = append(result.Missing, Coverage{Path: path, Reason: "unreadable"})
 			return nil
 		}
+		if root.File && !info.Mode().IsRegular() {
+			result.Missing = append(result.Missing, Coverage{Path: path, Reason: "file_replaced"})
+			return nil
+		}
 		if !info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 {
 			result.Boundaries = append(result.Boundaries, Coverage{Path: path, Reason: "special_file"})
 			return nil
@@ -650,7 +664,26 @@ func (worker *collector) collectRoot(ctx context.Context, root Root, phase strin
 			result.Missing = append(result.Missing, Coverage{Path: path, Reason: "content_unavailable"})
 		}
 		return nil
-	})
+	}
+	if root.File {
+		// 精确引用只 Lstat 并打开单个文件，不枚举父目录，也不读取旁边的忽略文件。
+		name := filepath.Base(root.Path)
+		info, statErr := handle.Lstat(name)
+		if os.IsNotExist(statErr) {
+			// 删除是可比较的结束侧，不是范围不可用。
+		} else if statErr != nil {
+			err = visit(name, nil, statErr)
+		} else if info.IsDir() {
+			result.Missing = append(result.Missing, Coverage{Path: name, Reason: "file_replaced"})
+		} else if worker.visited >= worker.capture.options.Limits.MaxEntries {
+			err = status_error.WorkspaceResourceTooLarge
+		} else {
+			worker.visited++
+			err = visit(name, fs.FileInfoToDirEntry(info), nil)
+		}
+	} else {
+		err = worker.walkBounded(handle, visit)
+	}
 	if err == status_error.WorkspaceResourceTooLarge || err == fs.SkipAll {
 		worker.exhausted = true
 		result.Missing = append(result.Missing, Coverage{Path: ".", Reason: "entry_budget"})

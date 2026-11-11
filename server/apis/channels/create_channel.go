@@ -38,7 +38,10 @@ func (c *CreateChannel) Validate(*gin.Context) error {
 func (c *CreateChannel) Output(ctx *gin.Context) (interface{}, error) {
 	var detail ChannelDetail
 	err := global.TransactionControllerManager.Transaction(ctx, func(transactionContext context.Context) error {
-		if err := validateChannelMembersExist(transactionContext, c.Body); err != nil {
+		input := c.Body
+		// 每次事务重试都从原始选择解析，避免沿用已回滚尝试填入的默认值。
+		input.Members = append([]ChannelMemberInput(nil), c.Body.Members...)
+		if err := resolveChannelMembers(transactionContext, &input); err != nil {
 			return err
 		}
 		occupied, err := global.ChannelControllerManager.NameExists(
@@ -52,7 +55,7 @@ func (c *CreateChannel) Output(ctx *gin.Context) (interface{}, error) {
 		if occupied {
 			return status_error.ChannelNameConflict
 		}
-		channel, members := channelModels(util.New(), c.Body, 0)
+		channel, members := channelModels(util.New(), input, 0)
 		if err := global.ChannelControllerManager.Create(transactionContext, channel, members); err != nil {
 			return err
 		}

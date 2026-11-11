@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { allyCoreLdflags } from "./go-ldflags.mjs";
 import { copyACPLicenses } from "./acp-licenses.mjs";
+import { copyBloubLicenses } from "./bloub-licenses.mjs";
 import "./builtin-skills.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -138,3 +139,7 @@ for (const name of ["LICENSE", "THIRD_PARTY_NOTICES.md"]) {
   await chmod(destination, 0o644);
 }
 await copyACPLicenses(root, path.join(root, "desktop/resources/licenses"));
+await copyBloubLicenses(
+  root,
+  path.join(root, "desktop/resources/licenses/bloub"),
+);

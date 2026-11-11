@@ -6,21 +6,10 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
-const (
-	// legacyWorkflowResultServer 仅识别已保存对话中的旧结果工具身份，不注册运行能力。
-	legacyWorkflowResultServer = "ally_workflow_result"
-	// legacyWorkflowUseServer 仅识别已保存对话中的旧调用工具身份，不注册运行能力。
-	legacyWorkflowUseServer = "ally_workflow_use"
-)
-
 // builtinWorkflowToolPhrase 将内部协议操作映射为产品动作，不展示源码、参数和原始结果。
 func builtinWorkflowToolPhrase(data map[string]interface{}, rawToolName string) string {
 	server, tool := mcpServiceAndTool(data, rawToolName)
-	if strings.EqualFold(server, legacyWorkflowResultServer) && strings.EqualFold(tool, "workflow_result") {
-		return "提交步骤结果"
-	}
-	legacyConsumer := strings.EqualFold(server, legacyWorkflowUseServer) && strings.EqualFold(tool, "workflow_use")
-	if !legacyConsumer && (!strings.EqualFold(server, constants.WorkflowMCPRuntimeKey) || !strings.EqualFold(tool, constants.WorkflowMCPToolName)) {
+	if !strings.EqualFold(server, constants.WorkflowMCPRuntimeKey) || !strings.EqualFold(tool, constants.WorkflowMCPToolName) {
 		return ""
 	}
 	switch strings.ToLower(firstNestedDisplayString(data, "action")) {

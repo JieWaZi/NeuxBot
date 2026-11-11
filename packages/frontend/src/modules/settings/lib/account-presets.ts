@@ -31,6 +31,10 @@ export const accountPresets = {
       baseUrl: "https://api.openai.com/v1",
     },
   ],
+  xai: [
+    { protocol: "openai-responses", baseUrl: "https://api.x.ai/v1" },
+    { protocol: "openai-completions", baseUrl: "https://api.x.ai/v1" },
+  ],
   anthropic: [
     {
       protocol: "anthropic-messages",
@@ -225,6 +229,7 @@ export const providerWebsites: Record<
 > = {
   google: "https://aistudio.google.com/",
   openai: "https://platform.openai.com/",
+  xai: "https://console.x.ai/",
   anthropic: "https://platform.claude.com/",
   opencodeGo: "https://opencode.ai/console",
   deepseek: "https://platform.deepseek.com/",

@@ -2,13 +2,15 @@ package wakers
 
 import (
 	"context"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
+	"os"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
-	managedskills "github.com/JieWaZi/NeuxBot/server/internal/skills"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
@@ -58,18 +60,6 @@ func (d *DeleteWaker) Output(ctx *gin.Context) (interface{}, error) {
 			return nil, ginx.WithStack(err)
 		}
 	}
-	if err := global.ChatService.DeleteWakerChats(ctx, d.WakerID); err != nil {
-		return nil, ginx.WithStack(err)
-	}
-	if global.ChannelService != nil {
-		if err := global.ChannelService.DetachWaker(ctx, d.WakerID); err != nil {
-			return nil, ginx.WithStack(err)
-		}
-	}
-	privateVersions, err := global.SkillControllerManager.ListPrivateVersionsByWaker(ctx, d.WakerID)
-	if err != nil {
-		return nil, ginx.WithStack(err)
-	}
 	// 项目标识在库事务删除后即不可查，提前收集用于事务外的记忆级联清理。
 	projects := []models.Project{}
 	offset := 0
@@ -84,53 +74,91 @@ func (d *DeleteWaker) Output(ctx *gin.Context) (interface{}, error) {
 		}
 		offset += len(page)
 	}
-	run := func(policyContext context.Context) error {
-		return global.TransactionControllerManager.Transaction(
-			policyContext,
-			func(transactionContext context.Context) error {
-				if global.AutomaticTaskControllerManager != nil {
-					if err := global.AutomaticTaskControllerManager.DeleteByWaker(transactionContext, d.WakerID); err != nil {
-						return err
-					}
+	layout, err := chatstorage.NewLayout(global.Config.ManagedFilesDirectory)
+	if err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	deletions, err := chatstorage.NewDeletionCoordinator(layout)
+	if err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	agentRoot, err := layout.AgentWorkspace(d.WakerID)
+	if err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	var staged *chatstorage.StagedDeletion
+	// settle 与 prepare 共用伙伴 writer；失败补偿不能和新的接纳交错。
+	settle := func() error {
+		if staged == nil {
+			return nil
+		}
+		_, err := global.WakerControllerManager.Get(context.WithoutCancel(ctx), d.WakerID)
+		if util.HasStatusCode(err, status_error.WakerNotFound) {
+			return staged.Commit()
+		}
+		if err != nil {
+			return err
+		}
+		return staged.Rollback()
+	}
+	prepare := func(chatIDs []string) (func() error, error) {
+		for _, chatID := range chatIDs {
+			if global.AgentThreads != nil {
+				if err := global.AgentThreads.CloseThread(ctx, chatID); err != nil {
+					return nil, err
 				}
-				if err := global.ProjectControllerManager.DeleteByWaker(
-					transactionContext,
-					d.WakerID,
-				); err != nil {
-					return err
-				}
-				if err := global.ProfileDocumentControllerManager.DeleteWakerDocuments(
-					transactionContext,
-					d.WakerID,
-				); err != nil {
-					return err
-				}
-				if err := global.SkillControllerManager.DeleteByWaker(
-					transactionContext,
-					d.WakerID,
-				); err != nil {
-					return err
-				}
-				if err := global.MCPConnectorControllerManager.DeleteByWaker(
-					transactionContext,
-					d.WakerID,
-				); err != nil {
-					return err
-				}
-				if global.PluginControllerManager != nil {
-					if err := global.PluginControllerManager.DeleteByWaker(transactionContext, d.WakerID); err != nil {
-						return err
-					}
-				}
-				return global.WakerControllerManager.Delete(transactionContext, d.WakerID)
-			},
-		)
+			}
+		}
+		if global.ChannelService != nil {
+			if err := global.ChannelService.DetachWaker(ctx, d.WakerID); err != nil {
+				return nil, err
+			}
+		}
+		if err := workspace.ValidateAgentWorkspaceDeletion(agentRoot, d.WakerID); err != nil {
+			return nil, err
+		}
+		if _, err := os.Lstat(agentRoot); os.IsNotExist(err) {
+			return nil, nil
+		} else if err != nil {
+			return nil, status_error.ManagedWorkspaceError
+		}
+		var err error
+		staged, err = deletions.StageWaker(util.New(), d.WakerID)
+		return settle, err
+	}
+	run := func(transactionContext context.Context) error {
+		if global.AutomaticTaskControllerManager != nil {
+			if err := global.AutomaticTaskControllerManager.DeleteByWaker(transactionContext, d.WakerID); err != nil {
+				return err
+			}
+		}
+		if err := global.ProjectControllerManager.DeleteByWaker(transactionContext, d.WakerID); err != nil {
+			return err
+		}
+		if err := global.ProfileDocumentControllerManager.DeleteWakerDocuments(transactionContext, d.WakerID); err != nil {
+			return err
+		}
+		if err := global.SkillControllerManager.DeleteByWaker(transactionContext, d.WakerID); err != nil {
+			return err
+		}
+		if err := global.MCPConnectorControllerManager.DeleteByWaker(transactionContext, d.WakerID); err != nil {
+			return err
+		}
+		if global.PluginControllerManager != nil {
+			if err := global.PluginControllerManager.DeleteByWaker(transactionContext, d.WakerID); err != nil {
+				return err
+			}
+		}
+		return global.WakerControllerManager.Delete(transactionContext, d.WakerID)
+	}
+	deleteOwned := func(ctx context.Context) error {
+		return global.ChatService.DeleteWakerChats(ctx, d.WakerID, prepare, run)
 	}
 	change := func(policyContext context.Context) error {
 		if global.KnowledgeService != nil {
-			return global.KnowledgeService.WithPolicyWrite(func() error { return run(policyContext) })
+			return global.KnowledgeService.WithPolicyWrite(func() error { return deleteOwned(policyContext) })
 		}
-		return run(policyContext)
+		return deleteOwned(policyContext)
 	}
 	// 发布与聚合删除统一先协调集成授权，再协调知识关系；事务 Context 保留重入身份。
 	if global.IntegrationService != nil {
@@ -164,16 +192,6 @@ func (d *DeleteWaker) Output(ctx *gin.Context) (interface{}, error) {
 			d.WakerID,
 		); err != nil {
 			logx.Errorf("delete waker memories failed: waker_id=%s error=%v", d.WakerID, err)
-		}
-	}
-	for _, version := range privateVersions {
-		if err := managedskills.RemoveVersion(global.Config.DataDirectory, version.ContentPath); err != nil {
-			logx.Errorf(
-				"remove deleted waker private skill version failed: waker_id=%s version_id=%s error=%v",
-				d.WakerID,
-				version.ID,
-				err,
-			)
 		}
 	}
 	return ginx.CommonSuccessResponse(), nil

@@ -233,6 +233,7 @@ export function KnowledgeWikiTree({
                   {t("renameFolder")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
+                  variant="destructive"
                   onSelect={() => onFolderAction("delete", folder)}
                 >
                   <Trash2 />

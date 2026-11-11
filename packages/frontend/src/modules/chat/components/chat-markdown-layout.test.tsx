@@ -3,7 +3,10 @@ import tailwindcss from "@tailwindcss/vite";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { AssistantMarkdown } from "./chat-message-content";
+import { AssistantMarkdown, UserMarkdown } from "./chat-message-content";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { FileReferenceProvider } from "@/shared/workspace/file-reference-link";
+import { emptyFileReferenceContext } from "@/shared/workspace/file-reference";
 
 const styles = document.createElement("style");
 const originalRootFontSize = document.documentElement.style.fontSize;
@@ -59,6 +62,51 @@ beforeAll(async () => {
 afterAll(() => {
   styles.remove();
   document.documentElement.style.fontSize = originalRootFontSize;
+});
+
+it("生产 CSS 在用户正文和表格内保留文件类型色，外链仍继承气泡文字色", () => {
+  const client = new QueryClient();
+  const { unmount } = render(
+    <QueryClientProvider client={client}>
+      <FileReferenceProvider context={emptyFileReferenceContext}>
+        <div className="bg-user-message-background">
+          <UserMarkdown
+            text={
+              "[报告](/repo/report.md) [网页](https://example.com)\n\n| 文件 |\n| --- |\n| [表格文件](/repo/table.md) |"
+            }
+          />
+        </div>
+        <UserMarkdown text="[成员报告](/repo/member.md)" />
+      </FileReferenceProvider>
+    </QueryClientProvider>,
+  );
+  const sheet = styles.sheet;
+  if (!sheet) throw new Error("缺少生产样式");
+  const matchingValue = (element: Element, property: string) => {
+    let value = "";
+    for (const rule of sheet.cssRules) {
+      if (!(rule instanceof CSSStyleRule)) continue;
+      const declaration = rule.style.getPropertyValue(property);
+      if (declaration && element.matches(rule.selectorText))
+        value = declaration;
+    }
+    return value.trim();
+  };
+  for (const label of ["报告", "表格文件", "成员报告"]) {
+    const link = screen.getByRole("link", { name: label });
+    expect(link).toHaveAttribute("data-file-tone", "blue");
+    expect(matchingValue(link, "color")).toBe("var(--file-reference-color)");
+    expect(matchingValue(link, "--file-reference-color")).toBe(
+      label === "报告"
+        ? "var(--file-reference-user-color)"
+        : "var(--file-reference-default-color)",
+    );
+  }
+  expect(
+    matchingValue(screen.getByRole("link", { name: "网页" }), "color"),
+  ).toBe("inherit");
+  unmount();
+  client.clear();
 });
 
 it("为六级标题使用本地字号，strong继承标题字重，行内代码随标题缩放", () => {

@@ -47,6 +47,10 @@ type Limits struct {
 
 // Options 配置采集范围内的附加排除规则和技术预算。
 type Options struct {
+	// FilePaths 是接纳时已校验的精确文件，不授权其父目录或同级文件。
+	FilePaths []string
+	// ManagedSpace 是已核验的受管空间根；设置后采集沿用接纳时的真实路径并排除空间内部内容。
+	ManagedSpace string
 	// Limits 是技术预算；调用方可以收紧默认上限。
 	Limits Limits
 	// ExcludePaths 是必须排除的绝对路径，通常来自既有受管秘密目录规则。
@@ -61,8 +65,10 @@ type Options struct {
 type Root struct {
 	// ID 是规范路径的稳定摘要。
 	ID string `json:"id"`
-	// Path 是规范绝对目录路径。
+	// Path 是规范绝对目录或精确文件路径。
 	Path string `json:"path"`
+	// File 表示只采集此文件，父目录仅用于安全打开该文件。
+	File bool `json:"file,omitempty"`
 	// Kind 表示原目录是否处于 Git 仓库中。
 	Kind string `json:"kind"`
 	// RepositoryRoot 仅描述已有仓库，不扩大遍历范围。
@@ -135,7 +141,7 @@ type Capture struct {
 	options Options
 	// record 保存已经完成写入的耐久事实。
 	record record
-	// rootInfo 固定本进程开始侧的目录身份，防止原路径被替换后静默改绑。
+	// rootInfo 固定目录或精确文件父目录的身份，允许文件原地编辑和原子替换。
 	rootInfo map[string]fs.FileInfo
 	// lease 在两个采集阶段之间保护活动记录，恢复只能接管进程退出后的句柄。
 	lease *flock.Flock
@@ -234,6 +240,7 @@ func Begin(ctx context.Context, ownedDir, executionID string, roots []string, op
 		return nil, status_error.WorkspacePathInvalid
 	}
 	options.Limits = normalizedLimits(options.Limits)
+	options.FilePaths = append([]string(nil), options.FilePaths...)
 	options.ExcludePaths = append([]string(nil), options.ExcludePaths...)
 	options.IgnorePatterns = append([]string(nil), options.IgnorePatterns...)
 	for i, path := range options.ExcludePaths {
@@ -250,24 +257,31 @@ func Begin(ctx context.Context, ownedDir, executionID string, roots []string, op
 	if err != nil {
 		return nil, storageError("prepare", err)
 	}
-	frozen, err := freezeRoots(roots)
+	requireCanonical := options.ManagedSpace != ""
+	frozen, err := freezeRoots(roots, options.FilePaths, requireCanonical)
 	scopeUnavailable := err != nil
 	if scopeUnavailable {
 		frozen = []Root{}
 		seen := map[string]bool{}
-		for _, path := range roots {
+		for _, path := range append(append([]string(nil), roots...), options.FilePaths...) {
 			if !filepath.IsAbs(path) || strings.ContainsRune(path, 0) {
 				return nil, status_error.WorkspaceScopeInvalid
 			}
 			path = filepath.Clean(path)
-			if canonical, err := filepath.EvalSymlinks(path); err == nil {
-				path = canonical
+			file := false
+			for _, selected := range options.FilePaths {
+				file = file || filepath.Clean(selected) == path
+			}
+			if !file && !requireCanonical {
+				if canonical, err := filepath.EvalSymlinks(path); err == nil {
+					path = canonical
+				}
 			}
 			if seen[path] {
 				continue
 			}
 			seen[path] = true
-			frozen = append(frozen, Root{ID: identity(path), Path: path, Kind: "unavailable", Boundaries: []Coverage{{Path: ".", Reason: "root_unavailable"}}})
+			frozen = append(frozen, Root{ID: identity(path), Path: path, File: file, Kind: "unavailable", Boundaries: []Coverage{{Path: ".", Reason: "root_unavailable"}}})
 		}
 	}
 	rootBytes := 0
@@ -284,7 +298,11 @@ func Begin(ctx context.Context, ownedDir, executionID string, roots []string, op
 		if scopeUnavailable {
 			break
 		}
-		info, err := os.Stat(root.Path)
+		path := root.Path
+		if root.File {
+			path = filepath.Dir(path)
+		}
+		info, err := os.Stat(path)
 		if err != nil {
 			scopeUnavailable = true
 			break
@@ -628,7 +646,7 @@ func validateSummary(summary Summary, id string) error {
 	for _, file := range summary.Files {
 		valid := false
 		for _, root := range summary.Roots {
-			if root.ID == file.RootID && filepath.IsLocal(file.Path) && file.Path != "." && !strings.ContainsRune(file.Path, 0) && file.AbsolutePath == filepath.Join(root.Path, filepath.FromSlash(file.Path)) && (file.OldPath == "" || filepath.IsLocal(file.OldPath) && file.OldPath != "." && !strings.ContainsRune(file.OldPath, 0)) {
+			if root.ID == file.RootID && filepath.IsLocal(file.Path) && file.Path != "." && !strings.ContainsRune(file.Path, 0) && (!root.File || file.Path == filepath.Base(root.Path) && (file.OldPath == "" || file.OldPath == file.Path)) && file.AbsolutePath == root.absolutePath(file.Path) && (file.OldPath == "" || filepath.IsLocal(file.OldPath) && file.OldPath != "." && !strings.ContainsRune(file.OldPath, 0)) {
 				valid = true
 				break
 			}
@@ -795,21 +813,45 @@ func inside(root, path string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-func freezeRoots(paths []string) ([]Root, error) {
+func (root Root) absolutePath(path string) string {
+	if root.File {
+		return root.Path
+	}
+	return filepath.Join(root.Path, filepath.FromSlash(path))
+}
+
+func freezeRoots(paths, files []string, requireCanonical bool) ([]Root, error) {
 	var roots []Root
 	for _, path := range paths {
 		if !filepath.IsAbs(path) {
 			return nil, status_error.WorkspaceScopeInvalid
 		}
-		path, err := filepath.EvalSymlinks(filepath.Clean(path))
-		if err != nil {
+		path = filepath.Clean(path)
+		canonical, err := filepath.EvalSymlinks(path)
+		if err != nil || (requireCanonical && canonical != path) {
 			return nil, status_error.WorkspaceScopeInvalid
 		}
+		path = canonical
 		info, err := os.Stat(path)
 		if err != nil || !info.IsDir() {
 			return nil, status_error.WorkspaceScopeInvalid
 		}
 		roots = append(roots, Root{ID: identity(path), Path: path, Kind: "shadow"})
+	}
+	for _, path := range files {
+		if !filepath.IsAbs(path) {
+			return nil, status_error.WorkspaceScopeInvalid
+		}
+		path = filepath.Clean(path)
+		canonical, err := filepath.EvalSymlinks(path)
+		if err != nil || canonical != path {
+			return nil, status_error.WorkspaceScopeInvalid
+		}
+		info, err := os.Lstat(path)
+		if err != nil || !info.Mode().IsRegular() {
+			return nil, status_error.WorkspaceScopeInvalid
+		}
+		roots = append(roots, Root{ID: identity(path), Path: path, File: true, Kind: "shadow"})
 	}
 	sort.Slice(roots, func(i, j int) bool {
 		if len(roots[i].Path) != len(roots[j].Path) {
@@ -821,13 +863,15 @@ func freezeRoots(paths []string) ([]Root, error) {
 	for _, rt := range roots {
 		duplicate := false
 		for _, parent := range result {
-			if rt.Path == parent.Path || inside(parent.Path, rt.Path) && !hasRepositoryBoundary(parent.Path, rt.Path) {
+			if rt.Path == parent.Path || !parent.File && inside(parent.Path, rt.Path) && !hasRepositoryBoundary(parent.Path, rt.Path) {
 				duplicate = true
 				break
 			}
 		}
 		if !duplicate {
-			rt.RepositoryRoot = locateRepository(rt.Path)
+			if !rt.File {
+				rt.RepositoryRoot = locateRepository(rt.Path)
+			}
 			if rt.RepositoryRoot != "" {
 				rt.Kind = "git"
 			}

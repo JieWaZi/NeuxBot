@@ -50,7 +50,7 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       - run: pnpm docs:check
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-      - run: pnpm companion:check
+      - run: node --test packages/frontend/bloub-assets.node-test.mjs packages/frontend/native-assets.node-test.mjs packages/frontend/src/modules/chat/components/selectable-code-highlighter.node-test.mjs scripts/bloub-licenses.test.mjs
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       - run: pnpm pi:bridge:check
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}

@@ -2,13 +2,50 @@
 
 NeuxBot 自有代码与文档采用根目录 [MIT License](LICENSE)。以下版权及许可适用于对应的第三方组成，集中保存在本文件，并随安装包分发。
 
+## Material Icon Theme 文件图标
+
+工作区文件树、消息文件引用及共用文件展示使用 [material-extensions/vscode-material-icon-theme](https://github.com/material-extensions/vscode-material-icon-theme/tree/ced21b9b5241c1efa502a8c46ec7363a690a7058) 的精选 SVG，固定提交 `ced21b9b5241c1efa502a8c46ec7363a690a7058`。类型图标从上游原样复制，通用文件和目录图标通过本项目同步命令按同一提交的上游生成器路径及默认色生成。来源与更新命令见 [NOTICE](packages/frontend/src/shared/assets/material-icon-theme/NOTICE.md)，完整许可如下：
+
+```text
+The MIT License (MIT)
+Copyright (c) 2025 Material Extensions
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+## Bloub 头像动画核心
+
+通用形状、径向轮廓插值、眼睛与状态动画源于 [jeremy-prt/bloub](https://github.com/jeremy-prt/bloub)，由 [JieWaZi/bloub](https://github.com/JieWaZi/bloub) 维护，通过 `@neuxbot/bloub` 直接依赖 `main` 分支，由锁文件固定解析提交，版本以 `packages/frontend/package.json` 及根锁文件为准。`@neuxbot/bloub` 中的 `neuxbot/src/bot`、`src/ui/gaze.ts` 与 `src/plush` 采用公开 fork [NorbertBodziony/bloub](https://github.com/NorbertBodziony/bloub/tree/7983de0bb7e868ac84881581eaa8c2e1f459dd30) 的固定源码，复用框架无关几何、换色和状态辅助算法。Copyright (c) 2026 Jérémy Perret，采用 MIT；完整许可见 [MIT 许可](https://github.com/JieWaZi/bloub/blob/84b02098dbd5822ec7c5e7cd0335952e9c8560e2/neuxbot/LICENSE)。固定来源记录于 [upstream.json](https://github.com/JieWaZi/bloub/blob/84b02098dbd5822ec7c5e7cd0335952e9c8560e2/neuxbot/upstream.json)。
+
+毛绒为 NeuxBot 独立生成的完整立体身体素材，粒子为根据通用形状三维体积取样生成的细光尘图集，不包含第三方毛绒图片或角色。材质绘图与 React 集成由本项目维护，素材来源、生成方法和用途见[材质说明](https://github.com/JieWaZi/bloub/blob/84b02098dbd5822ec7c5e7cd0335952e9c8560e2/neuxbot/materials/README.md)。
+
+点击表情全池排除当前项的选择策略参考 [dsh-bloub-mood](https://github.com/Yuuhann1999/dsh-bloub-mood/tree/c626528b3d6c32669c265d7144e85f60f48570d2) 的 `client-template.js`，以类型化纯函数适配于 `shared/companion/interaction-expressions.ts`。Copyright (c) 2026 Yuuhann1999，MIT，完整许可见 [LICENSE.dsh-bloub-mood](https://github.com/JieWaZi/bloub/blob/84b02098dbd5822ec7c5e7cd0335952e9c8560e2/neuxbot/LICENSE.dsh-bloub-mood)。该来源与 Bloub 同为原生 16 种表情；NeuxBot 在同一目录原创增加 8 个姿态至 24 种，未复制其生成素材或另建渲染框架。固定来源见 [expressions-source.json](https://github.com/JieWaZi/bloub/blob/84b02098dbd5822ec7c5e7cd0335952e9c8560e2/neuxbot/expressions-source.json)。
+
+## OpenBot UI 布局、页签、资源与设置界面
+
+窗口布局、侧栏几何与页签展示交互采用 [OpenBot v0.62.0](https://github.com/nightly-labs/openbot/tree/fcb35746d4919798ff889a8a58449f5d58de5f65) 的实现，结合本项目 React、语义 Token、可访问性与既有内容所有权适配。对应范围为 `app/layout` 的框架／导航、`shared/ui/scene-tab-strip.tsx` 与 `modules/chat/workbench` 的页签展示，以及插件、技能和连接器目录的分类／已安装侧栏、两列轻量条目、紧凑身份头与单列详情分区。插件资源部分参考 `MarketplaceNav`、`MarketplaceBrowse`、`MarketplaceCards`、`MarketplaceAppPage` 与 `IntegrationLayout`；技能直接对应同一提交的 `packages/ui/src/features/marketplace/MarketplaceSkills.tsx`（SkillLibrary／LibraryRow）、`MarketplaceSkillPage.tsx`（伙伴安装、SKILL.md 与信息），并参考 `packages/ui/src/components/SkillPreview.tsx` 与 `packages/ui/src/skill-preview.css` 的预览排版及既有试用卡样式。技能列表以用户分类对应源端六项分组与分类页，不展示插件或内置技能，不沿用旧的安装来源分组；本地资源文件、历史与编辑为已有能力的适配。连接器页面内新建及技能添加页的表单结构参考同一提交的 `src/renderer/src/features/servers/ServerMcpPanel.tsx`，未保存状态、重置与提交底栏参考 `ServerSettingsModal.tsx` 的保存条；资源表单切换参考 `packages/ui/src/styles/sliding-tabs.css` 的轨道、选项与选中面，适配于共享 SegmentedControl 的独立资源表单外观；连接器仍使用本项目现有传输、信任、安装与诊断契约；其详情复用相同的共享试用卡，连接器默认提示、真实资源引用及草稿交接是本项目在该视觉基础上的扩展。对应适配位于 `modules/plugin`、`modules/skill`、`modules/connector`、资源页装配与 `shared/ui` 资源变体。角色、上下文及组件映射统一见[资源 UI 标准](docs/development/resource-ui-cn.md)。
+
+设置侧栏、路径、分组行和智能体详情参考同一提交的 `SettingsDialogShell`、`ProviderSettingsPage`、`SettingsGeneralTab`、`settings-modal.css` 和 `window.css`，适配位于 `modules/settings` 及共享导航和设置表面变体。账号按智能体归属的 Go 持久化与校验沿用本项目领域实现。受管制品来源和布局核对同一提交的 `provider-runtime-manager.ts`、`provider-runtime-descriptors.ts`、`provider-runtime-releases.ts`、`provider-runtime-archive.ts` 及 `native-runtime.lock.json`；安装器以 Go 独立实现下载校验、完整版本发布及取消，不复制这些 TypeScript 实现。默认模型与安装支持范围以本项目真实能力为准。
+
+该来源采用 [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0)，原始 [LICENSE](https://github.com/nightly-labs/openbot/blob/fcb35746d4919798ff889a8a58449f5d58de5f65/LICENSE) 及以下 Required Notice 适用于对应第三方部分，不将其推定为项目 MIT 许可：
+
+```text
+Required Notice: Copyright 2026 Synthetify Labs spółka z ograniczoną odpowiedzialnością.
+
+Required Notice: For a commercial license, contact licenses@openbot.run.
+```
+
 ## ACP Go SDK
 
-Go 模块 `github.com/coder/acp-go-sdk` 使用 [acp-go/sdk 维护版本](https://github.com/JieWaZi/acp-go/tree/5f43bcd9dae8/sdk)，基于 coder/acp-go-sdk v0.13.5。Copyright 2025 Coder Technologies, Inc.，采用 Apache License 2.0；完整 [LICENSE](https://github.com/JieWaZi/acp-go/blob/5f43bcd9dae8/sdk/LICENSE) 随安装包保存在 `licenses/acp-go-sdk/LICENSE`。
+Go 模块 `github.com/JieWaZi/acp-go-sdk` 使用独立 [官方仓库 fork](https://github.com/JieWaZi/acp-go-sdk)，从 coder/acp-go-sdk v0.13.5 迁入补丁并合并官方 main。Copyright 2025 Coder Technologies, Inc.，采用 Apache License 2.0；完整 [LICENSE](https://github.com/JieWaZi/acp-go-sdk/blob/main/LICENSE) 随安装包保存在 `licenses/acp-go-sdk/LICENSE`。
 
 ## ACP Adapter 中的第三方移植
 
-acp-go 是项目自有适配器仓库。其自动审查、Pi 与 Cursor 移植组件保留各自的原有许可及 NOTICE，打包从实际 Go 依赖版本复制到 `licenses/acp-go/`，包括 `pkg/autoreview/UPSTREAM-LICENSE`、`pkg/pi/UPSTREAM-LICENSE` 和 `pkg/cursor/licenses/` 下的三份许可与 NOTICE，不将这些移植组件推定为统一许可。
+acp-go 是项目自有适配器仓库。其自动审查、Pi 与 Cursor 移植组件保留各自的原有许可及 NOTICE，打包从实际 Go 依赖版本复制到 `licenses/acp-go/`，包括 `pkg/autoreview/UPSTREAM-LICENSE`、`pkg/pi/UPSTREAM-LICENSE` 和 `pkg/cursor/` 下的三份许可与 NOTICE，不将这些移植组件推定为统一许可。
 
 ## Dock 组件
 
@@ -280,7 +317,7 @@ SOFTWARE.
 
 ## 运行时安装的插件
 
-插件包及其供应商程序依赖由独立 [neux-plugins](https://github.com/JieWaZi/neux-plugins) 仓库维护并分发。NeuxBot 安装包只交付通用插件宿主，不内置飞书或 GitHub CLI、官方技能副本或插件归档。安装时保留实际插件包的许可证、来源与修改记录；包内第三方组成以该固定版本随附的 LICENSE、NOTICE 和 provenance 为准。
+插件包及其供应商程序依赖由独立 [neux-plugins](https://github.com/JieWaZi/neux-plugins) 仓库维护并分发。NeuxBot 安装包交付通用插件宿主，不内置供应商 CLI、插件目录、详情或安装归档。运行时下载的固定插件包保留实际许可证、来源与修改记录，其第三方组成以随附的 LICENSE、NOTICE 和 provenance 为准。
 
 ## ledongthuc/pdf 文本阅读校验
 
@@ -565,3 +602,11 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Inter Variable
+
+资源页与应用使用 Inter Variable（Fontsource 5.3.0），字体文件采用 SIL Open Font License 1.1。字体与完整许可随 `packages/frontend/src/shared/assets/fonts/inter/` 分发，来源：https://github.com/rsms/inter 。
+
+## Paper Shaders
+
+`@paper-design/shaders` 0.0.80 用于资源试用卡的网格渐变，采用 Apache-2.0。Paper Shaders，Copyright 2026 Paper。Powered by Paper Shaders: https://shaders.paper.design 。完整 LICENSE／NOTICE 随依赖包分发。

@@ -22,7 +22,7 @@ type AttachmentInput struct {
 type AttachmentReference struct {
 	// Name 是向用户和 Agent 展示的原始文件名。
 	Name string `json:"name"`
-	// Path 是相对 Chat 工作目录的稳定路径。
+	// Path 是相对 Conversation 私有文件目录的稳定路径。
 	Path string `json:"path"`
 	// MediaType 是根据扩展名推断的 MIME 类型。
 	MediaType string `json:"mediaType,omitempty"`
@@ -54,7 +54,7 @@ type resolvedAttachment struct {
 	managed bool
 }
 
-// PrepareChatAttachments 把工作区外附件复制到 Chat 根 attachments/。
+// PrepareChatAttachments 把上传原件复制到 Conversation 的私有 attachments/。
 func PrepareChatAttachments(
 	workingDirectory string,
 	chatID string,
@@ -254,11 +254,19 @@ func uniqueAttachmentName(
 }
 
 func copyFile(sourcePath string, destinationPath string) error {
+	sourceInfo, err := os.Lstat(sourcePath)
+	if err != nil || !sourceInfo.Mode().IsRegular() {
+		return status_error.MessageAttachmentInvalid
+	}
 	source, err := os.Open(sourcePath)
 	if err != nil {
 		return status_error.MessageAttachmentInvalid
 	}
 	defer source.Close()
+	openedInfo, err := source.Stat()
+	if err != nil || !os.SameFile(sourceInfo, openedInfo) {
+		return status_error.MessageAttachmentInvalid
+	}
 	destination, err := os.OpenFile(
 		destinationPath,
 		os.O_CREATE|os.O_EXCL|os.O_WRONLY,

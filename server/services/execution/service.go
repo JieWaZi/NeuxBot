@@ -2,11 +2,14 @@
 package execution
 
 import (
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"encoding/json"
+	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -18,6 +21,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/projectsource"
+	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
@@ -69,6 +73,8 @@ type ExecutionConfiguration struct {
 	Model string
 	// Reasoning 是可选推理强度标识；空值使用 Runtime 默认值。
 	Reasoning string
+	// Fast 是本次 Fast 选择；未解析时空值继承 Runtime 默认，已解析空值保持原生默认。
+	Fast *bool
 	// PermissionLevel 是跨 Runtime 的产品权限等级。
 	PermissionLevel constants.PermissionLevel
 	// RequiredConnectorTransport 是调用入口要求 Runtime 明确支持的 MCP 传输；空值表示无额外要求。
@@ -95,20 +101,24 @@ type service struct {
 	agent *capability.Registry
 	// agentEndpoint 是应用明确提供的本机执行协议地址。
 	agentEndpoint string
-	// agentBinary 是随应用发布的 CLI 真实路径。
-	agentBinary string
+	// systemSkillDirectory 是初始化时发布的不可变系统技能目录。
+	systemSkillDirectory string
 	// agentBindings 提供伙伴当前普通业务能力的领域绑定。
 	agentBindings func(models.Chat, string, []string, string) []capability.Binding
-	// validateIntent 在任何首发、续发或重试接纳前校验领域持久约束。
+	// validateIntent 在首发和续发接纳前校验领域持久约束。
 	validateIntent func(context.Context, WorkIntent) error
-	// agentSessions 保存同一原生会话进程独占的连接文件位置。
-	agentSessions *agentSessionFiles
 	// acquireTeamChatInput 将团队成员 Chat 的直接输入纳入团队聚合接纳边界。
 	acquireTeamChatInput func(context.Context, string, bool) (context.Context, func(), error)
 	// accounts 为执行冻结账号并生成隔离配置。
 	accounts *aiaccount.Service
-	// runtime 执行一次结构化 Agent 调用并交付归一化事件。
-	runtime runtimeRunner
+	// threads 管理原生绑定与回合，与 journal 共用同一会话存储。
+	threads *agent.ThreadLifecycle
+	// resolveAccount 在原生获取前确认账号主体和认证代次。
+	resolveAccount func(context.Context, agent.AccountRequest, string) (agent.AccountRequest, error)
+	// runtimeSummaries 提供目录中的工作区文件与技能发现元数据。
+	runtimeSummaries []agent.RuntimeSummary
+	// nativeResources 保存现有连接实际持有的资源引用，供热续聊消费。
+	nativeResources sync.Map
 	// journal 读写 Chat 权威事实、窄投影和 committed SSE。
 	journal chatservice.Journal
 	// dormantChats 批量建立尚无消息和执行的独立 Chat。
@@ -121,7 +131,7 @@ type service struct {
 	projectController controllers.ProjectController
 	// skillController 读取伙伴当前启用技能。
 	skillController controllers.SkillController
-	// connectorController 读取伙伴当前启用并已解密的连接器。
+	// connectorController 读取伙伴启用声明并在冷获取解密实际交付的连接器。
 	connectorController controllers.MCPConnectorController
 	// pluginInstallations 复用声明驱动身份与安装预检。
 	pluginInstallations *plugininstallation.Service
@@ -167,8 +177,12 @@ type Config struct {
 	AcquireTeamChatInput func(context.Context, string, bool) (context.Context, func(), error)
 	// Accounts 管理受管账号的使用租约和配置投射。
 	Accounts *aiaccount.Service
-	// Runtime 执行一次完整 Agent 调用并提供工作区投影声明。
-	Runtime runtimeRunner
+	// Threads 管理原生回合，与 Chat 共用会话存储。
+	Threads *agent.ThreadLifecycle
+	// ResolveAccount 为所选配置根确认权威账号主体与认证代次。
+	ResolveAccount func(context.Context, agent.AccountRequest, string) (agent.AccountRequest, error)
+	// RuntimeSummaries 声明工作区指令文件与技能发现目录。
+	RuntimeSummaries []agent.RuntimeSummary
 	// Journal 读写 Chat 权威事实和可重建投影。
 	Journal chatservice.Journal
 	// DormantChats 批量建立团队首发所需的独立空闲 Chat。
@@ -181,7 +195,7 @@ type Config struct {
 	Projects controllers.ProjectController
 	// Skills 读取伙伴当前启用技能。
 	Skills controllers.SkillController
-	// Connectors 读取伙伴当前启用并已解密的连接器。
+	// Connectors 读取伙伴启用声明并在冷获取解密实际交付的连接器。
 	Connectors controllers.MCPConnectorController
 	// PluginInstallations 提供共享声明驱动身份。
 	PluginInstallations *plugininstallation.Service
@@ -218,24 +232,12 @@ type dormantChatCreator interface {
 	) error
 }
 
-// runtimeRunner 是 Execution Core 对 Runtime 深模块的最小消费接口。
-type runtimeRunner interface {
-	// ForkSession 使用冻结运行配置创建独立原生会话。
-	ForkSession(context.Context, agentapi.ForkSessionRequest) (agentapi.ForkSessionResult, error)
-	// Runtimes 返回工作区投影所需的 Runtime 摘要。
-	Runtimes() []agentapi.RuntimeSummary
-	// PrepareSession 占用技术会话；接纳层只在冷路径显式取得并交还实际资源。
-	PrepareSession(context.Context, agentapi.SessionPlan, agentapi.SessionDirective) (agentapi.PreparedChatRun, error)
-	// CloseWorkspace 在改写账号或共享工作区配置前关闭仍持有资源的原生消费者。
-	CloseWorkspace(context.Context, string) error
-}
-
 // New 校验配置并创建尚未绑定进程生命周期的 Execution Core。
 func New(config Config) (Core, error) {
-	if config.Journal == nil {
+	if _, ok := config.Journal.(chatservice.NativeJournal); !ok {
 		return nil, status_error.BadRequest
 	}
-	if config.Runtime == nil {
+	if config.Threads == nil || config.ResolveAccount == nil {
 		return nil, status_error.BadRequest
 	}
 	if config.Wakers == nil {
@@ -258,17 +260,29 @@ func New(config Config) (Core, error) {
 	if err != nil {
 		return nil, err
 	}
+	systemSkillDirectory := ""
+	if config.Agent != nil {
+		systemSkillDirectory, err = builtinskills.SystemDirectory(strings.TrimSpace(config.SkillDataDirectory), config.AgentBinary)
+		if err != nil {
+			return nil, err
+		}
+		systemSkillDirectory, err = filepath.EvalSymlinks(systemSkillDirectory)
+		if err != nil {
+			return nil, status_error.AgentContextStorageError
+		}
+	}
 	return &service{
 		agent:                config.Agent,
 		events:               config.Events,
 		agentEndpoint:        config.AgentEndpoint,
-		agentBinary:          config.AgentBinary,
+		systemSkillDirectory: systemSkillDirectory,
 		agentBindings:        config.AgentBindings,
 		validateIntent:       config.ValidateIntent,
-		agentSessions:        &agentSessionFiles{slots: map[string]agentSessionSlot{}},
 		accounts:             config.Accounts,
 		acquireTeamChatInput: config.AcquireTeamChatInput,
-		runtime:              config.Runtime,
+		threads:              config.Threads,
+		resolveAccount:       config.ResolveAccount,
+		runtimeSummaries:     slices.Clone(config.RuntimeSummaries),
 		journal:              config.Journal,
 		dormantChats:         config.DormantChats,
 		wakerController:      config.Wakers,

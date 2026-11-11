@@ -1,6 +1,7 @@
 package ai_accounts
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -8,17 +9,20 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
 
 // 更新账号请求
 type UpdateAIAccountRequest struct {
+	// 智能体标识
+	RuntimeID string `json:"runtimeId" validate:"required,max=120"`
 	// 账号名称
 	Name string `json:"name" validate:"required,max=120"`
 
 	// 协议入口
-	Endpoints []models.AIAccountEndpoint `json:"endpoints" validate:"required,len=1,dive"`
+	Endpoint models.AIAccountEndpoint `json:"endpoint" validate:"required"`
 	// 最近一次获取的模型目录
 	ModelCatalog []string `json:"modelCatalog" validate:"max=500,dive,max=200"`
 	// 用户选择的账号模型
@@ -58,6 +62,7 @@ func (*UpdateAIAccount) Path() string { return "/:accountId" }
 
 // Validate 规范化账号名称和新凭据。
 func (a *UpdateAIAccount) Validate(*gin.Context) error {
+	a.Body.RuntimeID = strings.TrimSpace(a.Body.RuntimeID)
 	a.Body.Name = util.NormalizeName(a.Body.Name)
 	a.Body.APIKey = strings.TrimSpace(a.Body.APIKey)
 	a.Body.CustomModels = normalizeCustomModels(a.Body.CustomModels)
@@ -74,25 +79,71 @@ func (a *UpdateAIAccount) Validate(*gin.Context) error {
 	return nil
 }
 
-// Output 在账号空闲时更新配置，保留未替换的 Key。
+// Output 直接保存普通配置，仅认证材料变化时取得真实独占租约。
 func (a *UpdateAIAccount) Output(ctx *gin.Context) (interface{}, error) {
-	release, err := global.AIAccountService.Exclusive(a.AccountID)
-	if err != nil {
-		return nil, ginx.WithStack(err)
-	}
-	defer release()
 	current, err := global.AIAccountControllerManager.Get(ctx, a.AccountID)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
 
+	if current.RuntimeID != a.Body.RuntimeID {
+		return nil, ginx.WithStack(status_error.AIAccountConfigurationInvalid)
+	}
+	if current.AuthMode == constants.AccountAuthModeAPIKey {
+		if err := validateDefaultModel(a.Body.SelectedModels, a.Body.DefaultModel); err != nil {
+			return nil, ginx.WithStack(err)
+		}
+	}
+	environment, err := global.RuntimeEnvironmentControllerManager.Get(ctx, current.RuntimeID)
+	if err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	candidate := current
+	candidate.Endpoint = a.Body.Endpoint
+	candidate.SelectedModels = a.Body.SelectedModels
+	candidate.ClaudeModelRoles = a.Body.ClaudeModelRoles
+	if err := aiaccount.ValidateRuntimeAccount(candidate, environment); err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	if current.AuthMode == constants.AccountAuthModeAPIKey && environment.DefaultAccountID == current.ID && environment.DefaultModel != "" {
+		allowed := slices.Contains(candidate.SelectedModels, environment.DefaultModel)
+		if environment.BaseRuntimeID == constants.RuntimeIDClaude {
+			_, allowed = aiaccount.ManagedClaudeModelTarget(candidate, environment.DefaultModel)
+		}
+		if !allowed {
+			return nil, ginx.WithStack(status_error.AIAccountInUse)
+		}
+	}
 	if current.AuthMode == constants.AccountAuthModeSubscription && a.Body.APIKey != "" {
 		return nil, ginx.WithStack(status_error.AIAccountConfigurationInvalid)
 	}
-	if err := validateEndpoints(current.AuthMode, a.Body.Endpoints); err != nil {
+	if err := validateEndpoint(current.AuthMode, &a.Body.Endpoint); err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	current.Name, current.Endpoints, current.Revision = a.Body.Name, a.Body.Endpoints, a.Body.Revision
+	if current.Revision != a.Body.Revision {
+		return nil, ginx.WithStack(status_error.AIAccountRevisionConflict)
+	}
+	authChanged := a.Body.APIKey != "" || current.Endpoint != a.Body.Endpoint
+	previous := current
+	if authChanged {
+		release, err := global.AIAccountService.Exclusive(a.AccountID)
+		if err != nil {
+			return nil, ginx.WithStack(err)
+		}
+		defer release()
+		// 独占获取可能等待旧消费者关闭，重新核对 CAS 后才修改共享凭据。
+		latest, err := global.AIAccountControllerManager.Get(ctx, a.AccountID)
+		if err != nil {
+			return nil, ginx.WithStack(err)
+		}
+		if latest.Revision != a.Body.Revision {
+			return nil, ginx.WithStack(status_error.AIAccountRevisionConflict)
+		}
+		if err := global.AIAccountService.RemoveCodexCredentialFiles(ctx, current); err != nil {
+			return nil, ginx.WithStack(err)
+		}
+	}
+	current.Name, current.Endpoint, current.Revision = a.Body.Name, a.Body.Endpoint, a.Body.Revision
 	current.CustomModels = append([]string(nil), a.Body.CustomModels...)
 	current.ModelContextSizes = a.Body.ModelContextSizes
 	current.ModelDisplayNames = a.Body.ModelDisplayNames
@@ -104,6 +155,9 @@ func (a *UpdateAIAccount) Output(ctx *gin.Context) (interface{}, error) {
 	current.DefaultReasoning = a.Body.DefaultReasoning
 	if err := global.AIAccountControllerManager.Update(ctx, current, a.Body.APIKey); err != nil {
 		return nil, ginx.WithStack(err)
+	}
+	if authChanged {
+		global.AIAccountService.InvalidateAccountAuth(ctx, previous)
 	}
 	return ginx.CommonSuccessResponse(), nil
 }

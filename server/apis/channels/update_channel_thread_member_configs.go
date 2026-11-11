@@ -59,22 +59,24 @@ func (u *UpdateChannelThreadMemberConfigs) Output(ctx *gin.Context) (interface{}
 	now := time.Now().UnixMilli()
 	updated := make([]models.ChannelThreadMember, 0, len(u.Body.Members))
 	for _, config := range u.Body.Members {
-		if validationErr := validateChannelMemberExecutionConfig(
+		resolved, validationErr := resolveChannelMemberExecutionConfig(
 			operationContext,
 			config,
 			config.WakerID == thread.LeadWakerID,
-		); validationErr != nil {
+		)
+		if validationErr != nil {
 			return nil, ginx.WithStack(validationErr)
 		}
 		member, getErr := global.ChannelThreadControllerManager.GetMember(operationContext, thread.ID, config.WakerID)
 		if getErr != nil {
 			return nil, ginx.WithStack(getErr)
 		}
-		member.RuntimeID = config.RuntimeID
-		member.AccountID = config.AccountID
-		member.Model = config.Model
-		member.Reasoning = config.Reasoning
-		member.PermissionLevel = config.PermissionLevel
+		member.RuntimeID = resolved.RuntimeID
+		member.AccountID = resolved.AccountID
+		member.Model = resolved.Model
+		member.Reasoning = resolved.Reasoning
+		member.Fast = resolved.Fast
+		member.PermissionLevel = resolved.PermissionLevel
 		member.UpdatedAt = now
 		updated = append(updated, member)
 	}

@@ -41,6 +41,8 @@ export type ChatEvent = {
   executionStatus?: ExecutionStatus;
   errorCode?: string;
   errorMessage?: string;
+  errorMessageSource?: "public" | "localized";
+  errorParams?: Record<string, unknown>;
 };
 
 /** 临时流顺序与持久游标分别校验；只有规范安全展示字段可以进入 Renderer。 */
@@ -389,9 +391,12 @@ export function subscribeChat(
 ): () => void {
   return subscribeDomain({
     ...options,
+    after: options.after ?? 0,
     topic: "chat",
     resource: { kind: "chat", id: chatId },
-    contiguous: true,
+    // Internal log records share the durable cursor but are not public events.
+    // Delivery gaps still trigger reconciliation through the shared WS owner.
+    contiguous: false,
     validate: isChatEvent,
   });
 }

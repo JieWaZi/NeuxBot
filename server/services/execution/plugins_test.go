@@ -44,7 +44,13 @@ func (f installedPluginFixture) ExecutionDeclarations(_ context.Context, waker s
 			}
 			for _, version := range state.Versions {
 				if version.ID == installation.VersionID {
-					result = append(result, models.PluginExecutionDeclaration{ID: state.Plugin.ID, Name: state.Plugin.Name, VersionID: version.ID, Digest: version.Digest, TrustedAt: version.TrustedAt, ConfigurationRevision: state.Configuration.Revision})
+					configured := []string{}
+					for _, secret := range state.Configuration.Secrets {
+						if secret.Configured {
+							configured = append(configured, secret.Name)
+						}
+					}
+					result = append(result, models.PluginExecutionDeclaration{ID: state.Plugin.ID, Name: state.Plugin.Name, VersionID: version.ID, Digest: version.Digest, TrustedAt: version.TrustedAt, ConfigurationRevision: state.Configuration.Revision, AccountGeneration: state.Account.Generation, ContentPath: version.ContentPath, Package: version.Package, Values: state.Configuration.Values, ConfiguredSecrets: configured})
 				}
 			}
 		}
@@ -64,9 +70,7 @@ func (f installedPluginFixture) Version(_ context.Context, id string) (models.Pl
 }
 
 func (f installedPluginFixture) ExecutionConfiguration(ctx context.Context, id string) (models.PluginConfiguration, error) {
-	configuration, err := f.Configuration(ctx, id)
-	configuration.DeliveryMaterials = nil
-	return configuration, err
+	return f.Configuration(ctx, id)
 }
 
 func (f installedPluginFixture) Configuration(_ context.Context, id string) (models.PluginConfiguration, error) {
@@ -83,7 +87,7 @@ func executionPlugin(t *testing.T, data string, id string, skillText string, ser
 	source := t.TempDir()
 	manifest := map[string]any{"$schema": constants.PluginManifestSchema, "name": "office", "version": "1.0.0"}
 	if server {
-		manifest["extensions"] = map[string]any{constants.PluginExtensionNamespace: map[string]any{"bindings": []any{map[string]any{"server": "office", "target": "env", "name": "API_TOKEN", "value": "${TOKEN}"}}}}
+		manifest["extensions"] = map[string]any{constants.PluginExtensionNamespace: map[string]any{"schemaVersion": constants.PluginExtensionSchemaVersion, "configuration": map[string]any{"fields": []any{map[string]any{"key": "TOKEN", "secret": true, "required": true}}, "bindings": []any{map[string]any{"server": "office", "target": "env", "name": "API_TOKEN", "value": "${TOKEN}"}}}}}
 	}
 	body, _ := json.Marshal(manifest)
 	if err := os.WriteFile(filepath.Join(source, "plugin.json"), body, 0600); err != nil {
@@ -115,14 +119,18 @@ func executionPlugin(t *testing.T, data string, id string, skillText string, ser
 		t.Fatal(err)
 	}
 	version := models.PluginVersion{ID: id + "-v1", PluginID: id, Version: "1.0.0", ContentPath: relative, Digest: stage.Digest, Package: stage.Package, TrustedAt: 1}
-	return models.PluginState{Plugin: models.Plugin{ID: id, Name: "办公"}, Versions: []models.PluginVersion{version}, Installations: []models.WakerPlugin{{WakerID: "w1", PluginID: id, VersionID: version.ID, Enabled: true}}, Configuration: models.PluginConfiguration{PluginID: id, Revision: 3, Values: map[string]string{}, Secrets: []models.MCPSecretDefinition{{Name: "TOKEN", Value: "private-token", Configured: true}}}}
+	secrets := []models.MCPSecretDefinition{}
+	if server {
+		secrets = append(secrets, models.MCPSecretDefinition{Name: "TOKEN", Value: "private-token", Configured: true})
+	}
+	return models.PluginState{Plugin: models.Plugin{ID: id, Name: "办公"}, Versions: []models.PluginVersion{version}, Installations: []models.WakerPlugin{{WakerID: "w1", PluginID: id, VersionID: version.ID, Enabled: true}}, Configuration: models.PluginConfiguration{PluginID: id, Revision: 3, Values: map[string]string{}, Secrets: secrets}}
 }
 
 func TestPluginAdmissionPinsResourcesAndDoesNotSelectEveryComponent(t *testing.T) {
 	data := t.TempDir()
 	state := executionPlugin(t, data, "p1", "use office", true)
 	s := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data, pluginLauncher: "/core"}
-	detection := agentapi.DetectionResult{State: agentapi.DetectionStateReady, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
+	detection := agentapi.DetectionResult{State: agentapi.DetectionStateReady, Runtime: agentapi.RuntimeSummary{ID: "kimi", BaseRuntimeID: "kimi", SkillDirectoryName: ".agents"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
 	prepared, err := s.preparePlugins(context.Background(), "w1", pendingMessage{message: userMessage{PluginIDs: []string{"p1"}}}, detection)
 	if err != nil {
 		t.Fatal(err)
@@ -148,6 +156,40 @@ func TestPluginAdmissionPinsResourcesAndDoesNotSelectEveryComponent(t *testing.T
 	}
 }
 
+func TestPluginResourcesSurviveFailedProbeWithoutReplacingSessionIdentity(t *testing.T) {
+	data := t.TempDir()
+	state := executionPlugin(t, data, "p1", "use office", true)
+	core := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data, pluginLauncher: "/core"}
+	request := pendingMessage{message: userMessage{PluginIDs: []string{"p1"}}}
+	detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{ID: "kimi", BaseRuntimeID: "kimi", SkillDirectoryName: ".agents"}, State: agentapi.DetectionStateReady, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true, agentapi.CapabilityMCPStreamableHTTP: true}}
+	ready, err := core.freezePluginResources(t.Context(), "w1", request, detection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	detection.State, detection.Capabilities = agentapi.DetectionStateUnavailable, nil
+	failed, err := core.freezePluginResources(t.Context(), "w1", request, detection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.key != ready.key {
+		t.Error("diagnostic probe changed immutable resource identity")
+	}
+	selected, err := core.selectNativePluginSkills(t.Context(), failed)
+	if err != nil || len(selected) != 1 || selected[0].Name != "office" {
+		t.Fatalf("probe failure lost declared plugin skill: %+v %v", selected, err)
+	}
+	actual, err := core.acquirePluginResources(t.Context(), failed)
+	if actual.release != nil {
+		defer actual.release()
+	}
+	if err != nil || len(actual.skills) != 1 || len(actual.connectors) != 1 {
+		t.Fatalf("probe failure lost plugin resources: %+v %v", actual, err)
+	}
+	if actual.connectors[0].Transport != constants.MCPTransportStdio || actual.connectors[0].Command != "/core" {
+		t.Fatalf("plugin connector was not delivered through its configured launcher: %+v", actual.connectors[0])
+	}
+}
+
 func TestPluginTargetDigestReusesVerifiedSourceOnlyForSameRoot(t *testing.T) {
 	digest := "verified-source-digest"
 	root := filepath.Join(t.TempDir(), "removed-after-verification")
@@ -167,7 +209,7 @@ func TestPluginSkillCollisionDeduplicatesOnlyEqualContent(t *testing.T) {
 	b := executionPlugin(t, data, "b", "second", false)
 	b.Configuration.Secrets = nil
 	s := &service{pluginController: installedPluginFixture{states: []models.PluginState{a, b}}, skillDataDirectory: data}
-	detection := agentapi.DetectionResult{State: agentapi.DetectionStateReady, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
+	detection := agentapi.DetectionResult{State: agentapi.DetectionStateReady, Runtime: agentapi.RuntimeSummary{ID: "kimi", BaseRuntimeID: "kimi", SkillDirectoryName: ".agents"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
 	result, err := s.preparePlugins(context.Background(), "w1", pendingMessage{}, detection)
 	if err != nil {
 		t.Fatal(err)
@@ -181,22 +223,11 @@ func TestPluginSkillCollisionDeduplicatesOnlyEqualContent(t *testing.T) {
 	}
 }
 
-func TestPluginRetryRejectsChangedConfiguration(t *testing.T) {
-	data := t.TempDir()
-	state := executionPlugin(t, data, "p1", "use office", false)
-	state.Configuration.Secrets = nil
-	s := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data}
-	_, err := s.preparePlugins(context.Background(), "w1", pendingMessage{retry: true, pluginSnapshots: []plugins.Snapshot{{ID: "p1", VersionID: "p1-v1", ConfigurationRevision: 2}}}, agentapi.DetectionResult{})
-	if !errors.Is(err, status_error.PluginConfigurationConflict) {
-		t.Fatalf("retry silently changed config: %v", err)
-	}
-}
-
 func TestPluginRestrictedEntryFiltersMCPAndRejectsProviderCLI(t *testing.T) {
 	data := t.TempDir()
 	state := executionPlugin(t, data, "p1", "use office", true)
 	s := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data, pluginLauncher: "/core"}
-	detection := agentapi.DetectionResult{State: agentapi.DetectionStateReady, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
+	detection := agentapi.DetectionResult{State: agentapi.DetectionStateReady, Runtime: agentapi.RuntimeSummary{ID: "kimi", BaseRuntimeID: "kimi", SkillDirectoryName: ".agents"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
 	empty := []string{}
 	result, err := s.preparePlugins(context.Background(), "w1", pendingMessage{allowedConnectorIDs: &empty}, detection)
 	if err != nil {
@@ -211,10 +242,12 @@ func TestPluginRestrictedEntryFiltersMCPAndRejectsProviderCLI(t *testing.T) {
 	state.Configuration.Secrets = nil
 	s.pluginController = installedPluginFixture{states: []models.PluginState{state}}
 	result, err = s.preparePlugins(context.Background(), "w1", pendingMessage{allowedConnectorIDs: &empty}, detection)
-	if err != nil {
-		t.Fatal(err)
+	if !errors.Is(err, status_error.PluginManifestInvalid) {
+		t.Fatal("legacy contract was not rejected", err)
 	}
-	result.release()
+	if result.release != nil {
+		result.release()
+	}
 	if len(result.skills) > 0 || len(result.environment) > 0 {
 		t.Fatal("restricted entry received CLI skills or provider environment")
 	}
@@ -227,8 +260,7 @@ func TestPluginIntentAndVersionSurviveAdmissionAndHistory(t *testing.T) {
 	data := t.TempDir()
 	state := executionPlugin(t, data, "p1", "", true)
 	state.Installations[0].WakerID = "waker-1"
-	runtime := &fakeRuntime{}
-	manager := newMessageTestService(t, t.TempDir(), runtime, messageTestOptions{plugins: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data})
+	manager := newMessageTestService(t, t.TempDir(), messageTestOptions{plugins: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data})
 	manager.execution.(*service).pluginLauncher = "/core"
 	intent := WorkIntent{ClientRequestID: "plugin-intent", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}}, Input: WorkInput{Actor: "user", Content: "整理文档", PluginIDs: []string{"p1"}}, Options: WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: agentapi.PermissionLevelDefault}}
 	accepted, err := manager.execution.Start(context.Background(), intent)
@@ -243,14 +275,6 @@ func TestPluginIntentAndVersionSurviveAdmissionAndHistory(t *testing.T) {
 	if len(snapshot.Resources) < 1 || len(snapshot.Resources[0].Plugins) != 1 || snapshot.Resources[0].Plugins[0].VersionID != "p1-v1" {
 		t.Fatalf("history lost plugin snapshot: %+v", snapshot.Resources)
 	}
-	records, err := manager.execution.(*service).journal.ReadRecords(accepted.Chat.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	recorded, _, err := executionFromRecords(records, accepted.Execution.ID)
-	if err != nil || len(recorded.PluginResources) != 1 || recorded.PluginResources[0].ConfigurationRevision != 3 {
-		t.Fatalf("execution lost immutable resources: %+v %v", recorded, err)
-	}
 	replay, err := manager.execution.Start(context.Background(), intent)
 	if err != nil || replay.Chat.ID != accepted.Chat.ID {
 		t.Fatalf("retry mismatch: %+v %v", replay, err)
@@ -259,8 +283,8 @@ func TestPluginIntentAndVersionSurviveAdmissionAndHistory(t *testing.T) {
 	if _, err = manager.execution.Start(context.Background(), intent); !errors.Is(err, status_error.CreateRequestConflict) {
 		t.Fatalf("plugin intent absent from idempotency hash: %v", err)
 	}
-	if len(runtime.requests) != 1 || !strings.Contains(runtime.requests[0].Message.Text, "p1") {
-		t.Fatalf("explicit intent missing: %+v", runtime.requests)
+	if len(manager.nativeCalls(t, "turn/start")) != 1 || !strings.Contains(string(manager.nativeCalls(t, "turn/start")[0]), "p1") {
+		t.Fatalf("explicit intent missing from native frame: %+v", manager.nativeCalls(t, "turn/start"))
 	}
 }
 
@@ -272,7 +296,7 @@ func TestDeduplicatedPluginSkillKeepsLeasedImmutableSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	derived := agentapi.Skill{Name: "office", Path: filepath.Join(root, "skills", "office")}
+	derived := agentapi.Skill{Name: "office", Path: filepath.Join(root, "skills", "office"), Digest: version.Package.Skills[0].Digest}
 	content, err := os.ReadFile(filepath.Join(derived.Path, "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
@@ -281,14 +305,17 @@ func TestDeduplicatedPluginSkillKeepsLeasedImmutableSource(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(independent, "SKILL.md"), content, 0600); err != nil {
 		t.Fatal(err)
 	}
-	merged, err := mergePluginSkills([]agentapi.Skill{{Name: "office", Path: independent}}, []agentapi.Skill{derived})
+	if err := os.Rename(independent, independent+"-offline"); err != nil {
+		t.Fatal(err)
+	}
+	merged, err := mergePluginSkills([]agentapi.Skill{{Name: "office", Path: independent, Digest: derived.Digest}}, []agentapi.Skill{derived})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(merged) != 1 || merged[0].Path != derived.Path {
 		t.Fatalf("dedup lost selection or immutable path: %+v", merged)
 	}
-	if err := os.RemoveAll(independent); err != nil {
+	if err := os.RemoveAll(independent + "-offline"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(merged[0].Path, "SKILL.md")); err != nil {
@@ -302,7 +329,11 @@ func TestIndependentSkillDuplicatesUseTheSameContentRule(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(root, "SKILL.md"), []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		return agentapi.Skill{Name: "same", Path: root}
+		digest, err := plugins.ContentDigest(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return agentapi.Skill{Name: "same", Path: root, Digest: digest}
 	}
 	first, second := makeSkill("same body"), makeSkill("same body")
 	merged, err := mergePluginSkills([]agentapi.Skill{first, second}, nil)
@@ -358,7 +389,7 @@ func TestPluginAdmissionPreservesLegacyNestedPackageRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data, pluginLauncher: "/core"}
-	detection := agentapi.DetectionResult{State: agentapi.DetectionStateReady, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
+	detection := agentapi.DetectionResult{State: agentapi.DetectionStateReady, Runtime: agentapi.RuntimeSummary{ID: "kimi", BaseRuntimeID: "kimi", SkillDirectoryName: ".agents"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
 	prepared, err := s.preparePlugins(context.Background(), "w1", pendingMessage{message: userMessage{PluginIDs: []string{"legacy"}}}, detection)
 	if err != nil {
 		t.Fatal(err)
@@ -379,74 +410,6 @@ func TestPluginAdmissionPreservesLegacyNestedPackageRoot(t *testing.T) {
 	}
 }
 
-func TestClaudeNativePluginDoesNotAlsoProjectSkills(t *testing.T) {
-	data := t.TempDir()
-	source := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(source, ".claude-plugin"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(source, ".claude-plugin/plugin.json"), []byte(`{"name":"native","version":"2"}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(source, "skills/probe"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(source, "skills/probe/SKILL.md"), []byte("---\nname: probe\ndescription: Probe native loading\n---\nProbe"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	stage, err := plugins.Stage(filepath.Join(data, "plugins/staging"), source)
-	if err != nil {
-		t.Fatal(err)
-	}
-	root, err := plugins.CopyContent(filepath.Join(data, "plugins/content"), stage.Root, stage.Digest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	relative, _ := filepath.Rel(data, root)
-	version := models.PluginVersion{ID: "v", PluginID: "p", Version: "2", Digest: stage.Digest, ContentPath: relative, Package: stage.Package, TrustedAt: 1}
-	state := models.PluginState{Plugin: models.Plugin{ID: "p"}, Versions: []models.PluginVersion{version}, Installations: []models.WakerPlugin{{WakerID: "w", PluginID: "p", VersionID: "v", Enabled: true}}, Configuration: models.PluginConfiguration{Values: map[string]string{}}}
-	manager := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data}
-	detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: agentapi.RuntimeIDClaude}, Version: "2.1.159", Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
-	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{}, detection)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer prepared.release()
-	if len(prepared.native) != 1 || len(prepared.skills) != 0 || len(prepared.connectors) != 0 {
-		t.Fatalf("duplicate or missing native delivery: %+v", prepared)
-	}
-	retryDetection := detection
-	retryDetection.Version = ""
-	if replay, err := manager.preparePlugins(context.Background(), "w", pendingMessage{pluginSnapshots: prepared.snapshots}, retryDetection); err == nil {
-		replay.release()
-		t.Fatal("native retry silently became Skill projection")
-	}
-	if err := os.WriteFile(filepath.Join(data, "plugins/native"), []byte("block target generation"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	codex := detection
-	codex.Runtime.BaseRuntimeID = agentapi.RuntimeIDCodex
-	codex.Version = "0.161.0"
-	if fallback, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, codex); err == nil {
-		fallback.release()
-		t.Fatal("native preparation failure silently became Skill projection")
-	}
-
-}
-
-func TestNativeScopeTracksContentAndIgnoresOrdering(t *testing.T) {
-	a := plugins.Snapshot{ID: "a", VersionID: "v1", Delivery: "native", TargetDigest: "one"}
-	b := plugins.Snapshot{ID: "b", VersionID: "v2", Delivery: "native", TargetDigest: "two"}
-	if nativePluginScope([]plugins.Snapshot{a, b}) != nativePluginScope([]plugins.Snapshot{b, a}) {
-		t.Fatal("reordering changed native scope")
-	}
-	changed := a
-	changed.TargetDigest = "changed"
-	if nativePluginScope([]plugins.Snapshot{a}) == nativePluginScope([]plugins.Snapshot{changed}) || nativePluginScope([]plugins.Snapshot{a}) == nativePluginScope(nil) {
-		t.Fatal("native content change kept old session scope")
-	}
-}
-
 func TestUnknownOrOlderNativeCLIUsesProjection(t *testing.T) {
 	for _, item := range []struct {
 		// cli 是实际目标。
@@ -462,71 +425,59 @@ func TestUnknownOrOlderNativeCLIUsesProjection(t *testing.T) {
 	}
 }
 
-func TestNativeTargetConfigurationIsValidatedAndOnlySelectedSecretsInjected(t *testing.T) {
-	data, source := t.TempDir(), t.TempDir()
-	write := func(path, content string) {
-		t.Helper()
-		path = filepath.Join(source, path)
-		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write(".codex-plugin/plugin.json", `{"name":"logical","version":"1"}`)
-	write(".neuxally/integration.json", `{"nativePlugins":{"codex":{"path":"codex"},"claude":{"path":"claude"}}}`)
-	write("codex/.codex-plugin/plugin.json", `{"name":"target","version":"1","mcpServers":{"service":{"type":"http","url":"https://example.invalid/mcp"}}}`)
-	write("claude/.claude-plugin/plugin.json", `{"name":"target","version":"1"}`)
-	write("claude/.mcp.json", `{"service":{"type":"http","url":"https://example.invalid/mcp","headers":{"Authorization":"Bearer ${TARGET_TOKEN}"}}}`)
-	stage, err := plugins.Stage(filepath.Join(data, "plugins/staging"), source)
-	if err != nil {
-		t.Fatal(err)
-	}
-	root, err := plugins.CopyContent(filepath.Join(data, "plugins/content"), stage.Root, stage.Digest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	relative, _ := filepath.Rel(data, root)
-	version := models.PluginVersion{ID: "v", PluginID: "p", Version: "1", Digest: stage.Digest, ContentPath: relative, Package: stage.Package, TrustedAt: 1}
-	state := models.PluginState{Plugin: models.Plugin{ID: "p"}, Versions: []models.PluginVersion{version}, Installations: []models.WakerPlugin{{WakerID: "w", PluginID: "p", VersionID: "v", Enabled: true}}, Configuration: models.PluginConfiguration{Values: map[string]string{}}}
-	manager := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data}
-	detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: agentapi.RuntimeIDCodex}, Version: "0.161.0"}
-	request := pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}
-	prepared, err := manager.preparePlugins(context.Background(), "w", request, detection)
-	if err != nil {
-		t.Fatalf("unrelated Claude required config blocked Codex: %v", err)
-	}
-	prepared.release()
-	if len(prepared.native) != 1 || prepared.environment["TARGET_TOKEN"] != "" {
-		t.Fatalf("unexpected Codex delivery: %+v", prepared)
-	}
-	detection.Runtime.BaseRuntimeID = agentapi.RuntimeIDClaude
-	detection.Version = "2.1.159"
-	if result, err := manager.preparePlugins(context.Background(), "w", request, detection); err == nil {
-		result.release()
-		t.Fatal("target missing secret accepted")
-	}
-	state.Configuration.Secrets = []models.MCPSecretDefinition{{Name: "TARGET_TOKEN", Value: "configured-secret", Configured: true}}
-	manager.pluginController = installedPluginFixture{states: []models.PluginState{state}}
-	prepared, err = manager.preparePlugins(context.Background(), "w", request, detection)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer prepared.release()
-	if len(prepared.native) != 1 || len(prepared.connectors) != 0 || prepared.environment["TARGET_TOKEN"] != "configured-secret" {
-		t.Fatalf("target native secret not privately injected: %+v", prepared)
-	}
-}
-
-func TestNativeConfigurationRejectsHostAndModelIdentityKeys(t *testing.T) {
-	for _, key := range []string{"HOME", "CODEX_HOME", "PATH", "NODE_OPTIONS", "ALLY_EXECUTION_ID", "ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY", "GEMINI_API_KEY", "XDG_CONFIG_HOME", "USERPROFILE"} {
-		if nativeConfigurationKeyAllowed(key) {
-			t.Fatalf("host environment override accepted: %s", key)
-		}
-	}
-	if !nativeConfigurationKeyAllowed("GITHUB_PERSONAL_ACCESS_TOKEN") {
-		t.Fatal("target credential unexpectedly rejected")
+func TestPluginConfigurationIsValidatedAndOnlyBoundSecretsInjected(t *testing.T) {
+	for _, cli := range []string{"codex", "claude"} {
+		t.Run(cli, func(t *testing.T) {
+			data, source := t.TempDir(), t.TempDir()
+			manifest := `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"configured","version":"1","extensions":{"com.neuxbot":{"schemaVersion":1,"configuration":{"fields":[{"key":"TARGET_TOKEN","secret":true,"required":true},{"key":"UNUSED_TOKEN","secret":true}],"bindings":[{"server":"service","target":"header","name":"Authorization","value":"Bearer ${TARGET_TOKEN}"}]}}}}`
+			if err := os.WriteFile(filepath.Join(source, "plugin.json"), []byte(manifest), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(source, "mcp.json"), []byte(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"service":{"type":"streamable-http","url":"https://example.invalid/mcp"}}}`), 0600); err != nil {
+				t.Fatal(err)
+			}
+			stage, err := plugins.Stage(filepath.Join(data, "plugins/staging"), source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			root, err := plugins.CopyContent(filepath.Join(data, "plugins/content"), stage.Root, stage.Digest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			relative, _ := filepath.Rel(data, root)
+			version := models.PluginVersion{ID: "v", PluginID: "p", Version: "1", Digest: stage.Digest, ContentPath: relative, Package: stage.Package, TrustedAt: 1}
+			state := models.PluginState{Plugin: models.Plugin{ID: "p"}, Versions: []models.PluginVersion{version}, Installations: []models.WakerPlugin{{WakerID: "w", PluginID: "p", VersionID: "v", Enabled: true}}, Configuration: models.PluginConfiguration{Values: map[string]string{}}}
+			manager := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data}
+			detection := authenticatedPluginDetection(cli, map[string]string{"codex": "0.161.0", "claude": "2.1.159"}[cli])
+			request := pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}
+			if result, err := manager.preparePlugins(context.Background(), "w", request, detection); !errors.Is(err, status_error.PluginNotReady) {
+				if result.release != nil {
+					result.release()
+				}
+				t.Fatal("missing required secret accepted", err)
+			}
+			state.Configuration.Secrets = []models.MCPSecretDefinition{{Name: "TARGET_TOKEN", Value: "configured-secret", Configured: true}, {Name: "UNUSED_TOKEN", Value: "unused-secret", Configured: true}}
+			manager.pluginController = installedPluginFixture{states: []models.PluginState{state}}
+			prepared, err := manager.preparePlugins(context.Background(), "w", request, detection)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer prepared.release()
+			if len(prepared.connectors) != 1 || len(prepared.environment) != 0 {
+				t.Fatal("explicit configuration binding did not use scoped projection")
+			}
+			headers := prepared.connectors[0].Headers
+			if len(headers) != 1 || headers[0].Name != "Authorization" || headers[0].Value != "Bearer configured-secret" {
+				t.Fatal("only the declared secret should reach its MCP header")
+			}
+			encoded, _ := json.Marshal(prepared.snapshots)
+			if strings.Contains(string(encoded), "configured-secret") || strings.Contains(string(encoded), "unused-secret") {
+				t.Fatal("snapshot leaked private configuration")
+			}
+			if err := plugins.VerifyContent(root, version.Digest); err != nil {
+				t.Fatal("configuration modified immutable source", err)
+			}
+		})
 	}
 }
 
@@ -539,7 +490,7 @@ func TestPluginAdmissionRejectsLegacyProviderWithoutDeliveringComponents(t *test
 			raw, _ := json.Marshal(map[string]any{"provider": provider})
 			state.Versions[0].Package.Manifest.Extensions = map[string]json.RawMessage{constants.PluginExtensionNamespace: raw}
 			s := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data}
-			detection := agentapi.DetectionResult{State: agentapi.DetectionStateReady, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
+			detection := agentapi.DetectionResult{State: agentapi.DetectionStateReady, Runtime: agentapi.RuntimeSummary{ID: "kimi", BaseRuntimeID: "kimi", SkillDirectoryName: ".agents"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
 			result, err := s.preparePlugins(context.Background(), "w1", pendingMessage{message: userMessage{PluginIDs: []string{"legacy"}}}, detection)
 			if !errors.Is(err, status_error.PluginManifestInvalid) {
 				t.Fatalf("legacy provider accepted: %v", err)
@@ -548,10 +499,12 @@ func TestPluginAdmissionRejectsLegacyProviderWithoutDeliveringComponents(t *test
 				t.Fatalf("legacy capability delivered: %+v", result)
 			}
 			result, err = s.preparePlugins(context.Background(), "w1", pendingMessage{}, detection)
-			if err != nil || len(result.snapshots) != 0 {
-				t.Fatalf("automatic legacy capability delivered: %+v %v", result, err)
+			if !errors.Is(err, status_error.PluginManifestInvalid) || len(result.snapshots) != 0 || len(result.skills) != 0 || len(result.connectors) != 0 || len(result.environment) != 0 {
+				t.Fatalf("automatic legacy capability was not rejected: %+v %v", result, err)
 			}
-			result.release()
+			if result.release != nil {
+				result.release()
+			}
 		})
 	}
 }
@@ -561,21 +514,19 @@ func TestFreezePluginResourcesDefersContentPreparationAndPinsConfiguration(t *te
 	state := executionPlugin(t, data, "p1", "use office", false)
 	state.Configuration.Secrets = nil
 	s := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data}
-	detection := agentapi.DetectionResult{State: agentapi.DetectionStateReady, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
+	detection := agentapi.DetectionResult{State: agentapi.DetectionStateReady, Runtime: agentapi.RuntimeSummary{ID: "kimi", BaseRuntimeID: "kimi", SkillDirectoryName: ".agents"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
 	plan, err := s.freezePluginResources(context.Background(), "w1", pendingMessage{}, detection)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 冻结之后的仓储变动不能改变即将取得的同一个资源范围。
-	state.Configuration.Revision++
+	// 尚未接纳的冷准备必须重核当前安装，不能继续取得已经停用的版本。
 	state.Installations[0].Enabled = false
 	prepared, err := s.acquirePluginResources(context.Background(), plan)
-	if err != nil {
-		t.Fatal(err)
+	if prepared.release != nil {
+		defer prepared.release()
 	}
-	defer prepared.release()
-	if len(prepared.snapshots) != 1 || prepared.snapshots[0].ConfigurationRevision != 3 {
-		t.Fatalf("frozen resource changed: %+v", prepared.snapshots)
+	if !errors.Is(err, status_error.PluginVersionConflict) || len(prepared.snapshots) != 0 {
+		t.Fatalf("cold preparation acquired a disabled installation: %+v %v", prepared.snapshots, err)
 	}
 	if err := os.RemoveAll(filepath.Join(data, state.Versions[0].ContentPath)); err != nil {
 		t.Fatal(err)
@@ -611,8 +562,8 @@ func TestHotPluginDeclarationsIgnoreManagementPayloads(t *testing.T) {
 	if err := db.Create(&versions).Error; err != nil {
 		t.Fatal(err)
 	}
-	// 连当前版本包和启用插件的配置都故意不可解码，声明仍只能读固定列。
-	if err := db.Model(&models.PluginVersion{}).Where("plugin_id = ?", "active").Update("package", "invalid-package-json").Error; err != nil {
+	// 未选历史版本不可解码，当前版本只读取目标与组件声明。
+	if err := db.Model(&models.PluginVersion{}).Where("plugin_id = ? AND id <> ?", "active", "pinned").Update("package", "invalid-package-json").Error; err != nil {
 		t.Fatal(err)
 	}
 	installations := []models.WakerPlugin{{ID: "mine", PluginID: "active", VersionID: "pinned", WakerID: "w1", Enabled: true}, {ID: "off", PluginID: "disabled", VersionID: "disabled-version", WakerID: "w1", Enabled: false}}
@@ -626,7 +577,15 @@ func TestHotPluginDeclarationsIgnoreManagementPayloads(t *testing.T) {
 		if err := db.Create(&models.PluginConfiguration{PluginID: id, Revision: 3, Values: map[string]string{}, Secrets: []models.MCPSecretDefinition{}}).Error; err != nil {
 			t.Fatal(err)
 		}
-		if err := db.Model(&models.PluginConfiguration{}).Where("plugin_id = ?", id).Updates(map[string]any{"values": "invalid-values-json", "secrets": "invalid-secret-json", "delivery_materials": "invalid-material-json"}).Error; err != nil {
+		if err := db.Model(&models.PluginConfiguration{}).Where("plugin_id = ?", id).Updates(map[string]any{"secrets": `[{"name":"TOKEN","configured":true,"ciphertext":"damaged"}]`, "values": `{}`}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, id := range []string{"active", "disabled"} {
+		if err := db.Create(&models.PluginAccount{PluginID: id, Generation: 7}).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Model(&models.PluginAccount{}).Where("plugin_id = ?", id).Update("delivery_materials", "invalid-material-json").Error; err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -638,7 +597,7 @@ func TestHotPluginDeclarationsIgnoreManagementPayloads(t *testing.T) {
 		}
 		queries++
 		rows[tx.Statement.Table] += tx.RowsAffected
-		for _, forbidden := range []string{"package", "values", "secrets", "delivery_materials", "avatar"} {
+		for _, forbidden := range []string{"package", "secrets", "delivery_materials", "avatar"} {
 			if len(tx.Statement.Selects) == 0 || slices.Contains(tx.Statement.Selects, forbidden) {
 				t.Errorf("hot declaration reads management payload: table=%s selects=%v", tx.Statement.Table, tx.Statement.Selects)
 			}
@@ -656,10 +615,13 @@ func TestHotPluginDeclarationsIgnoreManagementPayloads(t *testing.T) {
 	if !slices.Equal(frozen.pluginIDs, []string{"active"}) || len(frozen.selected) != 1 || frozen.selected[0].Name != "办公" {
 		t.Fatalf("wrong enabled fixed resources: %+v", frozen)
 	}
-	if len(frozen.declarations) != 1 || frozen.declarations[0] != (models.PluginExecutionDeclaration{ID: "active", Name: "办公", VersionID: "pinned", Digest: "fixed-digest", TrustedAt: 7, ConfigurationRevision: 3}) {
+	if len(frozen.declarations) != 1 || frozen.declarations[0].VersionID != "pinned" || frozen.declarations[0].Digest != "fixed-digest" || frozen.declarations[0].TrustedAt != 7 || frozen.declarations[0].ConfigurationRevision != 3 || frozen.declarations[0].AccountGeneration != 7 {
 		t.Fatalf("static declaration lost fixed version, trust or revision: %+v", frozen.declarations)
 	}
-	if queries != 4 || rows["waker_plugins"] != 1 || rows["plugin_versions"] != 1 || rows["plugins"] != 1 || rows["plugin_configurations"] != 1 || len(rows) != 4 {
+	if !slices.Equal(frozen.declarations[0].ConfiguredSecrets, []string{"TOKEN"}) {
+		t.Fatalf("hot declaration lost configured secret presence: %+v", frozen.declarations[0])
+	}
+	if queries != 5 || rows["waker_plugins"] != 1 || rows["plugin_versions"] != 1 || rows["plugins"] != 1 || rows["plugin_configurations"] != 1 || rows["plugin_accounts"] != 1 || len(rows) != 5 {
 		t.Fatalf("hot declaration expanded management data: queries=%d rows=%v", queries, rows)
 	}
 	if err := db.Model(&models.PluginConfiguration{}).Where("plugin_id = ?", "active").Update("revision", 4).Error; err != nil {
@@ -689,7 +651,8 @@ func TestColdPluginResourcesRejectConfigurationChangedAfterDeclaration(t *testin
 		}
 	}
 	core := &service{pluginController: controllers.NewPluginController(db), skillDataDirectory: data}
-	detection := agentapi.DetectionResult{Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
+
+	detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{ID: "kimi", BaseRuntimeID: "kimi", SkillDirectoryName: ".agents"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
 	frozen, err := core.freezePluginResources(context.Background(), "w1", pendingMessage{}, detection)
 	if err != nil {
 		t.Fatal(err)
@@ -703,6 +666,62 @@ func TestColdPluginResourcesRejectConfigurationChangedAfterDeclaration(t *testin
 	}
 	if !errors.Is(err, status_error.PluginConfigurationConflict) {
 		t.Fatalf("cold acquisition silently used changed configuration: %v", err)
+	}
+}
+
+func TestColdPluginResourcesRejectInstallationChangesBeforeAdmission(t *testing.T) {
+	for _, change := range []string{"disable", "uninstall", "switch-version"} {
+		t.Run(change, func(t *testing.T) {
+			database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "plugins.db"), Migrate: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			sqlDB, err := database.DB.DB()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = sqlDB.Close() })
+			data := t.TempDir()
+			state := executionPlugin(t, data, "p1", "fixed skill", false)
+			state.Configuration.Secrets = nil
+			for _, model := range []any{&state.Plugin, &state.Versions[0], &state.Installations[0], &state.Configuration} {
+				if err := database.DB.Create(model).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			controller := controllers.NewPluginController(database.DB)
+			core := &service{pluginController: controller, skillDataDirectory: data}
+			frozen, err := core.freezePluginResources(t.Context(), "w1", pendingMessage{}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{ID: "kimi", BaseRuntimeID: "kimi", SkillDirectoryName: ".agents"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch change {
+			case "disable":
+				err = controller.SetEnabled(t.Context(), "w1", "p1", false)
+			case "uninstall":
+				err = controller.Uninstall(t.Context(), "w1", "p1")
+			case "switch-version":
+				next := state.Versions[0]
+				next.ID, next.Version = "p1-v2", "2.0.0"
+				if err := database.DB.Create(&next).Error; err != nil {
+					t.Fatal(err)
+				}
+				err = controller.SwitchVersion(t.Context(), "w1", "p1", "p1-v1", "p1-v2")
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			actual, err := core.acquirePluginResources(t.Context(), frozen)
+			if actual.release != nil {
+				defer actual.release()
+			}
+			if !errors.Is(err, status_error.PluginVersionConflict) || len(actual.snapshots) != 0 {
+				t.Fatalf("stale pre-admission resource acquired: %+v %v", actual.snapshots, err)
+			}
+			if _, err := os.Stat(filepath.Join(data, "plugins", "data", "p1")); !os.IsNotExist(err) {
+				t.Fatalf("stale acquisition materialized plugin data: %v", err)
+			}
+		})
 	}
 }
 
@@ -723,6 +742,12 @@ func TestFrozenPluginResourceKeyUsesStableResourceFacts(t *testing.T) {
 	}
 	if first.key == "" || first.key != second.key {
 		t.Fatalf("same resources changed identity: %q %q", first.key, second.key)
+	}
+	a.Plugin.Name = "new display name"
+	s.pluginController = installedPluginFixture{states: []models.PluginState{a, b}}
+	labeled, err := s.freezePluginResources(context.Background(), "w1", pendingMessage{}, agentapi.DetectionResult{Diagnostics: []agentapi.Diagnostic{{Code: "catalog-only", Message: "changed diagnostic"}}})
+	if err != nil || labeled.key != first.key {
+		t.Fatalf("display metadata changed resource identity: %q %v", labeled.key, err)
 	}
 	b.Configuration.Revision++
 	s.pluginController = installedPluginFixture{states: []models.PluginState{a, b}}
@@ -755,4 +780,265 @@ func (m *service) preparePlugins(ctx context.Context, waker string, request pend
 		prepared.release()
 	}
 	return prepared, err
+}
+
+// TestNativePluginSkillSelectionIsReadOnly 防止接纳前技能预选创建实例目录或提前取得身份租约。
+func TestNativePluginSkillSelectionIsReadOnly(t *testing.T) {
+	data := t.TempDir()
+	state := executionPlugin(t, data, "p1", "use office", true)
+	core := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data, pluginLauncher: "/core"}
+	detection := agentapi.DetectionResult{State: agentapi.DetectionStateReady, Runtime: agentapi.RuntimeSummary{ID: "kimi", BaseRuntimeID: "kimi", SkillDirectoryName: ".agents"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
+	frozen, err := core.freezePluginResources(t.Context(), "w1", pendingMessage{message: userMessage{PluginIDs: []string{"p1"}}}, detection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 发布后的声明是热路径权威；源内容只在新的冷获取时重新核验。
+	source := filepath.Join(data, state.Versions[0].ContentPath)
+	if err := os.Rename(source, source+"-offline"); err != nil {
+		t.Fatal(err)
+	}
+	selected, err := core.selectNativePluginSkills(t.Context(), frozen)
+	if err != nil || len(selected) != 1 || selected[0].Name != "office" {
+		t.Fatalf("pre-admission skills = %+v %v", selected, err)
+	}
+	if _, err := os.Stat(filepath.Join(data, "plugins", "data", "p1")); !os.IsNotExist(err) {
+		t.Fatalf("read-only selection created plugin data: %v", err)
+	}
+	if err := os.Rename(source+"-offline", source); err != nil {
+		t.Fatal(err)
+	}
+	actual, err := core.acquirePluginResources(t.Context(), frozen)
+	if actual.release != nil {
+		defer actual.release()
+	}
+	selectedPath, pathErr := filepath.EvalSymlinks(selected[0].Path)
+	if err != nil || pathErr != nil || len(actual.skills) != 1 || selected[0].Name != actual.skills[0].Name || selected[0].Digest != actual.skills[0].Digest || !sameFilesystemPath(selectedPath, actual.skills[0].Path) {
+		t.Fatalf("preflight/acquisition skills differ: %+v %+v %v", selected, actual.skills, err)
+	}
+}
+
+func TestOptionalPluginDeclarationsSelectOnlyDeliverableStandardComponents(t *testing.T) {
+	for _, kind := range []string{"native-only", "missing-skill-support", "native-capable-standard"} {
+		t.Run(kind, func(t *testing.T) {
+			data := t.TempDir()
+			state := executionPlugin(t, data, "p1", "fixed skill", false)
+			state.Configuration.Secrets = nil
+			detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex", SkillDirectoryName: ".agents"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
+			want := 0
+			switch kind {
+			case "native-only":
+				state.Versions[0].Package.Format = "native-only"
+			case "native-capable-standard":
+				detection.Version = "0.161.0"
+				want = 1
+			case "missing-skill-support":
+				detection.Runtime.SkillDirectoryName = ""
+			}
+			core := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data}
+			frozen, err := core.freezePluginResources(t.Context(), "w1", pendingMessage{}, detection)
+			if err != nil {
+				t.Fatal(err)
+			}
+			selected, err := core.selectNativePluginSkills(t.Context(), frozen)
+			if err != nil || len(selected) != want {
+				t.Fatalf("optional standard skills = %+v, want %d: %v", selected, want, err)
+			}
+		})
+	}
+}
+
+// Account 为测试保留与配置读取分离的真实账号代次和材料边界。
+func (f installedPluginFixture) Account(_ context.Context, id string) (models.PluginAccount, error) {
+	for _, state := range f.states {
+		if state.Plugin.ID == id {
+			account := state.Account
+			account.PluginID = id
+			return account, nil
+		}
+	}
+	return models.PluginAccount{PluginID: id}, nil
+}
+
+// AccountGeneration 为测试提供不读取秘密的身份代次。
+func (f installedPluginFixture) AccountGeneration(ctx context.Context, id string) (int64, error) {
+	account, err := f.Account(ctx, id)
+	return account.Generation, err
+}
+
+func TestPluginAccountGenerationInvalidatesFrozenResources(t *testing.T) {
+	data := t.TempDir()
+	state := executionPlugin(t, data, "account-generation", "perform work", false)
+	state.Account = models.PluginAccount{PluginID: state.Plugin.ID, Generation: 1}
+	core := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data}
+	detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "kimi", SkillDirectoryName: ".agents"}}
+	request := pendingMessage{message: userMessage{PluginIDs: []string{state.Plugin.ID}}}
+	original, err := core.freezePluginResources(t.Context(), "w1", request, detection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := core.acquirePluginResources(t.Context(), original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prepared.release()
+	if len(prepared.snapshots) != 1 || prepared.snapshots[0].AccountGeneration != 1 {
+		t.Fatal("account generation was not frozen", prepared.snapshots)
+	}
+	state.Account.Generation = 2
+	core.pluginController = installedPluginFixture{states: []models.PluginState{state}}
+	next, err := core.freezePluginResources(t.Context(), "w1", request, detection)
+	if err != nil || next.key == original.key {
+		t.Fatal("changed account reused declaration", err)
+	}
+	if _, err := core.acquirePluginResources(t.Context(), original); !errors.Is(err, status_error.PluginAccountConflict) {
+		t.Fatal("cold acquisition accepted changed account", err)
+	}
+	state.Versions[0].Package.ContractVersion = ""
+	core.pluginController = installedPluginFixture{states: []models.PluginState{state}}
+	if _, err := core.preparePlugins(t.Context(), "w1", request, detection); !errors.Is(err, status_error.PluginPackageUnsupported) {
+		t.Fatal("old contract executed", err)
+	}
+}
+
+func TestNativeDirectoryRoutesExcludeOrdinarySkillsAndRespectRestrictions(t *testing.T) {
+	data := t.TempDir()
+	state := executionPlugin(t, data, "office-one", "fixed skill", false)
+	manager := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data}
+	for _, tc := range []struct {
+		// cli 是本次选定的 CLI。
+		cli string
+		// version 是已证实目录入口的版本或未知版本。
+		version string
+		// restricted 表示入口只允许列出的连接器。
+		restricted bool
+		// native 表示目标应作为实际原生目录交付。
+		native bool
+	}{{"cursor", "2026.11.05-86047df", false, true}, {"workbuddy", "2.181.0", false, true}, {"qoder", "1.1.83", false, true}, {"claude", "2.1.159", false, true}, {"cursor", "2026.11.05-86047df", true, false}, {"cursor", "unknown", false, false}, {"kimi", "2.0.2", false, false}} {
+		t.Run(tc.cli+tc.version+fmt.Sprint(tc.restricted), func(t *testing.T) {
+			req := pendingMessage{message: userMessage{PluginIDs: []string{"office-one"}}}
+			if tc.restricted {
+				req.allowedConnectorIDs = &[]string{}
+			}
+			detect := authenticatedPluginDetection(tc.cli, tc.version)
+			frozen, err := manager.freezePluginResources(t.Context(), "w1", req, detect)
+			if err != nil {
+				t.Fatal(err)
+			}
+			projected, err := manager.selectNativePluginSkills(t.Context(), frozen)
+			if err != nil {
+				t.Fatal(err)
+			}
+			actual, err := manager.acquirePluginResources(t.Context(), frozen)
+			if actual.release != nil {
+				defer actual.release()
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(actual.snapshots) != 1 {
+				t.Fatal(actual.snapshots)
+			}
+			snapshot := actual.snapshots[0]
+			wantProfile := tc.cli + "/skill-mcp"
+			if tc.native {
+				wantProfile = tc.cli
+			}
+			if snapshot.Runtime != tc.cli || snapshot.SourceDigest != state.Versions[0].Digest || snapshot.Profile != wantProfile {
+				t.Fatalf("wrong public delivery identity: %+v", snapshot)
+			}
+			native := snapshot.Delivery == constants.PluginDeliveryNative
+			if native != tc.native || (len(projected) == 0) != tc.native || (len(actual.skills) == 0) != tc.native {
+				t.Fatalf("native=%v preflight=%v leased skills=%v", native, projected, actual.skills)
+			}
+		})
+	}
+}
+
+func TestHotNativeDeclarationReusesMetadataWithoutOpeningSourceOrGeneratingTargets(t *testing.T) {
+	data := t.TempDir()
+	state := executionPlugin(t, data, "office", "fixed text", false)
+	service := &service{skillDataDirectory: data, pluginController: installedPluginFixture{states: []models.PluginState{state}}}
+	detect := authenticatedPluginDetection("cursor", "2026.11.05-86047df")
+	req := pendingMessage{message: userMessage{PluginIDs: []string{"office"}}}
+	initial, err := service.freezePluginResources(t.Context(), "w1", req, detect)
+	if err != nil {
+		t.Fatal(err)
+	}
+	material, err := service.acquirePluginResources(t.Context(), initial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer material.release()
+	if len(material.targets) != 1 {
+		t.Fatal("cold preparation did not generate a target")
+	}
+	paths := []string{filepath.Join(data, state.Versions[0].ContentPath), filepath.Join(data, "plugins", "targets")}
+	for _, path := range paths {
+		if err := os.Rename(path, path+"-offline"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 2; i++ {
+		hot, err := service.freezePluginResources(t.Context(), "w1", req, detect)
+		if err != nil || hot.key != initial.key {
+			t.Fatal("hot fingerprint changed", err)
+		}
+		skills, err := service.selectNativePluginSkills(t.Context(), hot)
+		if err != nil || len(skills) != 0 {
+			t.Fatalf("native selection reopened plugin data: %+v %v", skills, err)
+		}
+	}
+	for _, path := range paths {
+		if _, err := os.Lstat(path); !os.IsNotExist(err) {
+			t.Fatal("hot selection materialized files", err)
+		}
+	}
+}
+
+func TestNativeMCPIsRegisteredOnlyByItsOwningPlugin(t *testing.T) {
+	data, source := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "plugin.json"), []byte(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"network","version":"1.0.0"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "mcp.json"), []byte(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"service":{"type":"streamable-http","url":"https://example.invalid/mcp"}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	stage, err := plugins.Stage(filepath.Join(data, "plugins/staging"), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := plugins.CopyContent(filepath.Join(data, "plugins/content"), stage.Root, stage.Digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relative, _ := filepath.Rel(data, root)
+	version := models.PluginVersion{ID: "v", PluginID: "network", Version: "1.0.0", Digest: stage.Digest, ContentPath: relative, Package: stage.Package, TrustedAt: 1}
+	state := models.PluginState{Plugin: models.Plugin{ID: "network"}, Versions: []models.PluginVersion{version}, Installations: []models.WakerPlugin{{PluginID: "network", VersionID: "v", WakerID: "w", Enabled: true}}}
+	svc := &service{skillDataDirectory: data, pluginController: installedPluginFixture{states: []models.PluginState{state}}}
+	detection := authenticatedPluginDetection("cursor", "2026.11.05-86047df")
+	component := plugins.ComponentID("network", "mcp:service")
+	for _, restricted := range []bool{false, true} {
+		request := pendingMessage{message: userMessage{PluginIDs: []string{"network"}}}
+		if restricted {
+			request.allowedConnectorIDs = &[]string{component}
+		}
+		result, err := svc.preparePlugins(t.Context(), "w", request, detection)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer result.release()
+		if (len(result.targets) == 1) == restricted || (len(result.connectors) == 1) != restricted || len(result.snapshots) != 1 || !slices.Equal(result.snapshots[0].ComponentIDs, []string{component}) {
+			t.Fatalf("duplicate or missing MCP: targets=%d connectors=%d snapshot=%+v", len(result.targets), len(result.connectors), result.snapshots)
+		}
+	}
+}
+
+func TestPluginNativeEligibilityHonorsDeclaredProjectionFormat(t *testing.T) {
+	state := executionPlugin(t, t.TempDir(), "office", "Guide", false)
+	pkg := state.Versions[0].Package
+	pkg.Manifest.Name = "office.docs"
+	detection := authenticatedPluginDetection("grok", "1.0.45")
+	if nativePluginEligible("grok", detection.Version, pkg, pluginResourceSelection{}, detection) {
+		t.Fatal("selected a native route for a projection-only package name")
+	}
 }

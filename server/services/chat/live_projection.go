@@ -3,7 +3,6 @@ package chat
 import (
 	"context"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
@@ -26,11 +25,7 @@ func (m *service) catchUpLiveProjection(ctx context.Context, chatID string) erro
 		if err := ctx.Err(); err != nil {
 			return chatContextStatus(err)
 		}
-		sessions, err := m.queryIndexes.runtimeSessionController.ListByChat(ctx, chatID)
-		if err != nil {
-			return err
-		}
-		projection := currentProjection{chat: indexed, runtimeSessions: runtimeSessionsByID(sessions)}
+		projection := currentProjection{chat: indexed}
 		if err := applyProjectionTail(&projection, tail); err != nil {
 			return err
 		}
@@ -43,7 +38,8 @@ func (m *service) catchUpLiveProjection(ctx context.Context, chatID string) erro
 			if err := m.queryIndexes.chatController.AdvanceProjection(transactionContext, chatID, indexed.LatestSequence, map[string]any{
 				"title": current.Title, "active_execution_id": current.ActiveExecutionID,
 				"last_account_id": current.LastAccountID, "last_runtime_id": current.LastRuntimeID,
-				"last_model": current.LastModel, "last_reasoning": current.LastReasoning,
+				"last_model": current.LastModel, "last_reasoning": current.LastReasoning, "last_fast": current.LastFast,
+				"last_context_window":   current.LastContextWindow,
 				"last_permission_level": current.LastPermissionLevel,
 				"waiting_approval":      current.WaitingApproval, "pending_approvals": string(marshalData(current.PendingApprovals)),
 				"waiting_elicitation": current.WaitingElicitation, "pending_elicitations": string(marshalData(current.PendingElicitations)),
@@ -53,19 +49,6 @@ func (m *service) catchUpLiveProjection(ctx context.Context, chatID string) erro
 				"last_ended_execution_at":     current.LastEndedExecutionAt,
 			}); err != nil {
 				return err
-			}
-			for _, record := range tail {
-				if record.Type == constants.ChatEventTypeNativeSessionUpdated || record.Type == constants.ChatEventTypeNativeSessionCleared {
-					if err := m.queryIndexes.runtimeSessionController.DeleteByChat(transactionContext, chatID); err != nil {
-						return err
-					}
-					for _, session := range projection.runtimeSessions {
-						if err := m.queryIndexes.runtimeSessionController.Upsert(transactionContext, session); err != nil {
-							return err
-						}
-					}
-					break
-				}
 			}
 			return m.queryIndexes.publishResult(transactionContext, projection.result)
 		})

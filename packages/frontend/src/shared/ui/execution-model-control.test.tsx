@@ -1,10 +1,4 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState, type ComponentProps } from "react";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -40,6 +34,7 @@ function renderPicker(
     const [reasoning, setReasoning] = useState(
       overrides.selectedReasoning ?? "high",
     );
+    const [fast, setFast] = useState(overrides.fast);
     return (
       <ExecutionModelControl
         models={models}
@@ -52,6 +47,14 @@ function renderPicker(
             ?.name ?? (overrides.allowDefaultModel ? "默认模型" : "")
         }
         selectedReasoning={reasoning}
+        fast={fast}
+        onFastChange={
+          overrides.onFastChange &&
+          ((value) => {
+            overrides.onFastChange?.(value);
+            setFast(value);
+          })
+        }
         onModelChange={(value) => {
           onModelChange(value);
           setModel(value);
@@ -68,6 +71,17 @@ function renderPicker(
 }
 
 describe("执行模型与强度选择", () => {
+  it("目录不可用时仍可打开弹层手动探测", async () => {
+    const user = userEvent.setup();
+    const onRefresh = vi.fn();
+    renderPicker({ disabled: true, onRefresh });
+    await user.click(screen.getByTestId("composer-model-control"));
+    expect(onRefresh).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "刷新模型列表" }));
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("dialog")).toBeVisible();
+  });
+
   it.each([10, 11])("%i 个实际模型时仅超过十个显示搜索框", async (count) => {
     const user = userEvent.setup();
     renderPicker({
@@ -309,43 +323,23 @@ describe("执行模型与强度选择", () => {
     expect(onModelChange).not.toHaveBeenCalled();
   });
 
-  it.each(["high", ""])(
-    "单档位模型以满格展示并禁用滑条，选择值为 %s",
-    async (selectedReasoning) => {
+  it.each([false, true])(
+    "单档位不显示强度控件或最高强度效果，允许默认值为 %s",
+    async (allowDefaultReasoning) => {
       const user = userEvent.setup();
-      const { onReasoningChange } = renderPicker({
-        selectedReasoning,
+      renderPicker({
+        allowDefaultReasoning,
         reasoningOptions: [{ id: "high", name: "High" }],
       });
-      await user.click(screen.getByTestId("composer-model-control"));
-      const dialog = screen.getByRole("dialog", { name: "选择强度" });
-      const slider = within(dialog).getByRole("slider");
-      fireEvent.keyDown(slider, { key: "End" });
-      expect(onReasoningChange).not.toHaveBeenCalled();
-      expect(slider).toHaveAttribute("aria-valuetext", "High");
-      expect(slider).toHaveAttribute("aria-valuenow", "1");
-      expect(slider).toHaveAttribute("aria-valuemax", "1");
-      expect(dialog.querySelector('[data-slot="slider-range"]')).toHaveStyle({
-        right: "0%",
-      });
-      expect(screen.getByTestId("composer-model-control")).toHaveAttribute(
-        "data-effort-max",
-      );
+      const trigger = screen.getByTestId("composer-model-control");
+      expect(trigger).not.toHaveAttribute("data-effort-max");
+      expect(trigger).not.toHaveTextContent("High");
+      await user.click(trigger);
+      expect(screen.getByRole("radio", { name: "模型 B" })).toBeVisible();
+      expect(screen.queryByRole("slider")).not.toBeInTheDocument();
     },
   );
 
-  it("只有 On 开关时不显示满格或最高强度效果", async () => {
-    const user = userEvent.setup();
-    renderPicker({
-      selectedReasoning: "enabled",
-      reasoningOptions: [{ id: "enabled", name: "On (default)" }],
-    });
-    await user.click(screen.getByTestId("composer-model-control"));
-    expect(screen.getByRole("slider")).toHaveAttribute("aria-valuenow", "0");
-    expect(screen.getByTestId("composer-model-control")).not.toHaveAttribute(
-      "data-effort-max",
-    );
-  });
   it("执行配置的默认模型提交空值，返回强度面板且保持浮层", async () => {
     const user = userEvent.setup();
     const { onModelChange } = renderPicker({ allowDefaultModel: true });
@@ -413,4 +407,18 @@ it("表单入口有推理选项时也直接打开模型列表，选择后关闭"
   await user.click(screen.getByRole("radio", { name: "模型 B" }));
   expect(picker.onModelChange).toHaveBeenCalledWith("model-b");
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+it("无推理选项时 Fast 默认关闭，可在同一浮层开启和关闭", async () => {
+  const user = userEvent.setup();
+  const onFastChange = vi.fn();
+  renderPicker({ reasoningOptions: [], onFastChange });
+  await user.click(screen.getByTestId("composer-model-control"));
+  const fast = screen.getByRole("button", { name: "Fast", pressed: false });
+  await user.click(fast);
+  expect(fast).toHaveAttribute("aria-pressed", "true");
+  expect(onFastChange).toHaveBeenLastCalledWith(true);
+  await user.keyboard("[Space]");
+  expect(fast).toHaveAttribute("aria-pressed", "false");
+  expect(onFastChange).toHaveBeenLastCalledWith(false);
 });

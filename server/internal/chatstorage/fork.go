@@ -1,6 +1,7 @@
 package chatstorage
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -115,7 +116,7 @@ func (l *Layout) PublishForkLog(staging *Layout, chatID string) error {
 // CopyForkAttachment 复制单个受管附件，拒绝越界、软链接和目录。
 func CopyForkAttachment(sourceRoot, targetRoot, relative string) error {
 	relative = filepath.Clean(relative)
-	if filepath.IsAbs(relative) || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+	if filepath.IsAbs(relative) || !strings.HasPrefix(relative, constants.ExecutionWorkspaceAttachmentsDirectory+string(filepath.Separator)) || strings.ContainsRune(relative, 0) {
 		return status_error.MessageAttachmentInvalid
 	}
 	source := filepath.Join(sourceRoot, relative)
@@ -124,33 +125,70 @@ func CopyForkAttachment(sourceRoot, targetRoot, relative string) error {
 	if err != nil || rootErr != nil || filepath.Clean(resolved) != filepath.Join(canonicalRoot, relative) {
 		return status_error.MessageAttachmentInvalid
 	}
+	sourceInfo, err := os.Lstat(source)
+	if err != nil || !sourceInfo.Mode().IsRegular() {
+		return status_error.MessageAttachmentInvalid
+	}
 	input, err := os.Open(source)
 	if err != nil {
 		return status_error.MessageAttachmentInvalid
 	}
 	defer input.Close()
 	info, err := input.Stat()
-	if err != nil || !info.Mode().IsRegular() {
+	if err != nil || !info.Mode().IsRegular() || !os.SameFile(sourceInfo, info) {
 		return status_error.MessageAttachmentInvalid
 	}
 	target := filepath.Join(targetRoot, relative)
 	if err = os.MkdirAll(filepath.Dir(target), 0700); err != nil {
 		return status_error.ManagedWorkspaceError
 	}
-	// 同目录临时文件同步后原子替换，重试不会接受上一次部分复制的文件。
-	output, err := os.CreateTemp(filepath.Dir(target), "fork-attachment-*")
+	canonicalTarget, err := filepath.EvalSymlinks(targetRoot)
 	if err != nil {
 		return status_error.ManagedWorkspaceError
 	}
-	defer os.Remove(output.Name())
+	parentPath := filepath.Dir(target)
+	canonicalParent, err := filepath.EvalSymlinks(parentPath)
+	expectedParent := filepath.Join(canonicalTarget, filepath.Dir(relative))
+	if err != nil || filepath.Clean(canonicalParent) != filepath.Clean(expectedParent) {
+		return status_error.MessageAttachmentInvalid
+	}
+	parentInfo, err := os.Lstat(parentPath)
+	if err != nil || !parentInfo.IsDir() || parentInfo.Mode()&os.ModeSymlink != 0 {
+		return status_error.MessageAttachmentInvalid
+	}
+	parent, err := os.OpenRoot(parentPath)
+	if err != nil {
+		return status_error.ManagedWorkspaceError
+	}
+	defer parent.Close()
+	openedParent, err := parent.Stat(".")
+	if err != nil || !os.SameFile(parentInfo, openedParent) {
+		return status_error.MessageAttachmentInvalid
+	}
+	// 相对已打开父目录创建和替换，不再通过可被替换的原绝对路径写入。
+	temporary := "fork-attachment-" + rand.Text()
+	output, err := parent.OpenFile(temporary, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return status_error.ManagedWorkspaceError
+	}
+	defer parent.Remove(temporary)
 	_, copyErr := io.Copy(output, input)
 	syncErr := output.Sync()
 	closeErr := output.Close()
-	if errors.Join(copyErr, syncErr, closeErr) != nil {
+	currentSource, sourceErr := os.Lstat(source)
+	if errors.Join(copyErr, syncErr, closeErr, sourceErr) != nil || !os.SameFile(info, currentSource) {
+		return status_error.MessageAttachmentInvalid
+	}
+	if err := parent.Rename(temporary, filepath.Base(target)); err != nil {
 		return status_error.ManagedWorkspaceError
 	}
-	if os.Rename(output.Name(), target) != nil || syncRename(output.Name(), target) != nil {
+	directory, err := parent.Open(".")
+	if err != nil {
 		return status_error.ManagedWorkspaceError
 	}
+	if err := errors.Join(directory.Sync(), directory.Close()); err != nil {
+		return status_error.ManagedWorkspaceError
+	}
+
 	return nil
 }

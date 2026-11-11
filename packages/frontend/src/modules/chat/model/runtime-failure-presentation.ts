@@ -1,3 +1,7 @@
+import {
+  applicationErrorMessage,
+  type ErrorParameters,
+} from "@/shared/api/error-presentation";
 import { i18n } from "@/shared/i18n";
 
 export type RuntimeFailurePresentation = { message: string };
@@ -59,13 +63,24 @@ function runtimeFailureMessage(errorCode?: string): string {
 export function runtimeFailurePresentation(
   errorCode?: string,
   detail?: string,
+  params?: ErrorParameters,
+  messageSource?: string,
 ): RuntimeFailurePresentation {
+  const fallback = runtimeFailureMessage(errorCode);
   return {
-    message:
-      errorCode === "INPUT_TIMEOUT" ||
-      errorCode === "APPROVAL_TIMEOUT" ||
-      errorCode === "EVENT_BUDGET_EXCEEDED"
-        ? runtimeFailureMessage(errorCode)
-        : detail?.trim() || runtimeFailureMessage(errorCode),
+    message: applicationErrorMessage({
+      code: errorCode,
+      message: detail,
+      params,
+      messageSource: messageSource === "public" ? "public" : "localized",
+      fallback,
+    }),
   };
+}
+
+/** 旧原生分类与应用身份共用同一恢复判断。 */
+export function runtimeSessionMissing(errorCode?: string): boolean {
+  return (
+    errorCode === "SESSION_NOT_FOUND" || errorCode === "RuntimeSessionNotFound"
+  );
 }

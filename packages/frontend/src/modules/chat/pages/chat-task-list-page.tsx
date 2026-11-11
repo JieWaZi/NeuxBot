@@ -260,7 +260,7 @@ export function ChatTaskListPage() {
                   {t("renameTask")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  className="text-destructive"
+                  variant="destructive"
                   onSelect={() =>
                     setTaskAction({
                       chatId: item.id,

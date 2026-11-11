@@ -22,7 +22,6 @@ func TestHumanAnswerRequiresOriginalSnapshotCAS(t *testing.T) {
 	if err = answerHuman(context.Background(), d, command); err == nil {
 		t.Fatal("missing snapshot CAS accepted")
 	}
-	command.QuestionVersion = human.QuestionVersion
 	command.SnapshotDigest = "stale"
 	if err = answerHuman(context.Background(), d, command); err == nil {
 		t.Fatal("stale candidate snapshot accepted")

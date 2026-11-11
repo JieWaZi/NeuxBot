@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   afterAll,
@@ -13,10 +13,7 @@ import {
 import { delay, http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { client } from "@/shared/api/generated/client.gen";
-import {
-  integrationServiceOptions,
-  integrationServiceQueryKey,
-} from "@/shared/api/integration-service";
+import { integrationServiceOptions } from "@/shared/api/integration-service";
 import { MCPIntegrationSection } from "./mcp-integration-section";
 
 const origin = "http://mcp-integration.test";
@@ -222,7 +219,9 @@ it("缺失 MCP 状态时不把 API 可用解释为 MCP 开启", async () => {
     ),
   );
   show();
-  expect(await screen.findByText("状态未知")).toBeVisible();
+  expect(
+    await screen.findByText("未读到 MCP 开关配置，请重试读取。"),
+  ).toBeVisible();
   expect(mcpSwitch()).toBeDisabled();
   expect(mcpSwitch()).not.toBeChecked();
   expect(
@@ -239,7 +238,7 @@ it("首次加载保留 MCP 标签与禁用 Switch，内容使用骨架", async (
     }),
   );
   show();
-  expect(screen.getByRole("heading", { name: "MCP" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "启用 MCP" })).toBeVisible();
   expect(mcpSwitch()).toBeDisabled();
   expect(
     screen.getByRole("status", { name: "正在读取 MCP 接入信息" }),
@@ -247,23 +246,19 @@ it("首次加载保留 MCP 标签与禁用 Switch，内容使用骨架", async (
   await waitForReady();
 });
 
-it("状态读取失败由 API 服务区处理，MCP 禁用且不重复错误和重试入口", async () => {
+it("状态读取失败在独立 MCP 区展示错误并重试", async () => {
   server.use(http.get(endpoint, () => HttpResponse.json({}, { status: 503 })));
-  const queryClient = show();
-  expect(await screen.findByText("状态未知")).toBeVisible();
+  show();
+  expect(await screen.findByRole("alert")).toBeVisible();
   expect(mcpSwitch()).toBeDisabled();
-  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-  expect(
-    screen.queryByRole("button", { name: "重试" }),
-  ).not.toBeInTheDocument();
+  expect(screen.getByRole("alert")).toBeVisible();
+  expect(screen.getByRole("button", { name: "重试" })).toBeEnabled();
   server.use(
     http.get(endpoint, () =>
       HttpResponse.json({ ...defaults, enabled: true, available: true }),
     ),
   );
-  await queryClient.invalidateQueries({
-    queryKey: integrationServiceQueryKey(),
-  });
+  await userEvent.click(screen.getByRole("button", { name: "重试" }));
   await waitForReady();
 });
 
@@ -280,7 +275,7 @@ it("启停回执成功但刷新失败时显示未知，不假装开启", async (
   show();
   await waitForReady();
   await user.click(mcpSwitch());
-  expect(await screen.findByText("状态未知")).toBeVisible();
+  expect(await screen.findByRole("alert")).toBeVisible();
   expect(mcpSwitch()).toBeDisabled();
   expect(
     screen.queryByRole("button", { name: "复制 MCP 配置" }),
@@ -317,4 +312,48 @@ it("复制失败有反馈，重试成功后清除", async () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
   );
   expect(screen.getByRole("button", { name: "MCP 配置已复制" })).toBeVisible();
+});
+
+it("服务依赖和API入口归服务Card，客户端配置是独立分区", async () => {
+  saved = { ...defaults, enabled: false };
+  const openAPI = vi.fn();
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MCPIntegrationSection onOpenAPI={openAPI} />
+    </QueryClientProvider>,
+  );
+  const dependency = await screen.findByText("请先开启 API 服务。");
+  const card = dependency.closest('[data-slot="settings-card"]');
+  expect(card).not.toBeNull();
+  await userEvent.click(
+    within(card as HTMLElement).getByRole("button", { name: "配置 API 服务" }),
+  );
+  expect(openAPI).toHaveBeenCalledOnce();
+  expect(screen.getByRole("heading", { name: "HTTP MCP 配置" })).toBeVisible();
+});
+
+it("后台读取失败保留旧客户端代码但禁用复制与启停，重试恢复", async () => {
+  saved = { ...defaults, enabled: true, mcpEnabled: true, available: true };
+  const user = userEvent.setup();
+  const queryClient = show();
+  const copy = await screen.findByRole("button", { name: "复制 MCP 配置" });
+  const code = screen.getByLabelText("HTTP MCP 配置", { selector: "pre" });
+  const previous = code.textContent;
+  server.use(http.get(endpoint, () => HttpResponse.json({}, { status: 503 })));
+  await act(() =>
+    queryClient.invalidateQueries({
+      queryKey: integrationServiceOptions().queryKey,
+    }),
+  );
+  expect(await screen.findByRole("alert")).toBeVisible();
+  expect(code.textContent).toBe(previous);
+  expect(copy).toBeDisabled();
+  expect(mcpSwitch()).toBeDisabled();
+  server.use(http.get(endpoint, () => HttpResponse.json(saved)));
+  await user.click(screen.getByRole("button", { name: "重试" }));
+  await waitFor(() => expect(copy).toBeEnabled());
+  expect(mcpSwitch()).toBeEnabled();
 });

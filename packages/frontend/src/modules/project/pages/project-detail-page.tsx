@@ -1,8 +1,9 @@
+import { resourceListBack } from "@/shared/lib/resource-navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Folder, Pencil, Trash2, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { getProjectOptions } from "../api/project-queries";
 import { ProjectFormDialog } from "../components/project-form-dialog";
@@ -21,13 +22,24 @@ export function ProjectDetailPage() {
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const projectBack = resourceListBack(
+    (location.state as { projectBack?: string } | null)?.projectBack,
+    `/wakers/${wakerId}/projects`,
+  );
   const query = useQuery(
     getProjectOptions(withLocalErrorSurface({ path: { projectId, wakerId } })),
   );
   const project = query.data;
 
   return (
-    <WakerDetailLayout active="projects">
+    <WakerDetailLayout
+      active="projects"
+      breadcrumbItems={[
+        { label: t("title"), href: projectBack },
+        { label: project?.name || t("title") },
+      ]}
+    >
       <ResourcePageSurface>
         <PageHeader
           layout="detail"

@@ -127,6 +127,37 @@ function normalizeUnspecifiedEnumValues(value) {
   }
 }
 
+function normalizeUsageNullability(schemas) {
+  if (!schemas) return;
+  // Toolx omits Go pointer nullability. These usage counters deliberately encode
+  // missing evidence as JSON null so clients can distinguish it from zero.
+  const prefix = "GithubComJieWaZiNeuxBotServer";
+  const nullableFields = {
+    InternalUsageTokens: [
+      "input",
+      "cacheRead",
+      "cacheWrite",
+      "output",
+      "reasoning",
+    ],
+    InternalUsageTokenMetrics: [
+      "totalWithCacheRead",
+      "totalWithoutCacheRead",
+      "knownTotalWithCacheRead",
+      "knownTotalWithoutCacheRead",
+    ],
+    ServicesUsageCoverage: ["earliestRetainedAt", "indeterminateInvocations"],
+  };
+  for (const [name, fields] of Object.entries(nullableFields)) {
+    const properties = schemas[prefix + name]?.properties;
+    for (const field of fields) {
+      if (properties?.[field]?.type === "integer")
+        properties[field].nullable = true;
+    }
+  }
+}
+
+normalizeUsageNullability(schemas);
 normalizeParameterOrder(document);
 normalizeUnspecifiedEnumValues(document);
 

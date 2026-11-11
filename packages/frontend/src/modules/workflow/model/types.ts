@@ -3,7 +3,7 @@ export type {
   GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasManifest as Manifest,
   GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasNode as WorkflowNode,
   GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasPhase as WorkflowPhase,
-  GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun as WorkflowRun,
+  GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunResponse as WorkflowRun,
   GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowNodeInstance as WorkflowInstance,
   GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowHumanRequest as HumanRequest,
   GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition as WorkflowDefinition,

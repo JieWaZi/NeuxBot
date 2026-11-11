@@ -1,244 +1,341 @@
-import { useEffect, useImperativeHandle, useRef, type Ref } from "react";
-import type { CompanionEngine } from "../../../../../vendor/companion/renderer";
-import { logger } from "@/shared/diagnostics/logger";
-import { companionAppearance } from "./appearance";
-import { companionPlayback } from "./playback";
+import {
+  createElement,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { BotEngine } from "@neuxbot/bloub/engine";
+import { avatarExpressionById as EXPRESSION_BY_ID } from "./avatar-expressions";
+import { SHAPE_BY_ID } from "@neuxbot/bloub/skins";
+import { POSES, type StateId } from "@neuxbot/bloub/states";
+import { usePreparedAppearance } from "./prepared-appearance";
+import { alignMaterialDrawing, materialViewBox } from "./materials";
 import type { CompanionActivity } from "./activity";
-import type { CompanionMotion } from "./roaming";
+import { companionPlayback, companionPresentation } from "./playback";
+import { nextHoverFace, type HoverFace } from "./interaction-expressions";
+import { avatarDrawing, type SvgDrawing } from "@neuxbot/bloub/drawing";
+import { enlargedEyes } from "@neuxbot/bloub/eyes";
 
-export function CompanionAvatar({
-  avatar,
-  activity = "idle",
-  preview = false,
-  animated = true,
-  motion,
-  interactiveLabel,
-  interactiveTitle,
-  onReady,
-  onError,
-  ref,
-}: {
-  avatar: string;
-  activity?: CompanionActivity;
-  preview?: boolean;
-  /** 关闭动画时使用同一形象的固定姿态，不启动待机或互动播放。 */
-  animated?: boolean;
-  motion?: CompanionMotion;
-  interactiveLabel?: string;
-  interactiveTitle?: string;
-  /** 身体图片加载并完整绘制后，通知品牌入场等需要顺序交接的调用方。 */
-  onReady?: () => void;
-  /** 绘制失败后允许启动品牌等调用方使用静态降级。 */
-  onError?: () => void;
-  ref?: Ref<CompanionControl>;
-}) {
-  const host = useRef<HTMLSpanElement>(null);
-  const playback = useRef<ReturnType<typeof companionPlayback> | null>(null);
-  const latestActivity = useRef(activity);
-  const readyCallback = useRef(onReady);
-  const errorCallback = useRef(onError);
-  useEffect(() => {
-    errorCallback.current = onError;
-  }, [onError]);
-  useEffect(() => {
-    readyCallback.current = onReady;
-  }, [onReady]);
-  const pendingInteraction = useRef(false);
-  useImperativeHandle(
-    ref,
-    () => ({
-      interact() {
-        if (!animated) return;
-        if (playback.current) playback.current.interact();
-        else pendingInteraction.current = true;
-      },
-    }),
-    [animated],
-  );
-
-  useEffect(() => {
-    latestActivity.current = activity;
-    playback.current?.update(activity);
-  }, [activity]);
-
-  useEffect(() => {
-    const element = host.current;
-    if (!element) return;
-    let disposed = false;
-    let visible = typeof IntersectionObserver === "undefined";
-    let loading = false;
-    let engine: CompanionEngine | undefined;
-    let cancelImageWait: (() => void) | undefined;
-    const media = window.matchMedia?.("(prefers-reduced-motion: reduce)");
-    // 卡片飞入时会暂时缩小，按布局尺寸预先选择清晰的目标图片。
-    const resolution = (): 256 | 512 =>
-      Math.max(element.clientWidth, element.getBoundingClientRect().width) *
-        (window.devicePixelRatio || 1) >
-      256
-        ? 512
-        : 256;
-    const updateResolution = () => engine?.ball.setResolution(resolution());
-    const resizeObserver =
-      typeof ResizeObserver === "undefined"
-        ? undefined
-        : new ResizeObserver(updateResolution);
-    resizeObserver?.observe(element);
-    window.addEventListener("resize", updateResolution);
-    const updateVisibility = () => {
-      playback.current?.visibility(
-        visible && !document.hidden,
-        media?.matches ?? false,
-      );
-    };
-    const load = async () => {
-      if (loading || disposed) return;
-      loading = true;
-      try {
-        const { createCompanion, companionReactions } =
-          await import("../../../../../vendor/companion/renderer");
-        if (disposed) return;
-        const appearance = companionAppearance(avatar);
-        engine = createCompanion(element, {
-          character: "ally",
-          emotion: "02",
-          style: appearance.style,
-          resolution: resolution(),
-          autostart: false,
-          lite: false,
-          idle: false,
-        });
-        const svg = element.querySelector("svg");
-        svg?.setAttribute("data-companion-avatar", "");
-        svg?.setAttribute("overflow", "visible");
-        svg?.setAttribute("width", "100%");
-        svg?.setAttribute("height", "100%");
-        svg?.setAttribute(
-          "pointer-events",
-          animated && interactiveLabel ? "visiblePainted" : "none",
-        );
-        const body = element.querySelector("image.ally-body-image");
-        if (!svg || !body) throw new Error("伙伴形象缺少身体图层");
-        // SVG 眼睛同步创建，身体 PNG 异步加载；完整图片就绪前不能露出局部形象。
-        svg.setAttribute("visibility", "hidden");
-        await new Promise<void>((resolve, reject) => {
-          const release = () => {
-            body.removeEventListener("load", loaded);
-            body.removeEventListener("error", failed);
-            cancelImageWait = undefined;
-          };
-          const loaded = () => {
-            release();
-            resolve();
-          };
-          const failed = () => {
-            release();
-            reject(new Error("伙伴身体图片加载失败"));
-          };
-          cancelImageWait = () => {
-            release();
-            resolve();
-          };
-          body.addEventListener("load", loaded);
-          body.addEventListener("error", failed);
-        });
-        if (disposed) return;
-        if (!animated) {
-          engine.ball.setReduced(true);
-          engine.renderStatic();
-          svg.removeAttribute("visibility");
-          readyCallback.current?.();
-          pendingInteraction.current = false;
-          return;
-        }
-        engine.renderStatic();
-        svg.removeAttribute("visibility");
-        readyCallback.current?.();
-        playback.current = companionPlayback(engine, latestActivity.current, {
-          reactions: companionReactions,
-          preview,
-          motion,
-        });
-        updateVisibility();
-        if (pendingInteraction.current) {
-          pendingInteraction.current = false;
-          playback.current.interact();
-        }
-      } catch (error) {
-        if (!disposed) {
-          engine?.destroy();
-          engine = undefined;
-          logger.warn("companion renderer failed", { error });
-          errorCallback.current?.();
-        }
-        // 加载失败保留稳定占位；重新进入可视区域时可以重试。
-        loading = false;
-      }
-    };
-    const observer =
-      typeof IntersectionObserver === "undefined"
-        ? undefined
-        : new IntersectionObserver((entries) => {
-            visible = entries.some((entry) => entry.isIntersecting);
-            if (visible) void load();
-            updateVisibility();
-          });
-    observer?.observe(element);
-    if (visible) void load();
-    media?.addEventListener("change", updateVisibility);
-    document.addEventListener("visibilitychange", updateVisibility);
-    return () => {
-      disposed = true;
-      cancelImageWait?.();
-      observer?.disconnect();
-      resizeObserver?.disconnect();
-      window.removeEventListener("resize", updateResolution);
-      media?.removeEventListener("change", updateVisibility);
-      document.removeEventListener("visibilitychange", updateVisibility);
-      if (playback.current) playback.current.destroy();
-      else engine?.destroy();
-      playback.current = null;
-    };
-  }, [avatar, preview, motion, interactiveLabel, animated]);
-
-  return (
-    <span
-      ref={host}
-      role={animated && interactiveLabel ? "button" : undefined}
-      tabIndex={animated && interactiveLabel ? 0 : undefined}
-      aria-label={animated ? interactiveLabel : undefined}
-      title={interactiveTitle}
-      onPointerEnter={() => playback.current?.wake()}
-      onPointerDown={() => {
-        if (animated && interactiveLabel) host.current?.focus();
-      }}
-      onClick={() => {
-        if (animated && interactiveLabel) {
-          if (playback.current) playback.current.interact();
-          else pendingInteraction.current = true;
-        }
-      }}
-      onKeyDown={(event) => {
-        if (
-          !animated ||
-          !interactiveLabel ||
-          (event.key !== "Enter" && event.key !== " ")
-        )
-          return;
-        event.preventDefault();
-        if (playback.current) playback.current.interact();
-        else pendingInteraction.current = true;
-      }}
-      className={
-        animated && interactiveLabel
-          ? "focus-visible:ring-ring pointer-events-none block size-full rounded-lg outline-none focus-visible:ring-2"
-          : "block size-full"
-      }
-      data-companion-activity={animated ? activity : undefined}
-      data-companion-animated={animated}
-    />
+function renderDrawing(
+  drawing: SvgDrawing,
+  key: number,
+): ReturnType<typeof createElement> {
+  return createElement(
+    drawing.tag,
+    {
+      ...drawing.attributes,
+      ...(drawing.attributes["data-native-notification"] !== undefined
+        ? { fill: "var(--accent-default)" }
+        : {}),
+      key,
+    },
+    ...drawing.children.map(renderDrawing),
   );
 }
 
-export type CompanionControl = {
-  interact: () => void;
-};
+/** React 只拥有可见性和播放时钟，几何、眨眼、形变与状态过渡由 Bloub 计算。 */
+export function CompanionAvatar({
+  avatar,
+  activity = "idle",
+  animated = true,
+  interactive = true,
+  preview = false,
+  onReady,
+  onError,
+  animation: requestedAnimation,
+}: {
+  avatar: string;
+  activity?: CompanionActivity;
+  animated?: boolean;
+  interactive?: boolean;
+  preview?: boolean;
+  animation?: StateId;
+  onReady?: () => void;
+  onError?: () => void;
+}) {
+  const animation =
+    requestedAnimation === "sleep" ? "idle" : requestedAnimation;
+  const host = useRef<HTMLSpanElement>(null);
+  const id = useId().replace(/:/g, "");
+  const prepared = usePreparedAppearance(avatar);
+  const { appearance } = prepared;
+  const [hover, setHover] = useState<{
+    pointer: boolean;
+    focus: boolean;
+    face: HoverFace | null;
+  }>({ pointer: false, focus: false, face: null });
+  const shown = activity === "resting" ? "idle" : activity;
+  const presentation = companionPresentation(shown);
+  // 通知参考使用 Bloub 自带的斜卵石；其余有身体的状态保留伙伴形状。
+  const renderedShape =
+    (animation ?? presentation.state) === "notify" ? "galet" : appearance.shape;
+  const [visible, setVisible] = useState(
+    typeof IntersectionObserver === "undefined",
+  );
+  const [foreground, setForeground] = useState(!document.hidden);
+  const [reduced, setReduced] = useState(
+    () =>
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
+  );
+  const playing = animated && visible && foreground && !reduced;
+  const fixedPose = !animated || reduced;
+  const baseExpression =
+    animation || preview
+      ? appearance.expression
+      : (presentation.expression ?? appearance.expression);
+  const hoverEnabled = interactive && animated && !preview && !animation;
+  const interaction =
+    hoverEnabled &&
+    shown === "idle" &&
+    (hover.pointer || hover.focus) &&
+    playing;
+  const expression =
+    (interaction ? hover.face?.expression : undefined) ?? baseExpression;
+  const interactiveState = interaction ? hover.face?.state : undefined;
+
+  useEffect(() => {
+    if (!hoverEnabled) return;
+    const target =
+      host.current?.closest<HTMLElement>("[data-avatar-hover]") ?? host.current;
+    if (!target) return;
+    const change = (source: "pointer" | "focus", active: boolean) => {
+      const seed = active ? Math.random() : undefined;
+      setHover((previous) => {
+        if (previous[source] === active) return previous;
+        const entered = active && !previous.pointer && !previous.focus;
+        return {
+          ...previous,
+          [source]: active,
+          face: entered
+            ? nextHoverFace(baseExpression, previous.face, seed)
+            : previous.face,
+        };
+      });
+    };
+    const enter = () => change("pointer", true);
+    const leave = () => change("pointer", false);
+    const focus = (event: FocusEvent) => {
+      if (
+        event.target instanceof Element &&
+        event.target.matches(":focus-visible")
+      )
+        change("focus", true);
+    };
+    const blur = (event: FocusEvent) => {
+      if (
+        !(event.relatedTarget instanceof Node) ||
+        !target.contains(event.relatedTarget)
+      )
+        change("focus", false);
+    };
+    target.addEventListener("pointerenter", enter);
+    target.addEventListener("pointerleave", leave);
+    target.addEventListener("focusin", focus);
+    target.addEventListener("focusout", blur);
+    return () => {
+      target.removeEventListener("pointerenter", enter);
+      target.removeEventListener("pointerleave", leave);
+      target.removeEventListener("focusin", focus);
+      target.removeEventListener("focusout", blur);
+    };
+  }, [hoverEnabled, baseExpression]);
+  const [engine] = useState(
+    () =>
+      new BotEngine(
+        100,
+        animation ?? presentation.state,
+        SHAPE_BY_ID.get(renderedShape)?.radii ?? null,
+        EXPRESSION_BY_ID.get(appearance.expression) ?? null,
+      ),
+  );
+  const clock = useRef(0);
+  const enteredAt = useRef(0);
+  const motion = useRef<{
+    presentation: typeof presentation;
+    shown: CompanionActivity;
+    animation: StateId | undefined;
+    interactiveState: StateId | undefined;
+  }>({ presentation, shown, animation, interactiveState });
+  const configured = useRef("");
+  const wasFixed = useRef(false);
+  const timeline = useRef("");
+  const block = useRef("");
+  const [{ frame, time: sampleTime, nativeState }, setSample] = useState(
+    () => ({
+      frame: engine.sample(1.4),
+      time: 1.4,
+      nativeState: animation ?? presentation.state,
+    }),
+  );
+  const callbacks = useRef({ onReady, onError });
+  useLayoutEffect(() => {
+    callbacks.current = { onReady, onError };
+  }, [onReady, onError]);
+
+  useEffect(() => {
+    if (prepared.request !== avatar || prepared.status === "pending") return;
+    if (prepared.status === "ready") callbacks.current.onReady?.();
+    else callbacks.current.onError?.();
+  }, [avatar, prepared.request, prepared.status]);
+
+  useEffect(() => {
+    if (!animated) return;
+    const media = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    const visibility = () => setForeground(!document.hidden);
+    const preference = () => setReduced(media?.matches ?? false);
+    const observer =
+      typeof IntersectionObserver === "undefined"
+        ? undefined
+        : new IntersectionObserver(([entry]) =>
+            setVisible(entry?.isIntersecting ?? false),
+          );
+    if (host.current) observer?.observe(host.current);
+    document.addEventListener("visibilitychange", visibility);
+    media?.addEventListener("change", preference);
+    visibility();
+    preference();
+    return () => {
+      observer?.disconnect();
+      document.removeEventListener("visibilitychange", visibility);
+      media?.removeEventListener("change", preference);
+    };
+  }, [animated]);
+
+  useLayoutEffect(() => {
+    const now = clock.current;
+    const timelineKey = `${animation ?? presentation.state}:${animation ? "preview" : "business"}`;
+    if (timeline.current !== timelineKey) {
+      timeline.current = timelineKey;
+      enteredAt.current = now;
+      block.current = "";
+    }
+    const key = `${timelineKey}:${appearance.shape}:${expression}:${presentation.motion}:${interactiveState}`;
+    motion.current = { presentation, shown, animation, interactiveState };
+    let target = companionPlayback(shown, now - enteredAt.current, animation);
+    const state = interactiveState ?? target.state;
+    const configurationChanged = configured.current !== key;
+    if (configurationChanged) {
+      configured.current = key;
+      const base =
+        EXPRESSION_BY_ID.get(expression) ?? EXPRESSION_BY_ID.get("neutre");
+      engine.setShape(SHAPE_BY_ID.get(renderedShape)?.radii ?? null, now);
+      // 业务只选择原生动作与固定表情，不叠加辅助视线或形变。
+      engine.setExpression(base ?? null, now);
+      engine.setLook(null, now);
+    }
+    if (
+      !playing &&
+      (configurationChanged || (fixedPose && !wasFixed.current))
+    ) {
+      // A native thumbnail is sampled at its documented readable pose. Advance
+      // this same clock so resuming cannot replay the already displayed morph.
+      engine.reset(state, now);
+      clock.current = now + (animation ? POSES[state] : 1.4);
+      // A globally scheduled blink may coincide with this readable local pose.
+      // Settle on an open, completed sample while advancing the same clock.
+      while (!engine.quiet(clock.current)) clock.current += 1 / 30;
+      target = companionPlayback(
+        shown,
+        clock.current - enteredAt.current,
+        animation,
+      );
+    }
+    wasFixed.current = fixedPose;
+    const blockKey = `${state}:${target.block}`;
+    if (block.current !== blockKey) {
+      if (playing) engine.setState(state, now, target.local, true);
+      block.current = blockKey;
+    }
+    setSample({
+      frame: engine.sample(clock.current),
+      time: clock.current,
+      nativeState: state,
+    });
+  }, [
+    engine,
+    appearance.shape,
+    renderedShape,
+    shown,
+    expression,
+    presentation,
+    interactiveState,
+    playing,
+    fixedPose,
+    animation,
+  ]);
+
+  useEffect(() => {
+    if (!playing) return;
+    let raf = 0;
+    let previous = performance.now();
+    let painted = previous;
+    const tick = (time: number) => {
+      clock.current += Math.min(Math.max((time - previous) / 1000, 0), 0.1);
+      previous = time;
+      if (time - painted >= 1000 / 30) {
+        const current = motion.current;
+        const local = clock.current - enteredAt.current;
+        const target = companionPlayback(
+          current.shown,
+          local,
+          current.animation,
+        );
+        const state = current.interactiveState ?? target.state;
+        const blockKey = `${state}:${target.block}`;
+        if (block.current !== blockKey) {
+          engine.setState(state, clock.current, target.local, true);
+          block.current = blockKey;
+        }
+        setSample({
+          frame: engine.sample(clock.current),
+          time: clock.current,
+          nativeState: state,
+        });
+        painted = time;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [engine, playing]);
+
+  return (
+    <span ref={host} className="relative block size-full" aria-hidden="true">
+      <svg
+        visibility={prepared.status === "pending" ? "hidden" : undefined}
+        data-companion-avatar
+        data-texture-state={prepared.status}
+        data-material={appearance.material}
+        data-shape={appearance.shape}
+        data-activity={shown}
+        data-motion={presentation.motion}
+        data-expression={expression}
+        data-animation={nativeState}
+        viewBox={materialViewBox()}
+        width="100%"
+        height="100%"
+        overflow="visible"
+      >
+        {alignMaterialDrawing(
+          avatarDrawing(
+            // 小头像仍需清晰的眼睛；沿用原生扩眼以保留眨眼和脸部余量。
+            { ...frame, eyes: enlargedEyes(frame.eyes, 1.3) },
+            appearance.material,
+            appearance.color,
+            id,
+            prepared.texture,
+            [],
+            [],
+            undefined,
+            renderedShape,
+            sampleTime,
+          ),
+          appearance.material,
+          renderedShape,
+        ).map(renderDrawing)}
+      </svg>
+    </span>
+  );
+}

@@ -43,6 +43,8 @@ type AutomaticTaskMemberConfiguration struct {
 	Model string `json:"model" validate:"max=200"`
 	// Reasoning 是此成员选用的推理强度，空值使用默认强度。
 	Reasoning string `json:"reasoning" validate:"max=120"`
+	// Fast 是成员覆盖的加速选择；机会接纳后 nil 保留原生默认。
+	Fast *bool `json:"fast,omitempty"`
 	// PermissionLevel 是此成员执行时使用的权限等级。
 	PermissionLevel constants.PermissionLevel `json:"permissionLevel"`
 }
@@ -65,7 +67,7 @@ type AutomaticTaskConfiguration struct {
 	WorkflowInputBindings map[string]workflowinput.Binding `gorm:"serializer:json;type:text" json:"workflowInputBindings"`
 	// WorkspaceReadOnly 冻结工作流宿主和伙伴操作的只读约束。
 	WorkspaceReadOnly bool `json:"workspaceReadOnly"`
-	// MemberConfigs 是团队成员的任务专属覆盖；未列出的成员沿用运行时团队设置。
+	// MemberConfigs 在任务配置中保存成员覆盖，在运行记录中保存接纳时的完整成员选择。
 	MemberConfigs []AutomaticTaskMemberConfiguration `gorm:"serializer:json;type:text" json:"memberConfigs" validate:"max=5,dive"`
 	// ExecutorWakerID 是选择的独立执行伙伴，团队任务为空；历史记录使用任务的 WakerID。
 	ExecutorWakerID string `gorm:"type:varchar(32);not null;default:''" json:"executorWakerId" validate:"max=32"`
@@ -87,10 +89,12 @@ type AutomaticTaskConfiguration struct {
 	RuntimeID string `json:"runtimeId" validate:"max=120"`
 	// AccountID 是选用的受管账号；保存时将空值规范化为 system，固定使用智能体原生登录。
 	AccountID string `json:"accountId" validate:"max=32"`
-	// Model 是执行使用的模型，空值使用智能体默认值。
+	// Model 是计划选择的模型；运行记录保存接纳时有效选择，空值保持原生默认。
 	Model string `json:"model" validate:"max=200"`
 	// Reasoning 是执行时选择的推理强度。
 	Reasoning string `json:"reasoning" validate:"max=120"`
+	// Fast 在计划中为空时于机会接纳读取智能体默认；运行记录中的空值保持原生默认。
+	Fast *bool `json:"fast,omitempty"`
 	// PermissionLevel 是自动执行冻结的产品权限等级。
 	PermissionLevel constants.PermissionLevel `json:"permissionLevel"`
 	// Enabled 表示允许接纳新的运行，停用不取消已有执行。

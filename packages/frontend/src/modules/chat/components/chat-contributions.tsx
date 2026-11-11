@@ -43,7 +43,7 @@ export function useChatWorkspaceHost() {
 }
 
 /** 领域模块通过公开贡献槽提供消息内容；Chat 不依赖领域数据或实现。 */
-export function ChatMessageContribution({ messageId }: { messageId: string }) {
+export function useChatMessageContribution(messageId: string) {
   const render = useContext(MessageContent);
   return render?.(messageId) ?? null;
 }

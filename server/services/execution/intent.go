@@ -27,8 +27,6 @@ type ToolCapability struct {
 type WorkIntent struct {
 	// AutomaticRunID 是服务端编排传入的原自动运行，外部正文不能绑定。
 	AutomaticRunID string `json:"-"`
-	// RetryExecutionID 表示由用户重试的已失败执行；输入与配置从权威记录恢复。
-	RetryExecutionID string
 	// ExecutionID 是上层持久编排预先分配的可选执行标识；普通入口留空并由 Execution Core 生成。
 	ExecutionID string
 	// ClientRequestID 是新建 Chat 首次发送时由客户端稳定复用的幂等标识；已有 Chat 续发必须为空。
@@ -61,6 +59,8 @@ type CreateChatSpec struct {
 	ProjectID string
 	// WorkingDirectory 是用户授权的临时目录，项目 Chat 为空。
 	WorkingDirectory string
+	// ExecutionWorkspaceDirectory 是宿主领域拥有的真实隔离 cwd；普通 Chat 留空。
+	ExecutionWorkspaceDirectory string `json:"-"`
 	// AdditionalWorkingDirectories 是宿主业务入口追加的受管目录，外部输入不能扩大工作范围。
 	AdditionalWorkingDirectories []string `json:"-"`
 }
@@ -93,6 +93,8 @@ type PrepareChatMember struct {
 	Model string
 	// Reasoning 是团队对话为该成员冻结的推理强度。
 	Reasoning string
+	// Fast 是团队对话为该成员冻结的加速选择；nil 保留原生默认。
+	Fast *bool
 	// PermissionLevel 是团队对话为该成员冻结的产品权限等级。
 	PermissionLevel constants.PermissionLevel
 }
@@ -118,6 +120,10 @@ type WorkOptions struct {
 	Model string
 	// Reasoning 是本次使用的推理强度。
 	Reasoning string
+	// Fast 是本轮明确选择的 Fast 开关。
+	Fast *bool
+	// ContextWindow 是本轮选择的原生窗口档位。
+	ContextWindow string
 	// PermissionLevel 是本次执行冻结的跨 Runtime 产品权限等级。
 	PermissionLevel constants.PermissionLevel
 	// WorkspaceReadOnly 表示 Runtime 只能读取工作区，不能请求或执行文件修改。
@@ -158,13 +164,11 @@ type AcceptedExecution struct {
 
 // Start 校验并执行一个入口无关的工作意图。
 func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecution, error) {
+	requestedAt := nowMillis()
 	if m.validateIntent != nil {
 		if err := m.validateIntent(ctx, intent); err != nil {
 			return AcceptedExecution{}, err
 		}
-	}
-	if intent.RetryExecutionID != "" {
-		return m.retryExecution(ctx, strings.TrimSpace(intent.Chat.ChatID), strings.TrimSpace(intent.RetryExecutionID))
 	}
 
 	inputContext := ctx
@@ -178,7 +182,19 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 		releaseTeam = release
 	}
 	intent.Chat.ChatID = strings.TrimSpace(intent.Chat.ChatID)
-	releaseOperation, operationErr := chatstorage.AcquireOperation(m.storage.Root(), intent.Chat.ChatID)
+	wakerID := ""
+	if intent.Chat.Create != nil {
+		wakerID = strings.TrimSpace(intent.Chat.Create.WakerID)
+	}
+	if intent.Chat.ChatID != "" {
+		chat, err := m.journal.LoadExecutionChat(ctx, intent.Chat.ChatID)
+		if err != nil {
+			releaseTeam()
+			return AcceptedExecution{}, err
+		}
+		wakerID = chat.WakerID
+	}
+	releaseOperation, operationErr := chatstorage.AcquireAdmission(m.storage.Root(), wakerID, intent.Chat.ChatID)
 	// Chat 独占已接管续聊准备与删除互斥；本入口自己的团队锁不覆盖隐藏摘要和 Runtime 接纳等待。
 	// 上层持有的团队保护仍由上层释放，恢复原 Context 防止已释放锁的重入标记继续传播。
 	releaseTeam()
@@ -218,6 +234,8 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 			RuntimeID:             intent.Options.RuntimeID,
 			Model:                 intent.Options.Model,
 			Reasoning:             intent.Options.Reasoning,
+			Fast:                  intent.Options.Fast,
+			ContextWindow:         intent.Options.ContextWindow,
 			PermissionLevel:       intent.Options.PermissionLevel,
 			WorkspaceReadOnly:     intent.Options.WorkspaceReadOnly,
 			SessionPolicy:         intent.Options.SessionPolicy,
@@ -240,6 +258,7 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 	if intent.Chat.Create != nil {
 		request.create = &pendingChat{
 			hiddenFromWakerHistory:       intent.Chat.Create.HiddenFromWakerHistory,
+			executionWorkspaceDirectory:  intent.Chat.Create.ExecutionWorkspaceDirectory,
 			wakerID:                      intent.Chat.Create.WakerID,
 			projectID:                    intent.Chat.Create.ProjectID,
 			workingDirectory:             intent.Chat.Create.WorkingDirectory,
@@ -247,8 +266,9 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 		}
 	}
 	for _, instruction := range intent.Input.ContextInstructions {
-		request.supplementalInstructions = append(request.supplementalInstructions, agentapi.Instruction{Name: instruction.Name, Content: instruction.Content})
+		request.contextInstructions = append(request.contextInstructions, agentapi.Instruction{Name: instruction.Name, Content: instruction.Content})
 	}
+	request.requestedAt = requestedAt
 	return m.startMessage(ctx, request)
 }
 

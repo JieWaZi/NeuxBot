@@ -17,50 +17,6 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
-// executionInputState 将真实未决问题连接到 Runtime 无活动策略。
-type executionInputState struct {
-	// coordinator 拥有当前未决输入事实。
-	coordinator *elicitationCoordinator
-	// executionID 是唯一允许观察的执行。
-	executionID string
-	// changes 只为该执行合并状态唤醒。
-	changes <-chan struct{}
-}
-
-func (s executionInputState) Pending() bool {
-	s.coordinator.mutex.Lock()
-	defer s.coordinator.mutex.Unlock()
-	for _, question := range s.coordinator.byID {
-		if question.executionID == s.executionID {
-			return true
-		}
-	}
-	return false
-}
-
-func (s executionInputState) Changed() <-chan struct{} { return s.changes }
-
-func (c *elicitationCoordinator) inputState(executionID string) agentapi.UserInputState {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	if c.changes == nil {
-		c.changes = make(map[string]chan struct{})
-	}
-	if c.changes[executionID] == nil {
-		c.changes[executionID] = make(chan struct{}, 1)
-	}
-	return executionInputState{coordinator: c, executionID: executionID, changes: c.changes[executionID]}
-}
-
-func (c *elicitationCoordinator) signalInputLocked(executionID string) {
-	if channel := c.changes[executionID]; channel != nil {
-		select {
-		case channel <- struct{}{}:
-		default:
-		}
-	}
-}
-
 func (c *elicitationCoordinator) finishQuestions(chatID, executionID string) {
 	c.commitMutex.Lock()
 	c.mutex.Lock()
@@ -77,23 +33,16 @@ func (c *elicitationCoordinator) finishQuestions(chatID, executionID string) {
 			logx.Errorf("invalidate CLI question failed: chat_id=%s execution_id=%s question_id=%s error=%v", chatID, executionID, id, err)
 		}
 	}
-	c.mutex.Lock()
-	delete(c.changes, executionID)
-	c.mutex.Unlock()
 }
 
-func (m *service) questionBindings(chatID, executionID string, facts ...*executionMessageFacts) []capability.Binding {
-	var messageFacts *executionMessageFacts
-	if len(facts) > 0 {
-		messageFacts = facts[0]
-	}
+func (m *service) questionBindings(chatID, executionID string) []capability.Binding {
 	questionID := func(requestID string) string { return agentIdentity(executionID + ":question:" + requestID)[:32] }
 	read := func(id string) (map[string]any, error) {
 		return m.elicitations.questionSnapshot(chatID, executionID, id)
 	}
 	bindings := []capability.Binding{{Operation: "interaction.questions.create", Call: func(ctx context.Context, request capability.Request) (capability.Result, error) {
 		id := questionID(request.RequestID)
-		result, replayed, err := m.elicitations.createQuestion(ctx, chatID, executionID, id, request, messageFacts)
+		result, replayed, err := m.elicitations.createQuestion(ctx, chatID, executionID, id, request)
 		return capability.Result{CommandID: id, Replayed: replayed, Data: result}, err
 	}, Receipt: func(_ context.Context, requestID string) (capability.Result, error) {
 		id := questionID(requestID)
@@ -147,11 +96,7 @@ func (c *elicitationCoordinator) questionSnapshot(chatID, executionID, questionI
 	return result, nil
 }
 
-func (c *elicitationCoordinator) createQuestion(ctx context.Context, chatID, executionID, id string, request capability.Request, facts ...*executionMessageFacts) (map[string]any, bool, error) {
-	var messageFacts *executionMessageFacts
-	if len(facts) > 0 {
-		messageFacts = facts[0]
-	}
+func (c *elicitationCoordinator) createQuestion(ctx context.Context, chatID, executionID, id string, request capability.Request) (map[string]any, bool, error) {
 	var input struct {
 		// Message 是用户可以理解的决定说明。
 		Message string `json:"message"`
@@ -214,15 +159,13 @@ func (c *elicitationCoordinator) createQuestion(ctx context.Context, chatID, exe
 		return nil, false, status_error.AgentInputInvalid
 	}
 	requested := eventlog.ElicitationRequestedData{ElicitationID: id, CommandRequestID: request.RequestID, CommandDigest: hash, AllowSkip: &input.AllowSkip, Mode: "form", Message: input.Message, RequestedSchema: encoded}
-	record, err := c.journal.AppendElicitationFact(chatID, eventlog.AppendInput{Type: constants.ChatEventTypeElicitationRequested, ExecutionID: executionID, InvocationID: messageFacts.invocation(), Data: marshalData(requested)})
+	record, err := c.journal.AppendElicitationFact(chatID, eventlog.AppendInput{Type: constants.ChatEventTypeElicitationRequested, ExecutionID: executionID, InvocationID: executionID, Data: marshalData(requested)})
 	if err != nil {
 		return nil, false, err
 	}
-	messageFacts.push(record)
 	c.mutex.Lock()
-	c.byID[id] = &pendingElicitation{chatID: chatID, executionID: executionID, messageFacts: messageFacts, invocationID: record.InvocationID, requested: requested, requestedAt: record.RecordedAt, response: make(chan agentapi.ElicitationDecision, 1)}
+	c.byID[id] = &pendingElicitation{chatID: chatID, executionID: executionID, invocationID: record.InvocationID, requested: requested, requestedAt: record.RecordedAt, response: make(chan agentapi.ElicitationDecision, 1)}
 	c.orderByChat[chatID] = append(c.orderByChat[chatID], id)
-	c.signalInputLocked(executionID)
 	c.mutex.Unlock()
 	c.journal.PublishElicitationFact(ctx, record, c.pendingProjection(chatID))
 	if c.events != nil {

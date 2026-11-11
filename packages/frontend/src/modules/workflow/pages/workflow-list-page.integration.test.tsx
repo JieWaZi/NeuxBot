@@ -1,17 +1,22 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
-  configure,
+  cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
-  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { MemoryRouter } from "react-router-dom";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useSearchParams,
+} from "react-router-dom";
 import {
   afterAll,
   afterEach,
@@ -23,38 +28,41 @@ import {
 } from "vitest";
 import "@/shared/i18n";
 import { client } from "@/shared/api/generated/client.gen";
-import type { GlobalEventObserver } from "@/shared/api/global-events";
 import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition } from "@/shared/api/generated/types.gen";
-import { ResourcesPage } from "@/app/pages/resources-page";
+import { SearchField } from "@/shared/ui/search-field";
+import {
+  WorkflowListPage,
+  WorkflowResourceCollection,
+} from "./workflow-list-page";
 
-const listeners = vi.hoisted(() => new Set<GlobalEventObserver>());
 vi.mock("@/shared/api/global-events", () => ({
-  subscribeGlobalEvents: (
-    _topic: string,
-    _resource: unknown,
-    observer: GlobalEventObserver,
-  ) => {
-    listeners.add(observer);
-    return () => listeners.delete(observer);
-  },
+  subscribeGlobalEvents: () => () => undefined,
 }));
-
 vi.mock("@/shared/workspace/app-scene-workspace", () => ({
   useRouteSceneActive: () => true,
 }));
 
 const origin = "http://workflow-list.test";
 const server = setupServer();
+const intersections = new Map<Element, () => void>();
 let definition: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition;
-let deleted = false;
 
 beforeAll(() => {
-  configure({ asyncUtilTimeout: 5000 });
   client.setConfig({ baseUrl: origin });
   server.listen({ onUnhandledRequest: "error" });
 });
 beforeEach(() => {
-  deleted = false;
+  Element.prototype.hasPointerCapture = () => false;
+  Element.prototype.setPointerCapture = () => undefined;
+  Element.prototype.releasePointerCapture = () => undefined;
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   definition = {
     id: "flow",
     title: "周会准备流程",
@@ -63,32 +71,194 @@ beforeEach(() => {
     ordinal: 1,
   };
   server.use(
+    http.get(`${origin}/api/v1/resource-categories`, () =>
+      HttpResponse.json([{ name: "设计" }, { name: "研究" }]),
+    ),
     http.get(`${origin}/api/v1/workflows`, () =>
-      HttpResponse.json({ items: deleted ? [] : [definition] }),
+      HttpResponse.json({ items: [definition] }),
     ),
   );
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      targets = new Set<Element>();
+      constructor(private callback: IntersectionObserverCallback) {}
+      observe(target: Element) {
+        this.targets.add(target);
+        intersections.set(target, () =>
+          this.callback(
+            [{ target, isIntersecting: true } as IntersectionObserverEntry],
+            this as unknown as IntersectionObserver,
+          ),
+        );
+      }
+      disconnect() {
+        for (const target of this.targets) intersections.delete(target);
+      }
+      unobserve(target: Element) {
+        intersections.delete(target);
+      }
+    },
+  );
 });
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  cleanup();
+  intersections.clear();
+  vi.unstubAllGlobals();
+  server.resetHandlers();
+});
 afterAll(() => server.close());
 
-function renderList() {
+it("工作流按真实分类分组，未分类也使用稳定彩色图标，分类过滤进入请求", async () => {
+  const queries: URLSearchParams[] = [];
+  server.use(
+    http.get(`${origin}/api/v1/workflows`, ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      queries.push(params);
+      return HttpResponse.json({
+        items:
+          params.get("category") === "设计"
+            ? [{ ...definition, categories: ["设计", "研究"] }]
+            : [
+                { ...definition, categories: ["设计", "研究"] },
+                { ...definition, id: "other", title: "未分组流程" },
+              ],
+      });
+    }),
+  );
+  renderList();
+  await screen.findByRole("region", { name: "设计" });
+  expect(screen.getByRole("region", { name: "研究" })).toBeVisible();
+  const untagged = screen.getByRole("region", { name: "未分类" });
+  expect(
+    untagged.querySelector("[class*='bg-resource-category-']"),
+  ).not.toBeNull();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("combobox", { name: "分类" }));
+  await user.click(await screen.findByRole("option", { name: "设计" }));
+  await waitFor(() => expect(queries.at(-1)?.get("category")).toBe("设计"));
+  expect(
+    await screen.findByRole("link", { name: "周会准备流程" }),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("link", { name: "未分组流程" }),
+  ).not.toBeInTheDocument();
+});
+
+function List() {
+  const [params, setParams] = useSearchParams();
+  const search = params.get("search") ?? "";
+  return (
+    <WorkflowResourceCollection
+      search={search}
+      filters={
+        <SearchField
+          appearance="catalog"
+          size="md"
+          width="full"
+          value={search}
+          aria-label="搜索工作流"
+          placeholder="搜索工作流"
+          onChange={(event) =>
+            setParams({ category: "workflows", search: event.target.value })
+          }
+        />
+      }
+    />
+  );
+}
+
+function Location() {
+  const location = useLocation();
+  return <output>{JSON.stringify(location)}</output>;
+}
+
+function renderList(entry = "/resources?category=workflows") {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={["/resources?category=workflows"]}>
-        <ResourcesPage />
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route path="/workflows" element={<WorkflowListPage />} />
+          <Route path="/resources" element={<List />} />
+          <Route path="/workflows/:id" element={<Location />} />
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
   return queryClient;
 }
 
-it("后台刷新失败保留已加载卡片，并可就近重试", async () => {
+it("目录条目只保留名称和说明，详情链接保留资源搜索上下文", async () => {
+  const user = userEvent.setup();
+  renderList("/resources?category=workflows&search=周会");
+  const link = await screen.findByRole("link", { name: "周会准备流程" });
+  expect(link).toHaveAttribute("href", "/workflows/flow");
+  expect(screen.getByRole("article")).toHaveAttribute("data-appearance", "row");
+  expect(screen.getByText("生成通用议程和材料清单")).toBeVisible();
+  expect(screen.queryByText("版本 1")).not.toBeInTheDocument();
+  expect(screen.queryByText("全部工作流")).not.toBeInTheDocument();
+  await user.click(link);
+  expect(
+    JSON.parse(screen.getByRole("status").textContent ?? "{}").state,
+  ).toEqual({
+    resourceBack: "/resources?category=workflows&search=周会",
+  });
+});
+
+it("工作流详情操作保留资源搜索上下文", async () => {
+  const user = userEvent.setup();
+  renderList("/resources?category=workflows");
+  await screen.findByRole("heading", { name: "周会准备流程" });
+  await user.click(screen.getByRole("button", { name: "更多操作" }));
+  await user.click(screen.getByRole("menuitem", { name: "详情" }));
+  expect(screen.getByRole("status")).toHaveTextContent("/workflows/flow");
+  expect(
+    JSON.parse(screen.getByRole("status").textContent ?? "{}").state,
+  ).toEqual({ resourceBack: "/resources?category=workflows" });
+});
+
+it("工作流删除操作打开确认弹窗", async () => {
+  const user = userEvent.setup();
+  renderList("/resources?category=workflows");
+  await screen.findByRole("heading", { name: "周会准备流程" });
+  await user.click(screen.getByRole("button", { name: "更多操作" }));
+  await user.click(screen.getByRole("menuitem", { name: "删除" }));
+  const dialog = await screen.findByRole("dialog");
+  expect(dialog).toHaveTextContent("删除工作流");
+  expect(dialog).toHaveTextContent(
+    "删除定义并保留版本与运行记录。请先停止未结束的运行，并移除关联的自动任务。",
+  );
+});
+
+it("首次加载保留搜索并使用目录行骨架，失败提供重试而不显示空库", async () => {
+  let rejectRequest: (() => void) | undefined;
+  server.use(
+    http.get(`${origin}/api/v1/workflows`, async () => {
+      await new Promise<void>((resolve) => {
+        rejectRequest = resolve;
+      });
+      return HttpResponse.json({ message: "目录暂时不可用" }, { status: 503 });
+    }),
+  );
+  renderList();
+  expect(screen.getByRole("searchbox", { name: "搜索工作流" })).toBeVisible();
+  expect(
+    screen.getByRole("status", { name: "正在读取工作流…" }),
+  ).toHaveAttribute("aria-busy", "true");
+  await waitFor(() => expect(rejectRequest).toBeDefined());
+  await act(async () => rejectRequest?.());
+  await screen.findByRole("alert");
+  expect(screen.getByRole("button", { name: "重试" })).toBeEnabled();
+  expect(screen.queryByText("创建你的第一个工作流")).not.toBeInTheDocument();
+});
+
+it("后台刷新失败保留已加载条目，并可就近重试", async () => {
   const user = userEvent.setup();
   const queryClient = renderList();
-  const card = (
+  const row = (
     await screen.findByRole("heading", { name: "周会准备流程" })
   ).closest("article");
   server.use(
@@ -102,7 +272,7 @@ it("后台刷新失败保留已加载卡片，并可就近重试", async () => {
   await screen.findByRole("alert");
   expect(
     screen.getByRole("heading", { name: "周会准备流程" }).closest("article"),
-  ).toBe(card);
+  ).toBe(row);
   server.use(
     http.get(`${origin}/api/v1/workflows`, () =>
       HttpResponse.json({ items: [definition] }),
@@ -114,140 +284,10 @@ it("后台刷新失败保留已加载卡片，并可就近重试", async () => {
   );
   expect(
     screen.getByRole("heading", { name: "周会准备流程" }).closest("article"),
-  ).toBe(card);
+  ).toBe(row);
 });
 
-it("从卡片编辑标题和简介，失败保留输入，保存后刷新列表及版本", async () => {
-  const user = userEvent.setup();
-  const requests: unknown[] = [];
-  server.use(
-    http.put(
-      `${origin}/api/v1/workflows/flow/configuration`,
-      async ({ request }) => {
-        requests.push(await request.json());
-        if (requests.length === 1)
-          return HttpResponse.json({ message: "conflict" }, { status: 409 });
-        definition = {
-          ...definition,
-          title: "新的周会流程",
-          description: "整理材料并生成行动清单",
-          currentRevisionId: "revision-2",
-          ordinal: 2,
-        };
-        listeners.forEach((observer) =>
-          observer.onEvent({
-            protocolVersion: 1,
-            epoch: "test",
-            connectionId: "test",
-            deliverySequence: 1,
-            topic: "workflow",
-            type: "workflow.event",
-            eventId: "revision-2",
-            resource: { kind: "workflow", id: "flow" },
-            payload: { type: "workflow.revision.saved" },
-          }),
-        );
-        return HttpResponse.json({ revision: { id: "revision-2" } });
-      },
-    ),
-  );
-  renderList();
-  await user.click(
-    await screen.findByRole("button", { name: "周会准备流程 的更多操作" }),
-  );
-  await user.click(screen.getByRole("menuitem", { name: "编辑" }));
-  const dialog = await screen.findByRole("dialog", { name: "编辑基本信息" });
-  const title = within(dialog).getByRole("textbox", { name: "标题" });
-  const description = within(dialog).getByRole("textbox", { name: "描述" });
-  expect(title).toHaveValue("周会准备流程");
-  expect(description).toHaveValue("生成通用议程和材料清单");
-  await user.clear(title);
-  expect(within(dialog).getByRole("button", { name: "保存" })).toBeDisabled();
-  await user.type(title, "新的周会流程");
-  await user.clear(description);
-  await user.type(description, "整理材料并生成行动清单");
-  await user.click(within(dialog).getByRole("button", { name: "保存" }));
-  await within(dialog).findByRole("alert");
-  expect(title).toHaveValue("新的周会流程");
-  expect(description).toHaveValue("整理材料并生成行动清单");
-  await user.click(within(dialog).getByRole("button", { name: "保存" }));
-  await waitFor(() =>
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
-  );
-  expect(
-    await screen.findByRole("heading", { name: "新的周会流程" }),
-  ).toBeInTheDocument();
-  expect(screen.getByText("整理材料并生成行动清单")).toBeInTheDocument();
-  expect(screen.getByText("版本 2")).toBeInTheDocument();
-  expect(requests[0]).toEqual({
-    requestId: expect.any(String),
-    expectedRevisionId: "revision-1",
-    edit: {
-      target: "meta",
-      fields: { title: "新的周会流程", description: "整理材料并生成行动清单" },
-    },
-  });
-  expect(requests[1]).toEqual(requests[0]);
-}, 15000);
-
-it("卡片删除需要确认，失败留在列表，重试成功移除卡片", async () => {
-  const user = userEvent.setup();
-  const requests: unknown[] = [];
-  server.use(
-    http.delete(`${origin}/api/v1/workflows/flow`, async ({ request }) => {
-      requests.push(await request.json());
-      if (requests.length === 1)
-        return HttpResponse.json({ message: "busy" }, { status: 409 });
-      deleted = true;
-      return HttpResponse.json({});
-    }),
-  );
-  renderList();
-  const more = await screen.findByRole("button", {
-    name: "周会准备流程 的更多操作",
-  });
-  await user.click(more);
-  await user.click(screen.getByRole("menuitem", { name: "删除工作流" }));
-  let dialog = await screen.findByRole("dialog", { name: "删除工作流" });
-  expect(requests).toHaveLength(0);
-  await user.click(within(dialog).getByRole("button", { name: "取消" }));
-  expect(requests).toHaveLength(0);
-  await user.click(more);
-  await user.click(screen.getByRole("menuitem", { name: "删除工作流" }));
-  dialog = await screen.findByRole("dialog", { name: "删除工作流" });
-  await user.click(within(dialog).getByRole("button", { name: "删除工作流" }));
-  await within(dialog).findByRole("alert");
-  expect(
-    screen.getByRole("heading", { name: "周会准备流程", hidden: true }),
-  ).toBeInTheDocument();
-  await user.click(within(dialog).getByRole("button", { name: "删除工作流" }));
-  await screen.findByText("创建你的第一个工作流");
-  expect(
-    screen.queryByRole("heading", { name: "周会准备流程" }),
-  ).not.toBeInTheDocument();
-  expect(requests).toEqual([
-    { expectedRevisionId: "revision-1" },
-    { expectedRevisionId: "revision-1" },
-  ]);
-}, 15000);
-
-it("尚未保存版本的工作流可删除，编辑与详情页一样不可用", async () => {
-  const user = userEvent.setup();
-  definition = { ...definition, currentRevisionId: "", ordinal: 0 };
-  renderList();
-  await user.click(
-    await screen.findByRole("button", { name: "周会准备流程 的更多操作" }),
-  );
-  expect(screen.getByRole("menuitem", { name: "编辑" })).toHaveAttribute(
-    "aria-disabled",
-    "true",
-  );
-  expect(
-    screen.getByRole("menuitem", { name: "删除工作流" }),
-  ).not.toHaveAttribute("aria-disabled");
-});
-
-it("资源库内搜索保留工作流分类，并使用工作流搜索参数", async () => {
+it("搜索调用真实工作流查询，无匹配与空库分别表达", async () => {
   const searches: string[] = [];
   server.use(
     http.get(`${origin}/api/v1/workflows`, ({ request }) => {
@@ -263,59 +303,76 @@ it("资源库内搜索保留工作流分类，并使用工作流搜索参数", a
   fireEvent.change(screen.getByRole("searchbox", { name: "搜索工作流" }), {
     target: { value: "不存在" },
   });
-  await screen.findByText("创建你的第一个工作流");
+  await screen.findByText("没有匹配的资源");
+  expect(screen.queryByText("创建你的第一个工作流")).not.toBeInTheDocument();
   expect(searches.at(-1)).toBe("不存在");
-  expect(screen.getByRole("radio", { name: "工作流" })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
-  expect(screen.getByRole("searchbox", { name: "搜索工作流" })).toHaveValue(
-    "不存在",
-  );
   fireEvent.change(screen.getByRole("searchbox", { name: "搜索工作流" }), {
     target: { value: "" },
   });
   await screen.findByRole("heading", { name: "周会准备流程" });
 });
 
-it("工作流首批九项，追加下一批保留已有卡片并传递游标", async () => {
+it("工作流每批24项，滚动追加保留条目并传递搜索和游标，失败只重试下一批", async () => {
   const requests: URLSearchParams[] = [];
+  let failNextPage = true;
   server.use(
     http.get(`${origin}/api/v1/workflows`, ({ request }) => {
       const params = new URL(request.url).searchParams;
       requests.push(params);
-      return HttpResponse.json(
-        params.has("beforeId")
-          ? {
-              items: [{ ...definition, id: "flow-10", title: "最后一个流程" }],
-            }
-          : {
-              items: Array.from({ length: 9 }, (_, index) => ({
-                ...definition,
-                id: `flow-${index}`,
-                title: `流程 ${index}`,
-              })),
-              nextBefore: 123,
-              nextBeforeId: "flow-8",
-            },
-      );
+      if (params.has("beforeId"))
+        return failNextPage
+          ? HttpResponse.json({ message: "下一批暂时不可用" }, { status: 503 })
+          : HttpResponse.json({
+              items: [{ ...definition, id: "flow-24", title: "最后一个流程" }],
+            });
+      return HttpResponse.json({
+        items: Array.from({ length: 24 }, (_, index) => ({
+          ...definition,
+          id: `flow-${index}`,
+          title: `流程 ${index}`,
+        })),
+        nextBefore: 123,
+        nextBeforeId: "flow-23",
+      });
     }),
   );
-  renderList();
+  renderList("/resources?category=workflows&search=流程");
   const first = (
     await screen.findByRole("heading", { name: "流程 0" })
   ).closest("article");
-  expect(screen.getAllByRole("article")).toHaveLength(9);
-  fireEvent.click(screen.getByRole("button", { name: "加载更多" }));
-  await screen.findByRole("heading", { name: "最后一个流程" });
-  expect(screen.getAllByRole("article")).toHaveLength(10);
-  expect(
-    screen.getByRole("heading", { name: "流程 0" }).closest("article"),
-  ).toBe(first);
-  expect(requests.every((params) => params.get("limit") === "9")).toBe(true);
-  expect(requests.at(-1)?.get("beforeId")).toBe("flow-8");
-  expect(requests.at(-1)?.get("before")).toBe("123");
+  expect(screen.getAllByRole("article")).toHaveLength(24);
   expect(
     screen.queryByRole("button", { name: "加载更多" }),
   ).not.toBeInTheDocument();
+  await waitFor(() => expect(intersections.size).toBe(1));
+  await act(async () => {
+    for (const intersect of intersections.values()) intersect();
+  });
+  await screen.findByRole("alert");
+  expect(screen.getAllByRole("alert")).toHaveLength(1);
+  expect(screen.getAllByRole("article")).toHaveLength(24);
+  failNextPage = false;
+  fireEvent.click(screen.getByRole("button", { name: "重试" }));
+  await screen.findByRole("heading", { name: "最后一个流程" });
+  expect(screen.getAllByRole("article")).toHaveLength(25);
+  expect(
+    screen.getByRole("heading", { name: "流程 0" }).closest("article"),
+  ).toBe(first);
+  expect(
+    requests.every(
+      (params) =>
+        params.get("limit") === "24" && params.get("search") === "流程",
+    ),
+  ).toBe(true);
+  expect(requests.at(-1)?.get("beforeId")).toBe("flow-23");
+  expect(requests.at(-1)?.get("before")).toBe("123");
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+it("旧列表地址继续进入资源库并保留搜索", async () => {
+  renderList("/workflows?search=周会");
+  await screen.findByRole("heading", { name: "周会准备流程" });
+  expect(screen.getByRole("searchbox", { name: "搜索工作流" })).toHaveValue(
+    "周会",
+  );
 });

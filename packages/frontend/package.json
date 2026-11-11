@@ -152,5 +152,9 @@
     "vitest": "4.1.10",
     "xlsx": "file:vendor/xlsx-0.20.3.tgz",
     "zod": "4.4.3"
+  },
+  "dependencies": {
+    "@neuxbot/bloub": "github:JieWaZi/bloub#main",
+    "@paper-design/shaders": "0.0.80"
   }
 }

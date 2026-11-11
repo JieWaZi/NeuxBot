@@ -1,44 +1,41 @@
 package runtime_options
 
 import (
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-
 	"context"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
 
-// 环境变量请求
+// 默认执行设置请求
 type UpdateRuntimeEnvironmentRequest struct {
+	// 安装实例
+	InstallationPath string `json:"installationPath,omitempty" validate:"max=4096"`
 	// 默认账号
 	DefaultAccountID string `json:"defaultAccountId" validate:"max=32"`
 	// 启用状态
 	Enabled bool `json:"enabled"`
 	// 是否默认
 	IsDefault bool `json:"isDefault"`
-	// 可执行路径
-	Binary string `json:"binary" validate:"required,max=4096"`
-	// 前置参数
-	PrefixArgs []string `json:"prefixArgs" validate:"max=100,dive,max=4096"`
-	// 配置目录
-	ConfigHome string `json:"configHome" validate:"max=4096"`
-	// 自定义模型
-	CustomModels []string `json:"customModels" validate:"max=50,dive,max=200"`
 	// 默认模型
 	DefaultModel string `json:"defaultModel" validate:"max=200"`
 	// 默认推理
 	DefaultReasoning string `json:"defaultReasoning" validate:"max=80"`
+	// 默认 Fast
+	DefaultFast *bool `json:"defaultFast,omitempty"`
 	// 默认权限
 	DefaultPermissionLevel constants.PermissionLevel `json:"defaultPermissionLevel" validate:"required"`
 }
 
-// 更新环境变量
+// 更新默认执行设置
 type UpdateRuntimeEnvironment struct {
 	ginx.MethodPut
 	// 运行时标识
@@ -53,9 +50,6 @@ func (u *UpdateRuntimeEnvironment) Path() string { return "/:runtimeId" }
 // Validate 规范化 Runtime 环境配置中的文本字段。
 func (u *UpdateRuntimeEnvironment) Validate(*gin.Context) error {
 	u.RuntimeID = strings.TrimSpace(u.RuntimeID)
-	u.Body.Binary = strings.TrimSpace(u.Body.Binary)
-	u.Body.ConfigHome = strings.TrimSpace(u.Body.ConfigHome)
-	u.Body.CustomModels = normalizeCustomModels(u.Body.CustomModels)
 	u.Body.DefaultModel = strings.TrimSpace(u.Body.DefaultModel)
 	u.Body.DefaultReasoning = strings.TrimSpace(u.Body.DefaultReasoning)
 	u.Body.DefaultPermissionLevel = constants.PermissionLevel(
@@ -70,38 +64,73 @@ func (u *UpdateRuntimeEnvironment) Output(ctx *gin.Context) (interface{}, error)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	if !agentapi.LaunchOverrideArgumentsAllowed(current.BaseRuntimeID, u.Body.PrefixArgs) {
-		return nil, ginx.WithStack(status_error.BadRequest)
+	accountID := strings.TrimSpace(u.Body.DefaultAccountID)
+	if accountID == constants.AiAccountSystemID {
+		accountID = ""
 	}
-	releaseAccount := func() {}
-	if u.Body.DefaultAccountID != "" {
-		release, err := global.AIAccountService.Exclusive(u.Body.DefaultAccountID)
+	if accountconfig.ACPSystemConfigVariable(current.BaseRuntimeID) != "" {
+		if accountID == constants.AiAccountSystemID {
+			accountID = ""
+		}
+		if accountID != "" {
+			return nil, ginx.WithStack(status_error.AIAccountConfigurationInvalid)
+		}
+	}
+	// Runtime 设置只影响后续准备，不改写账号认证材料或回收现有消费者。
+	if accountID != "" {
+		account, err := global.AIAccountService.Get(ctx, accountID)
 		if err != nil {
 			return nil, ginx.WithStack(err)
 		}
-		releaseAccount = release
-		defer release()
-	}
-	if err := global.AIAccountService.Validate(ctx, u.Body.DefaultAccountID); err != nil {
-		return nil, ginx.WithStack(err)
+		if err := aiaccount.ValidateRuntimeAccount(account, current); err != nil {
+			return nil, ginx.WithStack(err)
+		}
 	}
 	environment := models.RuntimeEnvironment{
-		DefaultAccountID:       u.Body.DefaultAccountID,
+		DefaultAccountID:       accountID,
+		BaseRuntimeID:          current.BaseRuntimeID,
 		RuntimeID:              u.RuntimeID,
 		Enabled:                u.Body.Enabled,
-		Binary:                 u.Body.Binary,
-		PrefixArgs:             append([]string(nil), u.Body.PrefixArgs...),
-		ConfigHome:             u.Body.ConfigHome,
-		CustomModels:           append([]string(nil), u.Body.CustomModels...),
 		DefaultModel:           u.Body.DefaultModel,
 		DefaultReasoning:       u.Body.DefaultReasoning,
+		DefaultFast:            u.Body.DefaultFast,
 		DefaultPermissionLevel: u.Body.DefaultPermissionLevel,
 	}
-	if err := updateRuntimeEnvironment(ctx, environment, u.Body.IsDefault); err != nil {
+	selectionChanged := u.Body.InstallationPath != "" && u.Body.InstallationPath != current.Detection.ResolvedBinary
+	var selected agent.CLIInstallation
+	if selectionChanged {
+		for _, installation := range current.Detection.Installations {
+			if installation.Path == u.Body.InstallationPath && installation.Available {
+				selected = installation
+				break
+			}
+		}
+		if selected.Path == "" {
+			return nil, ginx.WithStack(status_error.RuntimeConfigurationInvalid)
+		}
+	}
+	if err := global.TransactionControllerManager.Transaction(ctx, func(tx context.Context) error {
+		if err := updateRuntimeEnvironment(tx, environment, u.Body.IsDefault); err != nil {
+			return err
+		}
+		if selectionChanged {
+			summary := current.Detection.Runtime
+			if global.RuntimeCatalog != nil {
+				for _, candidate := range global.RuntimeCatalog.Runtimes() {
+					if candidate.ID == u.RuntimeID {
+						summary = candidate
+						break
+					}
+				}
+			}
+			detection := agent.DetectionResult{Runtime: summary, Installations: current.Detection.Installations, ResolvedBinary: selected.Path, Version: selected.Version, State: agent.DetectionStateReady, Auth: agent.AuthStatusUnknown}
+			return global.RuntimeEnvironmentControllerManager.UpdateDetection(tx, u.RuntimeID, detection, current.DetectedAt)
+		}
+		return nil
+	}); err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	releaseAccount()
-	if configurationRequiresDetectRefresh(current, environment) || current.DefaultAccountID != environment.DefaultAccountID {
+	if selectionChanged || current.DefaultAccountID != environment.DefaultAccountID {
 		if err := global.RuntimeEnvironmentService.RefreshOne(ctx, u.RuntimeID); err != nil {
 			return nil, ginx.WithStack(err)
 		}
@@ -118,59 +147,10 @@ func (u *UpdateRuntimeEnvironment) Output(ctx *gin.Context) (interface{}, error)
 	return ginx.CommonSuccessResponse(), nil
 }
 
-// canCompleteStartupSetup 只在所选默认智能体完成模型与权限探测后解除首次引导。
+// canCompleteStartupSetup 接受用户明确保存的合法默认配置，原生默认模型可留空，探测结果仅提供诊断。
 func canCompleteStartupSetup(environment models.RuntimeEnvironment) bool {
-	configured := environment.Enabled && environment.IsDefault && environment.DefaultModel != ""
-	installed := environment.Detection.ResolvedBinary != "" && environment.Detection.State == agentapi.DetectionStateReady
-	if !configured || !installed {
-		return false
-	}
-	for _, diagnostic := range environment.Detection.Diagnostics {
-		if diagnostic.Code == agentapi.DiagnosticCodeACPOptionsUnavailable {
-			return false
-		}
-	}
-	permissions := agentapi.ModelPermissionLevels(
-		environment.Detection,
-		environment.CustomModels,
-		environment.DefaultModel,
-	)
-	return agentapi.PermissionLevelSupported(permissions, environment.DefaultPermissionLevel)
-}
-
-func configurationRequiresDetectRefresh(
-	current models.RuntimeEnvironment,
-	next models.RuntimeEnvironment,
-) bool {
-	return !agentapi.LaunchDetectInputsEqual(
-		agentapi.LaunchDetectInput{
-			Binary:     current.Binary,
-			PrefixArgs: current.PrefixArgs,
-			ConfigHome: current.ConfigHome,
-		},
-		agentapi.LaunchDetectInput{
-			Binary:     next.Binary,
-			PrefixArgs: next.PrefixArgs,
-			ConfigHome: next.ConfigHome,
-		},
-	)
-}
-
-func normalizeCustomModels(models []string) []string {
-	result := make([]string, 0, len(models))
-	seen := make(map[string]struct{}, len(models))
-	for _, model := range models {
-		model = strings.TrimSpace(model)
-		if model == "" {
-			continue
-		}
-		if _, exists := seen[model]; exists {
-			continue
-		}
-		seen[model] = struct{}{}
-		result = append(result, model)
-	}
-	return result
+	return environment.Enabled && environment.IsDefault && strings.TrimSpace(environment.Binary) != "" &&
+		constants.SelectablePermissionLevel(environment.DefaultPermissionLevel)
 }
 
 func updateRuntimeEnvironment(
@@ -188,10 +168,6 @@ func updateRuntimeEnvironment(
 		if err := global.RuntimeEnvironmentControllerManager.UpdateConfiguration(transactionContext, environment); err != nil {
 			return err
 		}
-		return global.RuntimeEnvironmentControllerManager.UpdateFields(
-			transactionContext,
-			environment.RuntimeID,
-			map[string]any{"is_default": true},
-		)
+		return global.RuntimeEnvironmentControllerManager.UpdateFields(transactionContext, environment.RuntimeID, map[string]any{"is_default": true})
 	})
 }

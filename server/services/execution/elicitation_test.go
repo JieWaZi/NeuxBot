@@ -14,6 +14,8 @@ import (
 	"testing/synctest"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 )
 
@@ -48,19 +50,15 @@ func TestValidateElicitationContentUsesFrozenSchema(t *testing.T) {
 func TestNativeQuestionsSharePendingFactsAndResolveExactlyOnce(t *testing.T) {
 	for _, action := range []string{"answer", "decline", "cancel"} {
 		t.Run(action, func(t *testing.T) {
-			store, err := eventlog.NewStore(t.TempDir())
-			if err != nil {
-				t.Fatal(err)
-			}
+			store := conversationfixture.New(t, t.TempDir())
 			chatID := "51515151515151515151515151515151"
-			if _, err := store.Create(chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated}}); err != nil {
+			if _, err := conversationfixture.CommitFacts(t.Context(), store, chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated}}); err != nil {
 				t.Fatal(err)
 			}
-			journal := &consentTestJournal{runtimeEventTestJournal: &runtimeEventTestJournal{store: store}, updates: make(chan []models.PendingElicitation, 4)}
+			journal := &consentTestJournal{interactionTestJournal: &interactionTestJournal{store: store}, updates: make(chan []models.PendingElicitation, 4)}
 			coordinator := newElicitationCoordinator(journal)
-			state := coordinator.inputState("execution")
-			if state.Pending() {
-				t.Fatal("undelivered request paused native inactivity")
+			if len(coordinator.pendingProjection(chatID)) > 0 {
+				t.Fatal("undelivered request appeared in the pending projection")
 			}
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -73,10 +71,11 @@ func TestNativeQuestionsSharePendingFactsAndResolveExactlyOnce(t *testing.T) {
 				done <- decision
 			}()
 			pending := <-journal.updates
-			if len(pending) != 1 || !state.Pending() {
+			if len(pending) != 1 || !(len(coordinator.pendingProjection(chatID)) > 0) {
 				t.Fatalf("durable request missing: %+v", pending)
 			}
 			id := pending[0].ElicitationID
+			var err error
 			wantResult := constants.ElicitationResultAccepted
 			switch action {
 			case "answer":
@@ -99,13 +98,13 @@ func TestNativeQuestionsSharePendingFactsAndResolveExactlyOnce(t *testing.T) {
 			case <-time.After(time.Second):
 				t.Fatal("native wait was not released")
 			}
-			if state.Pending() {
-				t.Fatal("resolved request permanently paused native inactivity")
+			if len(coordinator.pendingProjection(chatID)) > 0 {
+				t.Fatal("resolved request remained in the pending projection")
 			}
 			if err := coordinator.resolveAccepted(context.Background(), chatID, id, map[string]any{"answer": "late"}); !errors.Is(err, status_error.ElicitationAlreadyResolved) {
 				t.Fatalf("late response accepted: %v", err)
 			}
-			records, err := store.ReadAll(chatID)
+			records, err := conversationfixture.ReadFacts(t.Context(), store, chatID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -125,15 +124,17 @@ type interactionDeadlineJournal struct {
 	// Journal 保留本用例未使用的日志端口。
 	chatservice.Journal
 	// store 保存请求与处理的权威事实。
-	store *eventlog.Store
+	store *conversation.Store
 	// published 把请求已交付的时刻通知测试。
 	published chan eventlog.Record
 	// afterResolution 在处理事实持久化后、调用方发布完成前控制交错。
 	afterResolution func()
+	// duringPublication holds a committed decision before delivery to the native waiter.
+	duringPublication func()
 }
 
 func (j *interactionDeadlineJournal) append(chatID string, input eventlog.AppendInput) (eventlog.Record, error) {
-	records, err := j.store.Append(chatID, []eventlog.AppendInput{input})
+	records, err := conversationfixture.CommitFacts(context.Background(), j.store, chatID, []eventlog.AppendInput{input})
 	if err != nil {
 		return eventlog.Record{}, err
 	}
@@ -149,9 +150,15 @@ func (j *interactionDeadlineJournal) AppendApprovalFact(chatID string, input eve
 	return j.append(chatID, input)
 }
 func (j *interactionDeadlineJournal) PublishElicitationFact(_ context.Context, r eventlog.Record, _ []models.PendingElicitation) {
+	if r.Type == constants.ChatEventTypeElicitationResolved && j.duringPublication != nil {
+		j.duringPublication()
+	}
 	j.published <- r
 }
 func (j *interactionDeadlineJournal) PublishApprovalFact(_ context.Context, r eventlog.Record, _ []models.PendingApproval) {
+	if r.Type == constants.ChatEventTypeApprovalResolved && j.duringPublication != nil {
+		j.duringPublication()
+	}
 	j.published <- r
 }
 
@@ -169,12 +176,9 @@ func TestNativeInteractionAdmissionOwnsDeadlineRace(t *testing.T) {
 			}
 			t.Run(name, func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
-					store, err := eventlog.NewStore(t.TempDir())
-					if err != nil {
-						t.Fatal(err)
-					}
+					store := conversationfixture.New(t, t.TempDir())
 					chatID := "52525252525252525252525252525252"
-					if _, err := store.Create(chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated}}); err != nil {
+					if _, err := conversationfixture.CommitFacts(t.Context(), store, chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated}}); err != nil {
 						t.Fatal(err)
 					}
 					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -236,6 +240,7 @@ func TestNativeInteractionAdmissionOwnsDeadlineRace(t *testing.T) {
 						}
 					} else {
 						// 用户在截止前获得处理权；真实accepted日志写入后才推进到期限。
+						var err error
 						if approval {
 							err = approvals.resolveSelected(context.Background(), chatID, id, "allow")
 						} else {
@@ -251,7 +256,7 @@ func TestNativeInteractionAdmissionOwnsDeadlineRace(t *testing.T) {
 					if len(inputs.pendingProjection(chatID)) != 0 || len(approvals.pendingProjection(chatID)) != 0 {
 						t.Fatal("finished request remained pending")
 					}
-					records, err := store.ReadAll(chatID)
+					records, err := conversationfixture.ReadFacts(t.Context(), store, chatID)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -276,5 +281,71 @@ func TestNativeInteractionAdmissionOwnsDeadlineRace(t *testing.T) {
 				})
 			})
 		}
+	}
+}
+
+func TestNativeInteractionKeepsCommittedDecisionDuringPublication(t *testing.T) {
+	for _, approval := range []bool{true, false} {
+		t.Run(map[bool]string{true: "approval", false: "input"}[approval], func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				store := conversationfixture.New(t, t.TempDir())
+				chatID := "52525252525252525252525252525252"
+				if _, err := conversationfixture.CommitFacts(t.Context(), store, chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated}}); err != nil {
+					t.Fatal(err)
+				}
+				publishing, release := make(chan struct{}), make(chan struct{})
+				journal := &interactionDeadlineJournal{store: store, published: make(chan eventlog.Record, 2), duringPublication: func() {
+					close(publishing)
+					<-release
+				}}
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				requestedResult := make(chan bool, 1)
+				resolutionError := make(chan error, 1)
+				if approval {
+					coordinator := newApprovalCoordinator(journal)
+					go func() {
+						decision, err := coordinator.handler(chatID, "execution").Request(ctx, agentapi.ApprovalRequest{
+							Options: []agentapi.ApprovalOption{{ID: "allow"}},
+						})
+						requestedResult <- err == nil && decision.OptionID == "allow"
+					}()
+					var requested eventlog.ApprovalRequestedData
+					_ = json.Unmarshal((<-journal.published).Data, &requested)
+					go func() {
+						resolutionError <- coordinator.resolveSelected(context.Background(), chatID, requested.ApprovalID, "allow")
+					}()
+				} else {
+					coordinator := newElicitationCoordinator(journal)
+					go func() {
+						decision, err := coordinator.handler(chatID, "execution").Request(ctx, agentapi.ElicitationRequest{
+							Mode: "form", RequestedSchema: map[string]any{"type": "object"},
+						})
+						requestedResult <- err == nil && decision.Accepted
+					}()
+					var requested eventlog.ElicitationRequestedData
+					_ = json.Unmarshal((<-journal.published).Data, &requested)
+					go func() {
+						resolutionError <- coordinator.resolveAccepted(context.Background(), chatID, requested.ElicitationID, nil)
+					}()
+				}
+				<-publishing
+				cancel()
+				synctest.Wait()
+				select {
+				case accepted := <-requestedResult:
+					close(release)
+					t.Fatalf("request returned before publishing the committed decision: accepted=%v", accepted)
+				default:
+				}
+				close(release)
+				if err := <-resolutionError; err != nil {
+					t.Fatal(err)
+				}
+				if accepted := <-requestedResult; !accepted {
+					t.Fatal("cancel replaced a committed user decision")
+				}
+			})
+		})
 	}
 }

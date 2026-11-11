@@ -46,7 +46,7 @@ func (r *RestoreSkillVersion) Output(ctx *gin.Context) (interface{}, error) {
 
 // restoreSkillVersion 复用相同资源用例，空伙伴范围表示全局库。
 func restoreSkillVersion(ctx *gin.Context, r *RestoreSkillVersion) (models.SkillVersion, error) {
-	skill, err := visibleSkill(ctx, r.WakerID, r.SkillID)
+	skill, err := resourceSkill(ctx, r.WakerID, r.SkillID)
 	if err != nil {
 		return models.SkillVersion{}, ginx.WithStack(err)
 	}

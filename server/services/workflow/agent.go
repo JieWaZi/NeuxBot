@@ -256,7 +256,7 @@ func (s *Service) prepareAgentRunInput(ctx context.Context, owner string, reques
 			}
 			prepared.directory, prepared.roots = actual, []string{actual}
 		}
-		frozen, err := workflowfiles.FreezeLocalInput(ctx, capability.FileRoots(ctx), reference, prepared.directory, "input", pointer)
+		frozen, err := workflowfiles.FreezeLocalInput(ctx, capability.FileRoots(ctx), capability.FilePaths(ctx), reference, prepared.directory, "input", pointer, capability.ManagedSpace(ctx))
 		if err != nil {
 			return "", err
 		}

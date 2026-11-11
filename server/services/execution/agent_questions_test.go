@@ -10,6 +10,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -36,10 +37,7 @@ func TestCLIQuestionRejectsFormsTheUserCannotComplete(t *testing.T) {
 }
 
 func TestCLIQuestionsUseCanonicalFactsAndActualUserDecision(t *testing.T) {
-	store, err := eventlog.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := conversationfixture.New(t, t.TempDir())
 	chatID := "0123456789abcdef0123456789abcdef"
 	facts := []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated}}
 	for i := 0; i < 128; i++ {
@@ -47,21 +45,20 @@ func TestCLIQuestionsUseCanonicalFactsAndActualUserDecision(t *testing.T) {
 		facts = append(facts, eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: id, Data: marshalData(eventlog.ExecutionCreatedData{})}, eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCompleted, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})})
 	}
 	facts = append(facts, eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "execution"}, eventlog.AppendInput{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: "execution"})
-	if _, err := store.Create(chatID, facts); err != nil {
+	if _, err := conversationfixture.CommitFacts(t.Context(), store, chatID, facts); err != nil {
 		t.Fatal(err)
 	}
-	journal := &consentTestJournal{runtimeEventTestJournal: &runtimeEventTestJournal{store: store}, updates: make(chan []models.PendingElicitation, 16)}
+	journal := &consentTestJournal{interactionTestJournal: &interactionTestJournal{store: store}, updates: make(chan []models.PendingElicitation, 16)}
 	hub := events.New()
 	defer hub.Close()
 	coordinator := newElicitationCoordinator(journal, hub)
 	manager := &service{elicitations: coordinator, events: hub}
-	state := coordinator.inputState("execution")
 	bindings := map[string]capability.Binding{}
 	for _, value := range manager.questionBindings(chatID, "execution") {
 		bindings[value.Operation] = value
 	}
 	invalid := capability.Request{Operation: "interaction.questions.create", RequestID: "impossible", Params: map[string]any{"message": "无法完成", "allowSkip": false, "requestedSchema": map[string]any{"type": "object", "properties": map[string]any{"choice": map[string]any{"type": "string", "enum": []string{"A"}, "minLength": 2}}, "required": []string{"choice"}}}}
-	if _, err := bindings[invalid.Operation].Call(context.Background(), invalid); !errors.Is(err, status_error.AgentInputInvalid) || state.Pending() {
+	if _, err := bindings[invalid.Operation].Call(context.Background(), invalid); !errors.Is(err, status_error.AgentInputInvalid) || (len(coordinator.pendingProjection(chatID)) > 0) {
 		t.Fatalf("impossible question became pending: %v", err)
 	}
 	if _, err := bindings[invalid.Operation].Receipt(context.Background(), invalid.RequestID); !errors.Is(err, status_error.AgentReceiptNotFound) {
@@ -69,7 +66,7 @@ func TestCLIQuestionsUseCanonicalFactsAndActualUserDecision(t *testing.T) {
 	}
 	request := capability.Request{Operation: "interaction.questions.create", RequestID: "choice", Params: map[string]any{"message": "选择交付方式", "allowSkip": false, "requestedSchema": map[string]any{"type": "object", "properties": map[string]any{"choice": map[string]any{"type": "string", "enum": []string{"file", "text"}}}, "required": []string{"choice"}, "additionalProperties": false}}}
 	first, err := bindings[request.Operation].Call(context.Background(), request)
-	if err != nil || !state.Pending() {
+	if err != nil || !(len(coordinator.pendingProjection(chatID)) > 0) {
 		t.Fatalf("question was not pending: %+v %v", first, err)
 	}
 	id := first.CommandID
@@ -95,8 +92,8 @@ func TestCLIQuestionsUseCanonicalFactsAndActualUserDecision(t *testing.T) {
 	if err := coordinator.resolveAccepted(context.Background(), chatID, id, map[string]any{"choice": "file"}); err != nil {
 		t.Fatal(err)
 	}
-	if state.Pending() {
-		t.Fatal("resolved question kept runtime idle timer paused")
+	if len(coordinator.pendingProjection(chatID)) > 0 {
+		t.Fatal("resolved question remained in the pending projection")
 	}
 	result, err := bindings["interaction.questions.wait"].Call(context.Background(), capability.Request{Params: map[string]any{"questionId": id, "timeoutMs": 100}})
 	if err != nil || result.Data.(map[string]any)["completed"] != true {

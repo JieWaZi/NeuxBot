@@ -47,7 +47,6 @@ func TestRuntimeEnvironmentControllerPersistsConfigurationAndDetection(t *testin
 		Binary:                 "/opt/tools/codex",
 		PrefixArgs:             []string{"--profile", "ally"},
 		ConfigHome:             "/tmp/codex-config",
-		CustomModels:           []string{"gpt-team-custom"},
 		DefaultModel:           "gpt-5.6",
 		DefaultReasoning:       "high",
 		DefaultPermissionLevel: agentapi.PermissionLevelDefault,
@@ -60,7 +59,9 @@ func TestRuntimeEnvironmentControllerPersistsConfigurationAndDetection(t *testin
 			ID:                            agentapi.RuntimeIDCodex,
 			BaseRuntimeID:                 agentapi.RuntimeIDCodex,
 			Name:                          "Codex CLI",
+			PrefixArgs:                    []string{"--native"},
 			ConfigHomeEnvironmentVariable: "CODEX_HOME",
+			ConfigHome:                    "/catalog/profile",
 		},
 		State:          agentapi.DetectionStateReady,
 		Version:        "1.2.3",
@@ -75,16 +76,16 @@ func TestRuntimeEnvironmentControllerPersistsConfigurationAndDetection(t *testin
 	if err != nil {
 		t.Fatalf("Get() error = %v", err)
 	}
-	if stored.Enabled || stored.Binary != configuration.Binary ||
-		stored.ConfigHome != configuration.ConfigHome ||
-		stored.DefaultPermissionLevel != agentapi.PermissionLevelDefault {
-		t.Fatalf("stored configuration = %#v, want disabled custom configuration", stored)
+	if stored.Enabled || stored.Binary != detection.ResolvedBinary || stored.ConfigHome != detection.Runtime.ConfigHome || stored.DefaultPermissionLevel != agentapi.PermissionLevelDefault {
+		t.Fatalf("stored runtime must use readonly detection instead of submitted launch fields: %+v", stored)
 	}
-	if !reflect.DeepEqual(stored.PrefixArgs, configuration.PrefixArgs) {
-		t.Fatalf("PrefixArgs = %#v, want %#v", stored.PrefixArgs, configuration.PrefixArgs)
+	if !reflect.DeepEqual(stored.PrefixArgs, detection.Runtime.PrefixArgs) {
+		t.Fatalf("native launch arguments not restored: %v", stored.PrefixArgs)
 	}
-	if !reflect.DeepEqual(stored.CustomModels, configuration.CustomModels) {
-		t.Fatalf("CustomModels = %#v, want %#v", stored.CustomModels, configuration.CustomModels)
+	for _, field := range []string{"binary", "prefix_args", "config_home", "custom_models"} {
+		if database.DB.Migrator().HasColumn(&models.RuntimeEnvironment{}, field) {
+			t.Fatalf("removed user setting still persisted: %s", field)
+		}
 	}
 	if !reflect.DeepEqual(stored.Detection, detection) || stored.DetectedAt != 1234 {
 		t.Fatalf("stored detection = %#v at %d, want %#v at 1234", stored.Detection, stored.DetectedAt, detection)

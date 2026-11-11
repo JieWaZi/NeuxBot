@@ -408,7 +408,10 @@ describe("API 错误展示入口", () => {
       ).rejects.toMatchObject({ code: "ReadFailed" });
     });
     expect(result.current).toEqual([
-      expect.objectContaining({ scope, message: "读取失败" }),
+      expect.objectContaining({
+        scope,
+        message: "本地服务返回了无法识别的错误",
+      }),
     ]);
     client.setConfig({
       fetch: vi.fn(
@@ -464,7 +467,7 @@ describe("API 错误展示入口", () => {
           headers: { "X-NeuxAlly-Error-Surface": "local" },
           throwOnError: true,
         }),
-      ).rejects.toMatchObject({ message: "删除失败" });
+      ).rejects.toMatchObject({ message: "本地服务返回了无法识别的错误" });
     });
     expect(result.current).toHaveLength(0);
   });
@@ -500,4 +503,64 @@ describe("API 错误展示入口", () => {
     });
     expect(result.current).toHaveLength(0);
   });
+});
+
+it("真实Client错误拦截到通知保留稳定身份、当前语言和公开来源", async () => {
+  const { i18n } = await import("@/shared/i18n");
+  const { result, unmount } = renderHook(useErrorNotices);
+  client.setConfig({
+    fetch: async () =>
+      new Response(
+        JSON.stringify({
+          key: "RuntimeWorkspaceScopeUnsupported",
+          code: 40000007108,
+          message: "server fixed language",
+          params: { MaxDirectories: 2 },
+          messageSource: "localized",
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      ),
+  });
+  let failure: unknown;
+  await act(async () => {
+    try {
+      await client.get({ url: "/api/v1/work-board", throwOnError: true });
+    } catch (error) {
+      failure = error;
+    }
+  });
+  expect(failure).toMatchObject({
+    code: "RuntimeWorkspaceScopeUnsupported",
+    message: "当前智能体最多支持 2 个项目目录，请调整工作范围",
+  });
+  expect(result.current[0]?.message).toBe(
+    "当前智能体最多支持 2 个项目目录，请调整工作范围",
+  );
+  await act(() => i18n.changeLanguage("en-US"));
+  expect(failure).toMatchObject({
+    message:
+      "the selected agent supports up to 2 project directories; adjust the workspace scope",
+  });
+  expect(result.current[0]?.message).toBe(
+    "the selected agent supports up to 2 project directories; adjust the workspace scope",
+  );
+  client.setConfig({
+    fetch: async () =>
+      new Response(
+        JSON.stringify({
+          key: "RuntimeQuotaExhausted",
+          message: "Native quota exhausted",
+          messageSource: "public",
+        }),
+        { status: 429, headers: { "Content-Type": "application/json" } },
+      ),
+  });
+  await act(async () => {
+    await expect(
+      client.get({ url: "/api/v1/work-board", throwOnError: true }),
+    ).rejects.toMatchObject({ message: "Native quota exhausted" });
+  });
+  expect(result.current.at(-1)?.message).toBe("Native quota exhausted");
+  unmount();
+  await i18n.changeLanguage("zh-CN");
 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   connectorSelectableInComposer,
+  connectorTimeoutMsFromSeconds,
   connectorTrustFieldsChanged,
   parseArguments,
   toConnectorFormValue,
@@ -9,6 +10,33 @@ import {
 } from "./connector-view";
 
 describe("connector view model", () => {
+  it.each([
+    [100, "0.1"],
+    [1000, "1"],
+    [4001, "4.001"],
+    [12345, "12.345"],
+    [300000, "300"],
+  ])("往返保留 %i 毫秒的秒值 %s", (milliseconds, seconds) => {
+    const form = toConnectorFormValue({ timeoutMs: milliseconds });
+    expect(form.timeoutSeconds).toBe(seconds);
+    expect(connectorTimeoutMsFromSeconds(form.timeoutSeconds)).toBe(
+      milliseconds,
+    );
+  });
+
+  it("新建默认十秒并在提交边界恢复整数毫秒", () => {
+    const form = toConnectorFormValue();
+    expect(form.timeoutSeconds).toBe("10");
+    expect(connectorTimeoutMsFromSeconds(form.timeoutSeconds)).toBe(10000);
+  });
+
+  it.each(["", " ", "invalid", "Infinity", "0.099", "300.001", "0.1001"])(
+    "拒绝空值、超范围及不足一毫秒精度的输入 %s",
+    (value) => {
+      expect(connectorTimeoutMsFromSeconds(value)).toBeNull();
+    },
+  );
+
   it("converts an API view into a stable card summary", () => {
     expect(
       toConnectorSummary({
@@ -18,6 +46,7 @@ describe("connector view model", () => {
           activationPolicy: "team_context",
           id: "connector-1",
           name: "文件系统",
+          categories: ["工具"],
           scope: "built_in",
           testStatus: "succeeded",
           testToolCount: 4,
@@ -30,6 +59,7 @@ describe("connector view model", () => {
       enabled: true,
       id: "connector-1",
       name: "文件系统",
+      categories: ["工具"],
       scope: "built_in",
       testStatus: "succeeded",
       toolCount: 4,
@@ -114,7 +144,7 @@ describe("connector view model", () => {
       connectorTrustFieldsChanged(initial, {
         ...initial,
         name: "新名称",
-        timeoutMS: "20000",
+        timeoutSeconds: "20",
       }),
     ).toBe(false);
     expect(

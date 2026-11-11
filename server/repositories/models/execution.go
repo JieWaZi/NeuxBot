@@ -13,8 +13,8 @@ type Execution struct {
 	AutomaticRunID string `json:"automaticRunId,omitempty"`
 	// SubmissionID 是入口无关的稳定输入身份，写入同一权威执行事实。
 	SubmissionID string `json:"submissionId,omitempty"`
-	// SubmissionHash 是规范化输入和冻结配置的摘要，拒绝同键异内容。
-	SubmissionHash string `json:"submissionHash,omitempty"`
+	// SubmissionHash 只用于服务端同键异内容校验；耐久摘要由 JSONL 执行事实单独保存，不向外序列化。
+	SubmissionHash string `json:"-"`
 	// AccountID 是本次冻结的账号标识；空值使用智能体默认配置。
 	AccountID string `gorm:"type:varchar(32);not null;default:''" json:"accountId"`
 	// ID 是 32 位无连字符 UUID。
@@ -31,6 +31,10 @@ type Execution struct {
 	Model string `json:"model,omitempty"`
 	// Reasoning 是本次执行选择的推理强度标识。
 	Reasoning string `json:"reasoning,omitempty"`
+	// Fast 是本次执行冻结的 Fast 意图，空值使用原生行为。
+	Fast *bool `json:"fast,omitempty"`
+	// ContextWindow 是执行冻结的原生上下文档位。
+	ContextWindow string `json:"contextWindow,omitempty"`
 	// PermissionLevel 是本次执行冻结的跨 Runtime 产品权限等级。
 	PermissionLevel constants.PermissionLevel `json:"permissionLevel"`
 	// WorkspaceReadOnly 表示本次 Runtime 只能读取工作区且不能申请文件修改。
@@ -43,6 +47,12 @@ type Execution struct {
 	Revision int64 `json:"revision"`
 	// ErrorCode 是失败时供调用方本地化的稳定错误码。
 	ErrorCode string `json:"errorCode,omitempty"`
+	// ErrorMessage 是明确公开的原生可读原因。
+	ErrorMessage string `json:"errorMessage,omitempty"`
+	// ErrorMessageSource 是公开原因或应用本地化的来源标记。
+	ErrorMessageSource constants.ErrorMessageSource `json:"errorMessageSource,omitempty"`
+	// ErrorParams 是应用错误模板的安全参数。
+	ErrorParams map[string]interface{} `json:"errorParams,omitempty"`
 	// CompletedAt 是执行进入终态时的 Unix 毫秒时间。
 	CompletedAt *int64 `json:"completedAt,omitempty"`
 	// CreatedAt 是领域对象建立时的 Unix 毫秒时间。

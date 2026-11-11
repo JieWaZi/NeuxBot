@@ -113,31 +113,15 @@ func (r *RefreshAIAccountModels) Output(ctx *gin.Context) (interface{}, error) {
 	if strings.TrimSpace(apiKey) == "" {
 		return nil, ginx.WithStack(status_error.AIAccountCredentialError)
 	}
-	if len(account.Endpoints) == 0 {
-		return nil, ginx.WithStack(status_error.AIAccountConfigurationInvalid)
+	items, err := aiaccount.DiscoverModels(ctx, account.Endpoint, apiKey)
+	if err != nil {
+		return nil, ginx.WithStack(err)
 	}
-
 	modelsByID := make(map[string]AIAccountModel)
-	var lastErr error
-	var successfulEndpoint bool
-	for _, endpoint := range account.Endpoints[:1] {
-		items, requestErr := aiaccount.DiscoverModels(ctx, endpoint, apiKey)
-		if requestErr != nil {
-			lastErr = requestErr
-			continue
+	for _, item := range items {
+		if item.ID != "" {
+			modelsByID[item.ID] = AIAccountModel{ID: item.ID, Name: item.Name}
 		}
-		successfulEndpoint = true
-		for _, item := range items {
-			if item.ID == "" {
-				continue
-			}
-			if _, exists := modelsByID[item.ID]; !exists {
-				modelsByID[item.ID] = AIAccountModel{ID: item.ID, Name: item.Name}
-			}
-		}
-	}
-	if !successfulEndpoint && lastErr != nil {
-		return nil, ginx.WithStack(lastErr)
 	}
 	resources := make([]AIAccountModel, 0, len(modelsByID))
 	for _, item := range modelsByID {

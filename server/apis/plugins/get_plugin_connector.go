@@ -70,40 +70,17 @@ func (o *GetPluginConnector) Output(ctx *gin.Context) (interface{}, error) {
 
 // pluginConnectorResponse 与插件能力列表保持相同的优先级，只输出保存的脱敏快照。
 func pluginConnectorResponse(pkg packageplugin.Package, key string) (mcp.ConnectorResponse, error) {
+	if err := packageplugin.ValidateContract(pkg); err != nil {
+		return mcp.ConnectorResponse{}, err
+	}
 	var selected *packageplugin.Server
-	native := false
 	for _, server := range pkg.Servers {
 		if server.Key == key {
 			selected = &server
 			break
 		}
 	}
-	name := key
 	if selected == nil {
-		for _, target := range []string{"codex", "claude"} {
-			for _, server := range pkg.NativeImplementations[target].Servers {
-				if server.Key != key {
-					continue
-				}
-				selected = &packageplugin.Server{Key: key, Type: server.Transport, URL: server.Endpoint}
-				name = server.Name
-				native = true
-				break
-			}
-			if selected != nil {
-				break
-			}
-		}
-	}
-	if selected == nil {
-		return mcp.ConnectorResponse{}, status_error.PluginContentInvalid
-	}
-	transport := constants.MCPTransport(selected.Type)
-	switch selected.Type {
-	case "http", "streamable-http":
-		transport = constants.MCPTransportStreamableHTTP
-	case "stdio", "streamable_http", "sse":
-	default:
 		return mcp.ConnectorResponse{}, status_error.PluginContentInvalid
 	}
 	environment, headers := maps.Clone(selected.Env), maps.Clone(selected.Headers)
@@ -140,32 +117,32 @@ func pluginConnectorResponse(pkg packageplugin.Package, key string) (mcp.Connect
 			headers[binding.Header] = ""
 		}
 	}
-	if name == "" {
-		name = key
+	server := *selected
+	server.Env, server.Headers = environment, headers
+	return pluginConnectorSummary(server)
+}
+
+// pluginConnectorSummary 仅转换连接器的展示字段；完整安装包的认证绑定由调用方另行核验。
+func pluginConnectorSummary(server packageplugin.Server) (mcp.ConnectorResponse, error) {
+	transport := constants.MCPTransport(server.Type)
+	switch server.Type {
+	case "http", "streamable-http":
+		transport = constants.MCPTransportStreamableHTTP
+	case "stdio", "streamable_http", "sse":
+	default:
+		return mcp.ConnectorResponse{}, status_error.PluginContentInvalid
 	}
 	connector := mcp.ConnectorResource{
-		ID: key, Name: name, ActivationPolicy: constants.MCPActivationPolicyPerExecution, Transport: transport, Command: selected.Command,
-		URL: publicConnectorURL(selected.URL), Arguments: []string{},
-		Environment: connectorDefinitions(environment), Headers: connectorDefinitions(headers),
+		ID: server.Key, Name: server.Key, ActivationPolicy: constants.MCPActivationPolicyPerExecution, Transport: transport, Command: server.Command,
+		URL: publicConnectorURL(server.URL), Arguments: []string{},
+		Environment: connectorDefinitions(server.Env), Headers: connectorDefinitions(server.Headers),
 		TestStatus: constants.MCPTestStatusUntested, TestTools: []models.MCPToolSummary{},
 	}
 	// 参数可能含包内常量凭据；只表达参数存在，不向查看接口交付原值。
-	for range selected.Args {
+	for range server.Args {
 		connector.Arguments = append(connector.Arguments, "••••")
 	}
 	compatibility := mcp.ConnectorCompatibility(transport)
-	if native {
-		for index, item := range compatibility {
-			found := false
-			for _, server := range pkg.NativeImplementations[item.RuntimeID].Servers {
-				if server.Key == key {
-					found = true
-					break
-				}
-			}
-			compatibility[index].Supported = item.Supported && found
-		}
-	}
 	return mcp.ConnectorResponse{Connector: connector, Compatibility: compatibility}, nil
 }
 

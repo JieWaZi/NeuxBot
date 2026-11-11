@@ -49,6 +49,20 @@ type WorkflowEffectView struct {
 	ChildRunID string `json:"childRunId"`
 }
 
+// WorkflowAttemptResponse 保留历史尝试的身份、结果和可访问的伙伴对话。
+type WorkflowAttemptResponse struct {
+	// 尝试标识
+	ID string `json:"id"`
+	// 尝试代际
+	AttemptGeneration int64 `json:"attemptGeneration"`
+	// 尝试状态
+	Status constants.WorkflowStepStatus `json:"status"`
+	// 伙伴对话
+	ChatID string `json:"chatId"`
+	// 失败信息
+	Failure *workflowdsl.Value `json:"failure,omitempty"`
+}
+
 // 执行步骤详情
 type WorkflowInstanceResponse struct {
 	// 运行版本
@@ -58,7 +72,7 @@ type WorkflowInstanceResponse struct {
 	// 效果收据
 	Effect WorkflowEffectView `json:"effect"`
 	// 尝试历史
-	Attempts []models.WorkflowEffect `json:"attempts"`
+	Attempts []WorkflowAttemptResponse `json:"attempts"`
 	// 独立伙伴对话
 	Chat *chat.ChatSummary `json:"chat,omitempty"`
 	// 权威执行
@@ -89,9 +103,13 @@ func (o *GetWorkflowInstance) Output(ctx *gin.Context) (interface{}, error) {
 		return nil, ginx.WithStack(err)
 	}
 	view := WorkflowInstanceResponse{RunVersion: run.Version, Instance: instance, Effect: WorkflowEffectView{ID: effect.ID, Status: effect.Status, AttemptGeneration: effect.AttemptGeneration, CandidateSubmitted: effect.Candidate != nil, DeadlineAt: effect.DeadlineAt, ChildRunID: effect.ChildRunID, SkipRequested: effect.SkipRequested}, ActionCalls: []WorkflowActionCallView{}}
-	view.Attempts, err = global.WorkflowRunControllerManager.ListInstanceAttempts(ctx, o.RunID, o.InstanceID)
+	attempts, err := global.WorkflowRunControllerManager.ListInstanceAttempts(ctx, o.RunID, o.InstanceID)
 	if err != nil {
 		return nil, ginx.WithStack(err)
+	}
+	view.Attempts = []WorkflowAttemptResponse{}
+	for _, attempt := range attempts {
+		view.Attempts = append(view.Attempts, WorkflowAttemptResponse{ID: attempt.ID, AttemptGeneration: attempt.AttemptGeneration, Status: attempt.Status, ChatID: attempt.ChatID, Failure: attempt.Failure})
 	}
 	for _, call := range calls {
 		view.ActionCalls = append(view.ActionCalls, WorkflowActionCallView{WorkflowActionCall: call, Result: call.Result})

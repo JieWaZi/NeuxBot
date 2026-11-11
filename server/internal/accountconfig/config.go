@@ -2,8 +2,12 @@
 package accountconfig
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -11,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/BurntSushi/toml"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
@@ -44,8 +49,8 @@ type Spec struct {
 	ModelReasoningLevels map[string][]string
 	// ClaudeModelRoles 保存 Claude Code 各内置角色的实际模型映射。
 	ClaudeModelRoles map[string]string
-	// Revision 隔离修改配置后的启动指纹。
-	Revision int64
+	// ConfigFingerprint 标识真实原生配置，不包含用户配置的 CAS 修订。
+	ConfigFingerprint string
 }
 
 // Supports 声明原生配置可直接表达的协议，不用于限制账号关联。
@@ -94,7 +99,7 @@ func Environment(base []string) []string {
 			result = append(result, entry)
 			continue
 		}
-		if strings.HasSuffix(upper, "_API_KEY") || strings.HasSuffix(upper, "_AUTH_TOKEN") ||
+		if upper == "ACP_GO_PI_PREFERRED_PROVIDER" || inheritedACPOverride(upper) || strings.HasSuffix(upper, "_API_KEY") || strings.HasSuffix(upper, "_AUTH_TOKEN") ||
 			strings.HasSuffix(upper, "_BASE_URL") || strings.HasPrefix(upper, "CODEX_") ||
 			strings.HasPrefix(upper, "CLAUDE_") || strings.HasPrefix(upper, "ANTHROPIC_") ||
 			strings.HasPrefix(upper, "OPENAI_") || strings.HasPrefix(upper, "KIMI_") ||
@@ -112,80 +117,52 @@ func Environment(base []string) []string {
 
 // Prepare 把所选账号投射到受管 workspace 的原生配置。
 func Prepare(workspace string, spec Spec) (map[string]string, error) {
+	return PrepareForWorkspace(workspace, workspace, spec)
+}
+
+// PrepareForWorkspace projects native config into owned storage for a separately admitted working directory.
+func PrepareForWorkspace(storage, workspace string, spec Spec) (map[string]string, error) {
 	if IsNativeAccountRuntime(spec.RuntimeID) {
-		return prepareNative(workspace, spec)
+		return prepareNative(storage, workspace, spec)
 	}
-	home, err := EnsureHome(workspace, spec.RuntimeID)
+	home, err := EnsureHome(storage, spec.RuntimeID)
 	if err != nil {
 		return nil, err
 	}
 	env := HomeEnvironment(spec.RuntimeID, home)
-	env[constants.AIAccountIdentityEnvironment] = spec.ID + ":" + strconv.FormatInt(spec.Revision, 10)
-	if spec.AuthMode == constants.AccountAuthModeSubscription {
-		if spec.RuntimeID != constants.RuntimeIDCodex {
-			return nil, status_error.AIAccountConfigurationInvalid
-		}
-		if err := WriteFile(filepath.Join(home, "config.toml"), []byte("cli_auth_credentials_store = \"file\"\n")); err != nil {
+	env[constants.AIAccountIdentityEnvironment] = spec.ID + ":" + spec.ConfigFingerprint
+	if spec.RuntimeID == constants.RuntimeIDCodex {
+		config, err := PrepareCodexHome(home, spec)
+		if err != nil {
 			return nil, err
 		}
+		maps.Copy(env, config.Environment)
 		return env, nil
+	}
+	if spec.AuthMode == constants.AccountAuthModeSubscription {
+		return nil, status_error.AIAccountConfigurationInvalid
 	}
 	var filename string
 	var content []byte
 	switch spec.RuntimeID {
-	case constants.RuntimeIDCodex:
-		filename = "config.toml"
-		content = []byte(fmt.Sprintf("cli_auth_credentials_store = \"file\"\nmodel = %s\nmodel_provider = \"custom\"\ndisable_response_storage = true\n[model_providers.custom]\nname = \"NeuxBot\"\nbase_url = %s\nwire_api = \"responses\"\nrequires_openai_auth = true\n", strconv.Quote(spec.Model), strconv.Quote(spec.BaseURL)))
-		if spec.Model != "" {
-			catalog, err := codexCatalog(spec)
-			if err != nil {
-				return nil, storageError(err)
-			}
-			catalogPath := filepath.Join(home, "models.json")
-			if err := WriteFile(catalogPath, catalog); err != nil {
-				return nil, err
-			}
-			if isOfficialDeepSeekEndpoint(spec.BaseURL) {
-				content = []byte(fmt.Sprintf("cli_auth_credentials_store = \"file\"\nmodel = %s\nmodel_provider = \"custom\"\nmodel_catalog_json = %s\npreferred_auth_method = \"apikey\"\nforced_login_method = \"api\"\ndisable_response_storage = true\n[model_providers.custom]\nname = \"DeepSeek\"\nbase_url = %s\nwire_api = \"responses\"\nexperimental_bearer_token = %s\n", strconv.Quote(spec.Model), strconv.Quote(catalogPath), strconv.Quote(spec.BaseURL), strconv.Quote(spec.APIKey)))
-			} else {
-				content = []byte(fmt.Sprintf("cli_auth_credentials_store = \"file\"\nmodel = %s\nmodel_provider = \"custom\"\nmodel_catalog_json = %s\ndisable_response_storage = true\n[model_providers.custom]\nname = \"NeuxBot\"\nbase_url = %s\nwire_api = \"responses\"\nrequires_openai_auth = true\n", strconv.Quote(spec.Model), strconv.Quote(catalogPath), strconv.Quote(spec.BaseURL)))
-			}
-		}
-		auth, _ := json.Marshal(map[string]string{"OPENAI_API_KEY": spec.APIKey})
-		if err := WriteFile(filepath.Join(home, "auth.json"), auth); err != nil {
-			return nil, err
-		}
 	case constants.RuntimeIDClaude:
 		filename = "settings.json"
-		keyName := "ANTHROPIC_AUTH_TOKEN"
-		// OpenCode Go 预设使用 API Key 请求头，网关不接受 Bearer。
-		switch strings.TrimRight(spec.BaseURL, "/") {
-		case constants.AIAccountAnthropicURL, constants.AIAccountOpenCodeGoAnthropicURL:
-			keyName = "ANTHROPIC_API_KEY"
-		}
-		claudeEnvironment := map[string]string{keyName: spec.APIKey, "ANTHROPIC_BASE_URL": spec.BaseURL}
-		if spec.Model != "" {
-			claudeEnvironment["ANTHROPIC_MODEL"] = spec.Model
-			for role, key := range map[string]string{"opus": "ANTHROPIC_DEFAULT_OPUS_MODEL", "sonnet": "ANTHROPIC_DEFAULT_SONNET_MODEL", "haiku": "ANTHROPIC_DEFAULT_HAIKU_MODEL", "fable": "ANTHROPIC_DEFAULT_FABLE_MODEL", "subagent": "CLAUDE_CODE_SUBAGENT_MODEL"} {
-				mapped := spec.ClaudeModelRoles[role]
-				if mapped == "" || !slices.Contains(spec.SelectedModels, mapped) {
-					mapped = spec.Model
-				}
-				claudeEnvironment[key] = mapped
-				if name := spec.ModelDisplayNames[mapped]; name != "" && role != "subagent" {
-					claudeEnvironment[key+"_NAME"] = name
-				}
-			}
-		}
-		content, _ = json.Marshal(map[string]any{"env": claudeEnvironment})
+		content, _ = json.Marshal(map[string]any{"env": ClaudeAPIEnvironment(spec)})
 	case constants.RuntimeIDPi:
 		// 账号模型始终使用服务端原始 ID；适配器通过独立的 provider 字段选择原生模型。
 		if strings.TrimSpace(spec.Model) == "" {
 			return nil, status_error.AIAccountConfigurationInvalid
 		}
 		filename = "models.json"
-		content, _ = json.Marshal(map[string]any{"providers": map[string]any{"ally": map[string]any{"name": "NeuxBot", "baseUrl": spec.BaseURL, "api": string(spec.Protocol), "apiKey": spec.APIKey, "models": []map[string]string{{"id": spec.Model}}}}})
-		env["ACP_GO_PI_PREFERRED_PROVIDER"] = "ally"
+		models := make([]map[string]string, 0, len(spec.SelectedModels))
+		for _, id := range spec.SelectedModels {
+			models = append(models, map[string]string{"id": id})
+		}
+		if len(models) == 0 {
+			models = append(models, map[string]string{"id": spec.Model})
+		}
+		content, _ = json.Marshal(map[string]any{"providers": map[string]any{piManagedProvider: map[string]any{"name": "NeuxBot", "baseUrl": spec.BaseURL, "api": string(spec.Protocol), "apiKey": spec.APIKey, "models": models}}})
+		env["ACP_GO_PI_PREFERRED_PROVIDER"] = piManagedProvider
 	case constants.RuntimeIDKimi:
 		if strings.TrimSpace(spec.Model) == "" {
 			return nil, status_error.AIAccountConfigurationInvalid
@@ -201,22 +178,37 @@ func Prepare(workspace string, spec Spec) (map[string]string, error) {
 		if providerType == "" {
 			return nil, status_error.AIAccountConfigurationInvalid
 		}
-		contextSize := spec.MaxContextSize
-		if contextSize < 1 {
-			contextSize = 262144
-		}
 		env["KIMI_MODEL_MAX_COMPLETION_TOKENS"] = strconv.Itoa(constants.AIAccountKimiCompletionTokenCap)
 		filename = "config.toml"
-		content = []byte(fmt.Sprintf("default_model = %s\n[providers.ally]\ntype = %s\nbase_url = %s\napi_key = %s\n[models.%s]\nprovider = \"ally\"\nmodel = %s\nmax_context_size = %d\n",
-			strconv.Quote(spec.Model), strconv.Quote(providerType), strconv.Quote(spec.BaseURL), strconv.Quote(spec.APIKey), strconv.Quote(spec.Model), strconv.Quote(spec.Model), contextSize))
-		levels := kimiReasoningLevels(spec)
-		if len(levels) > 0 {
-			efforts := make([]string, 0, len(levels))
-			for _, level := range levels {
-				efforts = append(efforts, strconv.Quote(level))
-			}
-			content = append(content, []byte("capabilities = [\"thinking\"]\nsupport_efforts = ["+strings.Join(efforts, ", ")+"]\ndefault_effort = "+strconv.Quote(levels[0])+"\n")...)
+		var config strings.Builder
+		fmt.Fprintf(&config, "default_model = %s\n[providers.ally]\ntype = %s\nbase_url = %s\napi_key = %s\n",
+			strconv.Quote(spec.Model), strconv.Quote(providerType), strconv.Quote(spec.BaseURL), strconv.Quote(spec.APIKey))
+		models := spec.SelectedModels
+		if len(models) == 0 {
+			models = []string{spec.Model}
 		}
+		for _, id := range models {
+			contextSize := spec.ModelContextSizes[id]
+			if id == spec.Model && contextSize < 1 {
+				contextSize = spec.MaxContextSize
+			}
+			if contextSize < 1 {
+				contextSize = 262144
+			}
+			fmt.Fprintf(&config, "[models.%s]\nprovider = \"ally\"\nmodel = %s\nmax_context_size = %d\n",
+				strconv.Quote(id), strconv.Quote(id), contextSize)
+			modelSpec := spec
+			modelSpec.Model = id
+			if levels := kimiReasoningLevels(modelSpec); len(levels) > 0 {
+				efforts := make([]string, 0, len(levels))
+				for _, level := range levels {
+					efforts = append(efforts, strconv.Quote(level))
+				}
+				fmt.Fprintf(&config, "capabilities = [\"thinking\"]\nsupport_efforts = [%s]\ndefault_effort = %s\n",
+					strings.Join(efforts, ", "), strconv.Quote(levels[0]))
+			}
+		}
+		content = []byte(config.String())
 	default:
 		return nil, status_error.AIAccountConfigurationInvalid
 	}
@@ -224,6 +216,81 @@ func Prepare(workspace string, spec Spec) (map[string]string, error) {
 		return nil, err
 	}
 	return env, nil
+}
+
+// CodexHomeConfig carries the selected account's credential and native configuration inputs.
+type CodexHomeConfig struct {
+	// Environment carries the account key only when the native provider requires it.
+	Environment map[string]string
+	// Overrides protect the selected endpoint and auth source at native startup and session open.
+	Overrides map[string]json.RawMessage
+}
+
+// PrepareCodexHome writes the selected provider settings to an existing owned home.
+func PrepareCodexHome(home string, spec Spec) (CodexHomeConfig, error) {
+	authority := map[string]any{"cli_auth_credentials_store": "file"}
+	result := CodexHomeConfig{Overrides: make(map[string]json.RawMessage)}
+	switch spec.AuthMode {
+	case constants.AccountAuthModeSubscription:
+		authority["forced_login_method"] = "chatgpt"
+		authority["model_provider"] = "openai"
+		authority["chatgpt_base_url"] = "https://chatgpt.com/backend-api/"
+	case constants.AccountAuthModeAPIKey:
+		const providerID = "neux_managed"
+		const keyVariable = "NEUX_CODEX_ACCOUNT_API_KEY"
+		name := "NeuxBot"
+		if isOfficialDeepSeekEndpoint(spec.BaseURL) {
+			name = "DeepSeek"
+		}
+		provider := map[string]any{
+			"name": name, "base_url": spec.BaseURL, "wire_api": "responses", "env_key": keyVariable,
+			// Codex reports its selected native API key only when account auth is enabled.
+			"requires_openai_auth": true,
+		}
+		authority["forced_login_method"] = "api"
+		authority["model_provider"] = providerID
+		authority["disable_response_storage"] = true
+		authority["model_providers"] = map[string]any{providerID: provider}
+		result.Environment = map[string]string{keyVariable: spec.APIKey}
+		if spec.Model != "" {
+			catalog, err := codexCatalog(spec)
+			if err != nil {
+				return CodexHomeConfig{}, storageError(err)
+			}
+			catalogDigest := sha256.Sum256(catalog)
+			catalogPath := filepath.Join(home, "models-"+hex.EncodeToString(catalogDigest[:])+".json")
+			if err := WriteFile(catalogPath, catalog); err != nil {
+				return CodexHomeConfig{}, err
+			}
+			authority["model_catalog_json"] = catalogPath
+		}
+		auth, _ := json.Marshal(map[string]string{"auth_mode": "apikey", "OPENAI_API_KEY": spec.APIKey})
+		defer clear(auth)
+		if err := WriteFile(filepath.Join(home, "auth.json"), auth); err != nil {
+			return CodexHomeConfig{}, err
+		}
+		result.Overrides["model_providers."+providerID], _ = json.Marshal(provider)
+	default:
+		return CodexHomeConfig{}, status_error.AIAccountConfigurationInvalid
+	}
+	// 复制进程及会话配置前，同时固定启动模型种子与其目录。
+	// 调用方本轮明确请求的模型仍通过独立的原生设置入口应用。
+	if spec.Model != "" {
+		authority["model"] = spec.Model
+	}
+	for key, value := range authority {
+		if key != "model_providers" {
+			result.Overrides[key], _ = json.Marshal(value)
+		}
+	}
+	var config bytes.Buffer
+	if err := toml.NewEncoder(&config).Encode(authority); err != nil {
+		return CodexHomeConfig{}, storageError(err)
+	}
+	if err := WriteFile(filepath.Join(home, "config.toml"), config.Bytes()); err != nil {
+		return CodexHomeConfig{}, err
+	}
+	return result, nil
 }
 
 // Home 返回聊天独有的原生配置目录，不因账号切换改动 CLI 的会话存储位置。
@@ -266,7 +333,7 @@ func HomeEnvironment(runtimeID, home string) map[string]string {
 	case constants.RuntimeIDPi:
 		return map[string]string{"PI_CODING_AGENT_DIR": home}
 	case constants.RuntimeIDKimi:
-		return map[string]string{"KIMI_CODE_HOME": home}
+		return map[string]string{"KIMI_CODE_HOME": home, "KIMI_SHARE_DIR": home}
 	default:
 		return map[string]string{}
 	}
@@ -302,4 +369,51 @@ func EnsureHome(workspace, runtimeID string) (string, error) {
 		}
 	}
 	return directory, nil
+}
+
+// NativeConfigurationFingerprint 仅比较该智能体实际写入受管启动文件的配置。
+// 凭据通过 AuthGeneration 独立隔离，调用方默认值归本轮有效选择解析。
+func NativeConfigurationFingerprint(spec Spec) (string, error) {
+	fields := []any{spec.RuntimeID, spec.AuthMode, spec.Protocol, spec.BaseURL}
+	if spec.AuthMode == constants.AccountAuthModeAPIKey {
+		switch spec.RuntimeID {
+		case constants.RuntimeIDCodex:
+			catalog, err := codexCatalog(spec)
+			if err != nil {
+				return "", err
+			}
+			fields = append(fields, json.RawMessage(catalog))
+		case constants.RuntimeIDGemini:
+			fields = append(fields, spec.Model)
+		case constants.RuntimeIDGrok, constants.RuntimeIDPi:
+			fields = append(fields, spec.SelectedModels)
+		case constants.RuntimeIDOpenCode:
+			rows := make([][]string, 0, len(spec.SelectedModels))
+			for _, id := range spec.SelectedModels {
+				name := spec.ModelDisplayNames[id]
+				if name == "" {
+					name = id
+				}
+				rows = append(rows, []string{id, name})
+			}
+			fields = append(fields, spec.Model, rows)
+		case constants.RuntimeIDKimi:
+			rows := make([]any, 0, len(spec.SelectedModels))
+			for _, id := range spec.SelectedModels {
+				contextSize := spec.ModelContextSizes[id]
+				if contextSize < 1 {
+					contextSize = 262144
+				}
+				selected := spec
+				selected.Model = id
+				rows = append(rows, []any{id, contextSize, kimiReasoningLevels(selected)})
+			}
+			fields = append(fields, spec.Model, rows)
+		default:
+			return "", status_error.AIAccountConfigurationInvalid
+		}
+	}
+	encoded, _ := json.Marshal(fields)
+	sum := sha256.Sum256(encoded)
+	return hex.EncodeToString(sum[:]), nil
 }

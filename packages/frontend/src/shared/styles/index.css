@@ -3,6 +3,8 @@
 @source "../../../../../web/src";
 @source "../../../../../desktop/src";
 @import "./theme.css";
+@import "./resource-catalog.css";
+@import "../assets/fonts/inter/inter.css";
 @import "./motion.css";
 @import "./welcome.css";
 @import "@ncdai/react-wheel-picker/style.css" layer(components);
@@ -12,6 +14,43 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @theme inline {
+  --color-user-message-background: var(--user-message-background);
+  --color-user-message-content: var(--user-message-content);
+  /* 保留画布点阵的轮廓，避免磨砂层把聊天区重新抹成纯色。 */
+  --blur-canvas-glass: 1px;
+  --color-resource-canvas: var(--resource-canvas);
+  --color-resource-surface: var(--resource-surface);
+  --color-resource-control: var(--resource-control);
+  --color-resource-raised: var(--resource-raised);
+  --color-resource-content: var(--resource-content);
+  --color-resource-secondary: var(--resource-secondary);
+  --color-resource-muted: var(--resource-muted);
+  --color-resource-placeholder: var(--resource-placeholder);
+  --color-resource-primary: var(--resource-primary);
+  --color-resource-on-primary: var(--resource-on-primary);
+  --color-resource-category-code: var(--resource-category-code);
+  --color-resource-category-design: var(--resource-category-design);
+  --color-resource-category-data: var(--resource-category-data);
+  --color-resource-category-writing: var(--resource-category-writing);
+  --color-resource-category-research: var(--resource-category-research);
+  --color-resource-category-web: var(--resource-category-web);
+  --color-resource-category-automation: var(--resource-category-automation);
+  --color-resource-category-business: var(--resource-category-business);
+  --color-resource-category-communication: var(
+    --resource-category-communication
+  );
+  --color-resource-category-tools: var(--resource-category-tools);
+  --color-resource-category-content: var(--resource-category-content);
+  --color-resource-border: var(--shell-border-edge);
+  --color-resource-border-strong: var(--shell-separator-strong);
+  --color-resource-hover: var(--shell-control-hover);
+  --color-resource-active: var(--shell-control-active);
+  --color-shell-separator: var(--shell-separator);
+  --color-shell-separator-strong: var(--shell-separator-strong);
+  --color-shell-border-edge: var(--shell-border-edge);
+  --color-shell-control-hover: var(--shell-control-hover);
+  --color-shell-control-active: var(--shell-control-active);
+  --color-surface-module-rail: var(--surface-module-rail);
   --color-background: var(--background);
   --color-card: var(--card-surface);
   --color-card-hover: var(--card-hover);
@@ -81,6 +120,7 @@
   --color-field-hover: var(--field-background-hover);
   --color-field-border: var(--field-border);
   --color-field-border-hover: var(--field-border-hover);
+  --color-field-border-focus: var(--field-border-focus);
   --color-field-border-active: var(--field-border-active);
   --color-control-switch-thumb: var(--control-switch-thumb);
   --color-control-switch-track-checked: var(--control-switch-track-checked);
@@ -111,8 +151,7 @@
   --color-activity-2: var(--activity-2);
   --color-activity-3: var(--activity-3);
   --font-sans:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei UI",
-    "Noto Sans", Roboto, "Helvetica Neue", Arial, sans-serif;
+    "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   --spacing-button-sm: 1.75rem;
   --spacing-button-md: 2rem;
@@ -137,6 +176,9 @@
   --spacing-icon-xs: 0.75rem;
   --spacing-icon-sm: 0.875rem;
   --spacing-icon-md: 1rem;
+  /* 普通话题宽度与收缩下限。 */
+  --spacing-scene-tab: 8.75rem;
+  --spacing-scene-tab-min: 6rem;
   --spacing-icon-lg: 1.25rem;
   --spacing-icon-xl: 1.5rem;
   /* 正文链接图标随所属阅读字号缩放，控件图标仍沿用固定尺寸阶梯。 */
@@ -151,12 +193,25 @@
   --spacing-row-compact: 1.875rem;
   --spacing-row-default: 2.5rem;
   --spacing-row-settings: 2rem;
+  --spacing-row-detail: 4rem;
+  --container-settings-content: 49rem;
   --spacing-row-navigation: 2.75rem;
   --spacing-row-rich: 3.5rem;
   --spacing-work-board-focus-list: calc(5 * var(--spacing-row-rich) + 3.5rem);
   /* 连接器内容区与技能卡片的 128px 基线一致，标签固定同行，说明保留两行。 */
   --spacing-connector-card-content: 8rem;
   --spacing-shell-content-top: 1rem;
+  /* 插件目录与详情共用资源内容宽度和留白。 */
+  --container-resource-catalog: 55rem;
+  --spacing-resource-content-top: 2.5rem;
+  --spacing-resource-icon: 2.5rem;
+  --spacing-resource-logo: 55%;
+  --spacing-resource-brand-logo: 75%;
+  --spacing-control-catalog: 2rem;
+  --spacing-control-catalog-lg: 2.5rem;
+  --spacing-row-catalog: 2rem;
+  --spacing-resource-detail-icon: 3rem;
+  --spacing-resource-navigation-icon: 1.25rem;
   --radius-xs: 0.25rem;
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
@@ -186,6 +241,47 @@
     var(--ease-ui);
   --animate-shell-side-panel-out: shell-side-panel-out var(--duration-layout)
     var(--ease-ui) forwards;
+}
+
+/* 源端 Marketplace 的字号阶梯，不改变其他资源页正文密度。 */
+@utility type-resource-title {
+  font-size: 1.5rem;
+  line-height: 1.5rem;
+}
+
+@utility type-resource-button {
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
+@utility type-resource-row-title {
+  font-size: 0.875rem;
+  line-height: 1.3125rem;
+}
+
+@utility type-resource-row-description {
+  font-size: 0.8125rem;
+  line-height: 1.21875rem;
+}
+
+@utility type-resource-heading {
+  font-size: 1rem;
+  line-height: 1.375rem;
+}
+
+@utility type-resource-body {
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+}
+
+@utility type-resource-caption {
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+@utility type-resource-tab {
+  font-size: 0.8125rem;
+  line-height: 1rem;
 }
 
 @utility type-caption {
@@ -259,13 +355,13 @@
   --shell-detail-dock-clearance: 6rem;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --shell-titlebar-height: 44px;
-  --shell-global-sidebar-width: 240px;
-  --shell-global-sidebar-collapsed-width: 0px;
-  --shell-rail-width: var(--shell-global-sidebar-collapsed-width);
-  --shell-context-width: 240px;
+  --shell-titlebar-height: 38px;
+  --shell-titlebar-history-width: calc(2 * var(--spacing-control-md));
+  --shell-rail-width: 52px;
+  --shell-context-width: 280px;
+  --shell-sidebar-header-height: var(--shell-titlebar-height);
   --shell-context-min-width: 216px;
-  --shell-context-max-width: 360px;
+  --shell-context-max-width: 400px;
   --shell-side-panel-width: 280px;
   --shell-inspector-width: 320px;
   --shell-inspector-wide-width: 400px;
@@ -279,6 +375,317 @@
   --traffic-light-close: #ff5f57;
   --traffic-light-minimize: #febc2e;
   --traffic-light-expand: #28c840;
+}
+
+/* 窗口与模块栏共用底板，不属于业务 Card。 */
+.app-window-shell {
+  --surface-canvas: var(--shell-surface-canvas);
+  --surface-scene: var(--shell-surface-canvas);
+  --surface-workbench: var(--shell-surface-canvas);
+  --surface-chrome: var(--shell-surface-frame);
+  --surface-module-rail: var(--shell-surface-frame);
+}
+
+/* 工作流与窗口底色连成完整画布，不再包在独立的圆角底板内。 */
+.app-window-shell[data-workflow-canvas-shell] {
+  --surface-canvas: var(--shell-surface-frame);
+  --surface-scene: var(--shell-surface-frame);
+}
+.app-window-shell[data-workflow-canvas-shell] .app-workspace-frame {
+  padding-inline-end: 0;
+  padding-block-end: 0;
+}
+.app-window-shell[data-workflow-canvas-shell] .app-workspace-frame::before {
+  display: none;
+}
+.app-window-shell[data-workflow-canvas-shell] .app-scene-body-clip {
+  border-radius: 0;
+}
+
+.app-module-rail {
+  padding-block: calc(var(--shell-titlebar-height) + 4px) 12px;
+}
+.app-workspace-frame {
+  --shell-window-edge: 4px;
+  padding-inline-end: calc(var(--shell-window-edge) + 1px);
+  padding-block-end: calc(var(--shell-window-edge) + 1px);
+}
+.app-workspace-frame::before {
+  position: absolute;
+  z-index: -1;
+  inset: calc(var(--shell-titlebar-height) - 1px) var(--shell-window-edge)
+    var(--shell-window-edge) 0;
+  border: 1px solid var(--shell-border-edge);
+  border-radius: var(--radius-xl);
+  background: var(--surface-scene);
+  pointer-events: none;
+  content: "";
+}
+.app-context-sidebar {
+  position: relative;
+}
+.app-context-sidebar::after {
+  position: absolute;
+  inset-block: var(--shell-titlebar-height) 0;
+  right: 0;
+  width: 1px;
+  background: var(--shell-separator);
+  content: "";
+  pointer-events: none;
+}
+.app-sidebar-topbar {
+  position: relative;
+  z-index: 2;
+  padding-inline: var(--shell-sidebar-header-inset, 12px) 4px;
+}
+/* 本产品 Shell：页级导航与伙伴侧栏共用正文分隔，全宽正文场景仍隐藏。 */
+.app-workspace-frame[data-sidebar-body-hidden] .app-context-sidebar::after {
+  display: none;
+}
+/* 正文自身裁切，顶栏、resizer、Dock overlay 与右下历史均保持在裁切层之外。 */
+.app-scene-body-clip {
+  overflow: hidden;
+  border-start-end-radius: calc(var(--radius-xl) - 1px);
+  border-end-end-radius: calc(var(--radius-xl) - 1px);
+}
+[data-content-spans-sidebar] .app-scene-body-clip {
+  border-start-start-radius: calc(var(--radius-xl) - 1px);
+  border-end-start-radius: calc(var(--radius-xl) - 1px);
+}
+[data-sidebar-entity-body],
+[data-sidebar-page-nav] {
+  border-start-start-radius: calc(var(--radius-xl) - 1px);
+  border-end-start-radius: calc(var(--radius-xl) - 1px);
+}
+.app-content-header[data-sidebar-offset] {
+  margin-inline-start: calc(var(--shell-sidebar-active-width) + 1px);
+}
+.app-workspace-frame .app-sidebar-topbar::after {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: 1px;
+  height: var(--spacing-icon-xl);
+  translate: 0 -50%;
+  background: var(--shell-separator-strong);
+  content: "";
+  pointer-events: none;
+}
+
+/* 分段控件使用低对比内轮廓和 36px 命中区。 */
+.segmented-control-shell {
+  height: var(--spacing-control-md);
+  gap: 3px;
+  padding: 0 3px;
+}
+/* 28px 视觉轨道，36px 不重叠的真实选项命中区；不靠加大可见外框增加高度。 */
+.segmented-control-shell::before {
+  position: absolute;
+  z-index: -1;
+  inset: 4px 0;
+  border-radius: inherit;
+  background: var(--shell-tabs-track);
+  box-shadow: inset 0 0 0 1px var(--shell-border-edge);
+  content: "";
+  pointer-events: none;
+}
+/* 高亮的圆角按可见药丸裁切，不能用 36px 命中框裁切 24px 白色表面。 */
+.segmented-control-shell[data-segmented-highlight] {
+  inset-block: 6px;
+  height: auto;
+}
+.segmented-control-shell[data-segmented-highlight]::before {
+  inset: 0;
+  border-radius: var(--radius-control-inner);
+  background: var(--shell-tabs-pill);
+  box-shadow: none;
+}
+/* 资源表单沿源端 SlidingTabs 的真实盒几何，不继承 shell 扩大的命中区。 */
+.segmented-control-catalog-form {
+  --segmented-highlight-radius: var(--radius-sm);
+  align-items: center;
+  gap: 3px;
+  border-radius: var(--radius-md);
+  background: var(--shell-tabs-track);
+  box-shadow: inset 0 0 0 1px var(--shell-border-edge);
+  padding: 3px;
+}
+.segmented-control-catalog-form-option {
+  position: relative;
+  z-index: 1;
+  align-items: center;
+  justify-content: center;
+  height: var(--spacing-control-sm);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  padding: 4px 12px;
+  color: var(--resource-muted);
+  font-weight: 500;
+  transition-property: color;
+}
+.segmented-control-catalog-form-option[aria-checked="true"],
+.segmented-control-catalog-form-option:not(:disabled):hover {
+  color: var(--resource-content);
+}
+.segmented-control-catalog-form-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+.segmented-control-catalog-form[data-segmented-highlight] {
+  z-index: 0;
+  background: var(--shell-tabs-pill);
+  box-shadow: none;
+}
+/* 模块栏更多菜单在浅色主题不显示常驻投影。 */
+.app-module-menu {
+  border: 0;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--content-primary) 5%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--content-primary) 11%, transparent),
+    0 4px 6px -1px var(--shell-menu-shadow),
+    0 2px 4px -2px var(--shell-menu-shadow);
+}
+/* 主区和右工作台共享同一轨道、表面与关闭操作，差别只在内容及所属 pane。 */
+.shell-header-tab-track {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: var(--spacing);
+  min-width: 0;
+  max-width: 100%;
+  height: var(--shell-titlebar-height);
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-inline: calc(var(--spacing) * 2);
+  scrollbar-width: none;
+}
+.shell-header-tab-track::-webkit-scrollbar {
+  display: none;
+}
+.workbench-pane-tabs {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--spacing);
+  direction: ltr;
+}
+.workbench-pane-content {
+  --surface-chrome: var(--surface-scene);
+}
+.shell-header-tab {
+  --shell-header-tab-background: transparent;
+  /* 整项参与鼠标交互，避免标题栏拖拽区域吞掉悬停与关闭槽的事件。 */
+  -webkit-app-region: no-drag;
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex: 0 0 var(--spacing-scene-tab);
+  align-items: center;
+  width: var(--spacing-scene-tab);
+  min-width: var(--spacing-scene-tab-min);
+  max-width: var(--spacing-scene-tab);
+  height: var(--spacing-control-md);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--content-secondary);
+  transition: color var(--duration-quick) var(--ease-ui);
+}
+/* 背景纵向内缩，保留 Tab 与关闭操作原有的完整命中区。 */
+.shell-header-tab::after {
+  position: absolute;
+  z-index: -1;
+  inset-block: calc(var(--spacing) / 2);
+  inset-inline: 0;
+  border-radius: inherit;
+  background: var(--shell-header-tab-background);
+  content: "";
+  pointer-events: none;
+  transition: background-color var(--duration-quick) var(--ease-ui);
+}
+.shell-header-tab[data-selected] {
+  --shell-header-tab-background: var(--shell-control-hover);
+  color: var(--content-primary);
+  font-weight: 500;
+}
+.shell-header-tab:not([data-invalid]):hover {
+  --shell-header-tab-background: var(--shell-control-hover);
+  color: var(--content-primary);
+}
+.shell-header-tab[data-invalid] {
+  --shell-header-tab-background: color-mix(
+    in srgb,
+    var(--destructive) 10%,
+    transparent
+  );
+  color: var(--destructive);
+}
+.shell-header-tab[data-invalid]:hover {
+  --shell-header-tab-background: color-mix(
+    in srgb,
+    var(--destructive) 15%,
+    transparent
+  );
+}
+.shell-header-tab + .shell-header-tab::before {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--spacing) / -2 - 0.5px);
+  width: 1px;
+  height: var(--spacing-icon-md);
+  translate: 0 -50%;
+  background: var(--shell-separator);
+  content: "";
+  pointer-events: none;
+}
+.shell-header-tab:is([data-selected], :hover)::before,
+.shell-header-tab:is([data-selected], :hover) + .shell-header-tab::before {
+  opacity: 0;
+}
+.shell-header-tab-select {
+  @apply type-ui;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  padding: 0 calc(var(--spacing) * 2);
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  outline: none;
+}
+.shell-header-tab-close {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--spacing-control-md);
+  height: var(--spacing-control-md);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--content-muted);
+  opacity: 0;
+  outline: none;
+  pointer-events: none;
+}
+.shell-header-tab-close:hover {
+  background: transparent;
+  color: var(--content-primary);
+}
+.shell-header-tab:is(:hover, :focus-within) .shell-header-tab-close {
+  opacity: 1;
+  pointer-events: auto;
+}
+.shell-header-tab-select:focus-visible,
+.shell-header-tab-close:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--ring);
 }
 
 @utility duration-quick {
@@ -326,11 +733,14 @@
   }
 }
 
-:focus,
-:focus-visible,
-:focus-within {
-  --tw-ring-shadow: 0 0 #0000;
-  --tw-ring-offset-shadow: 0 0 #0000;
+/* 目录控件只对键盘焦点提供主题色反馈，鼠标点击不画布局外框。 */
+.catalog-focus:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--ring);
+}
+
+.catalog-search:has(input:focus-visible) {
+  box-shadow: 0 0 0 1px var(--ring);
 }
 
 html,
@@ -518,7 +928,7 @@ button:disabled {
 [data-chat-composer-input] {
   display: block;
   max-height: 10rem;
-  min-height: 4rem;
+  min-height: 2.5rem;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -556,13 +966,14 @@ button:disabled {
   background-size: 10px 10px;
 }
 
-/* 工作流画布缩放平移时的点阵底纹，略高于默认密度以便对齐节点。 */
+/* 新建页、占位与交互画布共用清晰点阵；交互画布按视口缩放覆盖间距。 */
 .surface-pattern-dots-canvas {
   background-image: radial-gradient(
     circle,
-    color-mix(in srgb, var(--border-default) 44%, transparent) 1px,
-    transparent 1px
+    var(--border-default) 1.5px,
+    transparent 1.5px
   );
+  background-size: 20px 20px;
 }
 
 .surface-pattern-grid {
@@ -912,4 +1323,67 @@ button:disabled {
 }
 .page-action[data-variant="success"]:hover {
   --page-action-fill: color-mix(in srgb, var(--success) 88%, transparent);
+}
+
+/* 文件引用的文字与悬停底色共用类型语义色，SVG 保留上游原始配色。 */
+@layer components {
+  .file-reference {
+    --file-reference-color: var(--file-reference-default-color);
+    color: var(--file-reference-color);
+  }
+  .bg-user-message-background .file-reference {
+    --file-reference-color: var(--file-reference-user-color);
+  }
+  /* 用户消息内的表格和代码块恢复正文表面，链接也使用正文的明度。 */
+  .bg-user-message-background [data-streamdown="table-wrapper"] .file-reference,
+  .bg-user-message-background [data-streamdown="code-block"] .file-reference {
+    --file-reference-color: var(--file-reference-default-color);
+  }
+  .file-reference:hover {
+    background-color: color-mix(
+      in srgb,
+      var(--file-reference-color) 10%,
+      transparent
+    );
+  }
+  .file-reference[data-file-tone="neutral"] {
+    --file-reference-default-color: var(--file-link-neutral);
+    --file-reference-user-color: var(--user-file-link-neutral);
+  }
+  .file-reference[data-file-tone="blue"] {
+    --file-reference-default-color: var(--file-link-blue);
+    --file-reference-user-color: var(--user-file-link-blue);
+  }
+  .file-reference[data-file-tone="cyan"] {
+    --file-reference-default-color: var(--file-link-cyan);
+    --file-reference-user-color: var(--user-file-link-cyan);
+  }
+  .file-reference[data-file-tone="teal"] {
+    --file-reference-default-color: var(--file-link-teal);
+    --file-reference-user-color: var(--user-file-link-teal);
+  }
+  .file-reference[data-file-tone="green"] {
+    --file-reference-default-color: var(--file-link-green);
+    --file-reference-user-color: var(--user-file-link-green);
+  }
+  .file-reference[data-file-tone="lime"] {
+    --file-reference-default-color: var(--file-link-lime);
+    --file-reference-user-color: var(--user-file-link-lime);
+  }
+  .file-reference[data-file-tone="amber"] {
+    --file-reference-default-color: var(--file-link-amber);
+    --file-reference-user-color: var(--user-file-link-amber);
+  }
+  .file-reference[data-file-tone="orange"] {
+    --file-reference-default-color: var(--file-link-orange);
+    --file-reference-user-color: var(--user-file-link-orange);
+  }
+  .file-reference[data-file-tone="red"] {
+    --file-reference-default-color: var(--file-link-red);
+    --file-reference-user-color: var(--user-file-link-red);
+  }
+  .file-reference[data-file-tone="purple"] {
+    --file-reference-default-color: var(--file-link-purple);
+    --file-reference-user-color: var(--user-file-link-purple);
+  }
 }

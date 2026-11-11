@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -41,7 +43,7 @@ func TestDeleteWakerChatsSkipsMissingRegisteredChat(t *testing.T) {
 	if _, err := chats.logStore.ReadAll(missingID); !hasStatusErrorCode(err, status_error.ChatNotFound.Code()) {
 		t.Fatalf("query missing chat: %v", err)
 	}
-	if err := chats.DeleteWakerChats(ctx, "waker-target"); err != nil {
+	if err := chats.DeleteWakerChats(ctx, "waker-target", func([]string) (func() error, error) { return nil, nil }, func(context.Context) error { return nil }); err != nil {
 		t.Fatalf("delete waker with missing registered chat: %v", err)
 	}
 }
@@ -53,10 +55,6 @@ func TestDeleteMissingChatsCleansIndexesAndFinalizes(t *testing.T) {
 	chatID := "12121212121212121212121212121212"
 	controller := controllers.NewChatController(db)
 	if err := controller.Create(ctx, models.Chat{ID: chatID, WakerID: "waker-target"}); err != nil {
-		t.Fatal(err)
-	}
-	sessions := controllers.NewRuntimeSessionController(db)
-	if err := sessions.Upsert(ctx, models.RuntimeSession{ChatID: chatID, RuntimeID: "codex", SessionID: "stale"}); err != nil {
 		t.Fatal(err)
 	}
 	finalized := false
@@ -71,9 +69,6 @@ func TestDeleteMissingChatsCleansIndexesAndFinalizes(t *testing.T) {
 	}
 	if _, err := controller.Get(ctx, chatID); !hasStatusErrorCode(err, status_error.ChatNotFound.Code()) {
 		t.Fatalf("stale chat index remains: %v", err)
-	}
-	if session, err := sessions.Get(ctx, chatID, "codex"); err != nil || session.SessionID != "" {
-		t.Fatalf("stale runtime session remains: %+v, %v", session, err)
 	}
 	if err := chats.DeleteChat(ctx, chatID); err != nil {
 		t.Fatalf("repeat deletion: %v", err)
@@ -103,7 +98,7 @@ func TestDeleteChatsPreservesReadAndDatabaseErrors(t *testing.T) {
 	if err := chats.DeleteChatsAtomically(ctx, []string{chatID}, finalize); !hasStatusErrorCode(err, status_error.ChatLogCorrupted.Code()) {
 		t.Fatalf("corrupt log must block deletion: %v", err)
 	}
-	if err := chats.DeleteWakerChats(ctx, "waker-target"); !hasStatusErrorCode(err, status_error.ChatLogCorrupted.Code()) {
+	if err := chats.DeleteWakerChats(ctx, "waker-target", func([]string) (func() error, error) { return nil, nil }, func(context.Context) error { return nil }); !hasStatusErrorCode(err, status_error.ChatLogCorrupted.Code()) {
 		t.Fatalf("corrupt log must block waker deletion: %v", err)
 	}
 	if finalized {
@@ -126,27 +121,31 @@ func TestDeleteChatRemovesAuthorityIndexesAndManagedDirectories(t *testing.T) {
 	ctx := context.Background()
 	db, chatService, logStore := newDeleteTestService(t)
 	chatController := controllers.NewChatController(db)
-	runtimeSessionController := controllers.NewRuntimeSessionController(db)
 
 	chatID := "81818181818181818181818181818181"
 	messageID := "82828282828282828282828282828282"
-	workingDirectory := t.TempDir()
-	workspaceDirectory, err := chatService.storage.ChatWorkspace(chatID)
+	workspaceDirectory, err := chatService.storage.AgentWorkspace("waker-1")
 	if err != nil {
-		t.Fatalf("ChatWorkspace() error = %v", err)
+		t.Fatalf("AgentWorkspace() error = %v", err)
 	}
-	err = workspace.EnsureExecutionWorkspace(workspaceDirectory, chatID, "waker-1", []workspace.ProjectLink{{EntryName: "project", SourcePath: workingDirectory}})
+	err = workspace.EnsureAgentWorkspace(workspaceDirectory, "waker-1")
 	if err != nil {
-		t.Fatalf("EnsureExecutionWorkspace() error = %v", err)
+		t.Fatalf("EnsureAgentWorkspace() error = %v", err)
 	}
-	contextDirectory := workspaceDirectory
+	contextDirectory, err := chatService.storage.ChatRoot(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.MkdirAll(contextDirectory, 0700); err != nil {
+		t.Fatal(err)
+	}
 	externalDirectory := t.TempDir()
 	externalPath := filepath.Join(externalDirectory, "brief.txt")
 	if err := os.WriteFile(externalPath, []byte("brief"), 0o600); err != nil {
 		t.Fatalf("write external attachment: %v", err)
 	}
 	prepared, err := workspace.PrepareChatAttachments(
-		workspaceDirectory,
+		contextDirectory,
 		chatID,
 		messageID,
 		[]workspace.AttachmentInput{{SourcePath: externalPath}},
@@ -192,13 +191,6 @@ func TestDeleteChatRemovesAuthorityIndexesAndManagedDirectories(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Create() chat error = %v", err)
 	}
-	if err := runtimeSessionController.Upsert(ctx, models.RuntimeSession{
-		ChatID:    chatID,
-		RuntimeID: "codex",
-		SessionID: "session-1",
-	}); err != nil {
-		t.Fatalf("Upsert() session error = %v", err)
-	}
 
 	// 混合批量删除同时覆盖正常日志和不存在的关联。
 	if err := chatService.DeleteChats(ctx, []string{chatID, "13131313131313131313131313131313"}); err != nil {
@@ -218,16 +210,7 @@ func TestDeleteChatRemovesAuthorityIndexesAndManagedDirectories(t *testing.T) {
 	if _, err := chatController.Get(ctx, chatID); err == nil {
 		t.Fatal("chat query index still exists")
 	}
-	if session, err := runtimeSessionController.Get(ctx, chatID, "codex"); err != nil || session.SessionID != "" {
-		t.Fatalf("native session after delete = %+v, error = %v", session, err)
-	}
-	indexPath, pathErr := logStore.IndexPath(chatID)
-	if pathErr != nil {
-		t.Fatalf("IndexPath() error = %v", pathErr)
-	}
-	if _, err := os.Stat(indexPath); !os.IsNotExist(err) {
-		t.Fatalf("derived chat index still exists: %v", err)
-	}
+
 }
 
 func TestDeleteChatOwnershipFailurePreservesAuthorityAndIndexes(t *testing.T) {
@@ -236,14 +219,13 @@ func TestDeleteChatOwnershipFailurePreservesAuthorityAndIndexes(t *testing.T) {
 	db, chatService, logStore := newDeleteTestService(t)
 	chatController := controllers.NewChatController(db)
 	chatID := "91919191919191919191919191919191"
-	workingDirectory := t.TempDir()
-	workspaceDirectory, err := chatService.storage.ChatWorkspace(chatID)
+	workspaceDirectory, err := chatService.storage.AgentWorkspace("waker-1")
 	if err != nil {
-		t.Fatalf("ChatWorkspace() error = %v", err)
+		t.Fatalf("AgentWorkspace() error = %v", err)
 	}
-	err = workspace.EnsureExecutionWorkspace(workspaceDirectory, chatID, "waker-1", []workspace.ProjectLink{{EntryName: "project", SourcePath: workingDirectory}})
+	err = workspace.EnsureAgentWorkspace(workspaceDirectory, "waker-1")
 	if err != nil {
-		t.Fatalf("EnsureExecutionWorkspace() error = %v", err)
+		t.Fatalf("EnsureAgentWorkspace() error = %v", err)
 	}
 	if err := os.WriteFile(
 		filepath.Join(workspaceDirectory, constants.ChatContextOwnerFileName),
@@ -291,12 +273,12 @@ func TestDeleteChatDatabaseFailureRestoresStagedAggregate(t *testing.T) {
 	ctx := context.Background()
 	_, chatService, logStore := newDeleteTestService(t)
 	chatID := "83838383838383838383838383838383"
-	workspaceDirectory, err := chatService.storage.ChatWorkspace(chatID)
+	workspaceDirectory, err := chatService.storage.AgentWorkspace("waker-1")
 	if err != nil {
-		t.Fatalf("ChatWorkspace() error = %v", err)
+		t.Fatalf("AgentWorkspace() error = %v", err)
 	}
-	if err := workspace.EnsureExecutionWorkspace(workspaceDirectory, chatID, "waker-1", nil); err != nil {
-		t.Fatalf("EnsureExecutionWorkspace() error = %v", err)
+	if err := workspace.EnsureAgentWorkspace(workspaceDirectory, "waker-1"); err != nil {
+		t.Fatalf("EnsureAgentWorkspace() error = %v", err)
 	}
 	if _, err := logStore.Create(chatID, []eventlog.AppendInput{{
 		Type: constants.ChatEventTypeCreated,
@@ -329,19 +311,18 @@ func TestDeleteChatDoesNotRequireMessageView(t *testing.T) {
 	db, chatService, logStore := newDeleteTestService(t)
 	if err := db.AutoMigrate(
 		&models.Chat{},
-		&models.RuntimeSession{},
 	); err != nil {
 		t.Fatalf("migrate delete test indexes: %v", err)
 	}
 	chatController := chatService.queryIndexes.chatController
 	chatID := "92929292929292929292929292929292"
 	messageID := "93939393939393939393939393939393"
-	workspaceDirectory, err := chatService.storage.ChatWorkspace(chatID)
+	workspaceDirectory, err := chatService.storage.AgentWorkspace("waker-1")
 	if err != nil {
-		t.Fatalf("ChatWorkspace() error = %v", err)
+		t.Fatalf("AgentWorkspace() error = %v", err)
 	}
-	if err := workspace.EnsureExecutionWorkspace(workspaceDirectory, chatID, "waker-1", nil); err != nil {
-		t.Fatalf("EnsureExecutionWorkspace() error = %v", err)
+	if err := workspace.EnsureAgentWorkspace(workspaceDirectory, "waker-1"); err != nil {
+		t.Fatalf("EnsureAgentWorkspace() error = %v", err)
 	}
 	records, err := logStore.Create(chatID, []eventlog.AppendInput{
 		{
@@ -357,11 +338,7 @@ func TestDeleteChatDoesNotRequireMessageView(t *testing.T) {
 			ExecutionID: messageID,
 			Data:        marshalData(eventlog.ExecutionCreatedData{}),
 		},
-		{
-			Type:        constants.ChatEventTypeAssistantMessage,
-			ExecutionID: messageID,
-			Data:        []byte(`{"type":"raw","data":{"source":"stdout"}}`),
-		},
+		{Type: constants.ChatEventTypeUserMessageCreated, MessageID: "malformed-message", Data: []byte(`[]`)},
 		{
 			Type:        constants.ChatEventTypeExecutionCompleted,
 			ExecutionID: messageID,
@@ -400,13 +377,11 @@ func TestDeleteProvisionalTeamRemovesPartialMemberChatsAndPlannedIndexes(t *test
 	leadChatID := "71717171717171717171717171717171"
 	missingChatID := "72727272727272727272727272727272"
 	threadWorkspace, _ := chatService.storage.TeamWorkspace(threadID)
-	projectsRoot, _ := chatService.storage.TeamProjects(threadID)
 	leadWorkspace, _ := chatService.storage.TeamMemberWorkspace(threadID, "lead-1", true)
 	if err := workspace.EnsureThreadExecutionWorkspace(
 		threadWorkspace,
 		threadID,
 		"lead-1",
-		nil,
 	); err != nil {
 		t.Fatalf("ensure thread workspace: %v", err)
 	}
@@ -415,12 +390,8 @@ func TestDeleteProvisionalTeamRemovesPartialMemberChatsAndPlannedIndexes(t *test
 		threadID,
 		leadChatID,
 		"lead-1",
-		projectsRoot,
 	); err != nil {
 		t.Fatalf("ensure lead workspace: %v", err)
-	}
-	if err := logStore.RegisterTeamChat(threadID, leadChatID); err != nil {
-		t.Fatalf("register partial team chat: %v", err)
 	}
 	if _, err := logStore.Create(leadChatID, []eventlog.AppendInput{{
 		Type: constants.ChatEventTypeCreated,
@@ -475,12 +446,12 @@ func TestDeleteWakerChatsUsesAuthorityAndRejectsActiveExecution(t *testing.T) {
 		{ChatID: targetID, WakerID: "waker-target"},
 		{ChatID: otherID, WakerID: "waker-other"},
 	} {
-		workspaceDirectory, err := chatService.storage.ChatWorkspace(input.ChatID)
+		workspaceDirectory, err := chatService.storage.AgentWorkspace(input.WakerID)
 		if err != nil {
-			t.Fatalf("ChatWorkspace(%s) error = %v", input.ChatID, err)
+			t.Fatalf("AgentWorkspace(%s) error = %v", input.ChatID, err)
 		}
-		if err := workspace.EnsureExecutionWorkspace(workspaceDirectory, input.ChatID, input.WakerID, nil); err != nil {
-			t.Fatalf("EnsureExecutionWorkspace(%s) error = %v", input.ChatID, err)
+		if err := workspace.EnsureAgentWorkspace(workspaceDirectory, input.WakerID); err != nil {
+			t.Fatalf("EnsureAgentWorkspace(%s) error = %v", input.ChatID, err)
 		}
 		entries := []eventlog.AppendInput{{
 			Type: constants.ChatEventTypeCreated,
@@ -508,15 +479,10 @@ func TestDeleteWakerChatsUsesAuthorityAndRejectsActiveExecution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("TeamWorkspace() error = %v", err)
 	}
-	teamProjects, err := chatService.storage.TeamProjects(teamThreadID)
-	if err != nil {
-		t.Fatalf("TeamProjects() error = %v", err)
-	}
 	if err := workspace.EnsureThreadExecutionWorkspace(
 		teamWorkspace,
 		teamThreadID,
 		"waker-target",
-		[]workspace.ProjectLink{{EntryName: "project", SourcePath: teamSourceDirectory}},
 	); err != nil {
 		t.Fatalf("EnsureThreadExecutionWorkspace() error = %v", err)
 	}
@@ -533,12 +499,8 @@ func TestDeleteWakerChatsUsesAuthorityAndRejectsActiveExecution(t *testing.T) {
 		teamThreadID,
 		teamChatID,
 		"waker-target",
-		teamProjects,
 	); err != nil {
 		t.Fatalf("EnsureThreadMemberExecutionWorkspace() error = %v", err)
-	}
-	if err := logStore.RegisterTeamChat(teamThreadID, teamChatID); err != nil {
-		t.Fatalf("RegisterTeamChat() error = %v", err)
 	}
 	if _, err := logStore.Create(teamChatID, []eventlog.AppendInput{{
 		Type: constants.ChatEventTypeCreated,
@@ -553,7 +515,7 @@ func TestDeleteWakerChatsUsesAuthorityAndRejectsActiveExecution(t *testing.T) {
 		t.Fatalf("Create(team chat) error = %v", err)
 	}
 
-	if err := chatService.DeleteWakerChats(ctx, "waker-target"); !errors.Is(err, status_error.WakerHasRunningWork) {
+	if err := chatService.DeleteWakerChats(ctx, "waker-target", func([]string) (func() error, error) { return nil, nil }, func(context.Context) error { return nil }); !errors.Is(err, status_error.WakerHasRunningWork) {
 		t.Fatalf("DeleteWakerChats() error = %v, want WakerHasRunningWork", err)
 	}
 	if _, err := logStore.ReadAll(targetID); err != nil {
@@ -568,7 +530,7 @@ func TestDeleteWakerChatsUsesAuthorityAndRejectsActiveExecution(t *testing.T) {
 	}}); err != nil {
 		t.Fatalf("complete authority execution: %v", err)
 	}
-	if err := chatService.DeleteWakerChats(ctx, "waker-target"); err != nil {
+	if err := chatService.DeleteWakerChats(ctx, "waker-target", func([]string) (func() error, error) { return nil, nil }, func(context.Context) error { return nil }); err != nil {
 		t.Fatalf("DeleteWakerChats() error = %v", err)
 	}
 	if _, err := logStore.ReadAll(targetID); err == nil {
@@ -584,7 +546,7 @@ func TestDeleteWakerChatsUsesAuthorityAndRejectsActiveExecution(t *testing.T) {
 
 func newDeleteTestService(
 	t *testing.T,
-) (*gorm.DB, *service, *eventlog.Store) {
+) (*gorm.DB, *service, *conversationJournal) {
 	t.Helper()
 	database, err := dbhelper.NewDB(conf.DB{
 		Type:    conf.Sqlite,
@@ -599,15 +561,12 @@ func newDeleteTestService(
 		t.Fatalf("get sql database: %v", err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	logStore, err := eventlog.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatalf("create chat log store: %v", err)
-	}
+	logStore := newTestConversationJournal(t, t.TempDir())
 	chatService := newTestService(t, Config{
 		StorageDirectory: logStore.Root(),
+		Conversations:    logStore.Store,
 		QueryIndexes: QueryIndexDependencies{
 			Chats:           controllers.NewChatController(database.DB),
-			RuntimeSessions: controllers.NewRuntimeSessionController(database.DB),
 			DeletionIntents: controllers.NewChatDeletionIntentController(database.DB),
 			Transactions: controllers.NewTransactionController(
 				dbhelper.NewGormTransactionManager(database.DB),
@@ -660,15 +619,10 @@ func testDeleteThreadWorkspace(t *testing.T, missingLog bool) {
 	if err != nil {
 		t.Fatalf("TeamWorkspace() error = %v", err)
 	}
-	threadProjects, err := chatService.storage.TeamProjects(threadID)
-	if err != nil {
-		t.Fatalf("TeamProjects() error = %v", err)
-	}
 	if err := workspace.EnsureThreadExecutionWorkspace(
 		threadWorkspace,
 		threadID,
 		"waker-lead",
-		[]workspace.ProjectLink{{EntryName: "project", SourcePath: workingDirectory}},
 	); err != nil {
 		t.Fatalf("EnsureThreadExecutionWorkspace() error = %v", err)
 	}
@@ -696,12 +650,8 @@ func testDeleteThreadWorkspace(t *testing.T, missingLog bool) {
 			threadID,
 			input.chatID,
 			input.wakerID,
-			threadProjects,
 		); err != nil {
 			t.Fatalf("EnsureThreadMemberExecutionWorkspace() error = %v", err)
-		}
-		if err := chatService.logStore.RegisterTeamChat(threadID, input.chatID); err != nil {
-			t.Fatalf("RegisterTeamChat() error = %v", err)
 		}
 		records, err := chatService.logStore.Create(input.chatID, []eventlog.AppendInput{{
 			Type: constants.ChatEventTypeCreated,
@@ -738,13 +688,169 @@ func testDeleteThreadWorkspace(t *testing.T, missingLog bool) {
 			t.Fatal(err)
 		}
 	}
-	if err := chatService.DeleteChat(ctx, leadChatID); !errors.Is(err, status_error.BadRequest) {
-		t.Fatalf("partial team deletion must be rejected: %v", err)
+	if !missingLog {
+		if err := chatService.DeleteChat(ctx, leadChatID); !errors.Is(err, status_error.BadRequest) {
+			t.Fatalf("partial team deletion must be rejected: %v", err)
+		}
 	}
 	if err := chatService.DeleteChats(ctx, []string{leadChatID, memberChatID}); err != nil {
 		t.Fatalf("DeleteChats() error = %v", err)
 	}
 	if _, err := os.Stat(threadWorkspace); !os.IsNotExist(err) {
 		t.Fatalf("thread workspace still exists after delete: %v", err)
+	}
+}
+
+func TestDeletingOneChatPreservesSharedAgentAndOtherPrivateFiles(t *testing.T) {
+	_, m, _ := newDeleteTestService(t)
+	cwd, err := m.storage.AgentWorkspace("shared-waker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = workspace.EnsureAgentWorkspace(cwd, "shared-waker"); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"chat-a", "chat-b"} {
+		if _, err = m.logStore.Create(id, []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: "shared-waker", WorkspaceDirectory: cwd, Title: id})}}); err != nil {
+			t.Fatal(err)
+		}
+		private, _ := m.storage.ChatRoot(id)
+		if err = os.MkdirAll(filepath.Join(private, "attachments"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(filepath.Join(private, "attachments", "keep.txt"), []byte(id), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = os.WriteFile(filepath.Join(cwd, "result.txt"), []byte("persistent"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = m.DeleteChat(context.Background(), "chat-a"); err != nil {
+		t.Fatal(err)
+	}
+	first, _ := m.storage.ChatRoot("chat-a")
+	if _, err = os.Stat(first); !os.IsNotExist(err) {
+		t.Fatalf("deleted Chat remains: %v", err)
+	}
+	second, _ := m.storage.ChatRoot("chat-b")
+	for _, file := range []string{filepath.Join(cwd, "result.txt"), filepath.Join(second, "attachments", "keep.txt")} {
+		if _, err = os.Stat(file); err != nil {
+			t.Fatalf("unrelated file removed %s: %v", file, err)
+		}
+	}
+}
+
+func TestDeleteProvisionalTeamWithoutRuntimeRootRemovesExactPrivateChats(t *testing.T) {
+	_, m, _ := newDeleteTestService(t)
+	for _, id := range []string{"planned", "unrelated"} {
+		thread := "other-thread"
+		if id == "planned" {
+			thread = "planned-thread"
+		}
+		cwd, _ := m.storage.TeamMemberWorkspace(thread, "waker", true)
+		if _, err := m.logStore.Create(id, []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: "waker", WorkspaceDirectory: cwd, ThreadWorkspaceID: thread, Title: id})}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := m.DeleteProvisionalTeam(context.Background(), "planned-thread", "provision", []string{"planned"}); err != nil {
+		t.Fatal(err)
+	}
+	private, _ := m.storage.ChatRoot("planned")
+	if _, err := os.Stat(private); !os.IsNotExist(err) {
+		t.Fatalf("private Chat remains after Team rollback: %v", err)
+	}
+	if _, err := m.logStore.ReadAll("unrelated"); err != nil {
+		t.Fatal("unrelated private Chat removed", err)
+	}
+}
+
+func TestWakerDeletionBlocksAdmissionUntilItsFilesAreSettled(t *testing.T) {
+	_, m, _ := newDeleteTestService(t)
+	settled := false
+	err := m.DeleteWakerChats(context.Background(), "waker", func([]string) (func() error, error) {
+		return func() error {
+			settled = true
+			release, err := chatstorage.AcquireAdmission(m.storage.Root(), "waker", "new-chat")
+			if release != nil {
+				release()
+			}
+			if !errors.Is(err, status_error.ChatHasActiveExecution) {
+				t.Fatalf("admission overlapped rollback: %v", err)
+			}
+			return status_error.ManagedWorkspaceError
+		}, nil
+	}, func(context.Context) error { return status_error.DatabaseError })
+	if !settled || !errors.Is(err, status_error.DatabaseError) || !errors.Is(err, status_error.ManagedWorkspaceError) {
+		t.Fatalf("lost deletion or rollback outcome: settled=%v err=%v", settled, err)
+	}
+	release, err := chatstorage.AcquireAdmission(m.storage.Root(), "waker", "new-chat")
+	if err != nil {
+		t.Fatal("writer not released after settlement", err)
+	}
+	release()
+}
+
+func TestDeleteChatProjectEntriesRetainOtherChatsAndRollbackWithAuthority(t *testing.T) {
+	for _, rollback := range []bool{false, true} {
+		t.Run(fmt.Sprintf("rollback=%t", rollback), func(t *testing.T) {
+			ctx := t.Context()
+			_, chats, logs := newDeleteTestService(t)
+			root, err := chats.storage.AgentWorkspace("entry-waker")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := workspace.EnsureAgentWorkspace(root, "entry-waker"); err != nil {
+				t.Fatal(err)
+			}
+			chatIDs := []string{"81818181818181818181818181818181", "82828282828282828282828282828282"}
+			projects := []string{t.TempDir(), t.TempDir()}
+			for index, id := range chatIDs {
+				if _, _, err := workspace.PrepareProjectEntries(root, id, []workspace.ProjectLink{{EntryName: "same", SourcePath: projects[index]}}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := logs.Create(id, []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: "entry-waker", WorkspaceDirectory: root, AdditionalWorkingDirectories: []string{projects[index]}, Title: "entry"})}}); err != nil {
+					t.Fatal(err)
+				}
+				if err := chats.queryIndexes.chatController.Create(ctx, models.Chat{ID: id, WakerID: "entry-waker", WorkspaceDirectory: root, AdditionalWorkingDirectories: []string{projects[index]}, Title: "entry"}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if rollback {
+				err = chats.DeleteChatsAtomically(ctx, []string{chatIDs[0]}, func(context.Context) error {
+					if _, err := os.Lstat(filepath.Join(root, "projects", chatIDs[0])); !os.IsNotExist(err) {
+						t.Fatalf("namespace was not staged before DB mutation: %v", err)
+					}
+					return status_error.DatabaseError
+				})
+			} else {
+				err = chats.DeleteChat(ctx, chatIDs[0])
+			}
+			if rollback {
+				if !errors.Is(err, status_error.DatabaseError) {
+					t.Fatalf("delete error=%v", err)
+				}
+				if _, err := logs.ReadAll(chatIDs[0]); err != nil {
+					t.Fatalf("authority rollback failed: %v", err)
+				}
+				if _, err := os.Readlink(filepath.Join(root, "projects", chatIDs[0], "same")); err != nil {
+					t.Fatalf("project entry rollback failed: %v", err)
+				}
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := os.Lstat(filepath.Join(root, "projects", chatIDs[0])); !os.IsNotExist(err) {
+					t.Fatalf("deleted Chat entry namespace survived: %v", err)
+				}
+			}
+			if _, err := os.Readlink(filepath.Join(root, "projects", chatIDs[1], "same")); err != nil {
+				t.Fatalf("other Chat entry changed: %v", err)
+			}
+			for _, project := range projects {
+				if _, err := os.Stat(project); err != nil {
+					t.Fatalf("real project was removed: %v", err)
+				}
+			}
+		})
 	}
 }

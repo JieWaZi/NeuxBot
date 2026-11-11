@@ -151,9 +151,8 @@ func TestFailedInstallationRollsBackAndCanRetry(t *testing.T) {
 	if err := installer.EnsureCatalog(ctx); !errors.Is(err, status_error.Conflict) {
 		t.Fatalf("expected simulated commit failure: %v", err)
 	}
-	visible, err := actual.ListVisible(ctx, "ally", "")
-	if err != nil || len(visible) != 0 {
-		t.Fatalf("partial package committed: %+v %v", visible, err)
+	if _, err := actual.GetPackage(ctx, refreshFixture().ID); !util.HasStatusCode(err, status_error.SkillNotFound) {
+		t.Fatalf("partial package committed: %v", err)
 	}
 	installer.Skills = actual
 	if err := installer.EnsureCatalog(ctx); err != nil {

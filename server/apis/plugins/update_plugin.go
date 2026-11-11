@@ -1,8 +1,11 @@
 package plugins
 
 import (
+	"context"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/resourcecategory"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
@@ -33,7 +36,21 @@ func (o *UpdatePlugin) Output(ctx *gin.Context) (interface{}, error) {
 	if name == "" || utf8.RuneCountInString(name) > 120 {
 		return nil, ginx.WithStack(status_error.BadRequest)
 	}
-	if err := global.PluginControllerManager.Update(ctx, o.PluginID, name, strings.TrimSpace(o.Body.Description)); err != nil {
+	if o.Body.Categories != nil {
+		names, err := resourcecategory.Normalize(*o.Body.Categories)
+		if err != nil {
+			return nil, ginx.WithStack(err)
+		}
+		o.Body.Categories = &names
+	}
+	if err := global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
+		if o.Body.Categories != nil {
+			if err := global.ResourceCategoryControllerManager.Ensure(txctx, constants.ResourceCategoryTypePlugin, *o.Body.Categories); err != nil {
+				return err
+			}
+		}
+		return global.PluginControllerManager.Update(txctx, o.PluginID, name, strings.TrimSpace(o.Body.Description), o.Body.Categories)
+	}); err != nil {
 		return nil, ginx.WithStack(err)
 	}
 	return ginx.CommonSuccessResponse(), nil

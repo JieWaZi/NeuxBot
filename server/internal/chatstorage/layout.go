@@ -14,13 +14,12 @@ import (
 )
 
 const (
-	chatDirectoryName         = "chat"
-	teamDirectoryName         = "team"
+	chatDirectoryName         = "Conversations"
+	teamDirectoryName         = "Workspaces"
 	logDirectoryName          = "log"
-	workspaceDirectoryName    = "workspace"
 	teamLeaderDirectoryName   = "leader"
 	teamMembersDirectory      = "members"
-	projectsDirectoryName     = "projects"
+	teamSharedDirectoryName   = "shared"
 	provisioningDirectoryName = "provisioning"
 )
 
@@ -115,31 +114,23 @@ func (l *Layout) RollbackTeamProvisioning(provisioningID string, threadID string
 
 // safeIncompleteProvisioningWorkspace 仅识别共享工作区归属标记落盘前的最小半成品树。
 func safeIncompleteProvisioningWorkspace(root string, workspaceRoot string) bool {
-	rootInfo, err := os.Lstat(root)
-	if err != nil || !rootInfo.IsDir() || rootInfo.Mode()&os.ModeSymlink != 0 {
+	if filepath.Clean(root) != filepath.Clean(workspaceRoot) {
 		return false
 	}
-	rootEntries, err := os.ReadDir(root)
-	if err != nil || len(rootEntries) != 1 || rootEntries[0].Name() != workspaceDirectoryName {
+	info, err := os.Lstat(root)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return false
 	}
-	workspaceInfo, err := os.Lstat(workspaceRoot)
-	if err != nil || !workspaceInfo.IsDir() || workspaceInfo.Mode()&os.ModeSymlink != 0 {
+	entries, err := os.ReadDir(root)
+	if err != nil || len(entries) > 1 {
 		return false
 	}
-	workspaceEntries, err := os.ReadDir(workspaceRoot)
-	if err != nil || len(workspaceEntries) > 1 {
-		return false
-	}
-	if len(workspaceEntries) == 0 {
+	if len(entries) == 0 {
 		return true
 	}
-	entry := workspaceEntries[0]
-	if entry.Name() != constants.ChatContextOwnerFileName {
-		return false
-	}
-	entryInfo, err := entry.Info()
-	return err == nil && entryInfo.Mode().IsRegular()
+	entry := entries[0]
+	info, err = entry.Info()
+	return err == nil && entry.Name() == constants.ChatContextOwnerFileName && info.Mode().IsRegular()
 }
 
 // validateProvisioningWorkspace 只接受带精确 thread 归属标记的 staging 工作区。
@@ -182,6 +173,25 @@ func NewLayout(root string) (*Layout, error) {
 		logx.Errorf("resolve chat storage root failed: root=%q error=%v", root, err)
 		return nil, status_error.ManagedWorkspaceError
 	}
+	// 根尚未存在时规范化最长已存在父路径，再拼回待创建部分，不产生文件副作用。
+	current := absoluteRoot
+	missing := []string{}
+	for {
+		resolved, resolveErr := filepath.EvalSymlinks(current)
+		if resolveErr == nil {
+			absoluteRoot = resolved
+			for index := len(missing) - 1; index >= 0; index-- {
+				absoluteRoot = filepath.Join(absoluteRoot, missing[index])
+			}
+			break
+		}
+		if !os.IsNotExist(resolveErr) || filepath.Dir(current) == current {
+			logx.Errorf("resolve chat storage parent failed: root=%q parent=%q error=%v", root, current, resolveErr)
+			return nil, status_error.ManagedWorkspaceError
+		}
+		missing = append(missing, filepath.Base(current))
+		current = filepath.Dir(current)
+	}
 	return &Layout{root: absoluteRoot}, nil
 }
 
@@ -210,13 +220,12 @@ func (l *Layout) ChatLogDirectory(chatID string) (string, error) {
 	return filepath.Join(root, logDirectoryName), nil
 }
 
-// ChatWorkspace 返回普通 Chat 的 Runtime 工作目录。
-func (l *Layout) ChatWorkspace(chatID string) (string, error) {
-	root, err := l.ChatRoot(chatID)
-	if err != nil {
-		return "", err
+// AgentWorkspace 返回伙伴拥有、在普通 Chat 之间共享的真实 Runtime 工作目录。
+func (l *Layout) AgentWorkspace(wakerID string) (string, error) {
+	if !safeSegment(wakerID) {
+		return "", status_error.BadRequest
 	}
-	return filepath.Join(root, workspaceDirectoryName), nil
+	return filepath.Join(l.root, "Agents", wakerID), nil
 }
 
 // TeamRoot 返回团队对话的聚合目录。
@@ -227,31 +236,16 @@ func (l *Layout) TeamRoot(threadID string) (string, error) {
 	return filepath.Join(l.root, teamDirectoryName, threadID), nil
 }
 
-// TeamLogDirectory 返回团队对话全部成员 Chat 的权威日志目录。
-func (l *Layout) TeamLogDirectory(threadID string) (string, error) {
-	root, err := l.TeamRoot(threadID)
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(root, logDirectoryName), nil
-}
+// TeamWorkspace 返回团队对话拥有的共享范围，独立于全部成员的 Conversation。
+func (l *Layout) TeamWorkspace(threadID string) (string, error) { return l.TeamRoot(threadID) }
 
-// TeamWorkspace 返回团队对话共享项目和成员 cwd 的工作区聚合目录。
-func (l *Layout) TeamWorkspace(threadID string) (string, error) {
-	root, err := l.TeamRoot(threadID)
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(root, workspaceDirectoryName), nil
-}
-
-// TeamProjects 返回团队成员共同引用的项目软链接目录。
-func (l *Layout) TeamProjects(threadID string) (string, error) {
+// TeamSharedDirectory 返回团队成员共同使用的真实共享目录。
+func (l *Layout) TeamSharedDirectory(threadID string) (string, error) {
 	root, err := l.TeamWorkspace(threadID)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(root, projectsDirectoryName), nil
+	return filepath.Join(root, teamSharedDirectoryName), nil
 }
 
 // TeamMemberWorkspace 返回指定成员独占的 Runtime cwd。
@@ -276,6 +270,8 @@ func (l *Layout) RemoveEmptyChatAggregate(chatID string) error {
 		return err
 	}
 	for _, path := range []string{
+		filepath.Join(root, constants.ExecutionWorkspaceAttachmentsDirectory),
+		filepath.Join(root, "file-results"),
 		filepath.Join(root, logDirectoryName),
 		root,
 		filepath.Join(l.root, chatDirectoryName),
@@ -297,7 +293,6 @@ func (l *Layout) RemoveEmptyTeamAggregate(threadID string) error {
 		return err
 	}
 	for _, path := range []string{
-		filepath.Join(root, logDirectoryName),
 		root,
 		filepath.Join(l.root, teamDirectoryName),
 	} {

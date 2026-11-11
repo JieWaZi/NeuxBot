@@ -18,7 +18,7 @@ func TestWorkflowV2SaveReceiptMatchesClosedOutputContract(t *testing.T) {
 	if err := json.Unmarshal(encoded, &data); err != nil {
 		t.Fatal(err)
 	}
-	// 与真实工作流适配器一致：在持久化领域回执上补充保存完成标志。
+	// Match the real workflow adapter by retaining the completion marker in the durable domain receipt.
 	data["saved"] = true
 	op, _ := Find("workflow.source.save")
 	if err := workflowdsl.ValidateJSON(op.OutputSchema, data); err != nil {
@@ -45,7 +45,7 @@ func TestWorkflowV2ValidationCanReturnPublicManifest(t *testing.T) {
 	}
 }
 
-// TestAuthoringOutputRequiresWorkspace 保证两种创作入口都不能漏掉固定目录契约。
+// TestAuthoringOutputRequiresWorkspace ensures neither authoring entry point omits the fixed directory contract.
 func TestAuthoringOutputRequiresWorkspace(t *testing.T) {
 	workspace := map[string]any{"rootDirectory": "/managed/workflow", "scriptsDirectory": "/managed/workflow/scripts", "stateDirectory": "/managed/workflow/state", "cacheDirectory": "/managed/workflow/cache", "temporaryDirectory": "/managed/workflow/tmp", "runsDirectory": "/managed/workflow/runs"}
 	for _, id := range []string{"workflow.source.get", "workflow.authoring.prepare"} {
@@ -77,9 +77,9 @@ func TestMCPRequestIdentityMatchesCoreConstraints(t *testing.T) {
 	op, _ := Find("workflow.source.save")
 	transport := Operation{InputSchema: op.MCPInputSchema()}
 	for _, test := range []struct {
-		// id 是模型按公开工具契约构造的幂等标识。
+		// id is an idempotency identifier constructed by the model according to the public tool contract.
 		id string
-		// valid 是 Core 固定协议应接受的输入集合。
+		// valid lists the inputs accepted by Core's fixed protocol.
 		valid bool
 	}{
 		{id: "a", valid: true}, {id: "save.request:1-2_3", valid: true},

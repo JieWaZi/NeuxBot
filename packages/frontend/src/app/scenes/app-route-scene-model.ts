@@ -1,19 +1,22 @@
+import { resolveAppNavigation } from "../layout/app-navigation-model";
 import type { AppSceneTab } from "@/shared/workspace/app-scene-model";
 import {
+  integrationSettingsHref,
   legacyIMSettingsHref,
-  settingsSectionFromPath,
 } from "./settings-route";
 
 export type RouteSceneLocation = {
   key?: string;
   pathname: string;
   search: string;
+  state?: unknown;
 };
 
 export type RouteSceneLabels = {
   knowledge?: string;
   resources: string;
   workBoard?: string;
+  usage?: string;
   im?: string;
   automaticTask?: string;
   workflow?: string;
@@ -49,6 +52,7 @@ function routeTab(
     kind: "route",
     label,
     mountKey: id,
+    navigationState: location.state,
   };
 }
 
@@ -57,9 +61,12 @@ export function routeSceneForLocation(
   labels: RouteSceneLabels,
 ): Omit<AppSceneTab, "lastUsed"> {
   const { pathname, search } = location;
-  if (settingsSectionFromPath(pathname)) {
+  const navigation = resolveAppNavigation(location);
+  if (navigation.moduleId === "settings") {
     const href =
-      legacyIMSettingsHref(pathname, search) || `${pathname}${search}`;
+      legacyIMSettingsHref(pathname, search) ||
+      integrationSettingsHref(pathname, search) ||
+      `${pathname}${search}`;
     const [settingsPath = "", settingsSearch = ""] = href.split("?");
     const params = new URLSearchParams(settingsSearch);
     // 临时详情仅属于当前打开动作，切回设置标签时不恢复已离开的弹窗。
@@ -68,11 +75,12 @@ export function routeSceneForLocation(
     params.delete("chat");
     return {
       ...settingsSceneTab(labels.settings),
+      navigationState: location.state,
       href: `${settingsPath}${params.size ? `?${params}` : ""}`,
     };
   }
   const knowledge = /^\/knowledge(?:\/([^/]+))?$/.exec(pathname);
-  if (knowledge) {
+  if (navigation.moduleId === "knowledge" && knowledge) {
     const params = new URLSearchParams(search);
     const id =
       knowledge[1] ||
@@ -92,29 +100,23 @@ export function routeSceneForLocation(
       location,
     );
   }
-  if (
-    pathname === "/workflows" ||
-    pathname === "/resources" ||
-    pathname.startsWith("/resources/")
-  )
-    return routeTab("resources", labels.resources, location);
-  if (pathname === "/work-board")
+  if (navigation.moduleId === "usage")
+    return routeTab("usage", labels.usage || labels.page, location);
+  if (navigation.moduleId === "work-board")
     return routeTab("work-board", labels.workBoard || labels.page, location);
-  const workflow = /^\/workflows(?:\/([^/]+)(?:\/runs\/([^/]+))?)?$/.exec(
-    pathname,
-  );
+  const workflow = /^\/workflows\/([^/]+)(?:\/runs\/([^/]+))?$/.exec(pathname);
   if (workflow)
     return routeTab(
       workflow[1] === "new"
         ? `workflow-draft:${new URLSearchParams(search).get("draftId") || "default"}`
-        : workflow[1]
-          ? `workflow:${workflow[1]}`
-          : "workflows",
+        : `workflow:${workflow[1]}`,
       labels.workflow || labels.page,
       location,
     );
+  if (navigation.moduleId === "resources")
+    return routeTab("resources", labels.resources, location);
   const globalAutomatic = /^\/automatic-tasks(?:\/([^/]+))?$/.exec(pathname);
-  if (globalAutomatic)
+  if (navigation.moduleId === "automatic-tasks" && globalAutomatic)
     return routeTab(
       "automatic-tasks",
       labels.automaticTask || labels.page,
@@ -134,7 +136,11 @@ export function routeSceneForLocation(
   const chat = /^\/chats\/([^/]+)$/.exec(pathname);
   if (chat?.[1]) return routeTab(`chat:${chat[1]}`, labels.chat, location);
 
-  if (pathname === "/" || pathname === "/chat") {
+  if (
+    pathname === "/" ||
+    pathname === "/chat" ||
+    (pathname === "/wakers" && params.get("tab") !== "teams")
+  ) {
     const draftId = params.get("draftId");
     const wakerId = params.get("wakerId") || "default";
     return routeTab(

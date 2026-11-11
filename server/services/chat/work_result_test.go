@@ -5,6 +5,9 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
@@ -15,30 +18,27 @@ import (
 
 func TestWorkResultRecoveryPreservesViewedAndExcludesProcessOnlyRounds(t *testing.T) {
 	ctx := context.Background()
-	store, err := eventlog.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := newTestConversationJournal(t, t.TempDir())
 	chatID, executionID := util.New(), util.New()
 	wakerID := util.New()
 	layout, err := chatstorage.NewLayout(store.Root())
 	if err != nil {
 		t.Fatal(err)
 	}
-	directory, err := layout.ChatWorkspace(chatID)
+	directory, err := layout.AgentWorkspace(wakerID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := workspace.EnsureExecutionWorkspace(directory, chatID, wakerID, nil); err != nil {
+	if err := workspace.EnsureAgentWorkspace(directory, wakerID); err != nil {
 		t.Fatal(err)
 	}
-	inputs := []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: wakerID, WorkspaceDirectory: directory, Title: "结果恢复"})}}
-	inputs = append(inputs, workResultRound(executionID, constants.RuntimeEventTypeTextDelta, "最终成果")...)
-	records, err := store.Create(chatID, inputs)
+	inputs := conversationfixture.Facts([]eventlog.AppendInput{{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: wakerID, WorkspaceDirectory: directory, Title: "结果恢复"})}})
+	inputs = append(inputs, workResultRound(t, store.Store, chatID, executionID, constants.RuntimeEventTypeTextDelta, "最终成果")...)
+	records, err := conversationfixture.Commit(t.Context(), store.Store, chatID, inputs)
 	if err != nil {
 		t.Fatal(err)
 	}
-	db, service := newRecoveryTestService(t, store.Root())
+	db, service := newRecoveryTestService(t, store.Root(), store.Store)
 	results := controllers.NewWorkResultController(db)
 	if err := results.EnableTracking(ctx, 1); err != nil {
 		t.Fatal(err)
@@ -72,7 +72,7 @@ func TestWorkResultRecoveryPreservesViewedAndExcludesProcessOnlyRounds(t *testin
 		t.Fatalf("projection repair reset read fact=%+v", after)
 	}
 	processID := util.New()
-	if _, err := store.Append(chatID, workResultRound(processID, constants.RuntimeEventTypeCommentaryDelta, "正在协调")); err != nil {
+	if _, err := conversationfixture.Commit(t.Context(), store.Store, chatID, workResultRound(t, store.Store, chatID, processID, constants.RuntimeEventTypeCommentaryDelta, "正在协调")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.recovery.reconcileChat(ctx, chatID); err != nil {
@@ -93,7 +93,7 @@ func TestWorkResultRecoveryPreservesViewedAndExcludesProcessOnlyRounds(t *testin
 		t.Fatalf("last ended projection=%+v", chat)
 	}
 	newID := util.New()
-	tail, err := store.Append(chatID, workResultRound(newID, constants.RuntimeEventTypeTextDelta, "新的最终成果"))
+	tail, err := conversationfixture.Commit(t.Context(), store.Store, chatID, workResultRound(t, store.Store, chatID, newID, constants.RuntimeEventTypeTextDelta, "新的最终成果"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,14 +113,14 @@ func TestWorkResultRecoveryPreservesViewedAndExcludesProcessOnlyRounds(t *testin
 		t.Fatalf("recover newer result: receipt=%+v chat=%+v", after, chat)
 	}
 	liveID := util.New()
-	live := workResultRound(liveID, constants.RuntimeEventTypeTextDelta, "实时交付")
-	if _, err := store.Append(chatID, live[:len(live)-1]); err != nil {
+	live := workResultRound(t, store.Store, chatID, liveID, constants.RuntimeEventTypeTextDelta, "实时交付")
+	if _, err := conversationfixture.Commit(t.Context(), store.Store, chatID, live[:len(live)-1]); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.catchUpLiveProjection(ctx, chatID); err != nil {
 		t.Fatal(err)
 	}
-	commit, err := service.CommitTerminal(ctx, TerminalFact{Execution: models.Execution{ID: liveID, ChatID: chatID, Status: constants.ExecutionStatusRunning}, Type: constants.ChatEventTypeExecutionCompleted, Status: constants.ExecutionStatusCompleted, Data: live[len(live)-1].Data})
+	commit, err := service.CommitTerminal(ctx, TerminalFact{Execution: models.Execution{ID: liveID, ChatID: chatID, Status: constants.ExecutionStatusRunning}, Type: constants.ChatEventTypeExecutionCompleted, Status: constants.ExecutionStatusCompleted, Data: live[len(live)-1].Fact.Data})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,20 +144,18 @@ func TestWorkResultRecoveryPreservesViewedAndExcludesProcessOnlyRounds(t *testin
 	}
 }
 
-func workResultRound(executionID string, kind constants.RuntimeEventType, text string) []eventlog.AppendInput {
-	return []eventlog.AppendInput{
-		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: executionID, Data: marshalData(eventlog.ExecutionCreatedData{RuntimeID: "codex"})},
-		{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: executionID},
-		{Type: constants.ChatEventTypeAssistantMessage, ExecutionID: executionID, Data: marshalData(eventlog.RuntimeMessageData{MessageRevision: 10, Content: []eventlog.RuntimeMessageContent{{Type: kind, Data: marshalData(map[string]string{"text": text})}}})},
-		{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: executionID, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})},
+func workResultRound(t *testing.T, store *conversation.Store, chatID, executionID string, kind constants.RuntimeEventType, text string) []agent.ConversationChange {
+	t.Helper()
+	return []agent.ConversationChange{
+		{Fact: &agent.ChatFact{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: executionID, Data: marshalData(eventlog.ExecutionCreatedData{RuntimeID: "codex"})}},
+		{Fact: &agent.ChatFact{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: executionID}},
+		conversationfixture.NativeMessage(t, store, chatID, executionID, agent.MessageChange{Kind: agent.MessageAppend, ContentType: kind, Text: text}),
+		{Fact: &agent.ChatFact{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: executionID, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})}},
 	}
 }
 
 func TestFailedRoundPublishesReadableErrorAsUnreadResult(t *testing.T) {
-	store, err := eventlog.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := newTestConversationJournal(t, t.TempDir())
 	chatID, executionID := util.New(), util.New()
 	records, err := store.Create(chatID, []eventlog.AppendInput{
 		{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: util.New()})},
@@ -189,14 +187,11 @@ func TestFileResultReferenceRequiresConfirmedChanges(t *testing.T) {
 		visible bool
 	}{{"pending", "pending", 0, false}, {"no_changes", "ready", 0, false}, {"files", "ready", 2, true}, {"partial", "partial", 0, false}, {"partial_files", "partial", 2, true}, {"unavailable", "unavailable", 0, false}, {"incomplete", "incomplete", 0, false}} {
 		t.Run(test.name, func(t *testing.T) {
-			store, err := eventlog.NewStore(t.TempDir())
-			if err != nil {
-				t.Fatal(err)
-			}
+			store := newTestConversationJournal(t, t.TempDir())
 			chatID, executionID := util.New(), util.New()
-			inputs := []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: util.New(), WorkspaceDirectory: "/workspace"})}}
-			inputs = append(inputs, workResultRound(executionID, constants.RuntimeEventTypeTextDelta, "unchanged final answer")...)
-			records, err := store.Create(chatID, inputs)
+			inputs := conversationfixture.Facts([]eventlog.AppendInput{{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: util.New(), WorkspaceDirectory: "/workspace"})}})
+			inputs = append(inputs, workResultRound(t, store.Store, chatID, executionID, constants.RuntimeEventTypeTextDelta, "unchanged final answer")...)
+			records, err := conversationfixture.Commit(t.Context(), store.Store, chatID, inputs)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -209,7 +204,11 @@ func TestFileResultReferenceRequiresConfirmedChanges(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			receipt, err := resultFromRecords(append(records, added...), executionID)
+			message, err := store.Store.ReadMessage(t.Context(), chatID, executionID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			receipt, err := resultFromContent(append(records, added...), executionID, &message)
 			if err != nil || receipt == nil {
 				t.Fatalf("readable result missing: %+v %v", receipt, err)
 			}

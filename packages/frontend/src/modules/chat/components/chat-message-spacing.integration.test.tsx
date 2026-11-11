@@ -8,6 +8,7 @@ import { TooltipProvider } from "@/shared/ui/tooltip";
 import type { AllyChatMessage } from "../runtime/chat-projection";
 import { ChatMessageProjection } from "./chat-message-nodes";
 import { AssistantMessage } from "./chat-thread";
+import { ChatMessageContributionProvider } from "./chat-contributions";
 
 function MessageHarness({
   message,
@@ -35,6 +36,72 @@ function MessageHarness({
     </MemoryRouter>
   );
 }
+
+it("等待输出和纯空白不显示空卡，有实际工具过程或正文后再显示卡片", () => {
+  const message: AllyChatMessage = {
+    id: "empty-to-content",
+    role: "assistant",
+    status: "running",
+  };
+  const view = render(<MessageHarness message={message} />);
+  expect(view.container.querySelector("[data-chat-message-card]")).toBeNull();
+  expect(view.container.querySelector("footer")).toBeNull();
+  expect(screen.queryByText("飞速运转")).toBeNull();
+  view.rerender(
+    <MessageHarness
+      message={{ ...message, displayParts: [{ type: "text", text: " \n\t" }] }}
+    />,
+  );
+  expect(view.container.querySelector("[data-chat-message-card]")).toBeNull();
+  view.rerender(
+    <MessageHarness
+      message={{
+        ...message,
+        displayParts: [
+          {
+            type: "tool",
+            toolCallId: "read-1",
+            toolCategory: "file_read",
+            toolAction: "read_file",
+            toolStatus: "running",
+          },
+        ],
+      }}
+    />,
+  );
+  expect(
+    view.container.querySelector("[data-chat-message-card]"),
+  ).not.toBeNull();
+  view.rerender(
+    <MessageHarness
+      message={{
+        ...message,
+        displayParts: [{ type: "text", text: "实际回复" }],
+      }}
+    />,
+  );
+  expect(
+    screen.getByText("实际回复").closest("[data-chat-message-card]"),
+  ).not.toBeNull();
+  expect(screen.queryByText("飞速运转")).toBeNull();
+});
+
+it("仅有领域贡献成果时仍展示消息卡", () => {
+  render(
+    <ChatMessageContributionProvider value={() => <p>工作流成果</p>}>
+      <MessageHarness
+        message={{
+          id: "contribution-only",
+          role: "assistant",
+          status: "running",
+        }}
+      />
+    </ChatMessageContributionProvider>,
+  );
+  expect(
+    screen.getByText("工作流成果").closest("[data-chat-message-card]"),
+  ).not.toBeNull();
+});
 
 it("思考后的纯换行不占段落高度，也不把连续网络工具拆成多个活动组", () => {
   // 使用截图对应的实际片段顺序：思考、三个换行、工具、一个换行、工具。

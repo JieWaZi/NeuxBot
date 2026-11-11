@@ -2,11 +2,13 @@ package catalog
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -40,23 +42,11 @@ type Details struct {
 	SkillContents map[string]string `json:"skillContents"`
 }
 
-// detailsLoadState 合并相同内容的并发下载，并短暂抑制同地址失败重试。
-type detailsLoadState struct {
-	// mutex 串行核验与缓存发布。
-	mutex sync.Mutex
-	// failedURL 只限制同一分发地址，其他镜像仍可提供相同内容。
-	failedURL string
-	// failedAt 记录最近下载失败时间。
-	failedAt time.Time
-	// failure 保存短暂冷却中的下载错误。
-	failure error
-}
-
 var detailsLocks sync.Map
 
 // ReadDetails 核验公开资料内容摘要和来源绑定，不读取或执行安装包。
-func ReadDetails(entry Entry) (Details, error) {
-	location, err := detailsLocation(entry)
+func ReadDetails(ctx context.Context, entry Entry) (Details, error) {
+	location, err := detailsLocation(ctx, entry)
 	if err != nil {
 		return Details{}, err
 	}
@@ -67,19 +57,24 @@ func ReadDetails(entry Entry) (Details, error) {
 	return parseDetails(raw, entry)
 }
 
-func detailsLocation(entry Entry) (string, error) {
+func detailsLocation(ctx context.Context, entry Entry) (string, error) {
+	return loadDetails(ctx, entry)
+}
+
+func loadDetails(ctx context.Context, entry Entry) (string, error) {
 	if !httpAddress(entry.DetailsURL) || len(entry.DetailsSHA256) != 64 || entry.DetailsSize <= 0 || entry.DetailsSize > maxDetailsBytes {
 		return "", status_error.PluginContentInvalid
 	}
 	if _, err := hex.DecodeString(entry.DetailsSHA256); err != nil {
 		return "", status_error.PluginContentInvalid
 	}
-	actual, _ := detailsLocks.LoadOrStore(entry.DetailsSHA256, &detailsLoadState{})
-	state := actual.(*detailsLoadState)
-	state.mutex.Lock()
-	defer state.mutex.Unlock()
-	directory := filepath.Join(os.TempDir(), "neuxbot-plugin-details")
+	directory := filepath.Join(entryStorageRoot(entry), "details")
 	location := filepath.Join(directory, entry.DetailsSHA256+".json")
+	state := artifactState(&detailsLocks, location)
+	if err := state.acquire(ctx); err != nil {
+		return "", err
+	}
+	defer state.release()
 	if raw, err := os.ReadFile(location); err == nil {
 		if err := validateDetailsBytes(raw, entry); err == nil {
 			_, err = parseDetails(raw, entry)
@@ -90,26 +85,49 @@ func detailsLocation(entry Entry) (string, error) {
 		return "", state.failure
 	}
 	fail := func(err error) (string, error) {
-		state.failedURL, state.failedAt, state.failure = entry.DetailsURL, time.Now(), err
+		if ctx.Err() == nil {
+			state.fail(entry.DetailsURL, err)
+		}
 		return "", err
 	}
 	client := http.Client{Timeout: 15 * time.Second}
-	response, err := client.Get(entry.DetailsURL)
+	started := time.Now()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, entry.DetailsURL, nil)
 	if err != nil {
+		return "", status_error.PluginContentInvalid
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		logDistributionFailure("details_get", entry.Key, entry.DetailsURL, response, started, err)
 		return fail(status_error.PluginDistributionUnavailable)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
+		logDistributionFailure("details_status", entry.Key, entry.DetailsURL, response, started, nil)
 		return fail(status_error.PluginDistributionUnavailable)
 	}
 	raw, err := io.ReadAll(io.LimitReader(response.Body, entry.DetailsSize+1))
 	if err != nil {
+		logDistributionFailure("details_body", entry.Key, entry.DetailsURL, response, started, err)
 		return fail(status_error.PluginDistributionUnavailable)
 	}
 	if err := validateDetailsBytes(raw, entry); err != nil {
 		return fail(err)
 	}
-	// 仅按内容摘要缓存原始资料；来源绑定在每次读取时独立校验，不能污染其他条目。
+	if _, err := parseDetails(raw, entry); err != nil {
+		return fail(err)
+	}
+	if ctx.Err() != nil {
+		return "", status_error.PluginDistributionUnavailable
+	}
+	state.failure = nil
+	return publishDetails(directory, location, raw, entry)
+}
+
+func publishDetails(directory, location string, raw []byte, entry Entry) (string, error) {
+	if _, err := parseDetails(raw, entry); err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return "", status_error.PluginStorageError
 	}
@@ -128,9 +146,7 @@ func detailsLocation(entry Entry) (string, error) {
 	if err := os.Rename(temporary.Name(), location); err != nil {
 		return "", status_error.PluginStorageError
 	}
-	state.failure = nil
-	_, err = parseDetails(raw, entry)
-	return location, err
+	return location, nil
 }
 
 func validateDetailsBytes(raw []byte, entry Entry) error {
@@ -156,20 +172,46 @@ func parseDetails(raw []byte, entry Entry) (Details, error) {
 	if err := validatePublicPackage(document["package"]); err != nil {
 		return result, err
 	}
-	if json.Unmarshal(raw, &result) != nil || result.SchemaVersion != 1 {
+	if json.Unmarshal(raw, &result) != nil || result.SchemaVersion != constants.PluginDetailsSchemaVersion {
 		return result, status_error.PluginContentInvalid
 	}
 	if result.SourceCommit != entry.SourceCommit || result.ArchiveSHA256 != entry.ArchiveSHA256 || result.PackagePath != entry.PackagePath {
 		return result, status_error.PluginVersionConflict
 	}
-	if result.Package.Manifest.Name != entry.Package.Manifest.Name || result.Package.Manifest.Version != entry.Package.Manifest.Version || result.Package.Format != constants.PluginFormatCodex {
+	if result.Package.Manifest.Name != entry.Package.Manifest.Name || result.Package.Manifest.Version != entry.Package.Manifest.Version || result.Package.Format != constants.PluginFormatPortable {
 		return result, status_error.PluginContentInvalid
+	}
+	if err := plugins.ValidateContract(result.Package); err != nil {
+		return result, err
+	}
+	if err := result.Package.Presentation.Validate(); err != nil {
+		return result, err
+	}
+	for _, icon := range []string{result.Package.Presentation.Icons.Default, result.Package.Presentation.Icons.Dark} {
+		if icon != "" && plugins.SanitizeIcon(icon) != icon {
+			return result, status_error.PluginContentInvalid
+		}
 	}
 	if err := result.Package.Presentation.SetLocalization(result.Package.Presentation.DisplayNames, result.Package.Presentation.LocalizedDescriptions); err != nil {
 		return result, err
 	}
 	if result.Package.Icon != "" && plugins.SanitizeIcon(result.Package.Icon) != result.Package.Icon {
 		return result, status_error.PluginContentInvalid
+	}
+	for _, server := range result.Package.Servers {
+		if server.Key == "" {
+			return result, status_error.PluginContentInvalid
+		}
+		if server.Type == "stdio" {
+			if server.URL != "" {
+				return result, status_error.PluginContentInvalid
+			}
+			continue
+		}
+		address, err := url.Parse(server.URL)
+		if err != nil || (server.Type != "streamable-http" && server.Type != "sse") || (address.Scheme != "https" && address.Scheme != "http") || address.Host == "" || address.User != nil || address.RawQuery != "" || address.Fragment != "" {
+			return result, status_error.PluginContentInvalid
+		}
 	}
 	for locale, content := range result.Readmes {
 		if (locale != constants.PluginLocaleEnglish && locale != constants.PluginLocaleChinese) || !publicText(content) {
@@ -208,7 +250,7 @@ func publicObject(raw []byte, allowed ...string) (map[string]json.RawMessage, er
 }
 
 func validatePublicPackage(raw []byte) error {
-	pkg, err := publicObject(raw, "manifest", "format", "presentation", "upstream", "icon", "skills", "servers", "integration", "diagnostics")
+	pkg, err := publicObject(raw, "contractVersion", "manifest", "format", "presentation", "upstream", "icon", "skills", "servers", "integration", "diagnostics")
 	if err != nil {
 		return err
 	}
@@ -222,8 +264,24 @@ func validatePublicPackage(raw []byte) error {
 		}
 	}
 	if value := pkg["presentation"]; len(value) != 0 {
-		if _, err := publicObject(value, "displayName", "shortDescription", "longDescription", "developerName", "category", "websiteURL", "privacyPolicyURL", "termsOfServiceURL", "displayNames", "localizedDescriptions"); err != nil {
+		if _, err := publicObject(value, "displayName", "shortDescription", "longDescription", "developerName", "category", "websiteURL", "privacyPolicyURL", "termsOfServiceURL", "displayNames", "localizedDescriptions", "defaultPrompt", "defaultPromptLocalizations", "capabilities", "supportURL", "brandColor", "icons", "setup"); err != nil {
 			return err
+		}
+	}
+	if value := pkg["presentation"]; len(value) > 0 {
+		var presentation map[string]json.RawMessage
+		_ = json.Unmarshal(value, &presentation)
+		for _, name := range []string{"brandColor", "icons"} {
+			if value := presentation[name]; len(value) > 0 {
+				if _, err := publicObject(value, "default", "dark"); err != nil {
+					return err
+				}
+			}
+		}
+		if value := presentation["setup"]; len(value) > 0 && !bytes.Equal(value, []byte("null")) {
+			if _, err := publicObject(value, "instructions", "helpURL"); err != nil {
+				return err
+			}
 		}
 	}
 	if value := pkg["upstream"]; len(value) != 0 && !bytes.Equal(value, []byte("null")) {
@@ -231,12 +289,21 @@ func validatePublicPackage(raw []byte) error {
 			return err
 		}
 	}
-	for name, fields := range map[string][]string{"skills": {"key", "name", "description", "path"}, "servers": {"key", "type", "url"}, "diagnostics": {"component", "code"}} {
+	for name, fields := range map[string][]string{"skills": {"key", "name", "description", "path"}, "servers": {"key", "type", "url", "authentication"}, "diagnostics": {"component", "code"}} {
 		var items []json.RawMessage
 		if json.Unmarshal(pkg[name], &items) != nil {
 			return status_error.PluginContentInvalid
 		}
 		for _, item := range items {
+			if name == "servers" {
+				var server map[string]json.RawMessage
+				_ = json.Unmarshal(item, &server)
+				if auth := server["authentication"]; len(auth) > 0 && !bytes.Equal(auth, []byte("null")) {
+					if _, err := publicObject(auth, "type", "headerScheme", "headerName"); err != nil {
+						return err
+					}
+				}
+			}
 			if _, err := publicObject(item, fields...); err != nil {
 				return err
 			}

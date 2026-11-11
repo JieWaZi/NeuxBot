@@ -5,7 +5,7 @@ export const automaticTaskZh = {
   wikiMaintenanceInstruction:
     "核查当前知识库已有 Wiki，依据原件确认问题，修复失效链接与引用，归并确属同一知识的重复页并更新入链，整理同义目录。保留有效内容、人工维护内容、来源和历史；不同版本或适用范围不能直接混合。不要重新导入原件或重新生成全库。最后报告实际更新、归并、归档及未解决的问题。",
   apiIntegrationHint:
-    "在设置的「发布集成 → API 集成」创建 API Key，并明确授权本任务的调用或结果读取。示例中的 API_KEY 使用该集成密钥。",
+    "在设置的「集成 → API」创建 API Key，并明确授权本任务的调用或结果读取。示例中的 API_KEY 使用该集成密钥。",
   taskID: "任务 ID",
   fileUploadExample: "上传文件示例",
   resultExample: "获取结果示例",

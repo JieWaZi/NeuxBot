@@ -9,7 +9,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 )
@@ -37,6 +37,50 @@ type LiveAdapter struct {
 	baseSequence int64
 	// appliedFacts 去重初始化之后交付的事实身份，不保留事实正文。
 	appliedFacts map[int64]struct{}
+}
+
+// NewNativeLiveAdapter 从已提交的执行开始版本建立原生消息实时投影。
+func NewNativeLiveAdapter(messageID string, revision int64) *LiveAdapter {
+	builder := messageview.NewPublicMessageViewBuilder()
+	builder.SeedNativeLiveMessage(messageID, revision)
+	return &LiveAdapter{generation: uuid.NewString(), messageID: messageID, currentRevision: revision, messageView: builder}
+}
+
+// AppendNative 消费已规范化的变化；工具部件随即时检查点交付。
+func (a *LiveAdapter) AppendNative(change agent.MessageChange, recordedAt int64) error {
+	update, err := a.messageView.ApplyNativeIncrement(a.messageID, change, recordedAt)
+	if err != nil {
+		return err
+	}
+	update.BaseRevision = a.currentRevision
+	a.currentRevision = change.Revision
+	if change.Kind == agent.MessageAppend {
+		a.recordedAt = recordedAt
+		a.pending = append(a.pending, update)
+	}
+	return nil
+}
+
+// NativeCheckpointNeedsRebase 判断检查点是否改变了已有的部件边界。
+func (a *LiveAdapter) NativeCheckpointNeedsRebase(change agent.MessageChange) bool {
+	switch change.Kind {
+	case agent.MessageClassify, agent.MessageReplace:
+		return true
+	case agent.MessageToolSnapshot:
+		// 权威索引保留最新工具快照的位置，旧位置上的相邻文本可能重新合并。
+		return a.messageView.NativeToolMovesPart(a.messageID, change.ToolCallID)
+	default:
+		return false
+	}
+}
+
+// RebaseNative 用已提交的定性或正文替换更新实时投影的部件边界。
+func (a *LiveAdapter) RebaseNative(message agent.StoredMessage, cursor, recordedAt int64) error {
+	if err := a.messageView.ReplaceStoredContent(message, cursor, recordedAt); err != nil {
+		return err
+	}
+	a.currentRevision = message.Revision
+	return nil
 }
 
 // ApplyFact 同步当前执行已提交的交互与命令事实，不重放 Runtime 消息或伪造持久游标。
@@ -111,7 +155,7 @@ func NewLiveAdapter(records []eventlog.Record, messageID string) (*LiveAdapter, 
 // Apply 应用一条实时事件并交付当前窗口的安全增量。
 func (a *LiveAdapter) Apply(
 	invocationID string,
-	event agentapi.Event,
+	event agent.Event,
 ) (PublicEvent, int64, error) {
 	revision, err := a.ApplyState(invocationID, event)
 	if err != nil {
@@ -122,13 +166,13 @@ func (a *LiveAdapter) Apply(
 }
 
 // ApplyState 按顺序更新唯一实时状态，不为尚未到交付窗口的增量复制整条消息。
-func (a *LiveAdapter) ApplyState(invocationID string, event agentapi.Event) (int64, error) {
+func (a *LiveAdapter) ApplyState(invocationID string, event agent.Event) (int64, error) {
 	if a == nil || a.messageView == nil {
 		return 0, status_error.ChatLogError
 	}
 	// 一次上游大文本也按 UTF-8 边界拆成有界规范输入，不能绕过帧字节预算。
 	switch event.Type {
-	case agentapi.EventTypeTextDelta, agentapi.EventTypeCommentaryDelta, agentapi.EventTypeThinkingDelta:
+	case agent.EventTypeTextDelta, agent.EventTypeCommentaryDelta, agent.EventTypeThinkingDelta:
 		var text struct { // Text 是规范输入的新增正文。
 			Text string `json:"text"`
 		}
@@ -143,7 +187,7 @@ func (a *LiveAdapter) ApplyState(invocationID string, event agentapi.Event) (int
 					Text string `json:"text"`
 				}{Text: text.Text[:n]})
 				var err error
-				revision, err = a.ApplyState(invocationID, agentapi.Event{Type: event.Type, Data: data})
+				revision, err = a.ApplyState(invocationID, agent.Event{Type: event.Type, Data: data})
 				if err != nil {
 					return 0, err
 				}

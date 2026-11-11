@@ -8,14 +8,17 @@ import {
 } from "@/shared/api/integration-service";
 import { localApiErrorMessage } from "@/shared/api/local-error-surface";
 import { Button } from "@/shared/ui/button";
-import { Card } from "@/shared/ui/card";
 import { Switch } from "@/shared/ui/switch";
 import { Skeleton } from "@/shared/ui/skeleton";
+import { SettingsCard, SettingsGroup, SettingsRow } from "@/modules/settings";
 import { mcpClientConfig, mcpConnection } from "../lib/mcp-connection";
 import { useIntegrationCopy } from "../use-integration-copy";
-import { SettingsGroup } from "./settings-section-layout";
 
-export function MCPIntegrationSection() {
+export function MCPIntegrationSection({
+  onOpenAPI,
+}: {
+  onOpenAPI?: () => void;
+}) {
   const t = useIntegrationCopy();
   const id = useId();
   const client = useQueryClient();
@@ -36,7 +39,7 @@ export function MCPIntegrationSection() {
     onSuccess: async () => {
       setCopied(undefined);
       setCopyFailed(false);
-      // 启停仅返回成功回执，等待同一服务查询确认实际设置；刷新失败由原查询就近恢复。
+      // 启停仅返回成功回执；读取失败保留旧配置，并由所属Card提供读取重试。
       await client.invalidateQueries({
         queryKey: integrationServiceQueryKey(),
       });
@@ -53,119 +56,167 @@ export function MCPIntegrationSection() {
     }
   }
   return (
-    <SettingsGroup
-      title={<label htmlFor={id}>{t("mcp.title")}</label>}
-      description={t("mcp.description")}
-      trailing={
-        <Switch
-          id={id}
-          aria-label={t("mcp.switchLabel")}
-          aria-busy={save.isPending}
-          checked={enabled === true}
-          disabled={
-            !known || apiEnabled !== true || service.isPending || save.isPending
-          }
-          hitArea="comfortable"
-          onClick={() => save.mutate({ body: { enabled: !enabled } })}
-        />
-      }
-    >
-      <Card variant="section">
-        {service.isPending ? (
-          <div
-            role="status"
-            aria-busy="true"
-            aria-label={t("mcp.loading")}
-            className="grid gap-5"
+    <>
+      <SettingsGroup title={t("mcp.serviceSettings")}>
+        <SettingsCard>
+          <SettingsRow
+            grouped
+            title={<label htmlFor={id}>{t("mcp.switchLabel")}</label>}
+            description={t("mcp.description")}
           >
-            <Skeleton className="h-row-default w-full" />
-            <Skeleton className="h-40 w-full" />
-          </div>
-        ) : (
-          <div className="grid min-w-0 gap-4">
-            {!known ? (
-              <p role="status" className="type-body text-content-secondary">
-                {t("mcp.statusUnknown")}
+            <Switch
+              id={id}
+              aria-label={t("mcp.switchLabel")}
+              aria-busy={save.isPending}
+              checked={enabled === true}
+              disabled={
+                !known ||
+                apiEnabled !== true ||
+                service.isPending ||
+                save.isPending
+              }
+              hitArea="comfortable"
+              onClick={() => save.mutate({ body: { enabled: !enabled } })}
+            />
+          </SettingsRow>
+          {service.isPending ? (
+            <div
+              role="status"
+              aria-busy="true"
+              aria-label={t("mcp.loading")}
+              className="px-4 py-3"
+            >
+              <Skeleton className="h-5 w-full" />
+            </div>
+          ) : service.error ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+              <p role="alert" className="type-resource-body text-destructive">
+                {localApiErrorMessage(service.error, t("readFailed"))}
               </p>
-            ) : apiEnabled !== true ? (
-              <p className="type-body text-content-secondary">
+              <Button
+                type="button"
+                size="settings"
+                variant="settings-outline"
+                disabled={service.isFetching || save.isPending}
+                onClick={() => void service.refetch()}
+              >
+                {t("retry")}
+              </Button>
+            </div>
+          ) : !known ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+              <p className="type-resource-body text-content-secondary">
+                {t("mcp.configurationUnknown")}
+              </p>
+              <Button
+                type="button"
+                size="settings"
+                variant="settings-outline"
+                disabled={service.isFetching}
+                onClick={() => void service.refetch()}
+              >
+                {t("retry")}
+              </Button>
+            </div>
+          ) : apiEnabled !== true ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+              <p className="type-resource-body text-content-secondary">
                 {t("mcp.requiresAPI")}
               </p>
-            ) : !effective ? (
-              <p className="type-body text-content-secondary">
-                {t("mcp.disabled")}
+              {onOpenAPI ? (
+                <Button
+                  type="button"
+                  size="settings"
+                  variant="settings-outline"
+                  onClick={onOpenAPI}
+                >
+                  {t("mcp.openAPI")}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+          {save.isPending ? (
+            <p
+              role="status"
+              className="type-ui text-content-secondary px-4 py-3"
+            >
+              {t(
+                save.variables?.body.enabled ? "mcp.enabling" : "mcp.disabling",
+              )}
+            </p>
+          ) : null}
+          {save.error ? (
+            <p
+              role="alert"
+              className="type-resource-body text-destructive px-4 py-3"
+            >
+              {localApiErrorMessage(save.error, t("failed"))}
+            </p>
+          ) : null}
+        </SettingsCard>
+      </SettingsGroup>
+      <SettingsGroup
+        title={t("mcp.config")}
+        trailing={
+          effective && config ? (
+            <Button
+              type="button"
+              size="settings"
+              variant="settings-outline"
+              disabled={!known || save.isPending}
+              onClick={() => void copy(config)}
+            >
+              {copied === config ? (
+                <Check aria-hidden="true" />
+              ) : (
+                <Copy aria-hidden="true" />
+              )}
+              {t(copied === config ? "mcp.copiedConfig" : "mcp.copyConfig")}
+            </Button>
+          ) : undefined
+        }
+      >
+        <SettingsCard>
+          {service.isPending ? (
+            <div
+              role="status"
+              aria-busy="true"
+              aria-label={t("mcp.config")}
+              className="px-4 py-3"
+            >
+              <Skeleton className="h-40 w-full" />
+            </div>
+          ) : effective && config ? (
+            <div className="grid min-w-0 gap-3 px-4 py-3">
+              <p className="type-ui text-content-secondary">
+                {t("mcp.configHelp")}
               </p>
-            ) : (
-              <>
-                {!service.error && service.data?.available !== true && (
-                  <p role="status" className="type-body text-content-secondary">
-                    {t(
-                      service.data?.available === false
-                        ? "mcp.statusUnavailable"
-                        : "mcp.statusUnknown",
-                    )}
-                  </p>
-                )}
-                {config ? (
-                  <SettingsGroup
-                    title={t("mcp.config")}
-                    description={t("mcp.configHelp")}
-                    trailing={
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => void copy(config)}
-                      >
-                        {copied === config ? (
-                          <Check aria-hidden="true" />
-                        ) : (
-                          <Copy aria-hidden="true" />
-                        )}
-                        {t(
-                          copied === config
-                            ? "mcp.copiedConfig"
-                            : "mcp.copyConfig",
-                        )}
-                      </Button>
-                    }
-                  >
-                    <pre
-                      tabIndex={0}
-                      aria-label={t("mcp.config")}
-                      className="type-ui bg-surface-scene min-w-0 overflow-x-auto rounded-lg p-4 select-text"
-                    >
-                      <code>{config}</code>
-                    </pre>
-                  </SettingsGroup>
-                ) : (
-                  <p className="type-body text-content-secondary">
-                    {t("mcp.noURL")}
-                  </p>
-                )}
-              </>
-            )}
-            {save.isPending && (
-              <p role="status" className="type-ui text-content-secondary">
-                {t(
-                  save.variables?.body.enabled
-                    ? "mcp.enabling"
-                    : "mcp.disabling",
-                )}
-              </p>
-            )}
-            {save.error && !service.error && (
-              <p role="alert" className="type-body text-destructive">
-                {localApiErrorMessage(save.error, t("failed"))}
-              </p>
-            )}
-            {copyFailed && (
-              <p role="alert" className="type-body text-destructive">
-                {t("mcp.copyFailed")}
-              </p>
-            )}
-          </div>
-        )}
-      </Card>
-    </SettingsGroup>
+              <pre
+                tabIndex={0}
+                aria-label={t("mcp.config")}
+                className="type-ui min-w-0 overflow-x-auto select-text"
+              >
+                <code>{config}</code>
+              </pre>
+              {copyFailed ? (
+                <p role="alert" className="type-resource-body text-destructive">
+                  {t("mcp.copyFailed")}
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="type-resource-body text-content-secondary px-4 py-3">
+              {t(
+                !service.data || !known
+                  ? "mcp.configurationUnavailable"
+                  : !effective
+                    ? "mcp.configurationDisabled"
+                    : "mcp.noURL",
+              )}
+            </p>
+          )}
+        </SettingsCard>
+      </SettingsGroup>
+    </>
   );
 }

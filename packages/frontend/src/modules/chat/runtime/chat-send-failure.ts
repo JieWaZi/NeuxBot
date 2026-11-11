@@ -1,3 +1,8 @@
+import {
+  applicationErrorMessage,
+  type ErrorParameters,
+  type ErrorMessageSource,
+} from "@/shared/api/error-presentation";
 import { ApiError } from "@/shared/api/errors";
 
 export type ChatSendFailureKind =
@@ -8,14 +13,20 @@ export type ChatSendFailureKind =
   | "rejected"
   | "unknown";
 
+type SendFailureDetail = {
+  message?: string;
+  errorCode?: string;
+  errorParams?: ErrorParameters;
+  messageSource?: ErrorMessageSource;
+};
 export type ChatSendFailure =
-  { kind: "none" } | { kind: ChatSendFailureKind; message?: string };
+  { kind: "none" } | ({ kind: ChatSendFailureKind } & SendFailureDetail);
 
 export const NO_SEND_FAILURE: ChatSendFailure = { kind: "none" };
 
 export function isSendFailureActive(
   failure: ChatSendFailure,
-): failure is { kind: ChatSendFailureKind; message?: string } {
+): failure is { kind: ChatSendFailureKind } & SendFailureDetail {
   return failure.kind !== "none";
 }
 
@@ -80,9 +91,6 @@ export function classifyChatSendFailure(error: unknown): ChatSendFailure {
   if (!(error instanceof ApiError)) {
     return { kind };
   }
-  if (kind === "session-not-found") {
-    return { kind };
-  }
   if (error.code === "NETWORK") {
     return { kind: "unknown" };
   }
@@ -90,7 +98,13 @@ export function classifyChatSendFailure(error: unknown): ChatSendFailure {
   if (!message) {
     return { kind };
   }
-  return { kind, message };
+  return {
+    kind,
+    message,
+    errorCode: error.code,
+    errorParams: error.params,
+    messageSource: error.messageSource,
+  };
 }
 
 type SendFailureTranslator = (
@@ -109,6 +123,15 @@ export function sendFailureDisplayText(
 ): string {
   if (!isSendFailureActive(failure)) {
     return "";
+  }
+  if (failure.errorCode && failure.messageSource) {
+    return applicationErrorMessage({
+      code: failure.errorCode,
+      params: failure.errorParams,
+      message: failure.message,
+      messageSource: failure.messageSource,
+      fallback: translate("sendFailed"),
+    });
   }
   if (failure.message) {
     return failure.message;

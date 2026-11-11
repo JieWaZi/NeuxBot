@@ -19,13 +19,13 @@ func TestInstalledPluginListFiltersBeforeCountingAndPaging(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	request := &ListPlugins{PageNum: 1, PageSize: 1, InstalledOnly: true}
+	request := &BrowsePlugins{PageNum: 1, PageSize: 1, InstalledOnly: true}
 	value, err := request.Output(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := value.(ListPluginsResponse); got.TotalSize != 0 || len(got.Resources) != 0 {
-		t.Fatal("prepared-only plugins leaked into installed list", got.TotalSize)
+	if got := value.(BrowsePluginsResponse); got.InstalledTotalSize != 0 || len(got.Entries) != 0 {
+		t.Fatal("prepared-only plugins leaked into installed list", got.InstalledTotalSize)
 	}
 	for _, relation := range []models.WakerPlugin{
 		{ID: "a1", PluginID: "installed-a", VersionID: "v-installed-a", WakerID: "w1", Enabled: false},
@@ -42,15 +42,15 @@ func TestInstalledPluginListFiltersBeforeCountingAndPaging(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := value.(ListPluginsResponse)
-		if got.TotalSize != 2 || len(got.Resources) != 1 || got.Resources[0].Plugin.ID != want {
+		got := value.(BrowsePluginsResponse)
+		if got.InstalledTotalSize != 2 || len(got.Entries) != 1 || got.Entries[0].PluginID != want {
 			t.Fatalf("wrong installed page %d: %+v", page+1, got)
 		}
 	}
 	request.PageNum = 1
 	request.Query = "prepared"
 	value, err = request.Output(ctx)
-	if err != nil || value.(ListPluginsResponse).TotalSize != 0 {
+	if err != nil || value.(BrowsePluginsResponse).InstalledTotalSize != 0 {
 		t.Fatal("search included uninstalled plugin", err)
 	}
 	if err := store.Uninstall(ctx, "w2", "installed-a"); err != nil {
@@ -58,14 +58,14 @@ func TestInstalledPluginListFiltersBeforeCountingAndPaging(t *testing.T) {
 	}
 	request.Query = "installed-a"
 	value, err = request.Output(ctx)
-	if err != nil || value.(ListPluginsResponse).TotalSize != 1 {
+	if err != nil || value.(BrowsePluginsResponse).InstalledTotalSize != 1 {
 		t.Fatal("disabled installation was hidden", err)
 	}
 	if err := store.Uninstall(ctx, "w1", "installed-a"); err != nil {
 		t.Fatal(err)
 	}
 	value, err = request.Output(ctx)
-	if err != nil || value.(ListPluginsResponse).TotalSize != 0 {
+	if err != nil || value.(BrowsePluginsResponse).InstalledTotalSize != 0 {
 		t.Fatal("last uninstall remained in installed list", err)
 	}
 	// 插件库安装准备仍需关联已登记但尚未安装的资源。

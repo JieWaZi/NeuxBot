@@ -22,6 +22,7 @@ import {
 import { SceneTabStrip } from "@/shared/ui/scene-tab-strip";
 import { Button } from "@/shared/ui/button";
 import { VerticalResizeHandle } from "@/shared/ui/vertical-resize-handle";
+import type { ChatSceneOwner } from "@/shared/workspace/app-scene-model";
 import type { SceneWorkspace } from "@/shared/workspace/workspace-context";
 import type { WorkspaceTab } from "@/shared/workspace/workspace-tab";
 import type { StreamState } from "@/shared/api/events";
@@ -78,6 +79,7 @@ export type ChatWorkspaceMainContent = {
 
 type ChatWorkspaceSurfaceProps = {
   active?: boolean;
+  chatOwner?: ChatSceneOwner;
   mainContent?: ChatWorkspaceMainContent;
   canvasInput?: boolean;
   showSummary?: boolean;
@@ -99,9 +101,20 @@ type ChatWorkspaceSurfaceProps = {
   changesProps?: Omit<ScopedGitChangesProps, "active">;
 };
 
+// 分屏为消息和输入区保留可读宽度；放不下两个窗格时沿用浮层布局。
+const chatMinWidth = 320;
+
+function maximumWorkbenchWidth(availableWidth: number): number {
+  if (availableWidth <= 0) return Infinity;
+  return availableWidth < chatMinWidth + workbenchMinWidth
+    ? availableWidth * 0.88
+    : availableWidth - chatMinWidth;
+}
+
 /** Chat、Team 与 Workflow 共用会话内容和可交换位置的工作台。 */
 export function ChatWorkspaceSurface({
   active = true,
+  chatOwner,
   mainContent,
   canvasInput,
   showSummary = true,
@@ -116,7 +129,7 @@ export function ChatWorkspaceSurface({
   openedCodeReference,
   gitRoots = [],
   renderTeamMembers,
-  showActivityIndicator = true,
+  // showActivityIndicator = true,
   taskBoard,
   workspace,
   fileWorkspaceProps,
@@ -151,10 +164,12 @@ export function ChatWorkspaceSurface({
     return () => observer?.disconnect();
   }, []);
   const preferredWidth = workbench.width;
-  const displayWidth =
+  const workbenchOverlay =
     layoutWidth > 0
-      ? Math.min(preferredWidth, layoutWidth * 0.79)
-      : preferredWidth;
+      ? layoutWidth < chatMinWidth + workbenchMinWidth
+      : undefined;
+  const widthLimit = maximumWorkbenchWidth(layoutWidth);
+  const displayWidth = Math.min(preferredWidth, widthLimit);
   const dragCleanup = useRef<(() => void) | undefined>(undefined);
   const lastVisibleWorkbenchScope = useRef<string | null>(null);
   const [isResizing, setIsResizing] = useState(false);
@@ -197,27 +212,19 @@ export function ChatWorkspaceSurface({
       layoutRef.current?.offsetWidth ||
       layoutRef.current?.clientWidth ||
       0;
-    let dragFullscreen = false;
     dragCleanup.current = trackHorizontalDrag({
       initialX: startX,
       initialValue: startWidth,
       valueAt: (clientX) =>
-        Math.max(
-          workbenchMinWidth,
-          Math.min(
-            layoutWidth || Infinity,
+        Math.min(
+          maximumWorkbenchWidth(layoutWidth),
+          Math.max(
+            workbenchMinWidth,
             startWidth +
               (clientX - startX) * (workbench.side === "left" ? 1 : -1),
           ),
         ),
-      onChange: (width) => {
-        const fullscreen = layoutWidth > 0 && width >= layoutWidth * 0.8;
-        if (fullscreen !== dragFullscreen) {
-          dragFullscreen = fullscreen;
-          dispatch({ type: "set-fullscreen", fullscreen });
-        }
-        if (!fullscreen) dispatch({ type: "set-width", width });
-      },
+      onChange: (width) => dispatch({ type: "set-width", width }),
       onCommit: () => {},
       onFinish: () => setIsResizing(false),
     });
@@ -242,9 +249,13 @@ export function ChatWorkspaceSurface({
               : undefined;
     if (width === undefined) return;
     event.preventDefault();
-    const fullscreen = availableWidth > 0 && width >= availableWidth * 0.8;
-    dispatch({ type: "set-fullscreen", fullscreen });
-    if (!fullscreen) dispatch({ type: "set-width", width });
+    dispatch({
+      type: "set-width",
+      width: Math.min(
+        maximumWorkbenchWidth(availableWidth),
+        Math.max(workbenchMinWidth, width),
+      ),
+    });
   };
 
   const tabs = adapter.tabs ?? workspace.snapshot.tabs;
@@ -273,6 +284,7 @@ export function ChatWorkspaceSurface({
   useEffect(() => {
     if (!appSceneWorkspace || !primaryTabId || !sceneActive) return;
     appSceneWorkspace.syncWorkspace({
+      chatOwner,
       onNewChat,
       activeWorkspaceTabId: activeTabId ?? primaryTabId,
       onClose: (tabId) => workspace.dispatch({ type: "close-tab", tabId }),
@@ -289,6 +301,7 @@ export function ChatWorkspaceSurface({
     });
   }, [
     activeTabId,
+    chatOwner,
     appSceneWorkspace,
     primaryTabId,
     routeScene?.href,
@@ -320,7 +333,6 @@ export function ChatWorkspaceSurface({
         adapter.thread.onOpenFile?.({
           name: file.name,
           path: file.path,
-          rootPath: identity.workspaceDirectory,
         })
       }
       onViewAllFiles={() => {
@@ -342,7 +354,10 @@ export function ChatWorkspaceSurface({
       <div
         className={cn(
           "relative flex h-full min-h-0 min-w-0 overflow-hidden",
-          workbench.side === "left" && "lg:flex-row-reverse",
+          workbench.side === "left" &&
+            (workbenchOverlay === undefined
+              ? "lg:flex-row-reverse"
+              : "flex-row-reverse"),
         )}
         style={
           {
@@ -360,14 +375,18 @@ export function ChatWorkspaceSurface({
         data-workbench-side={workbench.side}
         data-testid="chat-page-layout"
       >
-        <main className="bg-surface-scene relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <main
+          className={cn(
+            "relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+            canvasInput !== undefined
+              ? "bg-surface-canvas"
+              : "bg-surface-scene",
+          )}
+        >
           {canvasInput !== undefined ? (
             <div
               aria-hidden="true"
-              className={cn(
-                "surface-pattern-dots duration-slow ease-ui pointer-events-none absolute inset-0 transition-opacity",
-                canvasInput ? "opacity-100" : "opacity-0",
-              )}
+              className="surface-pattern-dots surface-pattern-dots-canvas pointer-events-none absolute inset-0"
             />
           ) : null}
           {appSceneWorkspace && sceneActive && !fullView ? (
@@ -445,7 +464,14 @@ export function ChatWorkspaceSurface({
               </div>
             }
             sidebar={
-              <div className="relative h-full min-h-0 min-w-0">
+              <div
+                className={cn(
+                  "relative h-full min-h-0 min-w-0",
+                  canvasInput !== undefined &&
+                    "bg-surface-scene/15 backdrop-blur-canvas-glass",
+                )}
+              >
+                {/* 暂时隐藏右上角工作状态，保留实现以便恢复。
                 {showActivityIndicator && snapshot.isRunning ? (
                   <span
                     className="text-muted-foreground type-caption absolute top-3 right-4 z-20 flex items-center gap-2"
@@ -471,7 +497,7 @@ export function ChatWorkspaceSurface({
                             ? t("streamUnavailable")
                             : t("working")}
                   </span>
-                ) : null}
+                ) : null} */}
                 <FloatingChat
                   chatId={identity.chatId}
                   fullView={fullView && sceneActive}
@@ -507,40 +533,45 @@ export function ChatWorkspaceSurface({
           hidden={canvasInput}
           activePanel={activeRightPanel}
           fullscreen={fullView}
+          overlay={workbenchOverlay}
           side={workbench.side}
           resizing={isResizing}
           onDismiss={onDismissRightPanel}
           workspaceLeading={
-            <div
-              className={cn(
-                "group/outer-divider absolute inset-y-0 z-20 w-px",
-                "max-lg:hidden",
-                workbench.side === "left" ? "right-0" : "left-0",
-              )}
-            >
-              <VerticalResizeHandle
-                ariaLabel={t("workspace.resizePanel")}
-                className="h-full"
-                ariaValueMin={workbenchMinWidth}
-                ariaValueMax={layoutWidth || undefined}
-                ariaValueNow={displayWidth}
-                onKeyDown={handlePanelKeyDown}
-                onMouseDown={handlePanelDragStart}
-              />
-              <span className="bg-surface-scene pointer-events-none absolute top-1/2 left-1/2 z-30 -translate-x-1/2 -translate-y-1/2 rounded-full opacity-0 transition-opacity group-hover/outer-divider:pointer-events-auto group-hover/outer-divider:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="secondary"
-                  shape="circle"
-                  aria-label={t("workbench.swapPanels")}
-                  title={t("workbench.swapPanels")}
-                  onClick={() => dispatch({ type: "swap-side" })}
-                >
-                  <ArrowLeftRight />
-                </Button>
-              </span>
-            </div>
+            workbenchOverlay ? undefined : (
+              <div
+                className={cn(
+                  "group/outer-divider absolute inset-y-0 z-20 w-px",
+                  workbenchOverlay === undefined && "max-lg:hidden",
+                  workbench.side === "left" ? "right-0" : "left-0",
+                )}
+              >
+                <VerticalResizeHandle
+                  ariaLabel={t("workspace.resizePanel")}
+                  className="h-full"
+                  ariaValueMin={workbenchMinWidth}
+                  ariaValueMax={
+                    Number.isFinite(widthLimit) ? widthLimit : undefined
+                  }
+                  ariaValueNow={displayWidth}
+                  onKeyDown={handlePanelKeyDown}
+                  onMouseDown={handlePanelDragStart}
+                />
+                <span className="bg-surface-scene pointer-events-none absolute top-1/2 left-1/2 z-30 -translate-x-1/2 -translate-y-1/2 rounded-full opacity-0 transition-opacity group-hover/outer-divider:pointer-events-auto group-hover/outer-divider:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="secondary"
+                    shape="circle"
+                    aria-label={t("workbench.swapPanels")}
+                    title={t("workbench.swapPanels")}
+                    onClick={() => dispatch({ type: "swap-side" })}
+                  >
+                    <ArrowLeftRight />
+                  </Button>
+                </span>
+              </div>
+            )
           }
           workspacePanel={
             <RightWorkbench
@@ -551,6 +582,7 @@ export function ChatWorkspaceSurface({
               }
               displayWidth={displayWidth}
               onAddCodeReference={onAddCodeReference}
+              onDismiss={onDismissRightPanel}
               onEmpty={onDismissRightPanel}
               onOpenFile={(file) =>
                 adapter.thread.onOpenFile?.({ ...file, reference: file })

@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import "@/shared/i18n";
@@ -75,7 +76,7 @@ describe("WakerShowcaseCard", () => {
   it("展示形象、名称、擅长和技能连接器数量", () => {
     render(
       <WakerShowcaseCard
-        avatar="companion:v1:0123456789abcdef0123456789abcdef"
+        avatar="bloub:plush:hexagone:neutre:8b5cf6"
         connectorCount={2}
         expertise={[
           { title: "前端实现" },
@@ -91,10 +92,39 @@ describe("WakerShowcaseCard", () => {
     expect(screen.getByText("前端实现")).toBeVisible();
     expect(screen.getByText("设计系统")).toBeVisible();
     expect(screen.getByText("3 个技能 · 2 个连接器")).toBeVisible();
-    expect(
-      screen.getByRole("button", { name: "和 林可 互动" }),
-    ).toBeInTheDocument();
+    const avatar = screen
+      .getByRole("article")
+      .querySelector("svg[data-companion-avatar]");
+    expect(avatar).toHaveAttribute("data-shape", "hexagone");
+    expect(avatar).toHaveAttribute("data-material", "plush");
+    expect(avatar?.querySelectorAll("[data-eye]")).toHaveLength(2);
     expect(screen.getByRole("article")).toHaveAttribute("data-phase", "open");
+  });
+
+  it("资料卡头像键盘聚焦临时换表情，按键保持，失焦恢复", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.6);
+    const user = userEvent.setup();
+    render(
+      <WakerShowcaseCard
+        connectorCount={0}
+        name="林可"
+        skillCount={0}
+        avatar="bloub:plush:nuage:curieux:38bdf8"
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "和 林可 互动" });
+    const avatar = trigger.querySelector("svg[data-companion-avatar]");
+    await user.tab();
+    expect(trigger).toHaveFocus();
+    const expression = avatar?.getAttribute("data-expression");
+    expect(expression).not.toBe("curieux");
+    for (const key of ["{Enter}", " "]) {
+      await user.keyboard(key);
+      expect(avatar).toHaveAttribute("data-expression", expression);
+    }
+    fireEvent.blur(trigger);
+    expect(avatar).toHaveAttribute("data-expression", "curieux");
+    vi.restoreAllMocks();
   });
 
   it("没有擅长领域时给出空状态，载入中不抢先显示数量", () => {

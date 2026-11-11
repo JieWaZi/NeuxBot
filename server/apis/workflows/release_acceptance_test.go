@@ -1,8 +1,6 @@
 package workflows
 
 import (
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-
 	"context"
 	"encoding/json"
 	"os"
@@ -30,21 +28,13 @@ type releaseFixtureRuntime struct {
 	emptyBlocking bool
 }
 
-func (r *releaseFixtureRuntime) Run(ctx context.Context, request fixtureInvocation, sink agentapi.EventSink) agentapi.Result {
-	invocation := util.New()
-	started, _ := json.Marshal(agentapi.InvocationStartedData{InvocationID: invocation})
-	failed := func(err error) agentapi.Result {
-		return agentapi.Result{ExitCode: 1, Failure: &agentapi.Failure{Code: agentapi.FailureCodeProcessExited, Stage: "runtime", Message: err.Error(), Transience: agentapi.FailureTransiencePermanent}}
-	}
-	if err := sink.Accept(ctx, agentapi.Event{Type: agentapi.EventTypeInvocationStarted, Data: started}); err != nil {
-		return failed(err)
-	}
-	contract, err := fixtureCLI(ctx, request, []string{"workflow", "results", "schema"}, nil)
+func (r *releaseFixtureRuntime) Run(ctx context.Context, request fixtureInvocation) (*string, error) {
+	contract, err := request.callResult(ctx, "workflow.results.schema", nil)
 	if err != nil {
-		return failed(err)
+		return nil, err
 	}
 	node, _ := contract["nodeId"].(string)
-	prompt := request.Message.Text
+	prompt := request.prompt
 	environment := ""
 	for _, name := range []string{"A", "B", "C"} {
 		if strings.Contains(prompt, "环境="+name+"；") || strings.Contains(prompt, `"environment":"`+name+`"`) {
@@ -54,7 +44,6 @@ func (r *releaseFixtureRuntime) Run(ctx context.Context, request fixtureInvocati
 	}
 	r.mutex.Lock()
 	r.calls[node+":"+environment]++
-	r.workspaces = append(r.workspaces, request.Workspace)
 	r.mutex.Unlock()
 	var data any
 	switch node {
@@ -65,14 +54,14 @@ func (r *releaseFixtureRuntime) Run(ctx context.Context, request fixtureInvocati
 			select {
 			case <-r.releaseB:
 			case <-ctx.Done():
-				return failed(ctx.Err())
+				return nil, ctx.Err()
 			}
 		}
 		if environment == "C" {
-			return failed(status_error.WorkflowEffectFailed)
+			return nil, status_error.WorkflowEffectFailed
 		}
 		if !strings.Contains(prompt, `"iteration":"Sprint 12"`) || !strings.Contains(prompt, `"severityConvention":"P0-P3"`) {
-			return failed(status_error.WorkflowStateInvalid.WithField("reason", "structured material supplement was not propagated"))
+			return nil, status_error.WorkflowStateInvalid.WithField("reason", "structured material supplement was not propagated")
 		}
 		if node == "coverage-environment" {
 			data = map[string]any{"total": 1, "coveredCount": 1, "highPriorityGaps": []any{}, "summary": "核心需求覆盖"}
@@ -86,34 +75,34 @@ func (r *releaseFixtureRuntime) Run(ctx context.Context, request fixtureInvocati
 	case "recommend-item", "revise-item":
 		data = map[string]any{"action": "本地验收后再考虑放行", "residualRisk": "high", "note": "只是建议，尚未执行；独立验证文件"}
 	case "execute-item":
-		path := filepath.Join(request.Workspace.AdditionalWritableDirectories[0], "acceptance", environment+"-defect-0.json")
+		path := filepath.Join(request.businessDirectory, "acceptance", environment+"-defect-0.json")
 		if !strings.Contains(prompt, path) {
-			return failed(status_error.WorkflowStateInvalid.WithField("path", "execution prompt omitted the shared artifact path"))
+			return nil, status_error.WorkflowStateInvalid.WithField("path", "execution prompt omitted the shared artifact path")
 		}
 		payload := map[string]any{"environment": environment, "itemId": environment + "-defect-0", "action": "本地验收后再考虑放行", "accepted": true}
 		encoded, err := json.Marshal(payload)
 		if err != nil {
-			return failed(err)
+			return nil, err
 		}
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-			return failed(err)
+			return nil, err
 		}
 		if err := os.WriteFile(path, encoded, 0600); err != nil {
-			return failed(err)
+			return nil, err
 		}
 		data = map[string]any{"written": true, "artifactPath": path}
 	case "verify-item":
-		path := filepath.Join(request.Workspace.AdditionalWritableDirectories[0], "acceptance", environment+"-defect-0.json")
+		path := filepath.Join(request.businessDirectory, "acceptance", environment+"-defect-0.json")
 		if !strings.Contains(prompt, path) {
-			return failed(status_error.WorkflowStateInvalid.WithField("path", "verification prompt omitted the shared artifact path"))
+			return nil, status_error.WorkflowStateInvalid.WithField("path", "verification prompt omitted the shared artifact path")
 		}
 		encoded, err := os.ReadFile(path)
 		if err != nil {
-			return failed(err)
+			return nil, err
 		}
 		var payload map[string]any
 		if json.Unmarshal(encoded, &payload) != nil || payload["environment"] != environment || payload["accepted"] != true {
-			return failed(status_error.WorkflowEffectFailed)
+			return nil, status_error.WorkflowEffectFailed
 		}
 		data = map[string]any{"exists": true, "matches": true, "verified": true}
 	case "release-report":
@@ -121,16 +110,16 @@ func (r *releaseFixtureRuntime) Run(ctx context.Context, request fixtureInvocati
 	case "revise-report-facts":
 		data = map[string]any{"decision": "不予发布", "markdown": "A 仅完成本地验收；B 未获批准；C 分析失败。本次不予发布。"}
 	default:
-		return failed(status_error.WorkflowStateInvalid.WithField("node", node))
+		return nil, status_error.WorkflowStateInvalid.WithField("node", node)
 	}
-	if _, err := fixtureCLI(ctx, request, []string{"workflow", "results", "submit", "--request-id", "result"}, map[string]any{"data": data}); err != nil {
-		return failed(err)
+	if _, err := request.callResult(ctx, "workflow.results.submit", map[string]any{"data": data}); err != nil {
+		return nil, err
 	}
 
-	return agentapi.Result{StopReason: "end_turn", TerminationReason: constants.RuntimeTerminationReasonNormal, Facts: agentapi.InvocationFacts{InvocationID: invocation, RuntimeID: "codex", BaseRuntimeID: "codex"}, ProtocolHealthy: true}
+	return nil, nil
 }
 
-func TestF2WholeCoreMaterialsReworkPipelineRealFilesAndBlockingGuard(t *testing.T) {
+func TestF2DomainMaterialsReworkPipelineRealFilesAndBlockingGuard(t *testing.T) {
 	for _, emptyBlocking := range []bool{false, true} {
 		name := "residual-risk"
 		if emptyBlocking {
@@ -142,8 +131,7 @@ func TestF2WholeCoreMaterialsReworkPipelineRealFilesAndBlockingGuard(t *testing.
 			// 业务范围不包含应用数据库与文件快照，避免各步骤重复采集测试宿主自身。
 			businessDirectory := t.TempDir()
 			runtime := &releaseFixtureRuntime{fixtureRuntime: &fixtureRuntime{calls: map[string]int{}}, releaseB: make(chan struct{}), emptyBlocking: emptyBlocking}
-			s, _ := openCoreWorkflowPorts(t, directory, runtime, fixtureEnvironment{})
-			runtime.service = s
+			s, _ := openCoreWorkflowPorts(t, directory, runtime, fixtureEnvironment{}, true)
 			source, err := os.ReadFile("../../internal/workflow/dsl/testdata/environment-release.workflow.js")
 			if err != nil {
 				t.Fatal(err)

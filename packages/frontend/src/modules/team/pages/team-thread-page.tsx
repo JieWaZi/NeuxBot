@@ -306,6 +306,7 @@ export function TeamThreadPage({
           id: `team-event:${eventId}`,
           scope: `team:${threadId}`,
           message: t(`eventNotice.${notice}`),
+          messageSource: "public",
         });
       },
       reconcileCursor: reconcileThreadSnapshot,
@@ -316,6 +317,7 @@ export function TeamThreadPage({
           scope: `team:${threadId}`,
           operation: streamOperation,
           message: t("chat:runtimeFailure.networkError"),
+          messageSource: "public",
         });
         recovery = captureErrorNoticeRecovery(streamOperation);
         eventRefreshScheduler.push();

@@ -15,7 +15,10 @@ export function PluginDetailHeader({
   description,
   sourceKey,
   ...props
-}: Pick<ComponentProps<typeof PageHeader>, "actions" | "backAction"> & {
+}: Pick<
+  ComponentProps<typeof PageHeader>,
+  "actions" | "backAction" | "status"
+> & {
   pkg?: PluginCatalogEntry["package"];
   name?: string;
   description?: string;
@@ -27,7 +30,8 @@ export function PluginDetailHeader({
     <PageHeader
       {...props}
       layout="detail"
-      visual={<PluginIcon pkg={pkg} hero />}
+      appearance="compact"
+      visual={<PluginIcon pkg={pkg} size="detail" />}
       title={pluginDisplayName(pkg, name) || t("plugins")}
       description={
         summary && (

@@ -7,8 +7,9 @@ description: Use NeuxBot's authorized knowledge, delivery, workflow, team, memor
 
 Use the skill directory and execution context supplied by the application.
 The executable is `scripts/allycli` (`scripts/allycli.exe` on Windows), relative
-to this `SKILL.md`, also supplied as `ALLYCLI_BINARY_PATH`. Invoke its exact
-quoted absolute path; every `allycli` example below means that executable.
+to this `SKILL.md`. Invoke its exact quoted absolute path with the current
+`--context <execution-file>` supplied by the host; every `allycli` example below
+means that executable and explicit context.
 Resolve reference paths from this skill directory, not the working directory.
 
 ## Read the relevant mode
@@ -62,7 +63,7 @@ reference's spelling. `--library` and `--libraryId` are not `--library-id`.
 - Prefer the injected `ally_capabilities` MCP tools. They use the same operation
   contracts, authorization and receipts as CLI. When using CLI, include the
   exact `--context <execution-file>` supplied for this turn; do not reuse a
-  prior turn's environment or edit connection files.
+  prior turn's context or edit connection files.
 - In a host-bound workflow authoring conversation, business goals describe a
   reusable workflow to create or modify, starting with the first message. Follow
   the authoring guide supplied in the host instructions. Native CLI workflow
@@ -99,6 +100,14 @@ later candidates and metadata or break the JSON. A saved response is complete
 only for that call; follow the operation's pagination for further results.
 
 ## Scope and outcomes
+
+Use the absolute task directories supplied in the current turn. With no
+directory selected, ordinary chats use the partner's fixed `Agents/<waker-id>/`
+working directory. New persistent deliverables go in `outputs/<execution-id>/`, and exact input copies and
+intermediate files go in `tmp/<execution-id>/`. Use the project entries supplied
+by the host for this turn; real project locations are not moved. Workflow
+scripts, state and run files follow the workflow workspace contract in the
+relevant guide.
 
 The capability list defines the available surface, not permission for extra
 work. Preserve the user's scope, explicit source choices and settled decisions.

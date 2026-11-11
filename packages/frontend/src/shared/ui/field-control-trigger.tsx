@@ -5,11 +5,18 @@ import type { ButtonHTMLAttributes } from "react";
 import { cn } from "@/shared/lib/cn";
 
 export const fieldControlTriggerVariants = cva(
-  "border-field-border bg-field duration-quick ease-ui flex items-center justify-between gap-2 rounded-md border text-foreground transition-[background-color,border-color,box-shadow] outline-none hover:border-field-border-hover hover:bg-field-hover focus:border-field-border-active focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 [&>span]:min-w-0 [&>span]:truncate",
+  "border-field-border bg-field duration-quick ease-ui flex items-center justify-between gap-2 rounded-md border text-foreground transition-[background-color,border-color,box-shadow] outline-none hover:border-field-border-hover hover:bg-field-hover focus-visible:border-field-border-focus focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 [&>span]:min-w-0 [&>span]:truncate",
   {
     variants: {
+      appearance: {
+        default: null,
+        settings:
+          "border-resource-border bg-resource-raised text-resource-secondary hover:border-resource-border-strong hover:bg-resource-hover",
+      },
       size: {
+        settings: "h-button-md px-3 type-label",
         sm: "h-control-sm px-2 type-ui",
+        catalog: "catalog-focus h-control-catalog px-3 type-resource-row-title",
         md: "h-control-md px-3 type-body",
         lg: "h-control-lg px-3 type-label",
       },
@@ -21,6 +28,7 @@ export const fieldControlTriggerVariants = cva(
       },
     },
     defaultVariants: {
+      appearance: "default",
       size: "md",
       width: "full",
     },
@@ -35,6 +43,7 @@ export type FieldControlTriggerProps = ButtonHTMLAttributes<HTMLButtonElement> &
 /** 与 SelectTrigger 相同外观，供 Popover / DropdownMenu 等表单型触发器复用。 */
 export function FieldControlTrigger({
   children,
+  appearance,
   className,
   showChevron = true,
   size,
@@ -45,7 +54,10 @@ export function FieldControlTrigger({
   return (
     <button
       type={type}
-      className={cn(fieldControlTriggerVariants({ size, width }), className)}
+      className={cn(
+        fieldControlTriggerVariants({ appearance, size, width }),
+        className,
+      )}
       {...props}
     >
       {children}

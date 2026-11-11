@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   clampContextSidebarWidth,
-  collapsedPartnerIds,
+  pinnedAppModules,
   forgetTeamThread,
   moveItem,
   readPartnerNavigationPreferences,
@@ -35,20 +35,15 @@ describe("partner navigation preferences", () => {
     ).toEqual(["waker-b", "waker-a", "waker-c"]);
   });
 
-  it("收起时用第五个位置展示顺序之外的当前伙伴", () => {
-    expect(
-      collapsedPartnerIds(["a", "b", "c", "d", "e", "f", "g"], "g"),
-    ).toEqual(["a", "b", "c", "d", "g"]);
-  });
-
   it("支持拖拽目标稳定排序", () => {
     expect(moveItem(["a", "b", "c"], "c", "a")).toEqual(["c", "a", "b"]);
   });
 
   it("把上下文侧栏宽度限制在可用范围", () => {
+    expect(clampContextSidebarWidth(80)).toBe(216);
     expect(clampContextSidebarWidth(180)).toBe(216);
     expect(clampContextSidebarWidth(284.6)).toBe(285);
-    expect(clampContextSidebarWidth(520)).toBe(360);
+    expect(clampContextSidebarWidth(520)).toBe(400);
   });
 
   it("按团队记住并清理上次会话", () => {
@@ -91,9 +86,70 @@ describe("partner navigation preferences", () => {
     );
 
     expect(readPartnerNavigationPreferences()).toMatchObject({
-      contextSidebarWidth: 360,
+      contextSidebarWidth: 400,
       entityMode: "team",
-      globalSidebarCollapsed: true,
+      globalSidebarCollapsed: false,
     });
   });
+});
+
+it("旧偏好缺少宽度时使用280且保留伙伴排序、分组和最近团队", () => {
+  window.localStorage.setItem(
+    "ally.partner-navigation",
+    JSON.stringify({
+      railOrder: ["waker:b", "waker:a"],
+      collapsedGroups: { "waker:a": ["folder:temporary"] },
+      lastTeamThreads: { t: "thread" },
+      sidebarCollapsed: true,
+    }),
+  );
+  expect(readPartnerNavigationPreferences()).toMatchObject({
+    contextSidebarWidth: 280,
+    globalSidebarCollapsed: false,
+    railOrder: ["waker:b", "waker:a"],
+    collapsedGroups: { "waker:a": ["folder:temporary"] },
+    lastTeamThreads: { t: "thread" },
+  });
+  expect(clampContextSidebarWidth(Number.NaN)).toBe(280);
+});
+
+it("忽略旧收起字段，并把过小旧宽度钳制到216，不丢弃实体顺序", () => {
+  window.localStorage.setItem(
+    "ally.partner-navigation",
+    JSON.stringify({
+      contextSidebarWidth: 88,
+      globalSidebarCollapsed: true,
+      sidebarCollapsed: true,
+      railOrder: ["waker:b"],
+    }),
+  );
+  expect(readPartnerNavigationPreferences()).toMatchObject({
+    contextSidebarWidth: 216,
+    globalSidebarCollapsed: false,
+    railOrder: ["waker:b"],
+  });
+});
+
+it("Rail默认顺序与pin选择恢复，未知版本的boolean选择仍保留", () => {
+  expect(pinnedAppModules()).toEqual(["usage"]);
+  window.localStorage.setItem(
+    "ally.partner-navigation",
+    JSON.stringify({
+      railPins: {
+        "work-board": true,
+        knowledge: true,
+        workflows: false,
+        future: true,
+        broken: "true",
+      },
+    }),
+  );
+  const saved = readPartnerNavigationPreferences();
+  expect(saved.railPins).toEqual({
+    "work-board": true,
+    knowledge: true,
+    workflows: false,
+    future: true,
+  });
+  expect(pinnedAppModules(saved.railPins)).toEqual(["usage", "knowledge"]);
 });

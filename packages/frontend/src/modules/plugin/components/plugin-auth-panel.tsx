@@ -10,14 +10,18 @@ import { RefreshCw, Unplug } from "lucide-react";
 import type {
   GetPluginAuthorizationResponse,
   StartPluginAuthorizationResponse,
+  CheckPluginAccountData,
 } from "@/shared/api/generated/types.gen";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { PluginAuthorizationActions } from "./plugin-authorization-dialog";
+import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
+import { pluginAccountContext } from "../model/plugin-account-context";
 import { pluginLocale } from "../model/plugin-view";
 import { Button } from "@/shared/ui/button";
 import { QueryState } from "@/shared/ui/query-state";
 import { useQueryEvents } from "@/shared/api/use-query-events";
+import { applicationErrorMessage } from "@/shared/api/error-presentation";
 import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import {
   localApiErrorMessage,
@@ -26,6 +30,7 @@ import {
 } from "@/shared/api/local-error-surface";
 import {
   getPluginAuthorizationOptions,
+  checkPluginAccountMutation,
   startPluginAuthorizationMutation,
   cancelPluginAuthorizationMutation,
   logoutPluginAuthorizationMutation,
@@ -46,10 +51,13 @@ export function PluginAuthPanel({
 }: {
   pluginId: string;
   wakerId?: string;
-  versionId?: string;
+  versionId: string;
   onReady?: () => void;
   onAvailabilityChange?: (available: boolean) => void;
-  onSessionStarted?: (session: StartPluginAuthorizationResponse) => void;
+  onSessionStarted?: (
+    session: StartPluginAuthorizationResponse,
+    context: CheckPluginAccountData["body"],
+  ) => void;
   installation?: boolean;
   starting?: boolean;
   preferredAction?: "show-qr" | "open-url" | "";
@@ -60,10 +68,60 @@ export function PluginAuthPanel({
   const active = useRouteSceneActive();
   const scope = {
     path: { pluginId },
-    query: { wakerId, versionId, verify: true },
+    query: { wakerId, versionId },
   };
   const options = getPluginAuthorizationOptions(withLocalErrorSurface(scope));
-  const status = useQuery({ ...options, enabled: active });
+  const status = useQuery({
+    ...options,
+    enabled: active && Boolean(pluginId && versionId),
+  });
+  const context = pluginAccountContext(status.data);
+  const ownedContexts = useRef(
+    new Map<string, CheckPluginAccountData["body"]>(),
+  );
+  const [confirmLogout, setConfirmLogout] = useState(false);
+  const alive = useRef(true);
+  const selfOwned = useRef(new Map<string, StartPluginAuthorizationResponse>());
+  const refresh = async () => {
+    await invalidatePluginQueries(client);
+  };
+  const cancel = useMutation({
+    ...withLocalErrorMutation(cancelPluginAuthorizationMutation()),
+    onSuccess: async (_value, variables) => {
+      selfOwned.current.delete(variables.path.sessionId);
+      await refresh();
+    },
+  });
+  function closeOwned() {
+    for (const [id, started] of selfOwned.current) {
+      const cached = client.getQueryData<GetPluginAuthorizationResponse>(
+        options.queryKey,
+      )?.session;
+      const body = ownedContexts.current.get(id);
+      if (
+        !body ||
+        started.state !== "waiting" ||
+        (cached?.id === id && cached.state !== "waiting")
+      )
+        continue;
+      selfOwned.current.delete(id);
+      void cancel
+        .mutateAsync({
+          path: { pluginId, sessionId: id },
+          query: { wakerId, versionId },
+          body,
+        })
+        .catch(() => undefined);
+    }
+  }
+  const closeOnUnmount = useEffectEvent(() => closeOwned());
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      closeOnUnmount();
+    };
+  }, []);
   useQueryEvents({
     topic: "plugins",
     resource: { kind: "global" },
@@ -72,34 +130,47 @@ export function PluginAuthPanel({
   });
   const [openError, setOpenError] = useState("");
   const [expiredDevice, setExpiredDevice] = useState("");
-  const refresh = async () => {
-    await invalidatePluginQueries(client);
-  };
   const previousWaitingSession = useRef("");
   const login = useMutation({
     ...withLocalErrorMutation(startPluginAuthorizationMutation()),
     onError: () => {
       void status.refetch();
     },
-    onSuccess: async (session) => {
-      if (session.id && session.id !== previousWaitingSession.current)
-        onSessionStarted?.(session);
+    onSuccess: async (session, variables) => {
+      const startedContext = {
+        expectedConfigurationRevision:
+          variables.body.expectedConfigurationRevision,
+        expectedAccountGeneration: variables.body.expectedAccountGeneration,
+      };
+      if (session.id) ownedContexts.current.set(session.id, startedContext);
+      if (session.id && session.id !== previousWaitingSession.current) {
+        if (onSessionStarted) onSessionStarted(session, startedContext);
+        else selfOwned.current.set(session.id, session);
+      }
+      if (!alive.current) closeOwned();
       await refresh();
     },
-  });
-  const cancel = useMutation({
-    ...withLocalErrorMutation(cancelPluginAuthorizationMutation()),
-    onSuccess: refresh,
   });
   const logout = useMutation({
     ...withLocalErrorMutation(logoutPluginAuthorizationMutation()),
     onError: () => {
       void status.refetch();
     },
+    onSuccess: async () => {
+      setConfirmLogout(false);
+      await refresh();
+    },
+  });
+  const check = useMutation({
+    ...withLocalErrorMutation(checkPluginAccountMutation()),
     onSuccess: refresh,
+    onError: () => {
+      void status.refetch();
+    },
   });
   const account = status.data?.account;
   const activeUses = status.data?.activeUses ?? [];
+  // 账号接口已返回同一上下文的完整会话；不再并行查询可能刚被替换的旧会话。
   const session = status.data?.session;
   const noticeMessage =
     session?.notice?.messages?.[
@@ -110,7 +181,11 @@ export function PluginAuthPanel({
   const waiting = session?.state === "waiting" && !expired;
   const ready = Boolean(account?.available);
   const pending =
-    starting || login.isPending || cancel.isPending || logout.isPending;
+    starting ||
+    login.isPending ||
+    cancel.isPending ||
+    logout.isPending ||
+    check.isPending;
   const hasQR = Boolean(
     session?.actions?.some(
       (action) => action.type === "show-qr" && action.value,
@@ -134,14 +209,17 @@ export function PluginAuthPanel({
         ? "expired"
         : undefined;
   const showQR = qrMode && (status.isPending || waiting || pending || expired);
-  const error = login.error ?? cancel.error ?? logout.error;
+  const error = login.error ?? cancel.error ?? logout.error ?? check.error;
   const message = expired
     ? t("authExpired")
     : session?.state === "failed"
-      ? t("authFailed")
+      ? applicationErrorMessage({
+          code: session.errorCode,
+          fallback: t("authFailed"),
+        })
       : session?.state === "cancelled"
         ? t("authCancelled")
-        : t("authUnknown");
+        : t(account?.checkedAt ? "authUnknown" : "accountUnchecked");
   const notifyReady = useEffectEvent(() => onReady?.());
   const notifyAvailability = useEffectEvent((available: boolean) =>
     onAvailabilityChange?.(available),
@@ -199,6 +277,7 @@ export function PluginAuthPanel({
     return () => clearTimeout(timer);
   }, [deviceKey, session?.expiresAt, session?.state]);
   async function restart() {
+    if (!context) return;
     setOpenError("");
     onAvailabilityChange?.(false);
     if (session?.state === "waiting") setExpiredDevice(deviceKey);
@@ -213,19 +292,23 @@ export function PluginAuthPanel({
         await cancel.mutateAsync({
           path: { pluginId, sessionId: session.id },
           query: { wakerId, versionId },
+          body: ownedContexts.current.get(session.id) ?? context,
         });
       }
       await login.mutateAsync({
         path: { pluginId },
         query: { wakerId, versionId },
-        body: { additionalScopes: status.data?.missingScopes ?? [] },
+        body: {
+          ...context,
+          additionalScopes: status.data?.missingScopes ?? [],
+        },
       });
     } catch {
       // Mutation 的稳定错误在当前面板统一呈现。
     }
   }
   return (
-    <section className="space-y-4">
+    <section className={installation ? "space-y-4 text-center" : "space-y-4"}>
       {!installation && (
         <div>
           <h3 className="type-label font-medium">{t("authentication")}</h3>
@@ -245,6 +328,13 @@ export function PluginAuthPanel({
             <StatusNotice tone="success">
               {t("sharedIdentity", { name: account?.name || account?.id })}
             </StatusNotice>
+          ) : !waiting &&
+            !pending &&
+            !status.isPending &&
+            (expired ||
+              session?.state === "failed" ||
+              session?.state === "cancelled") ? (
+            <StatusNotice role="status">{message}</StatusNotice>
           ) : (
             <p className="type-body text-content-secondary" role="status">
               {waiting
@@ -263,7 +353,7 @@ export function PluginAuthPanel({
               actions={waiting && !pending ? (session?.actions ?? []) : []}
               qrState={qrState}
               preparing={preparing}
-              disabled={pending || activeUses.length > 0}
+              disabled={pending || !context || activeUses.length > 0}
               onRefresh={() => void restart()}
               onOpenError={() => setOpenError(t("failed"))}
             />
@@ -285,21 +375,30 @@ export function PluginAuthPanel({
                 {t("missingScopesHelp")}
               </p>
             )}
-          <div className="flex flex-wrap gap-2">
+          <div
+            className={
+              installation
+                ? "flex flex-wrap justify-center gap-2"
+                : "flex flex-wrap gap-2"
+            }
+          >
             {(!installation || (!waiting && !pending && !status.isPending)) &&
               (!ready || waiting) &&
               !showQR && (
                 <Button
                   type="button"
-                  disabled={pending || activeUses.length > 0}
+                  variant="text"
+                  disabled={pending || !context || activeUses.length > 0}
                   onClick={() => void restart()}
                 >
                   {t(
-                    installation
-                      ? "retry"
-                      : account?.configured || expired || waiting
-                        ? "retryAuthorization"
-                        : "login",
+                    account?.configured ||
+                      expired ||
+                      waiting ||
+                      session?.state === "failed" ||
+                      session?.state === "cancelled"
+                      ? "retryAuthorization"
+                      : "login",
                   )}
                 </Button>
               )}
@@ -307,13 +406,17 @@ export function PluginAuthPanel({
               <Button
                 type="button"
                 variant="secondary"
-                disabled={pending}
-                onClick={() =>
-                  cancel.mutate({
-                    path: { pluginId, sessionId: session.id ?? "" },
-                    query: { wakerId, versionId },
-                  })
-                }
+                disabled={pending || !context}
+                onClick={() => {
+                  const body =
+                    ownedContexts.current.get(session.id ?? "") ?? context;
+                  if (body)
+                    cancel.mutate({
+                      path: { pluginId, sessionId: session.id ?? "" },
+                      query: { wakerId, versionId },
+                      body,
+                    });
+                }}
               >
                 {t("cancelAuth")}
               </Button>
@@ -322,7 +425,15 @@ export function PluginAuthPanel({
               <Button
                 type="button"
                 variant="ghost"
-                onClick={() => void status.refetch().then(refresh)}
+                disabled={pending || !context || activeUses.length > 0}
+                onClick={() => {
+                  if (context)
+                    check.mutate({
+                      path: { pluginId },
+                      query: { wakerId, versionId },
+                      body: context,
+                    });
+                }}
               >
                 <RefreshCw aria-hidden="true" />
                 {t("authRefresh")}
@@ -332,13 +443,8 @@ export function PluginAuthPanel({
               <Button
                 type="button"
                 variant="ghost"
-                disabled={pending || activeUses.length > 0}
-                onClick={() =>
-                  logout.mutate({
-                    path: { pluginId },
-                    query: { wakerId, versionId },
-                  })
-                }
+                disabled={pending || !context || activeUses.length > 0}
+                onClick={() => setConfirmLogout(true)}
               >
                 <Unplug aria-hidden="true" />
                 {t("logout")}
@@ -366,6 +472,40 @@ export function PluginAuthPanel({
             {t("authorizationScopeHelp")}
           </p>
         </>
+      )}
+      {confirmLogout && (
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!logout.isPending) setConfirmLogout(open);
+          }}
+        >
+          <DialogContent title={t("logout")} description={t("logoutHelp")}>
+            <DialogFooter>
+              <Button
+                variant="secondary"
+                disabled={logout.isPending}
+                onClick={() => setConfirmLogout(false)}
+              >
+                {t("cancel")}
+              </Button>
+              <Button
+                variant="danger"
+                disabled={logout.isPending || !context}
+                onClick={() => {
+                  if (context)
+                    logout.mutate({
+                      path: { pluginId },
+                      query: { wakerId, versionId },
+                      body: context,
+                    });
+                }}
+              >
+                {t("confirmLogout")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
       {(error || openError) && (
         <p role="alert" className="type-body text-destructive">

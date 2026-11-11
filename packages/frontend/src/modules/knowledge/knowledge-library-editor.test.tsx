@@ -41,8 +41,6 @@ vi.mock("@/shared/hooks/use-execution-selection", () => ({
     loading: false,
     valid: true,
     error: null,
-    nativeModelsQuery: { isFetching: false },
-    thinkingQuery: { isFetching: false },
   }),
 }));
 

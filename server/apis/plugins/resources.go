@@ -8,11 +8,13 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/plugininstallation"
 	"golang.org/x/mod/semver"
@@ -22,9 +24,6 @@ func visiblePlugin(ctx context.Context, id, waker string) (models.Plugin, error)
 	resource, err := global.PluginControllerManager.Get(ctx, id)
 	if err != nil {
 		return resource, err
-	}
-	if resource.OwnerWakerID != "" && resource.OwnerWakerID != waker {
-		return resource, status_error.PluginForbidden
 	}
 	return resource, nil
 }
@@ -38,7 +37,7 @@ func secretValues(config models.PluginConfiguration) map[string]string {
 	return values
 }
 func pluginDetail(ctx context.Context, resource models.Plugin, selectedVersion ...string) (PluginDetailResponse, error) {
-	result := PluginDetailResponse{Plugin: resource, Versions: []models.PluginVersion{}, Installations: []models.WakerPlugin{}, Values: map[string]string{}, Fields: []packageplugin.ConfigurationField{}, ConfiguredSecrets: []string{}, Blockers: []string{}, Account: authorization.Account{Scopes: []string{}}}
+	result := PluginDetailResponse{Plugin: resource, Versions: []PluginVersionResponse{}, Installations: []models.WakerPlugin{}, Account: authorization.Account{Scopes: []string{}}}
 	states, err := global.PluginControllerManager.ReadStates(ctx, []string{resource.ID})
 	if err != nil {
 		return result, err
@@ -49,28 +48,22 @@ func pluginDetail(ctx context.Context, resource models.Plugin, selectedVersion .
 	return result, err
 }
 func detailFromState(ctx context.Context, resource models.Plugin, state models.PluginState, selectedVersion ...string) (PluginDetailResponse, error) {
-	result := PluginDetailResponse{Plugin: resource, PartnerNames: state.PartnerNames, PartnerAvatars: state.PartnerAvatars, Versions: state.Versions, Installations: state.Installations, Values: map[string]string{}, Fields: []packageplugin.ConfigurationField{}, ConfiguredSecrets: []string{}, Blockers: []string{}, Account: authorization.Account{Scopes: []string{}}}
+	result := PluginDetailResponse{Plugin: resource, PartnerNames: state.PartnerNames, PartnerAvatars: state.PartnerAvatars, Versions: publicPluginVersions(state.Versions), Installations: state.Installations, Account: authorization.Account{Scopes: []string{}}}
 	config := state.Configuration
+	result.AccountGeneration = state.Account.Generation
 
-	result.Values = config.Values
 	result.ConfigurationRevision = config.Revision
-	for _, secret := range config.Secrets {
-		if secret.Configured {
-			result.ConfiguredSecrets = append(result.ConfiguredSecrets, secret.Name)
-		}
-	}
 	if len(result.Versions) == 0 {
-		result.Blockers = append(result.Blockers, status_error.PluginNotReady.Key())
 		return result, nil
 	}
-	version := result.Versions[0]
+	version := state.Versions[0]
 	// 普通全局入口优先展示真实安装中最近登记的版本；准备结果仍显式固定目标版本。
 	if len(selectedVersion) == 0 || selectedVersion[0] == "" {
 		installed := map[string]bool{}
 		for _, relation := range state.Installations {
 			installed[relation.VersionID] = true
 		}
-		for _, candidate := range result.Versions {
+		for _, candidate := range state.Versions {
 			if installed[candidate.ID] {
 				version = candidate
 				break
@@ -79,7 +72,7 @@ func detailFromState(ctx context.Context, resource models.Plugin, state models.P
 	}
 	if len(selectedVersion) > 0 && selectedVersion[0] != "" {
 		found := false
-		for _, candidate := range result.Versions {
+		for _, candidate := range state.Versions {
 			if candidate.ID == selectedVersion[0] {
 				version = candidate
 				found = true
@@ -91,25 +84,16 @@ func detailFromState(ctx context.Context, resource models.Plugin, state models.P
 		}
 	}
 	result.ResolvedVersionID = version.ID
-	extension, err := packageplugin.ClientExtension(version.Package)
-	if err != nil {
-		// 旧版本仍可查看与移除；无效声明只能作为阻塞原因，不能取得执行能力。
-		result.Blockers = append(result.Blockers, errorKey(err))
+	if err := packageplugin.ValidateContract(version.Package); err != nil {
+		result.PackageStatus = constants.PluginPackageStatusUnsupported
+		result.PackageErrorCode = errorKey(err)
 		return result, nil
 	}
-	result.ComponentIDs = map[string]string{}
-	for _, skill := range version.Package.Skills {
-		result.ComponentIDs["skill:"+skill.Key] = packageplugin.ComponentID(resource.ID, "skill:"+skill.Key)
+	result.PackageStatus = constants.PluginPackageStatusAvailable
+	if global.PluginBridges != nil && version.Package.Integration.Authentication != nil {
+		result.Account, _, _ = global.PluginBridges.CachedAuthorization(resource.ID, version.Digest+":"+filepath.ToSlash(version.Package.SourcePath), commandbridge.OperationContext{PluginID: resource.ID, VersionID: version.ID, Digest: version.Digest, ConfigurationRevision: config.Revision, AccountGeneration: state.Account.Generation})
 	}
-	for _, server := range version.Package.Servers {
-		result.ComponentIDs["mcp:"+server.Key] = packageplugin.ComponentID(resource.ID, "mcp:"+server.Key)
-	}
-	result.Fields = extension.Config
-	result.Account, err = installationService().Summary(version, config)
-	result.Ready = err == nil
-	if err != nil {
-		result.Blockers = append(result.Blockers, errorKey(err))
-	}
+
 	return result, nil
 }
 func errorKey(err error) string {
@@ -119,12 +103,23 @@ func errorKey(err error) string {
 	}
 	return status_error.InternalServerError.Key()
 }
-func stagedRoot() string { return filepath.Join(global.Config.DataDirectory, "plugins", "staging") }
-func installationService() *plugininstallation.Service {
-	return plugininstallation.New(plugininstallation.Config{Contents: global.PluginContents, DataDirectory: global.Config.DataDirectory, Bridges: global.PluginBridges, BridgeEnvironment: global.PluginBridgeEnvironment, Store: global.PluginControllerManager, CloseIdlePlugin: closeIdlePlugin})
+func publicPluginVersions(versions []models.PluginVersion) []PluginVersionResponse {
+	result := make([]PluginVersionResponse, 0, len(versions))
+	for _, version := range versions {
+		result = append(result, PluginVersionResponse{ID: version.ID, PluginID: version.PluginID, Version: version.Version, Digest: version.Digest, Package: version.Package.Public(), TrustedAt: version.TrustedAt, Provenance: version.Provenance, CreatedAt: version.CreatedAt})
+	}
+	return result
 }
 
-func listPluginResources(ctx context.Context, waker, query string, page, size int, installedOnly bool) (ListPluginsResponse, error) {
+func publicCatalogEntry(entry catalog.Entry) PluginCatalogEntryResponse {
+	return PluginCatalogEntryResponse{SourceKey: entry.SourceKey, Key: entry.Key, SourceCommit: entry.SourceCommit, ArchiveSHA256: entry.ArchiveSHA256, ArchiveURL: entry.ArchiveURL, PackagePath: entry.PackagePath, DetailsURL: entry.DetailsURL, DetailsSHA256: entry.DetailsSHA256, DetailsSize: entry.DetailsSize, Package: entry.Package.Public()}
+}
+func stagedRoot() string { return filepath.Join(global.Config.DataDirectory, "plugins", "staging") }
+func installationService() *plugininstallation.Service {
+	return plugininstallation.New(plugininstallation.Config{Transactions: global.TransactionControllerManager, Contents: global.PluginContents, DataDirectory: global.Config.DataDirectory, Bridges: global.PluginBridges, BridgeEnvironment: global.PluginBridgeEnvironment, Store: global.PluginControllerManager, CloseIdlePlugin: closeIdlePlugin})
+}
+
+func listPluginResources(ctx context.Context, waker, query string, page, size int) (ListPluginsResponse, error) {
 	if page < 0 || size < 0 || size > 100 {
 		return ListPluginsResponse{}, status_error.BadRequest
 	}
@@ -144,7 +139,7 @@ func listPluginResources(ctx context.Context, waker, query string, page, size in
 	var states map[string]models.PluginState
 	err := global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
 		var err error
-		resources, total, err = global.PluginControllerManager.List(txctx, "", waker, query, (page-1)*size, size, installedOnly)
+		resources, total, err = global.PluginControllerManager.List(txctx, waker, query, (page-1)*size, size)
 		if err != nil {
 			return err
 		}
@@ -255,8 +250,8 @@ func acquirePluginReadme(version models.PluginVersion) (string, func(), error) {
 
 // closeIdlePlugin 将身份变更前的消费者回收交回真实会话所有者。
 func closeIdlePlugin(ctx context.Context, id string) error {
-	if global.AgentManager != nil {
-		return global.AgentManager.CloseIdlePlugin(ctx, id)
+	if global.AgentThreads != nil {
+		return global.AgentThreads.CloseIdlePlugin(ctx, id)
 	}
 	return nil
 }

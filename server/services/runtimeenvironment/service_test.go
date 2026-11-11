@@ -4,7 +4,6 @@ import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
-	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -14,7 +13,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
-	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
@@ -48,6 +46,7 @@ func TestStartupAdmissionUsesPersistedEvidence(t *testing.T) {
 			release := make(chan struct{})
 			catalog := &controlledRuntimeCatalog{countingRuntimeCatalog: base, version: "1.2.3", started: make(chan string, 2), blockedRuntime: agentapi.RuntimeIDCodex, release: release}
 			svc.runtimeCatalog = catalog
+			svc.probeProvider = catalog.probe
 			hub := events.New()
 			defer hub.Close()
 			subscription := hub.Subscribe("runtimes", events.Resource{Kind: "global"})
@@ -152,32 +151,10 @@ func TestManualRefreshRecoversStartupFailure(t *testing.T) {
 	}
 }
 
-// TestAccountFailureStillDiscoversInstalledCLI 验证账号准备失败不把已安装 CLI 归入未发现。
-func TestAccountFailureStillDiscoversInstalledCLI(t *testing.T) {
-	blocked := filepath.Join(t.TempDir(), "blocked")
-	if err := os.WriteFile(blocked, []byte("file"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	catalog := &countingRuntimeCatalog{}
-	svc := &service{
-		accounts:                  &aiaccount.Service{},
-		accountWorkspaceDirectory: blocked,
-		runtimeCatalog:            catalog,
-	}
-	result := svc.detect(context.Background(), catalog.Runtimes()[1], models.RuntimeEnvironment{
-		RuntimeID:        agentapi.RuntimeIDCodex,
-		DefaultAccountID: "account-1",
-	})
-	if result.ResolvedBinary == "" || result.Auth != agentapi.AuthStatusMissing || result.State != agentapi.DetectionStateUnavailable {
-		t.Fatalf("account failure lost installed or auth state: %+v", result)
-	}
-	if catalog.detectionCount() != 0 {
-		t.Fatal("account failure started an ACP probe")
-	}
-}
-
 // countingRuntimeCatalog 记录通过服务高层 seam 发生的探测次数。
 type countingRuntimeCatalog struct {
+	// installationVersion 覆盖显式本机版本探测，空值沿用基础版本。
+	installationVersion string
 	// summaries 覆盖测试要对账的内置 Runtime；空值沿用 Codex 和 Claude。
 	summaries []agentapi.RuntimeSummary
 	// mutex 保护并发探测次数和 Runtime 标识记录。
@@ -209,7 +186,7 @@ func (e *countingRuntimeCatalog) DiscoverInstallations(
 
 func TestRefreshKeepsSelectedInstallationWhenPathOrderChanges(t *testing.T) {
 	catalog := &countingRuntimeCatalog{}
-	svc := &service{runtimeCatalog: catalog}
+	svc := &service{runtimeCatalog: catalog, probeProvider: catalog.probe}
 	summary := catalog.Runtimes()[1]
 	svc.detect(context.Background(), summary, models.RuntimeEnvironment{
 		RuntimeID: agentapi.RuntimeIDCodex,
@@ -260,82 +237,74 @@ func (e *countingRuntimeCatalog) ResolveExecutable(request agentapi.DetectReques
 	return "/usr/local/bin/" + request.RuntimeID, nil
 }
 
-// TestRefreshPinsDefaultAndPreservesConfiguredPiCommand 验证默认路径固定及自定义命令保留。
-func TestRefreshPinsDefaultAndPreservesConfiguredPiCommand(t *testing.T) {
+// ProbeInstallationVersion 提供不启动模型或账号的确定性本机程序回执。
+func (e *countingRuntimeCatalog) ProbeInstallationVersion(_ context.Context, request agentapi.DetectRequest) (agentapi.CLIInstallation, error) {
+	version := e.installationVersion
+	if version == "" {
+		version = "1.0.0"
+	}
+	return agentapi.CLIInstallation{Path: request.LaunchOverride.Binary, Version: version, Available: true}, nil
+}
+
+// TestRefreshUsesReadOnlyProgramSnapshot 验证程序定位来自静态声明和检测结果，偏好保存不持久化手动启动参数。
+func TestRefreshUsesReadOnlyProgramSnapshot(t *testing.T) {
 	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "pi.db"), Migrate: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	sqlDB, err := database.DB.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer sqlDB.Close()
+	pool, _ := database.DB.DB()
+	defer pool.Close()
 	environments := controllers.NewRuntimeEnvironmentController(database.DB)
-	catalog := &countingRuntimeCatalog{summaries: []agentapi.RuntimeSummary{{ID: agentapi.RuntimeIDPi, BaseRuntimeID: agentapi.RuntimeIDPi, Name: "Pi", BinaryCandidates: []string{"pi"}}}}
-	svc, err := newWithRuntimeCatalog(catalog, environments, controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB)))
+	catalog := &countingRuntimeCatalog{summaries: []agentapi.RuntimeSummary{{ID: agentapi.RuntimeIDPi, BaseRuntimeID: agentapi.RuntimeIDPi, Name: "Pi", BinaryCandidates: []string{"pi"}, PrefixArgs: []string{"--profile", "native"}}}}
+	api, err := newWithRuntimeCatalog(catalog, environments, controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := context.Background()
-	if _, err := svc.EnsureInitialized(ctx); err != nil {
+	api.(*service).probeProvider = catalog.probe
+	if _, err := api.EnsureInitialized(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.RefreshAll(ctx); err != nil {
+	initial, err := environments.Get(t.Context(), "pi")
+	if err != nil || initial.Binary != "pi" || len(initial.PrefixArgs) != 2 {
+		t.Fatalf("initial static launch snapshot: %+v %v", initial, err)
+	}
+	if err := api.RefreshAll(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	initial, err := environments.Get(ctx, "pi")
+	current, err := environments.Get(t.Context(), "pi")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if initial.Binary != "/usr/local/bin/pi" {
-		t.Fatalf("default installation path = %q, want pinned executable", initial.Binary)
-	}
-	if err := environments.UpdateFields(ctx, "pi", map[string]any{"binary": "pi-acp", "name": "Pi ACP"}); err != nil {
+	current.Binary, current.PrefixArgs, current.ConfigHome = "/untrusted/program", []string{"--untrusted"}, "/untrusted/home"
+	if err := environments.UpdateConfiguration(t.Context(), current); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.RefreshAll(ctx); err != nil {
+	if err := api.RefreshOne(t.Context(), "pi"); err != nil {
 		t.Fatal(err)
 	}
-	actual, err := environments.Get(ctx, "pi")
-	if err != nil {
-		t.Fatal(err)
+	actual, err := environments.Get(t.Context(), "pi")
+	if err != nil || actual.Binary != "/usr/local/bin/pi" || len(actual.PrefixArgs) != 2 || actual.ConfigHome != "" {
+		t.Fatalf("manual launch values entered persisted settings: %+v %v", actual, err)
 	}
-	if actual.Binary != "pi-acp" || actual.Name != "Pi" || catalog.lastRequest("pi").LaunchOverride.Binary != "pi-acp" {
-		t.Fatalf("Pi command was rewritten: %+v", actual)
-	}
-	if err := environments.UpdateFields(ctx, "pi", map[string]any{"binary": "/opt/tools/pi"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := svc.RefreshOne(ctx, "pi"); err != nil {
-		t.Fatal(err)
-	}
-	if catalog.lastRequest("pi").LaunchOverride.Binary != "/opt/tools/pi" {
-		t.Fatal("custom Pi command was replaced")
+	request := catalog.lastRequest("pi")
+	if request.LaunchOverride.Binary != actual.Binary || len(request.LaunchOverride.PrefixArgs) != 2 || request.LaunchOverride.PrefixArgs[1] != "native" {
+		t.Fatalf("static profile launch arguments were lost: %+v", request.LaunchOverride)
 	}
 }
 
 // Detect 返回可直接持久化和执行准备使用的就绪快照。
-func (e *countingRuntimeCatalog) Detect(
+func (e *countingRuntimeCatalog) probe(
 	_ context.Context,
+	summary agentapi.RuntimeSummary,
+	_ models.RuntimeEnvironment,
 	request agentapi.DetectRequest,
 ) agentapi.DetectionResult {
-	if request.ReleaseResources != nil {
-		defer request.ReleaseResources(context.Background())
-	}
 	e.mutex.Lock()
 	e.detections = append(e.detections, request.RuntimeID)
 	e.requests = append(e.requests, request)
 	codexOptionsUnavailable := e.codexOptionsUnavailable
 	permissionLevels := append([]agentapi.PermissionLevel(nil), e.permissionLevels...)
 	e.mutex.Unlock()
-	var summary agentapi.RuntimeSummary
-	for _, candidate := range e.Runtimes() {
-		if candidate.ID == request.RuntimeID {
-			summary = candidate
-			break
-		}
-	}
 	result := agentapi.DetectionResult{
 		Runtime:        summary,
 		State:          agentapi.DetectionStateReady,
@@ -437,6 +406,7 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
+	serviceValue.(*service).probeProvider = catalog.probe
 
 	initialized, err := serviceValue.EnsureInitialized(context.Background())
 	if err != nil {
@@ -513,12 +483,8 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 		t.Fatalf("RefreshOne() error = %v", err)
 	}
 	request := catalog.lastRequest(agentapi.RuntimeIDClaude)
-	if request.LaunchOverride.Environment["CLAUDE_CONFIG_DIR"] != claude.ConfigHome {
-		t.Fatalf(
-			"Claude config environment = %#v, want CLAUDE_CONFIG_DIR=%q",
-			request.LaunchOverride.Environment,
-			claude.ConfigHome,
-		)
+	if request.LaunchOverride.Environment["CLAUDE_CONFIG_DIR"] != "" {
+		t.Fatalf("manual config home survived preference save: %#v", request.LaunchOverride.Environment)
 	}
 	codex, err := environments.Get(context.Background(), agentapi.RuntimeIDCodex)
 	if err != nil {
@@ -536,9 +502,9 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 	if err != nil {
 		t.Fatalf("read normalized Codex environment: %v", err)
 	}
-	if codex.DefaultModel != "gpt-stable" || codex.DefaultReasoning != "high" {
+	if codex.DefaultModel != "stale-model" || codex.DefaultReasoning != "high" {
 		t.Fatalf(
-			"Codex defaults = %q/%q, want gpt-stable/high",
+			"Codex defaults = %q/%q, want saved stale-model/high",
 			codex.DefaultModel,
 			codex.DefaultReasoning,
 		)
@@ -572,7 +538,7 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 	}
 }
 
-func TestRefreshDowngradesUnsupportedDefaultPermission(t *testing.T) {
+func TestRefreshPreservesConfiguredPermissionWhenCatalogChanges(t *testing.T) {
 	catalog, environments, serviceValue := newRuntimeEnvironmentTestService(t)
 	if _, err := serviceValue.EnsureInitialized(context.Background()); err != nil {
 		t.Fatalf("EnsureInitialized() error = %v", err)
@@ -595,16 +561,16 @@ func TestRefreshDowngradesUnsupportedDefaultPermission(t *testing.T) {
 		t.Fatal("expected persisted runtime environments")
 	}
 	for _, environment := range listed {
-		if environment.DefaultPermissionLevel != agentapi.PermissionLevelAuto {
+		if environment.DefaultPermissionLevel != agentapi.PermissionLevelFullAccess {
 			t.Fatalf(
-				"%s default permission = %q, want auto",
+				"%s default permission = %q, want saved full-access",
 				environment.RuntimeID,
 				environment.DefaultPermissionLevel,
 			)
 		}
-		if !hasPermissionDefaultDowngraded(environment.Detection.Diagnostics) {
+		if hasPermissionDefaultDowngraded(environment.Detection.Diagnostics) {
 			t.Fatalf(
-				"%s diagnostics = %#v, want PERMISSION_DEFAULT_DOWNGRADED",
+				"%s diagnostics = %#v, did not want a permission downgrade diagnostic",
 				environment.RuntimeID,
 				environment.Detection.Diagnostics,
 			)
@@ -686,12 +652,13 @@ func newRuntimeEnvironmentTestService(t *testing.T) (
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
+	serviceValue.(*service).probeProvider = catalog.probe
 	return catalog, environments, serviceValue
 }
 
 func hasPermissionDefaultDowngraded(diagnostics []agentapi.Diagnostic) bool {
 	for _, diagnostic := range diagnostics {
-		if diagnostic.Code == agentapi.DiagnosticCodePermissionDefaultDowngraded {
+		if diagnostic.Code == "PERMISSION_DEFAULT_DOWNGRADED" {
 			return true
 		}
 	}
@@ -717,7 +684,7 @@ type controlledRuntimeCatalog struct {
 }
 
 // Detect 返回受控快照，并按测试屏障等待或报告可执行路径失效。
-func (c *controlledRuntimeCatalog) Detect(ctx context.Context, request agentapi.DetectRequest) agentapi.DetectionResult {
+func (c *controlledRuntimeCatalog) probe(ctx context.Context, summary agentapi.RuntimeSummary, environment models.RuntimeEnvironment, request agentapi.DetectRequest) agentapi.DetectionResult {
 	if c.started != nil {
 		c.started <- request.RuntimeID
 	}
@@ -727,7 +694,7 @@ func (c *controlledRuntimeCatalog) Detect(ctx context.Context, request agentapi.
 		case <-ctx.Done():
 		}
 	}
-	result := c.countingRuntimeCatalog.Detect(ctx, request)
+	result := c.countingRuntimeCatalog.probe(ctx, summary, environment, request)
 	result.Version = c.version
 	if c.executableMissing {
 		result.ResolvedBinary = ""
@@ -747,6 +714,7 @@ func TestRefreshPreservesVersionForSameInstallation(t *testing.T) {
 			svc := api.(*service)
 			catalog := &controlledRuntimeCatalog{countingRuntimeCatalog: base, version: "1.2.3"}
 			svc.runtimeCatalog = catalog
+			svc.probeProvider = catalog.probe
 			ctx := context.Background()
 			if err := svc.RefreshAll(ctx); err != nil {
 				t.Fatal(err)
@@ -789,6 +757,7 @@ func TestRefreshFillsVersionFromInstallation(t *testing.T) {
 	svc := api.(*service)
 	catalog := &controlledRuntimeCatalog{countingRuntimeCatalog: base, version: "1.2.3"}
 	svc.runtimeCatalog = catalog
+	svc.probeProvider = catalog.probe
 	ctx := context.Background()
 	if err := svc.RefreshAll(ctx); err != nil {
 		t.Fatal(err)
@@ -813,6 +782,7 @@ func TestStartupDetectionDoesNotBlockInitializationAndPublishesEachResult(t *tes
 	release := make(chan struct{})
 	catalog := &controlledRuntimeCatalog{countingRuntimeCatalog: base, version: "1.2.3", started: make(chan string, 2), blockedRuntime: agentapi.RuntimeIDCodex, release: release}
 	svc.runtimeCatalog = catalog
+	svc.probeProvider = catalog.probe
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	returned := make(chan error, 1)
@@ -892,6 +862,7 @@ func TestRefreshKeepsKnownVersionWhenSelectedExecutableIsMissing(t *testing.T) {
 	svc := api.(*service)
 	catalog := &controlledRuntimeCatalog{countingRuntimeCatalog: base, version: "1.2.3"}
 	svc.runtimeCatalog = catalog
+	svc.probeProvider = catalog.probe
 	ctx := context.Background()
 	if err := svc.RefreshAll(ctx); err != nil {
 		t.Fatal(err)
@@ -907,5 +878,126 @@ func TestRefreshKeepsKnownVersionWhenSelectedExecutableIsMissing(t *testing.T) {
 	}
 	if got.Detection.Version != "1.2.3" || got.Detection.ResolvedBinary != "" || got.Detection.State != agentapi.DetectionStateUnavailable {
 		t.Fatalf("missing executable lost version or retained readiness: %+v", got.Detection)
+	}
+}
+
+// legacyFallbackCatalog exposes the retired method to catch an accidental fallback.
+type legacyFallbackCatalog struct {
+	*countingRuntimeCatalog
+}
+
+func (c legacyFallbackCatalog) Detect(ctx context.Context, request agentapi.DetectRequest) agentapi.DetectionResult {
+	return c.probe(ctx, c.Runtimes()[1], models.RuntimeEnvironment{}, request)
+}
+
+// TestDetectionWithoutProviderPreservesInstallation verifies device discovery stays available when native probing cannot run.
+func TestDetectionWithoutProviderPreservesInstallation(t *testing.T) {
+	catalog := legacyFallbackCatalog{&countingRuntimeCatalog{}}
+	svc := &service{runtimeCatalog: catalog}
+	summary := catalog.Runtimes()[1]
+	result := svc.detect(t.Context(), summary, models.RuntimeEnvironment{RuntimeID: summary.ID, BaseRuntimeID: summary.BaseRuntimeID})
+	if result.ResolvedBinary == "" || result.State != agentapi.DetectionStateUnavailable || len(result.Installations) == 0 {
+		t.Fatalf("detection without provider lost the installed CLI or reported it ready: %+v", result)
+	}
+	if catalog.detectionCount() != 0 {
+		t.Fatal("detection fell back to the legacy catalog")
+	}
+}
+
+// TestRefreshPreservesSelectedRuntimeAcrossProbeFailure 验证失败快照不会替换默认智能体或改写用户配置。
+func TestRefreshPreservesSelectedRuntimeAcrossProbeFailure(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		t.Run(map[bool]string{true: "已启用", false: "已禁用"}[enabled], func(t *testing.T) {
+			base, repo, api := newRuntimeEnvironmentTestService(t)
+			svc := api.(*service)
+			ctx := context.Background()
+			if err := svc.RefreshAll(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if err := repo.ClearDefault(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if err := repo.UpdateFields(ctx, agentapi.RuntimeIDCodex, map[string]any{
+				"is_default": true, "enabled": enabled, "default_model": "saved-model", "default_reasoning": "saved-thinking", "default_permission_level": agentapi.PermissionLevelFullAccess,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			catalog := &controlledRuntimeCatalog{countingRuntimeCatalog: base, executableMissing: true}
+			svc.runtimeCatalog, svc.probeProvider = catalog, catalog.probe
+			if err := svc.RefreshOne(ctx, agentapi.RuntimeIDCodex); err != nil {
+				t.Fatal(err)
+			}
+			selected, err := repo.Get(ctx, agentapi.RuntimeIDCodex)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !selected.IsDefault || selected.Enabled != enabled || selected.DefaultModel != "saved-model" || selected.DefaultReasoning != "saved-thinking" || selected.DefaultPermissionLevel != agentapi.PermissionLevelFullAccess {
+				t.Fatalf("probe changed saved selection: %+v", selected)
+			}
+			if selected.Detection.State != agentapi.DetectionStateUnavailable {
+				t.Fatalf("probe diagnostic was lost: %+v", selected.Detection)
+			}
+		})
+	}
+}
+
+// TestStartupKeepsSavedSelectionWithoutProbeEvidence 验证旧失败快照不使已有默认选择重新进入引导。
+func TestStartupKeepsSavedSelectionWithoutProbeEvidence(t *testing.T) {
+	base, repo, api := newRuntimeEnvironmentTestService(t)
+	svc := api.(*service)
+	ctx := context.Background()
+	if _, err := svc.EnsureInitialized(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpdateFields(ctx, agentapi.RuntimeIDCodex, map[string]any{"is_default": true}); err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	catalog := &controlledRuntimeCatalog{countingRuntimeCatalog: base, release: release}
+	svc.runtimeCatalog, svc.probeProvider = catalog, catalog.probe
+	if err := svc.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+	defer close(release)
+	if _, _, required := svc.StartupDetection(); required {
+		t.Fatal("saved default was blocked by missing probe evidence")
+	}
+}
+
+// TestStartupIgnoresUnregisteredPersistedEvidence 验证历史已移除智能体的安装和默认配置不能跳过初始设置。
+func TestStartupIgnoresUnregisteredPersistedEvidence(t *testing.T) {
+	_, repo, api := newRuntimeEnvironmentTestService(t)
+	if err := repo.Ensure(t.Context(), models.RuntimeEnvironment{ID: "retired-runtime", RuntimeID: "retired-runtime", BaseRuntimeID: "retired-runtime", Enabled: true, IsDefault: true, Binary: "retired-runtime", Detection: agentapi.DetectionResult{ResolvedBinary: "/saved/retired-runtime"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := api.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	defer api.Close()
+	_, _, required := api.StartupDetection()
+	if !required {
+		t.Fatal("unregistered runtime bypassed startup setup")
+	}
+}
+
+// TestEnsureDefaultIgnoresUnregisteredPersistedSelection 验证历史默认值不会阻挡已注册智能体成为默认选择。
+func TestEnsureDefaultIgnoresUnregisteredPersistedSelection(t *testing.T) {
+	_, repo, api := newRuntimeEnvironmentTestService(t)
+	if _, err := api.EnsureInitialized(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Ensure(t.Context(), models.RuntimeEnvironment{ID: "retired-runtime", RuntimeID: "retired-runtime", BaseRuntimeID: "retired-runtime", Enabled: true, IsDefault: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpdateDetection(t.Context(), agentapi.RuntimeIDCodex, agentapi.DetectionResult{State: agentapi.DetectionStateReady}, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := api.(*service).ensureDefault(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	current, err := repo.Get(t.Context(), agentapi.RuntimeIDCodex)
+	if err != nil || !current.IsDefault {
+		t.Fatalf("registered runtime did not become default: %+v %v", current, err)
 	}
 }

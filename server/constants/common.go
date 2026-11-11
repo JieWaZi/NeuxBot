@@ -1,5 +1,36 @@
 package constants
 
+const (
+	// RuntimeEventTopic 是智能体程序与探测状态共用的事件主题。
+	RuntimeEventTopic = "runtimes"
+	// RuntimeInstallationChangedEventType 只唤醒受管安装快照读取。
+	RuntimeInstallationChangedEventType = "runtime.installation.changed"
+	// RuntimeAuthenticationChangedEventType 只唤醒原生认证任务快照读取。
+	RuntimeAuthenticationChangedEventType = "runtime.authentication.changed"
+	// RuntimeAuthenticationConfigurationReasonEnvironmentCredentials 表示环境凭据接管了当前原生认证。
+	RuntimeAuthenticationConfigurationReasonEnvironmentCredentials = "environment_credentials"
+	// RuntimeAuthenticationConfigurationReasonTerminalAuthentication 表示当前原生认证需要终端交互。
+	RuntimeAuthenticationConfigurationReasonTerminalAuthentication = "terminal_authentication"
+	// RuntimeAuthenticationConfigurationReasonNoNativeAuthentication 表示当前程序未提供可用原生认证方法。
+	RuntimeAuthenticationConfigurationReasonNoNativeAuthentication = "no_native_authentication"
+	// RuntimeContractChangedEventType 唤醒智能体能力与程序状态读取。
+	RuntimeContractChangedEventType = "runtimecontract.changed"
+	// CodexSubscriptionAuthMethod 是 Codex 原生 ChatGPT 认证方法标识。
+	CodexSubscriptionAuthMethod = "chat-gpt"
+	// KimiLoginAuthMethod 是 Kimi 原生 CLI 设备登录方法标识。
+	KimiLoginAuthMethod = "login"
+	// NativeAccountKindAccount 是原生账号目录确认的订阅身份类型。
+	NativeAccountKindAccount = "account"
+	// ClaudeSubscriptionAuthMethod 是 Claude 原生订阅认证方法。
+	ClaudeSubscriptionAuthMethod = "claudeai"
+	// ClaudeCredentialsFileName 是原生文件凭据名称。
+	ClaudeCredentialsFileName = ".credentials.json"
+	// ClaudeAccountMetadataFileName 是原生账号元数据名称。
+	ClaudeAccountMetadataFileName = ".claude.json"
+	// ClaudeLegacyMetadataFileName 是旧版原生账号元数据名称。
+	ClaudeLegacyMetadataFileName = ".config.json"
+)
+
 // ChatInteractionProjectionTimeoutMillis 限制已提交交互事实的查询投影收尾，不限制人工等待。
 const ChatInteractionProjectionTimeoutMillis = 10_000
 
@@ -23,6 +54,9 @@ const RuntimeUserInputToolName = "AskUserQuestion"
 
 // WorkflowWorkerSkipRequestedEvent 表示用户请求跳过本次伙伴尝试。
 const WorkflowWorkerSkipRequestedEvent = "workflow.worker.skip_requested"
+
+// WorkflowDefinitionUpdatedEvent 表示工作流目录资料已提交变化。
+const WorkflowDefinitionUpdatedEvent = "workflow.definition.updated"
 
 // WorkflowEventHistoryPageSize 限制每次事件或日志历史读取的条数。
 const WorkflowEventHistoryPageSize = 500
@@ -104,6 +138,8 @@ const (
 	WorkflowStateDirectoryName = "state"
 	// WorkflowCacheDirectoryName 保存工作流跨运行的缓存。
 	WorkflowCacheDirectoryName = "cache"
+	// WorkflowWorkerDirectoryName 保存既有工作流 Effect 的隔离 worker cwd。
+	WorkflowWorkerDirectoryName = "workers"
 	// WorkflowTemporaryDirectoryName 保存工作流内部临时文件。
 	WorkflowTemporaryDirectoryName = "tmp"
 	// WorkflowRunsDirectoryName 隔离每次运行的默认业务文件。
@@ -310,8 +346,8 @@ const (
 	RuntimeIDWorkBuddy = "workbuddy"
 	// RuntimeIDQoder 是官方 Qoder CLI ACP 运行时。
 	RuntimeIDQoder = "qoder"
-	// RuntimeIDQoderCN 是官方 Qoder CN CLI ACP 运行时。
-	RuntimeIDQoderCN = "qoder-cn"
+	// RuntimeQoderCNProtocolID 仅用于按所选程序适配原生协议，不注册独立智能体。
+	RuntimeQoderCNProtocolID = "qoder-cn"
 	// RuntimeQoderDefaultModeID 是 Qoder 的默认权限模式。
 	RuntimeQoderDefaultModeID = "default"
 	// RuntimeQoderBypassModeID 是 Qoder ACP 的跳过权限模式。
@@ -422,32 +458,36 @@ const (
 )
 
 const (
-	// ChatExecutionWorkspaceOwnerKind 标识对话执行工作区归属标记。
-	ChatExecutionWorkspaceOwnerKind = "chat-execution-workspace"
+	// AgentExecutionWorkspaceOwnerKind 标识伙伴固定执行工作区归属标记。
+	AgentExecutionWorkspaceOwnerKind = "agent-execution-workspace"
+	// IsolatedExecutionWorkspaceOwnerKind 标识工作流等宿主领域拥有的隔离执行目录。
+	IsolatedExecutionWorkspaceOwnerKind = "isolated-execution-workspace"
 	// ThreadExecutionWorkspaceOwnerKind 标识团队对话 thread 级共享执行工作区归属标记。
 	ThreadExecutionWorkspaceOwnerKind = "thread-execution-workspace"
 	// ThreadMemberExecutionWorkspaceOwnerKind 标识团队成员独占 Runtime cwd 的归属标记。
 	ThreadMemberExecutionWorkspaceOwnerKind = "thread-member-execution-workspace"
 	// ChatMessageAttachmentsOwnerKind 标识消息附件目录归属标记。
 	ChatMessageAttachmentsOwnerKind = "message-attachments"
-	// ExecutionWorkspaceProjectsDirectory 是 Chat 工作区内项目软链接子目录名。
-	ExecutionWorkspaceProjectsDirectory = "projects"
+	// TeamSharedDirectoryName 是团队工作区中的真实共享文件子目录名。
+	TeamSharedDirectoryName = "shared"
 	// ExecutionWorkspaceAttachmentsDirectory 是 Chat 工作区内消息附件和会话生成文件的受管根目录名。
 	ExecutionWorkspaceAttachmentsDirectory = "attachments"
-	// ExecutionWorkspaceGeneratedFilesDirectory 是 attachments/ 内伙伴生成会话文件的子目录名。
-	ExecutionWorkspaceGeneratedFilesDirectory = "generated"
+	// ProjectEntriesDirectoryName 是不支持原生附加目录时使用的受管项目入口根目录。
+	ProjectEntriesDirectoryName = "projects"
+	// ChatProjectEntriesOwnerKind 标识按 Chat 隔离的受管项目入口目录。
+	ChatProjectEntriesOwnerKind = "chat-project-entries"
 )
 
 const (
 	// CompanionAvatarPrefix 标识稳定还原身体风格的随机形象种子。
-	CompanionAvatarPrefix = "companion:v2:"
+	CompanionAvatarPrefix = "companion:"
 	// PersonalAssistantAvatar 固定内置私人助理的毛绒形象身份，由前端风格目录统一还原。
-	PersonalAssistantAvatar = "companion:v1:fe9a9eb52f5e4d7dac1959fe4f9559f2"
+	PersonalAssistantAvatar = CompanionAvatarPrefix + "fe9a9eb52f5e4d7dac1959fe4f9559f2"
 	// WikiResearcherAvatar 固定内置维基研究员的形象身份，由共享形象目录还原。
 	WikiResearcherAvatar = CompanionAvatarPrefix + "854de954b7bd4e2cb9582fd0930dcd6d"
 	// DefaultAvatar 是未指定头像时使用的默认预设头像。
 	DefaultAvatar = "preset:generic"
-	// ChatLogSchemaVersion 是当前 Chat JSONL 信封版本。
+	// ChatLogSchemaVersion 是公开聊天事件信封的版本。
 	ChatLogSchemaVersion = 1
 	// ChatLogDirectoryName 是应用数据目录中的权威日志子目录。
 	ChatLogDirectoryName = "chat-logs"
@@ -671,12 +711,8 @@ const (
 	PluginMCPSchema = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json"
 	// PluginFormatPortable 表示通用插件包。
 	PluginFormatPortable = "agent-plugins"
-	// PluginFormatClaude 表示仅导入可支持组件的 Claude 插件包。
-	PluginFormatClaude = "claude"
-	// PluginFormatCodex 表示仅导入可支持组件的 Codex 兼容插件包。
-	PluginFormatCodex = "codex"
 	// PluginExtensionNamespace 是客户端扩展空间。
-	PluginExtensionNamespace = "com.ally"
+	PluginExtensionNamespace = "com.neuxbot"
 )
 
 const (
@@ -712,7 +748,9 @@ const (
 	// PluginAuthCommandStrategy 是包内授权桥接策略。
 	PluginAuthCommandStrategy = "plugin-command"
 	// PluginAuthProtocol 是逐行JSON-RPC授权扩展版本。
-	PluginAuthProtocol = "neuxally-auth/1"
+	PluginAuthProtocol = "neuxbot-auth/1"
+	// PluginAccountInvalidationTimeoutSeconds 限定外部身份变化后撤销旧材料的本地清理时间。
+	PluginAccountInvalidationTimeoutSeconds = 5
 	// PluginAuthPreparationTimeoutSeconds 为首次挑战前的受管资产下载与启动保留有界准备时间。
 	PluginAuthPreparationTimeoutSeconds = 150
 	// PluginAuthQRPNGPrefix 标识桥接提供的内联 PNG 二维码原图。
@@ -768,6 +806,12 @@ const KnowledgeRetryAuthorityOperation = "job.retry.authority"
 // PluginReferencesChangedEventType 表示输入候选的安装、启停、版本或展示身份变化。
 const PluginReferencesChangedEventType = "plugins.references.changed"
 
+// PluginBrowseDefaultPageSize 是插件浏览窗口的默认条目数。
+const PluginBrowseDefaultPageSize = 9
+
+// PluginBrowseMaximumPageSize 限制浏览窗口及关联身份查询的批量大小。
+const PluginBrowseMaximumPageSize = 100
+
 // 实时消息操作只暴露规范展示事实，不传递原生工具载荷。
 const (
 	// MessageIncrementTextAppend 追加明确部件的新文本。
@@ -777,3 +821,46 @@ const (
 	// MessageIncrementPartUpsert 替换或创建一个安全工具部件。
 	MessageIncrementPartUpsert = "part_upsert"
 )
+
+// PluginTargetContractVersion 标识宿主严格接纳的标准插件解析快照。
+const PluginTargetContractVersion = "neuxbot-plugin/1"
+
+const (
+	// PluginPackageStatusAvailable 表示当前固定版本符合宿主包契约。
+	PluginPackageStatusAvailable = "available"
+	// PluginPackageStatusUnsupported 表示当前固定版本不能作为可用包读取或执行。
+	PluginPackageStatusUnsupported = "unsupported"
+)
+
+// PluginAuthInitializeMethod 核对新授权驱动的协议及完整操作上下文。
+const PluginAuthInitializeMethod = "auth/initialize"
+
+// PluginAuthDependencyUnavailableErrorCode 表示包内受管程序准备失败，区别于供应商认证失败。
+const PluginAuthDependencyUnavailableErrorCode = "dependency_unavailable"
+
+// PluginLocalSkillSourcePrefix 标识由所选技能创建的本地插件资源。
+const PluginLocalSkillSourcePrefix = "local-skills:"
+
+// PluginSkillBundleSourceKind 标识由已扫描技能显式生成的本地插件。
+const PluginSkillBundleSourceKind = "skill-bundle"
+
+// PluginSkillBundleInitialVersion 是本地技能插件首份不可变版本。
+const PluginSkillBundleInitialVersion = "1.0.0"
+
+// PluginSkillBundleSourcePath 是本地技能插件内不冒充上游声明的来源记录。
+const PluginSkillBundleSourcePath = ".neuxbot/skill-source.json"
+
+// PluginExtensionSchemaVersion 是宿主支持的 NeuxBot 插件扩展版本。
+const PluginExtensionSchemaVersion = 1
+
+// PluginCatalogSchemaVersion 是唯一标准包目录的发布工件版本。
+const PluginCatalogSchemaVersion = 1
+
+// PluginDetailsSchemaVersion 是标准展示公开资料的工件版本。
+const PluginDetailsSchemaVersion = 1
+
+// ResourceCategoryMaximumCount 限制单个资源可选择的分类数量。
+const ResourceCategoryMaximumCount = 50
+
+// ResourceCategoryMaximumNameLength 限制分类名称的 Unicode 字符数。
+const ResourceCategoryMaximumNameLength = 120

@@ -78,8 +78,8 @@ func TestAllyCLIRejectsRemovedPluginOperationsWithoutInstallation(t *testing.T) 
 			if id == "plugins.installations.install" {
 				args = append(args, "--request-id", "stable-install")
 			}
-			command := exec.Command(binary, args...)
-			command.Env = []string{constants.AgentCLIContextEnvironment + "=" + connection, "PATH=" + root, "HOME=" + filepath.Dir(native)}
+			command := exec.Command(binary, append([]string{"--context", connection}, args...)...)
+			command.Env = []string{"PATH=" + root, "HOME=" + filepath.Dir(native)}
 			command.Stdin = bytes.NewReader(input)
 			output, err := command.CombinedOutput()
 			var response capability.Response
@@ -112,7 +112,7 @@ func TestAllyCLIRejectsRemovedPluginOperationsWithoutInstallation(t *testing.T) 
 	if err != nil || len(relations) != 0 {
 		t.Fatalf("rejected operation created installations: %+v %v", relations, err)
 	}
-	_, total, err := store.List(context.Background(), "", "", "", 0, 100, false)
+	_, total, err := store.List(context.Background(), "", "", 0, 100)
 	if err != nil || total != 0 {
 		t.Fatalf("rejected operation prepared system resources: total=%d error=%v", total, err)
 	}

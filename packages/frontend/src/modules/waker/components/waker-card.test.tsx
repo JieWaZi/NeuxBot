@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { PERSONAL_ASSISTANT_WAKER_ID } from "../model/builtin-waker";
 import { WakerCard } from "./waker-card";
+import { AppSceneWorkspaceContextProvider } from "@/shared/workspace/app-scene-workspace";
 
 vi.mock("./waker-form-dialog", () => ({ WakerFormDialog: () => null }));
 vi.mock("./waker-delete-dialog", () => ({ WakerDeleteDialog: () => null }));
@@ -13,10 +14,31 @@ const waker = {
   id: "waker-1",
   name: "伙伴",
   roleName: "助理",
-  avatar: "companion:v1:0123456789abcdef0123456789abcdef",
+  avatar: "companion:0123456789abcdef0123456789abcdef",
 };
 
 describe("WakerCard", () => {
+  it("创建对话优先复用该伙伴未发送的草稿", async () => {
+    const openNewChat = vi.fn(() => true);
+    render(
+      <MemoryRouter>
+        <AppSceneWorkspaceContextProvider
+          value={{
+            openNewChat,
+            dispatch: vi.fn(),
+            routeSceneId: "management:wakers",
+            snapshot: { tabs: [] },
+            syncWorkspace: vi.fn(),
+          }}
+        >
+          <WakerCard waker={waker} />
+        </AppSceneWorkspaceContextProvider>
+      </MemoryRouter>,
+    );
+    await userEvent.click(screen.getByRole("link", { name: "创建对话任务" }));
+    expect(openNewChat).toHaveBeenCalledWith({ kind: "waker", id: "waker-1" });
+  });
+
   it("默认伙伴不提供删除入口", async () => {
     render(
       <MemoryRouter>

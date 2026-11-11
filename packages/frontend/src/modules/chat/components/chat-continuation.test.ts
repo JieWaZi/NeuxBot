@@ -32,6 +32,40 @@ const next: AllyChatMessage = {
 };
 
 describe("steer continuation", () => {
+  it("保留原生输入汇总且不加入可相加Token总计", () => {
+    const result = chatContinuations([
+      {
+        ...first,
+        runMetrics: {
+          tokenUsage: {
+            invocationId: "raw-1",
+            complete: false,
+            knownTokens: { reportedInput: 100, output: 20 },
+            knownTotalWithCacheRead: 20,
+          },
+        },
+      },
+      user,
+      {
+        ...next,
+        runMetrics: {
+          tokenUsage: {
+            invocationId: "raw-2",
+            complete: false,
+            knownTokens: { reportedInput: 200, output: 30 },
+            knownTotalWithCacheRead: 30,
+          },
+        },
+      },
+    ]);
+    expect(
+      result.get("next")?.footerMessage.runMetrics?.tokenUsage,
+    ).toMatchObject({
+      complete: false,
+      knownTokens: { reportedInput: 300, output: 50 },
+      knownTotalWithCacheRead: 50,
+    });
+  });
   it("连接被 steer 的前后两段，只在最后汇总耗时、用量与复制正文", () => {
     const result = chatContinuations([first, user, next]);
     expect(result.get("first")?.continued).toBe(true);
@@ -88,5 +122,112 @@ describe("steer continuation", () => {
         ?.continued,
     ).toBe(true);
     expect(chatContinuations([first]).size).toBe(0);
+  });
+});
+
+it("counts one native result once across steering continuations", () => {
+  const usage = {
+    invocationId: "canonical-p",
+    source: "codex/thread/tokenUsage/updated",
+    coverage: "last_request",
+    complete: false,
+    tokens: {},
+    knownTokens: {
+      input: 5,
+      output: 3,
+      cacheRead: 2,
+      cacheWrite: 0,
+      reasoning: 1,
+    },
+    totalWithCacheRead: undefined,
+    totalWithoutCacheRead: undefined,
+    knownTotalWithCacheRead: 10,
+    knownTotalWithoutCacheRead: 8,
+    invocations: 1,
+    missingUsageInvocations: 0,
+    incompleteUsageInvocations: 1,
+  };
+  const result = chatContinuations([
+    {
+      id: "first",
+      executionId: "first",
+      role: "assistant",
+      status: "canceled",
+      content: "",
+      runMetrics: { tokenUsage: usage },
+    },
+    { id: "input", role: "user", content: "" },
+    {
+      id: "second",
+      executionId: "second",
+      steerExecutionId: "first",
+      role: "assistant",
+      status: "completed",
+      content: "",
+      runMetrics: { tokenUsage: usage },
+    },
+  ]);
+  expect(
+    result.get("second")?.footerMessage.runMetrics?.tokenUsage,
+  ).toMatchObject({
+    knownTotalWithCacheRead: 10,
+    totalWithCacheRead: undefined,
+    invocations: 1,
+  });
+});
+
+it("retains known legacy counters with a distinct native invocation", () => {
+  const result = chatContinuations([
+    first,
+    user,
+    {
+      ...next,
+      runMetrics: {
+        tokenUsage: {
+          invocationId: "native-p",
+          coverage: "last_request",
+          complete: false,
+          knownTokens: { input: 3, output: 4 },
+          knownTotalWithCacheRead: 7,
+          knownTotalWithoutCacheRead: 7,
+          invocations: 1,
+        },
+      },
+    },
+  ]);
+  expect(
+    result.get("next")?.footerMessage.runMetrics?.tokenUsage,
+  ).toMatchObject({
+    complete: false,
+    knownTokens: { input: 13, output: 24 },
+    knownTotalWithCacheRead: 37,
+    knownTotalWithoutCacheRead: 37,
+    invocations: 1,
+  });
+});
+
+it("uses canonical counters for a revised view of the same execution", () => {
+  const result = chatContinuations([
+    first,
+    user,
+    {
+      ...next,
+      executionId: first.executionId,
+      runMetrics: {
+        tokenUsage: {
+          invocationId: "native-p",
+          knownTokens: { input: 3, output: 4 },
+          knownTotalWithCacheRead: 7,
+          invocations: 1,
+        },
+      },
+    },
+  ]);
+  expect(
+    result.get("next")?.footerMessage.runMetrics?.tokenUsage,
+  ).toMatchObject({
+    knownTokens: { input: 3, output: 4 },
+    knownTotalWithCacheRead: 7,
+    invocations: 1,
   });
 });

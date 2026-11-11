@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogTrigger } from "@/shared/ui/dialog";
@@ -24,10 +24,15 @@ export function PluginReadme({
   content,
   status,
   source,
+  appearance = "default",
+  children,
 }: {
   content: string;
   status?: string;
   source?: ReadmeSource;
+  appearance?: "default" | "catalog";
+  /** 分区决定正文与展开操作的位置，阅读状态仍由当前文档统一维护。 */
+  children?: (preview: ReactNode, action: ReactNode) => ReactNode;
 }) {
   const { t } = useTranslation("plugin");
   const preview = useRef<HTMLDivElement>(null);
@@ -50,40 +55,58 @@ export function PluginReadme({
     observer?.observe(inner);
     return () => observer?.disconnect();
   }, [content]);
+  const action = overflowing && readable && (
+    <DialogTrigger asChild>
+      <Button
+        type="button"
+        size={appearance === "catalog" ? "catalog" : "md"}
+        variant={appearance === "catalog" ? "catalog-ghost" : "ghost"}
+      >
+        {t("viewFullReadme")}
+      </Button>
+    </DialogTrigger>
+  );
+  const contentPreview = (
+    <div
+      className={
+        appearance === "catalog" ? "min-w-0 space-y-3" : "max-w-prose space-y-3"
+      }
+    >
+      {status === "too-large" && (
+        <p className="type-body text-content-secondary">
+          {t("readmeTooLarge")}
+        </p>
+      )}
+      {status === "invalid" && (
+        <p className="type-body text-content-secondary">{t("readmeInvalid")}</p>
+      )}
+      <div
+        ref={preview}
+        className={readable ? "max-h-60 overflow-hidden" : undefined}
+      >
+        <div ref={body}>
+          <MarkdownContent content={content} appearance={appearance} />
+        </div>
+      </div>
+      {status === "too-large" && source && (
+        <ReadmeDownload source={source} appearance={appearance} />
+      )}
+    </div>
+  );
   return (
     <Dialog>
-      <div className="max-w-prose space-y-3">
-        {status === "too-large" && (
-          <p className="type-body text-content-secondary">
-            {t("readmeTooLarge")}
-          </p>
-        )}
-        {status === "invalid" && (
-          <p className="type-body text-content-secondary">
-            {t("readmeInvalid")}
-          </p>
-        )}
-        <div
-          ref={preview}
-          className={readable ? "max-h-60 overflow-hidden" : undefined}
-        >
-          <div ref={body}>
-            <MarkdownContent content={content} />
-          </div>
-        </div>
-        {overflowing && readable && (
-          <DialogTrigger asChild>
-            <Button type="button" variant="ghost">
-              {t("viewFullReadme")}
-            </Button>
-          </DialogTrigger>
-        )}
-        {status === "too-large" && source && <ReadmeDownload source={source} />}
-      </div>
+      {children ? (
+        children(contentPreview, action)
+      ) : (
+        <>
+          {contentPreview}
+          {action}
+        </>
+      )}
       {readable && (
         <DialogContent title={t("fullReadme")} size="xl" layout="form">
           <div className="min-h-0 overflow-auto px-6 pb-6">
-            <MarkdownContent content={content} />
+            <MarkdownContent content={content} appearance={appearance} />
           </div>
         </DialogContent>
       )}
@@ -92,7 +115,13 @@ export function PluginReadme({
 }
 
 /** 超出内置阅读预算的原文按固定版本下载，不把截断内容称为完整说明。 */
-function ReadmeDownload({ source }: { source: ReadmeSource }) {
+function ReadmeDownload({
+  source,
+  appearance,
+}: {
+  source: ReadmeSource;
+  appearance: "default" | "catalog";
+}) {
   const { t } = useTranslation("plugin");
   const download = useMutation({
     mutationFn: async () => {
@@ -132,7 +161,8 @@ function ReadmeDownload({ source }: { source: ReadmeSource }) {
     <div className="space-y-2">
       <Button
         type="button"
-        variant="secondary"
+        size={appearance === "catalog" ? "catalog" : "md"}
+        variant={appearance === "catalog" ? "catalog-secondary" : "secondary"}
         disabled={download.isPending}
         onClick={() => download.mutate()}
       >

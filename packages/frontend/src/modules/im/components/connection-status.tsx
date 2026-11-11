@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { StatusPill } from "@/shared/ui/status-pill";
 import { Badge } from "@/shared/ui/badge";
 import { cn } from "@/shared/lib/cn";
 import type { IMBinding, IMConnection } from "../types";
@@ -6,9 +7,11 @@ import type { IMBinding, IMConnection } from "../types";
 export function ConnectionStatus({
   connection,
   appearance = "badge",
+  stale = false,
 }: {
   connection: IMConnection;
-  appearance?: "badge" | "inline";
+  appearance?: "badge" | "inline" | "pill";
+  stale?: boolean;
 }) {
   const { t } = useTranslation("im");
   const state = connection.enabled
@@ -27,6 +30,26 @@ export function ConnectionStatus({
   const label = t(
     state === "disabled" ? "disabled" : "connectionState." + state,
   );
+  if (stale)
+    return <StatusPill tone="attention">{t("statusStale")}</StatusPill>;
+  if (appearance === "pill")
+    return (
+      <StatusPill
+        tone={
+          state === "connected"
+            ? "connected"
+            : state === "failed" || state === "login_required"
+              ? "attention"
+              : state === "connecting"
+                ? "connecting"
+                : state === "disabled"
+                  ? "unavailable"
+                  : "idle"
+        }
+      >
+        {label}
+      </StatusPill>
+    );
   if (appearance === "inline") {
     return (
       <span className="text-content-secondary type-caption inline-flex shrink-0 items-center gap-2 whitespace-nowrap">

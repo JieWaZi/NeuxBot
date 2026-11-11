@@ -29,13 +29,13 @@ func (c *countingLocationWrites) AdvanceExecutionLocations(ctx context.Context, 
 func TestExecutionLocationWriteOnlyFailureReturnsMissingAndOlderFacts(t *testing.T) {
 	db, m := newRecoveryTestService(t, t.TempDir())
 	id := "93939393939393939393939393939396"
-	if _, err := m.logStore.Create(id, []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{})}, {Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "old", Data: marshalData(eventlog.ExecutionCreatedData{})}, {Type: constants.ChatEventTypeExecutionCompleted, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})}}); err != nil {
+	if _, err := m.logStore.Create(id, []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{})}, {Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "old", Data: marshalData(eventlog.ExecutionCreatedData{})}, {Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: "old", Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := m.ReadExecutionOutcome(context.Background(), id, "old"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.logStore.Append(id, []eventlog.AppendInput{{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "tail-other", Data: marshalData(eventlog.ExecutionCreatedData{})}, {Type: constants.ChatEventTypeExecutionCompleted, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})}}); err != nil {
+	if _, err := m.logStore.Append(id, []eventlog.AppendInput{{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "tail-other", Data: marshalData(eventlog.ExecutionCreatedData{})}, {Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: "tail-other", Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Exec("CREATE TRIGGER reject_location_updates BEFORE UPDATE ON chat_execution_location_cursors BEGIN SELECT RAISE(ABORT, 'fixture writes rejected'); END").Error; err != nil {

@@ -7,13 +7,12 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	agentcli "github.com/JieWaZi/NeuxBot/server/internal/agent/cli"
 )
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	code := agentcli.Execute(ctx, os.Args[1:], agentcli.IO{ContextFile: os.Getenv(constants.AgentCLIContextEnvironment)})
+	code := agentcli.Execute(ctx, os.Args[1:], agentcli.IO{})
 	cancel()
 	os.Exit(code)
 }

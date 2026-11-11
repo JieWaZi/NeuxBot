@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/shrewx/ginx"
@@ -34,16 +35,22 @@ import (
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
-func pluginAPIContext(t *testing.T) *gin.Context {
+func pluginAPIContext(t *testing.T, publishers ...events.Publisher) *gin.Context {
 	t.Helper()
 	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "plugins.db"), Migrate: true})
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(publishers) > 0 {
+		database.DB = controllers.WithEventPublisher(database.DB, publishers[0])
+	}
 	sqlDB, err := database.DB.DB()
 	if err != nil {
 		t.Fatal(err)
 	}
+	previousCategories := global.ResourceCategoryControllerManager
+	t.Cleanup(func() { global.ResourceCategoryControllerManager = previousCategories })
+	global.ResourceCategoryControllerManager = controllers.NewResourceCategoryController(database.DB)
 	previousPlugins, previousWakers, previousTx, previousDir := global.PluginControllerManager, global.WakerControllerManager, global.TransactionControllerManager, global.Config.DataDirectory
 	global.PluginControllerManager = controllers.NewPluginController(database.DB)
 	global.WakerControllerManager = controllers.NewWakerController(database.DB)
@@ -70,7 +77,7 @@ func pluginAPIContext(t *testing.T) *gin.Context {
 func TestFirstInstallationRequiresConfigurationAndReportsPartnerFailures(t *testing.T) {
 	ctx := pluginAPIContext(t)
 	source := t.TempDir()
-	content := `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"test-tools","version":"1.0.0","extensions":{"com.ally":{"config":[{"key":"TOKEN","label":"访问密钥","secret":true,"required":true}]}}}`
+	content := `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"test-tools","version":"1.0.0","extensions":{"com.neuxbot":{"schemaVersion":1,"configuration":{"fields":[{"key":"TOKEN","label":"访问密钥","secret":true,"required":true}]}}}}`
 	if err := os.WriteFile(filepath.Join(source, "plugin.json"), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +85,7 @@ func TestFirstInstallationRequiresConfigurationAndReportsPartnerFailures(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	detail, err := prepareCatalogFixture(t, ctx, stage, "", "", false)
+	detail, err := prepareCatalogFixture(t, ctx, stage, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +126,7 @@ func TestConfigurationUpgradeRequiresAllInstallationsIncludingDisabled(t *testin
 	for _, name := range []string{"old", "new"} {
 		semanticVersion := map[string]string{"old": "1.0.0", "new": "2.0.0"}[name]
 		root := t.TempDir()
-		manifest := `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"tools","version":"` + semanticVersion + `","extensions":{"com.ally":{"config":[{"key":"` + name + `","required":true}]}}}`
+		manifest := `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"tools","version":"` + semanticVersion + `","extensions":{"com.neuxbot":{"schemaVersion":1,"configuration":{"fields":[{"key":"` + name + `","required":true}]}}}}`
 		if err := os.WriteFile(filepath.Join(root, "plugin.json"), []byte(manifest), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -138,7 +145,7 @@ func TestConfigurationUpgradeRequiresAllInstallationsIncludingDisabled(t *testin
 		if _, err := store.PutVersion(ctx, models.PluginVersion{ID: name, PluginID: "p", Version: semanticVersion, Digest: staged.Digest, ContentPath: filepath.ToSlash(relative), Package: staged.Package, Provenance: map[string]any{"sourceCommit": strings.Repeat("a", 40), "archiveSHA256": strings.Repeat("b", 64)}}); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := prepareCatalogFixture(t, ctx, staged, "", "p", false); err != nil {
+		if _, err := prepareCatalogFixture(t, ctx, staged, "p", false); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -150,8 +157,8 @@ func TestConfigurationUpgradeRequiresAllInstallationsIncludingDisabled(t *testin
 			t.Fatal(err)
 		}
 	}
-	body := UpdateConfigurationRequest{ExpectedRevision: 1, Values: map[string]string{"new": "value"}, Switches: []VersionSwitch{{WakerID: "w1", ExpectedVersionID: "old", VersionID: "new"}}}
-	if _, err := (&UpdatePluginConfiguration{PluginID: "p", Body: body}).Output(ctx); !errors.Is(err, status_error.PluginVersionConflict) {
+	body := UpdatePluginInstallationsRequest{ExpectedRevision: 1, Values: map[string]string{"new": "value"}, Switches: []VersionSwitch{{WakerID: "w1", ExpectedVersionID: "old", VersionID: "new"}}}
+	if _, err := (&UpdatePluginInstallations{PluginID: "p", Body: body}).Output(ctx); !errors.Is(err, status_error.PluginVersionConflict) {
 		t.Fatalf("incomplete installation set accepted: %v", err)
 	}
 	got, err := store.Configuration(ctx, "p")
@@ -159,7 +166,7 @@ func TestConfigurationUpgradeRequiresAllInstallationsIncludingDisabled(t *testin
 		t.Fatalf("failed upgrade changed config: %+v %v", got, err)
 	}
 	body.Switches = append(body.Switches, VersionSwitch{WakerID: "w2", ExpectedVersionID: "old", VersionID: "new"})
-	if _, err := (&UpdatePluginConfiguration{PluginID: "p", Body: body}).Output(ctx); err != nil {
+	if _, err := (&UpdatePluginInstallations{PluginID: "p", Body: body}).Output(ctx); err != nil {
 		t.Fatal(err)
 	}
 	relations, err := store.Installations(context.Background(), "p", "")
@@ -185,10 +192,10 @@ func TestPrepareMCPPluginRequiresExplicitContentTrust(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := prepareCatalogFixture(t, ctx, stage, "", "", false); !errors.Is(err, status_error.MCPConnectorTrustRequired) {
+	if _, err := prepareCatalogFixture(t, ctx, stage, "", false); !errors.Is(err, status_error.MCPConnectorTrustRequired) {
 		t.Fatalf("untrusted MCP content accepted: %v", err)
 	}
-	if _, err := prepareCatalogFixture(t, ctx, stage, "", "", true); err != nil {
+	if _, err := prepareCatalogFixture(t, ctx, stage, "", true); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -203,11 +210,14 @@ func TestInstallRejectsMutatedManagedVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	detail, err := prepareCatalogFixture(t, ctx, stage, "", "", false)
+	detail, err := prepareCatalogFixture(t, ctx, stage, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	version := detail.Versions[0]
+	version, err := global.PluginControllerManager.Version(ctx, detail.Versions[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(global.Config.DataDirectory, version.ContentPath, "injected.sh"), []byte("arbitrary mutation"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -222,8 +232,8 @@ func TestNativePluginUpgradeUpdatesAllPartnerPinsAndReturnsPreparedVersion(t *te
 	prepare := func(target, version, body string) (PluginDetailResponse, error) {
 		source := t.TempDir()
 		for filename, content := range map[string]string{
-			".codex-plugin/plugin.json": `{"name":"upstream-tools","version":"` + version + `","skills":"./skills/","author":{"name":"Upstream"}}`,
-			"skills/reports/SKILL.md":   "---\nname: reports\ndescription: Reports\n---\n" + body,
+			"plugin.json":             `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"upstream-tools","version":"` + version + `","author":{"name":"Upstream"}}`,
+			"skills/reports/SKILL.md": "---\nname: reports\ndescription: Reports\n---\n" + body,
 		} {
 			path := filepath.Join(source, filename)
 			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -237,7 +247,7 @@ func TestNativePluginUpgradeUpdatesAllPartnerPinsAndReturnsPreparedVersion(t *te
 		if err != nil {
 			return PluginDetailResponse{}, err
 		}
-		value, err := prepareCatalogFixture(t, ctx, stage, "", target, false)
+		value, err := prepareCatalogFixture(t, ctx, stage, target, false)
 		if err != nil {
 			return PluginDetailResponse{}, err
 		}
@@ -264,7 +274,7 @@ func TestNativePluginUpgradeUpdatesAllPartnerPinsAndReturnsPreparedVersion(t *te
 			t.Fatal("preparation silently updated an installed partner")
 		}
 	}
-	if _, err := (&UpdatePluginConfiguration{PluginID: old.Plugin.ID, Body: UpdateConfigurationRequest{Switches: []VersionSwitch{{WakerID: "w1", ExpectedVersionID: oldVersion, VersionID: newVersion}, {WakerID: "w2", ExpectedVersionID: oldVersion, VersionID: newVersion}}}}).Output(ctx); err != nil {
+	if _, err := (&UpdatePluginInstallations{PluginID: old.Plugin.ID, Body: UpdatePluginInstallationsRequest{Switches: []VersionSwitch{{WakerID: "w1", ExpectedVersionID: oldVersion, VersionID: newVersion}, {WakerID: "w2", ExpectedVersionID: oldVersion, VersionID: newVersion}}}}).Output(ctx); err != nil {
 		t.Fatal(err)
 	}
 	relations, err := global.PluginControllerManager.Installations(ctx, old.Plugin.ID, "")
@@ -301,12 +311,12 @@ func TestSupplementalAuthorizationScopesMustBeExplicitIdentifiers(t *testing.T) 
 }
 
 func TestVersionSwitchRejectsUnreadyTargetsWithoutChangingInstallation(t *testing.T) {
-	for _, kind := range []string{"missing-component", "changed-content"} {
+	for _, kind := range []string{"missing-configuration", "changed-content"} {
 		t.Run(kind, func(t *testing.T) {
 			ctx := pluginAPIContext(t)
 			prepare := func(id, version, extension string) PluginDetailResponse {
 				root := t.TempDir()
-				body := `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"upgrade","version":"` + version + `","extensions":{"com.ally":` + extension + `}}`
+				body := `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"upgrade","version":"` + version + `","extensions":{"com.neuxbot":` + extension + `}}`
 				if err := os.WriteFile(filepath.Join(root, "plugin.json"), []byte(body), 0o600); err != nil {
 					t.Fatal(err)
 				}
@@ -314,26 +324,30 @@ func TestVersionSwitchRejectsUnreadyTargetsWithoutChangingInstallation(t *testin
 				if err != nil {
 					t.Fatal(err)
 				}
-				value, err := prepareCatalogFixture(t, ctx, stage, "", id, false)
+				value, err := prepareCatalogFixture(t, ctx, stage, id, false)
 				if err != nil {
 					t.Fatal(err)
 				}
 				return value
 			}
-			old := prepare("", "1.0.0", `{}`)
+			old := prepare("", "1.0.0", `{"schemaVersion":1}`)
 			oldID := old.Versions[0].ID
 			if _, err := (&InstallPlugin{PluginID: old.Plugin.ID, Body: InstallPluginRequest{VersionID: oldID, WakerIDs: []string{"w1"}}}).Output(ctx); err != nil {
 				t.Fatal(err)
 			}
-			extension := `{}`
-			if kind == "missing-component" {
-				extension = `{"requiredComponents":["missing"]}`
+			extension := `{"schemaVersion":1}`
+			if kind == "missing-configuration" {
+				extension = `{"schemaVersion":1,"configuration":{"fields":[{"key":"REQUIRED","required":true}]}}`
 			}
 			next := prepare(old.Plugin.ID, "2.0.0", extension)
 			var target models.PluginVersion
 			for _, v := range next.Versions {
 				if v.Version == "2.0.0" {
-					target = v
+					var readErr error
+					target, readErr = global.PluginControllerManager.Version(ctx, v.ID)
+					if readErr != nil {
+						t.Fatal(readErr)
+					}
 				}
 			}
 			if target.ID == "" {
@@ -348,7 +362,7 @@ func TestVersionSwitchRejectsUnreadyTargetsWithoutChangingInstallation(t *testin
 					t.Fatal(err)
 				}
 			}
-			_, err := (&UpdatePluginConfiguration{PluginID: old.Plugin.ID, Body: UpdateConfigurationRequest{ExpectedRevision: 0, Switches: []VersionSwitch{{WakerID: "w1", ExpectedVersionID: oldID, VersionID: target.ID}}}}).Output(ctx)
+			_, err := (&UpdatePluginInstallations{PluginID: old.Plugin.ID, Body: UpdatePluginInstallationsRequest{ExpectedRevision: 0, Switches: []VersionSwitch{{WakerID: "w1", ExpectedVersionID: oldID, VersionID: target.ID}}}}).Output(ctx)
 			if err == nil {
 				t.Error("unready version replaced working installation")
 			}
@@ -374,7 +388,7 @@ func TestInstallRejectsExistingLocalImportWithoutChangingResource(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	detail, err := persistPluginFixture(t, ctx, stage, "", "local:"+stage.Digest, nil)
+	detail, err := persistPluginFixture(t, ctx, stage, "local:"+stage.Digest, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -440,7 +454,7 @@ func TestPluginImportRoutesAreUnavailable(t *testing.T) {
 }
 
 // prepareCatalogFixture 发布临时固定清单与 ZIP，通过真实目录接口准备测试资源。
-func prepareCatalogFixture(t *testing.T, ctx *gin.Context, stage packageplugin.StagedPackage, owner, target string, trusted bool) (PluginDetailResponse, error) {
+func prepareCatalogFixture(t *testing.T, ctx *gin.Context, stage packageplugin.StagedPackage, target string, trusted bool) (PluginDetailResponse, error) {
 	t.Helper()
 	root := global.PluginCatalogSource()
 	key := stage.Package.Manifest.Name
@@ -505,30 +519,8 @@ func prepareCatalogFixture(t *testing.T, ctx *gin.Context, stage packageplugin.S
 	if err != nil {
 		t.Fatal(err)
 	}
-	sum := sha256.Sum256(body)
-	entries := []any{}
-	if previous, err := os.ReadFile(filepath.Join(root, "catalog.json")); err == nil {
-		var document map[string]any
-		if json.Unmarshal(previous, &document) != nil {
-			t.Fatal("invalid fixture catalog")
-		}
-		items, _ := document["entries"].([]any)
-		for _, item := range items {
-			entry, _ := item.(map[string]any)
-			if entry["key"] != key {
-				entries = append(entries, item)
-			}
-		}
-	}
-	entries = append(entries, map[string]any{"key": key, "directory": "catalog/" + key + ".zip", "sourceCommit": strings.Repeat("a", 40), "archiveSHA256": fmt.Sprintf("%x", sum), "package": stage.Package, "packagePath": stage.Package.SourcePath})
-	index, err := json.Marshal(map[string]any{"schemaVersion": 1, "entries": entries})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "catalog.json"), index, 0600); err != nil {
-		t.Fatal(err)
-	}
-	output, err := (&PrepareCatalogPlugin{Key: key, Body: PrepareCatalogPluginRequest{OwnerWakerID: owner, TrustConfirmed: trusted}}).Output(ctx)
+	writeStandardCatalogFixture(t, root, key, body, stage)
+	output, err := (&PrepareCatalogPlugin{Key: key, Body: PrepareCatalogPluginRequest{TrustConfirmed: trusted}}).Output(ctx)
 	if err != nil {
 		return PluginDetailResponse{}, err
 	}
@@ -536,10 +528,10 @@ func prepareCatalogFixture(t *testing.T, ctx *gin.Context, stage packageplugin.S
 }
 
 // persistPluginFixture 只构造已有数据库记录，用于验证旧数据和旧解析元数据边界。
-func persistPluginFixture(t *testing.T, ctx *gin.Context, stage packageplugin.StagedPackage, owner, source string, provenance map[string]any) (PluginDetailResponse, error) {
+func persistPluginFixture(t *testing.T, ctx *gin.Context, stage packageplugin.StagedPackage, source string, provenance map[string]any) (PluginDetailResponse, error) {
 	t.Helper()
 	id := util.New()
-	resource := models.Plugin{ID: id, Name: stage.Package.Manifest.Name, OwnerWakerID: owner, SourceKey: source}
+	resource := models.Plugin{ID: id, Name: stage.Package.Manifest.Name, SourceKey: source}
 	if err := global.PluginControllerManager.Create(ctx, resource); err != nil {
 		return PluginDetailResponse{}, err
 	}
@@ -568,7 +560,7 @@ func TestExistingPinSurvivesUnavailableCatalogAndNewInstallRejects(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	detail, err := prepareCatalogFixture(t, ctx, stage, "", "", false)
+	detail, err := prepareCatalogFixture(t, ctx, stage, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -620,7 +612,7 @@ func TestInstallRejectsUnverifiedOrOtherCatalogSources(t *testing.T) {
 			case "invalid-archive":
 				provenance["archiveSHA256"] = strings.Repeat("z", 64)
 			}
-			detail, err := persistPluginFixture(t, ctx, stage, "", source, provenance)
+			detail, err := persistPluginFixture(t, ctx, stage, source, provenance)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -646,19 +638,22 @@ func TestVersionSwitchRejectsLegacyImportedVersionWithoutChangingPin(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	detail, err := prepareCatalogFixture(t, ctx, stage, "", "", false)
+	detail, err := prepareCatalogFixture(t, ctx, stage, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := (&InstallPlugin{PluginID: detail.Plugin.ID, Body: InstallPluginRequest{VersionID: detail.ResolvedVersionID, WakerIDs: []string{"w1"}}}).Output(ctx); err != nil {
 		t.Fatal(err)
 	}
-	legacy := detail.Versions[0]
+	legacy, err := global.PluginControllerManager.Version(ctx, detail.Versions[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	legacy.ID, legacy.Version, legacy.Provenance = "imported-version", "local-import", nil
 	if _, err := global.PluginControllerManager.PutVersion(ctx, legacy); err != nil {
 		t.Fatal(err)
 	}
-	_, err = (&UpdatePluginConfiguration{PluginID: detail.Plugin.ID, Body: UpdateConfigurationRequest{Switches: []VersionSwitch{{WakerID: "w1", ExpectedVersionID: detail.ResolvedVersionID, VersionID: legacy.ID}}}}).Output(ctx)
+	_, err = (&UpdatePluginInstallations{PluginID: detail.Plugin.ID, Body: UpdatePluginInstallationsRequest{Switches: []VersionSwitch{{WakerID: "w1", ExpectedVersionID: detail.ResolvedVersionID, VersionID: legacy.ID}}}}).Output(ctx)
 	if !errors.Is(err, status_error.PluginForbidden) {
 		t.Fatalf("version switch installed an unverified import: %v", err)
 	}
@@ -684,7 +679,7 @@ func TestCatalogPreparationRejectsArchiveMismatchBeforeResourceRegistration(t *t
 	if _, err := (&PrepareCatalogPlugin{Key: "broken"}).Output(ctx); !errors.Is(err, status_error.PluginContentInvalid) {
 		t.Fatalf("unverified archive reached preparation: %v", err)
 	}
-	_, total, err := global.PluginControllerManager.List(ctx, "", "", "", 0, 100, false)
+	_, total, err := global.PluginControllerManager.List(ctx, "", "", 0, 100)
 	if err != nil || total != 0 {
 		t.Fatalf("archive mismatch registered resource: total=%d error=%v", total, err)
 	}
@@ -701,11 +696,14 @@ func TestInstallRejectsLocalContentWithCopiedCatalogIdentityAndProvenance(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	detail, err := prepareCatalogFixture(t, ctx, stage, "", "", false)
+	detail, err := prepareCatalogFixture(t, ctx, stage, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	version := detail.Versions[0]
+	version, err := global.PluginControllerManager.Version(ctx, detail.Versions[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	provenance, err := json.Marshal(version.Provenance)
 	if err != nil {
 		t.Fatal(err)
@@ -739,7 +737,7 @@ func TestInstallRejectsLocalContentWithCopiedCatalogIdentityAndProvenance(t *tes
 	if !errors.Is(err, status_error.PluginVersionConflict) {
 		t.Fatalf("copied catalog identity and package-controlled provenance authorized local bytes: %v", err)
 	}
-	_, err = (&UpdatePluginConfiguration{PluginID: detail.Plugin.ID, Body: UpdateConfigurationRequest{Switches: []VersionSwitch{{WakerID: "w1", ExpectedVersionID: detail.ResolvedVersionID, VersionID: version.ID}}}}).Output(ctx)
+	_, err = (&UpdatePluginInstallations{PluginID: detail.Plugin.ID, Body: UpdatePluginInstallationsRequest{Switches: []VersionSwitch{{WakerID: "w1", ExpectedVersionID: detail.ResolvedVersionID, VersionID: version.ID}}}}).Output(ctx)
 	if !errors.Is(err, status_error.PluginVersionConflict) {
 		t.Fatalf("copied provenance authorized an imported version switch: %v", err)
 	}
@@ -753,7 +751,7 @@ func TestCatalogInstallRevalidatesCachedArchiveWhenDistributionIsUnavailable(t *
 	ctx := pluginAPIContext(t)
 	var archive bytes.Buffer
 	writer := zip.NewWriter(&archive)
-	for name, body := range map[string]string{".codex-plugin/plugin.json": `{"name":"cached-owned","version":"1.0.0"}`, "README.md": "Unique cache fixture " + t.TempDir()} {
+	for name, body := range map[string]string{"plugin.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"cached-owned","version":"1.0.0"}`, "README.md": "Unique cache fixture " + t.TempDir()} {
 		entry, err := writer.Create(name)
 		if err != nil {
 			t.Fatal(err)
@@ -772,7 +770,7 @@ func TestCatalogInstallRevalidatesCachedArchiveWhenDistributionIsUnavailable(t *
 	var source *httptest.Server
 	source = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/catalog.json" {
-			_, _ = fmt.Fprintf(w, `{"schemaVersion":2,"entries":[{"key":"cached-owned","name":"cached-owned","version":"1.0.0","format":"codex","sourceCommit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","archiveSHA256":"%x","archiveURL":%q,"packagePath":"."}]}`, sum, source.URL+"/owned.zip")
+			_, _ = fmt.Fprintf(w, `{"schemaVersion":1,"entries":[{"key":"cached-owned","name":"cached-owned","version":"1.0.0","format":"agent-plugins","sourceCommit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","archiveSHA256":"%x","archiveURL":%q,"packagePath":".","detailsURL":"https://fixtures.invalid/unused.json","detailsSHA256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","detailsSize":1}]}`, sum, source.URL+"/owned.zip")
 			return
 		}
 		downloads.Add(1)
@@ -784,8 +782,10 @@ func TestCatalogInstallRevalidatesCachedArchiveWhenDistributionIsUnavailable(t *
 	}))
 	defer source.Close()
 	location := source.URL + "/catalog.json"
-	stopCatalog := catalog.Start(context.Background(), location, t.TempDir(), nil)
-	defer stopCatalog()
+	// 该用例隔离安装／读取的分发恢复；完整启动预取由 catalog 生命周期用例验证。
+	if err := catalog.Refresh(context.Background(), location); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("ALLY_PLUGIN_CATALOG_URL", location)
 	value, err := (&PrepareCatalogPlugin{Key: "cached-owned"}).Output(ctx)
 	if err != nil {

@@ -1,11 +1,9 @@
-import { GitPullRequestArrow } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
-import { PageAction } from "@/shared/ui/resource-page";
 
 import {
   isVersionGreater,
@@ -33,17 +31,17 @@ export function SkillGitPullDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <PageAction
-        intent="secondary"
-        label={t("detail.update")}
+      <Button
+        size="catalog"
+        variant="catalog-outline"
         onClick={() => {
           setVersion(suggestNextPatchVersion(currentVersion));
           setNotes("");
           setOpen(true);
         }}
       >
-        <GitPullRequestArrow />
-      </PageAction>
+        {t("detail.update")}
+      </Button>
       <DialogContent
         title={t("detail.pullUpdate")}
         description={t("detail.pullDescription")}

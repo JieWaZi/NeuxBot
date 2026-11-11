@@ -752,17 +752,20 @@ export function createCoreWorkspaceServices(
       const seen = new Set<string>();
       for (const root of roots) {
         const current = await draftScope(root);
-        const data = await readGitStatus({ scopeId: current.id, root });
-        for (const gitRoot of data.repositories ?? []) {
-          if (seen.has(gitRoot)) continue;
-          seen.add(gitRoot);
-          repositories.push({
-            directory: gitRoot,
-            gitRoot,
-            label: basename(gitRoot),
-            branch: gitRoot === data.root ? data.branch : undefined,
-          });
-        }
+        if (seen.has(current.root)) continue;
+        seen.add(current.root);
+        const data = await readGitStatus({
+          scopeId: current.id,
+          root: current.root,
+        });
+        // 输入区只认明确工作目录自身的仓库，不能冒用递归发现的子仓库。
+        if (!data.isRepo || data.root !== current.root) continue;
+        repositories.push({
+          directory: current.root,
+          gitRoot: current.root,
+          label: basename(current.root),
+          branch: data.branch,
+        });
       }
       return { repositories };
     },

@@ -42,6 +42,10 @@ type PublicEvent struct {
 	ErrorCode string `json:"errorCode,omitempty"`
 	// ErrorMessage 是可以安全暴露给调用方的错误说明。
 	ErrorMessage string `json:"errorMessage,omitempty"`
+	// ErrorMessageSource 明确区分公开原生原因与应用本地化正文；空值仅用于旧记录。
+	ErrorMessageSource constants.ErrorMessageSource `json:"errorMessageSource,omitempty"`
+	// ErrorParams 是稳定错误模板使用的安全参数。
+	ErrorParams map[string]interface{} `json:"errorParams,omitempty"`
 	// ApprovalRequest 是审批请求事件携带的安全交互内容。
 	ApprovalRequest *PublicApprovalRequest `json:"approvalRequest,omitempty"`
 	// ApprovalResolution 是审批处理事件携带的安全权威结果。
@@ -150,6 +154,8 @@ type Subscription struct {
 
 // streamEvent 是模块内部实时订阅中二选一的原始事件载荷。
 type streamEvent struct {
+	// Version wakes a reader after native changes commit.
+	Version int64
 	// Record 是已经写入 JSONL、可以推进恢复游标的权威记录。
 	Record *eventlog.Record
 	// Live 是不等待 JSONL 聚合窗口的 transient 实时消息增量。
@@ -255,25 +261,7 @@ func (h *subscriptionHub) publishCommitted(
 		if record.Type == constants.ChatEventTypeAssistantMessage || record.Type == constants.ChatEventTypeToolMessage {
 			var message eventlog.RuntimeMessageData
 			if json.Unmarshal(record.Data, &message) == nil {
-				if message.MessageRevision >= h.lostLiveRevision[chatID] {
-					delete(h.lostLiveRevision, chatID)
-				}
-				frames := h.latestLive[chatID]
-				first := 0
-				for first < len(frames) && frames[first].Live.MessageID == record.MessageID && frames[first].Live.Revision <= message.MessageRevision {
-					first++
-				}
-				if first > 0 {
-					frames = append([]eventstream.PublicEvent(nil), frames[first:]...)
-				}
-				// 用量是独立替换；覆盖点落在合并范围内时可安全缩短其恢复基线。
-				if len(frames) > 0 && metadataOnlyLive(frames[0]) && frames[0].Live.BaseRevision < message.MessageRevision {
-					frame := eventstream.ClonePublicEvent(frames[0])
-					frame.Live.BaseRevision = message.MessageRevision
-					frame.Live.Updates[0].BaseRevision = message.MessageRevision
-					frames[0] = frame
-				}
-				h.latestLive[chatID] = frames
+				h.coverLive(chatID, record.MessageID, message.MessageRevision)
 			}
 		}
 		if record.Type == constants.ChatEventTypeExecutionCompleted ||
@@ -304,6 +292,56 @@ func (h *subscriptionHub) publishCommitted(
 		if !delivered {
 			close(listener)
 			delete(h.subscribers[chatID], subscriberID)
+		}
+	}
+}
+
+// publishCheckpoint wakes the public stream only; execution observers receive lifecycle facts.
+func (h *subscriptionHub) publishCheckpoint(chatID string, version int64) {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+	h.wakeCheckpoint(chatID, version)
+}
+
+func (h *subscriptionHub) publishMessageCheckpoint(chatID string, version int64, messageID string, revision int64) {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+	h.coverLive(chatID, messageID, revision)
+	h.wakeCheckpoint(chatID, version)
+}
+
+// coverLive 从重连缓存移除已由持久消息覆盖的实时帧。
+func (h *subscriptionHub) coverLive(chatID, messageID string, revision int64) {
+	if revision >= h.lostLiveRevision[chatID] {
+		delete(h.lostLiveRevision, chatID)
+	}
+	frames := h.latestLive[chatID]
+	first := 0
+	for first < len(frames) && frames[first].Live.MessageID == messageID && frames[first].Live.Revision <= revision {
+		first++
+	}
+	clear(frames[:first])
+	frames = frames[first:]
+	// 独立用量替换可以从持久覆盖点继续。
+	if len(frames) > 0 && metadataOnlyLive(frames[0]) && frames[0].Live.BaseRevision < revision {
+		frame := eventstream.ClonePublicEvent(frames[0])
+		frame.Live.BaseRevision = revision
+		frame.Live.Updates[0].BaseRevision = revision
+		frames[0] = frame
+	}
+	h.latestLive[chatID] = frames
+}
+
+func (h *subscriptionHub) wakeCheckpoint(chatID string, version int64) {
+	for id, subscriber := range h.subscribers[chatID] {
+		if subscriber.executionID != "" {
+			continue
+		}
+		select {
+		case subscriber.listener <- streamEvent{Version: version}:
+		default:
+			close(subscriber.listener)
+			delete(h.subscribers[chatID], id)
 		}
 	}
 }
@@ -420,7 +458,7 @@ func (h *subscriptionHub) closeAll() {
 
 // ListEvents 返回游标之后已经完成安全转换的权威事件。
 func (m *service) ListEvents(
-	_ context.Context,
+	ctx context.Context,
 	chatID string,
 	after int64,
 	limit int,
@@ -432,7 +470,7 @@ func (m *service) ListEvents(
 	if err != nil {
 		return nil, err
 	}
-	adapter, err := eventstream.ReplayAfter(window.Records, after)
+	adapter, backlog, err := m.replayPublic(ctx, chatID, window.Records, after)
 	if err != nil {
 		logx.Errorf(
 			"project public chat events failed: chat_id=%s error=%v",
@@ -441,7 +479,34 @@ func (m *service) ListEvents(
 		)
 		return nil, status_error.ChatLogError
 	}
-	return publicEventsFromStream(adapter.EventsAfter(after, limit)), nil
+	if journal, ok := m.logStore.(*conversationJournal); ok && limit > len(backlog) {
+		// Internal binding/input rows and superseded body checkpoints do not consume the public limit.
+		through, err := journal.ReadVersion(ctx, chatID)
+		if err != nil {
+			return nil, err
+		}
+		cursor := window.LatestSequence
+		for cursor < through && len(backlog) < limit {
+			rows, err := journal.readAfter(ctx, chatID, cursor, int(min(256, through-cursor)))
+			if err != nil {
+				return nil, err
+			}
+			for _, row := range rows {
+				projected, visible, err := journal.applyPublic(ctx, adapter, row)
+				if err != nil {
+					return nil, err
+				}
+				if visible {
+					backlog = append(backlog, publicEventFromStream(projected))
+					if len(backlog) == limit {
+						return backlog, nil
+					}
+				}
+			}
+			cursor = rows[len(rows)-1].Sequence
+		}
+	}
+	return backlog, nil
 }
 
 // SubscribeEvents 先注册实时监听者，再建立公开事件视图，避免订阅窗口出现事件缺口。
@@ -461,7 +526,7 @@ func (m *service) SubscribeEvents(
 		m.subscriptions.remove(chatID, subscriberID)
 		return Subscription{}, err
 	}
-	adapter, err := eventstream.ReplayAfter(window.Records, after)
+	adapter, backlog, err := m.replayPublic(ctx, chatID, window.Records, after)
 	if err != nil {
 		m.subscriptions.remove(chatID, subscriberID)
 		logx.Errorf(
@@ -471,7 +536,6 @@ func (m *service) SubscribeEvents(
 		)
 		return Subscription{}, status_error.ChatLogError
 	}
-	backlog := publicEventsFromStream(adapter.EventsAfter(after, 0))
 	revisions := adapter.MessageRevisions()
 	adapter.ReleaseHistory()
 	latestSequence := window.LatestSequence
@@ -558,7 +622,7 @@ func executionOutcomeEvent(outcome ExecutionOutcome) PublicEvent {
 	case constants.ExecutionStatusCanceled:
 		kind = constants.ChatEventTypeExecutionCanceled
 	}
-	return PublicEvent{SchemaVersion: constants.ChatLogSchemaVersion, Sequence: outcome.LatestSequence, RecordedAt: outcome.Execution.UpdatedAt, Type: kind, ExecutionID: outcome.Execution.ID, ExecutionStatus: outcome.Execution.Status, ErrorCode: outcome.Execution.ErrorCode, ErrorMessage: outcome.FailureMessage}
+	return PublicEvent{SchemaVersion: constants.ChatLogSchemaVersion, Sequence: outcome.LatestSequence, RecordedAt: outcome.Execution.UpdatedAt, Type: kind, ExecutionID: outcome.Execution.ID, ExecutionStatus: outcome.Execution.Status, ErrorCode: outcome.Execution.ErrorCode, ErrorMessage: outcome.FailureMessage, ErrorParams: outcome.ErrorParams, ErrorMessageSource: outcome.ErrorMessageSource}
 }
 
 // readProjectionWindow 读取公开事件适配所需的最小权威记录窗口并统一错误语义。
@@ -588,6 +652,9 @@ func (m *service) forwardPublicEvents(
 ) {
 	defer close(events)
 	defer m.subscriptions.remove(chatID, subscriberID)
+	// 新订阅可以跳过权威基线已覆盖的前缀。开始交付后保留帧号连续性，
+	// 即使随后的检查点已经覆盖某个排队帧。
+	var liveGeneration string
 	for {
 		select {
 		case <-ctx.Done():
@@ -598,17 +665,44 @@ func (m *service) forwardPublicEvents(
 			}
 			if incoming.Live != nil {
 				live := publicEventFromStream(*incoming.Live)
-				if live.Live != nil {
-					messageID := live.Live.MessageID
-					if live.Live.Revision <= revisions[messageID] {
+				if live.Live != nil && liveGeneration != live.Live.Generation {
+					if live.Live.Revision <= revisions[live.Live.MessageID] {
 						continue
 					}
+					liveGeneration = live.Live.Generation
 				}
 				if !sendPublicEvent(ctx, events, live) {
 					return
 				}
-				if live.Live != nil {
-					revisions[live.Live.MessageID] = live.Live.Revision
+				continue
+			}
+			if journal, ok := m.logStore.(*conversationJournal); ok {
+				target := incoming.Version
+				if incoming.Record != nil {
+					target = incoming.Record.Sequence
+				}
+				if target <= latestSequence {
+					continue
+				}
+				rows, err := journal.readAfter(ctx, chatID, latestSequence, int(target-latestSequence))
+				if err != nil {
+					return
+				}
+				for _, row := range rows {
+					projected, visible, err := journal.applyPublic(ctx, adapter, row)
+					if err != nil {
+						logx.Errorf("project native chat checkpoint: chat_id=%s sequence=%d error=%v", chatID, row.Sequence, err)
+						return
+					}
+					latestSequence = row.Sequence
+					if visible {
+						if projected.Message != nil {
+							revisions[projected.Message.ID] = max(revisions[projected.Message.ID], projected.Message.LiveRevision)
+						}
+						if !sendPublicEvent(ctx, events, publicEventFromStream(projected)) {
+							return
+						}
+					}
 				}
 				continue
 			}
@@ -663,6 +757,8 @@ func publicEventFromStream(event eventstream.PublicEvent) PublicEvent {
 		ExecutionStatus:       event.ExecutionStatus,
 		ErrorCode:             event.ErrorCode,
 		ErrorMessage:          event.ErrorMessage,
+		ErrorParams:           event.ErrorParams,
+		ErrorMessageSource:    event.ErrorMessageSource,
 		ApprovalRequest:       publicApprovalRequest(event.ApprovalRequest),
 		ApprovalResolution:    publicApprovalResolution(event.ApprovalResolution),
 		ElicitationRequest:    publicElicitationRequest(event.ElicitationRequest),

@@ -7,9 +7,12 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	acp "github.com/JieWaZi/acp-go-sdk"
+	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 )
 
 // InitialExecutionState 是产品入口对账首次接纳与运行结果的窄权威视图。
@@ -107,11 +110,33 @@ func (m *service) ReadExecutionMessages(ctx context.Context, chatID, executionID
 			records = append(append(input[:1:1], input[1:]...), records[1:]...)
 		}
 	}
-	messages, err := messageview.ReplayMessages(records)
-	if err != nil {
-		return nil, status_error.ChatLogCorrupted
+	builder := messageview.NewMessageViewBuilder()
+	for _, record := range records {
+		if _, err := builder.Apply(record); err != nil {
+			return nil, status_error.ChatLogCorrupted
+		}
 	}
-	return messages, nil
+	if journal, ok := m.logStore.(*conversationJournal); ok {
+		message, cursor, err := journal.ReadMessageCheckpoint(ctx, chatID, executionID, 0)
+		if err != nil {
+			return nil, err
+		}
+		if cursor > 0 {
+			checkpoint, err := journal.ReadPositions(ctx, chatID, []int64{cursor})
+			if err != nil {
+				return nil, err
+			}
+			if err := builder.ReplaceStoredContent(message, cursor, checkpoint[0].RecordedAt); err != nil {
+				return nil, err
+			}
+		}
+		usage, err := journal.nativeOutcome(ctx, chatID, executionID)
+		if err != nil {
+			return nil, err
+		}
+		builder.SetNativeResult(executionID, usage)
+	}
+	return builder.Messages(), nil
 }
 
 // ExecutionOutcome 是指定执行及其最后一次已持久化 Runtime 调用的窄事实视图。
@@ -135,6 +160,10 @@ type ExecutionOutcome struct {
 	FailureStage string
 	// FailureMessage 是该调用不含秘密值的原始失败说明。
 	FailureMessage string
+	// ErrorMessageSource 保留终态正文来源；缺省时不得展示原始正文。
+	ErrorMessageSource constants.ErrorMessageSource
+	// ErrorParams 是执行终态稳定错误的安全模板参数。
+	ErrorParams map[string]interface{}
 }
 
 // ReadExecutionOutcome 按精确执行身份读取可恢复终态，不从最新消息推测执行完成。
@@ -159,24 +188,49 @@ func (m *service) ReadExecutionOutcome(ctx context.Context, chatID, executionID 
 		return ExecutionOutcome{}, status_error.ExecutionNotFound
 	}
 	result := ExecutionOutcome{StartSequence: window.StartSequence, LatestSequence: window.LatestSequence, Execution: *execution, TerminationReason: constants.RuntimeTerminationReasonUnknown}
+	for _, record := range records {
+		if record.ExecutionID != executionID || (record.Type != constants.ChatEventTypeExecutionFailed && record.Type != constants.ChatEventTypeExecutionCanceled) {
+			continue
+		}
+		var finished eventlog.ExecutionFinishedData
+		if err := json.Unmarshal(record.Data, &finished); err != nil {
+			return ExecutionOutcome{}, status_error.ChatLogError
+		}
+		result.FailureMessage = agent.RecordedFailureDisplayMessage(finished.ErrorMessage)
+		result.ErrorParams = finished.ErrorParams
+		result.ErrorMessageSource = finished.ErrorMessageSource
+		result.FailureCode = finished.FailureCode
+	}
 	if execution.CompletedAt != nil {
 		completedAt := *execution.CompletedAt
 		result.Execution.CompletedAt = &completedAt
 	}
-	invocations, err := eventlog.ReplayInvocations(records)
-	if err != nil {
-		return ExecutionOutcome{}, err
-	}
-	for _, invocation := range invocations {
-		if invocation.ExecutionID != executionID {
-			continue
+	if journal, ok := m.logStore.(*conversationJournal); ok {
+		native, err := journal.nativeOutcome(ctx, chatID, executionID)
+		if err != nil {
+			return ExecutionOutcome{}, err
 		}
-		result.InvocationID = invocation.ID
-		result.StopReason = invocation.Facts.StopReason
-		result.TerminationReason = invocation.Facts.TerminationReason
-		result.FailureCode = invocation.Facts.FailureCode
-		result.FailureStage = invocation.Facts.FailureStage
-		result.FailureMessage = invocation.Facts.FailureMessage
+		if native != nil {
+			result.InvocationID, result.StopReason = native.Key.InvocationID, native.StopReason
+			switch acp.StopReason(native.StopReason) {
+			case acp.StopReasonEndTurn:
+				result.TerminationReason = constants.RuntimeTerminationReasonNormal
+			case acp.StopReasonCancelled:
+				result.TerminationReason = constants.RuntimeTerminationReasonCancelled
+			case acp.StopReasonMaxTokens:
+				result.TerminationReason = constants.RuntimeTerminationReasonTruncated
+			case acp.StopReasonMaxTurnRequests:
+				result.TerminationReason = constants.RuntimeTerminationReasonTurnLimit
+			case acp.StopReasonRefusal:
+				result.TerminationReason = constants.RuntimeTerminationReasonRefusal
+			}
+			if native.Failure != nil {
+				result.FailureStage = native.Failure.Phase
+			}
+			if native.Turn.Status == acpmeta.NativeTurnFailed && result.FailureCode == constants.RuntimeFailureCodeUnspecified {
+				result.FailureCode = constants.RuntimeFailureCodeExecutionFailed
+			}
+		}
 	}
 	return result, nil
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
@@ -156,6 +157,7 @@ func (s *service) drainNotifications(ctx context.Context, threadID string) error
 		lead.RuntimeID,
 		lead.Model,
 		lead.Reasoning,
+		lead.Fast,
 		lead.PermissionLevel,
 		capability,
 		teamInstruction,
@@ -169,8 +171,9 @@ func (s *service) drainNotifications(ctx context.Context, threadID string) error
 		ExecutionID: leadExecutionID,
 		Chat:        execution.ChatTarget{ChatID: thread.LeadChatID},
 		Input: execution.WorkInput{
-			Actor:   string(constants.ChannelMessageActorSystem),
-			Content: prompt,
+			Actor:               string(constants.ChannelMessageActorSystem),
+			Content:             prompt,
+			ContextInstructions: []workinput.Instruction{leaderTurnInstruction(false)},
 		},
 		Options:   options,
 		Admission: constants.ExecutionAdmissionCommitBeforeDispatch,

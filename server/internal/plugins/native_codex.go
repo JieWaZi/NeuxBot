@@ -25,6 +25,20 @@ var codexHomePrepareMu sync.Mutex
 
 // NativeTarget 描述已冻结、受管的原生插件安装内容。
 type NativeTarget struct {
+	// Runtime 是目标 CLI 家族。
+	Runtime string
+	// Format 是目标原生格式或纯组件格式。
+	Format string
+	// SourceDigest 是不可变原包的内容摘要。
+	SourceDigest string
+	// Profile 是绑定目标格式版本的配置档。
+	Profile string
+	// ManifestPath 是目标根内的相对入口路径。
+	ManifestPath string
+	// Skills 是目标实际包含的技能组件。
+	Skills []Skill
+	// Servers 是目标实际包含的 MCP 组件。
+	Servers []Server
 	// ID 是应用内的插件逻辑身份，不用作 Codex 原生插件标识。
 	ID string
 	// Name 是原生插件清单声明的名称。
@@ -35,8 +49,6 @@ type NativeTarget struct {
 	Root string
 	// Digest 是安装内容摘要，用于隔离不同执行产物。
 	Digest string
-	// headerTemplates 只保存派生请求头的无秘密模板，运行时展开值不进入插件文件。
-	headerTemplates map[string]string
 }
 
 // PrepareCodexHome 为选定账号和插件快照准备独立 CODEX_HOME，不修改原账号目录。

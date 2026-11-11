@@ -12,17 +12,22 @@ import {
   useEffectEvent,
   useRef,
 } from "react";
-import { Plus } from "lucide-react";
+import { LoaderCircle, Plus } from "lucide-react";
 import type {
   GetPluginAuthorizationResponse,
   StartPluginAuthorizationResponse,
+  CheckPluginAccountData,
+  GetPluginConfigurationResponse,
 } from "@/shared/api/generated/types.gen";
 import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent } from "@/shared/ui/dialog";
 import { StatusNotice } from "@/shared/ui/status-notice";
 import { Button } from "@/shared/ui/button";
 import { QueryState } from "@/shared/ui/query-state";
-import { useQueryEvents } from "@/shared/api/use-query-events";
+import {
+  refreshQueryFromEvent,
+  useQueryEvents,
+} from "@/shared/api/use-query-events";
 import {
   localApiErrorMessage,
   withLocalErrorMutation,
@@ -35,22 +40,30 @@ import {
   startPluginAuthorizationMutation,
   cancelPluginAuthorizationMutation,
   getPluginAuthorizationOptions,
+  getPluginConfigurationOptions,
   invalidatePluginQueries,
 } from "../api/plugin-queries";
 import {
   pluginDisplayName,
+  pluginInstalledVersion,
   pluginSummary,
   pluginPreferredAuthAction,
   pluginHasAuthorization,
+  pluginCatalogSnapshotVersion,
   type PluginDetail,
   type PluginCatalogEntry,
 } from "../model/plugin-view";
+import { pluginAccountContext } from "../model/plugin-account-context";
 import { PartnerPicker } from "./partner-picker";
 import { PluginIcon } from "./plugin-icon";
 import { PluginAuthPanel } from "./plugin-auth-panel";
 import { PluginConfigurationEditor } from "./plugin-configuration-editor";
 
+import type { PluginBrowseEntry } from "../model/plugin-browse";
+
 type Props = {
+  preview?: Pick<PluginBrowseEntry, "name" | "description" | "icon" | "icons">;
+  catalogRead?: { pending: boolean; error?: unknown; onRetry: () => void };
   catalog?: PluginCatalogEntry;
   detail?: PluginDetail;
   wakerId?: string;
@@ -59,6 +72,8 @@ type Props = {
 };
 export function PluginInstallDialog({
   catalog,
+  preview,
+  catalogRead,
   detail: initial,
   wakerId = "",
   onClose,
@@ -66,7 +81,13 @@ export function PluginInstallDialog({
 }: Props) {
   const { t } = useTranslation("plugin");
   const client = useQueryClient();
-  const [prepared, setPrepared] = useState(initial);
+  const [prepared, setPrepared] = useState(() => {
+    if (!catalog) return initial;
+    const version = pluginCatalogSnapshotVersion(initial, catalog);
+    return version && initial?.packageStatus !== "unsupported"
+      ? { ...initial, resolvedVersionId: version.id }
+      : undefined;
+  });
   const [selected, setSelected] = useState<string[]>(
     wakerId
       ? [wakerId]
@@ -81,25 +102,18 @@ export function PluginInstallDialog({
   >("partners");
   const [partnerNames, setPartnerNames] = useState<Record<string, string>>({});
   const [resumeError, setResumeError] = useState<unknown>();
+  const [startingAuthorization, setStartingAuthorization] = useState(false);
   const intent = useRef<string[] | null>(null);
   const locked = useRef(false);
   const changedWhileLocked = useRef(false);
   const alive = useRef(true);
   const attempt = useRef<{
     pluginId: string;
-    versionId?: string;
+    versionId: string;
+    context: CheckPluginAccountData["body"];
     session: StartPluginAuthorizationResponse;
   } | null>(null);
   const cancelled = useRef(new Map<string, Promise<void>>());
-  const onUnmount = useEffectEvent(() => abandonAuthorization());
-  useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-      intent.current = null;
-      onUnmount();
-    };
-  }, []);
   const rememberNames = useCallback(
     (next: Record<string, string>) =>
       setPartnerNames((previous) => ({ ...previous, ...next })),
@@ -140,7 +154,7 @@ export function PluginInstallDialog({
     const options = getPluginAuthorizationOptions(
       withLocalErrorSurface({
         path: { pluginId: current.pluginId },
-        query: { wakerId, versionId: current.versionId, verify: true },
+        query: { wakerId, versionId: current.versionId },
       }),
     );
     const latest = client.getQueryData<GetPluginAuthorizationResponse>(
@@ -155,6 +169,7 @@ export function PluginInstallDialog({
       .mutateAsync({
         path: { pluginId: current.pluginId, sessionId: current.session.id },
         query: { wakerId, versionId: current.versionId },
+        body: current.context,
       })
       .then(() => undefined)
       .catch((error: unknown) => {
@@ -170,6 +185,15 @@ export function PluginInstallDialog({
     // 关闭立即生效；取消请求独立完成，晚到的 start 回执也走同一清理入口。
     void cancelAttempt().catch(() => undefined);
   }
+  const onUnmount = useEffectEvent(() => abandonAuthorization());
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      intent.current = null;
+      onUnmount();
+    };
+  }, []);
   function close() {
     abandonAuthorization();
     onClose();
@@ -180,20 +204,63 @@ export function PluginInstallDialog({
   ) {
     const id = current.plugin?.id ?? "";
     const selectedVersion =
-      current.resolvedVersionId ?? current.versions?.[0]?.id;
-    const session = await authorization.mutateAsync({
-      path: { pluginId: id },
-      query: { wakerId, versionId: selectedVersion },
-      body: { additionalScopes },
-    });
-    attempt.current = { pluginId: id, versionId: selectedVersion, session };
-    if (!alive.current) await cancelAttempt();
+      current.resolvedVersionId ?? current.versions?.[0]?.id ?? "";
+    setStartingAuthorization(true);
+    try {
+      const accountOptions = getPluginAuthorizationOptions(
+        withLocalErrorSurface({
+          path: { pluginId: id },
+          query: { wakerId, versionId: selectedVersion },
+        }),
+      );
+      // 首次准备会同时发布插件事件；上下文读取与事件共用 owner，旧 GET 被替换后继续等待最新事实。
+      await refreshQueryFromEvent(client, accountOptions.queryKey, () =>
+        client.fetchQuery({ ...accountOptions, staleTime: 0 }),
+      );
+      const state = client.getQueryState<GetPluginAuthorizationResponse>(
+        accountOptions.queryKey,
+      );
+      if (state?.status === "error") throw state.error;
+      const context = pluginAccountContext(state?.data);
+      if (!context) throw new Error(t("failed"));
+      if (!alive.current) return;
+      const session = await authorization.mutateAsync({
+        path: { pluginId: id },
+        query: { wakerId, versionId: selectedVersion },
+        body: { ...context, additionalScopes },
+      });
+      attempt.current = {
+        pluginId: id,
+        versionId: selectedVersion,
+        context,
+        session,
+      };
+      if (!alive.current) await cancelAttempt();
+    } finally {
+      if (alive.current) setStartingAuthorization(false);
+    }
   }
   async function restartAuthorization(additionalScopes: string[]) {
-    await cancelAttempt();
-    if (!alive.current || !detail) return;
-    await startAuthorization(detail, additionalScopes);
-    if (alive.current) await invalidatePluginQueries(client);
+    if (locked.current || !alive.current || !detail) return;
+    locked.current = true;
+    try {
+      await cancelAttempt();
+      if (!alive.current) return;
+      await startAuthorization(detail, additionalScopes);
+      if (alive.current) {
+        await invalidatePluginQueries(client);
+        setResumeError(undefined);
+      }
+    } catch (error) {
+      // 账号上下文读取同样属于这次重试，不能让首个失败遮住最新错误。
+      if (alive.current && !isCancelledError(error)) setResumeError(error);
+    } finally {
+      locked.current = false;
+      if (changedWhileLocked.current && intent.current && alive.current) {
+        changedWhileLocked.current = false;
+        void continueInstallation();
+      }
+    }
   }
   const install = useMutation({
     ...withLocalErrorMutation(installPluginMutation()),
@@ -216,7 +283,35 @@ export function PluginInstallDialog({
         onClose();
     },
   });
-  async function installReady(current: PluginDetail) {
+  const readConfiguration = (current: PluginDetail) =>
+    client.fetchQuery({
+      ...getPluginConfigurationOptions(
+        withLocalErrorSurface({
+          path: { pluginId: current.plugin?.id ?? "" },
+          query: {
+            wakerId,
+            versionId:
+              current.resolvedVersionId ?? current.versions?.[0]?.id ?? "",
+          },
+        }),
+      ),
+      staleTime: 0,
+    });
+  const missingConfiguration = (
+    configuration: GetPluginConfigurationResponse,
+  ) =>
+    configuration.fields?.some(
+      (field) =>
+        field.required &&
+        field.key &&
+        (field.secret
+          ? !configuration.configuredSecrets?.includes(field.key)
+          : !(configuration.values?.[field.key] ?? field.default)?.trim()),
+    );
+  async function installReady(
+    current: PluginDetail,
+    preflight?: GetPluginConfigurationResponse,
+  ) {
     if (!alive.current || !intent.current) return;
     if (authorizeOnly) {
       if (current.account?.available) {
@@ -227,7 +322,10 @@ export function PluginInstallDialog({
       }
       return;
     }
-    if (!current.ready) return;
+    const configuration = preflight ?? (await readConfiguration(current));
+    if (!configuration.ready) return;
+    const accountContext = pluginAccountContext(configuration);
+    if (!accountContext) throw new Error(t("failed"));
     const targets = intent.current.filter(
       (id) => !current.installations?.some((item) => item.wakerId === id),
     );
@@ -240,14 +338,30 @@ export function PluginInstallDialog({
       body: {
         versionId: current.resolvedVersionId ?? current.versions?.[0]?.id ?? "",
         wakerIds: targets,
-        expectedConfigurationRevision: current.configurationRevision ?? 0,
+        expectedConfigurationRevision:
+          accountContext.expectedConfigurationRevision,
+        expectedAccountGeneration: accountContext.expectedAccountGeneration,
       },
     });
   }
   async function resume() {
     if (!intent.current || !pluginId || !alive.current) return;
     try {
-      await client.fetchQuery({ ...options, staleTime: 0 });
+      const current = await client.fetchQuery({ ...options, staleTime: 0 });
+      if (phase === "configuration") {
+        const configuration = await readConfiguration(current);
+        if (
+          !configuration.ready &&
+          !missingConfiguration(configuration) &&
+          pluginHasAuthorization(
+            pluginInstalledVersion(current, wakerId)?.package,
+          )
+        ) {
+          setPhase("authorization");
+          await startAuthorization(current);
+          return;
+        }
+      }
       await continueInstallation();
     } catch (error) {
       if (alive.current && !isCancelledError(error)) setResumeError(error);
@@ -290,8 +404,13 @@ export function PluginInstallDialog({
         onPluginSnapshot();
     });
   }, [client, queryHash]);
+  const catalogUnavailable = Boolean(
+    !detail &&
+    catalogRead &&
+    (!catalog || catalogRead.pending || catalogRead.error),
+  );
   async function submit() {
-    if (locked.current) return;
+    if (locked.current || catalogUnavailable) return;
     locked.current = true;
     intent.current = selected;
     setResumeError(undefined);
@@ -300,16 +419,25 @@ export function PluginInstallDialog({
       if (!current && catalog?.key) {
         current = await prepare.mutateAsync({
           path: { key: catalog.key },
-          body: { ownerWakerId: "", trustConfirmed: true },
+          body: {
+            trustConfirmed: true,
+            expectedArchiveSHA256: catalog.archiveSHA256,
+          },
         });
         if (!alive.current) return;
         setPrepared(current);
       }
       if (!current) return;
+      const configuration = await readConfiguration(current);
+      if (!authorizeOnly && missingConfiguration(configuration)) {
+        setPhase("configuration");
+        return;
+      }
       if (authorizeOnly && current.account?.available) {
         setPhase("authorization");
         await installReady(current);
-      } else if (current.ready && !authorizeOnly) await installReady(current);
+      } else if (configuration.ready && !authorizeOnly)
+        await installReady(current, configuration);
       else if (
         pluginHasAuthorization(
           current.versions?.find(
@@ -353,6 +481,7 @@ export function PluginInstallDialog({
   const pending =
     prepare.isPending ||
     install.isPending ||
+    startingAuthorization ||
     authorization.isPending ||
     cancellation.isPending;
   const complete = authorizeOnly
@@ -378,9 +507,11 @@ export function PluginInstallDialog({
           authorizeOnly || (phase === "authorization" && !complete)
             ? "authorizeNamed"
             : "installNamed",
-          { name: pluginDisplayName(pkg, detail?.plugin?.name) },
+          {
+            name: pluginDisplayName(pkg, detail?.plugin?.name ?? preview?.name),
+          },
         )}
-        description={pluginSummary(pkg)}
+        description={pluginSummary(pkg, preview?.description)}
         visual={
           <div className="flex items-center gap-5 pb-2">
             <span className="bg-surface-subtle grid size-14 place-items-center rounded-lg">
@@ -396,7 +527,12 @@ export function PluginInstallDialog({
               />
             </span>
             <Plus className="size-icon-lg text-content-caption" />
-            <PluginIcon pkg={pkg} hero />
+            <PluginIcon
+              pkg={pkg}
+              icon={pkg ? undefined : preview?.icon}
+              icons={pkg ? undefined : preview?.icons}
+              hero
+            />
           </div>
         }
       >
@@ -423,7 +559,9 @@ export function PluginInstallDialog({
                     />
                   </div>
                   <Button
+                    aria-busy={catalogRead?.pending || undefined}
                     disabled={
+                      catalogUnavailable ||
                       pending ||
                       query.isError ||
                       query.isFetching ||
@@ -433,39 +571,64 @@ export function PluginInstallDialog({
                     }
                     onClick={() => void submit()}
                   >
+                    {catalogRead?.pending && (
+                      <LoaderCircle
+                        aria-hidden="true"
+                        className="motion-safe:animate-spin"
+                      />
+                    )}
                     {pending
                       ? t("busy")
                       : authorizeOnly
                         ? t("authorize")
                         : results
                           ? t("retry")
-                          : detail?.ready
-                            ? t("install")
-                            : t("continue")}
+                          : t("continue")}
                   </Button>
                 </div>
               ) : null}
+              {catalogRead?.error && (
+                <StatusNotice
+                  role="alert"
+                  className="flex flex-wrap items-center gap-3"
+                >
+                  <p className="min-w-0 flex-1 break-words">
+                    {localApiErrorMessage(catalogRead.error, t("failed"))}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={catalogRead.pending}
+                    onClick={catalogRead.onRetry}
+                  >
+                    {t("retry")}
+                  </Button>
+                </StatusNotice>
+              )}
               {query.isError && (
                 <QueryState
                   error={query.error}
                   onRetry={() => void query.refetch()}
                 />
               )}
-              {phase === "authorization" && pluginId && !results && (
-                <PluginAuthPanel
-                  preferredAction={pluginPreferredAuthAction(pkg)}
-                  installation
-                  starting={authorization.isPending || cancellation.isPending}
-                  pluginId={pluginId}
-                  wakerId={wakerId}
-                  versionId={version?.id}
-                  onRestart={restartAuthorization}
-                  onReady={() => {
-                    attempt.current = null;
-                    void resume();
-                  }}
-                />
-              )}
+              {phase === "authorization" &&
+                pluginId &&
+                version?.id &&
+                !results && (
+                  <PluginAuthPanel
+                    preferredAction={pluginPreferredAuthAction(pkg)}
+                    installation
+                    starting={startingAuthorization || cancellation.isPending}
+                    pluginId={pluginId}
+                    wakerId={wakerId}
+                    versionId={version?.id}
+                    onRestart={restartAuthorization}
+                    onReady={() => {
+                      attempt.current = null;
+                      void resume();
+                    }}
+                  />
+                )}
               {phase === "configuration" && detail && (
                 <PluginConfigurationEditor
                   detail={detail}

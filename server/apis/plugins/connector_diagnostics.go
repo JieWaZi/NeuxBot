@@ -18,6 +18,8 @@ type connectorDiagnostic struct {
 	Connector mcp.ConnectorResource
 	// Revision 固定探测使用的共享配置修订。
 	Revision int64
+	// AccountGeneration 固定本次探测的独立账号代次。
+	AccountGeneration int64
 	// BridgeDigest 固定本次使用的声明式身份桥接。
 	BridgeDigest string
 	// AccountID 固定核验后的公开账号身份。
@@ -67,11 +69,15 @@ func (s *connectorDiagnosticStore) apply(ctx context.Context, ctxVersion models.
 	if !exists {
 		return nil
 	}
-	config, err := global.PluginControllerManager.Configuration(ctx, ctxVersion.PluginID)
+	revision, err := global.PluginControllerManager.ConfigurationRevision(ctx, ctxVersion.PluginID)
 	if err != nil {
 		return err
 	}
-	valid := entry.Revision == config.Revision
+	generation, err := global.PluginControllerManager.AccountGeneration(ctx, ctxVersion.PluginID)
+	if err != nil {
+		return err
+	}
+	valid := entry.Revision == revision && entry.AccountGeneration == generation
 	if entry.BridgeDigest != "" {
 		account := authorization.Account{}
 		if global.PluginBridges != nil {

@@ -123,6 +123,7 @@ function projectOneTeamMember({
         threadMember?.permissionLevel ?? channelMember?.permissionLevel,
       ) ?? "auto",
     reasoning: threadMember?.reasoning ?? channelMember?.reasoning ?? "",
+    fast: threadMember ? threadMember.fast : channelMember?.fast,
     runtimeId: threadMember?.runtimeId ?? channelMember?.runtimeId ?? "",
     taskStatus,
     waitingApproval:

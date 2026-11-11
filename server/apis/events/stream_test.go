@@ -378,3 +378,12 @@ func TestResourceFailureCarriesStableCodeAndRetryability(t *testing.T) {
 		t.Fatal("恢复未在原物理连接内建立权威订阅")
 	}
 }
+
+func TestUsageSubscriptionUsesGlobalAuthority(t *testing.T) {
+	if _, err := decodeControl([]byte(`{"type":"subscribe","requestId":"usage","topic":"usage","resource":{"kind":"global"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decodeControl([]byte(`{"type":"subscribe","requestId":"usage","topic":"usage","resource":{"kind":"account","id":"another"}}`)); err == nil {
+		t.Fatal("usage accepted a private resource without an authority contract")
+	}
+}

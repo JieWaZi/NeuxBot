@@ -38,12 +38,15 @@ export function RadioGroupItem({
   );
 }
 
-/** 分层选择浮层中的整行单选项，选中标记固定在右侧。 */
+/** 分层选择浮层中的整行单选项。 */
 export function RadioGroupOption({
   children,
   className,
+  leadingIndicator = false,
   ...props
-}: ComponentProps<typeof RadioGroupPrimitive.Item>) {
+}: ComponentProps<typeof RadioGroupPrimitive.Item> & {
+  leadingIndicator?: boolean;
+}) {
   return (
     <RadioGroupPrimitive.Item
       className={cn(
@@ -52,10 +55,22 @@ export function RadioGroupOption({
       )}
       {...props}
     >
+      {leadingIndicator ? (
+        <span
+          aria-hidden
+          className="border-field-border size-icon-sm grid shrink-0 place-items-center rounded-full border"
+        >
+          <RadioGroupPrimitive.Indicator className="bg-control-highlight text-control-highlight-foreground grid size-full place-items-center rounded-full">
+            <Check className="size-icon-xs" strokeWidth={1.5} />
+          </RadioGroupPrimitive.Indicator>
+        </span>
+      ) : null}
       <span className="min-w-0 flex-1">{children}</span>
-      <RadioGroupPrimitive.Indicator className="shrink-0">
-        <Check className="size-icon-sm" strokeWidth={1.5} />
-      </RadioGroupPrimitive.Indicator>
+      {leadingIndicator ? null : (
+        <RadioGroupPrimitive.Indicator className="text-accent-content shrink-0">
+          <Check className="size-icon-sm" strokeWidth={1.5} />
+        </RadioGroupPrimitive.Indicator>
+      )}
     </RadioGroupPrimitive.Item>
   );
 }

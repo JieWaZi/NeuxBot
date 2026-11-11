@@ -55,6 +55,11 @@ test("原生依赖裁剪使用打包器的真实过滤规则，保留运行文�
           `${platform}-${arch}: ${file}`,
         );
       for (const file of [
+        "node-pty/lib/index.js.map",
+        "node-pty/lib/unixTerminal.test.js",
+        "node-pty/lib/unixTerminal.test.js.map",
+        "node-pty/lib/worker/conoutSocketWorker.js.map",
+        "node-pty/lib/worker/conoutSocketWorker.test.js",
         "node-pty/build/config.gypi",
         "node-pty/build/Debug/pty.node",
         "node-pty/build/Release/conpty.lib",

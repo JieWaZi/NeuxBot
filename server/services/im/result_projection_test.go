@@ -24,7 +24,7 @@ func TestResultProjectionSkipsDeletedChatWithoutChangingDeliveryHistory(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	link := models.IMConversationLink{ID: "deleted-result-link", BindingID: binding.ID, ChatID: chatID, Configuration: binding, EventCursor: 17, PendingReportIDs: []string{"previous-report"}}
+	link := models.IMConversationLink{ID: "deleted-result-link", BindingID: binding.ID, ChatID: chatID, Configuration: models.IMConversationConfiguration{WakerID: binding.WakerID, ChannelID: binding.ChannelID, ProjectID: binding.ProjectID, WorkingDirectory: binding.WorkingDirectory, Options: binding.Options}, EventCursor: 17, PendingReportIDs: []string{"previous-report"}}
 	if err := service.config.Store.SaveLink(ctx, link); err != nil {
 		t.Fatal(err)
 	}

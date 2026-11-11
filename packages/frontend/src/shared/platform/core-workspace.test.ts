@@ -33,6 +33,72 @@ const resource = {
   mediaType: "text/plain",
 };
 describe("Core 文件和 Git 适配", () => {
+  it("分支候选不把普通目录下的子仓库当成当前工作目录", async () => {
+    vi.mocked(api.openDraftScope).mockResolvedValue({ data: scope } as never);
+    vi.mocked(api.gitStatus).mockResolvedValue({
+      data: {
+        isRepo: true,
+        root: "/workspace/child-repo",
+        branch: "HEAD (no branch)",
+        repositories: ["/workspace/child-repo", "/workspace/other-repo"],
+        entries: [],
+      },
+    } as never);
+    const { git } = createCoreWorkspaceServices(platform().host);
+    await expect(
+      git.list_workspace_git_repositories({ roots: ["/workspace"] }),
+    ).resolves.toEqual({ repositories: [] });
+  });
+  it("分支候选只保留目录自身仓库，真实分离头状态仍可展示", async () => {
+    vi.mocked(api.openDraftScope).mockResolvedValue({ data: scope } as never);
+    vi.mocked(api.gitStatus).mockResolvedValue({
+      data: {
+        isRepo: true,
+        root: "/workspace",
+        branch: "HEAD (no branch)",
+        repositories: ["/workspace", "/workspace/child-repo"],
+        entries: [],
+      },
+    } as never);
+    const { git } = createCoreWorkspaceServices(platform().host);
+    await expect(
+      git.list_workspace_git_repositories({ roots: ["/workspace"] }),
+    ).resolves.toEqual({
+      repositories: [
+        {
+          directory: "/workspace",
+          gitRoot: "/workspace",
+          label: "workspace",
+          branch: "HEAD (no branch)",
+        },
+      ],
+    });
+  });
+  it("分支候选按 Core 确认的真实目录匹配符号链接并去重", async () => {
+    vi.mocked(api.openDraftScope).mockResolvedValue({ data: scope } as never);
+    vi.mocked(api.gitStatus).mockResolvedValue({
+      data: {
+        isRepo: true,
+        root: "/workspace",
+        branch: "main",
+        repositories: ["/workspace", "/workspace/child-repo"],
+        entries: [],
+      },
+    } as never);
+    const { git } = createCoreWorkspaceServices(platform().host);
+    await expect(
+      git.list_workspace_git_repositories({ roots: ["/alias", "/workspace"] }),
+    ).resolves.toEqual({
+      repositories: [
+        {
+          directory: "/workspace",
+          gitRoot: "/workspace",
+          label: "workspace",
+          branch: "main",
+        },
+      ],
+    });
+  });
   it("共享进行中的范围请求，Core 恢复后重新授权", async () => {
     vi.mocked(api.openScope).mockResolvedValue({ data: scope } as never);
     const { workspace } = createCoreWorkspaceServices(platform().host);

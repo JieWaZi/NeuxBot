@@ -13,38 +13,40 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
-func pluginAuthorizer(ctx context.Context, id, waker string, selectedVersion ...string) (*authorization.Authorizer, *packageplugin.Authentication, error) {
+func pluginAuthorizer(ctx context.Context, id, waker, selectedVersion string, expected PluginAccountRequest) (*authorization.Authorizer, *packageplugin.Authentication, error) {
 	resource, err := visiblePlugin(ctx, id, waker)
 	if err != nil {
 		return nil, nil, err
 	}
-	versions, err := global.PluginControllerManager.Versions(ctx, resource.ID)
+	if selectedVersion == "" {
+		return nil, nil, status_error.BadRequest
+	}
+	version, err := global.PluginControllerManager.Version(ctx, selectedVersion)
 	if err != nil {
 		return nil, nil, err
 	}
-	if len(versions) == 0 {
-		return nil, nil, status_error.PluginNotFound
+	if version.PluginID != resource.ID {
+		return nil, nil, status_error.PluginVersionConflict
 	}
-	version := versions[0]
-	if len(selectedVersion) > 0 && selectedVersion[0] != "" {
-		found := false
-		for _, candidate := range versions {
-			if candidate.ID == selectedVersion[0] {
-				version = candidate
-				found = true
-				break
-			}
-		}
-		if !found {
-			return nil, nil, status_error.PluginVersionConflict
-		}
+	if err := packageplugin.ValidateContract(version.Package); err != nil {
+		return nil, nil, err
 	}
 	if _, err := packageplugin.ClientExtension(version.Package); err != nil {
 		return nil, nil, err
 	}
 	if declaration := version.Package.Integration.Authentication; declaration != nil {
-		auth, _, err := installationService().Bridge(version)
-		return auth, declaration, err
+		auth, bridge, err := installationService().Bridge(ctx, version)
+		if err != nil {
+			return nil, nil, err
+		}
+		operation := bridge.OperationContext()
+		if operation.ConfigurationRevision != expected.ExpectedConfigurationRevision {
+			return nil, nil, status_error.PluginConfigurationConflict
+		}
+		if operation.AccountGeneration != expected.ExpectedAccountGeneration {
+			return nil, nil, status_error.PluginAccountConflict
+		}
+		return auth, declaration, nil
 	}
 	return nil, nil, status_error.PluginNotReady
 }
@@ -98,7 +100,7 @@ func removePluginReferences(ctx context.Context, plugin, waker string, versions 
 			}
 			if "plugin:"+version.PluginID == provider {
 				var bridgeErr error
-				auth, _, bridgeErr = installationService().Bridge(version)
+				auth, _, bridgeErr = installationService().Bridge(ctx, version)
 				if bridgeErr != nil {
 					return bridgeErr
 				}
@@ -156,6 +158,9 @@ func removePluginReferences(ctx context.Context, plugin, waker string, versions 
 func providerNames(versions []models.PluginVersion) []string {
 	providers := []string{}
 	for _, version := range versions {
+		if err := packageplugin.ValidateContract(version.Package); err != nil {
+			continue
+		}
 		// 无效旧声明无法再取得桥接，清理不能重新启动已移除的供应商认证。
 		if _, err := packageplugin.ClientExtension(version.Package); err != nil {
 			continue

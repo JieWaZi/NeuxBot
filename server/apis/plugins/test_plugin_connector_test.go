@@ -20,7 +20,8 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-	"github.com/JieWaZi/NeuxBot/server/internal/agent/native"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/agentfixture"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
@@ -74,13 +75,13 @@ func TestPluginConnectorProbeUsesSharedAuthorizationAndOnlyDiscoversTools(t *tes
 					t.Fatal(err)
 				}
 			}
-			write(".codex-plugin/plugin.json", `{"name":"probe","version":"1.0.0"}`)
-			write(".mcp.json", fmt.Sprintf(`{"mcpServers":{"service":{"type":"http","url":%q}}}`, remote.URL))
-			write(".neuxally/integration.json", fmt.Sprintf(`{"authentication":{"strategy":"plugin-command","protocol":"neuxally-auth/1","command":"node","args":["bridge.mjs"],"bindings":[{"runtime":"codex","server":"service","url":%q,"header":"Authorization"}]}}`, remote.URL))
+			write("plugin.json", fmt.Sprintf(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"probe","version":"1.0.0","extensions":{"com.neuxbot":{"schemaVersion":1,"authentication":{"strategy":"plugin-command","protocol":"neuxbot-auth/1","command":"node","args":["bridge.mjs"],"bindings":[{"runtime":"codex","server":"service","url":%q,"header":"Authorization"}]}}}}`, remote.URL))
+			write("mcp.json", fmt.Sprintf(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"service":{"type":"streamable-http","url":%q}}}`, remote.URL))
 			write("bridge.mjs", fmt.Sprintf(`import readline from 'node:readline';import {existsSync} from 'node:fs';import path from 'node:path';
 for await(const line of readline.createInterface({input:process.stdin})){
 const r=JSON.parse(line);let result;
-if(r.method==='auth/status')result={state:'authorized',account:{configured:true,available:%t&&!existsSync(path.join(r.params.dataDirectory,'revoked')),id:'probe-user',scopes:[]}};
+if(r.method==='auth/initialize')result={protocol:'neuxbot-auth/1',context:r.params};
+else if(r.method==='auth/status')result={state:'authorized',account:{configured:true,available:%t&&!existsSync(path.join(r.params.dataDirectory,'revoked')),id:'probe-user',scopes:[]}};
 else if(r.method==='auth/resolve')result={bindings:r.params.components.map(c=>({componentId:c.componentId,headers:{Authorization:'Bearer probe-private-token'}}))};
 else throw Error('unexpected authorization action');
 console.log(JSON.stringify({jsonrpc:'2.0',id:r.id,result}));}`, authorized))
@@ -88,7 +89,7 @@ console.log(JSON.stringify({jsonrpc:'2.0',id:r.id,result}));}`, authorized))
 			if err != nil {
 				t.Fatal(err)
 			}
-			detail, err := prepareCatalogFixture(t, ctx, stage, "", "", true)
+			detail, err := prepareCatalogFixture(t, ctx, stage, "", true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -102,7 +103,7 @@ console.log(JSON.stringify({jsonrpc:'2.0',id:r.id,result}));}`, authorized))
 						t.Error(err)
 						return
 					}
-					auth, _, err := installationService().Bridge(version)
+					auth, _, err := installationService().Bridge(context.Background(), version)
 					if err != nil {
 						t.Error(err)
 						return
@@ -122,7 +123,7 @@ console.log(JSON.stringify({jsonrpc:'2.0',id:r.id,result}));}`, authorized))
 					if err != nil {
 						t.Fatal(err)
 					}
-					if _, _, err := installationService().Bridge(version); err != nil {
+					if _, _, err := installationService().Bridge(context.Background(), version); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -202,7 +203,7 @@ func TestPluginDiagnosticRedactsArgumentAndQueryTokens(t *testing.T) {
 	}
 }
 
-func TestPluginConnectorProbeKeepsOwnedSourceWhenNativeReferenceExists(t *testing.T) {
+func TestPluginConnectorProbeUsesFixedStandardSource(t *testing.T) {
 	ctx := pluginAPIContext(t)
 	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "owned", Version: "1"}, nil)
 	mcpsdk.AddTool[map[string]any, any](server, &mcpsdk.Tool{Name: "owned_search"}, func(context.Context, *mcpsdk.CallToolRequest, map[string]any) (*mcpsdk.CallToolResult, any, error) {
@@ -212,11 +213,8 @@ func TestPluginConnectorProbeKeepsOwnedSourceWhenNativeReferenceExists(t *testin
 	defer remote.Close()
 	source := t.TempDir()
 	for name, body := range map[string]string{
-		".codex-plugin/plugin.json":        `{"name":"owned-native","version":"1.0.0"}`,
-		".mcp.json":                        fmt.Sprintf(`{"mcpServers":{"owned":{"type":"http","url":%q}}}`, remote.URL),
-		".neuxally/integration.json":       `{"nativePlugins":{"codex":{"path":"native"}}}`,
-		"native/.codex-plugin/plugin.json": `{"name":"native","version":"1.0.0"}`,
-		"native/.mcp.json":                 `{"mcpServers":{"other":{"command":"node","args":["other.mjs"]}}}`,
+		"plugin.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"owned","version":"1.0.0"}`,
+		"mcp.json":    fmt.Sprintf(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"owned":{"type":"streamable-http","url":%q}}}`, remote.URL),
 	} {
 		path := filepath.Join(source, name)
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
@@ -230,7 +228,7 @@ func TestPluginConnectorProbeKeepsOwnedSourceWhenNativeReferenceExists(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	detail, err := prepareCatalogFixture(t, ctx, stage, "", "", true)
+	detail, err := prepareCatalogFixture(t, ctx, stage, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,68 +242,73 @@ func TestPluginConnectorProbeKeepsOwnedSourceWhenNativeReferenceExists(t *testin
 	}
 }
 
-// connectorProbeSession 模拟可热续聊的原生协议边界，不接触真实 CLI 或账号。
+// connectorProbeSession records actual closure by the production thread lifecycle.
 type connectorProbeSession struct {
-	// closed 记录原生连接实际退出次数。
+	// closed counts native fixture exits.
 	closed int
-}
-
-func (d *connectorProbeSession) Open(context.Context, native.OpenRequest) (agentapi.NativeConnection, error) {
-	return d, nil
-}
-func (d *connectorProbeSession) Close(context.Context) error                { d.closed++; return nil }
-func (*connectorProbeSession) Accept(context.Context, agentapi.Event) error { return nil }
-func (*connectorProbeSession) Prompt(ctx context.Context, _ native.TurnRequest, sink native.EventSink) native.TurnResult {
-	_ = sink.Accept(ctx, native.Event{Kind: native.EventPromptAccepted})
-	_ = sink.Accept(ctx, native.Event{Kind: native.EventAssistantMessage, Message: &native.AssistantMessage{MessageID: "answer", Phase: native.PhaseFinal, Delta: "done", Complete: true}})
-	return native.TurnResult{Status: native.StatusCompleted, StopReason: native.StopEndTurn, NativeSession: native.NativeSessionInfo{Handle: "probe-session", Resumable: true}}
 }
 
 func retainProbeConsumer(t *testing.T, pluginID string, active bool) *connectorProbeSession {
 	t.Helper()
+	ctx := t.Context()
 	driver := &connectorProbeSession{}
-	host := agentapi.NewManager(agentapi.ManagerConfig{
-		Launch: func(agentapi.RuntimeTarget, agentapi.DetectionResult) (agentapi.LaunchFacts, error) {
-			return agentapi.LaunchFacts{BaseRuntimeID: "codex", Executable: "fixture"}, nil
+	store, err := conversation.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	providers := agentapi.NewProviderRuntime(agentapi.ProviderRuntimeOptions{
+		AcquireAccount: func(context.Context, agentapi.AccountRequest) (agentapi.AccountLease, error) {
+			return agentapi.AccountLease{}, nil
 		},
-		Open: func(ctx context.Context, _ native.ConnectionConfig, request native.OpenRequest) (agentapi.NativeConnection, error) {
-			return driver.Open(ctx, request)
+		NewClient: func(context.Context, agentapi.AccountRequest, agentapi.ProviderLaunch, agentapi.AccountLease, agentapi.LaunchAuthLease, agentapi.ResourceLease, agentapi.AgentClientCallbacks) (agentapi.ProviderClient, error) {
+			return &agentfixture.Client{
+				OnClose:  func(context.Context) error { driver.closed++; return nil },
+				OnPrompt: func(context.Context, agentapi.AgentPromptRequest) (*string, error) { return nil, nil },
+			}, nil
 		},
 	})
-	previous := global.AgentManager
-	global.AgentManager = host
-	t.Cleanup(func() { _ = host.Close(context.Background()); global.AgentManager = previous })
-	target := agentapi.RuntimeTarget{RuntimeID: "codex", Isolated: true}
-	plan := agentapi.SessionPlan{
-		Target:      agentapi.DeclareTarget(target),
-		Detection:   agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{ID: "codex", BaseRuntimeID: "codex"}},
-		Workspace:   agentapi.Workspace{Path: t.TempDir(), Managed: true},
-		ResourceKey: "plugin-resources", PluginIDs: []string{pluginID},
+	host := agentapi.NewThreadLifecycle(providers, store)
+	previous := global.AgentThreads
+	global.AgentThreads = host
+	t.Cleanup(func() {
+		_ = host.Close(context.Background())
+		_ = providers.Close(context.Background())
+		store.Close()
+		global.AgentThreads = previous
+	})
+	const chatID = "fixture-chat"
+	request := agentapi.ThreadRequest{ChatID: chatID, Connection: agentapi.ProviderConnectionRequest{
+		Account:   agentapi.AccountRequest{Provider: "workbuddy", AccountID: agentapi.SystemAccountID, Subject: "fixture", CWD: t.TempDir()},
+		Resources: agentapi.ResourceSelection{Plugins: map[string]string{pluginID: "fixture"}},
+	}}
+	ports := agentapi.TurnPorts{
+		Admit: func(context.Context, agentapi.TurnAdmission) (agentapi.ConversationBatch, error) {
+			return agentapi.ConversationBatch{ChatID: chatID, Key: "created", Changes: []agentapi.ConversationChange{{Fact: &agentapi.ChatFact{Type: constants.ChatEventTypeCreated, Data: json.RawMessage("{}")}}}}, nil
+		},
+		AcquireResources: func(context.Context, agentapi.ResourceSelection) (agentapi.ResourceLease, error) {
+			_, release, err := global.PluginBridges.AcquireIdentity(pluginID)
+			if err != nil {
+				return agentapi.ResourceLease{}, err
+			}
+			return agentapi.ResourceLease{Close: func(context.Context) error { release(); return nil }}, nil
+		},
 	}
-	ctx := context.Background()
-	prepared, err := host.PrepareSession(ctx, plan, agentapi.SessionDirective{Mode: agentapi.SessionModeNew})
+	input := agentapi.TurnRequest{HostInvocationID: "first-input", ExecutionID: "first-execution", AssistantMessageID: "first-answer", Text: "hello"}
+	turn, err := host.Prepare(ctx, request, input, ports)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer prepared.Close(ctx)
-	_, release, err := global.PluginBridges.AcquireIdentity(pluginID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(release)
-	if err := prepared.Bind(ctx, agentapi.SessionResources{Target: target, PluginResources: []packageplugin.Snapshot{{ID: pluginID}}, Close: func(context.Context) error { release(); return nil }}); err != nil {
-		t.Fatal(err)
-	}
-	result := prepared.Run(ctx, agentapi.TurnInput{Message: agentapi.Message{Text: "hello"}}, driver)
-	if result.Failure != nil || driver.closed != 0 {
+	result := turn.Run(ctx)
+	if result.Outcome == nil || result.Outcome.NativeFailure != nil || result.StorageError != nil || driver.closed != 0 {
 		t.Fatalf("hot consumer not retained: %+v closed=%d", result, driver.closed)
 	}
 	if active {
-		running, err := host.PrepareSession(ctx, plan, agentapi.SessionDirective{Mode: agentapi.SessionModeResume, ID: result.Session.OutputID})
+		input.HostInvocationID = "active-input"
+		running, err := host.Prepare(ctx, request, input, ports)
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { _ = running.Close(ctx) })
+		t.Cleanup(func() { _ = running.Close(context.Background()) })
 	}
 	return driver
 }

@@ -2,12 +2,10 @@ package plugins
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 
+	"github.com/JieWaZi/NeuxBot/server/apis/mcp"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
-	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
@@ -38,31 +36,28 @@ func (o *GetCatalogPluginConnector) Output(ctx *gin.Context) (interface{}, error
 	if (o.SourceCommit != "" && o.SourceCommit != entry.SourceCommit) || (o.ArchiveSHA256 != "" && o.ArchiveSHA256 != entry.ArchiveSHA256) {
 		return nil, ginx.WithStack(status_error.PluginVersionConflict)
 	}
-	// 优先读取固定摘要；旧目录缺少组件资料时，只临时展开该条目的已核验归档。
-	if entry.DetailsURL != "" {
-		details, err := catalog.ReadDetails(entry)
-		if err != nil {
-			return nil, ginx.WithStack(err)
-		}
-		entry.Package = details.ViewPackage("")
-	}
-	result, err := pluginConnectorResponse(entry.Package, o.ConnectorKey)
-	if entry.DetailsURL == "" && errors.Is(err, status_error.PluginContentInvalid) {
-		archive, resolveErr := catalog.ResolveEntry(global.PluginCatalogSource(), entry)
-		if resolveErr != nil {
-			return nil, ginx.WithStack(resolveErr)
-		}
-		stage, stageErr := packageplugin.StageSource(stagedRoot(), archive, entry.PackagePath)
-		if stageErr != nil {
-			return nil, ginx.WithStack(stageErr)
-		}
-		defer os.RemoveAll(filepath.Join(stagedRoot(), stage.Token))
-		result, err = pluginConnectorResponse(stage.Package, o.ConnectorKey)
-	}
+	details, err := catalog.ReadDetails(ctx.Request.Context(), entry)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	resource, lookupErr := global.PluginControllerManager.FindSource(ctx, "", entry.SourceKey)
+	// 公开资料已通过目录白名单校验，不包含安装包的配置与认证秘密绑定。
+	var result mcp.ConnectorResponse
+	found := false
+	for _, server := range details.Package.Servers {
+		if server.Key != o.ConnectorKey {
+			continue
+		}
+		result, err = pluginConnectorSummary(server)
+		if err != nil {
+			return nil, ginx.WithStack(err)
+		}
+		found = true
+		break
+	}
+	if !found {
+		return nil, ginx.WithStack(status_error.PluginContentInvalid)
+	}
+	resource, lookupErr := global.PluginControllerManager.FindSource(ctx, entry.SourceKey)
 	if lookupErr != nil && !errors.Is(lookupErr, status_error.PluginNotFound) {
 		return nil, ginx.WithStack(lookupErr)
 	}

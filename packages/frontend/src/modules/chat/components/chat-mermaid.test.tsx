@@ -26,6 +26,8 @@ vi.mock("@/shared/theme", () => ({
 
 let viewportWidth = 360;
 let viewportHeight = 600;
+let scrollbarWidth = 0;
+let scrollbarHeight = 0;
 const resizeCallbacks = new Set<() => void>();
 const layoutStyles = document.createElement("style");
 
@@ -47,14 +49,22 @@ function OverlayState() {
 beforeEach(() => {
   viewportWidth = 360;
   viewportHeight = 600;
+  scrollbarWidth = 0;
+  scrollbarHeight = 0;
   resizeCallbacks.clear();
   layoutStyles.textContent =
     ".p-4 { padding: 16px; } .pt-16 { padding-top: 64px; } .overflow-auto { overflow: auto; } .overflow-hidden { overflow: hidden; }";
   document.head.append(layoutStyles);
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
-    () => viewportWidth,
+    () => viewportWidth - scrollbarWidth,
   );
   vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(
+    () => viewportHeight - scrollbarHeight,
+  );
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(
+    () => viewportWidth,
+  );
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
     () => viewportHeight,
   );
   vi.stubGlobal(
@@ -83,6 +93,37 @@ afterEach(() => {
 });
 
 describe("Mermaid 阅读尺寸与隐藏生命周期", () => {
+  it("放大出现滚动条后适配基准保持稳定，反复缩放不触发布局反馈", async () => {
+    const user = userEvent.setup();
+    viewportWidth = 800;
+    viewportHeight = 400;
+    renderDiagram.mockResolvedValue({
+      svg: '<svg viewBox="0 0 1200 400" width="100%"></svg>',
+    });
+    render(<ChatMermaid code="scrollbar-boundary" />);
+    await user.click(await screen.findByRole("button", { name: "全屏查看" }));
+    const dialog = screen.getByRole("dialog", { name: "图形" });
+    const diagram = within(dialog).getByRole("img", {
+      name: "Mermaid diagram",
+    });
+    for (let index = 0; index < 3; index++) {
+      await user.click(within(dialog).getByRole("button", { name: "放大" }));
+      const enlargedWidth = diagram.parentElement?.style.width;
+      scrollbarWidth = 15;
+      scrollbarHeight = 15;
+      act(() => resizeCallbacks.forEach((callback) => callback()));
+      expect(diagram).toHaveStyle({ width: "768px", height: "256px" });
+      expect(diagram.parentElement?.style.width).toBe(enlargedWidth);
+      await user.click(within(dialog).getByRole("button", { name: "缩小" }));
+      scrollbarWidth = 0;
+      scrollbarHeight = 0;
+      act(() => resizeCallbacks.forEach((callback) => callback()));
+      expect(diagram.parentElement).toHaveStyle({
+        width: "768px",
+        height: "256px",
+      });
+    }
+  });
   it("隐藏 Scene 不绘制，恢复后首次绘制，再次切换复用已完成图形", async () => {
     const { rerender } = render(
       <ContentVisibility value={false}>

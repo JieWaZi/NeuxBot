@@ -105,8 +105,8 @@ export function WakerShowcaseCard({
   useEffect(() => {
     const node = cardRef.current;
     if (!node) return;
-    node.style.setProperty("--card-glow", appearance.glow);
-  }, [appearance.glow]);
+    node.style.setProperty("--card-glow", appearance.color);
+  }, [appearance.color]);
 
   useLayoutEffect(() => {
     const node = cardRef.current;
@@ -187,12 +187,17 @@ export function WakerShowcaseCard({
                     {t("detail.showcaseBack")}
                   </span>
                   <div className="ally-holo-card__figure">
-                    <CompanionAvatar
-                      activity={activity}
-                      avatar={resolvedAvatar}
-                      interactiveLabel={t("detail.showcaseTouch", { name })}
-                      interactiveTitle={t("detail.showcaseTouch", { name })}
-                    />
+                    <button
+                      type="button"
+                      data-avatar-hover
+                      aria-label={t("detail.showcaseTouch", { name })}
+                      className="focus-visible:ring-ring relative block size-full cursor-pointer rounded-lg outline-none focus-visible:ring-2"
+                    >
+                      <CompanionAvatar
+                        activity={activity}
+                        avatar={resolvedAvatar}
+                      />
+                    </button>
                   </div>
                 </div>
                 <div

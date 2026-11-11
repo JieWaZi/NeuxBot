@@ -1,4 +1,4 @@
-// Package cli 实现随应用交付的非交互命令客户端，不访问领域数据库。
+// Package cli implements the bundled noninteractive command client without accessing domain databases.
 package cli
 
 import (
@@ -22,9 +22,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// client 固定一次 CLI 进程读取的授权，不在失败后换用下一轮连接文件。
+// client freezes the grant read by one CLI process and never switches to the next turn's connection file after failure.
 type client struct {
-	// connection 是已经验证为本机固定入口的连接信息。
+	// connection holds connection data validated against the fixed local entry point.
 	connection capability.Connection
 }
 
@@ -79,31 +79,31 @@ func receiptPath(operation, requestID string) string {
 	return "/receipts?" + query.Encode()
 }
 
-// IO 显式注入进程流与连接文件位置，便于通过同一命令入口验证行为。
+// IO explicitly injects process streams and the connection-file path for verification through the same command entry point.
 type IO struct {
-	// In 只在显式 --input - 时读取。
+	// In is read only with explicit --input -.
 	In io.Reader
-	// Out 只输出成功结果或显式帮助。
+	// Out emits only successful results or explicitly requested help.
 	Out io.Writer
-	// Err 只输出单个结构化失败。
+	// Err emits only a single structured failure.
 	Err io.Writer
-	// ContextFile 是宿主注入的绝对连接文件路径。
-	ContextFile string
 }
 
-// runner 保存一次命令执行的输出与语法阶段。
+// runner holds output and syntax state for one command execution.
 type runner struct {
-	// streams 是显式进程输入输出。
+	// contextFile is supplied explicitly by the current command.
+	contextFile string
+	// streams contains the explicit process input and output streams.
 	streams IO
-	// entered 表示 Cobra 已完成路由和参数个数检查。
+	// entered reports whether Cobra has completed routing and argument count checks.
 	entered bool
-	// response 是要原样输出的规范回执。
+	// response is the canonical receipt to emit unchanged.
 	response capability.Response
-	// output 是仅 guide 支持的显式文本格式。
+	// output is the explicit text format supported only by guide.
 	output string
 }
 
-// Execute 运行一个无交互命令并返回退出码，不在内部终止进程。
+// Execute runs a noninteractive command and returns its exit code without terminating the process internally.
 func Execute(ctx context.Context, args []string, streams IO) int {
 	r := &runner{streams: streams, output: "json"}
 	root := r.root()
@@ -182,7 +182,7 @@ func failureExit(failure *capability.Failure) int {
 }
 
 func (r *runner) run(ctx context.Context, method, path string, payload any, mutation bool, timeout time.Duration) error {
-	connection, err := capability.ReadConnection(r.streams.ContextFile)
+	connection, err := capability.ReadConnection(r.contextFile)
 	if err != nil {
 		return err
 	}
@@ -196,7 +196,7 @@ func (r *runner) run(ctx context.Context, method, path string, payload any, muta
 
 func (r *runner) root() *cobra.Command {
 	root := &cobra.Command{Use: "allycli", Short: "Use capabilities authorized for the current NeuxBot execution", SilenceErrors: true, SilenceUsage: true, CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true}}
-	root.PersistentFlags().StringVar(&r.streams.ContextFile, "context", r.streams.ContextFile, "Use this execution-specific connection file")
+	root.PersistentFlags().StringVar(&r.contextFile, "context", "", "Use this execution-specific connection file")
 	root.AddCommand(r.mcpCommand())
 	root.RunE = func(cmd *cobra.Command, _ []string) error { r.entered = true; return status_error.AgentInputInvalid }
 	root.AddCommand(&cobra.Command{Use: "version", Args: cobra.NoArgs, RunE: func(_ *cobra.Command, _ []string) error {

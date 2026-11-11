@@ -45,6 +45,10 @@ type testExecutionBoundary struct {
 func (b *testExecutionBoundary) ValidateConfiguration(context.Context, execution.ExecutionConfiguration) error {
 	return b.invalid
 }
+func (b *testExecutionBoundary) ResolveConfiguration(_ context.Context, value execution.ExecutionConfiguration) (execution.ExecutionConfiguration, error) {
+	value.Resolved = true
+	return value, b.invalid
+}
 func (b *testExecutionBoundary) Start(_ context.Context, intent execution.WorkIntent) (execution.AcceptedExecution, error) {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()

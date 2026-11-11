@@ -4,6 +4,7 @@ import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
@@ -12,6 +13,30 @@ import (
 
 // 模型选项
 type RuntimeModelOption struct {
+	// 描述
+	Description string `json:"description,omitempty"`
+	// 分组标识
+	Group string `json:"group,omitempty"`
+	// 分组名称
+	GroupName string `json:"groupName,omitempty"`
+	// 免费模型
+	Free bool `json:"free,omitempty"`
+	// 积分倍率
+	CreditMultiplier *float64 `json:"creditMultiplier,omitempty"`
+	// 默认推理
+	DefaultReasoning string `json:"defaultReasoning,omitempty"`
+	// 当前上下文
+	ContextWindowTokens int64 `json:"contextWindowTokens,omitempty"`
+	// 最大上下文
+	MaxContextWindowTokens int64 `json:"maxContextWindowTokens,omitempty"`
+	// 默认上下文档位
+	DefaultContextWindow string `json:"defaultContextWindow,omitempty"`
+	// 可选上下文档位
+	ContextWindowOptions []RuntimeContextWindowOption `json:"contextWindowOptions,omitempty"`
+	// 支持 Fast
+	FastSupported bool `json:"fastSupported"`
+	// 原生默认 Fast
+	DefaultFast *bool `json:"defaultFast,omitempty"`
 	// 标识
 	ID string `json:"id"`
 	// 名称
@@ -30,6 +55,14 @@ type RuntimeReasoningOption struct {
 	ID string `json:"id"`
 	// 名称
 	Name string `json:"name"`
+}
+
+// 上下文窗口选项
+type RuntimeContextWindowOption struct {
+	// 原生档位标识
+	ID string `json:"id"`
+	// 窗口 token 数
+	Tokens int64 `json:"tokens"`
 }
 
 // 运行时诊断
@@ -68,7 +101,7 @@ type RuntimeOption struct {
 	Enabled bool `json:"enabled"`
 	// 是否默认
 	IsDefault bool `json:"isDefault"`
-	// 运行状态
+	// 最近探测结论
 	State string `json:"state"`
 	// 可执行文件是否已在当前探测环境中找到
 	Installed bool `json:"installed"`
@@ -78,30 +111,22 @@ type RuntimeOption struct {
 	ResolvedBinary string `json:"resolvedBinary"`
 	// 已发现及历史保存的安装实例
 	Installations []RuntimeInstallation `json:"installations"`
-	// 鉴权结论
+	// 最近鉴权探测结论
 	Auth string `json:"auth"`
 	// 默认模型
 	DefaultModel string `json:"defaultModel"`
 	// 默认推理
 	DefaultReasoning string `json:"defaultReasoning"`
+	// 默认 Fast
+	DefaultFast *bool `json:"defaultFast,omitempty"`
 	// 默认权限
 	DefaultPermissionLevel constants.PermissionLevel `json:"defaultPermissionLevel"`
-	// 自定义模型
-	CustomModels []string `json:"customModels"`
 	// 模型列表
 	Models []RuntimeModelOption `json:"models"`
 	// 推理选项
 	ReasoningOptions []RuntimeReasoningOption `json:"reasoningOptions"`
 	// 诊断信息
 	Diagnostics []RuntimeDiagnostic `json:"diagnostics"`
-	// 可执行路径
-	Binary string `json:"binary"`
-	// 前置参数
-	PrefixArgs []string `json:"prefixArgs"`
-	// 配置目录
-	ConfigHome string `json:"configHome"`
-	// 支持配置目录
-	ConfigHomeSupported bool `json:"configHomeSupported"`
 	// 探测时间
 	DetectedAt int64 `json:"detectedAt"`
 }
@@ -139,8 +164,18 @@ func (l *ListRuntimes) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
+	if global.RuntimeCatalog == nil {
+		return nil, ginx.WithStack(status_error.RuntimeUnavailable)
+	}
+	registered := make(map[string]struct{})
+	for _, summary := range global.RuntimeCatalog.Runtimes() {
+		registered[summary.ID] = struct{}{}
+	}
 	resources := make([]RuntimeOption, 0, len(environments))
 	for _, environment := range environments {
+		if _, exists := registered[environment.RuntimeID]; !exists {
+			continue
+		}
 		resources = append(resources, runtimeOption(environment))
 	}
 	return ListRuntimesResponse{Resources: resources, StartupDetectionPending: pending, StartupDetectionFailed: failed, StartupSetupRequired: setupRequired}, nil
@@ -148,13 +183,7 @@ func (l *ListRuntimes) Output(ctx *gin.Context) (interface{}, error) {
 
 func runtimeOption(environment models.RuntimeEnvironment) RuntimeOption {
 	detection := environment.Detection
-	defaultModel, defaultReasoning := agentapi.NormalizeDetectedDefaults(
-		detection,
-		environment.CustomModels,
-		environment.DefaultModel,
-		environment.DefaultReasoning,
-	)
-	availableModels := agentapi.AvailableModels(detection, environment.CustomModels)
+	availableModels := agentapi.AvailableModels(detection, nil)
 	detectedModelIDs := make(map[string]struct{}, len(detection.Models))
 	for _, model := range detection.Models {
 		detectedModelIDs[model.ID] = struct{}{}
@@ -197,17 +226,13 @@ func runtimeOption(environment models.RuntimeEnvironment) RuntimeOption {
 		ResolvedBinary:         detection.ResolvedBinary,
 		Installations:          runtimeInstallations(detection.Installations),
 		Auth:                   string(detection.Auth),
-		DefaultModel:           defaultModel,
-		DefaultReasoning:       defaultReasoning,
+		DefaultModel:           environment.DefaultModel,
+		DefaultReasoning:       environment.DefaultReasoning,
+		DefaultFast:            environment.DefaultFast,
 		DefaultPermissionLevel: environment.DefaultPermissionLevel,
-		CustomModels:           append([]string(nil), environment.CustomModels...),
 		Models:                 models,
 		ReasoningOptions:       reasoningOptions,
 		Diagnostics:            diagnostics,
-		Binary:                 environment.Binary,
-		PrefixArgs:             append([]string(nil), environment.PrefixArgs...),
-		ConfigHome:             environment.ConfigHome,
-		ConfigHomeSupported:    detection.Runtime.ConfigHomeEnvironmentVariable != "",
 		DetectedAt:             environment.DetectedAt,
 	}
 }

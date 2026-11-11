@@ -22,6 +22,8 @@ type CreateThreadInput struct {
 	WorkingDirectory string
 	// MentionWakerID 是结构化显式提及的一位可选成员。
 	MentionWakerID string
+	// ConfigurationResolved 表示成员选择已在上游接纳边界解析，合法空值不得重新继承默认。
+	ConfigurationResolved bool
 	// MemberConfigs 是本次新对话覆盖团队默认值的可选成员执行配置。
 	MemberConfigs []MemberExecutionConfigInput
 	// Input 是进入负责人 Chat 的首条用户输入。
@@ -40,6 +42,8 @@ type MemberExecutionConfigInput struct {
 	Model string
 	// Reasoning 是后续新执行使用的推理强度。
 	Reasoning string
+	// Fast 是后续新执行使用的加速选择；nil 保留原生默认。
+	Fast *bool
 	// PermissionLevel 是后续新执行使用的权限等级。
 	PermissionLevel constants.PermissionLevel
 }

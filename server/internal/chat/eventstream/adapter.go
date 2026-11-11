@@ -4,6 +4,7 @@ package eventstream
 import (
 	"encoding/json"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
@@ -36,6 +37,10 @@ type PublicEvent struct {
 	ErrorCode string `json:"errorCode,omitempty"`
 	// ErrorMessage 是失败时供用户诊断的简明说明。
 	ErrorMessage string `json:"errorMessage,omitempty"`
+	// ErrorMessageSource 明确区分公开原生原因与应用本地化正文；缺省时不得展示原始正文。
+	ErrorMessageSource constants.ErrorMessageSource `json:"errorMessageSource,omitempty"`
+	// ErrorParams 是稳定错误模板使用的安全参数。
+	ErrorParams map[string]interface{} `json:"errorParams,omitempty"`
 	// ApprovalRequest 是审批请求事件携带的安全交互内容。
 	ApprovalRequest *eventlog.ApprovalRequestedData `json:"approvalRequest,omitempty"`
 	// ApprovalResolution 是审批处理事件携带的安全权威结果。
@@ -129,6 +134,8 @@ func (a *Adapter) apply(record eventlog.Record, emit bool) (PublicEvent, error) 
 		event.ExecutionStatus = finished.Status
 		event.ErrorCode = finished.ErrorCode
 		event.ErrorMessage = finished.ErrorMessage
+		event.ErrorParams = finished.ErrorParams
+		event.ErrorMessageSource = finished.ErrorMessageSource
 	}
 	if record.Type == constants.ChatEventTypeApprovalRequested {
 		var requested eventlog.ApprovalRequestedData
@@ -318,4 +325,31 @@ func cloneStringAnyMap(source map[string]any) map[string]any {
 		clone[key] = value
 	}
 	return clone
+}
+
+// ApplyNativeCheckpoint replaces projected content with the effective native lanes.
+func (a *Adapter) ApplyNativeCheckpoint(record eventlog.Record, stored agent.StoredMessage) (PublicEvent, error) {
+	if err := a.messageView.ReplaceStoredContent(stored, record.Sequence, record.RecordedAt); err != nil {
+		return PublicEvent{}, err
+	}
+	event, err := a.Apply(record)
+	if err != nil {
+		return PublicEvent{}, err
+	}
+	event.Message = a.messageView.PublicMessage(stored.ID)
+	if event.Message != nil {
+		a.messageRevisions[stored.ID] = event.Message.LiveRevision
+	}
+	return event, nil
+}
+
+// ApplyNativeTerminal 先投影同一规范原生回执的用量，再应用显式执行终态。
+func (a *Adapter) ApplyNativeTerminal(record eventlog.Record, result *agent.NativeResult) (PublicEvent, error) {
+	a.messageView.SetNativeResult(record.ExecutionID, result)
+	return a.Apply(record)
+}
+
+// SetCurrentForkSession 为仅末轮分叉能力提供规范会话绑定。
+func (a *Adapter) SetCurrentForkSession(sessionID string) {
+	a.messageView.SetCurrentForkSession(sessionID)
 }

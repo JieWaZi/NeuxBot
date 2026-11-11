@@ -2,10 +2,19 @@ package ai_accounts
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
+
+// validateDefaultModel 保证账号默认模型来自本账号明确选择的目录。
+func validateDefaultModel(selected []string, model string) error {
+	if model != "" && !slices.Contains(selected, model) {
+		return status_error.AIAccountConfigurationInvalid
+	}
+	return nil
+}
 
 // validateModelMappings 保证原生 CLI 映射只引用本账号已选择的实际模型。
 func validateModelMappings(selected []string, names map[string]string, levels map[string][]string, roles map[string]string) error {

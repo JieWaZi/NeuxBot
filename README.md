@@ -60,6 +60,8 @@ pnpm dev:native
 
 For the local browser version, run `pnpm dev:web` instead and open the address printed in the terminal; no pairing code is required. Run only one Core against a data directory. Use `pnpm package:web` for a standalone local Web bundle and `pnpm build:native` for a desktop installer. See [build and release](docs/development/build-and-release-cn.md) for runtime requirements and startup.
 
+To review unpublished plugins from an explicit local checkout, install that checkout's locked dependencies with `npm ci`, then run `pnpm dev:native:plugins --plugins ../neux-plugins`. This builds the real packages into that checkout's `.cache/development/catalog` and hosts their downloads for the development process. The normal startup continues to use the published catalog.
+
 </details>
 
 See the [user guides](docs/README.md) for setup and usage, the [allycli capability reference](server/cmd/allycli/README.md) for available system operations, or [CONTRIBUTING.md](CONTRIBUTING.md) to help build NeuxBot. These documents are currently in Simplified Chinese.

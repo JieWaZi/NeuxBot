@@ -19,6 +19,8 @@ type WakerController interface {
 	Create(ctx context.Context, waker models.Waker) error
 	// Get 按标识查询伙伴。
 	Get(ctx context.Context, id string) (models.Waker, error)
+	// ListByIDs 批量读取指定伙伴，省略已不存在的身份。
+	ListByIDs(ctx context.Context, ids []string) ([]models.Waker, error)
 	// NameExists 判断名称是否已经被其他伙伴占用。
 	NameExists(ctx context.Context, name string, excludeID string) (bool, error)
 	// List 按搜索条件分页查询伙伴。
@@ -75,6 +77,30 @@ func (c *wakerController) Get(ctx context.Context, id string) (models.Waker, err
 		)
 	}
 	return models.Waker{}, databaseError("get_waker", "waker_id="+id, err)
+}
+
+// ListByIDs 按有限参数批次读取伙伴，避免成员资料投影逐行查询。
+func (c *wakerController) ListByIDs(ctx context.Context, ids []string) ([]models.Waker, error) {
+	const maximumParameters = 400
+	unique := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	result := make([]models.Waker, 0, len(unique))
+	for start := 0; start < len(unique); start += maximumParameters {
+		end := min(start+maximumParameters, len(unique))
+		var batch []models.Waker
+		if err := controllerDB(ctx, c.db).Where("id IN ?", unique[start:end]).Find(&batch).Error; err != nil {
+			return nil, databaseError("list_wakers_by_ids", "waker", err)
+		}
+		result = append(result, batch...)
+	}
+	return result, nil
 }
 
 // NameExists 判断名称是否已经被其他伙伴占用。

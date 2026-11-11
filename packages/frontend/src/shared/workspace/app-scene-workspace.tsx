@@ -1,8 +1,13 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 
-import { type AppSceneCommand, type AppSceneSnapshot } from "./app-scene-model";
+import {
+  type AppSceneCommand,
+  type AppSceneSnapshot,
+  type ChatSceneOwner,
+} from "./app-scene-model";
 
 export type AppWorkspaceContribution = {
+  chatOwner?: ChatSceneOwner;
   onNewChat?: () => void;
   activeWorkspaceTabId: string;
   onClose: (tabId: string) => void;
@@ -19,7 +24,7 @@ export type AppWorkspaceContribution = {
 };
 
 export type AppSceneWorkspace = {
-  openNewChat?: () => boolean;
+  openNewChat?: (owner?: ChatSceneOwner) => boolean;
   dispatch: (command: AppSceneCommand) => void;
   routeSceneId: string;
   snapshot: AppSceneSnapshot;
@@ -73,7 +78,14 @@ export function useScenePresentationKey(explicitKey?: string): string {
 export function useRouteSceneActive() {
   const workspace = useOptionalAppSceneWorkspace();
   if (!workspace) return true;
-  return workspace.snapshot.activeTabId === workspace.routeSceneId;
+  if (workspace.snapshot.activeTabId === workspace.routeSceneId) return true;
+  const active = workspace.snapshot.tabs.find(
+    (tab) => tab.id === workspace.snapshot.activeTabId,
+  );
+  return (
+    active?.id === workspace.routeSceneId ||
+    active?.ownerTabId === workspace.routeSceneId
+  );
 }
 
 export function AppSceneRouteScope({

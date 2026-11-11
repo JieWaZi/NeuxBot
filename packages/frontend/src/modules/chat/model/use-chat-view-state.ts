@@ -11,6 +11,8 @@ export type ChatViewState = {
   permissionLevel?: PermissionLevel;
   query: string;
   reasoning: string;
+  fast?: boolean | null;
+  contextWindow?: string;
   runtimeId: string;
   selectedCodeReferences: ChatCodeReference[];
 };

@@ -64,7 +64,7 @@ it("技能元数据就绪后，正文、文件与版本记录分别保留加载�
   );
   mount("/wakers/w1/skills/skill-1");
   await screen.findByRole("heading", { name: "研究方法" });
-  for (const name of ["说明", "资源文件 0", "当前版本 v1.0.0"]) {
+  for (const name of ["SKILL.md", "资源文件 0", "版本"]) {
     fireEvent.click(screen.getByRole("radio", { name }));
     expect(screen.getByRole("status")).toHaveAttribute("aria-busy", "true");
     expect(
@@ -159,7 +159,6 @@ function mount(path: string) {
 
 it.each([
   "/resources",
-  "/resources?view=mine",
   "/resources?category=skills",
   "/resources?category=skills&source=plugins",
   "/resources?category=skills&source=independent",
@@ -171,7 +170,7 @@ it.each([
   "/wakers/w1/resources?category=connectors",
   "/wakers/w1/skills",
   "/wakers/w1/connectors",
-])("%s 冷加载保留搜索与操作，内容区使用九项卡片骨架", (path) => {
+])("%s 冷加载保留搜索与操作，内容区使用匹配资源布局的九项骨架", (path) => {
   const view = mount(path);
   expect(screen.getByRole("heading", { level: 1 })).toBeVisible();
   expect(screen.getByRole("searchbox")).toBeVisible();
@@ -179,7 +178,19 @@ it.each([
   for (const status of screen.getAllByRole("status")) {
     expect(status).toHaveAccessibleName();
     expect(status).toHaveAttribute("aria-busy", "true");
-    expect(status.querySelectorAll('[data-slot="card"]')).toHaveLength(9);
+    if (
+      path === "/resources" ||
+      path === "/wakers/w1/resources" ||
+      path.includes("category=skills") ||
+      path.includes("category=connectors") ||
+      path.endsWith("/connectors") ||
+      path.endsWith("/skills")
+    ) {
+      expect(status.querySelectorAll(".size-resource-icon")).toHaveLength(9);
+      expect(status.querySelectorAll('[data-slot="card"]')).toHaveLength(0);
+    } else {
+      expect(status.querySelectorAll('[data-slot="card"]')).toHaveLength(9);
+    }
     expect(within(status).queryByRole("button")).not.toBeInTheDocument();
   }
   expect(view.container.querySelector(".agent-grid-spinner")).toBeNull();

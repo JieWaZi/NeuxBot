@@ -85,21 +85,13 @@ export function HumanRequestCard({
   const submit = useMutation(
     withLocalErrorMutation(answerWorkflowHumanMutation()),
   );
-  const snapshotReady =
-    typeof human.questionVersion === "number" &&
-    typeof human.snapshotDigest === "string";
+  const snapshotReady = typeof human.snapshotDigest === "string";
   const send = async (skip: boolean) => {
-    const questionVersion = human.questionVersion;
     const snapshotDigest = human.snapshotDigest;
-    if (
-      typeof questionVersion !== "number" ||
-      typeof snapshotDigest !== "string"
-    )
-      return;
+    if (typeof snapshotDigest !== "string") return;
     const signature = jsonText({
       answer,
       skip,
-      questionVersion: human.questionVersion,
       snapshotDigest: human.snapshotDigest,
     });
     const requestId =
@@ -112,7 +104,6 @@ export function HumanRequestCard({
           requestId,
           value: answer,
           skip,
-          questionVersion,
           snapshotDigest,
         },
       });

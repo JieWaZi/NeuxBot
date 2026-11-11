@@ -220,7 +220,14 @@ beforeEach(() => {
     ),
     http.get(`${origin}/api/v1/workflows`, () =>
       HttpResponse.json({
-        items: [{ id: "flow", title: "审批验收", ordinal: saved ? 1 : 0 }],
+        items: [
+          {
+            id: "flow",
+            title: "审批验收",
+            description: saved ? "已保存的审批流程" : "待完善的审批流程",
+            ordinal: saved ? 1 : 0,
+          },
+        ],
       }),
     ),
     http.get(`${origin}/api/v1/workflows/flow`, () =>
@@ -294,7 +301,7 @@ afterAll(() => {
 });
 
 function renderScene(
-  path: string,
+  path: string | { pathname: string; search?: string; state?: unknown },
   queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   }),
@@ -362,14 +369,11 @@ function WorkflowShell({ collapsed }: { collapsed: boolean }) {
       contextSidebarHidden
       onManageEntities={() => {}}
       onOpenPartnerDetail={() => {}}
-      onOpenAutomaticTasks={() => {}}
-      onOpenSettings={() => {}}
+      onNavigateModule={() => {}}
       onPreferencesChange={setPreferences}
-      onSceneNavigationVisibleChange={() => {}}
       onSelectPartner={() => {}}
       onSelectTeam={() => {}}
       preferences={preferences}
-      sceneNavigationVisible={false}
       sceneContentFlush
       selectedRailKey="waker:ordinary-waker"
       settingsOpen={false}
@@ -413,7 +417,17 @@ async function clickWorkflowAction(
   user: ReturnType<typeof userEvent.setup>,
   name: string,
 ) {
-  const dock = await screen.findByRole("navigation", { name: "工作流" });
+  const dock = await waitFor(() => {
+    const candidate = screen
+      .queryAllByRole("navigation", { name: "工作流" })
+      .find((navigation) =>
+        [name, "编辑与删除", "工作流操作"].some((label) =>
+          within(navigation).queryByRole("button", { name: label }),
+        ),
+      );
+    if (!candidate) throw new Error("等待工作流操作加载");
+    return candidate;
+  });
   const button = within(dock).queryByRole("button", { name });
   if (button) {
     await user.click(button);
@@ -430,6 +444,40 @@ async function clickWorkflowAction(
   );
   await user.click(await screen.findByRole("menuitem", { name }));
 }
+
+it("工作流画布切换节点后返回资源库仍保留原搜索", async () => {
+  const resourceBack =
+    "/resources?category=workflows&search=%E5%AE%A1%E6%89%B9";
+  const user = userEvent.setup();
+  renderScene({ pathname: "/workflows/flow", state: { resourceBack } });
+  const breadcrumb = screen.getByRole("navigation", { name: "工作流路径" });
+  expect(
+    within(breadcrumb).getByRole("link", { name: "工作流" }),
+  ).toHaveAttribute("href", resourceBack);
+  await user.click(
+    await screen.findByRole("button", { name: "选择 生成材料" }),
+  );
+  expect(
+    within(breadcrumb).getByRole("link", { name: "工作流" }),
+  ).toHaveAttribute("href", resourceBack);
+  await user.click(within(breadcrumb).getByRole("link", { name: "工作流" }));
+  expect(
+    await screen.findByRole("searchbox", { name: "搜索工作流" }),
+  ).toHaveValue("审批");
+});
+
+it("工作流详情拒绝外部返回地址并回到资源库", () => {
+  renderScene({
+    pathname: "/workflows/flow",
+    state: {
+      resourceBack: "https://external.test/resources?category=workflows",
+    },
+  });
+  const breadcrumb = screen.getByRole("navigation", { name: "工作流路径" });
+  expect(
+    within(breadcrumb).getByRole("link", { name: "工作流" }),
+  ).toHaveAttribute("href", "/resources?category=workflows");
+});
 
 it("工作流冷加载保留输入框，消息区与画布分别显示局部 Spinner", async () => {
   let releaseDefinition = () => {};
@@ -813,13 +861,13 @@ it("节点标题保存后保留业务编辑浮层，不暴露执行模型菜单"
 it("资源页重新激活后读取创作在另一场景保存的版本", async () => {
   const refresh = renderScene("/workflows");
   await screen.findByRole("link", { name: "审批验收" });
-  expect(screen.queryByText("版本 1")).not.toBeInTheDocument();
+  expect(screen.getByText("待完善的审批流程")).toBeInTheDocument();
   scene.active = false;
   refresh();
   saved = true;
   scene.active = true;
   refresh();
-  await screen.findByText("版本 1");
+  await screen.findByText("已保存的审批流程");
 });
 
 it("已有工作流默认画布铺满主容器，会话展开收起保留共享输入实例", async () => {
@@ -861,24 +909,15 @@ it("已有工作流默认画布铺满主容器，会话展开收起保留共享�
   expect(input).toHaveTextContent("保留共享聊天草稿");
 });
 
-it("点击新建立即打开画布输入框，不等待列表刷新或创建空记录", async () => {
+it("新建工作流立即显示空白输入框，不展示大头像和问候或创建空记录", async () => {
   const create = vi.fn(() => HttpResponse.json({ id: "new-flow" }));
   server.use(http.post(`${origin}/api/v1/workflows`, create));
-  const user = userEvent.setup();
-  renderScene("/workflows");
-  await screen.findByRole("link", { name: "审批验收" });
-  await user.click(screen.getByRole("button", { name: "新建工作流" }));
+  renderScene("/workflows/new");
   await screen.findByRole("textbox", { name: "输入消息" });
+  expect(screen.queryByRole("heading", { name: "欢迎使用工作流" })).toBeNull();
   expect(
-    screen.getByRole("heading", { name: "欢迎使用工作流" }),
-  ).toBeInTheDocument();
-  const welcome = screen.getByRole("heading", { name: "欢迎使用工作流" });
-  expect(welcome.querySelector("[data-typed-phrase]")).toBeInTheDocument();
-  expect(
-    within(screen.getByTestId("chat-page-layout")).getByRole("button", {
-      name: "与 NeuxBot 互动",
-    }),
-  ).toBeInTheDocument();
+    screen.getByTestId("chat-page-layout").querySelector(".size-avatar-docked"),
+  ).toBeNull();
   expect(create).not.toHaveBeenCalled();
   expect(
     screen.queryByRole("button", { name: /帮我创建周会准备流程/ }),
@@ -1704,6 +1743,9 @@ it.each([660, 400])(
   async (width) => {
     const requests: unknown[] = [];
     server.use(
+      http.get(`${origin}/api/v1/resource-categories`, () =>
+        HttpResponse.json([]),
+      ),
       http.put(
         `${origin}/api/v1/workflows/flow/configuration`,
         async ({ request }) => {
@@ -2273,10 +2315,15 @@ it("工作流主容器与工具 Tab 独立，历史切换保留各自输入并�
   await user.type(inputA, "甲未发送");
   expect(screen.queryByRole("tab", { name: "工作流" })).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "打开终端" }));
+  expect(await screen.findByText("测试终端内容")).toBeVisible();
+  expect(
+    document.querySelector("[data-chat-composer-context-row]"),
+  ).not.toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: "关闭“工作流”" }),
   ).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "添加工作台标签" }));
+  await user.click(screen.getByRole("menuitem", { name: "浏览器" }));
   await screen.findByRole("tab", { name: "新标签页" });
   expect(screen.getByRole("button", { name: "终端" })).toBeEnabled();
   await user.click(screen.getByRole("button", { name: "查看历史会话" }));

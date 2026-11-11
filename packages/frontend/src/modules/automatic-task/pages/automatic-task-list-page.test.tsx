@@ -170,7 +170,7 @@ it("工作流详情保留版本和参数，不展示伙伴专用配置或重复�
 it("触发配置提供应用级集成指引和任务 ID，不再创建单任务密钥", async () => {
   renderWorkflowTask();
   expect(await screen.findByText("任务 ID")).toBeVisible();
-  expect(screen.getByText(/发布集成 → API 集成/)).toBeVisible();
+  expect(screen.getByText(/集成 → API/)).toBeVisible();
   expect(
     screen.queryByRole("button", { name: "重新生成密钥" }),
   ).not.toBeInTheDocument();

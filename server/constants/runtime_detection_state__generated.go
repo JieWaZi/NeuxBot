@@ -31,11 +31,11 @@ func (v RuntimeDetectionState) Label() string {
 	case RuntimeDetectionStateUnspecified:
 		return "RuntimeDetectionStateUnspecified 表示尚未执行 Runtime 探测。"
 	case RuntimeDetectionStateIncompatible:
-		return "RuntimeDetectionStateIncompatible 表示可执行文件存在但缺少必要协议能力。"
+		return "RuntimeDetectionStateIncompatible 表示最近探测未确认必要协议能力。"
 	case RuntimeDetectionStateReady:
-		return "RuntimeDetectionStateReady 表示 Runtime 必要能力满足且可以准备调用。"
+		return "RuntimeDetectionStateReady 表示最近探测确认了必要能力。"
 	case RuntimeDetectionStateUnavailable:
-		return "RuntimeDetectionStateUnavailable 表示未找到或不能调用 Runtime 可执行文件。"
+		return "RuntimeDetectionStateUnavailable 表示最近探测未找到程序或未能完成调用。"
 	}
 	return ""
 }

@@ -28,8 +28,6 @@ type pendingElicitation struct {
 	chatID string
 	// executionID 是结构化输入所属活跃执行标识。
 	executionID string
-	// messageFacts 交接本交互已提交的消息事实，不在协调器锁内调用 Sink。
-	messageFacts *executionMessageFacts
 	// invocationID 冻结发起交互的 Runtime 调用，不能由处理响应时的最新调用替代。
 	invocationID string
 	// requested 是已经安全归一化并进入权威日志的输入内容。
@@ -52,16 +50,12 @@ type elicitationCoordinator struct {
 	byID map[string]*pendingElicitation
 	// orderByChat 保存每个 Chat 的结构化输入到达顺序。
 	orderByChat map[string][]string
-	// changes 保存当前执行的单消费者等待状态唤醒信号。
-	changes map[string]chan struct{}
 	// journal 先持久化结构化输入事实，再更新可重建投影并发布安全事件。
 	journal chatservice.Journal
 }
 
 // executionElicitationHandler 把固定 Chat/Execution 身份绑定到结构化输入协调器。
 type executionElicitationHandler struct {
-	// messageFacts 是当前执行唯一实时投影的已提交事实端口。
-	messageFacts *executionMessageFacts
 	// coordinator 是进程级结构化输入协调器。
 	coordinator *elicitationCoordinator
 	// chatID 是当前 Runtime 调用所属 Chat 标识。
@@ -80,7 +74,6 @@ func newElicitationCoordinator(journal chatservice.Journal, hub ...*events.Hub) 
 		byID:        make(map[string]*pendingElicitation),
 		orderByChat: make(map[string][]string),
 		journal:     journal, events: publisher,
-		changes: make(map[string]chan struct{}),
 	}
 }
 
@@ -88,15 +81,11 @@ func newElicitationCoordinator(journal chatservice.Journal, hub ...*events.Hub) 
 func (c *elicitationCoordinator) handler(
 	chatID string,
 	executionID string,
-	facts ...*executionMessageFacts,
 ) agentapi.ElicitationHandler {
 	bound := &executionElicitationHandler{
 		coordinator: c,
 		chatID:      chatID,
 		executionID: executionID,
-	}
-	if len(facts) > 0 {
-		bound.messageFacts = facts[0]
 	}
 	return bound
 }
@@ -109,7 +98,7 @@ func (h *executionElicitationHandler) Request(
 	if h == nil || h.coordinator == nil {
 		return agentapi.ElicitationDecision{Cancelled: true}, nil
 	}
-	return h.coordinator.request(ctx, h.chatID, h.executionID, request, h.messageFacts)
+	return h.coordinator.request(ctx, h.chatID, h.executionID, request)
 }
 
 // ResolveElicitation 处理前端提交的一次结构化用户输入。
@@ -139,7 +128,6 @@ func (c *elicitationCoordinator) request(
 	chatID string,
 	executionID string,
 	request agentapi.ElicitationRequest,
-	facts *executionMessageFacts,
 ) (agentapi.ElicitationDecision, error) {
 	if ctx == nil || strings.TrimSpace(chatID) == "" ||
 		strings.TrimSpace(executionID) == "" {
@@ -148,7 +136,6 @@ func (c *elicitationCoordinator) request(
 	requested := elicitationEventData(util.New(), request)
 	pending := &pendingElicitation{
 		requestContext: ctx,
-		messageFacts:   facts,
 		invocationID:   request.InvocationID,
 		chatID:         chatID,
 		executionID:    executionID,
@@ -167,11 +154,9 @@ func (c *elicitationCoordinator) request(
 		c.commitMutex.Unlock()
 		return agentapi.ElicitationDecision{Cancelled: true}, err
 	}
-	pending.messageFacts.push(record)
 	c.mutex.Lock()
 	pending.requestedAt = record.RecordedAt
 	c.byID[requested.ElicitationID] = pending
-	c.signalInputLocked(executionID)
 	c.orderByChat[chatID] = append(
 		c.orderByChat[chatID],
 		requested.ElicitationID,
@@ -193,12 +178,9 @@ func (c *elicitationCoordinator) request(
 		if err != nil && !errors.Is(err, status_error.ElicitationAlreadyResolved) {
 			return agentapi.ElicitationDecision{Cancelled: true}, elicitationContextStatus(ctx.Err())
 		}
-		select {
-		case decision := <-pending.response:
-			return decision, nil
-		default:
-			return agentapi.ElicitationDecision{Cancelled: true}, elicitationContextStatus(ctx.Err())
-		}
+		// A successful invalidation or an already removed request has one durable
+		// decision. Publication may still be completing before it reaches this waiter.
+		return <-pending.response, nil
 	}
 }
 
@@ -385,10 +367,8 @@ func (c *elicitationCoordinator) commitResolution(
 		return err
 	}
 
-	pending.messageFacts.push(record)
 	c.mutex.Lock()
 	delete(c.byID, pending.requested.ElicitationID)
-	c.signalInputLocked(pending.executionID)
 	order := c.orderByChat[pending.chatID]
 	remaining := order[:0]
 	for _, currentID := range order {

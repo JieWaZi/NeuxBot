@@ -51,14 +51,14 @@ func TestEnsureDefaultsSkipsWhenBuiltinWakerAlreadyExists(t *testing.T) {
 			builtinrolepreset.PersonalAssistantWakerID: {
 				ID:     builtinrolepreset.PersonalAssistantWakerID,
 				Name:   "私人助理",
-				Avatar: "companion:v1:0123456789abcdef0123456789abcdef",
+				Avatar: "companion:0123456789abcdef0123456789abcdef",
 			},
 		},
 	}
 	if err := EnsureDefaults(context.Background(), wakers); err != nil {
 		t.Fatalf("EnsureDefaults() error = %v", err)
 	}
-	if wakers.wakers[builtinrolepreset.PersonalAssistantWakerID].Avatar != "companion:v1:0123456789abcdef0123456789abcdef" {
+	if wakers.wakers[builtinrolepreset.PersonalAssistantWakerID].Avatar != "companion:0123456789abcdef0123456789abcdef" {
 		t.Fatal("startup must preserve an existing companion appearance")
 	}
 	if len(wakers.wakers) != len(builtinrolepreset.DefinitionsWithDefaultWaker()) {

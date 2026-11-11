@@ -27,6 +27,8 @@ type WorkflowExecutionDefaults struct {
 	Model string `json:"model"`
 	// Reasoning 是推理强度。
 	Reasoning string `json:"reasoning"`
+	// Fast 是接纳时冻结的快速模式意图；空值保留原生行为，后续派发不重新读取默认值。
+	Fast *bool `json:"fast,omitempty"`
 	// PermissionLevel 是运行默认工具权限，业务审批不改变它。
 	PermissionLevel constants.PermissionLevel `json:"permissionLevel"`
 	// WorkspaceReadOnly 表示批准范围只允许读取。
@@ -261,8 +263,6 @@ func (WorkflowEffect) TableName() string { return "workflow_effects" }
 
 // WorkflowHumanRequest 是业务输入，不复用 Runtime 的内存交互请求。
 type WorkflowHumanRequest struct {
-	// QuestionVersion 是当前冻结问题的乐观并发版本。
-	QuestionVersion int64 `json:"questionVersion"`
 	// SnapshotDigest 绑定不可变候选快照的精确内容。
 	SnapshotDigest string `json:"snapshotDigest"`
 

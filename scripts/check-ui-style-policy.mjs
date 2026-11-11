@@ -125,18 +125,12 @@ function excerptForOffset(source, offset) {
     .trim();
 }
 
-const avatarStudioPrefix =
-  "packages/frontend/src/modules/waker/components/avatar-studio/";
-
 const violations = [];
 for (const fileUrl of (
   await Promise.all(sourceRoots.map(collectFiles))
 ).flat()) {
   const source = await readFile(fileUrl, "utf8");
   const file = relative(repositoryRoot.pathname, fileUrl.pathname);
-  const isAvatarStudioAsset = file.startsWith(avatarStudioPrefix);
-
-  if (isAvatarStudioAsset) continue;
 
   if (file === "packages/frontend/src/shared/styles/index.css") {
     const rootRule = source.match(/html,\s*body,\s*#root\s*\{([^}]*)\}/)?.[1];

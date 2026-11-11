@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http/httptest"
 	"path/filepath"
 	"sync/atomic"
@@ -16,6 +17,101 @@ import (
 	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+func TestMCPBridgeStartsBeforeAdmissionWithoutEnablingCalls(t *testing.T) {
+	registry := capability.New(nil)
+	defer registry.Close()
+	var admitted atomic.Bool
+	var calls atomic.Int32
+	grant, activate, revoke, err := registry.Prepare(capability.GrantSpec{
+		ExecutionID: "preparing-turn",
+		Validate: func(context.Context) error {
+			if !admitted.Load() {
+				return status_error.AgentContextUnauthorized
+			}
+			return nil
+		},
+		Bindings: []capability.Binding{{Operation: "workflow.source.get", Call: func(context.Context, capability.Request) (capability.Result, error) {
+			calls.Add(1)
+			return capability.Result{Data: map[string]any{"workflowId": "bound", "source": "draft"}}, nil
+		}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer revoke()
+	endpoint := httptest.NewServer(registry)
+	defer endpoint.Close()
+	directory, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := capability.WriteConnection(directory, "connection.json", capability.Connection{
+		ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: endpoint.URL + constants.AgentCLIPath,
+		CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Native session opening can initialize MCP before the durable turn admission.
+	bridge, err := newMCPServer(t.Context(), path)
+	if err != nil {
+		t.Fatalf("MCP bootstrap rejected the prepared grant before admission: %v", err)
+	}
+	a, b := mcp.NewInMemoryTransports()
+	serverSession, err := bridge.Connect(t.Context(), a, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serverSession.Close()
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "pre-admission", Version: "1"}, nil).Connect(t.Context(), b, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	listing, err := session.ListTools(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, tool := range listing.Tools {
+		found = found || tool.Name == "workflow_source_get"
+		if tool.Name == "workflow_source_save" {
+			t.Fatal("bootstrap exposed an unbound operation")
+		}
+	}
+	if !found {
+		t.Fatal("prepared operation missing from MCP tool index")
+	}
+	call := func(name string) *mcp.CallToolResult {
+		t.Helper()
+		result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: name, Arguments: map[string]any{}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	for _, name := range []string{"capabilities", "workflow_source_get"} {
+		if result := call(name); !result.IsError || calls.Load() != 0 {
+			t.Fatalf("unadmitted execution accessed %s: %+v", name, result)
+		}
+	}
+	activate()
+	if result := call("workflow_source_get"); !result.IsError || calls.Load() != 0 {
+		t.Fatal("activation bypassed execution identity validation")
+	}
+	admitted.Store(true)
+	if result := call("workflow_source_get"); result.IsError || calls.Load() != 1 {
+		t.Fatalf("admitted execution could not use the initialized bridge: %+v", result)
+	}
+	revoke()
+	if result := call("workflow_source_get"); !result.IsError || calls.Load() != 1 {
+		t.Fatal("revoked execution retained business access")
+	}
+	if _, err := newMCPServer(t.Context(), path); !errors.Is(err, status_error.AgentContextUnauthorized) {
+		t.Fatalf("revoked grant could bootstrap a new bridge: %v", err)
+	}
+}
 
 func TestMCPBridgePreservesPreDispatchValidationFailure(t *testing.T) {
 	registry := capability.New(nil)

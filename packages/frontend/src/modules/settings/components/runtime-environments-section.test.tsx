@@ -1,995 +1,236 @@
-import { useQueryEvents } from "@/shared/api/use-query-events";
-import type { GlobalEventObserver } from "@/shared/api/global-events";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
+import { beforeEach, expect, it, vi } from "vitest";
 import { RuntimeEnvironmentsSection } from "./runtime-environments-section";
 import "@/shared/i18n";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 
-const {
-  accounts,
-  nativeModels,
-  refreshAll,
-  refreshOne,
-  runtimes,
-  thinking,
-  updateRuntime,
-} = vi.hoisted(() => ({
-  accounts: { current: [] as Array<Record<string, unknown>> },
-  nativeModels: vi.fn(),
-  refreshAll: vi.fn(async () => undefined),
-  refreshOne: vi.fn(async () => undefined),
-  runtimes: { current: [] as Array<Record<string, unknown>> },
-  thinking: vi.fn(),
-  updateRuntime: vi.fn(async () => undefined),
+const { list, update, refresh, runtimeRows, modelCatalog, installationState } =
+  vi.hoisted(() => ({
+    installationState: {
+      current: "idle",
+      installed: undefined as boolean | undefined,
+    },
+    list: vi.fn(),
+    update: vi.fn(async () => undefined),
+    refresh: vi.fn(async () => undefined),
+    runtimeRows: { current: [] as Array<Record<string, unknown>> },
+    modelCatalog: vi.fn(),
+  }));
+vi.mock("@/shared/ui/scene-breadcrumbs", () => ({
+  SceneBreadcrumbs: () => null,
 }));
-
+vi.mock("./ai-accounts-section", () => ({
+  AIAccountsSection: ({
+    onSelectAccount,
+  }: {
+    onSelectAccount: (id: string) => Promise<void>;
+  }) => (
+    <button onClick={() => void onSelectAccount("work")}>选择工作账号</button>
+  ),
+}));
+vi.mock("./runtime-installation-controls", () => ({
+  runtimeInstallationOptions: (runtimeId: string) => ({
+    queryKey: ["installation", runtimeId],
+    queryFn: async () => ({
+      supported: true,
+      state: installationState.current,
+      installed: installationState.installed,
+    }),
+  }),
+  RuntimeInstallationControls: () => null,
+}));
+vi.mock("./runtime-authentication-controls", () => ({
+  runtimeAuthenticationOptions: (runtimeId: string) => ({
+    queryKey: ["runtime-authentication", runtimeId],
+    queryFn: async () => ({ state: "idle" }),
+  }),
+}));
+vi.mock("./runtime-program-removal", () => ({
+  RuntimeProgramRemoval: () => null,
+}));
 vi.mock("@/shared/api/generated/sdk.gen", () => ({
-  getAiAccountNativeModels: nativeModels,
-  getAiAccountThinking: thinking,
+  getRuntimeModelCatalog: modelCatalog,
 }));
-
 vi.mock("@/shared/api/generated/@tanstack/react-query.gen", () => ({
-  listAiAccountsOptions: () => ({
-    queryKey: ["ai-accounts"],
-    queryFn: async () => ({ resources: accounts.current }),
-  }),
-  listRuntimesOptions: () => ({
-    queryKey: ["runtimes"],
-    queryFn: async () => ({ resources: runtimes.current }),
-  }),
+  listRuntimesOptions: () => ({ queryKey: ["runtimes"], queryFn: list }),
   listRuntimesQueryKey: () => ["runtimes"],
-  refreshRuntimeMutation: () => ({ mutationFn: refreshOne }),
-  refreshRuntimesMutation: () => ({ mutationFn: refreshAll }),
-  updateRuntimeEnvironmentMutation: () => ({ mutationFn: updateRuntime }),
+  listAiAccountsOptions: () => ({
+    queryKey: ["accounts"],
+    queryFn: async () => ({ resources: [] }),
+  }),
+  updateRuntimeEnvironmentMutation: () => ({ mutationFn: update }),
+  refreshRuntimesMutation: () => ({ mutationFn: refresh }),
+  refreshRuntimeMutation: () => ({ mutationFn: refresh }),
+  restartRuntimeMutation: () => ({ mutationFn: refresh }),
 }));
-
-const runtimeObservers = vi.hoisted(() => new Set<GlobalEventObserver>());
-vi.mock("@/shared/api/global-events", () => ({
-  registerCoreConnectionRecovery: () => () => {},
-  subscribeGlobalEvents: (
-    _topic: string,
-    _resource: unknown,
-    observer: GlobalEventObserver,
-  ) => {
-    runtimeObservers.add(observer);
-    return () => runtimeObservers.delete(observer);
-  },
-}));
-function RuntimeEvents() {
-  useQueryEvents({
-    topic: "runtimes",
-    resource: { kind: "global" },
-    queryKeys: [["runtimes"]],
-  });
-  return null;
-}
-function runtimeChanged() {
-  act(() => {
-    for (const observer of runtimeObservers)
-      observer.onEvent({
-        protocolVersion: 1,
-        epoch: "epoch",
-        connectionId: "connection",
-        deliverySequence: 1,
-        topic: "runtimes",
-        type: "runtimes.changed",
-        resource: { kind: "global" },
-        eventId: "event",
-        payload: {},
-      });
-  });
-}
-function renderSection(queryClient: QueryClient, onOpenAccounts?: () => void) {
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <RuntimeEvents />
-      <TooltipProvider delayDuration={0}>
-        <RuntimeEnvironmentsSection onOpenAccounts={onOpenAccounts} />
-      </TooltipProvider>
-    </QueryClientProvider>,
-  );
-}
-
-async function waitForRuntimesLoaded() {
-  await screen.findByRole("button", { name: "展开Codex智能体设置" });
-  expect(
-    screen.queryByRole("status", { name: "正在读取智能体" }),
-  ).not.toBeInTheDocument();
-}
-
 beforeEach(() => {
-  refreshAll.mockClear();
-  refreshOne.mockClear();
-  updateRuntime.mockClear();
-  nativeModels.mockReset();
-  thinking.mockReset();
-  accounts.current = [];
-  runtimes.current = [
+  installationState.current = "idle";
+  installationState.installed = undefined;
+  update.mockClear();
+  refresh.mockClear();
+  runtimeRows.current = [
     {
       id: "codex",
-      name: "Codex CLI",
+      name: "Codex",
+      installed: true,
       enabled: true,
       isDefault: true,
-      state: "ready",
-      installed: true,
-      version: "1.2.3",
       binary: "codex",
-      prefixArgs: [],
-      configHome: "",
-      configHomeSupported: true,
-      defaultModel: "gpt-5",
+      state: "ready",
+      auth: "ok",
+      version: "1.2.3",
+      defaultModel: "model-a",
       defaultReasoning: "high",
-      defaultPermissionLevel: "full-access",
-      customModels: [],
-      models: [
-        {
-          id: "gpt-5",
-          name: "GPT-5",
-          permissionLevels: ["default", "auto", "full-access"],
-          reasoningOptions: [
-            { id: "high", name: "High" },
-            { id: "low", name: "Low" },
-          ],
-        },
-        {
-          id: "gpt-fast",
-          name: "GPT Fast",
-          permissionLevels: ["default", "auto", "full-access"],
-          reasoningOptions: [{ id: "low", name: "Low" }],
-        },
-      ],
-      reasoningOptions: [
-        { id: "high", name: "High" },
-        { id: "low", name: "Low" },
-      ],
-      diagnostics: [],
+      defaultPermissionLevel: "auto",
+      models: [],
     },
     {
       id: "claude",
-      name: "Claude Code",
-      enabled: true,
-      state: "unavailable",
+      name: "Claude",
       installed: false,
+      enabled: false,
       binary: "claude",
-      prefixArgs: [],
-      configHome: "",
-      configHomeSupported: true,
-      defaultPermissionLevel: "full-access",
-      customModels: [],
+      state: "not-installed",
       models: [],
-      reasoningOptions: [],
-      diagnostics: [{ message: "未找到 claude" }],
     },
-  ];
-});
-
-describe("RuntimeEnvironmentsSection", () => {
-  it("切换已发现的版本时立即保存并重新探测", async () => {
-    runtimes.current[0] = {
-      ...runtimes.current[0],
-      binary: "/opt/old/codex",
-      resolvedBinary: "/opt/old/codex",
-      installations: [
-        { path: "/opt/old/codex", version: "1.2.3", available: true },
-        { path: "/opt/new/codex", version: "2.0.0", available: true },
-      ],
-    };
-    const user = userEvent.setup();
-    renderSection(
-      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-    );
-    await user.click(
-      await screen.findByRole("button", { name: "展开Codex智能体设置" }),
-    );
-    const versions = screen.getByRole("combobox", {
-      name: "Codex版本",
-    });
-    versions.focus();
-    await user.keyboard("{Enter}{ArrowDown}{Enter}");
-    await waitFor(() =>
-      expect(updateRuntime).toHaveBeenCalledWith(
-        expect.objectContaining({
-          path: { runtimeId: "codex" },
-          body: expect.objectContaining({ binary: "/opt/new/codex" }),
-        }),
-        expect.anything(),
-      ),
-    );
-    expect(screen.queryByRole("textbox", { name: "Codex安装路径" })).toBeNull();
-  });
-
-  it("仅有一个安装版本时隐藏版本字段", async () => {
-    runtimes.current[0] = {
-      ...runtimes.current[0],
-      binary: "/opt/homebrew/bin/codex",
-      resolvedBinary: "/opt/homebrew/bin/codex",
-      installations: [
-        {
-          path: "/opt/homebrew/bin/codex",
-          version: "0.161.0",
-          available: true,
-        },
-      ],
-    };
-    const user = userEvent.setup();
-    renderSection(
-      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-    );
-    await user.click(
-      await screen.findByRole("button", { name: "展开Codex智能体设置" }),
-    );
-    expect(screen.queryByRole("combobox", { name: "Codex版本" })).toBeNull();
-    expect(screen.getByRole("combobox", { name: "账号" })).toBeVisible();
-  });
-
-  it("账号列表只展示当前智能体支持的账号", async () => {
-    accounts.current = [
-      {
-        id: "chatgpt-subscription",
-        name: "ChatGPT 订阅",
-        authMode: "subscription",
-        endpoints: [
-          {
-            protocol: "openai-responses",
-            baseUrl: "https://api.openai.com/v1",
-          },
-        ],
-      },
-      {
-        id: "deepseek",
-        name: "DeepSeek",
-        authMode: "api-key",
-        endpoints: [{ protocol: "openai-responses" }],
-      },
-      {
-        id: "volcengine",
-        name: "火山方舟",
-        authMode: "api-key",
-        endpoints: [{ protocol: "anthropic-messages" }],
-      },
-    ];
-    const user = userEvent.setup();
-    renderSection(
-      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-    );
-    await user.click(
-      await screen.findByRole("button", { name: "展开Claude智能体设置" }),
-    );
-    const account = screen.getByRole("combobox", { name: "账号" });
-    account.focus();
-    await user.keyboard("{Enter}");
-
-    expect(screen.getByRole("option", { name: "内置账号" })).toBeVisible();
-    expect(screen.getByRole("option", { name: "火山方舟" })).toBeVisible();
-    expect(screen.queryByRole("option", { name: "ChatGPT 订阅" })).toBeNull();
-    expect(screen.queryByRole("option", { name: "DeepSeek" })).toBeNull();
-  });
-
-  it("切换账号后只显示账号模型和当前模型的原生推理选项", async () => {
-    accounts.current = [
-      {
-        id: "deepseek-account",
-        name: "DeepSeek",
-        authMode: "api-key",
-        revision: 1,
-        endpoints: [
-          { protocol: "openai-responses", baseUrl: "https://api.deepseek.com" },
-        ],
-        selectedModels: ["deepseek-flash"],
-        defaultModel: "deepseek-flash",
-        defaultReasoning: "",
-      },
-    ];
-    thinking.mockResolvedValue({
-      data: { available: true, options: [{ id: "max", name: "Max" }] },
-    });
-    const user = userEvent.setup();
-    renderSection(
-      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-    );
-    await user.click(
-      await screen.findByRole("button", { name: "展开Codex智能体设置" }),
-    );
-    const account = screen.getByRole("combobox", { name: "账号" });
-    account.focus();
-    await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
-    expect(account).toHaveTextContent("DeepSeek");
-
-    const model = screen.getByRole("combobox", { name: "默认模型" });
-    expect(model).toHaveTextContent("deepseek-flash");
-    model.focus();
-    await user.keyboard("{Enter}");
-    expect(
-      screen.getByRole("option", { name: "deepseek-flash" }),
-    ).toBeVisible();
-    expect(screen.queryByRole("option", { name: "GPT-5" })).toBeNull();
-    await user.keyboard("{Escape}");
-
-    await waitFor(() =>
-      expect(thinking).toHaveBeenCalledWith(
-        expect.objectContaining({
-          path: { accountId: "deepseek-account" },
-          query: { runtimeId: "codex", model: "deepseek-flash" },
-        }),
-      ),
-    );
-    const reasoning = screen.getByRole("combobox", {
-      name: "默认推理强度",
-    });
-    expect(reasoning).toHaveTextContent("默认");
-    reasoning.focus();
-    await user.keyboard("{Enter}");
-    expect(screen.getByRole("option", { name: "Max" })).toBeVisible();
-    expect(screen.queryByRole("option", { name: "High" })).toBeNull();
-    await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
-    expect(reasoning).toHaveTextContent("Max");
-    await user.click(screen.getByRole("button", { name: "保存" }));
-
-    await waitFor(() =>
-      expect(updateRuntime).toHaveBeenCalledWith(
-        expect.objectContaining({
-          body: expect.objectContaining({
-            defaultAccountId: "deepseek-account",
-            defaultModel: "deepseek-flash",
-            defaultReasoning: "max",
-            customModels: [],
-          }),
-        }),
-        expect.anything(),
-      ),
-    );
-  });
-
-  it("订阅账号加载原生模型，切回系统配置后恢复智能体选项", async () => {
-    accounts.current = [
-      {
-        id: "subscription-account",
-        name: "ChatGPT",
-        authMode: "subscription",
-        revision: 2,
-        endpoints: [
-          {
-            protocol: "openai-responses",
-            baseUrl: "https://api.openai.com/v1",
-          },
-        ],
-        defaultModel: "",
-        defaultReasoning: "",
-      },
-    ];
-    nativeModels.mockResolvedValue({
-      data: { models: ["gpt-native"], defaultModel: "gpt-native" },
-    });
-    thinking.mockResolvedValue({
-      data: { available: false, options: [] },
-    });
-    const user = userEvent.setup();
-    renderSection(
-      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-    );
-    await user.click(
-      await screen.findByRole("button", { name: "展开Codex智能体设置" }),
-    );
-    const account = screen.getByRole("combobox", { name: "账号" });
-    account.focus();
-    await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
-    const model = screen.getByRole("combobox", { name: "默认模型" });
-    await waitFor(() => expect(model).toHaveTextContent("gpt-native"));
-    expect(nativeModels).toHaveBeenCalledWith(
-      expect.objectContaining({
-        path: { accountId: "subscription-account" },
-        query: { runtimeId: "codex" },
-      }),
-    );
-    expect(
-      screen.getByRole("combobox", { name: "默认推理强度" }),
-    ).toHaveTextContent("默认");
-
-    account.focus();
-    await user.keyboard("{Enter}{Home}{Enter}");
-    expect(account).toHaveTextContent("内置账号");
-    expect(model).toHaveTextContent("GPT-5");
-    expect(
-      screen.getByRole("combobox", { name: "默认推理强度" }),
-    ).toHaveTextContent("High");
-  });
-
-  it("展开区域与行内操作相互独立，使用键盘也能展开和收起", async () => {
-    const user = userEvent.setup();
-    renderSection(
-      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-    );
-    const trigger = await screen.findByRole("button", {
-      name: "展开Codex智能体设置",
-    });
-    expect(
-      screen.queryByRole("button", { name: /Codex：.*查看处理建议/ }),
-    ).not.toBeInTheDocument();
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getAllByText("默认")).toHaveLength(1);
-    await user.click(screen.getByRole("button", { name: "重新探测Codex" }));
-    await waitFor(() => expect(refreshOne).toHaveBeenCalledOnce());
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
-    trigger.focus();
-    await user.keyboard("{Enter}");
-    expect(
-      screen.getByRole("button", { name: "收起Codex智能体设置" }),
-    ).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("combobox", { name: "账号" })).toBeVisible();
-    await user.click(screen.getByRole("switch", { name: "Codex启用状态" }));
-    await waitFor(() => expect(updateRuntime).toHaveBeenCalledOnce());
-    expect(
-      screen.getByRole("button", { name: "收起Codex智能体设置" }),
-    ).toHaveAttribute("aria-expanded", "true");
-    await user.click(
-      screen.getByRole("button", { name: "收起Codex智能体设置" }),
-    );
-    expect(
-      screen.queryByRole("combobox", { name: "账号" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("分组展示未发现的受支持运行时，并保留命令配置入口", async () => {
-    const user = userEvent.setup();
-    renderSection(
-      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-    );
-    await waitForRuntimesLoaded();
-    expect(screen.getByRole("heading", { name: "已发现" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "未发现" })).toBeInTheDocument();
-    expect(
-      screen.getByText("Claude", { selector: "span" }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("未找到 claude")).not.toBeInTheDocument();
-    expect(screen.getByText("未安装")).toBeInTheDocument();
-    expect(
-      screen.getByRole("switch", { name: "Claude启用状态" }),
-    ).not.toBeChecked();
-    expect(
-      screen.getByRole("switch", { name: "Claude启用状态" }),
-    ).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: "展开Claude智能体设置" }),
-    ).toBeEnabled();
-    expect(
-      screen.getByRole("button", { name: "重新探测Claude" }),
-    ).toBeEnabled();
-    await user.click(
-      screen.getByRole("button", { name: "展开Claude智能体设置" }),
-    );
-    expect(screen.getByRole("combobox", { name: "账号" })).toBeVisible();
-    expect(updateRuntime).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "刷新" }));
-    await waitFor(() => expect(refreshAll).toHaveBeenCalledOnce());
-  });
-
-  it("已安装但未登录或协议不可用的智能体仍列在已发现分组", async () => {
-    const claude = runtimes.current[1];
-    if (!claude) throw new Error("缺少 Claude 测试数据");
-    runtimes.current = [
-      {
-        ...runtimes.current[0],
-        id: "kimi",
-        name: "Kimi",
-        auth: "missing",
-        version: "",
-      },
-      {
-        ...claude,
-        id: "cursor",
-        name: "Cursor",
-        installed: true,
-        state: "incompatible",
-      },
-      claude,
-    ];
-    renderSection(
-      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-    );
-    await screen.findByRole("button", { name: "展开Kimi智能体设置" });
-    const found = screen
-      .getByRole("heading", { name: "已发现" })
-      .closest("section");
-    const missing = screen
-      .getByRole("heading", { name: "未发现" })
-      .closest("section");
-    if (!found || !missing) throw new Error("缺少智能体分组");
-    expect(
-      within(found).getByRole("button", { name: "展开Kimi智能体设置" }),
-    ).toBeInTheDocument();
-    expect(within(found).getByText("CLI 未登录")).toBeInTheDocument();
-    expect(
-      within(found).getByRole("button", { name: "展开Cursor智能体设置" }),
-    ).toBeInTheDocument();
-    expect(within(found).getByText("协议不兼容")).toBeInTheDocument();
-    expect(
-      within(found).getByRole("button", {
-        name: "Cursor：协议不兼容，查看处理建议",
-      }),
-    ).toBeInTheDocument();
-    expect(
-      within(missing).getByRole("button", { name: "展开Claude智能体设置" }),
-    ).toBeInTheDocument();
-    expect(within(missing).getByText("未安装")).toBeInTheDocument();
-    expect(
-      within(found).getByRole("switch", { name: "Kimi启用状态" }),
-    ).toBeEnabled();
-    expect(
-      within(found).getByRole("switch", { name: "Cursor启用状态" }),
-    ).toBeDisabled();
-  });
-
-  it("未登录的 CLI 在已发现行显示告警图标和自行登录建议", async () => {
-    const user = userEvent.setup();
-    runtimes.current = [
-      {
-        ...runtimes.current[0],
-        id: "kimi",
-        name: "Kimi",
-        auth: "missing",
-        version: "2.0.2",
-        diagnostics: [{ code: "ACP_OPTIONS_UNAVAILABLE", level: "error" }],
-      },
-    ];
-    renderSection(
-      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-    );
-
-    const alert = await screen.findByRole("button", {
-      name: "Kimi：CLI 未登录，查看处理建议",
-    });
-    expect(alert.closest("section")).toHaveTextContent("已发现");
-    expect(
-      screen.getByRole("button", { name: "展开Kimi智能体设置" }),
-    ).toHaveTextContent("2.0.2");
-    await user.click(alert);
-    expect(
-      screen.getByRole("dialog", { name: "CLI 未登录" }),
-    ).toHaveTextContent("在 Kimi CLI 中完成登录或配置可用的提供商");
-    expect(
-      within(screen.getByRole("dialog")).getAllByRole("button", {
-        name: "关闭",
-      }),
-    ).toHaveLength(1);
-    expect(
-      within(screen.getByRole("dialog")).queryByText(/^close$/i),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "前往 AI 账号" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("关联账号缺少凭据时显示账号告警并可前往账号设置", async () => {
-    const user = userEvent.setup();
-    const onOpenAccounts = vi.fn();
-    accounts.current = [
-      {
-        id: "account-1",
-        name: "工作账号",
-        authMode: "api-key",
-        hasCredential: false,
-      },
-    ];
-    runtimes.current = [
-      {
-        ...runtimes.current[0],
-        defaultAccountId: "account-1",
-        auth: "unknown",
-        diagnostics: [],
-      },
-    ];
-    renderSection(
-      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-      onOpenAccounts,
-    );
-
-    const alert = await screen.findByRole("button", {
-      name: "Codex：关联账号缺少密钥，查看处理建议",
-    });
-    await user.click(alert);
-    expect(
-      screen.getByRole("dialog", { name: "关联账号缺少密钥" }),
-    ).toHaveTextContent("工作账号");
-    await user.click(screen.getByRole("button", { name: "前往 AI 账号" }));
-    expect(onOpenAccounts).toHaveBeenCalledOnce();
-  });
-
-  it("关联账号准备失败时优先提示账号问题", async () => {
-    accounts.current = [
-      {
-        id: "account-1",
-        name: "工作账号",
-        authMode: "api-key",
-        hasCredential: true,
-      },
-    ];
-    runtimes.current = [
-      {
-        ...runtimes.current[0],
-        defaultAccountId: "account-1",
-        auth: "missing",
-        diagnostics: [{ code: "AI_ACCOUNT_UNAVAILABLE", level: "warning" }],
-      },
-    ];
-    renderSection(
-      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-    );
-
-    expect(
-      await screen.findByRole("button", {
-        name: "Codex：关联账号不可用，查看处理建议",
-      }),
-    ).toBeInTheDocument();
-  });
-
-  it("关联账号的模型目录探测失败时提示检查服务地址和网络", async () => {
-    const user = userEvent.setup();
-    accounts.current = [
-      {
-        id: "account-1",
-        name: "工作账号",
-        authMode: "api-key",
-        hasCredential: true,
-      },
-    ];
-    runtimes.current = [
-      {
-        ...runtimes.current[0],
-        defaultAccountId: "account-1",
-        auth: "unknown",
-        diagnostics: [{ code: "ACP_OPTIONS_UNAVAILABLE", level: "warning" }],
-      },
-    ];
-    renderSection(
-      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-    );
-
-    await user.click(
-      await screen.findByRole("button", {
-        name: "Codex：模型目录不可用，查看处理建议",
-      }),
-    );
-    expect(
-      screen.getByRole("dialog", { name: "模型目录不可用" }),
-    ).toHaveTextContent("服务地址和网络");
-  });
-
-  it("代理标题不展示底层 ACP 命令", async () => {
-    runtimes.current = [
-      { ...runtimes.current[0], id: "pi", name: "Pi", binary: "pi-acp" },
-    ];
-    renderSection(
-      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-    );
-    await screen.findByText("Pi");
-    expect(screen.queryByText("pi-acp")).not.toBeInTheDocument();
-  });
-
-  it("切换环境默认模型时只展示该 ACP 模型支持的 Thinking", async () => {
-    const user = userEvent.setup();
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    renderSection(queryClient);
-
-    await user.click(
-      await screen.findByRole("button", {
-        name: "展开Codex智能体设置",
-      }),
-    );
-    const model = screen.getByRole("combobox", { name: "默认模型" });
-    model.focus();
-    await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
-    const reasoning = screen.getByRole("combobox", {
-      name: "默认推理强度",
-    });
-    expect(reasoning).toHaveTextContent("Low");
-    reasoning.focus();
-    await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
-    expect(reasoning).toHaveTextContent("Low");
-    await user.click(screen.getByRole("button", { name: "保存" }));
-
-    await waitFor(() => expect(updateRuntime).toHaveBeenCalledTimes(1));
-    expect(updateRuntime).toHaveBeenCalledWith(
-      expect.objectContaining({
-        body: expect.objectContaining({
-          defaultModel: "gpt-fast",
-          defaultReasoning: "low",
-        }),
-      }),
-      expect.anything(),
-    );
-  });
-
-  it("按实际权限推导 YOLO，并在切回手动后解锁单项权限", async () => {
-    const user = userEvent.setup();
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    renderSection(queryClient);
-
-    await waitForRuntimesLoaded();
-    expect(screen.getByRole("heading", { name: "未发现" })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "YOLO" })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
-    expect(
-      screen.getByRole("button", {
-        name: "Codex默认权限：完全访问",
-      }),
-    ).toBeDisabled();
-    await user.click(screen.getByRole("radio", { name: "手动" }));
-    expect(
-      screen.getByRole("button", {
-        name: "Codex默认权限：完全访问",
-      }),
-    ).toBeEnabled();
-
-    await user.click(
-      screen.getByRole("button", { name: "展开Codex智能体设置" }),
-    );
-    expect(screen.getByRole("combobox", { name: "默认模型" })).toHaveClass(
-      "h-control-md",
-    );
-    const reasoning = screen.getByRole("combobox", {
-      name: "默认推理强度",
-    });
-    reasoning.focus();
-    await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
-    await user.click(screen.getByRole("button", { name: "保存" }));
-
-    await waitFor(() => expect(updateRuntime).toHaveBeenCalledTimes(1));
-    expect(updateRuntime).toHaveBeenCalledWith(
-      expect.objectContaining({
-        body: expect.objectContaining({
-          defaultReasoning: "low",
-        }),
-        path: { runtimeId: "codex" },
-      }),
-      expect.anything(),
-    );
-  });
-
-  it("手动模式使用与聊天一致的权限选择器修改 Runtime 默认权限", async () => {
-    runtimes.current[0] = {
-      ...runtimes.current[0],
-      defaultPermissionLevel: "auto",
-    };
-    const user = userEvent.setup();
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    renderSection(queryClient);
-
-    await screen.findByRole("button", {
-      name: "展开Codex智能体设置",
-    });
-    expect(screen.getByRole("radio", { name: "手动" })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
-    const permission = screen.getByRole("button", {
-      name: "Codex默认权限：自动审批",
-    });
-    await user.click(permission);
-    await user.click(screen.getByText("默认权限"));
-
-    await waitFor(() => expect(updateRuntime).toHaveBeenCalledOnce());
-    expect(updateRuntime).toHaveBeenCalledWith(
-      expect.objectContaining({
-        body: expect.objectContaining({ defaultPermissionLevel: "default" }),
-        path: { runtimeId: "codex" },
-      }),
-      expect.anything(),
-    );
-  });
-
-  it("确认切换 YOLO 后把全部已发现 CLI 更新为完全访问", async () => {
-    runtimes.current = runtimes.current.map((runtime, index) => ({
-      ...runtime,
-      state: "ready",
-      installed: true,
-      defaultModel: "gpt-5",
-      defaultPermissionLevel: index === 0 ? "auto" : "default",
-      models:
-        Array.isArray(runtime.models) && runtime.models.length > 0
-          ? runtime.models
-          : [
-              {
-                id: "gpt-5",
-                name: "GPT-5",
-                permissionLevels: ["default", "auto", "full-access"],
-              },
-            ],
-    }));
-    const user = userEvent.setup();
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    renderSection(queryClient);
-
-    await user.click(await screen.findByRole("radio", { name: "YOLO" }));
-    const dialog = screen.getByRole("dialog", { name: "启用 YOLO 模式？" });
-    expect(dialog).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "关闭" }).closest("header"),
-    ).not.toContainElement(
-      screen.getByText(/这会把全部已发现智能体的默认权限改为完全访问/),
-    );
-    expect(screen.getByRole("button", { name: "取消" })).toHaveClass("border");
-    expect(updateRuntime).not.toHaveBeenCalled();
-
-    await user.click(screen.getByRole("button", { name: "确认启用 YOLO" }));
-
-    await waitFor(() => expect(updateRuntime).toHaveBeenCalledTimes(2));
-    expect(updateRuntime).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        path: { runtimeId: "codex" },
-        body: expect.objectContaining({
-          defaultPermissionLevel: "full-access",
-        }),
-      }),
-      expect.anything(),
-    );
-    expect(updateRuntime).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        path: { runtimeId: "claude" },
-        body: expect.objectContaining({
-          defaultPermissionLevel: "full-access",
-        }),
-      }),
-      expect.anything(),
-    );
-  });
-
-  it("模型不支持完全访问时禁用 YOLO 且不写入该档", async () => {
-    runtimes.current = [
-      {
-        ...runtimes.current[0],
-        defaultPermissionLevel: "auto",
-        models: [
-          {
-            id: "gpt-5",
-            name: "GPT-5",
-            permissionLevels: ["default", "auto"],
-          },
-        ],
-      },
-      {
-        ...runtimes.current[1],
-        state: "ready",
-        defaultModel: "sonnet",
-        defaultPermissionLevel: "default",
-        models: [
-          {
-            id: "sonnet",
-            name: "Sonnet",
-            permissionLevels: ["default", "auto"],
-          },
-        ],
-      },
-    ];
-    renderSection(
-      new QueryClient({
-        defaultOptions: { queries: { retry: false } },
-      }),
-    );
-
-    await waitForRuntimesLoaded();
-    expect(screen.getByRole("radio", { name: "YOLO" })).toBeDisabled();
-    expect(screen.getByRole("radio", { name: "YOLO" })).toHaveClass(
-      "opacity-45",
-    );
-    expect(screen.getByRole("radio", { name: "手动" })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
-    expect(
-      screen.getByText("部分已发现智能体不支持完全访问，无法启用 YOLO。"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getAllByText(
-        "当前模型不支持完全访问，默认权限已按可表达的最高等级保存。",
-      ).length,
-    ).toBeGreaterThan(0);
-    expect(updateRuntime).not.toHaveBeenCalled();
-  });
-
-  it("探测未声明权限时不发明三档", async () => {
-    runtimes.current[0] = {
-      ...runtimes.current[0],
-      defaultPermissionLevel: "full-access",
-      models: [{ id: "default", name: "Default" }],
-    };
-    const user = userEvent.setup();
-    renderSection(
-      new QueryClient({
-        defaultOptions: { queries: { retry: false } },
-      }),
-    );
-
-    await waitForRuntimesLoaded();
-    expect(screen.getByRole("radio", { name: "YOLO" })).toBeDisabled();
-    const permission = screen.getByRole("button", {
-      name: "Codex默认权限：完全访问",
-    });
-    expect(permission).toBeDisabled();
-    await user.click(screen.getByRole("radio", { name: "手动" }));
-    expect(permission).toBeDisabled();
-    expect(updateRuntime).not.toHaveBeenCalled();
-  });
-
-  it("允许选择目录中的模型并将它保存为默认模型", async () => {
-    const user = userEvent.setup();
-    renderSection(
-      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-    );
-    await user.click(
-      await screen.findByRole("button", { name: "展开Codex智能体设置" }),
-    );
-    const model = screen.getByRole("combobox", { name: "默认模型" });
-    model.focus();
-    await user.keyboard("{Enter}");
-    await user.click(screen.getByRole("option", { name: "GPT Fast" }));
-    await user.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() =>
-      expect(updateRuntime).toHaveBeenCalledWith(
-        expect.objectContaining({
-          body: expect.objectContaining({ defaultModel: "gpt-fast" }),
-        }),
-        expect.anything(),
-      ),
-    );
-  });
-});
-
-it.each([
-  ["kimi", "Kimi", "kimi"],
-  ["cursor", "Cursor", "cursor-agent"],
-  ["pi", "Pi", "pi"],
-])("保存 %s 的 CLI 路径与动态模型选择", async (id, name, command) => {
-  runtimes.current = [
     {
-      ...runtimes.current[0],
-      id,
-      name,
-      binary: command,
-      models: [
-        { id: "default", name: "Default", permissionLevels: ["full-access"] },
-        {
-          id: "provider/model-b",
-          name: "Model B",
-          permissionLevels: ["full-access"],
-        },
-      ],
-      configHomeSupported: false,
+      id: "kimi",
+      name: "Kimi",
+      installed: true,
+      enabled: true,
+      binary: "kimi",
+      state: "not-ready",
+      auth: "missing",
+      models: [],
     },
   ];
+  list
+    .mockReset()
+    .mockImplementation(async () => ({ resources: runtimeRows.current }));
+  modelCatalog.mockReset().mockImplementation(async ({ path, query }) => ({
+    data: {
+      runtimeId: path.runtimeId,
+      accountId: query.accountId,
+      state: "fresh",
+      defaultModel: "model-a",
+      models: [
+        {
+          id: "model-a",
+          name: "Model A",
+          configurationKnown: true,
+          permissionLevels: ["default", "auto", "full-access"],
+          reasoningOptions: [{ id: "high", name: "High" }],
+        },
+        {
+          id: "model-b",
+          name: "Model B",
+          configurationKnown: true,
+          permissionLevels: ["default", "auto", "full-access"],
+        },
+      ],
+    },
+  }));
+  Element.prototype.hasPointerCapture = () => false;
+  Element.prototype.setPointerCapture = () => undefined;
+  Element.prototype.releasePointerCapture = () => undefined;
+  Element.prototype.scrollIntoView = () => undefined;
+});
+function show(runtimeId?: string) {
+  const onOpenRuntime = vi.fn();
+  const onBack = vi.fn();
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={client}>
+      <TooltipProvider>
+        <RuntimeEnvironmentsSection
+          runtimeId={runtimeId}
+          onOpenRuntime={onOpenRuntime}
+          onBack={onBack}
+          showSceneChrome={false}
+        />
+      </TooltipProvider>
+    </QueryClientProvider>,
+  );
+  return { client, onOpenRuntime, onBack };
+}
+it("列表按真实安装事实分组，未登录的已安装智能体仍保留且整行进入详情", async () => {
   const user = userEvent.setup();
-  renderSection(
-    new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  const { onOpenRuntime } = show();
+  await screen.findByRole("button", { name: "打开Kimi" });
+  const installed = screen
+    .getByRole("heading", { name: "已安装" })
+    .closest("section");
+  const other = screen
+    .getByRole("heading", { name: "其他智能体" })
+    .closest("section");
+  expect(
+    installed && within(installed).getByRole("button", { name: "打开Kimi" }),
+  ).toBeVisible();
+  expect(
+    other && within(other).getByRole("button", { name: "打开Claude" }),
+  ).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "打开Codex" }));
+  expect(onOpenRuntime).toHaveBeenCalledWith("codex");
+  expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+});
+it("搜索同时筛选已安装和其他智能体", async () => {
+  const user = userEvent.setup();
+  show();
+  await screen.findByRole("button", { name: "打开Codex" });
+  await user.type(
+    screen.getByRole("searchbox", { name: "搜索智能体" }),
+    "Claude",
   );
-  await user.click(
-    await screen.findByRole("button", { name: `展开${name}智能体设置` }),
-  );
-  const model = screen.getByRole("combobox", { name: "默认模型" });
-  model.focus();
-  await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
-  expect(model).toHaveTextContent("Model B");
-  await user.click(screen.getByRole("button", { name: "保存" }));
+  expect(screen.getByRole("button", { name: "打开Claude" })).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "打开Codex" }),
+  ).not.toBeInTheDocument();
+});
+it("程序就绪但认证未知时列表不宣称已连接", async () => {
+  runtimeRows.current[0] = { ...runtimeRows.current[0], auth: "unknown" };
+  show();
+  const row = await screen.findByRole("button", { name: "打开Codex" });
+  expect(row).toHaveTextContent("可用");
+  expect(row).not.toHaveTextContent("已连接");
+});
+it("详情改变默认模型即时保存且保留启用配置", async () => {
+  const user = userEvent.setup();
+  show("codex");
+  const model = await screen.findByRole("combobox", { name: "默认模型" });
+  // 后台目录即使暂时不返回，也不应延长已确认默认值写入的禁用时间。
+  modelCatalog.mockImplementation(() => new Promise(() => {}));
+  await user.click(model);
+  await user.click(await screen.findByRole("option", { name: "Model B" }));
   await waitFor(() =>
-    expect(updateRuntime).toHaveBeenCalledWith(
+    expect(update).toHaveBeenCalledWith(
       expect.objectContaining({
-        path: { runtimeId: id },
+        path: { runtimeId: "codex" },
         body: expect.objectContaining({
-          defaultModel: "provider/model-b",
+          enabled: true,
+          defaultModel: "model-b",
+          defaultReasoning: "",
+        }),
+      }),
+      expect.anything(),
+    ),
+  );
+  await waitFor(() => expect(model).not.toBeDisabled());
+});
+it("切换详情账号清除旧账号模型默认值", async () => {
+  const user = userEvent.setup();
+  show("codex");
+  await user.click(await screen.findByRole("button", { name: "选择工作账号" }));
+  await waitFor(() =>
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          defaultAccountId: "work",
+          defaultModel: "",
+          defaultReasoning: "",
         }),
       }),
       expect.anything(),
@@ -997,41 +238,213 @@ it.each([
   );
 });
 
-it("首次探测条目展示正在探测，快照更新后显示版本", async () => {
-  runtimes.current = [
-    {
-      ...runtimes.current[0],
-      detectedAt: 0,
-      state: "",
-      installed: false,
-      version: "",
-    },
-  ];
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  renderSection(client);
-  await screen.findByText("正在探测");
-  expect(screen.queryByText("未安装")).not.toBeInTheDocument();
-  runtimes.current = [
-    {
-      ...runtimes.current[0],
-      detectedAt: 1,
-      state: "ready",
-      installed: true,
-      version: "2.0.0",
-    },
-  ];
-  runtimeChanged();
-  await screen.findByText("2.0.0", {}, { timeout: 2500 });
-  expect(screen.queryByText("正在探测")).not.toBeInTheDocument();
+it("详情使用共享悬停返回操作回到智能体列表", async () => {
+  const { onBack } = show("codex");
+  await userEvent.click(
+    await screen.findByRole("button", { name: "返回智能体" }),
+  );
+  expect(onBack).toHaveBeenCalledOnce();
 });
 
-it("已安装智能体的 unknown 版本展示为版本未知", async () => {
-  runtimes.current = [{ ...runtimes.current[0], version: "unknown" }];
-  renderSection(
-    new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+it("后台读取失败保留已有智能体并允许重试", async () => {
+  const { client } = show();
+  await screen.findByRole("button", { name: "打开Codex" });
+  list.mockRejectedValue(new Error("连接失败"));
+  await client.invalidateQueries({ queryKey: ["runtimes"] });
+  expect(await screen.findByRole("alert")).toHaveTextContent("连接失败");
+  expect(screen.getByRole("button", { name: "打开Codex" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "重试" })).toBeVisible();
+});
+
+it("Fast 缺省保留继承选项，选择关闭后保存显式值", async () => {
+  modelCatalog.mockResolvedValue({
+    data: {
+      runtimeId: "codex",
+      accountId: "system",
+      state: "fresh",
+      defaultModel: "model-a",
+      models: [
+        {
+          id: "model-a",
+          name: "Model A",
+          configurationKnown: true,
+          permissionLevels: ["auto"],
+          fastSupported: true,
+          defaultFast: true,
+        },
+      ],
+    },
+  });
+  const user = userEvent.setup();
+  show("codex");
+  const fast = await screen.findByRole("combobox", { name: "Fast" });
+  expect(fast).toHaveTextContent("默认");
+  await user.click(fast);
+  await user.click(await screen.findByRole("option", { name: "关闭" }));
+  await waitFor(() =>
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({ defaultFast: false }),
+      }),
+      expect.anything(),
+    ),
   );
-  await screen.findByText("版本未知");
-  expect(screen.queryByText("unknown")).not.toBeInTheDocument();
+});
+it("详情首次请求失败仅显示读取错误和重试，不声称智能体不存在", async () => {
+  list.mockRejectedValue(new Error("连接失败"));
+  show("codex");
+  expect(await screen.findByRole("alert")).toHaveTextContent("连接失败");
+  expect(screen.getByRole("button", { name: "重试" })).toBeVisible();
+  expect(screen.queryByText("未找到此智能体。")).not.toBeInTheDocument();
+});
+
+it("详情启用和权限集中在名称右侧，不再重复用途和程序配置", async () => {
+  show("codex");
+  const header = (
+    await screen.findByRole("heading", { name: "Codex" })
+  ).closest("header");
+  if (!header) throw new Error("缺少详情身份头");
+  expect(
+    within(header).getByRole("switch", { name: "启用智能体" }),
+  ).toBeVisible();
+  expect(
+    within(header).getByRole("button", { name: "默认权限" }),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("heading", { name: "用途" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "配置" }),
+  ).not.toBeInTheDocument();
+});
+it("检测图标紧邻搜索且没有重复底部操作行", async () => {
+  show();
+  await screen.findByRole("button", { name: "打开Codex" });
+  const check = screen.getByRole("button", { name: "重新检测" });
+  const search = screen.getByRole("searchbox", { name: "搜索智能体" });
+  expect(check.textContent).toBe("");
+  expect(
+    check.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(screen.getAllByRole("button", { name: "重新检测" })).toHaveLength(1);
+});
+it("模型目录不可用使用翻译文案，不显示原生诊断代码", async () => {
+  runtimeRows.current[0] = {
+    ...runtimeRows.current[0],
+    diagnostics: [
+      {
+        code: "ACP_OPTIONS_UNAVAILABLE",
+        level: "warning",
+        message: "catalog_unavailable",
+      },
+    ],
+  };
+  modelCatalog.mockResolvedValue({
+    data: {
+      runtimeId: "codex",
+      accountId: "system",
+      state: "unavailable",
+      errorCode: "catalog_unavailable",
+      models: [],
+    },
+  });
+  show("codex");
+  expect(await screen.findByText("无法读取模型目录")).toBeVisible();
+  expect(screen.queryByText("catalog_unavailable")).not.toBeInTheDocument();
+  expect(screen.queryByText("agents.diagnostics")).not.toBeInTheDocument();
+});
+
+it("安装进行中禁用配置，详情不再重复重新检测", async () => {
+  installationState.current = "installing";
+  show("codex");
+  await waitFor(() =>
+    expect(screen.getByRole("switch", { name: "启用智能体" })).toBeDisabled(),
+  );
+  expect(screen.getByRole("button", { name: "默认权限" })).toBeDisabled();
+  expect(
+    screen.queryByRole("button", { name: "重新检测" }),
+  ).not.toBeInTheDocument();
+  expect(
+    await screen.findByRole("combobox", { name: "默认模型" }),
+  ).toBeDisabled();
+});
+
+it("重启使用单图标且仍按真实智能体提交", async () => {
+  show("codex");
+  const restart = await screen.findByRole("button", { name: "重启Codex" });
+  expect(restart.textContent).toBe("");
+  expect(restart.querySelector("svg")).toHaveClass("lucide-power");
+  expect(restart).not.toHaveClass("border");
+  await userEvent.click(restart);
+  await waitFor(() =>
+    expect(refresh).toHaveBeenCalledWith(
+      expect.objectContaining({ path: { runtimeId: "codex" } }),
+      expect.anything(),
+    ),
+  );
+});
+
+it("程序快照确认已删除时不沿用旧列表的连接状态和可编辑模型", async () => {
+  installationState.installed = false;
+  show("codex");
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("combobox", { name: "默认模型" }),
+    ).not.toBeInTheDocument(),
+  );
+  expect(await screen.findByRole("heading", { name: "登录" })).toBeVisible();
+  expect(screen.queryByText("已连接")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "重启Codex" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "默认权限" })).toBeDisabled();
+});
+
+it("Pi 空模型目录提供配置提示而非重试提示", async () => {
+  runtimeRows.current = [
+    {
+      id: "pi",
+      baseRuntimeId: "pi",
+      name: "Pi",
+      installed: true,
+      enabled: true,
+      state: "ready",
+      auth: "unknown",
+      models: [],
+    },
+  ];
+  modelCatalog.mockResolvedValue({
+    data: { runtimeId: "pi", accountId: "system", state: "fresh", models: [] },
+  });
+  show("pi");
+  expect(
+    await screen.findByText("尚无可用模型，请配置账号或模型"),
+  ).toBeVisible();
+});
+
+it("多个本机版本可在版本行切换并保留默认设置", async () => {
+  const user = userEvent.setup();
+  runtimeRows.current[0] = {
+    ...runtimeRows.current[0],
+    resolvedBinary: "/cli/old/codex",
+    installations: [
+      { path: "/cli/old/codex", version: "1.2.3", available: true },
+      { path: "/cli/new/codex", version: "2.0.0", available: true },
+    ],
+  };
+  show("codex");
+  await user.click(await screen.findByRole("combobox", { name: "版本" }));
+  await user.click(await screen.findByRole("option", { name: /2.0.0/ }));
+  await waitFor(() =>
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          installationPath: "/cli/new/codex",
+          defaultModel: "model-a",
+          defaultReasoning: "high",
+        }),
+      }),
+      expect.anything(),
+    ),
+  );
 });

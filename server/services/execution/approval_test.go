@@ -46,19 +46,9 @@ func (j *approvalTestJournal) LoadExecutionContext(context.Context, string) (cha
 	panic("unexpected LoadExecutionContext call")
 }
 
-// CommitStartedTurn 不参与审批协调器测试。
-func (j *approvalTestJournal) CommitStartedTurn(context.Context, chatservice.StartedTurn) (chatservice.AcceptedTurn, error) {
-	panic("unexpected CommitStartedTurn call")
-}
-
 // CommitAcceptedTurn 不参与审批协调器测试。
 func (j *approvalTestJournal) CommitAcceptedTurn(context.Context, chatservice.StartedTurn) (chatservice.AcceptedTurn, error) {
 	panic("unexpected CommitAcceptedTurn call")
-}
-
-// MarkExecutionStarted 不参与审批协调器测试。
-func (j *approvalTestJournal) MarkExecutionStarted(context.Context, models.Execution, string) (models.Execution, error) {
-	panic("unexpected MarkExecutionStarted call")
 }
 
 // ReadRecords 返回当前测试事实副本。

@@ -17,14 +17,14 @@ import (
 // SSE 只能发布已经提交的 Record。
 type eventCommitter struct {
 	// store 持久化每个 Chat 的权威追加日志。
-	store *eventlog.Store
+	store chatJournalStorage
 	// subscriptions 广播已提交事件给进程内订阅者。
 	subscriptions *subscriptionHub
 }
 
 // newEventCommitter 创建权威事件提交器。
 func newEventCommitter(
-	store *eventlog.Store,
+	store chatJournalStorage,
 	subscriptions *subscriptionHub,
 ) *eventCommitter {
 	return &eventCommitter{
@@ -100,11 +100,9 @@ type queryIndexStore struct {
 	// results 保存原结果交付与独立的用户阅读事实。
 	results controllers.WorkResultController
 	// logStore 通过文件索引读取单条结果，文件读取在 SQLite 事务前完成。
-	logStore *eventlog.Store
+	logStore chatJournalStorage
 	// chatController 持久化对话查询索引。
 	chatController controllers.ChatController
-	// runtimeSessionController 持久化 Runtime 续接查询索引。
-	runtimeSessionController controllers.RuntimeSessionController
 	// transactionController 提供跨查询索引写入的数据库事务边界。
 	transactionController controllers.TransactionController
 }
@@ -112,13 +110,11 @@ type queryIndexStore struct {
 // newQueryIndexStore 创建可重建的 SQLite 查询索引集合。
 func newQueryIndexStore(
 	chats controllers.ChatController,
-	runtimeSessions controllers.RuntimeSessionController,
 	transactions controllers.TransactionController,
 ) *queryIndexStore {
 	return &queryIndexStore{
-		chatController:           chats,
-		runtimeSessionController: runtimeSessions,
-		transactionController:    transactions,
+		chatController:        chats,
+		transactionController: transactions,
 	}
 }
 
@@ -236,8 +232,7 @@ func (p *queryIndexStore) ensureChatState(
 		return
 	}
 	if err := p.replaceCurrentProjection(ctx, currentProjection{
-		chat:            state.chat,
-		runtimeSessions: state.runtimeSessions,
+		chat: state.chat,
 	}); err != nil {
 		logx.Errorf(
 			"restore missing chat query index failed: chat_id=%s error=%v",
@@ -266,6 +261,8 @@ func (p *queryIndexStore) indexStartedMessage(
 		"last_account_id":       execution.AccountID,
 		"last_model":            execution.Model,
 		"last_reasoning":        execution.Reasoning,
+		"last_fast":             execution.Fast,
+		"last_context_window":   execution.ContextWindow,
 		"last_permission_level": execution.PermissionLevel,
 		"updated_at":            chat.UpdatedAt,
 	})
@@ -294,81 +291,6 @@ func (p *queryIndexStore) indexChatCursor(
 	})
 }
 
-// indexRuntimeSessionSaved 保存 Session 续接索引并推进权威游标。
-func (p *queryIndexStore) indexRuntimeSessionSaved(
-	chatID string,
-	runtimeID string,
-	sessionID string,
-	lastExecutionID string,
-	afterSequence int64,
-	record eventlog.Record,
-) {
-	err := p.transactionController.Transaction(
-		context.Background(),
-		func(transactionContext context.Context) error {
-			if err := p.runtimeSessionController.Upsert(transactionContext, models.RuntimeSession{
-				ChatID:          chatID,
-				RuntimeID:       runtimeID,
-				SessionID:       sessionID,
-				LastExecutionID: lastExecutionID,
-				UpdatedAt:       record.RecordedAt,
-			}); err != nil {
-				return err
-			}
-			return p.chatController.AdvanceProjection(
-				transactionContext,
-				chatID,
-				afterSequence,
-				map[string]any{
-					"latest_sequence": record.Sequence,
-					"updated_at":      record.RecordedAt,
-				},
-			)
-		},
-	)
-	if err != nil {
-		logx.Errorf("index native session failed: chat_id=%s error=%v", chatID, err)
-	}
-}
-
-// indexRuntimeSessionCleared 删除失效 Session 索引并推进权威游标。
-func (p *queryIndexStore) indexRuntimeSessionCleared(
-	chatID string,
-	runtimeID string,
-	afterSequence int64,
-	record eventlog.Record,
-) {
-	err := p.transactionController.Transaction(
-		context.Background(),
-		func(transactionContext context.Context) error {
-			if err := p.runtimeSessionController.Delete(
-				transactionContext,
-				chatID,
-				runtimeID,
-			); err != nil {
-				return err
-			}
-			return p.chatController.AdvanceProjection(
-				transactionContext,
-				chatID,
-				afterSequence,
-				map[string]any{
-					"latest_sequence": record.Sequence,
-					"updated_at":      record.RecordedAt,
-				},
-			)
-		},
-	)
-	if err != nil {
-		logx.Errorf(
-			"delete stale native session failed: chat_id=%s runtime_id=%s error=%v",
-			chatID,
-			runtimeID,
-			err,
-		)
-	}
-}
-
 // renameChat 保存标题查询字段和对应权威游标。
 func (p *queryIndexStore) renameChat(
 	ctx context.Context,
@@ -395,9 +317,6 @@ func (p *queryIndexStore) deleteChats(
 				if err := p.results.Delete(transactionContext, constants.WorkResultOwnerKindChat, []string{chatID}); err != nil {
 					return err
 				}
-			}
-			if err := p.runtimeSessionController.DeleteByChat(transactionContext, chatID); err != nil {
-				return err
 			}
 			if err := p.chatController.Delete(transactionContext, chatID); err != nil {
 				return err

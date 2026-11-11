@@ -31,6 +31,7 @@ export type TeamChatContext = {
     name: string;
     permissionLevel: PermissionLevel;
     reasoning: string;
+    fast?: boolean;
     runtimeId: string;
     taskStatus?: ChannelTaskStatus;
     waitingApproval?: boolean;
@@ -63,6 +64,7 @@ export type TeamChatContext = {
       model: string;
       permissionLevel: PermissionLevel;
       reasoning: string;
+      fast?: boolean;
       runtimeId: string;
       wakerId: string;
     }>,
@@ -102,5 +104,6 @@ export type TeamMemberExecutionConfig = {
   model: string;
   permissionLevel: PermissionLevel;
   reasoning: string;
+  fast?: boolean;
   runtimeId: string;
 };

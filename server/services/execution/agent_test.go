@@ -9,15 +9,19 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
@@ -54,12 +58,13 @@ func TestWorkflowMCPUsesCustomRuntimeBase(t *testing.T) {
 		t.Fatal(err)
 	}
 	journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "turn"}}
-	manager := &service{agent: registry, agentEndpoint: "http://127.0.0.1:1/agent/v1", agentBinary: binary, agentSessions: &agentSessionFiles{slots: map[string]agentSessionSlot{}}, journal: journal, storage: layout, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
-	request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: "custom-claude"}, Detection: agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "claude"}}}, Session: agentapi.SessionDirective{Mode: agentapi.SessionModeNew}}
+	manager := &service{agent: registry, agentEndpoint: "http://127.0.0.1:1/agent/v1", journal: journal, storage: layout, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
+	manager.systemSkillDirectory = publishedTestSystemSkill(t, manager.skillDataDirectory, binary)
+	request := recordedRun{Runtime: runtimeSelection{RuntimeID: "custom-claude"}, Detection: agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "claude"}}}
 	capabilities := []ToolCapability{{ID: "workflow", Bindings: []capability.Binding{{Operation: "workflow.source.get", Call: func(context.Context, capability.Request) (capability.Result, error) {
 		return capability.Result{}, nil
 	}}}}}
-	_, release, _, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, request.Session, journal.chat, "turn", capabilities, &[]string{}, nil)
+	_, release, err := request.prepare(manager, journal.chat, "turn", capabilities, &[]string{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,8 +72,8 @@ func TestWorkflowMCPUsesCustomRuntimeBase(t *testing.T) {
 	if len(request.Connectors) != 1 || request.Connectors[0].RuntimeKey != "ally_capabilities" {
 		t.Fatalf("custom runtime lost MCP: %+v", request.Connectors)
 	}
-	if !strings.Contains(request.Message.Text, "Use the injected ally_capabilities MCP tools for NeuxBot operations in this execution") || strings.Contains(request.Message.Text, "For all NeuxBot CLI calls") {
-		t.Fatalf("MCP workflow received competing CLI instructions: %s", request.Message.Text)
+	if !strings.Contains(agentapi.DeveloperInstructions(request.Instructions), "Use the injected ally_capabilities MCP tools for NeuxBot operations in this execution") || strings.Contains(request.prompt(), "For all NeuxBot CLI calls") {
+		t.Fatalf("MCP workflow received competing CLI instructions: %+v", request)
 	}
 	for _, instruction := range request.Instructions {
 		if instruction.Name == "软件能力" && strings.Contains(instruction.Content, "with capabilities") {
@@ -88,21 +93,22 @@ func TestWorkflowResultSelectsOnlySupportedTransport(t *testing.T) {
 				t.Fatal(err)
 			}
 			journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "turn"}}
-			manager := &service{agent: registry, agentEndpoint: "http://127.0.0.1:1/agent/v1", agentBinary: binary, agentSessions: &agentSessionFiles{slots: map[string]agentSessionSlot{}}, journal: journal, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
-			request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: runtimeID}}, Session: agentapi.SessionDirective{Mode: agentapi.SessionModeNew}}
+			manager := &service{agent: registry, agentEndpoint: "http://127.0.0.1:1/agent/v1", journal: journal, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
+			manager.systemSkillDirectory = publishedTestSystemSkill(t, manager.skillDataDirectory, binary)
+			request := recordedRun{Runtime: runtimeSelection{RuntimeID: runtimeID}}
 			capabilities := []ToolCapability{{ID: "result", Bindings: []capability.Binding{{Operation: "workflow.results.schema", Call: func(context.Context, capability.Request) (capability.Result, error) {
 				return capability.Result{}, nil
 			}}}}}
-			_, release, _, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, request.Session, journal.chat, "turn", capabilities, &[]string{}, nil)
+			_, release, err := request.prepare(manager, journal.chat, "turn", capabilities, &[]string{}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer release()
 			if runtimeID == "codex" {
-				if len(request.Connectors) != 1 || !strings.Contains(request.Message.Text, "Use the injected ally_capabilities MCP tools") || strings.Contains(request.Message.Text, "For all NeuxBot CLI calls") {
+				if len(request.Connectors) != 1 || !strings.Contains(agentapi.DeveloperInstructions(request.Instructions), "Use the injected ally_capabilities MCP tools") || strings.Contains(request.prompt(), "For all NeuxBot CLI calls") {
 					t.Fatalf("result worker did not receive its MCP transport: %+v", request)
 				}
-			} else if len(request.Connectors) != 0 || !strings.Contains(request.Message.Text, "For all NeuxBot CLI calls") || request.LaunchEnvironment[constants.AgentCLIContextEnvironment] == "" {
+			} else if len(request.Connectors) != 0 || !strings.Contains(request.prompt(), "For all NeuxBot CLI calls") || preparedContextPath(t, request) == "" {
 				t.Fatalf("unsupported runtime lost its actual CLI fallback: %+v", request)
 			}
 		})
@@ -124,9 +130,10 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 	}
 	journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "first"}}
 	programDirectory := t.TempDir()
-	manager := &service{agent: registry, agentEndpoint: endpoint + constants.AgentCLIPath, agentBinary: binary, agentSessions: &agentSessionFiles{slots: map[string]agentSessionSlot{}}, journal: journal, storage: layout, skillDataDirectory: programDirectory, elicitations: newElicitationCoordinator(journal)}
-	request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: "codex", AccountID: "account"}}, Session: agentapi.SessionDirective{Mode: agentapi.SessionModeNew}}
-	activate, revoke, settle, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, request.Session, journal.chat, "first", nil, &[]string{}, nil)
+	manager := &service{agent: registry, agentEndpoint: endpoint + constants.AgentCLIPath, journal: journal, storage: layout, skillDataDirectory: programDirectory, elicitations: newElicitationCoordinator(journal)}
+	manager.systemSkillDirectory = publishedTestSystemSkill(t, manager.skillDataDirectory, binary)
+	request := recordedRun{Runtime: runtimeSelection{RuntimeID: "codex", AccountID: "account"}}
+	activate, revoke, err := request.prepare(manager, journal.chat, "first", nil, &[]string{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,8 +143,8 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 		cliName += ".exe"
 	}
 	skillCLI := filepath.Join(request.Skills[0].Path, "scripts", cliName)
-	if request.LaunchEnvironment[constants.AgentCLIBinaryEnvironment] != skillCLI {
-		t.Fatalf("CLI must be directly available inside the advertised skill: got %q, want %q", request.LaunchEnvironment[constants.AgentCLIBinaryEnvironment], skillCLI)
+	if builtinskills.CLIPath(request.Skills[0].Path) != skillCLI {
+		t.Fatalf("CLI must be directly available inside the advertised skill: got %q, want %q", builtinskills.CLIPath(request.Skills[0].Path), skillCLI)
 	}
 	if _, err := os.ReadFile(filepath.Join(request.Skills[0].Path, "references", "wiki-guide.md")); err != nil {
 		t.Fatalf("knowledge reference missing beside SKILL.md: %v", err)
@@ -150,23 +157,22 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 			t.Fatalf("program resources leaked into managed files: %s %v", directory, err)
 		}
 	}
-	firstPath := request.LaunchEnvironment[constants.AgentCLIContextEnvironment]
+	firstPath := preparedContextPath(t, request)
 	first, err := capability.ReadConnection(firstPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	settle(agentapi.Result{Session: agentapi.SessionResult{OutputID: "native", State: agentapi.SessionStateCreated}})
 	revoke()
 	journal.chat.ActiveExecutionID = "second"
-	secondRequest := recordedRun{SessionPlan: agentapi.SessionPlan{Target: request.Target}, Session: agentapi.SessionDirective{Mode: agentapi.SessionModeResume, ID: "native"}}
-	activate, revokeSecond, _, err := manager.prepareAgent(&secondRequest.SessionPlan, &secondRequest.TurnInput, secondRequest.Session, journal.chat, "second", nil, &[]string{}, nil)
+	secondRequest := recordedRun{Runtime: request.Runtime}
+	activate, revokeSecond, err := secondRequest.prepare(manager, journal.chat, "second", nil, &[]string{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer revokeSecond()
 	activate()
-	if secondRequest.LaunchEnvironment[constants.AgentCLIContextEnvironment] != firstPath {
-		t.Fatal("continued native process lost its original environment file path")
+	if preparedContextPath(t, secondRequest) != firstPath {
+		t.Fatal("continued native process lost its stable explicit context path")
 	}
 	second, err := capability.ReadConnection(firstPath)
 	if err != nil || second.Token == first.Token || second.GrantID == first.GrantID {
@@ -196,14 +202,9 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 	if journal.contextReads != 0 {
 		t.Fatalf("capability validation loaded full message context %d times", journal.contextReads)
 	}
-	newRequest := recordedRun{SessionPlan: agentapi.SessionPlan{Target: request.Target}, Session: agentapi.SessionDirective{Mode: agentapi.SessionModeNew}}
-	_, revokeNew, _, err := manager.prepareAgent(&newRequest.SessionPlan, &newRequest.TurnInput, newRequest.Session, journal.chat, "second", nil, &[]string{}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer revokeNew()
-	if newRequest.LaunchEnvironment[constants.AgentCLIContextEnvironment] == firstPath {
-		t.Fatal("new native session reused an old process credential file")
+	revokeSecond()
+	if _, err := os.Stat(firstPath); !os.IsNotExist(err) {
+		t.Fatal("settled execution left its credential file on disk")
 	}
 }
 
@@ -221,7 +222,8 @@ func TestKnowledgeCLIPreparationKeepsOnlyTheFrozenGrant(t *testing.T) {
 		t.Fatalf("build real CLI: %v\n%s", err, output)
 	}
 	journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "execution"}}
-	manager := &service{agent: registry, agentEndpoint: endpoint.URL + constants.AgentCLIPath, agentBinary: binary, agentSessions: &agentSessionFiles{slots: map[string]agentSessionSlot{}}, journal: journal, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
+	manager := &service{agent: registry, agentEndpoint: endpoint.URL + constants.AgentCLIPath, journal: journal, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
+	manager.systemSkillDirectory = publishedTestSystemSkill(t, manager.skillDataDirectory, binary)
 	manager.agentBindings = func(models.Chat, string, []string, string) []capability.Binding {
 		t.Fatal("scoped command discovered ordinary resources")
 		return nil
@@ -236,8 +238,8 @@ func TestKnowledgeCLIPreparationKeepsOnlyTheFrozenGrant(t *testing.T) {
 		}
 		bindings = append(bindings, b)
 	}
-	request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: "codex"}, Policy: agentapi.RunPolicy{Execution: agentapi.ExecutionPolicy{WorkspaceReadOnly: true}}}, Session: agentapi.SessionDirective{Mode: agentapi.SessionModeNew}}
-	activate, revoke, _, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, request.Session, journal.chat, "execution", []ToolCapability{{ID: "knowledge.organize", Bindings: bindings}}, &[]string{}, nil)
+	request := recordedRun{Runtime: runtimeSelection{RuntimeID: "codex"}, ReadOnly: true}
+	activate, revoke, err := request.prepare(manager, journal.chat, "execution", []ToolCapability{{ID: "knowledge.organize", Bindings: bindings}}, &[]string{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,20 +248,24 @@ func TestKnowledgeCLIPreparationKeepsOnlyTheFrozenGrant(t *testing.T) {
 	if len(request.Connectors) != 0 {
 		t.Fatalf("knowledge grant added a retired MCP transport: %+v", request.Connectors)
 	}
-	if request.LaunchEnvironment[constants.AgentCLIContextEnvironment] == "" || !request.Policy.Execution.WorkspaceReadOnly {
+	if preparedContextPath(t, request) == "" || !request.ReadOnly {
 		t.Fatal("existing CLI context or workspace policy was lost")
 	}
 	// 从无技能文件的目录运行，清空 PATH，证明入口与引用均无需搜索。
-	command := exec.Command(request.LaunchEnvironment[constants.AgentCLIBinaryEnvironment], "capabilities")
+	command := exec.Command(builtinskills.CLIPath(request.Skills[0].Path), "--context", preparedContextPath(t, request), "capabilities")
 	command.Dir = t.TempDir()
 	command.Env = os.Environ()
-	for name, value := range request.LaunchEnvironment {
-		command.Env = append(command.Env, name+"="+value)
-	}
+	command.Env = append(command.Env, "ALLYCLI_CONTEXT_FILE="+preparedContextPath(t, request))
 	command.Env = append(command.Env, "PATH=")
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("invoke skill-local CLI without PATH: %v\n%s", err, output)
+	}
+	// 遗留环境变量不能代替当前轮显式授权路径。
+	withoutContext := exec.Command(builtinskills.CLIPath(request.Skills[0].Path), "capabilities")
+	withoutContext.Dir, withoutContext.Env = command.Dir, command.Env
+	if data, err := withoutContext.CombinedOutput(); err == nil {
+		t.Fatalf("CLI accepted an implicit context from the process environment: %s", data)
 	}
 	var response capability.Response
 	if err := json.Unmarshal(output, &response); err != nil || !response.OK {
@@ -280,7 +286,54 @@ func agentPreparationFixture(t *testing.T) *service {
 		t.Fatal(err)
 	}
 	journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "turn"}}
-	return &service{agent: registry, agentEndpoint: "http://127.0.0.1:1/agent/v1", agentBinary: binary, agentSessions: &agentSessionFiles{slots: map[string]agentSessionSlot{}}, journal: journal, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
+	manager := &service{agent: registry, agentEndpoint: "http://127.0.0.1:1/agent/v1", journal: journal, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
+	manager.systemSkillDirectory = publishedTestSystemSkill(t, manager.skillDataDirectory, binary)
+	return manager
+}
+
+func TestAgentPreparationFreezesRealReferencedFilesIndependentOfNativeProjection(t *testing.T) {
+	manager := agentPreparationFixture(t)
+	chat := manager.journal.(*agentTestJournal).chat
+	root := t.TempDir()
+	selected := filepath.Join(root, "report.txt")
+	if err := os.WriteFile(selected, []byte("original"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	references, err := prepareCodeReferences([]workspace.ProjectLink{{EntryName: "project", SourcePath: root}}, []CodeReferenceInput{{Path: selected, StartLine: 1, EndLine: 1, Content: "original"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := []string{references[0].Path}
+	var observed []string
+	bindings := []ToolCapability{{Bindings: []capability.Binding{{Operation: "im.targets.list", Call: func(ctx context.Context, _ capability.Request) (capability.Result, error) {
+		observed = capability.FilePaths(ctx)
+		copy := capability.FilePaths(ctx)
+		copy[0] = "mutated copy"
+		if !reflect.DeepEqual(observed, capability.FilePaths(ctx)) {
+			t.Fatal("capability caller mutated frozen files")
+		}
+		return capability.Result{}, status_error.AgentOperationForbidden
+	}}}}}
+	request := recordedRun{Runtime: runtimeSelection{RuntimeID: "unsupported"}, Message: agentapi.Message{CodeReferences: []agentapi.CodeReference{{Path: "projects/chat/project/report.txt"}}}}
+	activate, revoke, err := request.prepare(manager, chat, "turn", bindings, &[]string{}, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer revoke()
+	activate()
+	files[0] = filepath.Join(root, "unreferenced.txt")
+	connection, err := capability.ReadConnection(preparedContextPath(t, request))
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := httptest.NewRequest(http.MethodPost, constants.AgentCLIPath+"/commands", strings.NewReader(`{"operation":"im.targets.list","params":{}}`))
+	input.RemoteAddr = "127.0.0.1:12345"
+	input.Header.Set("Authorization", "Bearer "+connection.Token)
+	response := httptest.NewRecorder()
+	manager.agent.ServeHTTP(response, input)
+	if response.Code != http.StatusForbidden || !reflect.DeepEqual(observed, []string{references[0].Path}) {
+		t.Fatalf("grant lost real file identity: files=%v response=%s", observed, response.Body)
+	}
 }
 
 func agentPreparationBinding(t *testing.T, operation string) capability.Binding {
@@ -295,7 +348,7 @@ func agentPreparationBinding(t *testing.T, operation string) capability.Binding 
 }
 
 func TestWorkflowAuthoringPreparationSuppliesModeAndStableGuideForEveryRuntime(t *testing.T) {
-	// 移除共用入口的指南注入或首轮创作角色提醒，应使本回归失败。
+	// 移除共用入口的稳定创作角色或把本轮消息混入静态前缀，应使本回归失败。
 	targets := map[string]string{"unsupported": ""}
 	for _, base := range agentapi.BaseRuntimeIDs() {
 		targets[base] = ""
@@ -317,20 +370,12 @@ func TestWorkflowAuthoringPreparationSuppliesModeAndStableGuideForEveryRuntime(t
 				name := []string{"first-business-goal", "hot-short-edit", "restored-short-follow-up", "pure-explanation"}[index]
 				t.Run(name, func(t *testing.T) {
 					journal.chat.ActiveExecutionID = name
-					session := agentapi.SessionDirective{Mode: agentapi.SessionModeResume, ID: "native-session"}
-					if index == 0 {
-						session = agentapi.SessionDirective{Mode: agentapi.SessionModeNew}
-					} else if index == 2 {
-						// Core 恢复后没有热会话文件映射，仍沿用真实原生句柄。
-						manager.agentSessions.slots = map[string]agentSessionSlot{}
-					}
-					request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: runtimeID}, Detection: agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: baseRuntimeID}}, Instructions: []agentapi.Instruction{{Name: "PARTNER.md", Content: "Answer simple requests directly."}}}, Session: session, TurnInput: agentapi.TurnInput{Message: agentapi.Message{Text: message}}}
-					_, release, settle, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, session, journal.chat, name, nil, nil, nil)
+					request := recordedRun{Runtime: runtimeSelection{RuntimeID: runtimeID}, Detection: agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: baseRuntimeID}}, Instructions: []agentapi.Instruction{{Name: "PARTNER.md", Content: "Answer simple requests directly."}}, Message: agentapi.Message{Text: message}}
+					_, release, err := request.prepare(manager, journal.chat, name, nil, nil, nil)
 					if err != nil {
 						t.Fatal(err)
 					}
 					defer release()
-					settle(agentapi.Result{Session: agentapi.SessionResult{OutputID: "native-session", State: agentapi.SessionStateCreated}})
 					inline := ""
 					for _, instruction := range request.Instructions {
 						if instruction.Name == "WORKFLOW_AUTHORING.md" {
@@ -350,20 +395,14 @@ func TestWorkflowAuthoringPreparationSuppliesModeAndStableGuideForEveryRuntime(t
 					} else if !reflect.DeepEqual(request.Instructions, stableInstructions) {
 						t.Error("turn content or restored session changed the stable authoring instructions")
 					}
-					// 热会话不重载 Instructions，新增输入仍须独立表达创作角色。
-					for _, required := range []string{"Create or modify this reusable NeuxBot workflow", "first business goal", "Do not perform the business task", "native CLI workflow", "Pure explanations need no save", "structured question", "saved receipt"} {
-						if !strings.Contains(request.Message.Text, required) {
-							t.Errorf("%s prompt lost mode contract %q", name, required)
-						}
-					}
-					if !strings.HasPrefix(request.Message.Text, message+"\n\n") || strings.Contains(request.Message.Text, guide) || request.Session != session {
-						t.Error("preparation rewrote user input, copied the full guide into this turn, or changed native continuation")
+					if request.Message.Text != message || strings.Contains(request.prompt(), guide) || strings.Contains(request.prompt(), "<workflow-authoring-context>") {
+						t.Error("preparation rewrote user input or repeated the stable authoring role in this turn")
 					}
 					if runtimeID != "unsupported" {
-						if len(request.Connectors) != 1 || request.Connectors[0].RuntimeKey != "ally_capabilities" || strings.Contains(request.Message.Text, "For all NeuxBot CLI calls") {
+						if len(request.Connectors) != 1 || request.Connectors[0].RuntimeKey != "ally_capabilities" || strings.Contains(request.prompt(), "For all NeuxBot CLI calls") {
 							t.Errorf("base/custom runtime lost its single MCP authoring transport: %+v", request.Connectors)
 						}
-					} else if len(request.Connectors) != 0 || !strings.Contains(request.Message.Text, "For all NeuxBot CLI calls") || request.LaunchEnvironment[constants.AgentCLIContextEnvironment] == "" {
+					} else if len(request.Connectors) != 0 || !strings.Contains(request.prompt(), "For all NeuxBot CLI calls") || preparedContextPath(t, request) == "" {
 						t.Error("unknown runtime lost the authorized CLI fallback")
 					}
 				})
@@ -381,13 +420,13 @@ func TestWorkflowAuthoringPreparationDoesNotOverrideOrdinaryChatOrWorker(t *test
 			if operation != "" {
 				capabilities = []ToolCapability{{ID: "worker", Bindings: []capability.Binding{agentPreparationBinding(t, operation)}}}
 			}
-			request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: "codex"}}, TurnInput: agentapi.TurnInput{Message: agentapi.Message{Text: "访问多个资讯网，然后汇总AI新闻"}}, Session: agentapi.SessionDirective{Mode: agentapi.SessionModeNew}}
-			_, release, _, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, request.Session, journal.chat, "turn", capabilities, &[]string{}, nil)
+			request := recordedRun{Runtime: runtimeSelection{RuntimeID: "codex"}, Message: agentapi.Message{Text: "访问多个资讯网，然后汇总AI新闻"}}
+			_, release, err := request.prepare(manager, journal.chat, "turn", capabilities, &[]string{}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer release()
-			if strings.Contains(request.Message.Text, "<workflow-authoring-context>") || strings.Contains(request.Message.Text, "<workflow-reference-context>") {
+			if strings.Contains(request.prompt(), "Current workflow references") {
 				t.Fatal("ordinary chat or execution worker received the authoring role")
 			}
 			for _, instruction := range request.Instructions {
@@ -397,4 +436,44 @@ func TestWorkflowAuthoringPreparationDoesNotOverrideOrdinaryChatOrWorker(t *test
 			}
 		})
 	}
+}
+
+// preparedContextPath 读取真正交付给模型或 MCP 进程的路径，不依赖执行环境。
+func preparedContextPath(t *testing.T, request recordedRun) string {
+	t.Helper()
+	for _, connector := range request.Connectors {
+		if connector.RuntimeKey == "ally_capabilities" {
+			for i, arg := range connector.Arguments {
+				if arg == "--context" && i+1 < len(connector.Arguments) {
+					return connector.Arguments[i+1]
+				}
+			}
+		}
+	}
+	context := request.Message.Text
+	for _, instruction := range request.ContextInstructions {
+		context += "\n" + instruction.Content
+	}
+	match := regexp.MustCompile(`--context ("(?:[^"\\]|\\.)*")`).FindStringSubmatch(context)
+	if len(match) != 2 {
+		t.Fatalf("no explicit CLI context delivered: %s", context)
+	}
+	path, err := strconv.Unquote(match[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func publishedTestSystemSkill(t *testing.T, root, binary string) string {
+	t.Helper()
+	directory, err := builtinskills.SystemDirectory(root, binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory, err = filepath.EvalSymlinks(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return directory
 }

@@ -20,33 +20,37 @@ function Location() {
     </>
   );
 }
-it("keeps install actions separate from navigation and retains the resource back link", () => {
-  const install = vi.fn();
-  render(
-    <MemoryRouter initialEntries={["/resources?search=review"]}>
-      <Location />
-      <ResourceListItem
-        title="Review"
-        description="Review work"
-        icon={<Plus />}
-        to="/resources/plugins/review"
-        label="View Review"
-        actions={
-          <ResourceItemAction label="Install Review" onClick={install}>
-            <Plus />
-          </ResourceItemAction>
-        }
-      />
-    </MemoryRouter>,
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Install Review" }));
-  expect(install).toHaveBeenCalledOnce();
-  expect(screen.getByLabelText("地址")).toHaveTextContent("/resources");
-  fireEvent.click(screen.getByRole("link", { name: "View Review" }));
-  expect(screen.getByLabelText("地址")).toHaveTextContent(
-    "/resources/plugins/review",
-  );
-  expect(screen.getByLabelText("返回地址")).toHaveTextContent(
-    "/resources?search=review",
-  );
-});
+it.each(["card", "row"] as const)(
+  "keeps %s actions separate from navigation and retains the resource back link",
+  (appearance) => {
+    const install = vi.fn();
+    render(
+      <MemoryRouter initialEntries={["/resources?search=review"]}>
+        <Location />
+        <ResourceListItem
+          appearance={appearance}
+          title="Review"
+          description="Review work"
+          icon={<Plus />}
+          to="/resources/plugins/review"
+          label="View Review"
+          actions={
+            <ResourceItemAction label="Install Review" onClick={install}>
+              <Plus />
+            </ResourceItemAction>
+          }
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Install Review" }));
+    expect(install).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText("地址")).toHaveTextContent("/resources");
+    fireEvent.click(screen.getByRole("link", { name: "View Review" }));
+    expect(screen.getByLabelText("地址")).toHaveTextContent(
+      "/resources/plugins/review",
+    );
+    expect(screen.getByLabelText("返回地址")).toHaveTextContent(
+      "/resources?search=review",
+    );
+  },
+);

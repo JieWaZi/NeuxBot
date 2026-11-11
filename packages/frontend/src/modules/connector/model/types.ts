@@ -23,18 +23,20 @@ export type SecretField = GithubComJieWaZiNeuxBotServerApisMcpSecretInput & {
 };
 
 export type ConnectorFormValue = {
+  categories: string[];
   argumentsText: string;
   command: string;
   description: string;
   environment: SecretField[];
   headers: SecretField[];
   name: string;
-  timeoutMS: string;
+  timeoutSeconds: string;
   transport: ConnectorTransport;
   url: string;
 };
 
 export type ConnectorSummary = {
+  categories?: string[];
   activationPolicy: ConnectorActivationPolicy;
   affectedWakerCount: number;
   compatibility: ConnectorCompatibility[];

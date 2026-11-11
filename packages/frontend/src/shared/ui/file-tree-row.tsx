@@ -17,7 +17,7 @@ export function FileTreeRow({
   directory?: boolean;
   expanded?: boolean;
   selected?: boolean;
-  icon: ReactNode;
+  icon?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -29,7 +29,7 @@ export function FileTreeRow({
       aria-selected={selected}
       className={cn(
         "focus-visible:ring-ring type-body min-h-row-default hover:bg-muted grid min-w-0 flex-1 items-center gap-1 rounded-sm pr-2 text-left outline-none focus-visible:ring-2",
-        directory
+        directory && icon
           ? "grid-cols-[16px_16px_minmax(0,1fr)]"
           : "grid-cols-[16px_minmax(0,1fr)]",
         selected && "bg-muted",

@@ -77,8 +77,8 @@ func StageSource(parent, location, entry string) (StagedPackage, error) {
 		return LoadSource(root, ".")
 	}
 	pkg, err := load(root)
-	// 允许 ZIP 含一个顶层包装目录，但不猜测多个候选。
-	if err != nil {
+	// 未指定逻辑入口的本机暂存可接收单层包装；可信目录声明的入口绝不重定位。
+	if err != nil && entry == "" {
 		entries, readErr := os.ReadDir(root)
 		if readErr == nil && len(entries) == 1 && entries[0].IsDir() {
 			root = filepath.Join(root, entries[0].Name())
@@ -194,26 +194,16 @@ func CopyContent(parent, source, digest string) (string, error) {
 	return target, nil
 }
 func validateLinks(root string) error {
-	return filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return storageFailure(err)
-		}
-		if entry.Name() == ".git" && entry.IsDir() {
-			return filepath.SkipDir
-		}
-		if entry.Type()&os.ModeSymlink == 0 {
-			return nil
-		}
-		relative, err := filepath.Rel(root, path)
-		if err != nil {
-			return status_error.PluginContentInvalid
-		}
-		if _, err := contained(root, relative); err != nil {
-			return status_error.PluginContentInvalid
-		}
-		return nil
-	})
+	graph, err := captureDeliveryGraph(root)
+	if err != nil {
+		return err
+	}
+	if _, err = graph.linkTargets(); err != nil {
+		return err
+	}
+	return graph.requireActualReachability()
 }
+
 func storageFailure(err error) error {
 	logx.Errorf("plugin storage operation failed: %v", err)
 	return status_error.PluginStorageError
@@ -249,10 +239,7 @@ func ContentPath(dataDirectory, relative string) (string, error) {
 
 // VerifyContent 在安装和执行接纳时复验不可变内容，避免交付已经变化的文件。
 func VerifyContent(root, digest string) error {
-	if err := validateLinks(root); err != nil {
-		return err
-	}
-	actual, err := pluginArchive.Digest(root)
+	actual, err := ContentDigest(root)
 	if err != nil {
 		return err
 	}
@@ -267,5 +254,9 @@ func ContentDigest(root string) (string, error) {
 	if err := validateLinks(root); err != nil {
 		return "", err
 	}
-	return pluginArchive.Digest(root)
+	canonical, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", storageFailure(err)
+	}
+	return pluginArchive.Digest(canonical)
 }

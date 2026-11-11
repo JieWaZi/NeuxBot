@@ -30,6 +30,10 @@ type configurationBoundary struct{}
 func (configurationBoundary) ValidateConfiguration(context.Context, execution.ExecutionConfiguration) error {
 	return nil
 }
+func (configurationBoundary) ResolveConfiguration(_ context.Context, value execution.ExecutionConfiguration) (execution.ExecutionConfiguration, error) {
+	value.Resolved = true
+	return value, nil
+}
 func (configurationBoundary) Start(context.Context, execution.WorkIntent) (execution.AcceptedExecution, error) {
 	return execution.AcceptedExecution{}, status_error.RuntimeUnavailable
 }

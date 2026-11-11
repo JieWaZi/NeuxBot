@@ -16,7 +16,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/mcpclient"
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
-	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/plugininstallation"
 	"github.com/gin-gonic/gin"
@@ -87,16 +86,7 @@ func (o *TestPluginConnector) Output(ctx *gin.Context) (interface{}, error) {
 	target := "codex"
 	hasOwned := slices.ContainsFunc(version.Package.Servers, func(s packageplugin.Server) bool { return s.Key == o.Key })
 	if !hasOwned {
-		target = ""
-		for _, candidate := range []string{"codex", "claude"} {
-			if slices.ContainsFunc(version.Package.NativeImplementations[candidate].Servers, func(s packageplugin.NativeServerSummary) bool { return s.Key == o.Key }) {
-				target = candidate
-				break
-			}
-		}
-		if target == "" {
-			return nil, ginx.WithStack(status_error.PluginContentInvalid)
-		}
+		return nil, ginx.WithStack(status_error.PluginContentInvalid)
 	} else if auth := version.Package.Integration.Authentication; auth != nil && len(auth.Bindings) > 0 {
 		target = ""
 		for _, binding := range auth.Bindings {
@@ -106,15 +96,10 @@ func (o *TestPluginConnector) Output(ctx *gin.Context) (interface{}, error) {
 			}
 		}
 		if target == "" {
-			return nil, ginx.WithStack(status_error.PluginForbidden)
+			target = "codex"
 		}
 	}
-	selection := version.Package
-	if hasOwned {
-		// 自有组件始终使用逻辑包；原生引用仅服务原生摘要组件，不能劫持同名连接。
-		selection.Integration.NativePlugins = nil
-	}
-	pkg, root, err := packageplugin.SelectTarget(source, selection, target)
+	pkg, root, err := packageplugin.SelectTarget(source, version.Package, target)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
@@ -169,7 +154,11 @@ func (o *TestPluginConnector) Output(ctx *gin.Context) (interface{}, error) {
 	for name, value := range resolved.Server.Headers {
 		connector.Headers = append(connector.Headers, models.MCPSecretDefinition{Name: name, Value: value, Configured: value != ""})
 	}
-	diagnostic := connectorDiagnostic{Revision: config.Revision}
+	generation, err := global.PluginControllerManager.AccountGeneration(ctx, o.PluginID)
+	if err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	diagnostic := connectorDiagnostic{Revision: config.Revision, AccountGeneration: generation}
 	logical := version
 	if logical.Package.Integration.Authentication == nil && pkg.Integration.Authentication != nil {
 		logical.Package = pkg
@@ -178,14 +167,14 @@ func (o *TestPluginConnector) Output(ctx *gin.Context) (interface{}, error) {
 			return nil, ginx.WithStack(status_error.PluginContentInvalid)
 		}
 	}
-	if logical.Package.Integration.Authentication != nil {
-		auth, bridge, release, err := installationService().BridgeLease(logical)
+	if declaration := logical.Package.Integration.Authentication; declaration != nil && slices.ContainsFunc(declaration.Bindings, func(binding packageplugin.AuthenticationBinding) bool { return binding.Server == o.Key }) {
+		auth, bridge, release, err := installationService().BridgeLease(ctx, logical)
 		if errors.Is(err, status_error.PluginBusy) {
 			// 同版本桥接可直接共享；仅入口需切换且被占用时回收闲置消费者，活动工作仍受保护。
 			if err := closeIdlePlugin(ctx, o.PluginID); err != nil {
 				return nil, ginx.WithStack(err)
 			}
-			auth, bridge, release, err = installationService().BridgeLease(logical)
+			auth, bridge, release, err = installationService().BridgeLease(ctx, logical)
 		}
 		if err != nil {
 			return nil, ginx.WithStack(err)
@@ -211,36 +200,28 @@ func (o *TestPluginConnector) Output(ctx *gin.Context) (interface{}, error) {
 		}
 		if len(bindings) > 0 {
 			connectors := []models.MCPConnector{connector}
-			if err := plugininstallation.ResolveBoundAuthentication(ctx, bridge, o.PluginID, bindings, false, connectors, nil); err != nil {
+			if err := plugininstallation.ResolveBoundAuthentication(ctx, bridge, logical, config, bindings, false, connectors, nil); err != nil {
 				return nil, ginx.WithStack(err)
 			}
 			connector = connectors[0]
-		} else {
-			bindings, err := bridge.Resolve(ctx, []commandbridge.Component{{ComponentID: connector.ID, Key: o.Key, Target: "mcp", URL: connector.URL}})
-			if err != nil {
-				return nil, ginx.WithStack(err)
-			}
-			for _, binding := range bindings {
-				for name, value := range binding.Headers {
-					connector.Headers = slices.DeleteFunc(connector.Headers, func(d models.MCPSecretDefinition) bool { return strings.EqualFold(d.Name, name) })
-					connector.Headers = append(connector.Headers, models.MCPSecretDefinition{Name: name, Value: value, Configured: true})
-				}
-				if connector.Transport == constants.MCPTransportStdio {
-					for name, value := range binding.Environment {
-						connector.Environment = append(connector.Environment, models.MCPSecretDefinition{Name: name, Value: value, Configured: true})
-					}
-				}
-			}
 		}
+
 	}
 	probe := mcpclient.TestInDirectory(ctx, connector, resolved.WorkingDirectory)
 	// 配置或伙伴版本变化后，迟到的结果不能覆盖当前详情。
-	latest, err := global.PluginControllerManager.Configuration(ctx, o.PluginID)
+	latest, err := global.PluginControllerManager.ConfigurationRevision(ctx, o.PluginID)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	if latest.Revision != config.Revision {
+	if latest != config.Revision {
 		return nil, ginx.WithStack(status_error.PluginConfigurationConflict)
+	}
+	latestGeneration, err := global.PluginControllerManager.AccountGeneration(ctx, o.PluginID)
+	if err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	if latestGeneration != generation {
+		return nil, ginx.WithStack(status_error.PluginAccountConflict)
 	}
 	if _, err := visible.Output(ctx); err != nil {
 		return nil, ginx.WithStack(err)

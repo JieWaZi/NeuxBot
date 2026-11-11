@@ -4,12 +4,6 @@ import {
   useErrorNotices,
   reportErrorNotice,
 } from "@/shared/api/error-notices";
-const { retryExecutionMock } = vi.hoisted(() => ({
-  retryExecutionMock: vi.fn(),
-}));
-vi.mock("@/shared/api/generated/sdk.gen", () => ({
-  retryChatExecution: retryExecutionMock,
-}));
 import type { AppendMessage, ExternalStoreAdapter } from "@assistant-ui/react";
 import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { createElement, useLayoutEffect, type ReactNode } from "react";
@@ -22,7 +16,8 @@ import { useChatRuntime as useProductionChatRuntimeImpl } from "./use-chat-runti
 import { ChatQueueProvider, useChatQueueStore } from "./chat-queue-store";
 import { classifyChatSendFailure } from "./chat-send-failure";
 import { conversationKeyOf } from "../model/conversation-identity";
-import { ApiError } from "@/shared/api/errors";
+import { ApiError, toApiError } from "@/shared/api/errors";
+import { i18n } from "@/shared/i18n";
 import {
   clearStableCreateRequest,
   withStableCreateRequest,
@@ -210,7 +205,6 @@ describe("useChatRuntime queue", () => {
     projectedMessages.current = [];
     subscriptionOptions.current = undefined;
     subscribeChatMock.mockClear();
-    retryExecutionMock.mockReset();
     const notices = renderHook(useErrorNotices);
     act(() => {
       for (const notice of notices.result.current)
@@ -218,6 +212,40 @@ describe("useChatRuntime queue", () => {
     });
     notices.unmount();
   });
+
+  it.each([undefined, "existing-chat"])(
+    "仅新建会话的首次请求标记会话准备：%s",
+    async (chatId) => {
+      let finish: (value: MessageResult) => void = () => {};
+      const options = {
+        ...runtimeOptions(chatId ?? "draft:first-send"),
+        chatId,
+        activeExecutionId: undefined,
+        send: () =>
+          new Promise<MessageResult>((resolve) => {
+            finish = resolve;
+          }),
+      };
+      const { result } = renderHook(() => useChatRuntime(options), { wrapper });
+      let submission: Promise<void> | void;
+      act(() => {
+        submission = runtimeAdapter.current?.onNew?.(queuedMessage);
+      });
+      expect(
+        result.current.messages.find((message) => message.role === "assistant"),
+      ).toMatchObject({
+        status: "pending",
+        preparingSession: !chatId,
+      });
+      await act(async () => {
+        finish({
+          chat: { id: chatId ?? "created-chat" },
+          execution: { id: "first-execution", status: "running" },
+        });
+        await submission;
+      });
+    },
+  );
 
   it.each(["completed", "failed", "canceled"] as const)(
     "断线后仅 REST %s 权威终态也能清除同次执行的运行占位",
@@ -362,42 +390,6 @@ describe("useChatRuntime queue", () => {
     }
   });
 
-  it("消息重试绑定失败执行，连点只调用一次接口，结果触发权威刷新", async () => {
-    let resolve!: (value: { data: MessageResult }) => void;
-    retryExecutionMock.mockImplementation(
-      () =>
-        new Promise((done) => {
-          resolve = done;
-        }),
-    );
-    const options = {
-      ...runtimeOptions("chat-retry"),
-      activeExecutionId: undefined,
-    };
-    const { result } = renderHook(() => useChatRuntime(options), { wrapper });
-    let pending!: Promise<void>;
-    act(() => {
-      pending = result.current.retryExecution("failed-1");
-      void result.current.retryExecution("failed-1");
-    });
-    expect(retryExecutionMock).toHaveBeenCalledTimes(1);
-    expect(retryExecutionMock).toHaveBeenCalledWith({
-      path: { chatId: "chat-retry", executionId: "failed-1" },
-      throwOnError: true,
-    });
-    await act(async () => {
-      resolve({
-        data: {
-          chat: { id: "chat-retry" },
-          execution: { id: "child-1", status: "running" },
-        },
-      });
-      await pending;
-    });
-    expect(options.onTerminal).toHaveBeenCalled();
-    expect(result.current.isRunning).toBe(true);
-  });
-
   it("响应未知时只检查状态，不重新发送；后续发送成功清除发送错误", async () => {
     const invalidations = vi.spyOn(queryClient, "invalidateQueries");
     const send = vi
@@ -434,6 +426,7 @@ describe("useChatRuntime queue", () => {
     expect(result.current.notices).toHaveLength(1);
     act(() =>
       reportErrorNotice({
+        messageSource: "public",
         id: "other-query",
         scope: "chat-unknown",
         operation: "query:chat-unknown",
@@ -460,6 +453,7 @@ describe("useChatRuntime queue", () => {
     act(() => {
       subscriptionOptions.current?.onUnavailable?.();
       reportErrorNotice({
+        messageSource: "public",
         id: "query-error",
         scope: "chat:stream-chat",
         operation: "query:stream-chat",
@@ -484,9 +478,16 @@ describe("useChatRuntime queue", () => {
     });
     const options = {
       ...runtimeOptions("chat-missing-rollout"),
-      send: vi
-        .fn()
-        .mockRejectedValue(new ApiError(raw, "RuntimeExecutionFailed", 500)),
+      send: vi.fn().mockRejectedValue(
+        toApiError(
+          {
+            key: "RuntimeSessionNotFound",
+            message: raw,
+            messageSource: "localized",
+          },
+          500,
+        ),
+      ),
     };
     const { result } = renderHook(
       () => ({ chat: useChatRuntime(options), notices: useErrorNotices() }),
@@ -496,7 +497,9 @@ describe("useChatRuntime queue", () => {
       await runtimeAdapter.current?.onNew?.(queuedMessage);
     });
     expect(result.current.notices[0]).toMatchObject({
-      message: "当前智能体无法继续这段对话。确认后可携带近期消息，在这里继续。",
+      message: "智能体会话已失效，请新建对话后继续",
+      errorCode: "RuntimeSessionNotFound",
+      messageSource: "localized",
       action: undefined,
     });
     expect(options.onTerminal).not.toHaveBeenCalled();
@@ -753,15 +756,19 @@ describe("useChatRuntime queue", () => {
     expect(result.current.isRunning).toBe(false);
   });
 
-  it("无法证明连续性的终态、缺口与重连仍请求权威历史恢复", () => {
+  it("重连对账后接纳不连续持久游标的完整终态，丢弃更旧快照", () => {
     const options = runtimeOptions("chat-recover");
     queryClient.setQueryData(chatMessagesKey("chat-recover"), {
       pages: [{ resources: [], latestSequence: 1, hasMore: false }],
       pageParams: [undefined],
     });
-    renderHook(() => useChatRuntime(options), { wrapper });
+    const { result } = renderHook(() => useChatRuntime(options), { wrapper });
+    // 共享订阅在权威对账完成后才触发 onReconnect；领域持久游标允许间隔。
     act(() => subscriptionOptions.current?.onReconnect?.());
     expect(options.onTerminal).toHaveBeenLastCalledWith();
+    const displayParts = [
+      { id: "saved-result", type: "text" as const, text: "已持久保存的结果" },
+    ];
     act(() =>
       subscriptionOptions.current?.onEvent({
         sequence: 8,
@@ -772,13 +779,57 @@ describe("useChatRuntime queue", () => {
           role: "assistant",
           status: "failed",
           revision: 8,
+          displayParts,
         },
       }),
     );
     expect(options.onTerminal).toHaveBeenLastCalledWith();
     expect(
       queryClient.getQueryData(chatMessagesKey("chat-recover")),
-    ).toMatchObject({ pages: [{ latestSequence: 1, resources: [] }] });
+    ).toMatchObject({
+      pages: [
+        {
+          latestSequence: 8,
+          resources: [
+            { id: "execution-1", status: "failed", revision: 8, displayParts },
+          ],
+        },
+      ],
+    });
+    expect(result.current.messages).toContainEqual(
+      expect.objectContaining({
+        id: "execution-1",
+        status: "failed",
+        displayParts,
+      }),
+    );
+    expect(result.current.isRunning).toBe(false);
+    act(() =>
+      subscriptionOptions.current?.onEvent({
+        sequence: 4,
+        type: "assistant.message",
+        message: {
+          id: "execution-1",
+          executionId: "execution-1",
+          role: "assistant",
+          status: "running",
+          revision: 4,
+          displayParts: [],
+        },
+      }),
+    );
+    expect(
+      queryClient.getQueryData(chatMessagesKey("chat-recover")),
+    ).toMatchObject({
+      pages: [
+        {
+          latestSequence: 8,
+          resources: [
+            { id: "execution-1", status: "failed", revision: 8, displayParts },
+          ],
+        },
+      ],
+    });
   });
 
   it("恢复快照后已收到的新持久批次不会在onReconnect中被丢弃", () => {
@@ -2605,13 +2656,22 @@ describe("chat send failure", () => {
     ).toEqual({
       kind: "active-execution",
       message: "当前对话已有运行中的执行",
+      errorCode: "ChatHasActiveExecution",
+      errorParams: undefined,
+      messageSource: undefined,
     });
     expect(
       classifyChatSendFailure(new ApiError("Failed to fetch", "NETWORK")),
     ).toEqual({ kind: "unknown" });
     expect(
       classifyChatSendFailure(new ApiError("响应解析失败", "UNKNOWN", 500)),
-    ).toEqual({ kind: "unknown", message: "响应解析失败" });
+    ).toEqual({
+      kind: "unknown",
+      message: "响应解析失败",
+      errorCode: "UNKNOWN",
+      errorParams: undefined,
+      messageSource: undefined,
+    });
     expect(
       classifyChatSendFailure(
         new ApiError("对话仍在创建", "CreateRequestInProgress", 409),
@@ -2619,6 +2679,9 @@ describe("chat send failure", () => {
     ).toEqual({
       kind: "create-request-in-progress",
       message: "对话仍在创建",
+      errorCode: "CreateRequestInProgress",
+      errorParams: undefined,
+      messageSource: undefined,
     });
     expect(
       classifyChatSendFailure(
@@ -2627,6 +2690,9 @@ describe("chat send failure", () => {
     ).toEqual({
       kind: "create-request-conflict",
       message: "发送标识已用于其他内容",
+      errorCode: "CreateRequestConflict",
+      errorParams: undefined,
+      messageSource: undefined,
     });
   });
 
@@ -2635,7 +2701,13 @@ describe("chat send failure", () => {
     (code) => {
       expect(
         classifyChatSendFailure(new ApiError("消息尚未提交", code, 500)),
-      ).toEqual({ kind: "rejected", message: "消息尚未提交" });
+      ).toEqual({
+        kind: "rejected",
+        message: "消息尚未提交",
+        errorCode: code,
+        errorParams: undefined,
+        messageSource: undefined,
+      });
     },
   );
 });
@@ -2837,3 +2909,58 @@ it.each(["enqueue", "promote", "stale-enqueue", "stale-promote"] as const)(
     });
   },
 );
+
+it("真实发送失败通知保留应用参数并随当前语言重绘", async () => {
+  await i18n.changeLanguage("zh-CN");
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const options = {
+    ...runtimeOptions("chat-error-contract"),
+    activeExecutionId: undefined,
+    send: vi.fn().mockRejectedValue(
+      toApiError(
+        {
+          key: "RuntimeWorkspaceScopeUnsupported",
+          message: "server cached language",
+          params: { MaxDirectories: 2 },
+          messageSource: "localized",
+        },
+        400,
+      ),
+    ),
+  };
+  const notices = renderHook(useErrorNotices);
+  act(() => {
+    for (const notice of notices.result.current) dismissErrorNotice(notice.id);
+  });
+  notices.unmount();
+  const { result, unmount } = renderHook(
+    () => ({ chat: useChatRuntime(options), notices: useErrorNotices() }),
+    { wrapper: TestProviders },
+  );
+  try {
+    await act(async () => {
+      await runtimeAdapter.current?.onNew?.(queuedMessage);
+    });
+    expect(options.send).toHaveBeenCalledTimes(1);
+    expect(result.current.notices[0]).toMatchObject({
+      errorCode: "RuntimeWorkspaceScopeUnsupported",
+      errorParams: { MaxDirectories: 2 },
+      messageSource: "localized",
+      message: "当前智能体最多支持 2 个项目目录，请调整工作范围",
+    });
+    await act(() => i18n.changeLanguage("en-US"));
+    expect(result.current.notices[0]?.message).toBe(
+      "the selected agent supports up to 2 project directories; adjust the workspace scope",
+    );
+  } finally {
+    act(() => {
+      for (const notice of result.current.notices)
+        dismissErrorNotice(notice.id);
+    });
+    unmount();
+    queryClient.clear();
+    await i18n.changeLanguage("zh-CN");
+  }
+});

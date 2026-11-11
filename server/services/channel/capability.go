@@ -59,20 +59,23 @@ func leaderWorkOptions(
 	runtimeID string,
 	model string,
 	reasoning string,
+	fast *bool,
 	permissionLevel constants.PermissionLevel,
 	capability execution.ToolCapability,
 	teamInstruction agentapi.Instruction,
 	directExecution bool,
 ) execution.WorkOptions {
 	return execution.WorkOptions{
-		RuntimeID:        runtimeID,
-		Model:            model,
-		Reasoning:        reasoning,
-		PermissionLevel:  permissionLevel,
-		SessionPolicy:    constants.RuntimeSessionPolicyContinue,
-		ToolCapabilities: []execution.ToolCapability{capability},
+		ConfigurationResolved: true,
+		RuntimeID:             runtimeID,
+		Model:                 model,
+		Reasoning:             reasoning,
+		Fast:                  fast,
+		PermissionLevel:       permissionLevel,
+		SessionPolicy:         constants.RuntimeSessionPolicyContinue,
+		ToolCapabilities:      []execution.ToolCapability{capability},
 		SupplementalInstructions: []agentapi.Instruction{
-			leaderTurnInstruction(teamInstruction, directExecution),
+			teamInstruction,
 		},
 	}
 }

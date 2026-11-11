@@ -117,6 +117,8 @@ func (v StatusError) Key() string {
 		return "PluginContentLimitExceeded"
 	case WorkspacePathInvalid:
 		return "WorkspacePathInvalid"
+	case RuntimeWorkspaceScopeUnsupported:
+		return "RuntimeWorkspaceScopeUnsupported"
 	case TerminalInvalid:
 		return "TerminalInvalid"
 	case AgentInputInvalid:
@@ -209,6 +211,8 @@ func (v StatusError) Key() string {
 		return "WorkspaceResourceNotFound"
 	case TerminalNotFound:
 		return "TerminalNotFound"
+	case ChatMessageNotFound:
+		return "ChatMessageNotFound"
 	case AgentReceiptNotFound:
 		return "AgentReceiptNotFound"
 	case KnowledgeNotFound:
@@ -281,10 +285,6 @@ func (v StatusError) Key() string {
 		return "AIAccountInUse"
 	case AIAccountNameConflict:
 		return "AIAccountNameConflict"
-	case ExecutionRetryUnavailable:
-		return "ExecutionRetryUnavailable"
-	case ExecutionRetryInProgress:
-		return "ExecutionRetryInProgress"
 	case AutomaticTaskBusy:
 		return "AutomaticTaskBusy"
 	case AutomaticTaskDisabled:
@@ -333,8 +333,26 @@ func (v StatusError) Key() string {
 		return "PluginSkillConflict"
 	case PluginBusy:
 		return "PluginBusy"
+	case PluginAccountConflict:
+		return "PluginAccountConflict"
+	case PluginSkillSelectionConflict:
+		return "PluginSkillSelectionConflict"
 	case WorkspaceResourceConflict:
 		return "WorkspaceResourceConflict"
+	case ChatLogVersionConflict:
+		return "ChatLogVersionConflict"
+	case ChatLogIdempotencyConflict:
+		return "ChatLogIdempotencyConflict"
+	case ChatLogNativeOutcomePending:
+		return "ChatLogNativeOutcomePending"
+	case RuntimeInstallationBusy:
+		return "RuntimeInstallationBusy"
+	case RuntimeRestartBusy:
+		return "RuntimeRestartBusy"
+	case RuntimeUpdateCheckBusy:
+		return "RuntimeUpdateCheckBusy"
+	case RuntimeVersionUnknown:
+		return "RuntimeVersionUnknown"
 	case AgentCommandOutcomeUnknown:
 		return "AgentCommandOutcomeUnknown"
 	case AgentCommandRequestConflict:
@@ -351,6 +369,14 @@ func (v StatusError) Key() string {
 		return "IntegrationConflict"
 	case WorkspaceResourceTooLarge:
 		return "WorkspaceResourceTooLarge"
+	case PluginCapabilityUnsupported:
+		return "PluginCapabilityUnsupported"
+	case PluginPackageUnsupported:
+		return "PluginPackageUnsupported"
+	case RuntimeInstallationUnsupported:
+		return "RuntimeInstallationUnsupported"
+	case RuntimeMaintenanceUnsupported:
+		return "RuntimeMaintenanceUnsupported"
 	case KnowledgeCandidateInvalid:
 		return "KnowledgeCandidateInvalid"
 	case KnowledgeUnsupported:
@@ -459,6 +485,12 @@ func (v StatusError) Key() string {
 		return "RuntimeHandoffInvalid"
 	case RuntimeEventQueueOverflow:
 		return "RuntimeEventQueueOverflow"
+	case RuntimeQuotaExhausted:
+		return "RuntimeQuotaExhausted"
+	case RuntimeRateLimited:
+		return "RuntimeRateLimited"
+	case RuntimeModelSelectionFailed:
+		return "RuntimeModelSelectionFailed"
 	case AutomaticTaskServiceInvalid:
 		return "AutomaticTaskServiceInvalid"
 	case AutomaticTaskTokenGenerationFailed:
@@ -513,6 +545,10 @@ func (v StatusError) Key() string {
 		return "PluginAuthorizationFailed"
 	case PluginDistributionUnavailable:
 		return "PluginDistributionUnavailable"
+	case PluginDependencyUnavailable:
+		return "PluginDependencyUnavailable"
+	case RuntimeInstallationFailed:
+		return "RuntimeInstallationFailed"
 	case KnowledgeRemoteUnreachable:
 		return "KnowledgeRemoteUnreachable"
 	case KnowledgeRemoteIncompatible:
@@ -586,22 +622,23 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			AutomaticScheduleInvalid:             "invalid schedule or timezone, or no future occurrence",
 			AutomaticTaskWorkspaceInvalid:        "select an available project owned by the waker or a local directory",
 			AutomaticTaskInputInvalid:            "invalid workflow task input binding or invocation argument",
-			RuntimeNotRegistered:                 "selected runtime is not registered",
+			RuntimeNotRegistered:                 "the selected agent is unavailable; select another agent",
 			WorkflowSourceInvalid:                "invalid workflow source or contract; inspect compiler diagnostics",
 			WorkflowSchemaInvalid:                "workflow input or output does not satisfy its schema",
 			WorkflowCapabilityUnsupported:        "selected execution backend does not support the required workflow capability",
 			WorkflowResourceInvalid:              "workflow resource or workspace is unavailable",
 			WorkflowBudgetExceeded:               "workflow execution budget is exhausted",
 			WorkflowFileInvalid:                  "invalid workflow file reference, name, or ownership",
-			WorkflowIMTargetNotDeclared:          "delivery target is not declared as a workflow dependency; optimize the workflow to declare its target scope",
+			WorkflowIMTargetNotDeclared:          "The delivery target is not declared as a workflow dependency. Optimize the workflow to declare the allowed target scope.",
 			WorkflowRetryRequiresReadOnly:        "automatic worker retry requires read-only execution; the node configuration permits writes",
 			WorkflowRetryIdempotencyUnsupported:  "worker retry idempotency cannot be enforced by the current execution capabilities",
 			IMConfigurationInvalid:               "im configuration is invalid",
-			IMFileInvalid:                        "im file is missing, outside scope, or too large",
+			IMFileInvalid:                        "The delivery file is missing, too large, or outside the approved workspace. Check the file and approved workspace.",
 			PluginManifestInvalid:                "plugin manifest is invalid or its format version is unsupported",
 			PluginContentInvalid:                 "plugin content or package path is invalid",
 			PluginContentLimitExceeded:           "plugin content exceeds import limits",
 			WorkspacePathInvalid:                 "workspace path is invalid",
+			RuntimeWorkspaceScopeUnsupported:     "{{if .MaxDirectories}}the selected agent supports up to {{.MaxDirectories}} project directories; adjust the workspace scope{{else}}the selected agent cannot use the requested workspace scope{{end}}",
 			TerminalInvalid:                      "terminal request is invalid",
 			AgentInputInvalid:                    "command input does not satisfy the operation contract",
 			KnowledgeInvalid:                     "invalid knowledge request",
@@ -609,13 +646,13 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			Unauthorized:                         "invalid local access token",
 			MemoryContextUnauthorized:            "memory invocation context is invalid or expired",
 			AutomaticTaskTokenInvalid:            "automatic task token is invalid or revoked",
-			IMLoginRequired:                      "im sign-in is required",
+			IMLoginRequired:                      "The delivery connection is signed out. Sign in again.",
 			AgentContextUnauthorized:             "capability execution context is invalid or expired",
 			KnowledgeRemoteUnauthorized:          "remote knowledge authentication failed",
 			IntegrationUnauthorized:              "integration credential is invalid, expired or revoked",
-			IMChatNotAuthorized:                  "im chat is not authorized",
-			IMWorkflowDeliveryNotAllowed:         "workflow delivery is disabled for this chat; enable it in the chat configuration",
-			IMTargetNotAuthorized:                "chat is not authorized or authorization was revoked; authorize it in the chat configuration",
+			IMChatNotAuthorized:                  "This chat is not authorized or its authorization was revoked. Restore authorization in the chat configuration.",
+			IMWorkflowDeliveryNotAllowed:         "Workflow delivery is disabled for this chat. Enable it in the chat configuration.",
+			IMTargetNotAuthorized:                "This chat is not authorized or its authorization was revoked. Restore authorization in the chat configuration.",
 			PluginForbidden:                      "plugin is outside the current partner scope",
 			WorkspaceScopeInvalid:                "workspace scope is invalid or expired",
 			TerminalForbidden:                    "terminal session is not authorized",
@@ -643,11 +680,12 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			AutomaticRunNotFound:                 "automatic task run not found",
 			WorkflowNotFound:                     "workflow definition, revision, or run was not found",
 			WorkflowFileNotFound:                 "workflow file was not found within the allowed scope",
-			IMResourceNotFound:                   "im resource was not found",
-			IMTargetUnavailable:                  "delivery target no longer exists; optimize the workflow and select an approved chat",
+			IMResourceNotFound:                   "The IM connection, chat, or delivery record was not found. Check the connection and approved chat configuration.",
+			IMTargetUnavailable:                  "The delivery target no longer exists. Optimize the workflow and select an approved chat.",
 			PluginNotFound:                       "plugin or version was not found",
 			WorkspaceResourceNotFound:            "workspace resource was not found",
 			TerminalNotFound:                     "terminal session was not found or has ended",
+			ChatMessageNotFound:                  "the conversation message does not exist",
 			AgentReceiptNotFound:                 "command acceptance receipt was not found in the current scope",
 			KnowledgeNotFound:                    "knowledge resource not found",
 			IntegrationNotFound:                  "integration record was not found",
@@ -684,8 +722,6 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			AIAccountRevisionConflict:            "account has changed; refresh and try again",
 			AIAccountInUse:                       "account is referenced by an agent or chat; switch accounts first",
 			AIAccountNameConflict:                "account name already exists",
-			ExecutionRetryUnavailable:            "this response cannot be retried directly",
-			ExecutionRetryInProgress:             "the retry request is being processed; check its status shortly",
 			AutomaticTaskBusy:                    "the previous automatic run is still active",
 			AutomaticTaskDisabled:                "the automatic task is disabled",
 			AutomaticTaskRequestConflict:         "the request identifier was used with different input",
@@ -699,18 +735,27 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkflowAuthoringSuperseded:          "workflow authoring was superseded; stop old calls and continue in the current authoring chat",
 			WorkflowAuthoringFinished:            "workflow authoring execution ended; send a new message in the authoring chat to continue",
 			IMConfigurationConflict:              "im configuration changed; refresh and retry",
-			IMDeliveryContextUnavailable:         "weixin delivery context is unavailable",
+			IMDeliveryContextUnavailable:         "The WeChat delivery context is missing. Send the bot a message first.",
 			IMDeliveryRetryUnsafe:                "delivery result is unknown; verify before resending",
 			IMConnectionInUse:                    "connection is used by active workflows or pending deliveries; wait or stop the related work",
 			IMConnectionHasWorkflowDependencies:  "saved workflows reference this connection; review the affected workflows and confirm deletion again if dependencies change",
-			IMConnectionDisabled:                 "delivery connection is disabled; enable it in connection settings and retry",
+			IMConnectionDisabled:                 "The delivery connection is disabled. Enable it in connection settings and retry.",
 			IMConnectionReplaced:                 "wecom bot connected elsewhere; close the other connection and save settings to reconnect",
 			PluginVersionConflict:                "plugin version or content changed; confirm the operation again",
 			PluginConfigurationConflict:          "plugin shared configuration changed or is incompatible",
 			PluginNotReady:                       "complete required plugin configuration, authentication and dependencies first",
 			PluginSkillConflict:                  "skills with the same declared name have different content",
 			PluginBusy:                           "shared account is in use by work or authorization; try again after it exits",
+			PluginAccountConflict:                "plugin shared account changed; confirm the operation again",
+			PluginSkillSelectionConflict:         "selected skills have duplicate names or contain other skills; adjust the selection and retry",
 			WorkspaceResourceConflict:            "workspace resource changed; read it again",
+			ChatLogVersionConflict:               "the conversation version changed; reload before retrying",
+			ChatLogIdempotencyConflict:           "a conversation commit identity cannot be reused with different content",
+			ChatLogNativeOutcomePending:          "the previous message result is not confirmed yet; try again shortly",
+			RuntimeInstallationBusy:              "this agent program is being maintained; wait or cancel the operation",
+			RuntimeRestartBusy:                   "this agent is executing work and cannot be restarted yet",
+			RuntimeUpdateCheckBusy:               "this agent's version is being checked; retry shortly",
+			RuntimeVersionUnknown:                "the current version is unknown; whether an update is needed cannot be determined",
 			AgentCommandOutcomeUnknown:           "command outcome is uncertain; inspect the original request receipt",
 			AgentCommandRequestConflict:          "command request identifier was already used with different content",
 			KnowledgeConflict:                    "knowledge version or request content has changed",
@@ -719,6 +764,10 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			KnowledgeFolderHasPages:              "folder contains pages; move them out first",
 			IntegrationConflict:                  "integration revision or request identity conflicts",
 			WorkspaceResourceTooLarge:            "workspace resource exceeds the size limit",
+			PluginCapabilityUnsupported:          "plugin capability is unsupported by the current target",
+			PluginPackageUnsupported:             "This plugin package is unsupported. Reinstall it from the plugin catalog.",
+			RuntimeInstallationUnsupported:       "installing this agent is unsupported on this platform",
+			RuntimeMaintenanceUnsupported:        "this program cannot be safely maintained; use its official installation method",
 			KnowledgeCandidateInvalid:            "knowledge execution or candidate is not eligible for publication",
 			KnowledgeUnsupported:                 "knowledge provider or runtime does not support this operation",
 			KnowledgeEmbeddingNotConfigured:      "configure this library's embedding service first",
@@ -728,14 +777,14 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			ChatServiceNotStarted:                "chat execution service is not started",
 			ChatLogError:                         "chat log operation failed",
 			ProjectSourceUnavailable:             "project source directory is unavailable",
-			RuntimeUnavailable:                   "selected runtime is unavailable",
+			RuntimeUnavailable:                   "the selected agent is unavailable; try again later",
 			ChatDirectoryOwnershipInvalid:        "managed chat directory ownership check failed",
-			SkillUnavailable:                     "current skill content cannot be delivered to runtime",
+			SkillUnavailable:                     "the selected skills could not be prepared; try again later",
 			MemoryReindexFailed:                  "memory semantic index rebuild failed",
 			MemoryEmbeddingTestFailed:            "embedding connection test failed",
-			RuntimePolicyUnsupported:             "selected runtime cannot accurately express the current policy",
-			RuntimeProtocolIncompatible:          "runtime protocol response is incomplete or incompatible with the current adapter",
-			RuntimeInactivityTimeout:             "runtime had no activity updates within the allowed time",
+			RuntimePolicyUnsupported:             "the selected agent does not support these permissions; adjust the settings and try again",
+			RuntimeProtocolIncompatible:          "the agent returned an unexpected response; try again or update the app",
+			RuntimeInactivityTimeout:             "the agent has not responded for a long time; try again later",
 			ChatLogCorrupted:                     "authoritative chat log is corrupted or incompatible",
 			ChatLogIndexCorrupted:                "derived chat index is corrupted or incompatible",
 			ChatLogRecordInvalid:                 "chat log facts are invalid",
@@ -749,7 +798,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			CoreDataDirectoryError:               "failed to prepare core data directory",
 			CoreDatabaseInitializationFailed:     "failed to initialize application database",
 			CoreMemoryInitializationFailed:       "failed to initialize memory service",
-			CoreRuntimeInitializationFailed:      "failed to initialize runtime service",
+			CoreRuntimeInitializationFailed:      "the agent service could not start; restart the app",
 			CoreChatInitializationFailed:         "failed to initialize chat execution service",
 			CoreShutdownFailed:                   "failed to close core resources",
 			CoreTokenGenerationFailed:            "failed to generate local access token",
@@ -757,22 +806,25 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			MessageAttachmentStorageError:        "message attachment storage operation failed",
 			ManagedWorkspaceError:                "managed workspace operation failed",
 			ProjectServiceUnavailable:            "project service is unavailable",
-			RuntimeEnvironmentServiceUnavailable: "runtime environment service is unavailable",
+			RuntimeEnvironmentServiceUnavailable: "the agent service is unavailable; try again later",
 			MemoryServiceUnavailable:             "memory service is unavailable",
 			ProfileArchiveGenerationFailed:       "failed to generate profile archive",
 			ChatEventStreamUnavailable:           "current HTTP writer does not support chat event streaming",
-			RuntimeEventEncodingFailed:           "failed to encode runtime event",
-			RuntimeConfigurationInvalid:          "runtime configuration is invalid",
-			RuntimeShutdownFailed:                "failed to close runtime resources",
+			RuntimeEventEncodingFailed:           "the agent response could not be processed; try again",
+			RuntimeConfigurationInvalid:          "the current agent configuration could not be applied; check the settings and try again",
+			RuntimeShutdownFailed:                "the agent session could not close properly; try again later",
 			CoreChannelInitializationFailed:      "failed to initialize channel orchestration service",
-			RuntimeSessionNotFound:               "the native runtime session is no longer available; start a new session to continue",
-			RuntimeAuthRequired:                  "Cursor or the runtime requires signing in again",
-			RuntimeExecutionFailed:               "{{.Detail}}",
+			RuntimeSessionNotFound:               "the agent session is no longer available; start a new chat to continue",
+			RuntimeAuthRequired:                  "the selected agent requires signing in again; open account settings to sign in",
+			RuntimeExecutionFailed:               "{{if .ModelUnavailable}}the selected model is unavailable to the current account{{else}}agent execution failed{{end}}",
 			AIAccountCredentialError:             "failed to read or save AI account credentials",
 			AIAccountWorkspaceError:              "failed to prepare isolated AI account configuration",
 			AIAccountLoginFailed:                 "account sign-in failed; sign in again",
 			RuntimeHandoffInvalid:                "handoff content is invalid; continue with recent conversation",
-			RuntimeEventQueueOverflow:            "runtime event queue overflow; execution stopped, please retry",
+			RuntimeEventQueueOverflow:            "execution events could not be fully delivered; check the execution result before continuing",
+			RuntimeQuotaExhausted:                "current quota is exhausted; switch models or wait for the quota to reset",
+			RuntimeRateLimited:                   "too many requests; try again later",
+			RuntimeModelSelectionFailed:          "the selected model could not be applied; select a model again and retry",
 			AutomaticTaskServiceInvalid:          "automatic task service configuration is invalid",
 			AutomaticTaskTokenGenerationFailed:   "failed to generate an automatic task token",
 			AutomaticTaskAPIUnavailable:          "failed to listen on the local task endpoint; check port availability",
@@ -783,7 +835,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkflowTimeout:                      "workflow effect timed out",
 			WorkflowStateInvalid:                 "workflow execution state is corrupt",
 			WorkflowFileStorageError:             "workflow file storage failed",
-			WorkflowBusinessCheckFailed:          "workflow business check failed",
+			WorkflowBusinessCheckFailed:          "The step ran, but its result did not pass the business check. Later steps have stopped. Check the data or adjust the check condition, then retry.",
 			WorkflowHumanRequestTimedOut:         "workflow human request timed out",
 			IMCredentialError:                    "failed to read or save im credentials",
 			PluginStorageError:                   "plugin files could not be safely prepared or read",
@@ -796,10 +848,12 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			MCPConnectorProtocolInvalid:          "mcp connector returned an invalid protocol response",
 			AIAccountModelsUnavailable:           "model catalog service is unavailable",
 			AIAccountModelsResponseInvalid:       "model catalog response is invalid",
-			IMPlatformUnavailable:                "im platform is unavailable",
-			IMProtocolInvalid:                    "im platform returned an invalid protocol response",
+			IMPlatformUnavailable:                "The messaging platform is unavailable. Check the connection and verify uncertain delivery before sending again.",
+			IMProtocolInvalid:                    "The messaging platform returned an unsupported response. Inspect the failure details and connection.",
 			PluginAuthorizationFailed:            "plugin authentication did not complete or external authorization expired",
 			PluginDistributionUnavailable:        "plugin catalog or archive could not be downloaded; check the network and retry",
+			PluginDependencyUnavailable:          "required plugin dependencies could not be prepared; check the network and retry",
+			RuntimeInstallationFailed:            "agent program maintenance failed; retry the operation",
 			KnowledgeRemoteUnreachable:           "remote knowledge service is unreachable",
 			KnowledgeRemoteIncompatible:          "remote knowledge service protocol is incompatible",
 			KnowledgeEmbeddingUnavailable:        "knowledge embedding service unavailable",
@@ -835,22 +889,23 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			AutomaticScheduleInvalid:             "定时规则或时区不合法，或没有未来的运行时间",
 			AutomaticTaskWorkspaceInvalid:        "请选择当前伙伴的可用项目或一个本地目录",
 			AutomaticTaskInputInvalid:            "工作流任务参数来源或调用参数不合法",
-			RuntimeNotRegistered:                 "所选 Runtime 尚未注册",
+			RuntimeNotRegistered:                 "所选智能体不可用，请重新选择",
 			WorkflowSourceInvalid:                "工作流源码或契约不合法，请查看编译诊断",
 			WorkflowSchemaInvalid:                "工作流参数或结果不符合声明的契约",
 			WorkflowCapabilityUnsupported:        "当前执行后端不支持工作流要求的能力",
 			WorkflowResourceInvalid:              "工作流资源或工作范围不可用",
 			WorkflowBudgetExceeded:               "工作流运行预算已经耗尽",
 			WorkflowFileInvalid:                  "工作流文件引用、文件名或所属范围不合法",
-			WorkflowIMTargetNotDeclared:          "发送目标未声明为工作流依赖，请通过优化工作流补充发送目标范围",
+			WorkflowIMTargetNotDeclared:          "发送目标未声明为工作流依赖，请通过优化工作流补充允许发送的目标范围。",
 			WorkflowRetryRequiresReadOnly:        "节点自动重试要求只读执行，当前节点配置允许写入",
 			WorkflowRetryIdempotencyUnsupported:  "当前执行能力无法保证节点重试幂等，请调整重试策略",
 			IMConfigurationInvalid:               "IM 配置不完整或执行目标不可用",
-			IMFileInvalid:                        "IM 文件不存在、超出范围或过大",
+			IMFileInvalid:                        "发送文件不存在、超出工作范围或过大，请检查文件与工作范围。",
 			PluginManifestInvalid:                "插件清单无效或格式版本不受支持",
 			PluginContentInvalid:                 "插件内容或路径不合法",
 			PluginContentLimitExceeded:           "插件内容超过导入限制",
 			WorkspacePathInvalid:                 "工作区路径不合法",
+			RuntimeWorkspaceScopeUnsupported:     "{{if .MaxDirectories}}当前智能体最多支持 {{.MaxDirectories}} 个项目目录，请调整工作范围{{else}}当前智能体无法接入所选工作范围{{end}}",
 			TerminalInvalid:                      "终端请求无效",
 			AgentInputInvalid:                    "软件能力命令参数不符合契约",
 			KnowledgeInvalid:                     "知识请求参数不合法",
@@ -858,13 +913,13 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			Unauthorized:                         "本地访问令牌无效",
 			MemoryContextUnauthorized:            "记忆调用上下文无效或已过期",
 			AutomaticTaskTokenInvalid:            "自动任务密钥无效或已经失效",
-			IMLoginRequired:                      "IM 登录已失效，请重新登录",
+			IMLoginRequired:                      "发送连接的登录已失效，请重新登录。",
 			AgentContextUnauthorized:             "软件能力执行身份无效或已过期",
 			KnowledgeRemoteUnauthorized:          "远端知识服务认证失败，请检查连接凭据",
 			IntegrationUnauthorized:              "API Key 无效、已到期或已撤销",
-			IMChatNotAuthorized:                  "此 IM 聊天尚未获准接入",
-			IMWorkflowDeliveryNotAllowed:         "此聊天未允许工作流发送，请在聊天配置中开启工作流发送",
-			IMTargetNotAuthorized:                "此聊天尚未授权或授权已撤销，请在聊天配置中授权",
+			IMChatNotAuthorized:                  "此聊天尚未授权或授权已撤销，请在聊天配置中恢复授权。",
+			IMWorkflowDeliveryNotAllowed:         "此聊天未允许工作流发送，请在聊天配置中开启“工作流发送”。",
+			IMTargetNotAuthorized:                "此聊天尚未授权或授权已撤销，请在聊天配置中恢复授权。",
 			PluginForbidden:                      "此插件不属于当前伙伴可用范围",
 			WorkspaceScopeInvalid:                "工作区授权范围无效或已过期",
 			TerminalForbidden:                    "当前会话无权操作此终端",
@@ -892,11 +947,12 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			AutomaticRunNotFound:                 "自动任务运行记录不存在",
 			WorkflowNotFound:                     "工作流、版本或运行不存在",
 			WorkflowFileNotFound:                 "工作流文件不存在或不在允许范围内",
-			IMResourceNotFound:                   "IM 连接、聊天或投递记录不存在",
-			IMTargetUnavailable:                  "发送目标已不存在，请优化工作流并重新选择获准聊天",
+			IMResourceNotFound:                   "IM 连接、聊天或投递记录不存在，请检查连接和获准聊天配置。",
+			IMTargetUnavailable:                  "发送目标已不存在，请通过优化工作流重新选择获准聊天。",
 			PluginNotFound:                       "插件或版本不存在",
 			WorkspaceResourceNotFound:            "工作区资源不存在",
 			TerminalNotFound:                     "终端会话不存在或已结束",
+			ChatMessageNotFound:                  "对话消息不存在",
 			AgentReceiptNotFound:                 "当前范围内尚无该命令的接纳回执",
 			KnowledgeNotFound:                    "知识资源不存在",
 			IntegrationNotFound:                  "未找到对应的 API 集成记录",
@@ -933,8 +989,6 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			AIAccountRevisionConflict:            "账号配置已更改，请刷新后重试",
 			AIAccountInUse:                       "账号仍被智能体或聊天引用，请先切换账号",
 			AIAccountNameConflict:                "账号名称已存在，请使用其他名称",
-			ExecutionRetryUnavailable:            "当前回复不能直接重试，请按错误提示处理后重新发送",
-			ExecutionRetryInProgress:             "重试请求正在处理，请稍后检查状态",
 			AutomaticTaskBusy:                    "上一次自动运行尚未结束，请先处理对应对话",
 			AutomaticTaskDisabled:                "自动任务已停用，不能接纳新的运行",
 			AutomaticTaskRequestConflict:         "请求标识已被不同的附加输入使用",
@@ -948,18 +1002,27 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkflowAuthoringSuperseded:          "工作流创作权限已由新执行接替，请停止旧执行的操作并在当前创作对话继续",
 			WorkflowAuthoringFinished:            "工作流创作执行已结束，请在创作对话发送新消息后继续",
 			IMConfigurationConflict:              "IM 配置已变化，请刷新后重试",
-			IMDeliveryContextUnavailable:         "当前微信聊天缺少可用发送上下文，请先给机器人发消息",
+			IMDeliveryContextUnavailable:         "微信聊天缺少发送上下文，请先给机器人发一条消息。",
 			IMDeliveryRetryUnsafe:                "投递结果不确定，请核对后再重发",
 			IMConnectionInUse:                    "连接仍被运行中的工作流或待发送消息使用，请等待完成或先停止相关任务",
 			IMConnectionHasWorkflowDependencies:  "连接被已保存工作流引用，请查看受影响流程并确认删除；依赖变化后需重新确认",
-			IMConnectionDisabled:                 "发送连接已停用，请在连接设置中启用后重试",
+			IMConnectionDisabled:                 "发送连接已停用，请在连接设置中启用后重试。",
 			IMConnectionReplaced:                 "企业微信机器人已在其他客户端连接，请关闭其他连接后保存设置以重连",
 			PluginVersionConflict:                "插件版本或内容已变化，请重新确认",
 			PluginConfigurationConflict:          "插件共享配置已变化或不兼容，请重新确认",
 			PluginNotReady:                       "请先完成插件所需配置、认证和程序准备",
 			PluginSkillConflict:                  "技能声明名称相同但内容不同，请调整已启用的技能或插件",
 			PluginBusy:                           "认证进程或工作仍在使用共享账号，请稍后重试",
+			PluginAccountConflict:                "插件共享账号已变化，请重新确认",
+			PluginSkillSelectionConflict:         "所选技能名称重复或目录包含其他技能，请调整选择后重试",
 			WorkspaceResourceConflict:            "工作区资源已变化，请重新读取",
+			ChatLogVersionConflict:               "对话已更新，请重新读取后重试",
+			ChatLogIdempotencyConflict:           "同一对话提交标识不能用于不同内容",
+			ChatLogNativeOutcomePending:          "上一条消息的执行结果尚未确认，请稍后重试",
+			RuntimeInstallationBusy:              "此智能体的程序维护尚未完成，请等待或取消",
+			RuntimeRestartBusy:                   "当前智能体正在执行工作，暂不能重启",
+			RuntimeUpdateCheckBusy:               "正在检查此智能体的版本，请稍后重试",
+			RuntimeVersionUnknown:                "无法确认当前版本，暂不能判断是否需要更新",
 			AgentCommandOutcomeUnknown:           "软件能力命令提交结果尚不确定，请查询原请求回执",
 			AgentCommandRequestConflict:          "同一命令请求标识不能用于不同内容",
 			KnowledgeConflict:                    "知识版本或请求内容已变化，请刷新后重试",
@@ -968,6 +1031,10 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			KnowledgeFolderHasPages:              "目录下还有页面，请先移出页面",
 			IntegrationConflict:                  "API 集成配置已变化，请刷新后重试",
 			WorkspaceResourceTooLarge:            "工作区资源超过大小限制",
+			PluginCapabilityUnsupported:          "当前运行目标尚不支持该插件声明的能力",
+			PluginPackageUnsupported:             "当前插件包不受支持，请从插件目录重新安装",
+			RuntimeInstallationUnsupported:       "当前平台暂不支持安装此智能体",
+			RuntimeMaintenanceUnsupported:        "无法安全维护此程序，请使用其官方安装方式操作",
 			KnowledgeCandidateInvalid:            "知识执行或候选未满足发布条件",
 			KnowledgeUnsupported:                 "当前知识服务或智能体不支持此操作",
 			KnowledgeEmbeddingNotConfigured:      "请先配置此知识库的独立嵌入服务",
@@ -977,14 +1044,14 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			ChatServiceNotStarted:                "对话执行服务尚未启动",
 			ChatLogError:                         "对话权威日志读写失败",
 			ProjectSourceUnavailable:             "项目来源目录不可用",
-			RuntimeUnavailable:                   "所选 Runtime 当前不可用",
+			RuntimeUnavailable:                   "所选智能体当前不可用，请稍后重试",
 			ChatDirectoryOwnershipInvalid:        "受管对话目录归属校验失败",
-			SkillUnavailable:                     "当前技能内容暂时无法交付给 Runtime",
+			SkillUnavailable:                     "暂时无法准备所选技能，请稍后重试",
 			MemoryReindexFailed:                  "记忆语义索引重建失败",
 			MemoryEmbeddingTestFailed:            "Embedding 连接测试失败",
-			RuntimePolicyUnsupported:             "所选 Runtime 无法准确表达当前权限策略",
-			RuntimeProtocolIncompatible:          "Runtime 协议响应不完整或与当前 Adapter 不兼容",
-			RuntimeInactivityTimeout:             "Runtime 在允许时间内没有任何活动更新",
+			RuntimePolicyUnsupported:             "所选智能体不支持当前权限设置，请调整后重试",
+			RuntimeProtocolIncompatible:          "智能体返回了无法识别的响应，请重试或更新应用",
+			RuntimeInactivityTimeout:             "智能体长时间未响应，请稍后重试",
 			ChatLogCorrupted:                     "对话权威日志内容已损坏或不兼容",
 			ChatLogIndexCorrupted:                "对话派生索引内容已损坏或不兼容",
 			ChatLogRecordInvalid:                 "待写入的对话日志事实不合法",
@@ -998,7 +1065,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			CoreDataDirectoryError:               "无法准备本地数据目录",
 			CoreDatabaseInitializationFailed:     "无法初始化业务数据库",
 			CoreMemoryInitializationFailed:       "无法初始化记忆服务",
-			CoreRuntimeInitializationFailed:      "无法初始化 Runtime 服务",
+			CoreRuntimeInitializationFailed:      "无法启动智能体服务，请重新启动应用",
 			CoreChatInitializationFailed:         "无法初始化对话执行服务",
 			CoreShutdownFailed:                   "本地服务关闭失败",
 			CoreTokenGenerationFailed:            "无法生成本地访问令牌",
@@ -1006,22 +1073,25 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			MessageAttachmentStorageError:        "消息附件存储操作失败",
 			ManagedWorkspaceError:                "受管工作区操作失败",
 			ProjectServiceUnavailable:            "项目服务当前不可用",
-			RuntimeEnvironmentServiceUnavailable: "Runtime 环境服务当前不可用",
+			RuntimeEnvironmentServiceUnavailable: "智能体服务当前不可用，请稍后重试",
 			MemoryServiceUnavailable:             "记忆服务当前不可用",
 			ProfileArchiveGenerationFailed:       "无法生成档案压缩包",
 			ChatEventStreamUnavailable:           "当前 HTTP 写入器不支持对话事件流",
-			RuntimeEventEncodingFailed:           "无法编码 Runtime 事件",
-			RuntimeConfigurationInvalid:          "Runtime 配置不合法",
-			RuntimeShutdownFailed:                "Runtime 资源关闭失败",
+			RuntimeEventEncodingFailed:           "无法处理智能体返回的消息，请重试",
+			RuntimeConfigurationInvalid:          "当前智能体配置无法使用，请检查设置后重试",
+			RuntimeShutdownFailed:                "智能体会话未能正常关闭，请稍后重试",
 			CoreChannelInitializationFailed:      "无法初始化团队编排服务",
-			RuntimeSessionNotFound:               "原生 Runtime 会话已失效，请新建会话后继续",
-			RuntimeAuthRequired:                  "Cursor 或 Runtime 需要重新登录后再试",
-			RuntimeExecutionFailed:               "{{.Detail}}",
+			RuntimeSessionNotFound:               "智能体会话已失效，请新建对话后继续",
+			RuntimeAuthRequired:                  "所选智能体需要重新登录，请前往账号设置登录",
+			RuntimeExecutionFailed:               "{{if .ModelUnavailable}}当前账号无法使用所选模型{{else}}智能体执行失败{{end}}",
 			AIAccountCredentialError:             "无法读取或保存 AI 账号凭据",
 			AIAccountWorkspaceError:              "无法准备 AI 账号隔离配置",
 			AIAccountLoginFailed:                 "账号登录失败，请重新登录",
 			RuntimeHandoffInvalid:                "交接内容无效，请改用近期对话继续",
-			RuntimeEventQueueOverflow:            "Runtime 事件积压超过上限，执行已停止，请重试",
+			RuntimeEventQueueOverflow:            "执行事件未能完整交付，请先检查执行结果",
+			RuntimeQuotaExhausted:                "当前额度已用尽，请切换模型或等待额度恢复后重试",
+			RuntimeRateLimited:                   "请求过于频繁，请稍后重试",
+			RuntimeModelSelectionFailed:          "无法切换到所选模型，请重新选择模型后重试",
 			AutomaticTaskServiceInvalid:          "自动任务服务配置不合法",
 			AutomaticTaskTokenGenerationFailed:   "无法生成自动任务调用密钥",
 			AutomaticTaskAPIUnavailable:          "无法监听本机任务入口，请检查端口占用",
@@ -1032,7 +1102,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkflowTimeout:                      "工作流效果超时",
 			WorkflowStateInvalid:                 "工作流内部执行状态损坏",
 			WorkflowFileStorageError:             "工作流文件存储失败",
-			WorkflowBusinessCheckFailed:          "工作流业务检查未通过",
+			WorkflowBusinessCheckFailed:          "步骤已执行，但结果未通过业务检查，后续步骤已停止。请检查数据或调整检查条件后重试。",
 			WorkflowHumanRequestTimedOut:         "工作流用户决策已超时",
 			IMCredentialError:                    "无法读取或保存 IM 凭据",
 			PluginStorageError:                   "插件文件无法安全准备或读取",
@@ -1045,10 +1115,12 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			MCPConnectorProtocolInvalid:          "MCP 连接器返回了不合法的协议响应",
 			AIAccountModelsUnavailable:           "模型目录服务暂时不可用",
 			AIAccountModelsResponseInvalid:       "模型目录响应不合法",
-			IMPlatformUnavailable:                "IM 平台暂时不可用",
-			IMProtocolInvalid:                    "IM 平台响应不符合当前协议",
+			IMPlatformUnavailable:                "消息平台暂时不可用，请检查连接状态；发送结果不确定时先核对是否已收到。",
+			IMProtocolInvalid:                    "消息平台返回了无法识别的响应，请查看失败详情并检查连接。",
 			PluginAuthorizationFailed:            "插件认证未完成或外部授权失效",
 			PluginDistributionUnavailable:        "插件目录或安装包暂时无法下载，请检查网络后重试",
+			PluginDependencyUnavailable:          "插件所需程序暂时无法准备，请检查网络后重试",
+			RuntimeInstallationFailed:            "智能体程序维护失败，请重试",
 			KnowledgeRemoteUnreachable:           "远端知识服务连接失败",
 			KnowledgeRemoteIncompatible:          "远端知识服务响应不符合支持的协议",
 			KnowledgeEmbeddingUnavailable:        "知识库嵌入服务暂时不可用",

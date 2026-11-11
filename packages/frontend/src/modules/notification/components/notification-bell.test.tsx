@@ -47,7 +47,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function mount(count = 2, active = false) {
+function mount(count = 2, active = false, connected = true) {
   const queryClient = new QueryClient();
   const snapshot: NotificationSnapshot = {
     epoch: "a".repeat(32),
@@ -66,12 +66,25 @@ function mount(count = 2, active = false) {
   const view = render(
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <NotificationBell active={active} connected onOpen={onOpen} />
+        <NotificationBell
+          active={active}
+          connected={connected}
+          onOpen={onOpen}
+        />
       </TooltipProvider>
     </QueryClientProvider>,
   );
   return { ...view, onOpen, queryClient };
 }
+
+it("通知未同步时保留计数和入口，只显示一个铃铛图标", () => {
+  const { onOpen } = mount(3, false, false);
+  const bell = screen.getByRole("button", { name: "通知 3 项，正在同步" });
+  expect(bell.querySelectorAll("svg:not([data-decoration])")).toHaveLength(1);
+  expect(screen.getByText("3")).toBeInTheDocument();
+  fireEvent.click(bell);
+  expect(onOpen).toHaveBeenCalledTimes(1);
+});
 
 it("点击和新通知有反馈，重复点击及卸载释放动画，初始快照不摇铃", () => {
   const view = mount();

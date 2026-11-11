@@ -60,7 +60,7 @@ func (s *service) agentTeamBindings(endpoint, leaseID string) []capability.Bindi
 				return capability.Result{}, err
 			}
 			if id == "team.members.list" {
-				members, err := s.threads.ListMembers(ctx, scope.ThreadID)
+				members, err := s.currentThreadMemberProfiles(ctx, scope.ThreadID)
 				items := make([]map[string]any, 0, len(members))
 				for _, member := range members {
 					items = append(items, map[string]any{"wakerId": member.WakerID, "name": member.DisplayName, "role": member.RoleName, "bio": member.Bio, "expertise": member.Expertise, "isLead": member.IsLead})

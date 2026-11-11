@@ -94,14 +94,16 @@ describe("团队首发完整路由交接", () => {
     withExecution: boolean;
     status: "running" | "completed";
     historyFails?: boolean;
+    unknownMemberOptions?: boolean;
   }>([
     { withExecution: true, status: "running" },
     { withExecution: false, status: "running" },
     { withExecution: false, status: "completed" },
     { withExecution: false, status: "running", historyFails: true },
+    { withExecution: true, status: "running", unknownMemberOptions: true },
   ])(
-    "创建返回 execution=$withExecution，历史状态=$status，首次查询失败=$historyFails，消息在交接中持续可见",
-    async ({ withExecution, status, historyFails }) => {
+    "首发配置与交接 execution=$withExecution，历史=$status，首次查询失败=$historyFails，成员可选配置未知=$unknownMemberOptions",
+    async ({ withExecution, status, historyFails, unknownMemberOptions }) => {
       const creation = deferred<CreateChannelThreadResponse>();
       const history = deferred<ListChannelTimelineResponse>();
       const received = vi.fn();
@@ -149,7 +151,12 @@ describe("团队首发完整路由交接", () => {
                 model: "gpt-5",
                 permissionLevel: "full-access",
               },
-              { waker: { id: "member", name: "开发成员" }, runtimeId: "codex" },
+              {
+                waker: { id: "member", name: "开发成员" },
+                runtimeId: "codex",
+                model: unknownMemberOptions ? "unconfirmed" : "",
+                permissionLevel: unknownMemberOptions ? "default" : undefined,
+              },
             ],
           }),
         ),
@@ -179,6 +186,30 @@ describe("团队首发完整路由交接", () => {
                   },
                 ],
               },
+            ],
+          }),
+        ),
+        http.get(`${api}/runtimes/codex/models`, ({ request }) =>
+          HttpResponse.json({
+            runtimeId: "codex",
+            accountId: new URL(request.url).searchParams.get("accountId"),
+            state: "fresh",
+            defaultModel: "current-native-model",
+            models: [
+              {
+                id: "current-native-model",
+                name: "Current Native Model",
+                permissionLevels: ["default", "auto", "full-access"],
+              },
+              ...(unknownMemberOptions
+                ? [
+                    {
+                      id: "unconfirmed",
+                      name: "Unconfirmed",
+                      permissionLevels: ["default"],
+                    },
+                  ]
+                : []),
             ],
           }),
         ),
@@ -216,7 +247,7 @@ describe("团队首发完整路由交接", () => {
             typeof body.clientRequestId === "string"
           )
             submissionId = body.clientRequestId;
-          received();
+          received(body);
           return HttpResponse.json(await creation.promise);
         }),
         http.get(`${api}/channels/team-1/threads/thread-1`, () =>
@@ -318,15 +349,37 @@ describe("团队首发完整路由交接", () => {
           </QueryClientProvider>
         </StrictMode>,
       );
-      await screen.findByText("GPT-5");
+      await waitFor(() =>
+        expect(screen.getByTestId("composer-model-control")).toHaveTextContent(
+          "gpt-5",
+        ),
+      );
       await userEvent.setup().type(screen.getByRole("textbox"), text);
       await waitFor(() =>
         expect(screen.getByRole("button", { name: "发送消息" })).toBeEnabled(),
       );
       fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
       await waitFor(() => expect(received).toHaveBeenCalledOnce());
+      expect(received).toHaveBeenCalledWith(
+        expect.objectContaining({
+          memberConfigs: expect.arrayContaining([
+            expect.objectContaining({
+              wakerId: "lead",
+              model: "gpt-5",
+            }),
+            expect.objectContaining({
+              wakerId: "member",
+              model: unknownMemberOptions ? "unconfirmed" : "",
+            }),
+          ]),
+        }),
+      );
       expect(screen.getByText(text)).toBeVisible();
-      expect(view.container.querySelector(".agent-grid-spinner")).toBeVisible();
+      const activeAvatar = () =>
+        view.container.querySelector(
+          '[data-chat-scroll-viewport] [data-role="assistant"] svg[data-companion-avatar]:not([data-activity="idle"])',
+        );
+      expect(activeAvatar()).toHaveAttribute("data-activity", "thinking");
 
       const frames: Array<{
         loading: boolean;
@@ -344,7 +397,7 @@ describe("团队首发完整路由交接", () => {
               .querySelector("[data-chat-scroll-viewport]")
               ?.textContent?.includes(text),
           ),
-          running: Boolean(view.container.querySelector(".agent-grid-spinner")),
+          running: Boolean(activeAvatar()),
           composer: Boolean(view.container.querySelector('[role="textbox"]')),
         });
       const observer = new MutationObserver(observe);
@@ -370,9 +423,7 @@ describe("团队首发完整路由交接", () => {
           ),
         );
         expect(screen.getByText(text)).toBeVisible();
-        expect(
-          view.container.querySelector(".agent-grid-spinner"),
-        ).toBeVisible();
+        expect(activeAvatar()).toBeVisible();
         expect(
           frames.filter(
             (frame) =>
@@ -450,10 +501,10 @@ describe("团队首发完整路由交接", () => {
           await screen.findByText("负责人的真实回复", {}, { timeout: 5_000 }),
         ).toBeVisible();
         expect(screen.getAllByText(text)).toHaveLength(1);
-        if (status === "completed")
-          expect(
-            view.container.querySelector(".agent-grid-spinner"),
-          ).toBeNull();
+        if (status === "completed") {
+          expect(activeAvatar()).toHaveAttribute("data-activity", "completed");
+          expect(activeAvatar()).toHaveAttribute("data-animation", "notify");
+        }
       } finally {
         observer.disconnect();
         view.unmount();

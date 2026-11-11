@@ -23,14 +23,13 @@ pnpm dev:native
 
 ## 生成与检查
 
-| 修改内容               | 对应命令                                                                  |
-| ---------------------- | ------------------------------------------------------------------------- |
-| Go API、枚举及 OpenAPI | `pnpm api:generate`、`pnpm api:check`                                     |
-| 系统技能               | `pnpm skills:generate`、`pnpm skills:check`                               |
-| 工作流语言与知识       | `pnpm workflow:sdk:generate`、`pnpm workflow:sdk:check`                   |
-| 伙伴渲染源             | `pnpm companion:generate`、`pnpm companion:check`                         |
-| Pi Bridge              | `pnpm pi:bridge:generate`、`pnpm pi:bridge:check`                         |
-| 完整验证               | `pnpm check`                                                              |
+| 修改内容               | 对应命令                                                |
+| ---------------------- | ------------------------------------------------------- |
+| Go API、枚举及 OpenAPI | `pnpm api:generate`、`pnpm api:check`                   |
+| 系统技能               | `pnpm skills:generate`、`pnpm skills:check`             |
+| 工作流语言与知识       | `pnpm workflow:sdk:generate`、`pnpm workflow:sdk:check` |
+| Pi Bridge              | `pnpm pi:bridge:generate`、`pnpm pi:bridge:check`       |
+| 完整验证               | `pnpm check`                                            |
 
 修改 Go 后先 gofmt。按行为编写必要测试，覆盖身份、权限、事务、恢复或资源生命周期等关键边界。真实登录、计费模型、原生窗口和视觉验收单独说明。
 
@@ -39,3 +38,7 @@ pnpm dev:native
 一个提交围绕一个完整目的，使用 Conventional Commits，正文说明问题、变化和验证。PR 描述面向首次阅读者，列出实际行为与剩余边界；不提交本机路径、密钥、日志、调研副本或临时输出。
 
 改变行为、协议或领域含义时同步更新对应权威文档。计划、进度和当次验收结果放在 Issue 或 PR 中。构建与发布见 [发布说明](docs/development/build-and-release-cn.md)。提交贡献表示按仓库 MIT 许可提供该贡献；第三方内容仍须保留其适用声明。
+
+## 头像库维护
+
+形状、表情、动作和材质在 [JieWaZi/bloub](https://github.com/JieWaZi/bloub/tree/main) 中维护。该库根目录运行 `pnpm test` 与 `pnpm materials:check`；修改粒子生成器后执行 `pnpm materials:generate`。主仓库通过 `packages/frontend/package.json` 的 `@neuxbot/bloub` 引用 `main` 分支，并以根锁文件固定解析提交，不复制源码或在消费方重新生成材质。更新后定向验证头像、选择器、状态编排、纹理预载与许可交付。

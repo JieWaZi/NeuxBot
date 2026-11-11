@@ -36,7 +36,7 @@ func (o *RetryWorkflowRun) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	return run, nil
+	return workflowRunResponse(run), nil
 }
 
 // 流程重跑请求

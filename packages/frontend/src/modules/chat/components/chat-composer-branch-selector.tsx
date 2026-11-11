@@ -29,17 +29,14 @@ type ChatComposerBranchSelectorProps = {
   className?: string;
   currentBranch: string;
   gitRoot: string;
-  /** 多仓库并存时展示目录标签。 */
-  repoLabel?: string;
-  showRepoLabel?: boolean;
+  showRepositoryPath?: boolean;
 };
 
 export function ChatComposerBranchSelector({
   className,
   currentBranch,
   gitRoot,
-  repoLabel,
-  showRepoLabel = false,
+  showRepositoryPath = false,
 }: ChatComposerBranchSelectorProps) {
   const { t } = useTranslation("chat");
   const queryClient = useQueryClient();
@@ -148,11 +145,6 @@ export function ChatComposerBranchSelector({
     });
   };
 
-  const triggerLabel =
-    showRepoLabel && repoLabel
-      ? `${repoLabel} · ${currentBranch}`
-      : currentBranch;
-
   if (!hasPlatformService("git")) {
     return (
       <span
@@ -164,7 +156,7 @@ export function ChatComposerBranchSelector({
       >
         <GitBranch aria-hidden className="size-icon-xs shrink-0" />
         <OverflowText className="min-w-0 font-normal">
-          {triggerLabel}
+          {currentBranch}
         </OverflowText>
       </span>
     );
@@ -184,17 +176,15 @@ export function ChatComposerBranchSelector({
             type="button"
             data-testid="composer-branch-control"
             data-overflow-trigger
-            title={triggerLabel}
+            aria-label={
+              showRepositoryPath ? `${currentBranch} (${gitRoot})` : undefined
+            }
+            title={currentBranch}
             variant="ghost"
             size="sm"
             className={className}
           >
             <GitBranch aria-hidden className="size-icon-xs shrink-0" />
-            {showRepoLabel && repoLabel ? (
-              <OverflowText className="max-w-16 min-w-0 font-medium">
-                {repoLabel}
-              </OverflowText>
-            ) : null}
             <OverflowText className="min-w-0 font-normal">
               {currentBranch}
             </OverflowText>
@@ -208,6 +198,11 @@ export function ChatComposerBranchSelector({
           sideOffset={8}
           width="wide"
         >
+          {showRepositoryPath ? (
+            <p className="text-muted-foreground type-caption px-2 wrap-anywhere">
+              {gitRoot}
+            </p>
+          ) : null}
           <SearchField
             aria-label={t("branchSwitch.search")}
             autoFocus
@@ -260,7 +255,7 @@ export function ChatComposerBranchSelector({
                         {selected ? (
                           <Check
                             aria-hidden
-                            className="text-foreground size-icon-sm shrink-0"
+                            className="text-accent-content size-icon-sm shrink-0"
                             strokeWidth={1.5}
                           />
                         ) : null}
@@ -286,6 +281,11 @@ export function ChatComposerBranchSelector({
           title={t("branchSwitch.conflictTitle")}
         >
           <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4">
+            {showRepositoryPath ? (
+              <p className="text-muted-foreground type-caption mb-3 wrap-anywhere">
+                {gitRoot}
+              </p>
+            ) : null}
             <ul className="grid gap-2">
               {(conflicts ?? []).map((file) => (
                 <li

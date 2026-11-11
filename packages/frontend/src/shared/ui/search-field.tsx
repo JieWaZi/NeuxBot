@@ -13,6 +13,11 @@ const searchFieldVariants = cva(
   "border-field-border bg-field text-content-muted duration-quick ease-ui flex items-center rounded-md border transition-[background-color,border-color] hover:border-field-border-hover hover:bg-field-hover focus-within:border-field-border-active",
   {
     variants: {
+      appearance: {
+        default: null,
+        catalog:
+          "catalog-search h-control-catalog gap-2 rounded-sm border-resource-border border-[0.5px] bg-resource-hover px-2.25 text-resource-muted type-resource-body hover:border-resource-border hover:bg-resource-hover focus-within:border-resource-muted focus-within:bg-resource-surface [&_svg]:size-icon-md",
+      },
       size: {
         sm: "h-control-search-sm gap-1.5 px-2 type-ui [&_svg]:size-icon-sm",
         md: "h-control-md gap-2 px-3 type-body [&_svg]:size-icon-md",
@@ -21,6 +26,7 @@ const searchFieldVariants = cva(
     },
     defaultVariants: {
       size: "sm",
+      appearance: "default",
     },
   },
 );
@@ -50,6 +56,7 @@ type SearchFieldProps = Omit<
   } & VariantProps<typeof searchFieldWidthVariants>;
 
 export function SearchField({
+  appearance,
   className,
   clearLabel = "Clear",
   containerClassName,
@@ -94,7 +101,10 @@ export function SearchField({
   return (
     <label
       className={cn(
-        searchFieldVariants({ size }),
+        searchFieldVariants({
+          size: appearance === "catalog" ? null : size,
+          appearance,
+        }),
         searchFieldWidthVariants({ width }),
         containerClassName,
       )}
@@ -106,6 +116,8 @@ export function SearchField({
         role="searchbox"
         className={cn(
           "placeholder:text-content-muted text-foreground min-w-0 flex-1 bg-transparent outline-none",
+          appearance === "catalog" &&
+            "text-resource-content placeholder:text-resource-placeholder",
           className,
         )}
         defaultValue={defaultValue}

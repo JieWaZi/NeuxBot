@@ -1,7 +1,6 @@
 package workspace
 
 import (
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"os"
 	"path/filepath"
@@ -13,18 +12,18 @@ import (
 type ProjectFile struct {
 	// Name 是文件的展示名称。
 	Name string
-	// Path 是相对于 Chat 执行工作区的稳定路径。
+	// Path 是授权范围内该文件的真实绝对路径。
 	Path string
 }
 
 type resolvedProjectLink struct {
-	// entryName 是工作区 projects/ 下的稳定入口名。
+	// entryName 是来源的展示标签，不对应磁盘入口。
 	entryName string
 	// sourcePath 是经过软链接解析的真实项目根目录。
 	sourcePath string
 }
 
-// ResolveProjectFiles 校验文件属于冻结工作范围，并映射为 projects/ 路径。
+// ResolveProjectFiles 校验文件属于冻结真实工作范围，保留原地绝对路径。
 func ResolveProjectFiles(
 	projects []ProjectLink,
 	sourcePaths []string,
@@ -89,11 +88,7 @@ func ResolveProjectFiles(
 			}
 			files = append(files, ProjectFile{
 				Name: filepath.Base(resolved),
-				Path: filepath.ToSlash(filepath.Join(
-					constants.ExecutionWorkspaceProjectsDirectory,
-					project.entryName,
-					relative,
-				)),
+				Path: resolved,
 			})
 			matched = true
 			break

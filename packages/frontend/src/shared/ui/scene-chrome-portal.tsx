@@ -3,19 +3,25 @@ import {
   createContext,
   useContext,
   useMemo,
+  useLayoutEffect,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
+  type RefCallback,
 } from "react";
 import { createPortal } from "react-dom";
 
+import { cn } from "@/shared/lib/cn";
+import { useSceneChromeActions } from "./scene-chrome-actions";
+
 type SceneChromePortalContextValue = {
-  setTarget: (target: HTMLDivElement | null) => void;
+  setTarget: RefCallback<HTMLDivElement>;
   target: HTMLDivElement | null;
   paneActionsTarget: HTMLDivElement | null;
-  setPaneActionsTarget: (target: HTMLDivElement | null) => void;
+  setPaneActionsTarget: RefCallback<HTMLDivElement>;
   accessoryTarget: HTMLDivElement | null;
-  setAccessoryTarget: (target: HTMLDivElement | null) => void;
+  setAccessoryTarget: RefCallback<HTMLDivElement>;
   accessoryWidth: number | null;
   accessoryFullscreen: boolean;
   accessorySide: "left" | "right";
@@ -30,17 +36,25 @@ type SceneChromePortalContextValue = {
 const SceneChromePortalContext =
   createContext<SceneChromePortalContextValue | null>(null);
 
+/** 新旧顶栏交接时，旧节点卸载不能清空新节点已登记的位置。 */
+function useChromeTarget() {
+  const [target, setTarget] = useState<HTMLDivElement | null>(null);
+  const registerTarget = useCallback<RefCallback<HTMLDivElement>>((node) => {
+    if (!node) return;
+    setTarget(node);
+    return () => setTarget((current) => (current === node ? null : current));
+  }, []);
+  return [target, registerTarget] as const;
+}
+
 export function SceneChromePortalProvider({
   children,
 }: {
   children: ReactNode;
 }) {
-  const [target, setTarget] = useState<HTMLDivElement | null>(null);
-  const [paneActionsTarget, setPaneActionsTarget] =
-    useState<HTMLDivElement | null>(null);
-  const [accessoryTarget, setAccessoryTarget] = useState<HTMLDivElement | null>(
-    null,
-  );
+  const [target, setTarget] = useChromeTarget();
+  const [paneActionsTarget, setPaneActionsTarget] = useChromeTarget();
+  const [accessoryTarget, setAccessoryTarget] = useChromeTarget();
   const [accessory, setAccessory] = useState<{
     owner: string;
     width: number;
@@ -76,7 +90,16 @@ export function SceneChromePortalProvider({
       accessorySide: accessory?.side ?? "right",
       setAccessoryWidth,
     }),
-    [target, paneActionsTarget, accessoryTarget, accessory, setAccessoryWidth],
+    [
+      target,
+      setTarget,
+      paneActionsTarget,
+      setPaneActionsTarget,
+      accessoryTarget,
+      setAccessoryTarget,
+      accessory,
+      setAccessoryWidth,
+    ],
   );
 
   return (
@@ -88,8 +111,10 @@ export function SceneChromePortalProvider({
 
 export function SceneChromeHost({
   navigationCollapsed = false,
+  children,
 }: {
   navigationCollapsed?: boolean;
+  children?: ReactNode;
 }) {
   const context = useContext(SceneChromePortalContext);
 
@@ -113,7 +138,9 @@ export function SceneChromeHost({
             ? "h-full min-w-0 [&_[data-scene-tab-strip]]:pl-(--shell-titlebar-navigation-width) [&_[data-scene-tab-strip][data-accessory-left]]:pl-0"
             : "h-full min-w-0"
         }
-      />
+      >
+        {children}
+      </div>
     </div>
   );
 }
@@ -163,4 +190,142 @@ export function useSceneChromeAccessorySide() {
 
 export function useSceneChromeAccessoryWidthSetter() {
   return useContext(SceneChromePortalContext)?.setAccessoryWidth;
+}
+
+/** 主顶栏与独立 Scene 复用同一组 pane portal，宿主实例保持唯一。 */
+export function SceneChromeLayout({
+  children,
+  className,
+  leading,
+  paneActions,
+  actions,
+}: {
+  children: ReactNode;
+  className?: string;
+  leading?: ReactNode;
+  paneActions?: ReactNode;
+  actions?: ReactNode;
+}) {
+  const inheritedActions = useSceneChromeActions();
+  const sceneActions = actions ?? inheritedActions;
+  const setAccessoryTarget = useSceneChromeAccessoryTargetSetter();
+  const setPaneActionsTarget = useSceneChromePaneActionsTargetSetter();
+  const accessoryWidth = useSceneChromeAccessoryWidth();
+  const accessoryFullscreen = useSceneChromeAccessoryFullscreen();
+  const accessorySide = useSceneChromeAccessorySide();
+  const accessoryAtLeft =
+    accessorySide === "left" && Boolean(accessoryWidth) && !accessoryFullscreen;
+  const actionRef = useRef<HTMLDivElement>(null);
+  const [measuredActionWidth, setActionWidth] = useState(0);
+  const actionWidth = sceneActions ? measuredActionWidth : 0;
+  useLayoutEffect(() => {
+    const actionElement = actionRef.current;
+    if (!actionElement) return;
+    const measure = () =>
+      setActionWidth(actionElement.getBoundingClientRect().width);
+    measure();
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? undefined
+        : new ResizeObserver(measure);
+    observer?.observe(actionElement);
+    return () => observer?.disconnect();
+  }, [sceneActions, accessoryAtLeft]);
+  const accessory = (
+    <div
+      key="accessory"
+      className={cn(
+        "relative flex h-full min-w-0 items-center",
+        accessoryFullscreen ? "flex-1" : "shrink-0",
+      )}
+      style={
+        {
+          ...(accessoryFullscreen
+            ? {
+                marginLeft: "calc(-1 * var(--scene-chrome-left-inset, 8px))",
+              }
+            : {}),
+          ...(!accessoryFullscreen
+            ? { width: accessoryWidth ?? actionWidth }
+            : {}),
+          "--scene-chrome-actions-width": `${accessoryAtLeft ? 0 : actionWidth}px`,
+        } as CSSProperties
+      }
+      data-scene-chrome-accessory-wrapper
+    >
+      <div
+        ref={setAccessoryTarget}
+        className="flex h-full min-w-0 flex-1 items-center overflow-hidden empty:hidden"
+        data-scene-chrome-accessory
+      />
+      {accessoryWidth && !accessoryFullscreen ? (
+        <span
+          aria-hidden="true"
+          className={cn(
+            "bg-shell-separator pointer-events-none absolute top-1.5 bottom-1.5 z-10 w-px",
+            accessoryAtLeft ? "right-0" : "left-0",
+          )}
+          data-scene-chrome-divider
+        />
+      ) : null}
+      {sceneActions && !accessoryAtLeft ? (
+        <div
+          ref={actionRef}
+          data-desktop-no-drag-region
+          className="absolute inset-y-0 right-0 z-20 flex items-center gap-1 pr-2"
+        >
+          {sceneActions}
+        </div>
+      ) : null}
+    </div>
+  );
+
+  return (
+    <div
+      data-desktop-drag-region
+      data-scene-tab-strip
+      data-accessory-left={accessoryAtLeft || undefined}
+      className={cn(
+        "bg-surface-chrome flex h-(--shell-titlebar-height) min-w-0 shrink-0 items-center pr-0",
+        accessoryAtLeft ? "pl-0" : "pl-2",
+        className,
+      )}
+    >
+      {accessoryAtLeft ? accessory : null}
+      {leading && !accessoryFullscreen ? (
+        <div
+          className={cn(
+            "mr-1 flex shrink-0 items-center",
+            accessoryAtLeft && "pl-2",
+          )}
+        >
+          {leading}
+        </div>
+      ) : null}
+      {children}
+      {!accessoryFullscreen ? <div className="min-w-0 flex-1" /> : null}
+      <div
+        data-desktop-no-drag-region
+        ref={setPaneActionsTarget}
+        hidden={accessoryFullscreen}
+        className={cn(
+          "flex h-full shrink-0 items-center gap-1 px-2 empty:hidden",
+          accessoryFullscreen && "hidden",
+        )}
+        data-scene-pane-actions
+      >
+        {paneActions}
+      </div>
+      {!accessoryAtLeft ? accessory : null}
+      {sceneActions && accessoryAtLeft ? (
+        <div
+          data-desktop-no-drag-region
+          ref={actionRef}
+          className="flex h-full shrink-0 items-center gap-1 pr-2"
+        >
+          {sceneActions}
+        </div>
+      ) : null}
+    </div>
+  );
 }

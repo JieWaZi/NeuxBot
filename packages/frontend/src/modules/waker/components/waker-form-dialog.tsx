@@ -23,6 +23,7 @@ import { ApiError } from "@/shared/api/errors";
 import { CompanionPicker } from "@/shared/ui/companion-picker";
 import {
   companionAvatar,
+  isCompanionAvatar,
   randomCompanionAvatar,
 } from "@/shared/companion/appearance";
 import { Button } from "@/shared/ui/button";
@@ -36,10 +37,7 @@ const schema = z
     name: z.string().trim().min(1, "请输入名称").max(80, "名称不能超过 80 字"),
     roleName: z.string().trim().max(80, "角色名称不能超过 80 字"),
     bio: z.string().trim().max(1000, "简介不能超过 1000 字"),
-    avatar: z
-      .string()
-      .trim()
-      .regex(/^companion:v[12]:[0-9a-f]{32}$/, "请重新生成形象"),
+    avatar: z.string().trim().refine(isCompanionAvatar, "请重新生成形象"),
   })
   .superRefine((values, context) => {
     if (!values.rolePresetId && !values.roleName) {

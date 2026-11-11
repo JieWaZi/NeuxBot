@@ -49,8 +49,6 @@ func (o *AnswerWorkflowHuman) Output(ctx *gin.Context) (interface{}, error) {
 
 // 流程输入回答
 type AnswerHumanCommand struct {
-	// 问题版本
-	QuestionVersion int64 `json:"questionVersion" validate:"required,min=1"`
 	// 候选摘要
 	SnapshotDigest string `json:"snapshotDigest" validate:"required,len=64"`
 
@@ -107,7 +105,7 @@ func answerHuman(ctx context.Context, d *workflowDependencies, command AnswerHum
 			return status_error.WorkflowNotFound
 		}
 		human := &state.Humans[index]
-		if command.QuestionVersion != human.QuestionVersion || command.SnapshotDigest != human.SnapshotDigest {
+		if command.SnapshotDigest != human.SnapshotDigest {
 			return status_error.WorkflowStateConflict
 		}
 		if human.Status != constants.WorkflowStepStatusWaiting {

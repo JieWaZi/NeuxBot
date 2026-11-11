@@ -77,6 +77,7 @@ export function ExecutionFileChangesCard({
   });
   if (!visible || !reference || empty) return null;
   const files = summary.data?.files ?? [];
+  // 明细按需读取不改变采集状态；切换会话时保留已确认的成果与文件数。
   const state = summary.data?.state ?? reference.state;
   const count = summary.data?.totalFiles ?? reference.totalFiles ?? 0;
   const incomplete =
@@ -104,12 +105,13 @@ export function ExecutionFileChangesCard({
       : undefined;
   const openFile = (file: (typeof files)[number]) => {
     const path = file.absolutePath ?? file.path ?? "";
+    const root = summary.data?.roots?.find((root) => root.id === file.rootId);
     onOpenFile?.({
       messageId: message.id ?? "",
       path,
       name: path.replaceAll("\\", "/").split("/").at(-1) ?? path,
-      rootPath: summary.data?.roots?.find((root) => root.id === file.rootId)
-        ?.path,
+      // 精确文件根与文件身份相同，差异仍按原消息读取，不将文件路径作为目录范围。
+      rootPath: root?.path === path ? undefined : root?.path,
     });
   };
   const viewChangesAction = (
@@ -159,8 +161,7 @@ export function ExecutionFileChangesCard({
                 ? t("fileChanges.unavailable")
                 : state === "incomplete" || (state === "partial" && count === 0)
                   ? t("fileChanges.incomplete")
-                  : state === "pending" ||
-                      (activated && summary.isPending && !summary.data)
+                  : state === "pending"
                     ? t("fileChanges.pending")
                     : t("fileChanges.title", { count })}
             </span>

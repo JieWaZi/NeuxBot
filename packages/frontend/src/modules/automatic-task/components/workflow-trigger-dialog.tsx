@@ -105,9 +105,7 @@ export function WorkflowTriggerDialog({
               fingerprint={configuration.data.fingerprint}
               name={definition.data.definition.title ?? ""}
               revisionId={definition.data.revision.id ?? ""}
-              schema={
-                definition.data.revision.manifest?.inputSchema ?? {}
-              }
+              schema={definition.data.revision.manifest?.inputSchema ?? {}}
               onCancel={() => onOpenChange(false)}
               onSaved={(tasks) => {
                 onOpenChange(false);
@@ -198,6 +196,7 @@ function WorkflowTriggerForm({
     accountId: initial?.accountId,
     model: initial?.model,
     reasoning: initial?.reasoning,
+    fast: initial?.fast,
     permissionLevel: initial?.permissionLevel ?? "default",
   });
   const execution = useExecutionSelection({ value: selection, enabled: true });
@@ -208,8 +207,7 @@ function WorkflowTriggerForm({
       query: { revisionId: policy === "pinned" ? pinned : undefined },
     }),
   );
-  const selectedSchema =
-    chosen.data?.revision?.manifest?.inputSchema ?? schema;
+  const selectedSchema = chosen.data?.revision?.manifest?.inputSchema ?? schema;
   const save = useMutation(
     withLocalErrorMutation(saveWorkflowTriggersMutation()),
   );
@@ -247,6 +245,7 @@ function WorkflowTriggerForm({
       accountId: value.accountId,
       model: value.model,
       reasoning: value.reasoning,
+      fast: value.fast,
       permissionLevel: permissionLevelOf(value.permissionLevel),
     };
     const body = {

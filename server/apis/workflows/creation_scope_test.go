@@ -1,10 +1,9 @@
 package workflows
 
 import (
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -21,82 +20,39 @@ import (
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 )
 
-// creationScopeRuntime 只替代外部模型协议，保留真实创作接纳和工作区准备。
-type creationScopeRuntime struct {
-	// requests 记录实际派发请求，检验续聊不会更换获准目录。
-	requests chan fixtureInvocation
-	// duringRun 在真实执行仍活跃时探测创作 MCP，默认不附加操作。
-	duringRun func(context.Context, fixtureInvocation)
-}
-
-func TestCreationCLIQueriesGuidanceAndSavesThroughAuthorizedCommands(t *testing.T) {
-	source := workflowTestSource(t)
-	outcomes := make(chan error, 1)
-	runtime := &creationScopeRuntime{requests: make(chan fixtureInvocation, 1)}
-	runtime.duringRun = func(ctx context.Context, request fixtureInvocation) {
-		for _, command := range []struct {
-			// args 是真实 CLI 的结构化参数列表。
-			args []string
-			// input 是仅包含业务参数的 JSON。
-			input map[string]any
-		}{
-			{[]string{"capabilities"}, nil},
-			{[]string{"workflow", "sdk", "get"}, map[string]any{"topic": "worker"}},
-			{[]string{"workflow", "sdk", "get"}, map[string]any{"topic": "f0", "kind": "example"}},
-			{[]string{"workflow", "resources", "list"}, map[string]any{"kind": "wakers"}},
-			{[]string{"workflow", "resources", "list"}, map[string]any{"kind": "imTargets"}},
-			{[]string{"workflow", "source", "get"}, nil},
-			{[]string{"workflow", "source", "validate"}, map[string]any{"source": source}},
-			{[]string{"workflow", "source", "save", "--request-id", "query-save"}, map[string]any{"source": source, "sdk": constants.WorkflowSDKIdentifier, "expectedRevisionId": ""}},
-		} {
-			if _, err := fixtureCLI(ctx, request, command.args, command.input); err != nil {
-				outcomes <- err
-				return
-			}
-		}
-		for _, args := range [][]string{{"workflow", "results", "schema"}, {"workflow", "runs", "start", "--request-id", "forbidden", "--definition-id", "other", "--revision-id", "other", "--input", "-"}} {
-			if _, err := fixtureCLI(ctx, request, args, nil); err == nil {
-				outcomes <- status_error.WorkflowStateInvalid
-				return
-			}
-		}
-
-		outcomes <- nil
-	}
+func TestWorkflowCreationForwardsHostCapabilityScope(t *testing.T) {
+	runtime := &fixtureRuntime{}
 	s, _ := openCoreWorkflowPorts(t, t.TempDir(), runtime, fixtureEnvironment{})
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	definition, err := createDefinition(ctx, workflowAPIDependencies(s), CreateDefinitionCommand{RequestID: "query-create", CreationWakerID: "fixture-waker"})
+	ctx := t.Context()
+	definition, err := createDefinition(ctx, workflowAPIDependencies(s), CreateDefinitionCommand{RequestID: "scoped-creation", CreationWakerID: "fixture-waker"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := sendCreationMessage(ctx, workflowAPIDependencies(s), SendCreationMessageCommand{DefinitionID: definition.ID, RequestID: "query-message", Content: "查询能力并保存流程", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex", AccountID: "system", Model: "fixture", PermissionLevel: constants.PermissionLevelDefault}}); err != nil {
-		t.Fatal(err)
+	boundary := &creationInputBoundary{Service: s.Executions}
+	s.Executions = boundary
+	session, err := sendCreationMessage(ctx, workflowAPIDependencies(s), SendCreationMessageCommand{
+		DefinitionID: definition.ID, RequestID: "first", Content: "保存工作流",
+		Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex", AccountID: "system", Model: "fixture"},
+	})
+	if err != nil || session.ID == "" || session.ChatID == "" || session.AcceptedExecutionID != session.ActiveExecutionID {
+		t.Fatalf("host scope prevented creation admission: session=%+v err=%v", session, err)
 	}
-	select {
-	case err := <-outcomes:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
+	if boundary.intent.Options.AllowedAgentDomains == nil || !slices.Equal(*boundary.intent.Options.AllowedAgentDomains, []string{"memory", "interaction"}) || boundary.intent.Options.AllowedConnectorIDs != nil {
+		t.Fatalf("host capability scope was changed into a native connector allowlist: %+v", boundary.intent.Options)
 	}
-	stored, err := s.Store.GetDefinition(ctx, definition.ID)
-	if err != nil || stored.CurrentRevisionID == "" {
-		t.Fatalf("single-tool save did not publish a revision: %+v %v", stored, err)
-	}
-	revision, err := s.Store.GetRevision(ctx, definition.ID, stored.CurrentRevisionID)
-	if err != nil || revision.Source != source {
-		t.Fatalf("saved source changed: %v", err)
+	if len(boundary.intent.Options.ToolCapabilities) != 1 || boundary.intent.Options.ToolCapabilities[0].ID != "workflow.authoring" {
+		t.Fatal("creation lost its explicitly granted workflow tools")
 	}
 }
 
 func TestCreationScopeFailedAdmissionCanRetryNewRequest(t *testing.T) {
 	directory := t.TempDir()
-	runtime := &creationScopeRuntime{requests: make(chan fixtureInvocation, 4)}
+	runtime := &fixtureRuntime{}
 	s, _ := openCoreWorkflowPorts(t, directory, runtime, fixtureEnvironment{})
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -111,38 +67,236 @@ func TestCreationScopeFailedAdmissionCanRetryNewRequest(t *testing.T) {
 		t.Fatalf("expected a durable input anchor without a committed Chat: %v", err)
 	}
 	s.DataDirectory = directory
+	s.Executions = &creationInputBoundary{Service: s.Executions}
 	command.SessionID, command.RequestID, command.Content = failed.ID, "retry", "重试本地流程设计"
-	accepted, err := sendCreationMessage(ctx, workflowAPIDependencies(s), command)
-	if err != nil || accepted.ID != failed.ID || accepted.ChatID == "" || accepted.AcceptedExecutionID == "" {
-		t.Fatalf("failed initial creation could not retry after configuration recovery: %v", err)
-	}
-	encoded, err := json.Marshal(accepted)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var reply map[string]json.RawMessage
-	if err := json.Unmarshal(encoded, &reply); err != nil {
-		t.Fatal(err)
-	}
-	var snapshot models.Chat
-	if err := json.Unmarshal(reply["chat"], &snapshot); err != nil || snapshot.ID != accepted.ChatID || snapshot.LatestSequence <= 0 {
-		t.Fatalf("accepted workflow reply discarded authoritative chat snapshot: %s %v", encoded, err)
-	}
-	select {
-	case <-runtime.requests:
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
-	}
-	select {
-	case <-runtime.requests:
-		t.Fatal("recovery dispatched more than one model execution")
-	default:
+	retried, err := sendCreationMessage(ctx, workflowAPIDependencies(s), command)
+	if err != nil || retried.ID != failed.ID || retried.ChatID == "" || retried.AcceptedExecutionID != retried.ActiveExecutionID {
+		t.Fatalf("retry did not admit host-scoped creation from the same anchor: %+v %v", retried, err)
 	}
 }
 
-func TestWorkflowReusesAllyAndStartsAnOrdinaryChat(t *testing.T) {
+func TestCreationReceiptFreezesDefaultsBeforeFailedAdmission(t *testing.T) {
+	for _, reasoning := range []string{"low", ""} {
+		t.Run("reasoning="+reasoning, func(t *testing.T) {
+			environment := &mutableAdmissionEnvironment{initialReasoning: reasoning}
+			directory := t.TempDir()
+			s, _ := openCoreWorkflowPorts(t, directory, &fixtureRuntime{}, environment)
+			ctx := t.Context()
+			definition, err := createDefinition(ctx, workflowAPIDependencies(s), CreateDefinitionCommand{RequestID: "create", CreationWakerID: "fixture-waker"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			command := SendCreationMessageCommand{DefinitionID: definition.ID, RequestID: "same-input", Content: "创作冻结配置", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex"}}
+			s.DataDirectory = ""
+			failed, err := sendCreationMessage(ctx, workflowAPIDependencies(s), command)
+			if workflowstate.ErrorKey(err) != status_error.WorkflowResourceInvalid.Key() || failed.ID == "" {
+				t.Fatalf("expected workspace admission refusal after receipt: %+v %v", failed, err)
+			}
+			if failed.Defaults.AccountID != "system" || failed.Defaults.Model != "fixture" || failed.Defaults.Reasoning != reasoning {
+				t.Errorf("creation receipt did not save resolved defaults: %+v", failed.Defaults)
+			}
+			environment.mutex.Lock()
+			environment.changed = true
+			environment.mutex.Unlock()
+			s.DataDirectory = directory
+			s.Executions = &creationInputBoundary{Service: s.Executions, err: status_error.RuntimePolicyUnsupported}
+			retried, err := sendCreationMessage(ctx, workflowAPIDependencies(s), command)
+			if !errors.Is(err, status_error.RuntimePolicyUnsupported) || retried.ID != failed.ID || retried.ActiveExecutionID != failed.ActiveExecutionID || !reflect.DeepEqual(retried.Defaults, failed.Defaults) {
+				t.Fatalf("same receipt followed changed defaults or changed identity: first=%+v retry=%+v err=%v", failed, retried, err)
+			}
+			command.Content = "同键不同正文"
+			if _, err := sendCreationMessage(ctx, workflowAPIDependencies(s), command); !errors.Is(err, status_error.WorkflowRequestConflict) {
+				t.Fatalf("changed content bypassed original request digest: %v", err)
+			}
+		})
+	}
+}
+
+func TestCreationDispatchPreservesResolvedEmptyReasoning(t *testing.T) {
+	environment := &mutableAdmissionEnvironment{}
+	s, _ := openCoreWorkflowPorts(t, t.TempDir(), &fixtureRuntime{}, environment)
+	ctx := t.Context()
+	definition, err := createDefinition(ctx, workflowAPIDependencies(s), CreateDefinitionCommand{RequestID: "create", CreationWakerID: "fixture-waker"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	boundary := &creationInputBoundary{Service: s.Executions, err: status_error.RuntimePolicyUnsupported}
+	s.Executions = boundary
+	command := SendCreationMessageCommand{DefinitionID: definition.ID, RequestID: "native-default", Content: "保留原生默认", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex"}}
+	first, err := sendCreationMessage(ctx, workflowAPIDependencies(s), command)
+	if !errors.Is(err, status_error.RuntimePolicyUnsupported) {
+		t.Fatal(err)
+	}
+	environment.mutex.Lock()
+	environment.changed = true
+	environment.mutex.Unlock()
+	if _, err := sendCreationMessage(ctx, workflowAPIDependencies(s), command); !errors.Is(err, status_error.RuntimePolicyUnsupported) {
+		t.Fatalf("frozen empty selection was replaced before dispatch: %v", err)
+	}
+	options := boundary.intent.Options
+	if !options.ConfigurationResolved || options.AccountID != "system" || options.Model != "fixture" || options.Reasoning != "" || boundary.intent.ExecutionID != first.ActiveExecutionID {
+		t.Fatalf("dispatch lost frozen native default or input identity: %+v", boundary.intent)
+	}
+}
+
+// creationFastEnvironment 只替代用户可修改的 Runtime Fast 默认值。
+type creationFastEnvironment struct {
+	// coreTestEnvironment 提供其余真实 Core 准入需要的注册配置。
+	coreTestEnvironment
+	// fast 是当前用户保存的 Runtime 快速模式默认值。
+	fast bool
+}
+
+func (e *creationFastEnvironment) Get(ctx context.Context, id string) (models.RuntimeEnvironment, error) {
+	environment, err := e.coreTestEnvironment.Get(ctx, id)
+	value := e.fast
+	environment.DefaultFast = &value
+	return environment, err
+}
+
+func TestCreationReceiptFreezesFastAcrossDefaultChanges(t *testing.T) {
+	for _, fast := range []bool{false, true} {
+		t.Run(map[bool]string{false: "false", true: "true"}[fast], func(t *testing.T) {
+			directory := t.TempDir()
+			environment := &creationFastEnvironment{coreTestEnvironment: fixtureEnvironment{}, fast: fast}
+			s, _ := openCoreWorkflowPorts(t, directory, &fixtureRuntime{}, environment)
+			ctx := t.Context()
+			definition, err := createDefinition(ctx, workflowAPIDependencies(s), CreateDefinitionCommand{RequestID: "create", CreationWakerID: "fixture-waker"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			command := SendCreationMessageCommand{DefinitionID: definition.ID, RequestID: "fast-frozen", Content: "按接纳配置创作", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex"}}
+			s.DataDirectory = ""
+			first, err := sendCreationMessage(ctx, workflowAPIDependencies(s), command)
+			if workflowstate.ErrorKey(err) != status_error.WorkflowResourceInvalid.Key() || first.ID == "" {
+				t.Fatalf("expected workspace preparation failure after receipt: %+v %v", first, err)
+			}
+			if first.Defaults.Fast == nil || *first.Defaults.Fast != fast {
+				t.Errorf("receipt did not freeze Fast=%v: %+v", fast, first.Defaults)
+			}
+			environment.fast = !fast
+			s.DataDirectory = directory
+			boundary := &creationInputBoundary{Service: s.Executions}
+			s.Executions = boundary
+			retried, err := sendCreationMessage(ctx, workflowAPIDependencies(s), command)
+			if err != nil || retried.ID != first.ID || retried.ActiveExecutionID != first.ActiveExecutionID || retried.Defaults.Fast == nil || *retried.Defaults.Fast != fast || boundary.intent.Options.Fast == nil || *boundary.intent.Options.Fast != fast || !boundary.intent.Options.ConfigurationResolved {
+				t.Fatalf("replayed receipt followed new Fast default: saved=%+v dispatched=%+v err=%v", retried.Defaults, boundary.intent.Options, err)
+			}
+		})
+	}
+}
+
+func TestWorkerAdmissionRetainsFrozenFastAcrossDefaultChanges(t *testing.T) {
+	for _, fast := range []bool{false, true} {
+		t.Run(map[bool]string{false: "false", true: "true"}[fast], func(t *testing.T) {
+			environment := &creationFastEnvironment{coreTestEnvironment: fixtureEnvironment{}, fast: fast}
+			s, _ := openCoreWorkflowPorts(t, t.TempDir(), &fixtureRuntime{}, environment)
+			adapter := workflow.CoreWorkerAdapter{Executions: s.Executions}
+			admitted, err := adapter.ResolveAdmission(t.Context(), nil, models.WorkflowExecutionDefaults{RuntimeID: "codex", PermissionLevel: constants.PermissionLevelDefault}, false)
+			if err != nil || admitted.Fast == nil || *admitted.Fast != fast {
+				t.Fatalf("worker admission did not save Fast=%v: %+v %v", fast, admitted, err)
+			}
+			environment.fast = !fast
+			retried, err := adapter.ResolveAdmission(t.Context(), nil, admitted, true)
+			if err != nil || retried.Fast == nil || *retried.Fast != fast {
+				t.Fatalf("worker retry followed changed Fast default: %+v %v", retried, err)
+			}
+		})
+	}
+}
+
+// creationChatSnapshot 只替代原生执行后的权威 Chat 查询，配置解析和创作回执仍使用真实实现。
+type creationChatSnapshot struct {
+	// Module 保留当前用例未替换的 Chat 端口。
+	chatservice.Module
+	// previous 是允许下一轮创作的已完成执行。
+	previous models.Execution
+	// snapshot 保存该 Chat 最近有效的执行选择。
+	snapshot models.Chat
+}
+
+func (c *creationChatSnapshot) ReadExecution(_ context.Context, chatID, executionID string) (models.Execution, error) {
+	if chatID != c.snapshot.ID || executionID != c.previous.ID {
+		return models.Execution{}, status_error.ExecutionNotFound
+	}
+	return c.previous, nil
+}
+
+func (c *creationChatSnapshot) LoadExecutionChat(_ context.Context, chatID string) (models.Chat, error) {
+	if chatID != c.snapshot.ID {
+		return models.Chat{}, status_error.ChatNotFound
+	}
+	return c.snapshot, nil
+}
+
+func TestCreationContinuationKeepsLastSelectionAndAcceptsExplicitChanges(t *testing.T) {
+	environment := &mutableAdmissionEnvironment{initialReasoning: "low"}
+	fastEnvironment := &creationFastEnvironment{coreTestEnvironment: environment, fast: true}
+	s, _ := openCoreWorkflowPorts(t, t.TempDir(), &fixtureRuntime{}, fastEnvironment)
+	ctx := t.Context()
+	definition, err := createDefinition(ctx, workflowAPIDependencies(s), CreateDefinitionCommand{RequestID: "create", CreationWakerID: "fixture-waker"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	boundary := &creationInputBoundary{Service: s.Executions}
+	s.Executions = boundary
+	command := SendCreationMessageCommand{DefinitionID: definition.ID, RequestID: "first", Content: "创建流程", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex"}}
+	first, err := sendCreationMessage(ctx, workflowAPIDependencies(s), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed := int64(1)
+	lastFast := false
+	chats := &creationChatSnapshot{Module: s.Chats,
+		previous: models.Execution{ID: first.ActiveExecutionID, CompletedAt: &completed},
+		snapshot: models.Chat{ID: first.ChatID, LastRuntimeID: "codex", LastAccountID: "system", LastModel: "fixture", LastReasoning: "low", LastFast: &lastFast},
+	}
+	s.Chats = chats
+	environment.mutex.Lock()
+	environment.changed = true
+	environment.mutex.Unlock()
+	command.SessionID, command.RequestID, command.Content = first.ID, "next", "继续完善"
+	next, err := sendCreationMessage(ctx, workflowAPIDependencies(s), command)
+	if err != nil || next.Defaults.AccountID != "system" || next.Defaults.Model != "fixture" || next.Defaults.Reasoning != "low" || next.Defaults.Fast == nil || *next.Defaults.Fast {
+		t.Fatalf("continuation inherited changed runtime defaults: %+v %v", next.Defaults, err)
+	}
+	chats.previous.ID = next.ActiveExecutionID
+	command.RequestID, command.Content = "explicit", "换模型继续"
+	command.Defaults.AccountID, command.Defaults.Model, command.Defaults.Reasoning = "system", "override", "high"
+	explicitFast := true
+	command.Defaults.Fast = &explicitFast
+	changed, err := sendCreationMessage(ctx, workflowAPIDependencies(s), command)
+	if err != nil || changed.Defaults.Model != "override" || changed.Defaults.Reasoning != "high" || changed.Defaults.Fast == nil || !*changed.Defaults.Fast || !boundary.intent.Options.ConfigurationResolved {
+		t.Fatalf("explicit selection was replaced by continuation defaults: %+v %v", changed.Defaults, err)
+	}
+}
+
+func TestWorkflowConsumerValidationPreservesResolvedNativeDefaults(t *testing.T) {
+	environment := &mutableAdmissionEnvironment{}
+	s, _ := openCoreWorkflowPorts(t, t.TempDir(), &fixtureRuntime{}, environment)
+	storage, _ := workflowTestService(t)
+	config := storage.Config
+	config.Executions, config.Chats = s.Executions, s.Chats
+	consumer := workflowTestNew(config)
+	consumer.State.AgentBindings = consumer.AgentBindings
+	definition := savedTestWorkflow(t, consumer, workflowTestSource(t))
+	environment.mutex.Lock()
+	environment.changed = true
+	environment.mutex.Unlock()
+	intent := execution.WorkIntent{ClientRequestID: "resolved-consumer", Chat: execution.ChatTarget{Create: &execution.CreateChatSpec{WakerID: "fixture-waker"}}, Input: execution.WorkInput{Content: "使用流程"}, Options: execution.WorkOptions{ConfigurationResolved: true, RuntimeID: "codex", PermissionLevel: constants.PermissionLevelDefault}}
+	bound, err := consumer.BindConsumer(t.Context(), intent, []string{definition.ID})
+	if err != nil || !bound.Options.ConfigurationResolved || bound.Options.AccountID != "" || bound.Options.Model != "" {
+		t.Fatalf("consumer validation reinterpreted resolved native defaults: %+v %v", bound.Options, err)
+	}
+	intent.Options.ConfigurationResolved = false
+	if _, err := consumer.BindConsumer(t.Context(), intent, []string{definition.ID}); workflowstate.ErrorKey(err) != status_error.AIAccountNotFound.Key() {
+		t.Fatalf("unresolved consumer bypassed current account default validation: %v", err)
+	}
+}
+
+func TestWorkflowCreationReusesExistingAlly(t *testing.T) {
 	directory := t.TempDir()
-	runtime := &creationScopeRuntime{requests: make(chan fixtureInvocation, 2)}
+	runtime := &fixtureRuntime{}
 	s, _ := openCoreWorkflowPorts(t, directory, runtime, fixtureEnvironment{})
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -178,254 +332,59 @@ func TestWorkflowReusesAllyAndStartsAnOrdinaryChat(t *testing.T) {
 	if json.Unmarshal(encoded, &public) != nil || public["creationWakerId"] != nil {
 		t.Fatal("creation exposed an creation partner selector identity")
 	}
-	session, err := sendCreationMessage(ctx, workflowAPIDependencies(s), SendCreationMessageCommand{DefinitionID: definition.ID, RequestID: "first-message", Content: "从目标生成标题和流程", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex", AccountID: "system", Model: "fixture", PermissionLevel: constants.PermissionLevelDefault}})
-	if err != nil || session.ChatID == "" || session.AcceptedExecutionID == "" {
-		t.Fatalf("internal conversation admission: %+v %v", session, err)
-	}
-	select {
-	case request := <-runtime.requests:
-		if request.Workspace.Path == "" {
-			t.Fatal("no managed workspace")
-		}
-		if request.Resources.Target.Environment[constants.AgentCLIContextEnvironment] == "" || len(request.Connectors) != 1 {
-			t.Fatal("workflow creation missing CLI context or retained product MCP")
-		}
-		if len(request.Skills) != 1 || request.Skills[0].Name != constants.AgentCLISkillName {
-			t.Fatalf("workflow creation skill not delivered: %+v", request.Skills)
-		}
-		for _, relative := range []string{"SKILL.md", "references/api-retrieval.md"} {
-			if _, err := os.ReadFile(filepath.Join(request.Skills[0].Path, relative)); err != nil {
-				t.Fatalf("runtime cannot read complete authoring skill: %v", err)
-			}
-		}
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
-	}
-}
 
-func (*creationScopeRuntime) ForkSession(context.Context, agentapi.ForkSessionRequest) (agentapi.ForkSessionResult, error) {
-	return agentapi.ForkSessionResult{}, status_error.WorkflowCapabilityUnsupported
-}
-func (*creationScopeRuntime) Runtimes() []agentapi.RuntimeSummary {
-	return []agentapi.RuntimeSummary{{ID: "codex", BaseRuntimeID: "codex", InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"}}
-}
-func (r *creationScopeRuntime) Run(ctx context.Context, request fixtureInvocation, sink agentapi.EventSink) agentapi.Result {
-	id := util.New()
-	data, _ := json.Marshal(agentapi.InvocationStartedData{InvocationID: id})
-	if err := sink.Accept(ctx, agentapi.Event{Type: agentapi.EventTypeInvocationStarted, Data: data}); err != nil {
-		return agentapi.Result{ExitCode: 1}
-	}
-	r.requests <- request
-	if r.duringRun != nil {
-		r.duringRun(ctx, request)
-	}
-	return agentapi.Result{StopReason: "end_turn", TerminationReason: constants.RuntimeTerminationReasonNormal, ProtocolHealthy: true, Facts: agentapi.InvocationFacts{InvocationID: id, RuntimeID: "codex", BaseRuntimeID: "codex"}}
 }
 
 func TestCreationScopeManagedAndExplicitDirectory(t *testing.T) {
-	for _, managed := range []bool{true, false} {
-		t.Run(map[bool]string{true: "managed", false: "explicit"}[managed], func(t *testing.T) {
+	for _, explicit := range []bool{false, true} {
+		t.Run(map[bool]string{false: "managed", true: "explicit"}[explicit], func(t *testing.T) {
 			directory := t.TempDir()
-			runtime := &creationScopeRuntime{requests: make(chan fixtureInvocation, 4)}
-			finishRuntime := make(chan struct{})
-			runtime.duringRun = func(ctx context.Context, _ fixtureInvocation) {
-				select {
-				case <-finishRuntime:
-				case <-ctx.Done():
-				}
-			}
-			s, _ := openCoreWorkflowPorts(t, directory, runtime, fixtureEnvironment{})
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
+			s, _ := openCoreWorkflowPorts(t, directory, &fixtureRuntime{}, fixtureEnvironment{})
+			ctx := t.Context()
 			scope := models.WorkflowScopeBinding{}
-			if !managed {
-				scope.WorkingDirectory = t.TempDir()
-			}
-			definition, err := createDefinition(ctx, workflowAPIDependencies(s), CreateDefinitionCommand{RequestID: "create", Title: "创作工作区验收", CreationWakerID: "fixture-waker", ScopeBinding: scope})
-			if err != nil {
-				t.Fatal(err)
-			}
-			command := SendCreationMessageCommand{DefinitionID: definition.ID, RequestID: "first", Content: "设计本地验收流程", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex", AccountID: "system", Model: "fixture", PermissionLevel: constants.PermissionLevelDefault}}
-			session, err := sendCreationMessage(ctx, workflowAPIDependencies(s), command)
-			if err != nil {
-				t.Fatalf("creation admission rejected the creation form's scope: %v", err)
-			}
-			var request fixtureInvocation
-			select {
-			case request = <-runtime.requests:
-			case <-ctx.Done():
-				t.Fatal(ctx.Err())
-			}
-			internalRoot := filepath.Join(directory, "workflow-workspaces", definition.ID)
-			for _, name := range []string{"scripts", "state", "cache", "tmp", "runs"} {
-				if info, err := os.Stat(filepath.Join(internalRoot, name)); err != nil || !info.IsDir() {
-					t.Fatalf("creation must prepare its internal %s directory for every business scope: %v", name, err)
-				}
-			}
-			internalRoot, err = filepath.EvalSymlinks(internalRoot)
-			if err != nil {
-				t.Fatal(err)
-			}
-			instructionFound := false
-			for _, instruction := range request.Instructions {
-				if strings.Contains(instruction.Content, internalRoot) && strings.Contains(instruction.Content, filepath.Join(internalRoot, "scripts")) {
-					instructionFound = true
-				}
-			}
-			if !instructionFound {
-				t.Fatal("creation request did not carry the host-provided internal workspace")
-			}
-			expected := scope.WorkingDirectory
-			if managed {
-				expected = filepath.Join(directory, "workflow-workspaces", definition.ID)
-			}
-			expected, err = filepath.EvalSymlinks(expected)
-			if err != nil {
-				t.Fatal(err)
-			}
-			// CompletedAt 先于执行占位释放写入；先订阅，再结束 Runtime，只以公开终态允许续发。
-			subscription, err := s.Chats.SubscribeEvents(ctx, session.ChatID, 0)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer subscription.Close()
-			close(finishRuntime)
-		waitForTerminal:
-			for {
-				select {
-				case event, open := <-subscription.Events:
-					if !open {
-						t.Fatal("creation subscription closed before execution settled")
-					}
-					if event.ExecutionID != session.AcceptedExecutionID {
-						continue
-					}
-					switch event.Type {
-					case constants.ChatEventTypeExecutionCompleted:
-						break waitForTerminal
-					case constants.ChatEventTypeExecutionFailed, constants.ChatEventTypeExecutionCanceled:
-						t.Fatalf("creation execution did not complete: %+v", event)
-					}
-				case <-ctx.Done():
-					t.Fatal(ctx.Err())
-				}
-			}
-			summary, err := s.Chats.GetChatSummary(ctx, session.ChatID)
-			expectedDirectories := []string{expected}
-			if !managed {
-				expectedDirectories = append(expectedDirectories, internalRoot)
-			}
-			if err != nil || !slices.Equal(summary.Chat.AdditionalWorkingDirectories, expectedDirectories) {
-				t.Fatalf("creation scope mismatch: %+v %v", summary.Chat.AdditionalWorkingDirectories, err)
-			}
-			replayed, err := sendCreationMessage(ctx, workflowAPIDependencies(s), command)
-			if err != nil || replayed.ID != session.ID || replayed.ChatID != session.ChatID || replayed.AcceptedExecutionID != session.AcceptedExecutionID {
-				t.Fatalf("creation replay changed its identity: %v", err)
-			}
-			if managed {
-				// 模拟 Core 已提交、创作确认写入丢失的进程中断窗口。
-				unconfirmed := session
-				unconfirmed.ChatID, unconfirmed.AcceptedExecutionID = "", ""
-				if err := s.CreationSessions.UpdateCreationSession(ctx, unconfirmed.WorkflowCreationSession); err != nil {
-					t.Fatal(err)
-				}
-			}
-			command.SessionID, command.RequestID, command.Content = session.ID, "second", "增加一个审批步骤"
-			continued, err := sendCreationMessage(ctx, workflowAPIDependencies(s), command)
-			if err != nil || continued.ChatID != session.ChatID {
-				t.Fatalf("creation continuation changed its scope or Chat: %v", err)
-			}
-			select {
-			case <-runtime.requests:
-			case <-ctx.Done():
-				t.Fatal(ctx.Err())
-			}
-			summary, err = s.Chats.GetChatSummary(ctx, continued.ChatID)
-			if err != nil || !slices.Equal(summary.Chat.AdditionalWorkingDirectories, expectedDirectories) {
-				t.Fatalf("continuation did not retain the approved directory: %v", err)
-			}
-		})
-	}
-}
-
-func TestCreationSessionsUseChatWorkspacesAndShareDefinitionDirectory(t *testing.T) {
-	directory := t.TempDir()
-	runtime := &creationScopeRuntime{requests: make(chan fixtureInvocation, 3)}
-	s, _ := openCoreWorkflowPorts(t, directory, runtime, fixtureEnvironment{})
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	var requests []fixtureInvocation
-	var sessions []models.WorkflowCreationSession
-	for index, count := range []int{2, 1} {
-		definition, err := createDefinition(ctx, workflowAPIDependencies(s), CreateDefinitionCommand{RequestID: []string{"workflow-a", "workflow-b"}[index], CreationWakerID: "fixture-waker"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		for turn := 0; turn < count; turn++ {
-			session, err := sendCreationMessage(ctx, workflowAPIDependencies(s), SendCreationMessageCommand{DefinitionID: definition.ID, RequestID: util.New(), Content: "设计共享目录中的工作流", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex", AccountID: "system", Model: "fixture", PermissionLevel: constants.PermissionLevelDefault}})
-			if err != nil {
-				t.Fatal(err)
-			}
-			select {
-			case request := <-runtime.requests:
-				requests = append(requests, request)
-			case <-ctx.Done():
-				t.Fatal(ctx.Err())
-			}
-			for {
-				completed, err := s.Chats.ReadExecution(ctx, session.ChatID, session.AcceptedExecutionID)
+			if explicit {
+				var err error
+				scope.WorkingDirectory, err = filepath.EvalSymlinks(t.TempDir())
 				if err != nil {
 					t.Fatal(err)
 				}
-				if completed.CompletedAt != nil {
-					break
-				}
-				select {
-				case <-time.After(5 * time.Millisecond):
-				case <-ctx.Done():
-					t.Fatal(ctx.Err())
+			}
+			definition, err := createDefinition(ctx, workflowAPIDependencies(s), CreateDefinitionCommand{RequestID: "create", Title: "创作工作区", CreationWakerID: "fixture-waker", ScopeBinding: scope})
+			if err != nil {
+				t.Fatal(err)
+			}
+			boundary := &creationInputBoundary{Service: s.Executions}
+			s.Executions = boundary
+			if _, err := sendCreationMessage(ctx, workflowAPIDependencies(s), SendCreationMessageCommand{
+				DefinitionID: definition.ID, RequestID: "first", Content: "设计本地流程",
+				Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex", AccountID: "system", Model: "fixture"},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			internalRoot, err := filepath.EvalSymlinks(filepath.Join(directory, "workflow-workspaces", definition.ID))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range []string{"scripts", "state", "cache", "tmp", "runs"} {
+				if info, err := os.Stat(filepath.Join(internalRoot, name)); err != nil || !info.IsDir() {
+					t.Fatalf("missing internal %s directory: %v", name, err)
 				}
 			}
-			sessions = append(sessions, session.WorkflowCreationSession)
-		}
-	}
-	for index, request := range requests {
-		if len(request.Workspace.AdditionalWritableDirectories) != 1 {
-			t.Fatalf("creation session %d lost its business directory", index)
-		}
-		assertWorkflowChatWorkspace(t, request.Workspace, request.Workspace.AdditionalWritableDirectories[0])
-		for _, previous := range requests[:index] {
-			if request.Workspace.Path == previous.Workspace.Path {
-				t.Fatal("creation sessions must use independent managed chat workspaces")
+			expected := internalRoot
+			if explicit {
+				expected = scope.WorkingDirectory
 			}
-		}
-	}
-	firstDirectory := requests[0].Workspace.AdditionalWritableDirectories[0]
-	if firstDirectory != requests[1].Workspace.AdditionalWritableDirectories[0] || firstDirectory == requests[2].Workspace.AdditionalWritableDirectories[0] {
-		t.Fatal("business directories must be shared within one workflow and isolated across workflows")
-	}
-	sharedFile := filepath.Join(firstDirectory, "shared-result.txt")
-	if err := os.WriteFile(sharedFile, []byte("keep workflow files"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Chats.DeleteChatsAtomically(ctx, []string{sessions[0].ChatID}, func(ctx context.Context) error {
-		return s.CreationSessions.DeleteCreationSessionsByChatID(ctx, sessions[0].ChatID)
-	}); err != nil {
-		t.Fatal(err)
-	}
-	remaining, err := s.CreationSessions.ListCreationSessions(ctx, sessions[0].DefinitionID)
-	if err != nil || len(remaining) != 1 || remaining[0].ID != sessions[1].ID {
-		t.Fatalf("creation relationship deletion was not scoped to its Chat: %+v %v", remaining, err)
-	}
-	if content, err := os.ReadFile(sharedFile); err != nil || string(content) != "keep workflow files" {
-		t.Fatalf("deleting an creation Chat removed workflow files: %v", err)
-	}
-	project := requests[1].Workspace.ProjectDirectories[0]
-	if content, err := os.ReadFile(filepath.Join(requests[1].Workspace.Path, project.Path, "shared-result.txt")); err != nil || string(content) != "keep workflow files" {
-		t.Fatalf("remaining creation Chat cannot access shared business files: %v", err)
-	}
-	if _, err := s.Chats.GetChatSummary(ctx, sessions[1].ChatID); err != nil {
-		t.Fatalf("deleting one creation damaged another Chat: %v", err)
+			target := boundary.intent.Chat.Create
+			if target == nil || target.WorkingDirectory != expected || !slices.Equal(target.AdditionalWorkingDirectories, []string{internalRoot}) {
+				t.Fatalf("creation lost its workspace request: %+v", target)
+			}
+			for _, instruction := range boundary.intent.Input.ContextInstructions {
+				if strings.Contains(instruction.Content, internalRoot) && strings.Contains(instruction.Content, filepath.Join(internalRoot, "scripts")) {
+					return
+				}
+			}
+			t.Fatal("creation input omitted the prepared internal workspace")
+		})
 	}
 }
 
@@ -435,15 +394,20 @@ type creationInputBoundary struct {
 	execution.Service
 	// intent 保存入口向 Core 交付的完整输入与会话选项。
 	intent execution.WorkIntent
+	// err 模拟执行拒绝，保留可重试的输入锚点。
+	err error
 }
 
 func (b *creationInputBoundary) Start(_ context.Context, intent execution.WorkIntent) (execution.AcceptedExecution, error) {
 	b.intent = intent
+	if b.err != nil {
+		return execution.AcceptedExecution{}, b.err
+	}
 	return execution.AcceptedExecution{Chat: models.Chat{ID: "input-chat"}, Execution: models.Execution{ID: intent.ExecutionID}}, nil
 }
 
 func TestCreationForwardsCompleteChatInputAndSessionTransition(t *testing.T) {
-	s, _ := openCoreWorkflowPorts(t, t.TempDir(), &creationScopeRuntime{requests: make(chan fixtureInvocation, 1)}, fixtureEnvironment{})
+	s, _ := openCoreWorkflowPorts(t, t.TempDir(), &fixtureRuntime{}, fixtureEnvironment{})
 	ctx := context.Background()
 	definition, err := createDefinition(ctx, workflowAPIDependencies(s), CreateDefinitionCommand{RequestID: "complete-input", CreationWakerID: "fixture-waker"})
 	if err != nil {
@@ -477,7 +441,7 @@ func TestCreationForwardsCompleteChatInputAndSessionTransition(t *testing.T) {
 
 func TestCreationProjectKeepsBusinessIdentityAndAddsInternalWorkspace(t *testing.T) {
 	directory := t.TempDir()
-	s, _ := openCoreWorkflowPorts(t, directory, &creationScopeRuntime{requests: make(chan fixtureInvocation, 1)}, fixtureEnvironment{})
+	s, _ := openCoreWorkflowPorts(t, directory, &fixtureRuntime{}, fixtureEnvironment{})
 	ctx := context.Background()
 	project := models.Project{ID: util.New(), WakerID: "fixture-waker", Name: "业务项目"}
 	if err := s.Projects.Create(ctx, project); err != nil {

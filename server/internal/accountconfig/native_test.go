@@ -21,7 +21,7 @@ func TestNativeManagedProfiles(t *testing.T) {
 			if runtimeID == "grok" {
 				protocol = constants.AccountProtocolOpenAIResponses
 			}
-			spec := Spec{ID: "account-a", Revision: 1, RuntimeID: runtimeID, AuthMode: constants.AccountAuthModeAPIKey, Protocol: protocol, BaseURL: "https://example.test/proxy/v1beta", APIKey: "secret-a", Model: "gemini-2.5-pro", SelectedModels: []string{"gemini-2.5-pro"}}
+			spec := Spec{ID: "account-a", ConfigFingerprint: "configuration-1", RuntimeID: runtimeID, AuthMode: constants.AccountAuthModeAPIKey, Protocol: protocol, BaseURL: "https://example.test/proxy/v1beta", APIKey: "secret-a", Model: "gemini-2.5-pro", SelectedModels: []string{"gemini-2.5-pro"}}
 			env, err := Prepare(workspace, spec)
 			if err != nil {
 				t.Fatal(err)
@@ -61,8 +61,8 @@ func TestNativeManagedProfiles(t *testing.T) {
 			case "grok":
 				homeKey = "GROK_HOME"
 				configPath = filepath.Join(env[homeKey], "config.toml")
-				if env["XAI_API_KEY"] != "secret-a" || env["GROK_MODELS_BASE_URL"] != spec.BaseURL {
-					t.Fatal("catalog credential is not bound to the account endpoint")
+				if env["XAI_API_KEY"] != "" {
+					t.Fatal("managed credential escaped its model configuration")
 				}
 			}
 			data, err := os.ReadFile(configPath)
@@ -80,13 +80,13 @@ func TestNativeManagedProfiles(t *testing.T) {
 			if next[homeKey] == env[homeKey] {
 				t.Fatal("account state reused")
 			}
-			spec.Revision++
+			spec.ConfigFingerprint = "configuration-2"
 			revised, err := Prepare(workspace, spec)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if next[homeKey] == revised[homeKey] {
-				t.Fatal("revision state reused")
+				t.Fatal("configuration state reused")
 			}
 		})
 	}
@@ -102,9 +102,11 @@ func TestNativeEnvironmentIsolation(t *testing.T) {
 
 // TestNativeRawModelIdentity 保留带斜杠的服务端模型 ID，受管边界只添加自己的命名空间。
 func TestNativeRawModelIdentity(t *testing.T) {
-	for _, raw := range []string{"model", "org/model", "ally/model"} {
-		if native := NativeModelID("opencode", raw); native != "ally/"+raw || AccountModelID("opencode", native) != raw {
-			t.Fatalf("identity lost: %q", raw)
+	for _, provider := range []string{constants.RuntimeIDOpenCode, constants.RuntimeIDPi} {
+		for _, raw := range []string{"model", "org/model", "ally/model"} {
+			if native := NativeModelID(provider, raw); native != "ally/"+raw || AccountModelID(provider, native) != raw {
+				t.Fatalf("%s lost the model identity %q", provider, raw)
+			}
 		}
 	}
 }
@@ -114,7 +116,7 @@ func TestGeminiManagedTrustPolicy(t *testing.T) {
 	for _, mode := range []string{"denied", "denied-root", "denied-parent-alias", "symlink", "null"} {
 		t.Run(mode, func(t *testing.T) {
 			workspace := t.TempDir()
-			spec := Spec{ID: "account", Revision: 1, RuntimeID: "gemini", AuthMode: constants.AccountAuthModeAPIKey, Protocol: constants.AccountProtocolGoogleGenerativeAI, BaseURL: constants.AIAccountGoogleURL, APIKey: "key", Model: "gemini-3.8-flash", SelectedModels: []string{"gemini-3.8-flash"}}
+			spec := Spec{ID: "account", ConfigFingerprint: "configuration-1", RuntimeID: "gemini", AuthMode: constants.AccountAuthModeAPIKey, Protocol: constants.AccountProtocolGoogleGenerativeAI, BaseURL: constants.AIAccountGoogleURL, APIKey: "key", Model: "gemini-3.8-flash", SelectedModels: []string{"gemini-3.8-flash"}}
 			env, err := Prepare(workspace, spec)
 			if err != nil {
 				t.Fatal(err)
@@ -160,7 +162,7 @@ func TestGeminiManagedTrustPolicy(t *testing.T) {
 // TestGrokManagedCredentialContract 验证可被原生 TOML 解析的模型、协议及目录认证绑定，拒绝未实现的 Messages。
 func TestGrokManagedCredentialContract(t *testing.T) {
 	for _, protocol := range []constants.AccountProtocol{constants.AccountProtocolOpenAIResponses, constants.AccountProtocolOpenAICompletions} {
-		spec := Spec{ID: "account", Revision: 1, RuntimeID: constants.RuntimeIDGrok, AuthMode: constants.AccountAuthModeAPIKey, Protocol: protocol, BaseURL: "https://proxy.example/v1", APIKey: "third-party-key", Model: "org/model", SelectedModels: []string{"org/model"}, ModelReasoningLevels: map[string][]string{"org/model": {"provider-fast"}}}
+		spec := Spec{ID: "account", ConfigFingerprint: "configuration-1", RuntimeID: constants.RuntimeIDGrok, AuthMode: constants.AccountAuthModeAPIKey, Protocol: protocol, BaseURL: "https://proxy.example/v1", APIKey: "third-party-key", Model: "org/model", SelectedModels: []string{"org/model"}, ModelReasoningLevels: map[string][]string{"org/model": {"provider-fast"}}}
 		env, err := Prepare(t.TempDir(), spec)
 		if err != nil {
 			t.Fatal(err)
@@ -174,14 +176,15 @@ func TestGrokManagedCredentialContract(t *testing.T) {
 		if protocol == constants.AccountProtocolOpenAICompletions {
 			backend = "chat_completions"
 		}
-		if model["model"] != "org/model" || model["api_key"] != spec.APIKey || model["base_url"] != spec.BaseURL || model["api_backend"] != backend {
+		key, _ := model["env_key"].(string)
+		if model["model"] != "org/model" || model["api_key"] != nil || env[key] != spec.APIKey || model["base_url"] != spec.BaseURL || model["api_backend"] != backend {
 			t.Fatalf("incorrect native config: %v", model)
 		}
 		if _, invented := model["reasoning_efforts"]; invented {
 			t.Fatal("opaque choice ID became invented wire enum")
 		}
-		if env["GROK_MODELS_BASE_URL"] != spec.BaseURL || env["XAI_API_KEY"] != spec.APIKey {
-			t.Fatal("global catalog credentials not scoped to account host")
+		if env["XAI_API_KEY"] != "" || config["auth"].(map[string]any)["preferred_method"] != "api_key" {
+			t.Fatal("managed key was not confined to native per-model BYOK")
 		}
 		if Supports(constants.RuntimeIDGrok, constants.AccountProtocolAnthropicMessages) {
 			t.Fatal("unsupported Messages authentication advertised")

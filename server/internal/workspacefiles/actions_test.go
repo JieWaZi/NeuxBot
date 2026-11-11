@@ -47,36 +47,47 @@ func TestDirectoryImportAndResolve(t *testing.T) {
 		t.Fatalf("%+v %v", r, e)
 	}
 }
-func TestChatFilesPreserveProjectsAndRestoreAttachments(t *testing.T) {
-	m, s, root := fixture(t)
-	list, e := m.ListChatFiles(context.Background(), "web:one", s.ID, "")
-	if e != nil || len(list.Generated) != 0 {
-		t.Fatalf("%+v %v", list, e)
+func TestChatFilesPreserveProjectFilesAndPrivateHiddenState(t *testing.T) {
+	m, _, root := fixture(t)
+	private := filepath.Join(t.TempDir(), "Conversations", "chat")
+	if err := os.MkdirAll(private, 0700); err != nil {
+		t.Fatal(err)
 	}
-	os.MkdirAll(filepath.Join(root, "attachments/generated"), 0700)
-	os.WriteFile(filepath.Join(root, "attachments/generated/out.txt"), []byte("out"), 0600)
-	if e = m.DeleteChatFile("web:one", s.ID, "", "note.txt"); e != nil {
-		t.Fatal(e)
+	s, err := m.OpenChat("web:one", "chat", root, private, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, e = os.Stat(filepath.Join(root, "note.txt")); e != nil {
-		t.Fatal("project removed", e)
+	if err = os.WriteFile(filepath.Join(private, "attachments", "out.txt"), []byte("out"), 0600); err != nil {
+		t.Fatal(err)
 	}
-	if e = m.DeleteChatFile("web:one", s.ID, "", "attachments/generated/out.txt"); e != nil {
-		t.Fatal(e)
+	if err = m.DeleteChatFile("web:one", s.ID, "", "note.txt"); err != nil {
+		t.Fatal(err)
 	}
-	list, e = m.ListChatFiles(context.Background(), "web:one", s.ID, "")
-	if e != nil || len(list.RemovedPaths) != 2 || len(list.Generated) != 0 {
-		t.Fatalf("%+v %v", list, e)
+	if _, err = os.Stat(filepath.Join(root, "note.txt")); err != nil {
+		t.Fatal("project removed", err)
 	}
-	os.WriteFile(filepath.Join(root, "attachments/generated/out.txt"), []byte("again"), 0600)
-	list, e = m.ListChatFiles(context.Background(), "web:one", s.ID, "")
-	if e != nil || len(list.RemovedPaths) != 1 || len(list.Generated) != 1 {
-		t.Fatalf("%+v %v", list, e)
+	if err = m.DeleteChatFile("web:one", s.ID, "", "attachments/out.txt"); err != nil {
+		t.Fatal(err)
 	}
-	os.Remove(filepath.Join(root, removedManifest))
-	os.Symlink(filepath.Join(root, "note.txt"), filepath.Join(root, removedManifest))
-	if e = m.DeleteChatFile("web:one", s.ID, "", "note.txt"); e != status_error.WorkspacePathInvalid {
-		t.Fatal(e)
+	list, err := m.ListChatFiles(context.Background(), "web:one", s.ID, "")
+	if err != nil || len(list.RemovedPaths) != 2 || len(list.Generated) != 0 {
+		t.Fatalf("%+v %v", list, err)
+	}
+	if err = os.WriteFile(filepath.Join(private, "attachments", "out.txt"), []byte("again"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	list, err = m.ListChatFiles(context.Background(), "web:one", s.ID, "")
+	if err != nil || len(list.RemovedPaths) != 1 {
+		t.Fatalf("%+v %v", list, err)
+	}
+	if err = os.Remove(filepath.Join(private, removedManifest)); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Symlink(filepath.Join(root, "note.txt"), filepath.Join(private, removedManifest)); err != nil {
+		t.Fatal(err)
+	}
+	if err = m.DeleteChatFile("web:one", s.ID, "", "note.txt"); err != status_error.WorkspacePathInvalid {
+		t.Fatal(err)
 	}
 }
 func TestWatchFileAndRootDirectoryCancellation(t *testing.T) {

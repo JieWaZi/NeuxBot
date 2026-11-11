@@ -3,6 +3,7 @@ package wakers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -32,7 +33,17 @@ type emptyWakerChats struct {
 }
 
 // DeleteWakerChats 表示当前伙伴没有需要删除的聊天文件。
-func (emptyWakerChats) DeleteWakerChats(context.Context, string) error { return nil }
+func (emptyWakerChats) DeleteWakerChats(ctx context.Context, _ string, prepare func([]string) (func() error, error), finalize func(context.Context) error) error {
+	settle, err := prepare(nil)
+	if err != nil {
+		return err
+	}
+	err = global.TransactionControllerManager.Transaction(ctx, finalize)
+	if settle != nil {
+		err = errors.Join(err, settle())
+	}
+	return err
+}
 
 func TestDeleteWakerCompletesAlongsideIntegrationKnowledgePublish(t *testing.T) {
 	ctx := context.Background()
@@ -83,6 +94,9 @@ func TestDeleteWakerCompletesAlongsideIntegrationKnowledgePublish(t *testing.T) 
 		}
 		return release, err
 	}})
+	previousManaged := global.Config.ManagedFilesDirectory
+	global.Config.ManagedFilesDirectory = t.TempDir()
+	defer func() { global.Config.ManagedFilesDirectory = previousManaged }()
 	previousWakers, previousProjects, previousSkills := global.WakerControllerManager, global.ProjectControllerManager, global.SkillControllerManager
 	previousDocuments, previousConnectors, previousTasks := global.ProfileDocumentControllerManager, global.MCPConnectorControllerManager, global.AutomaticTaskControllerManager
 	previousTransactions, previousKnowledge, previousAuthority := global.TransactionControllerManager, global.KnowledgeService, global.IntegrationService

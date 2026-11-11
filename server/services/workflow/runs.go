@@ -242,6 +242,9 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 			timeout = constants.WorkflowDefaultTimeoutMillis
 		}
 		source := command.TriggerSource
+		if source == "" && command.RetrySourceRunID != "" {
+			source = "retry"
+		}
 		if source == "" {
 			source = "manual"
 		}
@@ -419,7 +422,20 @@ func (s *Service) prepareAdmission(ctx context.Context, definition models.Workfl
 					return scope, status_error.WorkflowStateInvalid
 				}
 			}
-			resolved, err := s.worker.ResolveAdmission(ctx, node.Options, nodeDefaults, command.WorkerConfigurations != nil)
+			selectionResolved := command.WorkerConfigurations != nil
+			if !selectionResolved && command.ConsumerLeaseID != "" {
+				selected := workerConfiguration(node.Options, nodeDefaults)
+				callerAccount, selectedAccount := strings.TrimSpace(defaults.AccountID), strings.TrimSpace(selected.AccountID)
+				if callerAccount == "" {
+					callerAccount = constants.AiAccountSystemID
+				}
+				if selectedAccount == "" {
+					selectedAccount = constants.AiAccountSystemID
+				}
+				// 同身份节点继承实际调用者的原生空值；显式换 Runtime 或账号仍解析新默认。
+				selectionResolved = strings.TrimSpace(selected.RuntimeID) == strings.TrimSpace(defaults.RuntimeID) && selectedAccount == callerAccount
+			}
+			resolved, err := s.worker.ResolveAdmission(ctx, node.Options, nodeDefaults, selectionResolved)
 			if err != nil {
 				return scope, err
 			}
@@ -488,7 +504,7 @@ func (s *Service) prepareInputFiles(ctx context.Context, command StartRunCommand
 			}
 			reference = ownerWorkspace.ResolveRunReference(reference)
 		}
-		frozen, err := workflowfiles.FreezeLocalInput(ctx, roots, reference, workspace.RootDirectory, runID, pointer)
+		frozen, err := workflowfiles.FreezeLocalInput(ctx, roots, nil, reference, workspace.RootDirectory, runID, pointer, "")
 		return frozen.Path, err
 	})
 }

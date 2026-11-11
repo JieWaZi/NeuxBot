@@ -362,3 +362,50 @@ it.each([false, true])(
     expect(value).toEqual(multi ? ["beta", "custom"] : "beta");
   },
 );
+
+it("精简尝试历史仍展示独立对话与失败证据", async () => {
+  server.use(
+    http.get(endpoint, () =>
+      HttpResponse.json({
+        instance: {
+          id: "instance",
+          kind: "worker",
+          status: "succeeded",
+          completedAt: 100,
+          input: [],
+          output: "已完成",
+        },
+        attempts: [
+          {
+            id: "first",
+            attemptGeneration: 1,
+            status: "failed",
+            chatId: "first-chat",
+            failure: {
+              kind: "json",
+              data: {
+                code: "WORKER_FAILED",
+                message: "第一轮失败证据",
+                messageSource: "public",
+              },
+            },
+          },
+          {
+            id: "second",
+            attemptGeneration: 2,
+            status: "succeeded",
+            chatId: "second-chat",
+          },
+        ],
+      }),
+    ),
+  );
+  renderInstance();
+  const user = userEvent.setup();
+  await user.click(await screen.findByText(/第 1 次尝试/));
+  await user.click(screen.getByText(/第 2 次尝试/));
+  expect(screen.getByText("第一轮失败证据")).toBeInTheDocument();
+  expect(
+    screen.getAllByRole("link").map((link) => link.getAttribute("href")),
+  ).toEqual(["/chats/first-chat", "/chats/second-chat"]);
+});

@@ -1,3 +1,5 @@
+import type { AppModuleId } from "./app-navigation-model";
+
 const partnerNavigationStorageKey = "ally.partner-navigation";
 
 export type PartnerNavigationPreferences = {
@@ -6,15 +8,17 @@ export type PartnerNavigationPreferences = {
   currentPartnerId: string;
   currentRailKey: string;
   entityMode: "team" | "waker";
+  /** 仅兼容旧偏好形状，读取时归一为 false；伙伴侧栏不再支持收起。 */
   globalSidebarCollapsed: boolean;
   lastTeamThreads: Record<string, string>;
   railExpanded: boolean;
   railOrder: string[];
+  railPins?: Record<string, boolean>;
 };
 
 const defaultPreferences: PartnerNavigationPreferences = {
   collapsedGroups: {},
-  contextSidebarWidth: 240,
+  contextSidebarWidth: 280,
   currentPartnerId: "",
   currentRailKey: "",
   entityMode: "waker",
@@ -25,7 +29,7 @@ const defaultPreferences: PartnerNavigationPreferences = {
 };
 
 export const contextSidebarWidthRange = {
-  max: 360,
+  max: 400,
   min: 216,
 } as const;
 
@@ -34,6 +38,30 @@ export function clampContextSidebarWidth(value: number): number {
   return Math.min(
     contextSidebarWidthRange.max,
     Math.max(contextSidebarWidthRange.min, Math.round(value)),
+  );
+}
+
+export type AppPinnableModuleId = Exclude<
+  AppModuleId,
+  "partners" | "resources" | "settings" | "work-board"
+>;
+// 工作看板由顶栏通知入口打开；其余模块按用户偏好固定到模块栏。
+export const appPinnableModules = [
+  "usage",
+  "knowledge",
+  "automatic-tasks",
+] as const satisfies readonly AppPinnableModuleId[];
+export function pinnedAppModules(
+  choices: Readonly<Record<string, boolean>> = {},
+): readonly AppPinnableModuleId[] {
+  return appPinnableModules.filter((id) => choices[id] ?? id === "usage");
+}
+function booleanRecord(value: unknown): Record<string, boolean> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, boolean] => typeof entry[1] === "boolean",
+    ),
   );
 }
 
@@ -97,14 +125,12 @@ export function readPartnerNavigationPreferences(): PartnerNavigationPreferences
             : "",
       entityMode:
         "entityMode" in value && value.entityMode === "team" ? "team" : "waker",
-      globalSidebarCollapsed:
-        "globalSidebarCollapsed" in value
-          ? value.globalSidebarCollapsed === true
-          : "sidebarCollapsed" in value && value.sidebarCollapsed === true,
+      globalSidebarCollapsed: false,
       lastTeamThreads:
         "lastTeamThreads" in value ? stringRecord(value.lastTeamThreads) : {},
       railExpanded: "railExpanded" in value && value.railExpanded === true,
       railOrder: "railOrder" in value ? stringArray(value.railOrder) : [],
+      railPins: "railPins" in value ? booleanRecord(value.railPins) : {},
     };
   } catch {
     return defaultPreferences;
@@ -166,17 +192,6 @@ export function reconcilePartnerOrder(
     if (!known.has(id)) ordered.push(id);
   }
   return ordered;
-}
-
-export function collapsedPartnerIds(
-  orderedPartnerIds: readonly string[],
-  currentPartnerId: string,
-  limit = 5,
-): string[] {
-  if (orderedPartnerIds.length <= limit) return [...orderedPartnerIds];
-  const visible = orderedPartnerIds.slice(0, limit);
-  if (!currentPartnerId || visible.includes(currentPartnerId)) return visible;
-  return [...visible.slice(0, limit - 1), currentPartnerId];
 }
 
 export function moveItem(

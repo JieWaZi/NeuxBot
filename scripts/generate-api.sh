@@ -39,9 +39,12 @@ trap cleanup EXIT HUP INT TERM
   go generate ./constants/...
   go generate ./constants/status_error/...
   gofmt -w constants/*__generated.go constants/status_error/*__generated.go
+  go run ./cmd/error-catalog ../packages/frontend/src/shared/api/status-error-catalog.generated.ts
   go generate ./cmd/ally-core
   mv cmd/ally-core/openapi.json openapi.json
 )
+
+pnpm --dir packages/frontend exec prettier --write src/shared/api/status-error-catalog.generated.ts
 
 node scripts/normalize-openapi.mjs server/openapi.json
 

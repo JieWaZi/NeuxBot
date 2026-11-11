@@ -84,6 +84,8 @@ type ChannelThreadMember struct {
 	Model string `gorm:"column:model;type:varchar(200);not null;default:''" json:"model"`
 	// Reasoning 是该成员后续新执行使用的推理强度。
 	Reasoning string `gorm:"column:reasoning;type:varchar(80);not null;default:''" json:"reasoning"`
+	// Fast 是该成员后续新执行使用的加速选择；nil 保留原生默认。
+	Fast *bool `gorm:"column:fast" json:"fast,omitempty"`
 	// PermissionLevel 是该成员后续新执行使用的权限等级。
 	PermissionLevel constants.PermissionLevel `gorm:"column:permission_level;type:varchar(24);not null" json:"permissionLevel"`
 	// Position 是成员在首发团队快照中的稳定顺序。

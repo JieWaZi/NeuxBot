@@ -15,15 +15,11 @@ import (
 type LogAddress struct {
 	// ChatID 是日志所属 Chat 的不可变标识。
 	ChatID string
-	// ThreadID 非空时表示日志属于团队对话聚合目录。
-	ThreadID string
 	// LogPath 是 JSONL 权威日志文件路径。
 	LogPath string
-	// IndexPath 是 JSONL 文件位置索引路径。
-	IndexPath string
 }
 
-// Catalog 维护 Chat ID 到普通或团队聚合日志地址的唯一映射。
+// Catalog 只维护 Chat ID 到 Conversation 日志地址的映射，团队归属读取原创建事实。
 type Catalog struct {
 	// layout 提供全部规范聚合路径。
 	layout *Layout
@@ -33,7 +29,7 @@ type Catalog struct {
 	addresses map[string]LogAddress
 }
 
-// NewCatalog 扫描当前布局并拒绝重复 Chat ID 或非法聚合目录。
+// NewCatalog 只扫描当前 Conversation 布局并拒绝非法身份。
 func NewCatalog(layout *Layout) (*Catalog, error) {
 	if layout == nil {
 		return nil, status_error.BadRequest
@@ -48,7 +44,7 @@ func NewCatalog(layout *Layout) (*Catalog, error) {
 	return catalog, nil
 }
 
-// Address 返回 Chat 当前注册地址；未创建的 Chat 默认落入普通 Chat 聚合目录。
+// Address 返回由 Chat 身份唯一确定的当前日志地址。
 func (c *Catalog) Address(chatID string) (LogAddress, error) {
 	if !safeSegment(chatID) {
 		return LogAddress{}, status_error.ChatIDInvalid
@@ -59,15 +55,7 @@ func (c *Catalog) Address(chatID string) (LogAddress, error) {
 	if exists {
 		return address, nil
 	}
-	return c.register(chatID, "")
-}
-
-// RegisterTeamChat 在创建首条事实前把成员 Chat 绑定到团队聚合目录。
-func (c *Catalog) RegisterTeamChat(threadID string, chatID string) (LogAddress, error) {
-	if !safeSegment(threadID) || !safeSegment(chatID) {
-		return LogAddress{}, status_error.BadRequest
-	}
-	return c.register(chatID, threadID)
+	return c.register(chatID)
 }
 
 // Remove 删除一份 Chat 的运行期地址；文件删除由日志 Store 负责。
@@ -89,40 +77,20 @@ func (c *Catalog) ListChatIDs() []string {
 	return ids
 }
 
-// ListThreadChatIDs 返回一个团队对话聚合目录中的全部成员 Chat 标识。
-func (c *Catalog) ListThreadChatIDs(threadID string) ([]string, error) {
-	if !safeSegment(threadID) {
-		return nil, status_error.BadRequest
-	}
-	if err := c.Refresh(); err != nil {
-		return nil, err
-	}
-	c.mutex.RLock()
-	ids := make([]string, 0)
-	for chatID, address := range c.addresses {
-		if address.ThreadID == threadID {
-			ids = append(ids, chatID)
-		}
-	}
-	c.mutex.RUnlock()
-	sort.Strings(ids)
-	return ids, nil
-}
-
 // Refresh 重新发现运行期由其他 Store 或崩溃恢复留下的日志地址。
 func (c *Catalog) Refresh() error {
 	return c.discover()
 }
 
-func (c *Catalog) register(chatID string, threadID string) (LogAddress, error) {
-	address, err := c.address(chatID, threadID)
+func (c *Catalog) register(chatID string) (LogAddress, error) {
+	address, err := c.address(chatID)
 	if err != nil {
 		return LogAddress{}, err
 	}
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	if current, exists := c.addresses[chatID]; exists {
-		if current.ThreadID != threadID || current.LogPath != address.LogPath {
+		if current.LogPath != address.LogPath {
 			return LogAddress{}, status_error.ChatLogCorrupted
 		}
 		return current, nil
@@ -131,35 +99,23 @@ func (c *Catalog) register(chatID string, threadID string) (LogAddress, error) {
 	return address, nil
 }
 
-func (c *Catalog) address(chatID string, threadID string) (LogAddress, error) {
-	var directory string
-	var err error
-	if threadID == "" {
-		directory, err = c.layout.ChatLogDirectory(chatID)
-	} else {
-		directory, err = c.layout.TeamLogDirectory(threadID)
-	}
+func (c *Catalog) address(chatID string) (LogAddress, error) {
+	directory, err := c.layout.ChatLogDirectory(chatID)
 	if err != nil {
 		return LogAddress{}, err
 	}
 	return LogAddress{
-		ChatID:    chatID,
-		ThreadID:  threadID,
-		LogPath:   filepath.Join(directory, chatID+".jsonl"),
-		IndexPath: filepath.Join(directory, chatID+".idx"),
+		ChatID: chatID,
+
+		LogPath: filepath.Join(directory, chatID+".jsonl"),
 	}, nil
 }
 
 func (c *Catalog) discover() error {
-	chatRoot := filepath.Join(c.layout.Root(), chatDirectoryName)
-	if err := c.discoverAggregateRoot(chatRoot, false); err != nil {
-		return err
-	}
-	teamRoot := filepath.Join(c.layout.Root(), teamDirectoryName)
-	return c.discoverAggregateRoot(teamRoot, true)
+	return c.discoverAggregateRoot(filepath.Join(c.layout.Root(), chatDirectoryName))
 }
 
-func (c *Catalog) discoverAggregateRoot(root string, team bool) error {
+func (c *Catalog) discoverAggregateRoot(root string) error {
 	entries, err := os.ReadDir(root)
 	if os.IsNotExist(err) {
 		return nil
@@ -172,11 +128,7 @@ func (c *Catalog) discoverAggregateRoot(root string, team bool) error {
 		if !entry.IsDir() || !safeSegment(entry.Name()) {
 			continue
 		}
-		threadID := ""
 		logRoot := filepath.Join(root, entry.Name(), logDirectoryName)
-		if team {
-			threadID = entry.Name()
-		}
 		logs, readErr := os.ReadDir(logRoot)
 		if os.IsNotExist(readErr) {
 			continue
@@ -190,10 +142,10 @@ func (c *Catalog) discoverAggregateRoot(root string, team bool) error {
 				continue
 			}
 			chatID := strings.TrimSuffix(logEntry.Name(), ".jsonl")
-			if !safeSegment(chatID) || (!team && chatID != entry.Name()) {
+			if !safeSegment(chatID) || chatID != entry.Name() {
 				continue
 			}
-			if _, err := c.register(chatID, threadID); err != nil {
+			if _, err := c.register(chatID); err != nil {
 				return err
 			}
 		}

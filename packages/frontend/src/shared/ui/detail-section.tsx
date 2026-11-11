@@ -9,6 +9,7 @@ type DetailSectionProps = Omit<ComponentProps<"section">, "title"> & {
   actions?: ReactNode;
   /** plain 用于独立状态；muted 用于配置；wash 用于资料阅读。 */
   surface?: "plain" | "muted" | "wash";
+  appearance?: "default" | "catalog";
 };
 
 /** 详情分区统一标题、留白和单层表面，标题与操作始终位于内容上方。 */
@@ -18,8 +19,25 @@ export function DetailSection({
   children,
   className,
   surface = "plain",
+  appearance = "default",
   ...props
 }: DetailSectionProps) {
+  if (appearance === "catalog")
+    return (
+      <section className={cn("grid min-w-0 gap-2", className)} {...props}>
+        <header className="flex min-w-0 flex-wrap items-end justify-between gap-3 px-1">
+          <h2 className="type-label text-resource-secondary min-w-0 font-normal [overflow-wrap:anywhere]">
+            {title}
+          </h2>
+          {actions && (
+            <div className="flex flex-wrap items-center gap-2">{actions}</div>
+          )}
+        </header>
+        <div className="bg-resource-surface text-resource-content min-w-0 overflow-hidden rounded-lg">
+          {children}
+        </div>
+      </section>
+    );
   return (
     <section className={cn("grid min-w-0 gap-4", className)} {...props}>
       <header className="min-h-control-md @container/page-header flex flex-wrap items-center justify-between gap-3">

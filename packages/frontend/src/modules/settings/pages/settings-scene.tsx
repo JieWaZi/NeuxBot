@@ -1,138 +1,124 @@
-import { Laptop, Moon, Settings, Sun } from "lucide-react";
-import { lazy, Suspense, useMemo, type ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
   SettingsContentShell,
+  SettingsGroup,
   SettingsRow,
 } from "../components/settings-section-layout";
+import { SettingsPageFooterHost } from "../components/settings-page-footer";
+import { IntegrationBreadcrumbs } from "../components/integration-breadcrumbs";
 import { type SettingsSection } from "../settings-navigation";
-import { useTheme, type ThemeMode } from "@/shared/theme";
-import { SceneTabStrip } from "@/shared/ui/scene-tab-strip";
-import { SceneChromePortal } from "@/shared/ui/scene-chrome-portal";
+import { useTheme } from "@/shared/theme";
+import { SceneBreadcrumbs } from "@/shared/ui/scene-breadcrumbs";
 import { NativeOverlayPresence } from "@/shared/ui/native-overlay";
-import { SegmentedControl } from "@/shared/ui/segmented-control";
+import { Skeleton } from "@/shared/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/ui/select";
 
-// 配置面板在用户打开对应设置时加载，不增加双端工作台首屏成本。
-const AIAccountsSection = lazy(() =>
-  import("../components/ai-accounts-section").then((module) => ({
-    default: module.AIAccountsSection,
-  })),
-);
+// 配置面板仅在对应分类打开时加载，不增加工作台首屏成本。
 const RuntimeEnvironmentsSection = lazy(() =>
   import("../components/runtime-environments-section").then((module) => ({
     default: module.RuntimeEnvironmentsSection,
   })),
 );
-
-const APIIntegrationSection = lazy(() =>
-  import("../components/api-integration-section").then((module) => ({
-    default: module.APIIntegrationSection,
+const IntegrationsSection = lazy(() =>
+  import("../components/integrations-section").then((module) => ({
+    default: module.IntegrationsSection,
   })),
 );
 
 function GeneralSettings() {
   const { t } = useTranslation("appSettings");
   const { mode, setMode } = useTheme();
-  const themeOptions = useMemo(
-    () =>
-      [
-        {
-          value: "system",
-          label: t("theme.system"),
-          icon: <Laptop className="size-icon-sm" strokeWidth={1.5} />,
-        },
-        {
-          value: "light",
-          label: t("theme.light"),
-          icon: <Sun className="size-icon-sm" strokeWidth={1.5} />,
-        },
-        {
-          value: "dark",
-          label: t("theme.dark"),
-          icon: <Moon className="size-icon-sm" strokeWidth={1.5} />,
-        },
-      ] as const satisfies ReadonlyArray<{
-        value: ThemeMode;
-        label: string;
-        icon: ReactNode;
-      }>,
-    [t],
-  );
-
+  const modes = ["system", "light", "dark"] as const;
   return (
-    <SettingsContentShell
-      title={t("general.title")}
-      description={t("general.description")}
-    >
-      <SettingsRow
-        title={t("general.appearance.title")}
-        description={t("general.appearance.description")}
-      >
-        <SegmentedControl
-          className="max-w-full"
-          ariaLabel={t("theme.pickerAria")}
-          value={mode}
-          options={themeOptions}
-          onValueChange={setMode}
-        />
-      </SettingsRow>
+    <SettingsContentShell title={t("general.title")} showHeader={false}>
+      <SettingsGroup title={t("general.appearance.title")}>
+        <SettingsRow
+          title={t("general.appearance.theme")}
+          description={t("general.appearance.description")}
+        >
+          <Select
+            value={mode}
+            onValueChange={(value) => {
+              if (value === "system" || value === "light" || value === "dark")
+                setMode(value);
+            }}
+          >
+            <SelectTrigger
+              appearance="settings"
+              size="settings"
+              aria-label={t("theme.pickerAria")}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {modes.map((value) => (
+                <SelectItem key={value} value={value}>
+                  {t(`theme.${value}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+      </SettingsGroup>
     </SettingsContentShell>
   );
 }
 
-function SettingsSectionContent({
-  imIntegrationContent,
-  onSelectSection,
-  section,
-}: {
-  onSelectSection?: (section: SettingsSection) => void;
-  section: SettingsSection;
-  imIntegrationContent?: ReactNode;
-}) {
+function SettingsLoading() {
   const { t } = useTranslation("appSettings");
-  if (section === "integration-im") return imIntegrationContent;
-  if (section === "integration-api")
-    return (
-      <Suspense
-        fallback={
-          <SettingsContentShell title={t("sections.integrationAPI")}>
-            <div
-              role="status"
-              aria-busy="true"
-              className="bg-surface-tertiary h-40 rounded-lg"
-            />
-          </SettingsContentShell>
-        }
-      >
-        <APIIntegrationSection />
-      </Suspense>
-    );
-  if (section === "general") return <GeneralSettings />;
-  if (section === "ai-accounts") return <AIAccountsSection />;
   return (
-    <RuntimeEnvironmentsSection
-      onOpenAccounts={
-        onSelectSection ? () => onSelectSection("ai-accounts") : undefined
-      }
-    />
+    <div
+      role="status"
+      aria-busy="true"
+      aria-label={t("loading")}
+      className="grid gap-6"
+    >
+      <Skeleton className="h-row-detail w-full" />
+      <div className="grid gap-2">
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-32 w-full" />
+      </div>
+      <div className="grid gap-2">
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-row-detail w-full" />
+      </div>
+    </div>
   );
 }
 
 export function SettingsScene({
   imIntegrationContent,
-  onClose,
-  onSelectSection,
+  integrationBreadcrumbs,
+  onOpenRuntime,
+  onRuntimeBack,
+  runtimeId,
   section,
   showSceneChrome = true,
 }: {
   onClose: () => void;
   onSelectSection?: (section: SettingsSection) => void;
+  onOpenRuntime?: (runtimeId: string) => void;
+  onRuntimeBack?: () => void;
+  runtimeId?: string;
   section: SettingsSection;
   showSceneChrome?: boolean;
   imIntegrationContent?: ReactNode;
+  integrationBreadcrumbs?: ReactNode;
 }) {
   const { t } = useTranslation("appSettings");
+  const sectionKey = {
+    general: "general",
+    agents: "runtimeEnvironments",
+    integrations: "integrations",
+  }[section];
 
   return (
     <>
@@ -141,41 +127,55 @@ export function SettingsScene({
         aria-label={t("sceneLabel")}
         className="bg-surface-scene @container/settings-scene relative z-10 flex h-full min-h-0 flex-col overflow-hidden"
       >
-        {showSceneChrome ? (
-          <SceneChromePortal>
-            <SceneTabStrip
-              activeTabId="settings"
-              ariaLabel={t("sceneTabList")}
-              tabs={[
-                {
-                  id: "settings",
-                  label: t("title"),
-                  icon: Settings,
-                  closeable: true,
-                  autoFocus: true,
-                },
-              ]}
-              onClose={onClose}
-              onSelect={() => undefined}
-            />
-          </SceneChromePortal>
+        {showSceneChrome &&
+        section !== "agents" &&
+        section !== "integrations" ? (
+          <SceneBreadcrumbs
+            ariaLabel={t("sceneLabel")}
+            items={[{ label: t(`sections.${sectionKey}`) }]}
+          />
         ) : null}
-        <div className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto px-4 py-6 @[42.5rem]/settings-scene:px-8 @[42.5rem]/settings-scene:py-8">
-          <Suspense
-            fallback={
-              <div
-                aria-busy="true"
-                className="bg-surface-tertiary h-40 rounded-lg"
-              />
-            }
-          >
-            <SettingsSectionContent
-              imIntegrationContent={imIntegrationContent}
-              section={section}
-              onSelectSection={onSelectSection}
-            />
+        {showSceneChrome && section === "integrations" ? (
+          <Suspense fallback={<IntegrationBreadcrumbs />}>
+            {integrationBreadcrumbs || <IntegrationBreadcrumbs />}
           </Suspense>
-        </div>
+        ) : null}
+        <SettingsPageFooterHost>
+          <div
+            data-slot="settings-page-viewport"
+            key={`${section}:${runtimeId ?? ""}`}
+            className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto"
+          >
+            <div className="max-w-settings-content mx-auto w-full px-4 py-6 @[42.5rem]/settings-scene:px-8">
+              <Suspense
+                fallback={
+                  <>
+                    {showSceneChrome && section === "agents" ? (
+                      <SceneBreadcrumbs
+                        ariaLabel={t("sceneLabel")}
+                        items={[{ label: t("sections.runtimeEnvironments") }]}
+                      />
+                    ) : null}
+                    <SettingsLoading />
+                  </>
+                }
+              >
+                {section === "general" ? <GeneralSettings /> : null}
+                {section === "agents" ? (
+                  <RuntimeEnvironmentsSection
+                    runtimeId={runtimeId}
+                    onOpenRuntime={onOpenRuntime ?? (() => undefined)}
+                    onBack={onRuntimeBack ?? (() => undefined)}
+                    showSceneChrome={showSceneChrome}
+                  />
+                ) : null}
+                {section === "integrations" ? (
+                  <IntegrationsSection imContent={imIntegrationContent} />
+                ) : null}
+              </Suspense>
+            </div>
+          </div>
+        </SettingsPageFooterHost>
       </section>
     </>
   );

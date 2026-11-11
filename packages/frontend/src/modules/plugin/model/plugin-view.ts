@@ -1,8 +1,8 @@
 import { i18n } from "@/shared/i18n";
 import type {
   GithubComJieWaZiNeuxBotServerApisPluginsPluginDetailResponse as PluginDetail,
-  GithubComJieWaZiNeuxBotServerRepositoriesModelsPluginVersion as PluginVersion,
-  GithubComJieWaZiNeuxBotServerInternalPluginsCatalogEntry as PluginCatalogEntry,
+  GithubComJieWaZiNeuxBotServerApisPluginsPluginVersionResponse as PluginVersion,
+  GithubComJieWaZiNeuxBotServerApisPluginsPluginCatalogEntryResponse as PluginCatalogEntry,
 } from "@/shared/api/generated/types.gen";
 export type { PluginDetail, PluginVersion, PluginCatalogEntry };
 export type ResourceCategory = "plugins" | "skills" | "connectors";
@@ -48,7 +48,7 @@ export function pluginHasAuthorization(
   const authentication = pkg?.integration?.authentication;
   return (
     authentication?.strategy === "plugin-command" &&
-    authentication.protocol === "neuxally-auth/1"
+    authentication.protocol === "neuxbot-auth/1"
   );
 }
 
@@ -83,13 +83,7 @@ export function pluginDisplayName(
     pkg?.presentation?.displayNames?.en?.trim();
   if (localized) return localized;
   if (pkg?.presentation?.displayName) return pkg.presentation.displayName;
-  const extension = pkg?.manifest?.extensions?.["com.ally"];
-  return extension &&
-    typeof extension === "object" &&
-    "displayName" in extension &&
-    typeof extension.displayName === "string"
-    ? extension.displayName
-    : (name ?? pkg?.manifest?.name ?? "");
+  return name ?? pkg?.manifest?.name ?? "";
 }
 
 /** 展示与正文请求共用同一语言选择，未知界面语言回退英文。 */
@@ -123,5 +117,31 @@ export function pluginInstalledVersion(
       detail.installations?.some((relation) => relation.versionId === item.id),
     ) ??
     detail.versions?.[0]
+  );
+}
+
+/** 首屏只判断标准包是否声明配置，不读取用户保存的值或秘密标记。 */
+export function pluginHasConfiguration(
+  pkg: PluginCatalogEntry["package"],
+): boolean {
+  return pkg?.hasConfiguration === true;
+}
+
+/** 目录预览仅复用来源与不可变摘要均一致的本地版本。 */
+export function pluginCatalogSnapshotVersion(
+  detail: PluginDetail | undefined,
+  catalog: PluginCatalogEntry,
+) {
+  if (
+    !catalog.sourceCommit ||
+    !catalog.archiveSHA256 ||
+    detail?.plugin?.sourceKey !==
+      (catalog.sourceKey ?? `catalog:${catalog.key}`)
+  )
+    return undefined;
+  return detail.versions?.find(
+    (version) =>
+      version.provenance?.sourceCommit === catalog.sourceCommit &&
+      version.provenance?.archiveSHA256 === catalog.archiveSHA256,
   );
 }

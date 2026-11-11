@@ -28,6 +28,7 @@ import {
   vi,
 } from "vitest";
 import { client } from "@/shared/api/generated/client.gen";
+import type { GetRuntimeModelCatalogResponse } from "@/shared/api/generated/types.gen";
 import type { GlobalEventObserver } from "@/shared/api/global-events";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import { KnowledgePage } from "./knowledge-page";
@@ -79,6 +80,17 @@ const library = {
   structureVersion: 1,
   policyVersion: 1,
 };
+function runtimeModelCatalog(models: GetRuntimeModelCatalogResponse["models"]) {
+  return http.get("http://ally.test/api/v1/runtimes/codex/models", () =>
+    HttpResponse.json({
+      runtimeId: "codex",
+      accountId: "system",
+      state: "fresh",
+      defaultModel: "model",
+      models,
+    }),
+  );
+}
 function acceptedReceipt(body: Record<string, unknown>) {
   return {
     requestId: body.requestId,
@@ -133,6 +145,15 @@ it("进入知识库默认展示知识目录，原件保留明确入口", async (
   show("/knowledge/kb");
   await vi.dynamicImportSettled();
   await screen.findByRole("heading", { name: "通用资料库" }, { timeout: 5000 });
+  const path = screen.getByRole("navigation", { name: "知识库" });
+  expect(within(path).getByRole("link", { name: "知识库" })).toHaveAttribute(
+    "href",
+    "/knowledge",
+  );
+  expect(within(path).getByText("通用资料库")).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   expect(
     screen.queryByRole("button", { name: "返回知识库列表" }),
   ).not.toBeInTheDocument();
@@ -305,6 +326,9 @@ function fixtures() {
     http.get("http://ally.test/api/v1/ai-accounts", () =>
       HttpResponse.json({ resources: [] }),
     ),
+    runtimeModelCatalog([
+      { id: "model", name: "Model", permissionLevels: ["default"] },
+    ]),
   );
 }
 
@@ -1188,6 +1212,10 @@ it("整理从库配置初始化，临时修改直接执行且不写回库配置"
     reasoning: "",
   };
   server.use(
+    runtimeModelCatalog([
+      { id: "model", name: "Model", permissionLevels: ["default"] },
+      { id: "saved-model", name: "已存模型", permissionLevels: ["default"] },
+    ]),
     http.get("http://ally.test/api/v1/runtimes", () =>
       HttpResponse.json({
         resources: [
@@ -1237,7 +1265,7 @@ it("整理从库配置初始化，临时修改直接执行且不写回库配置"
     { name: "模型" },
     { timeout: 10000 },
   );
-  expect(model).toHaveTextContent("已存模型");
+  await waitFor(() => expect(model).toHaveTextContent("已存模型"));
   fireEvent.keyDown(model, { key: "ArrowDown" });
   await user.click(await screen.findByRole("option", { name: "Model" }));
   await user.click(screen.getByRole("button", { name: "开始整理" }));
@@ -1703,6 +1731,10 @@ it("普通取消后重新打开会读取新增文件，不复用旧来源草稿"
 it("取消后重新挂载页面仍恢复本库的模型和整理要求，清空要求也会记住", async () => {
   fixtures();
   server.use(
+    runtimeModelCatalog([
+      { id: "model", name: "Model", permissionLevels: ["default"] },
+      { id: "other", name: "Other", permissionLevels: ["default"] },
+    ]),
     http.get("http://ally.test/api/v1/runtimes", () =>
       HttpResponse.json({
         resources: [
@@ -1739,9 +1771,11 @@ it("取消后重新挂载页面仍恢复本库的模型和整理要求，清空�
   show();
   await screen.findByText("原始资料.md", {}, { timeout: 10000 });
   await user.click(await screen.findByRole("button", { name: "整理文档" }));
-  expect(
-    await screen.findByRole("combobox", { name: "模型" }, { timeout: 10000 }),
-  ).toHaveTextContent("Other");
+  await waitFor(() =>
+    expect(screen.getByRole("combobox", { name: "模型" })).toHaveTextContent(
+      "Other",
+    ),
+  );
   expect(screen.getByRole("textbox", { name: "整理提取要求" })).toHaveValue(
     "保留部署限制",
   );

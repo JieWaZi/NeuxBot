@@ -157,6 +157,7 @@ export function TaskForm({
           accountId: task.accountId,
           model: task.model,
           reasoning: task.reasoning,
+          fast: task.fast,
           permissionLevel: task.permissionLevel,
           executorWakerId: task.channelId
             ? ""

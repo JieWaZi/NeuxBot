@@ -1,4 +1,18 @@
 export const imZh = {
+  statusStale: "状态待更新",
+  bindingSaveFailed: "聊天配置未保存，请重试。",
+  configureChat: "配置",
+  configureNamedChat: "配置{{name}}",
+  unsavedTitle: "放弃未保存的更改？",
+  unsavedDescription: "离开会丢弃当前配置草稿。",
+  continueEditing: "继续编辑",
+  discardChanges: "放弃更改",
+  unsavedChanges: "有未保存的更改",
+  dangerZone: "危险操作",
+  conversationTurns: "{{count}} 轮",
+  backToPlatforms: "返回 IM",
+  backToIntegrations: "返回集成",
+  backToPlatform: "返回{{platform}}",
   checkingDependencies: "正在检查工作流依赖…",
   dependencyReadFailed: "无法确认删除影响，请重新检查后再删除。",
   workflowDependencyWarning:
@@ -239,6 +253,20 @@ export const imZh = {
 };
 
 export const imEn = {
+  statusStale: "Status needs refreshing",
+  bindingSaveFailed: "Chat configuration was not saved. Try again.",
+  configureChat: "Configure",
+  configureNamedChat: "Configure {{name}}",
+  unsavedTitle: "Discard unsaved changes?",
+  unsavedDescription: "Leaving will discard your configuration draft.",
+  continueEditing: "Continue editing",
+  discardChanges: "Discard changes",
+  unsavedChanges: "Unsaved changes",
+  dangerZone: "Danger zone",
+  conversationTurns: "{{count}} turns",
+  backToPlatforms: "Back to IM",
+  backToIntegrations: "Back to integrations",
+  backToPlatform: "Back to {{platform}}",
   checkingDependencies: "Checking workflow dependencies…",
   dependencyReadFailed:
     "Unable to verify deletion impact. Check again before deleting.",

@@ -11,11 +11,11 @@ import (
 	"strings"
 )
 
-const removedManifest = "attachments/removed-chat-files.json"
+const removedManifest = "removed-chat-files.json"
 
 // ChatFiles 是会话文件列表及用户隐藏记录。
 type ChatFiles struct {
-	// Generated 是受管生成附件。
+	// Generated 保留显式交付附件的列表字段；执行成果由文件结果事实提供。
 	Generated []FileMatch `json:"generated"`
 	// RemovedPaths 是应在会话中隐藏的相对路径。
 	RemovedPaths []string `json:"removedPaths"`
@@ -35,10 +35,13 @@ func (m *Manager) chatRoot(subject, id, root string) (string, error) {
 			return "", status_error.WorkspacePathInvalid
 		}
 	}
-	return scope.Root, nil
+	if scope.chatID == "" || scope.chatRoot == "" {
+		return "", status_error.WorkspaceScopeInvalid
+	}
+	return scope.chatRoot, nil
 }
 func removedPaths(h *os.Root) ([]string, error) {
-	for _, name := range []string{"attachments", removedManifest} {
+	for _, name := range []string{removedManifest} {
 		info, err := h.Lstat(name)
 		if os.IsNotExist(err) {
 			return []string{}, nil
@@ -87,21 +90,14 @@ func (m *Manager) ListChatFiles(ctx context.Context, subject, id, root string) (
 	if err != nil {
 		return ChatFiles{}, err
 	}
-	generated, err := m.Search(ctx, subject, id, actual, "", "attachments/generated", 200)
-	if err == status_error.WorkspaceResourceNotFound {
-		generated = []FileMatch{}
-		err = nil
-	}
-	if err != nil {
-		return ChatFiles{}, err
-	}
+	generated := []FileMatch{}
 	filtered := []string{}
 	for _, p := range removed {
 		if !strings.HasPrefix(p, "attachments/") {
 			filtered = append(filtered, p)
 			continue
 		}
-		if _, _, err := m.resolve(subject, id, actual, p, false); err != nil {
+		if _, _, err := m.resolve(subject, id, "", p, false); err != nil {
 			filtered = append(filtered, p)
 		}
 	}
@@ -116,7 +112,12 @@ func (m *Manager) DeleteChatFile(subject, id, root, relative string) error {
 	if err != nil {
 		return err
 	}
-	allowed, target, err := m.resolve(subject, id, actual, relative, false)
+	// 会话文件操作中的附件路径始终属于 Chat 原件，与显式空间目录无关。
+	attachmentRoot := root
+	if strings.HasPrefix(relative, "attachments/") {
+		attachmentRoot = ""
+	}
+	allowed, target, err := m.resolve(subject, id, attachmentRoot, relative, false)
 	if err != nil {
 		return err
 	}

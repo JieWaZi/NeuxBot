@@ -7,11 +7,9 @@ import { runtimeDisplayName } from "@/shared/lib/runtime-display-name";
 import {
   permissionLevels,
   permissionLevelOf,
-  modelPermissionLevels,
   permissionLevelTranslationKeys,
-  runtimeDefaultPermissionLevels,
-  safeDefaultPermissionLevel,
 } from "@/shared/lib/runtime-permissions";
+import { Button } from "@/shared/ui/button";
 import { FieldLabel } from "@/shared/ui/field-label";
 import { RuntimeCliIcon } from "@/shared/ui/runtime-cli-icon";
 import {
@@ -36,6 +34,7 @@ export function ExecutionConfigurationFields({
   required = false,
   leadingField,
   helpHidden = false,
+  fastEnabled = false,
 }: {
   state: ExecutionSelectionState;
   onChange: (value: ExecutionSelectionState["selection"]) => void;
@@ -49,6 +48,7 @@ export function ExecutionConfigurationFields({
   required?: boolean;
   leadingField?: ReactNode;
   helpHidden?: boolean;
+  fastEnabled?: boolean;
 }) {
   const { t } = useTranslation("common");
   const id = useId();
@@ -63,7 +63,8 @@ export function ExecutionConfigurationFields({
       | "reasoning"
       | "permission"
       | "defaultModel"
-      | "defaultReasoning",
+      | "defaultReasoning"
+      | "fast",
     value: string,
     options: Array<{ id?: string; name?: string; disabled?: boolean }>,
     onValueChange: (value: string) => void,
@@ -140,10 +141,7 @@ export function ExecutionConfigurationFields({
               accountId: next?.defaultAccountId || "system",
               model: "",
               reasoning: "",
-              permissionLevel: safeDefaultPermissionLevel(
-                selection.permissionLevel,
-                runtimeDefaultPermissionLevels(next ?? {}),
-              ),
+              fast: undefined,
             });
           })}
         {field(
@@ -153,7 +151,8 @@ export function ExecutionConfigurationFields({
             { id: "system", name: t("executionSelection.system") },
             ...state.accounts,
           ],
-          (accountId) => change({ accountId, model: "", reasoning: "" }),
+          (accountId) =>
+            change({ accountId, model: "", reasoning: "", fast: undefined }),
         )}
         {field(
           defaults ? "defaultModel" : "model",
@@ -173,14 +172,9 @@ export function ExecutionConfigurationFields({
             change({
               model: model === "__default" ? "" : model,
               reasoning: "",
-              permissionLevel: safeDefaultPermissionLevel(
-                selection.permissionLevel,
-                runtime?.models?.some((item) => item.id === model)
-                  ? modelPermissionLevels(runtime.models, model)
-                  : runtimeDefaultPermissionLevels(runtime ?? {}),
-              ),
+              fast: undefined,
             }),
-          state.nativeModelsQuery.isFetching,
+          models.length === 0 && defaults,
         )}
         {!reasoningHidden &&
           field(
@@ -199,28 +193,57 @@ export function ExecutionConfigurationFields({
             ],
             (reasoning) =>
               change({ reasoning: reasoning === "__default" ? "" : reasoning }),
-            !reasoningOptions.length || state.thinkingQuery.isFetching,
+            !reasoningOptions.length,
+          )}
+        {fastEnabled &&
+          state.fastSupported &&
+          field(
+            "fast",
+            selection.fast === undefined
+              ? "__default"
+              : selection.fast
+                ? "on"
+                : "off",
+            [
+              {
+                id: "__default",
+                name: t("executionSelection.defaultReasoning"),
+              },
+              { id: "off", name: t("executionSelection.fastOff") },
+              { id: "on", name: t("executionSelection.fastOn") },
+            ],
+            (fast) =>
+              change({
+                fast: fast === "__default" ? undefined : fast === "on",
+              }),
+            false,
           )}
         {!permissionHidden &&
           field(
             "permission",
-            selection.permissionLevel,
-            permissionLevels.map((level) => ({
-              id: level,
-              name: t(permissionLevelTranslationKeys[level].label),
-              disabled: !state.supportedPermissions.has(level),
-            })),
+            state.supportedPermissions.has(selection.permissionLevel)
+              ? selection.permissionLevel
+              : "",
+            permissionLevels
+              .filter((level) => state.supportedPermissions.has(level))
+              .map((level) => ({
+                id: level,
+                name: t(permissionLevelTranslationKeys[level].label),
+              })),
             (permissionLevel) =>
               change({
                 permissionLevel:
                   permissionLevelOf(permissionLevel) ?? "default",
               }),
+            state.supportedPermissions.size === 0,
           )}
       </div>
       {!reasoningHidden &&
       !state.loading &&
       !reasoningOptions.length &&
-      runtime?.models?.some((item) => item.reasoningOptions?.length) ? (
+      (state.usesNativeCatalog ? models : runtime?.models)?.some(
+        (item) => item.reasoningOptions?.length,
+      ) ? (
         <p className="text-content-secondary type-caption">
           {t("executionSelection.reasoningUnavailable")}
         </p>
@@ -238,7 +261,23 @@ export function ExecutionConfigurationFields({
           {t("executionSelection.loading")}
         </p>
       ) : null}
-      {state.error ? (
+      {state.catalogIssue ? (
+        <div
+          role="status"
+          className="text-content-secondary type-caption flex items-center gap-2"
+        >
+          {t(`executionSelection.${state.catalogIssue}`)}
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={state.catalogPending}
+            onClick={() => void state.refreshCatalog()}
+          >
+            {t("executionSelection.catalogRetry")}
+          </Button>
+        </div>
+      ) : null}
+      {state.error && !state.catalogIssue ? (
         <p role="alert" className="text-destructive type-caption">
           {localApiErrorMessage(state.error, t("executionSelection.loadError"))}
         </p>

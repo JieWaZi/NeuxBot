@@ -104,7 +104,13 @@ it.each([false, true])(
           leakedSurfaceHeader ||= request.headers.has(ALLY_LOCAL_ERROR_SURFACE);
           return failed
             ? HttpResponse.json(
-                { key: "KnowledgeForbidden", message: "目录暂不可读取" },
+                {
+                  key: "KnowledgeForbidden",
+                  code: 40300009501,
+                  messageSource: "localized",
+                  message:
+                    "knowledge resource or operation is outside the execution scope",
+                },
                 { status: 403 },
               )
             : HttpResponse.json({
@@ -209,7 +215,13 @@ it.each(wikiTargets)(
         leakedSurfaceHeader ||= request.headers.has(ALLY_LOCAL_ERROR_SURFACE);
         return failed
           ? HttpResponse.json(
-              { key: "KnowledgeForbidden", message: "Wiki暂不可读取" },
+              {
+                key: "KnowledgeForbidden",
+                code: 40300009501,
+                messageSource: "localized",
+                message:
+                  "knowledge resource or operation is outside the execution scope",
+              },
               { status: 403 },
             )
           : HttpResponse.json({
@@ -255,7 +267,13 @@ it.each(wikiTargets)(
       http.get(`${root}/pages/one`, ({ request }) => {
         leakedSurfaceHeader ||= request.headers.has(ALLY_LOCAL_ERROR_SURFACE);
         return HttpResponse.json(
-          { key: "KnowledgeForbidden", message: "未标记读取失败" },
+          {
+            key: "KnowledgeForbidden",
+            code: 40300009501,
+            messageSource: "localized",
+            message:
+              "knowledge resource or operation is outside the execution scope",
+          },
           { status: 403 },
         );
       }),
@@ -271,7 +289,13 @@ it.each(wikiTargets)(
         ).rejects.toMatchObject({ code: "KnowledgeForbidden" });
       });
       expect(result.current).toHaveLength(1);
-      expect(result.current[0]?.message).toBe("未标记读取失败");
+      expect(result.current[0]?.message).toBe(
+        "当前执行无权访问此知识资源或操作",
+      );
+      expect(result.current[0]).toMatchObject({
+        errorCode: "KnowledgeForbidden",
+        messageSource: "localized",
+      });
       expect(leakedSurfaceHeader).toBe(false);
     } finally {
       unmount();
@@ -308,7 +332,13 @@ it("任务摘要没有区域恢复入口时仍保留全局错误提示", async (
     ),
     http.get(`${root}/jobs`, () =>
       HttpResponse.json(
-        { key: "KnowledgeForbidden", message: "任务摘要读取失败" },
+        {
+          key: "KnowledgeForbidden",
+          code: 40300009501,
+          messageSource: "localized",
+          message:
+            "knowledge resource or operation is outside the execution scope",
+        },
         { status: 403 },
       ),
     ),
@@ -402,7 +432,13 @@ it.each(globalOperations)(
         const path = new URL(request.url).pathname;
         if (path === new URL(operationRoot + failurePath).pathname)
           return HttpResponse.json(
-            { key: "KnowledgeForbidden", message: "附属操作失败" },
+            {
+              key: "KnowledgeForbidden",
+              code: 40300009501,
+              messageSource: "localized",
+              message:
+                "knowledge resource or operation is outside the execution scope",
+            },
             { status: 403 },
           );
         if (path.endsWith("/source-purges/purge"))
@@ -427,7 +463,13 @@ it.each(globalOperations)(
         });
       });
       expect(result.current).toHaveLength(1);
-      expect(result.current[0]?.message).toBe("附属操作失败");
+      expect(result.current[0]?.message).toBe(
+        "当前执行无权访问此知识资源或操作",
+      );
+      expect(result.current[0]).toMatchObject({
+        errorCode: "KnowledgeForbidden",
+        messageSource: "localized",
+      });
       expect(leakedSurfaceHeader).toBe(false);
     } finally {
       unmount();
@@ -449,7 +491,13 @@ it.each(["activity", "jobs"])(
         reads.jobs++;
         return failed && failedQuery === "jobs"
           ? HttpResponse.json(
-              { key: "KnowledgeForbidden", message: "任务读取失败" },
+              {
+                key: "KnowledgeForbidden",
+                code: 40300009501,
+                messageSource: "localized",
+                message:
+                  "knowledge resource or operation is outside the execution scope",
+              },
               { status: 403 },
             )
           : HttpResponse.json({ items: [], total: 0 });
@@ -458,7 +506,13 @@ it.each(["activity", "jobs"])(
         reads.activity++;
         return failed && failedQuery === "activity"
           ? HttpResponse.json(
-              { key: "KnowledgeForbidden", message: "附属读取失败" },
+              {
+                key: "KnowledgeForbidden",
+                code: 40300009501,
+                messageSource: "localized",
+                message:
+                  "knowledge resource or operation is outside the execution scope",
+              },
               { status: 403 },
             )
           : HttpResponse.json({ data: [], nextCursor: 0 });
@@ -512,7 +566,13 @@ it("任务查询共用缓存，关闭活动后读取失败仍提示全局错误"
       jobReads++;
       return failed
         ? HttpResponse.json(
-            { key: "KnowledgeForbidden", message: "任务摘要读取失败" },
+            {
+              key: "KnowledgeForbidden",
+              code: 40300009501,
+              messageSource: "localized",
+              message:
+                "knowledge resource or operation is outside the execution scope",
+            },
             { status: 403 },
           )
         : HttpResponse.json({ items: [], total: 0 });
@@ -574,7 +634,13 @@ it.each(["preview", "preview-detail"])(
         `${operationRoot}/${kind === "preview-detail" ? "sources/version" : "source-purges/preview"}`,
         () =>
           HttpResponse.json(
-            { key: "KnowledgeForbidden", message: "附属读取失败" },
+            {
+              key: "KnowledgeForbidden",
+              code: 40300009501,
+              messageSource: "localized",
+              message:
+                "knowledge resource or operation is outside the execution scope",
+            },
             { status: 403 },
           ),
       ),
@@ -611,7 +677,13 @@ it.each(["preview", "preview-detail"])(
         ).toBe(true),
       );
       expect(result.current).toHaveLength(1);
-      expect(result.current[0]?.message).toBe("附属读取失败");
+      expect(result.current[0]?.message).toBe(
+        "当前执行无权访问此知识资源或操作",
+      );
+      expect(result.current[0]).toMatchObject({
+        errorCode: "KnowledgeForbidden",
+        messageSource: "localized",
+      });
       if (kind === "preview-detail") {
         server.use(
           http.get(`${operationRoot}/sources/version`, () =>
@@ -664,7 +736,13 @@ it.each([false, true])(
       http.get(`${operationRoot}/sources/version/raw`, async () => {
         if (downloadFailed)
           return HttpResponse.json(
-            { key: "KnowledgeForbidden", message: "原件下载失败" },
+            {
+              key: "KnowledgeForbidden",
+              code: 40300009501,
+              messageSource: "localized",
+              message:
+                "knowledge resource or operation is outside the execution scope",
+            },
             { status: 403 },
           );
         if (delayRetry) {
@@ -706,7 +784,13 @@ it.each([false, true])(
       downloadFailed = true;
       await userEvent.click(screen.getByRole("button", { name: "下载" }));
       await waitFor(() => expect(result.current).toHaveLength(1));
-      expect(result.current[0]?.message).toBe("原件下载失败");
+      expect(result.current[0]?.message).toBe(
+        "当前执行无权访问此知识资源或操作",
+      );
+      expect(result.current[0]).toMatchObject({
+        errorCode: "KnowledgeForbidden",
+        messageSource: "localized",
+      });
       expect(screen.getByText("readable content")).toBeVisible();
       const original = result.current[0];
       if (!original) throw new Error("下载失败未生成可见通知");
@@ -715,7 +799,13 @@ it.each([false, true])(
       await userEvent.click(screen.getByRole("button", { name: "下载" }));
       await waitFor(() => expect(retryStarted).toBe(true));
       if (laterFailure)
-        act(() => reportErrorNotice({ ...original, message: "新的下载失败" }));
+        act(() =>
+          reportErrorNotice({
+            ...original,
+            message: "新的下载失败",
+            messageSource: "public",
+          }),
+        );
       const expectedVersion = result.current[0]?.version;
       release();
       await waitFor(() =>
@@ -755,7 +845,13 @@ it.each(["edit", "delete", "restore"] as const)(
       http.all(path, () =>
         failed
           ? HttpResponse.json(
-              { key: "KnowledgeForbidden", message: "Wiki 写入失败" },
+              {
+                key: "KnowledgeForbidden",
+                code: 40300009501,
+                messageSource: "localized",
+                message:
+                  "knowledge resource or operation is outside the execution scope",
+              },
               { status: 403 },
             )
           : HttpResponse.json({
@@ -803,7 +899,13 @@ it.each(["edit", "delete", "restore"] as const)(
     try {
       await userEvent.click(screen.getByRole("button", { name: label }));
       await waitFor(() => expect(result.current).toHaveLength(1));
-      expect(result.current[0]?.message).toBe("Wiki 写入失败");
+      expect(result.current[0]?.message).toBe(
+        "当前执行无权访问此知识资源或操作",
+      );
+      expect(result.current[0]).toMatchObject({
+        errorCode: "KnowledgeForbidden",
+        messageSource: "localized",
+      });
       expect(onSaved).not.toHaveBeenCalled();
       failed = false;
       await waitFor(() =>

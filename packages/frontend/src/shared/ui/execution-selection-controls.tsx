@@ -40,7 +40,7 @@ const permissionLevelIcons = {
   "full-access": ShieldAlert,
 } satisfies Record<PermissionLevel, typeof ShieldKeyhole>;
 
-/** 聊天与指令输入共用智能体菜单；账号选择只展示兼容账号。 */
+/** 聊天与指令输入共用智能体菜单；账号按实际环境归属与协议筛选。 */
 export function ExecutionRuntimeControl({
   runtimes,
   accounts,
@@ -66,14 +66,18 @@ export function ExecutionRuntimeControl({
   const compatibleAccountsFor = (runtime: RuntimeOption) =>
     selectedAccountId === undefined
       ? []
-      : accounts.filter((account) =>
-          accountSupportsRuntime(
-            account,
-            runtime.baseRuntimeId || runtime.id || "",
-          ),
+      : accounts.filter(
+          (account) =>
+            account.runtimeId === runtime.id &&
+            accountSupportsRuntime(
+              account,
+              runtime.baseRuntimeId || runtime.id || "",
+            ),
         );
   const selectedAccount = accounts.find(
-    (account) => account.id === selectedAccountId,
+    (account) =>
+      account.id === selectedAccountId &&
+      account.runtimeId === selectedRuntime?.id,
   );
   const runtimeControl = (
     <>
@@ -152,46 +156,47 @@ export function ExecutionRuntimeControl({
             <>
               <DropdownMenuLabel>{t("chat:runtimeSection")}</DropdownMenuLabel>
               <DropdownMenuRadioGroup value={selectedRuntime?.id ?? ""}>
-                {runtimes
-                  .filter((item) => item.state === "ready")
-                  .map((item) => {
-                    const hasAccountChoices =
-                      compatibleAccountsFor(item).length > 0;
-                    return (
-                      <DropdownMenuRadioItem
-                        key={item.id}
-                        value={item.id ?? ""}
-                        disabled={!item.enabled}
-                        onSelect={(event) => {
-                          if (!item.enabled) return;
-                          if (hasAccountChoices) {
-                            event.preventDefault();
-                            setAccountRuntimeId(item.id ?? null);
-                          } else if (
-                            selectedRuntime?.id !== item.id ||
-                            selectedAccountId !== "system"
-                          ) {
-                            onSelect(item, "system");
-                          }
-                        }}
-                        className="min-h-row-rich grid grid-cols-[32px_minmax(0,1fr)_auto] items-center px-2 py-1"
-                      >
-                        <span className="bg-muted grid size-8 place-items-center rounded-sm">
-                          <RuntimeCliIcon runtimeId={item.id} />
-                        </span>
-                        <span className="min-w-0">
-                          <strong className="type-body block truncate font-medium">
-                            {runtimeDisplayName(item)}
-                          </strong>
-                          <small className="text-muted-foreground type-caption block truncate">
-                            {!item.enabled
-                              ? t("chat:runtimeDisabled")
-                              : item.version || t("chat:ready")}
-                          </small>
-                        </span>
-                      </DropdownMenuRadioItem>
-                    );
-                  })}
+                {runtimes.map((item) => {
+                  const hasAccountChoices =
+                    compatibleAccountsFor(item).length > 0;
+                  return (
+                    <DropdownMenuRadioItem
+                      key={item.id}
+                      value={item.id ?? ""}
+                      disabled={!item.enabled}
+                      onSelect={(event) => {
+                        if (!item.enabled) return;
+                        if (hasAccountChoices) {
+                          event.preventDefault();
+                          setAccountRuntimeId(item.id ?? null);
+                        } else if (
+                          selectedRuntime?.id !== item.id ||
+                          selectedAccountId !== "system"
+                        ) {
+                          onSelect(item, "system");
+                        }
+                      }}
+                      className="min-h-row-rich grid grid-cols-[32px_minmax(0,1fr)_auto] items-center px-2 py-1"
+                    >
+                      <span className="bg-muted grid size-8 place-items-center rounded-sm">
+                        <RuntimeCliIcon runtimeId={item.id} />
+                      </span>
+                      <span className="min-w-0">
+                        <strong className="type-body block truncate font-medium">
+                          {runtimeDisplayName(item)}
+                        </strong>
+                        <small className="text-muted-foreground type-caption block truncate">
+                          {!item.enabled
+                            ? t("chat:runtimeDisabled")
+                            : item.version ||
+                              t(
+                                "common:runtimeEnvironment.status.versionUnknown",
+                              )}
+                        </small>
+                      </span>
+                    </DropdownMenuRadioItem>
+                  );
+                })}
               </DropdownMenuRadioGroup>
             </>
           )}
@@ -227,7 +232,7 @@ export function ExecutionPermissionControl({
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
-          disabled={disabled}
+          disabled={disabled || supportedPermissions.size === 0}
           data-testid="composer-permission-control"
           data-overflow-trigger
           aria-label={t("common:permission.pickerAria", {
@@ -250,36 +255,36 @@ export function ExecutionPermissionControl({
           value={selectedPermissionLevel}
           onValueChange={(permissionLevel) => {
             const nextLevel = permissionLevelOf(permissionLevel);
-            if (!nextLevel) return;
+            if (!nextLevel || !supportedPermissions.has(nextLevel)) return;
             onChange(nextLevel);
           }}
         >
-          {permissionLevels.map((level) => {
-            const detail = permissionLevelTranslationKeys[level];
-            const tone = permissionLevelToneClasses[level];
-            const available = supportedPermissions.has(level);
-            const Icon = permissionLevelIcons[level];
-            return (
-              <DropdownMenuRadioItem
-                key={level}
-                value={level}
-                disabled={!available}
-                className="min-h-row-rich items-start py-2"
-              >
-                <Icon className={cn("size-icon-sm mt-0.5", tone.icon)} />
-                <span className="min-w-0 flex-1">
-                  <span className={cn("type-ui block font-medium", tone.title)}>
-                    {t(`common:${detail.label}`)}
+          {permissionLevels
+            .filter((level) => supportedPermissions.has(level))
+            .map((level) => {
+              const detail = permissionLevelTranslationKeys[level];
+              const tone = permissionLevelToneClasses[level];
+              const Icon = permissionLevelIcons[level];
+              return (
+                <DropdownMenuRadioItem
+                  key={level}
+                  value={level}
+                  className="min-h-row-rich items-start py-2"
+                >
+                  <Icon className={cn("size-icon-sm mt-0.5", tone.icon)} />
+                  <span className="min-w-0 flex-1">
+                    <span
+                      className={cn("type-ui block font-medium", tone.title)}
+                    >
+                      {t(`common:${detail.label}`)}
+                    </span>
+                    <span className="text-muted-foreground type-caption mt-0.5 block whitespace-normal">
+                      {t(`common:${detail.description}`)}
+                    </span>
                   </span>
-                  <span className="text-muted-foreground type-caption mt-0.5 block whitespace-normal">
-                    {available
-                      ? t(`common:${detail.description}`)
-                      : t("common:permission.unsupported")}
-                  </span>
-                </span>
-              </DropdownMenuRadioItem>
-            );
-          })}
+                </DropdownMenuRadioItem>
+              );
+            })}
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>

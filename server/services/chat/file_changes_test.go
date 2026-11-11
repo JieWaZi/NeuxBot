@@ -5,12 +5,63 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/changes"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 )
+
+func TestExistingSpaceArtifactsCaptureNetChangesAndImmutableDiff(t *testing.T) {
+	manager, chatID := forkFixture(t)
+	ctx := t.Context()
+	chat, err := manager.LoadExecutionChat(ctx, chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected := filepath.Join(chat.WorkspaceDirectory, "report.txt")
+	sibling := filepath.Join(chat.WorkspaceDirectory, "sibling.txt")
+	for _, path := range []string{selected, sibling} {
+		if err := os.WriteFile(path, []byte("original\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	references, err := workspace.ResolveProjectFiles([]workspace.ProjectLink{{EntryName: "space", SourcePath: chat.WorkspaceDirectory}}, []string{selected})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recording, err := manager.BeginFileChanges(ctx, chat, "after", nil, []string{references[0].Path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer recording.Close()
+	for _, path := range []string{selected, sibling} {
+		if err := os.WriteFile(path, []byte("revised\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := recording.Finish(ctx); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := manager.GetMessageFileChanges(ctx, chatID, "after")
+	if err != nil || len(summary.Files) != 2 {
+		t.Fatalf("explicit old artifact edit omitted or expanded: %+v %v", summary, err)
+	}
+	if err := os.WriteFile(selected, []byte("later execution\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	diff, err := manager.readRecordedFileDiff(ctx, chatID, "after", selected)
+	data, _ := json.Marshal(diff)
+	if err != nil || !strings.Contains(string(data), "revised") || strings.Contains(string(data), "later execution") {
+		t.Fatalf("historical result read current bytes: %s %v", data, err)
+	}
+}
 
 func TestFileChangesReadKeepsActivePendingAndStartupRecoversOnlyItsOriginalBaseline(t *testing.T) {
 	service, chatID := forkFixture(t)
@@ -22,7 +73,7 @@ func TestFileChangesReadKeepsActivePendingAndStartupRecoversOnlyItsOriginalBasel
 	if err := os.WriteFile(file, []byte("before\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	recording, err := service.BeginFileChanges(context.Background(), chat, "after", "", nil)
+	recording, err := service.BeginFileChanges(context.Background(), chat, "after", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,10 +139,11 @@ func TestFileChangesReadKeepsActivePendingAndStartupRecoversOnlyItsOriginalBasel
 func TestLateFileChangesAdvanceUnreadVersionWithoutReopeningExecution(t *testing.T) {
 	ctx := context.Background()
 	service, chatID := forkFixture(t)
-	if _, err := service.logStore.Append(chatID, workResultRound("readable", constants.RuntimeEventTypeTextDelta, "answer")); err != nil {
+	store := service.logStore.(*conversationJournal).Store
+	if _, err := conversationfixture.Commit(t.Context(), store, chatID, workResultRound(t, store, chatID, "readable", constants.RuntimeEventTypeTextDelta, "answer")); err != nil {
 		t.Fatal(err)
 	}
-	database, recovered := newRecoveryTestService(t, service.logStore.Root())
+	database, recovered := newRecoveryTestService(t, service.logStore.Root(), store)
 	results := controllers.NewWorkResultController(database)
 	if err := results.EnableTracking(ctx, 1); err != nil {
 		t.Fatal(err)
@@ -104,7 +156,7 @@ func TestLateFileChangesAdvanceUnreadVersionWithoutReopeningExecution(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	recording, err := recovered.BeginFileChanges(ctx, chat, "readable", "", nil)
+	recording, err := recovered.BeginFileChanges(ctx, chat, "readable", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +208,7 @@ func TestForkClonesOnlySelectedHistoricalFileRecordAndSurvivesSourceDeletion(t *
 	if err = os.WriteFile(file, []byte("before\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	recording, err := service.BeginFileChanges(ctx, chat, "before", "", nil)
+	recording, err := service.BeginFileChanges(ctx, chat, "before", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +225,9 @@ func TestForkClonesOnlySelectedHistoricalFileRecordAndSurvivesSourceDeletion(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	child, err := service.ForkChat(ctx, ForkInput{ChatID: parent, ExecutionID: "before", ClientRequestID: "file-copy"}, NativeFork{Execute: func(context.Context, NativeForkInput) (string, error) { return "independent-child", nil }})
+	child, err := service.ForkChat(ctx, ForkInput{ChatID: parent, ExecutionID: "before", ClientRequestID: "file-copy"}, NativeFork{Execute: func(context.Context, NativeForkInput) (agent.NativeBinding, error) {
+		return forkTestBinding("independent-child"), nil
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,6 +255,46 @@ func TestForkClonesOnlySelectedHistoricalFileRecordAndSurvivesSourceDeletion(t *
 	if err != nil || diff.Comparison == nil {
 		t.Fatalf("copied immutable diff missing: %+v %v", diff, err)
 	}
+	indexes, directory, intents := service.queryIndexes, service.storage.Root(), service.deletionIntents
+	service.Close()
+	service = newTestService(t, Config{StorageDirectory: directory, QueryIndexes: QueryIndexDependencies{Chats: indexes.chatController, Transactions: indexes.transactionController, DeletionIntents: intents}})
+	t.Cleanup(service.Close)
+	if err = service.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	grandchild, err := service.ForkChat(ctx, ForkInput{ChatID: child, ExecutionID: inherited, ClientRequestID: "file-copy-after-restart"}, NativeFork{Execute: func(_ context.Context, input NativeForkInput) (agent.NativeBinding, error) {
+		if input.Boundary.Session.SessionID != "independent-child" {
+			t.Fatalf("refork used deleted source native identity: %+v", input.Boundary)
+		}
+		return forkTestBinding("independent-grandchild"), nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	history, err = service.ReadMessageHistory(ctx, grandchild, 0, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	grandchildMessage := ""
+	for _, message := range history.Resources {
+		if message.FileChangeRecord != nil {
+			grandchildMessage = message.ID
+		}
+	}
+	if grandchildMessage == "" || grandchildMessage == inherited {
+		t.Fatal("refork must own a distinct result message")
+	}
+	if err = service.DeleteChat(ctx, child); err != nil {
+		t.Fatal(err)
+	}
+	copied, err = service.GetMessageFileChanges(ctx, grandchild, grandchildMessage)
+	if err != nil || copied.ID != source.ID || copied.TotalFiles != 1 {
+		t.Fatalf("grandchild depends on deleted sources: %+v %v", copied, err)
+	}
+	diff, err = service.GetMessageFileChange(ctx, grandchild, grandchildMessage, source.Files[0].AbsolutePath)
+	if err != nil || diff.Comparison == nil {
+		t.Fatalf("grandchild immutable diff missing: %+v %v", diff, err)
+	}
 }
 
 func TestFileResultReadDoesNotExposeUncommittedCompletionAndPreservesExactPath(t *testing.T) {
@@ -210,7 +304,7 @@ func TestFileResultReadDoesNotExposeUncommittedCompletionAndPreservesExactPath(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	recording, err := service.BeginFileChanges(ctx, chat, "after", "", nil)
+	recording, err := service.BeginFileChanges(ctx, chat, "after", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,5 +335,94 @@ func TestFileResultReadDoesNotExposeUncommittedCompletionAndPreservesExactPath(t
 	diff, err := service.GetMessageFileChange(ctx, chatID, "after", exact)
 	if err != nil || diff.Path != exact || diff.Comparison == nil {
 		t.Fatalf("exact filename changed at API boundary: %+v %v", diff, err)
+	}
+}
+
+func TestDefaultFileCaptureRecordsSpaceFilesAndExcludesInternalConfiguration(t *testing.T) {
+	service, chatID := forkFixture(t)
+	ctx := context.Background()
+	chat, err := service.LoadExecutionChat(ctx, chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := workspace.PrepareProjectEntries(chat.WorkspaceDirectory, chatID, []workspace.ProjectLink{{EntryName: "project", SourcePath: t.TempDir()}}); err != nil {
+		t.Fatal(err)
+	}
+	recording, err := service.BeginFileChanges(ctx, chat, "after", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer recording.Close()
+	for _, name := range []string{"report.txt", "analysis/data.csv", "projects/notes.txt", filepath.Join("projects", chatID, "internal.txt"), ".claude/settings.json", ".pi/skills/test/SKILL.md", ".grok/skills/test/SKILL.md", ".agents/skills/test/SKILL.md", ".neuxbot/plugin-views/entry.json", ".neuxbot-skills.json"} {
+		file := filepath.Join(chat.WorkspaceDirectory, name)
+		if err := os.MkdirAll(filepath.Dir(file), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(file, []byte("new"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := recording.Finish(ctx); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := service.GetMessageFileChanges(ctx, chatID, "after")
+	if err != nil || len(summary.Files) != 3 || !slices.ContainsFunc(summary.Files, func(file changes.File) bool { return file.Path == "projects/notes.txt" }) {
+		t.Fatalf("space business changes missing or internal files included: %+v, %v", summary, err)
+	}
+	for _, name := range []string{"outputs", "tmp"} {
+		if _, err := os.Stat(filepath.Join(chat.WorkspaceDirectory, name)); !os.IsNotExist(err) {
+			t.Fatalf("capture created imposed directory %s: %v", name, err)
+		}
+	}
+}
+
+func TestUnchangedSpaceDoesNotProduceFileResults(t *testing.T) {
+	service, chatID := forkFixture(t)
+	ctx := context.Background()
+	chat, err := service.LoadExecutionChat(ctx, chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(chat.WorkspaceDirectory, "kept.txt"), []byte("unchanged"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	recording, err := service.BeginFileChanges(ctx, chat, "after", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer recording.Close()
+	if err := recording.Finish(ctx); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := service.GetMessageFileChanges(ctx, chatID, "after")
+	if err != nil || len(summary.Files) != 0 || summary.TotalFiles != 0 {
+		t.Fatalf("unchanged space produced results: %+v %v", summary, err)
+	}
+}
+
+func TestFileCaptureRejectsReplacementSymlinkForManagedSpace(t *testing.T) {
+	service, chatID := forkFixture(t)
+	ctx := t.Context()
+	chat, err := service.LoadExecutionChat(ctx, chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(chat.WorkspaceDirectory, chat.WorkspaceDirectory+"-old"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), chat.WorkspaceDirectory); err != nil {
+		t.Fatal(err)
+	}
+	recording, err := service.BeginFileChanges(ctx, chat, "after", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer recording.Close()
+	if err := recording.Finish(ctx); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := service.GetMessageFileChanges(ctx, chatID, "after")
+	if err != nil || summary.State != "unavailable" || len(summary.Roots) != 1 || summary.Roots[0].Path != chat.WorkspaceDirectory {
+		t.Fatalf("replaced managed space became a different authorized capture root: %+v %v", summary, err)
 	}
 }

@@ -3,11 +3,13 @@ package messageview
 
 import (
 	"encoding/json"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/changes"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/usage"
 )
 
 // MessageRuntimeEvent 是附着到 Assistant 消息的完整 Runtime 事件视图。
@@ -74,6 +76,10 @@ type ToolApprovalResult struct {
 
 // MessageRunMetrics 是聊天界面可安全展示的执行时间与 Token 用量摘要。
 type MessageRunMetrics struct {
+	// TokenUsage 是原生调用用量。
+	TokenUsage *MessageTokenUsage `json:"tokenUsage,omitempty"`
+	// LatestRequestOutputTokens 是末次输出量。
+	LatestRequestOutputTokens *int64 `json:"latestRequestOutputTokens,omitempty"`
 	// StartedAt 是 Host 确认执行开始的 Unix 毫秒时间。
 	StartedAt int64 `json:"startedAt,omitempty"`
 	// DurationMs 是从 Host 执行开始到终态提交的墙钟毫秒数。
@@ -92,6 +98,20 @@ type MessageRunMetrics struct {
 	ContextUsedTokens int64 `json:"contextUsedTokens,omitempty"`
 	// ContextWindowTokens 是当前模型可用的上下文窗口上限。
 	ContextWindowTokens int64 `json:"contextWindowTokens,omitempty"`
+}
+
+// MessageTokenUsage exposes token usage and coverage for one canonical invocation.
+type MessageTokenUsage struct {
+	// InvocationID is the canonical digest for deduplication across continuations.
+	InvocationID string `json:"invocationId"`
+	// Source identifies the primary native usage observation.
+	Source string `json:"source,omitempty"`
+	// Coverage describes the scope of the primary observation.
+	Coverage string `json:"coverage,omitempty"`
+	// Complete says the invocation and its additive counters are fully covered.
+	Complete bool `json:"complete"`
+	// TokenMetrics contains known counters and complete totals.
+	usage.TokenMetrics
 }
 
 // MessageDisplayPart 是聊天接口返回的最小跨 Runtime 展示部件。
@@ -140,8 +160,6 @@ type Message struct {
 	Fork *MessageFork `json:"fork,omitempty"`
 	// Inherited 标记从来源会话复制的历史，不计作本会话的新执行。
 	Inherited bool `json:"inherited,omitempty"`
-	// Retryable 表示后端允许用户安全重试该失败回合。
-	Retryable bool `json:"retryable,omitempty"`
 	// ID 是消息的稳定标识。
 	ID string `json:"id"`
 	// 输入提交标识
@@ -172,8 +190,6 @@ type Message struct {
 	RuntimeEvents []MessageRuntimeEvent `json:"-"`
 	// DisplayParts 是供聊天界面渲染的最小跨 Runtime 展示视图。
 	DisplayParts []MessageDisplayPart `json:"displayParts,omitempty"`
-	// FileChanges 仅供旧内部调用兼容，不进入公开消息且不再派生成果。
-	FileChanges []ToolFileChangeSummary `json:"-"`
 	// FileChangeRecord 指向独立快照产生的唯一文件成果，列表与内容按需读取。
 	FileChangeRecord *eventlog.FileChangesData `json:"fileChangeRecord,omitempty"`
 	// FileChangeDiffs 是仅供 Core 按需读取、不会进入聊天消息接口的执行级文件差异。
@@ -194,6 +210,10 @@ type Message struct {
 	ErrorCode string `json:"errorCode,omitempty"`
 	// ErrorMessage 是失败时供用户诊断的简明说明。
 	ErrorMessage string `json:"errorMessage,omitempty"`
+	// ErrorMessageSource 明确区分公开原生原因与应用本地化正文；空值仅用于旧记录。
+	ErrorMessageSource constants.ErrorMessageSource `json:"errorMessageSource,omitempty"`
+	// ErrorParams 是稳定错误模板使用的安全参数。
+	ErrorParams map[string]interface{} `json:"errorParams,omitempty"`
 	// CreatedAt 是消息建立时的 Unix 毫秒时间。
 	CreatedAt int64 `json:"createdAt"`
 	// UpdatedAt 是消息最近收到持久化事件时的 Unix 毫秒时间。
@@ -206,8 +226,8 @@ type InheritedMessage struct {
 	FileChangeRoots []string `json:"fileChangeRoots,omitempty"`
 	// SourceMessageID 保留直接来源 Chat 中的消息身份，供权威历史追溯。
 	SourceMessageID string `json:"sourceMessageId"`
-	// ForkInvocation 仅在继承末尾保存子原生 Session 的检查点，允许再次分叉。
-	ForkInvocation *eventlog.InvocationFinishedData `json:"forkInvocation,omitempty"`
+	// ForkBoundary 仅在继承末尾保存子原生 Session 的检查点，允许再次分叉。
+	ForkBoundary *agent.NativeForkBoundary `json:"forkBoundary,omitempty"`
 	// ForkConfiguration 是该检查点对应的冻结执行选择。
 	ForkConfiguration *eventlog.ExecutionCreatedData `json:"forkConfiguration,omitempty"`
 	// Message 保存重新分配身份的安全展示信息。

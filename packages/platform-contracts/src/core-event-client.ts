@@ -53,6 +53,7 @@ export class CoreEventClient {
     if (this.disposed) throw new Error("全局事件连接已关闭");
     const key = globalEventResourceKey(topic, resource);
     let subscription = this.subscriptions.get(key);
+    const joining = Boolean(subscription);
     if (!subscription) {
       if (this.subscriptions.size >= 128)
         throw new Error("全局事件资源订阅超过上限");
@@ -71,6 +72,18 @@ export class CoreEventClient {
     }
     subscription.observers.add(observer);
     observer.onState?.(subscription.state);
+    if (joining && subscription.state === "open") {
+      const current = subscription;
+      // Renderer 的异步退订可与新注册重叠；已有资源游标不证明新消费者已覆盖历史。
+      // 只让晚加入者从原权威快照恢复，保持同一资源与物理连接的所有权。
+      queueMicrotask(() => {
+        if (
+          this.subscriptions.get(key) === current &&
+          current.observers.has(observer)
+        )
+          observer.onResync?.("subscription_joined");
+      });
+    }
     if (this.socket === undefined && this.retry === undefined)
       void this.connect();
     let active = true;
@@ -151,7 +164,10 @@ export class CoreEventClient {
       const socket = (
         this.options.createSocket ??
         ((target, protocols) => new WebSocket(target, protocols))
-      )(url.toString(), ["ally.events.v1", ...(connection.token ? [`ally.auth.${connection.token}`] : [])]);
+      )(url.toString(), [
+        "ally.events.v1",
+        ...(connection.token ? [`ally.auth.${connection.token}`] : []),
+      ]);
       this.socket = socket;
       this.connectionId = undefined;
       this.sequence = 0;

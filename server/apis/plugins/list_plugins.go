@@ -8,8 +8,6 @@ import (
 // 插件列表
 type ListPlugins struct {
 	ginx.MethodGet
-	// 仅已安装
-	InstalledOnly bool `in:"query" name:"installedOnly"`
 	// 伙伴范围
 	WakerID string `in:"query" name:"wakerId"`
 	// 搜索关键字
@@ -25,7 +23,7 @@ func (*ListPlugins) Path() string { return "" }
 
 // Output 返回准确分页窗口和原资源派生状态。
 func (o *ListPlugins) Output(ctx *gin.Context) (interface{}, error) {
-	result, err := listPluginResources(ctx, o.WakerID, o.Query, o.PageNum, o.PageSize, o.InstalledOnly)
+	result, err := listPluginResources(ctx, o.WakerID, o.Query, o.PageNum, o.PageSize)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}

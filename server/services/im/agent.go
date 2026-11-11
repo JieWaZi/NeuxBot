@@ -82,7 +82,7 @@ func (s *Service) AgentBindings(chat models.Chat, executionID string, roots []st
 		if exists {
 			origin = previous.ExecutionID
 		}
-		delivery, err := s.CreateDelivery(ctx, DeliveryRequest{VerifyFileContent: true, RequestID: key(input.RequestID), TargetID: params.TargetID, Content: params.Content, Files: params.Files, AllowedRoots: roots, ChatID: chat.ID, ExecutionID: origin})
+		delivery, err := s.CreateDelivery(ctx, DeliveryRequest{VerifyFileContent: true, RequestID: key(input.RequestID), TargetID: params.TargetID, Content: params.Content, Files: params.Files, AllowedRoots: roots, AllowedFiles: capability.FilePaths(ctx), ManagedSpace: chat.WorkspaceDirectory, ChatID: chat.ID, ExecutionID: origin})
 		return result(delivery, exists), err
 	}, Receipt: func(ctx context.Context, requestID string) (capability.Result, error) {
 		delivery, exists, err := s.config.Store.FindDelivery(ctx, key(requestID))

@@ -69,7 +69,7 @@ export function WakerDeleteDialog({
         <div className="px-6 pb-5">
           <div className="bg-destructive/8 text-destructive type-body flex gap-2 rounded-md p-3">
             <TriangleAlert className="size-icon-md mt-0.5 shrink-0" />
-            <p>将删除伙伴档案、记忆和执行记录；角色预设本身不会被删除。</p>
+            <p>将删除伙伴档案、记忆、对话记录及伙伴工作目录中的文件。</p>
           </div>
           <label className="type-label mt-4 grid gap-2 font-medium">
             输入完整名称“{expectedName}”以确认

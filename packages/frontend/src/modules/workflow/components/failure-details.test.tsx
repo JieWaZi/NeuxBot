@@ -77,3 +77,23 @@ it.each([false, true])(
     ).not.toBeInTheDocument();
   },
 );
+
+it("嵌套原因的公开来源只授权同一原因的正文", () => {
+  render(
+    <WorkflowFailure
+      value={{
+        code: "STEP_FAILED",
+        message: "private outer diagnostic",
+        cause: {
+          code: "RuntimeQuotaExhausted",
+          message: "Native quota exhausted",
+          messageSource: "public",
+        },
+      }}
+    />,
+  );
+  expect(screen.getByRole("alert")).toHaveTextContent("Native quota exhausted");
+  expect(
+    screen.queryByText("private outer diagnostic"),
+  ).not.toBeInTheDocument();
+});

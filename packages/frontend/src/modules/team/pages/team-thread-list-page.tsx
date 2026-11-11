@@ -1,3 +1,4 @@
+import { SceneBreadcrumbs } from "@/shared/ui/scene-breadcrumbs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   localApiErrorMessage,
@@ -171,6 +172,22 @@ export function TeamThreadListPage() {
 
   return (
     <main className="bg-surface-scene h-full min-w-0 overflow-hidden">
+      <SceneBreadcrumbs
+        ariaLabel={t("threadTable.title")}
+        items={[
+          {
+            label: t("common:partnerNavigation.teams"),
+            href: "/wakers?tab=teams",
+          },
+          {
+            label:
+              channelQuery.data?.channel?.name ||
+              t("common:partnerNavigation.team"),
+            href: `/teams/${channelId}`,
+          },
+          { label: t("threadTable.title") },
+        ]}
+      />
       <ChatListPage
         title={t("threadTable.title")}
         description={t("threadTable.description", {
@@ -259,7 +276,7 @@ export function TeamThreadListPage() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
-                  className="text-destructive data-[highlighted]:text-destructive"
+                  variant="destructive"
                   onSelect={() => {
                     setDeleteError("");
                     setDeleteTarget({ id: item.id, title: item.title });

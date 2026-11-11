@@ -2,9 +2,23 @@ package commandbridge
 
 import (
 	"context"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"sync"
 )
+
+// CancelAuthorization 只取消精确旧上下文的已有等待，不因新配置创建或切换驱动。
+func (r *Registry) CancelAuthorization(ctx context.Context, id, digest, sessionID string, expected OperationContext) error {
+	r.mu.Lock()
+	current, ok := r.entries[id]
+	if !ok || current.digest != digest || current.driver == nil || current.driver.OperationContext() != expected {
+		r.mu.Unlock()
+		return status_error.PluginAccountConflict
+	}
+	auth := current.auth
+	r.mu.Unlock()
+	return auth.CancelAndWait(ctx, sessionID)
+}
 
 // Registry 拥有当前Core中每个插件唯一的授权与占用边界。
 type Registry struct {
@@ -67,7 +81,7 @@ func (r *Registry) AcquireIdentity(id string, uses ...authorization.Usage) (func
 
 func (r *Registry) getLocked(id, digest string, config Config, scopes []string) (*authorization.Authorizer, *Driver, error) {
 	if previous, ok := r.entries[id]; ok {
-		if previous.digest != digest {
+		if previous.digest != digest || previous.driver == nil || previous.driver.OperationContext() != (OperationContext{PluginID: config.PluginID, VersionID: config.VersionID, Digest: config.Digest, ConfigurationRevision: config.ConfigurationRevision, AccountGeneration: config.AccountGeneration}) {
 			config.Scopes = append([]string{}, scopes...)
 			driver := New(config)
 			if err := previous.auth.ReplaceDriver(driver); err != nil {
@@ -121,4 +135,34 @@ func (r *Registry) Close() {
 		entry.auth.Close()
 	}
 	r.entries = map[string]entry{}
+}
+
+// CachedAuthorization 只投影已存在且完整上下文一致的身份和等待状态。
+func (r *Registry) CachedAuthorization(id, digest string, context OperationContext) (authorization.Account, authorization.Session, []authorization.Usage) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if current, ok := r.entries[id]; ok && current.digest == digest && current.driver != nil && current.driver.OperationContext() == context {
+		return current.auth.CachedAccount(), current.auth.Snapshot(), current.auth.Usages()
+	}
+	return authorization.Account{Scopes: []string{}}, authorization.Session{}, []authorization.Usage{}
+}
+
+// CommitPreparation 将安装预检已核验的同一身份推进到成功提交后的代次，不替换驱动或丢弃账号摘要。
+// 调用方必须在提交成功后、释放预检身份租约前调用；旧上下文不能推进其他版本或较新的身份。
+func (r *Registry) CommitPreparation(expected OperationContext, digest string, revision, generation int64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	current, ok := r.entries[expected.PluginID]
+	if !ok || current.digest != digest || current.driver == nil || revision < expected.ConfigurationRevision || revision > expected.ConfigurationRevision+1 || generation < expected.AccountGeneration || generation > expected.AccountGeneration+1 {
+		return
+	}
+	driver := current.driver
+	driver.contextMu.Lock()
+	defer driver.contextMu.Unlock()
+	actual := OperationContext{PluginID: driver.config.PluginID, VersionID: driver.config.VersionID, Digest: driver.config.Digest, ConfigurationRevision: driver.config.ConfigurationRevision, AccountGeneration: driver.config.AccountGeneration}
+	if actual != expected {
+		return
+	}
+	driver.config.ConfigurationRevision = revision
+	driver.config.AccountGeneration = generation
 }

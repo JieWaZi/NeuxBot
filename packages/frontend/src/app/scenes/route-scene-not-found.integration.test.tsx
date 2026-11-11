@@ -130,6 +130,7 @@ describe("页面主记录不存在时的 Scene 标签", () => {
       "/resources?category=skills",
       "/resources?category=workflows",
       "/resources/plugins/catalog/office",
+      "/resources/plugins/catalog/office/skills/guide?sourceCommit=commit&archiveSHA256=hash",
       "/resources/plugins/p/skills/guide?version=v1",
       "/resources?view=mine",
     ]) {
@@ -250,10 +251,13 @@ describe("页面主记录不存在时的 Scene 标签", () => {
       await fetchRecord(queryClient, queryKey, url);
       const tab = screen.getByRole("tab");
       expect(tab).toHaveAccessibleDescription("数据可能已被删除，请关闭该页面");
-      expect(tab.parentElement).toHaveClass("bg-destructive/10");
+      expect(tab.parentElement).toHaveAttribute("data-invalid", "true");
       expect(screen.getByLabelText("错误通知数量")).toHaveTextContent("0");
       await fetchRecord(queryClient, queryKey, url, 200);
       expect(screen.getByRole("tab")).not.toHaveAttribute("aria-description");
+      expect(screen.getByRole("tab").parentElement).not.toHaveAttribute(
+        "data-invalid",
+      );
     },
   );
 

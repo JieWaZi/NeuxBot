@@ -12,6 +12,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
@@ -59,8 +60,8 @@ func SafeFilename(name string) string {
 	return name
 }
 
-// FreezeFile 只读取执行授权根目录内的文件，并原子冻结到投递暂存目录。
-func FreezeFile(dataDirectory, id string, index int, path string, roots []string) (models.IMFile, error) {
+// FreezeFile 只读取执行授权目录或精确文件，并原子冻结到投递暂存目录。
+func FreezeFile(dataDirectory, id string, index int, path string, roots, files []string, managedSpace string) (models.IMFile, error) {
 	var result models.IMFile
 	if !filepath.IsAbs(path) && len(roots) > 0 {
 		path = filepath.Join(roots[0], path)
@@ -71,6 +72,9 @@ func FreezeFile(dataDirectory, id string, index int, path string, roots []string
 	}
 	realPath, err = filepath.Abs(realPath)
 	if err != nil {
+		return result, status_error.IMFileInvalid
+	}
+	if workspace.IsInternalExecutionPath(managedSpace, path) || workspace.IsInternalExecutionPath(managedSpace, realPath) {
 		return result, status_error.IMFileInvalid
 	}
 	var source *os.File
@@ -94,6 +98,40 @@ func FreezeFile(dataDirectory, id string, index int, path string, roots []string
 		source, err = directory.Open(relative)
 		directory.Close()
 		if err == nil {
+			break
+		}
+	}
+	if source == nil {
+		for _, selected := range files {
+			if !filepath.IsAbs(selected) || filepath.Clean(selected) != realPath {
+				continue
+			}
+			actual, err := filepath.EvalSymlinks(selected)
+			if err != nil || actual != selected {
+				continue
+			}
+			// 父目录仅作为此叶文件的打开句柄，不进入任何授权根集合。
+			directory, err := os.OpenRoot(filepath.Dir(selected))
+			if err != nil {
+				continue
+			}
+			name := filepath.Base(selected)
+			before, err := directory.Lstat(name)
+			if err != nil || !before.Mode().IsRegular() {
+				directory.Close()
+				continue
+			}
+			file, err := directory.Open(name)
+			directory.Close()
+			if err != nil {
+				continue
+			}
+			after, err := file.Stat()
+			if err != nil || !after.Mode().IsRegular() || !os.SameFile(before, after) {
+				file.Close()
+				continue
+			}
+			source = file
 			break
 		}
 	}

@@ -1,21 +1,16 @@
 package aiaccount
 
 import (
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-
 	"context"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/BurntSushi/toml"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
@@ -62,6 +57,10 @@ func (w *kimiLoginOutput) Write(data []byte) (int, error) {
 }
 
 func (s *Service) kimiHome(id string) (string, error) {
+	return s.kimiAccountHome(id, true)
+}
+
+func (s *Service) kimiAccountHome(id string, create bool) (string, error) {
 	if s.kimiDataDirectory == "" || len(id) != 32 {
 		return "", status_error.AIAccountConfigurationInvalid
 	}
@@ -71,93 +70,68 @@ func (s *Service) kimiHome(id string) (string, error) {
 		}
 	}
 	for _, directory := range []string{filepath.Dir(s.kimiDataDirectory), s.kimiDataDirectory, filepath.Join(s.kimiDataDirectory, id)} {
-		if err := os.Mkdir(directory, 0700); err != nil && !os.IsExist(err) {
-			return "", status_error.AIAccountWorkspaceError
+		if create {
+			if err := os.Mkdir(directory, 0700); err != nil && !os.IsExist(err) {
+				return "", status_error.AIAccountWorkspaceError
+			}
 		}
 		info, err := os.Lstat(directory)
+		if !create && os.IsNotExist(err) {
+			return "", status_error.RuntimeAuthRequired
+		}
 		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			return "", status_error.AIAccountWorkspaceError
 		}
-		if err := os.Chmod(directory, 0700); err != nil {
-			return "", status_error.AIAccountWorkspaceError
+		if create && info.Mode().Perm() != 0700 {
+			if err := os.Chmod(directory, 0700); err != nil {
+				return "", status_error.AIAccountWorkspaceError
+			}
 		}
 	}
-	return filepath.Join(s.kimiDataDirectory, id), nil
+	home := filepath.Join(s.kimiDataDirectory, id)
+	if create {
+		return home, nil
+	}
+	data, err := readNativeAccountFile(filepath.Join(home, "config.toml"))
+	clear(data)
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(home)
 }
 
-func (s *Service) prepareKimiSubscription(account models.AIAccount) (agentapi.RuntimeTarget, error) {
-	home, err := s.kimiHome(account.ID)
-	if err != nil {
-		return agentapi.RuntimeTarget{}, err
-	}
-	if info, err := os.Stat(filepath.Join(home, "config.toml")); err != nil || !info.Mode().IsRegular() {
-		return agentapi.RuntimeTarget{}, status_error.RuntimeAuthRequired
-	}
-	environment := accountconfig.HomeEnvironment(constants.RuntimeIDKimi, home)
-	environment[constants.AIAccountIdentityEnvironment] = account.ID + ":" + strconv.FormatInt(account.Revision, 10)
-	return agentapi.RuntimeTarget{AccountID: account.ID, Environment: environment, Isolated: true}, nil
-}
-
-// KimiSubscriptionModels 读取该订阅账号独有的原生模型别名目录。
-func (s *Service) KimiSubscriptionModels(ctx context.Context, id string) ([]string, string, error) {
-	account, err := s.accounts.Get(ctx, id)
-	if err != nil {
-		return nil, "", err
-	}
-	if account.AuthMode != constants.AccountAuthModeSubscription || len(account.Endpoints) != 1 || account.Endpoints[0].BaseURL != constants.AIAccountKimiURL {
-		return nil, "", status_error.AIAccountConfigurationInvalid
-	}
-	home, err := s.kimiHome(id)
-	if err != nil {
-		return nil, "", err
-	}
-	var config struct {
-		// DefaultModel 是 Kimi 登录目录声明的默认模型别名。
-		DefaultModel string `toml:"default_model"`
-		// Models 是 Kimi 登录目录可选的模型别名集合。
-		Models map[string]struct{} `toml:"models"`
-	}
-	if _, err := toml.DecodeFile(filepath.Join(home, "config.toml"), &config); err != nil {
-		return nil, "", status_error.RuntimeAuthRequired
-	}
-	ids := make([]string, 0, len(config.Models))
-	for modelID := range config.Models {
-		ids = append(ids, modelID)
-	}
-	slices.Sort(ids)
-	return ids, config.DefaultModel, nil
-}
-
-func kimiExecutable() (string, error) {
-	if path, err := exec.LookPath("kimi"); err == nil {
-		return path, nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", status_error.AIAccountLoginFailed
-	}
-	path := filepath.Join(home, ".kimi-code", "bin", "kimi")
-	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
-		return "", status_error.AIAccountLoginFailed
-	}
-	return path, nil
-}
-
-func (s *Service) startKimiLogin(id string, revision int64) (Login, error) {
+func (s *Service) startKimiLogin(ctx context.Context, account models.AIAccount) (Login, error) {
+	id := account.ID
 	release, err := s.Exclusive(id)
 	if err != nil {
 		return Login{}, err
 	}
+	current, err := s.accounts.Get(context.Background(), id)
+	if err != nil {
+		release()
+		return Login{}, err
+	}
+	if current.AuthMode != constants.AccountAuthModeSubscription || current.Endpoint.Protocol != constants.AccountProtocolOpenAICompletions || current.Endpoint.BaseURL != constants.AIAccountKimiURL {
+		release()
+		return Login{}, status_error.AIAccountConfigurationInvalid
+	}
 	home, err := s.kimiHome(id)
 	if err != nil {
 		release()
 		return Login{}, err
 	}
-	binary, err := kimiExecutable()
+	binary, prefixArgs, err := s.accountProgram(ctx, current)
 	if err != nil {
 		release()
 		return Login{}, err
 	}
+	releaseProgram, err := s.acquireProgramUse(ctx, constants.RuntimeIDKimi)
+	if err != nil {
+		release()
+		return Login{}, err
+	}
+	releaseAccount := release
+	release = func() { releaseProgram(); releaseAccount() }
 	s.loginCommit.Lock()
 	s.mutex.Lock()
 	if s.ctx == nil || s.ctx.Err() != nil {
@@ -167,7 +141,7 @@ func (s *Service) startKimiLogin(id string, revision int64) (Login, error) {
 		return Login{}, status_error.OperationCanceled
 	}
 	expiresAt := time.Now().Add(30 * time.Minute)
-	job := &loginJob{revision: revision, release: release, kimiExit: make(chan struct{}), kimiReady: make(chan struct{}), view: Login{ID: util.New(), ExpiresAt: expiresAt.UnixMilli(), IntervalMS: 2000}}
+	job := &loginJob{authGeneration: current.AuthGeneration, release: release, kimiExit: make(chan struct{}), kimiReady: make(chan struct{}), view: Login{ID: util.New(), ExpiresAt: expiresAt.UnixMilli(), IntervalMS: 2000}}
 	job.ctx, job.cancel = context.WithDeadline(s.ctx, expiresAt)
 	previous := s.jobs[id]
 	if previous != nil {
@@ -183,8 +157,8 @@ func (s *Service) startKimiLogin(id string, revision int64) (Login, error) {
 		previous.mutex.Unlock()
 	}
 	output := &kimiLoginOutput{ready: make(chan string, 1)}
-	command := exec.CommandContext(job.ctx, binary, "login")
-	command.Env = append(accountconfig.Environment(os.Environ()), "KIMI_CODE_HOME="+home)
+	command := exec.CommandContext(job.ctx, binary, append(prefixArgs, "login")...)
+	command.Env = nativeAccountEnvironment(accountconfig.HomeEnvironment(constants.RuntimeIDKimi, home))
 	command.Stdout, command.Stderr = output, output
 	if err := command.Start(); err != nil {
 		close(job.kimiExit)
@@ -267,12 +241,13 @@ func (s *Service) commitKimiLogin(ctx context.Context, id string, job *loginJob)
 	if err != nil {
 		return Login{}, err
 	}
-	if current.Revision != job.revision {
+	if current.AuthGeneration != job.authGeneration {
 		return Login{}, status_error.AIAccountRevisionConflict
 	}
-	if err := s.accounts.StoreCredential(ctx, id, current.Revision, kimiCredentialMarker, ""); err != nil {
+	if err := s.accounts.StoreNativeLoginCredential(ctx, id, job.authGeneration, kimiCredentialMarker); err != nil {
 		return Login{}, err
 	}
+	s.InvalidateAccountAuth(ctx, current)
 	job.snapshotMutex.Lock()
 	job.view.Complete = true
 	view := job.view

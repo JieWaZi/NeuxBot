@@ -3,8 +3,10 @@ package plugins
 import (
 	"context"
 	"encoding/hex"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
@@ -42,8 +44,18 @@ func (o *InstallPlugin) Output(ctx *gin.Context) (interface{}, error) {
 	if version.PluginID != resource.ID {
 		return nil, ginx.WithStack(status_error.PluginVersionConflict)
 	}
-	if err := validateCatalogInstallation(resource, version); err != nil {
+	if err := validatePluginInstallationSource(ctx.Request.Context(), resource, version); err != nil {
 		return nil, ginx.WithStack(err)
+	}
+	if err := packageplugin.ValidateContract(version.Package); err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	account, err := store.Account(ctx, resource.ID)
+	if err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	if account.Generation != o.Body.ExpectedAccountGeneration {
+		return nil, ginx.WithStack(status_error.PluginAccountConflict)
 	}
 	config, err := store.Configuration(ctx, resource.ID)
 	if err != nil {
@@ -52,15 +64,29 @@ func (o *InstallPlugin) Output(ctx *gin.Context) (interface{}, error) {
 	if config.Revision != o.Body.ExpectedConfigurationRevision {
 		return nil, ginx.WithStack(status_error.PluginConfigurationConflict)
 	}
-	release, err := prepareInstallationVersions(ctx, []models.PluginVersion{version}, &config)
+	release, err := prepareInstallationVersions(ctx, []models.PluginVersion{version}, &config, &account)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
+	commitctx, publish := events.HoldCommitEvents(ctx)
+	defer publish()
 	defer release()
-	if len(config.DeliveryMaterials) > 0 {
-		if err := store.UpdateDeliveryMaterials(ctx, config); err != nil {
+	if len(account.DeliveryMaterials) > 0 {
+		err := global.TransactionControllerManager.Transaction(commitctx, func(txctx context.Context) error {
+			revision, err := store.ConfigurationRevision(txctx, resource.ID)
+			if err != nil {
+				return err
+			}
+			if revision != config.Revision {
+				return status_error.PluginConfigurationConflict
+			}
+			return store.UpdateAccount(txctx, account, o.Body.ExpectedAccountGeneration)
+		})
+		if err != nil {
 			return nil, ginx.WithStack(err)
 		}
+		account.Generation++
+		commitInstallationAccount([]models.PluginVersion{version}, config.Revision, o.Body.ExpectedAccountGeneration, config.Revision, account.Generation)
 	}
 	response := InstallPluginResponse{PluginID: o.PluginID, Results: []PartnerInstallResult{}}
 	seen := map[string]bool{}
@@ -70,20 +96,22 @@ func (o *InstallPlugin) Output(ctx *gin.Context) (interface{}, error) {
 		}
 		seen[waker] = true
 		item := PartnerInstallResult{WakerID: waker}
-		if resource.OwnerWakerID != "" && resource.OwnerWakerID != waker {
-			item.ErrorCode = status_error.PluginForbidden.Key()
-			response.Results = append(response.Results, item)
-			continue
-		}
 		if _, err := global.WakerControllerManager.Get(ctx, waker); err != nil {
 			item.ErrorCode = errorKey(err)
 			response.Results = append(response.Results, item)
 			continue
 		}
-		err := global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
+		err := global.TransactionControllerManager.Transaction(commitctx, func(txctx context.Context) error {
 			current, err := store.Configuration(txctx, resource.ID)
 			if err != nil {
 				return err
+			}
+			generation, err := store.AccountGeneration(txctx, resource.ID)
+			if err != nil {
+				return err
+			}
+			if generation != account.Generation {
+				return status_error.PluginAccountConflict
 			}
 			if current.Revision != config.Revision {
 				return status_error.PluginConfigurationConflict
@@ -99,8 +127,11 @@ func (o *InstallPlugin) Output(ctx *gin.Context) (interface{}, error) {
 	return response, nil
 }
 
-// validateCatalogInstallation 用配置目录的真实固定归档核验内容，包内来源声明不能证明自有身份。
-func validateCatalogInstallation(resource models.Plugin, version models.PluginVersion) error {
+// validatePluginInstallationSource 分别核验可信目录归档和明确生成的本地技能插件。
+func validatePluginInstallationSource(ctx context.Context, resource models.Plugin, version models.PluginVersion) error {
+	if strings.HasPrefix(resource.SourceKey, constants.PluginLocalSkillSourcePrefix) {
+		return packageplugin.ValidateSkillBundle(resource.SourceKey, resource.ID, version.Package, version.Provenance)
+	}
 	parts := strings.Split(resource.SourceKey, ":")
 	key := parts[len(parts)-1]
 	if source := catalog.SourceKey(global.PluginCatalogSource(), key); source == "" || source != resource.SourceKey {
@@ -119,7 +150,7 @@ func validateCatalogInstallation(resource models.Plugin, version models.PluginVe
 	if err != nil {
 		return err
 	}
-	location, err := catalog.ResolveEntry(global.PluginCatalogSource(), entry)
+	location, err := catalog.ResolveEntry(ctx, entry)
 	if err != nil {
 		return err
 	}

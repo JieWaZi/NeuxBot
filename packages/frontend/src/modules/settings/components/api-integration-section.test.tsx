@@ -6,7 +6,10 @@ import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import { delay, http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { client } from "@/shared/api/generated/client.gen";
-import { integrationServiceQueryKey } from "@/shared/api/integration-service";
+import {
+  integrationServiceOptions,
+  integrationServiceQueryKey,
+} from "@/shared/api/integration-service";
 import { APIIntegrationSection } from "./api-integration-section";
 const origin = "http://integration-scene.test";
 const server = setupServer(
@@ -43,30 +46,20 @@ function show() {
   );
   return { ...view, queryClient };
 }
-it("服务状态和客户端地址清晰展示，不再提供技术文档区", async () => {
+it("连接配置只读展示已保存地址，编辑入口不折叠主要配置", async () => {
   show();
-  expect(screen.getByRole("heading", { name: "API 集成" })).toBeVisible();
+  expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "创建 API Key" })).toBeVisible();
-  const overview = await screen.findByRole("status", {
-    name: "API 服务状态",
-  });
-  expect(within(overview).queryByText("API 服务可用")).not.toBeInTheDocument();
-  expect(within(overview).getByText("运行中")).toBeVisible();
   expect(
-    within(overview).getByText("https://example.test/proxy/api/v1"),
+    await screen.findByText("https://example.test/proxy/api/v1"),
   ).toBeVisible();
-  expect(
-    within(overview).getByRole("button", { name: "复制访问地址" }),
-  ).toBeVisible();
-  expect(screen.getByRole("button", { name: "连接设置" })).toHaveAttribute(
-    "aria-expanded",
-    "false",
-  );
-  expect(screen.queryByLabelText("端口")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "复制访问地址" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "编辑连接配置" })).toBeVisible();
+  expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+  expect(screen.getByText("8431")).toBeVisible();
   expect(
     screen.queryByRole("heading", { name: "API 文档" }),
   ).not.toBeInTheDocument();
-  expect(screen.queryByText("查看接入信息")).not.toBeInTheDocument();
   expect(await screen.findByText("尚未创建 API Key。")).toBeVisible();
 });
 it("监听切换失败保留有效地址与草稿，并可就近重试", async () => {
@@ -77,20 +70,15 @@ it("监听切换失败保留有效地址与草稿，并可就近重试", async (
   );
   const user = userEvent.setup();
   show();
-  await user.click(await screen.findByRole("button", { name: "连接设置" }));
-  const port = await screen.findByLabelText("端口");
+  await user.click(await screen.findByRole("button", { name: "编辑连接配置" }));
+  const port = screen.getByLabelText("端口");
   await user.clear(port);
   await user.type(port, "18431");
   await user.click(screen.getByRole("button", { name: "保存" }));
   expect(await screen.findByRole("alert")).toBeVisible();
   expect(port).toHaveValue(18431);
-  await user.click(screen.getByRole("button", { name: "连接设置" }));
-  await user.click(screen.getByRole("button", { name: "连接设置" }));
-  expect(screen.getByLabelText("端口")).toHaveValue(18431);
-  const overview = screen.getByRole("status", { name: "API 服务状态" });
-  expect(
-    within(overview).getByText("https://example.test/proxy/api/v1"),
-  ).toBeVisible();
+  expect(screen.getByText("https://example.test/proxy/api/v1")).toBeVisible();
+  expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
 });
 
 it("密钥只提供修改和删除，删除后列表移除该密钥", async () => {
@@ -138,7 +126,7 @@ it("密钥只提供修改和删除，删除后列表移除该密钥", async () =
   show();
   expect(await screen.findByText("团队检索")).toBeVisible();
   expect(screen.queryByText("团队知识库")).not.toBeInTheDocument();
-  expect(screen.getByRole("table", { name: "访问密钥" })).toBeVisible();
+  expect(screen.getByRole("list", { name: "访问密钥" })).toBeVisible();
   expect(screen.getByRole("button", { name: "修改" })).toBeVisible();
   expect(
     screen.queryByRole("button", { name: "启用" }),
@@ -154,7 +142,7 @@ it("密钥只提供修改和删除，删除后列表移除该密钥", async () =
   expect(await screen.findByText("尚未创建 API Key。")).toBeVisible();
 });
 
-it("API 集成同时展示 MCP Switch 和密钥列表，共享服务请求", async () => {
+it("API 详情只挂载 API 服务和密钥，不挂载 MCP 配置", async () => {
   const read = vi.fn();
   server.use(
     http.get(`${origin}/api/v1/integrations/service`, () => {
@@ -168,12 +156,11 @@ it("API 集成同时展示 MCP Switch 和密钥列表，共享服务请求", asy
   );
   show();
   expect(await screen.findByText("尚未创建 API Key。")).toBeVisible();
-  await waitFor(() =>
-    expect(screen.getByRole("switch", { name: "启用 MCP" })).toBeEnabled(),
-  );
-  expect(screen.getByRole("heading", { name: "MCP" })).toBeVisible();
+  expect(
+    screen.queryByRole("switch", { name: "启用 MCP" }),
+  ).not.toBeInTheDocument();
   expect(read).toHaveBeenCalledOnce();
-  expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+  expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
 });
 
 it("共享服务失败时只显示一次错误和重试，密钥区域仍正常显示", async () => {
@@ -187,7 +174,9 @@ it("共享服务失败时只显示一次错误和重试，密钥区域仍正常�
   expect(await screen.findByText("尚未创建 API Key。")).toBeVisible();
   expect(screen.getAllByRole("alert")).toHaveLength(1);
   expect(screen.getAllByRole("button", { name: "重试" })).toHaveLength(1);
-  expect(screen.getByRole("switch", { name: "启用 MCP" })).toBeDisabled();
+  expect(
+    screen.queryByRole("switch", { name: "启用 MCP" }),
+  ).not.toBeInTheDocument();
 });
 
 it("API 保存仅刷新共享设置，保留 MCP 偏好，关闭再开启父开关恢复配置", async () => {
@@ -216,30 +205,95 @@ it("API 保存仅刷新共享设置，保留 MCP 偏好，关闭再开启父开�
   );
   const user = userEvent.setup();
   const { queryClient } = show();
-  expect(
-    await screen.findByRole("button", { name: "复制 MCP 配置" }),
-  ).toBeVisible();
-  await user.click(screen.getByRole("button", { name: "连接设置" }));
+  await screen.findByText("https://example.test/proxy/api/v1");
+  await user.click(screen.getByRole("button", { name: "编辑连接配置" }));
   await user.click(screen.getByRole("switch", { name: "启用 API 服务" }));
   await user.click(screen.getByRole("button", { name: "保存" }));
-  expect(await screen.findByText("请先开启 API 服务。")).toBeVisible();
-  expect(screen.getByRole("switch", { name: "启用 MCP" })).toBeDisabled();
-  expect(screen.getByRole("switch", { name: "启用 MCP" })).toBeChecked();
+  await waitFor(() =>
+    expect(
+      queryClient.getQueryData(integrationServiceOptions().queryKey),
+    ).toMatchObject({ enabled: false, mcpEnabled: true }),
+  );
+  expect(
+    screen.queryByRole("switch", { name: "启用 MCP" }),
+  ).not.toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: "复制 MCP 配置" }),
   ).not.toBeInTheDocument();
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled(),
-  );
+  await screen.findByRole("button", { name: "编辑连接配置" });
   expect(
     queryClient
       .getQueryCache()
       .findAll({ queryKey: integrationServiceQueryKey() }),
   ).toHaveLength(1);
+  await user.click(screen.getByRole("button", { name: "编辑连接配置" }));
   await user.click(screen.getByRole("switch", { name: "启用 API 服务" }));
   await user.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() =>
+    expect(
+      queryClient.getQueryData(integrationServiceOptions().queryKey),
+    ).toMatchObject({ enabled: true, mcpEnabled: true }),
+  );
+  await screen.findByRole("button", { name: "编辑连接配置" });
   expect(
-    await screen.findByRole("button", { name: "复制 MCP 配置" }),
-  ).toBeVisible();
-  expect(screen.getByRole("switch", { name: "启用 MCP" })).toBeChecked();
+    screen.queryByRole("switch", { name: "启用 MCP" }),
+  ).not.toBeInTheDocument();
+});
+
+it("密钥使用Card行保留撤销/到期/日期且10-30-50服务端分页仍写URL", async () => {
+  const pages: string[] = [];
+  server.use(
+    http.get(`${origin}/api/v1/integrations/keys`, ({ request }) => {
+      pages.push(new URL(request.url).search);
+      return HttpResponse.json({
+        resources: [
+          {
+            id: "key-old",
+            name: "已撤销客户端",
+            displayPrefix: "sk-old",
+            revokedAt: 1730000000000,
+            createdAt: 1720000000000,
+            lastUsedAt: 1725000000000,
+            expiresAt: 1735000000000,
+            revision: 2,
+          },
+        ],
+        totalSize: 61,
+      });
+    }),
+  );
+  const user = userEvent.setup();
+  show();
+  const name = await screen.findByText("已撤销客户端");
+  const card = name.closest('[data-slot="settings-card"]');
+  expect(card).not.toBeNull();
+  expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  expect(within(card as HTMLElement).getByText("已撤销")).toBeVisible();
+  for (const label of ["创建时间", "最近使用", "失效时间"])
+    expect(within(card as HTMLElement).getByText(label)).toBeVisible();
+  expect(
+    within(card as HTMLElement).queryByRole("button", { name: "修改" }),
+  ).not.toBeInTheDocument();
+  expect(within(card as HTMLElement).getByText("sk-old…")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "下一页" }));
+  await waitFor(() =>
+    expect(
+      pages.some(
+        (query) => query.includes("pageNum=2") && query.includes("pageSize=10"),
+      ),
+    ).toBe(true),
+  );
+  await user.click(screen.getByRole("button", { name: "每页条数" }));
+  for (const size of [10, 30, 50])
+    expect(
+      screen.getByRole("menuitemradio", { name: `每页 ${size} 条` }),
+    ).toBeVisible();
+  await user.click(screen.getByRole("menuitemradio", { name: "每页 30 条" }));
+  await waitFor(() =>
+    expect(
+      pages.some(
+        (query) => query.includes("pageNum=1") && query.includes("pageSize=30"),
+      ),
+    ).toBe(true),
+  );
 });

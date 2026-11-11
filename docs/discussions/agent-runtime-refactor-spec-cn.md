@@ -377,8 +377,8 @@ Spec 的批准只确定目标架构和迁移边界；每批实施仍以当时可
 ## 11. 代码与规范依据
 
 - [领域词汇](../../CONTEXT.md)、[当前架构](../architecture/overview-cn.md)、[后端约定](../development/backend-cn.md)、[文档约定](../development/documentation-cn.md)。
-- [宿主装配](../../server/internal/agent/agent.go)、[聊天执行宿主](../../server/internal/agent/agent.go)、[结果调用宿主](../../server/internal/agent/agent.go)、[独立执行内核](../../server/internal/agent/session.go)、[公开 ACP 驱动](../../server/internal/agent/native/connection.go)、[ACP 管理操作](../../server/internal/agent/native/management.go)。
-- [执行装配](../../server/services/execution/work.go)、[执行生命周期](../../server/services/execution/lifecycle.go)、[产品事件消费](../../server/services/execution/runtime_events.go)、[业务消息事实](../../server/services/execution/message_facts.go)、[近期历史](../../server/services/execution/recent_history.go)、[隐藏交接](../../server/services/execution/handoff.go)、[失败重试](../../server/services/execution/retry.go)。
+- 宿主装配、聊天执行宿主、结果调用宿主、独立执行内核、公开 ACP 驱动、ACP 管理操作。
+- [执行装配](../../server/services/execution/work.go)、[执行生命周期](../../server/services/execution/lifecycle.go)、[原生执行消费者](../../server/services/execution/native_turn.go)、[消息耐久缓冲](../../server/internal/agent/delta_buffer.go)、[近期历史与隐藏交接](../../server/internal/agent/thread_lifecycle.go)。这些消费者位置已随隔离重建迁移，前文旧文件清单保留为原方案基线；旧重试路径已退出，候选目前明确拒绝公开重试。
 - [Chat Journal](../../server/services/chat/journal.go)、[Chat 历史读取](../../server/services/chat/chat.go)、[Runtime 持久探测配置](../../server/repositories/models/runtime_environment.go)、[历史限制](../../server/constants/common.go)。
 - [知识生成](../../server/internal/knowledge/model/generator.go)、[独立知识维护](../../server/internal/knowledge/model/maintenance.go)、[知识模型装配](../../server/global/knowledge_model.go)、[Chat 型知识维护](../../server/services/knowledge/maintenance.go)、[自动知识维护](../../server/services/knowledge/automatic.go)。
 - [团队任务](../../server/services/channel/task.go)、[工作流 worker](../../server/services/workflow/worker.go)、[IM 接入](../../server/services/im/inbox.go)、[账号租约](../../server/services/aiaccount/service.go)、[Core 装配](../../server/global/config.go)。

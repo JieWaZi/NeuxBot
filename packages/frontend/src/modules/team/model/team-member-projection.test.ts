@@ -101,3 +101,17 @@ describe("projectTeamMembers", () => {
     expect(members[3]?.name).toBe("已移除成员");
   });
 });
+
+it.each([true, false, undefined])(
+  "已有线程保留 Fast=%s，不采用团队后改的默认值",
+  (fast) => {
+    const result = projectTeamMembers({
+      channelMembers: [{ waker: { id: "lead" }, fast: true }],
+      fallbackName: "负责人",
+      leadWakerId: "lead",
+      roster: "execution",
+      threadDetail: { members: [{ wakerId: "lead", isLead: true, fast }] },
+    });
+    expect(result[0]?.fast).toBe(fast);
+  },
+);

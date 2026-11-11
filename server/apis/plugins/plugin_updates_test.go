@@ -16,10 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
-	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -50,7 +48,7 @@ func TestPluginUpdatesCompareActualInstallationsAndExactSource(t *testing.T) {
 			}
 		}
 	}
-	value, err := (&ListPlugins{InstalledOnly: true}).Output(ctx)
+	value, err := (&ListPlugins{}).Output(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +86,7 @@ func TestPluginUpdatesCompareActualInstallationsAndExactSource(t *testing.T) {
 
 func writeUpdateCatalog(t *testing.T, root, version string) {
 	t.Helper()
-	body := fmt.Sprintf(`{"schemaVersion":2,"entries":[{"key":"tools","name":"tools","version":%q,"format":"codex","sourceCommit":%q,"archiveURL":"https://invalid.example/never-download.zip","archiveSHA256":%q,"packagePath":"entry"}]}`, version, strings.Repeat("a", 40), strings.Repeat("b", 64))
+	body := fmt.Sprintf(`{"schemaVersion":1,"entries":[{"key":"tools","name":"tools","version":%q,"format":"agent-plugins","detailsURL":"https://invalid.example/details.json","detailsSHA256":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","detailsSize":100,"sourceCommit":%q,"archiveURL":"https://invalid.example/never-download.zip","archiveSHA256":%q,"packagePath":"entry"}]}`, version, strings.Repeat("a", 40), strings.Repeat("b", 64))
 	if err := os.WriteFile(filepath.Join(root, "catalog.json"), []byte(body), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +130,7 @@ func TestPrepareUpdateRejectsFinalRecoveredArchiveChange(t *testing.T) {
 	source = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		current := int(mode.Load())
 		if r.URL.Path == "/catalog.json" {
-			fmt.Fprintf(w, `{"schemaVersion":2,"entries":[{"key":"recovery","name":"recovery","version":"%d.0.0","format":"codex","sourceCommit":%q,"archiveURL":%q,"archiveSHA256":"%x","packagePath":"entry"}]}`, current+1, strings.Repeat("a", 40), source.URL+"/owned.zip", sums[current])
+			fmt.Fprintf(w, `{"schemaVersion":1,"entries":[{"key":"recovery","name":"recovery","version":"%d.0.0","format":"agent-plugins","detailsURL":"https://invalid.example/details.json","detailsSHA256":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","detailsSize":100,"sourceCommit":%q,"archiveURL":%q,"archiveSHA256":"%x","packagePath":"entry"}]}`, current+1, strings.Repeat("a", 40), source.URL+"/owned.zip", sums[current])
 			return
 		}
 		_, _ = w.Write([][]byte{first, second}[current])
@@ -161,7 +159,7 @@ func TestUpdateAllRequiresCompleteInstallationSetAndPreservesEnabled(t *testing.
 	ctx := pluginAPIContext(t)
 	prepare := func(version string) PluginDetailResponse {
 		root := t.TempDir()
-		body := fmt.Sprintf(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"tools","version":%q,"extensions":{"com.ally":{"config":[{"key":"MODE"},{"key":"TOKEN","secret":true}]}}}`, version)
+		body := fmt.Sprintf(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"tools","version":%q,"extensions":{"com.neuxbot":{"schemaVersion":1,"configuration":{"fields":[{"key":"MODE"},{"key":"TOKEN","secret":true}]}}}}`, version)
 		if err := os.WriteFile(filepath.Join(root, "plugin.json"), []byte(body), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -169,7 +167,7 @@ func TestUpdateAllRequiresCompleteInstallationSetAndPreservesEnabled(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		detail, err := prepareCatalogFixture(t, ctx, stage, "", "", false)
+		detail, err := prepareCatalogFixture(t, ctx, stage, "", false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -194,8 +192,8 @@ func TestUpdateAllRequiresCompleteInstallationSetAndPreservesEnabled(t *testing.
 		{first, {WakerID: "w2", ExpectedVersionID: old.ResolvedVersionID, VersionID: next.ResolvedVersionID}},
 		{first, {WakerID: "w2", ExpectedVersionID: next.ResolvedVersionID, VersionID: old.ResolvedVersionID}},
 	} {
-		body := UpdateConfigurationRequest{ExpectedRevision: 1, Switches: switches}
-		_, err := (&UpdatePluginConfiguration{PluginID: old.Plugin.ID, Body: body}).Output(ctx)
+		body := UpdatePluginInstallationsRequest{ExpectedRevision: 1, Switches: switches}
+		_, err := (&UpdatePluginInstallations{PluginID: old.Plugin.ID, Body: body}).Output(ctx)
 		if !errors.Is(err, status_error.PluginVersionConflict) {
 			t.Fatalf("incomplete/conflicting update accepted: %+v err=%v", switches, err)
 		}
@@ -205,8 +203,8 @@ func TestUpdateAllRequiresCompleteInstallationSetAndPreservesEnabled(t *testing.
 			t.Fatal("failed update changed configuration or installation")
 		}
 	}
-	body := UpdateConfigurationRequest{ExpectedRevision: 1, Switches: []VersionSwitch{first, second}}
-	if _, err := (&UpdatePluginConfiguration{PluginID: old.Plugin.ID, WakerID: "w1", Body: body}).Output(ctx); err != nil {
+	body := UpdatePluginInstallationsRequest{ExpectedRevision: 1, Switches: []VersionSwitch{first, second}}
+	if _, err := (&UpdatePluginInstallations{PluginID: old.Plugin.ID, WakerID: "w1", Body: body}).Output(ctx); err != nil {
 		t.Fatal(err)
 	}
 	config, err := store.Configuration(ctx, old.Plugin.ID)
@@ -234,7 +232,7 @@ func TestPluginUpdateSemanticOrderingAndCatalogRollback(t *testing.T) {
 		{"invalid", "1.0.0", false}, {"2.0.0", "invalid", false},
 	} {
 		t.Run(test.Target+"/"+test.Current, func(t *testing.T) {
-			detail := PluginDetailResponse{Plugin: models.Plugin{SourceKey: "catalog:tools"}, Versions: []models.PluginVersion{{ID: "v", Version: test.Current}}, Installations: []models.WakerPlugin{{WakerID: "w1", VersionID: "v"}}}
+			detail := PluginDetailResponse{Plugin: models.Plugin{SourceKey: "catalog:tools"}, Versions: []PluginVersionResponse{{ID: "v", Version: test.Current}}, Installations: []models.WakerPlugin{{WakerID: "w1", VersionID: "v"}}}
 			entries := []catalog.Entry{{SourceKey: "catalog:tools", Key: "tools", ArchiveSHA256: strings.Repeat("b", 64), Package: packageplugin.Package{Manifest: packageplugin.Manifest{Version: test.Target}}}}
 			applyPluginUpdate(&detail, entries, catalog.SourceState{State: "available"})
 			if detail.Update.Available != test.Available {
@@ -242,7 +240,7 @@ func TestPluginUpdateSemanticOrderingAndCatalogRollback(t *testing.T) {
 			}
 		})
 	}
-	detail := PluginDetailResponse{Plugin: models.Plugin{SourceKey: "catalog:tools"}, Versions: []models.PluginVersion{{ID: "old", Version: "1.0.0"}, {ID: "ahead", Version: "3.0.0"}}, Installations: []models.WakerPlugin{{WakerID: "w1", VersionID: "old"}, {WakerID: "w2", VersionID: "ahead"}}}
+	detail := PluginDetailResponse{Plugin: models.Plugin{SourceKey: "catalog:tools"}, Versions: []PluginVersionResponse{{ID: "old", Version: "1.0.0"}, {ID: "ahead", Version: "3.0.0"}}, Installations: []models.WakerPlugin{{WakerID: "w1", VersionID: "old"}, {WakerID: "w2", VersionID: "ahead"}}}
 	entries := []catalog.Entry{{SourceKey: "catalog:tools", Key: "tools", Package: packageplugin.Package{Manifest: packageplugin.Manifest{Version: "2.0.0"}}}}
 	applyPluginUpdate(&detail, entries, catalog.SourceState{State: "available"})
 	if detail.Update.Available {
@@ -250,66 +248,61 @@ func TestPluginUpdateSemanticOrderingAndCatalogRollback(t *testing.T) {
 	}
 }
 
-func TestRefreshCatalogPublishesLocalSuccessAndFailure(t *testing.T) {
+func TestRefreshCatalogReturnsBeforeUpstreamAndCoreOwnsCancellation(t *testing.T) {
 	ctx := pluginAPIContext(t)
-	previous := global.EventHub
-	global.EventHub = events.New()
-	t.Cleanup(func() { global.EventHub.Close(); global.EventHub = previous })
-	subscription := global.EventHub.Subscribe(constants.PluginEventTopic, events.Resource{Kind: "global"})
-	defer subscription.Close()
-	writeUpdateCatalog(t, global.PluginCatalogSource(), "2.0.0")
-	if _, err := (&RefreshPluginCatalog{}).Output(ctx); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case event := <-subscription.Events:
-		if event.Type != "plugins.changed" {
-			t.Fatalf("wrong refresh event: %+v", event)
-		}
-	default:
-		t.Fatal("successful catalog check did not wake plugin queries")
-	}
-	if err := os.Remove(filepath.Join(global.PluginCatalogSource(), "catalog.json")); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := (&RefreshPluginCatalog{}).Output(ctx); !errors.Is(err, status_error.PluginStorageError) {
-		t.Fatalf("failed catalog check hid source error: %v", err)
-	}
-	select {
-	case <-subscription.Events:
-	default:
-		t.Fatal("failed catalog check did not wake plugin queries")
-	}
-	value, err := (&ListPlugins{}).Output(ctx)
-	if err != nil || value.(ListPluginsResponse).CatalogSource.State != "unavailable" {
-		t.Fatalf("empty local library lost source error: %+v %v", value, err)
-	}
-}
-
-func TestRefreshCatalogUsesHTTPRequestCancellation(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
-	ctx := pluginAPIContext(t)
-	entered := make(chan struct{})
-	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { close(entered); <-r.Context().Done() }))
+	entered, cancelled := make(chan struct{}, 4), make(chan struct{}, 4)
+	var requests atomic.Int32
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		entered <- struct{}{}
+		<-r.Context().Done()
+		cancelled <- struct{}{}
+	}))
 	defer source.Close()
-	t.Setenv("ALLY_PLUGIN_CATALOG_URL", source.URL+"/catalog.json")
+	location := source.URL + "/catalog.json"
+	t.Setenv("ALLY_PLUGIN_CATALOG_URL", location)
+	stop := catalog.Start(context.Background(), location, t.TempDir(), nil)
+	defer stop()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("startup did not reach upstream")
+	}
 	request, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ctx.Request = ctx.Request.WithContext(request)
 	done := make(chan error, 1)
 	go func() { _, err := (&RefreshPluginCatalog{}).Output(ctx); done <- err }()
 	select {
-	case <-entered:
-	case <-time.After(time.Second):
-		t.Fatal("refresh request did not reach controlled upstream")
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		cancel()
+		t.Fatal("refresh waited for the existing network synchronization")
 	}
 	cancel()
-	select {
-	case err := <-done:
-		if !errors.Is(err, status_error.PluginDistributionUnavailable) {
-			t.Fatalf("cancelled refresh hid source error: %v", err)
+	for range 5 {
+		if _, err := (&RefreshPluginCatalog{}).Output(ctx); err != nil {
+			t.Fatal(err)
 		}
+	}
+	select {
+	case <-cancelled:
+		t.Fatal("HTTP request cancellation stopped Core background sync")
+	default:
+	}
+	if requests.Load() != 1 {
+		t.Fatal("refresh duplicated startup synchronization")
+	}
+	stop()
+	select {
+	case <-cancelled:
 	case <-time.After(time.Second):
-		t.Fatal("HTTP cancellation did not end explicit catalog refresh")
+		t.Fatal("Core close did not cancel upstream")
+	}
+	if _, err := (&RefreshPluginCatalog{}).Output(ctx); !errors.Is(err, status_error.PluginDistributionUnavailable) {
+		t.Fatal("closed Core accepted refresh", err)
 	}
 }

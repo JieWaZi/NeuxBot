@@ -21,6 +21,8 @@ import (
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
+	"github.com/JieWaZi/NeuxBot/server/services/runtimeenvironment"
 	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 )
 
@@ -28,50 +30,6 @@ import (
 type liveWorkflowEnvironment struct {
 	// environment 是当前本机 SDK 探测的可用环境。
 	environment models.RuntimeEnvironment
-}
-
-// observedLiveRuntime 保存共享宿主的稳定失败阶段，真实验收与生产使用同一独立 Runtime。
-type observedLiveRuntime struct {
-	// Manager 是生产协议与原生会话所有者。
-	*agentapi.Manager
-	// test 只记录没有凭据的验收身份与阶段。
-	test *testing.T
-}
-
-func newObservedLiveRuntime(t *testing.T, sdk *agentapi.Catalog) observedLiveRuntime {
-	t.Helper()
-	host := agentapi.NewManager(agentapi.ManagerConfig{PrepareWorkspace: agentapi.NewWorkspacePreparer(sdk.Runtimes()).Prepare, Launch: sdk.PrepareLaunch, Runtimes: sdk.Runtimes, Fork: agentapi.NewForkHandler(sdk)})
-	t.Cleanup(func() {
-		if err := host.Close(context.Background()); err != nil {
-			t.Error(err)
-		}
-	})
-	return observedLiveRuntime{Manager: host, test: t}
-}
-
-// observedPreparedRun 保留真实准备与资源生命周期，仅记录执行失败阶段。
-type observedPreparedRun struct {
-	// PreparedChatRun 是生产宿主返回的唯一准备句柄。
-	agentapi.PreparedChatRun
-	// plan 是不含本轮输入的会话声明。
-	plan agentapi.SessionPlan
-	// test 接收脱敏验收诊断。
-	test *testing.T
-}
-
-func (r observedLiveRuntime) PrepareSession(ctx context.Context, plan agentapi.SessionPlan, session agentapi.SessionDirective) (agentapi.PreparedChatRun, error) {
-	prepared, err := r.Manager.PrepareSession(ctx, plan, session)
-	if err != nil {
-		return prepared, err
-	}
-	return observedPreparedRun{PreparedChatRun: prepared, plan: plan, test: r.test}, nil
-}
-func (r observedPreparedRun) Run(ctx context.Context, turn agentapi.TurnInput, sink agentapi.EventSink) agentapi.Result {
-	result := r.PreparedChatRun.Run(ctx, turn, sink)
-	if result.Failure != nil {
-		r.test.Logf("actual failure: stage=%s code=%s runtime=%s detection=%s detectionRuntime=%s", result.Failure.Stage, result.Failure.Code, r.plan.Target.RuntimeID, r.plan.Detection.State, r.plan.Detection.Runtime.ID)
-	}
-	return result
 }
 
 func (r liveWorkflowEnvironment) Get(_ context.Context, id string) (models.RuntimeEnvironment, error) {
@@ -101,7 +59,7 @@ func awaitLiveWorkflow(t *testing.T, s *workflowFixture, id string, ready func(c
 	return controllers.WorkflowRunState{}
 }
 
-func openLiveWorkflow(t *testing.T, ctx context.Context, directory string) (*workflowFixture, func(), models.WorkflowExecutionDefaults, *agentapi.Catalog, models.RuntimeEnvironment) {
+func openLiveWorkflow(t *testing.T, ctx context.Context, directory string) (*workflowFixture, func(), models.WorkflowExecutionDefaults, models.RuntimeEnvironment) {
 	t.Helper()
 	if os.Getenv("ALLY_WORKFLOW_LIVE_CODEX") != "1" {
 		t.Skip("set ALLY_WORKFLOW_LIVE_CODEX=1 to run an actual billable model in a temporary workspace")
@@ -110,28 +68,63 @@ func openLiveWorkflow(t *testing.T, ctx context.Context, directory string) (*wor
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		closeCtx, closeCancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer closeCancel()
-		if err := sdk.Close(closeCtx); err != nil {
-			t.Error(err)
-		}
-	})
-	homeDirectory, err := os.UserHomeDir()
+	home, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	detection := sdk.Detect(ctx, agentapi.DetectRequest{RuntimeID: "codex", BaseEnvironment: os.Environ(), HomeDirectory: homeDirectory})
-	if detection.State != agentapi.DetectionStateReady {
-		t.Fatalf("real runtime unavailable: state=%s diagnostics=%v", detection.State, detection.Diagnostics)
+	binary, err := sdk.ResolveExecutable(agentapi.DetectRequest{RuntimeID: constants.RuntimeIDCodex, BaseEnvironment: os.Environ(), HomeDirectory: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	account, err := aiaccount.ResolveCodexSystemAccount(ctx, agentapi.AccountRequest{
+		Provider: constants.RuntimeIDCodex, AccountID: agentapi.SystemAccountID, Executable: binary, CWD: directory,
+	}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	providers := agentapi.NewProviderRuntime(agentapi.ProviderRuntimeOptions{AcquireAccount: aiaccount.AcquireCodexSystemAccount})
+	base := make(map[string]string)
+	for _, entry := range os.Environ() {
+		if key, value, ok := strings.Cut(entry, "="); ok {
+			base[key] = value
+		}
+	}
+	snapshot := agentapi.NewModelCatalog(providers).ReadForRuntime(ctx, constants.RuntimeIDCodex, agentapi.ProviderConnectionRequest{
+		Account: account, Launch: agentapi.ProviderLaunch{Executable: binary, ConfigHome: account.ConfigHome, BaseEnvironment: base},
+	}, "", "", true)
+	if err := providers.Close(context.WithoutCancel(ctx)); err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.State != agentapi.CatalogFresh {
+		t.Fatalf("real runtime catalog unavailable: %s", snapshot.ErrorCode)
+	}
+	var summary agentapi.RuntimeSummary
+	for _, runtime := range sdk.Runtimes() {
+		if runtime.ID == constants.RuntimeIDCodex {
+			summary = runtime
+			break
+		}
+	}
+	detection := agentapi.DetectionResult{
+		Runtime: summary, State: agentapi.DetectionStateReady, ResolvedBinary: binary,
+		DetectedDefaultModel: snapshot.DefaultID,
+		Capabilities:         agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true, agentapi.CapabilityMCPStreamableHTTP: snapshot.Capabilities.MCPHTTP},
+	}
+	for _, option := range snapshot.Models {
+		detection.Models = append(detection.Models, agentapi.ModelOption{
+			ID: option.ID, Name: option.Name, PermissionLevels: runtimeenvironment.NativePermissionLevels(constants.RuntimeIDCodex, option),
+		})
 	}
 	model := os.Getenv("ALLY_WORKFLOW_LIVE_MODEL")
 	if model == "" {
 		model = detection.DetectedDefaultModel
 	}
-	environment := models.RuntimeEnvironment{RuntimeID: "codex", Enabled: true, Binary: detection.ResolvedBinary, DefaultModel: model, Detection: detection}
-	service, close := openCoreWorkflowPorts(t, directory, newObservedLiveRuntime(t, sdk), liveWorkflowEnvironment{environment: environment})
-	return service, close, models.WorkflowExecutionDefaults{RuntimeID: "codex", AccountID: "system", Model: model, PermissionLevel: constants.PermissionLevelFullAccess}, sdk, environment
+	environment := models.RuntimeEnvironment{
+		RuntimeID: constants.RuntimeIDCodex, BaseRuntimeID: constants.RuntimeIDCodex, Enabled: true, Binary: binary,
+		ConfigHome: account.ConfigHome, DefaultModel: model, Detection: detection,
+	}
+	service, close := openCoreWorkflowPorts(t, directory, nil, liveWorkflowEnvironment{environment: environment})
+	return service, close, models.WorkflowExecutionDefaults{RuntimeID: constants.RuntimeIDCodex, AccountID: agentapi.SystemAccountID, Model: model, PermissionLevel: constants.PermissionLevelFullAccess}, environment
 }
 
 func recordLiveEvidence(t *testing.T, name string, state controllers.WorkflowRunState, revision models.WorkflowRevision, model string, creationChat string, artifact []byte, verificationFacts ...map[string]any) {
@@ -173,32 +166,8 @@ func TestLiveRuntimeCreationSaveAndIndependentWorkersWriteRead(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	sdk, err := agentapi.NewCatalog(agentapi.CatalogConfig{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		closeCtx, closeCancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer closeCancel()
-		if err := sdk.Close(closeCtx); err != nil {
-			t.Error(err)
-		}
-	})
-	homeDirectory, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	detection := sdk.Detect(ctx, agentapi.DetectRequest{RuntimeID: "codex", BaseEnvironment: os.Environ(), HomeDirectory: homeDirectory})
-	if detection.State != agentapi.DetectionStateReady {
-		t.Fatalf("real runtime unavailable: state=%s diagnostics=%v", detection.State, detection.Diagnostics)
-	}
-	model := os.Getenv("ALLY_WORKFLOW_LIVE_MODEL")
-	if model == "" {
-		model = detection.DetectedDefaultModel
-	}
 	directory := t.TempDir()
-	service, _ := openCoreWorkflowPorts(t, directory, newObservedLiveRuntime(t, sdk), liveWorkflowEnvironment{environment: models.RuntimeEnvironment{RuntimeID: "codex", Enabled: true, Binary: detection.ResolvedBinary, DefaultModel: model, Detection: detection}})
-	defaults := models.WorkflowExecutionDefaults{RuntimeID: "codex", AccountID: "system", Model: model, PermissionLevel: constants.PermissionLevelFullAccess}
+	service, _, defaults, _ := openLiveWorkflow(t, ctx, directory)
 	definition, err := createDefinition(ctx, workflowAPIDependencies(service), CreateDefinitionCommand{RequestID: "live", Title: "实际协议验收", CreationWakerID: "fixture-waker", ScopeBinding: models.WorkflowScopeBinding{WorkingDirectory: directory}})
 	if err != nil {
 		t.Fatal(err)
@@ -258,8 +227,8 @@ return {written:write.written,verified:verify.verified,content:verify.content};`
 	if len(state.Effects) != 3 || state.Effects[1].ExecutionID == state.Effects[2].ExecutionID {
 		t.Fatal("workers reused execution identity")
 	}
-	t.Logf("actual Runtime=codex model=%s run=%s revision=%s sourceDigest=%s creationChat=%s fileBytes=%d", model, run.ID, run.RevisionID, revision.SourceDigest, creation.ChatID, len(data))
-	recordLiveEvidence(t, "live-creation-write-read", state, revision, model, creation.ChatID, data)
+	t.Logf("actual Runtime=codex model=%s run=%s revision=%s sourceDigest=%s creationChat=%s fileBytes=%d", defaults.Model, run.ID, run.RevisionID, revision.SourceDigest, creation.ChatID, len(data))
+	recordLiveEvidence(t, "live-creation-write-read", state, revision, defaults.Model, creation.ChatID, data)
 }
 
 func saveLiveSource(t *testing.T, ctx context.Context, s *workflowFixture, definition models.WorkflowDefinition, defaults models.WorkflowExecutionDefaults, source string) (models.WorkflowRevision, string) {
@@ -351,7 +320,7 @@ func TestLiveF0CreationSaveAndActualGoResult(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 	defer cancel()
 	directory := t.TempDir()
-	s, _, defaults, _, _ := openLiveWorkflow(t, ctx, directory)
+	s, _, defaults, _ := openLiveWorkflow(t, ctx, directory)
 	source, err := os.ReadFile("../../internal/workflow/dsl/testdata/f0.workflow.js")
 	if err != nil {
 		t.Fatal(err)
@@ -379,7 +348,7 @@ func runLiveF1(t *testing.T, creationSave bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
 	defer cancel()
 	directory := t.TempDir()
-	s, close, defaults, sdk, environment := openLiveWorkflow(t, ctx, directory)
+	s, close, defaults, environment := openLiveWorkflow(t, ctx, directory)
 	source, err := os.ReadFile("../../internal/workflow/dsl/testdata/weekly-report.workflow.js")
 	if err != nil {
 		t.Fatal(err)
@@ -423,7 +392,7 @@ func runLiveF1(t *testing.T, creationSave bool) {
 		t.Fatal("file was written before explicit approval", err)
 	}
 	close()
-	s, _ = openCoreWorkflowPorts(t, directory, newObservedLiveRuntime(t, sdk), liveWorkflowEnvironment{environment: environment})
+	s, _ = openCoreWorkflowPorts(t, directory, nil, liveWorkflowEnvironment{environment: environment})
 	state = awaitLiveWorkflow(t, s, run.ID, func(state controllers.WorkflowRunState) bool { return pending(state).ID != "" })
 	if pending(state).ID != human.ID || state.Run.RevisionID != revision.ID {
 		t.Fatal("restart changed the pending human request or frozen revision")
@@ -482,7 +451,7 @@ func runLiveF2(t *testing.T, creationSave bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
 	defer cancel()
 	directory := t.TempDir()
-	s, _, defaults, _, _ := openLiveWorkflow(t, ctx, directory)
+	s, _, defaults, _ := openLiveWorkflow(t, ctx, directory)
 	source, err := os.ReadFile("../../internal/workflow/dsl/testdata/environment-release.workflow.js")
 	if err != nil {
 		t.Fatal(err)

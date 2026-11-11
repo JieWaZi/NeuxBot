@@ -69,6 +69,36 @@ function snapshot(): GlobalEventFrame {
   };
 }
 describe("Renderer 全局事件边界", () => {
+  it("主进程已有通知订阅时，晚加入者主动补快照以结束同步等待", async () => {
+    let recovering = false;
+    let recoveryStarted = false;
+    mocks.resync.mockImplementation(async () => {
+      deliver({ kind: "event", frame: snapshot() });
+      return true;
+    });
+    const close = subscribeGlobalEvents(
+      "notifications",
+      { kind: "global" },
+      {
+        onResync: () => {
+          recovering = true;
+          recoveryStarted = true;
+        },
+        onEvent: () => {
+          recovering = false;
+        },
+      },
+    );
+    try {
+      deliver({ kind: "state", state: "open" });
+      deliver({ kind: "resync", reason: "subscription_joined" });
+      await vi.waitFor(() => expect(recoveryStarted).toBe(true));
+      await vi.waitFor(() => expect(recovering).toBe(false));
+      expect(mocks.resync).toHaveBeenCalledTimes(1);
+    } finally {
+      close();
+    }
+  });
   it("相同资源只注册一次IPC，晚加入可权威补齐，最后释放才退订", async () => {
     const first = vi.fn();
     const second = vi.fn();

@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/global"
-	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/shrewx/ginx/pkg/conf"
@@ -30,10 +30,7 @@ func TestGetHealthReportsDegradedWhenChatIsIsolated(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
-	logStore, err := eventlog.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewStore() error = %v", err)
-	}
+	logStore := conversationfixture.New(t, t.TempDir())
 	chatID := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	logPath, err := logStore.LogPath(chatID)
 	if err != nil {
@@ -54,7 +51,6 @@ func TestGetHealthReportsDegradedWhenChatIsIsolated(t *testing.T) {
 		Projects:         controllers.NewProjectController(database.DB),
 		QueryIndexes: chat.QueryIndexDependencies{
 			Chats:           controllers.NewChatController(database.DB),
-			RuntimeSessions: controllers.NewRuntimeSessionController(database.DB),
 			DeletionIntents: controllers.NewChatDeletionIntentController(database.DB),
 			Transactions: controllers.NewTransactionController(
 				dbhelper.NewGormTransactionManager(database.DB),

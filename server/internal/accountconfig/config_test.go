@@ -1,7 +1,9 @@
 package accountconfig
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,7 +20,7 @@ func TestNativeConfigurationUsesWorkspaceAndNativeShape(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("CODEX_HOME", system)
-	spec := Spec{ID: "account-a", RuntimeID: constants.RuntimeIDCodex, AuthMode: constants.AccountAuthModeAPIKey, Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: "https://api.kimi.com/coding/v1", APIKey: "account-a-secret", Revision: 1}
+	spec := Spec{ID: "account-a", RuntimeID: constants.RuntimeIDCodex, AuthMode: constants.AccountAuthModeAPIKey, Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: "https://api.kimi.com/coding/v1", APIKey: "account-a-secret", ConfigFingerprint: "configuration-1"}
 	env, err := Prepare(workspace, spec)
 	if err != nil {
 		t.Fatal(err)
@@ -41,7 +43,7 @@ func TestNativeConfigurationUsesWorkspaceAndNativeShape(t *testing.T) {
 	if !strings.Contains(string(config), "requires_openai_auth = true") || !strings.Contains(string(config), spec.BaseURL) {
 		t.Fatal("native config fields missing")
 	}
-	spec.ID, spec.APIKey, spec.Revision = "account-b", "account-b-secret", 2
+	spec.ID, spec.APIKey, spec.ConfigFingerprint = "account-b", "account-b-secret", "configuration-2"
 	next, err := Prepare(workspace, spec)
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +68,7 @@ func TestNativeConfigurationUsesWorkspaceAndNativeShape(t *testing.T) {
 func TestSameKeyCanConfigureClaudeAndCodex(t *testing.T) {
 	workspace := t.TempDir()
 	for _, runtime := range []string{constants.RuntimeIDClaude, constants.RuntimeIDCodex} {
-		spec := Spec{ID: "kimi-plan", RuntimeID: runtime, AuthMode: constants.AccountAuthModeAPIKey, APIKey: "same-key", BaseURL: "https://api.kimi.com/coding", Revision: 1}
+		spec := Spec{ID: "kimi-plan", RuntimeID: runtime, AuthMode: constants.AccountAuthModeAPIKey, APIKey: "same-key", BaseURL: "https://api.kimi.com/coding", ConfigFingerprint: "configuration-1"}
 		if runtime == constants.RuntimeIDCodex {
 			spec.BaseURL += "/v1"
 		}
@@ -107,7 +109,7 @@ func TestDeepSeekCodexAccountRegistersSelectedModel(t *testing.T) {
 	if !strings.Contains(string(config), "model_catalog_json") {
 		t.Fatal("Codex account does not load a model catalog")
 	}
-	data, err := os.ReadFile(filepath.Join(home, "models.json"))
+	data, err := readGeneratedCodexCatalog(home)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +151,7 @@ func TestCodexCatalogUsesAccountModelMappings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(filepath.Join(Home(workspace, constants.RuntimeIDCodex), "models.json"))
+	data, err := readGeneratedCodexCatalog(Home(workspace, constants.RuntimeIDCodex))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +190,7 @@ func TestCodexCatalogDefaultsUnknownModelToCommonReasoningLevels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(filepath.Join(Home(workspace, constants.RuntimeIDCodex), "models.json"))
+	data, err := readGeneratedCodexCatalog(Home(workspace, constants.RuntimeIDCodex))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,4 +398,85 @@ func TestKimiUsesNativeChatProviderWithEditableContext(t *testing.T) {
 	if !strings.Contains(string(data), "max_context_size = 131072") {
 		t.Fatal("Kimi context override was not projected")
 	}
+}
+
+func TestCodexNativeConfigBindsAudienceWithoutPuttingKeyInOverrides(t *testing.T) {
+	home := t.TempDir()
+	config, err := PrepareCodexHome(home, Spec{
+		AuthMode: constants.AccountAuthModeAPIKey,
+		BaseURL:  "https://api.deepseek.com",
+		APIKey:   "fixture-secret",
+		Model:    "deepseek-flash",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(config.Overrides["model"]) != `"deepseek-flash"` {
+		t.Fatal("native startup lost the model seed belonging to its catalog")
+	}
+	providerID := strings.Trim(string(config.Overrides["model_provider"]), "\"")
+	var provider map[string]any
+	if err := json.Unmarshal(config.Overrides["model_providers."+providerID], &provider); err != nil {
+		t.Fatal(err)
+	}
+	if provider["requires_openai_auth"] != true {
+		t.Fatal("native account/read cannot prove the selected API key")
+	}
+	keyVariable, _ := provider["env_key"].(string)
+	if provider["base_url"] != "https://api.deepseek.com" || config.Environment[keyVariable] != "fixture-secret" {
+		t.Fatal("native startup authority did not bind the selected endpoint and credential")
+	}
+	encoded, _ := json.Marshal(config.Overrides)
+	data, err := os.ReadFile(filepath.Join(home, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "fixture-secret") || strings.Contains(string(data), "fixture-secret") {
+		t.Fatal("the selected key entered native config or startup arguments")
+	}
+}
+
+func TestCodexStartupCatalogRemainsImmutableAcrossConcurrentConfigurations(t *testing.T) {
+	home := t.TempDir()
+	spec := Spec{RuntimeID: constants.RuntimeIDCodex, ID: "managed", AuthMode: constants.AccountAuthModeAPIKey, Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: "https://example.invalid/v1", APIKey: "key", Model: "first", SelectedModels: []string{"first"}}
+	first, err := PrepareCodexHome(home, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var originalPath string
+	if err := json.Unmarshal(first.Overrides["model_catalog_json"], &originalPath); err != nil {
+		t.Fatal(err)
+	}
+	original, err := os.ReadFile(originalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec.Model = "second"
+	spec.SelectedModels = []string{"second"}
+	second, err := PrepareCodexHome(home, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var nextPath string
+	if err := json.Unmarshal(second.Overrides["model_catalog_json"], &nextPath); err != nil {
+		t.Fatal(err)
+	}
+	if string(first.Overrides["model"]) != `"first"` || string(second.Overrides["model"]) != `"second"` {
+		t.Fatalf("prepared startup model was left to the overwritten shared config: first=%s second=%s", first.Overrides["model"], second.Overrides["model"])
+	}
+	retained, err := os.ReadFile(originalPath)
+	if err != nil || originalPath == nextPath || !bytes.Equal(original, retained) {
+		t.Fatalf("new configuration overwrote pending/active native catalog: first=%s next=%s err=%v", originalPath, nextPath, err)
+	}
+}
+
+func readGeneratedCodexCatalog(home string) ([]byte, error) {
+	paths, err := filepath.Glob(filepath.Join(home, "models-*.json"))
+	if err != nil {
+		return nil, err
+	}
+	if len(paths) != 1 {
+		return nil, fmt.Errorf("expected one native catalog, got %d", len(paths))
+	}
+	return os.ReadFile(paths[0])
 }

@@ -15,7 +15,7 @@ import type {
 } from "@/shared/api/generated/types.gen";
 import "@/shared/i18n";
 import { StartupGate } from "./startup-gate";
-import { cliInstallation } from "./cli-installation";
+import { cliInstallation } from "@/shared/lib/cli-installation";
 
 const api = vi.hoisted(() => ({
   read: vi.fn(),
@@ -24,6 +24,7 @@ const api = vi.hoisted(() => ({
   update: vi.fn(),
 }));
 vi.mock("@/shared/api/runtime-queries", () => ({
+  isRuntimeConfigurationEvent: () => true,
   listRuntimesOptions: () => ({ queryKey: ["runtimes"], queryFn: api.read }),
 }));
 vi.mock("@/shared/api/generated/@tanstack/react-query.gen", () => ({
@@ -66,9 +67,7 @@ const found: ListRuntimesResponse = {
       installed: true,
       state: "ready",
       detectedAt: 1,
-      binary: "/usr/local/bin/opencode",
-      prefixArgs: ["--debug"],
-      configHome: "/custom/home",
+      resolvedBinary: "/usr/local/bin/opencode",
       defaultPermissionLevel: "auto",
       defaultModel: "free-model",
       models: [
@@ -216,7 +215,7 @@ it("已有安装证据时自动进入，后续后台变化不抢走工作区", a
   expect(api.refresh).not.toHaveBeenCalled();
 });
 
-it("新用户检测到 CLI 后必须保存默认选择，保留原配置且不强制登录", async () => {
+it("新用户检测到 CLI 后只保存默认执行选择，不暴露启动配置且不强制登录", async () => {
   api.read.mockResolvedValue(found);
   mount();
   expect(
@@ -232,9 +231,6 @@ it("新用户检测到 CLI 后必须保存默认选择，保留原配置且不�
       body: expect.objectContaining({
         enabled: true,
         isDefault: true,
-        binary: "/usr/local/bin/opencode",
-        prefixArgs: ["--debug"],
-        configHome: "/custom/home",
         defaultModel: "free-model",
         defaultPermissionLevel: "auto",
       }),
@@ -243,126 +239,61 @@ it("新用户检测到 CLI 后必须保存默认选择，保留原配置且不�
   );
 });
 
-it("多个安装版本必须显式选择，不能直接沿用 PATH 结果进入", async () => {
-  api.read.mockResolvedValue(multipleVersions);
-  const user = userEvent.setup();
+it("目录已就绪但尚未选择模型时提示选择模型", async () => {
+  api.read.mockResolvedValue({
+    ...found,
+    resources: found.resources?.map((runtime) => ({
+      ...runtime,
+      defaultModel: "",
+    })),
+  });
   mount();
-  const versions = await screen.findByRole("combobox", { name: "版本" });
-  expect(versions).toHaveTextContent("请选择版本");
+  expect(await screen.findByText("选择模型", { selector: "p" })).toBeVisible();
+});
+
+it("多个安装版本沿用后端已核实程序，不再提供手动路径设置", async () => {
+  api.read.mockResolvedValue(multipleVersions);
+  mount();
   expect(
-    screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
-  ).toBeDisabled();
-  versions.focus();
-  await user.keyboard("{Enter}");
-  expect(
-    screen.getByRole("option", {
-      name: "1.2.15 · /usr/local/bin/opencode",
-    }),
+    await screen.findByRole("heading", { name: "设置智能体" }),
   ).toBeVisible();
   expect(
-    screen.getByRole("option", {
-      name: "v2.0.29 · /home/test/.opencode/bin/opencode",
-    }),
-  ).toBeVisible();
-  await user.keyboard("{Enter}");
+    screen.queryByRole("combobox", { name: "版本" }),
+  ).not.toBeInTheDocument();
   expect(
     screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
   ).toBeEnabled();
-  expect(api.update).not.toHaveBeenCalled();
+  fireEvent.click(
+    screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
+  );
+  await screen.findByText("工作区");
+  const body = api.update.mock.calls[0]?.[0]?.body;
+  expect(body).toMatchObject({
+    defaultModel: "free-model",
+    defaultPermissionLevel: "auto",
+    isDefault: true,
+  });
+  for (const field of ["binary", "prefixArgs", "configHome", "customModels"])
+    expect(body).not.toHaveProperty(field);
 });
 
-it("切换版本后等待重新探测，最后保存新版本的模型与权限再进入", async () => {
+it("保存默认选择失败时保留引导并允许重试", async () => {
   api.read.mockResolvedValue(multipleVersions);
+  api.update.mockRejectedValueOnce(new Error("保存失败"));
   const user = userEvent.setup();
-  let finishDetection!: () => void;
-  api.update.mockImplementationOnce(
-    () =>
-      new Promise<void>((resolve) => {
-        finishDetection = () => {
-          api.read.mockResolvedValue({
-            ...multipleVersions,
-            resources: [
-              {
-                ...multipleVersions.resources?.[0],
-                binary: "/home/test/.opencode/bin/opencode",
-                resolvedBinary: "/home/test/.opencode/bin/opencode",
-                version: "opencode v2.0.29",
-                defaultModel: "new-free-model",
-                defaultPermissionLevel: "default",
-                models: [
-                  { id: "new-free-model", permissionLevels: ["default"] },
-                ],
-              },
-            ],
-          });
-          resolve();
-        };
-      }),
-  );
   mount();
-  const versions = await screen.findByRole("combobox", { name: "版本" });
-  versions.focus();
-  await user.keyboard("{Enter}{ArrowDown}{Enter}");
-  await waitFor(() => expect(api.update).toHaveBeenCalledOnce());
-  expect(api.update).toHaveBeenCalledWith(
-    expect.objectContaining({
-      path: { runtimeId: "opencode" },
-      body: expect.objectContaining({
-        binary: "/home/test/.opencode/bin/opencode",
-        isDefault: false,
-        prefixArgs: ["--debug"],
-        configHome: "/custom/home",
-      }),
-    }),
-    expect.anything(),
+  await user.click(
+    await screen.findByRole("button", { name: "设为默认并进入 NeuxBot" }),
   );
-  expect(versions).toBeDisabled();
-  expect(
-    screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
-  ).toBeDisabled();
-  expect(screen.queryByText("工作区")).not.toBeInTheDocument();
-  await act(async () => finishDetection());
-  await waitFor(() => expect(versions).toBeEnabled());
+  expect(await screen.findByRole("alert")).toHaveTextContent("保存失败");
   expect(screen.queryByText("工作区")).not.toBeInTheDocument();
   await user.click(
     screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
   );
   expect(await screen.findByText("工作区")).toBeVisible();
-  expect(api.update).toHaveBeenLastCalledWith(
-    expect.objectContaining({
-      body: expect.objectContaining({
-        binary: "/home/test/.opencode/bin/opencode",
-        isDefault: true,
-        defaultModel: "new-free-model",
-        defaultPermissionLevel: "default",
-      }),
-    }),
-    expect.anything(),
-  );
 });
 
-it("版本切换失败保留错误与引导，可以重新选择重试", async () => {
-  api.read.mockResolvedValue(multipleVersions);
-  api.update.mockRejectedValueOnce(new Error("版本切换失败"));
-  const user = userEvent.setup();
-  mount();
-  const versions = await screen.findByRole("combobox", { name: "版本" });
-  versions.focus();
-  await user.keyboard("{Enter}{ArrowDown}{Enter}");
-  expect(await screen.findByRole("alert")).toHaveTextContent("版本切换失败");
-  expect(versions).toHaveTextContent("请选择版本");
-  expect(
-    screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
-  ).toBeDisabled();
-  versions.focus();
-  await user.keyboard("{Enter}{Enter}");
-  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-  expect(
-    screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
-  ).toBeEnabled();
-});
-
-it("单个安装版本不增加选择字段，模型目录失败时禁止进入并支持重检恢复", async () => {
+it("单个安装版本不增加选择字段，目录失败仍可进入并支持重检恢复", async () => {
   api.read.mockResolvedValue({
     ...found,
     resources: [
@@ -392,7 +323,7 @@ it("单个安装版本不增加选择字段，模型目录失败时禁止进入�
   );
   expect(
     screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
-  ).toBeDisabled();
+  ).toBeEnabled();
   api.refreshOne.mockImplementationOnce(async () =>
     api.read.mockResolvedValue(found),
   );
@@ -410,7 +341,7 @@ it.each([
   { models: [{ id: "free-model", permissionLevels: ["default"] }] },
   { diagnostics: [{ code: "ACP_OPTIONS_UNAVAILABLE" }] },
 ])(
-  "模型为空、默认模型失效、权限不匹配或刷新失败均不能进入：%j",
+  "目录为空、模型未列出、权限候选不匹配或刷新失败仍可进入：%j",
   async (patch) => {
     api.read.mockResolvedValue({
       ...found,
@@ -419,7 +350,7 @@ it.each([
     mount();
     expect(
       await screen.findByRole("button", { name: "设为默认并进入 NeuxBot" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
     expect(api.update).not.toHaveBeenCalled();
   },
 );
@@ -553,17 +484,17 @@ it("用户安装后手动重检，再设置默认进入", async () => {
   expect(await screen.findByText("工作区")).toBeVisible();
 });
 
-it("探测故障与未安装分开，成功重检可恢复安装引导", async () => {
+it("探测故障在安装引导中提示，不替换配置入口", async () => {
   api.read.mockResolvedValue({ ...missing, startupDetectionFailed: true });
   mount();
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "本次检测未能完整完成",
   );
-  expect(screen.queryByText("设置智能体")).not.toBeInTheDocument();
-  api.refresh.mockImplementationOnce(async () =>
+  expect(screen.getByText("设置智能体")).toBeInTheDocument();
+  api.refreshOne.mockImplementationOnce(async () =>
     api.read.mockResolvedValue(missing),
   );
-  fireEvent.click(screen.getByRole("button", { name: "重试" }));
+  fireEvent.click(screen.getByRole("button", { name: "重新检测" }));
   expect(
     await screen.findByRole("heading", { name: "设置智能体" }),
   ).toBeVisible();
@@ -594,7 +525,6 @@ it("安装目录覆盖全部内置 CLI，Windows 不提供 Unix 安装命令", (
     "grok",
     "workbuddy",
     "qoder",
-    "qoder-cn",
   ]) {
     expect(cliInstallation(id, "macos")?.url).toMatch(/^https:\/\//);
     expect(cliInstallation(id, "windows")?.command ?? "").not.toMatch(
@@ -641,14 +571,14 @@ it("本次探测中连接失败，仍允许手动重试读取", async () => {
   expect(screen.getByRole("button", { name: "重试" })).toBeEnabled();
 });
 
-it("重检请求成功但后端仍有启动故障时保留错误页", async () => {
+it("重检仍有探测故障时保留提示和配置入口", async () => {
   api.read.mockResolvedValue({ ...missing, startupDetectionFailed: true });
   mount();
   await screen.findByRole("alert");
-  fireEvent.click(screen.getByRole("button", { name: "重试" }));
-  await waitFor(() => expect(api.refresh).toHaveBeenCalledOnce());
+  fireEvent.click(screen.getByRole("button", { name: "重新检测" }));
+  await waitFor(() => expect(api.refreshOne).toHaveBeenCalledOnce());
   expect(screen.getByRole("alert")).toHaveTextContent("本次检测未能完整完成");
-  expect(screen.queryByText("设置智能体")).not.toBeInTheDocument();
+  expect(screen.getByText("设置智能体")).toBeInTheDocument();
 });
 
 it("保存请求成功但后端未解除准入时仍保留引导", async () => {
@@ -686,7 +616,7 @@ it("单页同时列出已安装与未安装 CLI，安装命令使用图标复制
   expect(api.update).not.toHaveBeenCalled();
 });
 
-it("超过十个模型复用搜索选择，按用户所选模型与支持权限保存", async () => {
+it("超过十个模型复用搜索选择，保留已配置权限保存", async () => {
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -730,11 +660,89 @@ it("超过十个模型复用搜索选择，按用户所选模型与支持权限�
       expect.objectContaining({
         body: expect.objectContaining({
           defaultModel: "model-11",
-          defaultPermissionLevel: "default",
+          defaultPermissionLevel: "auto",
         }),
       }),
       expect.anything(),
     ),
   );
   vi.unstubAllGlobals();
+});
+
+it("所选智能体探测失败且目录为空仍可保存配置并进入", async () => {
+  api.read.mockResolvedValue({
+    ...found,
+    resources: [
+      {
+        ...found.resources?.[0],
+        state: "unavailable",
+        models: [],
+        defaultModel: "saved-model",
+        diagnostics: [{ code: "ACP_OPTIONS_UNAVAILABLE" }],
+      },
+    ],
+  });
+  mount();
+  const enter = await screen.findByRole("button", {
+    name: "设为默认并进入 NeuxBot",
+  });
+  expect(enter).toBeEnabled();
+  fireEvent.click(enter);
+  expect(await screen.findByText("工作区")).toBeVisible();
+  expect(api.update).toHaveBeenCalledWith(
+    expect.objectContaining({
+      body: expect.objectContaining({
+        defaultModel: "saved-model",
+        defaultPermissionLevel: "auto",
+        enabled: true,
+        isDefault: true,
+      }),
+    }),
+    expect.anything(),
+  );
+});
+
+it("后台探测未完成不阻止保存已有程序配置", async () => {
+  api.read.mockResolvedValue({
+    ...found,
+    startupDetectionPending: true,
+    resources: [
+      { ...found.resources?.[0], state: "", detectedAt: 0, models: [] },
+    ],
+  });
+  mount();
+  const enter = await screen.findByRole("button", {
+    name: "设为默认并进入 NeuxBot",
+  });
+  expect(enter).toBeEnabled();
+  fireEvent.click(enter);
+  expect(await screen.findByText("工作区")).toBeVisible();
+});
+
+it("目录为空且未配置权限时以默认权限保存首次配置", async () => {
+  api.read.mockResolvedValue({
+    ...found,
+    resources: [
+      {
+        ...found.resources?.[0],
+        models: [],
+        defaultPermissionLevel: undefined,
+      },
+    ],
+  });
+  mount();
+  const enter = await screen.findByRole("button", {
+    name: "设为默认并进入 NeuxBot",
+  });
+  expect(enter).toBeEnabled();
+  fireEvent.click(enter);
+  expect(await screen.findByText("工作区")).toBeVisible();
+  expect(api.update).toHaveBeenCalledWith(
+    expect.objectContaining({
+      body: expect.objectContaining({
+        defaultPermissionLevel: "default",
+      }),
+    }),
+    expect.anything(),
+  );
 });

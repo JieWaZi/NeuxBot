@@ -15,15 +15,9 @@ type RefreshPluginCatalog struct {
 // Path 返回显式目录核验入口。
 func (*RefreshPluginCatalog) Path() string { return "/catalog/refresh" }
 
-// Output 核验轻量目录，保留失败前的缓存并唤醒已有插件查询。
+// Output 接纳与启动阶段相同的后台同步，不将供应商下载绑定到HTTP请求生命周期。
 func (*RefreshPluginCatalog) Output(ctx *gin.Context) (interface{}, error) {
-	source := global.PluginCatalogSource()
-	err := catalog.Refresh(ctx.Request.Context(), source)
-	// 远程来源由目录生命周期唯一通知；本地目录没有后台生命周期，在请求结束时通知。
-	if catalog.State(source).State == "local" {
-		publishProviderChange("")
-	}
-	if err != nil {
+	if err := catalog.RefreshInBackground(global.PluginCatalogSource()); err != nil {
 		return nil, ginx.WithStack(err)
 	}
 	return ginx.CommonSuccessResponse(), nil

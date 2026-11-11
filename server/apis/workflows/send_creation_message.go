@@ -143,6 +143,7 @@ func sendCreationMessage(ctx context.Context, d *workflowDependencies, command S
 	}
 	d.State.CreationCommands.Lock()
 	defer d.State.CreationCommands.Unlock()
+	var continuation models.Chat
 	if command.SessionID != "" {
 		previous, err := d.CreationSessions.GetCreationSession(ctx, command.SessionID)
 		if err != nil {
@@ -170,6 +171,10 @@ func sendCreationMessage(ctx context.Context, d *workflowDependencies, command S
 				if accepted.CompletedAt == nil {
 					return SendWorkflowCreationMessageResponse{WorkflowCreationSession: previous}, status_error.WorkflowStateConflict.WithField("reason", "creation_execution_active")
 				}
+				continuation, err = d.Chats.LoadExecutionChat(ctx, chatID)
+				if err != nil {
+					return SendWorkflowCreationMessageResponse{WorkflowCreationSession: previous}, err
+				}
 				// Core 已提交而确认写入未完成时，先保留已有 Chat，下一轮按续聊接纳。
 				if previous.ChatID == "" {
 					previous.ChatID = chatID
@@ -181,11 +186,52 @@ func sendCreationMessage(ctx context.Context, d *workflowDependencies, command S
 			}
 		}
 	}
-	configuration := execution.ExecutionConfiguration{RuntimeID: command.Defaults.RuntimeID, AccountID: command.Defaults.AccountID, Model: command.Defaults.Model, Reasoning: command.Defaults.Reasoning, PermissionLevel: command.Defaults.PermissionLevel}
-	if err := d.Executions.ValidateConfiguration(ctx, configuration); err != nil {
+	// 幂等摘要只覆盖原请求；解析后的默认值不改变同一次提交的身份。
+	digest := workflowstate.Digest(command)
+	receipt, replay, err := d.Store.FindReceipt(ctx, command.DefinitionID, command.RequestID)
+	if err != nil {
 		return SendWorkflowCreationMessageResponse{}, err
 	}
-	digest := workflowstate.Digest(command)
+	if replay && (receipt.Kind != "creation" || receipt.PayloadDigest != digest) {
+		return SendWorkflowCreationMessageResponse{}, status_error.WorkflowRequestConflict
+	}
+	resolvedDefaults := command.Defaults
+	if !replay {
+		configuration := execution.ExecutionConfiguration{RuntimeID: command.Defaults.RuntimeID, AccountID: command.Defaults.AccountID, Model: command.Defaults.Model, Reasoning: command.Defaults.Reasoning, Fast: command.Defaults.Fast, PermissionLevel: command.Defaults.PermissionLevel}
+		// 普通续聊沿用 Chat 最近有效选择；显式切换账号或 Runtime 重新解析其默认值。
+		if continuation.ID != "" && continuation.LastRuntimeID == configuration.RuntimeID {
+			if configuration.AccountID == "" {
+				configuration.AccountID = continuation.LastAccountID
+				if configuration.AccountID == "" {
+					configuration.AccountID = constants.AiAccountSystemID
+				}
+			}
+			previousAccount := continuation.LastAccountID
+			if previousAccount == "" {
+				previousAccount = constants.AiAccountSystemID
+			}
+			if configuration.AccountID == previousAccount {
+				if configuration.Model == "" {
+					configuration.Model = continuation.LastModel
+				}
+				if configuration.Reasoning == "" && configuration.Model == continuation.LastModel {
+					configuration.Reasoning = continuation.LastReasoning
+				}
+				if configuration.Fast == nil {
+					configuration.Fast = continuation.LastFast
+				}
+				configuration.Resolved = true
+			}
+		}
+		resolved, err := d.Executions.ResolveConfiguration(ctx, configuration)
+		if err != nil {
+			return SendWorkflowCreationMessageResponse{}, err
+		}
+		resolvedDefaults.RuntimeID, resolvedDefaults.AccountID = resolved.RuntimeID, resolved.AccountID
+		resolvedDefaults.Model, resolvedDefaults.Reasoning = resolved.Model, resolved.Reasoning
+		resolvedDefaults.Fast = resolved.Fast
+		resolvedDefaults.PermissionLevel = resolved.PermissionLevel
+	}
 	d.State.Commands.Lock()
 	var session models.WorkflowCreationSession
 	err = d.Transactions.Transaction(ctx, func(ctx context.Context) error {
@@ -236,7 +282,7 @@ func sendCreationMessage(ctx context.Context, d *workflowDependencies, command S
 			encoded, _ := json.Marshal(command.RunReference)
 			session.ContextInstructions = append(session.ContextInstructions, workinput.Instruction{Name: "WORKFLOW_RUN_REFERENCE.md", Content: "优化依据（修改前读取原运行完整证据与原版本源码；不要在面向用户的回复中展示内部身份）：" + string(encoded)})
 		}
-		session.Defaults = command.Defaults
+		session.Defaults = resolvedDefaults
 		session.AuthToken = util.New() + util.New()
 		if command.SessionID == "" {
 			err = d.CreationSessions.CreateCreationSession(ctx, session)
@@ -317,8 +363,10 @@ func sendCreationMessage(ctx context.Context, d *workflowDependencies, command S
 			SkillIDs: command.SkillIDs, ConnectorIDs: command.ConnectorIDs, PluginIDs: command.PluginIDs,
 		},
 		Options: execution.WorkOptions{
-			RuntimeID: session.Defaults.RuntimeID, AccountID: session.Defaults.AccountID,
+			ConfigurationResolved: true,
+			RuntimeID:             session.Defaults.RuntimeID, AccountID: session.Defaults.AccountID,
 			Model: session.Defaults.Model, Reasoning: session.Defaults.Reasoning,
+			Fast:            session.Defaults.Fast,
 			PermissionLevel: session.Defaults.PermissionLevel, SessionPolicy: sessionPolicy,
 			HistoryTurns: command.HistoryTurns, HistoryMode: command.HistoryMode,
 			SummaryModel: command.SummaryModel, SummaryReasoning: command.SummaryReasoning,

@@ -476,6 +476,7 @@ func (c *channelThreadController) UpdateMemberExecutionConfigs(
 				"account_id":       member.AccountID,
 				"model":            member.Model,
 				"reasoning":        member.Reasoning,
+				"fast":             member.Fast,
 				"permission_level": member.PermissionLevel,
 				"updated_at":       member.UpdatedAt,
 			})

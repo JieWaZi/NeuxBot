@@ -17,9 +17,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// mcpWriter 将命令注入的输出流交给协议传输，不关闭宿主拥有的流。
+// mcpWriter forwards the injected command output stream to protocol transport without closing host-owned streams.
 type mcpWriter struct {
-	// Writer 是只承载 MCP 帧的输出流。
+	// Writer is the output stream carrying only MCP frames.
 	io.Writer
 }
 
@@ -29,7 +29,7 @@ func (r *runner) mcpCommand() *cobra.Command {
 	root := &cobra.Command{Use: "mcp", Short: "Expose the current execution's capabilities over MCP"}
 	root.AddCommand(&cobra.Command{Use: "serve", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		r.entered = true
-		server, err := newMCPServer(cmd.Context(), r.streams.ContextFile)
+		server, err := newMCPServer(cmd.Context(), r.contextFile)
 		if err != nil {
 			return err
 		}
@@ -45,14 +45,14 @@ func (r *runner) mcpCommand() *cobra.Command {
 	return root
 }
 
-// newMCPServer 固定会话入口和工具目录；每次调用只读取一次当前轮授权，不在失败后换凭据重试。
+// newMCPServer freezes the session entry point and tool catalog; each call reads the current grant once and never retries with changed credentials.
 func newMCPServer(ctx context.Context, path string) (*mcp.Server, error) {
 	connection, err := capability.ReadConnection(path)
 	if err != nil {
 		return nil, err
 	}
 	bound := client{connection: connection}
-	response, err := bound.request(ctx, http.MethodGet, "/capabilities", nil, false, 5*time.Second)
+	response, err := bound.request(ctx, http.MethodGet, constants.AgentCLIMCPCatalogPath, nil, false, 5*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -60,14 +60,14 @@ func newMCPServer(ctx context.Context, path string) (*mcp.Server, error) {
 		return nil, status_error.AgentContextUnauthorized
 	}
 	var available struct {
-		// Operations 是 Core 对当前 Grant 冻结的可调用身份。
+		// Operations contains callable identities frozen by Core for the current grant.
 		Operations []capability.Operation `json:"operations"`
 	}
 	encoded, err := json.Marshal(response.Data)
 	if err != nil || json.Unmarshal(encoded, &available) != nil {
 		return nil, status_error.AgentConnectionUnavailable
 	}
-	// 原生热会话保留桥进程；同一路径轮转 Grant，但不能跨 Core 或入口接管授权。
+	// Warm native sessions retain the bridge process; grants rotate at the same path without transferring authorization across Core instances or entry points.
 	requestCurrent := func(ctx context.Context, method, route string, payload any, mutation bool, timeout time.Duration) (capability.Response, error) {
 		current, err := capability.ReadConnection(path)
 		if err != nil {
@@ -116,22 +116,22 @@ func newMCPServer(ctx context.Context, path string) (*mcp.Server, error) {
 			if err != nil {
 				result = capability.ErrorResponse(op.ID, err)
 			}
-			// Core 的前置授权校验可能尚未解析命令；桥接已知工具身份，不改写原错误与效果状态。
+			// Core authorization may run before command parsing; bridge the known tool identity without rewriting the original error or effect state.
 			if result.Operation == "" {
 				result.Operation = op.ID
 			}
 			return mcpResponse(result), nil
 		})
 	}
-	// 发现和回执只是原 Core 读取端口，不建立新的业务操作或授权。
+	// Discovery and receipts expose existing Core read ports without creating business operations or grants.
 	for _, entry := range []struct {
-		// name 是稳定协议工具名。
+		// name is the stable protocol tool name.
 		name string
-		// description 是工具用途。
+		// description describes the tool's purpose.
 		description string
-		// schema 是传输读取参数。
+		// schema contains transport read parameters.
 		schema map[string]any
-		// path 将已经验证的参数映射到唯一 Core 读取入口。
+		// path maps validated parameters to the sole Core read entry point.
 		path func(map[string]any) string
 	}{
 		{"capabilities", "List operations authorized for this execution.", map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false}, func(map[string]any) string { return "/capabilities" }},

@@ -1,4 +1,5 @@
 import type { HostService } from "@neuxbot/platform-contracts/services";
+import { uploadFileBytesLimit } from "@neuxbot/platform-contracts/upload-byte-limits";
 import { platform } from "@neuxbot/frontend/platform";
 import { selectCoreDirectory } from "../shell/directory-picker";
 import { webText } from "../i18n";
@@ -36,7 +37,7 @@ export const webHost: HostService = {
     const refs: string[] = [];
     try {
       for (const file of files) {
-        if (file.size > 64 * 1024 * 1024)
+        if (file.size > uploadFileBytesLimit)
           throw new Error(webText("uploadTooLarge"));
         refs.push(
           await stageFile(file.name, new Uint8Array(await file.arrayBuffer())),

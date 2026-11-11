@@ -14,7 +14,7 @@ if (
   throw new Error("Web 与 Core 端口必须位于 1–65535");
 }
 export default mergeConfig(
-  createFrontendViteConfig({ root, port: webPort, base: "/" }),
+  createFrontendViteConfig({ root, port: webPort, base: "/", host: "web" }),
   {
     server: {
       proxy: {

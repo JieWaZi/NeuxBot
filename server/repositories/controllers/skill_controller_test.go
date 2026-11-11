@@ -83,57 +83,85 @@ func TestSkillInstalledPartnerPreviewsStayBoundedAndUseRealProfiles(t *testing.T
 	}
 }
 
-func TestSkillControllerVisibleStateAndEnabledSkills(t *testing.T) {
+func TestSkillInstalledPartnersReadCompleteListWithBatchedPublicProfiles(t *testing.T) {
+	db := newTestDB(t)
+	partners := make([]models.Waker, 0, 106)
+	relations := make([]models.WakerSkill, 0, 105)
+	for index := 0; index < 106; index++ {
+		id := fmt.Sprintf("partner-%03d", index)
+		partners = append(partners, models.Waker{ID: id, Name: id, Avatar: "avatar-" + id, Bio: "private profile text"})
+		if index < 105 {
+			relations = append(relations, models.WakerSkill{ID: "relation-" + id, WakerID: id, SkillPackageID: "complete-list", Enabled: index%2 == 0})
+		}
+	}
+	if err := db.CreateInBatches(&partners, 100).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateInBatches(&relations, 100).Error; err != nil {
+		t.Fatal(err)
+	}
+	queryCount := 0
+	if err := db.Callback().Query().After("gorm:query").Register("test:complete_skill_partner_reads", func(query *gorm.DB) {
+		if !query.DryRun {
+			queryCount++
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	installed, err := NewSkillController(db).InstalledPartners(context.Background(), "complete-list")
+	if err != nil || len(installed) != 105 || queryCount != 3 {
+		t.Fatalf("complete partner read = %d partners, %d queries, error = %v", len(installed), queryCount, err)
+	}
+	for index, partner := range installed {
+		if partner.ID != partners[index].ID || partner.Name != partners[index].Name || partner.Avatar != partners[index].Avatar || partner.Bio != "" {
+			t.Fatalf("public profile read changed order, lost disabled relation, or leaked fields: %+v", partner)
+		}
+	}
+}
+
+func TestSkillControllerUsesOnlyActualInstallationAndEnabledState(t *testing.T) {
 	controller := NewSkillController(newTestDB(t))
 	ctx := context.Background()
-	public := models.SkillPackage{ID: "skill-public-000000000000000000000000", Name: "审查", Scope: constants.SkillScopePublic, Source: constants.SkillSourceGit, BuiltIn: true, CurrentVersionID: "version-public-0000000000000000"}
-	private := models.SkillPackage{ID: "skill-private-000000000000000000000000", Name: "私有", Scope: constants.SkillScopePrivate, Source: constants.SkillSourceZip, OwnerWakerID: "waker-0000000000000000000000000000", CurrentVersionID: "version-private-000000000000000"}
-	if err := controller.CreatePackage(ctx, public); err != nil {
+	skill := models.SkillPackage{ID: "installed-skill", Name: "审查", Source: constants.SkillSourceGit, CurrentVersionID: "installed-version"}
+	if err := controller.CreatePackage(ctx, skill); err != nil {
 		t.Fatal(err)
 	}
-	if err := controller.CreatePackage(ctx, private); err != nil {
+	if err := controller.CreateVersion(ctx, models.SkillVersion{ID: skill.CurrentVersionID, SkillPackageID: skill.ID, Version: "1.0.0", ContentPath: "skills/versions/installed/1", ContentDigest: "digest"}, true, skill.CurrentVersionID); err != nil {
 		t.Fatal(err)
 	}
-	if err := controller.CreateVersion(ctx, models.SkillVersion{ID: public.CurrentVersionID, SkillPackageID: public.ID, Version: "1.0.0", ContentPath: "skills/versions/public/1", ContentDigest: "digest"}, true, public.CurrentVersionID); err != nil {
+	items, err := controller.ListInstalled(ctx, "partner", "")
+	if err != nil || len(items) != 0 {
+		t.Fatalf("library resource implicitly installed: %+v %v", items, err)
+	}
+	if err := controller.EnsureWakerSkill(ctx, models.WakerSkill{ID: "relation", WakerID: "partner", SkillPackageID: skill.ID, Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := controller.CreateVersion(ctx, models.SkillVersion{ID: private.CurrentVersionID, SkillPackageID: private.ID, Version: "1.0.0", ContentPath: "skills/versions/private/1", ContentDigest: "digest"}, true, private.CurrentVersionID); err != nil {
+	items, err = controller.ListInstalled(ctx, "partner", "")
+	if err != nil || len(items) != 1 || items[0].CurrentVersion.ID != skill.CurrentVersionID || !items[0].Enabled {
+		t.Fatalf("explicit installation absent: %+v %v", items, err)
+	}
+	if err := controller.UpsertWakerSkill(ctx, models.WakerSkill{WakerID: "partner", SkillPackageID: skill.ID, Enabled: false}); err != nil {
 		t.Fatal(err)
 	}
-	items, err := controller.ListVisible(ctx, private.OwnerWakerID, "")
-	if err != nil {
+	if err := controller.EnsureWakerSkill(ctx, models.WakerSkill{ID: "reinstall", WakerID: "partner", SkillPackageID: skill.ID, Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 2 || items[0].Enabled {
-		t.Fatalf("visible skill state = %+v", items)
-	}
-	if err := controller.EnsureWakerSkill(ctx, models.WakerSkill{
-		ID: "default-relation", WakerID: private.OwnerWakerID, SkillPackageID: public.ID, Enabled: true,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	defaults, err := controller.ListEnabled(ctx, private.OwnerWakerID)
-	if err != nil || len(defaults) != 1 || defaults[0].SkillPackage.ID != public.ID {
-		t.Fatalf("explicit default skills = %+v, error=%v", defaults, err)
-	}
-	if err := controller.UpsertWakerSkill(ctx, models.WakerSkill{ID: "relation-000000000000000000000000000", WakerID: private.OwnerWakerID, SkillPackageID: public.ID, Enabled: false}); err != nil {
-		t.Fatal(err)
-	}
-	enabled, err := controller.ListEnabled(ctx, private.OwnerWakerID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(enabled) != 0 {
-		t.Fatalf("enabled skills = %d, want 0", len(enabled))
-	}
-	if err := controller.EnsureWakerSkill(ctx, models.WakerSkill{
-		ID: "another-default", WakerID: private.OwnerWakerID, SkillPackageID: public.ID, Enabled: true,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	enabled, err = controller.ListEnabled(ctx, private.OwnerWakerID)
+	enabled, err := controller.ListEnabled(ctx, "partner")
 	if err != nil || len(enabled) != 0 {
-		t.Fatalf("bootstrap overwrote disabled preference: %+v %v", enabled, err)
+		t.Fatalf("reinstall overwrote disabled preference: %+v %v", enabled, err)
+	}
+	if err := controller.DeleteByWaker(ctx, "partner"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.GetPackage(ctx, skill.ID); err != nil {
+		t.Fatalf("deleting partner removed library skill: %v", err)
+	}
+	if _, err := controller.GetVersion(ctx, skill.CurrentVersionID); err != nil {
+		t.Fatalf("deleting partner removed library version: %v", err)
+	}
+	items, err = controller.ListInstalled(ctx, "partner", "")
+	if err != nil || len(items) != 0 {
+		t.Fatalf("deleting partner retained installation: %+v %v", items, err)
 	}
 }
 
@@ -144,7 +172,6 @@ func TestSkillControllerCurrentVersionSynchronizesVersionedMetadata(t *testing.T
 		ID:          "skill-metadata-0000000000000000000000",
 		Name:        "old-name",
 		Description: "旧说明",
-		Scope:       constants.SkillScopePublic,
 		Source:      constants.SkillSourceZip,
 	}
 	if err := controller.CreatePackage(ctx, skill); err != nil {
@@ -177,7 +204,6 @@ func TestSkillControllerRejectsStaleCurrentVersionUpdate(t *testing.T) {
 	skill := models.SkillPackage{
 		ID:               "skill-concurrency-000000000000000000",
 		Name:             "review",
-		Scope:            constants.SkillScopePublic,
 		Source:           constants.SkillSourceZip,
 		CurrentVersionID: "version-1-00000000000000000000000",
 	}
@@ -214,5 +240,47 @@ func TestSkillControllerRejectsStaleCurrentVersionUpdate(t *testing.T) {
 	}
 	if _, err := controller.GetVersion(ctx, stale.ID); err == nil {
 		t.Fatal("stale version record was not rolled back")
+	}
+}
+
+func TestExistingLibraryContentUsesCurrentImportedVersions(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	for _, skill := range []models.SkillPackage{
+		{ID: "git", Name: "Renamed", Source: constants.SkillSourceGit, CurrentVersionID: "git-current"},
+		{ID: "zip", Name: "Same name", Source: constants.SkillSourceZip, CurrentVersionID: "zip-current"},
+		{ID: "builtin", Name: "Same name", Source: constants.SkillSourceBuiltin, BuiltIn: true, CurrentVersionID: "builtin-current"},
+	} {
+		if err := db.Create(&skill).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, version := range []models.SkillVersion{
+		{ID: "git-current", SkillPackageID: "git", Version: "2.0.0", ContentDigest: "current-git"},
+		{ID: "git-old", SkillPackageID: "git", Version: "1.0.0", ContentDigest: "historical"},
+		{ID: "zip-current", SkillPackageID: "zip", Version: "1.0.0", ContentDigest: "current-zip"},
+		{ID: "builtin-current", SkillPackageID: "builtin", Version: "1.0.0", ContentDigest: "internal-only"},
+	} {
+		if err := db.Create(&version).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	matches, err := NewSkillController(db).ExistingLibraryContent(ctx, []string{"current-git", "current-zip", "historical", "internal-only", "same-name-new-content"})
+	if err != nil || len(matches) != 2 || matches["current-git"] != "git" || matches["current-zip"] != "zip" {
+		t.Fatalf("current library content matches = %v, error=%v", matches, err)
+	}
+	var plan []struct {
+		// Detail 是 SQLite 返回的真实查询计划。
+		Detail string
+	}
+	if err := db.Raw("EXPLAIN QUERY PLAN SELECT content_digest, MIN(skill_package_id) FROM skill_versions WHERE content_digest IN ? AND id IN (SELECT current_version_id FROM skill_packages WHERE built_in = ? AND source IN ?) GROUP BY content_digest", []string{"current-git"}, false, []constants.SkillSource{constants.SkillSourceGit, constants.SkillSourceZip}).Find(&plan).Error; err != nil {
+		t.Fatal(err)
+	}
+	indexed := false
+	for _, step := range plan {
+		indexed = indexed || strings.Contains(step.Detail, "idx_skill_versions_content_digest")
+	}
+	if !indexed {
+		t.Fatalf("content query lost its digest index: %+v", plan)
 	}
 }

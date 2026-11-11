@@ -10,7 +10,6 @@ import (
 
 func init() {
 	dbhelper.RegisterTable(&Chat{})
-	dbhelper.RegisterTable(&RuntimeSession{})
 	dbhelper.RegisterTable(&ChatDeletionIntent{})
 }
 
@@ -139,6 +138,10 @@ type Chat struct {
 	LastRuntimeID string `gorm:"column:last_runtime_id;type:varchar(120);not null;default:''" json:"lastRuntimeId,omitempty"`
 	// LastReasoning 是最近一次执行或分叉边界冻结的推理强度。
 	LastReasoning string `gorm:"column:last_reasoning;type:varchar(120);not null;default:''" json:"lastReasoning,omitempty"`
+	// LastFast 是最近执行冻结的 Fast 意图。
+	LastFast *bool `gorm:"column:last_fast" json:"lastFast,omitempty"`
+	// LastContextWindow 是最近一次执行冻结的上下文档位。
+	LastContextWindow string `gorm:"column:last_context_window;not null;default:''" json:"lastContextWindow,omitempty"`
 	// LastModel 是最近一次执行选择的模型标识。
 	LastModel string `gorm:"column:last_model;type:varchar(200);not null;default:''" json:"lastModel,omitempty"`
 	// LastPermissionLevel 是最近一次实际发送冻结的产品权限等级。
@@ -154,23 +157,4 @@ type Chat struct {
 // TableName 返回对话索引模型使用的表名。
 func (Chat) TableName() string {
 	return "chats"
-}
-
-// RuntimeSession 保存可由对话日志重建的 Runtime 续接索引。
-type RuntimeSession struct {
-	// ChatID 是续接 Session 所属 Chat 标识。
-	ChatID string `gorm:"column:chat_id;type:varchar(32);primaryKey" json:"chatId"`
-	// RuntimeID 是拥有该续接句柄的开放 Runtime 标识。
-	RuntimeID string `gorm:"column:runtime_id;type:varchar(120);primaryKey" json:"runtimeId"`
-	// SessionID 是 Runtime 创建或确认的续接 Session 句柄。
-	SessionID string `gorm:"column:session_id;type:text;not null" json:"-"`
-	// LastExecutionID 是最后成功使用该续接 Session 的执行标识。
-	LastExecutionID string `gorm:"column:last_execution_id;type:varchar(32);not null" json:"lastExecutionId"`
-	// UpdatedAt 是 Runtime 续接索引最近更新时的 Unix 毫秒时间。
-	UpdatedAt int64 `gorm:"column:updated_at;autoUpdateTime:milli" json:"updatedAt"`
-}
-
-// TableName 返回 Runtime 续接索引模型使用的表名。
-func (RuntimeSession) TableName() string {
-	return "runtime_sessions"
 }

@@ -1,3 +1,4 @@
+import { useOptionalAppSceneWorkspace } from "@/shared/workspace/app-scene-workspace";
 import { Card, CardBody, CardFooter } from "@/shared/ui/card";
 import {
   Clock3,
@@ -28,6 +29,7 @@ import {
 export function WakerCard({ waker }: { waker: Waker }) {
   const { t } = useTranslation("automaticTask");
   const id = waker.id ?? "";
+  const appScenes = useOptionalAppSceneWorkspace();
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const builtin = isBuiltinWaker(waker);
@@ -65,6 +67,16 @@ export function WakerCard({ waker }: { waker: Waker }) {
           <CardFooter className="grid grid-cols-[1fr_1fr_44px] gap-0 px-0">
             <Link
               to={chatDraftHref(id)}
+              onClick={(event) => {
+                if (
+                  !event.metaKey &&
+                  !event.ctrlKey &&
+                  !event.shiftKey &&
+                  !event.altKey &&
+                  appScenes?.openNewChat?.({ kind: "waker", id: id })
+                )
+                  event.preventDefault();
+              }}
               className="hover:bg-muted h-row-navigation type-ui flex items-center justify-center gap-1.5 transition-colors"
             >
               <MessageCircle className="size-icon-sm" strokeWidth={1.5} />
@@ -96,7 +108,7 @@ export function WakerCard({ waker }: { waker: Waker }) {
                 </DropdownMenuItem>
                 {!builtin ? (
                   <DropdownMenuItem
-                    className="text-destructive data-[highlighted]:text-destructive"
+                    variant="destructive"
                     onSelect={() => setDeleting(true)}
                   >
                     <Trash2 />

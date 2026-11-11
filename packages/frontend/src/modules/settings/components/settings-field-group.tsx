@@ -1,11 +1,13 @@
 import { useId, type ReactNode } from "react";
 
-/** 设置参数共用浅底分组，同级字段之间只使用分隔线。 */
+/** 字段共用设置语义表面；已在Card内时使用plain，避免嵌套表面。 */
 export function SettingsFieldGroup({
   title,
   description,
   children,
+  surface = "card",
 }: {
+  surface?: "card" | "plain";
   title?: string;
   description?: string;
   children: ReactNode;
@@ -24,7 +26,14 @@ export function SettingsFieldGroup({
           {description}
         </p>
       ) : null}
-      <div className="bg-surface-tertiary divide-border-subtle divide-y overflow-hidden rounded-lg">
+      <div
+        data-slot={surface === "card" ? "settings-card" : undefined}
+        className={
+          surface === "card"
+            ? "bg-resource-surface overflow-hidden rounded-lg"
+            : "min-w-0"
+        }
+      >
         {children}
       </div>
     </fieldset>
@@ -42,16 +51,18 @@ export function SettingsFieldRow({
   children: ReactNode;
 }) {
   return (
-    <div className="grid min-w-0 grid-cols-1 items-center gap-2 px-4 py-3 @lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] @lg:gap-4">
+    <div className="before:bg-border-subtle min-h-row-detail relative grid min-w-0 grid-cols-1 items-center gap-2 px-4 py-3 before:absolute before:inset-x-4 before:top-0 before:h-px first:before:hidden @lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] @lg:gap-4">
       {htmlFor ? (
         <label
           htmlFor={htmlFor}
-          className="type-ui text-content-primary font-medium"
+          className="type-label text-content-primary font-medium"
         >
           {label}
         </label>
       ) : (
-        <div className="type-ui text-content-primary font-medium">{label}</div>
+        <div className="type-label text-content-primary font-medium">
+          {label}
+        </div>
       )}
       <div className="min-w-0">{children}</div>
     </div>

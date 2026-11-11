@@ -2,7 +2,11 @@
 package global
 
 import (
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/installation"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
 
 	"context"
 	"crypto/rand"
@@ -16,6 +20,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -46,6 +51,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/services/notification"
 	"github.com/JieWaZi/NeuxBot/server/services/runtimeenvironment"
 	"github.com/JieWaZi/NeuxBot/server/services/schedule"
+	"github.com/JieWaZi/NeuxBot/server/services/usage"
 	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 	"github.com/JieWaZi/neux-knowledge/core"
 	"github.com/shrewx/ginx/pkg/conf"
@@ -126,18 +132,24 @@ var (
 	ChannelTaskControllerManager controllers.ChannelTaskController
 	// PluginControllerManager 保存插件资源、版本、共享配置和伙伴安装。
 	PluginControllerManager controllers.PluginController
+	// ResourceCategoryControllerManager 保存按资源类型区分的用户分类选项。
+	ResourceCategoryControllerManager controllers.ResourceCategoryController
 	// SkillControllerManager 提供全局技能包、版本和伙伴关系持久化接口。
 	SkillControllerManager controllers.SkillController
 	// MCPConnectorControllerManager 提供共享连接器和伙伴关系持久化接口。
 	MCPConnectorControllerManager controllers.MCPConnectorController
 	// RuntimeCatalog 提供 CLI Runtime 的探测、协议调用和进程治理。
-	RuntimeCatalog *agentapi.Catalog
-	// AgentManager 统一登记聊天与独立任务会话，保留未完成清理的唯一所有者。
-	AgentManager *agentapi.Manager
+	RuntimeCatalog *agent.Catalog
+	// AgentProviders owns all candidate native processes and their account leases.
+	AgentProviders *agent.ProviderRuntime
+	// AgentThreads coordinates public chat turns against the shared conversation authority.
+	AgentThreads *agent.ThreadLifecycle
 	// RuntimeEnvironmentControllerManager 提供设备级 Runtime 环境持久化接口。
 	RuntimeEnvironmentControllerManager controllers.RuntimeEnvironmentController
 	// RuntimeEnvironmentService 提供 Runtime 环境初始化和探测生命周期。
 	RuntimeEnvironmentService runtimeenvironment.Service
+	// UsageService reads the rebuildable projection of canonical native consumption.
+	UsageService *usage.Service
 	// ChatService 提供 Chat 的全部稳定业务能力。
 	ChatService chat.Module
 	// ExecutionService 提供所有产品入口共用的工作准备与执行能力。
@@ -281,9 +293,9 @@ func Load(ctx context.Context, configuration *Configuration, handlerFactory sche
 		func() error { return loadNotifications(ctx) },
 		func() error { return loadIntegrationAPI(ctx) },
 		func() error {
-			hub := EventHub
-			closePluginCatalog = catalog.Start(ctx, PluginCatalogSource(), filepath.Join(configuration.DataDirectory, "plugins", "catalog"), func() {
-				_ = events.Emit(hub, constants.PluginEventTopic, "plugins.changed", events.Resource{Kind: "global"}, nil)
+			hub, source := EventHub, PluginCatalogSource()
+			closePluginCatalog = catalog.Start(ctx, source, filepath.Join(configuration.ManagedFilesDirectory, "Plugins"), func() {
+				publishPluginCatalogChange(hub, source)
 			})
 			return nil
 		},
@@ -358,6 +370,7 @@ func loadDB(ctx context.Context, configuration *Configuration) error {
 		}
 	})
 
+	ResourceCategoryControllerManager = controllers.NewResourceCategoryController(DB)
 	SkillControllerManager = controllers.NewSkillController(DB)
 	MCPConnectorControllerManager = controllers.NewMCPConnectorController(DB)
 	RuntimeEnvironmentControllerManager = controllers.NewRuntimeEnvironmentController(DB)
@@ -368,6 +381,16 @@ func loadDB(ctx context.Context, configuration *Configuration) error {
 	WorkflowRunControllerManager = controllers.NewWorkflowRunController(DB)
 	WorkflowCreationControllerManager = controllers.NewWorkflowCreationController(DB)
 	AIAccountService = aiaccount.New(AIAccountControllerManager, configuration.DataDirectory)
+	AIAccountService.SetProgramResolver(func(ctx context.Context, runtimeID string) (string, []string, error) {
+		environment, err := RuntimeEnvironmentControllerManager.Get(ctx, runtimeID)
+		if err != nil {
+			return "", nil, err
+		}
+		if (environment.BaseRuntimeID != constants.RuntimeIDClaude && environment.BaseRuntimeID != constants.RuntimeIDKimi) || environment.Detection.ResolvedBinary == "" {
+			return "", nil, status_error.RuntimeUnavailable
+		}
+		return environment.Detection.ResolvedBinary, append([]string(nil), environment.PrefixArgs...), nil
+	})
 	AIAccountService.SetEventPublisher(EventHub)
 	AIAccountService.Start(ctx)
 
@@ -448,19 +471,60 @@ func loadMemory(ctx context.Context, configuration *Configuration) error {
 
 // loadRuntime 装配 Runtime SDK 并启动设备级环境探测。
 func loadRuntime(ctx context.Context) error {
-	sdk, err := agentapi.NewCatalog(agentapi.CatalogConfig{})
+	sdk, err := agent.NewCatalog(agent.CatalogConfig{})
 	if err != nil {
 		return mapCoreError("initialize_runtime_sdk", status_error.CoreRuntimeInitializationFailed, err)
 	}
 	RuntimeCatalog = sdk
-	AgentManager = newAgentManager()
-	AIAccountService.SetIdleSessionCloser(AgentManager.CloseIdleAccount)
-	AgentManager.Start(ctx)
+	AgentProviders = agent.NewProviderRuntime(agent.ProviderRuntimeOptions{AcquireAccount: AIAccountService.AcquireAccount})
 	RuntimeEnvironmentService, err = runtimeenvironment.New(runtimeenvironment.Config{
+		BeforeRuntimeMaintenance: func(ctx context.Context, provider string) (func(), error) {
+			if AgentThreads == nil {
+				return nil, status_error.RuntimeEnvironmentServiceUnavailable
+			}
+			providerRelease, err := AgentThreads.BeginProviderMaintenance(ctx, provider)
+			if err != nil {
+				return nil, err
+			}
+			accountRelease, err := AIAccountService.BeginProgramMaintenance(ctx, provider)
+			if err != nil {
+				providerRelease()
+				return nil, err
+			}
+			var once sync.Once
+			return func() { once.Do(func() { accountRelease(); providerRelease() }) }, nil
+		},
+		RestartProvider: func(ctx context.Context, provider string) error {
+			if AgentThreads == nil {
+				return status_error.RuntimeEnvironmentServiceUnavailable
+			}
+			return AgentThreads.RestartProvider(ctx, provider)
+		},
+		BeforeRuntimeAuthentication: func(ctx context.Context, provider string) (func(), error) {
+			release, err := AgentProviders.BeginSystemAuthentication(ctx, provider)
+			if err != nil {
+				return nil, err
+			}
+			if AgentThreads != nil {
+				if err := AgentThreads.CloseIdleSystemRuntime(ctx, provider); err != nil {
+					release()
+					return nil, err
+				}
+			}
+			if err := AgentProviders.CheckSystemAuthenticationIdle(provider); err != nil {
+				release()
+				return nil, err
+			}
+			return release, nil
+		},
+		Installer:                 installation.New(filepath.Join(Config.DataDirectory, "runtime-installations")),
 		Accounts:                  AIAccountService,
+		ProviderRuntime:           AgentProviders,
+		ResolveAccount:            AIAccountService.ResolveAccount,
 		AccountWorkspaceDirectory: filepath.Join(Config.DataDirectory, "account-workspaces"),
 		RuntimeCatalog:            RuntimeCatalog,
 		Environments:              RuntimeEnvironmentControllerManager,
+		ModelCatalogs:             controllers.NewRuntimeModelCatalogController(DB),
 		Transactions:              TransactionControllerManager,
 		Events:                    EventHub,
 	})
@@ -473,26 +537,72 @@ func loadRuntime(ctx context.Context) error {
 	return nil
 }
 
+// recoverWakerDeletions 在原生消费者启动前按伙伴权威存在性恢复目录。
+func recoverWakerDeletions(ctx context.Context, managedDirectory string) error {
+	layout, err := chatstorage.NewLayout(managedDirectory)
+	if err != nil {
+		return mapCoreError("initialize_waker_storage", status_error.CoreChatInitializationFailed, err)
+	}
+	deletions, err := chatstorage.NewDeletionCoordinator(layout)
+	if err != nil {
+		return mapCoreError("initialize_waker_deletion", status_error.CoreChatInitializationFailed, err)
+	}
+	if err = deletions.ResumeWakers(func(wakerID string) (bool, error) {
+		_, err := WakerControllerManager.Get(ctx, wakerID)
+		if util.HasStatusCode(err, status_error.WakerNotFound) {
+			return true, nil
+		}
+		return false, err
+	}); err != nil {
+		return mapCoreError("recover_waker_deletion", status_error.CoreChatInitializationFailed, err)
+	}
+	return nil
+}
+
 // loadChat 先恢复 Chat 权威事实，再装配入口无关的 Execution Core。
 func loadChat(ctx context.Context, configuration *Configuration, handlerFactory schedule.LocalHandlerFactory) error {
+	if err := recoverWakerDeletions(ctx, configuration.ManagedFilesDirectory); err != nil {
+		return err
+	}
+	conversations, err := conversation.NewStore(configuration.ManagedFilesDirectory)
+	if err != nil {
+		return mapCoreError("initialize_conversation_store", status_error.CoreChatInitializationFailed, err)
+	}
 	chatModule, err := chat.New(chat.Config{
 		StorageDirectory: configuration.ManagedFilesDirectory,
+		Conversations:    conversations,
 		Projects:         ProjectControllerManager,
 		Results:          WorkResultControllerManager,
 		QueryIndexes: chat.QueryIndexDependencies{
 			Chats:           ChatControllerManager,
-			RuntimeSessions: controllers.NewRuntimeSessionController(DB),
 			Transactions:    TransactionControllerManager,
 			DeletionIntents: ChatDeletionIntentControllerManager,
 		},
 	})
 	if err != nil {
+		conversations.Close()
 		return mapCoreError("initialize_chat_service", status_error.CoreChatInitializationFailed, err)
 	}
 	ChatService = chatModule
 	if err := ChatService.Start(ctx); err != nil {
 		return mapCoreError("start_chat_service", status_error.CoreChatInitializationFailed, err)
 	}
+	AgentThreads = agent.NewThreadLifecycle(AgentProviders, conversations)
+	UsageService = usage.NewService(conversations, controllers.NewUsageController(DB))
+	hub := EventHub
+	conversations.SetUsageChanged(func() {
+		hub.Publish(events.Event{Topic: "usage", Type: "usage.changed", Resource: events.Resource{Kind: "global"}})
+	})
+	AIAccountService.SetIdleSessionCloser(AgentThreads.CloseIdleAccount)
+	providers, environments := AgentProviders, RuntimeEnvironmentService
+	AIAccountService.SetAccountAuthInvalidator(func(ctx context.Context, provider, id string, generation uint64) {
+		environments.InvalidateModelCatalog(id, generation)
+		closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+		defer cancel()
+		if err := providers.InvalidateAccount(closeCtx, provider, id, generation); err != nil {
+			logx.Warn("invalidate_provider_account: ", err)
+		}
+	})
 	executionCore, err := execution.New(execution.Config{
 		ValidateIntent: func(ctx context.Context, intent execution.WorkIntent) error {
 			if KnowledgeService == nil {
@@ -526,14 +636,16 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 			return bindings
 		},
 		Accounts:            AIAccountService,
-		Runtime:             AgentManager,
+		Threads:             AgentThreads,
+		ResolveAccount:      AIAccountService.ResolveAccount,
+		RuntimeSummaries:    RuntimeCatalog.Runtimes(),
 		Journal:             chatModule,
 		DormantChats:        chatModule,
 		Wakers:              WakerControllerManager,
 		Profiles:            ProfileDocumentControllerManager,
 		Projects:            ProjectControllerManager,
 		Skills:              SkillControllerManager,
-		PluginInstallations: plugininstallation.New(plugininstallation.Config{Contents: PluginContents, DataDirectory: configuration.DataDirectory, Bridges: PluginBridges, BridgeEnvironment: PluginBridgeEnvironment, Store: PluginControllerManager, CloseIdlePlugin: AgentManager.CloseIdlePlugin}),
+		PluginInstallations: plugininstallation.New(plugininstallation.Config{Transactions: TransactionControllerManager, Contents: PluginContents, DataDirectory: configuration.DataDirectory, Bridges: PluginBridges, BridgeEnvironment: PluginBridgeEnvironment, Store: PluginControllerManager}),
 		PluginContents:      PluginContents, Plugins: PluginControllerManager, PluginLauncher: coreExecutablePath(),
 		Connectors:          MCPConnectorControllerManager,
 		RuntimeEnvironments: RuntimeEnvironmentControllerManager,
@@ -681,14 +793,23 @@ func Close() error {
 		ExecutionService.Close()
 		ExecutionService = nil
 	}
-	if AgentManager != nil {
-		closeContext, cancelClose := context.WithTimeout(context.Background(), 5*time.Second)
-		err := AgentManager.Close(closeContext)
+	if AgentThreads != nil {
+		closeContext, cancelClose := context.WithTimeout(context.Background(), 15*time.Second)
+		err := AgentThreads.Close(closeContext)
 		cancelClose()
 		if err != nil {
-			return mapCoreError("close_agent_manager", status_error.CoreShutdownFailed, err)
+			return mapCoreError("close_agent_threads", status_error.CoreShutdownFailed, err)
 		}
-		AgentManager = nil
+		AgentThreads = nil
+	}
+	if AgentProviders != nil {
+		closeContext, cancelClose := context.WithTimeout(context.Background(), 15*time.Second)
+		err := AgentProviders.Close(closeContext)
+		cancelClose()
+		if err != nil {
+			return mapCoreError("close_agent_providers", status_error.CoreShutdownFailed, err)
+		}
+		AgentProviders = nil
 	}
 	if PluginBridges != nil {
 		PluginBridges.Close()
@@ -703,19 +824,7 @@ func Close() error {
 		RuntimeEnvironmentService = nil
 	}
 
-	if RuntimeCatalog != nil {
-		closeContext, cancelClose := context.WithTimeout(
-			context.Background(),
-			5*time.Second,
-		)
-		err := RuntimeCatalog.Close(closeContext)
-		cancelClose()
-		if err != nil {
-			logx.Errorf("core shutdown failed: component=runtime_catalog error=%v", err)
-			return status_error.CoreShutdownFailed
-		}
-		RuntimeCatalog = nil
-	}
+	RuntimeCatalog = nil
 	if AIAccountService != nil {
 		AIAccountService.Close()
 		AIAccountService = nil
@@ -827,6 +936,16 @@ func loadKnowledge(ctx context.Context, configuration *Configuration) error {
 	return err
 }
 
+// publishPluginCatalogChange 只在一次真实后台同步结束时发布结果，缓存恢复不重放失败提示。
+func publishPluginCatalogChange(hub events.Publisher, source string) {
+	state := catalog.State(source)
+	if state.ErrorCode != "" {
+		_ = events.Emit(hub, constants.PluginEventTopic, "plugins.catalog.sync.failed", events.Resource{Kind: "global"}, map[string]string{"errorCode": state.ErrorCode})
+		return
+	}
+	_ = events.Emit(hub, constants.PluginEventTopic, "plugins.catalog.sync.succeeded", events.Resource{Kind: "global"}, nil)
+}
+
 // closePluginCatalog 取消并等待启动时的目录更新，先于事件通道关闭。
 var closePluginCatalog func()
 
@@ -836,40 +955,4 @@ func PluginCatalogSource() string {
 		return value
 	}
 	return constants.PluginCatalogHTTPSource
-}
-
-// newAgentManager 将聊天工作区与独立任务账号端口装配到同一个会话管理器。
-func newAgentManager() *agentapi.Manager {
-	return agentapi.NewManager(agentapi.ManagerConfig{Launch: RuntimeCatalog.PrepareLaunch, PrepareWorkspace: agentapi.NewWorkspacePreparer(RuntimeCatalog.Runtimes()).Prepare, Runtimes: RuntimeCatalog.Runtimes, Fork: agentapi.NewForkHandler(RuntimeCatalog), Resolve: func(ctx context.Context, input agentapi.TextRequest) (agentapi.Environment, error) {
-		environment, err := RuntimeEnvironmentControllerManager.Get(ctx, input.RuntimeID)
-		if err != nil {
-			return agentapi.Environment{}, err
-		}
-		if !environment.Enabled || environment.Detection.State != agentapi.DetectionStateReady {
-			return agentapi.Environment{}, status_error.RuntimeUnavailable
-		}
-		binary := environment.Binary
-		if binary == "" {
-			binary = environment.Detection.ResolvedBinary
-		}
-		return agentapi.Environment{BaseRuntimeID: environment.BaseRuntimeID, Detection: environment.Detection, Target: agentapi.RuntimeTarget{RuntimeID: input.RuntimeID, Binary: binary, PrefixArgs: append([]string(nil), environment.PrefixArgs...), ConfigHome: environment.ConfigHome, CloseAfterRun: true}}, nil
-	}, Prepare: func(ctx context.Context, input agentapi.TextRequest, environment agentapi.Environment, workspace string) (agentapi.RuntimeTarget, func(context.Context) error, error) {
-		target := environment.Target
-		if input.AccountID == "" || input.AccountID == constants.AiAccountSystemID {
-			return target, func(context.Context) error { return nil }, nil
-		}
-		if AIAccountService == nil {
-			return target, nil, status_error.AIAccountConfigurationInvalid
-		}
-		prepared, release, err := AIAccountService.PrepareQueuedLease(ctx, input.AccountID, environment.BaseRuntimeID, workspace, input.Model)
-		if err != nil {
-			return target, nil, err
-		}
-		target.AccountID, target.Environment, target.Isolated = prepared.AccountID, prepared.Environment, prepared.Isolated
-		target.RefreshCredentials = prepared.RefreshCredentials
-		if prepared.ConfigHome != "" {
-			target.ConfigHome = prepared.ConfigHome
-		}
-		return target, release, nil
-	}})
 }

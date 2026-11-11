@@ -1,14 +1,9 @@
-import { cn } from "@/shared/lib/cn";
-import {
-  companionAvatar,
-  companionAppearance,
-} from "@/shared/companion/appearance";
-import { CompanionAvatar } from "@/shared/companion/companion-avatar";
-import type { CompanionControl } from "@/shared/companion/companion-avatar";
-import type { CompanionActivity } from "@/shared/companion/activity";
-import { useRef } from "react";
+import type { StateId } from "@neuxbot/bloub/states";
 import { useTranslation } from "react-i18next";
-import { useCompanionDock } from "@/shared/ui/companion-interaction";
+import { cn } from "@/shared/lib/cn";
+import { companionAvatar } from "@/shared/companion/appearance";
+import { CompanionAvatar } from "@/shared/companion/companion-avatar";
+import type { CompanionActivity } from "@/shared/companion/activity";
 
 type AvatarProps = {
   name: string;
@@ -18,10 +13,10 @@ type AvatarProps = {
   className?: string;
   activity?: CompanionActivity;
   interactive?: boolean;
-  /** 静态头像保留身体风格，关闭状态、待机动画和独立互动。 */
+  /** 静态头像保留形状、材质和默认表情，不启动帧循环。 */
   animated?: boolean;
   preview?: boolean;
-  summon?: boolean;
+  animation?: StateId;
   onDoubleInteract?: (trigger: HTMLElement) => void;
 };
 const sizeClass = {
@@ -43,123 +38,74 @@ export function Avatar({
   interactive = true,
   animated = true,
   preview = false,
-  summon = true,
+  animation,
   onDoubleInteract,
 }: AvatarProps) {
   const { t } = useTranslation("common");
-  const dock = useCompanionDock();
-  const canSummon = Boolean(summon && dock);
-  const control = useRef<CompanionControl>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const clicks = useRef({ count: 0, lastAt: 0 });
-  const avatar = companionAvatar(src, name);
+  const canInteract = animated && (interactive || Boolean(onDoubleInteract));
   const image = (
     <CompanionAvatar
-      ref={control}
-      avatar={avatar}
+      avatar={companionAvatar(src, name)}
       activity={activity}
       animated={animated}
+      interactive={canInteract}
       preview={preview}
+      animation={animation}
     />
   );
-  const frameClass = cn(
-    "relative inline-flex shrink-0 align-middle",
-    sizeClass[size],
-    className,
-  );
-  if (!interactive || !animated)
-    return (
-      <span className={frameClass} aria-hidden="true">
-        {image}
-      </span>
-    );
-  const interact = () => {
-    control.current?.interact();
-    const now = Date.now();
-    clicks.current.count =
-      now - clicks.current.lastAt <= 650 ? clicks.current.count + 1 : 1;
-    clicks.current.lastAt = now;
-    if (clicks.current.count === 2 && trigger.current)
-      onDoubleInteract?.(trigger.current);
-    if (clicks.current.count >= 3) {
-      clicks.current.count = 0;
-      if (canSummon && trigger.current)
-        dock?.show(avatar, name, trigger.current);
-    }
-  };
   return (
-    <>
-      <span className={frameClass}>
+    <span
+      className={cn(
+        "relative inline-flex shrink-0 align-middle",
+        sizeClass[size],
+        className,
+      )}
+      aria-hidden={canInteract ? undefined : true}
+    >
+      {canInteract ? (
         <button
-          ref={trigger}
           type="button"
-          className="focus-visible:ring-ring before:min-h-control-md before:min-w-control-md relative block size-full cursor-pointer rounded-sm outline-none before:absolute before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 focus-visible:ring-2"
-          aria-label={t("companion.interact", { name })}
-          aria-expanded={
-            canSummon ? dock?.selected?.avatar === avatar : undefined
-          }
-          title={t(
-            onDoubleInteract
-              ? "companion.showcaseHint"
-              : canSummon
-                ? "companion.hint"
-                : "companion.tapHint",
+          data-avatar-hover
+          aria-label={t(
+            onDoubleInteract ? "companion.showcase" : "companion.interact",
+            { name },
           )}
+          className="focus-visible:ring-ring before:min-h-control-md before:min-w-control-md relative block size-full cursor-pointer rounded-sm outline-none before:absolute before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 focus-visible:ring-2"
           onPointerDown={(event) => event.stopPropagation()}
           onDoubleClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
-          }}
-          onKeyDown={(event) => {
-            event.stopPropagation();
-            if (event.key === "ArrowUp") {
-              event.preventDefault();
-              if (canSummon && trigger.current)
-                dock?.show(avatar, name, trigger.current);
-            }
+            onDoubleInteract?.(event.currentTarget);
           }}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
-            interact();
+            if (event.detail === 0) onDoubleInteract?.(event.currentTarget);
           }}
         >
           {image}
         </button>
-      </span>
-    </>
+      ) : (
+        image
+      )}
+    </span>
   );
 }
 
-const staticImages = import.meta.glob<string>(
-  "../../../../../vendor/companion/assets/static/*.svg",
-  { eager: true, query: "?url", import: "default" },
-);
-
-/** 普通图片头像不挂载动画引擎、播放计时器或可见性监听。 */
+/** 静态缩略图与动态头像共用同一渲染层，固定采样而不创建播放循环。 */
 export function StaticAvatar({
   name,
   src,
   size = "md",
   className,
 }: Pick<AvatarProps, "name" | "src" | "size" | "className">) {
-  const { style } = companionAppearance(companionAvatar(src, name));
   return (
-    <img
-      src={
-        staticImages[
-          `../../../../../vendor/companion/assets/static/${style}.svg`
-        ]
-      }
-      alt=""
-      aria-hidden="true"
-      loading="lazy"
-      decoding="async"
-      className={cn(
-        "inline-block shrink-0 align-middle",
-        sizeClass[size],
-        className,
-      )}
+    <Avatar
+      name={name}
+      src={src}
+      size={size}
+      className={className}
+      animated={false}
     />
   );
 }

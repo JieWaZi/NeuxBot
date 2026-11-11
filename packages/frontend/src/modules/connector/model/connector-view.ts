@@ -13,13 +13,14 @@ import {
 } from "@/shared/lib/command-line-arguments";
 
 export const defaultConnectorFormValue: ConnectorFormValue = {
+  categories: [],
   argumentsText: "",
   command: "",
   description: "",
   environment: [],
   headers: [],
   name: "",
-  timeoutMS: "10000",
+  timeoutSeconds: "10",
   transport: "stdio",
   url: "",
 };
@@ -41,6 +42,7 @@ export function toConnectorSummary(
       ? connector.testStatus
       : "untested";
   return {
+    categories: connector.categories ?? [],
     activationPolicy: connectorActivationPolicyOf(connector.activationPolicy),
     affectedWakerCount: view.affectedWakerCount ?? 0,
     compatibility: view.compatibility ?? [],
@@ -69,21 +71,50 @@ export function connectorSelectableInComposer(
   return connectorActivationPolicyOf(activationPolicy) === "per_execution";
 }
 
+/** 试用引用只来自所选伙伴当前已启用且可进入普通聊天的安装记录。 */
+export function connectorReferenceAvailable(
+  view: ConnectorView | undefined,
+  connectorId: string,
+): boolean {
+  return Boolean(
+    connectorId &&
+    view?.connector?.id === connectorId &&
+    view.enabled === true &&
+    connectorSelectableInComposer(view.connector.activationPolicy),
+  );
+}
+
 export function toConnectorFormValue(
   connector?: ConnectorRecord,
 ): ConnectorFormValue {
   if (!connector) return { ...defaultConnectorFormValue };
   return {
     argumentsText: formatCommandLineArguments(connector.arguments ?? []),
+    categories: connector.categories ?? [],
     command: connector.command ?? "",
     description: connector.description ?? "",
     environment: toSecretFields(connector.environment),
     headers: toSecretFields(connector.headers),
     name: connector.name ?? "",
-    timeoutMS: String(connector.timeoutMs ?? 10000),
+    timeoutSeconds: String((connector.timeoutMs ?? 10000) / 1000),
     transport: connectorTransportOf(connector.transport),
     url: connector.url ?? "",
   };
+}
+
+/** 编辑使用秒；提交时恢复整数毫秒，不丢弃历史值的毫秒精度。 */
+export function connectorTimeoutMsFromSeconds(value: string): number | null {
+  const seconds = Number(value);
+  if (
+    !value.trim() ||
+    !Number.isFinite(seconds) ||
+    seconds < 0.1 ||
+    seconds > 300
+  )
+    return null;
+  // 先消除乘法的二进制尾差，再用往返比较拒绝不足一毫秒的输入。
+  const milliseconds = Math.round(seconds * 1000);
+  return milliseconds / 1000 === seconds ? milliseconds : null;
 }
 
 export function connectorTrustFieldsChanged(

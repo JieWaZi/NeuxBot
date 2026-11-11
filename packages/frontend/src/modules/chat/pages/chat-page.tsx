@@ -1,3 +1,4 @@
+import { readChatDraftIntent } from "@/shared/lib/chat-draft-intent";
 import { getWakerRecentProjectOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { useInstalledPluginReferences } from "@/modules/plugin";
 import { useExecutionSelection } from "@/shared/hooks/use-execution-selection";
@@ -28,8 +29,12 @@ import type { ChatWorkspaceMainContent } from "../components/chat-workspace-surf
 import { useWorkbench } from "../workbench/workbench-store";
 import type { ChatSendSelection } from "../runtime/chat-queue-store";
 import { useTranslation } from "react-i18next";
+import { Terminal } from "lucide-react";
+import { Button } from "@/shared/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import {
   useNavigate,
+  useLocation,
   useOutletContext,
   useParams,
   useSearchParams,
@@ -70,7 +75,7 @@ import { resolveGitWorkspaceDirectories } from "../model/git-workspace-directori
 import { useChatWorkspaceBindings } from "../components/use-chat-workspace-bindings";
 import { useComposerScopeTransition } from "../model/use-composer-scope-transition";
 import { useChatViewState } from "../model/use-chat-view-state";
-import { projectFilesScopePath } from "../model/project-files-scope";
+import { chatFileRoots } from "../model/project-files-scope";
 import {
   conversationKeyOf,
   useChatInvocationGuard,
@@ -99,8 +104,6 @@ import {
   withStableCreateRequest,
 } from "@/shared/lib/create-request-idempotency";
 import { type PermissionLevel } from "@/shared/lib/runtime-permissions";
-import { Avatar } from "@/shared/ui/avatar";
-import { TypedPhrases } from "@/shared/ui/typed-phrases";
 import { useSceneWorkspace } from "@/shared/workspace/workspace-context";
 import type { WorkspaceMemberTab } from "@/shared/workspace/workspace-tab";
 import type { ChatOutletContext } from "./chat-page-shared";
@@ -118,6 +121,8 @@ export type ChatWorkspaceEntry = {
   /** 首条输入在完整画布内居中，发送后在主容器内展开会话与业务内容。 */
   canvasInput?: boolean;
   showSummary?: boolean;
+  /** 没有 Shell 工作台入口的宿主可显式保留终端操作。 */
+  showTerminalAction?: boolean;
   showFileChanges?: boolean;
   active?: boolean;
   defaults?: ExecutionSelection;
@@ -151,6 +156,8 @@ export type ChatWorkspaceEntry = {
 
 type ChatPageContentProps = {
   chatId?: string;
+  /** 既有入口已解析的草稿身份，不替代落库Chat的真实归属。 */
+  resolvedWakerId?: string;
   embedded?: boolean;
   routeTransitioning?: boolean;
   entry?: ChatWorkspaceEntry;
@@ -183,6 +190,7 @@ export function ChatPageContent(props: ChatPageContentProps) {
 
 function ChatView({
   chatId,
+  resolvedWakerId,
   embedded = false,
   routeTransitioning = false,
   entry,
@@ -195,6 +203,15 @@ function ChatView({
   const sceneActive = routeActive && (entry?.active ?? true);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const promptDraft =
+    !entry && !chatId
+      ? readChatDraftIntent(
+          location.state,
+          searchParams.get("draftId") ?? "",
+          searchParams.get("wakerId") ?? resolvedWakerId ?? "",
+        )
+      : undefined;
   const queryClient = useQueryClient();
   const outlet = useOutletContext<ChatOutletContext | null>();
   const [localPanel, setLocalPanel] =
@@ -209,12 +226,24 @@ function ChatView({
     useDraftWorkspaceSelections();
   const [selectedSkillIDsByWaker, setSelectedSkillIDsByWaker] = useState<
     Record<string, string[]>
-  >({});
+  >(() =>
+    promptDraft?.skillId
+      ? { [promptDraft.wakerId]: [promptDraft.skillId] }
+      : {},
+  );
   const [selectedPluginIDsByWaker, setSelectedPluginIDsByWaker] = useState<
     Record<string, string[]>
-  >({});
+  >(() =>
+    promptDraft?.pluginId
+      ? { [promptDraft.wakerId]: [promptDraft.pluginId] }
+      : {},
+  );
   const [selectedConnectorIDsByWaker, setSelectedConnectorIDsByWaker] =
-    useState<Record<string, string[]>>({});
+    useState<Record<string, string[]>>(() =>
+      promptDraft?.connectorId
+        ? { [promptDraft.wakerId]: [promptDraft.connectorId] }
+        : {},
+    );
   const [composerRestoreRevision, setComposerRestoreRevision] = useState(0);
   const [sessionSwitch, setSessionSwitch] = useState<{
     chatId: string;
@@ -223,6 +252,8 @@ function ChatView({
       model: string;
       permissionLevel: PermissionLevel;
       reasoning: string;
+      fast: boolean | null;
+      contextWindow: string;
       runtimeId: string;
     }>;
     runtimeId: string;
@@ -273,7 +304,6 @@ function ChatView({
   }, []);
   const {
     composerClearRevision,
-    companionScopeRevision,
     clearComposer,
     markSkipComposerClearOnCreate,
   } = useComposerScopeTransition(
@@ -290,6 +320,8 @@ function ChatView({
   const {
     codeReferenceRequest,
     fileSource,
+    fast,
+    contextWindow,
     model,
     openedCodeReference,
     permissionLevel,
@@ -321,6 +353,7 @@ function ChatView({
     activeMemberWakerId ||
     detailQuery.data?.chat?.wakerId ||
     entry?.wakerId ||
+    resolvedWakerId ||
     requestedWaker ||
     wakers[0]?.id ||
     "";
@@ -516,29 +549,42 @@ function ChatView({
   const matchesLastExecutionSelection =
     selectedAccountId === (detailQuery.data?.chat?.lastAccountId || "system") &&
     effectiveRuntimeID === detailQuery.data?.chat?.lastRuntimeId;
+  const lastModel = detailQuery.data?.chat?.lastModel;
+  const requestedModel =
+    model ||
+    (presentation === "composer" ? entry?.defaults?.model : undefined) ||
+    (matchesLastExecutionSelection ? lastModel : undefined) ||
+    entry?.defaults?.model ||
+    undefined;
   const executionSelection = useExecutionSelection({
     runtime: selectedRuntime,
     value: {
       runtimeId: effectiveRuntimeID,
       accountId: selectedAccountId,
-      model:
-        model ||
-        (presentation === "composer" ? entry?.defaults?.model : undefined) ||
-        (matchesLastExecutionSelection
-          ? detailQuery.data?.chat?.lastModel
-          : undefined) ||
-        entry?.defaults?.model ||
-        undefined,
+      model: requestedModel,
+      contextWindow:
+        contextWindow ??
+        (matchesLastExecutionSelection && requestedModel === lastModel
+          ? detailQuery.data?.chat?.lastContextWindow
+          : undefined),
+      fast:
+        fast === null
+          ? undefined
+          : (fast ??
+            (matchesLastExecutionSelection
+              ? detailQuery.data?.chat?.lastFast
+              : undefined)),
       reasoning:
-        reasoning ||
-        (presentation === "composer"
-          ? entry?.defaults?.reasoning
-          : undefined) ||
-        (matchesLastExecutionSelection
-          ? detailQuery.data?.chat?.lastReasoning
-          : undefined) ||
-        entry?.defaults?.reasoning ||
-        undefined,
+        (model ? reasoning : undefined) ??
+        (reasoning ||
+          (presentation === "composer"
+            ? entry?.defaults?.reasoning
+            : undefined) ||
+          (matchesLastExecutionSelection
+            ? detailQuery.data?.chat?.lastReasoning
+            : undefined) ||
+          entry?.defaults?.reasoning ||
+          undefined),
       permissionLevel:
         permissionLevel ||
         (presentation === "composer"
@@ -548,18 +594,13 @@ function ChatView({
         entry?.defaults?.permissionLevel ||
         undefined,
     },
-    defaults: true,
     enabled: Boolean(selectedRuntime),
   });
-  const selectedAccount = executionSelection.accounts.find(
-    (item) => item.id === selectedAccountId,
-  );
   const availableModels = executionSelection.models;
   const selectedModel = executionSelection.effectiveModel;
   const selectedModelOption = availableModels.find(
     (item) => item.id === selectedModel,
   );
-  const thinkingQuery = executionSelection.thinkingQuery;
   const supportedPermissions = executionSelection.supportedPermissions;
   const selectedPermissionLevel = executionSelection.selection.permissionLevel;
   const selectedPermissionUnsupported = Boolean(
@@ -576,6 +617,7 @@ function ChatView({
   );
   const availableReasoningOptions = executionSelection.reasoningOptions;
   const selectedReasoning = executionSelection.selection.reasoning;
+  const selectedFast = executionSelection.selection.fast;
   const summaryRuntime = historicalRuntime ?? selectedRuntime;
   const summaryAccountId = detailQuery.data?.chat?.lastAccountId || "system";
   const summaryAccount = (accountsQuery.data?.resources ?? []).find(
@@ -605,6 +647,8 @@ function ChatView({
       model: string;
       permissionLevel: PermissionLevel;
       reasoning: string;
+      fast: boolean | null;
+      contextWindow: string;
       runtimeId: string;
     }>,
   ) => {
@@ -661,9 +705,14 @@ function ChatView({
     managed: Boolean(activeChatId && !detailQuery.data?.chat?.projectName),
   });
   const terminalWorkingDirectory =
-    detailQuery.data?.chat?.additionalWorkingDirectories?.[0] ?? "";
+    detailQuery.data?.chat?.additionalWorkingDirectories?.[0] ??
+    workspaceDirectory;
   const fileRoots = (() => {
-    if (activeChatId && workspaceDirectory) return [workspaceDirectory];
+    if (activeChatId && workspaceDirectory)
+      return chatFileRoots(
+        workspaceDirectory,
+        detailQuery.data?.chat?.additionalWorkingDirectories,
+      );
     const project = selectedDraftProject;
     const projectRoots = (project?.sources ?? [])
       .filter((source) => source.available && source.path)
@@ -714,6 +763,7 @@ function ChatView({
         });
         navigate(
           chatHref(createdID, result.chat?.wakerId ?? selectedWaker?.id ?? ""),
+          { replace: true },
         );
       }
     },
@@ -770,7 +820,7 @@ function ChatView({
       entry?.isSendDisabled ||
       !selectedWakerID ||
       !effectiveRuntimeID ||
-      selectedPermissionUnsupported ||
+      (executionSelection.usesNativeCatalog && !executionSelection.valid) ||
       (presentation === "composer" &&
         Boolean(detailQuery.data?.chat?.activeExecutionId)),
     ),
@@ -784,6 +834,8 @@ function ChatView({
       runtimeId: selectedRuntime?.id ?? "",
       model: selectedModel,
       reasoning: selectedReasoning,
+      fast: selectedFast,
+      contextWindow: executionSelection.selection.contextWindow,
       permissionLevel: selectedPermissionLevel,
       skillIds: selectedSkillIDs,
       selectedSkills,
@@ -841,6 +893,8 @@ function ChatView({
         runtimeId: selection?.runtimeId ?? "",
         model: selection?.model ?? "",
         reasoning: selection?.reasoning ?? "",
+        fast: selection?.fast,
+        contextWindow: selection?.contextWindow,
         permissionLevel: selection?.permissionLevel ?? "auto",
         attachments: attachmentPaths.map((sourcePath) => ({ sourcePath })),
         skillIds: selection?.skillIds ?? [],
@@ -1063,43 +1117,18 @@ function ChatView({
     selectedDraftProject?.name ||
     (workspaceDirectory ? workspaceDirectory.split(/[\\/]/).pop() : "") ||
     t("selectWorkspace");
-  const permissionWarning = selectedPermissionUnsupported
-    ? t("permissionUnsupported")
-    : defaultPermissionWasDowngraded
-      ? t("permissionDowngraded")
-      : "";
+  const permissionEvidenceReady = supportedPermissions.size > 0;
+  const permissionWarning = !permissionEvidenceReady
+    ? ""
+    : selectedPermissionUnsupported
+      ? t("permissionUnsupported")
+      : defaultPermissionWasDowngraded
+        ? t("permissionDowngraded")
+        : "";
 
-  const greetingPhrases = useMemo(
-    () => [
-      t("greeting"),
-      t("greetingPhrases.start"),
-      t("greetingPhrases.progress"),
-      t("greetingPhrases.next"),
-      t("greetingPhrases.share"),
-    ],
-    [t],
-  );
-  const emptyState = (
-    <div className="mx-auto grid w-full max-w-[560px] justify-items-center px-6 pt-[clamp(64px,12vh,140px)] text-center">
-      <Avatar
-        name={wakerName}
-        src={conversationAvatar}
-        size="docked"
-        preview
-        summon={false}
-        activity={chatRuntime.isRunning ? "starting" : "idle"}
-      />
-      {selectedWaker ? (
-        <TypedPhrases
-          as="h1"
-          phrases={greetingPhrases}
-          className="type-page-title mt-6 text-center font-semibold"
-        />
-      ) : (
-        <h1 className="type-page-title mt-6 font-semibold">
-          {t("createWakerFirst")}
-        </h1>
-      )}
+  const emptyState = selectedWaker ? null : (
+    <div className="text-content-secondary type-body grid h-full place-items-center px-6 text-center">
+      {t("createWakerFirst")}
     </div>
   );
   const contributedEmptyState =
@@ -1129,9 +1158,21 @@ function ChatView({
     activeChatId,
     availableReasoningOptions,
     modelOptionsOverride: availableModels,
-    thinkingPending: Boolean(
-      selectedAccount && thinkingQuery.isPending && thinkingQuery.isFetching,
+    defaultModel: executionSelection.defaultModel,
+    catalogState: executionSelection.catalogState,
+    catalogIssue: executionSelection.catalogIssue,
+    catalogPending: executionSelection.catalogPending,
+    catalogRefreshing: executionSelection.catalogRefreshing,
+    refreshCatalog: executionSelection.refreshCatalog,
+    fastSupported: executionSelection.fastSupported,
+    selectedFast,
+    selectedContextWindow: executionSelection.selection.contextWindow,
+    enableContextWindow: true,
+    sessionSwitchPending: Boolean(
+      sessionSwitch?.reason === "switch" &&
+      sessionSwitch.chatId === activeChatId,
     ),
+    thinkingPending: executionSelection.catalogPending,
     historicalRuntime,
     historicalRuntimeDisabled,
     onPickDirectory: pickDirectory,
@@ -1166,6 +1207,7 @@ function ChatView({
     changesProps,
   } = useChatWorkspaceBindings({
     additionalWorkingDirectories: linkAdditionalWorkingDirectories,
+    draftWorkingDirectories: activeChatId ? undefined : fileRoots,
     activeChatId,
     fileSource,
     query: workspaceQuery,
@@ -1237,8 +1279,32 @@ function ChatView({
       emptyState: messageEmptyState,
       isHistoryLoading: historyIsLoading,
       composerSettings,
+      composerActions:
+        entry?.showTerminalAction && activeChatId && workspaceDirectory ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t("openTerminal")}
+                onClick={openChatTerminal}
+              >
+                <Terminal />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t("openTerminal")}</TooltipContent>
+          </Tooltip>
+        ) : undefined,
       composerEffects,
-      composerDraft: entry?.draft,
+      composerDraft: entry?.draft ?? promptDraft?.text,
+      composerDraftReference: promptDraft?.skillId
+        ? { kind: "skill", id: promptDraft.skillId }
+        : promptDraft?.pluginId
+          ? { kind: "plugin", id: promptDraft.pluginId }
+          : promptDraft?.connectorId
+            ? { kind: "connector", id: promptDraft.connectorId }
+            : undefined,
       renderComposerContextStrip,
       composerReferences: entry?.composerReferences,
       onComposerReferencesChange: entry?.onComposerReferencesChange,
@@ -1251,7 +1317,6 @@ function ChatView({
       composerConnectors: enabledConnectors,
       composerConnectorsError: connectorsQuery.isError,
       composerFileRoots: fileRoots,
-      composerFileScopePath: projectFilesScopePath(activeChatId) || undefined,
       availableSkillIds: availableSkillIDs,
       availablePluginIds: pluginsQuery.data
         ? new Set(enabledPlugins.map((plugin) => plugin.id))
@@ -1263,7 +1328,6 @@ function ChatView({
       onConnectorSelectionChange: setSelectedConnectorIDs,
       codeReferenceRequest,
       composerClearRevision,
-      companionScopeRevision,
       composerRestoreRevision,
       terminalEnabled: Boolean(activeChatId && workspaceDirectory),
       linkWorkspaceRoot: workspaceDirectory,
@@ -1278,7 +1342,6 @@ function ChatView({
       contextMetrics: chatRuntime.contextMetrics,
       sendFailure: chatRuntime.sendFailure,
       errorScopes: [runtimeQueueKey, `chat:${activeChatId}`],
-      onRetryExecution: chatRuntime.retryExecution,
       onRecoverSession: () => {
         if (!activeChatId) return;
         setSessionSwitch({
@@ -1333,6 +1396,16 @@ function ChatView({
         />
       ) : (
         <ChatWorkspaceSurface
+          chatOwner={
+            activeChatId === chatId && detailQuery.data?.chat?.wakerId
+              ? { kind: "waker", id: detailQuery.data.chat.wakerId }
+              : entry?.wakerId || resolvedWakerId || requestedWaker
+                ? {
+                    kind: "waker",
+                    id: entry?.wakerId || resolvedWakerId || requestedWaker,
+                  }
+                : undefined
+          }
           active={entry?.active}
           mainContent={entry?.mainContent}
           canvasInput={entry?.canvasInput}

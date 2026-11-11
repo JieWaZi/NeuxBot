@@ -1,7 +1,7 @@
 import type { WorkflowRun } from "./types";
 
 export function runOriginKey(run: WorkflowRun) {
-  const source = run.flowContext?.triggerSource;
+  const source = run.triggerSource;
   if (run.parentRunId) return "childRunOrigin";
   if (source === "manual" || source == null) return "manualRunOrigin";
   if (source === "retry") return "retryRunOrigin";

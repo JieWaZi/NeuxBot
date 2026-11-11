@@ -6,7 +6,13 @@ import {
   MoreHorizontal,
   Trash2,
 } from "lucide-react";
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
 
 import { WorkspaceFileBrowser } from "../../components/workspace-file-browser";
@@ -14,6 +20,7 @@ import { WorkspaceFileViewer } from "../../components/workspace-file-viewer";
 import { WorkspaceDetailSplit } from "../../components/workspace-detail-split";
 import {
   fileName,
+  isAbsoluteFilePath,
   parseReference,
   resolveFileReference,
   type ResolvedFileReference,
@@ -37,13 +44,19 @@ import {
 import { EmptyState } from "@/shared/ui/empty-state";
 import { SearchField } from "@/shared/ui/search-field";
 import { Spinner } from "@/shared/ui/spinner";
+import { SegmentedControl } from "@/shared/ui/segmented-control";
+import { FileTreeRow } from "@/shared/ui/file-tree-row";
 import { toast } from "@/shared/ui/sonner";
 
 import { workbenchDocumentBuffers } from "../document-buffers";
+import {
+  workingDirectoryRoots,
+  workspacePathAtRoot,
+  matchesWorkspacePath,
+} from "../../model/project-files-scope";
 
 export type FileWorkspaceSelection = {
   name: string;
-  sourcePath?: string;
   path: string;
   rootPath: string;
   canonicalPath: string;
@@ -57,6 +70,7 @@ export type WorkbenchFileWorkspaceProps = {
   scopeChatId?: string;
   scopePath: string;
   sourceRoots?: readonly string[];
+  spaceRootAvailable?: boolean;
   initialFile?: FileWorkspaceSelection;
   chatFiles: WorkspaceFile[];
   fileSource: "project" | "chat";
@@ -115,6 +129,8 @@ function draftKey(ownerKey: string, canonicalPath: string): string {
   return `${fileWorkspaceDraftPrefix(ownerKey)}${canonicalPath}`;
 }
 
+type ChatFileDeleteError = "deleteFileError" | "saveBeforeFileOperation";
+
 export function WorkbenchFileWorkspace({
   active = true,
   ownerKey,
@@ -122,6 +138,7 @@ export function WorkbenchFileWorkspace({
   scopeChatId,
   scopePath,
   sourceRoots,
+  spaceRootAvailable = true,
   initialFile,
   chatFiles,
   fileSource,
@@ -150,21 +167,39 @@ export function WorkbenchFileWorkspace({
   );
   const [query, setQuery] = useState("");
   const [dropActive, setDropActive] = useState(false);
+  const [directorySource, setDirectorySource] = useState<"space" | "working">(
+    "space",
+  );
+  const workingRoots = workingDirectoryRoots(
+    spaceRootAvailable ? rootPath : "",
+    spaceRootAvailable ? sourceRoots : [rootPath, ...(sourceRoots ?? [])],
+  );
+  const browseWorking =
+    (!spaceRootAvailable || directorySource === "working") &&
+    workingRoots.length > 0;
   const selectRequest = useRef(0);
   const visitedFiles = useRef(new Map<string, FileWorkspaceSelection>());
   useEffect(() => {
     if (selected) visitedFiles.current.set(selected.canonicalPath, selected);
   }, [selected]);
 
-  const selectFile = (file: { name: string; path: string }) => {
-    const candidate = parseReference(file.path, "path");
+  const selectFile = (
+    file: { name: string; path: string },
+    fileRoot = fileSource === "chat" ? "" : rootPath,
+  ) => {
+    const candidate = parseReference(
+      fileRoot && !isAbsoluteFilePath(file.path)
+        ? `${fileRoot.replace(/[\\/]+$/, "")}/${file.path}`
+        : file.path,
+      "path",
+    );
     if (candidate?.kind !== "file") return;
     const request = ++selectRequest.current;
     void resolveFileReference(candidate, {
       chatId: scopeChatId,
-      baseDirectory: rootPath,
-      workspaceRoot: rootPath,
-      sourceRoots: sourceRoots ?? [],
+      baseDirectory: fileRoot,
+      workspaceRoot: fileRoot,
+      sourceRoots: fileRoot ? (sourceRoots ?? []) : [],
     })
       .then((result) => {
         if (request !== selectRequest.current) return;
@@ -174,7 +209,6 @@ export function WorkbenchFileWorkspace({
         }
         const next = {
           name: file.name || fileName(result.file.canonicalPath),
-          sourcePath: file.path,
           path: result.file.path,
           rootPath: result.file.rootPath,
           canonicalPath: result.file.canonicalPath,
@@ -197,12 +231,12 @@ export function WorkbenchFileWorkspace({
   ) => {
     const externalDirty = isPathDirty?.(path, file, affectedRoot);
     if (externalDirty) return true;
+    const target =
+      file?.canonicalPath ??
+      workspacePathAtRoot(affectedRoot ?? rootPath, path);
     for (const opened of visitedFiles.current.values()) {
       if (
-        (file?.canonicalPath === opened.canonicalPath ||
-          opened.sourcePath === path ||
-          opened.sourcePath?.startsWith(`${path}/`) ||
-          (!file && !opened.sourcePath)) &&
+        matchesWorkspacePath(opened.canonicalPath, target, true) &&
         workbenchDocumentBuffers.isDirty(
           draftKey(ownerKey, opened.canonicalPath),
         )
@@ -216,12 +250,12 @@ export function WorkbenchFileWorkspace({
     WorkbenchFileWorkspaceProps["onPathDeleted"]
   > = (path, file, directory, affectedRoot) => {
     onPathDeleted?.(path, file, directory, affectedRoot);
+    const target =
+      file?.canonicalPath ??
+      workspacePathAtRoot(affectedRoot ?? rootPath, path);
     if (
       selected &&
-      (file?.canonicalPath === selected.canonicalPath ||
-        selected.sourcePath === path ||
-        (directory && selected.sourcePath?.startsWith(`${path}/`)) ||
-        (directory && !selected.sourcePath))
+      matchesWorkspacePath(selected.canonicalPath, target, directory)
     ) {
       setSelected(undefined);
       onSelectedFileChange?.(undefined);
@@ -232,21 +266,59 @@ export function WorkbenchFileWorkspace({
     WorkbenchFileWorkspaceProps["onPathRenamed"]
   > = (oldPath, newPath, name, file, directory, affectedRoot) => {
     onPathRenamed?.(oldPath, newPath, name, file, directory, affectedRoot);
+    const operationRoot = affectedRoot ?? file?.rootPath ?? rootPath;
+    const oldCanonical =
+      file?.canonicalPath ?? workspacePathAtRoot(operationRoot, oldPath);
+    const newCanonical = workspacePathAtRoot(operationRoot, newPath);
     if (
       !selected ||
-      (file?.canonicalPath !== selected.canonicalPath &&
-        selected.sourcePath !== oldPath &&
-        !(directory && selected.sourcePath?.startsWith(`${oldPath}/`)))
+      !oldCanonical ||
+      !newCanonical ||
+      !matchesWorkspacePath(selected.canonicalPath, oldCanonical, directory)
     )
       return;
-    const suffix = selected.sourcePath?.slice(oldPath.length) ?? "";
-    selectFile({
-      name: directory ? selected.name : name,
-      path: `${newPath}${suffix}`,
-    });
+    const suffix = selected.canonicalPath.slice(oldCanonical.length);
+    selectFile(
+      {
+        name: directory ? selected.name : name,
+        path: `${newCanonical}${suffix}`,
+      },
+      operationRoot,
+    );
   };
 
-  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+  const deleteChatFile = async (
+    file: WorkspaceFile,
+  ): Promise<ChatFileDeleteError | undefined> => {
+    try {
+      const candidate = parseReference(file.path, "path");
+      if (candidate?.kind !== "file") return "deleteFileError";
+      const resolved = await resolveFileReference(candidate, {
+        chatId: scopeChatId,
+        baseDirectory: "",
+        workspaceRoot: "",
+        sourceRoots: [],
+      });
+      if (resolved.status !== "resolved") return "deleteFileError";
+      if (isDirtyPath(file.path, resolved.file))
+        return "saveBeforeFileOperation";
+      if (!(await onDeleteChatFile(file))) return "deleteFileError";
+      handlePathDeleted(
+        file.path,
+        resolved.file,
+        false,
+        resolved.file.rootPath,
+      );
+    } catch {
+      return "deleteFileError";
+    }
+  };
+
+  const handleDrop = (
+    event: DragEvent<HTMLDivElement>,
+    directory: string,
+    directoryScope: string,
+  ) => {
     if (
       !scopeChatId ||
       !hasPlatformService("workspace") ||
@@ -258,9 +330,9 @@ export function WorkbenchFileWorkspace({
     setDropActive(false);
     void importDroppedWorkspaceFiles(
       scopeChatId,
-      scopePath,
+      directoryScope,
       Array.from(event.dataTransfer.files),
-      rootPath,
+      directory,
     )
       .then(async (result) => {
         if (result.failed.length)
@@ -271,7 +343,7 @@ export function WorkbenchFileWorkspace({
           );
         if (result.imported.length)
           await queryClient.invalidateQueries({
-            queryKey: ["workspace-directory", scopeChatId, rootPath],
+            queryKey: ["workspace-directory", scopeChatId, directory],
           });
       })
       .catch((cause: unknown) =>
@@ -301,6 +373,47 @@ export function WorkbenchFileWorkspace({
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visibleChatFiles = chatFiles.filter((file) =>
     `${file.name} ${file.path}`.toLocaleLowerCase().includes(normalizedQuery),
+  );
+
+  const directoryTree = (directory: string, directoryScope = "") => (
+    <FileReferenceProvider
+      key={directory}
+      context={{
+        chatId: scopeChatId,
+        baseDirectory: directory,
+        workspaceRoot: directory,
+        sourceRoots: sourceRoots ?? [],
+      }}
+    >
+      <div
+        className={dropActive ? "outline-accent-default outline-2" : undefined}
+        onDragOver={(event) => {
+          if (
+            !scopeChatId ||
+            !hasPlatformService("workspace") ||
+            !event.dataTransfer.types.includes("Files")
+          )
+            return;
+          event.preventDefault();
+          setDropActive(true);
+        }}
+        onDragLeave={() => setDropActive(false)}
+        onDrop={(event) => handleDrop(event, directory, directoryScope)}
+      >
+        <WorkspaceFileBrowser
+          active={active}
+          activePath={selected?.canonicalPath}
+          isPathDirty={isDirtyPath}
+          onOpenFile={(file) => selectFile(file, directory)}
+          onPathDeleted={handlePathDeleted}
+          onPathRenamed={handlePathRenamed}
+          query={query}
+          rootPath={directory}
+          scopeChatId={scopeChatId}
+          scopePath={directoryScope}
+        />
+      </div>
+    </FileReferenceProvider>
   );
 
   return (
@@ -333,7 +446,7 @@ export function WorkbenchFileWorkspace({
           sidebarOpen={treeOpen}
           resizeLabel={t("workbench.resizeSplit")}
           main={
-            <div className="relative min-h-0 min-w-0 overflow-hidden">
+            <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
               {selected ? (
                 <WorkspaceFileViewer
                   key={selected.canonicalPath}
@@ -372,6 +485,25 @@ export function WorkbenchFileWorkspace({
               className="bg-surface-panel flex h-full min-h-0 min-w-0 flex-col"
             >
               <div className="grid shrink-0 gap-2 px-2 py-2">
+                {fileSource === "project" &&
+                spaceRootAvailable &&
+                rootPath &&
+                workingRoots.length > 0 ? (
+                  <SegmentedControl
+                    ariaLabel={t("workspace.directories")}
+                    size="sm"
+                    distribution="fill"
+                    value={browseWorking ? "working" : "space"}
+                    options={[
+                      { value: "space", label: t("workspace.spaceDirectory") },
+                      {
+                        value: "working",
+                        label: t("workspace.workingDirectory"),
+                      },
+                    ]}
+                    onValueChange={setDirectorySource}
+                  />
+                ) : null}
                 <SearchField
                   aria-label={t("workspace.searchFiles")}
                   placeholder={t("workspace.searchFilesPlaceholder")}
@@ -382,38 +514,25 @@ export function WorkbenchFileWorkspace({
               </div>
               <div className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-2">
                 {fileSource === "project" ? (
-                  <div
-                    className={
-                      dropActive
-                        ? "outline-accent-default outline-2"
-                        : undefined
-                    }
-                    onDragOver={(event) => {
-                      if (
-                        !scopeChatId ||
-                        !hasPlatformService("workspace") ||
-                        !event.dataTransfer.types.includes("Files")
-                      )
-                        return;
-                      event.preventDefault();
-                      setDropActive(true);
-                    }}
-                    onDragLeave={() => setDropActive(false)}
-                    onDrop={handleDrop}
-                  >
-                    <WorkspaceFileBrowser
-                      active={active}
-                      activePath={selected?.canonicalPath}
-                      isPathDirty={isDirtyPath}
-                      onOpenFile={selectFile}
-                      onPathDeleted={handlePathDeleted}
-                      onPathRenamed={handlePathRenamed}
-                      query={query}
-                      rootPath={rootPath}
-                      scopeChatId={scopeChatId}
-                      scopePath={scopePath}
-                    />
-                  </div>
+                  browseWorking ? (
+                    workingRoots.length === 1 ? (
+                      directoryTree(workingRoots[0] ?? "")
+                    ) : (
+                      <div role="tree" className="grid gap-0.5">
+                        {workingRoots.map((directory) => (
+                          <WorkingDirectoryRoot
+                            key={directory}
+                            directory={directory}
+                            searching={Boolean(normalizedQuery)}
+                          >
+                            {directoryTree(directory)}
+                          </WorkingDirectoryRoot>
+                        ))}
+                      </div>
+                    )
+                  ) : (
+                    directoryTree(rootPath, scopePath)
+                  )
                 ) : chatFilesLoading ? (
                   <div
                     role="status"
@@ -446,17 +565,7 @@ export function WorkbenchFileWorkspace({
                         file={file}
                         onSelect={() => selectFile(file)}
                         onDownload={() => onDownloadChatFile(file)}
-                        onDelete={async () => {
-                          const deleted = await onDeleteChatFile(file);
-                          if (deleted)
-                            handlePathDeleted(
-                              file.path,
-                              undefined,
-                              false,
-                              rootPath,
-                            );
-                          return deleted;
-                        }}
+                        onDelete={() => deleteChatFile(file)}
                       />
                     ))}
                   </div>
@@ -480,6 +589,36 @@ export function WorkbenchFileWorkspace({
   );
 }
 
+function WorkingDirectoryRoot({
+  directory,
+  searching,
+  children,
+}: {
+  directory: string;
+  searching: boolean;
+  children: ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div>
+      <div className="flex min-w-0">
+        <FileTreeRow
+          directory
+          expanded={expanded || searching}
+          role="button"
+          title={directory}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          <span className="truncate">
+            {fileName(directory.replace(/[\\/]+$/, ""))}
+          </span>
+        </FileTreeRow>
+      </div>
+      {expanded || searching ? <div className="pl-4">{children}</div> : null}
+    </div>
+  );
+}
+
 function ChatFileRow({
   file,
   onSelect,
@@ -489,12 +628,12 @@ function ChatFileRow({
   file: WorkspaceFile;
   onSelect: () => void;
   onDownload: () => Promise<void>;
-  onDelete: () => Promise<boolean>;
+  onDelete: () => Promise<ChatFileDeleteError | undefined>;
 }) {
   const { t } = useTranslation("chat");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState(false);
+  const [deleteError, setDeleteError] = useState<ChatFileDeleteError>();
   return (
     <div className="group hover:bg-muted flex min-w-0 items-center rounded-sm">
       <button
@@ -524,7 +663,7 @@ function ChatFileRow({
             {t("workspace.downloadFile")}
           </DropdownMenuItem>
           <DropdownMenuItem
-            className="text-destructive"
+            variant="destructive"
             onSelect={() => setDeleteOpen(true)}
           >
             <Trash2 />
@@ -536,7 +675,7 @@ function ChatFileRow({
         open={deleteOpen}
         onOpenChange={(open) => {
           if (!deleting) setDeleteOpen(open);
-          if (open) setDeleteError(false);
+          if (open) setDeleteError(undefined);
         }}
       >
         <DialogContent
@@ -546,7 +685,7 @@ function ChatFileRow({
         >
           {deleteError ? (
             <p role="alert" className="text-destructive type-body px-6 pb-4">
-              {t("workspace.deleteFileError")}
+              {t(`workspace.${deleteError}`)}
             </p>
           ) : null}
           <DialogFooter>
@@ -562,11 +701,11 @@ function ChatFileRow({
               disabled={deleting}
               onClick={() => {
                 setDeleting(true);
-                setDeleteError(false);
-                void onDelete().then((deleted) => {
+                setDeleteError(undefined);
+                void onDelete().then((error) => {
                   setDeleting(false);
-                  if (deleted) setDeleteOpen(false);
-                  else setDeleteError(true);
+                  if (error) setDeleteError(error);
+                  else setDeleteOpen(false);
                 });
               }}
             >

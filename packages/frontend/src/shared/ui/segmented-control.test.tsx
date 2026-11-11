@@ -4,6 +4,34 @@ import { expect, it, vi } from "vitest";
 
 import { SegmentedControl } from "./segmented-control";
 
+it("资源表单选项保持单选键盘导航，并跳过禁用项", async () => {
+  const user = userEvent.setup();
+  const onValueChange = vi.fn();
+  const props = {
+    appearance: "catalog-form" as const,
+    ariaLabel: "传输方式",
+    options: [
+      { label: "HTTP", value: "http" },
+      { label: "SSE", value: "sse", disabled: true },
+      { label: "STDIO", value: "stdio" },
+    ],
+    value: "http",
+    onValueChange,
+  };
+  const view = render(<SegmentedControl {...props} />);
+  const http = screen.getByRole("radio", { name: "HTTP" });
+  expect(http).toHaveAttribute("aria-checked", "true");
+  expect(screen.getByRole("radio", { name: "SSE" })).toBeDisabled();
+  http.focus();
+  await user.keyboard("{ArrowRight}");
+  expect(screen.getByRole("radio", { name: "STDIO" })).toHaveFocus();
+  expect(onValueChange).toHaveBeenCalledExactlyOnceWith("stdio");
+  view.rerender(<SegmentedControl {...props} disabled />);
+  await user.click(http);
+  expect(http).toBeDisabled();
+  expect(onValueChange).toHaveBeenCalledTimes(1);
+});
+
 it("SegmentedControl 使用统一轨道样式并支持键盘切换", async () => {
   const user = userEvent.setup();
   const onValueChange = vi.fn();

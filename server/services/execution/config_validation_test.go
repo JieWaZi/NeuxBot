@@ -4,11 +4,9 @@ import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
@@ -25,16 +23,14 @@ func (reader configurationEnvironmentReader) Get(context.Context, string) (model
 
 // configurationRuntime 提供 WorkBuddy 原生工作目录布局，不调用外部 CLI。
 type configurationRuntime struct {
-	// accountRuntime 复用既有执行端口与其他智能体目录。
-	accountRuntime
 }
 
 // Runtimes 使配置解析继续执行真实的工作目录布局校验。
 func (runtime *configurationRuntime) Runtimes() []agentapi.RuntimeSummary {
-	return append(runtime.accountRuntime.Runtimes(), agentapi.RuntimeSummary{
+	return []agentapi.RuntimeSummary{{
 		ID: constants.RuntimeIDWorkBuddy, BaseRuntimeID: constants.RuntimeIDWorkBuddy,
 		InstructionFileName: "CODEBUDDY.md", SkillDirectoryName: ".codebuddy",
-	})
+	}}
 }
 
 // TestResolveConfigurationUsesSelectedModelReasoning 覆盖不同模型不能直接借用环境默认模型强度。
@@ -67,16 +63,14 @@ func TestResolveConfigurationUsesSelectedModelReasoning(t *testing.T) {
 		wantModel string
 		// wantReasoning 是目标模型实际支持的默认或显式强度。
 		wantReasoning string
-		// wantError 表示显式的无效选择必须继续被拒绝。
-		wantError bool
 	}{
 		{name: "no concrete grades", model: hy3.ID, wantModel: hy3.ID},
-		{name: "different grades", model: hy4.ID, wantModel: hy4.ID, wantReasoning: "high"},
+		{name: "different model keeps native grade", model: hy4.ID, wantModel: hy4.ID},
 		{name: "default model", wantModel: step.ID, wantReasoning: "minimal"},
 		{name: "same grades", model: step.ID, wantModel: step.ID, wantReasoning: "minimal"},
 		{name: "explicit valid grade", model: step.ID, reasoning: "high", wantModel: step.ID, wantReasoning: "high"},
-		{name: "explicit invalid grade", model: hy4.ID, reasoning: "minimal", wantError: true},
-		{name: "unknown model", model: "missing", wantError: true},
+		{name: "explicit grade goes to native setter", model: hy4.ID, reasoning: "minimal", wantModel: hy4.ID, wantReasoning: "minimal"},
+		{name: "explicit model goes to native setter", model: "missing", wantModel: "missing"},
 		{name: "frozen empty grade", model: hy4.ID, resolved: true, wantModel: hy4.ID},
 		{name: "empty native default", model: step.ID, withoutDefault: true, wantModel: step.ID},
 		{name: "empty default on another model", model: hy4.ID, withoutDefault: true, wantModel: hy4.ID},
@@ -87,18 +81,12 @@ func TestResolveConfigurationUsesSelectedModelReasoning(t *testing.T) {
 			if test.withoutDefault {
 				currentEnvironment.DefaultReasoning = ""
 			}
-			manager := &service{runtime: &configurationRuntime{}, runtimeEnvironments: configurationEnvironmentReader{environment: currentEnvironment}}
+			manager := &service{runtimeSummaries: (&configurationRuntime{}).Runtimes(), runtimeEnvironments: configurationEnvironmentReader{environment: currentEnvironment}}
 			resolved, err := manager.ResolveConfiguration(context.Background(), ExecutionConfiguration{
 				RuntimeID: environment.RuntimeID, AccountID: constants.AiAccountSystemID,
 				Model: test.model, Reasoning: test.reasoning, Resolved: test.resolved,
 				PermissionLevel: constants.PermissionLevelDefault,
 			})
-			if test.wantError {
-				if !errors.Is(err, status_error.BadRequest) {
-					t.Fatalf("invalid selection error = %v, want BadRequest", err)
-				}
-				return
-			}
 			if err != nil || !resolved.Resolved || resolved.Model != test.wantModel || resolved.Reasoning != test.wantReasoning {
 				t.Fatalf("resolved = %+v, error = %v; want model=%q reasoning=%q", resolved, err, test.wantModel, test.wantReasoning)
 			}
@@ -106,169 +94,127 @@ func TestResolveConfigurationUsesSelectedModelReasoning(t *testing.T) {
 	}
 }
 
-func TestValidateExecutionConfigurationSupportsCodexAndClaudeMatrix(t *testing.T) {
-	permissionLevels := []agentapi.PermissionLevel{
-		agentapi.PermissionLevelDefault,
-		agentapi.PermissionLevelAuto,
-		agentapi.PermissionLevelFullAccess,
+// TestExecutionIgnoresFailedProbe 验证失败快照不能阻止配置解析或实际原生首发。
+func TestExecutionIgnoresFailedProbe(t *testing.T) {
+	for _, state := range []agentapi.DetectionState{"", agentapi.DetectionStateUnavailable, agentapi.DetectionStateIncompatible} {
+		t.Run(string(state), func(t *testing.T) {
+			environment := models.RuntimeEnvironment{
+				RuntimeID: "codex", BaseRuntimeID: "codex", Enabled: true,
+				DefaultModel: "fixture-model", DefaultReasoning: "high",
+				Detection: agentapi.DetectionResult{State: state, Auth: agentapi.AuthStatusUnknown},
+			}
+			manager := newMessageTestService(t, t.TempDir(), messageTestOptions{
+				runtimeEnvironments: configurationEnvironmentReader{environment: environment},
+			})
+			resolved, err := manager.execution.ResolveConfiguration(t.Context(), ExecutionConfiguration{
+				RuntimeID: "codex", PermissionLevel: constants.PermissionLevelFullAccess,
+				RequiredConnectorTransport: constants.RuntimeConnectorTransportStreamableHTTP,
+			})
+			if err != nil || resolved.Model != "fixture-model" || resolved.Reasoning != "high" {
+				t.Fatalf("probe changed configured selection: %+v, error=%v", resolved, err)
+			}
+			accepted, err := manager.sendTestMessage(t.Context(), testMessageInput{
+				NewChat: &testChatInput{WakerID: "waker-1"}, Message: userMessage{Text: "try actual runtime"},
+				Runtime: runtimeSelection{RuntimeID: "codex", PermissionLevel: constants.PermissionLevelFullAccess},
+			})
+			if err != nil {
+				t.Fatalf("probe blocked actual launch: %v", err)
+			}
+			waitForChatTerminal(t, manager, accepted.Chat.ID)
+			if len(manager.nativeCalls(t, "turn/start")) != 1 {
+				t.Fatal("input did not reach native protocol")
+			}
+		})
 	}
-	tests := []struct {
-		// name 是 Runtime 与模型组合的子测试名称。
-		name string
-		// environment 是创建或更新团队成员时读取的冻结探测快照。
-		environment models.RuntimeEnvironment
-		// reasoning 是该模型显式选择的推理强度；空值表示使用 Runtime 默认值。
-		reasoning string
-	}{
-		{
-			name: "codex",
-			environment: models.RuntimeEnvironment{
-				RuntimeID:    agentapi.RuntimeIDCodex,
-				Enabled:      true,
-				DefaultModel: "gpt-5.6",
-				Detection: agentapi.DetectionResult{
-					State:        agentapi.DetectionStateReady,
-					Capabilities: agentapi.CapabilitySet{agentapi.CapabilityMCPStreamableHTTP: true},
-					Models: []agentapi.ModelOption{{
-						ID:               "gpt-5.6",
-						ReasoningOptions: []agentapi.ReasoningOption{{ID: "low"}, {ID: "high"}},
-						PermissionLevels: permissionLevels,
-					}},
-				},
-			},
-			reasoning: "high",
-		},
-		{
-			name: "claude",
-			environment: models.RuntimeEnvironment{
-				RuntimeID:    agentapi.RuntimeIDClaude,
-				Enabled:      true,
-				DefaultModel: "claude-sonnet",
-				Detection: agentapi.DetectionResult{
-					State:        agentapi.DetectionStateReady,
-					Capabilities: agentapi.CapabilitySet{agentapi.CapabilityMCPStreamableHTTP: true},
-					Models: []agentapi.ModelOption{{
-						ID:               "claude-sonnet",
-						PermissionLevels: permissionLevels,
-					}},
-				},
-			},
-		},
+}
+
+// TestResolveConfigurationFreezesFast 验证 Fast 默认在解析边界固定，已解析空值不再继承。
+func TestResolveConfigurationFreezesFast(t *testing.T) {
+	for _, defaultValue := range []bool{false, true} {
+		t.Run(map[bool]string{false: "默认关闭", true: "默认开启"}[defaultValue], func(t *testing.T) {
+			environment := models.RuntimeEnvironment{RuntimeID: constants.RuntimeIDWorkBuddy, BaseRuntimeID: constants.RuntimeIDWorkBuddy, Enabled: true, DefaultFast: &defaultValue}
+			manager := &service{runtimeSummaries: (&configurationRuntime{}).Runtimes(), runtimeEnvironments: configurationEnvironmentReader{environment: environment}}
+			config := ExecutionConfiguration{RuntimeID: environment.RuntimeID, PermissionLevel: constants.PermissionLevelDefault}
+			selected, err := manager.ResolveConfiguration(t.Context(), config)
+			if err != nil || selected.Fast == nil || *selected.Fast != defaultValue {
+				t.Fatalf("effective Fast was not frozen: %+v error=%v", selected, err)
+			}
+			*selected.Fast = !defaultValue
+			if *environment.DefaultFast != defaultValue {
+				t.Fatal("effective Fast aliases mutable runtime defaults")
+			}
+			native, err := manager.ResolveConfiguration(t.Context(), ExecutionConfiguration{Resolved: true, RuntimeID: environment.RuntimeID, PermissionLevel: constants.PermissionLevelDefault})
+			if err != nil || native.Fast != nil {
+				t.Fatalf("resolved native Fast was replaced: %+v error=%v", native, err)
+			}
+			explicit := !defaultValue
+			selected, err = manager.ResolveConfiguration(t.Context(), ExecutionConfiguration{RuntimeID: environment.RuntimeID, Fast: &explicit, PermissionLevel: constants.PermissionLevelDefault})
+			if err != nil || selected.Fast == nil || *selected.Fast != explicit {
+				t.Fatalf("explicit Fast was replaced: %+v error=%v", selected, err)
+			}
+		})
 	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			for _, permissionLevel := range permissionLevels {
-				err := validateExecutionConfiguration(test.environment, ExecutionConfiguration{
-					Model:                      test.environment.DefaultModel,
-					Reasoning:                  test.reasoning,
-					PermissionLevel:            permissionLevel,
-					RequiredConnectorTransport: constants.RuntimeConnectorTransportStreamableHTTP,
-				})
-				if err != nil {
-					t.Fatalf("permission %q rejected: %v", permissionLevel, err)
+}
+
+// TestNativeContinuationKeepsFrozenFast 验证真实原生派发沿用已接纳 Fast，显式 false 仍可覆盖。
+func TestNativeContinuationKeepsFrozenFast(t *testing.T) {
+	for _, defaultValue := range []bool{false, true} {
+		t.Run(map[bool]string{false: "关闭后默认开启", true: "开启后默认关闭"}[defaultValue], func(t *testing.T) {
+			manager := newMessageTestService(t, t.TempDir())
+			core := manager.execution.(*service)
+			environment, err := core.runtimeEnvironments.Get(t.Context(), constants.RuntimeIDCodex)
+			if err != nil {
+				t.Fatal(err)
+			}
+			environment.DefaultModel, environment.DefaultFast = "fixture-model", &defaultValue
+			core.runtimeEnvironments = configurationEnvironmentReader{environment: environment}
+			first, err := manager.sendTestMessage(t.Context(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1"}, Message: userMessage{Text: "first fast selection"}, Runtime: runtimeSelection{RuntimeID: constants.RuntimeIDCodex}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if first.Execution.Fast == nil || *first.Execution.Fast != defaultValue {
+				t.Fatalf("first admission did not freeze Fast: %+v", first.Execution)
+			}
+			waitForChatTerminal(t, manager, first.Chat.ID)
+			changed := !defaultValue
+			environment.DefaultFast = &changed
+			core.runtimeEnvironments = configurationEnvironmentReader{environment: environment}
+			second, err := manager.sendTestMessage(t.Context(), testMessageInput{ChatID: first.Chat.ID, Message: userMessage{Text: "continue fast selection"}, Runtime: runtimeSelection{RuntimeID: constants.RuntimeIDCodex}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if second.Execution.Fast == nil || *second.Execution.Fast != defaultValue {
+				t.Fatalf("continuation re-inherited Fast: %+v", second.Execution)
+			}
+			waitForChatTerminal(t, manager, first.Chat.ID)
+			third, err := core.Start(t.Context(), WorkIntent{Chat: ChatTarget{ChatID: first.Chat.ID}, Input: WorkInput{Actor: "user", Content: "explicit fast selection"}, Options: WorkOptions{RuntimeID: constants.RuntimeIDCodex, Fast: &changed, PermissionLevel: constants.PermissionLevelAuto}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if third.Execution.Fast == nil || *third.Execution.Fast != changed {
+				t.Fatalf("explicit Fast did not override prior selection: %+v", third.Execution)
+			}
+			waitForChatTerminal(t, manager, first.Chat.ID)
+		})
+	}
+}
+
+// TestSystemAccountDoesNotInheritManagedAccountModel 验证显式原生账号不会借用受管账号的默认模型。
+func TestSystemAccountDoesNotInheritManagedAccountModel(t *testing.T) {
+	for _, defaultAccount := range []string{"managed", constants.AiAccountSystemID, ""} {
+		for _, frozen := range []bool{false, true} {
+			for _, model := range []string{"", "explicit-model"} {
+				environment := models.RuntimeEnvironment{RuntimeID: constants.RuntimeIDWorkBuddy, BaseRuntimeID: constants.RuntimeIDWorkBuddy, Enabled: true, DefaultAccountID: defaultAccount, DefaultModel: "managed-model", DefaultReasoning: "high"}
+				manager := &service{runtimeSummaries: (&configurationRuntime{}).Runtimes(), runtimeEnvironments: configurationEnvironmentReader{environment: environment}}
+				selected, err := manager.ResolveConfiguration(t.Context(), ExecutionConfiguration{RuntimeID: environment.RuntimeID, AccountID: constants.AiAccountSystemID, Model: model, Resolved: frozen, PermissionLevel: constants.PermissionLevelDefault})
+				expected := model
+				if model == "" && !frozen && defaultAccount != "managed" {
+					expected = "managed-model"
+				}
+				if err != nil || selected.Model != expected {
+					t.Fatalf("defaultAccount=%q frozen=%v explicit=%q: model=%q want=%q error=%v", defaultAccount, frozen, model, selected.Model, expected, err)
 				}
 			}
-		})
-	}
-}
-
-func TestValidateExecutionConfigurationDefersUnknownPermissionsWhenLoginIsMissing(t *testing.T) {
-	environment := models.RuntimeEnvironment{
-		RuntimeID: agentapi.RuntimeIDKimi,
-		Enabled:   true,
-		Detection: agentapi.DetectionResult{
-			State: agentapi.DetectionStateReady,
-			Auth:  agentapi.AuthStatusMissing,
-		},
-	}
-	for _, level := range []agentapi.PermissionLevel{
-		agentapi.PermissionLevelDefault,
-		agentapi.PermissionLevelAuto,
-		agentapi.PermissionLevelFullAccess,
-	} {
-		if err := validateExecutionConfiguration(environment, ExecutionConfiguration{PermissionLevel: level}); err != nil {
-			t.Fatalf("未登录且尚无权限目录时不应提前拒绝 %q: %v", level, err)
 		}
-	}
-}
-
-func TestValidateExecutionConfigurationRejectsUnavailableCombination(t *testing.T) {
-	environment := models.RuntimeEnvironment{
-		RuntimeID:    agentapi.RuntimeIDCodex,
-		Enabled:      true,
-		DefaultModel: "gpt-5.6",
-		Detection: agentapi.DetectionResult{
-			State: agentapi.DetectionStateReady,
-			Models: []agentapi.ModelOption{{
-				ID:               "gpt-5.6",
-				ReasoningOptions: []agentapi.ReasoningOption{{ID: "low"}},
-				PermissionLevels: []agentapi.PermissionLevel{agentapi.PermissionLevelDefault},
-			}},
-		},
-	}
-	tests := []struct {
-		// name 是非法组合的子测试名称。
-		name string
-		// mutate 把合法基线改成一个必须被拒绝的配置或环境。
-		mutate func(*models.RuntimeEnvironment, *ExecutionConfiguration)
-		// expected 是对外稳定的错误类别。
-		expected error
-	}{
-		{
-			name: "unknown model",
-			mutate: func(_ *models.RuntimeEnvironment, config *ExecutionConfiguration) {
-				config.Model = "missing-model"
-			},
-			expected: status_error.BadRequest,
-		},
-		{
-			name: "unsupported reasoning",
-			mutate: func(_ *models.RuntimeEnvironment, config *ExecutionConfiguration) {
-				config.Reasoning = "ultra"
-			},
-			expected: status_error.BadRequest,
-		},
-		{
-			name: "unsupported permission",
-			mutate: func(_ *models.RuntimeEnvironment, config *ExecutionConfiguration) {
-				config.PermissionLevel = constants.PermissionLevelFullAccess
-			},
-			expected: status_error.BadRequest,
-		},
-		{
-			name: "disabled runtime",
-			mutate: func(environment *models.RuntimeEnvironment, _ *ExecutionConfiguration) {
-				environment.Enabled = false
-			},
-			expected: status_error.RuntimeUnavailable,
-		},
-		{
-			name: "stale detection",
-			mutate: func(environment *models.RuntimeEnvironment, _ *ExecutionConfiguration) {
-				environment.Detection.State = agentapi.DetectionStateUnavailable
-			},
-			expected: status_error.RuntimeUnavailable,
-		},
-		{
-			name: "missing team transport",
-			mutate: func(_ *models.RuntimeEnvironment, config *ExecutionConfiguration) {
-				config.RequiredConnectorTransport = constants.RuntimeConnectorTransportStreamableHTTP
-			},
-			expected: status_error.RuntimeUnavailable,
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			currentEnvironment := environment
-			config := ExecutionConfiguration{
-				Model:           environment.DefaultModel,
-				Reasoning:       "low",
-				PermissionLevel: constants.PermissionLevelDefault,
-			}
-			test.mutate(&currentEnvironment, &config)
-			if err := validateExecutionConfiguration(currentEnvironment, config); !errors.Is(err, test.expected) {
-				t.Fatalf("error = %v, want %v", err, test.expected)
-			}
-		})
 	}
 }

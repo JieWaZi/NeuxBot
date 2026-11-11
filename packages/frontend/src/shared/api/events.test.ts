@@ -198,7 +198,7 @@ function frame(
   };
 }
 describe("共享 WS 领域适配", () => {
-  it("Chat 缺口由权威来源cursor恢复，transient不推进且持久重复不交付", async () => {
+  it("Chat 接受内部记录造成的稀疏游标，transient不推进且旧持久事件不交付", async () => {
     const reconcileCursor = vi.fn().mockResolvedValue(2);
     const onEvent = vi.fn();
     const close = subscribeChat("chat-1", {
@@ -216,13 +216,14 @@ describe("共享 WS 领域适配", () => {
       frame("chat", { sequence: 3, type: "execution.completed" }),
     );
     await vi.waitFor(() => expect(onEvent).toHaveBeenCalledTimes(2));
-    expect(reconcileCursor).toHaveBeenCalledTimes(1);
+    expect(reconcileCursor).not.toHaveBeenCalled();
     expect(onEvent.mock.calls.map(([event]) => event.sequence)).toEqual([
       50, 3,
     ]);
     observer.onEvent(
       frame("chat", { sequence: 3, type: "execution.completed" }),
     );
+    observer.onEvent(frame("chat", { sequence: 2, type: "runtime.event" }));
     expect(onEvent).toHaveBeenCalledTimes(2);
     close();
   });

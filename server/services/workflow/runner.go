@@ -390,7 +390,7 @@ func prepareEffect(bundle workflowdsl.ProgramBundle, manifest workflowdsl.Manife
 			deadline = now + int64(value)
 		}
 		effect.DeadlineAt = deadline
-		state.Humans = append(state.Humans, models.WorkflowHumanRequest{ID: util.New(), RunID: state.Run.ID, EffectID: id, InstanceID: instanceID, Prompt: prompt, Options: options, QuestionVersion: 1, SnapshotDigest: workflowstate.Digest(options["choices"]), Status: constants.WorkflowStepStatusWaiting, DeadlineAt: deadline})
+		state.Humans = append(state.Humans, models.WorkflowHumanRequest{ID: util.New(), RunID: state.Run.ID, EffectID: id, InstanceID: instanceID, Prompt: prompt, Options: options, SnapshotDigest: workflowstate.Digest(options["choices"]), Status: constants.WorkflowStepStatusWaiting, DeadlineAt: deadline})
 	}
 	state.Effects = append(state.Effects, effect)
 	state.Instances = append(state.Instances, instance)

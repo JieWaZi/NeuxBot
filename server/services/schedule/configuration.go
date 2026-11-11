@@ -73,9 +73,6 @@ func (s *Service) saveConfiguration(ctx context.Context, wakerID, id string, rev
 		member.AccountID = strings.TrimSpace(member.AccountID)
 		member.Model = strings.TrimSpace(member.Model)
 		member.Reasoning = strings.TrimSpace(member.Reasoning)
-		if member.AccountID == "" {
-			member.AccountID = constants.AiAccountSystemID
-		}
 	}
 	if config.ChannelID != "" && validate {
 		if config.ExecutorWakerID != "" || s.config.Channels == nil || s.config.Teams == nil {
@@ -142,7 +139,7 @@ func (s *Service) saveConfiguration(ctx context.Context, wakerID, id string, rev
 		config.WorkingDirectory = source.Path
 	}
 	if validate {
-		if err := s.validateConfiguration(ctx, wakerID, &config); err != nil {
+		if err := s.validateConfiguration(ctx, wakerID, &config, false); err != nil {
 			return SavedTask{}, err
 		}
 	}
@@ -195,7 +192,7 @@ func (s *Service) saveConfiguration(ctx context.Context, wakerID, id string, rev
 	return SavedTask{TaskID: task.ID, Token: token}, nil
 }
 
-func (s *Service) validateConfiguration(ctx context.Context, wakerID string, config *models.AutomaticTaskConfiguration) error {
+func (s *Service) validateConfiguration(ctx context.Context, wakerID string, config *models.AutomaticTaskConfiguration, resolved bool) error {
 	if config.WorkflowID != "" {
 		return s.validateWorkflowConfiguration(ctx, wakerID, config)
 	}
@@ -247,10 +244,11 @@ func (s *Service) validateConfiguration(ctx context.Context, wakerID string, con
 		}
 	}
 	if config.ChannelID != "" {
-		return s.validateTeamConfiguration(ctx, wakerID, *config)
+		_, err := s.resolveTeamConfiguration(ctx, *config, resolved)
+		return err
 	}
 	return s.config.Executions.ValidateConfiguration(ctx, execution.ExecutionConfiguration{
-		AccountID: config.AccountID, RuntimeID: config.RuntimeID, Model: config.Model, Reasoning: config.Reasoning, PermissionLevel: config.PermissionLevel,
+		Resolved: resolved, AccountID: config.AccountID, RuntimeID: config.RuntimeID, Model: config.Model, Reasoning: config.Reasoning, Fast: config.Fast, PermissionLevel: config.PermissionLevel,
 	})
 }
 
@@ -271,7 +269,7 @@ func (s *Service) getTask(ctx context.Context, wakerID, id string) (models.Autom
 }
 
 func workflowDefaults(config models.AutomaticTaskConfiguration) models.WorkflowExecutionDefaults {
-	return models.WorkflowExecutionDefaults{RuntimeID: config.RuntimeID, AccountID: config.AccountID, Model: config.Model, Reasoning: config.Reasoning, PermissionLevel: config.PermissionLevel, WorkspaceReadOnly: config.WorkspaceReadOnly}
+	return models.WorkflowExecutionDefaults{RuntimeID: config.RuntimeID, AccountID: config.AccountID, Model: config.Model, Reasoning: config.Reasoning, Fast: config.Fast, PermissionLevel: config.PermissionLevel, WorkspaceReadOnly: config.WorkspaceReadOnly}
 }
 
 func (s *Service) validateWorkflowConfiguration(ctx context.Context, wakerID string, config *models.AutomaticTaskConfiguration) error {
@@ -316,54 +314,65 @@ func (s *Service) resolveWorkflowConfiguration(ctx context.Context, wakerID stri
 	return revision, err
 }
 
-// validateTeamConfiguration 验证团队负责人和叠加任务专属覆盖后的成员执行配置。
-func (s *Service) validateTeamConfiguration(ctx context.Context, wakerID string, config models.AutomaticTaskConfiguration) error {
+// resolveTeamConfiguration 解析本次覆盖并保留已保存成员，返回可用于机会持久化的完整配置。
+func (s *Service) resolveTeamConfiguration(ctx context.Context, config models.AutomaticTaskConfiguration, resolved bool) ([]models.AutomaticTaskMemberConfiguration, error) {
 	if s.config.Channels == nil || s.config.Teams == nil || s.config.Threads == nil || s.config.TeamTasks == nil {
-		return status_error.AutomaticTaskServiceInvalid
+		return nil, status_error.AutomaticTaskServiceInvalid
 	}
 	team, err := s.config.Channels.Get(ctx, config.ChannelID)
 	if err != nil {
-		return err
-	}
-	if team.LeadWakerID != wakerID {
-		return status_error.ChannelLeadInvalid
+		return nil, err
 	}
 	members, err := s.config.Channels.ListMembers(ctx, team.ID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(members) < constants.ChannelMinimumMemberCount || len(members) > constants.ChannelMaximumMemberCount {
-		return status_error.ChannelMemberCountInvalid
+		return nil, status_error.ChannelMemberCountInvalid
 	}
 	members, err = channelservice.ApplyMemberConfigOverrides(members, teamMemberOverrides(config))
 	if err != nil {
-		return err
+		return nil, err
 	}
+	if resolved && len(config.MemberConfigs) != len(members) {
+		return nil, status_error.ChannelMemberCountInvalid
+	}
+	result := make([]models.AutomaticTaskMemberConfiguration, 0, len(members))
 	lead := false
 	for _, member := range members {
 		if _, err := s.config.Wakers.Get(ctx, member.WakerID); err != nil {
-			return err
+			return nil, err
 		}
 		transport := constants.RuntimeConnectorTransportUnspecified
 		if member.WakerID == team.LeadWakerID {
 			lead = true
 			transport = constants.RuntimeConnectorTransportStreamableHTTP
 		}
-		if err := s.config.Executions.ValidateConfiguration(ctx, execution.ExecutionConfiguration{RuntimeID: member.RuntimeID, AccountID: member.AccountID, Model: member.Model, Reasoning: member.Reasoning, PermissionLevel: member.PermissionLevel, RequiredConnectorTransport: transport}); err != nil {
-			return err
+		memberResolved := true
+		for _, override := range config.MemberConfigs {
+			if override.WakerID == member.WakerID {
+				memberResolved = resolved
+				break
+			}
 		}
+		selection, err := s.config.Executions.ResolveConfiguration(ctx, execution.ExecutionConfiguration{Resolved: memberResolved, RuntimeID: member.RuntimeID, AccountID: member.AccountID, Model: member.Model, Reasoning: member.Reasoning, Fast: member.Fast, PermissionLevel: member.PermissionLevel, RequiredConnectorTransport: transport})
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, models.AutomaticTaskMemberConfiguration{WakerID: member.WakerID, RuntimeID: selection.RuntimeID,
+			AccountID: selection.AccountID, Model: selection.Model, Reasoning: selection.Reasoning, Fast: selection.Fast, PermissionLevel: selection.PermissionLevel})
 	}
 	if !lead {
-		return status_error.ChannelLeadInvalid
+		return nil, status_error.ChannelLeadInvalid
 	}
-	return nil
+	return result, nil
 }
 
-// teamMemberOverrides 将已冻结的任务覆盖传入既有团队首发配置边界。
+// teamMemberOverrides 转换任务计划覆盖或已接纳的完整成员配置。
 func teamMemberOverrides(config models.AutomaticTaskConfiguration) []channelservice.MemberExecutionConfigInput {
 	result := make([]channelservice.MemberExecutionConfigInput, 0, len(config.MemberConfigs))
 	for _, member := range config.MemberConfigs {
-		result = append(result, channelservice.MemberExecutionConfigInput{WakerID: member.WakerID, RuntimeID: member.RuntimeID, AccountID: member.AccountID, Model: member.Model, Reasoning: member.Reasoning, PermissionLevel: member.PermissionLevel})
+		result = append(result, channelservice.MemberExecutionConfigInput{WakerID: member.WakerID, RuntimeID: member.RuntimeID, AccountID: member.AccountID, Model: member.Model, Reasoning: member.Reasoning, Fast: member.Fast, PermissionLevel: member.PermissionLevel})
 	}
 	return result
 }

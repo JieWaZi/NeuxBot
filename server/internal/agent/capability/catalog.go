@@ -10,37 +10,37 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
-// Operation 是命令解析、发现与服务端校验共用的唯一操作定义。
+// Operation is the sole operation definition shared by command parsing, discovery, and server validation.
 type Operation struct {
-	// ID 是稳定的领域、资源和动作身份。
+	// ID is the stable domain, resource, and action identity.
 	ID string `json:"id"`
-	// Summary 说明该操作的实际用途。
+	// Summary describes the operation's actual purpose.
 	Summary string `json:"summary"`
-	// InputSchema 限定调用者可以提供的全部参数。
+	// InputSchema bounds all parameters the caller may supply.
 	InputSchema map[string]any `json:"inputSchema,omitempty"`
-	// OutputSchema 约束结果边界；复杂领域值由原领域契约继续解释。
+	// OutputSchema constrains the result boundary; complex values retain their domain contracts.
 	OutputSchema map[string]any `json:"outputSchema,omitempty"`
-	// ScopeKind 说明必须由哪个服务端业务场景签发能力。
+	// ScopeKind identifies the server-side business context that must issue the capability.
 	ScopeKind string `json:"scopeKind"`
-	// DisplayKey 是产品动作的稳定展示身份，不携带模型内容或凭据。
+	// DisplayKey is the stable product action identity without model content or credentials.
 	DisplayKey string `json:"displayKey"`
-	// Effect 区分读取、内部写入和外部效果接纳。
+	// Effect distinguishes reads, internal writes, and admission of external effects.
 	Effect string `json:"effectKind"`
-	// Completion 表达同步完成、耐久接纳或候选提交。
+	// Completion expresses synchronous completion, durable admission, or candidate submission.
 	Completion string `json:"completionKind"`
-	// Guides 是与本操作相关的按需方法指南。
+	// Guides lists on-demand method guides related to this operation.
 	Guides []string `json:"guides"`
-	// Discovery 提供合法主题、资源类别和原生调用映射，能力摘要也保留该目录。
+	// Discovery provides valid topics, resource kinds, and native invocation mappings, also retained in capability summaries.
 	Discovery map[string]any `json:"discovery,omitempty"`
 }
 
-// Field 将一个参数的类型、必填性和简单命令行映射集中定义。
+// Field centralizes a parameter's type, required status, and simple CLI mapping.
 type Field struct {
-	// Name 是规范 JSON 参数名。
+	// Name is the canonical JSON parameter name.
 	Name string
-	// Schema 是字段的闭合 JSON Schema。
+	// Schema is the field's closed JSON Schema.
 	Schema map[string]any
-	// Required 表示必须显式提交该字段。
+	// Required reports whether the field must be explicitly submitted.
 	Required bool
 }
 
@@ -78,7 +78,7 @@ func operation(id, summary, effect, completion, guide string, fields ...Field) O
 			"topics": workflowcatalog.TopicNames(), "examples": workflowcatalog.Examples(),
 			"primitiveTopics": workflowcatalog.PrimitiveTopics(),
 		}
-		// kind 缺省为 sdk；示例与 SDK 的 topic 必须分别校验。
+		// kind defaults to sdk; example and SDK topics must be validated separately.
 		op.InputSchema["allOf"] = []any{map[string]any{
 			"if":   map[string]any{"required": []string{"kind"}, "properties": map[string]any{"kind": map[string]any{"const": "example"}}},
 			"then": map[string]any{"properties": map[string]any{"topic": map[string]any{"enum": workflowcatalog.Examples()}}},
@@ -183,11 +183,11 @@ func catalog() []Operation {
 	}
 	result = append(result, knowledgeMaintenanceOperations()...)
 	for _, resource := range []struct {
-		// operation 是有界观察命令的稳定身份。
+		// operation is the stable identity of the bounded observation command.
 		operation string
-		// id 是所属资源的参数名。
+		// id is the parameter name for the owning resource.
 		id string
-		// guide 是当前领域的方法指南。
+		// guide is the current domain's method guide.
 		guide string
 	}{{"im.deliveries.wait", "deliveryId", "im.delivery"}, {"workflow.runs.wait", "runId", "workflow.execution"}, {"interaction.questions.wait", "questionId", "interaction.questions"}} {
 		result = append(result, operation(resource.operation, "Observe current state for a bounded interval without cancelling the resource.", read, immediate, resource.guide, text(resource.id, true), Field{Name: "timeoutMs", Schema: map[string]any{"type": "integer", "minimum": 1, "maximum": 60000}}))
@@ -195,10 +195,10 @@ func catalog() []Operation {
 	return result
 }
 
-// Operations 返回调用方可独立使用的完整静态契约。
+// Operations returns the complete static contract for independent caller use.
 func Operations() []Operation { return catalog() }
 
-// Find 查找唯一稳定操作；未授权与不存在均不能绕过在线 Grant 校验。
+// Find locates a unique stable operation; neither missing nor unauthorized operations bypass live grant validation.
 func Find(id string) (Operation, bool) {
 	for _, item := range catalog() {
 		if item.ID == id {
@@ -208,7 +208,7 @@ func Find(id string) (Operation, bool) {
 	return Operation{}, false
 }
 
-// Validate 使用命令树共用的 Schema 拒绝跨动作和未知参数。
+// Validate uses the command tree's shared schema to reject cross-action and unknown parameters.
 func (o Operation) Validate(params map[string]any) error {
 	encoded, err := json.Marshal(o.InputSchema)
 	if err != nil {
@@ -225,10 +225,10 @@ func (o Operation) Validate(params map[string]any) error {
 	return nil
 }
 
-// Command 返回唯一 CLI 命令路径。
+// Command returns the sole CLI command path.
 func (o Operation) Command() []string { return strings.Split(o.ID, ".") }
 
-// knowledgeMaintenanceOperations 复用统一命令目录与 Schema，开放实际知识读取与维护操作。
+// knowledgeMaintenanceOperations reuses the shared command catalog and schemas for actual knowledge reads and maintenance.
 func knowledgeMaintenanceOperations() []Operation {
 	text := func(name string, required bool) Field { return scalar(name, "string", required) }
 	number := func(name string, minimum int, required bool) Field {
@@ -281,7 +281,7 @@ func knowledgeMaintenanceOperations() []Operation {
 	}
 }
 
-// questionSchema 只接纳当前共享问答组件能实际填写的字符串与字符串多选表单。
+// questionSchema admits only strings and string multiselect forms supported by the shared question component.
 func questionSchema() map[string]any {
 	text := map[string]any{"type": "string"}
 	stringsSchema := map[string]any{"type": "array", "items": map[string]any{"type": "string", "minLength": 1}, "uniqueItems": true}
@@ -300,7 +300,7 @@ func questionSchema() map[string]any {
 	}, "required": []string{"type", "properties"}, "additionalProperties": false}
 }
 
-// outputSchema 只维护 CLI 的结果边界，不复制源码 Manifest、运行证据或动态用户 Schema。
+// outputSchema maintains only CLI result boundaries without duplicating source manifests, execution evidence, or dynamic user schemas.
 func outputSchema(id string) map[string]any {
 	object := func(names ...string) map[string]any {
 		properties := map[string]any{}
@@ -422,7 +422,7 @@ func outputSchema(id string) map[string]any {
 	return nil
 }
 
-// DisplayLabel 返回不含模型数据的固定产品动作；完成语义不由文字推断。
+// DisplayLabel returns a fixed product action without model data; text does not determine completion semantics.
 func (o Operation) DisplayLabel() string {
 	labels := map[string]string{
 		"knowledge.pages.purge":   "删除已归并的重复页面",

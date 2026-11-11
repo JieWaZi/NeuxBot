@@ -100,10 +100,10 @@ func sdkSections() []sdkSection {
 		{
 			id:     "workspace",
 			topics: []string{"overview", "worker", "action", "function"},
-			content: "Worker chats use the same managed runtime workspace and native instruction-file " +
-				"loading as ordinary chats. Their runtime working directories are isolated; the " +
-				"approved business directory is shared through project links and additional directory " +
-				"authorization. Use flowContext.workspace for all internal paths: rootDirectory, " +
+			content: "Worker chats receive stable role instructions and current-turn context through " +
+				"the same execution boundary as ordinary chats. Their runtime working directories are " +
+				"isolated; use the project entries supplied by the host for this turn. Real project " +
+				"locations are not moved. Use flowContext.workspace for all internal paths: rootDirectory, " +
 				"scriptsDirectory, stateDirectory, cacheDirectory, temporaryDirectory, runsDirectory and " +
 				"runDirectory. Scripts/state/cache/tmp stay under the workflow root; never choose /tmp, " +
 				"a home folder or user-facing storage/cache arguments. Business files default to runDirectory; " +

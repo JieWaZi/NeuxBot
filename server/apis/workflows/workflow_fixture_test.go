@@ -167,7 +167,6 @@ func answerHumanFixture(ctx context.Context, d *workflowDependencies, command An
 	if err == nil {
 		for _, human := range state.Humans {
 			if human.ID == command.HumanID {
-				command.QuestionVersion = human.QuestionVersion
 				command.SnapshotDigest = human.SnapshotDigest
 				break
 			}

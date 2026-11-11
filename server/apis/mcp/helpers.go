@@ -19,6 +19,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/resourcecategory"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/mozillazg/go-pinyin"
@@ -94,6 +95,7 @@ func newConnectorResponse(
 	return ConnectorResponse{
 		Connector: ConnectorResource{
 			ID:               connector.ID,
+			Categories:       append([]string{}, connector.Categories...),
 			OwnerWakerID:     connector.OwnerWakerID,
 			Name:             connector.Name,
 			Description:      connector.Description,
@@ -175,6 +177,11 @@ func prepareConnector(
 		return base, err
 	}
 
+	categories, err := resourcecategory.Normalize(input.Categories)
+	if err != nil {
+		return base, err
+	}
+	base.Categories = categories
 	base.Name = input.Name
 	base.Description = input.Description
 	base.Transport = input.Transport

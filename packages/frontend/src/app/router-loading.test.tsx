@@ -8,6 +8,31 @@ import { observeRenderedState } from "@/test/observe-rendered-state";
 const teamPageMounts = vi.hoisted(() => ({ current: 0 }));
 const workflowPageMounts = vi.hoisted(() => ({ current: 0 }));
 
+vi.mock("@/modules/connector/pages/connector-add-page", () => ({
+  ConnectorAddPage: () => <div>添加连接器页面已就绪</div>,
+}));
+vi.mock("@/modules/connector/pages/connector-detail-page", () => ({
+  ConnectorDetailPage: () => <div>连接器详情已就绪</div>,
+}));
+vi.mock("@/modules/plugin/pages/plugin-connector-detail-page", async () => {
+  const { useParams, useSearchParams } = await import("react-router-dom");
+  return {
+    PluginConnectorDetailPage: () => {
+      const params = useParams();
+      const [search] = useSearchParams();
+      return (
+        <div>
+          插件连接器详情已就绪 {params.catalogKey || params.pluginId}{" "}
+          {params.connectorKey} {search.get("sourceCommit")}{" "}
+          {search.get("archiveSHA256")}
+        </div>
+      );
+    },
+  };
+});
+vi.mock("@/modules/skill/pages/skill-add-page", () => ({
+  SkillAddPage: () => <div>添加技能页面已就绪</div>,
+}));
 vi.mock("@/modules/skill/pages/skill-detail-page", () => ({
   SkillDetailPage: () => <div>技能详情已就绪</div>,
 }));
@@ -85,6 +110,38 @@ describe("公共路由加载", () => {
     expect(
       screen.queryByRole("status", { name: "正在载入页面" }),
     ).not.toBeInTheDocument();
+  });
+
+  it.each([
+    "/resources/skills/new",
+    "/wakers/waker-1/resources/skills/new",
+    "/wakers/waker-1/skills/new",
+  ])("技能添加路由 %s 立即挂载独立页", (location) => {
+    render(routeScene(location));
+    expect(screen.getByText("添加技能页面已就绪")).toBeVisible();
+    expect(screen.queryByText("技能详情已就绪")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    "/resources/connectors/new",
+    "/wakers/waker-1/resources/connectors/new",
+    "/wakers/waker-1/connectors/new",
+  ])("连接器添加路由 %s 立即挂载独立页", (location) => {
+    render(routeScene(location));
+    expect(screen.getByText("添加连接器页面已就绪")).toBeVisible();
+    expect(screen.queryByText("连接器详情已就绪")).not.toBeInTheDocument();
+  });
+
+  it("目录插件连接器详情匹配固定来源参数", () => {
+    render(
+      routeScene(
+        "/resources/plugins/catalog/github/connectors/tools?sourceCommit=commit-1&archiveSHA256=digest-1",
+      ),
+    );
+    expect(screen.getByText(/插件连接器详情已就绪/)).toHaveTextContent(
+      "github tools commit-1 digest-1",
+    );
+    expect(screen.queryByText("连接器详情已就绪")).not.toBeInTheDocument();
   });
 
   it("伙伴功能页冷加载不使用整页 Spinner，同模块内切换不再触发 Suspense", async () => {

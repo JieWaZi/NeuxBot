@@ -12,7 +12,12 @@ export function PluginOverview(props: ComponentProps<typeof Content>) {
   const { t } = useTranslation("common");
   return (
     <Suspense
-      fallback={<ResourceLoadingState label={t("detailState.loading")} />}
+      fallback={
+        <ResourceLoadingState
+          layout="catalog-detail"
+          label={t("detailState.loading")}
+        />
+      }
     >
       <Content {...props} />
     </Suspense>

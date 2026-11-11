@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -69,7 +70,14 @@ func updateConnector(ctx *gin.Context, u *UpdateWakerConnector) (ConnectorRespon
 	if connectorConfigurationChanged(existing, prepared) {
 		clearTestSnapshot(&prepared)
 	}
-	if err := global.MCPConnectorControllerManager.Update(ctx, prepared); err != nil {
+	if err := global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
+		if len(prepared.Categories) > 0 {
+			if err := global.ResourceCategoryControllerManager.Ensure(txctx, constants.ResourceCategoryTypeConnector, prepared.Categories); err != nil {
+				return err
+			}
+		}
+		return global.MCPConnectorControllerManager.Update(txctx, prepared)
+	}); err != nil {
 		return ConnectorResponse{}, ginx.WithStack(err)
 	}
 	notifyResourceChanged(ctx, connectorID)

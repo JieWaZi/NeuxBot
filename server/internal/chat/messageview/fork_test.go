@@ -6,10 +6,11 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 )
 
-func TestForkCapabilityFollowsInvocationAndNativeSession(t *testing.T) {
+func TestForkCapabilityFollowsCanonicalResultAndNativeSession(t *testing.T) {
 	builder := NewPublicMessageViewBuilder()
 	sequence := int64(0)
 	apply := func(typ constants.ChatEventType, execution string, data any) {
@@ -22,8 +23,8 @@ func TestForkCapabilityFollowsInvocationAndNativeSession(t *testing.T) {
 	}
 	apply(constants.ChatEventTypeCreated, "", eventlog.ChatCreatedData{WorkspaceDirectory: "/workspace"})
 	apply(constants.ChatEventTypeExecutionCreated, "one", eventlog.ExecutionCreatedData{RuntimeID: "runtime"})
-	apply(constants.ChatEventTypeInvocationFinished, "one", eventlog.InvocationFinishedData{RecoveryStrategy: constants.InvocationRecoveryInitial, RuntimeID: "runtime", SessionOutputID: "private-native-session", ForkMode: "latest"})
-	apply(constants.ChatEventTypeNativeSessionUpdated, "one", eventlog.RuntimeSessionData{RuntimeID: "runtime", SessionID: "private-native-session", LastExecutionID: "one"})
+	builder.SetNativeResult("one", &agent.NativeResult{Key: agent.NativeResultKey{Session: agent.NativeSessionKey{Provider: "codex", Subject: "fixture", SessionID: "private-native-session"}}, ForkMode: "latest"})
+	builder.SetCurrentForkSession("private-native-session")
 	apply(constants.ChatEventTypeExecutionCompleted, "one", eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})
 	assertFork := func(wantAvailable bool, wantReason string) {
 		t.Helper()
@@ -50,6 +51,6 @@ func TestForkCapabilityFollowsInvocationAndNativeSession(t *testing.T) {
 		}
 	}
 	assertFork(true, "")
-	apply(constants.ChatEventTypeNativeSessionCleared, "one", eventlog.RuntimeSessionData{RuntimeID: "runtime", LastExecutionID: "one"})
+	builder.SetCurrentForkSession("")
 	assertFork(false, "session_changed")
 }

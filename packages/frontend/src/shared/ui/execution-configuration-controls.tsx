@@ -2,11 +2,6 @@ import { useTranslation } from "react-i18next";
 
 import { localApiErrorMessage } from "@/shared/api/local-error-surface";
 import type { ExecutionSelectionState } from "@/shared/hooks/use-execution-selection";
-import {
-  modelPermissionLevels,
-  runtimeDefaultPermissionLevels,
-  safeDefaultPermissionLevel,
-} from "@/shared/lib/runtime-permissions";
 import { ExecutionModelControl } from "@/shared/ui/execution-model-control";
 import {
   ExecutionPermissionControl,
@@ -51,10 +46,8 @@ export function ExecutionConfigurationControls({
             accountId,
             model: "",
             reasoning: "",
-            permissionLevel: safeDefaultPermissionLevel(
-              selection.permissionLevel,
-              runtimeDefaultPermissionLevels(nextRuntime),
-            ),
+            fast: undefined,
+            contextWindow: undefined,
           })
         }
       />
@@ -64,7 +57,7 @@ export function ExecutionConfigurationControls({
         models={state.models}
         selectedReasoning={selection.reasoning}
         reasoningOptions={state.reasoningOptions}
-        thinkingPending={state.thinkingQuery.isFetching}
+        thinkingPending={state.catalogPending && !state.reasoningOptions.length}
         allowDefaultModel
         allowDefaultReasoning
         defaultReasoning={
@@ -76,12 +69,7 @@ export function ExecutionConfigurationControls({
           change({
             model,
             reasoning: "",
-            permissionLevel: safeDefaultPermissionLevel(
-              selection.permissionLevel,
-              runtime?.models?.some((item) => item.id === model)
-                ? modelPermissionLevels(runtime.models, model)
-                : runtimeDefaultPermissionLevels(runtime ?? {}),
-            ),
+            fast: undefined,
           })
         }
         onReasoningChange={(reasoning) => change({ reasoning })}

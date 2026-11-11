@@ -3,7 +3,7 @@ import { Checkbox } from "@/shared/ui/checkbox";
 import { Folder, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 import { ProjectDeleteDialog } from "./project-delete-dialog";
 import { ProjectFormDialog } from "./project-form-dialog";
@@ -30,6 +30,7 @@ export function ProjectCard({
   onSelectedChange,
 }: Props) {
   const { t } = useTranslation("project");
+  const location = useLocation();
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -44,6 +45,7 @@ export function ProjectCard({
           <CardBody className="relative">
             <Link
               to={`/wakers/${wakerId}/projects/${project.id}`}
+              state={{ projectBack: `${location.pathname}${location.search}` }}
               aria-label={t("viewProject", { name: project.name })}
               title={[project.name, project.brief].filter(Boolean).join("\n")}
               className="focus-visible:ring-ring absolute inset-0 z-10 rounded-t-xl outline-none focus-visible:ring-2 focus-visible:ring-inset"
@@ -119,7 +121,7 @@ export function ProjectCard({
                   {t("editProject")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  className="text-destructive"
+                  variant="destructive"
                   onSelect={() => setDeleting(true)}
                 >
                   <Trash2 />

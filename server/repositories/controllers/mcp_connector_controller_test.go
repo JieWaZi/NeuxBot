@@ -8,8 +8,70 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"gorm.io/gorm"
 )
+
+func TestMCPExecutionDeclarationsExcludeDisabledSecretsAndDeferDecryption(t *testing.T) {
+	db := newTestDB(t)
+	controller := NewMCPConnectorController(db)
+	ctx := context.Background()
+	for _, id := range []string{"enabled1", "disabled1"} {
+		connector := connectorFixture(id, id, constants.MCPConnectorScopeBuiltIn, 1)
+		connector.Environment = []models.MCPSecretDefinition{{ID: "token", Name: "TOKEN", Value: id + "-secret", Configured: true}}
+		if err := controller.Create(ctx, connector); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := controller.UpsertWakerConnector(ctx, models.WakerMCPConnector{ID: "disabled-relation", WakerID: "w1", MCPConnectorID: "disabled1", Enabled: false}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&models.MCPConnector{}).Where("id = ?", "disabled1").Update("environment", `[{"id":"token","name":"TOKEN","configured":true,"ciphertext":"damaged"}]`).Error; err != nil {
+		t.Fatal(err)
+	}
+	keyReads := 0
+	if err := db.Callback().Query().After("gorm:query").Register("mcp-execution-key-reads", func(query *gorm.DB) {
+		if query.Statement.Table == (models.MCPStorageKey{}).TableName() {
+			keyReads++
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	defer db.Callback().Query().Remove("mcp-execution-key-reads")
+	declarations, err := controller.ExecutionDeclarations(ctx, "w1")
+	if err != nil || len(declarations) != 1 || declarations[0].ID != "enabled1" {
+		t.Fatalf("enabled declaration: %+v %v", declarations, err)
+	}
+	if declarations[0].Environment[0].Value != "" || declarations[0].Environment[0].Ciphertext == "" {
+		t.Fatalf("declaration decrypted secret: %+v", declarations[0].Environment)
+	}
+	if keyReads != 0 {
+		t.Fatalf("hot declaration read secret key %d times", keyReads)
+	}
+	if err := db.Model(&models.MCPConnector{}).Where("id = ?", "enabled1").Update("name", "New display label").Error; err != nil {
+		t.Fatal(err)
+	}
+	actual, err := controller.AcquireEnabled(ctx, "w1", declarations)
+	if err != nil || len(actual) != 1 || actual[0].Name != "New display label" || actual[0].Environment[0].Value != "enabled1-secret" {
+		t.Fatalf("cold resources: %+v %v", actual, err)
+	}
+	if keyReads != 1 {
+		t.Fatalf("cold acquisition key reads = %d, want one actual connector", keyReads)
+	}
+	if _, err := controller.ExecutionDeclarations(ctx, "w1"); err != nil {
+		t.Fatal(err)
+	}
+	if keyReads != 1 {
+		t.Fatalf("second hot declaration read secret key: %d", keyReads)
+	}
+	if err := db.Model(&models.MCPConnector{}).Where("id = ?", "enabled1").Update("command", "changed").Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.AcquireEnabled(ctx, "w1", declarations); err != status_error.Conflict {
+		t.Fatalf("changed declaration acquired: %v", err)
+	}
+}
 
 func TestMCPConnectorControllerUsesScopeDefaultsAndExplicitState(t *testing.T) {
 	controller := NewMCPConnectorController(newTestDB(t))

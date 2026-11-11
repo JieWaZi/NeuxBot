@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -17,9 +18,8 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
-func TestFirstSendWithoutDirectoryCreatesPerChatWorkspaceAndContinuationKeepsIt(t *testing.T) {
-	runtime := &fakeRuntime{}
-	manager := newMessageTestService(t, t.TempDir(), runtime)
+func TestSameWakerChatsShareCWDWithoutPerExecutionDirectories(t *testing.T) {
+	manager := newMessageTestService(t, t.TempDir())
 	ctx := context.Background()
 	input := testMessageInput{ClientRequestID: "managed-first", NewChat: &testChatInput{WakerID: "waker-1"}, Message: userMessage{Text: "使用会话临时目录"}, Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex}}
 	first, err := manager.sendTestMessage(ctx, input)
@@ -38,16 +38,24 @@ func TestFirstSendWithoutDirectoryCreatesPerChatWorkspaceAndContinuationKeepsIt(
 		t.Fatal(err)
 	}
 	waitForChatTerminal(t, manager, second.Chat.ID)
-	if filepath.Clean(second.Chat.WorkspaceDirectory) == filepath.Clean(first.Chat.WorkspaceDirectory) {
-		t.Fatal("different chats shared a temporary directory")
+	if filepath.Clean(second.Chat.WorkspaceDirectory) != filepath.Clean(first.Chat.WorkspaceDirectory) {
+		t.Fatal("same partner chats used different cwd")
+	}
+	for _, name := range []string{"outputs", "tmp"} {
+		if _, err := os.Stat(filepath.Join(first.Chat.WorkspaceDirectory, name)); !os.IsNotExist(err) {
+			t.Fatalf("shared space created imposed directory %s: %v", name, err)
+		}
+	}
+	if first.Execution.ID == second.Execution.ID {
+		t.Fatal("different messages reused execution identity")
 	}
 	_, err = manager.sendTestMessage(ctx, testMessageInput{ChatID: first.Chat.ID, Message: userMessage{Text: "继续使用原目录"}, Runtime: input.Runtime})
 	if err != nil {
 		t.Fatal(err)
 	}
 	waitForChatTerminal(t, manager, first.Chat.ID)
-	if len(runtime.requests) != 3 || runtime.requests[0].Workspace.Path != runtime.requests[2].Workspace.Path {
-		t.Fatalf("continuation changed managed cwd: %+v", runtime.requests)
+	if calls := manager.nativeCalls(t, "turn/start"); len(calls) != 3 || !strings.Contains(string(calls[2]), first.Chat.WorkspaceDirectory) {
+		t.Fatalf("continuation changed managed cwd: %s", calls)
 	}
 }
 
@@ -55,8 +63,7 @@ func TestHostDirectoriesFreezeRealPathsAndPreserveBusinessScope(t *testing.T) {
 	for _, projectScope := range []bool{false, true} {
 		t.Run(map[bool]string{false: "directory", true: "project"}[projectScope], func(t *testing.T) {
 			ctx := context.Background()
-			runtime := &fakeRuntime{}
-			manager := newMessageTestService(t, t.TempDir(), runtime)
+			manager := newMessageTestService(t, t.TempDir())
 			business := filepath.Join(t.TempDir(), "shared")
 			internal := filepath.Join(t.TempDir(), "shared")
 			for _, directory := range []string{business, internal} {
@@ -105,14 +112,13 @@ func TestHostDirectoriesFreezeRealPathsAndPreserveBusinessScope(t *testing.T) {
 			if !slices.Equal(accepted.Chat.AdditionalWorkingDirectories, want) || accepted.Chat.ProjectID != create.ProjectID {
 				t.Fatalf("host scope lost business identity or duplicated real paths: %+v", accepted.Chat)
 			}
-			request := runtime.requests[0]
-			if request.Workspace.Path != accepted.Chat.WorkspaceDirectory || !slices.Equal(request.Workspace.AdditionalWritableDirectories, want) || len(request.Workspace.ProjectDirectories) != 2 {
-				t.Fatalf("runtime did not receive the frozen scope: %+v", request.Workspace)
+			native := manager.nativeCalls(t, "turn/start")
+			if len(native) != 1 || !strings.Contains(string(native[0]), accepted.Chat.WorkspaceDirectory) {
+				t.Fatalf("missing actual native working directory: %s", native)
 			}
-			for _, project := range request.Workspace.ProjectDirectories {
-				actual, err := filepath.EvalSymlinks(filepath.Join(request.Workspace.Path, project.Path))
-				if err != nil || !slices.Contains(want, actual) {
-					t.Fatalf("authorized directory is not reachable through its managed project link: %q %v", actual, err)
+			for _, authorized := range want {
+				if !strings.Contains(string(native[0]), authorized) {
+					t.Fatalf("missing native writable root %q in %s", authorized, native[0])
 				}
 			}
 			if _, err := manager.execution.Start(ctx, intent); err != nil {
@@ -128,14 +134,42 @@ func TestHostDirectoriesFreezeRealPathsAndPreserveBusinessScope(t *testing.T) {
 				t.Fatal(err)
 			}
 			waitForChatTerminal(t, manager, accepted.Chat.ID)
-			if !slices.Equal(runtime.requests[1].Workspace.AdditionalWritableDirectories, want) {
+			if len(manager.nativeCalls(t, "turn/start")) != 2 {
 				t.Fatal("continuation did not preserve the frozen host scope")
 			}
 			if err := os.Remove(internal); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := manager.execution.Start(ctx, WorkIntent{Chat: ChatTarget{ChatID: accepted.Chat.ID}, Input: WorkInput{Actor: "user", Content: "失效目录"}, Options: intent.Options, Admission: intent.Admission}); !errors.Is(err, status_error.ProjectSourceUnavailable) {
-				t.Fatalf("continuation silently ignored an unavailable host directory: %v", err)
+			if _, err := manager.execution.Start(ctx, WorkIntent{Chat: ChatTarget{ChatID: accepted.Chat.ID}, Input: WorkInput{Actor: "user", Content: "不需要离线项目的追问"}, Options: intent.Options, Admission: intent.Admission}); err != nil {
+				t.Fatalf("offline additional project blocked an unrelated continuation: %v", err)
+			}
+			waitForChatTerminal(t, manager, accepted.Chat.ID)
+			calls := manager.nativeCalls(t, "turn/start")
+			if len(calls) != 3 || strings.Contains(string(calls[2]), internal) {
+				t.Fatalf("offline root remained in the effective native scope: %s", calls)
+			}
+			summary, err := manager.chats.GetChatSummary(ctx, accepted.Chat.ID)
+			if err != nil || !slices.Equal(summary.Chat.AdditionalWorkingDirectories, want) {
+				t.Fatalf("effective subset rewrote the durable authorization: %+v %v", summary, err)
+			}
+			reference := WorkInput{Actor: "user", Content: "读取离线文件", CodeReferences: []CodeReferenceInput{{Path: filepath.Join(internal, "notes.md")}}}
+			if _, err := manager.execution.Start(ctx, WorkIntent{Chat: ChatTarget{ChatID: accepted.Chat.ID}, Input: reference, Options: intent.Options, Admission: intent.Admission}); !errors.Is(err, status_error.ProjectSourceUnavailable) {
+				t.Fatalf("explicit offline reference did not report unavailable source: %v", err)
+			}
+			outside := t.TempDir()
+			if err := os.Symlink(outside, internal); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := manager.execution.Start(ctx, WorkIntent{Chat: ChatTarget{ChatID: accepted.Chat.ID}, Input: WorkInput{Actor: "user", Content: "继续讨论原问题"}, Options: intent.Options, Admission: intent.Admission}); err != nil {
+				t.Fatalf("repointed optional root blocked unrelated text: %v", err)
+			}
+			waitForChatTerminal(t, manager, accepted.Chat.ID)
+			calls = manager.nativeCalls(t, "turn/start")
+			if len(calls) != 4 || strings.Contains(string(calls[3]), outside) || strings.Contains(string(calls[3]), internal) {
+				t.Fatalf("repointed symlink expanded native authorization: %s", calls)
+			}
+			if _, err := manager.execution.Start(ctx, WorkIntent{Chat: ChatTarget{ChatID: accepted.Chat.ID}, Input: reference, Options: intent.Options, Admission: intent.Admission}); !errors.Is(err, status_error.ProjectSourceUnavailable) {
+				t.Fatalf("repointed source was implicitly reauthorized: %v", err)
 			}
 		})
 	}
@@ -143,10 +177,10 @@ func TestHostDirectoriesFreezeRealPathsAndPreserveBusinessScope(t *testing.T) {
 
 func TestExternalJSONCannotGrantAdditionalChatDirectories(t *testing.T) {
 	var create CreateChatSpec
-	if err := json.Unmarshal([]byte(`{"WakerID":"waker-1","AdditionalWorkingDirectories":["/unapproved"]}`), &create); err != nil {
+	if err := json.Unmarshal([]byte(`{"WakerID":"waker-1","AdditionalWorkingDirectories":["/unapproved"],"ExecutionWorkspaceDirectory":"/unapproved"}`), &create); err != nil {
 		t.Fatal(err)
 	}
-	if len(create.AdditionalWorkingDirectories) != 0 {
+	if len(create.AdditionalWorkingDirectories) != 0 || create.ExecutionWorkspaceDirectory != "" {
 		t.Fatal("external JSON expanded the host-only workspace scope")
 	}
 }

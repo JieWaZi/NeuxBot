@@ -3,6 +3,7 @@ import {
   captureErrorNoticeRecovery,
   resolveErrorNoticeRecovery,
   reportErrorNotice,
+  apiErrorNoticePresentation,
 } from "./error-notices";
 import { getCoreConnection, type CoreConnection } from "@/shared/platform";
 
@@ -177,7 +178,7 @@ export async function initializeApi(): Promise<CoreConnection> {
         reportErrorNotice({
           id: converted.noticeId,
           scope: apiErrorScope(path),
-          message: converted.message,
+          ...apiErrorNoticePresentation(converted, converted.message),
           operation,
         });
       }

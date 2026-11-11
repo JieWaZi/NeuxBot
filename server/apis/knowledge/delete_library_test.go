@@ -118,7 +118,7 @@ func TestLibraryDeleteLeavesAllChatsToTheirOriginalLifecycle(t *testing.T) {
 	manager, err := chatservice.New(chatservice.Config{
 		StorageDirectory: root, Projects: controllers.NewProjectController(database.DB),
 		QueryIndexes: chatservice.QueryIndexDependencies{
-			Chats: controllers.NewChatController(database.DB), RuntimeSessions: controllers.NewRuntimeSessionController(database.DB),
+			Chats:           controllers.NewChatController(database.DB),
 			DeletionIntents: controllers.NewChatDeletionIntentController(database.DB),
 			Transactions:    controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB)),
 		},
@@ -141,11 +141,11 @@ func TestLibraryDeleteLeavesAllChatsToTheirOriginalLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"11111111111111111111111111111111", "22222222222222222222222222222222", "33333333333333333333333333333333", "44444444444444444444444444444444"} {
-		dir, err := layout.ChatWorkspace(id)
+		dir, err := layout.AgentWorkspace("waker")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err = workspace.EnsureExecutionWorkspace(dir, id, "waker", nil); err != nil {
+		if err = workspace.EnsureAgentWorkspace(dir, "waker"); err != nil {
 			t.Fatal(err)
 		}
 		if _, err = manager.CreateDormantChats(ctx, []chatservice.DormantChat{{Chat: models.Chat{ID: id, WakerID: "waker", WorkspaceDirectory: dir, AdditionalWorkingDirectories: []string{dir}}}}); err != nil {

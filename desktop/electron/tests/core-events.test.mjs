@@ -114,6 +114,63 @@ test("多资源共享一条物理连接，同一资源最后一个消费者释�
   stopSystem();
   assert.equal(socket.readyState, 3);
 });
+test("Renderer 快速恢复与旧 IPC 退订重叠时，晚加入者恢复已错过的终态", async (t) => {
+  const { client, sockets } = setup(t);
+  const resource = { kind: "chat", id: "chat-1" };
+  const stopHiddenRenderer = client.subscribe("chat", resource, {
+    after: 7,
+    onEvent() {},
+  });
+  await flush();
+  const socket = sockets[0];
+  socket.open();
+  // Renderer 已隐藏并移除了本地监听，但主进程尚未处理其异步退订 IPC。
+  socket.frame(1, {
+    sourceCursor: 12,
+    payload: { type: "execution.completed", sequence: 12 },
+  });
+  let visibleStatus = "running";
+  const reasons = [];
+  client.subscribe("chat", resource, {
+    after: 7,
+    onEvent: (frame) => {
+      if (frame.payload.type === "execution.completed")
+        visibleStatus = "completed";
+    },
+    onResync: (reason) => {
+      reasons.push(reason);
+      // 与 Renderer 的原快照恢复端口相同，从权威状态补齐旧游标之后的事实。
+      visibleStatus = "completed";
+    },
+  });
+  stopHiddenRenderer();
+  await flush();
+  assert.equal(visibleStatus, "completed");
+  assert.deepEqual(reasons, ["subscription_joined"]);
+  assert.equal(sockets.length, 1);
+  assert.equal(
+    socket.sent.filter((frame) => frame.type === "subscribe").length,
+    1,
+  );
+  assert.equal(
+    socket.sent.filter((frame) => frame.type === "unsubscribe").length,
+    0,
+  );
+});
+test("主连接关闭后不再恢复排队中的晚加入者", async (t) => {
+  const { client, sockets } = setup(t);
+  const resource = { kind: "chat", id: "chat-1" };
+  client.subscribe("chat", resource, { onEvent() {} });
+  await flush();
+  sockets[0].open();
+  const reasons = [];
+  client.subscribe("chat", resource, {
+    onEvent() {},
+    onResync: (reason) => reasons.push(reason),
+  });
+  await client.close();
+  assert.deepEqual(reasons, []);
+});
 test("发现交付缺口和重连按权威来源恢复，transient 不推进恢复游标", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { client, sockets } = setup(t);
