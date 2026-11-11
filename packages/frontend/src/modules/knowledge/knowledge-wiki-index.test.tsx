@@ -193,8 +193,16 @@ it("索引生成的Markdown继续复用链接净化，正文HTML不执行", asyn
   expect(
     await screen.findByRole("link", { name: "正常知识" }, { timeout: 5000 }),
   ).toHaveAttribute("href", "./concept/safe.md");
+  const images = view.container.querySelectorAll("img");
+  expect(images).toHaveLength(1);
+  expect(images.item(0)).toHaveAttribute(
+    "src",
+    expect.stringContaining("/material-icon-theme/markdown.svg"),
+  );
   expect(
-    view.container.querySelector('img,script,iframe,a[href^="javascript:"]'),
+    view.container.querySelector(
+      'script,iframe,[onerror],a[href^="javascript:"]',
+    ),
   ).toBeNull();
 });
 

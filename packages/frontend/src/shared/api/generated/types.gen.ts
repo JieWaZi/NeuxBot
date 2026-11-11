@@ -44911,6 +44911,8 @@ export type GetWorkflowRunErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ManagedWorkspaceError][50000000033]`
      * * `[WorkflowStateInvalid][50000003004]`
      *
      */
@@ -48490,6 +48492,8 @@ export type ListDirectoryErrors = {
     413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ManagedWorkspaceError][50000000033]`
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
@@ -48773,6 +48777,8 @@ export type SearchFilesErrors = {
     413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ManagedWorkspaceError][50000000033]`
      * * `[WorkspaceStorageFailed][50000007106]`
      *
      */

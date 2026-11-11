@@ -52843,7 +52843,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[WorkflowStateInvalid][50000003004]`\n",
+            "description": ">\n* `[ChatDirectoryOwnershipInvalid][50000000007]`\n* `[ManagedWorkspaceError][50000000033]`\n* `[WorkflowStateInvalid][50000003004]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -52852,6 +52852,8 @@
               }
             },
             "x-status-errors": [
+              "[ChatDirectoryOwnershipInvalid][50000000007]",
+              "[ManagedWorkspaceError][50000000033]",
               "[WorkflowStateInvalid][50000003004]"
             ]
           }
@@ -58857,7 +58859,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[WorkspaceStorageFailed][50000007106]`\n",
+            "description": ">\n* `[ChatDirectoryOwnershipInvalid][50000000007]`\n* `[ManagedWorkspaceError][50000000033]`\n* `[WorkspaceStorageFailed][50000007106]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -58866,6 +58868,8 @@
               }
             },
             "x-status-errors": [
+              "[ChatDirectoryOwnershipInvalid][50000000007]",
+              "[ManagedWorkspaceError][50000000033]",
               "[WorkspaceStorageFailed][50000007106]"
             ]
           }
@@ -59470,7 +59474,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[WorkspaceStorageFailed][50000007106]`\n",
+            "description": ">\n* `[ChatDirectoryOwnershipInvalid][50000000007]`\n* `[ManagedWorkspaceError][50000000033]`\n* `[WorkspaceStorageFailed][50000007106]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -59479,6 +59483,8 @@
               }
             },
             "x-status-errors": [
+              "[ChatDirectoryOwnershipInvalid][50000000007]",
+              "[ManagedWorkspaceError][50000000033]",
               "[WorkspaceStorageFailed][50000007106]"
             ]
           }
