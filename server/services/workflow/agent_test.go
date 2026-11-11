@@ -62,7 +62,7 @@ func testAgentRunFileScope(t *testing.T, exact bool) {
 	if exact {
 		roots, files = nil, []string{filepath.Join(sub, "report.txt")}
 	}
-	grant, activate, revoke, err := registry.Prepare(capability.GrantSpec{ExecutionID: lease.ID, FileRoots: roots, FilePaths: files, Bindings: s.AgentBindings(lease.ID, lease.AuthToken, constants.WorkflowCapabilityScopeConsumer), Validate: func(context.Context) error { return nil }})
+	grant, activate, revoke, err := registry.Prepare(capability.GrantSpec{ExecutionID: lease.ID, FileRoots: roots, FilePaths: files, ManagedSpace: root, Bindings: s.AgentBindings(lease.ID, lease.AuthToken, constants.WorkflowCapabilityScopeConsumer), Validate: func(context.Context) error { return nil }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,6 +114,24 @@ func testAgentRunFileScope(t *testing.T, exact bool) {
 	code, missing := call([]string{"receipts", "get", "--operation", "workflow.runs.start", "--request-id", "outside"}, nil)
 	if code == 0 || missing.Error == nil || missing.Error.Code != status_error.AgentReceiptNotFound.Key() {
 		t.Fatalf("rejected input produced a receipt: %+v", missing)
+	}
+	if !exact {
+		settings := filepath.Join(root, ".claude", "settings.json")
+		if err := os.Mkdir(filepath.Dir(settings), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(settings, []byte("internal configuration"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		alias := filepath.Join(sub, "settings.json")
+		if err := os.Symlink(settings, alias); err != nil {
+			t.Fatal(err)
+		}
+		invalid := map[string]any{"definitionId": definition.ID, "revisionId": definition.CurrentRevisionID, "args": map[string]any{"files": []string{alias}}}
+		code, rejected := call([]string{"workflow", "runs", "start", "--request-id", "internal", "--input", "-"}, invalid)
+		if code == 0 || rejected.Error == nil || rejected.Error.Code != status_error.WorkflowFileInvalid.Key() {
+			t.Fatalf("internal space file was frozen through an alias: %+v", rejected)
+		}
 	}
 	code, first := call(arguments, params)
 	if code != 0 {

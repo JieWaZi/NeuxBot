@@ -49,6 +49,8 @@ type Limits struct {
 type Options struct {
 	// FilePaths 是接纳时已校验的精确文件，不授权其父目录或同级文件。
 	FilePaths []string
+	// ManagedSpace 是已核验的受管空间根；设置后采集沿用接纳时的真实路径并排除空间内部内容。
+	ManagedSpace string
 	// Limits 是技术预算；调用方可以收紧默认上限。
 	Limits Limits
 	// ExcludePaths 是必须排除的绝对路径，通常来自既有受管秘密目录规则。
@@ -255,7 +257,8 @@ func Begin(ctx context.Context, ownedDir, executionID string, roots []string, op
 	if err != nil {
 		return nil, storageError("prepare", err)
 	}
-	frozen, err := freezeRoots(roots, options.FilePaths)
+	requireCanonical := options.ManagedSpace != ""
+	frozen, err := freezeRoots(roots, options.FilePaths, requireCanonical)
 	scopeUnavailable := err != nil
 	if scopeUnavailable {
 		frozen = []Root{}
@@ -269,7 +272,7 @@ func Begin(ctx context.Context, ownedDir, executionID string, roots []string, op
 			for _, selected := range options.FilePaths {
 				file = file || filepath.Clean(selected) == path
 			}
-			if !file {
+			if !file && !requireCanonical {
 				if canonical, err := filepath.EvalSymlinks(path); err == nil {
 					path = canonical
 				}
@@ -817,16 +820,18 @@ func (root Root) absolutePath(path string) string {
 	return filepath.Join(root.Path, filepath.FromSlash(path))
 }
 
-func freezeRoots(paths, files []string) ([]Root, error) {
+func freezeRoots(paths, files []string, requireCanonical bool) ([]Root, error) {
 	var roots []Root
 	for _, path := range paths {
 		if !filepath.IsAbs(path) {
 			return nil, status_error.WorkspaceScopeInvalid
 		}
-		path, err := filepath.EvalSymlinks(filepath.Clean(path))
-		if err != nil {
+		path = filepath.Clean(path)
+		canonical, err := filepath.EvalSymlinks(path)
+		if err != nil || (requireCanonical && canonical != path) {
 			return nil, status_error.WorkspaceScopeInvalid
 		}
+		path = canonical
 		info, err := os.Stat(path)
 		if err != nil || !info.IsDir() {
 			return nil, status_error.WorkspaceScopeInvalid

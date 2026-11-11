@@ -3,9 +3,78 @@ import { describe, expect, it } from "vitest";
 import indexStyles from "./index.css?raw";
 import themeStyles from "./theme.css?raw";
 
-import { contrast, themeTokens } from "@/test/theme-colors";
+import { contrast, resolveColor, themeTokens } from "@/test/theme-colors";
 
 describe("语义主题", () => {
+  it.each(["light", "dark"] as const)(
+    "%s 主题中文件类型链接在普通和悬停表面均保持正文对比度",
+    (theme) => {
+      const tokens = themeTokens(theme);
+      const hoverRule =
+        indexStyles.match(/\.file-reference:hover\s*\{([^}]+)\}/)?.[1] ?? "";
+      const hoverBackground =
+        /background-color:\s*([^;]+);/.exec(hoverRule)?.[1] ?? "";
+      for (const tone of [
+        "neutral",
+        "blue",
+        "cyan",
+        "teal",
+        "green",
+        "lime",
+        "amber",
+        "orange",
+        "red",
+        "purple",
+      ]) {
+        const rule =
+          indexStyles.match(
+            new RegExp(
+              `\\.file-reference\\[data-file-tone="${tone}"\\]\\s*\\{([^}]+)\\}`,
+            ),
+          )?.[1] ?? "";
+        const color =
+          /--file-reference-default-color:\s*([^;]+);/.exec(rule)?.[1] ?? "";
+        const userColor =
+          /--file-reference-user-color:\s*([^;]+);/.exec(rule)?.[1] ?? "";
+        for (const [context, contentColor, surfaces] of [
+          [
+            "body",
+            color,
+            ["--surface-scene", "--surface-panel", "--surface-tertiary"],
+          ],
+          ["user", userColor, ["--user-message-background"]],
+        ] as const) {
+          const referenceTokens = {
+            ...tokens,
+            "--file-reference-color": contentColor,
+            "--file-reference-hover": hoverBackground,
+          };
+          const foreground = resolveColor(
+            "--file-reference-color",
+            referenceTokens,
+          );
+          const hover = resolveColor("--file-reference-hover", referenceTokens);
+          expect({ ...hover, a: 1 }).toEqual(foreground);
+          expect(hover.a).toBeCloseTo(0.1);
+          for (const surface of surfaces) {
+            expect(
+              contrast("--file-reference-color", surface, referenceTokens),
+              `${theme}/${tone}/${context}/${surface}`,
+            ).toBeGreaterThanOrEqual(4.5);
+            expect(
+              contrast(
+                "--file-reference-color",
+                "--file-reference-hover",
+                referenceTokens,
+                surface,
+              ),
+              `${theme}/${tone}/${context}/${surface}/hover`,
+            ).toBeGreaterThanOrEqual(4.5);
+          }
+        }
+      }
+    },
+  );
   it.each(["light", "dark"] as const)(
     "%s 主题的十种分类底色都能辨认白色图标",
     (theme) => {

@@ -14,6 +14,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 )
 
 const readLimit = 64 * 1024 * 1024
@@ -165,11 +166,26 @@ func (m *Manager) List(subject, id, root, relative string) ([]Entry, error) {
 	if len(entries) > 10000 {
 		return nil, status_error.WorkspaceResourceTooLarge
 	}
+	scope, err := m.scope(subject, id)
+	if err != nil {
+		return nil, err
+	}
+	space := ""
+	if scope.chatID != "" {
+		if root == "" {
+			space = scope.Root
+		} else if actual, err := canonicalDirectory(root); err == nil && actual == scope.Root {
+			space = scope.Root
+		}
+	}
 	result := make([]Entry, 0, len(entries))
 	for _, item := range entries {
 		child := filepath.ToSlash(filepath.Join(relative, item.Name()))
+		if workspace.IsInternalExecutionPath(space, filepath.Join(space, filepath.FromSlash(child))) {
+			continue
+		}
 		_, actual, err := m.resolve(subject, id, root, child, false)
-		if err != nil {
+		if err != nil || workspace.IsInternalExecutionPath(space, actual) {
 			continue
 		}
 		info, err := os.Stat(actual)

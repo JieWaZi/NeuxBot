@@ -2,6 +2,21 @@
 
 NeuxBot 自有代码与文档采用根目录 [MIT License](LICENSE)。以下版权及许可适用于对应的第三方组成，集中保存在本文件，并随安装包分发。
 
+## Material Icon Theme 文件图标
+
+工作区文件树、消息文件引用及共用文件展示使用 [material-extensions/vscode-material-icon-theme](https://github.com/material-extensions/vscode-material-icon-theme/tree/ced21b9b5241c1efa502a8c46ec7363a690a7058) 的精选 SVG，固定提交 `ced21b9b5241c1efa502a8c46ec7363a690a7058`。类型图标从上游原样复制，通用文件和目录图标通过本项目同步命令按同一提交的上游生成器路径及默认色生成。来源与更新命令见 [NOTICE](packages/frontend/src/shared/assets/material-icon-theme/NOTICE.md)，完整许可如下：
+
+```text
+The MIT License (MIT)
+Copyright (c) 2025 Material Extensions
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
 ## Bloub 头像动画核心
 
 通用形状、径向轮廓插值、眼睛与状态动画源于 [jeremy-prt/bloub](https://github.com/jeremy-prt/bloub)，由 [JieWaZi/bloub](https://github.com/JieWaZi/bloub) 维护，通过 `@neuxbot/bloub` 直接依赖 `main` 分支，由锁文件固定解析提交，版本以 `packages/frontend/package.json` 及根锁文件为准。`@neuxbot/bloub` 中的 `neuxbot/src/bot`、`src/ui/gaze.ts` 与 `src/plush` 采用公开 fork [NorbertBodziony/bloub](https://github.com/NorbertBodziony/bloub/tree/7983de0bb7e868ac84881581eaa8c2e1f459dd30) 的固定源码，复用框架无关几何、换色和状态辅助算法。Copyright (c) 2026 Jérémy Perret，采用 MIT；完整许可见 [MIT 许可](https://github.com/JieWaZi/bloub/blob/84b02098dbd5822ec7c5e7cd0335952e9c8560e2/neuxbot/LICENSE)。固定来源记录于 [upstream.json](https://github.com/JieWaZi/bloub/blob/84b02098dbd5822ec7c5e7cd0335952e9c8560e2/neuxbot/upstream.json)。

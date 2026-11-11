@@ -1,28 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { EXPRESSIONS } from "@neuxbot/bloub/expressions";
-import { nextInteractionExpression } from "./interaction-expressions";
+import { nextHoverFace, type HoverFace } from "./interaction-expressions";
 
-describe("点击表情", () => {
-  it("从整个表情目录选择，每次排除当前表情", () => {
-    for (const current of EXPRESSIONS) {
-      const reached = new Set(
-        Array.from({ length: 240 }, (_, index) =>
-          nextInteractionExpression(current.id, (index + 0.5) / 240),
-        ),
-      );
-      expect(reached.has(current.id)).toBe(false);
-      expect(reached.size).toBe(23);
-      expect(
-        [...reached].every((id) => EXPRESSIONS.some((face) => face.id === id)),
-      ).toBe(true);
+describe("悬停表情", () => {
+  it("排除保存的眼睛与前一次悬停反馈", () => {
+    let previous: HoverFace | null = null;
+    for (const seed of [0, 0.2, 0.5, 0.8, 1, 1, 0]) {
+      const face = nextHoverFace("curieux", previous, seed);
+      expect(face.expression).not.toBe("curieux");
+      expect(face).not.toBe(previous);
+      previous = face;
     }
   });
-
-  it("边界或无效随机值仍返回另一种合法表情", () => {
-    for (const seed of [0, 1, -1, NaN, Infinity, -Infinity]) {
-      const next = nextInteractionExpression("neutre", seed);
-      expect(next).not.toBe("neutre");
-      expect(EXPRESSIONS.some((face) => face.id === next)).toBe(true);
+  it("可选眨眼和不同友好表情，边界随机数仍有反馈", () => {
+    expect(nextHoverFace("curieux", null, 0)).toEqual({ state: "wink" });
+    expect(nextHoverFace("curieux", null, 1)).toEqual({
+      state: "idle",
+      expression: "attentif",
+    });
+    for (const seed of [-1, NaN, Infinity, -Infinity]) {
+      expect(nextHoverFace("curieux", null, seed)).toEqual({ state: "wink" });
     }
   });
 });

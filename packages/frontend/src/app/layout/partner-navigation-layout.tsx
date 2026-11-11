@@ -312,9 +312,6 @@ function PartnerNavigationLayoutContent({
   const sidebar = settingsLayout ?? moduleSidebar;
   const pageSidebar = Boolean(sidebar);
   const hasSidebar = pageSidebar || partnerContext;
-  const sidebarWidth = pageSidebar
-    ? Math.max(contextSidebarWidth, 220)
-    : contextSidebarWidth;
   const resizeSidebar = (value: number, commit: boolean) => {
     const width = clampContextSidebarWidth(value);
     setContextSidebarWidth(width);
@@ -381,7 +378,7 @@ function PartnerNavigationLayoutContent({
           style={
             {
               "--shell-context-width": `${contextSidebarWidth}px`,
-              "--shell-sidebar-active-width": `${sidebarWidth}px`,
+              "--shell-sidebar-active-width": `${contextSidebarWidth}px`,
               "--shell-navigation-leading-inset": `${navigationInset}px`,
               "--shell-sidebar-header-inset": nativeDarwin ? "24px" : "12px",
               "--shell-sidebar-header-height": "38px",
@@ -457,7 +454,7 @@ function PartnerNavigationLayoutContent({
               </div>
             ) : null}
           </div>
-          {partnerContext && !pageSidebar ? (
+          {hasSidebar ? (
             <div
               className="relative col-start-2 row-start-1 mt-(--shell-titlebar-height) min-h-0"
               onDoubleClick={() => resizeSidebar(280, true)}

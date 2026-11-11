@@ -772,36 +772,56 @@ describe("PartnerNavigationLayout", () => {
   });
 
   it.each(["/settings/general", "/resources"])(
-    "覆盖页%s导航至少220px并隐藏伙伴resizer",
+    "%s 与伙伴侧栏共用宽度范围并支持拖动",
     (entry) => {
       renderLayout({
         initialEntry: entry,
-        navigationPreferences: {
-          contextSidebarWidth: 128,
-          globalSidebarCollapsed: true,
-        },
+        navigationPreferences: { contextSidebarWidth: 216 },
       });
-      expect(document.querySelector("[data-app-workspace-frame]")).toHaveStyle({
-        "--shell-sidebar-active-width": "220px",
+      const frame = document.querySelector("[data-app-workspace-frame]");
+      expect(frame).toHaveStyle({ "--shell-sidebar-active-width": "216px" });
+      const handle = screen.getByRole("separator", {
+        name: "调整模块侧栏宽度",
       });
-      expect(
-        screen.queryByRole("separator", { name: "调整模块侧栏宽度" }),
-      ).toBeNull();
-      expect(
-        screen.getByRole("navigation", {
-          name: entry.startsWith("/settings") ? "设置菜单" : "资源库",
-        }),
-      ).toBeVisible();
+      fireEvent.mouseDown(handle, { clientX: 216 });
+      fireEvent.mouseUp(document, { clientX: 300 });
+      expect(frame).toHaveStyle({ "--shell-sidebar-active-width": "300px" });
       expect(
         JSON.parse(
           screen.getByTestId("navigation-preferences").textContent || "{}",
         ),
-      ).toMatchObject({
-        contextSidebarWidth: 128,
-        globalSidebarCollapsed: true,
-      });
+      ).toMatchObject({ contextSidebarWidth: 300 });
+      fireEvent.keyDown(handle, { key: "Home" });
+      expect(handle).toHaveAttribute("aria-valuenow", "216");
+      fireEvent.keyDown(handle, { key: "End" });
+      expect(handle).toHaveAttribute("aria-valuenow", "400");
     },
   );
+
+  it("资源库、设置和伙伴之间切换始终沿用最近调整的全局侧栏宽度", async () => {
+    const user = userEvent.setup();
+    renderLayout({ navigationPreferences: { contextSidebarWidth: 216 } });
+    const frame = document.querySelector("[data-app-workspace-frame]");
+    await user.click(screen.getByRole("button", { name: "资源库" }));
+    expect(frame).toHaveStyle({ "--shell-sidebar-active-width": "216px" });
+    const handle = screen.getByRole("separator", { name: "调整模块侧栏宽度" });
+    fireEvent.mouseDown(handle, { clientX: 216 });
+    fireEvent.mouseUp(document, { clientX: 300 });
+    await user.click(screen.getByRole("button", { name: "设置" }));
+    expect(frame).toHaveStyle({ "--shell-sidebar-active-width": "300px" });
+    fireEvent.keyDown(
+      screen.getByRole("separator", { name: "调整模块侧栏宽度" }),
+      { key: "ArrowRight" },
+    );
+    await user.click(screen.getByRole("button", { name: "伙伴" }));
+    expect(frame).toHaveStyle({ "--shell-sidebar-active-width": "312px" });
+    await user.click(screen.getByRole("button", { name: "用量统计" }));
+    expect(
+      screen.queryByRole("separator", { name: "调整模块侧栏宽度" }),
+    ).toBeNull();
+    await user.click(screen.getByRole("button", { name: "资源库" }));
+    expect(frame).toHaveStyle({ "--shell-sidebar-active-width": "312px" });
+  });
 
   it("详情侧栏支持键盘切换原四个功能，并保持唯一选中入口", async () => {
     const user = userEvent.setup();

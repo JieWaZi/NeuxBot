@@ -18,7 +18,6 @@ const {
   deleteWorkspaceResource,
   renameWorkspaceDirectory,
   deleteWorkspaceDirectory,
-  importWorkspaceResources,
   importDroppedWorkspaceFiles,
   saveWorkspaceResourceAs,
   observeWorkspaceResource,
@@ -104,7 +103,6 @@ const {
   deleteWorkspaceResource: vi.fn(async () => true),
   renameWorkspaceDirectory: vi.fn(async () => "新资料"),
   deleteWorkspaceDirectory: vi.fn(async () => true),
-  importWorkspaceResources: vi.fn(async () => ({ imported: [], failed: [] })),
   importDroppedWorkspaceFiles: vi.fn(async () => ({
     imported: [],
     failed: [],
@@ -142,7 +140,6 @@ vi.mock("@/shared/platform", () => ({
   deleteWorkspaceResource,
   renameWorkspaceDirectory,
   deleteWorkspaceDirectory,
-  importWorkspaceResources,
   importDroppedWorkspaceFiles,
   saveWorkspaceResourceAs,
   observeWorkspaceResource,
@@ -169,6 +166,9 @@ describe("WorkspaceFileBrowser", () => {
     expect(
       await screen.findByRole("button", { name: "share" }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "share" }).querySelector("img"),
+    ).toBeNull();
     expect(screen.queryByText("attachments")).not.toBeInTheDocument();
 
     expect(
@@ -521,8 +521,7 @@ describe("WorkspaceFileBrowser", () => {
     );
   });
 
-  it("目录导入使用受限文件选择器和当前目录路径", async () => {
-    const user = userEvent.setup();
+  it("目录行不再展示上传箭头，保留目录操作菜单", async () => {
     listWorkspaceResourceDirectory.mockResolvedValueOnce([
       {
         name: "资料 #1",
@@ -541,16 +540,13 @@ describe("WorkspaceFileBrowser", () => {
         />
       </QueryClientProvider>,
     );
-    await user.click(
-      await screen.findByRole("button", {
-        name: "导入文件到“资料 #1”",
-      }),
-    );
-    expect(importWorkspaceResources).toHaveBeenCalledWith(
-      "chat-id",
-      "资料 #1",
-      "/tmp/ally",
-    );
+    await screen.findByRole("button", { name: "资料 #1" });
+    expect(
+      screen.queryByRole("button", { name: "导入文件到“资料 #1”" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "资料 #1 的目录操作" }),
+    ).toBeInTheDocument();
   });
 
   it("拖入目录时将浏览器 File 送到该目录的 Chat 范围", async () => {

@@ -379,7 +379,7 @@ describe("团队首发完整路由交接", () => {
         view.container.querySelector(
           '[data-chat-scroll-viewport] [data-role="assistant"] svg[data-companion-avatar]:not([data-activity="idle"])',
         );
-      expect(activeAvatar()).toHaveAttribute("data-activity", "connecting");
+      expect(activeAvatar()).toHaveAttribute("data-activity", "thinking");
 
       const frames: Array<{
         loading: boolean;
@@ -501,7 +501,10 @@ describe("团队首发完整路由交接", () => {
           await screen.findByText("负责人的真实回复", {}, { timeout: 5_000 }),
         ).toBeVisible();
         expect(screen.getAllByText(text)).toHaveLength(1);
-        if (status === "completed") expect(activeAvatar()).toBeNull();
+        if (status === "completed") {
+          expect(activeAvatar()).toHaveAttribute("data-activity", "completed");
+          expect(activeAvatar()).toHaveAttribute("data-animation", "notify");
+        }
       } finally {
         observer.disconnect();
         view.unmount();

@@ -1,38 +1,70 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { Avatar, StaticAvatar } from "./avatar";
 import "@/shared/i18n";
 
-it("单击头像和键盘输入可切换表情，连续点击及上箭头不展开悬浮角色", async () => {
+it("悬停临时换表情，点击不重复切换，移开恢复保存的眼睛", async () => {
+  vi.spyOn(Math, "random").mockReturnValue(0.6);
   const user = userEvent.setup();
-  const view = render(<Avatar name="伙伴" />);
+  const view = render(
+    <Avatar name="伙伴" src="bloub:plush:nuage:curieux:38bdf8" />,
+  );
   const trigger = screen.getByRole("button", { name: "与 伙伴 互动" });
   const avatar = view.container.querySelector("svg[data-companion-avatar]");
-  let expression = avatar?.getAttribute("data-expression");
-  expect(expression).toBeTruthy();
+  await user.hover(trigger);
+  const expression = avatar?.getAttribute("data-expression");
+  expect(expression).not.toBe("curieux");
   for (let count = 0; count < 3; count++) {
     await user.click(trigger);
-    await waitFor(() =>
-      expect(avatar?.getAttribute("data-expression")).not.toBe(expression),
-    );
-    expression = avatar?.getAttribute("data-expression");
+    expect(avatar).toHaveAttribute("data-expression", expression);
   }
-  trigger.focus();
-  for (const key of ["{Enter}", " "]) {
-    await user.keyboard(key);
-    await waitFor(() =>
-      expect(avatar?.getAttribute("data-expression")).not.toBe(expression),
-    );
-    expression = avatar?.getAttribute("data-expression");
-  }
+  await user.unhover(trigger);
+  expect(avatar).toHaveAttribute("data-expression", "curieux");
   fireEvent.keyDown(trigger, { key: "ArrowUp" });
   expect(screen.queryByRole("region")).toBeNull();
+  vi.restoreAllMocks();
 });
 
-it("明确关闭互动时保留普通行内头像", () => {
-  render(<Avatar name="伙伴" interactive={false} />);
-  expect(screen.queryByRole("button")).toBeNull();
+it("关闭头像互动后，外部按钮的悬停与焦点不切换头像表情", async () => {
+  const random = vi.spyOn(Math, "random").mockReturnValue(0.6);
+  const user = userEvent.setup();
+  const { container } = render(
+    <button type="button">
+      选择伙伴
+      <Avatar
+        name="伙伴"
+        src="bloub:plush:nuage:curieux:38bdf8"
+        interactive={false}
+      />
+    </button>,
+  );
+  const trigger = screen.getByRole("button", { name: "选择伙伴" });
+  const avatar = container.querySelector("svg[data-companion-avatar]");
+  expect(screen.getAllByRole("button")).toHaveLength(1);
+  await user.hover(trigger);
+  await user.tab();
+  expect(avatar).toHaveAttribute("data-expression", "curieux");
+  random.mockRestore();
+});
+
+it("指针移开后保留键盘焦点反馈，失焦后恢复保存的表情", async () => {
+  const random = vi.spyOn(Math, "random").mockReturnValue(0.6);
+  const user = userEvent.setup();
+  const { container } = render(
+    <Avatar name="伙伴" src="bloub:plush:nuage:curieux:38bdf8" />,
+  );
+  const trigger = screen.getByRole("button");
+  const avatar = container.querySelector("svg[data-companion-avatar]");
+  await user.tab();
+  expect(trigger).toHaveFocus();
+  expect(avatar).not.toHaveAttribute("data-expression", "curieux");
+  await user.hover(trigger);
+  await user.unhover(trigger);
+  expect(avatar).not.toHaveAttribute("data-expression", "curieux");
+  await user.tab();
+  expect(avatar).toHaveAttribute("data-expression", "curieux");
+  random.mockRestore();
 });
 
 it("静态头像使用同一渲染层的固定采样，不保留旧图片头像", () => {

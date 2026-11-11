@@ -39,7 +39,6 @@ import type { Waker } from "@/modules/waker";
 import type { GithubComJieWaZiNeuxBotServerApisChannelsChannelDetail as ChannelDetail } from "@/shared/api/generated/types.gen";
 import { cn } from "@/shared/lib/cn";
 import { Avatar } from "@/shared/ui/avatar";
-import { wakerCompanionActivity } from "@/shared/companion/activity";
 import { Button } from "@/shared/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { SearchField } from "@/shared/ui/search-field";
@@ -164,7 +163,6 @@ function EntityAvatar({
       onDoubleInteract={onDoubleInteract}
       shape="square"
       src={item.waker.avatar}
-      activity={wakerCompanionActivity(item.waker.activityState)}
       size="md"
     />
   ) : (

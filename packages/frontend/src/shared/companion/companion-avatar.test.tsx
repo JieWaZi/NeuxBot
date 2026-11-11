@@ -4,6 +4,7 @@ import { CompanionAvatar } from "./companion-avatar";
 import { defaultCompanionAvatar } from "./appearance";
 import { SEQUENCE } from "@neuxbot/bloub/states";
 import { BotEngine } from "@neuxbot/bloub/engine";
+import { SHAPE_BY_ID } from "@neuxbot/bloub/skins";
 import { enlargedEyes } from "@neuxbot/bloub/eyes";
 vi.mock("./prepared-appearance", async () => {
   const { companionAppearance } = await import("./appearance");
@@ -48,8 +49,8 @@ describe("通用头像渲染", () => {
       "idle",
     );
     const movement = view.container
-      .querySelector("[data-body-material]")
-      ?.getAttribute("transform");
+      .querySelector("[data-body]")
+      ?.getAttribute("d");
     for (let index = 0; index < 210; index++) {
       now += 100;
       act(() => {
@@ -63,75 +64,64 @@ describe("通用头像渲染", () => {
     }
     expect(raf.mock.calls.length).toBeGreaterThan(200);
     expect(
-      view.container
-        .querySelector("[data-body-material]")
-        ?.getAttribute("transform"),
+      view.container.querySelector("[data-body]")?.getAttribute("d"),
     ).not.toBe(movement);
     view.unmount();
     expect(vi.getTimerCount()).toBe(0);
   });
-  it("持续悬停只短暂眨眼，之后实际眼睛轮廓继续自动轮换", () => {
+  it("空闲保持保存的眼睛，悬停随机表情持续保持，移开立即恢复", () => {
     vi.useFakeTimers();
     vi.spyOn(Math, "random").mockReturnValue(0.6);
-    let next: FrameRequestCallback | undefined;
-    let now = 0;
-    vi.spyOn(performance, "now").mockImplementation(() => now);
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
-      next = callback;
-      return 1;
-    });
-    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-    const view = render(<CompanionAvatar avatar={defaultCompanionAvatar} />);
-    const host = view.container.firstElementChild;
-    if (!host) throw new Error("缺少头像容器");
-    fireEvent.pointerEnter(host);
-    const paths = () =>
-      Array.from(view.container.querySelectorAll("[data-eye]"), (eye) =>
-        eye.getAttribute("d"),
-      );
-    const samples: ReturnType<typeof paths>[] = [];
-    for (const target of [1000, 17000, 33000, 49000, 65000]) {
-      while (now < target) {
-        now += 100;
-        act(() => {
-          vi.advanceTimersByTime(100);
-          next?.(now);
-        });
-      }
-      samples.push(paths());
-    }
-    expect(samples.every((eyes) => eyes.length === 2)).toBe(true);
-    for (let index = 1; index < samples.length; index++)
-      expect(samples[index]).not.toEqual(samples[index - 1]);
-    expect(view.container.querySelector("svg")).toHaveAttribute(
-      "data-animation",
-      "idle",
-    );
-  });
-  it("离开头像立即取消悬停反馈，卸载释放悬停定时器", () => {
-    vi.useFakeTimers();
     vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1);
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-    const view = render(<CompanionAvatar avatar={defaultCompanionAvatar} />);
+    const view = render(
+      <CompanionAvatar avatar="bloub:plush:nuage:curieux:38bdf8" />,
+    );
+    const host = view.container.firstElementChild;
+    if (!host) throw new Error("缺少头像容器");
+    const svg = view.container.querySelector("svg");
+    expect(svg).toHaveAttribute("data-expression", "curieux");
+    act(() => vi.advanceTimersByTime(120_000));
+    expect(svg).toHaveAttribute("data-expression", "curieux");
+
+    fireEvent.pointerEnter(host);
+    const hoverExpression = svg?.getAttribute("data-expression");
+    expect(hoverExpression).not.toBe("curieux");
+    act(() => vi.advanceTimersByTime(120_000));
+    expect(svg).toHaveAttribute("data-expression", hoverExpression);
+    fireEvent.pointerLeave(host);
+    expect(svg).toHaveAttribute("data-expression", "curieux");
+    expect(svg).toHaveAttribute("data-animation", "idle");
+    expect(vi.getTimerCount()).toBe(0);
+
+    fireEvent.pointerEnter(host);
+    expect(svg?.getAttribute("data-expression")).not.toBe(hoverExpression);
+    fireEvent.pointerLeave(host);
+    expect(svg).toHaveAttribute("data-expression", "curieux");
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("悬停时修改保存的表情，移开后使用最新选择", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.6);
+    vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1);
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    const view = render(
+      <CompanionAvatar avatar="bloub:plush:nuage:curieux:38bdf8" />,
+    );
     const host = view.container.firstElementChild;
     if (!host) throw new Error("缺少头像容器");
     fireEvent.pointerEnter(host);
-    expect(vi.getTimerCount()).toBe(2);
+    view.rerender(<CompanionAvatar avatar="bloub:plush:nuage:timide:38bdf8" />);
     fireEvent.pointerLeave(host);
     expect(view.container.querySelector("svg")).toHaveAttribute(
-      "data-animation",
-      "idle",
+      "data-expression",
+      "timide",
     );
-    expect(vi.getTimerCount()).toBe(1);
-    fireEvent.pointerEnter(host);
-    expect(vi.getTimerCount()).toBe(2);
-    view.unmount();
-    expect(vi.getTimerCount()).toBe(0);
   });
   it.each([
     ["静态缩略图", false, false, "idle", 0],
     ["减少动态效果", true, true, "idle", 0],
-    ["工作状态", true, false, "working", 1],
+    ["工作状态", true, false, "working", 0],
   ] as const)(
     "%s的悬停入口不创建额外定时器",
     (_label, animated, reduced, activity, timers) => {
@@ -161,86 +151,9 @@ describe("通用头像渲染", () => {
       );
     },
   );
-  it("空闲持续改变实际眼睛轮廓，静态缩略图保留保存的表情", () => {
-    vi.useFakeTimers();
-    vi.spyOn(Math, "random").mockReturnValue(0.6);
-    let next: FrameRequestCallback | undefined;
-    let now = 0;
-    vi.spyOn(performance, "now").mockImplementation(() => now);
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
-      next = callback;
-      return 1;
-    });
-    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-    const view = render(<CompanionAvatar avatar={defaultCompanionAvatar} />);
-    const paths = () =>
-      Array.from(view.container.querySelectorAll("[data-eye]"), (eye) =>
-        eye.getAttribute("d"),
-      );
-    const first = paths();
-    for (let index = 0; index < 155; index++) {
-      now += 100;
-      act(() => {
-        vi.advanceTimersByTime(100);
-        next?.(now);
-      });
-    }
-    expect(paths()).toHaveLength(2);
-    expect(paths()).not.toEqual(first);
-    view.unmount();
-    const thumbnail = render(
-      <CompanionAvatar avatar={defaultCompanionAvatar} animated={false} />,
-    );
-    expect(thumbnail.container.querySelector("svg")).toHaveAttribute(
-      "data-expression",
-      "neutre",
-    );
-    expect(vi.getTimerCount()).toBe(0);
-  });
-  it("工作先显示思考点，再切换轨道和可见表情，外观变化不重置时间线", () => {
-    vi.useFakeTimers();
-    vi.spyOn(Math, "random").mockReturnValue(0.24);
-    let next: FrameRequestCallback | undefined;
-    let now = 0;
-    vi.spyOn(performance, "now").mockImplementation(() => now);
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
-      next = callback;
-      return 1;
-    });
-    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+  it("更新工作头像外观仍保持工具执行动作", () => {
     const view = render(
       <CompanionAvatar avatar={defaultCompanionAvatar} activity="working" />,
-    );
-    const advance = (steps: number) => {
-      for (let index = 0; index < steps; index++) {
-        now += 100;
-        act(() => {
-          vi.advanceTimersByTime(100);
-          next?.(now);
-        });
-      }
-    };
-    const dots = () =>
-      Array.from(
-        view.container.querySelectorAll("[data-native-dot]"),
-        (dot) => dot.outerHTML,
-      );
-    advance(7);
-    const first = dots();
-    expect(first).toHaveLength(2);
-    advance(12);
-    expect(dots()).toHaveLength(2);
-    expect(dots()).not.toEqual(first);
-    advance(22);
-    expect(view.container.querySelector("svg")).toHaveAttribute(
-      "data-animation",
-      "idle",
-    );
-    expect(view.container.querySelectorAll("[data-eye]")).toHaveLength(2);
-    advance(40);
-    expect(view.container.querySelector("svg")).toHaveAttribute(
-      "data-animation",
-      "orbit",
     );
     view.rerender(
       <CompanionAvatar
@@ -248,96 +161,26 @@ describe("通用头像渲染", () => {
         activity="working"
       />,
     );
-    advance(5);
     expect(view.container.querySelector("svg")).toHaveAttribute(
       "data-animation",
-      "idle",
+      "thinking",
     );
   });
-  it("准备会话持续保持圆点轨迹，不恢复头像，长时间等待后轨迹仍移动", () => {
-    vi.useFakeTimers();
-    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(false);
-    let next: FrameRequestCallback | undefined;
-    let now = 0;
-    vi.spyOn(performance, "now").mockImplementation(() => now);
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
-      next = callback;
-      return 1;
-    });
-    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+  it("准备与工具阶段统一保持原生思考，不切换彗星或其他形状", () => {
     const view = render(
       <CompanionAvatar avatar={defaultCompanionAvatar} activity="connecting" />,
     );
-    const ringPaths = () =>
-      Array.from(
-        view.container.querySelectorAll('path[stroke*="cm"]'),
-        (path) => path.getAttribute("d"),
-      );
     expect(view.container.querySelector("svg")).toHaveAttribute(
       "data-animation",
-      "comet",
+      "thinking",
     );
-    expect(
-      view.container.querySelectorAll('path[stroke*="connection-"]'),
-    ).toHaveLength(0);
-    const samples: ReturnType<typeof ringPaths>[] = [];
-    for (const target of [5500, 5700, 30000, 30200]) {
-      while (now < target) {
-        now += 100;
-        act(() => {
-          vi.advanceTimersByTime(100);
-          next?.(now);
-        });
-        if (now >= 600) {
-          expect(view.container.querySelectorAll("[data-eye]")).toHaveLength(0);
-          const body =
-            view.container.querySelector("[data-body]")?.getAttribute("d") ??
-            "";
-          const coordinates = body.match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? [];
-          expect(coordinates.length).toBeGreaterThan(0);
-          expect(Math.max(...coordinates.map(Math.abs))).toBeLessThan(40);
-        }
-      }
-      samples.push(ringPaths());
-    }
-    expect(samples.every((paths) => paths.length > 0)).toBe(true);
-    expect(samples[0]).not.toEqual(samples[1]);
-    expect(samples[2]).not.toEqual(samples[3]);
-    const host = view.container.firstElementChild;
-    if (!host) throw new Error("缺少头像容器");
-    fireEvent.click(host);
-    expect(view.container.querySelector("svg")).toHaveAttribute(
-      "data-animation",
-      "comet",
-    );
-    act(() => {
-      hidden.mockReturnValue(true);
-      document.dispatchEvent(new Event("visibilitychange"));
-      vi.advanceTimersByTime(5000);
-    });
-    act(() => {
-      hidden.mockReturnValue(false);
-      document.dispatchEvent(new Event("visibilitychange"));
-    });
-    for (let index = 0; index < 20; index++) {
-      now += 100;
-      act(() => {
-        vi.advanceTimersByTime(100);
-        next?.(now);
-      });
-      expect(view.container.querySelectorAll("[data-eye]")).toHaveLength(0);
-    }
     view.rerender(
-      <CompanionAvatar avatar={defaultCompanionAvatar} activity="thinking" />,
+      <CompanionAvatar avatar={defaultCompanionAvatar} activity="working" />,
     );
-    for (let index = 0; index < 10; index++) {
-      now += 100;
-      act(() => {
-        vi.advanceTimersByTime(100);
-        next?.(now);
-      });
-    }
-    expect(ringPaths()).toHaveLength(0);
+    expect(view.container.querySelector("svg")).toHaveAttribute(
+      "data-animation",
+      "thinking",
+    );
   });
   it("完成动作优先于点击反应", () => {
     vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1);
@@ -352,58 +195,7 @@ describe("通用头像渲染", () => {
     fireEvent.click(host);
     expect(view.container.querySelector("svg")).toHaveAttribute(
       "data-animation",
-      "burst",
-    );
-  });
-  it("点击表情在1.8秒后恢复当前工作动作及其时间位置", () => {
-    vi.useFakeTimers();
-    vi.spyOn(Math, "random").mockReturnValue(0.6);
-    let next: FrameRequestCallback | undefined;
-    let now = 0;
-    vi.spyOn(performance, "now").mockImplementation(() => now);
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
-      next = callback;
-      return 1;
-    });
-    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-    const view = render(
-      <CompanionAvatar avatar={defaultCompanionAvatar} activity="working" />,
-    );
-    const advance = (steps: number) => {
-      for (let index = 0; index < steps; index++) {
-        now += 100;
-        act(() => {
-          vi.advanceTimersByTime(100);
-          next?.(now);
-        });
-      }
-    };
-    advance(81);
-    const host = view.container.firstElementChild;
-    if (!host) throw new Error("缺少头像容器");
-    fireEvent.click(host);
-    advance(7);
-    expect(view.container.querySelector("svg")).toHaveAttribute(
-      "data-animation",
-      "idle",
-    );
-    expect(
-      view.container.querySelector("[data-eye]")?.getAttribute("d"),
-    ).toMatch(/^M-15 0A7\.5 7\.5/);
-    advance(10);
-    expect(view.container.querySelector("svg")).toHaveAttribute(
-      "data-animation",
-      "idle",
-    );
-    advance(2);
-    expect(view.container.querySelector("svg")).toHaveAttribute(
-      "data-animation",
-      "idle",
-    );
-    advance(30);
-    expect(view.container.querySelector("svg")).toHaveAttribute(
-      "data-animation",
-      "thinking",
+      "notify",
     );
   });
   it.each(["减少动态", "暂停预览", "隐藏"])(
@@ -566,7 +358,7 @@ describe("通用头像渲染", () => {
     );
     expect(view.container.querySelectorAll("[data-eye]")).toHaveLength(2);
   });
-  it("工作表情轮换不重启原生动作时间线，失败会立即取消当前小剧场", () => {
+  it("工具执行保持原生动作，失败立即退出执行姿态", () => {
     vi.useFakeTimers();
     vi.spyOn(Math, "random").mockReturnValue(0.6);
     let next: FrameRequestCallback | undefined;
@@ -589,14 +381,14 @@ describe("通用头像渲染", () => {
     }
     expect(view.container.querySelector("svg")).toHaveAttribute(
       "data-animation",
-      "orbit",
+      "thinking",
     );
     view.rerender(
       <CompanionAvatar avatar={defaultCompanionAvatar} activity="failed" />,
     );
     expect(view.container.querySelector("svg")).toHaveAttribute(
       "data-animation",
-      "idle",
+      "alert",
     );
     expect(view.container.querySelector("svg")).toHaveAttribute(
       "data-activity",
@@ -621,7 +413,7 @@ describe("通用头像渲染", () => {
       ),
     ).toEqual(expected);
   });
-  it("工作中点击临时显示新表情，等待仍优先且不接受互动覆盖", () => {
+  it("工具执行及等待不接受点击覆盖", () => {
     let next: FrameRequestCallback | undefined;
     let now = 0;
     vi.spyOn(performance, "now").mockImplementation(() => now);
@@ -642,16 +434,16 @@ describe("通用头像渲染", () => {
     }
     expect(view.container.querySelector("svg")).toHaveAttribute(
       "data-animation",
-      "idle",
+      "thinking",
     );
-    expect(view.container.querySelectorAll("[data-eye]")).toHaveLength(2);
+    expect(view.container.querySelectorAll("[data-eye]")).toHaveLength(0);
     view.rerender(
       <CompanionAvatar avatar={defaultCompanionAvatar} activity="waiting" />,
     );
     fireEvent.click(host);
     expect(view.container.querySelector("svg")).toHaveAttribute(
       "data-animation",
-      "wide",
+      "idle",
     );
   });
   it("原生警示预览跨越完整动作后重新运动，不停留在末尾姿态", () => {
@@ -687,7 +479,7 @@ describe("通用头像渲染", () => {
       const view = render(
         <CompanionAvatar avatar={defaultCompanionAvatar} activity={activity} />,
       );
-      expect(vi.getTimerCount()).toBe(1);
+      expect(vi.getTimerCount()).toBe(0);
       act(() => {
         hidden.mockReturnValue(true);
         document.dispatchEvent(new Event("visibilitychange"));
@@ -698,7 +490,7 @@ describe("通用头像渲染", () => {
       expect(vi.getTimerCount()).toBe(0);
     },
   );
-  it("回答超过一秒后完成仍从粒子动作起点播放，不叠加跳动", () => {
+  it("正文眨眼切换为完成通知，不叠加自定义跳动", () => {
     let next: FrameRequestCallback | undefined;
     let now = 0;
     vi.spyOn(performance, "now").mockImplementation(() => now);
@@ -727,7 +519,7 @@ describe("通用头像渲染", () => {
       ?.getAttribute("transform");
     expect(view.container.querySelector("svg")).toHaveAttribute(
       "data-animation",
-      "burst",
+      "notify",
     );
     expect(transform).toBeNull();
   });
@@ -793,37 +585,198 @@ describe("通用头像渲染", () => {
       "waiting",
     );
   });
-  it("历史完成消息不重复庆祝，真实完成转换短暂强调后回空闲", () => {
+  it("已完成消息挂载即显示通知，并持续保持，不被定时器或交互覆盖", () => {
     vi.useFakeTimers();
+    vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1);
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
     const view = render(
-      <CompanionAvatar
-        avatar={defaultCompanionAvatar}
-        activity="completed"
-        animated={false}
-      />,
+      <CompanionAvatar avatar={defaultCompanionAvatar} activity="completed" />,
     );
+    const host = view.container.firstElementChild;
+    if (!host) throw new Error("缺少头像容器");
+    fireEvent.click(host);
+    fireEvent.pointerEnter(host);
+    act(() => vi.advanceTimersByTime(120_000));
     expect(view.container.querySelector("svg")).toHaveAttribute(
-      "data-activity",
-      "idle",
-    );
-    view.rerender(
-      <CompanionAvatar
-        avatar={defaultCompanionAvatar}
-        activity="working"
-        animated={false}
-      />,
-    );
-    view.rerender(
-      <CompanionAvatar
-        avatar={defaultCompanionAvatar}
-        activity="completed"
-        animated={false}
-      />,
+      "data-animation",
+      "notify",
     );
     expect(view.container.querySelector("svg")).toHaveAttribute(
       "data-activity",
       "completed",
     );
-    vi.useRealTimers();
+    expect(
+      view.container.querySelector("[data-native-notification]"),
+    ).toBeInTheDocument();
+    expect(vi.getTimerCount()).toBe(0);
   });
+});
+
+it("真实阶段控制原生动作，持续工作及交互不触发动作和表情轮播", () => {
+  vi.useFakeTimers();
+  let next: FrameRequestCallback | undefined;
+  let now = 0;
+  vi.spyOn(performance, "now").mockImplementation(() => now);
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+    next = callback;
+    return 1;
+  });
+  vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+  const view = render(
+    <CompanionAvatar avatar={defaultCompanionAvatar} activity="thinking" />,
+  );
+  for (const [activity, animation] of [
+    ["thinking", "thinking"],
+    ["working", "thinking"],
+    ["searching", "thinking"],
+    ["responding", "wink"],
+  ] as const) {
+    view.rerender(
+      <CompanionAvatar avatar={defaultCompanionAvatar} activity={activity} />,
+    );
+    const expression = view.container
+      .querySelector("svg")
+      ?.getAttribute("data-expression");
+    const host = view.container.firstElementChild;
+    if (!host) throw new Error("缺少头像容器");
+    fireEvent.click(host);
+    fireEvent.pointerEnter(host);
+    for (let index = 0; index < 200; index++) {
+      now += 100;
+      act(() => {
+        vi.advanceTimersByTime(100);
+        next?.(now);
+      });
+      expect(view.container.querySelector("svg")).toHaveAttribute(
+        "data-animation",
+        animation,
+      );
+      expect(view.container.querySelector("svg")).toHaveAttribute(
+        "data-expression",
+        expression,
+      );
+      expect(
+        view.container
+          .querySelector("[data-body-material]")
+          ?.getAttribute("transform"),
+      ).toBeNull();
+    }
+    expect(vi.getTimerCount()).toBe(0);
+  }
+});
+
+it.each(["responding"] as const)(
+  "%s 的原生身体保持保存的六边形轮廓",
+  (activity) => {
+    let next: FrameRequestCallback | undefined;
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      next = callback;
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    const avatar = "bloub:plush:hexagone:neutre:8b5cf6";
+    const view = render(
+      <CompanionAvatar avatar={avatar} activity="thinking" />,
+    );
+    view.rerender(<CompanionAvatar avatar={avatar} activity={activity} />);
+    for (let index = 0; index < 20; index++) {
+      now += 100;
+      act(() => next?.(now));
+    }
+    expect(view.container.querySelector("svg")).toHaveAttribute(
+      "data-shape",
+      "hexagone",
+    );
+    expect(
+      view.container.querySelector('[data-body-sprite="hexagone"]'),
+    ).toBeInTheDocument();
+    // 保留素材标签还不够：原生身体不得把六边形径向变形成圆形或其他轮廓。
+    expect(
+      view.container.querySelector('[data-body-warp="radial-svg"]'),
+    ).toBeNull();
+    expect(view.container.querySelector("svg")).toHaveAttribute(
+      "data-animation",
+      activity === "responding" ? "wink" : "notify",
+    );
+  },
+);
+
+it("思考与工具执行使用同一思考动作，阶段交接不重启动作", () => {
+  let now = 0;
+  let sequence = 0;
+  const callbacks = new Map<number, FrameRequestCallback>();
+  vi.spyOn(performance, "now").mockImplementation(() => now);
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+    callbacks.set(++sequence, callback);
+    return sequence;
+  });
+  vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+    callbacks.delete(id);
+  });
+  const avatars = (activity: "thinking" | "working") => (
+    <>
+      <CompanionAvatar avatar={defaultCompanionAvatar} activity="thinking" />
+      <CompanionAvatar avatar={defaultCompanionAvatar} activity={activity} />
+    </>
+  );
+  const view = render(avatars("thinking"));
+  const advance = () => {
+    now += 100;
+    const frameCallbacks = [...callbacks.values()];
+    callbacks.clear();
+    act(() => frameCallbacks.forEach((callback) => callback(now)));
+  };
+  for (let index = 0; index < 9; index++) advance();
+  view.rerender(avatars("working"));
+  for (let index = 0; index < 9; index++) {
+    advance();
+    const geometry = [...view.container.children].map((host) => {
+      const svg = host.querySelector("svg[data-companion-avatar]");
+      if (!svg) throw new Error("缺少头像");
+      return [...svg.querySelectorAll("[data-body], [data-native-dot]")].map(
+        (node) =>
+          ["d", "cx", "cy", "r"].map((attribute) =>
+            node.getAttribute(attribute),
+          ),
+      );
+    });
+    expect(geometry[1]).toEqual(geometry[0]);
+  }
+});
+
+it("通知使用原生galet斜卵石轮廓与对应素材，不强制改成正圆", () => {
+  const view = render(
+    <CompanionAvatar
+      avatar="bloub:plush:hexagone:neutre:8b5cf6"
+      activity="completed"
+      animated={false}
+    />,
+  );
+  const native = new BotEngine(
+    100,
+    "notify",
+    SHAPE_BY_ID.get("galet")?.radii,
+  ).sample(1.4);
+  expect(view.container.querySelector("svg")).toHaveAttribute(
+    "data-animation",
+    "notify",
+  );
+  expect(view.container.querySelector("[data-body]")).toHaveAttribute(
+    "d",
+    native.bodyPath,
+  );
+  expect(
+    view.container.querySelector("[data-native-notification]"),
+  ).toBeInTheDocument();
+  expect(
+    view.container.querySelector('[data-body-sprite="galet"]'),
+  ).toBeInTheDocument();
+  expect(
+    view.container.querySelector('[data-body-sprite="hexagone"]'),
+  ).toBeNull();
+  expect(
+    view.container.querySelector('[data-body-warp="radial-svg"]'),
+  ).toBeNull();
 });

@@ -65,6 +65,35 @@ function NavigationHarness({
 }
 
 describe("EntityNavigation", () => {
+  it.each(["running", "waiting"] as const)(
+    "左侧伙伴头像不受 %s 工作状态影响",
+    (activityState) => {
+      render(
+        <EntityNavigation
+          collapsed={false}
+          items={[
+            {
+              id: "waker-1",
+              key: "waker:waker-1",
+              kind: "waker",
+              waker: { id: "waker-1", name: "伙伴一", activityState } as Waker,
+            },
+          ]}
+          mode="waker"
+          onManageEntities={() => undefined}
+          onModeChange={() => undefined}
+          onNewChat={() => undefined}
+          onReorder={() => undefined}
+          onSelectPartner={() => undefined}
+          onSelectTeam={() => undefined}
+          selectedKey="waker:waker-1"
+        />,
+      );
+      expect(
+        document.querySelector("svg[data-companion-avatar]"),
+      ).toHaveAttribute("data-activity", "idle");
+    },
+  );
   it.each([true, false])(
     "伙伴上下文不再提供全局模块入口（折叠=%s）",
     (collapsed) => {

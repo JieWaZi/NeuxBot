@@ -23,10 +23,14 @@ func TestExecutionWorkspaceIsOwnedByWakerAcrossChats(t *testing.T) {
 	if err := EnsureAgentWorkspace(root, "other-waker"); err == nil {
 		t.Fatal("accepted another Waker owner")
 	}
+	for _, name := range []string{"outputs", "tmp"} {
+		if _, err := os.Stat(filepath.Join(root, name)); !os.IsNotExist(err) {
+			t.Fatalf("workspace created an imposed directory %q: %v", name, err)
+		}
+	}
 }
 
-func TestTaskPathsAndAttachmentCopiesStayInsideExecutionScope(t *testing.T) {
-	root := t.TempDir()
+func TestAttachmentOriginalsStayWithConversationWithoutExecutionCopies(t *testing.T) {
 	conversation := t.TempDir()
 	source := filepath.Join(t.TempDir(), "input.txt")
 	if err := os.WriteFile(source, []byte("exact-input"), 0600); err != nil {
@@ -37,23 +41,16 @@ func TestTaskPathsAndAttachmentCopiesStayInsideExecutionScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := prepared.RuntimePaths[0]
-	paths, err := EnsureTaskDirectories(root, "execution-one")
+	conversation, err = filepath.EvalSymlinks(conversation)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := MaterializeTaskInputs(paths.Temporary, "chat-one", "message-one", &prepared); err != nil {
-		t.Fatal(err)
+	if filepath.Dir(original) != filepath.Join(conversation, "attachments", "message-one") {
+		t.Fatalf("native input no longer names managed original: %s", original)
 	}
-	if prepared.RuntimePaths[0] == original {
-		t.Fatal("native path still points at private conversation")
-	}
-	content, err := os.ReadFile(prepared.RuntimePaths[0])
+	content, err := os.ReadFile(original)
 	if err != nil || string(content) != "exact-input" {
-		t.Fatalf("copy = %q, %v", content, err)
-	}
-	other, err := EnsureTaskDirectories(root, "execution-two")
-	if err != nil || other.Outputs == paths.Outputs || other.Temporary == paths.Temporary {
-		t.Fatalf("task isolation lost: %+v %+v %v", paths, other, err)
+		t.Fatalf("original = %q, %v", content, err)
 	}
 	if err := prepared.Rollback(); err != nil {
 		t.Fatal(err)

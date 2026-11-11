@@ -31,6 +31,8 @@ type DeliveryRequest struct {
 	AllowedRoots []string
 	// AllowedFiles 是同一执行授权的精确原文件，不授权父目录或同级文件。
 	AllowedFiles []string
+	// ManagedSpace 是智能体交付中需要排除内部文件的受管空间根。
+	ManagedSpace string
 	// LinkID 是原始 IM 对话关系，主动发送时为空。
 	LinkID string
 	// ChatID 是产生结果的标准聊天。
@@ -63,7 +65,7 @@ func (s *Service) CreateDelivery(ctx context.Context, request DeliveryRequest) (
 	if request.VerifyFileContent {
 		snapshotID = util.New()
 		for index, path := range request.Files {
-			file, err := protocol.FreezeFile(s.config.DataDirectory, snapshotID, index, path, request.AllowedRoots, request.AllowedFiles)
+			file, err := protocol.FreezeFile(s.config.DataDirectory, snapshotID, index, path, request.AllowedRoots, request.AllowedFiles, request.ManagedSpace)
 			if err != nil {
 				return models.IMDelivery{}, err
 			}
@@ -111,7 +113,7 @@ func (s *Service) CreateDelivery(ctx context.Context, request DeliveryRequest) (
 		delivery.Files = frozen
 	} else {
 		for index, path := range request.Files {
-			file, err := protocol.FreezeFile(s.config.DataDirectory, delivery.ID, index, path, request.AllowedRoots, request.AllowedFiles)
+			file, err := protocol.FreezeFile(s.config.DataDirectory, delivery.ID, index, path, request.AllowedRoots, request.AllowedFiles, request.ManagedSpace)
 			if err != nil {
 				return models.IMDelivery{}, err
 			}

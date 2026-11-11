@@ -97,7 +97,7 @@ func (m *Manager) ListChatFiles(ctx context.Context, subject, id, root string) (
 			filtered = append(filtered, p)
 			continue
 		}
-		if _, _, err := m.resolve(subject, id, root, p, false); err != nil {
+		if _, _, err := m.resolve(subject, id, "", p, false); err != nil {
 			filtered = append(filtered, p)
 		}
 	}
@@ -112,7 +112,12 @@ func (m *Manager) DeleteChatFile(subject, id, root, relative string) error {
 	if err != nil {
 		return err
 	}
-	allowed, target, err := m.resolve(subject, id, root, relative, false)
+	// 会话文件操作中的附件路径始终属于 Chat 原件，与显式空间目录无关。
+	attachmentRoot := root
+	if strings.HasPrefix(relative, "attachments/") {
+		attachmentRoot = ""
+	}
+	allowed, target, err := m.resolve(subject, id, attachmentRoot, relative, false)
 	if err != nil {
 		return err
 	}

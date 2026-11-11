@@ -20,6 +20,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 )
 
 // Preview 保存范围验证后读取的文件事实，不承担 HTTP 展示及编码。
@@ -43,7 +44,7 @@ type Preview struct {
 // ReadPreview 复用文件范围边界读取并验证有界内容，不加载任何执行状态。
 func ReadPreview(ctx context.Context, directory, candidate string) (Preview, error) {
 	result := Preview{}
-	file, relative, reason := openScopeFile(directory, candidate)
+	file, relative, reason := openScopeFile(directory, candidate, "")
 	if reason != "" {
 		result.Reason = reason
 		return result, nil
@@ -150,7 +151,11 @@ func previewImageMatches(mediaType string, content []byte) bool {
 
 // OpenScopeFile 通过目录句柄打开冻结范围内的普通文件，检查真实路径并阻止软链接逃逸。
 func OpenScopeFile(directory, candidate string) (*os.File, error) {
-	file, _, reason := openScopeFile(directory, candidate)
+	return openAuthorizedScopeFile(directory, candidate, "")
+}
+
+func openAuthorizedScopeFile(directory, candidate, managedSpace string) (*os.File, error) {
+	file, _, reason := openScopeFile(directory, candidate, managedSpace)
 	if reason != "" {
 		if reason == "path_invalid" {
 			return nil, status_error.WorkflowFileInvalid
@@ -169,7 +174,7 @@ func OpenScopeFile(directory, candidate string) (*os.File, error) {
 	return file, nil
 }
 
-func openScopeFile(directory, candidate string) (*os.File, string, string) {
+func openScopeFile(directory, candidate, managedSpace string) (*os.File, string, string) {
 	if candidate == "" || len(candidate) > 4096 || strings.ContainsRune(candidate, 0) {
 		return nil, "", "path_invalid"
 	}
@@ -187,6 +192,9 @@ func openScopeFile(directory, candidate string) (*os.File, string, string) {
 	resolved, err := filepath.EvalSymlinks(target)
 	if err != nil {
 		return nil, "", "missing"
+	}
+	if workspace.IsInternalExecutionPath(managedSpace, target) || workspace.IsInternalExecutionPath(managedSpace, resolved) {
+		return nil, "", "path_invalid"
 	}
 	relative, err := filepath.Rel(directory, resolved)
 	if err != nil || !filepath.IsLocal(relative) {

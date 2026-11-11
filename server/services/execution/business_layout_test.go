@@ -24,12 +24,11 @@ func TestTurnPathsAndContextDoNotChangeNativeSessionSettings(t *testing.T) {
 	root := t.TempDir()
 	manager := &service{}
 	state := messageChat{chat: models.Chat{WakerID: "partner", WorkspaceDirectory: root, AdditionalWorkingDirectories: []string{root}}}
-	files := &preparedMessageFiles{executionWorkspaceDirectory: root, instructions: []agentapi.Instruction{{Name: "PARTNER.md", Content: "persistent partner"}}, taskDirectories: workspace.TaskDirectories{Outputs: filepath.Join(root, "outputs", "execution-one"), Temporary: filepath.Join(root, "tmp", "execution-one")}}
+	files := &preparedMessageFiles{executionWorkspaceDirectory: root, instructions: []agentapi.Instruction{{Name: "PARTNER.md", Content: "persistent partner"}}}
 	request := pendingMessage{supplementalInstructions: []agentapi.Instruction{{Name: "TEAM.md", Content: "stable team role"}}, contextInstructions: []agentapi.Instruction{{Name: "Current Lead Turn", Content: "coordination"}}}
 	firstPlan := recordBusinessInputs(manager, state, request, files, nil, nil, models.RuntimeEnvironment{})
 
 	firstTurn := firstPlan
-	files.taskDirectories = workspace.TaskDirectories{Outputs: filepath.Join(root, "outputs", "execution-two"), Temporary: filepath.Join(root, "tmp", "execution-two")}
 	request.contextInstructions[0].Content = "direct execution"
 	secondPlan := recordBusinessInputs(manager, state, request, files, nil, nil, models.RuntimeEnvironment{})
 
@@ -44,15 +43,15 @@ func TestTurnPathsAndContextDoNotChangeNativeSessionSettings(t *testing.T) {
 	if strings.Contains(string(static), "execution-one") || strings.Contains(string(static), "Current Lead Turn") {
 		t.Fatalf("dynamic context entered session fingerprint: %s", static)
 	}
-	if !strings.Contains(secondTurn.prompt(), "execution-two") || !strings.Contains(secondTurn.prompt(), "direct execution") {
-		t.Fatal("native turn lost exact task paths or current mode")
+	if !strings.Contains(secondTurn.prompt(), "direct execution") {
+		t.Fatal("native turn lost current mode")
 	}
 	if !strings.Contains(agentapi.DeveloperInstructions(secondPlan.Instructions), "stable team role") {
 		t.Fatal("stable team role was removed from developer instructions")
 	}
 }
 
-func TestCapabilityFileRootsFreezeTaskOutputsAndRealProjects(t *testing.T) {
+func TestCapabilityFileRootsFreezeSpaceAndRealProjects(t *testing.T) {
 	manager := agentPreparationFixture(t)
 	chat := manager.journal.(*agentTestJournal).chat
 	cwd, project := t.TempDir(), t.TempDir()
@@ -61,10 +60,6 @@ func TestCapabilityFileRootsFreezeTaskOutputsAndRealProjects(t *testing.T) {
 		t.Fatal(err)
 	}
 	project, err = filepath.EvalSymlinks(project)
-	if err != nil {
-		t.Fatal(err)
-	}
-	task, err := workspace.EnsureTaskDirectories(cwd, "turn")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,10 +76,10 @@ func TestCapabilityFileRootsFreezeTaskOutputsAndRealProjects(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer release()
-	actualOutputs, _ := filepath.EvalSymlinks(task.Outputs)
+	actualSpace, _ := filepath.EvalSymlinks(cwd)
 	actualProject, _ := filepath.EvalSymlinks(project)
-	if !reflect.DeepEqual(roots, []string{actualOutputs, actualProject}) {
-		t.Fatalf("delivery roots contain private/shared cwd or lost real project: %v", roots)
+	if !reflect.DeepEqual(roots, []string{actualSpace, actualProject}) {
+		t.Fatalf("delivery roots lost space or real project: %v", roots)
 	}
 }
 
@@ -140,7 +135,7 @@ func TestProjectEntryDeliveryUsesNativeEvidenceAndIsolatesSharedWakerChats(t *te
 		if project == projectOne {
 			references = []CodeReferenceInput{{Path: sourceFile}}
 		}
-		files, err := core.prepareMessageFiles(t.Context(), state, "message-"+chatID, "execution-"+chatID, nil, references, agentapi.RuntimeIDCursor, detection)
+		files, err := core.prepareMessageFiles(t.Context(), state, "message-"+chatID, nil, references, agentapi.RuntimeIDCursor, detection)
 		if err != nil {
 			t.Fatal(err)
 		}

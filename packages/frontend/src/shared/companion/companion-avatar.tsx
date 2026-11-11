@@ -1,28 +1,20 @@
 import {
   createElement,
-  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
   useRef,
   useState,
 } from "react";
-import { BotEngine, type Look } from "@neuxbot/bloub/engine";
+import { BotEngine } from "@neuxbot/bloub/engine";
 import { avatarExpressionById as EXPRESSION_BY_ID } from "./avatar-expressions";
 import { SHAPE_BY_ID } from "@neuxbot/bloub/skins";
-import { POSES, STATE_BY_ID, type StateId } from "@neuxbot/bloub/states";
-import { faceOf, lookOf, shake } from "@neuxbot/bloub/motion";
+import { POSES, type StateId } from "@neuxbot/bloub/states";
 import { usePreparedAppearance } from "./prepared-appearance";
 import { alignMaterialDrawing, materialViewBox } from "./materials";
 import type { CompanionActivity } from "./activity";
-import { useWorkingExpression } from "./working-expression";
-import {
-  companionPlayback,
-  companionPresentation,
-  COMPLETION_DURATION,
-} from "./playback";
-import { nextInteractionExpression } from "./interaction-expressions";
-import { bodyMovement } from "@neuxbot/bloub/effects";
+import { companionPlayback, companionPresentation } from "./playback";
+import { nextHoverFace, type HoverFace } from "./interaction-expressions";
 import { avatarDrawing, type SvgDrawing } from "@neuxbot/bloub/drawing";
 import { enlargedEyes } from "@neuxbot/bloub/eyes";
 
@@ -32,40 +24,15 @@ function renderDrawing(
 ): ReturnType<typeof createElement> {
   return createElement(
     drawing.tag,
-    { ...drawing.attributes, key },
+    {
+      ...drawing.attributes,
+      ...(drawing.attributes["data-native-notification"] !== undefined
+        ? { fill: "var(--accent-default)" }
+        : {}),
+      key,
+    },
     ...drawing.children.map(renderDrawing),
   );
-}
-
-function useActivity(activity: CompanionActivity, animated: boolean) {
-  const input = activity === "resting" ? "idle" : activity;
-  const [current, setCurrent] = useState<{
-    input: CompanionActivity;
-    shown: CompanionActivity;
-  }>({ input, shown: input === "completed" ? "idle" : input });
-  if (current.input !== input) setCurrent({ input, shown: input });
-  useEffect(() => {
-    if (!animated) return;
-    const delay =
-      current.shown === "starting"
-        ? 700
-        : current.shown === "completed"
-          ? COMPLETION_DURATION * 1000
-          : current.shown === "stopped"
-            ? 1000
-            : 0;
-    if (!delay) return;
-    const timer = setTimeout(
-      () =>
-        setCurrent((state) => ({
-          ...state,
-          shown: state.shown === "starting" ? "thinking" : "idle",
-        })),
-      delay,
-    );
-    return () => clearTimeout(timer);
-  }, [animated, current.shown, current.input]);
-  return current.shown;
 }
 
 /** React 只拥有可见性和播放时钟，几何、眨眼、形变与状态过渡由 Bloub 计算。 */
@@ -73,17 +40,17 @@ export function CompanionAvatar({
   avatar,
   activity = "idle",
   animated = true,
+  interactive = true,
   preview = false,
   onReady,
   onError,
-  interactionRevision,
   animation: requestedAnimation,
 }: {
   avatar: string;
   activity?: CompanionActivity;
   animated?: boolean;
+  interactive?: boolean;
   preview?: boolean;
-  interactionRevision?: number;
   animation?: StateId;
   onReady?: () => void;
   onError?: () => void;
@@ -94,9 +61,16 @@ export function CompanionAvatar({
   const id = useId().replace(/:/g, "");
   const prepared = usePreparedAppearance(avatar);
   const { appearance } = prepared;
-  const [hovered, setHovered] = useState(false);
-  const shown = useActivity(activity, animated);
+  const [hover, setHover] = useState<{
+    pointer: boolean;
+    focus: boolean;
+    face: HoverFace | null;
+  }>({ pointer: false, focus: false, face: null });
+  const shown = activity === "resting" ? "idle" : activity;
   const presentation = companionPresentation(shown);
+  // 通知参考使用 Bloub 自带的斜卵石；其余有身体的状态保留伙伴形状。
+  const renderedShape =
+    (animation ?? presentation.state) === "notify" ? "galet" : appearance.shape;
   const [visible, setVisible] = useState(
     typeof IntersectionObserver === "undefined",
   );
@@ -107,78 +81,72 @@ export function CompanionAvatar({
   );
   const playing = animated && visible && foreground && !reduced;
   const fixedPose = !animated || reduced;
-  const workExpression = useWorkingExpression(
-    shown,
-    playing && !animation && !preview,
-    appearance.expression,
-  );
   const baseExpression =
     animation || preview
       ? appearance.expression
-      : (workExpression ?? presentation.expression ?? appearance.expression);
-  const [reaction, setReaction] = useState<{
-    activity: CompanionActivity;
-    face: string;
-  } | null>(null);
-  const allowed =
-    !preview &&
-    !animation &&
-    ![
-      "starting",
-      "connecting",
-      "waiting",
-      "completed",
-      "failed",
-      "stopped",
-    ].includes(shown);
-  const activeReaction =
-    allowed && reaction?.activity === shown ? reaction.face : undefined;
-  const expression = activeReaction ?? baseExpression;
-  const react = useCallback(() => {
-    if (!animated || !allowed) return;
-    setReaction((previous) => {
-      const current =
-        previous?.activity === shown ? previous.face : baseExpression;
-      return {
-        activity: shown,
-        face: nextInteractionExpression(
-          EXPRESSION_BY_ID.get(current)?.id ?? "neutre",
-        ),
-      };
-    });
-  }, [animated, allowed, shown, baseExpression]);
-  const previousRevision = useRef(interactionRevision);
-  useEffect(() => {
-    if (previousRevision.current === interactionRevision) return;
-    previousRevision.current = interactionRevision;
-    react();
-  }, [interactionRevision, react]);
-  useEffect(() => {
-    if (!reaction) return;
-    const timer = setTimeout(() => setReaction(null), 1800);
-    return () => clearTimeout(timer);
-  }, [reaction]);
-  useEffect(() => {
-    if (!hovered) return;
-    const timer = setTimeout(() => setHovered(false), 1800);
-    return () => clearTimeout(timer);
-  }, [hovered]);
+      : (presentation.expression ?? appearance.expression);
+  const hoverEnabled = interactive && animated && !preview && !animation;
   const interaction =
-    !preview &&
-    !animation &&
-    hovered &&
-    animated &&
-    !reduced &&
+    hoverEnabled &&
     shown === "idle" &&
-    !activeReaction;
-  const interactiveState =
-    !animation && activeReaction ? "idle" : interaction ? "wink" : undefined;
+    (hover.pointer || hover.focus) &&
+    playing;
+  const expression =
+    (interaction ? hover.face?.expression : undefined) ?? baseExpression;
+  const interactiveState = interaction ? hover.face?.state : undefined;
+
+  useEffect(() => {
+    if (!hoverEnabled) return;
+    const target =
+      host.current?.closest<HTMLElement>("[data-avatar-hover]") ?? host.current;
+    if (!target) return;
+    const change = (source: "pointer" | "focus", active: boolean) => {
+      const seed = active ? Math.random() : undefined;
+      setHover((previous) => {
+        if (previous[source] === active) return previous;
+        const entered = active && !previous.pointer && !previous.focus;
+        return {
+          ...previous,
+          [source]: active,
+          face: entered
+            ? nextHoverFace(baseExpression, previous.face, seed)
+            : previous.face,
+        };
+      });
+    };
+    const enter = () => change("pointer", true);
+    const leave = () => change("pointer", false);
+    const focus = (event: FocusEvent) => {
+      if (
+        event.target instanceof Element &&
+        event.target.matches(":focus-visible")
+      )
+        change("focus", true);
+    };
+    const blur = (event: FocusEvent) => {
+      if (
+        !(event.relatedTarget instanceof Node) ||
+        !target.contains(event.relatedTarget)
+      )
+        change("focus", false);
+    };
+    target.addEventListener("pointerenter", enter);
+    target.addEventListener("pointerleave", leave);
+    target.addEventListener("focusin", focus);
+    target.addEventListener("focusout", blur);
+    return () => {
+      target.removeEventListener("pointerenter", enter);
+      target.removeEventListener("pointerleave", leave);
+      target.removeEventListener("focusin", focus);
+      target.removeEventListener("focusout", blur);
+    };
+  }, [hoverEnabled, baseExpression]);
   const [engine] = useState(
     () =>
       new BotEngine(
         100,
         animation ?? presentation.state,
-        SHAPE_BY_ID.get(appearance.shape)?.radii ?? null,
+        SHAPE_BY_ID.get(renderedShape)?.radii ?? null,
         EXPRESSION_BY_ID.get(appearance.expression) ?? null,
       ),
   );
@@ -192,16 +160,15 @@ export function CompanionAvatar({
   }>({ presentation, shown, animation, interactiveState });
   const configured = useRef("");
   const wasFixed = useRef(false);
-  const wasPlaying = useRef(false);
   const timeline = useRef("");
   const block = useRef("");
-  const [{ frame, time: sampleTime, elapsed, nativeState }, setSample] =
-    useState(() => ({
+  const [{ frame, time: sampleTime, nativeState }, setSample] = useState(
+    () => ({
       frame: engine.sample(1.4),
       time: 1.4,
-      elapsed: 1.4,
       nativeState: animation ?? presentation.state,
-    }));
+    }),
+  );
   const callbacks = useRef({ onReady, onError });
   useLayoutEffect(() => {
     callbacks.current = { onReady, onError };
@@ -238,7 +205,7 @@ export function CompanionAvatar({
 
   useLayoutEffect(() => {
     const now = clock.current;
-    const timelineKey = `${shown}:${animation ?? "business"}`;
+    const timelineKey = `${animation ?? presentation.state}:${animation ? "preview" : "business"}`;
     if (timeline.current !== timelineKey) {
       timeline.current = timelineKey;
       enteredAt.current = now;
@@ -253,21 +220,10 @@ export function CompanionAvatar({
       configured.current = key;
       const base =
         EXPRESSION_BY_ID.get(expression) ?? EXPRESSION_BY_ID.get("neutre");
-      engine.setShape(SHAPE_BY_ID.get(appearance.shape)?.radii ?? null, now);
-      engine.setExpression(
-        base
-          ? animation
-            ? base
-            : (faceOf(presentation.motion, base) ?? base)
-          : null,
-        now,
-      );
-      engine.setLook(
-        animation || !STATE_BY_ID.get(state)?.baseFace
-          ? null
-          : lookOf(presentation.motion),
-        now,
-      );
+      engine.setShape(SHAPE_BY_ID.get(renderedShape)?.radii ?? null, now);
+      // 业务只选择原生动作与固定表情，不叠加辅助视线或形变。
+      engine.setExpression(base ?? null, now);
+      engine.setLook(null, now);
     }
     if (
       !playing &&
@@ -288,23 +244,19 @@ export function CompanionAvatar({
     }
     wasFixed.current = fixedPose;
     const blockKey = `${state}:${target.block}`;
-    // 准备动画恢复播放时重新对齐中段相位，不能从固定帧继续走进原生收尾。
-    const resumeConnection =
-      playing && !wasPlaying.current && shown === "connecting" && !animation;
-    if (block.current !== blockKey || resumeConnection) {
+    if (block.current !== blockKey) {
       if (playing) engine.setState(state, now, target.local, true);
       block.current = blockKey;
     }
-    wasPlaying.current = playing;
     setSample({
       frame: engine.sample(clock.current),
       time: clock.current,
-      elapsed: clock.current - enteredAt.current,
       nativeState: state,
     });
   }, [
     engine,
     appearance.shape,
+    renderedShape,
     shown,
     expression,
     presentation,
@@ -324,7 +276,6 @@ export function CompanionAvatar({
       previous = time;
       if (time - painted >= 1000 / 30) {
         const current = motion.current;
-        const pose = current.presentation;
         const local = clock.current - enteredAt.current;
         const target = companionPlayback(
           current.shown,
@@ -337,22 +288,9 @@ export function CompanionAvatar({
           engine.setState(state, clock.current, target.local, true);
           block.current = blockKey;
         }
-        const look: Look = { ...lookOf(pose.motion) };
-        if (pose.scan) {
-          look.yaw = Math.sin(local * 1.5) * 16;
-          look.pitch = 8;
-          look.mix = 1;
-        }
-        if (pose.motion === "failed") look.spin += shake(local);
-        engine.setLook(
-          current.animation || !STATE_BY_ID.get(state)?.baseFace ? null : look,
-          clock.current,
-          0.05,
-        );
         setSample({
           frame: engine.sample(clock.current),
           time: clock.current,
-          elapsed: clock.current - enteredAt.current,
           nativeState: state,
         });
         painted = time;
@@ -364,17 +302,7 @@ export function CompanionAvatar({
   }, [engine, playing]);
 
   return (
-    <span
-      ref={host}
-      className="relative block size-full"
-      aria-hidden="true"
-      onClick={interactionRevision === undefined ? react : undefined}
-      onPointerEnter={() => {
-        if (playing && !preview && !animation && shown === "idle")
-          setHovered(true);
-      }}
-      onPointerLeave={() => setHovered(false)}
-    >
+    <span ref={host} className="relative block size-full" aria-hidden="true">
       <svg
         visibility={prepared.status === "pending" ? "hidden" : undefined}
         data-companion-avatar
@@ -400,17 +328,12 @@ export function CompanionAvatar({
             prepared.texture,
             [],
             [],
-            playing &&
-              !animation &&
-              shown !== "completed" &&
-              shown !== "connecting"
-              ? bodyMovement(shown, sampleTime, elapsed)
-              : undefined,
-            appearance.shape,
+            undefined,
+            renderedShape,
             sampleTime,
           ),
           appearance.material,
-          appearance.shape,
+          renderedShape,
         ).map(renderDrawing)}
       </svg>
     </span>

@@ -77,6 +77,7 @@ export function ExecutionFileChangesCard({
   });
   if (!visible || !reference || empty) return null;
   const files = summary.data?.files ?? [];
+  // 明细按需读取不改变采集状态；切换会话时保留已确认的成果与文件数。
   const state = summary.data?.state ?? reference.state;
   const count = summary.data?.totalFiles ?? reference.totalFiles ?? 0;
   const incomplete =
@@ -160,8 +161,7 @@ export function ExecutionFileChangesCard({
                 ? t("fileChanges.unavailable")
                 : state === "incomplete" || (state === "partial" && count === 0)
                   ? t("fileChanges.incomplete")
-                  : state === "pending" ||
-                      (activated && summary.isPending && !summary.data)
+                  : state === "pending"
                     ? t("fileChanges.pending")
                     : t("fileChanges.title", { count })}
             </span>

@@ -188,6 +188,8 @@ func (m *Manager) ResolveReference(subject, id, input, base string) (Resolution,
 		return Resolution{Status: "unavailable"}, nil
 	}
 	allowed := scope.allows
+	logicalRoot := scope.logicalAttachmentRoot(base, input)
+	attachmentRoot := scope.logicalAttachmentRoot("", input)
 	if base == "" {
 		base = scope.Root
 	} else {
@@ -200,29 +202,40 @@ func (m *Manager) ResolveReference(subject, id, input, base string) (Resolution,
 		}
 	}
 	candidates := []string{}
-	try := func(p string) {
+	try := func(p string) error {
 		actual, e := filepath.EvalSymlinks(p)
 		if e != nil {
-			return
+			return e
 		}
 		for _, c := range candidates {
 			if c == actual {
-				return
+				return nil
 			}
 		}
 		candidates = append(candidates, actual)
+		return nil
 	}
 	if filepath.IsAbs(input) {
 		try(input)
-	} else {
-		try(filepath.Join(base, input))
-		if scope.chatRoot != "" && strings.HasPrefix(input, "attachments/") {
-			try(filepath.Join(scope.chatRoot, input))
+	} else if logicalRoot != "" {
+		// 空基准的附件引用只属于当前 Chat，不能与空间同名文件混用。
+		if !safeRelative(input) {
+			return Resolution{Status: "outside_scope"}, nil
 		}
+		try(filepath.Join(scope.chatRoot, input))
+	} else {
+		physicalMissing := os.IsNotExist(try(filepath.Join(base, input)))
 		if len(candidates) == 0 {
 			for _, r := range scope.roots {
-				try(filepath.Join(r, input))
+				if r != base && r != attachmentRoot {
+					physicalMissing = os.IsNotExist(try(filepath.Join(r, input))) && physicalMissing
+				}
 			}
+		}
+		// 历史消息可用显式基准解析相对附件链接，真实目录中的文件优先。
+		if len(candidates) == 0 && physicalMissing && attachmentRoot != "" && safeRelative(input) {
+			logicalRoot = attachmentRoot
+			try(filepath.Join(scope.chatRoot, input))
 		}
 	}
 	if len(candidates) == 0 {
@@ -232,7 +245,7 @@ func (m *Manager) ResolveReference(subject, id, input, base string) (Resolution,
 		return Resolution{Status: "ambiguous"}, nil
 	}
 	target := candidates[0]
-	if !allowed(target) {
+	if !allowed(target) || (logicalRoot != "" && !within(logicalRoot, target)) {
 		return Resolution{Status: "outside_scope"}, nil
 	}
 	info, err := os.Stat(target)
@@ -245,5 +258,10 @@ func (m *Manager) ResolveReference(subject, id, input, base string) (Resolution,
 	} else if !info.Mode().IsRegular() {
 		return Resolution{Status: "unavailable"}, nil
 	}
-	return Resolution{Status: state, CanonicalPath: target, BaseDirectory: base, WorkspaceRoot: scope.Root, SourceRoots: append([]string{}, scope.roots[1:]...)}, nil
+	root := scope.Root
+	if scope.chatRoot != "" && within(filepath.Join(scope.chatRoot, "attachments"), target) {
+		root = filepath.Join(scope.chatRoot, "attachments")
+		base = root
+	}
+	return Resolution{Status: state, CanonicalPath: target, BaseDirectory: base, WorkspaceRoot: root, SourceRoots: append([]string{}, scope.roots[1:]...)}, nil
 }

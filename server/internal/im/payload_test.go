@@ -35,7 +35,7 @@ func TestFrozenFileRejectsRebindingAnAuthorizedRoot(t *testing.T) {
 	if err := os.Symlink(outside, approved); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := FreezeFile(t.TempDir(), "delivery", 0, filepath.Join(approved, "secret.txt"), []string{approved}, nil); !errors.Is(err, status_error.IMFileInvalid) {
+	if _, err := FreezeFile(t.TempDir(), "delivery", 0, filepath.Join(approved, "secret.txt"), []string{approved}, nil, ""); !errors.Is(err, status_error.IMFileInvalid) {
 		t.Fatalf("rebound grant root was accepted: %v", err)
 	}
 }

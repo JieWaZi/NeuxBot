@@ -1090,9 +1090,9 @@ function UserMessage({
     <div
       data-message-id={message.id}
       data-role="user"
-      className="group/user-message mt-4 px-6"
+      className="group/user-message mt-1 px-6"
     >
-      <div className="ml-auto grid max-w-[78%] min-w-0 justify-items-end gap-1">
+      <div className="ml-auto grid w-fit max-w-[78%] min-w-0 justify-items-end gap-1">
         <div className="bg-user-message-background text-user-message-content type-chat max-w-full min-w-0 overflow-hidden rounded-xl px-4 py-1.5">
           <div className="flex flex-wrap items-start gap-x-1.5 gap-y-1">
             <ChatMessagePluginReferences
@@ -1363,7 +1363,7 @@ export function AssistantMessage({
     <div
       data-message-id={message.id}
       data-role="assistant"
-      className="group mt-4 grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6"
+      className="group mt-1 grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6"
     >
       {isLatestAssistant ? (
         <Avatar
@@ -1375,11 +1375,11 @@ export function AssistantMessage({
       ) : (
         <div aria-hidden="true" />
       )}
-      <div className="group/reply min-w-0">
+      <div className="group/reply w-fit max-w-full min-w-0">
         {hasContent && (
           <div
             data-chat-message-card
-            className="bg-surface-panel rounded-xl p-4 dark:bg-transparent dark:p-0"
+            className="bg-surface-panel w-fit max-w-full min-w-0 rounded-xl px-4 py-1.5 dark:bg-transparent dark:p-0"
           >
             <div className="min-w-0">
               <ChatMessageParts

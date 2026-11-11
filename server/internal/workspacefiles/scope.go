@@ -220,6 +220,14 @@ func accountPath(value string) bool {
 	return false
 }
 
+// logicalAttachmentRoot 将未指定显式根的会话附件引用限定到当前 Chat。
+func (s Scope) logicalAttachmentRoot(requestedRoot, relative string) string {
+	if requestedRoot == "" && s.chatRoot != "" && strings.HasPrefix(relative, "attachments/") {
+		return filepath.Join(s.chatRoot, "attachments")
+	}
+	return ""
+}
+
 // resolve 校验逻辑路径和真实路径；只允许冻结的真实目录和本 Chat 附件。
 func (m *Manager) resolve(subject, id, requestedRoot, relative string, missing bool) (string, string, error) {
 	scope, err := m.scope(subject, id)
@@ -248,7 +256,8 @@ func (m *Manager) resolve(subject, id, requestedRoot, relative string, missing b
 		root = actual
 	}
 	target := filepath.Join(root, filepath.FromSlash(relative))
-	if scope.chatRoot != "" && root == scope.Root && strings.HasPrefix(relative, "attachments/") {
+	attachmentRoot := scope.logicalAttachmentRoot(requestedRoot, relative)
+	if attachmentRoot != "" {
 		target = filepath.Join(scope.chatRoot, filepath.FromSlash(relative))
 	}
 	actual, err := filepath.EvalSymlinks(target)
@@ -265,6 +274,12 @@ func (m *Manager) resolve(subject, id, requestedRoot, relative string, missing b
 	}
 	if !scope.allows(actual) {
 		return "", "", status_error.WorkspacePathInvalid
+	}
+	if attachmentRoot != "" {
+		if !within(attachmentRoot, actual) {
+			return "", "", status_error.WorkspacePathInvalid
+		}
+		return attachmentRoot, actual, nil
 	}
 	for _, allowed := range scope.roots {
 		if within(allowed, actual) {

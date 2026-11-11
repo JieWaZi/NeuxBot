@@ -660,7 +660,7 @@ func (m *service) runNativeExecution(ctx context.Context, work *nativeExecutionW
 	}
 	if recorder, ok := m.journal.(chatservice.FileChangesRecorder); ok {
 		var err error
-		work.recording, err = recorder.BeginFileChanges(ctx, work.chat, executionID, work.state.threadWorkspaceID, work.state.projectSources, work.files.referencedFiles)
+		work.recording, err = recorder.BeginFileChanges(ctx, work.chat, executionID, work.state.additionalDirectories, work.files.referencedFiles)
 		if err != nil {
 			logx.Warnf("prepare native file result: chat_id=%s execution_id=%s error=%v", chatID, executionID, err)
 		}

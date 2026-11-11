@@ -45,7 +45,7 @@ func (m *service) prepareAgent(environment models.RuntimeEnvironment, workspace 
 	}
 	*skills = append(*skills, agentapi.Skill{Name: constants.AgentCLISkillName, Path: skill, Digest: filepath.Base(skill)})
 	roots := []string{}
-	candidates := []string{filepath.Join(workspace.Path, constants.TaskOutputsDirectoryName, executionID)}
+	candidates := []string{workspace.Path}
 	for _, candidate := range workspace.AdditionalWritableDirectories {
 		if !sameFilesystemPath(candidate, workspace.Path) {
 			candidates = append(candidates, candidate)
@@ -119,7 +119,7 @@ func (m *service) prepareAgent(environment models.RuntimeEnvironment, workspace 
 			break
 		}
 	}
-	grant, activate, revoke, err := m.agent.Prepare(capability.GrantSpec{ExecutionID: executionID, Bindings: bindings, FileRoots: roots, FilePaths: requestReferencedFiles, Record: func(ctx context.Context, op capability.Operation, result capability.Result) error {
+	grant, activate, revoke, err := m.agent.Prepare(capability.GrantSpec{ExecutionID: executionID, Bindings: bindings, FileRoots: roots, FilePaths: requestReferencedFiles, ManagedSpace: workspace.Path, Record: func(ctx context.Context, op capability.Operation, result capability.Result) error {
 		_, err := m.journal.AppendExecutionFacts(ctx, chat.ID, []eventlog.AppendInput{{Type: constants.ChatEventTypeAgentCommandCommitted,
 			ExecutionID: executionID, InvocationID: executionID, Data: marshalData(eventlog.AgentCommandData{CommandID: result.CommandID, Operation: op.ID, Completion: op.Completion})}})
 		return err

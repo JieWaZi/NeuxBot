@@ -1207,6 +1207,7 @@ function ChatView({
     changesProps,
   } = useChatWorkspaceBindings({
     additionalWorkingDirectories: linkAdditionalWorkingDirectories,
+    draftWorkingDirectories: activeChatId ? undefined : fileRoots,
     activeChatId,
     fileSource,
     query: workspaceQuery,

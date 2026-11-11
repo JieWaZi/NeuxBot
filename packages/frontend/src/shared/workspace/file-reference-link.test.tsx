@@ -59,6 +59,57 @@ afterEach(() => {
   for (const client of clients.splice(0)) client.clear();
 });
 
+it.each([
+  ["/repo/report.md", "blue", "markdown"],
+  ["/repo/note.txt", "blue", "document"],
+  ["/repo/index.js", "amber", "javascript"],
+  ["/repo/index.ts", "blue", "typescript"],
+  ["/repo/view.jsx", "cyan", "react"],
+  ["/repo/view.tsx", "blue", "react_ts"],
+  ["/repo/app.vue", "green", "vue"],
+  ["/repo/index.html", "orange", "html"],
+  ["/repo/app.css", "purple", "css"],
+  ["/repo/main.go", "cyan", "go"],
+  ["/repo/main.py", "blue", "python"],
+  ["/repo/Main.java", "red", "java"],
+  ["/repo/main.rb", "red", "ruby"],
+  ["/repo/run.sh", "orange", "console"],
+  ["/repo/data.json", "amber", "json"],
+  ["/repo/config.yaml", "red", "yaml"],
+  ["/repo/config.toml", "red", "toml"],
+  ["/repo/.env.local", "amber", "tune"],
+  ["/repo/.gitignore", "orange", "git"],
+  ["/repo/Dockerfile", "blue", "docker"],
+  ["/repo/package.json", "green", "nodejs"],
+  ["/repo/photo.png", "teal", "image"],
+  ["/repo/report.pdf", "red", "pdf"],
+  ["/repo/report.docx", "blue", "word"],
+  ["/repo/data.xlsx", "green", "table"],
+  ["/repo/deck.pptx", "orange", "powerpoint"],
+  ["/repo/data.zip", "lime", "zip"],
+  ["/repo/main.rs", "orange", "rust"],
+  ["/repo/logo.svg", "amber", "svg"],
+  ["/repo/output.log", "lime", "log"],
+  ["/repo/tsconfig.app.json", "blue", "tsconfig"],
+  ["/repo/unknown.xyz", "neutral", "file"],
+])(
+  "文件引用 %s 的文字颜色与类型图标一致且保留可访问名称",
+  (path, tone, icon) => {
+    renderReference(
+      <ReferenceLink reference={{ kind: "file", path, raw: path }}>
+        查看文件
+      </ReferenceLink>,
+      { onOpenFile: vi.fn() },
+    );
+    const link = screen.getByRole("link", { name: "查看文件" });
+    expect(link).toHaveAttribute("data-file-tone", tone);
+    expect(link.querySelector("img")?.getAttribute("src")).toContain(
+      `/material-icon-theme/${icon}.svg`,
+    );
+    expect(resolveFile).not.toHaveBeenCalled();
+  },
+);
+
 describe("网站图标", () => {
   it.each(["light", "dark"])(
     "%s 下成功加载同源 favicon，失败恢复链条且不改变链接名称",

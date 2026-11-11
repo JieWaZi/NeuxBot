@@ -443,6 +443,48 @@ func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
 
 }
 
+func TestNativeProductCapturesOnlyTheAvailableFrozenWorkspace(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	fixture := newNativeProductFixture(t, ctx, "codex", "TestNativeExecutionCodexChild", constants.PermissionLevelAuto)
+	core, chats, store, closeRuntime := fixture.open()
+	defer closeRuntime()
+	project, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacement := t.TempDir()
+	options := WorkOptions{RuntimeID: "codex", Model: "fixture-model", PermissionLevel: constants.PermissionLevelAuto}
+	first, err := core.Start(ctx, WorkIntent{ClientRequestID: "freeze-original-workspace", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "native-waker", WorkingDirectory: project}},
+		Input: WorkInput{Actor: "user", Content: "open original working directory"}, Options: options})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitNativeProductStatus(t, ctx, store, first, constants.ExecutionStatusCompleted)
+	if err := core.CancelExecutionAndWait(ctx, first.Chat.ID, first.Execution.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(project); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(replacement, project); err != nil {
+		t.Fatal(err)
+	}
+	continued, err := core.Start(ctx, WorkIntent{Chat: ChatTarget{ChatID: first.Chat.ID},
+		Input: WorkInput{Actor: "user", Content: "first-success"}, Options: options})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitNativeProductStatus(t, ctx, store, continued, constants.ExecutionStatusCompleted)
+	if err := core.CancelExecutionAndWait(ctx, continued.Chat.ID, continued.Execution.ID); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := chats.GetMessageFileChanges(ctx, continued.Chat.ID, continued.Execution.ID)
+	if err != nil || summary.State != "ready" || len(summary.Roots) != 1 || len(summary.Files) != 1 || summary.Files[0].Path != "fixture-change.txt" {
+		t.Fatalf("file capture must use the same available workspace as the continued turn: %+v %v", summary, err)
+	}
+}
+
 func TestNativeProductCapturesExplicitOldArtifactAtItsOriginalPath(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
@@ -457,11 +499,7 @@ func TestNativeProductCapturesExplicitOldArtifactAtItsOriginalPath(t *testing.T)
 	if err := workspace.EnsureAgentWorkspace(root, "native-waker"); err != nil {
 		t.Fatal(err)
 	}
-	previous, err := workspace.EnsureTaskDirectories(root, "previous-execution")
-	if err != nil {
-		t.Fatal(err)
-	}
-	selected, sibling := filepath.Join(previous.Outputs, "report.txt"), filepath.Join(previous.Outputs, "sibling.txt")
+	selected, sibling := filepath.Join(root, "report.txt"), filepath.Join(root, "sibling.txt")
 	for _, path := range []string{selected, sibling} {
 		if err := os.WriteFile(path, []byte("original\n"), 0600); err != nil {
 			t.Fatal(err)
@@ -482,7 +520,7 @@ func TestNativeProductCapturesExplicitOldArtifactAtItsOriginalPath(t *testing.T)
 	}
 	summary, err := chats.GetMessageFileChanges(ctx, accepted.Chat.ID, accepted.Execution.ID)
 	actual, _ := filepath.EvalSymlinks(selected)
-	if err != nil || summary.State != "ready" || len(summary.Files) != 1 || summary.Files[0].AbsolutePath != actual || summary.Files[0].Status != "modified" {
+	if err != nil || summary.State != "ready" || len(summary.Files) != 2 || !slices.ContainsFunc(summary.Files, func(file changes.File) bool { return file.AbsolutePath == actual && file.Status == "modified" }) {
 		t.Fatalf("native execution lost exact original artifact: %+v %v", summary, err)
 	}
 	if data, err := os.ReadFile(sibling); err != nil || string(data) != "sibling also changed\n" {
@@ -1289,7 +1327,7 @@ func nativeFixtureBusinessText(text string) string {
 	return business
 }
 
-// nativeFixtureOutputDirectory 读取真实发送给原生替身的冻结成果目录。
+// nativeFixtureOutputDirectory 读取真实发送给原生替身的固定空间目录。
 func nativeFixtureOutputDirectory(text string) string {
 	_, raw, found := strings.Cut(text, "\n\n<neuxbot-turn-context>\n")
 	if !found {
@@ -1307,7 +1345,7 @@ func nativeFixtureOutputDirectory(text string) string {
 		if instruction.Name != "Current task directories" {
 			continue
 		}
-		content, ok := strings.CutPrefix(instruction.Content, "New deliverables for this execution: ")
+		content, ok := strings.CutPrefix(instruction.Content, "Your persistent space directory is ")
 		if !ok {
 			return ""
 		}

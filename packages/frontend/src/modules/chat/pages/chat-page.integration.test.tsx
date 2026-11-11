@@ -2354,7 +2354,7 @@ describe("ChatPage", () => {
       document.querySelector(
         '[data-chat-scroll-viewport] [data-role="assistant"] svg[data-companion-avatar]',
       ),
-    ).toHaveAttribute("data-activity", "connecting");
+    ).toHaveAttribute("data-activity", "thinking");
     expect(
       document.querySelector('[data-chat-primary-action="stop"]'),
     ).toBeVisible();
@@ -2849,10 +2849,7 @@ describe("ChatPage", () => {
         container.querySelector(
           "[data-chat-scroll-viewport] svg[data-companion-avatar]",
         ),
-      ).toHaveAttribute(
-        "data-activity",
-        expect.stringMatching(/^(connecting|thinking)$/),
-      );
+      ).toHaveAttribute("data-activity", "thinking");
       expect(
         screen.queryByRole("heading", { name: "今天想一起完成什么？" }),
       ).not.toBeInTheDocument();
@@ -3834,7 +3831,7 @@ describe("ChatPage", () => {
     await user.click(screen.getByRole("menuitem", { name: "下载文件" }));
     expect(downloadChatWorkspaceFile).toHaveBeenCalledWith(
       "chat-1",
-      "/tmp/ally",
+      "",
       "attachments/generated/report.md",
     );
     await user.click(
@@ -3844,7 +3841,7 @@ describe("ChatPage", () => {
     await user.click(screen.getByRole("button", { name: "删除文件" }));
     expect(deleteChatWorkspaceFile).toHaveBeenCalledWith(
       "chat-1",
-      "/tmp/ally",
+      "",
       "attachments/generated/report.md",
     );
     await waitFor(() =>

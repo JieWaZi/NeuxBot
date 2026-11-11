@@ -566,3 +566,40 @@ it("有效目录后台刷新只占用刷新按钮，不锁模型与推理选择"
   expect(select).toHaveBeenCalledExactlyOnceWith(runtime, "system", models[1]);
   expect(refresh).not.toHaveBeenCalled();
 });
+
+it("同名分支只在打开菜单后展示目标仓库路径", async () => {
+  const user = userEvent.setup();
+  listWorkspaceGitRepositories.mockResolvedValueOnce({
+    repositories: [
+      {
+        directory: "/tmp/one-multiple",
+        gitRoot: "/tmp/one-multiple",
+        label: "repo",
+        branch: "main",
+      },
+      {
+        directory: "/tmp/two-multiple",
+        gitRoot: "/tmp/two-multiple",
+        label: "repo",
+        branch: "main",
+      },
+    ],
+  });
+  renderControls(vi.fn(), runtimes, "chat-branches", [
+    "/tmp/one-multiple",
+    "/tmp/two-multiple",
+  ]);
+  await waitFor(() =>
+    expect(screen.getAllByTestId("composer-branch-control")).toHaveLength(2),
+  );
+  const controls = screen.getAllByTestId("composer-branch-control");
+  for (const control of controls) {
+    expect(control).toHaveTextContent(/^main$/);
+    expect(control).toHaveAttribute("title", "main");
+  }
+  expect(screen.queryByText("/tmp/two-multiple")).not.toBeInTheDocument();
+  await user.click(
+    screen.getByRole("button", { name: "main (/tmp/two-multiple)" }),
+  );
+  expect(screen.getByText("/tmp/two-multiple")).toBeVisible();
+});

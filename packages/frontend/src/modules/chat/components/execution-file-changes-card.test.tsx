@@ -69,6 +69,63 @@ beforeEach(() => {
   readSummary.mockReset();
 });
 describe("independent workspace outcome", () => {
+  it("切换会话后读取已完成成果的明细时保留文件数，不显示重新采集", async () => {
+    const summary = {
+      state: "ready",
+      totalFiles: 1,
+      complete: true,
+      files: [
+        {
+          rootId: "root",
+          path: "report.md",
+          absolutePath: "/project/report.md",
+          content: "text",
+        },
+      ],
+    };
+    let resolveSummary!: (value: typeof summary) => void;
+    readSummary.mockReturnValue(
+      new Promise<typeof summary>((resolve) => {
+        resolveSummary = resolve;
+      }),
+    );
+    const completed = {
+      ...message,
+      fileChangeRecord: { ...message.fileChangeRecord, totalFiles: 1 },
+    };
+    const client = new QueryClient();
+    const onOpenFile = vi.fn();
+    const scene = (active: boolean) => (
+      <QueryClientProvider client={client}>
+        <ContentVisibility value={active}>
+          <ExecutionFileChangesCard
+            visible
+            chatId="chat"
+            message={completed}
+            onOpenFile={onOpenFile}
+          />
+        </ContentVisibility>
+      </QueryClientProvider>
+    );
+    const view = render(scene(true));
+    await waitFor(() => expect(readSummary).toHaveBeenCalledTimes(1));
+    expect(screen.getByText("已编辑 1 个文件")).toBeVisible();
+    expect(screen.queryByText("正在采集文件改动…")).toBeNull();
+    expect(screen.getByRole("button", { name: "查看变更" })).toBeDisabled();
+    expect(view.container.querySelector("[data-work-result-body]")).toBeNull();
+
+    view.rerender(scene(false));
+    view.rerender(scene(true));
+    expect(screen.getByText("已编辑 1 个文件")).toBeVisible();
+    expect(screen.queryByText("正在采集文件改动…")).toBeNull();
+    await act(async () => resolveSummary(summary));
+    await screen.findByText("report.md");
+    expect(screen.getByRole("button", { name: "查看变更" })).toBeEnabled();
+    expect(
+      view.container.querySelector("[data-work-result-body]"),
+    ).not.toBeNull();
+    expect(readSummary).toHaveBeenCalledTimes(1);
+  });
   it("完整统计汇总到标题下，列表使用相对路径并保留真实打开身份", async () => {
     readSummary.mockResolvedValue({
       state: "ready",

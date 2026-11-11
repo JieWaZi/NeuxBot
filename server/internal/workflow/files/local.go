@@ -22,10 +22,10 @@ type LocalInput struct {
 }
 
 // FreezeLocalInput 只从认证层冻结的目录或精确文件读取，并将字节复制为本次 Run 的输入。
-func FreezeLocalInput(ctx context.Context, roots, files []string, reference, workingDirectory, runID, pointer string) (LocalInput, error) {
+func FreezeLocalInput(ctx context.Context, roots, files []string, reference, workingDirectory, runID, pointer, managedSpace string) (LocalInput, error) {
 	var source *os.File
 	for _, root := range roots {
-		file, err := OpenScopeFile(root, reference)
+		file, err := openAuthorizedScopeFile(root, reference, managedSpace)
 		if err == nil {
 			source = file
 			break
@@ -42,7 +42,7 @@ func FreezeLocalInput(ctx context.Context, roots, files []string, reference, wor
 				if err != nil || current != selected {
 					continue
 				}
-				file, err := OpenScopeFile(filepath.Dir(selected), selected)
+				file, err := openAuthorizedScopeFile(filepath.Dir(selected), reference, managedSpace)
 				if err != nil {
 					continue
 				}

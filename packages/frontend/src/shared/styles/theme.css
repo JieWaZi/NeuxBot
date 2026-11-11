@@ -1,6 +1,28 @@
 /* NeuxBot 语义主题；业务组件不得直接依赖参考色阶。 */
 
 :root {
+  /* 文件类型色板：普通正文与反色用户气泡分别选择适合的明度。 */
+  --ref-file-neutral-light: #555555;
+  --ref-file-neutral-dark: #c9c9cc;
+  --ref-file-blue-light: #185abc;
+  --ref-file-blue-dark: #80b5ff;
+  --ref-file-cyan-light: #066777;
+  --ref-file-cyan-dark: #63cddd;
+  --ref-file-green-light: #217346;
+  --ref-file-green-dark: #74c991;
+  --ref-file-amber-light: #80600a;
+  --ref-file-amber-dark: #d9bc66;
+  --ref-file-orange-light: #a54815;
+  --ref-file-orange-dark: #efa477;
+  --ref-file-red-light: #b42332;
+  --ref-file-red-dark: #f18c96;
+  --ref-file-purple-light: #7047a3;
+  --ref-file-purple-dark: #c0a0ef;
+  --ref-file-teal-light: #086b61;
+  --ref-file-teal-dark: #65caba;
+  --ref-file-lime-light: #626c0a;
+  --ref-file-lime-dark: #c5cc65;
+
   --surface-module-rail: var(--surface-chrome);
   /* 欢迎字标浅色绿到黑、暗色绿到白，两种渲染方式共用同一组颜色。 */
   --welcome-wordmark-start: var(--accent-default);
@@ -88,6 +110,28 @@
 :root,
 [data-theme="light"] {
   color-scheme: light;
+  /* 文件引用文字与图标主色协调，并适配正文及悬停表面的对比度。 */
+  --file-link-neutral: var(--ref-file-neutral-light);
+  --user-file-link-neutral: var(--ref-file-neutral-dark);
+  --file-link-blue: var(--ref-file-blue-light);
+  --user-file-link-blue: var(--ref-file-blue-dark);
+  --file-link-cyan: var(--ref-file-cyan-light);
+  --user-file-link-cyan: var(--ref-file-cyan-dark);
+  --file-link-green: var(--ref-file-green-light);
+  --user-file-link-green: var(--ref-file-green-dark);
+  --file-link-amber: var(--ref-file-amber-light);
+  --user-file-link-amber: var(--ref-file-amber-dark);
+  --file-link-orange: var(--ref-file-orange-light);
+  --user-file-link-orange: var(--ref-file-orange-dark);
+  --file-link-red: var(--ref-file-red-light);
+  --user-file-link-red: var(--ref-file-red-dark);
+  --file-link-purple: var(--ref-file-purple-light);
+  --user-file-link-purple: var(--ref-file-purple-dark);
+  --file-link-teal: var(--ref-file-teal-light);
+  --user-file-link-teal: var(--ref-file-teal-dark);
+  --file-link-lime: var(--ref-file-lime-light);
+  --user-file-link-lime: var(--ref-file-lime-dark);
+
   /* 窗口壳层与资源目录共享的浅色主题 Token。 */
   --shell-surface-frame: #e8e8eb;
   --shell-surface-canvas: #f5f5f6;
@@ -375,6 +419,28 @@
 
 [data-theme="dark"] {
   color-scheme: dark;
+  /* 文件引用文字与图标主色协调，并适配正文及悬停表面的对比度。 */
+  --file-link-neutral: var(--ref-file-neutral-dark);
+  --user-file-link-neutral: var(--ref-file-neutral-light);
+  --file-link-blue: var(--ref-file-blue-dark);
+  --user-file-link-blue: var(--ref-file-blue-light);
+  --file-link-cyan: var(--ref-file-cyan-dark);
+  --user-file-link-cyan: var(--ref-file-cyan-light);
+  --file-link-green: var(--ref-file-green-dark);
+  --user-file-link-green: var(--ref-file-green-light);
+  --file-link-amber: var(--ref-file-amber-dark);
+  --user-file-link-amber: var(--ref-file-amber-light);
+  --file-link-orange: var(--ref-file-orange-dark);
+  --user-file-link-orange: var(--ref-file-orange-light);
+  --file-link-red: var(--ref-file-red-dark);
+  --user-file-link-red: var(--ref-file-red-light);
+  --file-link-purple: var(--ref-file-purple-dark);
+  --user-file-link-purple: var(--ref-file-purple-light);
+  --file-link-teal: var(--ref-file-teal-dark);
+  --user-file-link-teal: var(--ref-file-teal-light);
+  --file-link-lime: var(--ref-file-lime-dark);
+  --user-file-link-lime: var(--ref-file-lime-light);
+
   /* 对应桌面 tokens.css，不读取 React Native 专属 tokens-native.css。 */
   --shell-surface-frame: #0d0d0d;
   --shell-surface-canvas: #1a1a1a;

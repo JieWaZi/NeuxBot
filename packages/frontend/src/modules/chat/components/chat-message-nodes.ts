@@ -39,8 +39,7 @@ export function viewCompanionActivity(
 ): CompanionActivity {
   if (!latest) return "idle";
   if (isTerminalMessage(view.message)) return view.activity;
-  if (interaction === "waiting") return "waiting";
-  if (interaction === "stopping") return "stopped";
+  if (interaction) return "idle";
   return view.activity;
 }
 function equalEntries<T>(

@@ -97,7 +97,6 @@ export function WakerShowcaseCard({
         : "ready";
   const cardRef = useRef<HTMLElement>(null);
   const [reveal] = useState(() => phase === "opening");
-  const [interactionRevision, setInteractionRevision] = useState(0);
   const motion = useWakerShowcaseMotion(
     cardRef,
     phase === "closing" || phase === "closed",
@@ -190,16 +189,13 @@ export function WakerShowcaseCard({
                   <div className="ally-holo-card__figure">
                     <button
                       type="button"
+                      data-avatar-hover
                       aria-label={t("detail.showcaseTouch", { name })}
                       className="focus-visible:ring-ring relative block size-full cursor-pointer rounded-lg outline-none focus-visible:ring-2"
-                      onClick={() =>
-                        setInteractionRevision((revision) => revision + 1)
-                      }
                     >
                       <CompanionAvatar
                         activity={activity}
                         avatar={resolvedAvatar}
-                        interactionRevision={interactionRevision}
                       />
                     </button>
                   </div>

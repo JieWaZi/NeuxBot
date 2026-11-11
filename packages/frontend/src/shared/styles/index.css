@@ -605,7 +605,7 @@
   transition: background-color var(--duration-quick) var(--ease-ui);
 }
 .shell-header-tab[data-selected] {
-  --shell-header-tab-background: var(--shell-control-active);
+  --shell-header-tab-background: var(--shell-control-hover);
   color: var(--content-primary);
   font-weight: 500;
 }
@@ -1323,4 +1323,67 @@ button:disabled {
 }
 .page-action[data-variant="success"]:hover {
   --page-action-fill: color-mix(in srgb, var(--success) 88%, transparent);
+}
+
+/* 文件引用的文字与悬停底色共用类型语义色，SVG 保留上游原始配色。 */
+@layer components {
+  .file-reference {
+    --file-reference-color: var(--file-reference-default-color);
+    color: var(--file-reference-color);
+  }
+  .bg-user-message-background .file-reference {
+    --file-reference-color: var(--file-reference-user-color);
+  }
+  /* 用户消息内的表格和代码块恢复正文表面，链接也使用正文的明度。 */
+  .bg-user-message-background [data-streamdown="table-wrapper"] .file-reference,
+  .bg-user-message-background [data-streamdown="code-block"] .file-reference {
+    --file-reference-color: var(--file-reference-default-color);
+  }
+  .file-reference:hover {
+    background-color: color-mix(
+      in srgb,
+      var(--file-reference-color) 10%,
+      transparent
+    );
+  }
+  .file-reference[data-file-tone="neutral"] {
+    --file-reference-default-color: var(--file-link-neutral);
+    --file-reference-user-color: var(--user-file-link-neutral);
+  }
+  .file-reference[data-file-tone="blue"] {
+    --file-reference-default-color: var(--file-link-blue);
+    --file-reference-user-color: var(--user-file-link-blue);
+  }
+  .file-reference[data-file-tone="cyan"] {
+    --file-reference-default-color: var(--file-link-cyan);
+    --file-reference-user-color: var(--user-file-link-cyan);
+  }
+  .file-reference[data-file-tone="teal"] {
+    --file-reference-default-color: var(--file-link-teal);
+    --file-reference-user-color: var(--user-file-link-teal);
+  }
+  .file-reference[data-file-tone="green"] {
+    --file-reference-default-color: var(--file-link-green);
+    --file-reference-user-color: var(--user-file-link-green);
+  }
+  .file-reference[data-file-tone="lime"] {
+    --file-reference-default-color: var(--file-link-lime);
+    --file-reference-user-color: var(--user-file-link-lime);
+  }
+  .file-reference[data-file-tone="amber"] {
+    --file-reference-default-color: var(--file-link-amber);
+    --file-reference-user-color: var(--user-file-link-amber);
+  }
+  .file-reference[data-file-tone="orange"] {
+    --file-reference-default-color: var(--file-link-orange);
+    --file-reference-user-color: var(--user-file-link-orange);
+  }
+  .file-reference[data-file-tone="red"] {
+    --file-reference-default-color: var(--file-link-red);
+    --file-reference-user-color: var(--user-file-link-red);
+  }
+  .file-reference[data-file-tone="purple"] {
+    --file-reference-default-color: var(--file-link-purple);
+    --file-reference-user-color: var(--user-file-link-purple);
+  }
 }

@@ -17,12 +17,10 @@ func TestAgentWorkspaceKeepsProjectOriginalAndRejectsChatDeletion(t *testing.T) 
 	if err := EnsureAgentWorkspace(root, "waker-1"); err != nil {
 		t.Fatalf("EnsureAgentWorkspace() error = %v", err)
 	}
-	generatedFiles := filepath.Join(
-		root,
-		constants.TaskOutputsDirectoryName,
-	)
-	if info, err := os.Stat(generatedFiles); err != nil || !info.IsDir() {
-		t.Fatalf("generated files directory = %v, error = %v", info, err)
+	for _, name := range []string{"outputs", "tmp"} {
+		if _, err := os.Stat(filepath.Join(root, name)); !os.IsNotExist(err) {
+			t.Fatalf("imposed directory %s exists: %v", name, err)
+		}
 	}
 	if _, err := os.Lstat(filepath.Join(root, "projects")); !os.IsNotExist(err) {
 		t.Fatalf("created project alias: %v", err)
@@ -63,26 +61,13 @@ func TestThreadExecutionWorkspaceSharedByMultipleChats(t *testing.T) {
 	); err != nil {
 		t.Fatalf("EnsureThreadMemberExecutionWorkspace() error = %v", err)
 	}
-	generatedFiles := filepath.Join(
-		memberRoot,
-		constants.TaskOutputsDirectoryName,
-	)
-	if info, err := os.Stat(generatedFiles); err != nil || !info.IsDir() {
-		t.Fatalf("member generated files directory = %v, error = %v", info, err)
+	if err := ValidateThreadMemberExecutionWorkspace(memberRoot, "thread-1", "member-chat", "member-waker"); err != nil {
+		t.Fatal(err)
 	}
-	if err := os.RemoveAll(generatedFiles); err != nil {
-		t.Fatalf("remove generated files directory: %v", err)
-	}
-	if err := EnsureExistingThreadMemberExecutionWorkspace(
-		memberRoot,
-		"thread-1",
-		"member-chat",
-		"member-waker",
-	); err != nil {
-		t.Fatalf("EnsureExistingThreadMemberExecutionWorkspace() error = %v", err)
-	}
-	if info, err := os.Stat(generatedFiles); err != nil || !info.IsDir() {
-		t.Fatalf("restored generated files directory = %v, error = %v", info, err)
+	for _, name := range []string{"outputs", "tmp"} {
+		if _, err := os.Stat(filepath.Join(memberRoot, name)); !os.IsNotExist(err) {
+			t.Fatalf("member imposed directory %s exists: %v", name, err)
+		}
 	}
 	owner, err := ReadExecutionWorkspaceOwner(root)
 	if err != nil {

@@ -1,10 +1,7 @@
 import type { AllyChatMessage } from "./chat-projection";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { messageCompanionActivity } from "./companion-activity";
-import {
-  companionPlayback,
-  companionPresentation,
-} from "@/shared/companion/playback";
+import { companionPlayback } from "@/shared/companion/playback";
 
 afterEach(() => vi.useRealTimers());
 
@@ -24,92 +21,47 @@ function message(
 }
 
 describe("消息驱动形象", () => {
-  it("准备期间播放原生彗星，原生接纳后才进入思考", () => {
-    const pending = messageCompanionActivity(message([], "pending", true));
-    expect(companionPresentation(pending).state).toBe("comet");
-    const accepted = messageCompanionActivity(message([]));
-    expect(companionPresentation(accepted).motion).toBe("thinking");
-    expect(companionPresentation(accepted).state).toBe("thinking");
-  });
-  it("首次发送从准备直接进入思考、工具和回复，完成前不插入空闲", () => {
+  it("工作跟随真实消息，完成保持通知", () => {
     const stages = [
       message([], "pending", true),
-      message([]),
       message([{ type: "reasoning", text: "规划" }]),
       message([tool("execute_command")]),
       message([tool("search_web")]),
       message([{ type: "text", text: "答复" }]),
       message([{ type: "text", text: "答复" }], "completed"),
     ];
+    expect(stages.map((stage) => messageCompanionActivity(stage))).toEqual([
+      "thinking",
+      "thinking",
+      "working",
+      "working",
+      "responding",
+      "completed",
+    ]);
     expect(
       stages.map(
-        (stage) => companionPlayback(messageCompanionActivity(stage), 0).state,
+        (stage) => companionPlayback(messageCompanionActivity(stage), 10).state,
       ),
     ).toEqual([
-      "comet",
       "thinking",
       "thinking",
       "thinking",
-      "egg",
-      "play",
-      "burst",
-    ]);
-    expect(
-      companionPlayback(messageCompanionActivity(message([], "completed")), 2.7)
-        .state,
-    ).toBe("idle");
-  });
-  it("会话等待与停止只影响最新消息，历史消息即使保留 running 也保持空闲", () => {
-    const messages = [
-      { ...message([tool("execute_command")]), isLast: false },
-      { ...message([tool("search_web")]), isLast: true },
-    ];
-    expect(
-      messages.map((item) => messageCompanionActivity(item, "waiting")),
-    ).toEqual(["idle", "waiting"]);
-    expect(
-      messages.map((item) => messageCompanionActivity(item, "stopping")),
-    ).toEqual(["idle", "stopped"]);
-    expect(messages.map((item) => messageCompanionActivity(item))).toEqual([
-      "idle",
-      "searching",
+      "thinking",
+      "wink",
+      "notify",
     ]);
   });
-  it("新消息出现后，之前的终态和工作动画都退出状态跟随", () => {
-    const latest = message([tool("execute_command")]);
-    expect(messageCompanionActivity(latest)).toBe("working");
-    expect(messageCompanionActivity({ ...latest, isLast: false })).toBe("idle");
-    for (const status of ["completed", "failed", "canceled"] as const) {
+  it.each(["mcp", "network", "file_search", "file_read", "command"] as const)(
+    "%s 都归工具执行，不额外创建连接、搜索或阅读动作",
+    (toolCategory) => {
       expect(
         messageCompanionActivity(
-          { ...message([], status), isLast: false },
-          "waiting",
+          message([{ type: "tool", toolCategory, toolStatus: "running" }]),
         ),
-      ).toBe("idle");
-    }
-  });
-  it("开始、搜索、执行、思考和回答来自结构化消息", () => {
-    expect(messageCompanionActivity(message([], "pending", true))).toBe(
-      "connecting",
-    );
-    expect(messageCompanionActivity(message([], "pending"))).toBe("thinking");
-    expect(messageCompanionActivity(message([]))).toBe("thinking");
-    expect(messageCompanionActivity(message([tool("search_web")]))).toBe(
-      "searching",
-    );
-    expect(messageCompanionActivity(message([tool("execute_command")]))).toBe(
-      "working",
-    );
-    expect(
-      messageCompanionActivity(message([{ type: "reasoning", text: "规划" }])),
-    ).toBe("thinking");
-    expect(
-      messageCompanionActivity(
-        message([{ type: "text", text: "搜索只是正文" }]),
-      ),
-    ).toBe("responding");
-  });
-  it("已完成的工具不会遮盖回答，仍在运行的工具优先于旧正文", () => {
+      ).toBe("working");
+    },
+  );
+  it("已完成工具不遮盖新正文，运行中工具优先于旧正文", () => {
     expect(
       messageCompanionActivity(
         message([
@@ -120,24 +72,39 @@ describe("消息驱动形象", () => {
     ).toBe("responding");
     expect(
       messageCompanionActivity(
-        message([tool("search_web"), tool("execute_command", "completed")]),
+        message([{ type: "text", text: "先执行" }, tool("search_web")]),
       ),
-    ).toBe("searching");
+    ).toBe("working");
   });
-  it("终态优先于残留工具与审批，等待与停止优先于运行中工具", () => {
-    const content = [tool("execute_command")];
+  it("按最新内容区分思考与正文，不按文字关键词猜工具状态", () => {
     expect(
-      messageCompanionActivity(message(content, "completed"), "waiting"),
-    ).toBe("completed");
-    expect(messageCompanionActivity(message(content, "failed"))).toBe("failed");
-    expect(messageCompanionActivity(message(content, "canceled"))).toBe(
-      "stopped",
+      messageCompanionActivity(
+        message([{ type: "text", text: "搜索只是正文" }]),
+      ),
+    ).toBe("responding");
+    expect(
+      messageCompanionActivity(
+        message([
+          { type: "text", text: "先说明" },
+          { type: "reasoning", text: "继续思考" },
+        ]),
+      ),
+    ).toBe("thinking");
+    expect(
+      messageCompanionActivity(message([tool("execute_command", "completed")])),
+    ).toBe("thinking");
+  });
+  it("历史等待停止使用默认，失败警示与完成通知保留", () => {
+    const running = message([tool("execute_command")]);
+    expect(messageCompanionActivity({ ...running, isLast: false })).toBe(
+      "idle",
     );
-    expect(messageCompanionActivity(message(content), "waiting")).toBe(
-      "waiting",
+    expect(messageCompanionActivity(running, "waiting")).toBe("idle");
+    expect(messageCompanionActivity(running, "stopping")).toBe("idle");
+    expect(messageCompanionActivity(message([], "completed"))).toBe(
+      "completed",
     );
-    expect(messageCompanionActivity(message(content), "stopping")).toBe(
-      "stopped",
-    );
+    expect(messageCompanionActivity(message([], "failed"))).toBe("failed");
+    expect(messageCompanionActivity(message([], "canceled"))).toBe("idle");
   });
 });

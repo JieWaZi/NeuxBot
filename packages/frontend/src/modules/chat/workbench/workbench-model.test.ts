@@ -496,6 +496,43 @@ describe("right workbench tab domain", () => {
     });
     expect(deleted.tabs.map((tab) => tab.path)).toEqual(["资料-备份/c.md"]);
   });
+
+  it("外层树的目录重命名和删除更新内层授权根的文件标签", () => {
+    const state = reduceWorkbench(
+      emptyWorkbenchState(),
+      {
+        type: "open-file",
+        title: "a.md",
+        rootPath: "/work/nested",
+        path: "a.md",
+        canonicalPath: "/work/nested/a.md",
+      },
+      mintSequence(),
+    );
+    const renamed = reduceWorkbench(state, {
+      type: "rename-file",
+      rootPath: "/work",
+      oldPath: "nested",
+      newPath: "renamed",
+      oldCanonicalPath: "/work/nested",
+      newCanonicalPath: "/work/renamed",
+      title: "renamed",
+      directory: true,
+    });
+    expect(renamed.tabs[0]).toMatchObject({
+      rootPath: "/work",
+      path: "renamed/a.md",
+      canonicalPath: "/work/renamed/a.md",
+    });
+    const deleted = reduceWorkbench(renamed, {
+      type: "delete-file",
+      rootPath: "/work",
+      path: "renamed",
+      canonicalPath: "/work/renamed",
+      directory: true,
+    });
+    expect(deleted.tabs).toEqual([]);
+  });
 });
 
 describe("递归工作台 pane", () => {

@@ -71,6 +71,8 @@ type GrantSpec struct {
 	FileRoots []string
 	// FilePaths grants only the validated referenced files, never their parent directories.
 	FilePaths []string
+	// ManagedSpace identifies the execution space whose internal files cannot be delivered or frozen as inputs.
+	ManagedSpace string
 	// Record registers real results with their execution; registration failure cannot undo domain admission.
 	Record func(context.Context, Operation, Result) error
 	// Validate revalidates the execution, role, and current fence on every call.
@@ -99,6 +101,8 @@ type lease struct {
 	fileRoots []string
 	// filePaths preserves exact file access in the same authenticated execution grant.
 	filePaths []string
+	// managedSpace identifies the root for applying exclusions to the execution's internal files.
+	managedSpace string
 	// record writes safe command facts to the current execution.
 	record func(context.Context, Operation, Result) error
 	// recordMutex serializes deduplicated command recording within an execution.
@@ -161,7 +165,7 @@ func (r *Registry) Prepare(spec GrantSpec) (Grant, func(), func(), error) {
 	}
 	grant := Grant{ID: util.New(), Token: util.New() + util.New(), Epoch: r.epoch}
 	ctx, cancel := context.WithCancel(context.Background())
-	current := &lease{id: grant.ID, executionID: spec.ExecutionID, bindings: bindings, fileRoots: append([]string(nil), spec.FileRoots...), filePaths: append([]string(nil), spec.FilePaths...), record: spec.Record, recorded: map[string]bool{}, validate: spec.Validate, ctx: ctx, cancel: cancel, waits: make(chan struct{}, 4)}
+	current := &lease{id: grant.ID, executionID: spec.ExecutionID, bindings: bindings, fileRoots: append([]string(nil), spec.FileRoots...), filePaths: append([]string(nil), spec.FilePaths...), managedSpace: spec.ManagedSpace, record: spec.Record, recorded: map[string]bool{}, validate: spec.Validate, ctx: ctx, cancel: cancel, waits: make(chan struct{}, 4)}
 	key := tokenKey(grant.Token)
 	r.mutex.Lock()
 	if r.closed {
@@ -332,6 +336,7 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 	ctx, cancel := context.WithCancel(request.Context())
 	ctx = context.WithValue(ctx, fileRootsKey{}, current.fileRoots)
 	ctx = context.WithValue(ctx, filePathsKey{}, current.filePaths)
+	ctx = context.WithValue(ctx, managedSpaceKey{}, current.managedSpace)
 	stop := context.AfterFunc(current.ctx, cancel)
 	defer func() { stop(); cancel() }()
 	if current.ctx.Err() != nil {
@@ -466,6 +471,7 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 
 type fileRootsKey struct{}
 type filePathsKey struct{}
+type managedSpaceKey struct{}
 
 // FileRoots returns a copy of the frozen authenticated directories; parameters and business requests cannot add roots.
 func FileRoots(ctx context.Context) []string {
@@ -477,6 +483,12 @@ func FileRoots(ctx context.Context) []string {
 func FilePaths(ctx context.Context) []string {
 	files, _ := ctx.Value(filePathsKey{}).([]string)
 	return append([]string(nil), files...)
+}
+
+// ManagedSpace returns the authenticated root used to exclude internal execution files.
+func ManagedSpace(ctx context.Context) string {
+	root, _ := ctx.Value(managedSpaceKey{}).(string)
+	return root
 }
 
 func writeSuccess(w http.ResponseWriter, operation, completion string, result Result) {

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 const initialSidebarWidth = 240;
-const separatorWidth = 8;
+// 分隔线只占 1px；拖拽命中区覆盖两侧，不额外挤占内容宽度。
+const separatorWidth = 1;
 const keyboardStep = 16;
 
 function widthBounds(containerWidth: number) {
@@ -112,11 +113,12 @@ export function WorkspaceDetailSplit({
         {main}
       </div>
       <div
-        className="order-2 min-w-0 overflow-hidden"
+        className="relative order-2 min-w-0"
         aria-hidden={!sidebarOpen || sidebarOnly}
         inert={!sidebarOpen || sidebarOnly}
       >
         <div
+          hidden={!sidebarOpen || sidebarOnly}
           role="separator"
           tabIndex={0}
           aria-label={resizeLabel}
@@ -124,7 +126,7 @@ export function WorkspaceDetailSplit({
           aria-valuemin={minimum}
           aria-valuemax={maximum}
           aria-valuenow={width}
-          className="after:bg-border hover:after:bg-border-strong focus-visible:ring-ring relative z-10 h-full w-2 cursor-col-resize touch-none outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px focus-visible:ring-2"
+          className="after:bg-border hover:after:bg-border-strong focus-visible:ring-ring absolute inset-y-0 left-1/2 z-10 w-2 -translate-x-1/2 cursor-col-resize touch-none outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 focus-visible:ring-2"
           onPointerDown={(event) => {
             event.preventDefault();
             event.currentTarget.focus();

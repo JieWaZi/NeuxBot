@@ -2,7 +2,6 @@ package execution
 
 import (
 	"encoding/json"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -10,7 +9,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
-	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
@@ -22,7 +20,7 @@ func TestWorkflowReferencesReachNativeResumePromptWithoutReloadingInstructions(t
 	}
 	root := t.TempDir()
 	state := messageChat{chat: journal.chat}
-	files := &preparedMessageFiles{executionWorkspaceDirectory: root, instructions: []agentapi.Instruction{{Name: "PARTNER.md", Content: "persistent partner"}}, taskDirectories: workspace.TaskDirectories{Outputs: filepath.Join(root, "outputs", "turn"), Temporary: filepath.Join(root, "tmp", "turn")}}
+	files := &preparedMessageFiles{executionWorkspaceDirectory: root, instructions: []agentapi.Instruction{{Name: "PARTNER.md", Content: "persistent partner"}}}
 	var stableThread agentapi.ThreadRequest
 	for index, references := range [][]agentapi.Instruction{
 		{{Name: "WORKFLOW_CANVAS_REFERENCES.md", Content: `{"revisionId":"original-revision","kind":"phase","id":"exact-phase"}`}, {Name: "WORKFLOW_RUN_REFERENCE.md", Content: `{"runId":"original-run"}`}},
@@ -95,7 +93,7 @@ func TestWorkflowResultsReachNativeTurnOnceWithoutChangingSessionSettings(t *tes
 	manager := agentPreparationFixture(t)
 	journal := manager.journal.(*agentTestJournal)
 	root := t.TempDir()
-	files := &preparedMessageFiles{executionWorkspaceDirectory: root, taskDirectories: workspace.TaskDirectories{Outputs: filepath.Join(root, "outputs", "turn"), Temporary: filepath.Join(root, "tmp", "turn")}}
+	files := &preparedMessageFiles{executionWorkspaceDirectory: root}
 	state := messageChat{chat: journal.chat}
 	var stableThread agentapi.ThreadRequest
 	for index, contract := range []string{"actual attempt one result schema", "actual attempt two result schema"} {

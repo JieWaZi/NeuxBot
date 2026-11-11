@@ -383,7 +383,7 @@ func TestPrepareMessageFilesKeepsUnchangedProfileInstructionsStable(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	firstFiles, err := core.prepareMessageFiles(ctx, state, util.New(), util.New(), nil, nil, agent.RuntimeIDCodex, agent.DetectionResult{})
+	firstFiles, err := core.prepareMessageFiles(ctx, state, util.New(), nil, nil, agent.RuntimeIDCodex, agent.DetectionResult{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -394,7 +394,7 @@ func TestPrepareMessageFilesKeepsUnchangedProfileInstructionsStable(t *testing.T
 	}
 	// 反复经过真实档案读取和工作区准备，覆盖 map 遍历顺序变化造成的静态配置抖动。
 	for attempt := 0; attempt < 64; attempt++ {
-		files, err := core.prepareMessageFiles(ctx, state, util.New(), util.New(), nil, nil, agent.RuntimeIDCodex, agent.DetectionResult{})
+		files, err := core.prepareMessageFiles(ctx, state, util.New(), nil, nil, agent.RuntimeIDCodex, agent.DetectionResult{})
 		if err != nil {
 			t.Fatal(err)
 		}

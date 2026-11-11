@@ -29,6 +29,7 @@ import {
 import { WorkbenchProvider, useWorkbench } from "../workbench/workbench-store";
 import { workbenchDocumentBuffers } from "../workbench/document-buffers";
 import { conversationKeyOf } from "../model/conversation-identity";
+import type { WorkspaceFile } from "@/shared/workspace/types";
 import {
   ChatWorkspaceSurface,
   type ChatWorkspaceAdapter,
@@ -108,10 +109,14 @@ function Harness({
   variant = "partner",
   isRunning = false,
   scopeKey: requestedScopeKey,
+  chatFiles = [],
+  onOpenFile,
 }: {
   variant?: "partner" | "team";
   isRunning?: boolean;
   scopeKey?: string;
+  chatFiles?: WorkspaceFile[];
+  onOpenFile?: ChatWorkspaceAdapter["thread"]["onOpenFile"];
 }) {
   const scopeKey = requestedScopeKey ?? `${variant}:surface`;
   const workspace = useSceneWorkspace(scopeKey);
@@ -143,6 +148,7 @@ function Harness({
       isHistoryLoading: true,
       isLoadingEarlier: false,
       onLoadEarlier: async () => {},
+      onOpenFile,
     },
   };
   return (
@@ -219,6 +225,14 @@ function Harness({
         taskBoard={
           variant === "team" ? <section>详细任务内容</section> : undefined
         }
+        fileWorkspaceProps={{
+          chatFiles,
+          fileSource: "project",
+          rootPath: "/workspace",
+          scopePath: "",
+          onDownloadChatFile: async () => {},
+          onDeleteChatFile: async () => false,
+        }}
         workspace={workspace}
       />
     </>
@@ -248,6 +262,24 @@ describe("ChatWorkspaceSurface right workbench", () => {
       browserUnmounts: 0,
       terminalMounts: 0,
       terminalUnmounts: 0,
+    });
+  });
+
+  it("摘要附件预览沿用会话路径，不指定空间目录", async () => {
+    const user = userEvent.setup();
+    const onOpenFile = vi.fn();
+    const attachment: WorkspaceFile = {
+      name: "report.md",
+      path: "attachments/message/report.md",
+      source: "chat",
+    };
+    renderHarness({ chatFiles: [attachment], onOpenFile });
+    await user.click(screen.getByRole("button", { name: "查看摘要" }));
+    await user.click(screen.getByRole("button", { name: attachment.name }));
+
+    expect(onOpenFile).toHaveBeenCalledWith({
+      name: attachment.name,
+      path: attachment.path,
     });
   });
 
@@ -300,16 +332,23 @@ describe("ChatWorkspaceSurface right workbench", () => {
           `--chat-right-panel-width: ${preferredWidth}px`,
         );
 
-        availableWidth = 1040;
+        availableWidth = 800;
         act(() => resizeCallbacks.get(layout)?.());
         const panelWidth = Number.parseFloat(
           layout.style.getPropertyValue("--chat-right-panel-width"),
         );
-        expect(availableWidth - panelWidth).toBeGreaterThanOrEqual(96);
+        expect(availableWidth - panelWidth).toBeGreaterThanOrEqual(320);
         expect(panelWidth).toBeCloseTo(
-          Math.min(preferredWidth, availableWidth - 96),
+          Math.min(preferredWidth, availableWidth - 320),
         );
         expect(layout).not.toHaveAttribute("data-chat-full-view");
+        expect(screen.getByTestId("chat-right-panel-host")).not.toHaveClass(
+          "max-lg:absolute",
+        );
+        expect(
+          screen.getByRole("separator", { name: "调整聊天与工作区的宽度" })
+            .parentElement,
+        ).not.toHaveClass("max-lg:hidden");
         const chrome = document.querySelector(
           "[data-scene-chrome-accessory-wrapper]",
         );
@@ -317,10 +356,24 @@ describe("ChatWorkspaceSurface right workbench", () => {
         expect(lifecycle.browserMounts).toBe(1);
         expect(lifecycle.browserUnmounts).toBe(0);
 
+        availableWidth = 400;
+        act(() => resizeCallbacks.get(layout)?.());
+        expect(screen.getByTestId("chat-right-panel-host")).toHaveClass(
+          "absolute",
+        );
+        expect(
+          screen.queryByRole("separator", { name: "调整聊天与工作区的宽度" }),
+        ).not.toBeInTheDocument();
+        expect(lifecycle.browserMounts).toBe(1);
+        expect(lifecycle.browserUnmounts).toBe(0);
+
         availableWidth = 2000;
         act(() => resizeCallbacks.get(layout)?.());
         expect(layout).toHaveStyle(
           `--chat-right-panel-width: ${preferredWidth}px`,
+        );
+        expect(screen.getByTestId("chat-right-panel-host")).not.toHaveClass(
+          "absolute",
         );
       } finally {
         view.unmount();
@@ -576,7 +629,7 @@ describe("ChatWorkspaceSurface right workbench", () => {
     expect(lifecycle.browserUnmounts).toBe(0);
   });
 
-  it("右栏拖动至 80% 以上与 End 只调整宽度，显式最大化才进入完整视图", () => {
+  it("拖动与 End 为聊天保留至少 320px，显式最大化才进入完整视图", () => {
     renderHarness();
     const layout = screen.getByTestId("chat-page-layout");
     Object.defineProperty(layout, "clientWidth", {
@@ -594,10 +647,10 @@ describe("ChatWorkspaceSurface right workbench", () => {
     fireEvent.mouseDown(divider, { clientX: 500 });
     fireEvent.mouseUp(document, { clientX: 250 });
     expect(layout).not.toHaveAttribute("data-chat-full-view");
-    expect(layout).toHaveStyle("--chat-right-panel-width: 1250px");
+    expect(layout).toHaveStyle("--chat-right-panel-width: 1180px");
     fireEvent.keyDown(divider, { key: "End" });
     expect(layout).not.toHaveAttribute("data-chat-full-view");
-    expect(layout).toHaveStyle("--chat-right-panel-width: 1404px");
+    expect(layout).toHaveStyle("--chat-right-panel-width: 1180px");
     fireEvent.click(screen.getByRole("button", { name: "完整视图" }));
     expect(layout).toHaveAttribute("data-chat-full-view", "true");
   });
@@ -665,6 +718,28 @@ describe("ChatWorkspaceSurface right workbench", () => {
     expect(layout).toHaveAttribute("data-workbench-side", "right");
     expect(layout).not.toHaveClass("lg:flex-row-reverse");
   });
+
+  it.each(["left", "right"])(
+    "%s 工作台拖动和键盘均不能侵占聊天最小宽度",
+    async (side) => {
+      const user = userEvent.setup();
+      renderHarness();
+      const layout = screen.getByTestId("chat-page-layout");
+      Object.defineProperty(layout, "clientWidth", { value: 1280 });
+      if (side === "left")
+        await user.click(screen.getByRole("button", { name: "交换左右窗格" }));
+      const divider = screen.getByRole("separator", {
+        name: "调整聊天与工作区的宽度",
+      });
+      fireEvent.mouseDown(divider, { clientX: 500 });
+      fireEvent.mouseUp(document, { clientX: side === "left" ? 2500 : -1500 });
+      expect(layout).toHaveStyle("--chat-right-panel-width: 960px");
+      fireEvent.keyDown(divider, { key: "Home" });
+      expect(layout).toHaveStyle("--chat-right-panel-width: 240px");
+      fireEvent.keyDown(divider, { key: "End" });
+      expect(layout).toHaveStyle("--chat-right-panel-width: 960px");
+    },
+  );
 
   it("分屏与全视图切换时浏览器和终端同时可见且不会重建", async () => {
     const user = userEvent.setup();

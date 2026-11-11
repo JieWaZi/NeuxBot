@@ -13,14 +13,13 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
-	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // FileChangesRecorder 是 Execution 调用的独立快照端口，测试日志可不装配此文件能力。
 type FileChangesRecorder interface {
 	// BeginFileChanges 在原生输入执行前保存冻结范围的基线。
-	BeginFileChanges(context.Context, models.Chat, string, string, []eventlog.ProjectSourceSnapshot, []string) (*FileChangesRecording, error)
+	BeginFileChanges(context.Context, models.Chat, string, []string, []string) (*FileChangesRecording, error)
 }
 
 // FileChangesRecording 关联一次技术采集与原 Chat 日志，不拥有执行状态。
@@ -40,27 +39,14 @@ type FileChangesRecording struct {
 var _ FileChangesRecorder = (*service)(nil)
 
 // BeginFileChanges 复用日志归属冻结授权目录；采集失败不改变模型执行结果。
-func (m *service) BeginFileChanges(ctx context.Context, chat models.Chat, executionID, threadID string, sources []eventlog.ProjectSourceSnapshot, referencedFiles []string) (*FileChangesRecording, error) {
+func (m *service) BeginFileChanges(ctx context.Context, chat models.Chat, executionID string, workingDirectories, referencedFiles []string) (*FileChangesRecording, error) {
 	directory, err := m.logStore.FileChangesDirectory(chat.ID)
 	if err != nil {
 		return nil, err
 	}
-	taskDirectories, err := workspace.EnsureTaskDirectories(chat.WorkspaceDirectory, executionID)
-	if err != nil {
-		return nil, err
-	}
-	roots := []string{taskDirectories.Outputs}
-	for _, candidate := range chat.AdditionalWorkingDirectories {
-		if filepath.Clean(candidate) != filepath.Clean(chat.WorkspaceDirectory) {
-			roots = append(roots, candidate)
-		}
-	}
-	for _, source := range sources {
-		roots = append(roots, source.SourcePath)
-	}
-	capture, err := changes.Begin(ctx, directory, executionID, roots, changes.Options{FilePaths: referencedFiles, ExcludePaths: []string{
-		filepath.Join(chat.WorkspaceDirectory, "runtime"), filepath.Join(chat.WorkspaceDirectory, "tmp"), filepath.Join(chat.WorkspaceDirectory, constants.ChatContextOwnerFileName), directory,
-	}})
+	space := chat.WorkspaceDirectory
+	roots := append([]string{space}, workingDirectories...)
+	capture, err := changes.Begin(ctx, directory, executionID, roots, changes.Options{FilePaths: referencedFiles, ManagedSpace: space, ExcludePaths: []string{directory}})
 	if err != nil {
 		return nil, err
 	}
@@ -246,14 +232,8 @@ func fileChangeRootAllowed(root string, allowed []string) bool {
 		if !filepath.IsAbs(candidate) {
 			continue
 		}
-		actual, err := filepath.EvalSymlinks(candidate)
-		if err != nil {
-			if !os.IsNotExist(err) {
-				continue
-			}
-			actual = filepath.Clean(candidate)
-		}
-		relative, err := filepath.Rel(actual, root)
+		// 两侧均来自已冻结的记录，读取历史成果无需重新解释磁盘上的链接。
+		relative, err := filepath.Rel(candidate, root)
 		if err == nil && !filepath.IsAbs(relative) && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 			return true
 		}

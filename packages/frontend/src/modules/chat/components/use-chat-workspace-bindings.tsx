@@ -16,6 +16,10 @@ import {
 } from "@/shared/workspace/file-reference";
 
 import { workspaceFilesWithGenerated } from "../model/chat-workspace-files";
+import {
+  matchesWorkspacePath,
+  workspacePathAtRoot,
+} from "../model/project-files-scope";
 import type { ChatViewState } from "../model/use-chat-view-state";
 import type { ChatCodeReference } from "../runtime/chat-queue-store";
 import {
@@ -31,6 +35,7 @@ import type { WorkbenchFileWorkspaceProps } from "../workbench/file/workbench-fi
 type ChatWorkspaceBindingsOptions = {
   activeChatId?: string;
   additionalWorkingDirectories?: readonly string[];
+  draftWorkingDirectories?: readonly string[];
   fileSource: ChatViewState["fileSource"];
   query: string;
   terminalWorkingDirectory?: string;
@@ -46,6 +51,7 @@ type ChatWorkspaceBindingsOptions = {
 export function useChatWorkspaceBindings({
   activeChatId,
   additionalWorkingDirectories,
+  draftWorkingDirectories,
   fileSource,
   query,
   terminalWorkingDirectory,
@@ -89,33 +95,25 @@ export function useChatWorkspaceBindings({
     async (file: WorkspaceFile) => {
       try {
         if (!activeChatId) throw new Error("Chat 尚未就绪");
-        await downloadChatWorkspaceFile(
-          activeChatId,
-          workspaceDirectory,
-          file.path,
-        );
+        await downloadChatWorkspaceFile(activeChatId, "", file.path);
       } catch {
         toast.error(t("workspace.downloadFileError"));
       }
     },
-    [activeChatId, t, workspaceDirectory],
+    [activeChatId, t],
   );
   const deleteChatFile = useCallback(
     async (file: WorkspaceFile) => {
       try {
         if (!activeChatId) throw new Error("Chat 尚未就绪");
-        await deleteChatWorkspaceFile(
-          activeChatId,
-          workspaceDirectory,
-          file.path,
-        );
+        await deleteChatWorkspaceFile(activeChatId, "", file.path);
         await chatFilesQuery.refetch();
         return true;
       } catch {
         return false;
       }
     },
-    [activeChatId, chatFilesQuery, workspaceDirectory],
+    [activeChatId, chatFilesQuery],
   );
   useEffect(() => {
     openRequest.current += 1;
@@ -191,7 +189,7 @@ export function useChatWorkspaceBindings({
   );
   const openAttachmentFile = useCallback(
     (file: ChatFileOpenRequest) => {
-      openWorkspaceFile(file);
+      openWorkspaceFile({ ...file, rootPath: file.rootPath ?? "" });
     },
     [openWorkspaceFile],
   );
@@ -272,7 +270,10 @@ export function useChatWorkspaceBindings({
     rootPath: workspaceDirectory,
     scopeChatId: activeChatId,
     scopePath: "",
-    sourceRoots: additionalWorkingDirectories,
+    sourceRoots: activeChatId
+      ? additionalWorkingDirectories
+      : (draftWorkingDirectories ?? additionalWorkingDirectories),
+    spaceRootAvailable: Boolean(activeChatId),
     chatFiles,
     fileSource,
     chatFilesLoading: shouldLoadGeneratedFiles && chatFilesQuery.isPending,
@@ -299,9 +300,12 @@ export function useChatWorkspaceBindings({
       workbench.tabs.some(
         (tab) =>
           tab.kind === "file" &&
-          ((file && tab.canonicalPath === file.canonicalPath) ||
-            (tab.rootPath === (affectedRoot ?? workspaceDirectory) &&
-              (tab.path === path || tab.path?.startsWith(`${path}/`)))) &&
+          matchesWorkspacePath(
+            tab.canonicalPath ?? workspacePathAtRoot(tab.rootPath, tab.path),
+            file?.canonicalPath ??
+              workspacePathAtRoot(affectedRoot ?? workspaceDirectory, path),
+            true,
+          ) &&
           workbenchDocumentBuffers.isDirty(`${workspaceScopeKey}:${tab.id}`),
       ),
     onPathRenamed: (oldPath, newPath, name, file, directory, affectedRoot) =>
@@ -312,8 +316,12 @@ export function useChatWorkspaceBindings({
         newPath: directory
           ? newPath
           : (file?.path.replace(/[^/\\]+$/, name) ?? newPath),
-        oldCanonicalPath: file?.canonicalPath,
-        newCanonicalPath: file?.canonicalPath.replace(/[^/\\]+$/, name),
+        oldCanonicalPath:
+          file?.canonicalPath ??
+          workspacePathAtRoot(affectedRoot ?? workspaceDirectory, oldPath),
+        newCanonicalPath:
+          file?.canonicalPath.replace(/[^/\\]+$/, name) ??
+          workspacePathAtRoot(affectedRoot ?? workspaceDirectory, newPath),
         title: name,
         directory,
       }),
@@ -322,7 +330,9 @@ export function useChatWorkspaceBindings({
         type: "delete-file",
         rootPath: file?.rootPath ?? affectedRoot ?? workspaceDirectory,
         path: file?.path ?? path,
-        canonicalPath: file?.canonicalPath,
+        canonicalPath:
+          file?.canonicalPath ??
+          workspacePathAtRoot(affectedRoot ?? workspaceDirectory, path),
         directory,
       }),
   };

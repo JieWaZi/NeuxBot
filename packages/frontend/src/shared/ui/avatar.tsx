@@ -1,5 +1,4 @@
 import type { StateId } from "@neuxbot/bloub/states";
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/shared/lib/cn";
 import { companionAvatar } from "@/shared/companion/appearance";
@@ -43,16 +42,15 @@ export function Avatar({
   onDoubleInteract,
 }: AvatarProps) {
   const { t } = useTranslation("common");
-  const [interactionRevision, setInteractionRevision] = useState(0);
   const canInteract = animated && (interactive || Boolean(onDoubleInteract));
   const image = (
     <CompanionAvatar
       avatar={companionAvatar(src, name)}
       activity={activity}
       animated={animated}
+      interactive={canInteract}
       preview={preview}
       animation={animation}
-      interactionRevision={interactionRevision}
     />
   );
   return (
@@ -67,6 +65,7 @@ export function Avatar({
       {canInteract ? (
         <button
           type="button"
+          data-avatar-hover
           aria-label={t(
             onDoubleInteract ? "companion.showcase" : "companion.interact",
             { name },
@@ -81,7 +80,6 @@ export function Avatar({
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
-            setInteractionRevision((revision) => revision + 1);
             if (event.detail === 0) onDoubleInteract?.(event.currentTarget);
           }}
         >

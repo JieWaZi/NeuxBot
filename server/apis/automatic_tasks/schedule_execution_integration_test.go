@@ -340,15 +340,12 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, executionID := range []string{manual.ExecutionID, timed.ExecutionID} {
-		for _, kind := range []string{constants.TaskOutputsDirectoryName, "tmp"} {
-			directory := filepath.Join(agentDirectory, kind, executionID)
-			if info, err := os.Stat(directory); err != nil || !info.IsDir() {
-				t.Fatalf("执行任务目录未按 Execution 隔离: %s %v", directory, err)
-			}
+	for _, name := range []string{"outputs", "tmp"} {
+		if _, err := os.Stat(filepath.Join(agentDirectory, name)); !os.IsNotExist(err) {
+			t.Fatalf("空间不应自动创建 %s: %v", name, err)
 		}
 	}
-	persistentOutput := filepath.Join(agentDirectory, constants.TaskOutputsDirectoryName, manual.ExecutionID, "report.txt")
+	persistentOutput := filepath.Join(agentDirectory, "report.txt")
 	if err := os.WriteFile(persistentOutput, []byte("persistent result"), 0600); err != nil {
 		t.Fatal(err)
 	}

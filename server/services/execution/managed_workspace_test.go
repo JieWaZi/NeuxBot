@@ -18,7 +18,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
-func TestSameWakerChatsShareCWDAndKeepSeparateExecutionOutputs(t *testing.T) {
+func TestSameWakerChatsShareCWDWithoutPerExecutionDirectories(t *testing.T) {
 	manager := newMessageTestService(t, t.TempDir())
 	ctx := context.Background()
 	input := testMessageInput{ClientRequestID: "managed-first", NewChat: &testChatInput{WakerID: "waker-1"}, Message: userMessage{Text: "使用会话临时目录"}, Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex}}
@@ -41,9 +41,9 @@ func TestSameWakerChatsShareCWDAndKeepSeparateExecutionOutputs(t *testing.T) {
 	if filepath.Clean(second.Chat.WorkspaceDirectory) != filepath.Clean(first.Chat.WorkspaceDirectory) {
 		t.Fatal("same partner chats used different cwd")
 	}
-	for _, id := range []string{first.Execution.ID, second.Execution.ID} {
-		if info, err := os.Stat(filepath.Join(first.Chat.WorkspaceDirectory, "outputs", id)); err != nil || !info.IsDir() {
-			t.Fatalf("execution output directory missing: %s, %v", id, err)
+	for _, name := range []string{"outputs", "tmp"} {
+		if _, err := os.Stat(filepath.Join(first.Chat.WorkspaceDirectory, name)); !os.IsNotExist(err) {
+			t.Fatalf("shared space created imposed directory %s: %v", name, err)
 		}
 	}
 	if first.Execution.ID == second.Execution.ID {

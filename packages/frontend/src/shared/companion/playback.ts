@@ -7,61 +7,32 @@ export type AvatarPresentation = {
   state: StateId;
   motion: PlushState;
   expression?: ExpressionId;
-  scan?: boolean;
 };
+const idle: AvatarPresentation = { state: "idle", motion: "idle" };
+const thinking: AvatarPresentation = { state: "thinking", motion: "thinking" };
 const presentations: Record<CompanionActivity, AvatarPresentation> = {
-  resting: { state: "idle", motion: "idle" },
-  idle: { state: "idle", motion: "idle" },
-  starting: { state: "wide", motion: "wide" },
-  thinking: {
-    state: "thinking",
-    motion: "thinking",
-    expression: "attentif",
-  },
-  searching: {
-    state: "egg",
-    motion: "idle",
-    expression: "curieux",
-    scan: true,
-  },
-  working: {
-    state: "thinking",
-    motion: "thinking",
-    expression: "attentif",
-  },
-  connecting: { state: "comet", motion: "idle", expression: "attentif" },
-  responding: {
-    state: "play",
-    motion: "idle",
-    expression: "heureux",
-  },
-  waiting: { state: "wide", motion: "notify", expression: "curieux" },
-  completed: { state: "burst", motion: "idle", expression: "heureux" },
-  failed: { state: "idle", motion: "failed" },
-  stopped: { state: "idle", motion: "idle", expression: "neutre" },
+  resting: idle,
+  idle,
+  starting: thinking,
+  thinking,
+  searching: thinking,
+  working: thinking,
+  connecting: thinking,
+  responding: { state: "wink", motion: "idle" },
+  waiting: idle,
+  completed: { state: "notify", motion: "notify" },
+  failed: { state: "alert", motion: "failed" },
+  stopped: idle,
 };
 
-/** 工作状态由调用方拥有，这里只选择原生动作及业务辅助姿态。 */
+/** 工作状态由调用方拥有，这里只选择对应的原生动作和固定表情。 */
 export function companionPresentation(
   activity: CompanionActivity,
 ): AvatarPresentation {
   return presentations[activity];
 }
 
-const timelines: Partial<Record<CompanionActivity, readonly StateId[]>> = {
-  // 原生动作交错可见表情的姿态；comet 仅由连接阶段拥有。
-  thinking: ["thinking", "idle", "orbit", "idle"],
-  working: ["thinking", "idle", "orbit", "idle"],
-  searching: ["egg", "idle", "hexagon", "idle", "orbit", "idle"],
-  responding: ["play", "idle"],
-  waiting: ["wide", "alert", "notify"],
-  completed: ["burst"],
-};
 const duration = (state: StateId) => STATE_BY_ID.get(state)?.duration ?? 2.4;
-export const COMPLETION_DURATION = (timelines.completed ?? []).reduce(
-  (sum, state) => sum + duration(state),
-  0,
-);
 
 /** 原生动作的分段计时只使用头像的可暂停时钟，不反向改变业务状态。 */
 export function companionPlayback(
@@ -70,32 +41,12 @@ export function companionPlayback(
   animation?: StateId,
 ): { state: StateId; local: number; block: string } {
   const time = Math.max(0, elapsed);
-  if (!animation && activity === "connecting") {
-    // 原生 comet 的尾段会恢复头像；准备中只循环身体已缩小、轨迹仍完整的中段。
-    return {
-      state: "comet",
-      local: 0.55 + (time % 1),
-      block: `connecting:${Math.floor(time)}`,
-    };
-  }
-  const sequence = animation
-    ? [animation === "sleep" ? "idle" : animation]
-    : timelines[activity];
-  if (!sequence)
-    return {
-      state: presentations[activity].state,
-      local: time,
-      block: "steady",
-    };
-  const total = sequence.reduce((sum, state) => sum + duration(state), 0);
-  if (!animation && activity === "completed" && time >= total)
-    return { state: "idle", local: time - total, block: "done" };
-  const cycle = Math.floor(time / total);
-  let local = time % total;
-  for (const [index, state] of sequence.entries()) {
-    if (local < duration(state))
-      return { state, local, block: `${cycle}:${index}` };
-    local -= duration(state);
-  }
-  return { state: "idle", local: 0, block: "done" };
+  const state =
+    animation === "sleep"
+      ? "idle"
+      : (animation ?? presentations[activity].state);
+  // 业务状态持续保持同一原生动作；只有显式动作预览播放完整循环。
+  if (!animation) return { state, local: time, block: "steady" };
+  const total = duration(state);
+  return { state, local: time % total, block: `${Math.floor(time / total)}:0` };
 }

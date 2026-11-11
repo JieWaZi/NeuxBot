@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  companionPlayback,
-  companionPresentation,
-  COMPLETION_DURATION,
-} from "./playback";
+import { companionPlayback, companionPresentation } from "./playback";
 import { SEQUENCE } from "@neuxbot/bloub/states";
 import type { CompanionActivity } from "./activity";
 
@@ -26,55 +22,32 @@ describe("Bloub 工作状态", () => {
     expect([...SEQUENCE, "swirl"]).toContain(result.state);
     expect(result).toHaveProperty("motion");
   });
-  it("连接使用原生彗星，思考带点，等待和失败不被伪装成空闲", () => {
-    expect(companionPresentation("connecting").state).toBe("comet");
-    expect(companionPresentation("thinking").motion).toBe("thinking");
-    expect(companionPresentation("waiting").state).toBe("wide");
-    expect(companionPresentation("failed").motion).toBe("failed");
-    expect(companionPresentation("resting")).toEqual(
-      companionPresentation("idle"),
-    );
-  });
   it.each([
-    ["thinking", ["idle", "thinking", "orbit"]],
-    ["working", ["idle", "thinking", "orbit"]],
-    ["searching", ["idle", "egg", "hexagon", "orbit"]],
-    ["responding", ["play", "idle"]],
+    ["thinking", "thinking"],
+    ["working", "thinking"],
+    ["searching", "thinking"],
+    ["connecting", "thinking"],
+    ["responding", "wink"],
+    ["completed", "notify"],
+    ["failed", "alert"],
   ] as const)(
-    "%s 保留多动作及可见表情，不混入连接彗星",
-    (activity, expected) => {
-      const states = new Set(
-        Array.from(
-          { length: 600 },
-          (_, i) => companionPlayback(activity, i / 10).state,
-        ),
-      );
-      expect([...states].sort()).toEqual([...expected].sort());
+    "%s 只选择思考、眨眼、警示或通知，持续状态不轮播",
+    (activity, state) => {
+      for (let time = 0; time < 60; time += 0.1)
+        expect(companionPlayback(activity, time).state).toBe(state);
     },
   );
-  it("连接持续循环彗星中段，避开恢复头像的收尾", () => {
-    for (const time of [0, 0.7, 2.5, 13.3, 60]) {
-      const result = companionPlayback("connecting", time);
-      expect(result.state).toBe("comet");
-      expect(result.local).toBeGreaterThanOrEqual(0.55);
-      expect(result.local).toBeLessThan(1.55);
-    }
-  });
-  it("等待继续使用等待提示动作", () => {
-    expect(
-      [0, 1.9, 4.3, 6.5].map(
-        (time) => companionPlayback("waiting", time).state,
-      ),
-    ).toEqual(["wide", "alert", "notify", "wide"]);
-  });
-  it("完成只播放一次粒子散开聚合，2.6秒后保持空闲", () => {
-    expect(companionPresentation("completed").state).toBe("burst");
-    expect(
-      [0, 0.7, 1.7, 2.5, 2.6, 10].map(
-        (time) => companionPlayback("completed", time).state,
-      ),
-    ).toEqual(["burst", "burst", "burst", "burst", "idle", "idle"]);
-    expect(COMPLETION_DURATION).toBe(2.6);
+  it("完成通知持续保持，不回空闲或重复弹入", () => {
+    expect(companionPlayback("completed", 0)).toEqual({
+      state: "notify",
+      local: 0,
+      block: "steady",
+    });
+    expect(companionPlayback("completed", 120)).toEqual({
+      state: "notify",
+      local: 120,
+      block: "steady",
+    });
   });
   it("14种原生预览独立循环，局部时钟不随循环累计", () => {
     for (const animation of SEQUENCE) {

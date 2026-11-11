@@ -1,10 +1,4 @@
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -107,22 +101,30 @@ describe("WakerShowcaseCard", () => {
     expect(screen.getByRole("article")).toHaveAttribute("data-phase", "open");
   });
 
-  it("资料卡头像提供键盘入口，Enter 和空格分别切换真实表情", async () => {
+  it("资料卡头像键盘聚焦临时换表情，按键保持，失焦恢复", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.6);
     const user = userEvent.setup();
-    render(<WakerShowcaseCard connectorCount={0} name="林可" skillCount={0} />);
+    render(
+      <WakerShowcaseCard
+        connectorCount={0}
+        name="林可"
+        skillCount={0}
+        avatar="bloub:plush:nuage:curieux:38bdf8"
+      />,
+    );
     const trigger = screen.getByRole("button", { name: "和 林可 互动" });
     const avatar = trigger.querySelector("svg[data-companion-avatar]");
-    let expression = avatar?.getAttribute("data-expression");
-    expect(expression).toBeTruthy();
-    trigger.focus();
+    await user.tab();
     expect(trigger).toHaveFocus();
+    const expression = avatar?.getAttribute("data-expression");
+    expect(expression).not.toBe("curieux");
     for (const key of ["{Enter}", " "]) {
       await user.keyboard(key);
-      await waitFor(() =>
-        expect(avatar?.getAttribute("data-expression")).not.toBe(expression),
-      );
-      expression = avatar?.getAttribute("data-expression");
+      expect(avatar).toHaveAttribute("data-expression", expression);
     }
+    fireEvent.blur(trigger);
+    expect(avatar).toHaveAttribute("data-expression", "curieux");
+    vi.restoreAllMocks();
   });
 
   it("没有擅长领域时给出空状态，载入中不抢先显示数量", () => {

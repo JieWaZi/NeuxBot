@@ -453,7 +453,9 @@ describe("chat markdown", () => {
     const directory = await screen.findByTitle(canonicalPath);
     expect(directory).toHaveAttribute("data-chat-link", "directory");
     expect(directory).toHaveTextContent(path);
-    expect(directory.querySelector(".lucide-folder")).not.toBeNull();
+    expect(directory.querySelector("img")?.getAttribute("src")).toContain(
+      "/material-icon-theme/folder.svg",
+    );
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
     expect(screen.queryByText("文件不存在")).not.toBeInTheDocument();
     expect(open).not.toHaveBeenCalled();

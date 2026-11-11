@@ -52,7 +52,7 @@ func EnsureAgentWorkspace(root, wakerID string) error {
 	); err != nil {
 		return err
 	}
-	return ensureExecutionWorkspaceFileDirectories(root)
+	return nil
 }
 
 // EnsureThreadMemberExecutionWorkspace 创建或校验团队成员独占的 Runtime cwd。
@@ -101,9 +101,6 @@ func EnsureThreadMemberExecutionWorkspace(
 	); err != nil {
 		return err
 	}
-	if err := ensureExecutionWorkspaceFileDirectories(root); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -150,13 +147,51 @@ func EnsureThreadExecutionWorkspace(
 	return err
 }
 
-func ensureExecutionWorkspaceFileDirectories(root string) error {
-	for _, name := range []string{constants.TaskOutputsDirectoryName, "tmp"} {
-		if _, err := ensureManagedRoot(root, name); err != nil {
-			return err
-		}
+// IsInternalExecutionPath 区分空间内部配置、受管项目入口与用户自管文件。
+func IsInternalExecutionPath(root, path string) bool {
+	if root == "" {
+		return false
 	}
-	return nil
+	relative, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	name, subpath, _ := strings.Cut(filepath.ToSlash(relative), "/")
+	reserved := strings.ToLower(name)
+	switch reserved {
+	case ".agents", ".claude", ".codebuddy", ".cursor", ".pi", ".grok", ".gemini", ".opencode", ".qoder", ".neuxbot", ".neuxbot-skills.json", constants.ChatContextOwnerFileName:
+		return sameWorkspaceEntry(root, name, reserved)
+	case constants.ProjectEntriesDirectoryName:
+		chatID, _, _ := strings.Cut(subpath, "/")
+		if !isSafeDirectoryName(chatID) || !sameWorkspaceEntry(root, name, reserved) {
+			return false
+		}
+		entry := filepath.Join(root, name, chatID)
+		marker, err := os.Lstat(filepath.Join(entry, constants.ChatContextOwnerFileName))
+		if err != nil || !marker.Mode().IsRegular() || marker.Size() > 4096 {
+			return false
+		}
+		owner, err := ReadExecutionWorkspaceOwner(entry)
+		return err == nil && owner.Kind == constants.ChatProjectEntriesOwnerKind && isSafeDirectoryName(owner.ChatID) && sameWorkspaceEntry(filepath.Dir(entry), chatID, owner.ChatID)
+	default:
+		return false
+	}
+}
+
+func sameWorkspaceEntry(root, name, expected string) bool {
+	if name == expected {
+		return true
+	}
+	if !strings.EqualFold(name, expected) {
+		return false
+	}
+	// 大小写别名只在底层文件系统确认同一条目时匹配。
+	actual, err := os.Lstat(filepath.Join(root, name))
+	if err != nil {
+		return false
+	}
+	canonical, err := os.Lstat(filepath.Join(root, expected))
+	return err == nil && os.SameFile(actual, canonical)
 }
 
 func isSafeDirectoryName(value string) bool {
@@ -260,38 +295,6 @@ func ValidateThreadMemberExecutionWorkspace(root string, threadID string, chatID
 	return nil
 }
 
-// EnsureExistingThreadMemberExecutionWorkspace 校验成员 cwd 并恢复可再生的会话文件目录。
-func EnsureExistingThreadMemberExecutionWorkspace(root string, threadID string, chatID string, wakerID string) error {
-	if err := ValidateThreadMemberExecutionWorkspace(root, threadID, chatID, wakerID); err != nil {
-		return err
-	}
-	return ensureExecutionWorkspaceFileDirectories(root)
-}
-
-// TaskDirectories 保存已分配 Execution 的持久成果与临时输入目录。
-type TaskDirectories struct {
-	// Outputs 是本轮新建持久成果的真实目录。
-	Outputs string
-	// Temporary 是本轮中间文件及原生输入副本的真实目录。
-	Temporary string
-}
-
-// EnsureTaskDirectories 在既有 cwd 中为同一个 Execution 幂等准备目录，不分配新身份。
-func EnsureTaskDirectories(root, executionID string) (TaskDirectories, error) {
-	if !isSafeDirectoryName(executionID) {
-		return TaskDirectories{}, status_error.BadRequest
-	}
-	outputs, err := ensureManagedRoot(root, constants.TaskOutputsDirectoryName, executionID)
-	if err != nil {
-		return TaskDirectories{}, err
-	}
-	temporary, err := ensureManagedRoot(root, "tmp", executionID)
-	if err != nil {
-		return TaskDirectories{}, err
-	}
-	return TaskDirectories{Outputs: outputs, Temporary: temporary}, nil
-}
-
 // EnsureIsolatedExecutionWorkspace 校验宿主领域拥有的独立 Chat 执行目录，不复用普通伙伴 cwd。
 func EnsureIsolatedExecutionWorkspace(root, chatID, wakerID string) error {
 	if root == "" || chatID == "" || wakerID == "" {
@@ -316,7 +319,7 @@ func EnsureIsolatedExecutionWorkspace(root, chatID, wakerID string) error {
 	} else if err := writeJSON(marker, ownerMarker{Kind: constants.IsolatedExecutionWorkspaceOwnerKind, ChatID: chatID, WakerID: wakerID}, status_error.ManagedWorkspaceError); err != nil {
 		return err
 	}
-	return ensureExecutionWorkspaceFileDirectories(root)
+	return nil
 }
 
 // ValidateAgentWorkspaceDeletion 仅接受伙伴自身归属的固定 cwd，供名称确认后的伙伴删除用例使用。

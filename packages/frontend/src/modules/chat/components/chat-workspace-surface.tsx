@@ -101,6 +101,16 @@ type ChatWorkspaceSurfaceProps = {
   changesProps?: Omit<ScopedGitChangesProps, "active">;
 };
 
+// 分屏为消息和输入区保留可读宽度；放不下两个窗格时沿用浮层布局。
+const chatMinWidth = 320;
+
+function maximumWorkbenchWidth(availableWidth: number): number {
+  if (availableWidth <= 0) return Infinity;
+  return availableWidth < chatMinWidth + workbenchMinWidth
+    ? availableWidth * 0.88
+    : availableWidth - chatMinWidth;
+}
+
 /** Chat、Team 与 Workflow 共用会话内容和可交换位置的工作台。 */
 export function ChatWorkspaceSurface({
   active = true,
@@ -154,10 +164,12 @@ export function ChatWorkspaceSurface({
     return () => observer?.disconnect();
   }, []);
   const preferredWidth = workbench.width;
-  const displayWidth =
+  const workbenchOverlay =
     layoutWidth > 0
-      ? Math.min(preferredWidth, Math.max(workbenchMinWidth, layoutWidth - 96))
-      : preferredWidth;
+      ? layoutWidth < chatMinWidth + workbenchMinWidth
+      : undefined;
+  const widthLimit = maximumWorkbenchWidth(layoutWidth);
+  const displayWidth = Math.min(preferredWidth, widthLimit);
   const dragCleanup = useRef<(() => void) | undefined>(undefined);
   const lastVisibleWorkbenchScope = useRef<string | null>(null);
   const [isResizing, setIsResizing] = useState(false);
@@ -204,12 +216,10 @@ export function ChatWorkspaceSurface({
       initialX: startX,
       initialValue: startWidth,
       valueAt: (clientX) =>
-        Math.max(
-          workbenchMinWidth,
-          Math.min(
-            layoutWidth > 0
-              ? Math.max(workbenchMinWidth, layoutWidth - 96)
-              : Infinity,
+        Math.min(
+          maximumWorkbenchWidth(layoutWidth),
+          Math.max(
+            workbenchMinWidth,
             startWidth +
               (clientX - startX) * (workbench.side === "left" ? 1 : -1),
           ),
@@ -241,14 +251,9 @@ export function ChatWorkspaceSurface({
     event.preventDefault();
     dispatch({
       type: "set-width",
-      width: Math.max(
-        workbenchMinWidth,
-        Math.min(
-          width,
-          availableWidth > 0
-            ? Math.max(workbenchMinWidth, availableWidth - 96)
-            : Infinity,
-        ),
+      width: Math.min(
+        maximumWorkbenchWidth(availableWidth),
+        Math.max(workbenchMinWidth, width),
       ),
     });
   };
@@ -328,7 +333,6 @@ export function ChatWorkspaceSurface({
         adapter.thread.onOpenFile?.({
           name: file.name,
           path: file.path,
-          rootPath: identity.workspaceDirectory,
         })
       }
       onViewAllFiles={() => {
@@ -350,7 +354,10 @@ export function ChatWorkspaceSurface({
       <div
         className={cn(
           "relative flex h-full min-h-0 min-w-0 overflow-hidden",
-          workbench.side === "left" && "lg:flex-row-reverse",
+          workbench.side === "left" &&
+            (workbenchOverlay === undefined
+              ? "lg:flex-row-reverse"
+              : "flex-row-reverse"),
         )}
         style={
           {
@@ -526,40 +533,45 @@ export function ChatWorkspaceSurface({
           hidden={canvasInput}
           activePanel={activeRightPanel}
           fullscreen={fullView}
+          overlay={workbenchOverlay}
           side={workbench.side}
           resizing={isResizing}
           onDismiss={onDismissRightPanel}
           workspaceLeading={
-            <div
-              className={cn(
-                "group/outer-divider absolute inset-y-0 z-20 w-px",
-                "max-lg:hidden",
-                workbench.side === "left" ? "right-0" : "left-0",
-              )}
-            >
-              <VerticalResizeHandle
-                ariaLabel={t("workspace.resizePanel")}
-                className="h-full"
-                ariaValueMin={workbenchMinWidth}
-                ariaValueMax={layoutWidth || undefined}
-                ariaValueNow={displayWidth}
-                onKeyDown={handlePanelKeyDown}
-                onMouseDown={handlePanelDragStart}
-              />
-              <span className="bg-surface-scene pointer-events-none absolute top-1/2 left-1/2 z-30 -translate-x-1/2 -translate-y-1/2 rounded-full opacity-0 transition-opacity group-hover/outer-divider:pointer-events-auto group-hover/outer-divider:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="secondary"
-                  shape="circle"
-                  aria-label={t("workbench.swapPanels")}
-                  title={t("workbench.swapPanels")}
-                  onClick={() => dispatch({ type: "swap-side" })}
-                >
-                  <ArrowLeftRight />
-                </Button>
-              </span>
-            </div>
+            workbenchOverlay ? undefined : (
+              <div
+                className={cn(
+                  "group/outer-divider absolute inset-y-0 z-20 w-px",
+                  workbenchOverlay === undefined && "max-lg:hidden",
+                  workbench.side === "left" ? "right-0" : "left-0",
+                )}
+              >
+                <VerticalResizeHandle
+                  ariaLabel={t("workspace.resizePanel")}
+                  className="h-full"
+                  ariaValueMin={workbenchMinWidth}
+                  ariaValueMax={
+                    Number.isFinite(widthLimit) ? widthLimit : undefined
+                  }
+                  ariaValueNow={displayWidth}
+                  onKeyDown={handlePanelKeyDown}
+                  onMouseDown={handlePanelDragStart}
+                />
+                <span className="bg-surface-scene pointer-events-none absolute top-1/2 left-1/2 z-30 -translate-x-1/2 -translate-y-1/2 rounded-full opacity-0 transition-opacity group-hover/outer-divider:pointer-events-auto group-hover/outer-divider:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="secondary"
+                    shape="circle"
+                    aria-label={t("workbench.swapPanels")}
+                    title={t("workbench.swapPanels")}
+                    onClick={() => dispatch({ type: "swap-side" })}
+                  >
+                    <ArrowLeftRight />
+                  </Button>
+                </span>
+              </div>
+            )
           }
           workspacePanel={
             <RightWorkbench

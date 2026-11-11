@@ -476,8 +476,6 @@ const (
 	ProjectEntriesDirectoryName = "projects"
 	// ChatProjectEntriesOwnerKind 标识按 Chat 隔离的受管项目入口目录。
 	ChatProjectEntriesOwnerKind = "chat-project-entries"
-	// TaskOutputsDirectoryName 是伙伴任务成果的子目录名。
-	TaskOutputsDirectoryName = "outputs"
 )
 
 const (

@@ -469,7 +469,6 @@ func (m *service) startMessage(
 		ctx,
 		state,
 		userMessageID,
-		executionID,
 		request.message.Attachments,
 		request.message.CodeReferences,
 		request.runtime.RuntimeID,
@@ -668,8 +667,6 @@ type preparedMessageFiles struct {
 	chatID string
 	// newConversation 表示未提交的 Chat，可在回滚后移除空私有目录。
 	newConversation bool
-	// taskDirectories 是接纳前按既有 ExecutionID 准备的真实路径。
-	taskDirectories workspace.TaskDirectories
 	// projectEntries 是本轮原生工具使用的 Chat 独有项目入口，真实来源保持独立。
 	projectEntries []workspace.ProjectEntry
 	// rollbackProjectEntries 仅撤销本次准备新建的 Chat 独有入口。
@@ -1023,7 +1020,7 @@ func pathWithinRoot(root, path string) bool {
 func ensureMessageExecutionWorkspace(state messageChat) error {
 	threadWorkspaceID := strings.TrimSpace(state.threadWorkspaceID)
 	if threadWorkspaceID != "" {
-		return workspace.EnsureExistingThreadMemberExecutionWorkspace(
+		return workspace.ValidateThreadMemberExecutionWorkspace(
 			state.workspaceDirectory,
 			threadWorkspaceID,
 			state.chat.ID,
@@ -1066,7 +1063,7 @@ func (m *service) prepareNativeInstructions(ctx context.Context, state messageCh
 	if err != nil {
 		return nil, err
 	}
-	instructions := []agent.Instruction{{Name: "Workspace directories", Content: "The working directory is persistent and may be shared by several chats of this partner. outputs/ holds persistent execution results; tmp/ holds execution intermediate files and exact input copies. Task-specific paths arrive with each turn. User projects remain at their authorized absolute roots."}}
+	instructions := []agent.Instruction{{Name: "Workspace directories", Content: "The working directory is persistent and may be shared by several chats of this partner. Organize your persistent files here as needed; no output or temporary subdirectory is required. Use the system temporary directory (TMPDIR or /tmp) for disposable intermediate files. User projects remain at their authorized absolute roots."}}
 	// 档案按固定业务顺序进入静态配置，避免相同内容因 map 遍历顺序变化重建原生会话。
 	for _, kind := range profile.EditableKinds() {
 		content, exists := profileContents[kind]
@@ -1110,7 +1107,6 @@ func (m *service) prepareMessageFiles(
 	ctx context.Context,
 	state messageChat,
 	messageID string,
-	executionID string,
 	attachments []AttachmentInput,
 	codeReferences []CodeReferenceInput,
 	runtimeID string,
@@ -1136,10 +1132,6 @@ func (m *service) prepareMessageFiles(
 	if err != nil {
 		return nil, err
 	}
-	taskDirectories, err := workspace.EnsureTaskDirectories(workspaceDirectory, executionID)
-	if err != nil {
-		return nil, err
-	}
 	conversationDirectory, err := m.storage.ChatRoot(state.chat.ID)
 	if err != nil {
 		return nil, err
@@ -1151,7 +1143,6 @@ func (m *service) prepareMessageFiles(
 		executionWorkspaceDirectory: workspaceDirectory,
 		chatID:                      state.chat.ID,
 		newConversation:             state.isNew,
-		taskDirectories:             taskDirectories,
 		storage:                     m.storage,
 		attachments: workspace.PreparedAttachments{
 			Rollback: func() error { return nil },
@@ -1182,7 +1173,7 @@ func (m *service) prepareMessageFiles(
 		}
 	}
 	referenceRoots := append([]workspace.ProjectLink(nil), projectLinks...)
-	referenceRoots = append(referenceRoots, workspace.ProjectLink{EntryName: "outputs", SourcePath: filepath.Join(workspaceDirectory, constants.TaskOutputsDirectoryName)})
+	referenceRoots = append(referenceRoots, workspace.ProjectLink{EntryName: filepath.Base(workspaceDirectory), SourcePath: workspaceDirectory})
 	files.codeReferences, err = prepareCodeReferences(referenceRoots, codeReferences)
 	if err != nil {
 		logx.Errorf(
@@ -1219,10 +1210,6 @@ func (m *service) prepareMessageFiles(
 		)
 		files.rollback()
 		return nil, status_error.BadRequest
-	}
-	if err := workspace.MaterializeTaskInputs(taskDirectories.Temporary, state.chat.ID, messageID, &files.attachments); err != nil {
-		files.rollback()
-		return nil, err
 	}
 	files.attachmentReferences = make(
 		[]eventlog.AttachmentReference,
@@ -1488,9 +1475,9 @@ func nativeWorkspace(state messageChat, request pendingMessage, files *preparedM
 
 // nativeContextInstructions 只携带本轮路径及业务引用。
 func nativeContextInstructions(request pendingMessage, files *preparedMessageFiles) []agent.Instruction {
-	taskContext := fmt.Sprintf("New deliverables for this execution: %q. Intermediate files and exact input copies: %q. Keep modifications to existing files at their existing true paths.", files.taskDirectories.Outputs, files.taskDirectories.Temporary)
+	taskContext := fmt.Sprintf("Your persistent space directory is %q. Organize new files there as needed, or use the user-authorized working directories when the task requires it. Keep modifications to existing files at their existing true paths. Use the system temporary directory (TMPDIR or /tmp) for disposable intermediate files. Attachment paths in this turn identify the exact input files; do not modify the originals or enumerate their parent directories.", files.executionWorkspaceDirectory)
 	if request.message.Actor == "workflow" {
-		taskContext = fmt.Sprintf("This workflow worker has an isolated execution directory at %q. Its intermediate files and exact input copies are in %q. The current workflow workspace context specifies the owning scripts, state, cache and run-result directories.", files.executionWorkspaceDirectory, files.taskDirectories.Temporary)
+		taskContext = fmt.Sprintf("This workflow worker has an isolated execution directory at %q. The current workflow workspace context specifies the owning scripts, state, cache, temporary and run-result directories. Use those owning directories for workflow files. Attachment paths identify the exact input files; do not modify the originals or enumerate their parent directories.", files.executionWorkspaceDirectory)
 	}
 	contextInstructions := append([]agent.Instruction{{Name: "Current task directories", Content: taskContext}}, request.contextInstructions...)
 	if len(files.projectEntries) > 0 {

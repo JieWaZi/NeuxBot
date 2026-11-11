@@ -12,6 +12,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
@@ -60,7 +61,7 @@ func SafeFilename(name string) string {
 }
 
 // FreezeFile 只读取执行授权目录或精确文件，并原子冻结到投递暂存目录。
-func FreezeFile(dataDirectory, id string, index int, path string, roots, files []string) (models.IMFile, error) {
+func FreezeFile(dataDirectory, id string, index int, path string, roots, files []string, managedSpace string) (models.IMFile, error) {
 	var result models.IMFile
 	if !filepath.IsAbs(path) && len(roots) > 0 {
 		path = filepath.Join(roots[0], path)
@@ -71,6 +72,9 @@ func FreezeFile(dataDirectory, id string, index int, path string, roots, files [
 	}
 	realPath, err = filepath.Abs(realPath)
 	if err != nil {
+		return result, status_error.IMFileInvalid
+	}
+	if workspace.IsInternalExecutionPath(managedSpace, path) || workspace.IsInternalExecutionPath(managedSpace, realPath) {
 		return result, status_error.IMFileInvalid
 	}
 	var source *os.File

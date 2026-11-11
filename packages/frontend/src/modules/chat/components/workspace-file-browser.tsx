@@ -12,7 +12,6 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
-  Upload,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -23,7 +22,6 @@ import {
   hasPlatformService,
   deleteWorkspaceResource,
   deleteWorkspaceDirectory,
-  importWorkspaceResources,
   importDroppedWorkspaceFiles,
   listWorkspaceDirectory,
   listWorkspaceResourceDirectory,
@@ -453,46 +451,11 @@ function WorkspaceTreeEntry({
           expanded={expanded}
           depth={depth}
           onClick={() => setExpanded((current) => !current)}
-          icon={
-            <WorkspaceFileTypeIcon
-              isDirectory
-              isOpen={expanded}
-              name={entry.name}
-              size={16}
-            />
-          }
         >
           <span className="truncate">{entry.name}</span>
         </FileTreeRow>
         {scopeChatId && hasPlatformService("workspace") ? (
           <>
-            <Button
-              aria-label={t("workspace.importIntoDirectory", {
-                name: entry.name,
-              })}
-              className="shrink-0 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
-              size="icon-sm"
-              variant="ghost"
-              onClick={() => {
-                void importWorkspaceResources(
-                  scopeChatId,
-                  entry.relativePath,
-                  rootPath,
-                )
-                  .then(async (result) => {
-                    if (result.failed.length)
-                      toast.error(
-                        t("workspace.importFileErrorCount", {
-                          count: result.failed.length,
-                        }),
-                      );
-                    if (result.imported.length) await refreshTree();
-                  })
-                  .catch(() => toast.error(t("workspace.importFileError")));
-              }}
-            >
-              <Upload />
-            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -658,7 +621,10 @@ function WorkspaceFileButton({
   const [renameOpen, setRenameOpen] = useState(false);
   const [nextName, setNextName] = useState(name);
   const [renaming, setRenaming] = useState(false);
-  const candidate = parseReference(path, "path");
+  const candidate = parseReference(
+    `${rootPath.replace(/[\\/]+$/, "")}/${path}`,
+    "path",
+  );
   const query = useFileReference(
     candidate?.kind === "file" ? candidate : undefined,
   );

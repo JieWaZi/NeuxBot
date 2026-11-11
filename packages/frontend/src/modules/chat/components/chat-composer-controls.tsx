@@ -157,7 +157,6 @@ export function useChatComposerControls({
     staleTime: 3000,
   });
   const gitRepositories = gitRepositoriesQuery.data?.repositories ?? [];
-  const showRepoLabels = gitRepositories.length > 1;
 
   const workspaceLocked = workspaceReadOnly || Boolean(activeChatId);
   const workspaceControl = workspaceLocked ? (
@@ -288,8 +287,7 @@ export function useChatComposerControls({
               className={cn(stripControlClassName, "max-w-36 px-1.5")}
               currentBranch={repository.branch}
               gitRoot={repository.directory}
-              repoLabel={repository.label}
-              showRepoLabel={showRepoLabels}
+              showRepositoryPath={gitRepositories.length > 1}
             />
           ) : null,
         )}

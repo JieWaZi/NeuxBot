@@ -1,7 +1,7 @@
 import type { CompanionActivity } from "@/shared/companion/activity";
 import type { AllyChatMessage } from "./chat-projection";
 
-/** 仅时间线最新助手跟随真实执行状态，历史头像保持空闲。 */
+/** 最新助手跟随真实工作阶段，失败保留警示，完成保留通知。 */
 export function messageCompanionActivity(
   message: Pick<
     AllyChatMessage,
@@ -13,29 +13,12 @@ export function messageCompanionActivity(
 ): CompanionActivity {
   if (!message.isLast) return "idle";
   if (message.status === "completed") return "completed";
-  if (message.status === "canceled") return "stopped";
   if (message.status === "failed") return "failed";
-  if (interaction === "stopping") return "stopped";
-  if (interaction === "waiting") return "waiting";
+  if (message.status === "canceled" || interaction) return "idle";
   const parts = message.displayParts ?? [];
   for (let index = parts.length - 1; index >= 0; index -= 1) {
     const part = parts[index];
     if (part?.type !== "tool" || part.toolStatus !== "running") continue;
-    if (
-      [
-        "search_web",
-        "fetch_web",
-        "search_files",
-        "read_file",
-        "list_files",
-        "view_image",
-      ].includes(part.toolAction ?? "") ||
-      part.toolCategory === "file_search" ||
-      part.toolCategory === "file_read"
-    )
-      return "searching";
-    if (part.toolCategory === "mcp" || part.toolCategory === "network")
-      return "connecting";
     return "working";
   }
   for (let index = parts.length - 1; index >= 0; index -= 1) {
@@ -45,7 +28,5 @@ export function messageCompanionActivity(
     if (part?.type === "tool" || part?.type === "process_commentary")
       return "thinking";
   }
-  return message.status === "pending" && message.preparingSession
-    ? "connecting"
-    : "thinking";
+  return "thinking";
 }

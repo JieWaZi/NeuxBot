@@ -14,6 +14,7 @@ import { openExternalURL } from "@/shared/platform";
 import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/lib/cn";
 import { WorkspaceFileTypeIcon } from "./workspace-file-type-icon";
+import { workspaceFileAppearance } from "./workspace-file-icons";
 import {
   emptyFileReferenceContext,
   fileName,
@@ -247,8 +248,9 @@ function LocalReferenceLink({
   const label = children ?? reference.raw;
   const copied = copiedPath === path;
   const copyLabel = t(copied ? "filePathCopied" : "fileCopyPath");
+  const { tone } = workspaceFileAppearance(name, Boolean(directory));
   const chipClassName = cn(
-    "min-h-control-sm border-border bg-muted inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-sm border px-2 py-0.5 align-middle font-mono no-underline",
+    "file-reference min-h-control-sm inline-flex max-w-full min-w-0 items-center gap-1 rounded-sm px-1 py-0.5 align-middle no-underline",
     className,
   );
   const content = (
@@ -272,10 +274,11 @@ function LocalReferenceLink({
           aria-disabled={!onOpenFile}
           title={title ?? path}
           data-chat-link="file"
+          data-file-tone={tone}
           data-file-path={path}
           className={cn(
             chipClassName,
-            "text-link hover:border-border-strong hover:bg-canvas focus-visible:ring-ring transition-colors outline-none focus-visible:ring-2",
+            "focus-visible:ring-ring transition-colors outline-none focus-visible:ring-2",
           )}
           onClick={async (event) => {
             if (event.defaultPrevented) return;
@@ -297,8 +300,9 @@ function LocalReferenceLink({
         <span
           title={title ?? path}
           data-chat-link="directory"
+          data-file-tone={tone}
           data-directory-path={path}
-          className={cn(chipClassName, "text-foreground")}
+          className={chipClassName}
         >
           {content}
         </span>

@@ -149,7 +149,7 @@ func assertNativePiProductWire(t *testing.T, trace, sessionID string) {
 		case "prompt":
 			message, _ := record["message"].(string)
 			if nativeFixtureOutputDirectory(message) == "" {
-				t.Fatalf("Pi prompt lost frozen task directories: %s", message)
+				t.Fatalf("Pi prompt lost persistent space directory: %s", message)
 			}
 			prompts = append(prompts, nativeFixtureBusinessText(message))
 		case "set_thinking_level":

@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/go-git/go-billy/v5/osfs"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -583,7 +584,7 @@ func (worker *collector) collectRoot(ctx context.Context, root Root, phase strin
 		full := root.absolutePath(path)
 		if path != "." {
 			reason := ""
-			if excludedPath(path) || root.File && excludedPath(filepath.ToSlash(full)) || inside(base(worker.capture.owned), full) {
+			if excludedPath(path) || root.File && excludedPath(filepath.ToSlash(full)) || inside(base(worker.capture.owned), full) || workspace.IsInternalExecutionPath(worker.capture.options.ManagedSpace, full) {
 				reason = "internal"
 			}
 			for _, excluded := range worker.capture.options.ExcludePaths {

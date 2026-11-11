@@ -1301,7 +1301,7 @@ describe("assistant message shell", () => {
     expect(screen.queryByText("正在准备会话")).not.toBeInTheDocument();
     expect(view.container.querySelector("[data-activity]")).toHaveAttribute(
       "data-activity",
-      "connecting",
+      "thinking",
     );
     expect(screen.queryByRole("status")).toBeNull();
     act(() => {
@@ -1357,7 +1357,7 @@ describe("assistant message shell", () => {
     const view = render(<AssistantMessage name="测试伙伴" />);
     expect(view.container.querySelector("[data-activity]")).toHaveAttribute(
       "data-activity",
-      "searching",
+      "working",
     );
     messageState.current = { ...messageState.current, isLast: false };
     messageState.messages = [

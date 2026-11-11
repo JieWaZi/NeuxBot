@@ -1,7 +1,8 @@
 import { TextMessagePartProvider } from "@assistant-ui/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useEffect } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import "@/shared/i18n";
@@ -12,6 +13,7 @@ import { WorkspaceProvider } from "@/shared/workspace/workspace-context";
 import { WorkbenchProvider, useWorkbench } from "../workbench/workbench-store";
 import { AssistantText } from "@/test/chat-markdown-context";
 import { useChatWorkspaceBindings } from "./use-chat-workspace-bindings";
+import { workbenchDocumentBuffers } from "../workbench/document-buffers";
 
 vi.mock("@/shared/platform", async (importOriginal) => {
   const { fakeFileReference } = await import("@/test/file-reference-fake");
@@ -88,6 +90,96 @@ function workbenchTabs(): Array<{
 }
 
 describe("project link navigation", () => {
+  it("目录级操作识别最深授权根的已打开文件和未保存草稿", async () => {
+    const user = userEvent.setup();
+    const scopeKey = "nested-file-operations";
+    let binding: ReturnType<typeof useChatWorkspaceBindings> | undefined;
+    let board: ReturnType<typeof useWorkbench> | undefined;
+    function Harness() {
+      const workbench = useWorkbench(scopeKey);
+      const workspaceBinding = useChatWorkspaceBindings({
+        activeChatId: "chat-1",
+        additionalWorkingDirectories: ["/work", "/work/nested"],
+        fileSource: "project",
+        query: "",
+        updateViewState: () => {},
+        workspaceDirectory: "/repo",
+        workspaceFiles: [],
+        workspacePanelOpen: false,
+        workspaceScopeKey: scopeKey,
+      });
+      useEffect(() => {
+        board = workbench;
+        binding = workspaceBinding;
+      });
+      return (
+        <button
+          type="button"
+          onClick={() =>
+            workbench.dispatch({
+              type: "open-file",
+              title: "a.md",
+              rootPath: "/work/nested",
+              path: "a.md",
+              canonicalPath: "/work/nested/a.md",
+            })
+          }
+        >
+          打开嵌套根文件
+        </button>
+      );
+    }
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <WorkspaceProvider>
+          <WorkbenchProvider>
+            <Harness />
+          </WorkbenchProvider>
+        </WorkspaceProvider>
+      </QueryClientProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: "打开嵌套根文件" }));
+    const tab = board?.snapshot.tabs[0];
+    if (!tab || !binding) throw new Error("文件工作台未就绪");
+    const draft = `${scopeKey}:${tab.id}`;
+    workbenchDocumentBuffers.begin(draft, "old");
+    workbenchDocumentBuffers.change(draft, "changed");
+    expect(
+      binding.fileWorkspaceProps.isPathDirty?.("nested", undefined, "/work"),
+    ).toBe(true);
+    expect(
+      binding.fileWorkspaceProps.isPathDirty?.(
+        "nested-backup",
+        undefined,
+        "/work",
+      ),
+    ).toBe(false);
+    workbenchDocumentBuffers.discardPrefix(scopeKey);
+    act(() =>
+      binding?.fileWorkspaceProps.onPathRenamed?.(
+        "nested",
+        "renamed",
+        "renamed",
+        undefined,
+        true,
+        "/work",
+      ),
+    );
+    expect(board?.snapshot.tabs[0]).toMatchObject({
+      rootPath: "/work",
+      path: "renamed/a.md",
+      canonicalPath: "/work/renamed/a.md",
+    });
+    act(() =>
+      binding?.fileWorkspaceProps.onPathDeleted?.(
+        "renamed",
+        undefined,
+        true,
+        "/work",
+      ),
+    );
+    expect(board?.snapshot.tabs).toEqual([]);
+  });
   beforeEach(() => {
     const preferences = new Map<string, string>();
     Object.defineProperty(window, "localStorage", {

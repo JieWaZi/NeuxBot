@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -143,6 +144,51 @@ func TestAgentDeliveryFreezesBytesReplaysAndWakesOnCommittedState(t *testing.T) 
 	if _, total, err := service.config.Store.Deliveries(context.Background(), "", 100, 0); err != nil || total != 1 {
 		t.Fatalf("duplicate deliveries: %d %v", total, err)
 	}
+}
+
+func TestAgentDeliveryExcludesInternalSpaceFiles(t *testing.T) {
+	service, _, _ := newIMFixture(t)
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings := filepath.Join(root, ".claude", "settings.json")
+	if err := os.Mkdir(filepath.Dir(settings), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(settings, []byte("internal configuration"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(root, "settings.json")
+	if err := os.Symlink(settings, alias); err != nil {
+		t.Fatal(err)
+	}
+	note := filepath.Join(root, "report.txt")
+	if err := os.WriteFile(note, []byte("business report"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	internalAlias := filepath.Join(root, ".claude", "report.txt")
+	if err := os.Symlink(note, internalAlias); err != nil {
+		t.Fatal(err)
+	}
+	blocked := []string{settings, alias, internalAlias}
+	caseAlias := filepath.Join(root, ".CLAUDE", "settings.json")
+	if _, err := os.Stat(caseAlias); err == nil {
+		blocked = append(blocked, caseAlias)
+	}
+	for _, binding := range service.AgentBindings(models.Chat{ID: "chat", WakerID: "waker", WorkspaceDirectory: root}, "execution", []string{root}, nil) {
+		if binding.Operation != "im.deliveries.create" {
+			continue
+		}
+		for _, path := range blocked {
+			_, err := binding.Call(t.Context(), capability.Request{Operation: binding.Operation, RequestID: "internal", Params: map[string]any{"targetId": "b", "files": []string{path}}})
+			if err != status_error.IMFileInvalid {
+				t.Fatalf("internal space file %q was delivered: %v", path, err)
+			}
+		}
+		return
+	}
+	t.Fatal("IM delivery capability is missing")
 }
 
 func TestAgentDeliveryReadsExactOutputAndProjectRootsAndRejectsOtherPrivateFiles(t *testing.T) {

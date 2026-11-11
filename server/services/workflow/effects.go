@@ -166,7 +166,7 @@ func (s *Service) freezeChildResult(ctx context.Context, parent models.WorkflowR
 	return workflowdsl.MapFiles(schema, child.Result, func(pointer, reference string) (string, error) {
 		// 一个父运行可以接收多个子效果；字段身份同时绑定效果与子运行，避免成果互相覆盖。
 		identity := workflowstate.Digest([]any{effect.ID, child.ID, pointer})
-		frozen, err := workflowfiles.FreezeLocalInput(ctx, roots, nil, childWorkspace.ResolveRunReference(reference), parentWorkspace.RootDirectory, parent.ID, identity)
+		frozen, err := workflowfiles.FreezeLocalInput(ctx, roots, nil, childWorkspace.ResolveRunReference(reference), parentWorkspace.RootDirectory, parent.ID, identity, "")
 		return frozen.Path, err
 	})
 }
