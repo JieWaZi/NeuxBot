@@ -20,7 +20,7 @@
 
 单插件 Release 上传该插件的 portable ZIP、公开详情、既有原生目标工件和回执，以及构建生成的单条目录记录。每个正式 Tag 与工件保持不可变。若同名 Release 已存在，重试先核对绑定和资产摘要，内容一致时继续，发生冲突时失败。初次独立发布沿用线上已有安装的版本序列，例如 `0.1.1 → 0.1.2`。保留旧 Release 和仍被锁文件引用的供应商资产。
 
-原生目标继续通过共享 `pluginpack` 生成。插件仓库的 `scripts/packager.lock.json` 当前缺少正式二进制绑定。正式 CI 先锁定构建平台对应的工具 URL、大小和 SHA-256，并复核生成器版本。如果工具作为 NeuxBot 仓库的独立 Release 发布，设置 `make_latest: false`，应用自身的 Latest 继续由应用 Release 提供。 [构建入口与工具锁](https://github.com/JieWaZi/neux-plugins/blob/bbd774e81255da62cda91f9a42146a48fdc6cef8/docs/NATIVE-DELIVERY.md)
+原生目标继续通过共享 `pluginpack` 生成。正式 CI 优先使用 `scripts/packager.lock.json` 中按平台固定 URL、大小和 SHA-256 的工具工件。尚无正式二进制时，从锁定的公开 NeuxBot 提交及 Go 工具链构建，核对实际检出的源码，并在发布回执记录源码提交、工具链和实际二进制摘要。如果工具作为 NeuxBot 仓库的独立 Release 发布，设置 `make_latest: false`，应用自身的 Latest 继续由应用 Release 提供。 [共享生成器](../../../server/cmd/pluginpack/main.go)
 
 ### 全量目录
 
@@ -28,7 +28,7 @@
 
 单插件 Release 设置 `make_latest: false`。产物及固定下载地址核验通过后，在同一个工作流中发布目录。目录发布段共用仓库级并发组，配置 `queue: max` 并保留正在运行的任务。每次进入队列后通过 Release API 解析当前 Latest，从该固定 Tag 读取完整目录，再校验、合并和提升。读取失败时停止本次提升。每次新发布使用 `catalog-<run-id>-<run-attempt>`，在草稿中上传完整 `catalog.json`，再在一次 Release API 更新中发布并设为 Latest。从 Release API 和客户端所用 URL 回读核对新目录。
 
-重试时复用已核验的单插件资产，并基于届时的 Latest 重新合并。候选版本等于当前目录且绑定一致时按成功处理，等版本而绑定不同时报冲突。旧候选遇到更高版本时保留当前目录。目录提升前的失败保留上一个 Latest。提升成功但回读暂时失败时重试读回，并按实际发布状态恢复。 [Latest 资产链接](https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases) · [Release API](https://docs.github.com/en/rest/releases/releases#create-a-release) · [Actions 并发队列](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
+发布前核对当前目录，等版本而绑定不同时停止发布。低于当前目录版本的首次发布也停止，已有固定资产可核验后重试。重试时复用已核验的单插件资产，并基于届时的 Latest 重新合并。候选版本等于当前目录且绑定一致时按成功处理，旧候选遇到更高版本时保留当前目录。目录提升前的失败保留上一个 Latest。发布请求结果不明时，在同一队列任务内按 Release ID 核对已发布状态，再按实际状态校验 Latest 和公开资产。 [Latest 资产链接](https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases) · [Release API](https://docs.github.com/en/rest/releases/releases#create-a-release) · [Actions 并发队列](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
 
 ## NeuxBot 同步与更新
 

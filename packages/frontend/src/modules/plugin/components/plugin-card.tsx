@@ -10,12 +10,13 @@ import {
 } from "../model/plugin-browse";
 import {
   pluginDisplayName,
+  pluginHasUpdate,
   pluginInstalledVersion,
   pluginSummary,
   type PluginDetail,
 } from "../model/plugin-view";
 
-/** 条目只展示身份与当前状态；维护操作由详情承载。 */
+/** 安装和更新沿用各入口的资源与伙伴身份。 */
 export function PluginCard({
   entry,
   detail,
@@ -47,6 +48,12 @@ export function PluginCard({
     : Boolean(
         detail?.installations?.some((relation) => relation.wakerId === wakerId),
       );
+  const canUpdate =
+    installed &&
+    (entry
+      ? entry.update?.available
+      : detail?.packageStatus !== "unsupported" &&
+        pluginHasUpdate(detail, wakerId));
   return (
     <ResourceListItem
       appearance="row"
@@ -65,7 +72,17 @@ export function PluginCard({
       to={to}
       label={t("viewPlugin", { name })}
       actions={
-        entry?.requiresAuthorization && onInstall ? (
+        canUpdate && onUpdate ? (
+          <Button
+            size="catalog"
+            variant="catalog-secondary"
+            disabled={pending}
+            aria-label={t("updateNamed", { name })}
+            onClick={onUpdate}
+          >
+            {t("updateAvailable")}
+          </Button>
+        ) : entry?.requiresAuthorization && onInstall ? (
           <Button
             size="catalog"
             variant="catalog-outline"
@@ -75,16 +92,6 @@ export function PluginCard({
           >
             <TriangleAlert aria-hidden="true" />
             {t("authorize")}
-          </Button>
-        ) : entry?.update?.available && onUpdate ? (
-          <Button
-            size="catalog"
-            variant="catalog-secondary"
-            disabled={pending}
-            aria-label={t("updateNamed", { name })}
-            onClick={onUpdate}
-          >
-            {t("updateAvailable")}
           </Button>
         ) : installed ? (
           <ResourceCatalogStatus>

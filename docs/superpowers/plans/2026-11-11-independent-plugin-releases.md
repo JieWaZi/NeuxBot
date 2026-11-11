@@ -1,0 +1,23 @@
+# 插件独立发布实施计划
+
+目标是独立发布所选插件，并在目录同步后为同一已安装资源提供更新动作。
+
+架构沿用现有目录 URL、`schemaVersion: 1`、来源身份和原子安装切换。插件仓库拥有发布事实，NeuxBot 使用已有 `update` 摘要。
+
+设计依据见[插件独立发布与原位更新](../specs/2026-11-11-independent-plugin-releases-design.md)。
+
+## 插件仓库
+
+- [x] 在 `scripts/test/build-catalog.test.mjs` 验证 `buildCatalog({ root, out, sourceCommit, tag, key })` 只产出匹配插件，且拒绝 Tag 与 Manifest 不一致。保留全量开发构建入口。
+- [x] 让 `buildRelease` 转发插件 key，沿用既有原生生成器和工件验证。正式构建使用已固定的工具工件。首发环境缺少公开工具工件时，可从锁定的 NeuxBot 提交和 Go 工具链构建并记录源码提交与实际二进制摘要。
+- [x] 在 `scripts/test/publish-plugin.test.mjs` 验证合并保留其他目录条目，拒绝同版本不同绑定，已发布候选可重试，旧候选保持当前目录。发布入口读取 GitHub Latest 固定资产，完成单插件工件核验后发布全量目录。
+- [x] 新增 Tag 触发的发布工作流。校验 Tag 对应已进入 main 的提交，串行执行目录读取、合并、提升和回读。并发队列保留等待中的发布。
+- [x] 更新英文与简体中文 README 和原生交付说明，写明独立版本、Tag、Latest、调试构建、重试和已发布资产保留规则。
+- [x] 运行相关 Node 测试和隔离构建，并提交插件仓库分支。
+
+## NeuxBot
+
+- [x] 在卡片和伙伴列表测试中覆盖授权与更新同时存在、伙伴已处于目标版本，以及伙伴入口打开同一个更新弹窗。用 `update.available` 和当前伙伴的 `update.wakerIds` 派生操作，优先显示可更新。
+- [x] 在详情与弹窗测试中覆盖伙伴上下文和混合安装版本。从 `installations[].versionId` 匹配 `versions[].version`，使用 `update.version` 显示目标。继续提交全部安装及原版本。
+- [x] 用定向前端测试验证列表、详情、弹窗及查询更新。用 Core 插件包测试确认同源合并、目录同步和原子升级合同。按当前实现更新插件架构文档并运行文档检查。
+- [x] 审阅两边改动、核对工作树和回归结果，提交 NeuxBot 分支。

@@ -120,6 +120,14 @@ export function pluginInstalledVersion(
   );
 }
 
+/** 全局使用资源的更新摘要，伙伴入口只为有版本变化的安装提供更新。 */
+export function pluginHasUpdate(detail?: PluginDetail, wakerId = "") {
+  return Boolean(
+    detail?.update?.available &&
+    (!wakerId || detail.update.wakerIds?.includes(wakerId)),
+  );
+}
+
 /** 首屏只判断标准包是否声明配置，不读取用户保存的值或秘密标记。 */
 export function pluginHasConfiguration(
   pkg: PluginCatalogEntry["package"],

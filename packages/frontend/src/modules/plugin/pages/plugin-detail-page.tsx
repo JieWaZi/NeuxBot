@@ -44,6 +44,7 @@ import {
   pluginNeedsAuthorization,
   pluginHasAuthorization,
   pluginHasConfiguration,
+  pluginHasUpdate,
 } from "../model/plugin-view";
 import { PluginSettingsDialog } from "../components/deferred-plugin-dialogs";
 
@@ -87,6 +88,7 @@ export function PluginDetailPage() {
   const detail = query.data;
   const resource = detail?.plugin;
   const unsupported = detail?.packageStatus === "unsupported";
+  const canUpdate = pluginHasUpdate(detail, wakerId);
   const relation = detail?.installations?.find(
     (item) => item.wakerId === wakerId,
   );
@@ -193,16 +195,14 @@ export function PluginDetailPage() {
                   {!wakerId && (
                     <PageAction
                       appearance="catalog"
-                      intent={
-                        detail?.update?.available ? "secondary" : "primary"
-                      }
+                      intent={canUpdate ? "secondary" : "primary"}
                       onClick={() => setInstall(true)}
                     >
                       <Plus />
                       {t("installToPartners")}
                     </PageAction>
                   )}
-                  {detail?.update?.available && (
+                  {canUpdate && (
                     <PageAction
                       appearance="catalog"
                       intent="primary"
@@ -311,7 +311,8 @@ export function PluginDetailPage() {
         )}
         {updating && detail && !unsupported && (
           <PluginUpdateDialog
-            detail={detail}
+            pluginId={pluginId}
+            name={pluginDisplayName(pkg, resource?.name)}
             wakerId={wakerId}
             onClose={() => setUpdating(false)}
           />

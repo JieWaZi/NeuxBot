@@ -75,6 +75,7 @@ const installed: PluginDetail = {
     catalogKey: "office",
     archiveSHA256: "fixed-sha",
     version: "2.0.0",
+    wakerIds: ["w1"],
   },
 };
 beforeEach(() => {
@@ -125,7 +126,7 @@ beforeEach(() => {
   fixture.invalidate.mockResolvedValue(undefined);
 });
 afterEach(cleanup);
-function show() {
+function show(detail = installed, wakerId = "") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -133,7 +134,7 @@ function show() {
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <PluginUpdateDialog detail={installed} onClose={close} />
+        <PluginUpdateDialog detail={detail} wakerId={wakerId} onClose={close} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -141,7 +142,7 @@ function show() {
 }
 async function prepare() {
   fireEvent.click(screen.getByRole("button", { name: "确认并准备更新" }));
-  await screen.findByText(/v2026/);
+  await screen.findByText("新版说明");
   await waitFor(() =>
     expect(
       screen.getByRole("button", { name: "更新全部伙伴" }),
@@ -159,8 +160,25 @@ function withAuthentication() {
     };
   fixture.configuration.ready = false;
 }
+it("shows the actual installed package version for each partner and the catalog target", () => {
+  show({
+    ...installed,
+    versions: [
+      { id: "v1", version: "1.0.0" },
+      { id: "v2", version: "1.5.0" },
+    ],
+    update: { ...installed.update, wakerIds: ["w1", "w2"] },
+  });
+  expect(screen.getByText("1.0.0 → 2.0.0")).toBeVisible();
+  expect(screen.getByText("1.5.0 → 2.0.0")).toBeVisible();
+});
+it("explains when the advertised target is already installed", () => {
+  show({ ...installed, update: { available: false } });
+  expect(screen.getByText("当前没有可更新的版本。")).toBeVisible();
+  expect(screen.queryByRole("button", { name: "确认并准备更新" })).toBeNull();
+});
 it("reads configuration only after explicit preparation and commits every fixed installation with the account generation", async () => {
-  const { close } = show();
+  const { close } = show(installed, "w1");
   expect(fixture.configRead).not.toHaveBeenCalled();
   await prepare();
   expect(fixture.save).not.toHaveBeenCalled();
@@ -177,6 +195,7 @@ it("reads configuration only after explicit preparation and commits every fixed 
   await waitFor(() => expect(close).toHaveBeenCalledOnce());
   expect(fixture.save.mock.calls[0]?.[0]).toEqual(
     expect.objectContaining({
+      query: { wakerId: "w1" },
       body: {
         expectedRevision: 3,
         expectedAccountGeneration: 4,
@@ -221,7 +240,7 @@ it("waits for cached account readiness and still requires the user's final updat
   withAuthentication();
   const { client, close } = show();
   fireEvent.click(screen.getByRole("button", { name: "确认并准备更新" }));
-  await screen.findByText(/v2026/);
+  await screen.findByText("新版说明");
   expect(screen.getByRole("button", { name: "更新全部伙伴" })).toBeDisabled();
   fixture.account = {
     ...fixture.account,
@@ -264,7 +283,7 @@ it("compensates a late authorization response using the original context after c
   );
   const { close } = show();
   fireEvent.click(screen.getByRole("button", { name: "确认并准备更新" }));
-  await screen.findByText(/v2026/);
+  await screen.findByText("新版说明");
   fireEvent.click(await screen.findByRole("button", { name: "连接账号" }));
   await waitFor(() => expect(fixture.start).toHaveBeenCalledOnce());
   fireEvent.click(screen.getByRole("button", { name: "取消" }));
@@ -293,7 +312,7 @@ it("does not cancel another owner's existing authorization", async () => {
   };
   show();
   fireEvent.click(screen.getByRole("button", { name: "确认并准备更新" }));
-  await screen.findByText(/v2026/);
+  await screen.findByText("新版说明");
   fireEvent.click(screen.getByRole("button", { name: "取消" }));
   expect(fixture.cancel).not.toHaveBeenCalled();
 });

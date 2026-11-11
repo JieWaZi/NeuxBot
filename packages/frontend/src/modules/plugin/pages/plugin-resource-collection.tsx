@@ -29,6 +29,7 @@ import {
   listWakerPluginsQueryKey,
 } from "../api/plugin-queries";
 import {
+  pluginDisplayName,
   pluginInstalledVersion,
   pluginNeedsAuthorization,
   pluginLocale,
@@ -46,10 +47,15 @@ import {
 } from "../components/deferred-plugin-dialogs";
 
 type ManageTarget = { pluginId: string; versionId?: string };
-type LoadIntent = { title: string; preview?: PluginBrowseEntry } & (
-  | { kind: "install"; catalogKey?: string; target?: ManageTarget }
-  | { kind: "update"; target: ManageTarget }
-);
+type InstallIntent = {
+  kind: "install";
+  title: string;
+  preview?: PluginBrowseEntry;
+  catalogKey?: string;
+  target?: ManageTarget;
+};
+type LoadIntent =
+  InstallIntent | { kind: "update"; pluginId: string; name: string };
 type Props = {
   wakerId?: string;
   targetPartnerId?: string;
@@ -106,23 +112,28 @@ export function PluginResourceCollection({
   );
   const itemCount = wakerId ? details.length : browse.entries.length;
   const groups = pluginBrowseGroups(browse.entries);
-  const manage = (entry: PluginBrowseEntry, kind: "install" | "update") => {
+  const openInstall = (entry: PluginBrowseEntry) => {
     const title = t(
-      kind === "update"
-        ? "updateNamed"
-        : entry.requiresAuthorization
-          ? "authorizeNamed"
-          : "installNamed",
+      entry.requiresAuthorization ? "authorizeNamed" : "installNamed",
       { name: entry.name ?? "" },
     );
-    if (kind === "install" && !(entry.installedCount ?? 0) && entry.catalogKey)
-      setIntent({ kind, catalogKey: entry.catalogKey, title, preview: entry });
+    if (!(entry.installedCount ?? 0) && entry.catalogKey)
+      setIntent({
+        kind: "install",
+        catalogKey: entry.catalogKey,
+        title,
+        preview: entry,
+      });
     else if (entry.pluginId)
       setIntent({
-        kind,
+        kind: "install",
         title,
         target: { pluginId: entry.pluginId, versionId: entry.versionId },
       });
+  };
+  const openUpdate = (pluginId: string | undefined, name: string) => {
+    if (!pluginId) return;
+    setIntent({ kind: "update", pluginId, name });
   };
   return (
     <div className="grid min-w-0 gap-8">
@@ -170,6 +181,13 @@ export function PluginResourceCollection({
                 key={detail.plugin?.id}
                 detail={detail}
                 wakerId={wakerId}
+                onUpdate={() => {
+                  const version = pluginInstalledVersion(detail, wakerId);
+                  openUpdate(
+                    detail.plugin?.id,
+                    pluginDisplayName(version?.package, detail.plugin?.name),
+                  );
+                }}
               />
             ))}
           </ResourceCardGrid>
@@ -194,8 +212,10 @@ export function PluginResourceCollection({
                   <PluginCard
                     key={entry.sourceKey}
                     entry={entry}
-                    onInstall={() => manage(entry, "install")}
-                    onUpdate={() => manage(entry, "update")}
+                    onInstall={() => openInstall(entry)}
+                    onUpdate={() =>
+                      openUpdate(entry.pluginId, entry.name ?? "")
+                    }
                   />
                 ))}
               </ResourceCardGrid>
@@ -219,10 +239,18 @@ export function PluginResourceCollection({
           onLoadMore={() => void query.fetchNextPage()}
         />
       </div>
-      {intent && (
-        <PluginResourceActionDialog
+      {intent?.kind === "install" && (
+        <PluginResourceInstallDialog
           intent={intent}
           wakerId={targetPartnerId ?? wakerId}
+          onClose={() => setIntent(null)}
+        />
+      )}
+      {intent?.kind === "update" && (
+        <PluginUpdateDialog
+          pluginId={intent.pluginId}
+          name={intent.name}
+          wakerId={wakerId}
           onClose={() => setIntent(null)}
         />
       )}
@@ -231,18 +259,18 @@ export function PluginResourceCollection({
 }
 
 /** 操作先挂载弹窗，再在弹窗生命周期内读取所需资料；关闭会释放读取且不会被迟到响应重开。 */
-function PluginResourceActionDialog({
+function PluginResourceInstallDialog({
   intent,
   wakerId,
   onClose,
 }: {
-  intent: LoadIntent;
+  intent: InstallIntent;
   wakerId: string;
   onClose: () => void;
 }) {
   const { i18n } = useTranslation("plugin");
   const locale = pluginLocale(i18n.resolvedLanguage ?? i18n.language);
-  const catalogKey = intent.kind === "install" ? intent.catalogKey : undefined;
+  const catalogKey = intent.catalogKey;
   const catalog = useQuery({
     ...getCatalogPluginOptions(
       withLocalErrorSurface({
@@ -278,10 +306,8 @@ function PluginResourceActionDialog({
         onClose={onClose}
       />
     );
-  if (!catalogKey && detail.data) {
-    return intent.kind === "update" ? (
-      <PluginUpdateDialog detail={detail.data} onClose={onClose} />
-    ) : (
+  if (detail.data) {
+    return (
       <PluginInstallDialog
         detail={detail.data}
         authorizeOnly={pluginNeedsAuthorization(

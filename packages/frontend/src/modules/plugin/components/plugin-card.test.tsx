@@ -86,8 +86,9 @@ it("replaces installed status with the current update action", () => {
   fireEvent.click(screen.getByRole("button", { name: "更新 办公" }));
   expect(update).toHaveBeenCalledOnce();
 });
-it("prioritizes required authorization over update and installed state", () => {
+it("keeps the update available when the installed version needs authorization", () => {
   const install = vi.fn();
+  const update = vi.fn();
   render(
     <MemoryRouter>
       <PluginCard
@@ -97,15 +98,44 @@ it("prioritizes required authorization over update and installed state", () => {
           update: { available: true },
         }}
         onInstall={install}
-        onUpdate={vi.fn()}
+        onUpdate={update}
       />
     </MemoryRouter>,
   );
-  expect(screen.queryByRole("button", { name: "更新 办公" })).toBeNull();
   expect(screen.queryByText("已安装")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "授权 办公" }));
-  expect(install).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("button", { name: "授权 办公" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "更新 办公" }));
+  expect(update).toHaveBeenCalledOnce();
+  expect(install).not.toHaveBeenCalled();
 });
+it.each([
+  { wakerId: "w1", canUpdate: true },
+  { wakerId: "w2", canUpdate: false },
+])(
+  "reflects the installation of partner $wakerId",
+  ({ wakerId, canUpdate }) => {
+    render(
+      <MemoryRouter>
+        <PluginCard
+          detail={{
+            plugin: { id: "office", name: "办公" },
+            installations: [
+              { wakerId: "w1", versionId: "old", enabled: false },
+              { wakerId: "w2", versionId: "latest", enabled: true },
+            ],
+            update: { available: true, wakerIds: ["w1"] },
+          }}
+          wakerId={wakerId}
+          onUpdate={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    expect(Boolean(screen.queryByRole("button", { name: "更新 办公" }))).toBe(
+      canUpdate,
+    );
+    expect(Boolean(screen.queryByText("已安装"))).toBe(!canUpdate);
+  },
+);
 it("keeps partner frozen-version content and places maintenance behind its detail link", () => {
   render(
     <MemoryRouter>

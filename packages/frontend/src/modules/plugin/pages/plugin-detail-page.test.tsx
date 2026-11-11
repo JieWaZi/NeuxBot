@@ -16,6 +16,7 @@ import { PluginDetailPage } from "./plugin-detail-page";
 const { togglePlugin, renamePlugin, fixture } = vi.hoisted(() => ({
   fixture: {
     updateAvailable: false,
+    updateWakerIds: ["w1"],
     unsupported: false,
     readError: false,
     hold: false,
@@ -65,6 +66,7 @@ vi.mock("../api/plugin-queries", () => ({
           : undefined,
         update: {
           available: fixture.updateAvailable,
+          wakerIds: fixture.updateWakerIds,
           catalogKey: "office",
           archiveSHA256: "fixed",
         },
@@ -128,6 +130,7 @@ afterEach(async () => {
   cleanup();
   vi.clearAllMocks();
   fixture.updateAvailable = false;
+  fixture.updateWakerIds = ["w1"];
   fixture.unsupported = false;
   fixture.readError = false;
   fixture.hold = false;
@@ -295,7 +298,7 @@ it.each(["/resources/plugins/p", "/wakers/w1/plugins/p"])(
     expect(
       await screen.findByRole("dialog", { name: "更新 办公室" }),
     ).toBeVisible();
-    expect(screen.getByText("将更新全部 1 个伙伴")).toBeVisible();
+    expect(await screen.findByText("将更新全部 1 个伙伴")).toBeVisible();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   },
 );
@@ -311,6 +314,14 @@ it("mounts the detail shell and back action while its content is still loading",
   expect(
     screen.queryByRole("button", { name: "删除资源" }),
   ).not.toBeInTheDocument();
+});
+
+it("keeps the partner detail current when another partner has an update", async () => {
+  fixture.updateAvailable = true;
+  fixture.updateWakerIds = ["w2"];
+  open("/wakers/w1/plugins/p");
+  await screen.findByRole("heading", { name: "办公室" });
+  expect(screen.queryByRole("button", { name: "可更新" })).toBeNull();
 });
 
 it("keeps installed content visible after a failed background read and retries in place", async () => {

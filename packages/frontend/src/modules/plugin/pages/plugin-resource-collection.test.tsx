@@ -14,6 +14,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import "@/shared/i18n";
 import type * as PluginQueries from "../api/plugin-queries";
+import { getPluginOptions } from "../api/plugin-queries";
+import { withLocalErrorSurface } from "@/shared/api/local-error-surface";
 import type * as ResourceSdk from "@/shared/api/generated/sdk.gen";
 import {
   browsePlugins,
@@ -36,8 +38,10 @@ const fixture = vi.hoisted(() => ({
   sourceState: "available",
   unknownTotal: false,
   entries: [] as PluginBrowseEntry[],
+  partnerEntries: [] as PluginDetail[],
   available: true,
   failDetail: false,
+  detailGate: undefined as Promise<void> | undefined,
 }));
 vi.mock("@/shared/api/use-query-events", () => ({
   useQueryEvents: () => undefined,
@@ -49,6 +53,12 @@ vi.mock("../api/plugin-queries", async (original) => ({
 vi.mock("@/shared/api/generated/sdk.gen", async (original) => ({
   ...(await original<typeof ResourceSdk>()),
   listPlugins: vi.fn(),
+  listWakerPlugins: vi.fn(async () => ({
+    data: {
+      resources: fixture.partnerEntries,
+      totalSize: fixture.partnerEntries.length,
+    },
+  })),
   browsePlugins: vi.fn(async () => ({
     data: {
       entries: fixture.entries,
@@ -66,11 +76,15 @@ vi.mock("@/shared/api/generated/sdk.gen", async (original) => ({
     },
   })),
   getPlugin: vi.fn(async (options: { path: { pluginId: string } }) => {
+    if (fixture.detailGate) await fixture.detailGate;
     if (fixture.failDetail) throw new ApiError("详情读取失败");
     return {
       data: {
         plugin: { id: options.path.pluginId, name: "实际安装插件" },
         resolvedVersionId: "v1",
+        update: fixture.entries.find(
+          (entry) => entry.pluginId === options.path.pluginId,
+        )?.update,
         account: { available: fixture.available, checkedAt: 123 },
         installations: [{ wakerId: "w1", versionId: "v1" }],
         versions: [
@@ -126,8 +140,16 @@ vi.mock("../components/plugin-install-dialog", () => ({
   ),
 }));
 vi.mock("../components/plugin-update-dialog", () => ({
-  PluginUpdateDialog: ({ detail }: { detail: PluginDetail }) => (
-    <div role="dialog">update:{detail.plugin?.id}</div>
+  PluginUpdateDialog: ({
+    detail,
+    wakerId,
+  }: {
+    detail: PluginDetail;
+    wakerId?: string;
+  }) => (
+    <div role="dialog" data-version={detail.update?.version}>
+      update:{detail.plugin?.id}:{wakerId}
+    </div>
   ),
 }));
 afterEach(cleanup);
@@ -138,6 +160,8 @@ beforeEach(() => {
   fixture.unknownTotal = false;
   fixture.available = true;
   fixture.failDetail = false;
+  fixture.detailGate = undefined;
+  fixture.partnerEntries = [];
   fixture.entries = [
     {
       sourceKey: "catalog:office",
@@ -157,7 +181,11 @@ beforeEach(() => {
   ];
   fixture.refresh.mockResolvedValue({ success: true });
 });
-function showCatalog(withSearch = false, targetPartnerId?: string) {
+function showCatalog(
+  withSearch = false,
+  targetPartnerId?: string,
+  wakerId?: string,
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -167,6 +195,7 @@ function showCatalog(withSearch = false, targetPartnerId?: string) {
         <PluginResourceCollection
           search=""
           targetPartnerId={targetPartnerId}
+          wakerId={wakerId}
           searchField={
             withSearch ? (
               <ResourcePageSearchField
@@ -274,6 +303,66 @@ it("reads an installed update lazily", async () => {
   await waitFor(() =>
     expect(screen.getByRole("dialog")).toHaveTextContent("update:existing"),
   );
+});
+it("opens the installed update from a partner row in that partner's scope", async () => {
+  fixture.partnerEntries = [
+    {
+      plugin: { id: "existing", name: "飞书" },
+      installations: [{ wakerId: "w1", versionId: "v1", enabled: false }],
+      update: { available: true, wakerIds: ["w1"] },
+    },
+  ];
+  showCatalog(false, undefined, "w1");
+  fireEvent.click(await screen.findByRole("button", { name: "更新 飞书" }));
+  await waitFor(() =>
+    expect(screen.getByRole("dialog")).toHaveTextContent("update:existing:w1"),
+  );
+  expect(getPlugin).toHaveBeenCalledWith(
+    expect.objectContaining({
+      path: { pluginId: "existing" },
+      query: expect.objectContaining({ wakerId: "w1" }),
+    }),
+  );
+});
+it("loads a fresh update target when cached detail predates the catalog sync", async () => {
+  let finishDetail = () => {};
+  fixture.detailGate = new Promise<void>((resolve) => {
+    finishDetail = resolve;
+  });
+  fixture.entries[0] = {
+    ...fixture.entries[0],
+    update: { available: true, version: "0.2.0" },
+  };
+  const client = showCatalog();
+  const options = getPluginOptions(
+    withLocalErrorSurface({
+      path: { pluginId: "existing" },
+      query: { locale: "zh-CN" },
+    }),
+  );
+  client.setQueryData(options.queryKey, {
+    plugin: { id: "existing" },
+    update: { available: false },
+  });
+  fireEvent.click(await screen.findByRole("button", { name: "更新 飞书" }));
+  try {
+    await waitFor(() => expect(getPlugin).toHaveBeenCalledOnce());
+    expect(screen.getByRole("dialog", { name: "更新 飞书" })).toBeVisible();
+    expect(screen.queryByText(/update:existing/)).toBeNull();
+  } finally {
+    finishDetail();
+  }
+  expect(await screen.findByText(/update:existing/)).toHaveAttribute(
+    "data-version",
+    "0.2.0",
+  );
+  fixture.failDetail = true;
+  await act(async () => {
+    await expect(
+      client.fetchQuery({ ...options, staleTime: 0 }),
+    ).rejects.toThrow("详情读取失败");
+  });
+  expect(screen.getByText(/update:existing/)).toBeVisible();
 });
 it("keeps a failed action read inside the dialog and retries there", async () => {
   fixture.failDetail = true;

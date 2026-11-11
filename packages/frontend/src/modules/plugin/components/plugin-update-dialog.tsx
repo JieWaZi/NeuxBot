@@ -29,6 +29,7 @@ import {
 import {
   pluginDisplayName,
   pluginHasAuthorization,
+  pluginHasUpdate,
   pluginPreferredAuthAction,
   pluginSummary,
   type PluginDetail,
@@ -64,6 +65,16 @@ export function PluginUpdateDialog({
   } | null>(null);
   const cancelled = useRef(new Set<string>());
   const pluginId = snapshot.plugin?.id ?? "";
+  const update =
+    pluginHasUpdate(snapshot, wakerId) &&
+    (!wakerId || snapshot.packageStatus !== "unsupported")
+      ? snapshot.update
+      : undefined;
+  const catalogKey = update?.catalogKey;
+  const archiveSHA256 = update?.archiveSHA256;
+  const canPrepare = Boolean(
+    catalogKey && archiveSHA256 && snapshot.installations?.length,
+  );
   const versionId = prepared?.resolvedVersionId ?? "";
   const options = getPluginOptions(
     withLocalErrorSurface({
@@ -192,7 +203,7 @@ export function PluginUpdateDialog({
         title={t("updateNamed", {
           name: pluginDisplayName(pkg, snapshot.plugin?.name),
         })}
-        description={t("updateHelp")}
+        description={canPrepare ? t("updateHelp") : undefined}
         size="lg"
       >
         {current && versionId ? (
@@ -217,7 +228,7 @@ export function PluginUpdateDialog({
             reloading={reload.isPending}
             onClose={close}
           />
-        ) : (
+        ) : canPrepare ? (
           <>
             <div className="min-h-0 space-y-4 overflow-y-auto px-6 pb-6">
               <UpdatePartners detail={snapshot} />
@@ -244,19 +255,12 @@ export function PluginUpdateDialog({
                 {t("cancel")}
               </Button>
               <Button
-                disabled={
-                  prepare.isPending ||
-                  reload.isPending ||
-                  !snapshot.update?.available ||
-                  !snapshot.update.catalogKey ||
-                  !snapshot.update.archiveSHA256 ||
-                  !snapshot.installations?.length
-                }
+                disabled={prepare.isPending || reload.isPending}
                 onClick={() =>
                   prepare.mutate({
-                    path: { key: snapshot.update?.catalogKey ?? "" },
+                    path: { key: catalogKey ?? "" },
                     body: {
-                      expectedArchiveSHA256: snapshot.update?.archiveSHA256,
+                      expectedArchiveSHA256: archiveSHA256,
                       trustConfirmed: true,
                     },
                   })
@@ -266,6 +270,10 @@ export function PluginUpdateDialog({
               </Button>
             </DialogFooter>
           </>
+        ) : (
+          <p className="type-body text-content-secondary px-6 pb-6">
+            {t("updateUnavailable")}
+          </p>
         )}
         {Boolean(reloadError) && (
           <p role="alert" className="type-body text-destructive px-6 pb-4">
@@ -364,11 +372,6 @@ function PreparedPluginUpdateForm({
       <div className="min-h-0 space-y-5 overflow-y-auto px-6 pb-6">
         <UpdatePartners detail={snapshot} />
         <p className="type-body text-content-secondary">{pluginSummary(pkg)}</p>
-        {(pkg?.upstream?.tag || pkg?.upstream?.version) && (
-          <p className="type-body">
-            {t("packageVersion")} · {pkg.upstream.tag || pkg.upstream.version}
-          </p>
-        )}
         <p className="type-body text-content-secondary">
           {t("updateReadyHelp")}
         </p>
@@ -446,6 +449,10 @@ function PreparedPluginUpdateForm({
 
 function UpdatePartners({ detail }: { detail: PluginDetail }) {
   const { t } = useTranslation("plugin");
+  const versions = new Map(
+    detail.versions?.map(({ id, version }) => [id, version]),
+  );
+  const target = detail.update?.version;
   return (
     <section className="space-y-3">
       <h3 className="type-label font-medium">
@@ -455,6 +462,14 @@ function UpdatePartners({ detail }: { detail: PluginDetail }) {
         {(detail.installations ?? []).map((relation) => {
           const id = relation.wakerId ?? "";
           const name = detail.partnerNames?.[id] || t("unknown");
+          const current = versions.get(relation.versionId);
+          const version =
+            target && detail.update?.wakerIds?.includes(id)
+              ? t("updateVersionChange", {
+                  current: current || t("unknown"),
+                  target,
+                })
+              : current;
           return (
             <span key={id} className="type-body flex items-center gap-2">
               <ResourcePartnerAvatar
@@ -463,6 +478,9 @@ function UpdatePartners({ detail }: { detail: PluginDetail }) {
                 size="xs"
               />
               {name}
+              {version && (
+                <span className="text-content-secondary">{version}</span>
+              )}
             </span>
           );
         })}

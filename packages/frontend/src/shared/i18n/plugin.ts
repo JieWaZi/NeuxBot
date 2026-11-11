@@ -91,7 +91,6 @@ export const pluginZh = {
   information: "插件信息",
   capabilities: "能力组成",
   developer: "开发者",
-  packageVersion: "插件版本",
   upstreamVersion: "上游版本",
   website: "官方网站",
   repository: "源代码",
@@ -170,10 +169,12 @@ export const pluginZh = {
   sharedIdentity: "已连接：{{name}}",
   update: "更新全部伙伴",
   updateAvailable: "可更新",
+  updateUnavailable: "当前没有可更新的版本。",
   updateNamed: "更新 {{name}}",
   updateHelp:
     "更新此插件的全部已安装伙伴，保留各伙伴当前的启停状态。已接纳的工作继续使用原版本。",
   updatePartners: "将更新全部 {{count}} 个伙伴",
+  updateVersionChange: "{{current}} → {{target}}",
   prepareUpdate: "确认并准备更新",
   prepareUpdateHelp:
     "准备新版本后可以核对插件说明、共享设置与账号，确认后才会更新伙伴。继续即同意运行此插件提供的授权程序及工具组件。",
@@ -303,7 +304,6 @@ export const pluginEn: { [K in keyof typeof pluginZh]: string } = {
   information: "Plugin information",
   capabilities: "Capabilities",
   developer: "Developer",
-  packageVersion: "Plugin version",
   upstreamVersion: "Upstream version",
   website: "Official website",
   repository: "Source code",
@@ -383,10 +383,12 @@ export const pluginEn: { [K in keyof typeof pluginZh]: string } = {
   sharedIdentity: "Connected: {{name}}",
   update: "Update all partners",
   updateAvailable: "Update available",
+  updateUnavailable: "No update is currently available.",
   updateNamed: "Update {{name}}",
   updateHelp:
     "Update this plugin for every installed partner, preserving each enabled state. Accepted work continues with its original version.",
   updatePartners: "Update all {{count}} partners",
+  updateVersionChange: "{{current}} → {{target}}",
   prepareUpdate: "Confirm and prepare update",
   prepareUpdateHelp:
     "Review the new plugin description, shared settings and account before updating partners. Continuing allows the plugin’s authorization programs and tool components to run.",

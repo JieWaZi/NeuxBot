@@ -1,7 +1,18 @@
-import { lazy, Suspense, type ComponentProps, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  lazy,
+  Suspense,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
+import { withLocalErrorSurface } from "@/shared/api/local-error-surface";
 import { Dialog, DialogContent } from "@/shared/ui/dialog";
+import { QueryState } from "@/shared/ui/query-state";
 import { ResourceLoadingState } from "@/shared/ui/resource-loading-state";
+import { getPluginOptions } from "../api/plugin-queries";
+import { pluginLocale, type PluginDetail } from "../model/plugin-view";
 
 const InstallContent = lazy(() =>
   import("./plugin-install-dialog").then((module) => ({
@@ -58,12 +69,57 @@ export function PluginInstallDialog(
     </DeferredDialog>
   );
 }
-export function PluginUpdateDialog(
-  props: ComponentProps<typeof UpdateContent>,
-) {
+export function PluginUpdateDialog({
+  pluginId,
+  name,
+  wakerId,
+  onClose,
+}: {
+  pluginId: string;
+  name: string;
+  wakerId?: string;
+  onClose: () => void;
+}) {
+  const { t, i18n } = useTranslation("plugin");
+  const [snapshot, setSnapshot] = useState<PluginDetail>();
+  const locale = pluginLocale(i18n.resolvedLanguage ?? i18n.language);
+  const detail = useQuery({
+    ...getPluginOptions(
+      withLocalErrorSurface({
+        path: { pluginId },
+        query: { locale, wakerId: wakerId || undefined },
+      }),
+    ),
+    enabled: !snapshot,
+    refetchOnMount: "always",
+  });
+  // 首次成功读回才打开确认内容，后续详情重取不卸载已经准备好的表单。
+  if (!snapshot && detail.isSuccess && detail.isFetchedAfterMount)
+    setSnapshot(detail.data);
+  if (!snapshot) {
+    return (
+      <Dialog
+        open
+        onOpenChange={(open) => {
+          if (!open) onClose();
+        }}
+      >
+        <DialogContent title={t("updateNamed", { name })}>
+          <div className="px-6 pb-5">
+            <QueryState
+              loadingLayout="content"
+              pending={detail.isFetching || detail.isPending}
+              error={detail.error}
+              onRetry={() => void detail.refetch()}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
   return (
-    <DeferredDialog onClose={props.onClose}>
-      <UpdateContent {...props} />
+    <DeferredDialog onClose={onClose}>
+      <UpdateContent detail={snapshot} wakerId={wakerId} onClose={onClose} />
     </DeferredDialog>
   );
 }
