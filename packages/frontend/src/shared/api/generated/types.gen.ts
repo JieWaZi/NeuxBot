@@ -13566,14 +13566,18 @@ export type GithubComJieWaZiNeuxBotServerServicesUsageGroupsPage = GithubComJieW
 };
 
 /**
- * Summary reports exact known subtotals for a snapshot.
+ * 用量概要
  */
 export type GithubComJieWaZiNeuxBotServerServicesUsageSummary = {
     coverage?: GithubComJieWaZiNeuxBotServerServicesUsageCoverage & unknown;
     metrics?: GithubComJieWaZiNeuxBotServerInternalUsageTokenMetrics & unknown;
+    /**
+     * 已记录命中率
+     */
+    observedCacheHitRate?: number;
     range?: GithubComJieWaZiNeuxBotServerServicesUsageFilter & unknown;
     /**
-     * Snapshot fixes the projection boundary for subsequent grouped reads.
+     * 用量快照
      */
     snapshot?: string;
 };

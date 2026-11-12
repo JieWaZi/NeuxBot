@@ -5,7 +5,7 @@ import { initReactI18next } from "react-i18next";
 
 import { imZh, imEn } from "./im";
 import { workBoardZh, workBoardEn } from "./work-board";
-import { usageZh } from "./usage";
+import { usageEn, usageZh } from "./usage";
 
 const resources = {
   "zh-CN": {
@@ -2512,6 +2512,7 @@ const resources = {
     },
   },
   "en-US": {
+    usage: usageEn,
     knowledge: knowledgeEn,
     notification: notificationEn,
     im: imEn,

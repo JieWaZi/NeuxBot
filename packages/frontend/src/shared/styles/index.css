@@ -355,6 +355,11 @@
   line-height: 2rem;
 }
 
+@utility type-usage-total {
+  font-size: clamp(1.75rem, 4.5cqi, 2.5rem);
+  line-height: 1.15;
+}
+
 :root {
   --shell-detail-dock-clearance: 6rem;
   font-synthesis: none;

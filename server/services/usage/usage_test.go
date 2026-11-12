@@ -1,6 +1,7 @@
 package usage
 
 import (
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -18,6 +19,35 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 )
+
+func TestObservedCacheHitRateUsesPairedInputCounts(t *testing.T) {
+	input, cacheRead, cacheWrite, anotherInput, anotherRead, anotherWrite, unpaired := int64(25), int64(75), int64(0), int64(30), int64(40), int64(30), int64(900)
+	var totals accumulator
+	for _, row := range []models.UsageRecord{
+		{Input: &input, CacheRead: &cacheRead, CacheWrite: &cacheWrite},
+		{Input: &anotherInput, CacheRead: &anotherRead, CacheWrite: &anotherWrite},
+		{CacheRead: &unpaired},
+	} {
+		if err := totals.add(row); err != nil {
+			t.Fatal(err)
+		}
+	}
+	summary, err := finishSummary(Filter{}, "", snapshot{}, &totals)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(summary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var response map[string]json.RawMessage
+	if err := json.Unmarshal(data, &response); err != nil {
+		t.Fatal(err)
+	}
+	if got := string(response["observedCacheHitRate"]); got != "0.575" {
+		t.Fatalf("observed cache hit rate = %s, want 0.575", got)
+	}
+}
 
 func TestCanonicalUsageRebuildAndSnapshot(t *testing.T) {
 	for _, provider := range []string{"codex", "claude", "cursor"} {

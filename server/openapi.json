@@ -84880,7 +84880,7 @@
                 "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerServicesUsageCoverage"
               },
               {
-                "description": "Coverage describes retained native terminal evidence.",
+                "description": "统计覆盖",
                 "x-go-field-name": "Coverage"
               }
             ]
@@ -84891,10 +84891,18 @@
                 "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerInternalUsageTokenMetrics"
               },
               {
-                "description": "Metrics reports token and invocation counts for the selected range.",
+                "description": "用量计数",
                 "x-go-field-name": "Metrics"
               }
             ]
+          },
+          "observedCacheHitRate": {
+            "type": "number",
+            "format": "double",
+            "description": "已记录命中率",
+            "x-go-field-name": "ObservedCacheHitRate",
+            "x-go-star-level": 1,
+            "x-tag-json": "observedCacheHitRate,omitempty"
           },
           "range": {
             "allOf": [
@@ -84902,18 +84910,18 @@
                 "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerServicesUsageFilter"
               },
               {
-                "description": "Range is the applied filter.",
+                "description": "筛选范围",
                 "x-go-field-name": "Range"
               }
             ]
           },
           "snapshot": {
             "type": "string",
-            "description": "Snapshot fixes the projection boundary for subsequent grouped reads.",
+            "description": "用量快照",
             "x-go-field-name": "Snapshot"
           }
         },
-        "description": "Summary reports exact known subtotals for a snapshot.",
+        "description": "用量概要",
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerServicesUsageSummary",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/services/usage.Summary"
       },
