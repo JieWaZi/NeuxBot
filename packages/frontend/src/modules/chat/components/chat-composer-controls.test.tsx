@@ -187,6 +187,7 @@ function Controls({
     workspaceDirectory: "/managed/chat-workspace",
     workspaceLabel: "Work",
     onPickDirectory: () => {},
+    onSelectManaged: () => {},
     onSelectProject: () => {},
     updateExecutionSelection: (patch) => {
       onChange(patch);

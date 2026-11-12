@@ -61,6 +61,7 @@ type ChatComposerControlsProps = {
   historicalRuntime?: RuntimeOption;
   historicalRuntimeDisabled: boolean;
   onPickDirectory: () => void | Promise<void>;
+  onSelectManaged: () => void;
   onSelectProject: (projectId: string) => void;
   projects: ProjectResource[];
   runtimeId: string;
@@ -104,6 +105,7 @@ export function useChatComposerControls({
   historicalRuntime,
   historicalRuntimeDisabled,
   onPickDirectory,
+  onSelectManaged,
   onSelectProject,
   projects,
   runtimeId,
@@ -179,6 +181,7 @@ export function useChatComposerControls({
       projectId={selectedDraftProject?.id}
       ownerId={selectedWakerId}
       onPickDirectory={onPickDirectory}
+      onSelectManaged={onSelectManaged}
       onSelectProject={onSelectProject}
       trigger={
         <Button

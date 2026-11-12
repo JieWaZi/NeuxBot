@@ -1070,6 +1070,9 @@ function TeamChatView({
     historicalRuntime,
     historicalRuntimeDisabled,
     onPickDirectory: pickDirectory,
+    onSelectManaged: () => {
+      selectDraftWorkspace(draftWorkspacePreferenceKey, { type: "managed" });
+    },
     onSelectProject: (projectId) => {
       selectDraftWorkspace(draftWorkspacePreferenceKey, {
         type: "project",

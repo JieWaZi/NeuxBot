@@ -2386,16 +2386,30 @@ describe("ChatPage", () => {
 
   it.each([
     {
+      label: "记住的本地目录",
       selection: { type: "folder", path: "/tmp/remembered" },
       expected: { workingDirectory: "/tmp/remembered", projectId: "" },
     },
     {
+      label: "记住的项目",
       selection: { type: "project", projectId: "remembered-project" },
       expected: { workingDirectory: "", projectId: "remembered-project" },
     },
+    {
+      label: "从本地目录切回默认",
+      selection: { type: "folder", path: "/tmp/remembered" },
+      resetToDefault: true,
+      expected: { workingDirectory: "", projectId: "" },
+    },
+    {
+      label: "从项目切回默认",
+      selection: { type: "project", projectId: "remembered-project" },
+      resetToDefault: true,
+      expected: { workingDirectory: "", projectId: "" },
+    },
   ])(
-    "新对话首次发送自动带入本地工作范围 $selection.type",
-    async ({ selection, expected }) => {
+    "新对话首次发送使用所选工作范围（$label）",
+    async ({ selection, resetToDefault, expected }) => {
       projectResources.current = [
         {
           id: "remembered-project",
@@ -2404,6 +2418,7 @@ describe("ChatPage", () => {
           sources: [{ path: "/tmp/project", available: true }],
         },
       ];
+      recentProjectID.current = "remembered-project";
       window.localStorage.setItem(
         draftWorkspaceStorageKey,
         JSON.stringify({ "waker-1": selection }),
@@ -2431,6 +2446,17 @@ describe("ChatPage", () => {
         </QueryClientProvider>,
       );
       await screen.findByRole("textbox", { name: "输入消息" });
+      if (resetToDefault) {
+        const workspace = screen.getByTestId("composer-workspace-control");
+        await waitFor(() =>
+          expect(workspace).toHaveTextContent(
+            selection.type === "folder" ? "remembered" : "记住的项目",
+          ),
+        );
+        await user.click(workspace);
+        await user.click(screen.getByRole("menuitem", { name: "默认" }));
+        expect(workspace).toHaveTextContent("默认");
+      }
       await user.type(
         screen.getByRole("textbox", { name: "输入消息" }),
         "继续工作",

@@ -1176,6 +1176,10 @@ function ChatView({
     historicalRuntime,
     historicalRuntimeDisabled,
     onPickDirectory: pickDirectory,
+    onSelectManaged: () => {
+      if (!selectedWakerID) return;
+      selectDraftWorkspace(selectedWakerID, { type: "managed" });
+    },
     onSelectProject: (projectId) => {
       if (!selectedWakerID) return;
       selectDraftWorkspace(selectedWakerID, { type: "project", projectId });
