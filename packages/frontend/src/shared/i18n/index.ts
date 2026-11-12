@@ -2625,6 +2625,23 @@ const resources = {
       approval: {
         waitingForTurn:
           "“{{title}}” is queued. Handle the current approval first.",
+        option: {
+          allowSession: "Allow for this session",
+          allowRootSession: "Allow writes to this directory for this session",
+          allowHostSession: "Allow access to this host for this session",
+          allowCommandPrefix:
+            "Always allow commands starting with `{{command}}`",
+          allowCommandPattern: "Allow and remember this command pattern",
+          allowFuture: "Allow {{target}} in the future",
+          blockFuture: "Block {{target}} in the future",
+          allowAlways: "Always allow",
+          rejectAlways: "Always reject",
+        },
+      },
+      toolApproval: {
+        allowedAlways: "Always allowed",
+        rejectedAlways: "Always rejected",
+        allowedSession: "Allowed for this session",
       },
       elicitation: {
         waitingForTurn: "Answer the preceding question first.",

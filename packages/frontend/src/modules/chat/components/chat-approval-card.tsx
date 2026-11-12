@@ -88,14 +88,14 @@ const allowFuturePattern = /^Allow (.+) in the Future$/;
 const blockFuturePattern = /^Block (.+) in the Future$/;
 
 const approvalOptionNameKeys = {
-  "Allow for Session": "allowSession",
-  "Allow Root for Session": "allowRootSession",
-  "Allow Host for Session": "allowHostSession",
-  "Allow and Remember Command Pattern": "allowCommandPattern",
-  "Always allow": "allowAlways",
-  "Allow always": "allowAlways",
-  "Always reject": "rejectAlways",
-  "Reject always": "rejectAlways",
+  "allow for session": "allowSession",
+  "allow root for session": "allowRootSession",
+  "allow host for session": "allowHostSession",
+  "allow and remember command pattern": "allowCommandPattern",
+  "always allow": "allowAlways",
+  "allow always": "allowAlways",
+  "always reject": "rejectAlways",
+  "reject always": "rejectAlways",
 } as const;
 
 const approvalOptionLabelKeys = {
@@ -150,9 +150,12 @@ export function matchApprovalOptionName(name: string): ApprovalOptionMatch {
   if (allowedTarget) return { type: "allowFuture", target: allowedTarget };
   const blockedTarget = patternTarget(blockFuturePattern, trimmed);
   if (blockedTarget) return { type: "blockFuture", target: blockedTarget };
-  const key =
-    approvalOptionNameKeys[trimmed as keyof typeof approvalOptionNameKeys];
-  if (key) return { type: "named", key };
+  const normalized = trimmed.toLowerCase();
+  if (Object.hasOwn(approvalOptionNameKeys, normalized)) {
+    const key =
+      approvalOptionNameKeys[normalized as keyof typeof approvalOptionNameKeys];
+    return { type: "named", key };
+  }
   return { type: "custom", name: trimmed };
 }
 
