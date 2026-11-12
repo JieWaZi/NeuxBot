@@ -780,3 +780,24 @@ it("通知使用原生galet斜卵石轮廓与对应素材，不强制改成正�
     view.container.querySelector('[data-body-warp="radial-svg"]'),
   ).toBeNull();
 });
+
+it("静态头像使用汇总标记的配色显示未读圆形和最新计数", () => {
+  const avatar = (count: number) => (
+    <CompanionAvatar
+      avatar="bloub:plush:cercle:neutre:e152b0"
+      attention={{ kind: "unread", count }}
+      animated={false}
+    />
+  );
+  const view = render(avatar(1));
+  const mark = () =>
+    view.container.querySelector('[data-native-attention="unread"]');
+  expect(mark()).toHaveAttribute("data-unread-count", "1");
+  expect(mark()?.querySelector("circle")).toHaveAttribute(
+    "fill",
+    "var(--accent-secondary-hover)",
+  );
+  view.rerender(avatar(100));
+  expect(mark()).toHaveAttribute("data-unread-count", "99+");
+  expect(mark()?.querySelectorAll('path[stroke="#fff"]')).toHaveLength(3);
+});

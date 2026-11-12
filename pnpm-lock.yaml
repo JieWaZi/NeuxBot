@@ -123,7 +123,7 @@ importers:
     dependencies:
       '@neuxbot/bloub':
         specifier: github:JieWaZi/bloub#main
-        version: git+https://github.com/JieWaZi/bloub.git#84b02098dbd5822ec7c5e7cd0335952e9c8560e2
+        version: https://codeload.github.com/JieWaZi/bloub/tar.gz/51070007171a1e1d727b1f0bf3fae2700f1d1368
       '@paper-design/shaders':
         specifier: 0.0.80
         version: 0.0.80
@@ -2230,8 +2230,8 @@ packages:
     peerDependencies:
       react: ^16.8 || ^17.0 || ^18.0 || ^19.0.0 || ^19.0.0-rc
 
-  '@neuxbot/bloub@git+https://github.com/JieWaZi/bloub.git#84b02098dbd5822ec7c5e7cd0335952e9c8560e2':
-    resolution: {commit: 84b02098dbd5822ec7c5e7cd0335952e9c8560e2, repo: https://github.com/JieWaZi/bloub.git, type: git}
+  '@neuxbot/bloub@https://codeload.github.com/JieWaZi/bloub/tar.gz/51070007171a1e1d727b1f0bf3fae2700f1d1368':
+    resolution: {gitHosted: true, integrity: sha512-h252NWqGC/c6OxEqOSBenIRpDyhmu3cbWMGaO3moya1Xo2jtKAwjFGUN5cl87zAlYPhj+p/p60Y/D4QIBhG/rg==, tarball: https://codeload.github.com/JieWaZi/bloub/tar.gz/51070007171a1e1d727b1f0bf3fae2700f1d1368}
     version: 0.1.0
 
   '@noble/hashes@1.4.0':
@@ -10514,7 +10514,7 @@ snapshots:
     dependencies:
       react: 19.2.8
 
-  '@neuxbot/bloub@git+https://github.com/JieWaZi/bloub.git#84b02098dbd5822ec7c5e7cd0335952e9c8560e2': {}
+  '@neuxbot/bloub@https://codeload.github.com/JieWaZi/bloub/tar.gz/51070007171a1e1d727b1f0bf3fae2700f1d1368': {}
 
   '@noble/hashes@1.4.0': {}
 

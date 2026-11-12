@@ -12,7 +12,7 @@ import { SHAPE_BY_ID } from "@neuxbot/bloub/skins";
 import { POSES, type StateId } from "@neuxbot/bloub/states";
 import { usePreparedAppearance } from "./prepared-appearance";
 import { alignMaterialDrawing, materialViewBox } from "./materials";
-import type { CompanionActivity } from "./activity";
+import type { CompanionActivity, CompanionAttention } from "./activity";
 import { companionPlayback, companionPresentation } from "./playback";
 import { nextHoverFace, type HoverFace } from "./interaction-expressions";
 import { avatarDrawing, type SvgDrawing } from "@neuxbot/bloub/drawing";
@@ -24,13 +24,7 @@ function renderDrawing(
 ): ReturnType<typeof createElement> {
   return createElement(
     drawing.tag,
-    {
-      ...drawing.attributes,
-      ...(drawing.attributes["data-native-notification"] !== undefined
-        ? { fill: "var(--accent-default)" }
-        : {}),
-      key,
-    },
+    { ...drawing.attributes, key },
     ...drawing.children.map(renderDrawing),
   );
 }
@@ -39,6 +33,7 @@ function renderDrawing(
 export function CompanionAvatar({
   avatar,
   activity = "idle",
+  attention,
   animated = true,
   interactive = true,
   preview = false,
@@ -48,6 +43,7 @@ export function CompanionAvatar({
 }: {
   avatar: string;
   activity?: CompanionActivity;
+  attention?: CompanionAttention;
   animated?: boolean;
   interactive?: boolean;
   preview?: boolean;
@@ -67,7 +63,8 @@ export function CompanionAvatar({
     face: HoverFace | null;
   }>({ pointer: false, focus: false, face: null });
   const shown = activity === "resting" ? "idle" : activity;
-  const presentation = companionPresentation(shown);
+  const attentionState = attention?.kind;
+  const presentation = companionPresentation(shown, attentionState);
   // 通知参考使用 Bloub 自带的斜卵石；其余有身体的状态保留伙伴形状。
   const renderedShape =
     (animation ?? presentation.state) === "notify" ? "galet" : appearance.shape;
@@ -89,6 +86,7 @@ export function CompanionAvatar({
   const interaction =
     hoverEnabled &&
     shown === "idle" &&
+    !attentionState &&
     (hover.pointer || hover.focus) &&
     playing;
   const expression =
@@ -153,11 +151,11 @@ export function CompanionAvatar({
   const clock = useRef(0);
   const enteredAt = useRef(0);
   const motion = useRef<{
-    presentation: typeof presentation;
     shown: CompanionActivity;
     animation: StateId | undefined;
     interactiveState: StateId | undefined;
-  }>({ presentation, shown, animation, interactiveState });
+    attentionState: CompanionAttention["kind"] | undefined;
+  }>({ shown, animation, interactiveState, attentionState });
   const configured = useRef("");
   const wasFixed = useRef(false);
   const timeline = useRef("");
@@ -212,8 +210,18 @@ export function CompanionAvatar({
       block.current = "";
     }
     const key = `${timelineKey}:${appearance.shape}:${expression}:${presentation.motion}:${interactiveState}`;
-    motion.current = { presentation, shown, animation, interactiveState };
-    let target = companionPlayback(shown, now - enteredAt.current, animation);
+    motion.current = {
+      shown,
+      animation,
+      interactiveState,
+      attentionState,
+    };
+    let target = companionPlayback(
+      shown,
+      now - enteredAt.current,
+      animation,
+      attentionState,
+    );
     const state = interactiveState ?? target.state;
     const configurationChanged = configured.current !== key;
     if (configurationChanged) {
@@ -240,6 +248,7 @@ export function CompanionAvatar({
         shown,
         clock.current - enteredAt.current,
         animation,
+        attentionState,
       );
     }
     wasFixed.current = fixedPose;
@@ -258,6 +267,7 @@ export function CompanionAvatar({
     appearance.shape,
     renderedShape,
     shown,
+    attentionState,
     expression,
     presentation,
     interactiveState,
@@ -281,6 +291,7 @@ export function CompanionAvatar({
           current.shown,
           local,
           current.animation,
+          current.attentionState,
         );
         const state = current.interactiveState ?? target.state;
         const blockKey = `${state}:${target.block}`;
@@ -301,6 +312,7 @@ export function CompanionAvatar({
     return () => cancelAnimationFrame(raf);
   }, [engine, playing]);
 
+  const renderedAttention = frame.notif?.attention?.kind ?? attentionState;
   return (
     <span ref={host} className="relative block size-full" aria-hidden="true">
       <svg
@@ -331,6 +343,16 @@ export function CompanionAvatar({
             undefined,
             renderedShape,
             sampleTime,
+            {
+              notificationColor:
+                renderedAttention === "unread"
+                  ? "var(--accent-secondary-hover)"
+                  : renderedAttention
+                    ? appearance.color
+                    : "var(--accent-default)",
+              unreadCount:
+                attention?.kind === "unread" ? attention.count : undefined,
+            },
           ),
           appearance.material,
           renderedShape,
