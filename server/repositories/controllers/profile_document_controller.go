@@ -7,8 +7,10 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ProfileDocumentController 定义角色预设和伙伴文档的持久化操作。
@@ -45,6 +47,8 @@ type ProfileDocumentController interface {
 		content string,
 		updatedAt int64,
 	) error
+	// SaveWakerAgents 创建或替换伙伴的统一档案正文。
+	SaveWakerAgents(ctx context.Context, wakerID, content string, updatedAt int64) error
 	// DeleteWakerDocuments 删除伙伴拥有的全部档案和记忆文档。
 	DeleteWakerDocuments(ctx context.Context, wakerID string) error
 }
@@ -222,5 +226,22 @@ func (c *profileDocumentController) DeleteWakerDocuments(
 	if err != nil {
 		return databaseError("delete_waker_documents", "waker_id="+wakerID, err)
 	}
+	return nil
+}
+
+// SaveWakerAgents 创建或替换伙伴的统一档案正文。
+func (c *profileDocumentController) SaveWakerAgents(ctx context.Context, wakerID, content string, updatedAt int64) error {
+	document := models.WakerDocument{
+		ID: util.New(), WakerID: wakerID, Kind: constants.ProfileDocumentKindAgents,
+		Content: content, CreatedAt: updatedAt, UpdatedAt: updatedAt,
+	}
+	result := controllerDB(ctx, c.db).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "waker_id"}, {Name: "kind"}},
+		DoUpdates: clause.AssignmentColumns([]string{"content", "updated_at"}),
+	}).Create(&document)
+	if result.Error != nil {
+		return databaseError("save_waker_agents", "waker_id="+wakerID, result.Error)
+	}
+	publishCommittedChange(ctx, c.db, "resources", eventsResource("waker", wakerID))
 	return nil
 }

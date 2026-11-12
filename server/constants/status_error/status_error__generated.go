@@ -357,6 +357,16 @@ func (v StatusError) Key() string {
 		return "AgentCommandOutcomeUnknown"
 	case AgentCommandRequestConflict:
 		return "AgentCommandRequestConflict"
+	case WakerProfileDraftStale:
+		return "WakerProfileDraftStale"
+	case WakerProfileConfirmationRequired:
+		return "WakerProfileConfirmationRequired"
+	case WakerProfileConfirmationPending:
+		return "WakerProfileConfirmationPending"
+	case WakerOnboardingUnavailable:
+		return "WakerOnboardingUnavailable"
+	case WakerOnboardingInterviewRequired:
+		return "WakerOnboardingInterviewRequired"
 	case ReadingIntentConflict:
 		return "ReadingIntentConflict"
 	case KnowledgeConflict:
@@ -766,6 +776,11 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			RuntimeVersionUnknown:                "the current version is unknown; whether an update is needed cannot be determined",
 			AgentCommandOutcomeUnknown:           "command outcome is uncertain; inspect the original request receipt",
 			AgentCommandRequestConflict:          "command request identifier was already used with different content",
+			WakerProfileDraftStale:               "the partner profile draft is stale; propose the draft again",
+			WakerProfileConfirmationRequired:     "the user has not confirmed saving this partner profile draft",
+			WakerProfileConfirmationPending:      "the current partner profile draft is still awaiting the user's decision",
+			WakerOnboardingUnavailable:           "this partner has no onboarding chat to resume",
+			WakerOnboardingInterviewRequired:     "the partner has not completed the interactive interview; continue setup and answer in the question card",
 			ReadingIntentConflict:                "the reading position changed; refresh before trying again",
 			KnowledgeConflict:                    "knowledge version or request content has changed",
 			KnowledgeCancelled:                   "knowledge operation was cancelled or its attempt is stale",
@@ -1036,6 +1051,11 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			RuntimeVersionUnknown:                "无法确认当前版本，暂不能判断是否需要更新",
 			AgentCommandOutcomeUnknown:           "软件能力命令提交结果尚不确定，请查询原请求回执",
 			AgentCommandRequestConflict:          "同一命令请求标识不能用于不同内容",
+			WakerProfileDraftStale:               "当前伙伴建档草稿已失效，请重新提交草稿",
+			WakerProfileConfirmationRequired:     "用户尚未确认保存此版本的伙伴档案",
+			WakerProfileConfirmationPending:      "当前伙伴建档草稿仍在等待用户决定",
+			WakerOnboardingUnavailable:           "当前伙伴尚无可恢复的建档对话",
+			WakerOnboardingInterviewRequired:     "伙伴尚未完成互动问答。请继续设置，在问答卡片中填写答案。",
 			ReadingIntentConflict:                "会话阅读位置已变化，请刷新后重新操作",
 			KnowledgeConflict:                    "知识版本或请求内容已变化，请刷新后重试",
 			KnowledgeCancelled:                   "当前知识操作已取消或阶段已失效",

@@ -27,7 +27,7 @@ func agentIdentity(value string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func (m *service) prepareAgent(environment models.RuntimeEnvironment, workspace agentapi.Workspace, skills *[]agentapi.Skill, instructions *[]agentapi.Instruction, connectors *[]agentapi.ConnectorDeclaration, contextInstructions *[]agentapi.Instruction, chat models.Chat, executionID string, request pendingMessage, requestReferencedFiles []string) (func(), func(), error) {
+func (m *service) prepareAgent(ctx context.Context, environment models.RuntimeEnvironment, workspace agentapi.Workspace, skills *[]agentapi.Skill, instructions *[]agentapi.Instruction, connectors *[]agentapi.ConnectorDeclaration, contextInstructions *[]agentapi.Instruction, chat models.Chat, executionID string, request pendingMessage, requestReferencedFiles []string) (func(), func(), error) {
 	if m.agent == nil {
 		return nil, nil, nil
 	}
@@ -86,11 +86,22 @@ func (m *service) prepareAgent(environment models.RuntimeEnvironment, workspace 
 			}
 		}
 	}
-	if request.allowedAgentDomains == nil || slices.Contains(*request.allowedAgentDomains, "interaction") {
-		bindings = append(bindings, m.questionBindings(chat.ID, executionID)...)
-	}
 	for _, capability := range request.toolCapabilities {
 		bindings = append(bindings, capability.Bindings...)
+	}
+	onboardingBindings, err := m.prepareWakerOnboarding(ctx, chat, executionID, request, instructions, contextInstructions)
+	if err != nil {
+		return nil, nil, err
+	}
+	bindings = append(bindings, onboardingBindings...)
+	if request.allowedAgentDomains == nil || slices.Contains(*request.allowedAgentDomains, "interaction") {
+		for _, question := range m.questionBindings(chat.ID, executionID) {
+			// 建档使用专用选项卡；保留同一问答读取与等待能力。
+			if len(onboardingBindings) > 0 && question.Operation == "interaction.questions.create" {
+				continue
+			}
+			bindings = append(bindings, question)
+		}
 	}
 	hasWorkflowCapabilities := false
 	for _, binding := range bindings {

@@ -1,6 +1,6 @@
 # Team Lead
 
-Use the authoritative member roster and expertise supplied in `TEAM.md`. Query `team members list` only when that roster is absent. Inspect the task board before creating work. Choose a non-lead assignee for each formal task by observable responsibility and relevant expertise.
+Use the authoritative member roster, roles, and biographies supplied in `TEAM.md`. Query `team members list` only when that roster is absent. Inspect the task board before creating work. Choose a non-lead assignee for each formal task by their stated responsibilities.
 
 Use `team tasks create` for new work, `update` for permitted pending changes, `follow-up` for additional instructions to the existing active task, and `retry` only for an explicit retry decision supported by the actual task state and retry allowance. Use stable request identities for mutations.
 

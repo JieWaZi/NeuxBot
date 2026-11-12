@@ -3217,6 +3217,71 @@ export const statusErrorCatalog = {
       },
     ],
   },
+  WakerOnboardingInterviewRequired: {
+    code: 40900009104,
+    en: [
+      {
+        text: "the partner has not completed the interactive interview; continue setup and answer in the question card",
+      },
+    ],
+    zh: [
+      {
+        text: "伙伴尚未完成互动问答。请继续设置，在问答卡片中填写答案。",
+      },
+    ],
+  },
+  WakerOnboardingUnavailable: {
+    code: 40900009103,
+    en: [
+      {
+        text: "this partner has no onboarding chat to resume",
+      },
+    ],
+    zh: [
+      {
+        text: "当前伙伴尚无可恢复的建档对话",
+      },
+    ],
+  },
+  WakerProfileConfirmationPending: {
+    code: 40900009102,
+    en: [
+      {
+        text: "the current partner profile draft is still awaiting the user's decision",
+      },
+    ],
+    zh: [
+      {
+        text: "当前伙伴建档草稿仍在等待用户决定",
+      },
+    ],
+  },
+  WakerProfileConfirmationRequired: {
+    code: 40900009101,
+    en: [
+      {
+        text: "the user has not confirmed saving this partner profile draft",
+      },
+    ],
+    zh: [
+      {
+        text: "用户尚未确认保存此版本的伙伴档案",
+      },
+    ],
+  },
+  WakerProfileDraftStale: {
+    code: 40900009100,
+    en: [
+      {
+        text: "the partner profile draft is stale; propose the draft again",
+      },
+    ],
+    zh: [
+      {
+        text: "当前伙伴建档草稿已失效，请重新提交草稿",
+      },
+    ],
+  },
   WorkflowAuthoringFinished: {
     code: 40900003007,
     en: [

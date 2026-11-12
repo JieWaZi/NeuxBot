@@ -38,9 +38,9 @@ func (u *UpdateWakerDocument) Path() string {
 	return "/:wakerId/documents/:kind"
 }
 
-// Validate 只允许更新三份伙伴档案。
+// Validate 只允许更新伙伴档案。
 func (u *UpdateWakerDocument) Validate(*gin.Context) error {
-	if !isEditableProfileKind(u.Kind) {
+	if !validProfileDocumentKind(u.Kind) {
 		return ginx.WithStack(status_error.ProfileDocumentKindInvalid)
 	}
 	return nil
@@ -55,8 +55,15 @@ func (u *UpdateWakerDocument) Output(ctx *gin.Context) (interface{}, error) {
 	err := global.TransactionControllerManager.Transaction(
 		ctx,
 		func(transactionContext context.Context) error {
-			if _, err := global.WakerControllerManager.Get(transactionContext, u.WakerID); err != nil {
+			waker, err := global.WakerControllerManager.Get(transactionContext, u.WakerID)
+			if err != nil {
 				return err
+			}
+			if waker.OnboardingStatus == constants.WakerOnboardingStatusPending {
+				return status_error.WakerProfileConfirmationRequired
+			}
+			if u.Kind == constants.ProfileDocumentKindAgents {
+				return global.ProfileDocumentControllerManager.SaveWakerAgents(transactionContext, u.WakerID, u.Body.Content, now)
 			}
 			documents, err := global.ProfileDocumentControllerManager.ListWakerDocuments(
 				transactionContext,

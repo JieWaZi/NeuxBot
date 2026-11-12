@@ -305,6 +305,9 @@ func (m *service) prepareFork(ctx context.Context, input ForkInput) (chatstorage
 		Boundary: selected.boundary,
 	}
 	for _, message := range messages {
+		if message.Actor == constants.WakerOnboardingActor {
+			continue
+		}
 		sourceMessageID := message.ID
 		message.ID = util.New()
 		message.SourceChatID = input.ChatID

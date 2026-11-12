@@ -131,6 +131,10 @@ func catalog() []Operation {
 	memorySearchScope.Schema["description"] = "Omit to search all visible partner and project memory. Project scope requires a bound project."
 	memoryWriteScope := choice("scope", []string{constants.MemoryScopePartner.String(), constants.MemoryScopeProject.String()}, true)
 	memoryWriteScope.Schema["description"] = "Choose ownership for this entry; project scope requires a bound project."
+	draftObject := func(name string, properties map[string]any, required ...string) Field {
+		return Field{Name: name, Required: true, Schema: map[string]any{"type": "array", "maxItems": 32, "items": map[string]any{"type": "object", "properties": properties, "required": required, "additionalProperties": false}}}
+	}
+	draftText := map[string]any{"type": "string", "maxLength": 1000}
 	result := []Operation{
 		operation("knowledge.jobs.start", "Start document ingestion requested in chat: persist selected current-message attachments as originals, then generate summaries and knowledge according to library indexing settings. Message adds extraction requirements; the host preserves the original request and inherits this execution's model configuration. For existing-Wiki maintenance use knowledge.wiki.maintain. Preauthorized ingestion may omit selection fields.", mutation, accepted, "knowledge", text("libraryId", false), text("backend", false), text("connectionId", false), Field{Name: "attachmentIndexes", Schema: map[string]any{"type": "array", "items": map[string]any{"type": "integer", "minimum": 0}, "uniqueItems": true, "maxItems": 100}}, list("sourceVersionIds"), text("message", false)),
 
@@ -164,7 +168,7 @@ func catalog() []Operation {
 		operation("workflow.evidence.list", "Read original execution and external-effect evidence.", read, immediate, "workflow.authoring", text("runId", true), text("cursor", false)),
 		operation("workflow.results.schema", "Read the current worker attempt's output schema.", read, immediate, "workflow.results"),
 		operation("workflow.results.submit", "Submit a candidate result; execution success is confirmed separately.", mutation, candidate, "workflow.results", Field{Name: "data", Schema: map[string]any{}, Required: true}),
-		operation("team.members.list", "Read the current thread's member identities and expertise.", read, immediate, "team.lead"),
+		operation("team.members.list", "Read the current thread's member identities and roles.", read, immediate, "team.lead"),
 		operation("team.tasks.list", "Read the current thread's task board.", read, immediate, "team.lead", append([]Field{text("query", false)}, page...)...),
 		operation("team.tasks.get", "Read one task in the current thread.", read, immediate, "team.lead", text("taskId", true)),
 		operation("team.tasks.create", "Assign a formal task to a non-lead member.", mutation, accepted, "team.lead", text("assigneeWakerId", true), text("subject", true), text("description", true), scalar("priority", "integer", false), list("dependencyTaskIds"), scalar("requiresHumanReview", "boolean", false), scalar("directDelivery", "boolean", false)),
@@ -178,6 +182,14 @@ func catalog() []Operation {
 		operation("memory.entries.create", "Persist one stable fact in partner or project memory.", mutation, immediate, "memory", memoryWriteScope, text("content", true)),
 		operation("memory.entries.update", "Replace the content of one visible memory.", mutation, immediate, "memory", text("memoryId", true), text("content", true)),
 		operation("memory.entries.forget", "Forget one visible memory while retaining its change history.", mutation, immediate, "memory", text("memoryId", true)),
+		operation(constants.WakerProfileInterviewOperation, "Ask two or three tailored single-choice partner setup questions; Core renders an Other text option for each question.", mutation, accepted, constants.WakerProfileOnboardingGuide, text("message", true), Field{Name: "questions", Required: true, Schema: wakerInterviewSchema()}),
+		operation(constants.WakerProfileProposeOperation, "Present the exact proposed partner profile in a structured confirmation request.", mutation, accepted, constants.WakerProfileOnboardingGuide,
+			draftObject("expertise", map[string]any{"title": draftText, "description": draftText}, "title", "description"),
+			Field{Name: "workStyle", Required: true, Schema: map[string]any{"type": "array", "maxItems": 32, "items": draftText}},
+			draftObject("workMethods", map[string]any{"name": draftText, "steps": map[string]any{"type": "array", "maxItems": 32, "items": draftText}}, "name", "steps"),
+			Field{Name: "content", Required: true, Schema: map[string]any{"type": "string", "minLength": 1, "maxLength": constants.WakerProfilePreviewMaximumBytes}},
+			choice("language", []string{"en", "zh"}, false)),
+		operation(constants.WakerProfileSaveOperation, "Save the current draft after the user's actual confirmation. Reuse requestId to recover its committed receipt.", mutation, immediate, constants.WakerProfileOnboardingGuide, text("draftId", true)),
 		operation("interaction.questions.create", "Ask the user a consequential structured question.", mutation, accepted, "interaction.questions", text("message", true), Field{Name: "requestedSchema", Schema: questionSchema(), Required: true}, scalar("allowSkip", "boolean", false)),
 		operation("interaction.questions.get", "Read the actual answer state of the current execution's question.", read, immediate, "interaction.questions", text("questionId", true)),
 	}
@@ -300,6 +312,19 @@ func questionSchema() map[string]any {
 	}, "required": []string{"type", "properties"}, "additionalProperties": false}
 }
 
+// wakerInterviewSchema receives model-generated choices, while Core defines the form's Other behavior.
+func wakerInterviewSchema() map[string]any {
+	id := map[string]any{"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9]{0,31}$"}
+	label := map[string]any{"type": "string", "minLength": 1, "maxLength": 240}
+	option := map[string]any{"type": "object", "required": []string{"id", "label"}, "additionalProperties": false,
+		"properties": map[string]any{"id": id, "label": label, "description": map[string]any{"type": "string", "maxLength": 500}},
+	}
+	question := map[string]any{"type": "object", "required": []string{"id", "title", "options"}, "additionalProperties": false,
+		"properties": map[string]any{"id": id, "title": label, "options": map[string]any{"type": "array", "minItems": 2, "maxItems": 5, "items": option}},
+	}
+	return map[string]any{"type": "array", "minItems": 2, "maxItems": 3, "items": question}
+}
+
 // outputSchema maintains only CLI result boundaries without duplicating source manifests, execution evidence, or dynamic user schemas.
 func outputSchema(id string) map[string]any {
 	object := func(names ...string) map[string]any {
@@ -416,6 +441,12 @@ func outputSchema(id string) map[string]any {
 		return object("memoryId", "scope", "content", "createdAt", "updatedAt")
 	case "memory.entries.create", "memory.entries.update", "memory.entries.forget":
 		return object("memoryId", "duplicate")
+	case constants.WakerProfileInterviewOperation:
+		return object("questionId", "status")
+	case constants.WakerProfileProposeOperation:
+		return object("draftId", "questionId", "status")
+	case constants.WakerProfileSaveOperation:
+		return object("draftId", "wakerId", "saved")
 	case "interaction.questions.create", "interaction.questions.get":
 		return object("questionId", "status", "message", "requestedSchema", "allowSkip", "content")
 	}
@@ -437,6 +468,8 @@ func (o Operation) DisplayLabel() string {
 		"workflow.definitions.list": "查看可用工作流", "workflow.definitions.describe": "查看工作流参数", "workflow.runs.start": "提交工作流运行", "workflow.runs.get": "查看执行进度", "workflow.runs.cancel": "请求停止工作流", "workflow.runs.wait": "等待工作流运行", "workflow.results.schema": "查看步骤结果格式", "workflow.results.submit": "提交步骤候选结果",
 		"team.members.list": "查看团队成员", "team.tasks.list": "查看团队任务", "team.tasks.get": "查看任务详情", "team.tasks.create": "分配团队任务", "team.tasks.update": "更新团队任务", "team.tasks.follow-up": "补充团队任务", "team.tasks.retry": "请求重试任务", "team.tasks.cancel": "请求停止任务", "team.reports.submit": "提交工作报告",
 		"memory.entries.search": "搜索记忆", "memory.entries.get": "查看记忆", "memory.entries.create": "保存记忆", "memory.entries.update": "更新记忆", "memory.entries.forget": "遗忘记忆",
+		constants.WakerProfileInterviewOperation: "提出伙伴建档问题",
+		constants.WakerProfileProposeOperation:   "提议伙伴档案", constants.WakerProfileSaveOperation: "保存伙伴档案",
 		"interaction.questions.create": "请求用户补充", "interaction.questions.get": "查看用户回复", "interaction.questions.wait": "等待用户回复",
 	}
 	return labels[o.ID]

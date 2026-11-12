@@ -75,3 +75,8 @@ func (i Identity) ResourceID(namespace string, scopes ...string) string {
 	writePart(i.ID)
 	return hex.EncodeToString(hasher.Sum(nil)[:16])
 }
+
+// WakerOnboardingChatID 派生伙伴建档首发会用到的标准 Chat 标识。
+func WakerOnboardingChatID(wakerID string) string {
+	return (Identity{ID: wakerID}).ResourceID("chat", wakerID)
+}

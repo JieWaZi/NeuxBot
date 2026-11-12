@@ -861,3 +861,26 @@ const ResourceCategoryMaximumCount = 50
 
 // ResourceCategoryMaximumNameLength 限制分类名称的 Unicode 字符数。
 const ResourceCategoryMaximumNameLength = 120
+
+// WakerOnboardingActor 标识 Core 发起的伙伴建档输入。
+const WakerOnboardingActor = "waker_onboarding"
+
+// ProfileDocumentAgentsFileName 是伙伴长期指令的固定文件名。
+const ProfileDocumentAgentsFileName = "AGENTS.md"
+
+const (
+	// WakerProfileInterviewOperation 标识伙伴建档的模型选项问答。
+	WakerProfileInterviewOperation = "waker.profile.interview"
+	// WakerProfileProposeOperation 标识提议伙伴档案命令。
+	WakerProfileProposeOperation = "waker.profile.propose"
+	// WakerProfileSaveOperation 标识保存已确认伙伴档案命令。
+	WakerProfileSaveOperation = "waker.profile.save"
+	// WakerProfileOnboardingGuide 是伙伴建档系统技能的按需指南标识。
+	WakerProfileOnboardingGuide = "waker.onboarding"
+	// WakerProfileOnboardingFileName 是建档 Chat 的系统指令名。
+	WakerProfileOnboardingFileName = "PARTNER_ONBOARDING.md"
+	// WakerProfilePreviewMaximumBytes 限制公开确认卡片的完整预览大小。
+	WakerProfilePreviewMaximumBytes = 32768
+	// WakerProfileSaveDecision 标识用户在结构化确认中选择保存。
+	WakerProfileSaveDecision = "save"
+)

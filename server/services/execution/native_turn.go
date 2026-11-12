@@ -244,7 +244,7 @@ func (m *service) startNativeExecution(
 	message := nativeMessage(request, files)
 	message.Text += pluginSelectionHint(frozen.selected)
 	instructions := nativeInstructions(request, files)
-	activate, revoke, err := m.prepareAgent(environment, workspace, &skills, &instructions, &connectors, &contextInstructions, state.chat, executionID, request, files.referencedFiles)
+	activate, revoke, err := m.prepareAgent(ctx, environment, workspace, &skills, &instructions, &connectors, &contextInstructions, state.chat, executionID, request, files.referencedFiles)
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
@@ -540,6 +540,15 @@ func (work *nativeExecutionWork) ports(m *service) agent.TurnPorts {
 			}
 		},
 		Input: func(ctx context.Context, _ agent.AgentScope, input agent.AgentInputRequest) (agent.AgentInputResponse, error) {
+			if work.input.message.Actor == constants.WakerOnboardingActor && m.onboardingCommands != nil {
+				err := m.checkWakerOnboardingInterview(ctx, work.chat)
+				if errors.Is(err, status_error.WakerOnboardingInterviewRequired) {
+					return agent.AgentInputResponse{Action: "cancel"}, nil
+				}
+				if err != nil {
+					return agent.AgentInputResponse{Action: "cancel"}, err
+				}
+			}
 			return nativeInput(ctx, m.elicitations.handler(chatID, executionID), executionID, input)
 		},
 	}
@@ -687,6 +696,13 @@ func (work *nativeExecutionWork) settle(m *service, result agent.TurnResult) {
 		}
 	}
 	outcome := nativeExecutionOutcome(result)
+	if outcome.status == constants.ExecutionStatusCompleted && work.input.message.Actor == constants.WakerOnboardingActor &&
+		m.agent != nil && m.onboardingCommands != nil && m.onboardingTransactions != nil {
+		if err := m.checkWakerOnboardingInterview(context.Background(), work.chat); err != nil {
+			result.OperationError = err
+			outcome = nativeExecutionOutcome(result)
+		}
+	}
 	if outcome.status == constants.ExecutionStatusFailed {
 		var nativeFailure error
 		if result.Outcome != nil {

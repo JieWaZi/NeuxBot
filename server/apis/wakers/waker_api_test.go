@@ -1,13 +1,11 @@
 package wakers
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
@@ -42,7 +40,7 @@ func TestDeleteWakerRejectsDefaultWaker(t *testing.T) {
 	}
 }
 
-func TestWakerAPICopiesPresetAndMaintainsIndependentDocuments(t *testing.T) {
+func TestLegacyWakerAPIResolvesAndMaintainsIndependentDocuments(t *testing.T) {
 	database, err := dbhelper.NewDB(conf.DB{
 		Type:    conf.Sqlite,
 		DBName:  filepath.Join(t.TempDir(), "waker-api.db"),
@@ -113,125 +111,37 @@ func TestWakerAPICopiesPresetAndMaintainsIndependentDocuments(t *testing.T) {
 
 	ctx, _ := gin.CreateTestContext(nil)
 	now := time.Now().UnixMilli()
-	preset := models.RolePreset{
-		ID:            util.New(),
-		RoleName:      "产品设计师",
-		DefaultAvatar: constants.PersonalAssistantAvatar,
-		Description:   "从预设复制的描述",
-		Source:        constants.RolePresetSourceUser,
-		Expertise: []profile.Expertise{{
-			Title:       "界面设计",
-			Description: "设计清晰一致的产品界面",
-		}},
-		WorkStyle:   []string{"先验证"},
-		WorkMethods: []profile.WorkMethod{{Name: "设计", Steps: []string{"分析"}}},
-		CreatedAt:   now,
-		UpdatedAt:   now,
-	}
-	if err := global.RolePresetControllerManager.Create(ctx, preset); err != nil {
-		t.Fatalf("create preset: %v", err)
-	}
 	presetContents := map[constants.ProfileDocumentKind]string{
 		constants.ProfileDocumentKindIdentity: "## 擅长领域\n\n### 界面设计\n\n设计清晰一致的产品界面",
 		constants.ProfileDocumentKindPersona:  "## 工作风格\n\n- 先验证",
 		constants.ProfileDocumentKindPlaybook: "## 工作方式\n\n### 设计\n\n1. 分析",
 	}
-	presetDocuments := make([]models.RolePresetDocument, 0, 3)
+	waker := models.Waker{
+		ID: util.New(), Name: "Alice", RoleName: "产品设计师", Avatar: constants.CompanionAvatarPrefix + util.New(), Bio: "独立简介",
+		Expertise: []profile.Expertise{{Title: "界面设计", Description: "设计清晰一致的产品界面"}},
+		WorkStyle: []string{"先验证"}, WorkMethods: []profile.WorkMethod{{Name: "设计", Steps: []string{"分析"}}},
+	}
+	if err := global.WakerControllerManager.Create(ctx, waker); err != nil {
+		t.Fatal(err)
+	}
+	presetDocuments := make([]models.WakerDocument, 0, 3)
 	for _, kind := range profile.EditableKinds() {
-		presetDocuments = append(presetDocuments, models.RolePresetDocument{
-			ID:           util.New(),
-			RolePresetID: preset.ID,
-			Kind:         kind,
-			Content:      presetContents[kind],
-			CreatedAt:    now,
-			UpdatedAt:    now,
-		})
+		presetDocuments = append(presetDocuments, models.WakerDocument{ID: util.New(), WakerID: waker.ID, Kind: kind, Content: presetContents[kind], CreatedAt: now, UpdatedAt: now})
 	}
-	if err := global.ProfileDocumentControllerManager.CreateRolePresetDocuments(
-		ctx,
-		presetDocuments,
-	); err != nil {
-		t.Fatalf("create preset documents: %v", err)
+	if err := global.ProfileDocumentControllerManager.CreateWakerDocuments(ctx, presetDocuments); err != nil {
+		t.Fatal(err)
 	}
 
-	create := CreateWaker{
-		Body: CreateWakerRequest{
-			RolePresetID: preset.ID,
-			Name:         " Alice ",
-			Avatar:       "",
-			Bio:          "独立简介",
-		},
+	wantMerged := "## 擅长领域\n\n### 界面设计\n\n设计清晰一致的产品界面\n\n## 工作风格\n\n- 先验证\n\n## 工作方式\n\n### 设计\n\n1. 分析"
+	checkAgents := func(want string) {
+		t.Helper()
+		result, err := (&GetWakerDocument{WakerID: waker.ID, Kind: constants.ProfileDocumentKindAgents}).Output(ctx)
+		document, ok := result.(profile.Document)
+		if err != nil || !ok || document.Content != want || document.FileName != "AGENTS.md" {
+			t.Fatalf("resolved AGENTS = %+v, err = %v", result, err)
+		}
 	}
-	if _, err := create.Output(ctx); err != nil {
-		t.Fatalf("create waker output: %v", err)
-	}
-	wakers, err := global.WakerControllerManager.List(
-		context.Background(),
-		"",
-		10,
-		0,
-	)
-	if err != nil {
-		t.Fatalf("list wakers: %v", err)
-	}
-	if len(wakers) != 1 {
-		t.Fatalf("waker count = %d, want 1", len(wakers))
-	}
-	waker := wakers[0]
-	if waker.Name != "Alice" || waker.RoleName != preset.RoleName {
-		t.Fatalf("unexpected copied waker: %+v", waker)
-	}
-	if waker.Bio != "独立简介" ||
-		!strings.HasPrefix(waker.Avatar, constants.CompanionAvatarPrefix) ||
-		len(waker.Avatar) != len(constants.CompanionAvatarPrefix)+32 {
-		t.Fatalf("unexpected user metadata: %+v", waker)
-	}
-	if !reflect.DeepEqual(waker.Expertise, []profile.Expertise{{
-		Title:       "界面设计",
-		Description: "设计清晰一致的产品界面",
-	}}) ||
-		!reflect.DeepEqual(waker.WorkStyle, []string{"先验证"}) ||
-		!reflect.DeepEqual(
-			waker.WorkMethods,
-			[]profile.WorkMethod{{Name: "设计", Steps: []string{"分析"}}},
-		) {
-		t.Fatalf("unexpected copied profile projection: %+v", waker)
-	}
-
-	createWithEmptyBio := CreateWaker{
-		Body: CreateWakerRequest{
-			RolePresetID: preset.ID,
-			Name:         "Bob",
-			Avatar:       "",
-			Bio:          "",
-		},
-	}
-	if _, err := createWithEmptyBio.Output(ctx); err != nil {
-		t.Fatalf("create waker with empty bio output: %v", err)
-	}
-	inheritedWakers, err := global.WakerControllerManager.List(
-		context.Background(),
-		"Bob",
-		10,
-		0,
-	)
-	if err != nil {
-		t.Fatalf("list inherited wakers: %v", err)
-	}
-	if len(inheritedWakers) != 1 {
-		t.Fatalf("inherited waker count = %d, want 1", len(inheritedWakers))
-	}
-	if inheritedWakers[0].Avatar == waker.Avatar || inheritedWakers[0].Avatar == preset.DefaultAvatar {
-		t.Fatal("partners created from one preset must have independent appearances")
-	}
-	if inheritedWakers[0].Bio != preset.Description {
-		t.Fatalf(
-			"empty bio = %q, want inherited %q",
-			inheritedWakers[0].Bio,
-			preset.Description,
-		)
-	}
-
+	checkAgents(wantMerged)
 	documents, err := global.ProfileDocumentControllerManager.ListWakerDocuments(
 		ctx,
 		waker.ID,
@@ -328,61 +238,15 @@ func TestWakerAPICopiesPresetAndMaintainsIndependentDocuments(t *testing.T) {
 			)
 		}
 	}
-	if err := global.ProfileDocumentControllerManager.UpdateRolePresetDocument(
-		ctx,
-		preset.ID,
-		constants.ProfileDocumentKindIdentity,
-		"## 擅长领域\n\n### 已修改预设\n\n不应影响伙伴",
-		now+1,
-	); err != nil {
-		t.Fatalf("update source preset document: %v", err)
-	}
-	if err := global.ProfileDocumentControllerManager.DeleteRolePresetDocuments(
-		ctx,
-		preset.ID,
-	); err != nil {
-		t.Fatalf("delete source preset documents: %v", err)
-	}
-	if err := global.RolePresetControllerManager.Delete(ctx, preset.ID); err != nil {
-		t.Fatalf("delete source preset: %v", err)
-	}
-	independentIdentity, err := global.ProfileDocumentControllerManager.GetWakerDocument(
-		ctx,
-		waker.ID,
-		constants.ProfileDocumentKindIdentity,
-	)
-	if err != nil {
-		t.Fatalf("get independent waker identity: %v", err)
-	}
-	if independentIdentity.Content !=
-		manuallyUpdatedContents[constants.ProfileDocumentKindIdentity] {
-		t.Fatalf(
-			"waker identity changed with preset: %q",
-			independentIdentity.Content,
-		)
-	}
-
 	updateDocument := UpdateWakerDocument{
 		WakerID: waker.ID,
-		Kind:    constants.ProfileDocumentKindIdentity,
-		Body: UpdateWakerDocumentRequest{
-			Content: "## 擅长领域\n\n### 用户研究\n\n识别真实需求",
-		},
+		Kind:    constants.ProfileDocumentKindAgents,
+		Body:    UpdateWakerDocumentRequest{Content: "  explicit AGENTS\n"},
 	}
 	if _, err := updateDocument.Output(ctx); err != nil {
 		t.Fatalf("update waker document: %v", err)
 	}
-	editedIdentity, err := global.ProfileDocumentControllerManager.GetWakerDocument(
-		ctx,
-		waker.ID,
-		constants.ProfileDocumentKindIdentity,
-	)
-	if err != nil {
-		t.Fatalf("get edited waker identity: %v", err)
-	}
-	if editedIdentity.Content != "## 擅长领域\n\n### 用户研究\n\n识别真实需求" {
-		t.Fatalf("waker identity document not saved: %q", editedIdentity.Content)
-	}
+	checkAgents("  explicit AGENTS\n")
 	updatedWaker, err := global.WakerControllerManager.Get(ctx, waker.ID)
 	if err != nil {
 		t.Fatalf("get updated waker: %v", err)

@@ -35,8 +35,12 @@ func (c *elicitationCoordinator) finishQuestions(chatID, executionID string) {
 	}
 }
 
+func cliQuestionID(executionID, requestID string) string {
+	return agentIdentity(executionID + ":question:" + requestID)[:32]
+}
+
 func (m *service) questionBindings(chatID, executionID string) []capability.Binding {
-	questionID := func(requestID string) string { return agentIdentity(executionID + ":question:" + requestID)[:32] }
+	questionID := func(requestID string) string { return cliQuestionID(executionID, requestID) }
 	read := func(id string) (map[string]any, error) {
 		return m.elicitations.questionSnapshot(chatID, executionID, id)
 	}
@@ -97,6 +101,10 @@ func (c *elicitationCoordinator) questionSnapshot(chatID, executionID, questionI
 }
 
 func (c *elicitationCoordinator) createQuestion(ctx context.Context, chatID, executionID, id string, request capability.Request) (map[string]any, bool, error) {
+	return c.createQuestionWithLimit(ctx, chatID, executionID, id, request, 4096, validateQuestionForm)
+}
+
+func (c *elicitationCoordinator) createQuestionWithLimit(ctx context.Context, chatID, executionID, id string, request capability.Request, maximumMessageBytes int, validateForm func(*jsonschema.Schema) error) (map[string]any, bool, error) {
 	var input struct {
 		// Message 是用户可以理解的决定说明。
 		Message string `json:"message"`
@@ -109,7 +117,7 @@ func (c *elicitationCoordinator) createQuestion(ctx context.Context, chatID, exe
 		return nil, false, err
 	}
 	encoded, err := json.Marshal(input.RequestedSchema)
-	if err != nil || len(encoded) > 65536 || len(input.Message) > 4096 || strings.TrimSpace(input.Message) == "" || input.RequestedSchema["type"] != "object" {
+	if err != nil || len(encoded) > 65536 || len(input.Message) > maximumMessageBytes || strings.TrimSpace(input.Message) == "" || input.RequestedSchema["type"] != "object" {
 		return nil, false, status_error.AgentInputInvalid
 	}
 	var schema jsonschema.Schema
@@ -119,10 +127,14 @@ func (c *elicitationCoordinator) createQuestion(ctx context.Context, chatID, exe
 	if _, err := schema.Resolve(nil); err != nil {
 		return nil, false, status_error.AgentInputInvalid
 	}
-	if err := validateQuestionForm(&schema); err != nil {
+	if err := validateForm(&schema); err != nil {
 		return nil, false, err
 	}
-	body, _ := json.Marshal(request.Params)
+	var hashInput any = request.Params
+	if len(request.InputDigests) > 0 {
+		hashInput = []any{request.Params, request.InputDigests}
+	}
+	body, _ := json.Marshal(hashInput)
 	digest := sha256.Sum256(body)
 	hash := hex.EncodeToString(digest[:])
 	c.commitMutex.Lock()
@@ -139,7 +151,7 @@ func (c *elicitationCoordinator) createQuestion(ctx context.Context, chatID, exe
 			continue
 		}
 		var value eventlog.ElicitationRequestedData
-		if json.Unmarshal(record.Data, &value) == nil && value.CommandRequestID == request.RequestID {
+		if json.Unmarshal(record.Data, &value) == nil && value.CommandRequestID == request.RequestID && value.ElicitationID == id {
 			if value.CommandDigest != hash {
 				return nil, false, status_error.AgentCommandRequestConflict
 			}

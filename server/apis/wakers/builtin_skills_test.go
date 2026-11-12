@@ -2,11 +2,11 @@ package wakers
 
 import (
 	"context"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/global"
-	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/gin-gonic/gin"
@@ -14,7 +14,7 @@ import (
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
-func TestCreatePersonalAssistantUsesApplicationOwnedSystemSkill(t *testing.T) {
+func TestNewPartnerDoesNotInstallApplicationOwnedSystemSkill(t *testing.T) {
 	database, err := dbhelper.NewDB(conf.DB{
 		Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "wakers.db"), Migrate: true,
 	})
@@ -40,14 +40,10 @@ func TestCreatePersonalAssistantUsesApplicationOwnedSystemSkill(t *testing.T) {
 	global.SkillControllerManager = controllers.NewSkillController(database.DB)
 	global.TransactionControllerManager = controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))
 	ctx := context.Background()
-	if err := builtinrolepreset.EnsureCatalog(ctx, builtinrolepreset.ControllerCatalog{
-		Presets: global.RolePresetControllerManager, Documents: global.ProfileDocumentControllerManager,
-	}); err != nil {
-		t.Fatal(err)
-	}
 	requestContext, _ := gin.CreateTestContext(nil)
+	requestContext.Request = httptest.NewRequest("POST", "/wakers", nil)
 	create := &CreateWaker{Body: CreateWakerRequest{
-		RolePresetID: builtinrolepreset.PersonalAssistantRolePresetID, Name: "My assistant",
+		RequestID: "my-assistant", Name: "My assistant",
 	}}
 	installer := builtinskills.Installer{
 		DataDirectory: t.TempDir(), Skills: global.SkillControllerManager, Transactions: global.TransactionControllerManager,

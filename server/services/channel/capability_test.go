@@ -209,8 +209,7 @@ func TestChannelTaskCapabilityRequiresBoardReadAndRejectsLeadAssignee(t *testing
 		memberID,
 		"前端工程师",
 		"负责桌面端界面与交互实现。",
-		"前端交互: 设计并实现可访问的桌面端组件。",
-		"Match tasks semantically to member roles, biographies, and expertise",
+		"Match tasks semantically to member roles and biographies",
 		"the lead cannot be a task assignee",
 		"The final summary is the lead's coordination closeout after receiving member results",
 		"Describe exactly one clear deliverable per task",
@@ -224,6 +223,7 @@ func TestChannelTaskCapabilityRequiresBoardReadAndRejectsLeadAssignee(t *testing
 		}
 	}
 	for _, privateProjection := range []string{
+		"前端交互",
 		"PRIVATE_WORK_STYLE_SENTINEL",
 		"PRIVATE_WORK_METHOD_SENTINEL",
 		"不得进入 roster",

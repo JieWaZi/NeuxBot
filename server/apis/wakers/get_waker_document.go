@@ -41,6 +41,11 @@ func (g *GetWakerDocument) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
+	if g.Kind == constants.ProfileDocumentKindAgents {
+		document := builtinrolepreset.ResolveWakerAgents(waker.ID, rows, waker.UpdatedAt)
+		document.Editable = waker.OnboardingStatus != constants.WakerOnboardingStatusPending
+		return document, nil
+	}
 	documents, err := builtinrolepreset.ResolvedWakerDocuments(
 		g.WakerID,
 		rows,

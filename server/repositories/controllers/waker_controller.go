@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/profile"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -36,6 +37,12 @@ type WakerController interface {
 		projection profile.Projection,
 		updatedAt int64,
 	) error
+	// SetOnboardingInterview 记录未完成伙伴的结构化建档问答位置。
+	SetOnboardingInterview(ctx context.Context, wakerID, chatID string, interview models.WakerOnboardingInterview) error
+	// SetOnboardingDraft 绑定待建档伙伴的最新未发布草稿。
+	SetOnboardingDraft(ctx context.Context, wakerID, chatID string, draft models.WakerOnboardingDraft) error
+	// CompleteOnboarding 发布展示字段并清理未发布草稿。
+	CompleteOnboarding(ctx context.Context, wakerID, chatID string, projection profile.Projection, updatedAt int64) error
 	// Delete 删除伙伴。
 	Delete(ctx context.Context, id string) error
 }
@@ -163,7 +170,7 @@ func (c *wakerController) Update(
 	result := controllerDB(ctx, c.db).
 		Model(&models.Waker{}).
 		Where("id = ?", id).
-		Select("name", "role_name", "avatar", "bio", "updated_at").
+		Select("name", "role_name", "avatar", "bio", "default_model", "updated_at").
 		Updates(&waker)
 	if result.Error != nil {
 		if dbhelper.IsDuplicateError(result.Error) {
@@ -224,4 +231,50 @@ func filterWakers(
 		)
 	}
 	return db
+}
+
+// SetOnboardingInterview 记录未完成伙伴的结构化建档问答位置。
+func (c *wakerController) SetOnboardingInterview(ctx context.Context, wakerID, chatID string, interview models.WakerOnboardingInterview) error {
+	result := controllerDB(ctx, c.db).Model(&models.Waker{}).
+		Where("id = ? AND onboarding_chat_id = ? AND onboarding_status = ?", wakerID, chatID, constants.WakerOnboardingStatusPending).
+		Select("onboarding_interview").UpdateColumns(&models.Waker{OnboardingInterview: &interview})
+	if result.Error != nil {
+		return databaseError("set_waker_onboarding_interview", "waker_id="+wakerID, result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return status_error.WakerOnboardingUnavailable
+	}
+	return nil
+}
+
+// SetOnboardingDraft 绑定待建档伙伴的最新未发布草稿。
+func (c *wakerController) SetOnboardingDraft(ctx context.Context, wakerID, chatID string, draft models.WakerOnboardingDraft) error {
+	result := controllerDB(ctx, c.db).Model(&models.Waker{}).
+		Where("id = ? AND onboarding_chat_id = ? AND onboarding_status = ?", wakerID, chatID, constants.WakerOnboardingStatusPending).
+		Select("onboarding_draft").UpdateColumns(&models.Waker{OnboardingDraft: &draft})
+	if result.Error != nil {
+		return databaseError("set_waker_onboarding_draft", "waker_id="+wakerID, result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return status_error.WakerProfileDraftStale
+	}
+	return nil
+}
+
+// CompleteOnboarding 发布展示字段并清理未发布草稿。
+func (c *wakerController) CompleteOnboarding(ctx context.Context, wakerID, chatID string, projection profile.Projection, updatedAt int64) error {
+	result := controllerDB(ctx, c.db).Model(&models.Waker{}).
+		Where("id = ? AND onboarding_chat_id = ? AND onboarding_status = ?", wakerID, chatID, constants.WakerOnboardingStatusPending).
+		Select("onboarding_status", "onboarding_interview", "onboarding_draft", "expertise", "work_style", "work_methods", "updated_at").
+		Updates(&models.Waker{
+			OnboardingStatus: constants.WakerOnboardingStatusReady,
+			Expertise:        projection.Expertise, WorkStyle: projection.WorkStyle, WorkMethods: projection.WorkMethods, UpdatedAt: updatedAt,
+		})
+	if result.Error != nil {
+		return databaseError("complete_waker_onboarding", "waker_id="+wakerID, result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return status_error.WakerProfileDraftStale
+	}
+	return nil
 }

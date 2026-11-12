@@ -160,6 +160,9 @@ Windows 使用应用提供的 `allycli.exe` 绝对路径，同样显式传入 `-
 
 | 操作标识                       | 用途                                           | 影响       | 完成语义    |
 | ------------------------------ | ---------------------------------------------- | ---------- | ----------- |
+| `waker.profile.interview`       | 用模型生成的选项请求用户确认合作偏好。         | `mutation` | `accepted`  |
+| `waker.profile.propose`         | 展示指定版本的伙伴档案并请求确认。             | `mutation` | `accepted`  |
+| `waker.profile.save`            | 保存用户明确确认的伙伴档案并返回事务回执。     | `mutation` | `immediate` |
 | `interaction.questions.create` | 按发现合同支持的 Schema 向用户提出结构化问题。 | `mutation` | `accepted`  |
 | `interaction.questions.get`    | 读取当前执行问题的实际回答状态。               | `read`     | `immediate` |
 | `interaction.questions.wait`   | 在有界时间内等待实际回答，超时不关闭问题。     | `read`     | `immediate` |

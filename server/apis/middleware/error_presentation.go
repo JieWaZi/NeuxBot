@@ -35,7 +35,18 @@ func (ApplicationErrorFormatter) Match(_ *gin.Context, err error) bool {
 
 // Format 丢弃私有包装，只序列化已定义身份、模板参数和显式公开原因。
 func (ApplicationErrorFormatter) Format(ctx *gin.Context, response ginx.ErrorResponse) (int, string, []byte, http.Header) {
-	err := status_error.PublicError(response.Error())
+	payload := DescribeApplicationError(ctx, response.Error())
+	body, _ := json.Marshal(payload)
+	status := statuserror.StatusCodeFromCode(payload.Code)
+	if status < 400 {
+		status = http.StatusUnprocessableEntity
+	}
+	return status, "application/json", body, make(http.Header)
+}
+
+// DescribeApplicationError 返回可安全展示的应用错误，包括持久接纳后的局部失败。
+func DescribeApplicationError(ctx *gin.Context, cause error) ApplicationErrorFormatter {
+	err := status_error.PublicError(cause)
 	if err == nil {
 		err = status_error.InternalServerError
 	}
@@ -52,11 +63,5 @@ func (ApplicationErrorFormatter) Format(ctx *gin.Context, response ginx.ErrorRes
 		}
 		message = status_error.StatusError(public.Code()).WithParams(status_error.PublicParams(err)).Localize(i18nx.Instance(), language).Value()
 	}
-	payload := ApplicationErrorFormatter{public.Key(), public.Code(), message, status_error.PublicParams(err), source}
-	body, _ := json.Marshal(payload)
-	status := statuserror.StatusCodeFromCode(public.Code())
-	if status < 400 {
-		status = http.StatusUnprocessableEntity
-	}
-	return status, "application/json", body, make(http.Header)
+	return ApplicationErrorFormatter{public.Key(), public.Code(), message, status_error.PublicParams(err), source}
 }

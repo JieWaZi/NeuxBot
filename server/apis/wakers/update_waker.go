@@ -19,11 +19,13 @@ type UpdateWakerRequest struct {
 	// 名称
 	Name string `json:"name" validate:"required,max=80"`
 	// 角色名称
-	RoleName string `json:"roleName" validate:"required,max=80"`
+	RoleName string `json:"roleName" validate:"max=80"`
 	// 头像
 	Avatar string `json:"avatar" validate:"omitempty,max=2800000"`
 	// 简介
 	Bio string `json:"bio" validate:"omitempty,max=1000"`
+	// 默认模型
+	DefaultModel *models.WakerDefaultModel `json:"defaultModel,omitempty"`
 	// 关于我
 	Manual profile.ManualInput `json:"manual"`
 }
@@ -72,15 +74,23 @@ func (u *UpdateWaker) Output(ctx *gin.Context) (interface{}, error) {
 			if avatar == "" {
 				avatar = waker.Avatar
 			}
+			defaultModel := waker.DefaultModel
+			if u.Body.DefaultModel != nil {
+				defaultModel, err = normalizeDefaultModel(u.Body.DefaultModel)
+				if err != nil {
+					return err
+				}
+			}
 			if err := global.WakerControllerManager.Update(
 				transactionContext,
 				waker.ID,
 				models.Waker{
-					Name:      name,
-					RoleName:  util.NormalizeName(u.Body.RoleName),
-					Avatar:    avatar,
-					Bio:       strings.TrimSpace(u.Body.Bio),
-					UpdatedAt: now,
+					Name:         name,
+					RoleName:     util.NormalizeName(u.Body.RoleName),
+					Avatar:       avatar,
+					Bio:          strings.TrimSpace(u.Body.Bio),
+					UpdatedAt:    now,
+					DefaultModel: defaultModel,
 				},
 			); err != nil {
 				return err

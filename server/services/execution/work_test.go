@@ -389,7 +389,7 @@ func TestPrepareMessageFilesKeepsUnchangedProfileInstructionsStable(t *testing.T
 	}
 	first := firstFiles.instructions
 	firstFiles.rollback()
-	if len(first) != 5 || !hasInstructionContent(first, "项目约束") {
+	if len(first) != 3 || first[1] != (agent.Instruction{Name: "AGENTS.md", Content: "# Test\n\n# Test\n\n# Test"}) || !hasInstructionContent(first, "项目约束") {
 		t.Fatalf("initial profile and project instructions = %+v", first)
 	}
 	// 反复经过真实档案读取和工作区准备，覆盖 map 遍历顺序变化造成的静态配置抖动。
@@ -662,16 +662,18 @@ func newMessageTestService(
 			request.Subject = "fixture-subject"
 			return request, nil
 		},
-		Journal:             chatModule,
-		DormantChats:        chatModule,
-		Wakers:              wakers,
-		Profiles:            profiles,
-		Projects:            projects,
-		Skills:              selectedOptions.skills,
-		Plugins:             selectedOptions.plugins,
-		RuntimeEnvironments: runtimeEnvironments,
-		SkillDataDirectory:  selectedOptions.skillDataDirectory,
-		StorageDirectory:    logDirectory,
+		Journal:                chatModule,
+		DormantChats:           chatModule,
+		Wakers:                 wakers,
+		Profiles:               profiles,
+		OnboardingTransactions: transactions,
+		OnboardingCommands:     controllers.NewAgentCommandController(database.DB),
+		Projects:               projects,
+		Skills:                 selectedOptions.skills,
+		Plugins:                selectedOptions.plugins,
+		RuntimeEnvironments:    runtimeEnvironments,
+		SkillDataDirectory:     selectedOptions.skillDataDirectory,
+		StorageDirectory:       logDirectory,
 	})
 	if err != nil {
 		t.Fatalf("new Execution Core: %v", err)
@@ -884,7 +886,7 @@ func (r recordedRun) turnRequest(id string, detection agent.DetectionResult) (ag
 }
 func (r *recordedRun) prepare(m *service, chat models.Chat, id string, capabilities []ToolCapability, domains *[]string, paths []string) (func(), func(), error) {
 	r.Runtime.WorkspaceReadOnly = r.ReadOnly
-	return m.prepareAgent(models.RuntimeEnvironment{Detection: r.Detection}, r.Workspace, &r.Skills, &r.Instructions, &r.Connectors, &r.ContextInstructions, chat, id, pendingMessage{runtime: r.Runtime, toolCapabilities: capabilities, allowedAgentDomains: domains}, paths)
+	return m.prepareAgent(context.Background(), models.RuntimeEnvironment{Detection: r.Detection}, r.Workspace, &r.Skills, &r.Instructions, &r.Connectors, &r.ContextInstructions, chat, id, pendingMessage{runtime: r.Runtime, toolCapabilities: capabilities, allowedAgentDomains: domains}, paths)
 }
 func recordBusinessInputs(m *service, state messageChat, request pendingMessage, files *preparedMessageFiles, skills []models.SkillWithState, connectors []models.MCPConnector, environment models.RuntimeEnvironment) recordedRun {
 	r := recordedRun{Runtime: request.runtime, Detection: environment.Detection, Workspace: nativeWorkspace(state, request, files), Instructions: nativeInstructions(request, files), Skills: m.nativeSkills(skills), Connectors: runtimeConnectorDeclarations(connectors), Message: nativeMessage(request, files), ContextInstructions: nativeContextInstructions(request, files), SelectedSkills: selectedSkillNames(request, skills), SelectedConnectors: request.message.ConnectorIDs}

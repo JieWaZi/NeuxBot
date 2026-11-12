@@ -5371,17 +5371,18 @@ export type GithubComJieWaZiNeuxBotServerApisWakersCreateWakerRequest = {
      */
     avatar?: string;
     /**
-     * 简介
+     * 概要
      */
     bio?: string;
+    defaultModel?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerDefaultModel & unknown;
     /**
      * 名称
      */
     name: string;
     /**
-     * 预设标识
+     * 请求标识
      */
-    rolePresetId: string;
+    requestId: string;
 };
 
 /**
@@ -5484,6 +5485,7 @@ export type GithubComJieWaZiNeuxBotServerApisWakersUpdateWakerRequest = {
      * 简介
      */
     bio?: string;
+    defaultModel?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerDefaultModel & unknown;
     manual?: GithubComJieWaZiNeuxBotServerInternalProfileManualInput & unknown;
     /**
      * 名称
@@ -5492,7 +5494,25 @@ export type GithubComJieWaZiNeuxBotServerApisWakersUpdateWakerRequest = {
     /**
      * 角色名称
      */
-    roleName: string;
+    roleName?: string;
+};
+
+/**
+ * 伙伴建档接纳结果
+ */
+export type GithubComJieWaZiNeuxBotServerApisWakersWakerOnboardingResponse = {
+    /**
+     * 已接纳对话
+     */
+    chatId?: string;
+    /**
+     * 启动错误
+     */
+    startError?: string;
+    /**
+     * 伙伴标识
+     */
+    wakerId?: string;
 };
 
 /**
@@ -7379,13 +7399,14 @@ export type GithubComJieWaZiNeuxBotServerConstantsPluginAuthorizationState = '' 
 /**
  * >
  * * `` - ProfileDocumentKindUnspecified 表示数据库或框架产生的空文档种类。
+ * * `agents` - ProfileDocumentKindAgents 表示伙伴唯一生效的长期指令。
  * * `identity` - ProfileDocumentKindIdentity 表示身份与擅长领域文档。
  * * `memory` - ProfileDocumentKindMemory 表示伙伴独立拥有的记忆文档。
  * * `persona` - ProfileDocumentKindPersona 表示工作风格文档。
  * * `playbook` - ProfileDocumentKindPlaybook 表示工作方式文档。
  *
  */
-export type GithubComJieWaZiNeuxBotServerConstantsProfileDocumentKind = '' | 'identity' | 'memory' | 'persona' | 'playbook';
+export type GithubComJieWaZiNeuxBotServerConstantsProfileDocumentKind = '' | 'agents' | 'identity' | 'memory' | 'persona' | 'playbook';
 
 /**
  * >
@@ -7552,6 +7573,15 @@ export type GithubComJieWaZiNeuxBotServerConstantsTeamMemberActivityState = 'idl
  *
  */
 export type GithubComJieWaZiNeuxBotServerConstantsWakerActivityState = 'idle' | 'running' | 'waiting';
+
+/**
+ * >
+ * * `` - WakerOnboardingStatusUnspecified 表示已可使用的旧伙伴。
+ * * `pending` - WakerOnboardingStatusPending 表示伙伴仍在建档。
+ * * `ready` - WakerOnboardingStatusReady 表示用户已确认且档案已保存。
+ *
+ */
+export type GithubComJieWaZiNeuxBotServerConstantsWakerOnboardingStatus = '' | 'pending' | 'ready';
 
 /**
  * >
@@ -11902,6 +11932,7 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWaker = {
      * CreatedAt 是记录创建时的 Unix 毫秒时间。
      */
     createdAt?: number;
+    defaultModel?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerDefaultModel & unknown;
     /**
      * Expertise 保存从身份档案解析出的擅长领域展示投影。
      */
@@ -11918,6 +11949,11 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWaker = {
      * Name 是用户识别伙伴时看到的名称。
      */
     name?: string;
+    /**
+     * OnboardingChatID 是唯一允许建档的普通 Chat 身份，先于接纳首轮保存。
+     */
+    onboardingChatId?: string;
+    onboardingStatus?: GithubComJieWaZiNeuxBotServerConstantsWakerOnboardingStatus & unknown;
     /**
      * RoleName 是伙伴当前承担的角色名称。
      */
@@ -11942,6 +11978,28 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWaker = {
      * WorkStyle 保存从角色风格档案解析出的工作风格展示投影。
      */
     workStyle?: Array<string>;
+};
+
+/**
+ * WakerDefaultModel 保存伙伴选择的明确执行配置。
+ */
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerDefaultModel = {
+    /**
+     * 账号
+     */
+    accountId?: string;
+    /**
+     * 模型
+     */
+    model?: string;
+    /**
+     * 推理强度
+     */
+    reasoning?: string;
+    /**
+     * 智能体
+     */
+    runtimeId?: string;
 };
 
 /**
@@ -15053,6 +15111,11 @@ export type ReadErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -15405,6 +15468,11 @@ export type CommandErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -16027,6 +16095,11 @@ export type StartAiAccountLoginErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -16388,6 +16461,11 @@ export type CancelAiAccountLoginErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -16844,6 +16922,11 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -17287,6 +17370,11 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -17644,6 +17732,11 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -19555,6 +19648,11 @@ export type StreamEventsErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -20619,6 +20717,11 @@ export type UpdateMcpServiceErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -21070,6 +21173,11 @@ export type UpdateApiServiceErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -29842,6 +29950,11 @@ export type ListPluginsErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -30215,6 +30328,11 @@ export type BrowsePluginsErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -30567,6 +30685,11 @@ export type RefreshPluginCatalogErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -30929,6 +31052,11 @@ export type GetCatalogPluginErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -31299,6 +31427,11 @@ export type GetCatalogPluginConnectorErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -31656,6 +31789,11 @@ export type PrepareCatalogPluginErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -32026,6 +32164,11 @@ export type GetCatalogPluginReadmeErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -32400,6 +32543,11 @@ export type GetCatalogPluginSkillErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -32752,6 +32900,11 @@ export type CreatePluginFromSkillsErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -33208,6 +33361,11 @@ export type GetPluginErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -33659,6 +33817,11 @@ export type StartPluginAuthorizationErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -34327,6 +34490,11 @@ export type GetPluginConfigurationErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -34903,6 +35071,11 @@ export type InstallPluginErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -35403,6 +35576,11 @@ export type UpdatePluginInstallationsErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -36913,6 +37091,11 @@ export type SetAutomaticTaskApiErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -37502,35 +37685,349 @@ export type CreateWakerData = {
 export type CreateWakerErrors = {
     /**
      * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
      * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
      * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
+     * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
     500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
+     * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
+     *
+     */
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateWakerError = CreateWakerErrors[keyof CreateWakerErrors];
 
 export type CreateWakerResponses = {
-    200: GithubComShrewxGinxCommonResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWakersWakerOnboardingResponse;
 };
 
 export type CreateWakerResponse = CreateWakerResponses[keyof CreateWakerResponses];
@@ -37631,6 +38128,12 @@ export type UpdateWakerData = {
 };
 
 export type UpdateWakerErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[WakerNameConflict][40900000002]`
@@ -37863,6 +38366,11 @@ export type ListAutomaticTasksErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -38287,6 +38795,11 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -38677,6 +39190,11 @@ export type DeleteAutomaticTaskErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -39038,6 +39556,11 @@ export type GetAutomaticTaskErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -39550,6 +40073,11 @@ export type ListAutomaticRunsErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -39911,6 +40439,11 @@ export type TriggerAutomaticTaskErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -40502,6 +41035,12 @@ export type UpdateWakerDocumentErrors = {
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateWakerDocumentError = UpdateWakerDocumentErrors[keyof UpdateWakerDocumentErrors];
@@ -40511,6 +41050,368 @@ export type UpdateWakerDocumentResponses = {
 };
 
 export type UpdateWakerDocumentResponse = UpdateWakerDocumentResponses[keyof UpdateWakerDocumentResponses];
+
+export type StartWakerOnboardingData = {
+    body?: never;
+    path: {
+        /**
+         * 伙伴标识
+         */
+        wakerId: string;
+    };
+    query?: never;
+    url: '/api/v1/wakers/{wakerId}/onboarding';
+};
+
+export type StartWakerOnboardingErrors = {
+    /**
+     * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
+     * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
+     * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
+     * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
+     *
+     */
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type StartWakerOnboardingError = StartWakerOnboardingErrors[keyof StartWakerOnboardingErrors];
+
+export type StartWakerOnboardingResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisWakersWakerOnboardingResponse;
+};
+
+export type StartWakerOnboardingResponse = StartWakerOnboardingResponses[keyof StartWakerOnboardingResponses];
 
 export type ListWakerPluginReferencesData = {
     body?: never;
@@ -40741,6 +41642,11 @@ export type ListWakerPluginsErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -42303,6 +43209,11 @@ export type CreateWorkflowErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -42673,6 +43584,11 @@ export type DeleteWorkflowErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -43053,6 +43969,11 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -43439,6 +44360,11 @@ export type EditWorkflowConfigurationErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -43796,6 +44722,11 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -44241,6 +45172,11 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -44629,6 +45565,11 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -45017,6 +45958,11 @@ export type StartWorkflowRunErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -45378,6 +46324,11 @@ export type DeleteWorkflowRunErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -45849,6 +46800,11 @@ export type AnswerWorkflowHumanErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -46214,6 +47170,11 @@ export type GetWorkflowInstanceErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -46579,6 +47540,11 @@ export type SkipWorkflowWorkerErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -46944,6 +47910,11 @@ export type AnswerWorkflowOperationErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -47305,6 +48276,11 @@ export type RetryWorkflowRunErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -47736,6 +48712,11 @@ export type SaveWorkflowSourceErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileConfirmationPending][40900009102]`
+     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerProfileDraftStale][40900009100]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`

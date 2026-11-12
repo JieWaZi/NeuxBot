@@ -303,6 +303,9 @@ func (p *MessageViewBuilder) applyMessageCreated(record eventlog.Record) (string
 	if err := json.Unmarshal(record.Data, &data); err != nil {
 		return "", status_error.ChatLogError
 	}
+	if p.publicOnly && data.Actor == constants.WakerOnboardingActor {
+		return "", nil
+	}
 	message := Message{
 		ID:              record.MessageID,
 		SubmissionID:    data.SubmissionID,
