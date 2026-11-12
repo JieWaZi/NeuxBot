@@ -39,8 +39,14 @@ export function SkillCatalog({
   if (page.paginationKey !== paginationKey)
     setPage({ paginationKey, shown: PAGE_SIZE });
   const shown = page.paginationKey === paginationKey ? page.shown : PAGE_SIZE;
+  const loadMore = () => setPage({ paginationKey, shown: shown + PAGE_SIZE });
+  const installed: SkillSummary[] = [];
   const groups = new Map<string, SkillSummary[]>();
   for (const skill of skills) {
+    if (!wakerId && category === null && skill.affectedWakerCount > 0) {
+      installed.push(skill);
+      continue;
+    }
     for (const key of new Set(
       skill.categories?.length ? skill.categories : [""],
     )) {
@@ -51,7 +57,7 @@ export function SkillCatalog({
   }
   for (const items of groups.values())
     items.sort((a, b) => a.name.localeCompare(b.name));
-  const rows = (items: SkillSummary[], group: string) => (
+  const rows = (items: SkillSummary[], group?: string) => (
     <ResourceCardGrid appearance="catalog">
       {items.map((skill) => (
         <SkillCard
@@ -80,15 +86,32 @@ export function SkillCatalog({
         <ResourceInfiniteScroll
           hasMore={active && items.length > shown}
           showLoadMoreButton={false}
-          onLoadMore={() =>
-            setPage({ paginationKey, shown: shown + PAGE_SIZE })
-          }
+          onLoadMore={loadMore}
         />
       </div>
     );
   }
+  const installedTitle = t("mySkills");
   return (
     <div className="grid min-w-0 gap-8">
+      {installed.length > 0 && (
+        <ResourceCatalogGroup
+          title={installedTitle}
+          count={installed.length}
+          aria-label={installedTitle}
+        >
+          {rows(
+            installed
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .slice(0, shown),
+          )}
+          <ResourceInfiniteScroll
+            hasMore={active && installed.length > shown}
+            showLoadMoreButton={false}
+            onLoadMore={loadMore}
+          />
+        </ResourceCatalogGroup>
+      )}
       {[...groups]
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([key, items]) => {

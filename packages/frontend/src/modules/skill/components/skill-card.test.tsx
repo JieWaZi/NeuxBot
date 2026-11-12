@@ -16,7 +16,7 @@ it("目录行只展示名称和简介，打开详情并独立处理安装", () =
       source: "git",
       gitUrl: "https://github.com/example/writing.git",
     },
-    affectedWakerCount: 6,
+    affectedWakerCount: 0,
   });
   if (!skill) throw new Error("missing skill fixture");
   const install = vi.fn();
@@ -37,7 +37,7 @@ it("目录行只展示名称和简介，打开详情并独立处理安装", () =
   ).toHaveAttribute("href", "/resources/skills/writing");
   expect(screen.getByRole("article")).toHaveAttribute("data-appearance", "row");
   expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-  expect(screen.queryByText("6 个伙伴使用")).not.toBeInTheDocument();
+  expect(screen.queryByText(/已安装到/)).not.toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: /更多操作/ }),
   ).not.toBeInTheDocument();

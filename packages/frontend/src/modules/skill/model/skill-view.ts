@@ -18,7 +18,7 @@ export function toSkillSummary(
     source,
     sourceUrl: skill.gitUrl,
     enabled: item.enabled ?? false,
-    affectedWakerCount: item.affectedWakerCount ?? 1,
+    affectedWakerCount: item.affectedWakerCount ?? 0,
     installedPartners: (item.installedPartners ?? []).flatMap((partner) =>
       partner.id
         ? [{ id: partner.id, name: partner.name ?? "", avatar: partner.avatar }]

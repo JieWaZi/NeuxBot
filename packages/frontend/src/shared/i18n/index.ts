@@ -1399,6 +1399,8 @@ const resources = {
       },
       add: "新建",
       installed: "已安装",
+      mySkills: "我的技能",
+      installedOnPartners: "已安装到 {{count}} 个伙伴",
       search: "搜索技能",
       statusFilter: "技能启用状态",
       all: "全部",
@@ -1514,6 +1516,7 @@ const resources = {
         manage: "管理",
         information: "信息",
         installedPartners: "伙伴",
+        partnerSkill: "{{partner}}的技能 {{name}}",
         sourceVersion: "来源版本",
         version: "版本",
         updated: "更新时间",
@@ -2492,6 +2495,14 @@ const resources = {
     notification: notificationEn,
     im: imEn,
     workBoard: workBoardEn,
+    skill: {
+      mySkills: "My skills",
+      installedOnPartners_one: "Installed for {{count}} partner",
+      installedOnPartners_other: "Installed for {{count}} partners",
+      detail: {
+        partnerSkill: "{{name}} for {{partner}}",
+      },
+    },
     common: {
       resourceCategory: {
         label: "Categories",
