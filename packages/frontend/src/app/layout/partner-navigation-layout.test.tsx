@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -15,12 +16,32 @@ import type * as ChatModule from "@/modules/chat";
 import type { Waker } from "@/modules/waker";
 import { FloatingChat } from "@/modules/chat/components/floating-chat";
 import { SettingsContextSidebar } from "@/modules/settings/components/settings-context-sidebar";
+import type { GlobalEventObserver } from "@/shared/api/global-events";
 import { i18n } from "@/shared/i18n";
 import { configurePlatform, platform } from "@/shared/platform/provider";
 import { WorkspaceProvider } from "@/shared/workspace/workspace-context";
 import { ResourcesContextSidebar } from "./resources-context-sidebar";
 import { PartnerNavigationLayout } from "./partner-navigation-layout";
 import type { PartnerNavigationPreferences } from "./partner-navigation-preferences";
+
+const history = vi.hoisted(() => ({
+  executionId: undefined as string | undefined,
+  waitingApproval: false,
+  waitingElicitation: false,
+  observers: new Set<GlobalEventObserver>(),
+}));
+
+vi.mock(import("@/shared/api/global-events"), async (importOriginal) => ({
+  ...(await importOriginal()),
+  subscribeGlobalEvents: (
+    _topic: string,
+    _resource: unknown,
+    observer: GlobalEventObserver,
+  ) => {
+    history.observers.add(observer);
+    return () => history.observers.delete(observer);
+  },
+}));
 
 vi.mock("@/modules/chat", async (importOriginal) => ({
   ...(await importOriginal<typeof ChatModule>()),
@@ -35,6 +56,9 @@ vi.mock("@/modules/chat", async (importOriginal) => ({
           ? [
               {
                 id: "chat-project",
+                activeExecutionId: history.executionId,
+                waitingApproval: history.waitingApproval,
+                waitingElicitation: history.waitingElicitation,
                 projectId: "project-1",
                 projectName: "项目甲",
                 title: "项目会话",
@@ -687,10 +711,10 @@ describe("PartnerNavigationLayout", () => {
     ).toBe("");
     const rail = screen.getByRole("navigation", { name: "伙伴" });
     expect(
-      within(rail).getByRole("button", { name: "伙伴 5，1 个会话需要处理" }),
+      within(rail).getByRole("button", { name: "伙伴 5，需要操作" }),
     ).toBeVisible();
     expect(
-      within(rail).getByRole("button", { name: "伙伴 6，4 个会话正在运行" }),
+      within(rail).getByRole("button", { name: "伙伴 6，工作中" }),
     ).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("button", { name: "查看历史会话" })).toBe(history);
     expect(
@@ -914,9 +938,7 @@ describe("PartnerNavigationLayout", () => {
     expect(
       within(screen.getByLabelText("历史会话")).queryByText("伙伴 6"),
     ).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "伙伴 6，4 个会话正在运行" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "伙伴 6，工作中" })).toBeNull();
     expect(screen.queryByRole("button", { name: "置顶" })).toBeNull();
     const taskListLink = await screen.findByRole("link", { name: "对话任务" });
     expect(taskListLink).toHaveAttribute("href", "/wakers/waker-6/chats");
@@ -987,4 +1009,76 @@ describe("PartnerNavigationLayout", () => {
       expect(link.parentElement).not.toHaveClass("focus-within:bg-muted");
     }
   });
+});
+
+it.each([
+  { waitingElicitation: false, label: "待审批", glyph: "lucide-shield-check" },
+  {
+    waitingElicitation: true,
+    label: "待输入",
+    glyph: "lucide-message-circle-question-mark",
+  },
+])("伙伴历史用图标区分$label", async ({ waitingElicitation, label, glyph }) => {
+  history.waitingApproval = true;
+  history.waitingElicitation = waitingElicitation;
+  const user = userEvent.setup();
+  const view = renderLayout();
+  try {
+    await user.click(screen.getByRole("button", { name: "查看历史会话" }));
+    const link = await screen.findByRole("link", { name: /项目会话/ });
+    expect(
+      within(link).getByRole("img", { name: label }).querySelector("svg"),
+    ).toHaveClass(glyph);
+    expect(link.querySelector("[data-history-status]")).toBeNull();
+  } finally {
+    view.unmount();
+    history.waitingApproval = false;
+    history.waitingElicitation = false;
+  }
+});
+
+it.each([
+  {
+    cause: "同一伙伴已提交的活动变化",
+    type: "entities.activity.changed",
+    resource: { kind: "waker", id: "waker-6" },
+  },
+  {
+    cause: "连接就绪",
+    type: "entities.ready",
+    resource: { kind: "global" },
+  },
+])("伙伴历史在$cause后刷新，终态清除运行状态点", async ({ type, resource }) => {
+  history.executionId = "execution";
+  const user = userEvent.setup();
+  const view = renderLayout();
+  try {
+    await user.click(screen.getByRole("button", { name: "查看历史会话" }));
+    const link = await screen.findByRole("link", { name: /项目会话/ });
+    const dot = () => link.querySelector("[data-history-status]");
+    expect(dot()).toHaveAttribute("data-history-status", "running");
+    expect(dot()).toHaveClass("bg-success");
+    expect(link.querySelector("svg")).toBeNull();
+    history.executionId = undefined;
+    act(() => {
+      for (const observer of history.observers)
+        observer.onEvent({
+          protocolVersion: 1,
+          epoch: "core",
+          connectionId: "connection",
+          deliverySequence: 1,
+          topic: "entities",
+          type,
+          resource,
+          eventId: "updated",
+          payload: { kind: "chat", id: "chat-project" },
+        });
+    });
+    await waitFor(() =>
+      expect(dot()).toHaveAttribute("data-history-status", "idle"),
+    );
+  } finally {
+    view.unmount();
+    history.executionId = undefined;
+  }
 });

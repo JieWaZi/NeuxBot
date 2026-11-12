@@ -50,9 +50,7 @@ beforeEach(() => {
         throw new Error("测试未配置附件上传");
       },
       open_external_url: async () => undefined,
-      show_notification: async () => false,
       onFileDrop: () => () => undefined,
-      onNotificationAction: () => () => undefined,
     },
   });
 });

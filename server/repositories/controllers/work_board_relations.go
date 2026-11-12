@@ -84,7 +84,7 @@ func boardWorkflowRuns(db *gorm.DB, ids []string) (map[string]models.WorkflowRun
 				next = append(next, id)
 			}
 		}
-		rows, err := readRelatedRows[models.WorkflowRun](db, "id", "id,definition_id,root_run_id,parent_run_id,joined,status,updated_at", next)
+		rows, err := readRelatedRows[models.WorkflowRun](db, "id", "id,definition_id,root_run_id,parent_run_id,joined,status,deadline_at,updated_at,history_deleted_at", next)
 		if err != nil {
 			return nil, err
 		}
@@ -100,22 +100,25 @@ func boardWorkflowRuns(db *gorm.DB, ids []string) (map[string]models.WorkflowRun
 	return result, nil
 }
 
-func boardWorkflowAlive(r models.WorkflowRun, runs map[string]models.WorkflowRun) bool {
+func boardWorkflowAlive(run models.WorkflowRun, runs map[string]models.WorkflowRun, at int64) bool {
+	allowed, _ := run.AllowsHumanAction(at, func(parentID string) (models.WorkflowRun, error) {
+		return runs[parentID], nil
+	})
+	return allowed
+}
+
+// visibleWorkflowRun walks joined parents until the nearest independently visible run.
+func visibleWorkflowRun(run models.WorkflowRun, runs map[string]models.WorkflowRun) models.WorkflowRun {
 	seen := map[string]bool{}
-	for r.ID != "" {
-		if seen[r.ID] {
-			return false
+	for run.ID != "" && run.Joined && run.ParentRunID != "" {
+		if seen[run.ID] {
+			return models.WorkflowRun{}
 		}
-		seen[r.ID] = true
-		switch r.Status {
-		case "queued", "running", "waiting", "recovering":
-		default:
-			return false
-		}
-		if !r.Joined || r.ParentRunID == "" {
-			return true
-		}
-		r = runs[r.ParentRunID]
+		seen[run.ID] = true
+		run = runs[run.ParentRunID]
 	}
-	return true
+	if run.HistoryDeletedAt != nil {
+		return models.WorkflowRun{}
+	}
+	return run
 }

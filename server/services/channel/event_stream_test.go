@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -232,6 +233,14 @@ func TestChannelEventSubscribersShareMemberInteractionProjection(t *testing.T) {
 	if err := threads.Create(context.Background(), thread, members); err != nil {
 		t.Fatalf("create thread: %v", err)
 	}
+	legacy, err := threads.AppendEvent(t.Context(), models.ChannelEvent{
+		ID: "55555555555555555555555555555555", ChannelID: thread.ChannelID, ThreadID: thread.ID,
+		Type: constants.ChannelEventElicitationResolved, CreatedAt: 90,
+		Payload: models.ChannelEventPayload(`{"chatId":"member-chat","chatSequence":1,"elicitationResolution":{"elicitationId":"question","result":"accepted","content":{"password":"legacy-secret"}}}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	chatFake := &eventStreamChatFake{
 		events: map[string]chan chatservice.PublicEvent{
 			"lead-chat":   make(chan chatservice.PublicEvent, 4),
@@ -264,6 +273,13 @@ func TestChannelEventSubscribersShareMemberInteractionProjection(t *testing.T) {
 		t.Fatalf("subscribe first Team stream: %v", err)
 	}
 	defer first.Close()
+	if len(first.Backlog) != 1 || first.Backlog[0].ID != legacy.ID {
+		t.Fatalf("legacy event identity was lost: %+v", first.Backlog)
+	}
+	public := string(first.Backlog[0].Payload)
+	if strings.Contains(public, "legacy-secret") || !strings.Contains(public, `"elicitationId":"question"`) || !strings.Contains(public, `"result":"accepted"`) {
+		t.Fatalf("legacy team question leaked a submission or lost its result: %s", public)
+	}
 	second, err := service.SubscribeEvents(context.Background(), thread.ID, "")
 	if err != nil {
 		t.Fatalf("subscribe second Team stream: %v", err)

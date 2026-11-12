@@ -1,4 +1,3 @@
-import { notificationPresentationProps } from "@/shared/api/notification-presentation";
 import {
   Brain,
   ChevronDown,
@@ -64,6 +63,7 @@ type ChatApprovalCardProps = {
   approval: PendingApproval;
   current: number;
   total: number;
+  queuedApproval?: PendingApproval;
   submissionState: ApprovalSubmissionState;
   onResolve: (approvalId: string, optionId: string) => void;
 };
@@ -244,6 +244,7 @@ export function ChatApprovalCard({
   approval,
   current,
   total,
+  queuedApproval,
   submissionState,
   onResolve,
 }: ChatApprovalCardProps) {
@@ -291,10 +292,6 @@ export function ChatApprovalCard({
   return (
     <section
       data-chat-approval-card
-      {...notificationPresentationProps({
-        kind: "request",
-        noticeId: `approval:${approval.approvalId}`,
-      })}
       className="grid min-h-32 gap-3 px-4 py-3"
       aria-label={t("approval.aria")}
     >
@@ -345,6 +342,14 @@ export function ChatApprovalCard({
           ) : null}
         </div>
       </div>
+
+      {queuedApproval ? (
+        <p role="status" className="text-muted-foreground type-caption">
+          {t("approval.waitingForTurn", {
+            title: queuedApproval.title || t("approval.fallbackTitle"),
+          })}
+        </p>
+      ) : null}
 
       <div className="flex flex-wrap items-center justify-end gap-2">
         {submissionState === "submitting" ? (

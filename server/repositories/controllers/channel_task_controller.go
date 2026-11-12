@@ -146,18 +146,14 @@ func (c *channelTaskController) Create(
 	}
 	if len(dependencies) == 0 {
 		publishCommittedChange(ctx, c.db, "work-board", eventsResource("task", task.ID))
-		if task.Status == constants.ChannelTaskStatusInReview {
-			publishCommittedNoticeIDs(ctx, c.db, []string{"review:" + task.ID + ":" + fmt.Sprint(task.CurrentFence)}, nil)
-		}
+		c.publishNewReview(ctx, task)
 		return nil
 	}
 	if err := db.Create(&dependencies).Error; err != nil {
 		return databaseError("create_channel_task_dependencies", "task_id="+task.ID, err)
 	}
 	publishCommittedChange(ctx, c.db, "work-board", eventsResource("task", task.ID))
-	if task.Status == constants.ChannelTaskStatusInReview {
-		publishCommittedNoticeIDs(ctx, c.db, []string{"review:" + task.ID + ":" + fmt.Sprint(task.CurrentFence)}, nil)
-	}
+	c.publishNewReview(ctx, task)
 	return nil
 }
 
@@ -274,10 +270,7 @@ func (c *channelTaskController) UpdateFields(
 	taskID string,
 	fields map[string]interface{},
 ) error {
-	publish, err := c.reviewNoticeChanges(ctx, taskID, fields)
-	if err != nil {
-		return err
-	}
+	publish := c.reviewAttentionChanges(ctx, taskID, fields)
 	if len(fields) == 0 {
 		return status_error.BadRequest
 	}

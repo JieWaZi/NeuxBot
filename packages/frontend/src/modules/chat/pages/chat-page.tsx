@@ -796,16 +796,17 @@ function ChatView({
     },
     [queryClient, selectedWakerID],
   );
+  const messageSource = chatMessageSource(queryClient, activeChatId, {
+    messages: runtimeMessages,
+    latestSequence: latestMessageSequence,
+    ready: !activeChatId || Boolean(messagesQuery.data),
+  });
   const chatRuntime = useChatRuntime({
     conversationKey: currentChatKey,
     queueKey: runtimeQueueKey,
     queueActive: sceneActive,
     chatId: activeChatId,
-    messageSource: chatMessageSource(queryClient, activeChatId, {
-      messages: runtimeMessages,
-      latestSequence: latestMessageSequence,
-      ready: !activeChatId || Boolean(messagesQuery.data),
-    }),
+    messageSource,
     activeExecutionId: detailQuery.data?.chat?.activeExecutionId,
     initialInteractionSequence: detailQuery.data?.chat?.latestSequence,
     initialPendingApprovals: detailQuery.data?.chat?.pendingApprovals,
@@ -1073,6 +1074,7 @@ function ChatView({
     guard: chatInvocationGuard,
     onSettled: (targetChatId) =>
       refreshChatMetadata(targetChatId, selectedWakerID),
+    onElicitationSettled: () => void messageSource.reconcile().catch(() => {}),
     pendingApprovals: chatRuntime.pendingApprovals,
     pendingElicitations: chatRuntime.pendingElicitations,
     queueKey: runtimeQueueKey,
@@ -1249,12 +1251,10 @@ function ChatView({
     thread: {
       showFileChanges: entry?.showFileChanges,
       fileScopeChatId: activeChatId,
-      resultSource:
-        activeChatId && !entry
-          ? {
-              chatId: activeChatId,
-              owner: { kind: "chat", id: activeChatId },
-            }
+      readingChatId:
+        !activeMemberTab &&
+        (entry || detailQuery.data?.chat?.id === activeChatId)
+          ? activeChatId
           : undefined,
       fork: activeMemberTab || entry ? undefined : fork,
       forkSourceChatId: detailQuery.data?.chat?.forkSourceChatId,
@@ -1363,7 +1363,7 @@ function ChatView({
           .fetchNextPage({ cancelRefetch: false, throwOnError: true })
           .then(() => {}),
       warning: permissionWarning || undefined,
-      requestedInteractionId: searchParams.get("request")?.split(":").at(-1),
+      requestedInteractionId: searchParams.get("request") ?? undefined,
       pendingApprovals: sceneActive ? chatRuntime.pendingApprovals : [],
       approvalSubmissionState,
       onResolveApproval: (approvalId, optionId) =>

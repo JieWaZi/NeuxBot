@@ -101,11 +101,14 @@ vi.mock("@/shared/api/global-events", () => ({
     return () => listeners.delete(observer);
   },
 }));
-vi.mock("@/modules/notification", () => ({
-  NotificationNavigationProvider: ({ children }: { children: ReactNode }) =>
-    children,
-  NotificationPresenter: () => null,
-  NotificationBell: ({
+vi.mock("@/modules/workspaceattention", () => ({
+  useWorkspaceAttention: () => ({
+    hasAction: false,
+    hasUnread: false,
+    synced: true,
+  }),
+  useExecutorAttention: () => new Map(),
+  AttentionBell: ({
     active,
     onOpen,
   }: {
@@ -115,7 +118,7 @@ vi.mock("@/modules/notification", () => ({
     <button
       aria-label="通知，打开任务看板"
       aria-current={active ? "page" : undefined}
-      onClick={onOpen}
+      onClick={() => onOpen()}
     />
   ),
 }));

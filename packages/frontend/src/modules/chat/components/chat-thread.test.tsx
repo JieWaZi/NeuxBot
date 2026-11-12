@@ -250,10 +250,10 @@ describe("chat work process", () => {
     messageState.current = { ...messageState.current, isLast: false };
     rerender(<AssistantMessage name="NeuxBot" />);
     expect(screen.queryByText("模型服务暂时不可用")).not.toBeInTheDocument();
-    expect(container.querySelector("[data-work-result-body]")).toBeNull();
+    expect(container.querySelector("[data-chat-readable-body]")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "展开失败详情" }));
     expect(screen.getByText("模型服务暂时不可用")).toBeInTheDocument();
-    expect(container.querySelector("[data-work-result-body]")).not.toBeNull();
+    expect(container.querySelector("[data-chat-readable-body]")).not.toBeNull();
   });
 
   it("工作流工具摘要保留读取、校验和保存动作，重复读取只合并一次", () => {
@@ -1135,9 +1135,9 @@ describe("chat work process", () => {
 
 describe("execution file changes", () => {
   it.each([
-    { name: "默认展示", showFileChanges: undefined, visible: true },
+    { name: "默认提供入口", showFileChanges: undefined, visible: true },
     { name: "按入口关闭", showFileChanges: false, visible: false },
-  ])("$name执行文件变更卡片并保留正文", ({ showFileChanges, visible }) => {
+  ])("$name且只在点击后展示文件变更", ({ showFileChanges, visible }) => {
     const view = new ChatMessageProjection().update([
       {
         id: "file-result",
@@ -1154,7 +1154,7 @@ describe("execution file changes", () => {
       },
     ])[0];
     if (!view) throw new Error("missing test message");
-    render(
+    const { container } = render(
       <QueryClientProvider client={new QueryClient()}>
         <PureAssistantMessage
           view={view}
@@ -1165,12 +1165,31 @@ describe("execution file changes", () => {
     );
     expect(screen.getByText("已交付业务报告")).toBeInTheDocument();
     expect(
-      screen.queryByRole("region", { name: "已编辑 1 个文件" }) !== null,
-    ).toBe(visible);
+      screen.queryByRole("region", { name: "已编辑 1 个文件" }),
+    ).toBeNull();
+    const action = screen.queryByRole("button", { name: "文件变更" });
+    if (visible) {
+      const footer = container.querySelector("footer");
+      expect(footer).toContainElement(action);
+      expect(footer).toHaveClass(
+        "opacity-0",
+        "pointer-events-none",
+        "group-hover/reply:opacity-100",
+        "group-focus-within/reply:opacity-100",
+        "[@media(hover:none)]:opacity-100",
+      );
+      if (!action) throw new Error("missing file changes action");
+      fireEvent.click(action);
+      expect(
+        screen.getByRole("region", { name: "已编辑 1 个文件" }),
+      ).toBeVisible();
+    } else {
+      expect(action).toBeNull();
+    }
   });
 
   // 快照成果卡片的终态、展开与按需 Diff 由 execution-file-changes-card.test.tsx 验证。
-  it("有文件改动时不在复制按钮后展示独立入口", () => {
+  it("旧工具摘要不产生文件变更入口", () => {
     messageState.current = {
       role: "assistant",
       id: "message-toggle-file-changes",
@@ -1188,6 +1207,7 @@ describe("execution file changes", () => {
     render(<AssistantMessage name="cc" />);
 
     expect(screen.queryByText("已编辑 1 个文件")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "文件变更" })).toBeNull();
     expect(screen.getByRole("button", { name: "复制" })).toBeVisible();
   });
 

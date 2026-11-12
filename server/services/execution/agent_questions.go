@@ -159,15 +159,15 @@ func (c *elicitationCoordinator) createQuestion(ctx context.Context, chatID, exe
 		return nil, false, status_error.AgentInputInvalid
 	}
 	requested := eventlog.ElicitationRequestedData{ElicitationID: id, CommandRequestID: request.RequestID, CommandDigest: hash, AllowSkip: &input.AllowSkip, Mode: "form", Message: input.Message, RequestedSchema: encoded}
-	record, err := c.journal.AppendElicitationFact(chatID, eventlog.AppendInput{Type: constants.ChatEventTypeElicitationRequested, ExecutionID: executionID, InvocationID: executionID, Data: marshalData(requested)})
+	record, err := c.journal.AppendInteractionFact(chatID, eventlog.AppendInput{Type: constants.ChatEventTypeElicitationRequested, ExecutionID: executionID, InvocationID: executionID, Data: marshalData(requested)})
 	if err != nil {
 		return nil, false, err
 	}
 	c.mutex.Lock()
-	c.byID[id] = &pendingElicitation{chatID: chatID, executionID: executionID, invocationID: record.InvocationID, requested: requested, requestedAt: record.RecordedAt, response: make(chan agentapi.ElicitationDecision, 1)}
+	c.byID[id] = &pendingElicitation{chatID: chatID, executionID: executionID, invocationID: record.InvocationID, requested: requested, response: make(chan agentapi.ElicitationDecision, 1)}
 	c.orderByChat[chatID] = append(c.orderByChat[chatID], id)
 	c.mutex.Unlock()
-	c.journal.PublishElicitationFact(ctx, record, c.pendingProjection(chatID))
+	c.journal.PublishInteractionFact(ctx, record)
 	if c.events != nil {
 		_ = events.Emit(c.events, "interaction", "interaction.changed", events.Resource{Kind: "execution", ID: executionID}, map[string]any{"questionId": id})
 	}

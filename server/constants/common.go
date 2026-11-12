@@ -61,9 +61,6 @@ const WorkflowDefinitionUpdatedEvent = "workflow.definition.updated"
 // WorkflowEventHistoryPageSize 限制每次事件或日志历史读取的条数。
 const WorkflowEventHistoryPageSize = 500
 
-// WorkResultTrackingID 是唯一阅读跟踪启用记录的身份。
-const WorkResultTrackingID = "00000000000000000000000000000001"
-
 // WorkflowFileFormat 标记以字符串传递的工作流文件参数及产物。
 const WorkflowFileFormat = "file"
 

@@ -25,7 +25,7 @@ type WorkBoardExecutor struct {
 // WorkBoardEntry 是既有工作容器的窄查询结果，不注册数据库表。
 type WorkBoardEntry struct {
 	// OwnerKind 是原工作容器种类。
-	OwnerKind constants.WorkResultOwnerKind `json:"ownerKind"`
+	OwnerKind constants.WorkOwnerKind `json:"ownerKind"`
 	// OwnerID 是原容器标识。
 	OwnerID string `json:"ownerId"`
 	// Title 是原容器当前标题。
@@ -56,18 +56,34 @@ type WorkBoardEntry struct {
 	InputCount int64 `json:"inputCount"`
 	// ReviewCount 是此工作等待团队人工验收的任务数。
 	ReviewCount int64 `json:"reviewCount"`
-	// Result 是对应原结果的阅读引用，不包含成果正文。
-	Result *WorkResultReceipt `gorm:"-" json:"result,omitempty"`
+	// AutomaticTaskID 定位未接纳自动机会的原配置。
+	AutomaticTaskID string `json:"automaticTaskId,omitempty"`
+	// UnreadMessageCount 是本工作公开会话的未读消息数。
+	UnreadMessageCount int64 `gorm:"-" json:"unreadMessageCount"`
+	// FirstUnreadMessageID 是最早合格未读消息的原身份。
+	FirstUnreadMessageID string `gorm:"-" json:"firstUnreadMessageID,omitempty"`
+	// LatestReadableMessageID 是冻结阅读目标的最后消息身份。
+	LatestReadableMessageID string `gorm:"-" json:"latestReadableMessageID,omitempty"`
 }
 
 // WorkBoardAttention 是一个有效用户交互的只读定位信息。
 type WorkBoardAttention struct {
 	// ID 在请求所在作用域内稳定，用于事项去重与排序。
 	ID string `json:"id"`
+	// RequestID 是原请求或原验收任务身份。
+	RequestID string `json:"requestId"`
+	// ExecutionID 是请求实际等待的原执行或子运行。
+	ExecutionID string `json:"executionId,omitempty"`
+	// RequestSequence 是同一 Chat 内待答请求的原始到达顺序。
+	RequestSequence int64 `json:"requestSequence,omitempty"`
+	// RequestFence 是团队当前验收代次。
+	RequestFence int64 `json:"requestFence,omitempty"`
+	// InstanceID 是人工请求对应的原工作流步骤实例。
+	InstanceID string `json:"instanceId,omitempty"`
 	// Kind 是审批、输入或验收的操作类别。
 	Kind string `json:"kind"`
 	// OwnerKind 是该事项归属的原工作种类。
-	OwnerKind constants.WorkResultOwnerKind `json:"ownerKind"`
+	OwnerKind constants.WorkOwnerKind `json:"ownerKind"`
 	// OwnerID 是事项所属的原工作身份。
 	OwnerID string `json:"ownerId"`
 	// Title 是请求安全标题，不包含工具原始参数。

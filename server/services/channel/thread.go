@@ -350,7 +350,7 @@ func (s *service) createThread(
 	}
 	readyAt := time.Now().UnixMilli()
 	err = s.transaction(ctx, func(transactionContext context.Context) error {
-		if err := s.threads.MarkReady(transactionContext, threadID, provisioningID, readyAt); err != nil {
+		if err := s.threads.MarkReady(transactionContext, threadID, provisioningID, accepted.Execution.ID, readyAt); err != nil {
 			return err
 		}
 		_, err := s.appendEvent(transactionContext, channel.ID, threadID, constants.ChannelEventThreadCreated, map[string]interface{}{

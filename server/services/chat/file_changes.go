@@ -153,11 +153,7 @@ func (r *FileChangesRecording) publish(ctx context.Context, summary changes.Summ
 		return err
 	}
 	r.publishedVersion = summary.Version
-	receipt, err := r.service.queryIndexes.prepareResult(r.chatID, r.executionID)
-	if err != nil || receipt == nil {
-		return err
-	}
-	return r.service.queryIndexes.transactionController.Transaction(ctx, func(tx context.Context) error { return r.service.queryIndexes.publishResult(tx, receipt) })
+	return nil
 }
 
 func fileChangesReference(summary changes.Summary) eventlog.FileChangesData {

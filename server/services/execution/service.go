@@ -49,6 +49,8 @@ type Service interface {
 	CancelAndWait(ctx context.Context, chatID string) error
 	// CancelExecutionAndWait 只取消指定执行占用，旧任务不得影响同Chat后续输入。
 	CancelExecutionAndWait(ctx context.Context, chatID, executionID string) error
+	// IsExecutionActive 检查指定执行是否仍持有会话占位。
+	IsExecutionActive(chatID, executionID string) bool
 	// ResolveApproval 处理 Chat 当前执行的一次未决审批。
 	ResolveApproval(ctx context.Context, chatID string, approvalID string, optionID string) error
 	// ResolveElicitation 处理 Chat 当前执行的一次未决结构化用户输入。

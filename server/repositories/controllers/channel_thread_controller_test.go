@@ -351,10 +351,10 @@ func TestChannelThreadControllerFencesProvisioningAndListsInitializing(t *testin
 			stored.AdditionalWorkingDirectories,
 		)
 	}
-	if err := controller.MarkReady(ctx, thread.ID, "wrong-provisioning", now+2); err == nil {
+	if err := controller.MarkReady(ctx, thread.ID, "wrong-provisioning", "lead-execution", now+2); err == nil {
 		t.Fatal("MarkReady() accepted a stale provisioning fence")
 	}
-	if err := controller.MarkReady(ctx, thread.ID, thread.ProvisioningID, now+2); err != nil {
+	if err := controller.MarkReady(ctx, thread.ID, thread.ProvisioningID, "lead-execution", now+2); err != nil {
 		t.Fatalf("MarkReady() error = %v", err)
 	}
 	initializing, err = controller.ListInitializing(ctx)

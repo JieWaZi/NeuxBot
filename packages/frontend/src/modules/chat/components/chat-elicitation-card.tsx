@@ -1,4 +1,3 @@
-import { notificationPresentationProps } from "@/shared/api/notification-presentation";
 import {
   Check,
   CornerDownLeft,
@@ -9,9 +8,13 @@ import {
 import { useCallback, useMemo, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingElicitation as PendingElicitation } from "@/shared/api/generated/types.gen";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
+import { cn } from "@/shared/lib/cn";
+import type {
+  AllyChatMessage,
+  ChatPendingElicitation,
+} from "../runtime/chat-projection";
 
 export type ElicitationSubmissionState = "idle" | "submitting" | "confirming";
 
@@ -29,13 +32,14 @@ type ParsedSchema = {
   fields: SchemaField[];
 };
 
+type Question = NonNullable<AllyChatMessage["question"]>;
+
 type ChatElicitationCardProps = {
-  elicitation: Omit<PendingElicitation, "requestedSchema"> & {
-    // 动态表单按未知 JSON 进入解析边界，不依赖生成器对 RawMessage 的数组推断。
-    requestedSchema?: unknown;
-  };
-  submissionState: ElicitationSubmissionState;
-  onResolve: (
+  elicitation: ChatPendingElicitation;
+  resolution?: Question;
+  submissionState?: ElicitationSubmissionState;
+  waitingForTurn?: boolean;
+  onResolve?: (
     elicitationId: string,
     content: Record<string, unknown>,
     declined: boolean,
@@ -53,6 +57,7 @@ function parseRequestedSchema(raw: unknown): ParsedSchema | null {
     properties as Record<string, unknown>,
   )) {
     if (!key.endsWith("_custom")) continue;
+    if (!value || typeof value !== "object") continue;
     const field = value as Record<string, unknown>;
     const meta = field._meta as Record<string, unknown> | undefined;
     const askMeta = meta?._askUserQuestionCustomAnswer as
@@ -69,6 +74,7 @@ function parseRequestedSchema(raw: unknown): ParsedSchema | null {
     properties as Record<string, unknown>,
   )) {
     if (key.endsWith("_custom") || key.endsWith("__other")) continue;
+    if (!value || typeof value !== "object") continue;
     const field = value as Record<string, unknown>;
     const title =
       typeof field.title === "string" && field.title.trim() ? field.title : key;
@@ -76,6 +82,7 @@ function parseRequestedSchema(raw: unknown): ParsedSchema | null {
       typeof field.description === "string" ? field.description : undefined;
     const codexMeta = (field._meta as Record<string, unknown> | undefined)
       ?.codex as Record<string, unknown> | undefined;
+    if (codexMeta?.isOtherAnswer) continue;
     const secret = Boolean(codexMeta?.isSecret);
     const options = extractOptions(field);
     const multiSelect =
@@ -103,6 +110,7 @@ function findOtherFieldKey(
   const candidate = `${questionId}__other`;
   if (properties[candidate]) return candidate;
   for (const [key, value] of Object.entries(properties)) {
+    if (!value || typeof value !== "object") continue;
     const field = value as Record<string, unknown>;
     const codexMeta = (field._meta as Record<string, unknown> | undefined)
       ?.codex as Record<string, unknown> | undefined;
@@ -157,7 +165,9 @@ function extractOptions(field: Record<string, unknown>) {
 
 export function ChatElicitationCard({
   elicitation,
-  submissionState,
+  resolution,
+  submissionState = "idle",
+  waitingForTurn = false,
   onResolve,
 }: ChatElicitationCardProps) {
   const { t } = useTranslation("chat");
@@ -194,15 +204,28 @@ export function ChatElicitationCard({
         }
       }
     }
-    onResolve(elicitationId, content, false);
+    onResolve?.(elicitationId, content, false);
   }, [elicitationId, onResolve, parsedSchema?.fields, values]);
 
   const decline = useCallback(() => {
     if (!elicitationId) return;
-    onResolve(elicitationId, {}, true);
+    onResolve?.(elicitationId, {}, true);
   }, [elicitationId, onResolve]);
 
   const isSubmitting = submissionState !== "idle";
+  const disabled = isSubmitting || waitingForTurn;
+  const queueStatus = waitingForTurn ? (
+    <p className="text-muted-foreground type-ui">
+      {t("elicitation.waitingForTurn")}
+    </p>
+  ) : null;
+  const cardProps = {
+    "data-chat-elicitation-card": true,
+    "data-message-id": elicitationId,
+    "aria-busy": isSubmitting || undefined,
+    className:
+      "bg-surface-raised w-full max-w-chat-question space-y-3 rounded-2xl px-4 py-3",
+  };
   const submitOnEnter = (event: KeyboardEvent<HTMLInputElement>) => {
     if (
       event.key !== "Enter" ||
@@ -212,19 +235,95 @@ export function ChatElicitationCard({
       return;
     event.preventDefault();
     event.stopPropagation();
-    if (!isSubmitting) submit();
+    if (!disabled) submit();
   };
+
+  const message = elicitation.message?.trim();
+  const showMessage =
+    message &&
+    !parsedSchema?.fields.some(
+      (field) =>
+        field.title.trim() === message || field.description?.trim() === message,
+    );
+
+  if (resolution?.result) {
+    const fields = parsedSchema?.fields ?? [];
+    const resultLabel = (
+      <span className="text-muted-foreground type-ui ms-auto shrink-0 whitespace-nowrap">
+        {t(`elicitation.result.${resolution.result}`)}
+      </span>
+    );
+    return (
+      <article {...cardProps}>
+        {showMessage || fields.length === 0 ? (
+          <div className="flex items-start gap-3">
+            {showMessage ? (
+              <p className="type-title min-w-0 font-medium break-words whitespace-pre-wrap">
+                {message}
+              </p>
+            ) : null}
+            {resultLabel}
+          </div>
+        ) : null}
+        {fields.map((field, fieldIndex) => {
+          const question = fieldQuestion(field);
+          const value = resolution.answers?.[field.key];
+          const custom = field.customKey
+            ? resolution.answers?.[field.customKey]
+            : undefined;
+          const answers = field.secret
+            ? []
+            : (Array.isArray(value) ? value : [value]).flatMap((item) => {
+                if (typeof item !== "string" || !item.trim()) return [];
+                const index = field.options.findIndex(
+                  (option) => option.value === item,
+                );
+                return [
+                  {
+                    label: field.options[index]?.label ?? item,
+                    index: index < 0 ? field.options.length : index,
+                  },
+                ];
+              });
+          if (!field.secret && typeof custom === "string" && custom.trim()) {
+            answers.push({ label: custom, index: field.options.length });
+          }
+          return (
+            <div key={field.key} className="space-y-1">
+              <div className="flex items-start gap-3">
+                <p className="type-label min-w-0 font-medium break-words whitespace-pre-wrap">
+                  {question}
+                </p>
+                {!showMessage && fieldIndex === 0 ? resultLabel : null}
+              </div>
+              {field.options.length === 0 && field.description ? (
+                <p className="text-muted-foreground type-caption break-words whitespace-pre-wrap">
+                  {field.description}
+                </p>
+              ) : null}
+              {answers.length > 0 ? (
+                <ul className="type-body space-y-1">
+                  {answers.map((answer) => (
+                    <li
+                      key={`${answer.index}:${answer.label}`}
+                      className="flex items-start gap-2 break-words whitespace-pre-wrap"
+                    >
+                      <ElicitationOptionLetter index={answer.index} selected />
+                      <span className="min-w-0">{answer.label}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          );
+        })}
+      </article>
+    );
+  }
 
   if (elicitation.mode === "url" && elicitation.url) {
     return (
-      <div
-        data-chat-elicitation-card
-        {...notificationPresentationProps({
-          kind: "request",
-          noticeId: `elicitation:${elicitation.elicitationId}`,
-        })}
-        className="border-border bg-surface-module space-y-3 border-b px-4 py-3"
-      >
+      <article {...cardProps}>
         <div className="flex items-start gap-2">
           <MessageCircleQuestion className="text-muted-foreground mt-0.5 size-4 shrink-0" />
           <div className="min-w-0 space-y-1">
@@ -240,12 +339,13 @@ export function ChatElicitationCard({
             </a>
           </div>
         </div>
-        <div className="flex justify-end gap-2">
+        {queueStatus}
+        <div className="flex flex-wrap justify-end gap-2">
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            disabled={isSubmitting}
+            disabled={disabled}
             onClick={decline}
           >
             {t("elicitation.decline")}
@@ -253,8 +353,8 @@ export function ChatElicitationCard({
           <Button
             type="button"
             size="sm"
-            disabled={isSubmitting}
-            onClick={() => onResolve(elicitationId, {}, false)}
+            disabled={disabled}
+            onClick={() => onResolve?.(elicitationId, {}, false)}
           >
             {isSubmitting ? (
               <Loader2 className="size-4 animate-spin" />
@@ -263,48 +363,31 @@ export function ChatElicitationCard({
             )}
           </Button>
         </div>
-      </div>
+      </article>
     );
   }
 
-  const message = elicitation.message?.trim();
-  const showMessage =
-    message &&
-    !parsedSchema?.fields.some(
-      (field) =>
-        field.title.trim() === message || field.description?.trim() === message,
-    );
-
   return (
-    <div
-      data-chat-elicitation-card
-      {...notificationPresentationProps({
-        kind: "request",
-        noticeId: `elicitation:${elicitation.elicitationId}`,
-      })}
-      className="border-border bg-surface-module space-y-3 border-b px-4 py-3"
-    >
-      <p className="text-muted-foreground type-ui">
-        {t("elicitation.question")}
-      </p>
-      {showMessage ? <p className="type-label font-medium">{message}</p> : null}
+    <article {...cardProps}>
+      {showMessage ? (
+        <p className="type-title font-medium break-words whitespace-pre-wrap">
+          {message}
+        </p>
+      ) : null}
       {parsedSchema ? (
-        <div className="max-h-96 space-y-5 overflow-y-auto p-1">
+        <div className="space-y-5 p-1">
           {parsedSchema.fields.map((field) => {
             const customKey = field.customKey;
             const customOpen = Boolean(customFields[field.key]);
-            const question =
-              field.options.length > 0
-                ? field.description || field.title
-                : field.title;
+            const question = fieldQuestion(field);
             const currentValue = values[field.key];
             return (
               <fieldset
                 key={field.key}
                 className="min-w-0 space-y-2"
-                disabled={isSubmitting}
+                disabled={disabled}
               >
-                <legend className="type-label mb-2 font-medium break-words whitespace-pre-wrap">
+                <legend className="type-title mb-2 font-medium break-words whitespace-pre-wrap">
                   {question}
                 </legend>
                 {field.options.length === 0 && field.description ? (
@@ -331,7 +414,7 @@ export function ChatElicitationCard({
                           label={option.label}
                           description={option.description}
                           selected={selected}
-                          disabled={isSubmitting}
+                          disabled={disabled}
                           onClick={() => {
                             if (field.multiSelect) {
                               const current = Array.isArray(currentValue)
@@ -362,7 +445,7 @@ export function ChatElicitationCard({
                         index={field.options.length}
                         label={t("elicitation.other")}
                         selected={customOpen}
-                        disabled={isSubmitting}
+                        disabled={disabled}
                         onClick={() => {
                           setCustomFields((current) => ({
                             ...current,
@@ -381,7 +464,7 @@ export function ChatElicitationCard({
                     onKeyDown={submitOnEnter}
                     type={field.secret ? "password" : "text"}
                     value={typeof currentValue === "string" ? currentValue : ""}
-                    disabled={isSubmitting}
+                    disabled={disabled}
                     onChange={(event) =>
                       updateValue(field.key, event.target.value)
                     }
@@ -399,7 +482,7 @@ export function ChatElicitationCard({
                           ? values[customKey]
                           : ""
                       }
-                      disabled={isSubmitting}
+                      disabled={disabled}
                       onChange={(event) =>
                         updateValue(customKey, event.target.value)
                       }
@@ -411,31 +494,33 @@ export function ChatElicitationCard({
           })}
         </div>
       ) : null}
-      <div className="flex justify-end gap-2 pt-1">
+      {queueStatus}
+      <div className="flex flex-wrap justify-end gap-2 pt-1">
         {elicitation.allowSkip !== false ? (
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            disabled={isSubmitting}
+            disabled={disabled}
             onClick={decline}
           >
             {t("elicitation.skip")}
           </Button>
         ) : null}
-        <Button
-          type="button"
-          size="sm"
-          disabled={isSubmitting}
-          onClick={submit}
-        >
+        <Button type="button" size="sm" disabled={disabled} onClick={submit}>
           {isSubmitting ? <Loader2 className="animate-spin" /> : null}
           {t("elicitation.next")}
           {!isSubmitting ? <CornerDownLeft aria-hidden="true" /> : null}
         </Button>
       </div>
-    </div>
+    </article>
   );
+}
+
+function fieldQuestion(field: SchemaField) {
+  return field.options.length > 0
+    ? field.description || field.title
+    : field.title;
 }
 
 function ElicitationChoice({
@@ -462,12 +547,7 @@ function ElicitationChoice({
       disabled={disabled}
       onClick={onClick}
     >
-      <span
-        aria-hidden="true"
-        className="bg-muted text-muted-foreground type-ui size-icon-lg flex shrink-0 items-center justify-center rounded-xs"
-      >
-        {index < 26 ? String.fromCharCode(65 + index) : index + 1}
-      </span>
+      <ElicitationOptionLetter index={index} selected={selected} />
       <span className="min-w-0 flex-1 text-left">
         <span className="block break-words whitespace-pre-wrap">{label}</span>
         {description ? (
@@ -483,5 +563,27 @@ function ElicitationChoice({
         />
       ) : null}
     </Button>
+  );
+}
+
+function ElicitationOptionLetter({
+  index,
+  selected,
+}: {
+  index: number;
+  selected: boolean;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "type-ui size-icon-lg flex shrink-0 items-center justify-center rounded-xs font-medium",
+        selected
+          ? "bg-accent text-accent-foreground"
+          : "bg-accent-surface-strong text-accent-content",
+      )}
+    >
+      {index < 26 ? String.fromCharCode(65 + index) : index + 1}
+    </span>
   );
 }

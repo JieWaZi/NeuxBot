@@ -343,6 +343,12 @@ const resources = {
         pinModule: "固定{{name}}",
       },
       partnerNavigation: {
+        working: "工作中",
+        recentFailed: "最近运行失败",
+        unreadMessages: "{{count}} 条未读消息",
+        needsAction: "需要操作",
+        chooseActionChat: "选择需要操作的会话",
+        request: { input: "待输入", approval: "待审批", review: "待验收" },
         partner: "伙伴",
         team: "团队",
         noPartner: "还没有伙伴",
@@ -1356,6 +1362,7 @@ const resources = {
       },
       sections: {
         general: "通用",
+        notifications: "通知",
         runtimeEnvironments: "智能体",
         integrations: "集成",
         integrationAPI: "API 集成",
@@ -1707,6 +1714,12 @@ const resources = {
       },
     },
     chat: {
+      reading: {
+        actions: "阅读操作",
+        markUnread: "从此处标为未读",
+        failed: "无法更新会话阅读状态。",
+        markRead: "标为已读",
+      },
       sessionTransitionTitle: "在当前聊天中继续",
       sessionTransitionDescription:
         "切换智能体或账号后，下一条消息会按你选择的方式继续当前聊天。完整聊天记录仍可查看。",
@@ -2253,6 +2266,7 @@ const resources = {
         modified: "修改",
       },
       fileChanges: {
+        label: "文件变更",
         pending: "正在采集文件改动…",
         unavailable: "文件改动暂时无法读取",
         incomplete: "文件采集未完成",
@@ -2314,6 +2328,7 @@ const resources = {
       approval: {
         aria: "等待工具审批",
         position: "等待审批 · {{current}} / {{total}}",
+        waitingForTurn: "「{{title}}」正在排队，请先处理当前审批。",
         fallbackTitle: "允许执行此工具操作吗？",
         submitting: "正在提交",
         confirming: "结果确认中",
@@ -2349,7 +2364,6 @@ const resources = {
         },
       },
       elicitation: {
-        question: "提问",
         other: "其他…",
         answerPlaceholder: "请输入答案",
         multipleChoiceHint: "可选择多项",
@@ -2358,6 +2372,13 @@ const resources = {
         decline: "拒绝",
         continue: "已完成",
         otherPlaceholder: "或输入自定义答案",
+        waitingForTurn: "请先回答上一条提问。",
+        result: {
+          accepted: "已回答",
+          declined: "已跳过",
+          cancelled: "已取消",
+          invalidated: "已失效",
+        },
       },
       send: "发送消息",
       copy: "复制",
@@ -2504,6 +2525,18 @@ const resources = {
       },
     },
     common: {
+      partnerNavigation: {
+        working: "Working",
+        recentFailed: "Most recent run failed",
+        unreadMessages: "{{count}} unread messages",
+        needsAction: "Needs action",
+        chooseActionChat: "Select a conversation that needs action",
+        request: {
+          input: "Input required",
+          approval: "Approval required",
+          review: "Review required",
+        },
+      },
       resourceCategory: {
         label: "Categories",
         placeholder: "Select or enter a category",
@@ -2588,6 +2621,25 @@ const resources = {
       },
     },
     chat: {
+      approval: {
+        waitingForTurn:
+          "“{{title}}” is queued. Handle the current approval first.",
+      },
+      elicitation: {
+        waitingForTurn: "Answer the preceding question first.",
+        result: {
+          accepted: "Answered",
+          declined: "Skipped",
+          cancelled: "Cancelled",
+          invalidated: "Expired",
+        },
+      },
+      reading: {
+        actions: "Reading actions",
+        markUnread: "Mark unread from here",
+        failed: "Could not update conversation reading state.",
+        markRead: "Mark as read",
+      },
       modelPicker: {
         contextWindow: "Context window",
         defaultReasoning: "Default",
@@ -2858,6 +2910,7 @@ const resources = {
         "This agent cannot continue from its previous chat. After you confirm, your next message will continue this chat using your chosen method. The full chat will remain available.",
       sessionTransitionTurns: "Recent turns to include",
       sessionTransitionMode: "How to continue",
+      fileChanges: { label: "File changes" },
       sessionTransitionRecent: "Recent turns",
       sessionTransitionSummary: "Automatic summary",
       sessionTransitionSummaryHint:

@@ -166,6 +166,7 @@ export function chatContinuations(
     }
   };
   for (const message of messages) {
+    if (message.question) continue;
     if (message.role === "user") {
       userCount += 1;
       continue;

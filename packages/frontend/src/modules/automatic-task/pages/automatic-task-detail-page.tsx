@@ -1,7 +1,7 @@
 import { SceneBreadcrumbs } from "@/shared/ui/scene-breadcrumbs";
 import { applicationErrorMessage } from "@/shared/api/error-presentation";
 import { integrationServiceOptions } from "@/shared/api/integration-service";
-import { FailureNoticeContent } from "@/modules/notification";
+import { useRunViewing } from "@/shared/api/run-viewing";
 import { useQueryEvents } from "@/shared/api/use-query-events";
 import { listRuntimesOptions } from "@/shared/api/runtime-queries";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -102,6 +102,16 @@ export function AutomaticTaskDetailPage() {
   const page =
     Number.isSafeInteger(pageNumber) && pageNumber > 0 ? pageNumber : 1;
   const active = useRouteSceneActive();
+  const selectedRunId = params.get("run") ?? "";
+  const runResultRoot = useRef<HTMLDivElement>(null);
+  const selectedRun = useRunViewing({
+    ownerKind: "automatic_run",
+    ownerId: selectedRunId,
+    root: runResultRoot,
+    selector: "[data-automatic-run-result]",
+    rendered: active && Boolean(selectedRunId),
+    automaticTaskId: taskId,
+  });
   const navigate = useNavigate();
   const client = useQueryClient();
   const labels = useTaskPaginationLabels();
@@ -325,6 +335,40 @@ export function AutomaticTaskDetailPage() {
   };
   return (
     <ResourcePageSurface>
+      <Dialog
+        open={active && Boolean(selectedRunId)}
+        onOpenChange={(open) => {
+          if (!open)
+            setParams(
+              (current) => {
+                const next = new URLSearchParams(current);
+                next.delete("run");
+                return next;
+              },
+              { replace: true },
+            );
+        }}
+      >
+        <DialogContent title={t("runFailureTitle")}>
+          <div ref={runResultRoot}>
+            {selectedRun.isPending ? (
+              <Skeleton className="h-control-md w-full" />
+            ) : selectedRun.data?.viewable ? (
+              <p
+                data-automatic-run-result
+                className="type-body text-destructive"
+              >
+                {errorLabel(selectedRun.data)}
+              </p>
+            ) : (
+              <p role="status" className="type-body text-content-secondary">
+                {t("runUnavailable")}
+              </p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <SceneBreadcrumbs
         ariaLabel={t("title")}
         items={[
@@ -818,15 +862,7 @@ export function AutomaticTaskDetailPage() {
                     <TableCell>
                       <RunState state={entry.state} />
                     </TableCell>
-                    <TableCell>
-                      {entry.state === "failed" ? (
-                        <FailureNoticeContent runId={entry.id ?? ""}>
-                          {errorLabel(entry)}
-                        </FailureNoticeContent>
-                      ) : (
-                        errorLabel(entry)
-                      )}
-                    </TableCell>
+                    <TableCell>{errorLabel(entry)}</TableCell>
                     <TableCell>
                       {(entry.workflowRunId &&
                         entry.configuration?.workflowId &&
@@ -840,6 +876,29 @@ export function AutomaticTaskDetailPage() {
                                 : "openChat",
                             )}
                           </Link>
+                        </Button>
+                      ) : entry.id &&
+                        entry.errorCode &&
+                        !entry.chatId &&
+                        !entry.threadId &&
+                        !entry.workflowRunId &&
+                        (entry.admission === "failed" ||
+                          entry.admission === "interrupted") ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            setParams(
+                              (current) => {
+                                const next = new URLSearchParams(current);
+                                next.set("run", entry.id ?? "");
+                                return next;
+                              },
+                              { replace: true },
+                            )
+                          }
+                        >
+                          {t("openRunResult")}
                         </Button>
                       ) : (
                         "—"

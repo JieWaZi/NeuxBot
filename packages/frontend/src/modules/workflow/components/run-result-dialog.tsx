@@ -1,7 +1,7 @@
 import { useQueryEvents } from "@/shared/api/use-query-events";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { useVisibleWorkResult } from "@/shared/api/work-result-reading";
+import { useRunViewing } from "@/shared/api/run-viewing";
 import { Copy } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { getWorkflowRun } from "@/shared/api/generated/sdk.gen";
@@ -20,7 +20,7 @@ import { cn } from "@/shared/lib/cn";
 import { RunLogs } from "./run-logs";
 import { WorkflowLoadingState, WorkflowQueryError } from "./query-feedback";
 
-const outputSelector = () => "[data-work-result-output]";
+const outputSelector = "[data-run-output]";
 
 export function RunResultDialog({
   id,
@@ -78,7 +78,7 @@ export function RunResultDialog({
   const data = query.data?.pages[0];
   const run = data?.run;
   const resultRoot = useRef<HTMLDivElement>(null);
-  useVisibleWorkResult({
+  useRunViewing({
     ownerKind: "workflow_run",
     ownerId: runId,
     root: resultRoot,
@@ -253,7 +253,7 @@ export function RunResultDialog({
                     {t("resultPending")}
                   </p>
                 ) : (
-                  <div data-work-result-output>
+                  <div data-run-output>
                     {run.failure ? (
                       <WorkflowFailure value={run.failure.data} />
                     ) : (

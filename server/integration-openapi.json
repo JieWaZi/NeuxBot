@@ -4916,7 +4916,7 @@
             ]
           },
           "409": {
-            "description": ">\n* `[AIAccountBusy][40900000027]`\n* `[AIAccountInUse][40900000029]`\n* `[AIAccountNameConflict][40900000030]`\n* `[AIAccountRevisionConflict][40900000028]`\n* `[AgentCommandOutcomeUnknown][40900009001]`\n* `[AgentCommandRequestConflict][40900009002]`\n* `[ApprovalAlreadyResolved][40900000014]`\n* `[AutomaticTaskAdmissionRevoked][40900000037]`\n* `[AutomaticTaskBusy][40900000033]`\n* `[AutomaticTaskDisabled][40900000034]`\n* `[AutomaticTaskInputChanged][40900003005]`\n* `[AutomaticTaskRequestConflict][40900000035]`\n* `[AutomaticTaskRevisionConflict][40900000036]`\n* `[BuiltInMCPConnectorCannotDelete][40900000011]`\n* `[BuiltInMCPConnectorReadOnly][40900000012]`\n* `[BuiltInSkillCannotUninstall][40900000009]`\n* `[ChannelHasActiveWork][40900000017]`\n* `[ChannelNameConflict][40900000016]`\n* `[ChannelTaskAttemptStale][40900000021]`\n* `[ChannelTaskLimitReached][40900000019]`\n* `[ChannelTaskRetryLimitReached][40900000020]`\n* `[ChannelTaskStateConflict][40900000018]`\n* `[ChatForkIndeterminate][40900000026]`\n* `[ChatForkUnavailable][40900000025]`\n* `[ChatHasActiveExecution][40900000006]`\n* `[ChatLogIdempotencyConflict][40900007202]`\n* `[ChatLogNativeOutcomePending][40900007203]`\n* `[ChatLogVersionConflict][40900007201]`\n* `[Conflict][40900000001]`\n* `[CreateRequestConflict][40900000023]`\n* `[CreateRequestInProgress][40900000022]`\n* `[DefaultWakerCannotDelete][40900000024]`\n* `[ElicitationAlreadyResolved][40900000015]`\n* `[IMConfigurationConflict][40900004001]`\n* `[IMConnectionDisabled][40900004006]`\n* `[IMConnectionHasWorkflowDependencies][40900004005]`\n* `[IMConnectionInUse][40900004004]`\n* `[IMConnectionReplaced][40900004007]`\n* `[IMDeliveryContextUnavailable][40900004002]`\n* `[IMDeliveryRetryUnsafe][40900004003]`\n* `[IntegrationConflict][40900009601]`\n* `[KnowledgeCancelled][40900009502]`\n* `[KnowledgeConflict][40900009501]`\n* `[KnowledgeFolderHasChildren][40900009503]`\n* `[KnowledgeFolderHasPages][40900009504]`\n* `[MCPConnectorNameConflict][40900000010]`\n* `[MCPConnectorTrustRequired][40900000013]`\n* `[PluginAccountConflict][40900006506]`\n* `[PluginBusy][40900006505]`\n* `[PluginConfigurationConflict][40900006502]`\n* `[PluginNotReady][40900006503]`\n* `[PluginSkillConflict][40900006504]`\n* `[PluginSkillSelectionConflict][40900006507]`\n* `[PluginVersionConflict][40900006501]`\n* `[ProjectNameConflict][40900000007]`\n* `[RolePresetNameConflict][40900000003]`\n* `[RuntimeInstallationBusy][40900007301]`\n* `[RuntimeRestartBusy][40900007302]`\n* `[RuntimeUpdateCheckBusy][40900007303]`\n* `[RuntimeVersionUnknown][40900007304]`\n* `[SkillNameConflict][40900000008]`\n* `[SystemRolePresetReadOnly][40900000004]`\n* `[WakerHasRunningWork][40900000005]`\n* `[WakerNameConflict][40900000002]`\n* `[WorkflowAuthoringFinished][40900003007]`\n* `[WorkflowAuthoringSuperseded][40900003006]`\n* `[WorkflowFenceConflict][40900003004]`\n* `[WorkflowRequestConflict][40900003002]`\n* `[WorkflowRevisionConflict][40900003001]`\n* `[WorkflowStateConflict][40900003003]`\n* `[WorkspaceResourceConflict][40900007104]`\n",
+            "description": ">\n* `[AIAccountBusy][40900000027]`\n* `[AIAccountInUse][40900000029]`\n* `[AIAccountNameConflict][40900000030]`\n* `[AIAccountRevisionConflict][40900000028]`\n* `[AgentCommandOutcomeUnknown][40900009001]`\n* `[AgentCommandRequestConflict][40900009002]`\n* `[ApprovalAlreadyResolved][40900000014]`\n* `[AutomaticTaskAdmissionRevoked][40900000037]`\n* `[AutomaticTaskBusy][40900000033]`\n* `[AutomaticTaskDisabled][40900000034]`\n* `[AutomaticTaskInputChanged][40900003005]`\n* `[AutomaticTaskRequestConflict][40900000035]`\n* `[AutomaticTaskRevisionConflict][40900000036]`\n* `[BuiltInMCPConnectorCannotDelete][40900000011]`\n* `[BuiltInMCPConnectorReadOnly][40900000012]`\n* `[BuiltInSkillCannotUninstall][40900000009]`\n* `[ChannelHasActiveWork][40900000017]`\n* `[ChannelNameConflict][40900000016]`\n* `[ChannelTaskAttemptStale][40900000021]`\n* `[ChannelTaskLimitReached][40900000019]`\n* `[ChannelTaskRetryLimitReached][40900000020]`\n* `[ChannelTaskStateConflict][40900000018]`\n* `[ChatForkIndeterminate][40900000026]`\n* `[ChatForkUnavailable][40900000025]`\n* `[ChatHasActiveExecution][40900000006]`\n* `[ChatLogIdempotencyConflict][40900007202]`\n* `[ChatLogNativeOutcomePending][40900007203]`\n* `[ChatLogVersionConflict][40900007201]`\n* `[Conflict][40900000001]`\n* `[CreateRequestConflict][40900000023]`\n* `[CreateRequestInProgress][40900000022]`\n* `[DefaultWakerCannotDelete][40900000024]`\n* `[ElicitationAlreadyResolved][40900000015]`\n* `[IMConfigurationConflict][40900004001]`\n* `[IMConnectionDisabled][40900004006]`\n* `[IMConnectionHasWorkflowDependencies][40900004005]`\n* `[IMConnectionInUse][40900004004]`\n* `[IMConnectionReplaced][40900004007]`\n* `[IMDeliveryContextUnavailable][40900004002]`\n* `[IMDeliveryRetryUnsafe][40900004003]`\n* `[IntegrationConflict][40900009601]`\n* `[KnowledgeCancelled][40900009502]`\n* `[KnowledgeConflict][40900009501]`\n* `[KnowledgeFolderHasChildren][40900009503]`\n* `[KnowledgeFolderHasPages][40900009504]`\n* `[MCPConnectorNameConflict][40900000010]`\n* `[MCPConnectorTrustRequired][40900000013]`\n* `[PluginAccountConflict][40900006506]`\n* `[PluginBusy][40900006505]`\n* `[PluginConfigurationConflict][40900006502]`\n* `[PluginNotReady][40900006503]`\n* `[PluginSkillConflict][40900006504]`\n* `[PluginSkillSelectionConflict][40900006507]`\n* `[PluginVersionConflict][40900006501]`\n* `[ProjectNameConflict][40900000007]`\n* `[ReadingIntentConflict][40900009201]`\n* `[RolePresetNameConflict][40900000003]`\n* `[RuntimeInstallationBusy][40900007301]`\n* `[RuntimeRestartBusy][40900007302]`\n* `[RuntimeUpdateCheckBusy][40900007303]`\n* `[RuntimeVersionUnknown][40900007304]`\n* `[SkillNameConflict][40900000008]`\n* `[SystemRolePresetReadOnly][40900000004]`\n* `[WakerHasRunningWork][40900000005]`\n* `[WakerNameConflict][40900000002]`\n* `[WorkflowAuthoringFinished][40900003007]`\n* `[WorkflowAuthoringSuperseded][40900003006]`\n* `[WorkflowFenceConflict][40900003004]`\n* `[WorkflowRequestConflict][40900003002]`\n* `[WorkflowRevisionConflict][40900003001]`\n* `[WorkflowStateConflict][40900003003]`\n* `[WorkspaceResourceConflict][40900007104]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -4980,6 +4980,7 @@
               "[PluginSkillSelectionConflict][40900006507]",
               "[PluginVersionConflict][40900006501]",
               "[ProjectNameConflict][40900000007]",
+              "[ReadingIntentConflict][40900009201]",
               "[RolePresetNameConflict][40900000003]",
               "[RuntimeInstallationBusy][40900007301]",
               "[RuntimeRestartBusy][40900007302]",
@@ -4999,7 +5000,7 @@
             ]
           },
           "413": {
-            "description": ">\n* `[WorkspaceResourceTooLarge][41300007105]`\n",
+            "description": ">\n* `[ReadingTargetLimitExceeded][41300009201]`\n* `[WorkspaceResourceTooLarge][41300007105]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5008,6 +5009,7 @@
               }
             },
             "x-status-errors": [
+              "[ReadingTargetLimitExceeded][41300009201]",
               "[WorkspaceResourceTooLarge][41300007105]"
             ]
           },
@@ -5154,7 +5156,7 @@
             ]
           },
           "503": {
-            "description": ">\n* `[AgentConnectionUnavailable][50300009001]`\n* `[DatabaseBusy][50300001001]`\n* `[IMServiceUnavailable][50300004001]`\n* `[IntegrationListenerError][50300009601]`\n* `[TerminalUnavailable][50300007108]`\n",
+            "description": ">\n* `[AgentConnectionUnavailable][50300009001]`\n* `[DatabaseBusy][50300001001]`\n* `[IMServiceUnavailable][50300004001]`\n* `[IntegrationListenerError][50300009601]`\n* `[ReadingExecutionInterrupted][50300009202]`\n* `[ReadingProjectionIncomplete][50300009201]`\n* `[TerminalUnavailable][50300007108]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5167,6 +5169,8 @@
               "[DatabaseBusy][50300001001]",
               "[IMServiceUnavailable][50300004001]",
               "[IntegrationListenerError][50300009601]",
+              "[ReadingExecutionInterrupted][50300009202]",
+              "[ReadingProjectionIncomplete][50300009201]",
               "[TerminalUnavailable][50300007108]"
             ]
           },
@@ -5393,7 +5397,7 @@
             ]
           },
           "409": {
-            "description": ">\n* `[AIAccountBusy][40900000027]`\n* `[AIAccountInUse][40900000029]`\n* `[AIAccountNameConflict][40900000030]`\n* `[AIAccountRevisionConflict][40900000028]`\n* `[AgentCommandOutcomeUnknown][40900009001]`\n* `[AgentCommandRequestConflict][40900009002]`\n* `[ApprovalAlreadyResolved][40900000014]`\n* `[AutomaticTaskAdmissionRevoked][40900000037]`\n* `[AutomaticTaskBusy][40900000033]`\n* `[AutomaticTaskDisabled][40900000034]`\n* `[AutomaticTaskInputChanged][40900003005]`\n* `[AutomaticTaskRequestConflict][40900000035]`\n* `[AutomaticTaskRevisionConflict][40900000036]`\n* `[BuiltInMCPConnectorCannotDelete][40900000011]`\n* `[BuiltInMCPConnectorReadOnly][40900000012]`\n* `[BuiltInSkillCannotUninstall][40900000009]`\n* `[ChannelHasActiveWork][40900000017]`\n* `[ChannelNameConflict][40900000016]`\n* `[ChannelTaskAttemptStale][40900000021]`\n* `[ChannelTaskLimitReached][40900000019]`\n* `[ChannelTaskRetryLimitReached][40900000020]`\n* `[ChannelTaskStateConflict][40900000018]`\n* `[ChatForkIndeterminate][40900000026]`\n* `[ChatForkUnavailable][40900000025]`\n* `[ChatHasActiveExecution][40900000006]`\n* `[ChatLogIdempotencyConflict][40900007202]`\n* `[ChatLogNativeOutcomePending][40900007203]`\n* `[ChatLogVersionConflict][40900007201]`\n* `[Conflict][40900000001]`\n* `[CreateRequestConflict][40900000023]`\n* `[CreateRequestInProgress][40900000022]`\n* `[DefaultWakerCannotDelete][40900000024]`\n* `[ElicitationAlreadyResolved][40900000015]`\n* `[IMConfigurationConflict][40900004001]`\n* `[IMConnectionDisabled][40900004006]`\n* `[IMConnectionHasWorkflowDependencies][40900004005]`\n* `[IMConnectionInUse][40900004004]`\n* `[IMConnectionReplaced][40900004007]`\n* `[IMDeliveryContextUnavailable][40900004002]`\n* `[IMDeliveryRetryUnsafe][40900004003]`\n* `[IntegrationConflict][40900009601]`\n* `[KnowledgeCancelled][40900009502]`\n* `[KnowledgeConflict][40900009501]`\n* `[KnowledgeFolderHasChildren][40900009503]`\n* `[KnowledgeFolderHasPages][40900009504]`\n* `[MCPConnectorNameConflict][40900000010]`\n* `[MCPConnectorTrustRequired][40900000013]`\n* `[PluginAccountConflict][40900006506]`\n* `[PluginBusy][40900006505]`\n* `[PluginConfigurationConflict][40900006502]`\n* `[PluginNotReady][40900006503]`\n* `[PluginSkillConflict][40900006504]`\n* `[PluginSkillSelectionConflict][40900006507]`\n* `[PluginVersionConflict][40900006501]`\n* `[ProjectNameConflict][40900000007]`\n* `[RolePresetNameConflict][40900000003]`\n* `[RuntimeInstallationBusy][40900007301]`\n* `[RuntimeRestartBusy][40900007302]`\n* `[RuntimeUpdateCheckBusy][40900007303]`\n* `[RuntimeVersionUnknown][40900007304]`\n* `[SkillNameConflict][40900000008]`\n* `[SystemRolePresetReadOnly][40900000004]`\n* `[WakerHasRunningWork][40900000005]`\n* `[WakerNameConflict][40900000002]`\n* `[WorkflowAuthoringFinished][40900003007]`\n* `[WorkflowAuthoringSuperseded][40900003006]`\n* `[WorkflowFenceConflict][40900003004]`\n* `[WorkflowRequestConflict][40900003002]`\n* `[WorkflowRevisionConflict][40900003001]`\n* `[WorkflowStateConflict][40900003003]`\n* `[WorkspaceResourceConflict][40900007104]`\n",
+            "description": ">\n* `[AIAccountBusy][40900000027]`\n* `[AIAccountInUse][40900000029]`\n* `[AIAccountNameConflict][40900000030]`\n* `[AIAccountRevisionConflict][40900000028]`\n* `[AgentCommandOutcomeUnknown][40900009001]`\n* `[AgentCommandRequestConflict][40900009002]`\n* `[ApprovalAlreadyResolved][40900000014]`\n* `[AutomaticTaskAdmissionRevoked][40900000037]`\n* `[AutomaticTaskBusy][40900000033]`\n* `[AutomaticTaskDisabled][40900000034]`\n* `[AutomaticTaskInputChanged][40900003005]`\n* `[AutomaticTaskRequestConflict][40900000035]`\n* `[AutomaticTaskRevisionConflict][40900000036]`\n* `[BuiltInMCPConnectorCannotDelete][40900000011]`\n* `[BuiltInMCPConnectorReadOnly][40900000012]`\n* `[BuiltInSkillCannotUninstall][40900000009]`\n* `[ChannelHasActiveWork][40900000017]`\n* `[ChannelNameConflict][40900000016]`\n* `[ChannelTaskAttemptStale][40900000021]`\n* `[ChannelTaskLimitReached][40900000019]`\n* `[ChannelTaskRetryLimitReached][40900000020]`\n* `[ChannelTaskStateConflict][40900000018]`\n* `[ChatForkIndeterminate][40900000026]`\n* `[ChatForkUnavailable][40900000025]`\n* `[ChatHasActiveExecution][40900000006]`\n* `[ChatLogIdempotencyConflict][40900007202]`\n* `[ChatLogNativeOutcomePending][40900007203]`\n* `[ChatLogVersionConflict][40900007201]`\n* `[Conflict][40900000001]`\n* `[CreateRequestConflict][40900000023]`\n* `[CreateRequestInProgress][40900000022]`\n* `[DefaultWakerCannotDelete][40900000024]`\n* `[ElicitationAlreadyResolved][40900000015]`\n* `[IMConfigurationConflict][40900004001]`\n* `[IMConnectionDisabled][40900004006]`\n* `[IMConnectionHasWorkflowDependencies][40900004005]`\n* `[IMConnectionInUse][40900004004]`\n* `[IMConnectionReplaced][40900004007]`\n* `[IMDeliveryContextUnavailable][40900004002]`\n* `[IMDeliveryRetryUnsafe][40900004003]`\n* `[IntegrationConflict][40900009601]`\n* `[KnowledgeCancelled][40900009502]`\n* `[KnowledgeConflict][40900009501]`\n* `[KnowledgeFolderHasChildren][40900009503]`\n* `[KnowledgeFolderHasPages][40900009504]`\n* `[MCPConnectorNameConflict][40900000010]`\n* `[MCPConnectorTrustRequired][40900000013]`\n* `[PluginAccountConflict][40900006506]`\n* `[PluginBusy][40900006505]`\n* `[PluginConfigurationConflict][40900006502]`\n* `[PluginNotReady][40900006503]`\n* `[PluginSkillConflict][40900006504]`\n* `[PluginSkillSelectionConflict][40900006507]`\n* `[PluginVersionConflict][40900006501]`\n* `[ProjectNameConflict][40900000007]`\n* `[ReadingIntentConflict][40900009201]`\n* `[RolePresetNameConflict][40900000003]`\n* `[RuntimeInstallationBusy][40900007301]`\n* `[RuntimeRestartBusy][40900007302]`\n* `[RuntimeUpdateCheckBusy][40900007303]`\n* `[RuntimeVersionUnknown][40900007304]`\n* `[SkillNameConflict][40900000008]`\n* `[SystemRolePresetReadOnly][40900000004]`\n* `[WakerHasRunningWork][40900000005]`\n* `[WakerNameConflict][40900000002]`\n* `[WorkflowAuthoringFinished][40900003007]`\n* `[WorkflowAuthoringSuperseded][40900003006]`\n* `[WorkflowFenceConflict][40900003004]`\n* `[WorkflowRequestConflict][40900003002]`\n* `[WorkflowRevisionConflict][40900003001]`\n* `[WorkflowStateConflict][40900003003]`\n* `[WorkspaceResourceConflict][40900007104]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5457,6 +5461,7 @@
               "[PluginSkillSelectionConflict][40900006507]",
               "[PluginVersionConflict][40900006501]",
               "[ProjectNameConflict][40900000007]",
+              "[ReadingIntentConflict][40900009201]",
               "[RolePresetNameConflict][40900000003]",
               "[RuntimeInstallationBusy][40900007301]",
               "[RuntimeRestartBusy][40900007302]",
@@ -5476,7 +5481,7 @@
             ]
           },
           "413": {
-            "description": ">\n* `[WorkspaceResourceTooLarge][41300007105]`\n",
+            "description": ">\n* `[ReadingTargetLimitExceeded][41300009201]`\n* `[WorkspaceResourceTooLarge][41300007105]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5485,6 +5490,7 @@
               }
             },
             "x-status-errors": [
+              "[ReadingTargetLimitExceeded][41300009201]",
               "[WorkspaceResourceTooLarge][41300007105]"
             ]
           },
@@ -5631,7 +5637,7 @@
             ]
           },
           "503": {
-            "description": ">\n* `[AgentConnectionUnavailable][50300009001]`\n* `[DatabaseBusy][50300001001]`\n* `[IMServiceUnavailable][50300004001]`\n* `[IntegrationListenerError][50300009601]`\n* `[TerminalUnavailable][50300007108]`\n",
+            "description": ">\n* `[AgentConnectionUnavailable][50300009001]`\n* `[DatabaseBusy][50300001001]`\n* `[IMServiceUnavailable][50300004001]`\n* `[IntegrationListenerError][50300009601]`\n* `[ReadingExecutionInterrupted][50300009202]`\n* `[ReadingProjectionIncomplete][50300009201]`\n* `[TerminalUnavailable][50300007108]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5644,6 +5650,8 @@
               "[DatabaseBusy][50300001001]",
               "[IMServiceUnavailable][50300004001]",
               "[IntegrationListenerError][50300009601]",
+              "[ReadingExecutionInterrupted][50300009202]",
+              "[ReadingProjectionIncomplete][50300009201]",
               "[TerminalUnavailable][50300007108]"
             ]
           },
@@ -5870,7 +5878,7 @@
             ]
           },
           "409": {
-            "description": ">\n* `[AIAccountBusy][40900000027]`\n* `[AIAccountInUse][40900000029]`\n* `[AIAccountNameConflict][40900000030]`\n* `[AIAccountRevisionConflict][40900000028]`\n* `[AgentCommandOutcomeUnknown][40900009001]`\n* `[AgentCommandRequestConflict][40900009002]`\n* `[ApprovalAlreadyResolved][40900000014]`\n* `[AutomaticTaskAdmissionRevoked][40900000037]`\n* `[AutomaticTaskBusy][40900000033]`\n* `[AutomaticTaskDisabled][40900000034]`\n* `[AutomaticTaskInputChanged][40900003005]`\n* `[AutomaticTaskRequestConflict][40900000035]`\n* `[AutomaticTaskRevisionConflict][40900000036]`\n* `[BuiltInMCPConnectorCannotDelete][40900000011]`\n* `[BuiltInMCPConnectorReadOnly][40900000012]`\n* `[BuiltInSkillCannotUninstall][40900000009]`\n* `[ChannelHasActiveWork][40900000017]`\n* `[ChannelNameConflict][40900000016]`\n* `[ChannelTaskAttemptStale][40900000021]`\n* `[ChannelTaskLimitReached][40900000019]`\n* `[ChannelTaskRetryLimitReached][40900000020]`\n* `[ChannelTaskStateConflict][40900000018]`\n* `[ChatForkIndeterminate][40900000026]`\n* `[ChatForkUnavailable][40900000025]`\n* `[ChatHasActiveExecution][40900000006]`\n* `[ChatLogIdempotencyConflict][40900007202]`\n* `[ChatLogNativeOutcomePending][40900007203]`\n* `[ChatLogVersionConflict][40900007201]`\n* `[Conflict][40900000001]`\n* `[CreateRequestConflict][40900000023]`\n* `[CreateRequestInProgress][40900000022]`\n* `[DefaultWakerCannotDelete][40900000024]`\n* `[ElicitationAlreadyResolved][40900000015]`\n* `[IMConfigurationConflict][40900004001]`\n* `[IMConnectionDisabled][40900004006]`\n* `[IMConnectionHasWorkflowDependencies][40900004005]`\n* `[IMConnectionInUse][40900004004]`\n* `[IMConnectionReplaced][40900004007]`\n* `[IMDeliveryContextUnavailable][40900004002]`\n* `[IMDeliveryRetryUnsafe][40900004003]`\n* `[IntegrationConflict][40900009601]`\n* `[KnowledgeCancelled][40900009502]`\n* `[KnowledgeConflict][40900009501]`\n* `[KnowledgeFolderHasChildren][40900009503]`\n* `[KnowledgeFolderHasPages][40900009504]`\n* `[MCPConnectorNameConflict][40900000010]`\n* `[MCPConnectorTrustRequired][40900000013]`\n* `[PluginAccountConflict][40900006506]`\n* `[PluginBusy][40900006505]`\n* `[PluginConfigurationConflict][40900006502]`\n* `[PluginNotReady][40900006503]`\n* `[PluginSkillConflict][40900006504]`\n* `[PluginSkillSelectionConflict][40900006507]`\n* `[PluginVersionConflict][40900006501]`\n* `[ProjectNameConflict][40900000007]`\n* `[RolePresetNameConflict][40900000003]`\n* `[RuntimeInstallationBusy][40900007301]`\n* `[RuntimeRestartBusy][40900007302]`\n* `[RuntimeUpdateCheckBusy][40900007303]`\n* `[RuntimeVersionUnknown][40900007304]`\n* `[SkillNameConflict][40900000008]`\n* `[SystemRolePresetReadOnly][40900000004]`\n* `[WakerHasRunningWork][40900000005]`\n* `[WakerNameConflict][40900000002]`\n* `[WorkflowAuthoringFinished][40900003007]`\n* `[WorkflowAuthoringSuperseded][40900003006]`\n* `[WorkflowFenceConflict][40900003004]`\n* `[WorkflowRequestConflict][40900003002]`\n* `[WorkflowRevisionConflict][40900003001]`\n* `[WorkflowStateConflict][40900003003]`\n* `[WorkspaceResourceConflict][40900007104]`\n",
+            "description": ">\n* `[AIAccountBusy][40900000027]`\n* `[AIAccountInUse][40900000029]`\n* `[AIAccountNameConflict][40900000030]`\n* `[AIAccountRevisionConflict][40900000028]`\n* `[AgentCommandOutcomeUnknown][40900009001]`\n* `[AgentCommandRequestConflict][40900009002]`\n* `[ApprovalAlreadyResolved][40900000014]`\n* `[AutomaticTaskAdmissionRevoked][40900000037]`\n* `[AutomaticTaskBusy][40900000033]`\n* `[AutomaticTaskDisabled][40900000034]`\n* `[AutomaticTaskInputChanged][40900003005]`\n* `[AutomaticTaskRequestConflict][40900000035]`\n* `[AutomaticTaskRevisionConflict][40900000036]`\n* `[BuiltInMCPConnectorCannotDelete][40900000011]`\n* `[BuiltInMCPConnectorReadOnly][40900000012]`\n* `[BuiltInSkillCannotUninstall][40900000009]`\n* `[ChannelHasActiveWork][40900000017]`\n* `[ChannelNameConflict][40900000016]`\n* `[ChannelTaskAttemptStale][40900000021]`\n* `[ChannelTaskLimitReached][40900000019]`\n* `[ChannelTaskRetryLimitReached][40900000020]`\n* `[ChannelTaskStateConflict][40900000018]`\n* `[ChatForkIndeterminate][40900000026]`\n* `[ChatForkUnavailable][40900000025]`\n* `[ChatHasActiveExecution][40900000006]`\n* `[ChatLogIdempotencyConflict][40900007202]`\n* `[ChatLogNativeOutcomePending][40900007203]`\n* `[ChatLogVersionConflict][40900007201]`\n* `[Conflict][40900000001]`\n* `[CreateRequestConflict][40900000023]`\n* `[CreateRequestInProgress][40900000022]`\n* `[DefaultWakerCannotDelete][40900000024]`\n* `[ElicitationAlreadyResolved][40900000015]`\n* `[IMConfigurationConflict][40900004001]`\n* `[IMConnectionDisabled][40900004006]`\n* `[IMConnectionHasWorkflowDependencies][40900004005]`\n* `[IMConnectionInUse][40900004004]`\n* `[IMConnectionReplaced][40900004007]`\n* `[IMDeliveryContextUnavailable][40900004002]`\n* `[IMDeliveryRetryUnsafe][40900004003]`\n* `[IntegrationConflict][40900009601]`\n* `[KnowledgeCancelled][40900009502]`\n* `[KnowledgeConflict][40900009501]`\n* `[KnowledgeFolderHasChildren][40900009503]`\n* `[KnowledgeFolderHasPages][40900009504]`\n* `[MCPConnectorNameConflict][40900000010]`\n* `[MCPConnectorTrustRequired][40900000013]`\n* `[PluginAccountConflict][40900006506]`\n* `[PluginBusy][40900006505]`\n* `[PluginConfigurationConflict][40900006502]`\n* `[PluginNotReady][40900006503]`\n* `[PluginSkillConflict][40900006504]`\n* `[PluginSkillSelectionConflict][40900006507]`\n* `[PluginVersionConflict][40900006501]`\n* `[ProjectNameConflict][40900000007]`\n* `[ReadingIntentConflict][40900009201]`\n* `[RolePresetNameConflict][40900000003]`\n* `[RuntimeInstallationBusy][40900007301]`\n* `[RuntimeRestartBusy][40900007302]`\n* `[RuntimeUpdateCheckBusy][40900007303]`\n* `[RuntimeVersionUnknown][40900007304]`\n* `[SkillNameConflict][40900000008]`\n* `[SystemRolePresetReadOnly][40900000004]`\n* `[WakerHasRunningWork][40900000005]`\n* `[WakerNameConflict][40900000002]`\n* `[WorkflowAuthoringFinished][40900003007]`\n* `[WorkflowAuthoringSuperseded][40900003006]`\n* `[WorkflowFenceConflict][40900003004]`\n* `[WorkflowRequestConflict][40900003002]`\n* `[WorkflowRevisionConflict][40900003001]`\n* `[WorkflowStateConflict][40900003003]`\n* `[WorkspaceResourceConflict][40900007104]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5934,6 +5942,7 @@
               "[PluginSkillSelectionConflict][40900006507]",
               "[PluginVersionConflict][40900006501]",
               "[ProjectNameConflict][40900000007]",
+              "[ReadingIntentConflict][40900009201]",
               "[RolePresetNameConflict][40900000003]",
               "[RuntimeInstallationBusy][40900007301]",
               "[RuntimeRestartBusy][40900007302]",
@@ -5953,7 +5962,7 @@
             ]
           },
           "413": {
-            "description": ">\n* `[WorkspaceResourceTooLarge][41300007105]`\n",
+            "description": ">\n* `[ReadingTargetLimitExceeded][41300009201]`\n* `[WorkspaceResourceTooLarge][41300007105]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5962,6 +5971,7 @@
               }
             },
             "x-status-errors": [
+              "[ReadingTargetLimitExceeded][41300009201]",
               "[WorkspaceResourceTooLarge][41300007105]"
             ]
           },
@@ -6108,7 +6118,7 @@
             ]
           },
           "503": {
-            "description": ">\n* `[AgentConnectionUnavailable][50300009001]`\n* `[DatabaseBusy][50300001001]`\n* `[IMServiceUnavailable][50300004001]`\n* `[IntegrationListenerError][50300009601]`\n* `[TerminalUnavailable][50300007108]`\n",
+            "description": ">\n* `[AgentConnectionUnavailable][50300009001]`\n* `[DatabaseBusy][50300001001]`\n* `[IMServiceUnavailable][50300004001]`\n* `[IntegrationListenerError][50300009601]`\n* `[ReadingExecutionInterrupted][50300009202]`\n* `[ReadingProjectionIncomplete][50300009201]`\n* `[TerminalUnavailable][50300007108]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -6121,6 +6131,8 @@
               "[DatabaseBusy][50300001001]",
               "[IMServiceUnavailable][50300004001]",
               "[IntegrationListenerError][50300009601]",
+              "[ReadingExecutionInterrupted][50300009202]",
+              "[ReadingProjectionIncomplete][50300009201]",
               "[TerminalUnavailable][50300007108]"
             ]
           },
@@ -6449,7 +6461,7 @@
             ]
           },
           "409": {
-            "description": ">\n* `[AIAccountBusy][40900000027]`\n* `[AIAccountInUse][40900000029]`\n* `[AIAccountNameConflict][40900000030]`\n* `[AIAccountRevisionConflict][40900000028]`\n* `[AgentCommandOutcomeUnknown][40900009001]`\n* `[AgentCommandRequestConflict][40900009002]`\n* `[ApprovalAlreadyResolved][40900000014]`\n* `[AutomaticTaskAdmissionRevoked][40900000037]`\n* `[AutomaticTaskBusy][40900000033]`\n* `[AutomaticTaskDisabled][40900000034]`\n* `[AutomaticTaskInputChanged][40900003005]`\n* `[AutomaticTaskRequestConflict][40900000035]`\n* `[AutomaticTaskRevisionConflict][40900000036]`\n* `[BuiltInMCPConnectorCannotDelete][40900000011]`\n* `[BuiltInMCPConnectorReadOnly][40900000012]`\n* `[BuiltInSkillCannotUninstall][40900000009]`\n* `[ChannelHasActiveWork][40900000017]`\n* `[ChannelNameConflict][40900000016]`\n* `[ChannelTaskAttemptStale][40900000021]`\n* `[ChannelTaskLimitReached][40900000019]`\n* `[ChannelTaskRetryLimitReached][40900000020]`\n* `[ChannelTaskStateConflict][40900000018]`\n* `[ChatForkIndeterminate][40900000026]`\n* `[ChatForkUnavailable][40900000025]`\n* `[ChatHasActiveExecution][40900000006]`\n* `[ChatLogIdempotencyConflict][40900007202]`\n* `[ChatLogNativeOutcomePending][40900007203]`\n* `[ChatLogVersionConflict][40900007201]`\n* `[Conflict][40900000001]`\n* `[CreateRequestConflict][40900000023]`\n* `[CreateRequestInProgress][40900000022]`\n* `[DefaultWakerCannotDelete][40900000024]`\n* `[ElicitationAlreadyResolved][40900000015]`\n* `[IMConfigurationConflict][40900004001]`\n* `[IMConnectionDisabled][40900004006]`\n* `[IMConnectionHasWorkflowDependencies][40900004005]`\n* `[IMConnectionInUse][40900004004]`\n* `[IMConnectionReplaced][40900004007]`\n* `[IMDeliveryContextUnavailable][40900004002]`\n* `[IMDeliveryRetryUnsafe][40900004003]`\n* `[IntegrationConflict][40900009601]`\n* `[KnowledgeCancelled][40900009502]`\n* `[KnowledgeConflict][40900009501]`\n* `[KnowledgeFolderHasChildren][40900009503]`\n* `[KnowledgeFolderHasPages][40900009504]`\n* `[MCPConnectorNameConflict][40900000010]`\n* `[MCPConnectorTrustRequired][40900000013]`\n* `[PluginAccountConflict][40900006506]`\n* `[PluginBusy][40900006505]`\n* `[PluginConfigurationConflict][40900006502]`\n* `[PluginNotReady][40900006503]`\n* `[PluginSkillConflict][40900006504]`\n* `[PluginSkillSelectionConflict][40900006507]`\n* `[PluginVersionConflict][40900006501]`\n* `[ProjectNameConflict][40900000007]`\n* `[RolePresetNameConflict][40900000003]`\n* `[RuntimeInstallationBusy][40900007301]`\n* `[RuntimeRestartBusy][40900007302]`\n* `[RuntimeUpdateCheckBusy][40900007303]`\n* `[RuntimeVersionUnknown][40900007304]`\n* `[SkillNameConflict][40900000008]`\n* `[SystemRolePresetReadOnly][40900000004]`\n* `[WakerHasRunningWork][40900000005]`\n* `[WakerNameConflict][40900000002]`\n* `[WorkflowAuthoringFinished][40900003007]`\n* `[WorkflowAuthoringSuperseded][40900003006]`\n* `[WorkflowFenceConflict][40900003004]`\n* `[WorkflowRequestConflict][40900003002]`\n* `[WorkflowRevisionConflict][40900003001]`\n* `[WorkflowStateConflict][40900003003]`\n* `[WorkspaceResourceConflict][40900007104]`\n",
+            "description": ">\n* `[AIAccountBusy][40900000027]`\n* `[AIAccountInUse][40900000029]`\n* `[AIAccountNameConflict][40900000030]`\n* `[AIAccountRevisionConflict][40900000028]`\n* `[AgentCommandOutcomeUnknown][40900009001]`\n* `[AgentCommandRequestConflict][40900009002]`\n* `[ApprovalAlreadyResolved][40900000014]`\n* `[AutomaticTaskAdmissionRevoked][40900000037]`\n* `[AutomaticTaskBusy][40900000033]`\n* `[AutomaticTaskDisabled][40900000034]`\n* `[AutomaticTaskInputChanged][40900003005]`\n* `[AutomaticTaskRequestConflict][40900000035]`\n* `[AutomaticTaskRevisionConflict][40900000036]`\n* `[BuiltInMCPConnectorCannotDelete][40900000011]`\n* `[BuiltInMCPConnectorReadOnly][40900000012]`\n* `[BuiltInSkillCannotUninstall][40900000009]`\n* `[ChannelHasActiveWork][40900000017]`\n* `[ChannelNameConflict][40900000016]`\n* `[ChannelTaskAttemptStale][40900000021]`\n* `[ChannelTaskLimitReached][40900000019]`\n* `[ChannelTaskRetryLimitReached][40900000020]`\n* `[ChannelTaskStateConflict][40900000018]`\n* `[ChatForkIndeterminate][40900000026]`\n* `[ChatForkUnavailable][40900000025]`\n* `[ChatHasActiveExecution][40900000006]`\n* `[ChatLogIdempotencyConflict][40900007202]`\n* `[ChatLogNativeOutcomePending][40900007203]`\n* `[ChatLogVersionConflict][40900007201]`\n* `[Conflict][40900000001]`\n* `[CreateRequestConflict][40900000023]`\n* `[CreateRequestInProgress][40900000022]`\n* `[DefaultWakerCannotDelete][40900000024]`\n* `[ElicitationAlreadyResolved][40900000015]`\n* `[IMConfigurationConflict][40900004001]`\n* `[IMConnectionDisabled][40900004006]`\n* `[IMConnectionHasWorkflowDependencies][40900004005]`\n* `[IMConnectionInUse][40900004004]`\n* `[IMConnectionReplaced][40900004007]`\n* `[IMDeliveryContextUnavailable][40900004002]`\n* `[IMDeliveryRetryUnsafe][40900004003]`\n* `[IntegrationConflict][40900009601]`\n* `[KnowledgeCancelled][40900009502]`\n* `[KnowledgeConflict][40900009501]`\n* `[KnowledgeFolderHasChildren][40900009503]`\n* `[KnowledgeFolderHasPages][40900009504]`\n* `[MCPConnectorNameConflict][40900000010]`\n* `[MCPConnectorTrustRequired][40900000013]`\n* `[PluginAccountConflict][40900006506]`\n* `[PluginBusy][40900006505]`\n* `[PluginConfigurationConflict][40900006502]`\n* `[PluginNotReady][40900006503]`\n* `[PluginSkillConflict][40900006504]`\n* `[PluginSkillSelectionConflict][40900006507]`\n* `[PluginVersionConflict][40900006501]`\n* `[ProjectNameConflict][40900000007]`\n* `[ReadingIntentConflict][40900009201]`\n* `[RolePresetNameConflict][40900000003]`\n* `[RuntimeInstallationBusy][40900007301]`\n* `[RuntimeRestartBusy][40900007302]`\n* `[RuntimeUpdateCheckBusy][40900007303]`\n* `[RuntimeVersionUnknown][40900007304]`\n* `[SkillNameConflict][40900000008]`\n* `[SystemRolePresetReadOnly][40900000004]`\n* `[WakerHasRunningWork][40900000005]`\n* `[WakerNameConflict][40900000002]`\n* `[WorkflowAuthoringFinished][40900003007]`\n* `[WorkflowAuthoringSuperseded][40900003006]`\n* `[WorkflowFenceConflict][40900003004]`\n* `[WorkflowRequestConflict][40900003002]`\n* `[WorkflowRevisionConflict][40900003001]`\n* `[WorkflowStateConflict][40900003003]`\n* `[WorkspaceResourceConflict][40900007104]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -6513,6 +6525,7 @@
               "[PluginSkillSelectionConflict][40900006507]",
               "[PluginVersionConflict][40900006501]",
               "[ProjectNameConflict][40900000007]",
+              "[ReadingIntentConflict][40900009201]",
               "[RolePresetNameConflict][40900000003]",
               "[RuntimeInstallationBusy][40900007301]",
               "[RuntimeRestartBusy][40900007302]",
@@ -6532,7 +6545,7 @@
             ]
           },
           "413": {
-            "description": ">\n* `[WorkspaceResourceTooLarge][41300007105]`\n",
+            "description": ">\n* `[ReadingTargetLimitExceeded][41300009201]`\n* `[WorkspaceResourceTooLarge][41300007105]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -6541,6 +6554,7 @@
               }
             },
             "x-status-errors": [
+              "[ReadingTargetLimitExceeded][41300009201]",
               "[WorkspaceResourceTooLarge][41300007105]"
             ]
           },
@@ -6687,7 +6701,7 @@
             ]
           },
           "503": {
-            "description": ">\n* `[AgentConnectionUnavailable][50300009001]`\n* `[DatabaseBusy][50300001001]`\n* `[IMServiceUnavailable][50300004001]`\n* `[IntegrationListenerError][50300009601]`\n* `[TerminalUnavailable][50300007108]`\n",
+            "description": ">\n* `[AgentConnectionUnavailable][50300009001]`\n* `[DatabaseBusy][50300001001]`\n* `[IMServiceUnavailable][50300004001]`\n* `[IntegrationListenerError][50300009601]`\n* `[ReadingExecutionInterrupted][50300009202]`\n* `[ReadingProjectionIncomplete][50300009201]`\n* `[TerminalUnavailable][50300007108]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -6700,6 +6714,8 @@
               "[DatabaseBusy][50300001001]",
               "[IMServiceUnavailable][50300004001]",
               "[IntegrationListenerError][50300009601]",
+              "[ReadingExecutionInterrupted][50300009202]",
+              "[ReadingProjectionIncomplete][50300009201]",
               "[TerminalUnavailable][50300007108]"
             ]
           },

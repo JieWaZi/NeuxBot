@@ -23,6 +23,16 @@ it("展开摘要步骤时读取真实输入输出，不把列表省略字段显�
   const detail = vi.fn();
   const endpoint = `${origin}/api/v1/workflows/flow/runs/run`;
   server.use(
+    http.get(`${origin}/api/v1/runs/workflow_run/run/viewing`, () =>
+      HttpResponse.json({
+        ownerKind: "workflow_run",
+        ownerId: "run",
+        complete: true,
+        epoch: "epoch",
+        viewable: true,
+        viewed: true,
+      }),
+    ),
     http.get(endpoint, () =>
       HttpResponse.json({
         run: {
@@ -122,6 +132,7 @@ it("展开摘要步骤时读取真实输入输出，不把列表省略字段显�
 
 vi.mock("@/shared/api/global-events", () => ({
   registerCoreConnectionRecovery: () => () => {},
+  getReadyEventEpoch: () => undefined,
   subscribeGlobalEvents: () => () => {},
 }));
 

@@ -25,7 +25,6 @@ import {
   observeWorkspaceResource,
   readWorkspaceResource,
   sanitizeDownloadFileName,
-  showDesktopNotification,
   stageAttachment,
 } from "./index";
 import type {
@@ -88,47 +87,6 @@ describe("桌面桥接", () => {
       baseUrl: "http://127.0.0.1:8080",
       token: "test",
     });
-  });
-  it("通知点击返回对应回调并释放监听", async () => {
-    let action:
-      ((event: { id: string; action: "click" | "close" }) => void) | undefined;
-    const stop = vi.fn();
-    const onClick = vi.fn();
-    const show_notification = vi.fn(async () => true);
-    installServices({
-      show_notification,
-      onNotificationAction: (handler: typeof action) => {
-        action = handler;
-        return stop;
-      },
-    });
-    await showDesktopNotification({
-      id: "approval",
-      title: "审批",
-      body: "执行命令",
-      onClick,
-    });
-    expect(show_notification).toHaveBeenCalledWith({
-      id: "approval",
-      title: "审批",
-      body: "执行命令",
-    });
-    action?.({ id: "other", action: "click" });
-    expect(onClick).not.toHaveBeenCalled();
-    action?.({ id: "approval", action: "click" });
-    expect(onClick).toHaveBeenCalledOnce();
-    expect(stop).toHaveBeenCalledOnce();
-  });
-  it("通知发送失败时释放监听", async () => {
-    const stop = vi.fn();
-    installServices({
-      show_notification: async () => false,
-      onNotificationAction: () => stop,
-    });
-    await expect(
-      showDesktopNotification({ id: "a", title: "审批", body: "命令" }),
-    ).resolves.toBe(false);
-    expect(stop).toHaveBeenCalledOnce();
   });
 });
 

@@ -99,6 +99,36 @@ type WorkflowRun struct {
 
 func (WorkflowRun) TableName() string { return "workflow_runs" }
 
+// AllowsHumanAction 验证本运行及 joined 祖先在同一时刻仍能处理人工请求。
+func (run WorkflowRun) AllowsHumanAction(at int64, loadParent func(string) (WorkflowRun, error)) (bool, error) {
+	seen := map[string]bool{}
+	for run.ID != "" {
+		if seen[run.ID] || !run.AllowsOwnHumanAction(at) {
+			return false, nil
+		}
+		seen[run.ID] = true
+		if !run.Joined || run.ParentRunID == "" {
+			return true, nil
+		}
+		parent, err := loadParent(run.ParentRunID)
+		if err != nil {
+			return false, err
+		}
+		run = parent
+	}
+	return false, nil
+}
+
+// AllowsOwnHumanAction 判断当前运行的状态和期限，调用方负责核验 joined 祖先。
+func (run WorkflowRun) AllowsOwnHumanAction(at int64) bool {
+	switch run.Status {
+	case constants.WorkflowRunStatusQueued, constants.WorkflowRunStatusRunning, constants.WorkflowRunStatusWaiting, constants.WorkflowRunStatusRecovering:
+		return run.DeadlineAt <= 0 || at < run.DeadlineAt
+	default:
+		return false
+	}
+}
+
 // WorkflowFiber 保存可以从 PC 恢复的主流程或一项任务。
 type WorkflowFiber struct {
 	// ID 是独立执行帧身份。
@@ -236,7 +266,7 @@ type WorkflowEffect struct {
 	// AttemptGeneration 区分真实尝试，不随 Runner 所有者改变。
 	AttemptGeneration int64 `json:"attemptGeneration"`
 	// ExecutionID 是派发前预分配的 Core 执行身份。
-	ExecutionID string `json:"executionId"`
+	ExecutionID string `gorm:"index" json:"executionId"`
 	// ExecutionStatus 保存本次真实 Execution 收据，自动重试只接受已停止的失败尝试。
 	ExecutionStatus constants.ExecutionStatus `json:"executionStatus"`
 	// ChatID 是 Core 接纳后的稳定对话身份。

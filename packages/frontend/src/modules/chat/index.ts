@@ -38,6 +38,7 @@ export {
   ChatHistoryPopover,
   ChatHistoryPanelSurface,
   ChatHistoryNavigationRow,
+  ChatHistoryRowStatus,
 } from "./components/chat-history-navigation";
 export { ChatGroupHeader } from "./components/chat-group-header";
 

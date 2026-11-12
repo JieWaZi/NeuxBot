@@ -1,9 +1,8 @@
 import { z } from "zod";
 
 export const globalEventTopics = [
-  "notifications",
   "work-board",
-  "work-results",
+  "reading",
   "entities",
   "automatic-tasks",
   "im",
@@ -104,9 +103,14 @@ function validGlobalEventResource(
     return (
       !resource.id &&
       !resource.parentId &&
-      !["chat", "team", "workflow", "account-login", "workspace"].includes(
-        topic,
-      )
+      ![
+        "chat",
+        "team",
+        "workflow",
+        "account-login",
+        "workspace",
+        "reading",
+      ].includes(topic)
     );
   if (!resource.id) return false;
   switch (topic) {
@@ -132,9 +136,14 @@ function validGlobalEventResource(
     case "account-login":
       return resource.kind === "account" && Boolean(resource.parentId);
     case "work-board":
-    case "work-results":
       return (
-        ["chat", "team_thread", "workflow_run"].includes(resource.kind) &&
+        ["chat", "team_thread", "workflow_run", "automatic_run"].includes(
+          resource.kind,
+        ) && !resource.parentId
+      );
+    case "reading":
+      return (
+        ["chat", "workflow_run", "automatic_run"].includes(resource.kind) &&
         !resource.parentId
       );
     case "entities":

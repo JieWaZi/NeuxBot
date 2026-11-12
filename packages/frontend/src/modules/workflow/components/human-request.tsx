@@ -1,7 +1,6 @@
 import { humanAnswerLabel } from "../model/human-answer";
 import { WorkflowResult } from "./instance-details";
 import { Input } from "@/shared/ui/input";
-import { notificationPresentationProps } from "@/shared/api/notification-presentation";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -114,13 +113,7 @@ export function HumanRequestCard({
   };
   const waiting = human.status === "waiting";
   return (
-    <Card
-      variant="section"
-      {...notificationPresentationProps({
-        kind: "request",
-        noticeId: `human:${human.id}`,
-      })}
-    >
+    <Card variant="section">
       <div className="grid gap-3">
         <h3 className="type-label font-medium">{t("waitingHuman")}</h3>
         <ReadOnlyMarkdown source={human.prompt ?? ""} />

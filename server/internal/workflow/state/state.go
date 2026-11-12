@@ -64,6 +64,20 @@ func (s *Coordinator) OwnedRun(ctx context.Context, id string) (controllers.Work
 	return s.runs.LoadRunState(ctx, id)
 }
 
+// RequireHumanAction 验证当前请求的运行链；由原人工命令在事务内调用。
+func (s *Coordinator) RequireHumanAction(ctx context.Context, run models.WorkflowRun, at int64) error {
+	allowed, err := run.AllowsHumanAction(at, func(parentID string) (models.WorkflowRun, error) {
+		return s.runs.GetRun(ctx, parentID)
+	})
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		return status_error.WorkflowStateConflict
+	}
+	return nil
+}
+
 // CommitRun 将效果终态投影到节点实例，并在调用方事务中完成版本 CAS 与事件保存。
 func (s *Coordinator) CommitRun(ctx context.Context, state controllers.WorkflowRunState) error {
 	// 效果收据与节点终态同事务提交，后续推进失败或停止不能覆盖已完成的事实。

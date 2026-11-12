@@ -16,6 +16,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
+	"gorm.io/gorm"
 )
 
 // workflowFixture 持有显式装配的真实共享服务与 API 依赖，不承载业务实现。
@@ -24,6 +25,8 @@ type workflowFixture struct {
 	*workflow.Service
 	// Config 是同一组件使用的仓储、状态与外部执行边界。
 	workflow.Config
+	// db 保存测试可控制的临时持久状态。
+	db *gorm.DB
 }
 
 func workflowTestService(t *testing.T) (*workflowFixture, controllers.WorkflowController) {
@@ -42,7 +45,9 @@ func workflowTestService(t *testing.T) (*workflowFixture, controllers.WorkflowCo
 		}
 	})
 	store := controllers.NewWorkflowController(database.DB)
-	return workflowTestNew(workflow.Config{Commands: controllers.NewAgentCommandController(database.DB), Store: store, CreationSessions: controllers.NewWorkflowCreationController(database.DB), Consumers: controllers.NewWorkflowConsumerController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB)), DataDirectory: t.TempDir()}), store
+	fixture := workflowTestNew(workflow.Config{Commands: controllers.NewAgentCommandController(database.DB), Store: store, CreationSessions: controllers.NewWorkflowCreationController(database.DB), Consumers: controllers.NewWorkflowConsumerController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB)), DataDirectory: t.TempDir()})
+	fixture.db = database.DB
+	return fixture, store
 }
 
 func workflowTestSource(t *testing.T) string {

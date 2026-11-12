@@ -835,3 +835,19 @@ const (
 	// @errEN the conversation message does not exist
 	ChatMessageNotFound StatusError = http.StatusNotFound*1e8 + 7201
 )
+
+const (
+	// @errZH 会话阅读位置已变化，请刷新后重新操作
+	// @errEN the reading position changed; refresh before trying again
+	ReadingIntentConflict StatusError = http.StatusConflict*1e8 + 9201
+	// @errZH 会话阅读索引暂不可用，请等待恢复或刷新
+	// @errEN the conversation reading index is unavailable; wait for recovery or refresh
+	ReadingProjectionIncomplete StatusError = http.StatusServiceUnavailable*1e8 + 9201
+	// @errZH 待查看工作过多，请缩小筛选范围
+	// @errEN too many awaiting-view targets; narrow the filter
+	ReadingTargetLimitExceeded StatusError = http.StatusRequestEntityTooLarge*1e8 + 9201
+)
+
+// @errZH 智能体执行因 Core 重启而中断
+// @errEN the agent execution was interrupted by a Core restart
+const ReadingExecutionInterrupted StatusError = http.StatusServiceUnavailable*1e8 + 9202

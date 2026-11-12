@@ -102,6 +102,7 @@ export function createApplicationLifecycle({
     if (window.isMinimized()) window.restore();
     window.show();
     window.focus();
+    return window;
   };
 
   const restoreWindow = () => {

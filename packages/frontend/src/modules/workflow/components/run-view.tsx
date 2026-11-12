@@ -1,5 +1,4 @@
 import { RetryRunDialog } from "./retry-run-dialog";
-import { useNotificationPresentation } from "@/shared/api/notification-presentation";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { Square, WandSparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -76,15 +75,6 @@ export function WorkflowRunView({
   });
   const switching = query.isPlaceholderData;
   const run = switching ? undefined : query.data?.run;
-  const runRoot = useRef<HTMLElement>(null);
-  useNotificationPresentation({
-    target:
-      run?.id === runId && query.data?.manifest
-        ? { kind: "workflow_run", runId }
-        : undefined,
-    root: runRoot,
-    active,
-  });
   const instances = useMemo(
     () => (switching ? [] : (query.data?.instances ?? [])),
     [query.data?.instances, switching],
@@ -128,10 +118,7 @@ export function WorkflowRunView({
         const next = new URLSearchParams(previous);
         next.delete("instance");
         next.delete("node");
-        if (
-          answeredRequestId &&
-          next.get("request")?.split(":").at(-1) === answeredRequestId
-        )
+        if (answeredRequestId && next.get("request") === answeredRequestId)
           next.delete("request");
         return next;
       },
@@ -170,7 +157,7 @@ export function WorkflowRunView({
     );
   };
   const prompted = useRef(new Set<string>());
-  const requestedId = params.get("request")?.split(":").at(-1);
+  const requestedId = params.get("request") ?? undefined;
   const requestedGone = Boolean(
     requestedId &&
     run &&
@@ -243,10 +230,7 @@ export function WorkflowRunView({
     </div>
   );
   return (
-    <section
-      ref={runRoot}
-      className="@container/run-view relative flex min-h-0 min-w-0 flex-1"
-    >
+    <section className="@container/run-view relative flex min-h-0 min-w-0 flex-1">
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         {actionsContainer ? (
           createPortal(actions, actionsContainer)
@@ -268,7 +252,7 @@ export function WorkflowRunView({
           >
             {boardText("requestGone")}
             <Button variant="ghost" size="sm" asChild>
-              <Link to="/work-board?mode=attention">
+              <Link to="/work-board?mode=action">
                 {boardText("backToBoard")}
               </Link>
             </Button>

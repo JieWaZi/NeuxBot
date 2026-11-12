@@ -8,39 +8,24 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"gorm.io/gorm"
 )
-
-// boardAttentionFact 补充通知需要的原验收围栏和人工输入期限，不持久化派生状态。
-type boardAttentionFact struct {
-	// Attention 是工作看板和通知共用的有效请求定位。
-	Attention models.WorkBoardAttention
-	// Fence 是原团队任务当前验收版本。
-	Fence int64
-	// Deadline 是人工输入的到期时间，零表示不限期。
-	Deadline int64
-}
 
 // boardAttentionPageKey 只保留深页排序需要的身份，不保留标题、请求正文和关联对象。
 type boardAttentionPageKey struct {
 	// ID 是有效请求的原始身份，用于补齐选中页。
 	ID string
-	// OrderID 是当前入口的稳定排序身份。
-	OrderID string
 	// CreatedAt 是请求时间。
 	CreatedAt int64
 	// OwnerKind 是归属容器种类。
-	OwnerKind constants.WorkResultOwnerKind
+	OwnerKind constants.WorkOwnerKind
 	// OwnerID 是归属容器身份，用于限制第二次读取。
 	OwnerID string
 }
 
-func attentionPageKey(a models.WorkBoardAttention, orderID string) boardAttentionPageKey {
-	return boardAttentionPageKey{ID: a.ID, OrderID: orderID, CreatedAt: a.CreatedAt, OwnerKind: a.OwnerKind, OwnerID: a.OwnerID}
-}
-
 // attentionPageFacts 仅为选中页的原容器分批补齐请求，沿用首次扫描的有效性时刻。
-func (c *workBoardController) attentionPageFacts(ctx context.Context, at int64, keys []boardAttentionPageKey) ([]boardAttentionFact, error) {
-	facts := make([]boardAttentionFact, len(keys))
+func (c *workBoardController) attentionPageFacts(ctx context.Context, at int64, keys []boardAttentionPageKey) ([]models.WorkBoardAttention, error) {
+	facts := make([]models.WorkBoardAttention, len(keys))
 	if len(keys) == 0 {
 		return facts, nil
 	}
@@ -55,8 +40,8 @@ func (c *workBoardController) attentionPageFacts(ctx context.Context, at int64, 
 			owners = append(owners, models.WorkBoardEntry{OwnerKind: key.OwnerKind, OwnerID: key.OwnerID})
 		}
 	}
-	err := c.walkAttention(ctx, at, owners, func(f boardAttentionFact) error {
-		if i, ok := positions[f.Attention.ID]; ok {
+	err := c.walkAttention(ctx, at, boardAttentionScope{owners: owners}, true, func(f models.WorkBoardAttention) error {
+		if i, ok := positions[f.ID]; ok {
 			facts[i] = f
 		}
 		return nil
@@ -64,36 +49,72 @@ func (c *workBoardController) attentionPageFacts(ctx context.Context, at int64, 
 	return facts, err
 }
 
-// walkAttention 按原表主键分批遍历当前等待集合，不积累全部待办或关联正文。
-func (c *workBoardController) walkAttention(ctx context.Context, at int64, owners []models.WorkBoardEntry, visit func(boardAttentionFact) error) error {
-	db := controllerDB(ctx, c.db)
+const pendingChatPredicate = "active_execution_id<>'' AND (waiting_approval=1 OR waiting_elicitation=1)"
+
+// boardPendingQueries 是全局扫描与精确定位共用的等待候选查询。
+func boardPendingQueries(db *gorm.DB, at int64) (chats, tasks, humans, operations *gorm.DB) {
 	// OR 等待条件会让 SQLite 误选两个布尔索引并在每批重复排序；该部分索引按主键有序续批。
-	chats := db.Model(&models.Chat{}).Table("chats INDEXED BY idx_chat_pending_id").Select("id,waker_id,title,active_execution_id,waiting_approval,waiting_elicitation,pending_approvals,pending_elicitations,hidden_from_waker_history").Where("active_execution_id<>'' AND (waiting_approval=1 OR waiting_elicitation=1)")
-	tasks := db.Model(&models.ChannelTask{}).Select("id,thread_id,assignee_waker_id,subject,current_fence,finished_at,updated_at").Where("status = ?", constants.ChannelTaskStatusInReview)
-	humans := db.Model(&models.WorkflowHumanRequest{}).Select("id,run_id,prompt,created_at,deadline_at").Where("status='waiting' AND (deadline_at=0 OR deadline_at>?)", at)
-	operations := db.Model(&models.WorkflowOperationRequest{}).Select("id,run_id,description,created_at").Where("status='waiting'")
-	if owners != nil {
-		chatIDs, threadIDs, rootIDs := []string{}, []string{}, []string{}
-		for _, owner := range owners {
-			switch owner.OwnerKind {
-			case constants.WorkResultOwnerKindChat:
-				chatIDs = append(chatIDs, owner.OwnerID)
-			case constants.WorkResultOwnerKindTeamThread:
-				threadIDs = append(threadIDs, owner.OwnerID)
-			case constants.WorkResultOwnerKindWorkflowRun:
-				rootIDs = append(rootIDs, owner.OwnerID)
+	chats = db.Model(&models.Chat{}).Table("chats INDEXED BY idx_chat_pending_id").Select("id,waker_id,title,active_execution_id,waiting_approval,waiting_elicitation,pending_approvals,pending_elicitations,hidden_from_waker_history").Where(pendingChatPredicate)
+	tasks = db.Model(&models.ChannelTask{}).Select("id,thread_id,assignee_waker_id,subject,current_fence,finished_at,updated_at").Where("status = ?", constants.ChannelTaskStatusInReview)
+	humans = db.Model(&models.WorkflowHumanRequest{}).Select("id,run_id,instance_id,prompt,created_at,deadline_at").Where("status='waiting' AND (deadline_at=0 OR deadline_at>?)", at)
+	operations = db.Model(&models.WorkflowOperationRequest{}).Select("id,run_id,instance_id,description,created_at").Where("status='waiting'")
+	return
+}
+
+type boardAttentionScope struct {
+	// owners 限定看板当前页需要补齐的原容器。
+	owners []models.WorkBoardEntry
+	// executors 限定摘要请求中的伙伴、团队和工作流定义标识。
+	executors []string
+}
+
+// walkAttention 按原表主键分批遍历当前等待集合，不积累全部待办或关联正文。
+func (c *workBoardController) walkAttention(ctx context.Context, at int64, scope boardAttentionScope, details bool, visit func(models.WorkBoardAttention) error) error {
+	db := controllerDB(ctx, c.db)
+	chats, tasks, humans, operations := boardPendingQueries(db, at)
+	if scope.owners != nil || scope.executors != nil {
+		direct := db.Model(&models.Chat{}).Select("id")
+		threads := db.Model(&models.ChannelThread{}).Select("id")
+		visibleRuns := db.Model(&models.WorkflowRun{})
+		if scope.executors != nil {
+			direct = direct.Table("chats chat INDEXED BY idx_chat_pending_waker").Where(pendingChatPredicate).
+				Where("waker_id IN ?", scope.executors).Where(workBoardIndependentChat).
+				Where("NOT EXISTS (SELECT 1 FROM workflow_effects WHERE execution_id=chat.active_execution_id AND " + unboundWorkerEffect + ")")
+			threads = threads.Where("channel_id IN ? AND ready_at IS NOT NULL", scope.executors)
+			visibleRuns = visibleRuns.Where("definition_id IN ? AND (parent_run_id='' OR NOT joined) AND history_deleted_at IS NULL", scope.executors)
+		} else {
+			chatIDs, threadIDs, runIDs := []string{}, []string{}, []string{}
+			for _, owner := range scope.owners {
+				switch owner.OwnerKind {
+				case constants.WorkOwnerKindChat:
+					chatIDs = append(chatIDs, owner.OwnerID)
+				case constants.WorkOwnerKindTeamThread:
+					threadIDs = append(threadIDs, owner.OwnerID)
+				case constants.WorkOwnerKindWorkflowRun:
+					runIDs = append(runIDs, owner.OwnerID)
+				}
 			}
+			direct = direct.Where("id IN ?", chatIDs)
+			threads = threads.Where("id IN ?", threadIDs)
+			visibleRuns = visibleRuns.Where("id IN ?", runIDs)
 		}
-		runs := db.Model(&models.WorkflowRun{}).Select("id").Where("id IN ? OR root_run_id IN ?", rootIDs, rootIDs)
-		members := db.Model(&models.ChannelThreadMember{}).Select("chat_id").Where("thread_id IN ?", threadIDs)
-		workers := db.Model(&models.WorkflowEffect{}).Select("chat_id").Where("run_id IN (?)", runs)
-		chats = chats.Where("id IN ? OR id IN (?) OR id IN (?)", chatIDs, members, workers)
-		tasks = tasks.Where("thread_id IN ?", threadIDs)
+		// detached 运行及其 joined 后代仍保存顶层调用树 ID。
+		// 候选受 WorkflowMaxChildren 约束，返回前再校验准确的可见归属。
+		trees := visibleRuns.Session(&gorm.Session{}).Select("COALESCE(NULLIF(root_run_id,''),id)")
+		runs := db.Model(&models.WorkflowRun{}).Select("id").Where("id IN (?) OR root_run_id IN (?)", visibleRuns.Select("id"), trees)
+		members := db.Model(&models.ChannelThreadMember{}).Select("chat_id").Where("thread_id IN (?)", threads)
+		workers := db.Model(&models.WorkflowEffect{}).Select("chat_id").Where("run_id IN (?) AND chat_id<>''", runs)
+		unboundWorkers := db.Model(&models.WorkflowEffect{}).Select("execution_id").Where("run_id IN (?) AND "+unboundWorkerEffect, runs)
+		unboundChats := db.Model(&models.Chat{}).Select("id").Where("active_execution_id IN (?)", unboundWorkers)
+		// 合并窄身份后按待办索引点查，避免 OR 过滤扫描其他对象的待办。
+		candidates := db.Raw("? UNION ALL ? UNION ALL ? UNION ALL ?", direct, members, workers, unboundChats)
+		chats = chats.Where("id IN (?)", candidates)
+		tasks = tasks.Where("thread_id IN (?)", threads)
 		humans = humans.Where("run_id IN (?)", runs)
 		operations = operations.Where("run_id IN (?)", runs)
 	}
 	emit := func(chats []models.Chat, tasks []models.ChannelTask, humans []models.WorkflowHumanRequest, operations []models.WorkflowOperationRequest) error {
-		facts, err := c.attentionBatch(ctx, chats, tasks, humans, operations)
+		facts, err := c.attentionBatch(ctx, at, chats, tasks, humans, operations, details)
 		if err != nil {
 			return err
 		}
@@ -116,13 +137,17 @@ func (c *workBoardController) walkAttention(ctx context.Context, at int64, owner
 	return walkRepositoryRows(operations, func(rows []models.WorkflowOperationRequest) error { return emit(nil, nil, nil, rows) })
 }
 
+const unboundWorkerEffect = "chat_id='' AND json_extract(boundary,'$.primitive')='worker'"
+
 // attentionBatch 只为当前候选批补齐归属，在 Go 中统一解析生命周期与真实请求身份。
-func (c *workBoardController) attentionBatch(ctx context.Context, chats []models.Chat, tasks []models.ChannelTask, humans []models.WorkflowHumanRequest, operations []models.WorkflowOperationRequest) ([]boardAttentionFact, error) {
+func (c *workBoardController) attentionBatch(ctx context.Context, at int64, chats []models.Chat, tasks []models.ChannelTask, humans []models.WorkflowHumanRequest, operations []models.WorkflowOperationRequest, details bool) ([]models.WorkBoardAttention, error) {
 	db := controllerDB(ctx, c.db)
 	chatIDs, wakerIDs, threadIDs, runIDs, definitionIDs := []string{}, []string{}, []string{}, []string{}, []string{}
 	for _, v := range chats {
 		chatIDs = append(chatIDs, v.ID)
-		wakerIDs = append(wakerIDs, v.WakerID)
+		if details {
+			wakerIDs = append(wakerIDs, v.WakerID)
+		}
 	}
 	members, err := readRelatedRows[models.ChannelThreadMember](db, "chat_id", "thread_id,chat_id,waker_id,display_name", chatIDs)
 	if err != nil {
@@ -137,8 +162,10 @@ func (c *workBoardController) attentionBatch(ctx context.Context, chats []models
 		threadIDs = append(threadIDs, v.ThreadID)
 	}
 	reviewKeys := [][]any{}
-	for _, task := range tasks {
-		reviewKeys = append(reviewKeys, []any{task.ThreadID, task.AssigneeWakerID})
+	if details {
+		for _, task := range tasks {
+			reviewKeys = append(reviewKeys, []any{task.ThreadID, task.AssigneeWakerID})
+		}
 	}
 	var reviewMembers []models.ChannelThreadMember
 	if len(reviewKeys) > 0 {
@@ -158,22 +185,24 @@ func (c *workBoardController) attentionBatch(ctx context.Context, chats []models
 	for _, v := range threads {
 		threadByID[v.ID] = v
 	}
-	// 只补齐当前执行的效果；历史关系仅用于排除已退役 worker，不读取历史效果内容。
-	effectsByChat := map[string]map[string]string{}
+	// Worker 的 ExecutionID 在派发前已写入，首个请求可能先于 ChatID 回执。
+	effectsByChat := map[string]string{}
 	for start := 0; start < len(chats); start += repositoryReadBatch {
-		keys := [][]any{}
+		executionIDs := []string{}
+		chatByExecution := map[string]string{}
 		for _, chat := range chats[start:min(start+repositoryReadBatch, len(chats))] {
-			keys = append(keys, []any{chat.ID, chat.ActiveExecutionID})
+			executionIDs = append(executionIDs, chat.ActiveExecutionID)
+			chatByExecution[chat.ActiveExecutionID] = chat.ID
 		}
 		var effects []models.WorkflowEffect
-		if err := db.Select("chat_id,execution_id,run_id").Where("(chat_id,execution_id) IN ?", keys).Find(&effects).Error; err != nil {
+		if err := db.Select("chat_id,execution_id,run_id").Where("execution_id IN ? AND (chat_id<>'' OR ("+unboundWorkerEffect+"))", executionIDs).Find(&effects).Error; err != nil {
 			return nil, databaseError("read_pending_workflow_effects", "", err)
 		}
 		for _, effect := range effects {
-			if effectsByChat[effect.ChatID] == nil {
-				effectsByChat[effect.ChatID] = map[string]string{}
+			chatID := chatByExecution[effect.ExecutionID]
+			if effect.ChatID == "" || effect.ChatID == chatID {
+				effectsByChat[chatID] = effect.RunID
 			}
-			effectsByChat[effect.ChatID][effect.ExecutionID] = effect.RunID
 		}
 	}
 	var oldEffects []models.Chat
@@ -187,7 +216,7 @@ func (c *workBoardController) attentionBatch(ctx context.Context, chats []models
 		hasEffectHistory[chat.ID] = true
 	}
 	for _, v := range chats {
-		runIDs = append(runIDs, effectsByChat[v.ID][v.ActiveExecutionID])
+		runIDs = append(runIDs, effectsByChat[v.ID])
 	}
 	for _, v := range humans {
 		runIDs = append(runIDs, v.RunID)
@@ -240,14 +269,6 @@ func (c *workBoardController) attentionBatch(ctx context.Context, chats []models
 	if err != nil {
 		return nil, err
 	}
-	receipts, err := readRelatedRows[models.WorkResultReceipt](db.Where("owner_kind = ?", constants.WorkResultOwnerKindChat), "owner_id", "owner_id", chatIDs)
-	if err != nil {
-		return nil, err
-	}
-	hasReceipt := map[string]bool{}
-	for _, v := range receipts {
-		hasReceipt[v.OwnerID] = true
-	}
 	source := func(fallback string, values ...string) string {
 		for _, v := range values {
 			if v == "automatic" {
@@ -262,23 +283,20 @@ func (c *workBoardController) attentionBatch(ctx context.Context, chats []models
 		return fallback
 	}
 	rootOf := func(run models.WorkflowRun) models.WorkflowRun {
-		if run.RootRunID != "" {
-			return runs[run.RootRunID]
-		}
-		return run
+		return visibleWorkflowRun(run, runs)
 	}
-	facts := []boardAttentionFact{}
+	facts := []models.WorkBoardAttention{}
 	for _, chat := range chats {
 		member, hasMember := memberByChat[chat.ID]
 		thread := threadByID[member.ThreadID]
 		if hasMember && thread.ReadyAt == nil {
 			continue
 		}
-		runID, hasEffect := effectsByChat[chat.ID][chat.ActiveExecutionID]
+		runID, hasEffect := effectsByChat[chat.ID]
 		run := runs[runID]
 		root := rootOf(run)
 		definition := definitionByID[root.DefinitionID]
-		if hasEffect && (run.ID == "" || root.ID == "" || definition.ID == "" || !boardWorkflowAlive(run, runs)) {
+		if hasEffect && (run.ID == "" || root.ID == "" || definition.ID == "" || !boardWorkflowAlive(run, runs, at)) {
 			continue
 		}
 		if !hasEffect && hasEffectHistory[chat.ID] {
@@ -289,18 +307,17 @@ func (c *workBoardController) attentionBatch(ctx context.Context, chats []models
 		if hasCreation && creation.ID == "" {
 			continue
 		}
-		if !hasMember && !hasEffect && !hasCreation && chat.HiddenFromWakerHistory && chatSources[chat.ID] == "" && !hasReceipt[chat.ID] {
+		if !hasMember && !hasEffect && !hasCreation && chat.HiddenFromWakerHistory && chatSources[chat.ID] == "" {
 			continue
 		}
-		a := models.WorkBoardAttention{OwnerKind: constants.WorkResultOwnerKindChat, OwnerID: chat.ID, WorkTitle: chat.Title, ExecutorID: chat.WakerID, ActorName: wakerNames[chat.WakerID], Source: "chat", ChatID: chat.ID, WakerID: chat.WakerID}
+		a := models.WorkBoardAttention{OwnerKind: constants.WorkOwnerKindChat, OwnerID: chat.ID, WorkTitle: chat.Title, ExecutorID: chat.WakerID, ActorName: wakerNames[chat.WakerID], Source: "chat", ChatID: chat.ID, WakerID: chat.WakerID}
 		if hasCreation {
 			a.WorkTitle = creation.Title
-			a.ExecutorID = creation.ID
 			a.WorkflowID = creation.ID
 			a.Source = "workflow"
 		}
 		if hasEffect {
-			a.OwnerKind = constants.WorkResultOwnerKindWorkflowRun
+			a.OwnerKind = constants.WorkOwnerKindWorkflowRun
 			a.OwnerID = root.ID
 			a.WorkTitle = definition.Title
 			a.ExecutorID = definition.ID
@@ -309,7 +326,7 @@ func (c *workBoardController) attentionBatch(ctx context.Context, chats []models
 			a.Source = "workflow"
 		}
 		if hasMember {
-			a.OwnerKind = constants.WorkResultOwnerKindTeamThread
+			a.OwnerKind = constants.WorkOwnerKindTeamThread
 			a.OwnerID = thread.ID
 			a.WorkTitle = thread.Title
 			a.ExecutorID = thread.ChannelID
@@ -320,21 +337,23 @@ func (c *workBoardController) attentionBatch(ctx context.Context, chats []models
 		if chat.WaitingApproval {
 			for _, r := range chat.PendingApprovals {
 				v := a
-				v.ID = "approval:" + chat.ID + ":" + r.ApprovalID
+				v.ID = "approval:" + chat.ID + ":" + chat.ActiveExecutionID + ":" + r.ApprovalID
+				v.RequestID, v.ExecutionID, v.RequestSequence = r.ApprovalID, chat.ActiveExecutionID, r.RequestedSequence
 				v.Kind = "approval"
 				v.Title = r.Title
 				v.CreatedAt = r.RequestedAt
-				facts = append(facts, boardAttentionFact{Attention: v})
+				facts = append(facts, v)
 			}
 		}
 		if chat.WaitingElicitation {
 			for _, r := range chat.PendingElicitations {
 				v := a
-				v.ID = "input:" + chat.ID + ":" + r.ElicitationID
+				v.ID = "input:" + chat.ID + ":" + chat.ActiveExecutionID + ":" + r.ElicitationID
+				v.RequestID, v.ExecutionID, v.RequestSequence = r.ElicitationID, chat.ActiveExecutionID, r.RequestedSequence
 				v.Kind = "input"
 				v.Title = r.Message
 				v.CreatedAt = r.RequestedAt
-				facts = append(facts, boardAttentionFact{Attention: v})
+				facts = append(facts, v)
 			}
 		}
 	}
@@ -348,26 +367,26 @@ func (c *workBoardController) attentionBatch(ctx context.Context, chats []models
 		if task.FinishedAt != nil {
 			created = *task.FinishedAt
 		}
-		facts = append(facts, boardAttentionFact{Fence: int64(task.CurrentFence), Attention: models.WorkBoardAttention{ID: "review:" + task.ID, Kind: "review", OwnerKind: constants.WorkResultOwnerKindTeamThread, OwnerID: thread.ID, Title: task.Subject, WorkTitle: thread.Title, ExecutorID: thread.ChannelID, ActorName: member.DisplayName, Source: source("team", threadSources[thread.ID]), ChatID: member.ChatID, WakerID: task.AssigneeWakerID, ChannelID: thread.ChannelID, TaskID: task.ID, CreatedAt: created}})
+		facts = append(facts, models.WorkBoardAttention{ID: "review:" + task.ID, RequestID: task.ID, RequestFence: int64(task.CurrentFence), Kind: "review", OwnerKind: constants.WorkOwnerKindTeamThread, OwnerID: thread.ID, Title: task.Subject, WorkTitle: thread.Title, ExecutorID: thread.ChannelID, ActorName: member.DisplayName, Source: source("team", threadSources[thread.ID]), ChatID: member.ChatID, WakerID: task.AssigneeWakerID, ChannelID: thread.ChannelID, TaskID: task.ID, CreatedAt: created})
 	}
-	workflowRequest := func(id, kind, title, runID string, created, deadline int64) {
+	workflowRequest := func(id, kind, title, runID, instanceID string, created int64) {
 		run := runs[runID]
 		root := rootOf(run)
 		definition := definitionByID[root.DefinitionID]
 		target := definitionByID[run.DefinitionID]
-		if run.ID == "" || root.ID == "" || definition.ID == "" || target.ID == "" || !boardWorkflowAlive(run, runs) {
+		if run.ID == "" || root.ID == "" || definition.ID == "" || target.ID == "" || !boardWorkflowAlive(run, runs, at) {
 			return
 		}
 		if kind == "approval" && created == 0 {
 			created = run.UpdatedAt
 		}
-		facts = append(facts, boardAttentionFact{Deadline: deadline, Attention: models.WorkBoardAttention{ID: kind + ":" + id, Kind: kind, OwnerKind: constants.WorkResultOwnerKindWorkflowRun, OwnerID: root.ID, Title: title, WorkTitle: definition.Title, ExecutorID: definition.ID, ActorName: target.Title, Source: source("workflow", runSources[root.ID]), WorkflowID: run.DefinitionID, RunID: run.ID, CreatedAt: created}})
+		facts = append(facts, models.WorkBoardAttention{ID: kind + ":" + id, RequestID: id, ExecutionID: runID, InstanceID: instanceID, Kind: kind, OwnerKind: constants.WorkOwnerKindWorkflowRun, OwnerID: root.ID, Title: title, WorkTitle: definition.Title, ExecutorID: definition.ID, ActorName: target.Title, Source: source("workflow", runSources[root.ID]), WorkflowID: run.DefinitionID, RunID: run.ID, CreatedAt: created})
 	}
 	for _, r := range humans {
-		workflowRequest(r.ID, "input", r.Prompt, r.RunID, r.CreatedAt, r.DeadlineAt)
+		workflowRequest(r.ID, "input", r.Prompt, r.RunID, r.InstanceID, r.CreatedAt)
 	}
 	for _, r := range operations {
-		workflowRequest(r.ID, "approval", r.Description, r.RunID, r.CreatedAt, 0)
+		workflowRequest(r.ID, "approval", r.Description, r.RunID, r.InstanceID, r.CreatedAt)
 	}
 	return facts, nil
 }
@@ -386,27 +405,12 @@ func boardContains(text, query string) bool {
 }
 
 func boardAttentionMatches(a models.WorkBoardAttention, q WorkBoardQuery) bool {
-	return (len(q.States) == 0 || slices.Contains(q.States, a.Kind)) && (q.ExecutorID == "" || q.ExecutorID == a.ExecutorID) && (q.Source == "" || q.Source == a.Source) && (q.Query == "" || boardContains(a.WorkTitle, q.Query))
+	return (a.Kind == "review" || a.ChatID == "" || !slices.Contains(q.IsolatedChats, a.ChatID)) && (len(q.States) == 0 || slices.Contains(q.States, a.Kind)) && (q.ExecutorID == "" || q.ExecutorID == a.ExecutorID) && (q.Source == "" || q.Source == a.Source) && (q.Query == "" || boardContains(a.WorkTitle, q.Query))
 }
 
-// AttentionOverview 合并顶部概览的请求数、工作数和预览，不重复扫描当前等待集合。
-func (c *workBoardController) AttentionOverview(ctx context.Context, q WorkBoardQuery) ([]models.WorkBoardAttention, int64, int64, error) {
-	q.Query, q.Cursor, q.Offset = "", nil, 0
-	return c.attentionPage(ctx, q, true)
-}
-
-// Attention 分批计数，仅保留排序所需的分页候选，不积累完整请求集合。
-func (c *workBoardController) Attention(ctx context.Context, q WorkBoardQuery) ([]models.WorkBoardAttention, int64, error) {
-	items, total, _, err := c.attentionPage(ctx, q, false)
-	return items, total, err
-}
-
-// attentionPage 在同一候选遍历中按需统计原容器，仅为选中页补齐请求详情。
-func (c *workBoardController) attentionPage(ctx context.Context, q WorkBoardQuery, countOwners bool) ([]models.WorkBoardAttention, int64, int64, error) {
-	var owners map[[2]string]struct{}
-	if countOwners {
-		owners = map[[2]string]struct{}{}
-	}
+// Attention 在一次候选遍历中统计请求和原容器，仅为选中页补齐请求详情。
+func (c *workBoardController) Attention(ctx context.Context, q WorkBoardQuery) ([]models.WorkBoardAttention, int64, int64, error) {
+	owners := map[models.WorkRef]struct{}{}
 	window := newRepositoryPage[boardAttentionPageKey](q.Offset, q.Limit+1, func(a, b boardAttentionPageKey) bool {
 		if a.CreatedAt != b.CreatedAt {
 			return a.CreatedAt < b.CreatedAt
@@ -418,19 +422,16 @@ func (c *workBoardController) attentionPage(ctx context.Context, q WorkBoardQuer
 	})
 	var total int64
 	at := time.Now().UnixMilli()
-	err := c.walkAttention(ctx, at, nil, func(f boardAttentionFact) error {
-		a := f.Attention
+	err := c.walkAttention(ctx, at, boardAttentionScope{}, false, func(a models.WorkBoardAttention) error {
 		if !boardAttentionMatches(a, q) {
 			return nil
 		}
 		total++
-		if countOwners {
-			owners[[2]string{string(a.OwnerKind), a.OwnerID}] = struct{}{}
-		}
-		if v := q.Cursor; v != nil && (a.CreatedAt < v.At || (a.CreatedAt == v.At && (a.OwnerKind < v.Kind || (a.OwnerKind == v.Kind && a.ID <= v.ID)))) {
+		owners[models.WorkRef{Kind: a.OwnerKind, ID: a.OwnerID}] = struct{}{}
+		if q.Limit == 0 || q.Cursor != nil && (a.CreatedAt < q.Cursor.At || (a.CreatedAt == q.Cursor.At && (a.OwnerKind < q.Cursor.Kind || (a.OwnerKind == q.Cursor.Kind && a.ID <= q.Cursor.ID)))) {
 			return nil
 		}
-		window.add(attentionPageKey(a, a.ID))
+		window.add(boardAttentionPageKey{ID: a.ID, OwnerKind: a.OwnerKind, OwnerID: a.OwnerID, CreatedAt: a.CreatedAt})
 		return nil
 	})
 	if err != nil {
@@ -439,15 +440,15 @@ func (c *workBoardController) attentionPage(ctx context.Context, q WorkBoardQuer
 	facts, err := c.attentionPageFacts(ctx, at, window.page())
 	items := make([]models.WorkBoardAttention, 0, len(facts))
 	for _, fact := range facts {
-		if fact.Attention.ID != "" {
-			items = append(items, fact.Attention)
+		if fact.ID != "" {
+			items = append(items, fact)
 		}
 	}
 	return items, total, int64(len(owners)), err
 }
 
 // attachAttentionCounts 仅查询本页容器的待办；无关工作不会进入关联读取。
-func (c *workBoardController) attachAttentionCounts(ctx context.Context, values []models.WorkBoardEntry) error {
+func (c *workBoardController) attachAttentionCounts(ctx context.Context, values []models.WorkBoardEntry, isolated []string) error {
 	if len(values) == 0 {
 		return nil
 	}
@@ -455,8 +456,10 @@ func (c *workBoardController) attachAttentionCounts(ctx context.Context, values 
 	for i, v := range values {
 		positions[string(v.OwnerKind)+":"+v.OwnerID] = i
 	}
-	return c.walkAttention(ctx, time.Now().UnixMilli(), values, func(f boardAttentionFact) error {
-		a := f.Attention
+	return c.walkAttention(ctx, time.Now().UnixMilli(), boardAttentionScope{owners: values}, false, func(a models.WorkBoardAttention) error {
+		if a.Kind != "review" && a.ChatID != "" && slices.Contains(isolated, a.ChatID) {
+			return nil
+		}
 		i, ok := positions[string(a.OwnerKind)+":"+a.OwnerID]
 		if !ok {
 			return nil

@@ -91,8 +91,9 @@ func answerHuman(ctx context.Context, d *workflowDependencies, command AnswerHum
 		if err != nil {
 			return err
 		}
-		if workflowstate.TerminalRun(state.Run.Status) || state.Run.Status == constants.WorkflowRunStatusCancelling {
-			return status_error.WorkflowStateConflict
+		now := time.Now().UnixMilli()
+		if err := d.State.RequireHumanAction(ctx, state.Run, now); err != nil {
+			return err
 		}
 		index := -1
 		for i := range state.Humans {
@@ -111,7 +112,6 @@ func answerHuman(ctx context.Context, d *workflowDependencies, command AnswerHum
 		if human.Status != constants.WorkflowStepStatusWaiting {
 			return status_error.WorkflowStateConflict
 		}
-		now := time.Now().UnixMilli()
 		if human.DeadlineAt > 0 && human.DeadlineAt <= now {
 			return status_error.WorkflowStateConflict
 		}

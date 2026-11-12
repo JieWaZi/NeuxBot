@@ -2,11 +2,15 @@ import { messageCompanionActivity } from "../runtime/companion-activity";
 import { chatContinuations, type ChatContinuation } from "./chat-continuation";
 import { ChatMessagePluginReferences } from "./chat-plugin-reference";
 import { useChatHistoryScroll } from "./use-chat-history-scroll";
-import type { ChatResultSource } from "@/shared/api/notification-presentation";
-import { ChatWorkResultReader } from "@/shared/api/work-result-reading";
+import { useChatMessageLocator } from "./chat-message-locator";
+import {
+  useChatReading,
+  usePresentedChatBoundary,
+  useVisibleScene,
+} from "@/shared/api/chat-reading";
 import { useChatMessageContribution } from "./chat-contributions";
 import { ChatForkContext, MessageForkAction } from "./chat-fork";
-import { Link } from "react-router-dom";
+import { Link, useInRouterContext, useLocation } from "react-router-dom";
 import { chatHref } from "@/shared/lib/chat-navigation";
 import {
   reportChatError,
@@ -40,6 +44,7 @@ import {
   Check,
   ChevronRight,
   CircleEllipsis,
+  Ellipsis,
   Copy,
   CornerDownRight,
   File,
@@ -67,6 +72,7 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type RefObject,
   type ComponentProps,
 } from "react";
 import { useTranslation } from "react-i18next";
@@ -78,6 +84,12 @@ import { readLayoutMotionTokens } from "@/shared/lib/ui-motion-tokens";
 import { Avatar } from "@/shared/ui/avatar";
 import { Collapsible, CollapsibleContent } from "@/shared/ui/collapsible";
 import { Button } from "@/shared/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/shared/ui/dropdown-menu";
 import {
   ComposerContext,
   ComposerLayerStack,
@@ -94,6 +106,7 @@ import {
 } from "../runtime/chat-attachment-adapter";
 import {
   type AllyChatMessage,
+  type ChatPendingElicitation,
   type ChatRunMetrics,
   type ChatToolArgs,
   type ToolCategory,
@@ -107,7 +120,6 @@ import {
 } from "../runtime/chat-send-failure";
 import type { ChatCodeReference } from "../runtime/chat-queue-store";
 import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingApproval as PendingApproval } from "@/shared/api/generated/types.gen";
-import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingElicitation as PendingElicitation } from "@/shared/api/generated/types.gen";
 import {
   approvalQueuePosition,
   approvalResultLabel,
@@ -142,8 +154,7 @@ import { AssistantMarkdown, UserMarkdown } from "./chat-message-content";
 import { ChatTurnNavigator } from "./chat-turn-navigator";
 
 import { Fragment } from "react";
-import { ExecutionFileChangesCard } from "./execution-file-changes-card";
-export { ExecutionFileChangesCard } from "./execution-file-changes-card";
+import { ExecutionFileChangesAction } from "./execution-file-changes-card";
 import {
   ChatMessageProjection,
   viewCompanionActivity,
@@ -233,7 +244,7 @@ type ChatThreadProps = {
   linkWorkspaceRoot?: string;
   fileScopeChatId?: string;
   /** 真实聊天与成果归属独立于文件授权；所有共享聊天入口沿用同一阅读器。 */
-  resultSource?: ChatResultSource;
+  readingChatId?: string;
   linkAdditionalWorkingDirectories?: readonly string[];
   onCodeReferencesChange?: (references: ChatCodeReference[]) => void;
   onOpenCodeReference?: (reference: ChatCodeReference) => void;
@@ -251,7 +262,7 @@ type ChatThreadProps = {
   pendingApprovals?: PendingApproval[];
   approvalSubmissionState?: ApprovalSubmissionState;
   onResolveApproval?: (approvalId: string, optionId: string) => void;
-  pendingElicitations?: PendingElicitation[];
+  pendingElicitations?: ChatPendingElicitation[];
   elicitationSubmissionState?: ElicitationSubmissionState;
   onResolveElicitation?: (
     elicitationId: string,
@@ -1143,6 +1154,7 @@ function UserMessage({
         </div>
         <div className="duration-quick pointer-events-none opacity-0 transition-opacity group-focus-within/user-message:pointer-events-auto group-focus-within/user-message:opacity-100 group-hover/user-message:pointer-events-auto group-hover/user-message:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
           <MessageCopyAction message={message} />
+          <MessageReadActions message={message} />
         </div>
       </div>
     </div>
@@ -1172,6 +1184,11 @@ function ParticipantMessage({
   return (
     <div
       data-message-id={message.id}
+      data-chat-readable-sequence={
+        message.readable && !message.optimistic
+          ? message.createdSequence
+          : undefined
+      }
       data-role="user"
       className="group mt-4 grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6"
     >
@@ -1206,7 +1223,7 @@ function ParticipantMessage({
             </div>
           ) : null}
           <div
-            data-work-result-body
+            data-chat-readable-body
             className={memberReport ? "px-4 py-3" : undefined}
           >
             <UserMarkdown text={message.content ?? ""} />
@@ -1214,6 +1231,7 @@ function ParticipantMessage({
         </div>
         <div className="mt-2 flex items-center gap-1">
           <MessageCopyAction message={message} />
+          <MessageReadActions message={message} />
         </div>
       </div>
     </div>
@@ -1305,6 +1323,27 @@ function AddAttachmentButton({
   );
 }
 
+const assistantMessageRowClassName =
+  "grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6";
+
+function ChatQuestionRow({
+  children,
+  compact = false,
+}: {
+  children: ReactNode;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={cn("py-2", compact ? "px-6" : assistantMessageRowClassName)}
+    >
+      <div className={compact ? undefined : "col-start-2 min-w-0"}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export function AssistantMessage({
   view,
   continuation,
@@ -1340,9 +1379,10 @@ export function AssistantMessage({
   const hasContent =
     view.segments.length > 0 ||
     Boolean(contribution) ||
-    hasFileChanges ||
     (message.status === "canceled" && !continuation?.continued) ||
     (message.status === "failed" && !last);
+  const showFooterActions =
+    (hasContent || isTerminalMessage(message)) && !continuation?.continued;
   const isLatestAssistant = latest;
   const interaction = useContext(CompanionInteraction);
   const companionActivity = continuation?.activityMessage
@@ -1362,8 +1402,13 @@ export function AssistantMessage({
   return (
     <div
       data-message-id={message.id}
+      data-chat-readable-sequence={
+        message.readable && !message.optimistic
+          ? message.createdSequence
+          : undefined
+      }
       data-role="assistant"
-      className="group mt-1 grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6"
+      className={cn("group mt-1", assistantMessageRowClassName)}
     >
       {isLatestAssistant ? (
         <Avatar
@@ -1387,14 +1432,6 @@ export function AssistantMessage({
                 metrics={continuation?.footerMessage.runMetrics}
                 showUsageMetrics={showUsageMetrics}
               />
-              {showFileChanges && message.fileChangeRecord ? (
-                <ExecutionFileChangesCard
-                  message={message}
-                  chatId={author?.sourceChatId}
-                  visible={isTerminalMessage(message)}
-                  onOpenFile={openFileChange}
-                />
-              ) : null}
               {contribution}
             </div>
             {message.status === "canceled" && !continuation?.continued ? (
@@ -1406,34 +1443,45 @@ export function AssistantMessage({
           </div>
         )}
 
-        {(hasContent || isTerminalMessage(message)) &&
-        !continuation?.continued ? (
-          <footer className="mt-1 flex items-center gap-1">
-            <div className="duration-quick pointer-events-none flex items-center gap-1 opacity-0 transition-opacity group-focus-within/reply:pointer-events-auto group-focus-within/reply:opacity-100 group-hover/reply:pointer-events-auto group-hover/reply:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
-              {isTerminalMessage(message) && (
-                <MessageRunStatus
-                  message={
-                    continuation
-                      ? {
-                          ...message,
-                          runMetrics: continuation.footerMessage.runMetrics,
-                        }
-                      : message
-                  }
-                  showUsageDetails={showUsageMetrics}
+        {showFooterActions || hasFileChanges ? (
+          <footer className="duration-quick pointer-events-none mt-1 flex items-center gap-1 opacity-0 transition-opacity group-focus-within/reply:pointer-events-auto group-focus-within/reply:opacity-100 group-hover/reply:pointer-events-auto group-hover/reply:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
+            {hasFileChanges ? (
+              <ExecutionFileChangesAction
+                message={message}
+                chatId={author?.sourceChatId}
+                onOpenFile={openFileChange}
+              />
+            ) : null}
+            {showFooterActions ? (
+              <>
+                {isTerminalMessage(message) && (
+                  <MessageRunStatus
+                    message={
+                      continuation
+                        ? {
+                            ...message,
+                            runMetrics: continuation.footerMessage.runMetrics,
+                          }
+                        : message
+                    }
+                    showUsageDetails={showUsageMetrics}
+                  />
+                )}
+                <MessageCopyAction
+                  message={continuation?.footerMessage ?? message}
+                  hideWhenRunning
                 />
-              )}
-              <MessageCopyAction
-                message={continuation?.footerMessage ?? message}
-                hideWhenRunning
-              />
-              <MessageForkAction message={message} />
-            </div>
-            <span className="duration-quick ml-auto shrink-0 opacity-0 transition-opacity group-focus-within/reply:opacity-100 group-hover/reply:opacity-100 motion-reduce:transition-none [@media(hover:none)]:opacity-100">
-              <MessageTimestamp
-                timestamp={(continuation?.footerMessage ?? message).createdAt}
-              />
-            </span>
+                <MessageForkAction message={message} />
+                <MessageReadActions message={message} />
+                <span className="ml-auto shrink-0">
+                  <MessageTimestamp
+                    timestamp={
+                      (continuation?.footerMessage ?? message).createdAt
+                    }
+                  />
+                </span>
+              </>
+            ) : null}
           </footer>
         ) : null}
       </div>
@@ -1477,6 +1525,16 @@ const ChatMessage = memo(function ChatMessage({
   showFileChanges?: boolean;
 }) {
   const message = view.message;
+  if (message.question) {
+    return message.question.result ? (
+      <ChatQuestionRow>
+        <ChatElicitationCard
+          elicitation={message.question}
+          resolution={message.question}
+        />
+      </ChatQuestionRow>
+    ) : null;
+  }
   if (message.role === "user") {
     return messageAuthors?.[message.id ?? ""]?.displayAsParticipant ? (
       <ParticipantMessage
@@ -1514,6 +1572,147 @@ const ChatMessage = memo(function ChatMessage({
   ) : null;
 });
 
+function ChatReadingSurface({
+  chatId,
+  active,
+  positioning,
+  viewport,
+  children,
+}: {
+  chatId: string;
+  active: boolean;
+  positioning: boolean;
+  viewport: RefObject<HTMLDivElement | null>;
+  children: ReactNode;
+}) {
+  const sceneVisible = useVisibleScene();
+  const reading = useChatReading({ chatId, active });
+  usePresentedChatBoundary({
+    root: viewport,
+    active: active && sceneVisible && !positioning,
+    present: reading.present,
+    revision: reading.revision,
+  });
+  const ready = reading.state?.complete === true;
+  const { markRead, markUnread } = reading;
+  const actions = useMemo(
+    () => (ready ? { markRead, markUnread } : undefined),
+    [ready, markRead, markUnread],
+  );
+  return <ChatReadingActions value={actions}>{children}</ChatReadingActions>;
+}
+
+function wrapChatReading(
+  readingChatId: string | undefined,
+  active: boolean,
+  positioning: boolean,
+  viewport: RefObject<HTMLDivElement | null>,
+  children: ReactNode,
+) {
+  return readingChatId && /^[a-f0-9]{32}$/.test(readingChatId) ? (
+    <ChatReadingSurface
+      chatId={readingChatId}
+      active={active}
+      positioning={positioning}
+      viewport={viewport}
+    >
+      {children}
+    </ChatReadingSurface>
+  ) : (
+    children
+  );
+}
+
+const ChatReadingActions = createContext<
+  | {
+      markUnread: (id: string) => Promise<void>;
+      markRead: () => Promise<void>;
+    }
+  | undefined
+>(undefined);
+
+function MessageReadActions({ message }: { message: AllyChatMessage }) {
+  const reading = useContext(ChatReadingActions);
+  const errors = useContext(ChatErrorActions);
+  const { t } = useTranslation("chat");
+  if (!reading || !message.id || message.readable !== true) return null;
+  const id = message.id;
+  const report = () => errors.report?.(t("reading.failed"), "chat-reading");
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          aria-label={t("reading.actions")}
+          title={t("reading.actions")}
+          variant="ghost"
+          size="icon-sm"
+        >
+          <Ellipsis />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        <DropdownMenuItem
+          onSelect={() => void reading.markUnread(id).catch(report)}
+        >
+          {t("reading.markUnread")}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={() => void reading.markRead().catch(report)}
+        >
+          {t("reading.markRead")}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** 执行回复先占位，提问结束后在回复之前呈现。权威游标和普通消息顺序不变。 */
+function orderChatQuestionViews(views: readonly ChatMessageView[]) {
+  const questionsByExecution = new Map<string, ChatMessageView[]>();
+  for (const view of views) {
+    const { executionId, question } = view.message;
+    if (!executionId || !question?.result) continue;
+    const questions = questionsByExecution.get(executionId);
+    if (questions) questions.push(view);
+    else questionsByExecution.set(executionId, [view]);
+  }
+  if (questionsByExecution.size === 0) return views;
+
+  const replies = new Map<string, ChatMessageView>();
+  for (const view of views) {
+    const { executionId, question, role } = view.message;
+    if (
+      !executionId ||
+      question ||
+      role !== "assistant" ||
+      !questionsByExecution.has(executionId)
+    )
+      continue;
+    if (!replies.has(executionId) || isTerminalMessage(view.message))
+      replies.set(executionId, view);
+  }
+  if (replies.size === 0) return views;
+
+  const ordered: ChatMessageView[] = [];
+  for (const view of views) {
+    const { executionId, question } = view.message;
+    const reply = executionId ? replies.get(executionId) : undefined;
+    if (question?.result && reply) continue;
+    if (executionId && reply === view) {
+      const questions = questionsByExecution.get(executionId) ?? [];
+      ordered.push(
+        ...questions.sort(
+          (left, right) =>
+            (left.message.createdSequence ?? 0) -
+            (right.message.createdSequence ?? 0),
+        ),
+      );
+    }
+    ordered.push(view);
+  }
+  return ordered;
+}
+
 const ChatMessageList = memo(function ChatMessageList({
   views,
   forkBoundaryMessageId,
@@ -1533,10 +1732,10 @@ const ChatMessageList = memo(function ChatMessageList({
   const { t } = useTranslation("chat");
   const [unavailableSourceId, setUnavailableSourceId] = useState<string>();
   const continuations = chatContinuations(views.map((view) => view.message));
-  const latest = views.at(-1);
+  const latest = views.findLast((view) => !view.message.question);
   return (
     <>
-      {views.map((view, index) => (
+      {orderChatQuestionViews(views).map((view) => (
         <Fragment key={view.key}>
           <ChatMessage
             {...props}
@@ -1544,7 +1743,7 @@ const ChatMessageList = memo(function ChatMessageList({
             view={view}
             continuation={continuations.get(view.message.id ?? "")}
             latest={view.key === latest?.key}
-            last={index === views.length - 1}
+            last={view.key === latest?.key}
           />
           {view.message.id === forkBoundaryMessageId && forkSourceChatId ? (
             <div
@@ -1654,9 +1853,7 @@ const Composer = memo(function Composer({
   pendingApprovals,
   approvalSubmissionState,
   onResolveApproval,
-  pendingElicitations = [],
-  elicitationSubmissionState = "idle",
-  onResolveElicitation = () => undefined,
+  waitingForAnswer,
   isWorkRunning,
   isRunning,
   isWorkStopping,
@@ -1704,13 +1901,7 @@ const Composer = memo(function Composer({
   pendingApprovals: PendingApproval[];
   approvalSubmissionState: ApprovalSubmissionState;
   onResolveApproval: (approvalId: string, optionId: string) => void;
-  pendingElicitations: PendingElicitation[];
-  elicitationSubmissionState: ElicitationSubmissionState;
-  onResolveElicitation: (
-    elicitationId: string,
-    content: Record<string, unknown>,
-    declined: boolean,
-  ) => void;
+  waitingForAnswer: boolean;
   isWorkRunning: boolean;
   isRunning: boolean;
   isWorkStopping: boolean;
@@ -1743,7 +1934,8 @@ const Composer = memo(function Composer({
     isWorkRunning,
   });
   const prepareComposerSend = () => {
-    if (disabled || !aui.composer.getState().canSend) return false;
+    if (waitingForAnswer || disabled || !aui.composer.getState().canSend)
+      return false;
     setSubmissionState((current) => ({ ...current, pending: true }));
     return true;
   };
@@ -1760,24 +1952,15 @@ const Composer = memo(function Composer({
       seenIds: nextApprovalSeenIds(pendingApprovals, approvalSeenState.seenIds),
     });
   }
+  const currentApproval = pendingApprovals[0];
+  const queuedApproval = pendingApprovals.find(
+    (item) =>
+      item.approvalId === requestedInteractionId && item !== currentApproval,
+  );
   const approvalPosition = approvalQueuePosition(
-    (
-      pendingApprovals.find(
-        (item) => item.approvalId === requestedInteractionId,
-      ) ?? pendingApprovals[0]
-    )?.approvalId,
+    currentApproval?.approvalId,
     approvalSeenState.seenIds,
   );
-  const requestedApproval = pendingApprovals.find(
-    (item) => item.approvalId === requestedInteractionId,
-  );
-  const requestedElicitation = pendingElicitations.find(
-    (item) => item.elicitationId === requestedInteractionId,
-  );
-  const currentApproval = requestedApproval ?? pendingApprovals[0];
-  const currentElicitation = requestedApproval
-    ? undefined
-    : (requestedElicitation ?? pendingElicitations[0]);
   const errorNotices = useChatErrorNotices({
     scopes: errorScopes,
     fallback: sendFailure,
@@ -1832,7 +2015,7 @@ const Composer = memo(function Composer({
                           disabled={
                             isWorkStopping ||
                             pendingApprovals.length > 0 ||
-                            pendingElicitations.length > 0
+                            waitingForAnswer
                           }
                         >
                           <CornerDownRight />
@@ -1857,33 +2040,25 @@ const Composer = memo(function Composer({
             ) : null
           }
         >
-          {currentElicitation ? (
-            <ChatElicitationCard
-              key={currentElicitation.elicitationId}
-              elicitation={currentElicitation}
-              submissionState={elicitationSubmissionState}
-              onResolve={onResolveElicitation}
-            />
-          ) : currentApproval ? (
+          {currentApproval ? (
             <ChatApprovalCard
               approval={currentApproval}
               current={approvalPosition.current}
               total={approvalPosition.total}
+              queuedApproval={queuedApproval}
               submissionState={approvalSubmissionState}
               onResolve={onResolveApproval}
             />
           ) : null}
-          {/* 待处理交互只隐藏输入区，保留当前文档、建议消费状态与发送恢复状态。 */}
-          <div hidden={Boolean(currentElicitation || currentApproval)}>
+          {/* 审批期间保留输入草稿和发送恢复状态。 */}
+          <div hidden={Boolean(currentApproval)}>
             <ComposerInputBody data-chat-composer-input-body>
               <ChatComposerInput
                 contextReferences={contextReferences}
                 onContextReferencesChange={onContextReferencesChange}
                 autoFocus={autoFocus}
                 disabled={
-                  isWorkStopping ||
-                  disabled ||
-                  Boolean(currentElicitation || currentApproval)
+                  isWorkStopping || disabled || Boolean(currentApproval)
                 }
                 placeholder={t("placeholder")}
                 ariaLabel={t("messageInput")}
@@ -1983,7 +2158,9 @@ const Composer = memo(function Composer({
                     <ComposerSendButton
                       aria-label={t("send")}
                       title={t("send")}
-                      disabled={disabled || !composerCanSend}
+                      disabled={
+                        waitingForAnswer || disabled || !composerCanSend
+                      }
                       data-chat-primary-action="send"
                       onClickCapture={prepareComposerSend}
                     />
@@ -1995,7 +2172,12 @@ const Composer = memo(function Composer({
                       aria-label={t("addToQueue")}
                       title={t("addToQueue")}
                       data-chat-primary-action="send"
-                      disabled={isWorkStopping || disabled || !composerCanSend}
+                      disabled={
+                        waitingForAnswer ||
+                        isWorkStopping ||
+                        disabled ||
+                        !composerCanSend
+                      }
                       onClickCapture={prepareComposerSend}
                     />
                   </ComposerPrimitive.Send>
@@ -2012,7 +2194,32 @@ const Composer = memo(function Composer({
 const emptyList: never[] = [];
 const ignoreChange = () => undefined;
 
-export function ChatThread({
+export function ChatThread(props: ChatThreadProps) {
+  const inRouter = useInRouterContext();
+  return inRouter ? (
+    <RoutedChatThread {...props} />
+  ) : (
+    <ChatThreadContent {...props} />
+  );
+}
+
+function RoutedChatThread(props: ChatThreadProps) {
+  const location = useLocation();
+  const messageId = props.readingChatId
+    ? (new URLSearchParams(location.search).get("message") ?? undefined)
+    : undefined;
+  return (
+    <ChatThreadContent
+      {...props}
+      messageId={messageId}
+      routeKey={location.key}
+    />
+  );
+}
+
+function ChatThreadContent({
+  messageId,
+  routeKey,
   fork,
   forkBoundaryMessageId,
   forkSourceChatId,
@@ -2073,7 +2280,7 @@ export function ChatThread({
   onOpenLink,
   linkWorkspaceRoot,
   fileScopeChatId,
-  resultSource,
+  readingChatId,
   linkAdditionalWorkingDirectories,
   onCodeReferencesChange,
   onOpenCodeReference,
@@ -2096,7 +2303,7 @@ export function ChatThread({
   pendingElicitations = emptyList,
   elicitationSubmissionState = "idle",
   onResolveElicitation = ignoreChange,
-}: ChatThreadProps) {
+}: ChatThreadProps & { messageId?: string; routeKey?: string }) {
   const { t } = useTranslation("chat");
   const reducedMotion = useReducedMotion();
   const composerLayoutTransition = useMemo(
@@ -2107,6 +2314,7 @@ export function ChatThread({
     [animateComposerSize],
   );
   const viewportRef = useRef<HTMLDivElement>(null);
+  const readingRootRef = useRef<HTMLDivElement>(null);
   useChatHistoryError(historyError, errorScopes.at(-1));
   const historyScroll = useChatHistoryScroll({
     scope: fileScopeChatId ?? errorScopes[0] ?? wakerId ?? "global",
@@ -2120,6 +2328,7 @@ export function ChatThread({
       resolveErrorNoticeRecovery(recovery);
     },
     onError: (error) => {
+      if (positioning) return;
       reportChatError(
         error,
         errorScopes[0] ?? "global",
@@ -2148,23 +2357,61 @@ export function ChatThread({
     () => projection.update(messages),
     [projection, messages],
   );
+  const settledQuestionIds = useMemo(
+    () =>
+      new Set(
+        messages.flatMap((message) =>
+          message.question?.result ? [message.question.elicitationId] : [],
+        ),
+      ),
+    [messages],
+  );
+  const openQuestions = pendingElicitations.filter(
+    (question) =>
+      question.elicitationId && !settledQuestionIds.has(question.elicitationId),
+  );
+  const liveQuestions = openQuestions.map((question, index) => (
+    <ChatQuestionRow
+      key={question.elicitationId}
+      compact={presentation === "composer"}
+    >
+      <ChatElicitationCard
+        elicitation={question}
+        submissionState={index === 0 ? elicitationSubmissionState : "idle"}
+        waitingForTurn={index > 0}
+        onResolve={onResolveElicitation}
+      />
+    </ChatQuestionRow>
+  ));
+  const emptyThread = messages.length === 0 && liveQuestions.length === 0;
   const centerEmptyState =
-    emptyStatePosition === "center" &&
-    !isHistoryLoading &&
-    messages.length === 0;
+    emptyStatePosition === "center" && !isHistoryLoading && emptyThread;
   const showDirectEmptyState =
-    isHistoryLoading || pinEmptyState || centerEmptyState;
+    liveQuestions.length === 0 &&
+    (isHistoryLoading || pinEmptyState || centerEmptyState);
+  const threadVisible =
+    active && presentation === "thread" && !showDirectEmptyState;
+  const { positioning, feedback: locationFeedback } = useChatMessageLocator({
+    viewport: viewportRef,
+    active: threadVisible && (!messageId || !isHistoryLoading),
+    routeKey,
+    messageId,
+    requestedInteractionId,
+    hasEarlierMessages,
+    onLoadEarlier: loadEarlier,
+  });
   useChatViewportScroll({
     viewport: viewportRef,
     scope: presentationScope,
     revision: messages,
     isHistoryAnchoring: historyScroll.isAnchoring,
-    enabled: active && presentation === "thread" && !showDirectEmptyState,
+    enabled: threadVisible && !positioning,
+    followInitially: !messageId,
   });
-  const latestMessage = messages.at(-1);
+  const latestMessage = messages.findLast((message) => !message.question);
   const companionInteraction = isWorkStopping
     ? "stopping"
-    : pendingApprovals.length || pendingElicitations.length
+    : pendingApprovals.length || openQuestions.length
       ? "waiting"
       : undefined;
 
@@ -2211,24 +2458,13 @@ export function ChatThread({
           }}
         >
           <div
+            ref={readingRootRef}
             className={cn(
               "flex h-full min-h-0 flex-col",
               centerEmptyState && "justify-center",
             )}
           >
-            {presentation === "thread" &&
-            resultSource &&
-            !isHistoryLoading &&
-            messages.length > 0 &&
-            /^[a-f0-9]{32}$/.test(resultSource.chatId) ? (
-              <ChatWorkResultReader
-                chatId={resultSource.chatId}
-                owner={resultSource.owner}
-                viewport={viewportRef}
-                hasEarlierMessages={hasEarlierMessages}
-                onLoadEarlier={loadEarlier}
-              />
-            ) : null}
+            {locationFeedback}
             {presentation === "thread" ? (
               <div
                 className={cn(
@@ -2252,7 +2488,7 @@ export function ChatThread({
                       onScroll={historyScroll.onScroll}
                       className="scrollbar-hidden relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain [overflow-anchor:none]"
                     >
-                      {messages.length === 0 ? emptyState : null}
+                      {emptyThread ? emptyState : null}
                       <ChatMessageColumn>
                         {historyError && errorScopes.length === 0 ? (
                           <ChatErrorCard
@@ -2275,40 +2511,53 @@ export function ChatThread({
                               )}
                               {t("loadEarlierMessages")}
                             </Button>
-                            {loadEarlierError && errorScopes.length === 0 ? (
+                            {loadEarlierError &&
+                            !positioning &&
+                            errorScopes.length === 0 ? (
                               <ChatErrorCard
                                 id={`earlier:${errorScopes.join(":")}`}
                                 message={loadEarlierError}
-                                onRetry={loadEarlier}
+                                onRetry={async () => {
+                                  await loadEarlier();
+                                }}
                                 onDismiss={historyScroll.clearError}
                               />
                             ) : null}
                           </div>
                         )}
-                        <MarkdownVisibility value={active}>
-                          <ProcessExpansion value={readingState.groups}>
-                            <CompanionInteraction value={companionInteraction}>
-                              <ChatMessageList
-                                views={views}
-                                forkBoundaryMessageId={forkBoundaryMessageId}
-                                forkSourceChatId={forkSourceChatId}
-                                onOpenForkSource={onOpenForkSource}
-                                name={wakerName}
-                                avatar={wakerAvatar}
-                                availableSkillIds={availableSkillIds}
-                                availableConnectorIds={availableConnectorIds}
-                                availablePluginIds={availablePluginIds}
-                                wakerId={wakerId}
-                                messageAuthors={messageAuthors}
-                                showUsageMetrics={showUsageMetrics}
-                                showFileChanges={showFileChanges}
-                                onOpenCodeReference={onOpenCodeReference}
-                                onOpenFile={onOpenFile}
-                                onOpenFileChange={onOpenFileChange}
-                              />
-                            </CompanionInteraction>
-                          </ProcessExpansion>
-                        </MarkdownVisibility>
+                        {wrapChatReading(
+                          readingChatId,
+                          active,
+                          positioning,
+                          readingRootRef,
+                          <MarkdownVisibility value={active}>
+                            <ProcessExpansion value={readingState.groups}>
+                              <CompanionInteraction
+                                value={companionInteraction}
+                              >
+                                <ChatMessageList
+                                  views={views}
+                                  forkBoundaryMessageId={forkBoundaryMessageId}
+                                  forkSourceChatId={forkSourceChatId}
+                                  onOpenForkSource={onOpenForkSource}
+                                  name={wakerName}
+                                  avatar={wakerAvatar}
+                                  availableSkillIds={availableSkillIds}
+                                  availableConnectorIds={availableConnectorIds}
+                                  availablePluginIds={availablePluginIds}
+                                  wakerId={wakerId}
+                                  messageAuthors={messageAuthors}
+                                  showUsageMetrics={showUsageMetrics}
+                                  showFileChanges={showFileChanges}
+                                  onOpenCodeReference={onOpenCodeReference}
+                                  onOpenFile={onOpenFile}
+                                  onOpenFileChange={onOpenFileChange}
+                                />
+                              </CompanionInteraction>
+                            </ProcessExpansion>
+                          </MarkdownVisibility>,
+                        )}
+                        {liveQuestions}
                       </ChatMessageColumn>
                     </div>
                     <ChatTurnNavigator
@@ -2318,6 +2567,15 @@ export function ChatThread({
                     />
                   </>
                 )}
+              </div>
+            ) : liveQuestions.length > 0 ? (
+              <div
+                className={cn(
+                  "mx-auto w-full overflow-y-auto",
+                  chatContentColumnClassName,
+                )}
+              >
+                {liveQuestions}
               </div>
             ) : null}
             <motion.div
@@ -2401,9 +2659,7 @@ export function ChatThread({
                     pendingApprovals={pendingApprovals}
                     approvalSubmissionState={approvalSubmissionState}
                     onResolveApproval={onResolveApproval}
-                    pendingElicitations={pendingElicitations}
-                    elicitationSubmissionState={elicitationSubmissionState}
-                    onResolveElicitation={onResolveElicitation}
+                    waitingForAnswer={openQuestions.length > 0}
                     isWorkRunning={isWorkRunning}
                     isWorkStopping={isWorkStopping}
                     onStopWork={onStopWork}

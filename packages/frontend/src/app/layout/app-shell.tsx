@@ -35,11 +35,16 @@ import {
 } from "@/modules/settings";
 import { listWakersOptions, WakerFormDialog } from "@/modules/waker";
 import {
-  NotificationBell,
-  NotificationPresenter,
-  NotificationNavigationProvider,
-} from "@/modules/notification";
-import { notificationHref } from "../notifications/notification-navigation";
+  AttentionBell,
+  useWorkspaceAttention,
+  useExecutorAttention,
+} from "@/modules/workspaceattention";
+import {
+  captureChatOpenIntent,
+  discardUnmatchedChatOpenIntent,
+} from "@/shared/api/chat-reading";
+import { workspaceAttentionOpenHref } from "../notifications/workspace-attention-navigation";
+import { platform } from "@/shared/platform/provider";
 import { ApiError } from "@/shared/api/errors";
 import {
   getWakerQueryKey,
@@ -73,6 +78,16 @@ import {
 } from "@/shared/lib/chat-navigation";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
+import {
+  ConversationAttentionMark,
+  conversationAttentionMark,
+} from "@/shared/ui/conversation-attention";
+import {
+  workAttentionHref,
+  waitingConversations,
+  WorkRequestChooser,
+  type WaitingConversation,
+} from "@/modules/work-board";
 import { SceneChromeActionsProvider } from "@/shared/ui/scene-chrome-actions";
 import {
   AppTitlebar,
@@ -155,26 +170,22 @@ export function AppShell({
     if (href) navigate(href, { replace: true });
   }, [location.pathname, location.search, navigate]);
   return (
-    <NotificationNavigationProvider resolveHref={notificationHref}>
-      <WorkspaceProvider>
-        <SettingsNavigationGuardProvider>
-          <AppSceneWorkspaceProvider
-            navigationType={navigationType}
-            location={{
-              pathname: location.pathname,
-              search: location.search,
-              key: location.key,
-              state: location.state,
-            }}
-            navigate={(href, state) =>
-              navigate(href, { flushSync: true, state })
-            }
-          >
-            <AppShellContent RouteScene={RouteScene} />
-          </AppSceneWorkspaceProvider>
-        </SettingsNavigationGuardProvider>
-      </WorkspaceProvider>
-    </NotificationNavigationProvider>
+    <WorkspaceProvider>
+      <SettingsNavigationGuardProvider>
+        <AppSceneWorkspaceProvider
+          navigationType={navigationType}
+          location={{
+            pathname: location.pathname,
+            search: location.search,
+            key: location.key,
+            state: location.state,
+          }}
+          navigate={(href, state) => navigate(href, { flushSync: true, state })}
+        >
+          <AppShellContent RouteScene={RouteScene} />
+        </AppSceneWorkspaceProvider>
+      </SettingsNavigationGuardProvider>
+    </WorkspaceProvider>
   );
 }
 
@@ -256,7 +267,33 @@ function AppShellContent({
         : channelsQuery.isError
           ? "error"
           : "ready";
-  const [notificationsConnected, setNotificationsConnected] = useState(false);
+  const workspaceAttention = useWorkspaceAttention();
+  const executorAttention = useExecutorAttention([
+    ...wakers.flatMap((waker) => (waker.id ? [waker.id] : [])),
+    ...channels.flatMap((entry) =>
+      entry.channel?.id ? [entry.channel.id] : [],
+    ),
+  ]);
+  useEffect(
+    () => discardUnmatchedChatOpenIntent(queryClient, location.state),
+    [queryClient, location.key, location.state],
+  );
+  useEffect(
+    () =>
+      platform().host?.onWorkspaceAttentionOpen?.((target) => {
+        guardSettingsNavigation(() => {
+          const targetHref = workspaceAttentionOpenHref(target);
+          navigate(targetHref, {
+            flushSync: true,
+            state:
+              target?.chatId && target.operation !== "request_opened"
+                ? captureChatOpenIntent(queryClient, target.chatId)
+                : undefined,
+          });
+        });
+      }),
+    [guardSettingsNavigation, navigate, queryClient],
+  );
   useQueryEvents({
     topic: "entities",
     resource: { kind: "global" },
@@ -434,6 +471,41 @@ function AppShellContent({
       navigate(`/wakers/${partnerId}`, { flushSync: true });
     });
 
+  const [actionChoices, setActionChoices] = useState<WaitingConversation[]>();
+  const openPendingAction = (executorId: string) => {
+    const attention = executorAttention.get(executorId);
+    const choices = waitingConversations(attention?.requests);
+    const first = choices[0];
+    if (choices.length === 1 && first) {
+      navigate(workAttentionHref(first.request), { flushSync: true });
+      return true;
+    }
+    if (choices.length) {
+      setActionChoices(choices);
+      return true;
+    }
+    if (
+      attention?.waitingWorkCount ||
+      (!attention &&
+        (wakers.some(
+          (waker) =>
+            waker.id === executorId && waker.activityState === "waiting",
+        ) ||
+          channels.some(
+            (team) =>
+              team.channel?.id === executorId &&
+              team.activityState === "waiting",
+          )))
+    ) {
+      navigate(
+        `/work-board?mode=action&executorId=${encodeURIComponent(executorId)}`,
+        { flushSync: true },
+      );
+      return true;
+    }
+    return false;
+  };
+
   const selectPartner = (partnerId: string) =>
     guardSettingsNavigation(() => {
       const request = entitySelectionRequestRef.current + 1;
@@ -445,6 +517,11 @@ function AppShellContent({
         entityMode: "waker",
       }));
       setChatRightPanel(undefined);
+      if (openPendingAction(partnerId)) return;
+      const preferredChatId = executorAttention.get(partnerId)?.latestChatId;
+      const openState = preferredChatId
+        ? captureChatOpenIntent(queryClient, preferredChatId)
+        : undefined;
       return queryClient
         .fetchQuery({
           ...listChatsOptions({ query: { wakerId: partnerId, limit: 1 } }),
@@ -462,7 +539,10 @@ function AppShellContent({
             latestChatId
               ? chatHref(latestChatId, partnerId)
               : chatDraftHref(partnerId),
-            { flushSync: true },
+            {
+              flushSync: true,
+              state: latestChatId === preferredChatId ? openState : undefined,
+            },
           );
         })
         .catch(() => {
@@ -481,6 +561,11 @@ function AppShellContent({
         entityMode: "team",
       }));
       setChatRightPanel(undefined);
+      if (openPendingAction(channelId)) return;
+      const preferred = executorAttention.get(channelId);
+      const openState = preferred?.latestChatId
+        ? captureChatOpenIntent(queryClient, preferred.latestChatId)
+        : undefined;
       void import("@/app/pages/team-thread-page");
       return queryClient
         .fetchInfiniteQuery(teamThreadsInfiniteOptions(channelId))
@@ -496,7 +581,13 @@ function AppShellContent({
             latestThreadId
               ? `/teams/${channelId}/threads/${latestThreadId}`
               : `/teams/${channelId}?draftId=${crypto.randomUUID()}`,
-            { flushSync: true },
+            {
+              flushSync: true,
+              state:
+                latestThreadId === preferred?.latestWork?.id
+                  ? openState
+                  : undefined,
+            },
           );
         })
         .catch(() => {
@@ -539,17 +630,12 @@ function AppShellContent({
   const openWorkBoard = useCallback(
     () =>
       guardSettingsNavigation(() => {
-        const href = resolveAppModuleHref("work-board");
-        navigate(href, { flushSync: true });
-        appScenes.dispatch({
-          type: "open",
-          tab: routeSceneForLocation(
-            { pathname: href, search: "" },
-            routeSceneLabels,
-          ),
+        navigate(resolveAppModuleHref("work-board"), {
+          flushSync: true,
+          state: { workBoardOpenToken: crypto.randomUUID() },
         });
       }),
-    [appScenes, navigate, routeSceneLabels, guardSettingsNavigation],
+    [navigate, guardSettingsNavigation],
   );
   const workBoardActive = location.pathname === "/work-board" && !settingsOpen;
   const openSettings = useCallback(() => {
@@ -679,6 +765,14 @@ function AppShellContent({
       enabled: false,
     })),
   });
+  const visibleChatAttention = new Map(
+    [...executorAttention.values()].flatMap(
+      (executor) =>
+        executor.chats?.map(
+          (chat) => [`${chat.work?.kind}:${chat.work?.id}`, chat] as const,
+        ) ?? [],
+    ),
+  );
   const presentedTabs = appScenes.snapshot.tabs.map((tab) => {
     const index = chatRouteTabs.findIndex((item) => item.tab.id === tab.id);
     const chat = index >= 0 ? cachedChats[index]?.data?.chat : undefined;
@@ -790,7 +884,11 @@ function AppShellContent({
 
   return (
     <SceneChromeActionsProvider actions={sceneActions}>
-      <NotificationPresenter onConnectionChange={setNotificationsConnected} />
+      <WorkRequestChooser
+        choices={actionChoices}
+        onClose={() => setActionChoices(undefined)}
+        onOpen={(href) => navigate(href, { flushSync: true })}
+      />
       <div className="bg-canvas relative h-full overflow-hidden">
         <PartnerNavigationLayout
           sidebarToolbar={
@@ -808,16 +906,65 @@ function AppShellContent({
                       ? [activeRouteScene]
                       : []),
                   ...memberTabs,
-                ].map((tab) => ({
-                  ...tab,
-                  separatorBefore: tab.id === memberTabs[0]?.id,
-                  label: tab.customLabel ?? tab.label,
-                }))}
+                ].map((tab) => {
+                  const direct = chatRouteTabs.find(
+                    (entry) => entry.tab.id === tab.id,
+                  );
+                  const team = teamThreadTabs.find(
+                    (entry) => entry.tab.id === tab.id,
+                  );
+                  const reading = direct
+                    ? visibleChatAttention.get(`chat:${direct.chatId}`)
+                    : team
+                      ? visibleChatAttention.get(`team_thread:${team.threadId}`)
+                      : undefined;
+                  const mark = conversationAttentionMark({
+                    requestKinds: reading?.requestKinds,
+                    running: reading?.activity === "running",
+                    failed: reading?.lastStatus === "failed",
+                    unread: reading?.unreadMessageCount,
+                  });
+                  return {
+                    ...tab,
+                    separatorBefore: tab.id === memberTabs[0]?.id,
+                    label: tab.customLabel ?? tab.label,
+                    indicator: mark ? (
+                      <ConversationAttentionMark mark={mark} unreadDot />
+                    ) : undefined,
+                    description:
+                      mark?.kind !== "unread" && reading?.unreadMessageCount
+                        ? t("common:partnerNavigation.unreadMessages", {
+                            count: reading.unreadMessageCount,
+                          })
+                        : undefined,
+                  };
+                })}
                 onSelect={(tabId) => {
                   if (tabId === appScenes.snapshot.activeTabId) return;
-                  guardSettingsNavigation(() =>
-                    appScenes.dispatch({ type: "select", tabId }),
-                  );
+                  guardSettingsNavigation(() => {
+                    const direct = chatRouteTabs.find(
+                      ({ tab }) => tab.id === tabId,
+                    );
+                    const team = teamThreadTabs.findIndex(
+                      ({ tab }) => tab.id === tabId,
+                    );
+                    const teamChatId =
+                      team >= 0
+                        ? cachedThreads[team]?.data?.thread?.leadChatId
+                        : undefined;
+                    const chatId = direct?.chatId ?? teamChatId;
+                    const target = presentedTabs.find(
+                      (tab) => tab.id === tabId,
+                    );
+                    if (chatId && target?.href) {
+                      navigate(target.href, {
+                        flushSync: true,
+                        state: captureChatOpenIntent(queryClient, chatId),
+                      });
+                    } else {
+                      appScenes.dispatch({ type: "select", tabId });
+                    }
+                  });
                 }}
                 onClose={(tabId) => {
                   const close = () =>
@@ -873,15 +1020,16 @@ function AppShellContent({
             )
           }
           notificationBell={
-            <NotificationBell
+            <AttentionBell
               active={workBoardActive}
               onOpen={openWorkBoard}
-              connected={notificationsConnected}
+              {...workspaceAttention}
             />
           }
           activeChatId={currentChat?.chatId}
           contextSidebarHidden={!hasActiveScene || !isWakerDetail}
           entityStatus={entityStatus}
+          executorAttention={executorAttention}
           onManageEntities={setCreatingEntity}
           onOpenPartnerDetail={openPartnerDetail}
           onNavigateModule={navigateModule}

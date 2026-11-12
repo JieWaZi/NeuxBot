@@ -44,7 +44,7 @@ func NewCatalog(layout *Layout) (*Catalog, error) {
 	return catalog, nil
 }
 
-// Address 返回由 Chat 身份唯一确定的当前日志地址。
+// Address 返回由 Chat 身份唯一确定的日志地址，不为查询新增目录项。
 func (c *Catalog) Address(chatID string) (LogAddress, error) {
 	if !safeSegment(chatID) {
 		return LogAddress{}, status_error.ChatIDInvalid
@@ -55,7 +55,7 @@ func (c *Catalog) Address(chatID string) (LogAddress, error) {
 	if exists {
 		return address, nil
 	}
-	return c.register(chatID)
+	return c.address(chatID)
 }
 
 // Remove 删除一份 Chat 的运行期地址；文件删除由日志 Store 负责。
@@ -82,21 +82,11 @@ func (c *Catalog) Refresh() error {
 	return c.discover()
 }
 
-func (c *Catalog) register(chatID string) (LogAddress, error) {
-	address, err := c.address(chatID)
-	if err != nil {
-		return LogAddress{}, err
-	}
+// Remember 将已经落盘的 Chat 日志地址加入运行期目录。
+func (c *Catalog) Remember(address LogAddress) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	if current, exists := c.addresses[chatID]; exists {
-		if current.LogPath != address.LogPath {
-			return LogAddress{}, status_error.ChatLogCorrupted
-		}
-		return current, nil
-	}
-	c.addresses[chatID] = address
-	return address, nil
+	c.addresses[address.ChatID] = address
 }
 
 func (c *Catalog) address(chatID string) (LogAddress, error) {
@@ -145,9 +135,11 @@ func (c *Catalog) discoverAggregateRoot(root string) error {
 			if !safeSegment(chatID) || chatID != entry.Name() {
 				continue
 			}
-			if _, err := c.register(chatID); err != nil {
+			address, err := c.address(chatID)
+			if err != nil {
 				return err
 			}
+			c.Remember(address)
 		}
 	}
 	return nil

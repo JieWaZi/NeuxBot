@@ -412,3 +412,103 @@ test("重复资源失败退避有上限，退订取消资源恢复定时器", as
   t.mock.timers.tick(10_000);
   assert.equal(socket.sent.length, count);
 });
+
+test("全局看板的晚加入者收到就绪边界且复用健康事件源", async (t) => {
+  const { client, sockets } = setup(t);
+  const resource = { kind: "global" };
+  const topic = "work-board";
+  const main = [];
+  client.subscribe(topic, resource, {
+    onEvent: (frame) => main.push(frame.type),
+  });
+  await flush();
+  const socket = sockets[0];
+  socket.open();
+  socket.frame(1, {
+    topic,
+    resource,
+    type: "subscribed",
+    payload: { requestId: socket.sent[0].requestId },
+  });
+  socket.frame(2, { topic, resource, type: "work-board.ready" });
+  socket.frame(3, {
+    topic,
+    resource,
+    type: "work-board.live",
+    transient: true,
+  });
+  const renderer = [];
+  client.subscribe(topic, resource, {
+    onEvent: (frame) => renderer.push(frame.type),
+    onResync: (reason) => renderer.push(reason),
+  });
+  await flush();
+  assert.deepEqual(main, ["work-board.ready", "work-board.live"]);
+  assert.deepEqual(renderer, ["subscription_joined", "work-board.ready"]);
+  assert.deepEqual(
+    socket.sent.map((item) => item.type),
+    ["subscribe"],
+  );
+});
+
+test("全局看板缺口只重新注册一次，旧就绪边界不会交付给晚加入者", async (t) => {
+  const { client, sockets } = setup(t);
+  const resource = { kind: "global" };
+  const topic = "work-board";
+  const state = { topic, resource };
+  const first = [];
+  const observer = (record) => ({
+    onEvent: (frame) => record.push(frame.type),
+    onResync: (reason) => record.push(reason),
+  });
+  client.subscribe(topic, resource, observer(first));
+  client.subscribe(topic, resource, observer([]));
+  await flush();
+  const socket = sockets[0];
+  socket.open();
+  socket.frame(1, {
+    ...state,
+    type: "subscribed",
+    payload: { requestId: socket.sent[0].requestId },
+  });
+  socket.frame(2, { ...state, type: "work-board.ready" });
+  socket.frame(4, { ...state, type: "work-board.ready" });
+  const late = [];
+  client.subscribe(topic, resource, observer(late));
+  await flush();
+  assert.deepEqual(
+    socket.sent.map((item) => item.type),
+    ["subscribe", "resync"],
+  );
+  assert.deepEqual(first, ["work-board.ready", "delivery_gap"]);
+  assert.deepEqual(late, ["subscription_joined"]);
+  socket.frame(5, {
+    ...state,
+    type: "subscribed",
+    payload: { requestId: socket.sent[1].requestId },
+  });
+  socket.frame(6, { ...state, type: "work-board.ready" });
+  assert.deepEqual(late, ["subscription_joined", "work-board.ready"]);
+});
+
+test("跨越交付缺口的 resync_required 只恢复全局看板一次", async (t) => {
+  const { client, sockets } = setup(t);
+  const topic = "work-board";
+  const resource = { kind: "global" };
+  client.subscribe(topic, resource, { onEvent() {} });
+  await flush();
+  const socket = sockets[0];
+  socket.open();
+  socket.frame(1, {
+    topic,
+    resource,
+    type: "subscribed",
+    payload: { requestId: socket.sent[0].requestId },
+  });
+  socket.frame(2, { topic, resource, type: "work-board.ready" });
+  socket.frame(4, { topic, resource, type: "resync_required" });
+  assert.deepEqual(
+    socket.sent.map((item) => item.type),
+    ["subscribe", "resync"],
+  );
+});

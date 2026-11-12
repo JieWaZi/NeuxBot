@@ -12,7 +12,6 @@ import (
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	eventstream "github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
@@ -108,14 +107,10 @@ type Journal interface {
 	ReadRecords(chatID string) ([]eventlog.Record, error)
 	// AppendExecutionFacts 提交完整 Runtime 消息、Invocation 或 Session 事实。
 	AppendExecutionFacts(ctx context.Context, chatID string, facts []eventlog.AppendInput) ([]eventlog.Record, error)
-	// AppendApprovalFact durable 提交单个审批事实，但暂不更新查询投影或发布 SSE。
-	AppendApprovalFact(chatID string, fact eventlog.AppendInput) (eventlog.Record, error)
-	// PublishApprovalFact 更新未决审批投影并发布已 durable 的审批事实。
-	PublishApprovalFact(ctx context.Context, record eventlog.Record, pending []models.PendingApproval)
-	// AppendElicitationFact durable 提交单个结构化输入事实，但暂不更新查询投影或发布 SSE。
-	AppendElicitationFact(chatID string, fact eventlog.AppendInput) (eventlog.Record, error)
-	// PublishElicitationFact 更新未决结构化输入投影并发布已 durable 的事实。
-	PublishElicitationFact(ctx context.Context, record eventlog.Record, pending []models.PendingElicitation)
+	// AppendInteractionFact durable 提交原请求事实，协调器完成状态转换后再公开。
+	AppendInteractionFact(chatID string, fact eventlog.AppendInput) (eventlog.Record, error)
+	// PublishInteractionFact 追平权威请求事实并发布已提交变化。
+	PublishInteractionFact(ctx context.Context, record eventlog.Record)
 	// CommitTerminal 先 durable 提交终态并追平 SQLite，但暂不发布 committed SSE。
 	CommitTerminal(ctx context.Context, fact TerminalFact) (TerminalCommit, error)
 	// PublishTerminal 在 Execution Registry 已释放后公开 durable 终态。
@@ -365,8 +360,8 @@ func (m *service) AppendExecutionFacts(
 	return records, nil
 }
 
-// AppendApprovalFact durable 提交单个审批事实，但暂不公开不完整的内存投影。
-func (m *service) AppendApprovalFact(
+// AppendInteractionFact durable 提交原请求事实，协调器完成状态转换后再公开。
+func (m *service) AppendInteractionFact(
 	chatID string,
 	fact eventlog.AppendInput,
 ) (eventlog.Record, error) {
@@ -377,52 +372,45 @@ func (m *service) AppendApprovalFact(
 	return records[0], nil
 }
 
-// PublishApprovalFact 在审批协调器完成内存状态转换后推进查询投影并发布 SSE。
-func (m *service) PublishApprovalFact(
-	ctx context.Context,
-	record eventlog.Record,
-	pending []models.PendingApproval,
-) {
+// PublishInteractionFact 在原请求协调器完成内存转换后公开权威事实。
+func (m *service) PublishInteractionFact(ctx context.Context, record eventlog.Record) {
 	// 权威事实已经提交；原请求取消不能撤销其投影与通知发布，收尾仍有独立期限。
 	commitCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), constants.ChatInteractionProjectionTimeoutMillis*time.Millisecond)
 	defer cancel()
-	m.queryIndexes.updateChatIndex(commitCtx, record.ChatID, record.Sequence-1, map[string]any{
-		"waiting_approval":  len(pending) > 0,
-		"pending_approvals": string(marshalData(pending)),
-		"latest_sequence":   record.Sequence,
-		"updated_at":        record.RecordedAt,
-	})
-	m.eventCommitter.publishCommitted([]eventlog.Record{record})
-}
-
-// AppendElicitationFact durable 提交单个结构化输入事实，但暂不公开不完整的内存投影。
-func (m *service) AppendElicitationFact(
-	chatID string,
-	fact eventlog.AppendInput,
-) (eventlog.Record, error) {
-	records, err := m.eventCommitter.appendDurable(chatID, []eventlog.AppendInput{fact})
-	if err != nil {
-		return eventlog.Record{}, err
+	projectionErr := m.catchUpProjectionThrough(commitCtx, record.ChatID, record.Sequence)
+	if projectionErr != nil {
+		m.queryIndexes.reportProjectionFailure(record.ChatID, projectionErr)
 	}
-	return records[0], nil
-}
-
-// PublishElicitationFact 在结构化输入协调器完成内存状态转换后推进查询投影并发布 SSE。
-func (m *service) PublishElicitationFact(
-	ctx context.Context,
-	record eventlog.Record,
-	pending []models.PendingElicitation,
-) {
-	// 权威事实已经提交；原请求取消不能撤销其投影与通知发布，收尾仍有独立期限。
-	commitCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), constants.ChatInteractionProjectionTimeoutMillis*time.Millisecond)
-	defer cancel()
-	m.queryIndexes.updateChatIndex(commitCtx, record.ChatID, record.Sequence-1, map[string]any{
-		"waiting_elicitation":  len(pending) > 0,
-		"pending_elicitations": string(marshalData(pending)),
-		"latest_sequence":      record.Sequence,
-		"updated_at":           record.RecordedAt,
-	})
 	m.eventCommitter.publishCommitted([]eventlog.Record{record})
+
+	change := models.WorkBoardLiveEvent{ChatID: record.ChatID, ExecutionID: record.ExecutionID}
+	switch record.Type {
+	case constants.ChatEventTypeApprovalRequested, constants.ChatEventTypeElicitationRequested:
+		if projectionErr != nil {
+			return
+		}
+		change.Operation = "request_opened"
+	case constants.ChatEventTypeApprovalResolved, constants.ChatEventTypeElicitationResolved:
+		change.Operation = "request_closed"
+	default:
+		return
+	}
+	var identity struct {
+		// ApprovalID 是原审批身份。
+		ApprovalID string `json:"approvalId"`
+		// ElicitationID 是原输入请求身份。
+		ElicitationID string `json:"elicitationId"`
+	}
+	if json.Unmarshal(record.Data, &identity) != nil {
+		return
+	}
+	change.RequestID, change.RequestKind = identity.ApprovalID, "approval"
+	if identity.ElicitationID != "" {
+		change.RequestID, change.RequestKind = identity.ElicitationID, "input"
+	}
+	if change.RequestID != "" {
+		m.queryIndexes.chatController.PublishChatAttention(commitCtx, change)
+	}
 }
 
 // CommitTerminal 先 durable 提交终态并追平 SQLite，但暂不发布 committed SSE。
@@ -440,8 +428,27 @@ func (m *service) CommitTerminal(
 	}
 	notificationContext, publishNotifications := events.HoldCommitEvents(context.Background())
 	// 命令和 Runtime 消息可以并发追加，逐事件 CAS 可能落后；从耐久尾部补齐全部字段。
-	if err := m.catchUpLiveProjection(notificationContext, fact.Execution.ChatID); err != nil {
-		logx.Errorf("index ended execution: chat_id=%s error=%v", fact.Execution.ChatID, err)
+	record := records[len(records)-1]
+	if err := m.catchUpProjectionThrough(notificationContext, record.ChatID, record.Sequence); err != nil {
+		m.queryIndexes.reportProjectionFailure(record.ChatID, err)
+	} else if reading := m.queryIndexes.reading; reading != nil {
+		m.queryIndexes.chatController.RecheckChatRequests(notificationContext, record.ChatID)
+		if record.Type == constants.ChatEventTypeExecutionCompleted || record.Type == constants.ChatEventTypeExecutionFailed {
+			messageID := record.MessageID
+			if messageID == "" {
+				messageID = record.ExecutionID
+			}
+			failed := record.Type == constants.ChatEventTypeExecutionFailed
+			if readable, _ := reading.HasMessage(notificationContext, record.ChatID, messageID, record.ExecutionID, failed); readable {
+				operation := "completed"
+				if failed {
+					operation = "failed"
+				}
+				m.queryIndexes.chatController.PublishChatAttention(notificationContext, models.WorkBoardLiveEvent{
+					Operation: operation, ChatID: record.ChatID, MessageID: messageID, ExecutionID: record.ExecutionID,
+				})
+			}
+		}
 	}
 	return TerminalCommit{records: records, publishNotifications: publishNotifications}, nil
 }

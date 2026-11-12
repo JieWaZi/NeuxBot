@@ -3,6 +3,7 @@ import {
   reportErrorNotice,
   apiErrorNoticePresentation,
   clearErrorNoticeActions,
+  dismissErrorNotice,
   captureErrorNoticeRecovery,
   resolveErrorNoticeRecovery,
 } from "@/shared/api/error-notices";
@@ -32,6 +33,7 @@ import {
   type AllyChatMessage,
   type ChatMessageVisibility,
   type ChatMessageSource,
+  type ChatPendingElicitation,
   type ChatRunMetrics,
 } from "./chat-projection";
 import {
@@ -76,7 +78,6 @@ function overlayMatchesScope(
 }
 import type {
   GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingApproval as PendingApproval,
-  GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingElicitation as PendingElicitation,
   GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution as MessageResult,
 } from "@/shared/api/generated/types.gen";
 
@@ -97,7 +98,7 @@ type ChatRuntimeOptions = {
   /** 人工待办摘要的权威日志游标，与消息历史游标分别对账。 */
   initialInteractionSequence?: number;
   initialPendingApprovals?: PendingApproval[];
-  initialPendingElicitations?: PendingElicitation[];
+  initialPendingElicitations?: ChatPendingElicitation[];
   isLoading: boolean;
   isSendDisabled: boolean;
   serverManagedQueue?: boolean;
@@ -128,7 +129,7 @@ type ChatRuntimeResult = {
   sendFailure: ChatSendFailure;
   contextMetrics?: ChatRunMetrics;
   pendingApprovals: PendingApproval[];
-  pendingElicitations: PendingElicitation[];
+  pendingElicitations: ChatPendingElicitation[];
 };
 
 type SendSnapshot = {
@@ -225,16 +226,33 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
   const currentSubmissionRef = useRef<PreparedChatSubmission | undefined>(
     undefined,
   );
-  // 这里只保存等待接纳确认的输入命令，不复制消息、执行状态或生成新的身份。
+  const [sendFailure, setSendFailure] = useState<{
+    chatId?: string;
+    value: ChatSendFailure;
+    noticeId?: string;
+  }>({ chatId: options.chatId, value: NO_SEND_FAILURE });
+  // 这里只保存等待接纳确认的原输入及其本地错误身份。
   const pendingSubmissionsRef = useRef(
-    new Map<string, PreparedChatSubmission>(),
+    new Map<
+      string,
+      { submission: PreparedChatSubmission; noticeId?: string }
+    >(),
   );
   const confirmSubmission = useCallback((submissionId: string | undefined) => {
     if (!submissionId) return;
-    const prepared = pendingSubmissionsRef.current.get(submissionId);
-    if (!prepared) return;
-    prepared.confirmAccepted?.();
+    const pending = pendingSubmissionsRef.current.get(submissionId);
+    if (!pending) return;
     pendingSubmissionsRef.current.delete(submissionId);
+    pending.submission.confirmAccepted?.();
+    const { noticeId } = pending;
+    if (noticeId) {
+      dismissErrorNotice(noticeId);
+      setSendFailure((current) =>
+        current.noticeId === noticeId
+          ? { chatId: current.chatId, value: NO_SEND_FAILURE }
+          : current,
+      );
+    }
   }, []);
   useLayoutEffect(() => {
     for (const message of history.messages)
@@ -242,10 +260,6 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
   }, [confirmSubmission, history.messages]);
   const [streamState, setStreamState] = useState<StreamState>("closed");
   const [streamRecoveryGeneration, setStreamRecoveryGeneration] = useState(0);
-  const [sendFailure, setSendFailure] = useState<{
-    chatId?: string;
-    value: ChatSendFailure;
-  }>({ chatId: options.chatId, value: NO_SEND_FAILURE });
   const [approvalOverlay, setApprovalOverlay] = useState<{
     chatId?: string;
     added: PendingApproval[];
@@ -257,7 +271,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
   });
   const [elicitationOverlay, setElicitationOverlay] = useState<{
     chatId?: string;
-    added: PendingElicitation[];
+    added: ChatPendingElicitation[];
     resolvedIds: string[];
   }>({
     chatId: options.chatId,
@@ -280,8 +294,11 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
   const messageRejectedRef = useRef(options.onMessageRejected);
   const approvalRequestedRef = useRef(options.onApprovalRequested);
   const notifiedApprovalIDsRef = useRef(new Set<string>());
-  const approvalPendingRef = useRef(
-    Boolean(options.initialPendingApprovals?.length),
+  const interactionPendingRef = useRef(
+    Boolean(
+      options.initialPendingApprovals?.length ||
+      options.initialPendingElicitations?.length,
+    ),
   );
   const runtimeRef = useRef<AssistantRuntime | null>(null);
   const mountedRef = useRef(false);
@@ -331,41 +348,6 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     options.initialPendingApprovals,
     options.initialInteractionSequence,
   ]);
-  useEffect(() => {
-    approvalPendingRef.current = pendingApprovals.length > 0;
-  }, [pendingApprovals]);
-  const pendingElicitations = useMemo(() => {
-    const overlay =
-      elicitationOverlay.chatId === options.chatId
-        ? elicitationOverlay
-        : { added: [], resolvedIds: [] };
-    const resolved = new Set(overlay.resolvedIds);
-    const elicitations = new Map<string, PendingElicitation>();
-    for (const elicitation of options.initialPendingElicitations ?? []) {
-      if (
-        elicitation.elicitationId &&
-        !resolved.has(elicitation.elicitationId)
-      ) {
-        elicitations.set(elicitation.elicitationId, elicitation);
-      }
-    }
-    for (const elicitation of overlay.added) {
-      if (
-        elicitation.elicitationId &&
-        !resolved.has(elicitation.elicitationId) &&
-        (elicitation.requestedSequence ?? 0) >
-          (options.initialInteractionSequence ?? 0)
-      ) {
-        elicitations.set(elicitation.elicitationId, elicitation);
-      }
-    }
-    return [...elicitations.values()];
-  }, [
-    elicitationOverlay,
-    options.chatId,
-    options.initialPendingElicitations,
-    options.initialInteractionSequence,
-  ]);
 
   const messages = useMemo(() => {
     const overlayMessages = overlayMatchesScope(
@@ -389,6 +371,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     );
     return merged.map((message) =>
       message.role === "assistant" &&
+      !message.question &&
       ((message.executionId && pendingSteers.has(message.executionId)) ||
         (message.submissionId &&
           pendingSteerSubmissions.has(message.submissionId)))
@@ -402,6 +385,74 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     overlay,
     queuedEntries,
   ]);
+  const pendingElicitations = useMemo(() => {
+    const overlay =
+      elicitationOverlay.chatId === options.chatId
+        ? elicitationOverlay
+        : { added: [], resolvedIds: [] };
+    const resolved = new Set(overlay.resolvedIds);
+    for (const message of messages) {
+      const question = message.question;
+      if (question?.elicitationId && question.result)
+        resolved.add(question.elicitationId);
+    }
+    const elicitations = new Map<string, ChatPendingElicitation>();
+    const interactionSequence = options.initialInteractionSequence ?? 0;
+    for (const elicitation of options.initialPendingElicitations ?? []) {
+      if (
+        elicitation.elicitationId &&
+        !resolved.has(elicitation.elicitationId)
+      ) {
+        elicitations.set(elicitation.elicitationId, elicitation);
+      }
+    }
+    for (const elicitation of overlay.added) {
+      if (
+        elicitation.elicitationId &&
+        !resolved.has(elicitation.elicitationId) &&
+        (elicitation.requestedSequence ?? 0) > interactionSequence
+      ) {
+        elicitations.set(elicitation.elicitationId, elicitation);
+      }
+    }
+    // 初始 SSE 游标可能已覆盖新提问。只用比详情更新的已提交历史补齐该竞态。
+    for (const message of history.messages) {
+      const question = message.question;
+      const id = question?.elicitationId;
+      const sequence = message.createdSequence ?? 0;
+      if (
+        id &&
+        !question.result &&
+        !resolved.has(id) &&
+        !elicitations.has(id) &&
+        sequence > interactionSequence
+      ) {
+        elicitations.set(id, {
+          ...question,
+          requestedAt: message.createdAt,
+          requestedSequence: sequence,
+        });
+      }
+    }
+    return [...elicitations.values()].sort(
+      (left, right) =>
+        (left.requestedSequence ?? 0) - (right.requestedSequence ?? 0),
+    );
+  }, [
+    elicitationOverlay,
+    history.messages,
+    messages,
+    options.chatId,
+    options.initialPendingElicitations,
+    options.initialInteractionSequence,
+  ]);
+  const hasPendingInteraction =
+    pendingApprovals.length > 0 || pendingElicitations.length > 0;
+  useLayoutEffect(() => {
+    interactionPendingRef.current =
+      pendingApprovals.length > 0 || pendingElicitations.length > 0;
+  }, [pendingApprovals, pendingElicitations]);
+
   const isRunning = Boolean(
     (sending?.queueKey === options.queueKey &&
       !messages.some(
@@ -455,7 +506,9 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       );
       currentSubmissionRef.current = prepared;
       if (prepared.submissionId)
-        pendingSubmissionsRef.current.set(prepared.submissionId, prepared);
+        pendingSubmissionsRef.current.set(prepared.submissionId, {
+          submission: prepared,
+        });
       const operation = `send:${snapshot.queueKey}`;
       const recovery = captureErrorNoticeRecovery(operation);
       const userID = optimisticID("user");
@@ -608,6 +661,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       } catch (error) {
         // 已被权威事实接纳，或已有后续命令取得当前输入所有权时，旧 HTTP 失败不回退界面。
         if (
+          !mountedRef.current ||
           currentSubmissionRef.current !== prepared ||
           (prepared.submissionId &&
             !pendingSubmissionsRef.current.has(prepared.submissionId))
@@ -628,10 +682,18 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           (failure.kind === "unknown" ||
             failure.kind === "active-execution" ||
             failure.kind === "create-request-in-progress");
+        const noticeId = `send:${userID}`;
+        if (prepared.submissionId) {
+          const pending = pendingSubmissionsRef.current.get(
+            prepared.submissionId,
+          );
+          if (pending) pending.noticeId = noticeId;
+        }
         reportErrorNotice(
           {
-            id: `send:${userID}`,
+            id: noticeId,
             scope: snapshot.queueKey,
+            lifetime: "session",
             operation,
             ...apiErrorNoticePresentation(
               error,
@@ -683,13 +745,16 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           setSendFailure({
             chatId: snapshot.chatId,
             value: failure,
+            noticeId,
           });
         }
         window.setTimeout(() => {
           if (
             !mountedRef.current ||
             observedChatKeyRef.current !== snapshot.conversationKey ||
-            currentSubmissionRef.current !== prepared
+            currentSubmissionRef.current !== prepared ||
+            (prepared.submissionId &&
+              !pendingSubmissionsRef.current.has(prepared.submissionId))
           ) {
             return;
           }
@@ -771,7 +836,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       if (options.queueActive === false) return;
       if (queueKey !== options.queueKey) return;
       if (runningByQueueRef.current[queueKey]) return;
-      if (approvalPendingRef.current) return;
+      if (interactionPendingRef.current) return;
       const head = queueStore.take(queueKey);
       if (!head) return;
       const steerExecutionId =
@@ -861,12 +926,23 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
   ]);
 
   useEffect(() => {
-    if (isRunning || queueStore.getEntries(options.queueKey).length === 0) {
+    if (
+      hasPendingInteraction ||
+      isRunning ||
+      queueStore.getEntries(options.queueKey).length === 0
+    ) {
       return;
     }
     const timer = window.setTimeout(() => advanceQueue(options.queueKey), 0);
     return () => window.clearTimeout(timer);
-  }, [advanceQueue, isRunning, options.queueKey, queueStore, queuedEntries]);
+  }, [
+    advanceQueue,
+    hasPendingInteraction,
+    isRunning,
+    options.queueKey,
+    queueStore,
+    queuedEntries,
+  ]);
 
   useEffect(() => {
     if (options.queueActive === false || !options.chatId || !history.ready) {
@@ -1044,7 +1120,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
                 current.chatId === options.chatId ? current.resolvedIds : [],
             };
           });
-          approvalPendingRef.current = true;
+          interactionPendingRef.current = true;
           if (!notifiedApprovalIDsRef.current.has(approvalRequest.approvalId)) {
             notifiedApprovalIDsRef.current.add(approvalRequest.approvalId);
             approvalRequestedRef.current?.(approval);
@@ -1076,7 +1152,8 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           event.type === "elicitation.requested" &&
           elicitationRequest?.elicitationId
         ) {
-          const elicitation: PendingElicitation = {
+          interactionPendingRef.current = true;
+          const elicitation: ChatPendingElicitation = {
             elicitationId: elicitationRequest.elicitationId,
             allowSkip: elicitationRequest.allowSkip,
             toolCallId: elicitationRequest.toolCallId,
@@ -1195,7 +1272,8 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
   ]);
 
   const onNew = useCallback(
-    (message: AppendMessage) => {
+    async (message: AppendMessage) => {
+      if (interactionPendingRef.current) return;
       messageAcceptedRef.current?.();
       return submit(message, currentSnapshot);
     },
@@ -1220,7 +1298,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         ? []
         : queuedEntries.map(({ id, prompt }) => ({ id, prompt })),
       enqueue: (message, { steer }) => {
-        if (approvalPendingRef.current) return;
+        if (interactionPendingRef.current) return;
         if (options.serverManagedQueue) {
           messageAcceptedRef.current?.();
           void submit(message, currentSnapshot);
@@ -1253,6 +1331,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         else if (steer) void cancel();
       },
       steer: (queueItemID) => {
+        if (interactionPendingRef.current) return;
         const current = queueStore.getEntries(queueKey);
         const target = current.find((item) => item.id === queueItemID);
         if (!target) return;
@@ -1288,10 +1367,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     convertMessage: convertComposerMessage,
     isRunning,
     isLoading: options.isLoading,
-    isSendDisabled:
-      options.isSendDisabled ||
-      pendingApprovals.length > 0 ||
-      pendingElicitations.length > 0,
+    isSendDisabled: options.isSendDisabled || hasPendingInteraction,
     queue,
     onNew,
     onCancel: options.cancel,

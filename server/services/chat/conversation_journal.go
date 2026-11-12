@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -149,6 +150,9 @@ func (j *conversationJournal) readAfter(ctx context.Context, id string, after in
 	}
 	if version == 0 {
 		return nil, status_error.ChatNotFound.WithParams(map[string]any{"ChatID": id})
+	}
+	if after > version {
+		return nil, status_error.ChatEventCursorInvalid
 	}
 	if limit > 0 {
 		version = min(version, after+int64(limit))
@@ -374,6 +378,7 @@ func (m *service) ProjectTurnAdmission(ctx context.Context, turn StartedTurn, re
 // ObserveCommitted wakes active subscriptions without reading or copying native bodies.
 func (m *service) ObserveCommitted(chatID string, receipt agent.CommitReceipt) {
 	if receipt.Version > 0 {
+		m.observeReadingCheckpoint(chatID)
 		m.subscriptions.publishCheckpoint(chatID, receipt.Version)
 	}
 }
@@ -477,17 +482,26 @@ func (j *conversationJournal) nativeOutcome(ctx context.Context, id, executionID
 	return &result, nil
 }
 
-func (j *conversationJournal) nativeHistory(ctx context.Context, id string, before int64, limit int) (MessageHistoryPage, error) {
-	stored, err := j.Store.ReadMessages(ctx, agent.MessageQuery{ChatID: id, Before: before, Limit: limit})
+func (j *conversationJournal) nativeHistory(ctx context.Context, id string, before, through int64, limit int, includeQuestions bool) (MessageHistoryPage, error) {
+	query := agent.MessageQuery{ChatID: id, Before: before, Limit: limit}
+	var timeline conversation.TimelinePage
+	var err error
+	if includeQuestions {
+		timeline, err = j.Store.ReadTimeline(ctx, query, through)
+	} else {
+		timeline.Messages, err = j.Store.ReadMessages(ctx, query)
+		timeline.MessageBefore = before
+	}
 	if err != nil {
 		return MessageHistoryPage{}, err
 	}
-	window, err := j.messageWindow(id, before, stored)
+	stored := timeline.Messages
+	window, err := j.messageWindow(id, timeline.MessageBefore, stored)
 	if err != nil {
 		return MessageHistoryPage{}, err
 	}
 	builder := messageview.NewPublicMessageViewBuilder()
-	if before == 0 {
+	if before == 0 && through == 0 {
 		binding, err := j.ReadBinding(ctx, id)
 		if err != nil {
 			return MessageHistoryPage{}, err
@@ -524,9 +538,24 @@ func (j *conversationJournal) nativeHistory(ctx context.Context, id string, befo
 		Resources: builder.Messages(), LatestSequence: stored.Version, NextBeforeSequence: stored.Before,
 		HasMore: stored.Before > 0, ForkLatestExecutionID: builder.LatestForkExecutionID(),
 	}
-	if before > 0 {
+	for _, question := range timeline.Questions {
+		message, err := messageview.ProjectQuestionMessage(factRecord(id, question.Request), factRecord(id, question.Outcome))
+		if err != nil {
+			return MessageHistoryPage{}, err
+		}
+		result.Resources = append(result.Resources, message)
+	}
+	slices.SortFunc(result.Resources, func(a, b messageview.Message) int {
+		return cmp.Compare(a.CreatedSequence, b.CreatedSequence)
+	})
+	if before > 0 || through > 0 {
 		result.LatestSequence = 0
 		result.ForkLatestExecutionID = ""
+	} else if result.ForkLatestExecutionID == "" && len(result.Resources) > 0 {
+		latest := result.Resources[len(result.Resources)-1]
+		if latest.Question != nil {
+			result.ForkLatestExecutionID = latest.ExecutionID
+		}
 	}
 	return result, nil
 }

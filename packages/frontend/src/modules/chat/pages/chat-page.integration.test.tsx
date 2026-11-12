@@ -27,6 +27,7 @@ import {
 } from "react";
 import {
   MemoryRouter,
+  Link,
   createMemoryRouter,
   RouterProvider,
   Outlet,
@@ -46,6 +47,7 @@ import {
 } from "vitest";
 
 import "@/shared/i18n";
+import { ApiError } from "@/shared/api/errors";
 import type { TeamChatContext } from "@/modules/team";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import {
@@ -70,6 +72,10 @@ import type { GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution as
 import { TeamChatPageContent as SceneTeamChatPageContent } from "./team-chat-page";
 import { ChatTaskListPage } from "./chat-task-list-page";
 import { observeRenderedState } from "@/test/observe-rendered-state";
+
+const automaticWorkChatId = "c".repeat(32);
+const privateWorkChatId = "d".repeat(32);
+const hiddenWorkChatIds = [automaticWorkChatId, privateWorkChatId];
 
 const render = (ui: Parameters<typeof renderUI>[0]) =>
   renderUI(ui, { wrapper: WorkbenchProvider });
@@ -148,7 +154,8 @@ const {
   chatMessageDelay,
   chatMessageReads,
   chatDetailReads,
-  chatDetailDelay,
+  chatReadingWrites,
+  chatDetailGate,
   chatLatestSequence,
   eventObservers,
   wakerResources,
@@ -322,7 +329,8 @@ const {
   chatMessageDelay: { current: 50 },
   chatMessageReads: { current: {} as Record<string, number> },
   chatDetailReads: { current: {} as Record<string, number> },
-  chatDetailDelay: { current: 0 },
+  chatReadingWrites: vi.fn(),
+  chatDetailGate: { current: undefined as Promise<void> | undefined },
   chatLatestSequence: { current: 1 },
   eventObservers: new Map<
     GlobalEventObserver,
@@ -350,6 +358,21 @@ const {
 
 vi.mock("@/shared/api/generated/sdk.gen", async (importOriginal) => ({
   ...(await importOriginal<typeof GeneratedSDK>()),
+  getChatReading: async ({ path }: { path: { chatId: string } }) => {
+    if (path.chatId === privateWorkChatId)
+      throw new ApiError("Chat not found", "ChatNotFound", 404);
+    return {
+      data: {
+        chatId: path.chatId,
+        complete: true,
+        throughSequence: 0,
+        unreadGeneration: 0,
+        holdUnread: true,
+        latestReadableMessageID: `message:${path.chatId}`,
+      },
+    };
+  },
+  markChatRead: chatReadingWrites,
   getRuntimeModelCatalog: async ({
     path,
     query,
@@ -389,6 +412,9 @@ vi.mock("@/shared/api/generated/sdk.gen", async (importOriginal) => ({
   },
   listChatMessages: async ({ path }: { path: { chatId: string } }) => {
     const { chatId } = path;
+    const hiddenWorkChat = hiddenWorkChatIds.includes(chatId);
+    const assistant =
+      hiddenWorkChat || ["member-chat", "team-lead-chat"].includes(chatId);
     chatMessageReads.current[chatId] =
       (chatMessageReads.current[chatId] ?? 0) + 1;
     await new Promise((resolve) =>
@@ -404,16 +430,15 @@ vi.mock("@/shared/api/generated/sdk.gen", async (importOriginal) => ({
               : [
                   {
                     id: chatId === "chat-1" ? "message-1" : `message:${chatId}`,
-                    role: ["member-chat", "team-lead-chat"].includes(chatId)
-                      ? "assistant"
-                      : "user",
+                    role: assistant ? "assistant" : "user",
+                    ...(hiddenWorkChat
+                      ? { readable: true, createdSequence: 5 }
+                      : {}),
                     content:
                       chatId === "chat-1"
                         ? historyMessageContent.current
                         : `历史消息：${chatId}`,
-                    displayParts: ["member-chat", "team-lead-chat"].includes(
-                      chatId,
-                    )
+                    displayParts: assistant
                       ? [
                           {
                             id: "member-text",
@@ -643,11 +668,7 @@ vi.mock("../api/chat-queries", async (importOriginal) => ({
     queryFn: async () => {
       chatDetailReads.current[path.chatId] =
         (chatDetailReads.current[path.chatId] ?? 0) + 1;
-      if (chatDetailDelay.current > 0) {
-        await new Promise((resolve) =>
-          window.setTimeout(resolve, chatDetailDelay.current),
-        );
-      }
+      if (chatDetailGate.current) await chatDetailGate.current;
       if (path.chatId === "source-chat" && !sourceChatAvailable.current) {
         throw new Error("source chat missing");
       }
@@ -656,6 +677,7 @@ vi.mock("../api/chat-queries", async (importOriginal) => ({
           id: path.chatId,
           wakerId: "waker-1",
           title: "直接进入的对话",
+          hiddenFromWakerHistory: hiddenWorkChatIds.includes(path.chatId),
           forkSourceChatId: forkSourceChatId.current,
           workspaceDirectory: "/tmp/ally",
           additionalWorkingDirectories: ["/tmp/project"],
@@ -771,7 +793,7 @@ beforeEach(() => {
   chatMessageDelay.current = 50;
   chatMessageReads.current = {};
   chatDetailReads.current = {};
-  chatDetailDelay.current = 0;
+  chatDetailGate.current = undefined;
   chatLatestSequence.current = 1;
   eventObservers.clear();
   wakerResources.current = [
@@ -1687,6 +1709,9 @@ describe("ChatPage", () => {
                               },
                             ]}
                           />
+                          <Link to="?message=coordinator-summary">
+                            测试查看团队结果
+                          </Link>
                           <TeamChatPageContent
                             chatId="team-lead-chat"
                             teamContext={{
@@ -1989,7 +2014,7 @@ describe("ChatPage", () => {
       screen.queryByRole("heading", { name: "今天想一起完成什么？" }),
     ).toBeNull();
     expect(screen.queryByText("完整成员结果")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("tab", { name: "团队负责人" }));
+    await user.click(screen.getByRole("link", { name: "测试查看团队结果" }));
     expect(await screen.findByText("负责人最终汇总")).toBeVisible();
   });
 
@@ -2947,7 +2972,10 @@ describe("ChatPage", () => {
   );
 
   it("首发历史快照已终态时对账较旧接纳详情且不重读消息", async () => {
-    chatDetailDelay.current = 200;
+    let releaseDetail = () => {};
+    chatDetailGate.current = new Promise<void>((resolve) => {
+      releaseDetail = resolve;
+    });
     createChat.mockResolvedValueOnce({
       chat: {
         id: "chat-1",
@@ -2998,22 +3026,28 @@ describe("ChatPage", () => {
         </ChatQueueProvider>
       </QueryClientProvider>,
     );
-    await screen.findByRole("textbox", { name: "输入消息" });
-    await user.type(
-      screen.getByRole("textbox", { name: "输入消息" }),
-      "首发很快完成",
-    );
-    await user.click(screen.getByRole("button", { name: "发送消息" }));
-    await screen.findByText("首发结果已完成");
-    expect(
-      screen.queryByRole("button", { name: "停止执行" }),
-    ).not.toBeInTheDocument();
-    expect(queryClient.getQueryState(["chat", "chat-1"])?.fetchStatus).toBe(
-      "fetching",
-    );
-    expect(queryClient.getQueryData(["chat", "chat-1"])).toMatchObject({
-      chat: { activeExecutionId: "execution-2" },
-    });
+    try {
+      await screen.findByRole("textbox", { name: "输入消息" });
+      await user.type(
+        screen.getByRole("textbox", { name: "输入消息" }),
+        "首发很快完成",
+      );
+      await user.click(screen.getByRole("button", { name: "发送消息" }));
+      await screen.findByText("首发结果已完成");
+      expect(
+        screen.queryByRole("button", { name: "停止执行" }),
+      ).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(queryClient.getQueryState(["chat", "chat-1"])?.fetchStatus).toBe(
+          "fetching",
+        ),
+      );
+      expect(queryClient.getQueryData(["chat", "chat-1"])).toMatchObject({
+        chat: { activeExecutionId: "execution-2" },
+      });
+    } finally {
+      releaseDetail();
+    }
     await waitFor(() =>
       expect(queryClient.getQueryData(["chat", "chat-1"])).toMatchObject({
         chat: {
@@ -5040,6 +5074,7 @@ function ChatLayout({
 
 vi.mock("@/shared/api/global-events", () => ({
   registerCoreConnectionRecovery: () => () => {},
+  getReadyEventEpoch: () => undefined,
   updateGlobalEventCursor: () => {},
   subscribeGlobalEvents: (
     topic: string,
@@ -5086,16 +5121,72 @@ it("团队页面工作台中的独立侧聊自动接入共享阅读器，并以�
   );
   await screen.findByText(`历史消息：${chatId}`);
   await waitFor(() =>
-    expect(
-      view.container.querySelector("[data-work-result-owner-id]"),
-    ).toHaveAttribute("data-work-result-owner-id", chatId),
+    expect([...eventObservers.values()]).toContainEqual({
+      topic: "reading",
+      resource: { kind: "chat", id: chatId },
+    }),
   );
-  expect(
-    view.container.querySelector("[data-work-result-owner-id]"),
-  ).toHaveAttribute("data-work-result-owner-kind", "chat");
-  expect(
-    view.container.querySelector("[data-work-result-owner-id]"),
-  ).toHaveAttribute("data-work-result-chat-id", chatId);
   view.unmount();
   queryClient.clear();
 });
+
+it.each([
+  [automaticWorkChatId, true],
+  [privateWorkChatId, false],
+] as const)(
+  "隐藏 Chat %s 的阅读操作由 Core 权威资格决定（%s）",
+  async (chatId, publicWork) => {
+    chatReadingWrites.mockClear();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <ChatQueueProvider>
+          <TooltipProvider>
+            <MemoryRouter initialEntries={[`/chats/${chatId}?wakerId=waker-1`]}>
+              <Routes>
+                <Route element={<ChatLayout />}>
+                  <Route path="/chats/:chatId" element={<ChatEntryPage />} />
+                </Route>
+              </Routes>
+            </MemoryRouter>
+          </TooltipProvider>
+        </ChatQueueProvider>
+      </QueryClientProvider>,
+    );
+    try {
+      await screen.findByText(`历史消息：${chatId}`);
+      if (publicWork) {
+        const user = userEvent.setup();
+        await user.click(
+          await screen.findByRole("button", { name: "阅读操作" }),
+        );
+        await user.click(screen.getByRole("menuitem", { name: "标为已读" }));
+        await waitFor(() =>
+          expect(chatReadingWrites).toHaveBeenCalledWith(
+            expect.objectContaining({
+              path: { chatId },
+              body: {
+                intent: "explicit",
+                observedUnreadGeneration: 0,
+                throughMessageID: `message:${chatId}`,
+              },
+            }),
+          ),
+        );
+      } else {
+        await waitFor(() =>
+          expect(
+            queryClient.getQueryState(["chat-reading", chatId]),
+          ).toMatchObject({ status: "success", data: null }),
+        );
+        expect(screen.queryByRole("button", { name: "阅读操作" })).toBeNull();
+        expect(chatReadingWrites).not.toHaveBeenCalled();
+      }
+    } finally {
+      view.unmount();
+      queryClient.clear();
+    }
+  },
+);

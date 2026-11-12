@@ -8,10 +8,13 @@ import {
   waitFor,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import "@/shared/i18n";
 import { FileReferenceProvider } from "@/shared/workspace/file-reference-link";
-import { ExecutionFileChangesCard } from "./execution-file-changes-card";
+import {
+  ExecutionFileChangesAction,
+  ExecutionFileChangesCard,
+} from "./execution-file-changes-card";
 import type { AllyChatMessage } from "../runtime/chat-projection";
 
 const { readSummary } = vi.hoisted(() => ({ readSummary: vi.fn() }));
@@ -33,7 +36,7 @@ const message: AllyChatMessage = {
     complete: true,
   },
 };
-function mount(value = message) {
+function mount(value = message, Component = ExecutionFileChangesCard) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -52,19 +55,11 @@ function mount(value = message) {
     </QueryClientProvider>
   );
   const onOpenFile = vi.fn();
-  const view = render(
-    <ExecutionFileChangesCard
-      visible
-      message={value}
-      onOpenFile={onOpenFile}
-    />,
-    { wrapper },
-  );
+  const view = render(<Component message={value} onOpenFile={onOpenFile} />, {
+    wrapper,
+  });
   return { ...view, onOpenFile, client };
 }
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
 beforeEach(() => {
   readSummary.mockReset();
 });
@@ -99,7 +94,6 @@ describe("independent workspace outcome", () => {
       <QueryClientProvider client={client}>
         <ContentVisibility value={active}>
           <ExecutionFileChangesCard
-            visible
             chatId="chat"
             message={completed}
             onOpenFile={onOpenFile}
@@ -112,7 +106,9 @@ describe("independent workspace outcome", () => {
     expect(screen.getByText("已编辑 1 个文件")).toBeVisible();
     expect(screen.queryByText("正在采集文件改动…")).toBeNull();
     expect(screen.getByRole("button", { name: "查看变更" })).toBeDisabled();
-    expect(view.container.querySelector("[data-work-result-body]")).toBeNull();
+    expect(
+      view.container.querySelector("[data-chat-readable-body]"),
+    ).toBeNull();
 
     view.rerender(scene(false));
     view.rerender(scene(true));
@@ -122,7 +118,7 @@ describe("independent workspace outcome", () => {
     await screen.findByText("report.md");
     expect(screen.getByRole("button", { name: "查看变更" })).toBeEnabled();
     expect(
-      view.container.querySelector("[data-work-result-body]"),
+      view.container.querySelector("[data-file-change-record-id]"),
     ).not.toBeNull();
     expect(readSummary).toHaveBeenCalledTimes(1);
   });
@@ -335,7 +331,7 @@ describe("independent workspace outcome", () => {
     const view = mount(pending);
     expect(view.container).toBeEmptyDOMElement();
     expect(readSummary).not.toHaveBeenCalled();
-    view.rerender(<ExecutionFileChangesCard visible message={message} />);
+    view.rerender(<ExecutionFileChangesCard message={message} />);
     await screen.findByText("部分范围未覆盖");
     expect(readSummary).toHaveBeenCalledTimes(1);
     readSummary.mockImplementation(async () => {
@@ -343,7 +339,6 @@ describe("independent workspace outcome", () => {
     });
     view.rerender(
       <ExecutionFileChangesCard
-        visible
         message={{
           ...message,
           fileChangeRecord: { ...message.fileChangeRecord, version: 3 },
@@ -353,7 +348,9 @@ describe("independent workspace outcome", () => {
     await waitFor(() =>
       expect(screen.getByText("文件改动暂时无法读取")).toBeTruthy(),
     );
-    expect(view.container.querySelector("[data-work-result-body]")).toBeNull();
+    expect(
+      view.container.querySelector("[data-chat-readable-body]"),
+    ).toBeNull();
     readSummary.mockResolvedValue({
       state: "ready",
       complete: true,
@@ -382,30 +379,7 @@ describe("independent workspace outcome", () => {
   });
 });
 
-it("历史摘要首次进入视区才读取，隐藏Scene和零改动不读", async () => {
-  const activations: {
-    callback: IntersectionObserverCallback;
-    element?: Element;
-  }[] = [];
-  vi.stubGlobal(
-    "IntersectionObserver",
-    class {
-      item: (typeof activations)[number];
-      constructor(callback: IntersectionObserverCallback) {
-        this.item = { callback };
-        activations.push(this.item);
-      }
-      observe(element: Element) {
-        this.item.element = element;
-      }
-      unobserve() {
-        this.item.element = undefined;
-      }
-      disconnect() {
-        this.item.element = undefined;
-      }
-    },
-  );
+it("历史消息点击图标后才读取摘要，关闭并重新打开复用结果", async () => {
   readSummary.mockResolvedValue({
     state: "ready",
     totalFiles: 1,
@@ -413,57 +387,29 @@ it("历史摘要首次进入视区才读取，隐藏Scene和零改动不读", as
     files: [
       {
         rootId: "root",
-        path: "a",
-        absolutePath: "/project/a",
+        path: "report.md",
+        absolutePath: "/project/report.md",
         status: "modified",
         content: "text",
       },
     ],
   });
-  const view = mount();
+  mount(message, ExecutionFileChangesAction);
+  const user = userEvent.setup();
+  const action = screen.getByRole("button", { name: "文件变更" });
   expect(readSummary).not.toHaveBeenCalled();
-  expect(view.container.querySelector("[data-work-result-body]")).toBeNull();
-  const observer = activations.find((item) => item.element);
-  await act(async () => {
-    observer?.callback(
-      [
-        {
-          target: observer.element,
-          isIntersecting: true,
-        } as IntersectionObserverEntry,
-      ],
-      {} as IntersectionObserver,
-    );
-    await Promise.resolve();
-  });
-  await screen.findByText("a");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  action.focus();
+  await user.keyboard("{Enter}");
+  await screen.findByText("report.md");
+  const summary = screen.getByRole("region", { name: "已编辑 1 个文件" });
+  expect(summary).toHaveAttribute("data-file-change-record-id", "snapshot");
+  expect(summary).toHaveAttribute("data-file-change-record-version", "2");
   expect(readSummary).toHaveBeenCalledTimes(1);
-  expect(
-    view.container.querySelector(
-      '[data-work-result-body][data-file-change-record-id="snapshot"][data-file-change-record-version="2"]',
-    ),
-  ).not.toBeNull();
-  view.unmount();
-  readSummary.mockClear();
-  const hidden = render(
-    <QueryClientProvider client={new QueryClient()}>
-      <ContentVisibility value={false}>
-        <ExecutionFileChangesCard visible chatId="chat" message={message} />
-      </ContentVisibility>
-    </QueryClientProvider>,
-  );
-  expect(readSummary).not.toHaveBeenCalled();
-  hidden.unmount();
-  const empty = mount({
-    ...message,
-    fileChangeRecord: {
-      ...message.fileChangeRecord,
-      state: "ready",
-      totalFiles: 0,
-    },
-  });
-  expect(empty.container).toBeEmptyDOMElement();
-  expect(readSummary).not.toHaveBeenCalled();
-  empty.unmount();
-  vi.unstubAllGlobals();
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(action).toHaveFocus();
+  await user.click(action);
+  expect(await screen.findByText("report.md")).toBeVisible();
+  expect(readSummary).toHaveBeenCalledTimes(1);
 });

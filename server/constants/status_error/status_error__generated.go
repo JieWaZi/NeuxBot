@@ -357,6 +357,8 @@ func (v StatusError) Key() string {
 		return "AgentCommandOutcomeUnknown"
 	case AgentCommandRequestConflict:
 		return "AgentCommandRequestConflict"
+	case ReadingIntentConflict:
+		return "ReadingIntentConflict"
 	case KnowledgeConflict:
 		return "KnowledgeConflict"
 	case KnowledgeCancelled:
@@ -369,6 +371,8 @@ func (v StatusError) Key() string {
 		return "IntegrationConflict"
 	case WorkspaceResourceTooLarge:
 		return "WorkspaceResourceTooLarge"
+	case ReadingTargetLimitExceeded:
+		return "ReadingTargetLimitExceeded"
 	case PluginCapabilityUnsupported:
 		return "PluginCapabilityUnsupported"
 	case PluginPackageUnsupported:
@@ -565,6 +569,10 @@ func (v StatusError) Key() string {
 		return "TerminalUnavailable"
 	case AgentConnectionUnavailable:
 		return "AgentConnectionUnavailable"
+	case ReadingProjectionIncomplete:
+		return "ReadingProjectionIncomplete"
+	case ReadingExecutionInterrupted:
+		return "ReadingExecutionInterrupted"
 	case IntegrationListenerError:
 		return "IntegrationListenerError"
 	case KnowledgeRemoteOutcomeUnknown:
@@ -758,12 +766,14 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			RuntimeVersionUnknown:                "the current version is unknown; whether an update is needed cannot be determined",
 			AgentCommandOutcomeUnknown:           "command outcome is uncertain; inspect the original request receipt",
 			AgentCommandRequestConflict:          "command request identifier was already used with different content",
+			ReadingIntentConflict:                "the reading position changed; refresh before trying again",
 			KnowledgeConflict:                    "knowledge version or request content has changed",
 			KnowledgeCancelled:                   "knowledge operation was cancelled or its attempt is stale",
 			KnowledgeFolderHasChildren:           "folder contains subfolders; delete them first",
 			KnowledgeFolderHasPages:              "folder contains pages; move them out first",
 			IntegrationConflict:                  "integration revision or request identity conflicts",
 			WorkspaceResourceTooLarge:            "workspace resource exceeds the size limit",
+			ReadingTargetLimitExceeded:           "too many awaiting-view targets; narrow the filter",
 			PluginCapabilityUnsupported:          "plugin capability is unsupported by the current target",
 			PluginPackageUnsupported:             "This plugin package is unsupported. Reinstall it from the plugin catalog.",
 			RuntimeInstallationUnsupported:       "installing this agent is unsupported on this platform",
@@ -862,6 +872,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			IMServiceUnavailable:                 "im integration service is unavailable",
 			TerminalUnavailable:                  "terminal service is unavailable",
 			AgentConnectionUnavailable:           "capability connection is unavailable or its protocol does not match",
+			ReadingProjectionIncomplete:          "the conversation reading index is unavailable; wait for recovery or refresh",
 			IntegrationListenerError:             "integration listener or configuration update failed",
 			KnowledgeRemoteOutcomeUnknown:        "remote operation outcome is unknown; inspect the original request receipt",
 		},
@@ -1025,12 +1036,14 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			RuntimeVersionUnknown:                "无法确认当前版本，暂不能判断是否需要更新",
 			AgentCommandOutcomeUnknown:           "软件能力命令提交结果尚不确定，请查询原请求回执",
 			AgentCommandRequestConflict:          "同一命令请求标识不能用于不同内容",
+			ReadingIntentConflict:                "会话阅读位置已变化，请刷新后重新操作",
 			KnowledgeConflict:                    "知识版本或请求内容已变化，请刷新后重试",
 			KnowledgeCancelled:                   "当前知识操作已取消或阶段已失效",
 			KnowledgeFolderHasChildren:           "目录下还有子目录，请先删除子目录",
 			KnowledgeFolderHasPages:              "目录下还有页面，请先移出页面",
 			IntegrationConflict:                  "API 集成配置已变化，请刷新后重试",
 			WorkspaceResourceTooLarge:            "工作区资源超过大小限制",
+			ReadingTargetLimitExceeded:           "待查看工作过多，请缩小筛选范围",
 			PluginCapabilityUnsupported:          "当前运行目标尚不支持该插件声明的能力",
 			PluginPackageUnsupported:             "当前插件包不受支持，请从插件目录重新安装",
 			RuntimeInstallationUnsupported:       "当前平台暂不支持安装此智能体",
@@ -1129,6 +1142,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			IMServiceUnavailable:                 "IM 集成服务当前不可用",
 			TerminalUnavailable:                  "终端服务不可用",
 			AgentConnectionUnavailable:           "软件能力连接不可用或协议不匹配",
+			ReadingProjectionIncomplete:          "会话阅读索引暂不可用，请等待恢复或刷新",
 			IntegrationListenerError:             "API 服务监听或配置保存失败，原配置仍然有效",
 			KnowledgeRemoteOutcomeUnknown:        "远端操作结果待确认，请使用原请求查询回执",
 		},

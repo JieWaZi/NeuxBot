@@ -68,3 +68,25 @@ func TestHubScopesResourcesAndClosesSlowConsumers(t *testing.T) {
 	}
 	other.Close()
 }
+
+func TestReadingInvalidationFailureClosesOnlyAffectedSubscriptions(t *testing.T) {
+	hub := New()
+	defer hub.Close()
+	chat := Resource{Kind: "chat", ID: "one"}
+	affected := hub.Subscribe("reading", chat)
+	unrelated := hub.Subscribe("reading", Resource{Kind: "chat", ID: "two"})
+	hub.Publish(Event{Topic: "reading", Resource: chat, Payload: make([]byte, MaximumFrameBytes+1)})
+	select {
+	case _, open := <-affected.Events:
+		if open {
+			t.Fatal("oversized publication should force resync")
+		}
+	default:
+		t.Fatal("subscription left open after a lost invalidation")
+	}
+	select {
+	case <-unrelated.Events:
+		t.Fatal("unrelated subscription was closed or changed")
+	default:
+	}
+}

@@ -79,8 +79,9 @@ func answerOperation(ctx context.Context, d *workflowDependencies, command Answe
 		if err != nil {
 			return err
 		}
-		if workflowstate.TerminalRun(state.Run.Status) || state.Run.Status == constants.WorkflowRunStatusCancelling {
-			return status_error.WorkflowStateConflict
+		now := time.Now().UnixMilli()
+		if err := d.State.RequireHumanAction(ctx, state.Run, now); err != nil {
+			return err
 		}
 		for index := range state.Operations {
 			operation := &state.Operations[index]
@@ -90,7 +91,6 @@ func answerOperation(ctx context.Context, d *workflowDependencies, command Answe
 			if operation.Status != constants.WorkflowStepStatusWaiting || operation.DescriptorDigest != command.DescriptorDigest {
 				return status_error.WorkflowStateConflict
 			}
-			now := time.Now().UnixMilli()
 			operation.Status = constants.WorkflowStepStatusAnswered
 			operation.Allowed = command.Allowed
 			operation.AnsweredAt = &now

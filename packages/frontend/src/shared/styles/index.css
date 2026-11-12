@@ -91,6 +91,7 @@
   --color-accent-surface-strong: var(--accent-surface-strong);
   --color-accent-border: var(--accent-border);
   --color-accent-secondary: var(--accent-secondary);
+  --color-accent-secondary-strong: var(--accent-secondary-hover);
   --color-accent-secondary-surface: var(--accent-secondary-surface);
   --color-accent-secondary-border: var(--accent-secondary-border);
   --color-accent-foreground: var(--accent-foreground);
@@ -195,6 +196,7 @@
   --spacing-row-settings: 2rem;
   --spacing-row-detail: 4rem;
   --container-settings-content: 49rem;
+  --container-chat-question: 33.75rem;
   --spacing-row-navigation: 2.75rem;
   --spacing-row-rich: 3.5rem;
   --spacing-work-board-focus-list: calc(5 * var(--spacing-row-rich) + 3.5rem);
@@ -235,6 +237,8 @@
   --animate-popover-out: dialog-out var(--duration-quick) var(--ease-ui) both;
   --animate-fade-in: fade-in var(--duration-enter) var(--ease-ui);
   --animate-fade-out: fade-out var(--duration-exit) var(--ease-ui);
+  --animate-avatar-attention-wave: avatar-attention-wave 1.2s var(--ease-ui)
+    infinite;
   --animate-dialog-in: dialog-in var(--duration-enter) var(--ease-ui) both;
   --animate-dialog-out: dialog-out var(--duration-exit) var(--ease-ui) both;
   --animate-shell-side-panel-in: shell-side-panel-in var(--duration-layout)

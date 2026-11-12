@@ -3,10 +3,10 @@ package chat
 import (
 	"context"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
@@ -97,8 +97,12 @@ func (c *eventCommitter) commitError(chatID string, err error) error {
 // 该类型不保存权威业务状态，也不定义新的持久化 seam；它只把共同遵守“可落后、
 // 可重建”语义的 Repository Controller 收口，避免 Service 重复散列这些依赖。
 type queryIndexStore struct {
-	// results 保存原结果交付与独立的用户阅读事实。
-	results controllers.WorkResultController
+	// reading 保存可读索引及独立的用户阅读事实。
+	reading controllers.ChatReadingController
+	// failed 记录已提交的权威日志尚未投影。
+	failed func(string, error)
+	// deleted 清除已永久删除会话的恢复登记。
+	deleted func(string)
 	// logStore 通过文件索引读取单条结果，文件读取在 SQLite 事务前完成。
 	logStore chatJournalStorage
 	// chatController 持久化对话查询索引。
@@ -123,26 +127,49 @@ func (p *queryIndexStore) writeInitialIndexes(
 	ctx context.Context,
 	chat models.Chat,
 ) {
-	err := p.transactionController.Transaction(ctx, func(transactionContext context.Context) error {
-		if err := p.chatController.Create(transactionContext, chat); err != nil {
-			return err
-		}
-		return nil
-	})
-	if err != nil {
-		logx.Errorf(
-			"write initial chat indexes failed: chat_id=%s error=%v",
-			chat.ID,
-			err,
-		)
+	if err := p.createChats(ctx, []models.Chat{chat}); err != nil {
+		p.reportProjectionFailure(chat.ID, err)
 	}
 }
 
 // createChats 在一个 SQLite 事务内建立一组已经写入权威日志的 Chat 查询索引。
 func (p *queryIndexStore) createChats(ctx context.Context, chats []models.Chat) error {
-	return p.transactionController.Transaction(ctx, func(transactionContext context.Context) error {
-		for _, chat := range chats {
-			if err := p.chatController.Create(transactionContext, chat); err != nil {
+	return p.createChatsIfMissing(ctx, chats, false)
+}
+
+func (p *queryIndexStore) createChatsIfMissing(ctx context.Context, chats []models.Chat, missingOnly bool) error {
+	prepared := make([]readingChanges, len(chats))
+	if p.reading != nil {
+		for index, chat := range chats {
+			records, err := p.logStore.ReadAfter(chat.ID, 0, int(chat.LatestSequence))
+			if err != nil {
+				return err
+			}
+			prepared[index], err = p.prepareReading(ctx, chat.ID, records, chat.LatestSequence)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return p.transactionController.Transaction(ctx, func(tx context.Context) error {
+		for index, chat := range chats {
+			_, missing, err := p.inspectChat(tx, chat.ID)
+			if err != nil {
+				return err
+			}
+			if !missing {
+				if missingOnly {
+					return status_error.Conflict
+				}
+				continue
+			}
+			changes := prepared[index]
+			latest, err := p.projectReadableMessages(tx, chat.ID, changes, true, &changes.inheritedThrough)
+			if err != nil {
+				return err
+			}
+			chat.LatestReadableSequence = latest
+			if err := p.chatController.Create(tx, chat); err != nil {
 				return err
 			}
 		}
@@ -151,24 +178,59 @@ func (p *queryIndexStore) createChats(ctx context.Context, chats []models.Chat) 
 }
 
 // updateChatIndex 以尽力而为方式更新 Chat 查询索引。
-func (p *queryIndexStore) updateChatIndex(
-	ctx context.Context,
-	chatID string,
-	afterSequence int64,
-	fields map[string]any,
-) {
-	if err := p.chatController.AdvanceProjection(
-		ctx,
-		chatID,
-		afterSequence,
-		fields,
-	); err != nil {
-		logx.Errorf(
-			"update chat index failed: chat_id=%s error=%v",
-			chatID,
-			err,
-		)
+func (p *queryIndexStore) updateChatIndex(ctx context.Context, chatID string, afterSequence int64, fields map[string]any) {
+	if err := p.advanceChatReading(ctx, chatID, afterSequence, fields, nil); err != nil {
+		p.reportProjectionFailure(chatID, err)
 	}
+}
+
+func (p *queryIndexStore) reportProjectionFailure(chatID string, err error) {
+	logx.Errorf("update chat projection failed: chat_id=%s error=%v", chatID, err)
+	if p.failed != nil {
+		p.failed(chatID, err)
+	}
+}
+
+// advanceChatReading 以同一事务更新阅读索引和原 Chat checkpoint。
+func (p *queryIndexStore) advanceChatReading(ctx context.Context, chatID string, afterSequence int64, fields map[string]any, tail []eventlog.Record) error {
+	if p.reading == nil {
+		return p.chatController.AdvanceProjection(ctx, chatID, afterSequence, fields)
+	}
+	through, err := readProjectionSequence(fields)
+	if err != nil {
+		return err
+	}
+	if tail == nil {
+		tail, err = p.logStore.ReadAfter(chatID, afterSequence, int(through-afterSequence))
+		if err != nil {
+			return err
+		}
+	}
+	if len(tail) == 0 || tail[len(tail)-1].Sequence != through {
+		return status_error.ChatLogIndexCorrupted
+	}
+	changes, err := p.prepareReading(ctx, chatID, tail, through)
+	if err != nil {
+		return err
+	}
+	return p.transactionController.Transaction(ctx, func(tx context.Context) error {
+		changed := false
+		if len(changes.rows)+len(changes.remove) > 0 {
+			latest, projectionChanged, err := p.reading.ProjectWithChange(tx, chatID, changes.remove, changes.rows, false)
+			changed = projectionChanged
+			if err != nil {
+				return err
+			}
+			fields["latest_readable_sequence"] = latest
+		}
+		if err := p.chatController.AdvanceProjection(tx, chatID, afterSequence, fields); err != nil {
+			return err
+		}
+		if changed {
+			p.reading.ProjectionChanged(tx, chatID)
+		}
+		return nil
+	})
 }
 
 // getSummary 返回打开 Chat 所需的有界查询摘要。
@@ -231,9 +293,7 @@ func (p *queryIndexStore) ensureChatState(
 		)
 		return
 	}
-	if err := p.replaceCurrentProjection(ctx, currentProjection{
-		chat: state.chat,
-	}); err != nil {
+	if err := p.createChats(ctx, []models.Chat{state.chat}); err != nil {
 		logx.Errorf(
 			"restore missing chat query index failed: chat_id=%s error=%v",
 			state.chat.ID,
@@ -298,11 +358,15 @@ func (p *queryIndexStore) renameChat(
 	title string,
 	record eventlog.Record,
 ) error {
-	return p.chatController.AdvanceProjection(ctx, chatID, record.Sequence-1, map[string]any{
+	err := p.advanceChatReading(ctx, chatID, record.Sequence-1, map[string]any{
 		"title":           title,
 		"latest_sequence": record.Sequence,
 		"updated_at":      record.RecordedAt,
-	})
+	}, []eventlog.Record{record})
+	if err != nil {
+		p.reportProjectionFailure(chatID, err)
+	}
+	return err
 }
 
 // deleteChats 在一个事务中删除全部 Chat 查询索引并提交可选聚合事实清理。
@@ -313,8 +377,11 @@ func (p *queryIndexStore) deleteChats(
 ) error {
 	return p.transactionController.Transaction(ctx, func(transactionContext context.Context) error {
 		for _, chatID := range chatIDs {
-			if p.results != nil {
-				if err := p.results.Delete(transactionContext, constants.WorkResultOwnerKindChat, []string{chatID}); err != nil {
+			if p.deleted != nil {
+				events.AfterCommit(transactionContext, func() { p.deleted(chatID) })
+			}
+			if p.reading != nil {
+				if err := p.reading.DeleteReading(transactionContext, chatID); err != nil {
 					return err
 				}
 			}

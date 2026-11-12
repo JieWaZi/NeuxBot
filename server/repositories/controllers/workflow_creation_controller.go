@@ -19,6 +19,8 @@ type WorkflowCreationController interface {
 	ListCreationSessions(context.Context, string) ([]models.WorkflowCreationSession, error)
 	// UpdateCreationSession 只更新当前轮身份、配置和接纳收据。
 	UpdateCreationSession(context.Context, models.WorkflowCreationSession) error
+	// AcceptCreationSession 记录本次现场接纳的创作执行。
+	AcceptCreationSession(context.Context, models.WorkflowCreationSession) error
 	// DeleteCreationSessionsByChatID 删除已移除 Chat 的创作会话关系，不删除工作流或共享目录。
 	DeleteCreationSessionsByChatID(context.Context, string) error
 	// RecordCreationSave 在源码事务中记录真实保存回执。
@@ -68,30 +70,36 @@ func (c *workflowCreationController) ListCreationSessions(ctx context.Context, i
 	return values, nil
 }
 func (c *workflowCreationController) UpdateCreationSession(ctx context.Context, value models.WorkflowCreationSession) error {
+	return c.updateCreationSession(ctx, value, "")
+}
+
+// AcceptCreationSession 记录本次现场接纳的创作执行。
+func (c *workflowCreationController) AcceptCreationSession(ctx context.Context, value models.WorkflowCreationSession) error {
+	return c.updateCreationSession(ctx, value, value.AcceptedExecutionID)
+}
+
+func (c *workflowCreationController) updateCreationSession(ctx context.Context, value models.WorkflowCreationSession, liveExecutionID string) error {
 	// 首次绑定可能晚于智能体发出交互；绑定提交后对账，避免请求事件先到而永久漏通知。
 	linking := false
 	if _, enabled := c.db.Get(eventPublisherSetting); enabled && value.ChatID != "" {
 		var previous models.WorkflowCreationSession
 		if err := controllerDB(ctx, c.db).Select("chat_id").Where("id = ?", value.ID).Find(&previous).Error; err != nil {
-			return databaseError("read_creation_notification_link", value.ID, err)
+			_ = databaseError("read_creation_work_link", value.ID, err)
+		} else {
+			linking = previous.ChatID != value.ChatID
 		}
-		linking = previous.ChatID != value.ChatID
 	}
 	result := controllerDB(ctx, c.db).Model(&value).Where("id = ?", value.ID).Select("chat_id", "active_execution_id", "accepted_execution_id", "request_id", "content", "context_instructions", "defaults", "auth_token").Updates(&value)
 	if result.Error != nil {
 		return databaseError("update_workflow_creation", value.ID, result.Error)
 	}
 	if linking && result.RowsAffected > 0 {
-		var chat models.Chat
-		if err := controllerDB(ctx, c.db).Select("id", "active_execution_id", "waiting_approval", "pending_approvals", "waiting_elicitation", "pending_elicitations").Where("id = ?", value.ChatID).Find(&chat).Error; err != nil {
-			return databaseError("read_creation_pending_notifications", value.ChatID, err)
-		}
-		upserts, _ := noticeSetDifference(nil, chatPendingNoticeIDs(chat))
 		publishCommittedChange(ctx, c.db, "work-board", eventsResource("chat", value.ChatID))
-		publishCommittedNoticeIDs(ctx, c.db, upserts, nil)
+		publishLinkedChatAttention(ctx, c.db, eventsResource("chat", value.ChatID), liveExecutionID)
 	}
 	return nil
 }
+
 func (c *workflowCreationController) RecordCreationSave(ctx context.Context, id, revisionID string) error {
 	if err := controllerDB(ctx, c.db).Model(&models.WorkflowCreationSession{}).Where("id = ?", id).Updates(map[string]any{"last_saved_revision_id": revisionID}).Error; err != nil {
 		return databaseError("record_workflow_creation_save", id, err)

@@ -26,6 +26,7 @@ import type {
 import {
   createChannelThreadMutation,
   commitTeamTimelineEvents,
+  compareTimelineItems,
   commitTeamTimelineProjectionEvent,
   reconcileTeamTimelineQuery,
   getChannelOptions,
@@ -99,6 +100,7 @@ export function TeamThreadPage({
 }: TeamThreadPageProps) {
   const [searchParams] = useSearchParams();
   const requestedTask = searchParams.get("task") ?? undefined;
+  const requestedFence = searchParams.get("fence");
   const sceneActive = useRouteSceneActive();
   const { t } = useTranslation("team");
   const { channelId = "", threadId } = useParams();
@@ -198,7 +200,10 @@ export function TeamThreadPage({
     if (!threadId || !hasEarlierTimelineMessages) {
       return;
     }
-    await timelineQuery.fetchNextPage();
+    await timelineQuery.fetchNextPage({
+      cancelRefetch: false,
+      throwOnError: true,
+    });
   }, [hasEarlierTimelineMessages, threadId, timelineQuery]);
 
   const refreshLatestTimeline = useCallback(
@@ -375,7 +380,8 @@ export function TeamThreadPage({
   const timeline = projectTeamTimeline(
     [...(timelineQuery.data?.pages ?? [])]
       .reverse()
-      .flatMap((page) => page.resources ?? []),
+      .flatMap((page) => page.resources ?? [])
+      .sort(compareTimelineItems),
   );
   const leadActivity = teamLeadActivityOf(projectedThreadDetail);
   // 主 Chat 的已提交终态比在途团队摘要更准确，迟到摘要不能把已结束回合恢复为执行中。
@@ -541,7 +547,16 @@ export function TeamThreadPage({
     },
     renderTaskBoard: () => (
       <TeamTaskBoard
-        selectedTaskId={requestedTask}
+        selectedTaskId={
+          requestedFence === null ||
+          tasks.some(
+            (task) =>
+              task.id === requestedTask &&
+              String(task.currentFence) === requestedFence,
+          )
+            ? requestedTask
+            : undefined
+        }
         channelId={channelId}
         actionsDisabled={isStopping}
         members={teamMembers}

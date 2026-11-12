@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
@@ -191,10 +194,55 @@ func TestDeleteChatRemovesAuthorityIndexesAndManagedDirectories(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Create() chat error = %v", err)
 	}
+	session := agent.NativeSessionKey{Provider: "fixture", Subject: "account", SessionID: "delete-owned-session"}
+	conversations := chatService.logStore.(*conversationJournal).Store
+	if _, err := conversations.Commit(ctx, agent.ConversationBatch{
+		ChatID: chatID, Key: "bind-delete-session", ExpectedVersion: records[len(records)-1].Sequence,
+		Changes: []agent.ConversationChange{{Binding: &agent.NativeBinding{Session: session}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	const privateText = "assistant body owned by the deleted chat"
+	if _, err := conversations.CommitNativeFragments(ctx, agent.NativeFragmentBatch{
+		Key: agent.NativeResultKey{Session: session, InvocationID: "invocation"}, CommitKey: "private-fragment", MessageID: messageID,
+		Changes: []agent.MessageChange{{Kind: agent.MessageAppend, Text: privateText}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	workspaceFile := filepath.Join(workspaceDirectory, "keep.txt")
+	if err := os.WriteFile(workspaceFile, []byte("shared workspace result"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	closed := false
+	chatService.closeNativeThread = func(_ context.Context, id string) error {
+		if id == chatID && !closed {
+			if _, err := os.Stat(contextDirectory); err != nil {
+				t.Fatalf("private files were staged before closing the native session: %v", err)
+			}
+			closed = true
+		}
+		return nil
+	}
+	subscription, err := chatService.SubscribeEvents(ctx, chatID, records[len(records)-1].Sequence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer subscription.Close()
 
 	// 混合批量删除同时覆盖正常日志和不存在的关联。
 	if err := chatService.DeleteChats(ctx, []string{chatID, "13131313131313131313131313131313"}); err != nil {
 		t.Fatalf("Delete() error = %v", err)
+	}
+	if !closed {
+		t.Fatal("deletion skipped the native session owner")
+	}
+	select {
+	case _, open := <-subscription.Events:
+		if open {
+			t.Fatal("deleted chat still publishes events")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("deletion did not stop the chat subscription")
 	}
 	if err := chatService.DeleteChat(ctx, chatID); err != nil {
 		t.Fatalf("repeat DeleteChat() error = %v", err)
@@ -210,7 +258,19 @@ func TestDeleteChatRemovesAuthorityIndexesAndManagedDirectories(t *testing.T) {
 	if _, err := chatController.Get(ctx, chatID); err == nil {
 		t.Fatal("chat query index still exists")
 	}
-
+	if _, err := os.Stat(workspaceFile); err != nil {
+		t.Fatalf("shared workspace file: %v", err)
+	}
+	nativeLogs, err := filepath.Glob(filepath.Join(chatService.storage.Root(), "native-conversations", "*.jsonl"))
+	if err != nil || len(nativeLogs) != 1 {
+		t.Fatalf("native logs: %v %v", nativeLogs, err)
+	}
+	for _, path := range nativeLogs {
+		data, err := os.ReadFile(path)
+		if err != nil || strings.Contains(string(data), privateText) {
+			t.Fatalf("deleted chat data remains in the native shard: %v", err)
+		}
+	}
 }
 
 func TestDeleteChatOwnershipFailurePreservesAuthorityAndIndexes(t *testing.T) {

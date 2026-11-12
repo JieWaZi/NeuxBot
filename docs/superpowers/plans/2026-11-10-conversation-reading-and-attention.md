@@ -8,7 +8,7 @@
 
 **Tech Stack:** 现有 Go、ginx/toolx、GORM/SQLite 默认模式、ConversationStore、认证 WS、React/TanStack Query、Electron；不新增事件存储或任务框架。
 
-**Spec:** [收敛后的完整设计](../specs/2026-11-10-conversation-reading-and-attention-design.md)。当前只修改文档，全部步骤均未实施。
+**Spec:** [收敛后的完整设计](../specs/2026-11-10-conversation-reading-and-attention-design.md)。在当前分支实施，验收按下列用例记录。
 
 ## Global Constraints
 
@@ -25,7 +25,7 @@
 - 无全局持久 Revision；订阅失效、在途 dirty、原资源版本及新 epoch 后重读负责实时恢复，不补弹历史。
 - 默认只做定向验证；不运行 go test ./...、pnpm check、desktop check、全量前端测试。
 - 不打开/控制/截图应用，真实 CLI/系统通知验收另获授权；不改真实数据、不提交或推送。
-- 实施前核对分支/工作树并保留无关修改；本计划不能视为已经收到实施指令。
+- 实施前核对分支/工作树并保留无关修改。
 
 ## Review Focus
 
@@ -145,6 +145,8 @@
 - [ ] 对 `services/workspaceattention`、`apis/work_board`、`apis/workspace_attention` 和实际 Repository 用例按上述名称定向红绿验证；记录查询计划、语句数和耗时。
 - [ ] 完成新 API 后执行 `pnpm api:generate`、`pnpm api:check`；只通过命令更新 OpenAPI/SDK。
 
+阅读仓储验证见 `server/repositories/controllers/chat_reading_scale_test.go`。真实 SQLite 对 100、1000、10000 个 Chat 分别验证已读、稀疏未读和全部未读。10000 Chat 的游标固定为 79 批，未读范围分别为 0、4、79 批；实际 SQL 的 EXPLAIN 命中 `idx_chat_readable_order`。这里记录的是阅读仓储调用，整份看板还包含原容器与请求查询。
+
 ## Task 5：既有事件的失效与重读闭环
 
 **OpenBot 对照**
@@ -169,6 +171,8 @@
 
 对照显式重开解除 hold、前台可读条件、同会话读写串行与侧栏优先级。验收覆盖启动恢复不误读、旧打开意图不清新未读、待办展示期间保留未读。铃铛与看板按 NeuxBot 产品契约实现。 [显式重开](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/renderer/src/features/conversation/conversation-context.tsx#L362-L376) · [前台可读资格](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/renderer/src/features/conversation/conversation-context.tsx#L417-L433) · [同会话串行读写](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/renderer/src/features/conversation/conversation-context.tsx#L991-L1096) · [侧栏状态优先级](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/packages/ui/src/features/sidebar/sidebar-agent-states.ts#L69-L94) · [需要你分组计数](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/packages/ui/src/features/sidebar/SidebarWaitingGroup.tsx#L16-L35) · [主线程请求归属](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/renderer/src/features/agents/agent-thread-attention.ts#L13-L38)
 
+头像沿用 OpenBot 的呈现层次。伙伴头像本体使用空闲动作，运行时用角标和表情表达；头像右下角复用未读数字、运行点和原请求类型图标。普通行、置顶行和“需要你”行共用角标语义。 [普通行](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/packages/ui/src/features/sidebar/SidebarAgentRow.tsx#L54-L102) · [置顶行](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/packages/ui/src/features/sidebar/SidebarPinnedGroup.tsx#L140-L158) · [状态角标](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/packages/ui/src/features/sidebar/SidebarAgentIndicator.tsx#L200-L321) · [角标样式](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/packages/ui/src/features/sidebar/sidebar-felt-badges.css#L17-L109) · [头像本体](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/packages/ui/src/features/agents/AgentAvatar.tsx#L33-L48)
+
 **Files:** 新增 `packages/frontend/src/modules/workspaceattention/{index.ts,api/queries.ts,components/attention-bell.tsx}` 和测试；新增 `shared/api/chat-reading.tsx` 及测试；修改 `app/layout/app-shell.tsx`、`entity-navigation.tsx`、会话列表/Tab、ChatThread、团队成员定位、work-board、工作流/自动机会原结果区域和 i18n。
 
 **Interfaces:**
@@ -184,6 +188,8 @@
 - [ ] 使用 frontend 目录 `pnpm exec vitest run <上述具体文件>` 定向红绿验证；Node原生webstorage干扰jsdom时使用 `NODE_OPTIONS=--no-experimental-webstorage`，不改产品逻辑迁就环境。
 - [ ] 修改文件定向 ESLint/Prettier、UI策略检查；API变化运行前端 typecheck，不跑全量前端测试，不启动真实界面。
 
+侧栏实现沿用上述 OpenBot 角标位置、紫色未读和原请求图标。根据桌面试用反馈，每个头像只呈现一个状态标记，运行保留一组三点，审批保留一枚盾牌。测试覆盖播放帧后的单角标、历史列表及原请求队首定位。
+
 ## Task 7：Electron 实时提醒
 
 **OpenBot 对照**
@@ -198,6 +204,8 @@
 - [ ] 写测试：异步查摘要期间resolved不弹、断线关闭现有请求提示/在途构造、重连快照不重弹；点击校验真实目标，失效进入看板；关闭不调用阅读/审批。
 - [ ] 定向 node 测试先失败后实现通过；内存句柄有界，系统权限拒绝不影响看板/铃铛。
 - [ ] 无用户授权不做原生截图/点击和真实CLI审批，单独列待验收边界。
+
+定向验证记录：`server/apis/events/stream_test.go` 从真实 WS 核对未订阅的 Chat 变化仍抵达全局看板及恢复不重放历史；`desktop/electron/tests/core-events.test.mjs` 验证共享订阅交付就绪边界、缺口单次重订阅。`desktop/electron/main/workspace-attention.ts` 对应 OpenBot 主进程的焦点抑制与请求撤回；提醒身份增加原执行与团队验收代次，点击用原领域查询校验。`desktop/electron/tests/workspace-attention.test.mjs` 与 `bridge.test.mjs` 验证焦点、偏好、预览竞争、撤回和挂载前点击。以上验证使用本机测试替身，实际系统通知权限及窗口定位另行验收。
 
 ## Task 8：首次基线、删除旧业务与收口
 

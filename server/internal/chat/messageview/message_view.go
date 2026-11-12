@@ -824,6 +824,7 @@ func displayPartID(messageID string, sequence int64) string {
 // cloneMessage 深拷贝可变字段，并按公开视图要求移除 Runtime 原始事件。
 func cloneMessage(message Message, public bool) Message {
 	clone := message
+	clone.Readable = ReadingKind(message) != ""
 	if message.FileChangeRecord != nil {
 		record := *message.FileChangeRecord
 		clone.FileChangeRecord = &record

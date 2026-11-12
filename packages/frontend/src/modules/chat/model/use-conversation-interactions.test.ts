@@ -95,4 +95,42 @@ describe("useChatInteractions", () => {
     expect(result.current.approvalSubmissionState).toBe("idle");
     expect(onSettled).toHaveBeenCalledWith("chat-1");
   });
+
+  it("上一条提问的响应晚到时不覆盖新提问的提交反馈", async () => {
+    const finish = new Map<string, () => void>();
+    const resolveElicitation = vi.fn(
+      (_chatId: string, elicitationId: string) =>
+        new Promise<void>((resolve) => finish.set(elicitationId, resolve)),
+    );
+    const { result, rerender } = renderHook(
+      ({ ids }: { ids: string[] }) => {
+        const key = conversationKeyOf("scope:one", "chat-one");
+        return useChatInteractions({
+          chatId: "chat-one",
+          conversationKey: key,
+          guard: useChatInvocationGuard(key),
+          queueKey: "chat-one",
+          pendingApprovals: [],
+          pendingElicitations: ids.map((elicitationId) => ({ elicitationId })),
+          resolveApproval: vi.fn(),
+          resolveElicitation,
+          onSettled: vi.fn(),
+        });
+      },
+      { initialProps: { ids: ["question-one", "question-two"] } },
+    );
+    act(() => {
+      void result.current.resolveElicitationChoice("question-one", {}, false);
+      void result.current.resolveElicitationChoice("question-one", {}, false);
+    });
+    expect(resolveElicitation).toHaveBeenCalledTimes(1);
+    rerender({ ids: ["question-two"] });
+    act(() => {
+      void result.current.resolveElicitationChoice("question-two", {}, false);
+    });
+    await act(async () => finish.get("question-one")?.());
+    expect(result.current.elicitationSubmissionState).toBe("submitting");
+    await act(async () => finish.get("question-two")?.());
+    expect(result.current.elicitationSubmissionState).toBe("confirming");
+  });
 });

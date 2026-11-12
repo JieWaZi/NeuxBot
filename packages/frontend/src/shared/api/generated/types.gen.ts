@@ -641,6 +641,10 @@ export type GithubComJieWaZiNeuxBotServerApisChannelsReviewChannelTaskRequest = 
      */
     approved?: boolean;
     /**
+     * ExpectedFence 是用户确认的原验收代次。
+     */
+    expectedFence: number;
+    /**
      * 驳回反馈
      */
     feedback?: string;
@@ -661,6 +665,39 @@ export type GithubComJieWaZiNeuxBotServerApisChannelsUpdateChannelThreadMemberCo
      * 成员配置
      */
     members: Array<GithubComJieWaZiNeuxBotServerApisChannelsChannelMemberInput>;
+};
+
+export type GithubComJieWaZiNeuxBotServerApisChatReadingChatReadingResponse = GithubComJieWaZiNeuxBotServerRepositoriesModelsChatReadingState & GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionCompleteness & {
+    [key: string]: unknown;
+};
+
+/**
+ * MarkChatReadRequest 保存普通或显式阅读意图。
+ */
+export type GithubComJieWaZiNeuxBotServerApisChatReadingMarkChatReadRequest = {
+    intent: GithubComJieWaZiNeuxBotServerConstantsReadingIntent & unknown;
+    /**
+     * ObservedUnreadGeneration 是客户端观察到的手动未读代次。
+     */
+    observedUnreadGeneration?: number;
+    /**
+     * ThroughMessageID 是用户实际看到的公开消息。
+     */
+    throughMessageID: string;
+};
+
+/**
+ * MarkChatUnreadRequest 把阅读位置移动到指定公开消息之前。
+ */
+export type GithubComJieWaZiNeuxBotServerApisChatReadingMarkChatUnreadRequest = {
+    /**
+     * FromMessageID 是用户希望标为未读的首条公开消息。
+     */
+    fromMessageID: string;
+    /**
+     * ObservedUnreadGeneration 是客户端观察到的手动未读代次。
+     */
+    observedUnreadGeneration?: number;
 };
 
 export type GithubComJieWaZiNeuxBotServerApisChatsCreateChatRequest = GithubComJieWaZiNeuxBotServerApisChatsMessageRequest & {
@@ -3711,55 +3748,6 @@ export type GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter
     };
 };
 
-/**
- * 通知分页响应
- */
-export type GithubComJieWaZiNeuxBotServerApisNotificationsListNotificationsResponse = {
-    /**
-     * 生命周期
-     */
-    epoch?: string;
-    /**
-     * 存在续页
-     */
-    hasMore?: boolean;
-    /**
-     * 下页游标
-     */
-    nextCursor?: string;
-    /**
-     * 页码
-     */
-    pageNum?: number;
-    /**
-     * 每页数量
-     */
-    pageSize?: number;
-    /**
-     * 通知条目
-     */
-    resources?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationItem>;
-    /**
-     * 观察水位
-     */
-    revision?: number;
-    /**
-     * 总条目数
-     */
-    totalSize?: number;
-};
-
-/**
- * 通知阅读请求
- */
-export type GithubComJieWaZiNeuxBotServerApisNotificationsViewNotificationRequest = {
-    target?: GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationTarget & unknown;
-    /**
-     * 观察版本
-     */
-    version?: number;
-};
-
 export type GithubComJieWaZiNeuxBotServerApisPluginsAuthorizationScopeRequest = GithubComJieWaZiNeuxBotServerApisPluginsPluginAccountRequest & {
     /**
      * 补充权限
@@ -4580,6 +4568,17 @@ export type GithubComJieWaZiNeuxBotServerApisRolePresetsRolePresetWriteRequest =
      * 角色名称
      */
     roleName: string;
+};
+
+export type GithubComJieWaZiNeuxBotServerApisRunViewingRunViewingResponse = GithubComJieWaZiNeuxBotServerRepositoriesModelsRunViewingState & GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionCompleteness & {
+    /**
+     * AutomaticTaskID 定位失败机会的自动任务配置。
+     */
+    automaticTaskId?: string;
+    /**
+     * ErrorCode 是未接纳自动机会的稳定错误码。
+     */
+    errorCode?: string;
 };
 
 /**
@@ -5560,14 +5559,13 @@ export type GithubComJieWaZiNeuxBotServerApisWebsessionSessionResponse = {
 };
 
 /**
- * ViewWorkResultRequest 固定客户端本次真正渲染的版本与引用。
+ * MarkWorkBoardViewedRequest 保存最多 128 个固定目标。
  */
-export type GithubComJieWaZiNeuxBotServerApisWorkBoardViewWorkResultRequest = {
-    reference: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReference & unknown;
+export type GithubComJieWaZiNeuxBotServerApisWorkBoardMarkWorkBoardViewedRequest = {
     /**
-     * Version 是本次渲染真正观察到的版本，禁止使用请求时最新版本代替。
+     * Targets 可在传输中断后原样重试。
      */
-    version?: number;
+    targets: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkViewTarget>;
 };
 
 /**
@@ -5581,13 +5579,69 @@ export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardExecutorsResponse
 };
 
 /**
- * WorkBoardPage 返回当前筛选的准确总数及游标页。
+ * WorkBoardLiveTarget 返回有效原目标的安全导航信息。
  */
-export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardPage = {
+export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardLiveTarget = {
+    /**
+     * AutomaticTaskID 是独立自动机会的任务标识。
+     */
+    automaticTaskId?: string;
+    /**
+     * ChannelID 是原团队标识。
+     */
+    channelId?: string;
+    /**
+     * ChatID 是导航的实际会话标识。
+     */
+    chatId?: string;
+    /**
+     * DefinitionID 是原工作流定义标识。
+     */
+    definitionId?: string;
+    /**
+     * InstanceID 是原工作流步骤实例标识。
+     */
+    instanceId?: string;
+    /**
+     * Preview 是可选的公开短文本。
+     */
+    preview?: string;
+    /**
+     * RunID 是实际工作流运行标识。
+     */
+    runId?: string;
+    /**
+     * TaskID 是原团队任务标识。
+     */
+    taskId?: string;
+    /**
+     * ThreadID 是原团队对话标识。
+     */
+    threadId?: string;
+    /**
+     * Title 是公开工作标题。
+     */
+    title?: string;
+    /**
+     * Valid 表示原目标仍可打开。
+     */
+    valid?: boolean;
+    /**
+     * WakerID 是实际伙伴标识。
+     */
+    wakerId?: string;
+    work?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkRef & unknown;
+};
+
+export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardPage = GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionMetrics & GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionCompleteness & {
     /**
      * Attention 是当前需要操作页，按等待最久优先。
      */
     attention?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention>;
+    /**
+     * AwaitingView 是当前待查看页的原工作。
+     */
+    awaitingView?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardEntry>;
     /**
      * HasMore 表示查询窗口之外仍存在候选。
      */
@@ -5606,34 +5660,19 @@ export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardPage = {
     totalSize?: number;
 };
 
-/**
- * WorkBoardSummary 不把不同统计单位相加为任务总数。
- */
-export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardSummary = {
+export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardSummary = GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionMetrics & GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionCompleteness & {
     /**
-     * 需操作工作数
+     * ActionPreview 是最多五个原有效请求。
      */
-    actionWorkCount?: number;
+    actionPreview?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention>;
     /**
-     * Attention 是最多五个最久等待的有效请求。
+     * AwaitingViewPreview 是最多五个待查看原工作。
      */
-    attention?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention>;
-    /**
-     * AttentionCount 是全部有效请求数量。
-     */
-    attentionCount?: number;
+    awaitingViewPreview?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardEntry>;
     /**
      * 已结束工作数
      */
     endedCount?: number;
-    /**
-     * ResultCount 是存在最新未读成果的容器数。
-     */
-    resultCount?: number;
-    /**
-     * Results 是最多五个最新未读结果的原容器引用。
-     */
-    results?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardEntry>;
     /**
      * 进行中工作数
      */
@@ -5645,10 +5684,21 @@ export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardSummary = {
 };
 
 /**
- * WorkResultResponse 容器没有新结果时允许空引用。
+ * WorkBoardViewTargets 返回本次操作固定的有界目标。
  */
-export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkResultResponse = {
-    result?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReceipt & unknown;
+export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardViewTargets = {
+    /**
+     * Epoch 是当前权威 Core 的生命周期标识。
+     */
+    epoch?: string;
+    /**
+     * TargetCount 是本次固定目标数量。
+     */
+    targetCount?: number;
+    /**
+     * Targets 保存准确的原工作及阅读边界。
+     */
+    targets?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkViewTarget>;
 };
 
 /**
@@ -6461,6 +6511,13 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowValidationResponse
      * 校验通过
      */
     valid?: boolean;
+};
+
+export type GithubComJieWaZiNeuxBotServerApisWorkspaceAttentionExecutorAttentionResponse = GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionCompleteness & {
+    /**
+     * Resources 是指定执行对象的摘要。
+     */
+    resources?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsExecutorAttentionSummary>;
 };
 
 /**
@@ -7299,18 +7356,6 @@ export type GithubComJieWaZiNeuxBotServerConstantsMessageToolStatus = 'completed
 
 /**
  * >
- * * `` - NotificationKindUnspecified 表示未指定通知类型。
- * * `approval` - NotificationKindApproval 表示原工具审批或工作流操作许可。
- * * `automatic_failure` - NotificationKindAutomaticFailure 表示没有原成果覆盖的当前自动失败。
- * * `input` - NotificationKindInput 表示原结构化输入或工作流人工请求。
- * * `result` - NotificationKindResult 表示原工作容器最新未确认成果。
- * * `review` - NotificationKindReview 表示当前围栏的团队人工验收。
- *
- */
-export type GithubComJieWaZiNeuxBotServerConstantsNotificationKind = '' | 'approval' | 'automatic_failure' | 'input' | 'result' | 'review';
-
-/**
- * >
  * * `` - PermissionLevelUnspecified 表示尚未选择或未写入的空权限等级。
  * * `auto` - PermissionLevelAuto 表示 Runtime 可以自动执行风险可接受的操作。
  * * `default` - PermissionLevelDefault 表示敏感操作需要用户逐次确认。
@@ -7341,6 +7386,14 @@ export type GithubComJieWaZiNeuxBotServerConstantsPluginAuthorizationState = '' 
  *
  */
 export type GithubComJieWaZiNeuxBotServerConstantsProfileDocumentKind = '' | 'identity' | 'memory' | 'persona' | 'playbook';
+
+/**
+ * >
+ * * `automatic` - ReadingIntentAutomatic 表示公开消息实际呈现后自动读取。
+ * * `explicit` - ReadingIntentExplicit 表示用户主动打开会话或标为已读。
+ *
+ */
+export type GithubComJieWaZiNeuxBotServerConstantsReadingIntent = 'automatic' | 'explicit';
 
 /**
  * >
@@ -7380,6 +7433,14 @@ export type GithubComJieWaZiNeuxBotServerConstantsRolePresetInputMode = 'manual'
  *
  */
 export type GithubComJieWaZiNeuxBotServerConstantsRolePresetSource = '' | 'system' | 'user';
+
+/**
+ * >
+ * * `automatic_run` - RunOwnerKindAutomaticRun 表示无已接纳目标的自动任务机会。
+ * * `workflow_run` - RunOwnerKindWorkflowRun 表示工作流运行。
+ *
+ */
+export type GithubComJieWaZiNeuxBotServerConstantsRunOwnerKind = 'automatic_run' | 'workflow_run';
 
 /**
  * >
@@ -7494,13 +7555,13 @@ export type GithubComJieWaZiNeuxBotServerConstantsWakerActivityState = 'idle' | 
 
 /**
  * >
- * * `` - WorkResultOwnerKindUnspecified 表示未指定容器。
- * * `chat` - WorkResultOwnerKindChat 表示独立伙伴对话。
- * * `team_thread` - WorkResultOwnerKindTeamThread 表示团队对话。
- * * `workflow_run` - WorkResultOwnerKindWorkflowRun 表示顶层工作流运行。
+ * * `automatic_run` - WorkOwnerKindAutomaticRun 表示没有接纳目标的自动机会。
+ * * `chat` - WorkOwnerKindChat 表示独立会话。
+ * * `team_thread` - WorkOwnerKindTeamThread 表示团队对话。
+ * * `workflow_run` - WorkOwnerKindWorkflowRun 表示对用户可见的工作流运行。
  *
  */
-export type GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind = '' | 'chat' | 'team_thread' | 'workflow_run';
+export type GithubComJieWaZiNeuxBotServerConstantsWorkOwnerKind = 'automatic_run' | 'chat' | 'team_thread' | 'workflow_run';
 
 /**
  * >
@@ -7978,6 +8039,10 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage = {
      */
     createdAt?: number;
     /**
+     * CreatedSequence 是持久公开消息的建立序号，决定分页和阅读顺序。
+     */
+    createdSequence?: number;
+    /**
      * DisplayParts 是供聊天界面渲染的最小跨 Runtime 展示视图。
      */
     displayParts?: Array<GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageDisplayPart>;
@@ -8018,6 +8083,11 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage = {
      * Plugins 是接纳时冻结的插件身份、版本与配置修订。
      */
     plugins?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsSnapshot>;
+    question?: GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageQuestion & unknown;
+    /**
+     * Readable 表示该持久消息具有用户可读正文或公开失败。
+     */
+    readable?: boolean;
     /**
      * Revision 是最后一次改变公开消息快照的权威事件序号。
      */
@@ -8162,6 +8232,45 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessagePartIncre
      * Text 只包含本次新增文本，空值不代表清空。
      */
     text?: string;
+};
+
+/**
+ * MessageQuestion 是原结构化输入请求及其安全处理结果。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageQuestion = {
+    /**
+     * 允许跳过
+     */
+    allowSkip?: boolean;
+    /**
+     * 公开答案
+     */
+    answers?: {
+        [key: string]: unknown;
+    };
+    /**
+     * 问题标识
+     */
+    elicitationId?: string;
+    /**
+     * 问题说明
+     */
+    message?: string;
+    /**
+     * 输入模式
+     */
+    mode?: string;
+    /**
+     * 表单结构
+     */
+    requestedSchema?: {
+        [key: string]: unknown;
+    };
+    result?: GithubComJieWaZiNeuxBotServerConstantsElicitationResult & unknown;
+    /**
+     * 访问地址
+     */
+    url?: string;
 };
 
 /**
@@ -10081,6 +10190,54 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccountEndpoint = {
 };
 
 /**
+ * AttentionCompleteness 报告查询是否覆盖全部原事实。
+ */
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionCompleteness = {
+    /**
+     * Complete 表示该查询范围的阅读投影完整。
+     */
+    complete?: boolean;
+    /**
+     * Epoch 标识提供本次结果的 Core 进程。
+     */
+    epoch?: string;
+    /**
+     * IncompleteReason 区分暂时恢复与已隔离的资源。
+     */
+    incompleteReason?: string;
+};
+
+/**
+ * AttentionMetrics 保留各自业务口径的独立聚合。
+ */
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionMetrics = {
+    /**
+     * AwaitingViewWorkCount 是仍有未读消息或未查看结果的工作容器数。
+     */
+    awaitingViewWorkCount?: number;
+    /**
+     * PendingRequestCount 是有效的原请求数。
+     */
+    pendingRequestCount?: number;
+    /**
+     * RunningChatCount 是原活动状态为运行中的可见对话数。
+     */
+    runningChatCount?: number;
+    /**
+     * UnreadChatCount 是有合格未读消息的会话数。
+     */
+    unreadChatCount?: number;
+    /**
+     * UnreadMessageCount 是可见会话的合格未读消息数。
+     */
+    unreadMessageCount?: number;
+    /**
+     * WaitingWorkCount 是有有效请求的工作容器数。
+     */
+    waitingWorkCount?: number;
+};
+
+/**
  * AutomaticRun 保存一次机会的不可变输入和标准 Chat 接纳关系。
  */
 export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticRun = {
@@ -10726,6 +10883,47 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsChat = {
 };
 
 /**
+ * ChatReadCursor 保存一个阅读者在指定 Chat 的阅读边界及手动未读代次。
+ */
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsChatReadCursor = {
+    /**
+     * ChatID 是阅读事实所属对话。
+     */
+    chatId?: string;
+    /**
+     * HoldUnread 阻止自动读，直到新的明确阅读意图生效。
+     */
+    holdUnread?: boolean;
+    /**
+     * ThroughSequence 是已确认的公开展示前缀。
+     */
+    throughSequence?: number;
+    /**
+     * UnreadGeneration 仅在主动标未读后递增。
+     */
+    unreadGeneration?: number;
+    /**
+     * UpdatedAt 是阅读事实最后变更的 Unix 毫秒时间。
+     */
+    updatedAt?: number;
+};
+
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsChatReadingState = GithubComJieWaZiNeuxBotServerRepositoriesModelsChatReadCursor & {
+    /**
+     * FirstUnreadMessageID 是第一条合格未读消息的原身份。
+     */
+    firstUnreadMessageID?: string;
+    /**
+     * LatestReadableMessageID 是最后一条公开合格消息的原身份。
+     */
+    latestReadableMessageID?: string;
+    /**
+     * UnreadMessageCount 是展示顺序位于阅读边界之后的合格消息数。
+     */
+    unreadMessageCount?: number;
+};
+
+/**
  * Execution 保存一次 Chat 执行在服务边界流转的领域状态。
  *
  * 历史执行事实只写入 Chat JSONL；该结构不注册为 GORM 表，也不形成 SQLite 历史投影。
@@ -10820,6 +11018,70 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsExecution = {
      * WorkspaceReadOnly 表示本次 Runtime 只能读取工作区且不能申请文件修改。
      */
     workspaceReadOnly?: boolean;
+};
+
+/**
+ * ExecutorAttentionChat 供伙伴和团队侧栏直接定位公开会话和请求。
+ */
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsExecutorAttentionChat = {
+    activity?: GithubComJieWaZiNeuxBotServerConstantsChannelActivityState & unknown;
+    /**
+     * ChatID 是公开会话的阅读对象。
+     */
+    chatId?: string;
+    /**
+     * FirstUnreadMessageID 是公开展示顺序中的第一条未读消息。
+     */
+    firstUnreadMessageID?: string;
+    /**
+     * LastStatus 是原会话最近一次执行状态。
+     */
+    lastStatus?: string;
+    /**
+     * RequestKinds 是当前有效请求的不同操作类型。
+     */
+    requestKinds?: Array<string>;
+    /**
+     * Requests 定位这条公开会话归属的有效请求。
+     */
+    requests?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention>;
+    /**
+     * Title 是公开会话的原名称。
+     */
+    title?: string;
+    /**
+     * UnreadMessageCount 是会话内待查看消息数。
+     */
+    unreadMessageCount?: number;
+    work?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkRef & unknown;
+};
+
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsExecutorAttentionSummary = GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionMetrics & {
+    /**
+     * Chats 定位具备关注或正在工作的公开会话。
+     */
+    chats?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsExecutorAttentionChat>;
+    /**
+     * ExecutorID 是请求的原伙伴或团队。
+     */
+    executorId?: string;
+    /**
+     * Kind 是执行对象类型。
+     */
+    kind?: string;
+    /**
+     * LastStatus 是该最近公开对话的最后一次真实执行结果。
+     */
+    lastStatus?: string;
+    /**
+     * LatestChatID 是按当前活动时间及稳定身份选出的最近公开对话。
+     */
+    latestChatId?: string;
+    latestWork?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkRef & unknown;
+    /**
+     * Requests 定位每个仍有效的原操作及真实成员或子运行。
+     */
+    requests?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention>;
 };
 
 /**
@@ -11252,109 +11514,21 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsMcpToolSummary = {
 };
 
 /**
- * NotificationItem 是由原领域事实派生的安全通知，不注册持久化表。
+ * MarkViewedResult 是一批实际提交的结果。
  */
-export type GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationItem = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsMarkViewedResult = {
     /**
-     * 关注分桶
+     * Applied 是本批已确认的原目标数量。
      */
-    bucket?: string;
+    applied?: number;
     /**
-     * 发生时间
+     * SkippedConflict 是代次或原对象状态已经变化的目标数量。
      */
-    createdAt?: number;
+    skippedConflict?: number;
     /**
-     * 有界摘要
+     * SkippedDeleted 是原工作或边界已被删除的目标数量。
      */
-    description?: string;
-    /**
-     * 提示已收起
-     */
-    dismissed?: boolean;
-    executor?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardExecutor & unknown;
-    /**
-     * 原交付失败
-     */
-    failed?: boolean;
-    /**
-     * 通知标识
-     */
-    id?: string;
-    kind?: GithubComJieWaZiNeuxBotServerConstantsNotificationKind & unknown;
-    /**
-     * 原始来源
-     */
-    source?: string;
-    target?: GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationTarget & unknown;
-    /**
-     * 安全标题
-     */
-    title?: string;
-    /**
-     * 原始版本
-     */
-    version?: number;
-};
-
-/**
- * NotificationTarget 是原业务入口的有判别定位，不保存任意可执行地址。
- */
-export type GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationTarget = {
-    /**
-     * 自动运行
-     */
-    automaticRunId?: string;
-    /**
-     * 团队标识
-     */
-    channelId?: string;
-    /**
-     * 对话标识
-     */
-    chatId?: string;
-    /**
-     * 流程标识
-     */
-    definitionId?: string;
-    /**
-     * 提交围栏
-     */
-    fence?: number;
-    kind?: GithubComJieWaZiNeuxBotServerConstantsNotificationKind & unknown;
-    /**
-     * 精确消息
-     */
-    messageId?: string;
-    /**
-     * 容器标识
-     */
-    ownerId?: string;
-    ownerKind?: GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind & unknown;
-    reference?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReference & unknown;
-    /**
-     * 原请求标识
-     */
-    requestId?: string;
-    /**
-     * 成果版本
-     */
-    resultVersion?: number;
-    /**
-     * 运行标识
-     */
-    runId?: string;
-    /**
-     * 验收任务
-     */
-    taskId?: string;
-    /**
-     * 团队对话
-     */
-    threadId?: string;
-    /**
-     * 伙伴标识
-     */
-    wakerId?: string;
+    skippedDeleted?: number;
 };
 
 /**
@@ -11597,6 +11771,28 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsRolePreset = {
 };
 
 /**
+ * RunOwnerRef 定位具有独立最终结果的原运行。
+ */
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsRunOwnerRef = {
+    /**
+     * OwnerID 是不可变的原运行标识。
+     */
+    ownerId?: string;
+    ownerKind?: GithubComJieWaZiNeuxBotServerConstantsRunOwnerKind & unknown;
+};
+
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsRunViewingState = GithubComJieWaZiNeuxBotServerRepositoriesModelsRunOwnerRef & {
+    /**
+     * Viewable 表示已发布可见终态结果。
+     */
+    viewable?: boolean;
+    /**
+     * Viewed 表示该原运行的可见结果已被查看。
+     */
+    viewed?: boolean;
+};
+
+/**
  * SkillPackage 保存一个技能包的共享元数据和来源信息。
  */
 export type GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillPackage = {
@@ -11803,6 +11999,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention = 
      */
     createdAt?: number;
     /**
+     * ExecutionID 是请求实际等待的原执行或子运行。
+     */
+    executionId?: string;
+    /**
      * ExecutorID 是原工作执行对象，用于范围筛选。
      */
     executorId?: string;
@@ -11811,6 +12011,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention = 
      */
     id?: string;
     /**
+     * InstanceID 是人工请求对应的原工作流步骤实例。
+     */
+    instanceId?: string;
+    /**
      * Kind 是审批、输入或验收的操作类别。
      */
     kind?: string;
@@ -11818,7 +12022,19 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention = 
      * OwnerID 是事项所属的原工作身份。
      */
     ownerId?: string;
-    ownerKind?: GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind & unknown;
+    ownerKind?: GithubComJieWaZiNeuxBotServerConstantsWorkOwnerKind & unknown;
+    /**
+     * RequestFence 是团队当前验收代次。
+     */
+    requestFence?: number;
+    /**
+     * RequestID 是原请求或原验收任务身份。
+     */
+    requestId?: string;
+    /**
+     * RequestSequence 是同一 Chat 内待答请求的原始到达顺序。
+     */
+    requestSequence?: number;
     /**
      * RunID 是实际等待操作的运行，可能是子运行。
      */
@@ -11859,6 +12075,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardEntry = {
      */
     approvalCount?: number;
     /**
+     * AutomaticTaskID 定位未接纳自动机会的原配置。
+     */
+    automaticTaskId?: string;
+    /**
      * ChannelID 定位所属团队。
      */
     channelId?: string;
@@ -11875,6 +12095,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardEntry = {
      */
     executorName?: string;
     /**
+     * FirstUnreadMessageID 是最早合格未读消息的原身份。
+     */
+    firstUnreadMessageID?: string;
+    /**
      * InputCount 是此工作仍有效的输入请求数量。
      */
     inputCount?: number;
@@ -11883,11 +12107,14 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardEntry = {
      */
     lastStatus?: string;
     /**
+     * LatestReadableMessageID 是冻结阅读目标的最后消息身份。
+     */
+    latestReadableMessageID?: string;
+    /**
      * OwnerID 是原容器标识。
      */
     ownerId?: string;
-    ownerKind?: GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind & unknown;
-    result?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReceipt & unknown;
+    ownerKind?: GithubComJieWaZiNeuxBotServerConstantsWorkOwnerKind & unknown;
     /**
      * ReviewCount 是此工作等待团队人工验收的任务数。
      */
@@ -11900,6 +12127,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardEntry = {
      * Title 是原容器当前标题。
      */
     title?: string;
+    /**
+     * UnreadMessageCount 是本工作公开会话的未读消息数。
+     */
+    unreadMessageCount?: number;
     /**
      * UpdatedAt 是原工作最近活动时间。
      */
@@ -11933,61 +12164,38 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardExecutor = {
 };
 
 /**
- * WorkResultReceipt 保存每个既有容器的最新交付与用户查看或主动清空确认。
+ * WorkRef 定位原工作，无独立持久身份。
  */
-export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReceipt = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkRef = {
     /**
-     * AvailableAt 是该结果真实交付时间及未读排序键。
+     * ID 是该原容器的身份。
      */
-    availableAt?: number;
-    /**
-     * LatestVersion 是最新已交付可读结果的单调版本。
-     */
-    latestVersion?: number;
-    /**
-     * OwnerID 是原容器身份，不另建 WorkID。
-     */
-    ownerId?: string;
-    ownerKind?: GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind & unknown;
-    reference?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReference & unknown;
-    /**
-     * ViewedAt 是最后一次有效查看或主动清空确认时间，不改变工作活动时间。
-     */
-    viewedAt?: number;
-    /**
-     * ViewedVersion 是用户实际查看或主动清空待查看标记的最大版本。
-     */
-    viewedVersion?: number;
+    id?: string;
+    kind?: GithubComJieWaZiNeuxBotServerConstantsWorkOwnerKind & unknown;
 };
 
 /**
- * WorkResultReference 引用原结果身份，不复制正文或执行状态。
+ * WorkViewTarget 冻结一次用户操作所见的原对象及阅读边界。
  */
-export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReference = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkViewTarget = {
     /**
-     * ChatID 是结果所在的真实对话。
+     * ChatID 是实际阅读的公开会话。
      */
     chatId?: string;
     /**
-     * ExecutionID 是产生结果的真实执行。
+     * ObservedUnreadGeneration 是操作时观察的手动未读代次。
      */
-    executionId?: string;
+    observedUnreadGeneration?: number;
     /**
-     * 文件成果标识
+     * OwnerID 是查看最终结果时的原运行标识。
      */
-    fileChangeRecordId?: string;
+    ownerId?: string;
+    ownerKind?: GithubComJieWaZiNeuxBotServerConstantsRunOwnerKind & unknown;
     /**
-     * 文件成果版本
+     * ThroughMessageID 是操作时已存在的最后一条合格消息。
      */
-    fileChangeRecordVersion?: number;
-    /**
-     * MessageID 是持久交付给用户的精确消息。
-     */
-    messageId?: string;
-    /**
-     * WorkflowRunID 是形成最终结果的工作流运行。
-     */
-    workflowRunId?: string;
+    throughMessageID?: string;
+    work?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkRef & unknown;
 };
 
 /**
@@ -12431,6 +12639,17 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowScopeBinding 
      * WorkingDirectory 是明确批准的目录，空值时由运行创建受管目录。
      */
     workingDirectory?: string;
+};
+
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkspaceAttentionSnapshot = GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionCompleteness & {
+    /**
+     * HasAction 表示至少有一个有效请求。
+     */
+    hasAction?: boolean;
+    /**
+     * HasUnread 表示至少有一个工作仍待查看。
+     */
+    hasUnread?: boolean;
 };
 
 /**
@@ -12988,52 +13207,6 @@ export type GithubComJieWaZiNeuxBotServerServicesKnowledgeChatLibrary = {
      */
     name?: string;
     ref?: GithubComJieWaZiNeuxBotServerInternalKnowledgeResourceRef & unknown;
-};
-
-/**
- * Snapshot 是 REST 与 WS 共同读取的带版本通知摘要。
- */
-export type GithubComJieWaZiNeuxBotServerServicesNotificationSnapshot = {
-    /**
-     * 待处理数
-     */
-    actionCount?: number;
-    /**
-     * 待处理预览
-     */
-    actionPreview?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationItem>;
-    /**
-     * 生命周期
-     */
-    epoch?: string;
-    /**
-     * 生成时间
-     */
-    generatedAt?: number;
-    /**
-     * 投影版本
-     */
-    revision?: number;
-    /**
-     * 摘要已同步
-     */
-    synced?: boolean;
-    /**
-     * 总关注数
-     */
-    totalCount?: number;
-    /**
-     * 未读失败数
-     */
-    unreadFailureCount?: number;
-    /**
-     * 待查看预览
-     */
-    unreadPreview?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationItem>;
-    /**
-     * 未读成果数
-     */
-    unreadResultCount?: number;
 };
 
 /**
@@ -14866,6 +15039,7 @@ export type ReadErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -14887,6 +15061,7 @@ export type ReadErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -15011,6 +15186,8 @@ export type ReadErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -15214,6 +15391,7 @@ export type CommandErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -15235,6 +15413,7 @@ export type CommandErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -15359,6 +15538,8 @@ export type CommandErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -15832,6 +16013,7 @@ export type StartAiAccountLoginErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -15853,6 +16035,7 @@ export type StartAiAccountLoginErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -15977,6 +16160,8 @@ export type StartAiAccountLoginErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -16189,6 +16374,7 @@ export type CancelAiAccountLoginErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -16210,6 +16396,7 @@ export type CancelAiAccountLoginErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -16334,6 +16521,8 @@ export type CancelAiAccountLoginErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -16641,6 +16830,7 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -16662,6 +16852,7 @@ export type ListGlobalAutomaticTasksErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -16786,6 +16977,8 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -17080,6 +17273,7 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -17101,6 +17295,7 @@ export type GetGlobalAutomaticTaskErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -17225,6 +17420,8 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -17433,6 +17630,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -17454,6 +17652,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -17578,6 +17777,8 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -18766,6 +18967,119 @@ export type GetChatMessageFileChangesResponses = {
 
 export type GetChatMessageFileChangesResponse = GetChatMessageFileChangesResponses[keyof GetChatMessageFileChangesResponses];
 
+export type GetChatReadingData = {
+    body?: never;
+    path: {
+        /**
+         * ChatID 是原公开 Chat 的身份。
+         */
+        chatId: string;
+    };
+    query?: never;
+    url: '/api/v1/chats/{chatId}/reading';
+};
+
+export type GetChatReadingErrors = {
+    /**
+     * >
+     * * `[ChatNotFound][40400000005]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ReadingProjectionIncomplete][50300009201]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type GetChatReadingError = GetChatReadingErrors[keyof GetChatReadingErrors];
+
+export type GetChatReadingResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisChatReadingChatReadingResponse;
+};
+
+export type GetChatReadingResponse = GetChatReadingResponses[keyof GetChatReadingResponses];
+
+export type MarkChatReadData = {
+    body: GithubComJieWaZiNeuxBotServerApisChatReadingMarkChatReadRequest & unknown;
+    path: {
+        /**
+         * ChatID 是原公开会话标识。
+         */
+        chatId: string;
+    };
+    query?: never;
+    url: '/api/v1/chats/{chatId}/reading';
+};
+
+export type MarkChatReadErrors = {
+    /**
+     * >
+     * * `[ChatNotFound][40400000005]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ReadingProjectionIncomplete][50300009201]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type MarkChatReadError = MarkChatReadErrors[keyof MarkChatReadErrors];
+
+export type MarkChatReadResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type MarkChatReadResponse = MarkChatReadResponses[keyof MarkChatReadResponses];
+
+export type MarkChatUnreadData = {
+    body: GithubComJieWaZiNeuxBotServerApisChatReadingMarkChatUnreadRequest & unknown;
+    path: {
+        /**
+         * ChatID 是原公开会话标识。
+         */
+        chatId: string;
+    };
+    query?: never;
+    url: '/api/v1/chats/{chatId}/unread';
+};
+
+export type MarkChatUnreadErrors = {
+    /**
+     * >
+     * * `[ChatNotFound][40400000005]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ReadingProjectionIncomplete][50300009201]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type MarkChatUnreadError = MarkChatUnreadErrors[keyof MarkChatUnreadErrors];
+
+export type MarkChatUnreadResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type MarkChatUnreadResponse = MarkChatUnreadResponses[keyof MarkChatUnreadResponses];
+
 export type ListLibraryConnectorsData = {
     body?: never;
     path?: never;
@@ -18818,6 +19132,12 @@ export type CreateLibraryConnectorErrors = {
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateLibraryConnectorError = CreateLibraryConnectorErrors[keyof CreateLibraryConnectorErrors];
@@ -18863,6 +19183,12 @@ export type DeleteLibraryConnectorErrors = {
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteLibraryConnectorError = DeleteLibraryConnectorErrors[keyof DeleteLibraryConnectorErrors];
@@ -18934,6 +19260,12 @@ export type UpdateLibraryConnectorErrors = {
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateLibraryConnectorError = UpdateLibraryConnectorErrors[keyof UpdateLibraryConnectorErrors];
@@ -18969,6 +19301,12 @@ export type InstallLibraryConnectorErrors = {
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type InstallLibraryConnectorError = InstallLibraryConnectorErrors[keyof InstallLibraryConnectorErrors];
@@ -19004,6 +19342,12 @@ export type TestLibraryConnectorErrors = {
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type TestLibraryConnectorError = TestLibraryConnectorErrors[keyof TestLibraryConnectorErrors];
@@ -19197,6 +19541,7 @@ export type StreamEventsErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -19218,6 +19563,7 @@ export type StreamEventsErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -19342,6 +19688,8 @@ export type StreamEventsErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -19659,6 +20007,7 @@ export type StartImLoginErrors = {
     /**
      * >
      * * `[IMCredentialError][50000004001]`
+     * * `[InternalServerError][50000000001]`
      *
      */
     500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -19704,6 +20053,12 @@ export type CancelImLoginErrors = {
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CancelImLoginError = CancelImLoginErrors[keyof CancelImLoginErrors];
@@ -20250,6 +20605,7 @@ export type UpdateMcpServiceErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -20271,6 +20627,7 @@ export type UpdateMcpServiceErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -20395,6 +20752,8 @@ export type UpdateMcpServiceErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -20697,6 +21056,7 @@ export type UpdateApiServiceErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -20718,6 +21078,7 @@ export type UpdateApiServiceErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -20842,6 +21203,8 @@ export type UpdateApiServiceErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -21105,6 +21468,7 @@ export type OrganizeRemoteChatErrors = {
     /**
      * >
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      * * `[ManagedWorkspaceError][50000000033]`
      * * `[MessageAttachmentStorageError][50000000032]`
@@ -21914,6 +22278,12 @@ export type CreateRemoteLibraryErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
@@ -21990,6 +22360,12 @@ export type DeleteRemoteLibraryErrors = {
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
@@ -22146,6 +22522,12 @@ export type UpdateRemoteLibraryErrors = {
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
@@ -22559,6 +22941,12 @@ export type RecoverRemoteLibraryDeletionErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
@@ -22902,6 +23290,12 @@ export type MaintainRemoteErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
@@ -23147,6 +23541,12 @@ export type OrganizeRemoteErrors = {
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
@@ -23497,6 +23897,12 @@ export type CreateRemotePageErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
@@ -23666,6 +24072,12 @@ export type WriteRemotePageErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
@@ -23746,6 +24158,12 @@ export type RestoreRemotePageErrors = {
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
@@ -24017,6 +24435,12 @@ export type GetRemoteReceiptErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
@@ -24180,6 +24604,12 @@ export type ConfirmRemoteSourcePurgeErrors = {
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
@@ -24429,6 +24859,12 @@ export type RecoverRemoteSourcePurgeErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
@@ -24606,6 +25042,12 @@ export type ImportRemoteSourceErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
@@ -24768,6 +25210,12 @@ export type ArchiveRemoteSourceErrors = {
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
@@ -25099,6 +25547,12 @@ export type CreateRemoteThemeErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
@@ -25181,6 +25635,12 @@ export type WriteRemoteThemeErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
@@ -25257,6 +25717,12 @@ export type UploadRemoteSourceErrors = {
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
@@ -25339,6 +25805,12 @@ export type GetRemoteUploadStatusErrors = {
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
@@ -25560,6 +26032,7 @@ export type CreateLibraryErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -25635,6 +26108,7 @@ export type DeleteLibraryErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -25773,6 +26247,7 @@ export type UpdateLibraryErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -26076,6 +26551,7 @@ export type RecoverLibraryDeletionErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -26214,6 +26690,7 @@ export type UpdateLibraryEmbeddingProfileErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -26352,6 +26829,7 @@ export type UpdateLibraryExecutionDefaultsErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -26587,6 +27065,7 @@ export type ResumeJobErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      * * `[SkillUnavailable][50000000008]`
      *
@@ -26684,6 +27163,7 @@ export type RetryJobErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      * * `[SkillUnavailable][50000000008]`
      *
@@ -26777,6 +27257,7 @@ export type MaintainWikiErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      * * `[SkillUnavailable][50000000008]`
      *
@@ -26944,6 +27425,7 @@ export type OrganizeErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      * * `[SkillUnavailable][50000000008]`
      *
@@ -27270,6 +27752,7 @@ export type CreatePageErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -27416,6 +27899,7 @@ export type WritePageErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -27489,6 +27973,7 @@ export type RestorePageErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -27719,6 +28204,7 @@ export type ConfirmSourcePurgeErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -27939,6 +28425,7 @@ export type RecoverSourcePurgeErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -28098,6 +28585,7 @@ export type ImportSourceErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -28244,6 +28732,7 @@ export type ArchiveSourceErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -28528,6 +29017,7 @@ export type CreateThemeErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -28601,6 +29091,7 @@ export type WriteThemeErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -29137,161 +29628,6 @@ export type ListTimelineResponses = {
 
 export type ListTimelineResponse = ListTimelineResponses[keyof ListTimelineResponses];
 
-export type ListNotificationsData = {
-    body?: never;
-    path?: never;
-    query: {
-        /**
-         * 关注分桶
-         */
-        bucket: string;
-        /**
-         * 续页游标
-         */
-        cursor?: string;
-        /**
-         * 执行对象
-         */
-        executorId?: string;
-        /**
-         * 页码
-         */
-        pageNum?: number;
-        /**
-         * 每页数量
-         */
-        pageSize?: number;
-        /**
-         * 标题搜索
-         */
-        query?: string;
-        /**
-         * 原始来源
-         */
-        source?: string;
-    };
-    url: '/api/v1/notifications';
-};
-
-export type ListNotificationsErrors = {
-    /**
-     * >
-     * * `[InternalServerError][50000000001]`
-     *
-     */
-    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
-};
-
-export type ListNotificationsError = ListNotificationsErrors[keyof ListNotificationsErrors];
-
-export type ListNotificationsResponses = {
-    200: GithubComJieWaZiNeuxBotServerApisNotificationsListNotificationsResponse;
-};
-
-export type ListNotificationsResponse = ListNotificationsResponses[keyof ListNotificationsResponses];
-
-export type GetNotificationSnapshotData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/v1/notifications/snapshot';
-};
-
-export type GetNotificationSnapshotErrors = {
-    /**
-     * >
-     * * `[InternalServerError][50000000001]`
-     *
-     */
-    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
-};
-
-export type GetNotificationSnapshotError = GetNotificationSnapshotErrors[keyof GetNotificationSnapshotErrors];
-
-export type GetNotificationSnapshotResponses = {
-    200: GithubComJieWaZiNeuxBotServerServicesNotificationSnapshot;
-};
-
-export type GetNotificationSnapshotResponse = GetNotificationSnapshotResponses[keyof GetNotificationSnapshotResponses];
-
-export type ClearNotificationUnreadData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/v1/notifications/unread/clear';
-};
-
-export type ClearNotificationUnreadResponses = {
-    200: GithubComShrewxGinxCommonResponse;
-};
-
-export type ClearNotificationUnreadResponse = ClearNotificationUnreadResponses[keyof ClearNotificationUnreadResponses];
-
-export type GetNotificationData = {
-    body?: never;
-    path: {
-        /**
-         * 通知标识
-         */
-        noticeId: string;
-    };
-    query?: never;
-    url: '/api/v1/notifications/{noticeId}';
-};
-
-export type GetNotificationResponses = {
-    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationItem;
-};
-
-export type GetNotificationResponse = GetNotificationResponses[keyof GetNotificationResponses];
-
-export type DismissNotificationData = {
-    body?: never;
-    path: {
-        /**
-         * 通知标识
-         */
-        noticeId: string;
-    };
-    query?: never;
-    url: '/api/v1/notifications/{noticeId}/dismiss';
-};
-
-export type DismissNotificationResponses = {
-    200: GithubComShrewxGinxCommonResponse;
-};
-
-export type DismissNotificationResponse = DismissNotificationResponses[keyof DismissNotificationResponses];
-
-export type ViewNotificationData = {
-    body: GithubComJieWaZiNeuxBotServerApisNotificationsViewNotificationRequest & unknown;
-    path: {
-        /**
-         * 通知标识
-         */
-        noticeId: string;
-    };
-    query?: never;
-    url: '/api/v1/notifications/{noticeId}/view';
-};
-
-export type ViewNotificationErrors = {
-    /**
-     * >
-     * * `[BadRequest][40000000001]`
-     *
-     */
-    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
-};
-
-export type ViewNotificationError = ViewNotificationErrors[keyof ViewNotificationErrors];
-
-export type ViewNotificationResponses = {
-    200: GithubComShrewxGinxCommonResponse;
-};
-
-export type ViewNotificationResponse = ViewNotificationResponses[keyof ViewNotificationResponses];
-
 export type ListPluginsData = {
     body?: never;
     path?: never;
@@ -29492,6 +29828,7 @@ export type ListPluginsErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -29513,6 +29850,7 @@ export type ListPluginsErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -29637,6 +29975,8 @@ export type ListPluginsErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -29861,6 +30201,7 @@ export type BrowsePluginsErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -29882,6 +30223,7 @@ export type BrowsePluginsErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -30006,6 +30348,8 @@ export type BrowsePluginsErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -30209,6 +30553,7 @@ export type RefreshPluginCatalogErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -30230,6 +30575,7 @@ export type RefreshPluginCatalogErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -30354,6 +30700,8 @@ export type RefreshPluginCatalogErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -30567,6 +30915,7 @@ export type GetCatalogPluginErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -30588,6 +30937,7 @@ export type GetCatalogPluginErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -30712,6 +31062,8 @@ export type GetCatalogPluginErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -30933,6 +31285,7 @@ export type GetCatalogPluginConnectorErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -30954,6 +31307,7 @@ export type GetCatalogPluginConnectorErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -31078,6 +31432,8 @@ export type GetCatalogPluginConnectorErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -31286,6 +31642,7 @@ export type PrepareCatalogPluginErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -31307,6 +31664,7 @@ export type PrepareCatalogPluginErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -31431,6 +31789,8 @@ export type PrepareCatalogPluginErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -31652,6 +32012,7 @@ export type GetCatalogPluginReadmeErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -31673,6 +32034,7 @@ export type GetCatalogPluginReadmeErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -31797,6 +32159,8 @@ export type GetCatalogPluginReadmeErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -32022,6 +32386,7 @@ export type GetCatalogPluginSkillErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -32043,6 +32408,7 @@ export type GetCatalogPluginSkillErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -32167,6 +32533,8 @@ export type GetCatalogPluginSkillErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -32370,6 +32738,7 @@ export type CreatePluginFromSkillsErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -32391,6 +32760,7 @@ export type CreatePluginFromSkillsErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -32515,6 +32885,8 @@ export type CreatePluginFromSkillsErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -32595,6 +32967,7 @@ export type DeletePluginErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[PluginStorageError][50000006501]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
      * * `[RuntimeEventQueueOverflow][50000000050]`
@@ -32821,6 +33194,7 @@ export type GetPluginErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -32842,6 +33216,7 @@ export type GetPluginErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -32966,6 +33341,8 @@ export type GetPluginErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -33268,6 +33645,7 @@ export type StartPluginAuthorizationErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -33289,6 +33667,7 @@ export type StartPluginAuthorizationErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -33413,6 +33792,8 @@ export type StartPluginAuthorizationErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -33709,6 +34090,7 @@ export type LogoutPluginAuthorizationErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[PluginStorageError][50000006501]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
      * * `[RuntimeEventQueueOverflow][50000000050]`
@@ -33931,6 +34313,7 @@ export type GetPluginConfigurationErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -33952,6 +34335,7 @@ export type GetPluginConfigurationErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -34076,6 +34460,8 @@ export type GetPluginConfigurationErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -34503,6 +34889,7 @@ export type InstallPluginErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -34524,6 +34911,7 @@ export type InstallPluginErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -34648,6 +35036,8 @@ export type InstallPluginErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -34999,6 +35389,7 @@ export type UpdatePluginInstallationsErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -35020,6 +35411,7 @@ export type UpdatePluginInstallationsErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -35144,6 +35536,8 @@ export type UpdatePluginInstallationsErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -35439,6 +35833,44 @@ export type ExportRolePresetResponses = {
 };
 
 export type ExportRolePresetResponse = ExportRolePresetResponses[keyof ExportRolePresetResponses];
+
+export type GetRunViewingData = {
+    body?: never;
+    path: {
+        /**
+         * OwnerID 是指定原运行的标识。
+         */
+        ownerId: string;
+        ownerKind: GithubComJieWaZiNeuxBotServerConstantsRunOwnerKind & unknown;
+    };
+    query?: never;
+    url: '/api/v1/runs/{ownerKind}/{ownerId}/viewing';
+};
+
+export type GetRunViewingResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisRunViewingRunViewingResponse;
+};
+
+export type GetRunViewingResponse = GetRunViewingResponses[keyof GetRunViewingResponses];
+
+export type MarkRunViewedData = {
+    body?: never;
+    path: {
+        /**
+         * OwnerID 是不可变的原运行标识。
+         */
+        ownerId: string;
+        ownerKind: GithubComJieWaZiNeuxBotServerConstantsRunOwnerKind & unknown;
+    };
+    query?: never;
+    url: '/api/v1/runs/{ownerKind}/{ownerId}/viewing';
+};
+
+export type MarkRunViewedResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type MarkRunViewedResponse = MarkRunViewedResponses[keyof MarkRunViewedResponses];
 
 export type ListRuntimesData = {
     body?: never;
@@ -35781,6 +36213,7 @@ export type ImportLibrarySkillsErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
      *
@@ -35874,6 +36307,7 @@ export type DeleteLibrarySkillErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[SkillStorageError][50000000031]`
      *
      */
@@ -35936,6 +36370,12 @@ export type UpdateLibrarySkillErrors = {
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateLibrarySkillError = UpdateLibrarySkillErrors[keyof UpdateLibrarySkillErrors];
@@ -35965,6 +36405,12 @@ export type InstallLibrarySkillErrors = {
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type InstallLibrarySkillError = InstallLibrarySkillErrors[keyof InstallLibrarySkillErrors];
@@ -36010,6 +36456,7 @@ export type PullLibrarySkillUpdateErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[SkillStorageError][50000000031]`
      *
      */
@@ -36087,6 +36534,7 @@ export type CreateLibrarySkillVersionErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
      *
@@ -36239,6 +36687,7 @@ export type RestoreLibrarySkillVersionErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
      *
@@ -36450,6 +36899,7 @@ export type SetAutomaticTaskApiErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -36471,6 +36921,7 @@ export type SetAutomaticTaskApiErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -36595,6 +37046,8 @@ export type SetAutomaticTaskApiErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -37396,6 +37849,7 @@ export type ListAutomaticTasksErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -37417,6 +37871,7 @@ export type ListAutomaticTasksErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -37541,6 +37996,8 @@ export type ListAutomaticTasksErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -37816,6 +38273,7 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -37837,6 +38295,7 @@ export type ListAutomaticTaskAttentionErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -37961,6 +38420,8 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -38202,6 +38663,7 @@ export type DeleteAutomaticTaskErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -38223,6 +38685,7 @@ export type DeleteAutomaticTaskErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -38347,6 +38810,8 @@ export type DeleteAutomaticTaskErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -38559,6 +39024,7 @@ export type GetAutomaticTaskErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -38580,6 +39046,7 @@ export type GetAutomaticTaskErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -38704,6 +39171,8 @@ export type GetAutomaticTaskErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -39067,6 +39536,7 @@ export type ListAutomaticRunsErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -39088,6 +39558,7 @@ export type ListAutomaticRunsErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -39212,6 +39683,8 @@ export type ListAutomaticRunsErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -39424,6 +39897,7 @@ export type TriggerAutomaticTaskErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -39445,6 +39919,7 @@ export type TriggerAutomaticTaskErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -39569,6 +40044,8 @@ export type TriggerAutomaticTaskErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -39682,6 +40159,12 @@ export type CreateWakerConnectorErrors = {
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateWakerConnectorError = CreateWakerConnectorErrors[keyof CreateWakerConnectorErrors];
@@ -39731,6 +40214,12 @@ export type DeleteWakerConnectorErrors = {
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteWakerConnectorError = DeleteWakerConnectorErrors[keyof DeleteWakerConnectorErrors];
@@ -39810,6 +40299,12 @@ export type UpdateWakerConnectorErrors = {
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateWakerConnectorError = UpdateWakerConnectorErrors[keyof UpdateWakerConnectorErrors];
@@ -39843,6 +40338,12 @@ export type SetWakerConnectorEnabledErrors = {
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type SetWakerConnectorEnabledError = SetWakerConnectorEnabledErrors[keyof SetWakerConnectorEnabledErrors];
@@ -39882,6 +40383,12 @@ export type TestWakerConnectorErrors = {
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type TestWakerConnectorError = TestWakerConnectorErrors[keyof TestWakerConnectorErrors];
@@ -40220,6 +40727,7 @@ export type ListWakerPluginsErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -40241,6 +40749,7 @@ export type ListWakerPluginsErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -40365,6 +40874,8 @@ export type ListWakerPluginsErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -40443,6 +40954,7 @@ export type UninstallWakerPluginErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[PluginStorageError][50000006501]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
      * * `[RuntimeEventQueueOverflow][50000000050]`
@@ -40826,6 +41338,7 @@ export type UninstallSkillErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[SkillStorageError][50000000031]`
      *
      */
@@ -40896,6 +41409,12 @@ export type UpdateWakerSkillErrors = {
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateWakerSkillError = UpdateWakerSkillErrors[keyof UpdateWakerSkillErrors];
@@ -40929,6 +41448,12 @@ export type SetWakerSkillEnabledErrors = {
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type SetWakerSkillEnabledError = SetWakerSkillEnabledErrors[keyof SetWakerSkillEnabledErrors];
@@ -40978,6 +41503,7 @@ export type PullSkillUpdateErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[SkillStorageError][50000000031]`
      *
      */
@@ -41063,6 +41589,7 @@ export type CreateSkillVersionErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
      *
@@ -41227,6 +41754,7 @@ export type RestoreSkillVersionErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
      *
@@ -41287,7 +41815,7 @@ export type ListWorkBoardData = {
          */
         limit?: number;
         /**
-         * Mode 是 all、attention 或 results。
+         * Mode 是 all、action 或 awaiting_view。
          */
         mode?: string;
         /**
@@ -41349,67 +41877,118 @@ export type ListWorkBoardExecutorsResponses = {
 
 export type ListWorkBoardExecutorsResponse = ListWorkBoardExecutorsResponses[keyof ListWorkBoardExecutorsResponses];
 
-export type ClearWorkResultsData = {
+export type GetWorkBoardLiveTargetData = {
     body?: never;
     path?: never;
-    query?: never;
-    url: '/api/v1/work-board/results/clear';
-};
-
-export type ClearWorkResultsResponses = {
-    200: GithubComShrewxGinxCommonResponse;
-};
-
-export type ClearWorkResultsResponse = ClearWorkResultsResponses[keyof ClearWorkResultsResponses];
-
-export type GetWorkResultData = {
-    body?: never;
-    path: {
+    query: {
         /**
-         * OwnerID 是原容器标识。
+         * ChatID 是实际产生消息或请求的会话。
          */
-        ownerId: string;
-        ownerKind: GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind & unknown;
-    };
-    query?: never;
-    url: '/api/v1/work-board/results/{ownerKind}/{ownerId}';
-};
-
-export type GetWorkResultResponses = {
-    200: GithubComJieWaZiNeuxBotServerApisWorkBoardWorkResultResponse;
-};
-
-export type GetWorkResultResponse = GetWorkResultResponses[keyof GetWorkResultResponses];
-
-export type ViewWorkResultData = {
-    body: GithubComJieWaZiNeuxBotServerApisWorkBoardViewWorkResultRequest & unknown;
-    path: {
+        chatId?: string;
         /**
-         * OwnerID 是原容器身份。
+         * ExecutionID 定位实际等待的会话执行或工作流运行。
          */
-        ownerId: string;
-        ownerKind: GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind & unknown;
+        executionId?: string;
+        /**
+         * IncludePreview 表示需要有界公开预览。
+         */
+        includePreview?: boolean;
+        /**
+         * MessageID 是已提交的原公开消息标识。
+         */
+        messageId?: string;
+        /**
+         * Operation 是原实时事件操作类型。
+         */
+        operation: string;
+        /**
+         * RequestFence 是原团队验收围栏。
+         */
+        requestFence?: number;
+        /**
+         * RequestID 是准确的原待办请求标识。
+         */
+        requestId?: string;
+        /**
+         * RequestKind 是原交互类型。
+         */
+        requestKind?: string;
+        /**
+         * WorkID 是原公开工作标识。
+         */
+        workId: string;
+        workKind: GithubComJieWaZiNeuxBotServerConstantsWorkOwnerKind & unknown;
     };
-    query?: never;
-    url: '/api/v1/work-board/results/{ownerKind}/{ownerId}/view';
+    url: '/api/v1/work-board/live-target';
 };
 
-export type ViewWorkResultErrors = {
+export type GetWorkBoardLiveTargetErrors = {
     /**
      * >
      * * `[BadRequest][40000000001]`
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatMessageNotFound][40400007201]`
+     * * `[ChatNotFound][40400000005]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
-export type ViewWorkResultError = ViewWorkResultErrors[keyof ViewWorkResultErrors];
+export type GetWorkBoardLiveTargetError = GetWorkBoardLiveTargetErrors[keyof GetWorkBoardLiveTargetErrors];
 
-export type ViewWorkResultResponses = {
-    200: GithubComShrewxGinxCommonResponse;
+export type GetWorkBoardLiveTargetResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardLiveTarget;
 };
 
-export type ViewWorkResultResponse = ViewWorkResultResponses[keyof ViewWorkResultResponses];
+export type GetWorkBoardLiveTargetResponse = GetWorkBoardLiveTargetResponses[keyof GetWorkBoardLiveTargetResponses];
+
+export type MarkWorkBoardViewedData = {
+    body: GithubComJieWaZiNeuxBotServerApisWorkBoardMarkWorkBoardViewedRequest & unknown;
+    path?: never;
+    query?: never;
+    url: '/api/v1/work-board/mark-viewed';
+};
+
+export type MarkWorkBoardViewedErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[WorkflowNotFound][40400003001]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ReadingIntentConflict][40900009201]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ReadingProjectionIncomplete][50300009201]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type MarkWorkBoardViewedError = MarkWorkBoardViewedErrors[keyof MarkWorkBoardViewedErrors];
+
+export type MarkWorkBoardViewedResponses = {
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsMarkViewedResult;
+};
+
+export type MarkWorkBoardViewedResponse = MarkWorkBoardViewedResponses[keyof MarkWorkBoardViewedResponses];
 
 export type GetWorkBoardSummaryData = {
     body?: never;
@@ -41440,6 +42019,54 @@ export type GetWorkBoardSummaryResponses = {
 };
 
 export type GetWorkBoardSummaryResponse = GetWorkBoardSummaryResponses[keyof GetWorkBoardSummaryResponses];
+
+export type GetWorkBoardViewTargetsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        activity?: GithubComJieWaZiNeuxBotServerConstantsChannelActivityState & unknown;
+        /**
+         * ExecutorID 是原执行对象筛选。
+         */
+        executorId?: string;
+        /**
+         * Query 按原工作标题筛选。
+         */
+        query?: string;
+        /**
+         * Source 是工作入口来源。
+         */
+        source?: string;
+        /**
+         * States 是逗号分隔的可选工作状态。
+         */
+        states?: string;
+    };
+    url: '/api/v1/work-board/view-targets';
+};
+
+export type GetWorkBoardViewTargetsErrors = {
+    /**
+     * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     *
+     */
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ReadingProjectionIncomplete][50300009201]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type GetWorkBoardViewTargetsError = GetWorkBoardViewTargetsErrors[keyof GetWorkBoardViewTargetsErrors];
+
+export type GetWorkBoardViewTargetsResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardViewTargets;
+};
+
+export type GetWorkBoardViewTargetsResponse = GetWorkBoardViewTargetsResponses[keyof GetWorkBoardViewTargetsResponses];
 
 export type ListWorkflowsData = {
     body?: never;
@@ -41662,6 +42289,7 @@ export type CreateWorkflowErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -41683,6 +42311,7 @@ export type CreateWorkflowErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -41807,6 +42436,8 @@ export type CreateWorkflowErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -42028,6 +42659,7 @@ export type DeleteWorkflowErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -42049,6 +42681,7 @@ export type DeleteWorkflowErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -42173,6 +42806,8 @@ export type DeleteWorkflowErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -42404,6 +43039,7 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -42425,6 +43061,7 @@ export type CreateWorkflowAnnotationErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -42549,6 +43186,8 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -42786,6 +43425,7 @@ export type EditWorkflowConfigurationErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -42807,6 +43447,7 @@ export type EditWorkflowConfigurationErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -42931,6 +43572,8 @@ export type EditWorkflowConfigurationErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -43139,6 +43782,7 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -43160,6 +43804,7 @@ export type SendWorkflowCreationMessageErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -43284,6 +43929,8 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -43580,6 +44227,7 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -43601,6 +44249,7 @@ export type RestoreWorkflowRevisionErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -43725,6 +44374,8 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -43964,6 +44615,7 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -43985,6 +44637,7 @@ export type DeleteWorkflowRevisionErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -44109,6 +44762,8 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -44348,6 +45003,7 @@ export type StartWorkflowRunErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -44369,6 +45025,7 @@ export type StartWorkflowRunErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -44493,6 +45150,8 @@ export type StartWorkflowRunErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -44705,6 +45364,7 @@ export type DeleteWorkflowRunErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -44726,6 +45386,7 @@ export type DeleteWorkflowRunErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -44850,6 +45511,8 @@ export type DeleteWorkflowRunErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -45172,6 +45835,7 @@ export type AnswerWorkflowHumanErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -45193,6 +45857,7 @@ export type AnswerWorkflowHumanErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -45317,6 +45982,8 @@ export type AnswerWorkflowHumanErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -45533,6 +46200,7 @@ export type GetWorkflowInstanceErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -45554,6 +46222,7 @@ export type GetWorkflowInstanceErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -45678,6 +46347,8 @@ export type GetWorkflowInstanceErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -45894,6 +46565,7 @@ export type SkipWorkflowWorkerErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -45915,6 +46587,7 @@ export type SkipWorkflowWorkerErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -46039,6 +46712,8 @@ export type SkipWorkflowWorkerErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -46255,6 +46930,7 @@ export type AnswerWorkflowOperationErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -46276,6 +46952,7 @@ export type AnswerWorkflowOperationErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -46400,6 +47077,8 @@ export type AnswerWorkflowOperationErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -46612,6 +47291,7 @@ export type RetryWorkflowRunErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -46633,6 +47313,7 @@ export type RetryWorkflowRunErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -46757,6 +47438,8 @@ export type RetryWorkflowRunErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -47039,6 +47722,7 @@ export type SaveWorkflowSourceErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -47060,6 +47744,7 @@ export type SaveWorkflowSourceErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -47184,6 +47869,8 @@ export type SaveWorkflowSourceErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -47325,6 +48012,37 @@ export type ValidateWorkflowSourceResponses = {
 };
 
 export type ValidateWorkflowSourceResponse = ValidateWorkflowSourceResponses[keyof ValidateWorkflowSourceResponses];
+
+export type GetWorkspaceAttentionData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/workspace-attention';
+};
+
+export type GetWorkspaceAttentionResponses = {
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkspaceAttentionSnapshot;
+};
+
+export type GetWorkspaceAttentionResponse = GetWorkspaceAttentionResponses[keyof GetWorkspaceAttentionResponses];
+
+export type GetExecutorAttentionData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * ExecutorIDs 是逗号分隔的原执行对象标识。
+         */
+        executorIds: string;
+    };
+    url: '/api/v1/workspace-attention/executors';
+};
+
+export type GetExecutorAttentionResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisWorkspaceAttentionExecutorAttentionResponse;
+};
+
+export type GetExecutorAttentionResponse = GetExecutorAttentionResponses[keyof GetExecutorAttentionResponses];
 
 export type DeleteChatFileData = {
     body?: never;

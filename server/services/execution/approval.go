@@ -11,7 +11,6 @@ import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
-	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
@@ -29,8 +28,6 @@ type pendingApproval struct {
 	invocationID string
 	// requested 是已经安全归一化并进入权威日志的审批内容。
 	requested eventlog.ApprovalRequestedData
-	// requestedAt 是请求进入权威日志的 Unix 毫秒时间。
-	requestedAt int64
 	// response 把最终选择交回正在等待的 Runtime 回调。
 	response chan agentapi.ApprovalDecision
 }
@@ -132,7 +129,7 @@ func (c *approvalCoordinator) request(
 	}
 
 	c.commitMutex.Lock()
-	record, err := c.journal.AppendApprovalFact(chatID, eventlog.AppendInput{
+	record, err := c.journal.AppendInteractionFact(chatID, eventlog.AppendInput{
 		Type:         constants.ChatEventTypeApprovalRequested,
 		ExecutionID:  executionID,
 		InvocationID: pending.invocationID,
@@ -143,14 +140,13 @@ func (c *approvalCoordinator) request(
 		return agentapi.ApprovalDecision{Cancelled: true}, err
 	}
 	c.mutex.Lock()
-	pending.requestedAt = record.RecordedAt
 	c.byID[requested.ApprovalID] = pending
 	c.orderByChat[chatID] = append(
 		c.orderByChat[chatID],
 		requested.ApprovalID,
 	)
 	c.mutex.Unlock()
-	c.journal.PublishApprovalFact(ctx, record, c.pendingProjection(chatID))
+	c.journal.PublishInteractionFact(ctx, record)
 	c.commitMutex.Unlock()
 
 	select {
@@ -320,7 +316,7 @@ func (c *approvalCoordinator) commitResolution(
 ) error {
 	c.commitMutex.Lock()
 	defer c.commitMutex.Unlock()
-	record, err := c.journal.AppendApprovalFact(
+	record, err := c.journal.AppendInteractionFact(
 		pending.chatID,
 		eventlog.AppendInput{
 			Type:         constants.ChatEventTypeApprovalResolved,
@@ -349,62 +345,7 @@ func (c *approvalCoordinator) commitResolution(
 	}
 	c.mutex.Unlock()
 
-	c.journal.PublishApprovalFact(ctx, record, c.pendingProjection(pending.chatID))
+	c.journal.PublishInteractionFact(ctx, record)
 	pending.response <- decision
 	return nil
-}
-
-func (c *approvalCoordinator) pendingProjection(
-	chatID string,
-) []models.PendingApproval {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	order := c.orderByChat[chatID]
-	result := make([]models.PendingApproval, 0, len(order))
-	for _, approvalID := range order {
-		pending := c.byID[approvalID]
-		if pending == nil {
-			continue
-		}
-		result = append(result, pendingApprovalProjection(
-			pending.requested,
-			pending.requestedAt,
-		))
-	}
-	return result
-}
-
-func pendingApprovalProjection(
-	requested eventlog.ApprovalRequestedData,
-	requestedAt int64,
-) models.PendingApproval {
-	locations := make([]models.PendingApprovalLocation, 0, len(requested.Locations))
-	for _, location := range requested.Locations {
-		var line *int
-		if location.Line != nil {
-			lineValue := *location.Line
-			line = &lineValue
-		}
-		locations = append(locations, models.PendingApprovalLocation{
-			Path: location.Path,
-			Line: line,
-		})
-	}
-	options := make([]models.PendingApprovalOption, 0, len(requested.Options))
-	for _, option := range requested.Options {
-		options = append(options, models.PendingApprovalOption{
-			ID: option.ID, Name: option.Name, Kind: option.Kind,
-		})
-	}
-	return models.PendingApproval{
-		ApprovalID:  requested.ApprovalID,
-		ToolCallID:  requested.ToolCallID,
-		Title:       requested.Title,
-		Kind:        requested.Kind,
-		Summary:     requested.Summary,
-		Command:     requested.Command,
-		Locations:   locations,
-		Options:     options,
-		RequestedAt: requestedAt,
-	}
 }

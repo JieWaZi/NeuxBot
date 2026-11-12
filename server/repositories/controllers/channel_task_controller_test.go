@@ -615,7 +615,7 @@ func TestChannelTimelineFollowUpsBoundVisibleThreadCursor(t *testing.T) {
 	if err := database.CreateInBatches(rows, 100).Error; err != nil {
 		t.Fatal(err)
 	}
-	queryLog := &notificationQueryLog{Interface: database.Logger}
+	queryLog := &repositoryQueryLog{Interface: database.Logger}
 	loggedDB := database.Session(&gorm.Session{Logger: queryLog})
 	controller = NewChannelTaskController(loggedDB)
 	transaction := NewTransactionController(dbhelper.NewGormTransactionManager(loggedDB))

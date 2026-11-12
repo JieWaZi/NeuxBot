@@ -1,4 +1,3 @@
-import { notificationPresentationProps } from "@/shared/api/notification-presentation";
 import { useMutation } from "@tanstack/react-query";
 import { ShieldCheck } from "lucide-react";
 import { useState } from "react";
@@ -45,13 +44,7 @@ export function OperationRequestCard({
     }
   };
   return (
-    <Card
-      variant="section"
-      {...notificationPresentationProps({
-        kind: "request",
-        noticeId: `operation:${operation.id}`,
-      })}
-    >
+    <Card variant="section">
       <div className="grid gap-3">
         <div className="flex items-center gap-2">
           <ShieldCheck className="text-muted-foreground size-4" />

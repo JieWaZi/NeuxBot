@@ -38,6 +38,28 @@ import type {
   GlobalEventDelivery,
 } from "./core-event-protocol";
 
+import type {
+  NotificationPreferences,
+  WorkspaceAttentionOpen,
+} from "./workspace-attention";
+export type {
+  NotificationPreferences,
+  WorkspaceAttentionOpen,
+} from "./workspace-attention";
+
+export type NotificationPreferenceCommands = {
+  get_notification_preferences: {
+    args: undefined;
+    result: NotificationPreferences;
+  };
+  set_notification_preferences: {
+    args: NotificationPreferences;
+    result: NotificationPreferences;
+  };
+  send_test_notification: { args: undefined; result: void };
+  open_notification_settings: { args: undefined; result: void };
+};
+
 export type HostCommands = {
   save_file: { args: { bytes: number[]; fileName: string }; result: boolean };
   select_directory: { args: undefined; result: string | null };
@@ -47,10 +69,6 @@ export type HostCommands = {
     result: string;
   };
   open_external_url: { args: { url: string }; result: void };
-  show_notification: {
-    args: { id: string; title: string; body: string };
-    result: boolean;
-  };
 };
 
 export type WorkspaceCommands = {
@@ -387,13 +405,14 @@ export type CommandMethods<T> = {
     : never;
 };
 
-export type HostService = CommandMethods<HostCommands> & {
-  discard_attachment?(args: { sourcePath: string }): Promise<void>;
-  onFileDrop(handler: (event: FileDropEvent) => void): () => void;
-  onNotificationAction(
-    handler: (event: { id: string; action: "click" | "close" }) => void,
-  ): () => void;
-};
+export type HostService = CommandMethods<HostCommands> &
+  Partial<CommandMethods<NotificationPreferenceCommands>> & {
+    discard_attachment?(args: { sourcePath: string }): Promise<void>;
+    onFileDrop(handler: (event: FileDropEvent) => void): () => void;
+    onWorkspaceAttentionOpen?(
+      handler: (event: WorkspaceAttentionOpen) => void,
+    ): () => void;
+  };
 
 export type WorkspaceService = CommandMethods<WorkspaceCommands> & {
   onWorkspaceResourceChange(

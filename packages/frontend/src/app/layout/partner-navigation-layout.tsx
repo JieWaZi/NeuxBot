@@ -1,3 +1,4 @@
+import { waitingConversations, workAttentionHref } from "@/modules/work-board";
 import {
   ChatHistoryPopover,
   ChatHistoryPanelSurface,
@@ -36,6 +37,12 @@ import type {
   GithubComJieWaZiNeuxBotServerRepositoriesModelsChat as Chat,
 } from "@/shared/api/generated/types.gen";
 import { cn } from "@/shared/lib/cn";
+import type {
+  ChatAttention,
+  ExecutorAttention,
+} from "@/modules/workspaceattention";
+import { captureChatOpenIntent } from "@/shared/api/chat-reading";
+import { useQueryEvents } from "@/shared/api/use-query-events";
 import { platform } from "@/shared/platform/provider";
 import { navigateRouteImmediately } from "./immediate-route-navigation";
 import { AppModuleRail } from "./app-module-rail";
@@ -75,6 +82,7 @@ type PartnerNavigationLayoutProps = {
   sidebarToolbar?: ReactNode;
   contextSidebarHidden?: boolean;
   entityStatus?: "error" | "loading" | "ready";
+  executorAttention?: ReadonlyMap<string, ExecutorAttention>;
   onManageEntities: (mode: PartnerNavigationPreferences["entityMode"]) => void;
   onOpenPartnerDetail: (partnerId: string) => void;
   onNavigateModule: (moduleId: AppModuleId) => void;
@@ -196,6 +204,7 @@ function PartnerNavigationLayoutContent({
   sidebarToolbar,
   contextSidebarHidden = false,
   entityStatus = "ready",
+  executorAttention,
   onManageEntities,
   onOpenPartnerDetail,
   onNavigateModule,
@@ -271,6 +280,7 @@ function PartnerNavigationLayoutContent({
       key: `waker:${waker.id}`,
       kind: "waker",
       waker,
+      attention: executorAttention?.get(waker.id),
     });
   }
   for (const team of channels) {
@@ -281,6 +291,7 @@ function PartnerNavigationLayoutContent({
       key: `team:${channelId}`,
       kind: "team",
       team,
+      attention: executorAttention?.get(channelId),
     });
   }
   const modeRailKeys = orderedRailKeys.filter((key) =>
@@ -666,10 +677,12 @@ function ChatHistoryPanel({
           onPreferencesChange={onPreferencesChange}
           preferences={preferences}
           selectedPartnerId={item.id}
+          attention={item.attention?.chats}
         />
       ) : (
         <TeamChatTree
           channelId={item.id}
+          attention={item.attention?.chats}
           onPreferencesChange={onPreferencesChange}
           onThreadOpened={onClose}
           preferences={preferences}
@@ -686,12 +699,14 @@ function ChatHistoryPanel({
 
 function PartnerChatTree({
   activeChatId,
+  attention,
   onChatOpened,
   onPreferencesChange,
   preferences,
   selectedPartnerId,
 }: {
   activeChatId?: string;
+  attention?: ChatAttention[];
   onChatOpened?: () => void;
   onPreferencesChange: Dispatch<SetStateAction<PartnerNavigationPreferences>>;
   preferences: PartnerNavigationPreferences;
@@ -701,9 +716,22 @@ function PartnerChatTree({
   const navigate = useNavigate();
   const appScenes = useOptionalAppSceneWorkspace();
   const queryClient = useQueryClient();
+  const historyOptions = chatListInfiniteOptions(
+    selectedPartnerId || "pending",
+  );
   const chatsQuery = useInfiniteQuery({
-    ...chatListInfiniteOptions(selectedPartnerId || "pending"),
+    ...historyOptions,
     enabled: Boolean(selectedPartnerId),
+  });
+  useQueryEvents({
+    topic: "entities",
+    resource: { kind: "global" },
+    queryKeys: [historyOptions.queryKey],
+    enabled: Boolean(selectedPartnerId),
+    eventTypes: ["entities.activity.changed"],
+    eventFilter: ({ resource }) =>
+      resource.kind === "global" ||
+      (resource.kind === "waker" && resource.id === selectedPartnerId),
   });
   const chats = useMemo(
     () => chatsQuery.data?.pages.flatMap((page) => page.resources ?? []) ?? [],
@@ -847,6 +875,9 @@ function PartnerChatTree({
                           key={chat.id}
                           active={chat.id === activeChatId}
                           chat={chat}
+                          attention={attention?.find(
+                            (entry) => entry.work?.id === chat.id,
+                          )}
                           onAction={(mode) =>
                             setTaskAction({
                               chatId: chat.id ?? "",
@@ -908,6 +939,7 @@ function PartnerChatTree({
 
 type ChatNavigationRowProps = {
   active: boolean;
+  attention?: ChatAttention;
   chat: Chat;
   onAction: (mode: "delete" | "rename") => void;
   onPrefetch: (chatId: string) => void;
@@ -916,6 +948,7 @@ type ChatNavigationRowProps = {
 
 function ChatNavigationRow({
   active,
+  attention,
   chat,
   onAction,
   onPrefetch,
@@ -923,8 +956,21 @@ function ChatNavigationRow({
 }: ChatNavigationRowProps) {
   const { t } = useTranslation("common");
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const chatId = chat.id ?? "";
-  const href = chatHref(chatId, chat.wakerId ?? "");
+  const questions = attention?.requests?.filter(({ kind }) => kind === "input");
+  const pending = waitingConversations(
+    questions?.length ? questions : attention?.requests,
+  )[0];
+  const requestKinds = attention?.requestKinds?.length
+    ? attention.requestKinds
+    : [
+        ...(chat.waitingElicitation ? ["input"] : []),
+        ...(chat.waitingApproval ? ["approval"] : []),
+      ];
+  const href = pending
+    ? workAttentionHref(pending.request)
+    : chatHref(chatId, chat.wakerId ?? "");
   const status = waitingInteraction(chat)
     ? "waiting"
     : chat.activeExecutionId
@@ -935,10 +981,14 @@ function ChatNavigationRow({
       active={active}
       title={chat.title || t("partnerNavigation.untitledChat")}
       status={status}
+      requestKinds={requestKinds}
+      unreadCount={attention?.unreadMessageCount}
       href={href}
       onOpen={(event) => {
         onOpened?.();
-        navigateRouteImmediately(event, navigate, href);
+        navigateRouteImmediately(event, navigate, href, () =>
+          pending ? undefined : captureChatOpenIntent(queryClient, chatId),
+        );
       }}
       onPrefetch={() => onPrefetch(chatId)}
       onAction={onAction}

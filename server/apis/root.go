@@ -6,6 +6,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/apis/ai_accounts"
 	"github.com/JieWaZi/NeuxBot/server/apis/automatic_tasks"
 	"github.com/JieWaZi/NeuxBot/server/apis/channels"
+	"github.com/JieWaZi/NeuxBot/server/apis/chat_reading"
 	"github.com/JieWaZi/NeuxBot/server/apis/chats"
 	eventapi "github.com/JieWaZi/NeuxBot/server/apis/events"
 	imapi "github.com/JieWaZi/NeuxBot/server/apis/im"
@@ -15,11 +16,11 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/apis/mcp"
 	memoryapi "github.com/JieWaZi/NeuxBot/server/apis/memory"
 	"github.com/JieWaZi/NeuxBot/server/apis/middleware"
-	"github.com/JieWaZi/NeuxBot/server/apis/notifications"
 	"github.com/JieWaZi/NeuxBot/server/apis/plugins"
 	"github.com/JieWaZi/NeuxBot/server/apis/projects"
 	"github.com/JieWaZi/NeuxBot/server/apis/resource_categories"
 	"github.com/JieWaZi/NeuxBot/server/apis/role_presets"
+	"github.com/JieWaZi/NeuxBot/server/apis/run_viewing"
 	"github.com/JieWaZi/NeuxBot/server/apis/runtime_options"
 	"github.com/JieWaZi/NeuxBot/server/apis/skills"
 	"github.com/JieWaZi/NeuxBot/server/apis/system"
@@ -31,6 +32,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/apis/work_board"
 	"github.com/JieWaZi/NeuxBot/server/apis/workflows"
 	"github.com/JieWaZi/NeuxBot/server/apis/workspace"
+	"github.com/JieWaZi/NeuxBot/server/apis/workspace_attention"
 	"github.com/shrewx/ginx"
 )
 
@@ -71,7 +73,9 @@ func init() {
 	desktopRouter.Register(workflows.Router)
 	desktopRouter.Register(workspace.Router)
 	desktopRouter.Register(work_board.Router)
-	desktopRouter.Register(notifications.Router)
+	desktopRouter.Register(chat_reading.Router)
+	desktopRouter.Register(run_viewing.Router)
+	desktopRouter.Register(workspace_attention.Router)
 	RootRouter.Register(desktopRouter)
 	RootRouter.Register(agent.Router)
 	RootRouter.Register(websession.Router)

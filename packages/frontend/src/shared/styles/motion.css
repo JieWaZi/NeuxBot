@@ -210,6 +210,18 @@
   }
 }
 
+@keyframes avatar-attention-wave {
+  0%,
+  45%,
+  100% {
+    translate: 0 0;
+  }
+
+  20% {
+    translate: 0 -1px;
+  }
+}
+
 @keyframes running-shimmer {
   to {
     transform: translateX(110%);

@@ -2491,6 +2491,45 @@ export const statusErrorCatalog = {
       },
     ],
   },
+  ReadingIntentConflict: {
+    code: 40900009201,
+    en: [
+      {
+        text: "the reading position changed; refresh before trying again",
+      },
+    ],
+    zh: [
+      {
+        text: "会话阅读位置已变化，请刷新后重新操作",
+      },
+    ],
+  },
+  ReadingProjectionIncomplete: {
+    code: 50300009201,
+    en: [
+      {
+        text: "the conversation reading index is unavailable; wait for recovery or refresh",
+      },
+    ],
+    zh: [
+      {
+        text: "会话阅读索引暂不可用，请等待恢复或刷新",
+      },
+    ],
+  },
+  ReadingTargetLimitExceeded: {
+    code: 41300009201,
+    en: [
+      {
+        text: "too many awaiting-view targets; narrow the filter",
+      },
+    ],
+    zh: [
+      {
+        text: "待查看工作过多，请缩小筛选范围",
+      },
+    ],
+  },
   RolePresetNameConflict: {
     code: 40900000003,
     en: [

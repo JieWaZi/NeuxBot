@@ -5,36 +5,45 @@ import {
   CircleCheck,
   CircleMinus,
   CirclePause,
-  FileCheck2,
   LoaderCircle,
-  MessageCircle,
   ShieldCheck,
   ShieldQuestion,
   type LucideIcon,
 } from "lucide-react";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
-import type {
-  GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardSummary as Summary,
-  GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardEntry as Entry,
-  GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention as Attention,
-} from "@/shared/api/generated/types.gen";
+import { Link, useLocation } from "react-router-dom";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention as Attention } from "@/shared/api/generated/types.gen";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { OverviewCard } from "@/shared/ui/overview-card";
 import { EmptyState } from "@/shared/ui/empty-state";
-import { SegmentedControl } from "@/shared/ui/segmented-control";
 import { Skeleton } from "@/shared/ui/skeleton";
-import { cn } from "@/shared/lib/cn";
 import {
-  notificationSnapshotOptions,
-  notificationListOptions,
-  NotificationRow,
-} from "@/modules/notification";
+  refreshWorkBoardFocus,
+  WorkBoardFocusIncomplete,
+  workBoardFocusHeadLimit,
+  workBoardFocusOptions,
+  type WorkBoardMode,
+  type WorkBoardSummary as Summary,
+  type WorkBoardEntry as Entry,
+} from "../api/queries";
+import { SegmentedControl } from "@/shared/ui/segmented-control";
 import { localApiErrorMessage } from "@/shared/api/local-error-surface";
-import { useVisibleScene } from "@/shared/api/work-result-reading";
+import { ChatReadingLink } from "@/shared/api/chat-reading";
+import {
+  refreshQueryFromEvent,
+  useQueryEvents,
+} from "@/shared/api/use-query-events";
+import { workspaceAttentionResource } from "@/shared/api/reading-queries";
+import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import { WorkExecutorAvatar } from "./work-executor-avatar";
 import { workAttentionHref, workEntryHref } from "../model/navigation";
 import { PaginatedTable } from "@/shared/ui/paginated-table";
@@ -47,21 +56,19 @@ import {
   TableCell,
 } from "@/shared/ui/table";
 
-export type WorkBoardMode = "all" | "attention" | "results";
-export type WorkBoardMetric = "all" | "running" | "attention" | "ended";
+export type WorkBoardMetric = "all" | "running" | "action" | "ended";
 
-const focusVisibleRows = 5;
-
-function ResultTime({ at, label }: { at?: number; label?: string }) {
+function ResultTime({ at, compact }: { at?: number; compact?: boolean }) {
   const { i18n } = useTranslation("workBoard");
   if (!at) return null;
-  const absolute = new Intl.DateTimeFormat(i18n.language, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(at);
+  const absolute = new Intl.DateTimeFormat(
+    i18n.language,
+    compact
+      ? { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" }
+      : { dateStyle: "medium", timeStyle: "short" },
+  ).format(at);
   return (
     <time dateTime={new Date(at).toISOString()} className="whitespace-nowrap">
-      {label ? label + " · " : ""}
       {absolute}
     </time>
   );
@@ -94,7 +101,7 @@ function WorkState({ entry }: { entry: Entry }) {
     );
   if (entry.lastStatus === "completed" || entry.lastStatus === "succeeded")
     return (
-      <Badge variant="success">
+      <Badge variant="success" className="bg-success/6">
         <CircleCheck />
         {t("completed")}
       </Badge>
@@ -102,217 +109,292 @@ function WorkState({ entry }: { entry: Entry }) {
   return <Badge variant="secondary">{t("idle")}</Badge>;
 }
 
-/** 一行围绕工作组织信息，状态和待办独立表达，原结果仍在原详情阅读。 */
-export function WorkEntryRow({
-  entry,
-  result = false,
-  compact = false,
+function WorkFocusRow({
+  avatar,
+  title,
+  context,
+  at,
+  href,
+  chatId,
+  failed,
+  action,
 }: {
-  entry: Entry;
-  result?: boolean;
-  compact?: boolean;
+  avatar: ReactNode;
+  title: string;
+  context?: string;
+  at?: number;
+  href: string;
+  chatId?: string;
+  failed?: boolean;
+  action: boolean;
 }) {
   const { t } = useTranslation("workBoard");
-  const unread =
-    (entry.result?.latestVersion ?? 0) > (entry.result?.viewedVersion ?? 0);
   return (
-    <div
-      className={cn(
-        "flex min-w-0 flex-wrap items-center gap-3",
-        compact
-          ? "bg-surface-scene min-h-row-rich rounded-md px-3 py-2"
-          : "min-h-row-rich p-4",
-      )}
-    >
-      <WorkExecutorAvatar
-        name={entry.executorName || t("unknownExecutor")}
-        ownerKind={entry.ownerKind}
-        executorId={entry.executorId || entry.wakerId}
-      />
+    <div className="bg-surface-raised min-h-row-rich flex min-w-0 flex-wrap items-center gap-3 rounded-md px-4 py-2">
+      {avatar}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <Link
-            className="type-label focus-visible:ring-ring hover:text-link min-w-0 rounded-sm font-medium break-words outline-none focus-visible:ring-2"
-            to={workEntryHref(entry, result)}
-          >
-            {entry.title || t("untitled")}
-          </Link>
-          {!compact ? (
-            <WorkState entry={entry} />
-          ) : entry.lastStatus === "failed" ? (
-            <Badge variant="destructive">{t("failed")}</Badge>
-          ) : null}
-          {unread && !result && !compact ? (
-            <Badge variant="success">{t("unread")}</Badge>
-          ) : null}
+          <p className="type-label font-medium break-words">
+            <ChatReadingLink
+              chatId={chatId}
+              className="hover:text-link"
+              to={href}
+            >
+              {title}
+            </ChatReadingLink>
+          </p>
+          {failed ? <Badge variant="destructive">{t("failed")}</Badge> : null}
         </div>
-        <div className="text-content-secondary type-ui mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span>{entry.executorName || t("unknownExecutor")}</span>
-          <span>{t(entry.source ?? "chat")}</span>
-          <ResultTime
-            at={result ? entry.result?.availableAt : entry.updatedAt}
-            label={compact ? undefined : t(result ? "resultTime" : "time")}
-          />
-        </div>
-        {!compact &&
-        ((entry.approvalCount ?? 0) > 0 ||
-          (entry.inputCount ?? 0) > 0 ||
-          (entry.reviewCount ?? 0) > 0) ? (
-          <div className="type-ui text-warning mt-2 flex flex-wrap gap-x-3 gap-y-1">
-            {(entry.approvalCount ?? 0) > 0 ? (
-              <span>{t("approvalCount", { count: entry.approvalCount })}</span>
-            ) : null}
-            {(entry.inputCount ?? 0) > 0 ? (
-              <span>{t("inputCount", { count: entry.inputCount })}</span>
-            ) : null}
-            {(entry.reviewCount ?? 0) > 0 ? (
-              <span>{t("reviewCount", { count: entry.reviewCount })}</span>
-            ) : null}
+        {context || at ? (
+          <div className="text-content-secondary type-ui mt-1 flex flex-wrap gap-x-3 gap-y-1">
+            {context ? <span>{context}</span> : null}
+            <ResultTime at={at} compact />
           </div>
         ) : null}
       </div>
-      <div className="ml-auto flex shrink-0 items-center gap-2">
-        {!result && unread && !compact ? (
-          <Button asChild size="sm" variant="surface">
-            <Link to={workEntryHref(entry, true)}>
-              <CheckCheck />
-              {t("view")}
-            </Link>
-          </Button>
-        ) : null}
-        <Button asChild size="sm" variant="ghost">
-          <Link to={workEntryHref(entry, result)}>
-            {t(result ? "view" : "open")}
-            <ArrowRight />
-          </Link>
-        </Button>
-      </div>
+      <Button
+        asChild
+        size="sm"
+        variant={action ? "ghost" : "subtle"}
+        className={
+          action
+            ? undefined
+            : "bg-(--action-neutral-surface) hover:bg-(--action-neutral-hover) active:bg-(--action-neutral-pressed)"
+        }
+      >
+        <ChatReadingLink chatId={chatId} to={href}>
+          {t(action ? "handle" : "view")}
+          <ArrowRight />
+        </ChatReadingLink>
+      </Button>
     </div>
   );
 }
 
-export function WorkAttentionRow({
-  entry,
-  compact = false,
-}: {
-  entry: Attention;
-  compact?: boolean;
-}) {
+function WorkEntryRow({ entry }: { entry: Entry }) {
   const { t } = useTranslation("workBoard");
-  const Icon =
-    entry.kind === "review"
-      ? FileCheck2
-      : entry.kind === "input"
-        ? MessageCircle
-        : ShieldQuestion;
+  const title = entry.title || t("untitled");
   return (
-    <div
-      className={cn(
-        "flex min-w-0 flex-wrap items-center gap-3",
-        compact
-          ? "bg-surface-scene min-h-row-rich rounded-md px-3 py-2"
-          : "min-h-row-rich p-4",
-      )}
-    >
-      <span
-        className="bg-warning/10 text-warning size-avatar-sm grid shrink-0 place-items-center rounded-lg"
-        aria-hidden="true"
-      >
-        <Icon className="size-icon-md" strokeWidth={1.5} />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="type-label font-medium break-words">
-            {entry.title || entry.workTitle || t("untitled")}
-          </p>
-          <Badge variant="warning">{t(entry.kind ?? "input")}</Badge>
-        </div>
-        <div className="text-content-secondary type-ui mt-1 flex flex-wrap gap-x-3 gap-y-1">
-          <span>{entry.workTitle}</span>
-          <span>{entry.actorName}</span>
-          {!compact ? <span>{t(entry.source ?? "chat")}</span> : null}
-          <ResultTime
-            at={entry.createdAt}
-            label={compact ? undefined : t("waitingTime")}
-          />
-        </div>
-      </div>
-      <Button asChild size="sm" variant={compact ? "subtle" : "surface"}>
-        <Link to={workAttentionHref(entry)}>
-          {t("handle")}
-          <ArrowRight />
-        </Link>
-      </Button>
-    </div>
+    <WorkFocusRow
+      avatar={
+        <WorkExecutorAvatar
+          name={entry.executorName ?? ""}
+          kind={
+            entry.ownerKind === "automatic_run"
+              ? entry.workflowId
+                ? "workflow"
+                : entry.channelId
+                  ? "team"
+                  : entry.wakerId
+                    ? "waker"
+                    : undefined
+              : undefined
+          }
+          ownerKind={entry.ownerKind}
+          executorId={entry.executorId || entry.wakerId}
+        />
+      }
+      title={title}
+      context={entry.executorName !== title ? entry.executorName : undefined}
+      at={entry.updatedAt}
+      href={workEntryHref(entry, true)}
+      chatId={entry.chatId}
+      failed={entry.lastStatus === "failed"}
+      action={false}
+    />
   );
+}
+
+function WorkAttentionRow({ entry }: { entry: Attention }) {
+  const { t } = useTranslation("workBoard");
+  const title = entry.title || entry.workTitle || t("untitled");
+  const context = [entry.workTitle, entry.actorName].find(
+    (name) => name && name !== title,
+  );
+  return (
+    <WorkFocusRow
+      avatar={
+        <WorkExecutorAvatar
+          name={entry.actorName ?? ""}
+          kind={
+            entry.wakerId ? "waker" : entry.workflowId ? "workflow" : undefined
+          }
+          ownerKind={entry.ownerKind}
+          executorId={
+            entry.wakerId ||
+            entry.executorId ||
+            entry.workflowId ||
+            entry.channelId
+          }
+        />
+      }
+      title={title}
+      context={context}
+      at={entry.createdAt}
+      href={workAttentionHref(entry)}
+      action
+    />
+  );
+}
+
+const focusVisibleRows = 5;
+type WorkBoardFocus = "attention" | "results";
+
+function useWorkBoardFocusEvents(
+  mode: Exclude<WorkBoardMode, "all">,
+  enabled: boolean,
+  paused: boolean,
+  isBrowsingDeep: () => boolean,
+) {
+  const client = useQueryClient();
+  const read = useCallback(
+    () => refreshWorkBoardFocus(client, mode, isBrowsingDeep),
+    [client, mode, isBrowsingDeep],
+  );
+  const { queryKey } = workBoardFocusOptions(mode);
+  useQueryEvents({
+    topic: "work-board",
+    resource: workspaceAttentionResource,
+    queryKeys: [queryKey],
+    eventTypes: ["work-board.changed"],
+    authority: true,
+    enabled,
+    active: enabled && !paused,
+    read,
+  });
+  return () => refreshQueryFromEvent(client, queryKey, read);
 }
 
 /** 精确事项数量作为筛选入口；不从当前页推算全历史总数。 */
 export function WorkBoardOverview({
   summary,
   pending,
+  active,
+  mode,
   error,
   onRetry,
   selected,
   onSelect,
-  onClearResults,
-  clearingResults,
-  clearError,
+  markViewed,
 }: {
   summary?: Summary;
   pending: boolean;
+  active: boolean;
+  mode: WorkBoardMode;
   error?: string;
   onRetry: () => void;
   selected?: WorkBoardMetric;
   onSelect: (metric: WorkBoardMetric) => void;
-  onClearResults: () => void;
-  clearingResults: boolean;
-  clearError?: string;
+  markViewed: ReactNode;
 }) {
   const { t } = useTranslation("workBoard");
-  const [focus, setFocus] = useState<"attention" | "results">("attention");
-  const active = useVisibleScene();
+  const sceneActive = useRouteSceneActive();
+  const navigationState: unknown = useLocation().state;
+  const openToken =
+    navigationState &&
+    typeof navigationState === "object" &&
+    "workBoardOpenToken" in navigationState &&
+    typeof navigationState.workBoardOpenToken === "string"
+      ? navigationState.workBoardOpenToken
+      : undefined;
+  const counts = {
+    attention: summary?.pendingRequestCount,
+    results: summary?.awaitingViewWorkCount,
+  };
+  const defaultFocus: WorkBoardFocus =
+    mode === "awaiting_view" ||
+    (mode === "all" && counts.attention === 0 && (counts.results ?? 0) > 0)
+      ? "results"
+      : "attention";
+  const [selection, setSelection] = useState<{
+    mode: WorkBoardMode;
+    focus: WorkBoardFocus;
+    openToken?: string;
+    explicit: boolean;
+    deep: boolean;
+  }>();
+  // 默认页签随摘要对账，显式选择和正在浏览的深页保留当前分组。
+  if (
+    selection &&
+    (!sceneActive ||
+      selection.mode !== mode ||
+      (openToken !== undefined && selection.openToken !== openToken))
+  ) {
+    setSelection(undefined);
+  }
+  const focus = selection?.focus ?? defaultFocus;
+  const focusMode = focus === "attention" ? "action" : "awaiting_view";
+  const deep = Boolean(selection?.deep);
+  const paged = deep || (counts[focus] ?? 0) > focusVisibleRows;
   const listRef = useRef<HTMLUListElement>(null);
   const viewportRef = useRef<HTMLElement>(null);
-  const [focusMaxHeight, setFocusMaxHeight] = useState<number>();
-  const notices = useQuery(notificationSnapshotOptions());
-  const counts = {
-    attention: notices.data?.actionCount,
-    results: notices.data
-      ? notices.data.unreadResultCount + notices.data.unreadFailureCount
-      : undefined,
-  };
-  const paged = (counts[focus] ?? 0) > focusVisibleRows;
+  const isBrowsingDeep = useCallback(() => {
+    const viewport = viewportRef.current;
+    const boundary = listRef.current?.children.item(workBoardFocusHeadLimit);
+    return Boolean(
+      viewport &&
+      viewport.scrollTop > 0 &&
+      boundary &&
+      boundary.getBoundingClientRect().top <=
+        viewport.getBoundingClientRect().top,
+    );
+  }, []);
+  const chooseFocus = (value: WorkBoardFocus) =>
+    setSelection({
+      mode,
+      focus: value,
+      openToken,
+      explicit: true,
+      deep: value === focus && deep,
+    });
+  const refreshFocus = useWorkBoardFocusEvents(
+    focusMode,
+    active && paged,
+    deep,
+    isBrowsingDeep,
+  );
   const focusQuery = useInfiniteQuery({
-    ...notificationListOptions(focus === "attention" ? "action" : "unread"),
+    ...workBoardFocusOptions(focusMode),
     enabled: active && paged,
   });
-  const noticeEntries =
-    paged && focusQuery.data
-      ? focusQuery.data.pages.flatMap((page) => page.resources)
-      : focus === "attention"
-        ? (notices.data?.actionPreview ?? [])
-        : (notices.data?.unreadPreview ?? []);
+  const pages = paged ? focusQuery.data?.pages : undefined;
+  const focusIncomplete =
+    focusQuery.error instanceof WorkBoardFocusIncomplete ||
+    pages?.some((page) => page.complete === false);
+  const actionRows =
+    focus === "attention"
+      ? (pages?.flatMap((page) => page.attention ?? []) ??
+        summary?.actionPreview ??
+        [])
+      : [];
+  const resultRows =
+    focus === "results"
+      ? (pages?.flatMap((page) => page.awaitingView ?? []) ??
+        summary?.awaitingViewPreview ??
+        [])
+      : [];
+  const rowCount = actionRows.length + resultRows.length;
+  const [focusMaxHeight, setFocusMaxHeight] = useState<number>();
+
   useLayoutEffect(() => {
     if (viewportRef.current) viewportRef.current.scrollTop = 0;
-  }, [focus]);
+  }, [focus, sceneActive]);
+  useLayoutEffect(() => {
+    if (openToken && viewportRef.current) viewportRef.current.scrollTop = 0;
+  }, [openToken]);
   useLayoutEffect(() => {
     const list = listRef.current;
-    if (!list) return;
-    const rows = [...list.children].slice(0, focusVisibleRows);
+    const rows = [...(list?.children ?? [])].slice(0, focusVisibleRows);
+    const first = rows[0];
+    const last = rows[focusVisibleRows - 1];
+    if (!list || !first || !last) {
+      setFocusMaxHeight(undefined);
+      return;
+    }
     const measure = () => {
-      const first = rows[0];
-      const last = rows[focusVisibleRows - 1];
-      if (!first || !last) {
-        setFocusMaxHeight(undefined);
-        return;
-      }
-      const styles = getComputedStyle(list);
+      // 实际行高和行间距一起计入五条可见记录的高度。
       const height =
-        last.getBoundingClientRect().bottom -
-        first.getBoundingClientRect().top +
-        (Number.parseFloat(styles.paddingTop) || 0) +
-        (Number.parseFloat(styles.paddingBottom) || 0);
+        last.getBoundingClientRect().bottom - first.getBoundingClientRect().top;
       setFocusMaxHeight(height > 0 ? height : undefined);
     };
     measure();
@@ -321,7 +403,8 @@ export function WorkBoardOverview({
     observer.observe(list);
     for (const row of rows) observer.observe(row);
     return () => observer.disconnect();
-  }, [focus, summary, focusQuery.dataUpdatedAt, noticeEntries.length]);
+  }, [focus, summary, focusQuery.dataUpdatedAt, rowCount]);
+
   const cards: {
     metric: WorkBoardMetric;
     Icon: LucideIcon;
@@ -341,9 +424,9 @@ export function WorkBoardOverview({
       description: t("runningHint"),
     },
     {
-      metric: "attention",
+      metric: "action",
       Icon: ShieldQuestion,
-      value: summary?.actionWorkCount,
+      value: summary?.waitingWorkCount,
       description: t("attentionHint"),
     },
     {
@@ -359,6 +442,7 @@ export function WorkBoardOverview({
         {cards.map((item) => (
           <OverviewCard
             key={item.metric}
+            className="bg-surface-raised"
             description={item.description}
             label={t(
               item.metric === "all"
@@ -371,14 +455,15 @@ export function WorkBoardOverview({
             )}
             selected={selected === item.metric}
             onClick={() => {
-              if (selected === item.metric) return;
-              if (item.metric === "attention") setFocus("attention");
-              onSelect(item.metric);
+              if (item.metric === "action" && selected === item.metric)
+                chooseFocus("attention");
+              if (selected !== item.metric) onSelect(item.metric);
             }}
             icon={
               <item.Icon
                 className={
-                  item.metric === "attention" && (counts.attention ?? 0) > 0
+                  item.metric === "action" &&
+                  (summary?.waitingWorkCount ?? 0) > 0
                     ? "text-warning"
                     : undefined
                 }
@@ -400,42 +485,37 @@ export function WorkBoardOverview({
           />
         ))}
       </div>
+      {error || summary?.complete === false ? (
+        <div
+          role="status"
+          className="text-content-secondary type-ui mt-4 flex items-center gap-2"
+        >
+          {error ?? t("attentionIncomplete")}
+          <Button size="sm" variant="ghost" onClick={onRetry}>
+            {t("retry")}
+          </Button>
+        </div>
+      ) : null}
       <section className="mt-6 min-w-0" aria-label={t("focus")}>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h2 className="type-title font-semibold">{t("focus")}</h2>
-          <div className="flex items-center gap-2">
-            {(counts.results ?? 0) > 0 ? (
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={clearingResults}
-                aria-busy={clearingResults}
-                onClick={onClearResults}
-              >
-                {t(clearingResults ? "clearingResults" : "clearResults")}
-              </Button>
-            ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            {markViewed}
             <SegmentedControl
               size="sm"
               ariaLabel={t("focus")}
               value={focus}
-              onValueChange={setFocus}
+              onValueChange={chooseFocus}
               options={(["attention", "results"] as const).map((value) => ({
                 value,
                 label:
                   counts[value] === undefined
                     ? t(value)
-                    : t(value) + " " + counts[value],
+                    : `${t(value)} ${counts[value]}`,
               }))}
             />
           </div>
         </div>
-        {clearError ? (
-          <p role="alert" className="text-destructive type-body mb-3">
-            {clearError}
-          </p>
-        ) : null}
-        {/* 少量待办也保留关注区的默认高度，条目自身保持紧凑。 */}
         <section
           ref={viewportRef}
           aria-label={t(focus)}
@@ -444,92 +524,82 @@ export function WorkBoardOverview({
           style={focusMaxHeight ? { maxHeight: focusMaxHeight } : undefined}
           onScroll={(event) => {
             const viewport = event.currentTarget;
+            const nextDeep = isBrowsingDeep();
+            if (nextDeep !== deep)
+              setSelection(
+                nextDeep || selection?.explicit
+                  ? {
+                      mode,
+                      focus,
+                      openToken,
+                      explicit: Boolean(selection?.explicit),
+                      deep: nextDeep,
+                    }
+                  : undefined,
+              );
             if (
               focusQuery.hasNextPage &&
               !focusQuery.isFetching &&
-              !focusQuery.isFetchNextPageError &&
+              !focusQuery.isError &&
+              !focusIncomplete &&
               viewport.scrollHeight -
                 viewport.scrollTop -
                 viewport.clientHeight <=
                 viewport.clientHeight
-            ) {
-              void focusQuery.fetchNextPage();
-            }
+            )
+              void focusQuery.fetchNextPage({ cancelRefetch: false });
           }}
-          className="scrollbar-hidden bg-muted/60 focus-visible:ring-ring max-h-work-board-focus-list grid min-h-44 min-w-0 content-start gap-2 overflow-y-auto overscroll-contain rounded-md outline-none focus-visible:ring-2"
+          className="focus-visible:ring-ring max-h-work-board-focus-list grid min-w-0 content-start gap-2 overflow-y-auto overscroll-y-auto rounded-md outline-none focus-visible:ring-2 focus-visible:ring-inset"
         >
-          {error ? (
+          {paged && (focusQuery.isError || focusIncomplete) ? (
             <div
               role="alert"
-              className="text-destructive type-ui flex flex-wrap items-center justify-between gap-2 px-3 py-2"
+              className="bg-surface-raised text-destructive type-body flex items-center justify-between gap-2 rounded-md px-3 py-2"
             >
-              {error}
-              <Button size="sm" variant="surface" onClick={onRetry}>
-                {t("retry")}
-              </Button>
-            </div>
-          ) : null}
-          {paged && focusQuery.isError ? (
-            <div
-              role="alert"
-              className="text-destructive type-body flex items-center justify-between gap-2 px-3 py-2"
-            >
-              {localApiErrorMessage(focusQuery.error, t("loadFailed"))}
+              {focusIncomplete
+                ? t("attentionIncomplete")
+                : localApiErrorMessage(focusQuery.error, t("loadFailed"))}
               <Button
                 size="sm"
                 variant="surface"
+                disabled={focusQuery.isFetching}
                 onClick={() => {
                   if (focusQuery.isFetchNextPageError)
-                    void focusQuery.fetchNextPage();
-                  else void focusQuery.refetch();
+                    void focusQuery.fetchNextPage({ cancelRefetch: false });
+                  else void refreshFocus().catch(() => {});
                 }}
               >
                 {t("retry")}
               </Button>
             </div>
           ) : null}
-          {notices.isPending && !notices.data ? (
+          {rowCount ? (
+            <ul ref={listRef} className="grid min-w-0 gap-2">
+              {actionRows.map((entry) => (
+                <li key={entry.id}>
+                  <WorkAttentionRow entry={entry} />
+                </li>
+              ))}
+              {resultRows.map((entry) => (
+                <li key={`${entry.ownerKind}:${entry.ownerId}`}>
+                  <WorkEntryRow entry={entry} />
+                </li>
+              ))}
+            </ul>
+          ) : pending || (paged && focusQuery.isPending) ? (
             <div
               role="status"
               aria-label={t("loadingRecords")}
-              className="grid min-h-44 content-center gap-3 px-3 py-2"
+              className="bg-surface-raised grid min-h-44 content-center gap-3 rounded-md px-3 py-2"
             >
               <Skeleton className="h-4 w-3/4" />
               <Skeleton className="h-4 w-1/2" />
             </div>
-          ) : noticeEntries.length ? (
-            <ul ref={listRef} className="grid min-w-0 gap-2 p-3">
-              {noticeEntries.map((notice) => (
-                <li key={notice.id}>
-                  <NotificationRow
-                    notice={notice}
-                    executorAvatar={
-                      <WorkExecutorAvatar
-                        name={notice.executor.name || t("unknownExecutor")}
-                        kind={notice.executor.kind}
-                        executorId={notice.executor.id}
-                      />
-                    }
-                  />
-                </li>
-              ))}
-            </ul>
-          ) : notices.isError && !notices.data ? (
-            <div
-              role="alert"
-              className="text-destructive type-body flex items-center justify-between gap-2 px-3 py-2"
-            >
-              {localApiErrorMessage(notices.error, t("loadFailed"))}
-              <Button
-                size="sm"
-                variant="surface"
-                onClick={() => void notices.refetch()}
-              >
-                {t("retry")}
-              </Button>
-            </div>
-          ) : (
+          ) : !focusIncomplete &&
+            summary?.complete &&
+            (!paged || counts[focus] === 0) ? (
             <EmptyState
+              className="bg-surface-raised rounded-md"
               density="compact"
               icon={focus === "attention" ? ShieldCheck : CheckCheck}
               title={t(
@@ -541,14 +611,6 @@ export function WorkBoardOverview({
                   : "resultsEmptyHint",
               )}
             />
-          )}
-          {paged && focusQuery.isFetching ? (
-            <p
-              role="status"
-              className="text-content-secondary type-ui px-3 py-2"
-            >
-              {t("loadingRecords")}
-            </p>
           ) : null}
         </section>
       </section>
@@ -571,7 +633,7 @@ export function WorkBoardTable({
   empty?: ReactNode;
 }) {
   const { t } = useTranslation("workBoard");
-  const isAttention = mode === "attention";
+  const isAttention = mode === "action";
   return (
     <PaginatedTable
       aria-label={t("records")}
@@ -585,7 +647,7 @@ export function WorkBoardTable({
             "executor",
             "source",
             isAttention ? "requestKind" : "state",
-            mode === "results"
+            mode === "awaiting_view"
               ? "resultTime"
               : isAttention
                 ? "waitingTime"
@@ -617,15 +679,15 @@ export function WorkBoardTable({
               </TableCell>
               <TableCell>
                 <WorkExecutorAvatar
-                  name={entry.actorName || t("unknownExecutor")}
-                  kind={
-                    entry.wakerId
-                      ? "waker"
-                      : entry.ownerKind === "workflow_run"
-                        ? "workflow"
-                        : "team"
+                  name={entry.actorName ?? ""}
+                  kind={entry.wakerId ? "waker" : undefined}
+                  ownerKind={entry.ownerKind}
+                  executorId={
+                    entry.wakerId ||
+                    entry.executorId ||
+                    entry.workflowId ||
+                    entry.channelId
                   }
-                  executorId={entry.wakerId || entry.executorId}
                   size="xs"
                 />
               </TableCell>
@@ -647,21 +709,20 @@ export function WorkBoardTable({
           ))
         ) : (
           entries?.map((entry) => {
-            const unread =
-              (entry.result?.latestVersion ?? 0) >
-              (entry.result?.viewedVersion ?? 0);
+            const unread = Boolean(entry.unreadMessageCount);
             return (
               <TableRow
                 key={entry.ownerKind + ":" + entry.ownerId}
                 className="hover:bg-muted/50"
               >
                 <TableCell className="max-w-64">
-                  <Link
+                  <ChatReadingLink
+                    chatId={entry.chatId}
                     className="hover:text-link font-medium"
-                    to={workEntryHref(entry, mode === "results")}
+                    to={workEntryHref(entry, mode === "awaiting_view")}
                   >
                     {entry.title || t("untitled")}
-                  </Link>
+                  </ChatReadingLink>
                   {unread ? (
                     <p className="type-caption text-success mt-1">
                       {t("unread")}
@@ -671,7 +732,7 @@ export function WorkBoardTable({
                 <TableCell>
                   <span className="inline-flex items-center gap-2 whitespace-nowrap">
                     <WorkExecutorAvatar
-                      name={entry.executorName || t("unknownExecutor")}
+                      name={entry.executorName ?? ""}
                       ownerKind={entry.ownerKind}
                       executorId={entry.executorId || entry.wakerId}
                       size="xs"
@@ -685,21 +746,19 @@ export function WorkBoardTable({
                   <WorkState entry={entry} />
                 </TableCell>
                 <TableCell>
-                  <ResultTime
-                    at={
-                      mode === "results"
-                        ? entry.result?.availableAt
-                        : entry.updatedAt
-                    }
-                  />
+                  <ResultTime at={entry.updatedAt} />
                 </TableCell>
                 <TableCell>
                   <Button asChild variant="ghost" size="sm">
-                    <Link
-                      to={workEntryHref(entry, mode === "results" || unread)}
+                    <ChatReadingLink
+                      chatId={entry.chatId}
+                      to={workEntryHref(
+                        entry,
+                        mode === "awaiting_view" || unread,
+                      )}
                     >
-                      {t(mode === "results" || unread ? "view" : "open")}
-                    </Link>
+                      {t(mode === "awaiting_view" || unread ? "view" : "open")}
+                    </ChatReadingLink>
                   </Button>
                 </TableCell>
               </TableRow>

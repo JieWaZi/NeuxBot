@@ -1,4 +1,3 @@
-import { notificationPresentationProps } from "@/shared/api/notification-presentation";
 import { ChevronDown, ChevronUp, Columns3 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -77,12 +76,6 @@ function TeamTaskCard({
 
   return (
     <article
-      {...(task.status === "in_review"
-        ? notificationPresentationProps({
-            kind: "request",
-            noticeId: `review:${task.id}:${task.currentFence}`,
-          })
-        : {})}
       ref={target}
       tabIndex={selected ? -1 : undefined}
       className={cn(
@@ -148,6 +141,7 @@ function TeamTaskCard({
       </div>
       {task.status === "in_review" ? (
         <TeamTaskReviewActions
+          key={task.currentFence}
           actionsDisabled={actionsDisabled}
           channelId={channelId}
           task={task}

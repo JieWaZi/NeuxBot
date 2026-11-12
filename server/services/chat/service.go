@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -22,6 +23,14 @@ import (
 // 调用方只依赖这些稳定用例和公开结果，不需要理解 JSONL、SQLite 查询索引、
 // Runtime 重试、Session 恢复或事件适配实现。
 type Service interface {
+	// CatchUpReading 追平单个会话的原查询投影。
+	CatchUpReading(context.Context, string) error
+	// ReadingIncompleteReason 返回指定 Chat 的当前投影健康原因。
+	ReadingIncompleteReason([]string) string
+	// IsolatedReadingIDs 返回暂不能核验原日志的会话身份。
+	IsolatedReadingIDs() []string
+	// PublicReadingMessage 返回指定持久公开消息。
+	PublicReadingMessage(context.Context, string, string) (*messageview.Message, error)
 	// ReadExecutionMessages 返回指定执行的公开消息。
 	ReadExecutionMessages(context.Context, string, string) ([]messageview.Message, error)
 	// ReadExecutionOutcome 读取指定执行最后一次持久调用的终止和失败事实。
@@ -53,6 +62,8 @@ type Service interface {
 	CountUserMessages(ctx context.Context, chatID string) (int64, error)
 	// ReadMessageHistory 返回指定创建游标之前的消息窗口。
 	ReadMessageHistory(ctx context.Context, chatID string, beforeSequence int64, limit int) (MessageHistoryPage, error)
+	// ReadMessageTimeline 读取界面消息及问答项，团队页可提供冻结日志上界。
+	ReadMessageTimeline(ctx context.Context, chatID string, beforeSequence, throughSequence int64, limit int) (MessageHistoryPage, error)
 	// GetMessageFileChange 按原消息授权范围读取独立快照的有界文件差异。
 	GetMessageFileChange(ctx context.Context, chatID string, messageID string, path string) (messageview.MessageFileChangeDiff, error)
 	// GetMessageFileChanges 读取独立快照提供的文件成果摘要。
@@ -80,8 +91,8 @@ type Service interface {
 
 // Module 是组合根同时交给查询入口和 Execution Core 的完整 Chat 模块。
 type Module interface {
-	// PrepareParticipantResult 在事务外定位正式直达的真实成员消息。
-	PrepareParticipantResult(context.Context, string, string) (*models.WorkResultReceipt, error)
+	// InitializeReadingBaseline 建立历史索引，期间不产生新的运行结果。
+	InitializeReadingBaseline(context.Context) error
 	// ReadInitialExecution 返回供入口查询的首次执行及当前交互事实，不投影消息正文。
 	ReadInitialExecution(context.Context, string) (InitialExecutionState, error)
 	// Service 提供 Chat 查询、恢复与元数据用例。
@@ -98,6 +109,10 @@ type service struct {
 	deletions *chatstorage.DeletionCoordinator
 	// deletionIntents 持久化 prepared/committed 删除提交事实。
 	deletionIntents controllers.ChatDeletionIntentController
+	// deletionMu 保证分片清理期间其他删除不会隐藏仍可能回滚的 Chat。
+	deletionMu sync.Mutex
+	// closeNativeThread 在删除围栏内释放会话拥有的原生连接及租约。
+	closeNativeThread func(context.Context, string) error
 	// logStore 持久化每个对话的权威追加日志。
 	logStore chatJournalStorage
 	// eventCommitter 固化 JSONL 提交后的发布和消息位置索引顺序。
@@ -110,6 +125,10 @@ type service struct {
 	subscriptions *subscriptionHub
 	// recovery 负责启动时以 JSONL 为权威校准全部 SQLite 查询索引。
 	recovery *recoveryCoordinator
+	// readingRepair 管理活进程的投影修复队列。
+	readingRepair *readingRepair
+	// beforeRecovery 在原日志目录恢复后执行一次性历史基线。
+	beforeRecovery func(context.Context, Module) error
 }
 
 var _ Service = (*service)(nil)
@@ -117,10 +136,14 @@ var _ Module = (*service)(nil)
 
 // Config 声明构造 Chat Service 所需的稳定外部依赖。
 type Config struct {
-	// Conversations is the shared native and public conversation authority.
+	// BeforeRecovery 在处理原中断工作之前建立历史阅读事实。
+	BeforeRecovery func(context.Context, Module) error
+	// CloseNativeThread 在文件暂存前关闭目标会话的原生连接。
+	CloseNativeThread func(context.Context, string) error
+	// ResetUsageProjection 在权威分片清理后使旧用量投影失效。
+	ResetUsageProjection func(context.Context) error
+	// Conversations 是原生与公开会话共用的权威存储。
 	Conversations *conversation.Store
-	// Results 保存用户阅读事实与可重放交付引用，不能在索引修复中删除。
-	Results controllers.WorkResultController
 	// StorageDirectory 是 Chat 与 Team 聚合目录共同使用的应用数据根目录。
 	StorageDirectory string
 	// Projects 读取 Chat 列表最近使用项目的查询投影。
@@ -131,6 +154,8 @@ type Config struct {
 
 // QueryIndexDependencies 汇集具有“可落后、可重建”语义的 Repository Controller。
 type QueryIndexDependencies struct {
+	// Reading 保存 Chat 可读索引与用户游标。
+	Reading controllers.ChatReadingController
 	// Chats 持久化 Chat 主查询索引。
 	Chats controllers.ChatController
 	// Transactions 提供跨查询索引替换的数据库事务边界。
@@ -174,18 +199,30 @@ func newService(config Config) (*service, error) {
 	if err != nil {
 		return nil, err
 	}
+	deletions.SetChatCleanup(func(stagedLogs map[string]string) error {
+		ctx := context.Background()
+		purgedSessions, err := store.PurgeDeletedChatNativeRecords(ctx, stagedLogs)
+		if err != nil {
+			return err
+		}
+		if purgedSessions && config.ResetUsageProjection != nil {
+			return config.ResetUsageProjection(ctx)
+		}
+		return nil
+	})
 	// 订阅中心和查询索引只在 Service 内部共享，对调用方保持单一 Interface。
 	subscriptions := newSubscriptionHub()
 	queryIndexes := newQueryIndexStore(
 		config.QueryIndexes.Chats,
 		config.QueryIndexes.Transactions,
 	)
-	queryIndexes.results = config.Results
+	queryIndexes.reading = config.QueryIndexes.Reading
 	queryIndexes.logStore = logStore
 	implementation := &service{
 		storage:           storage,
 		deletions:         deletions,
 		deletionIntents:   config.QueryIndexes.DeletionIntents,
+		closeNativeThread: config.CloseNativeThread,
 		logStore:          logStore,
 		projectController: config.Projects,
 		queryIndexes:      queryIndexes,
@@ -196,6 +233,15 @@ func newService(config Config) (*service, error) {
 		subscriptions: subscriptions,
 	}
 	implementation.recovery = newRecoveryCoordinator(logStore, queryIndexes)
+	implementation.beforeRecovery = config.BeforeRecovery
+	queryIndexes.deleted = func(chatID string) {
+		subscriptions.closeChat(chatID)
+		implementation.forgetDeletedReading(chatID)
+	}
+	if queryIndexes.reading != nil {
+		implementation.readingRepair = newReadingRepair()
+		queryIndexes.failed = implementation.registerReadingFailure
+	}
 	return implementation, nil
 }
 
@@ -236,14 +282,38 @@ func (m *service) Start(ctx context.Context) error {
 	if err := m.logStore.RefreshCatalog(); err != nil {
 		return err
 	}
+	if m.beforeRecovery != nil {
+		if err := m.beforeRecovery(ctx, m); err != nil {
+			return err
+		}
+	}
 	if err := m.recovery.reconcileAll(ctx); err != nil {
 		return err
 	}
-	return m.recoverFileChanges(ctx)
+	if err := m.recoverFileChanges(ctx); err != nil {
+		return err
+	}
+	if m.readingRepair != nil {
+		for _, diagnostic := range m.RecoveryHealth().Chats {
+			if readingIsolated(diagnostic) {
+				m.readingRepair.isolated[diagnostic.ChatID] = true
+			} else {
+				delete(m.readingRepair.isolated, diagnostic.ChatID)
+			}
+		}
+	}
+	m.startReadingRepair(ctx)
+	return nil
 }
 
 // Close 关闭全部进程内事件订阅。
 func (m *service) Close() {
+	if m.readingRepair != nil && m.readingRepair.cancel != nil {
+		m.readingRepair.cancel()
+		<-m.readingRepair.done
+		m.readingRepair.cancel = nil
+		m.readingRepair.done = nil
+	}
 	m.subscriptions.closeAll()
 	if journal, ok := m.logStore.(*conversationJournal); ok {
 		journal.Store.Close()

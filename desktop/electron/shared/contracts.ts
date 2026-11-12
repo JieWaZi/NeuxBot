@@ -41,11 +41,14 @@ export type CoreConnection = { baseUrl: string; token: string };
 
 import type {
   HostCommands,
+  NotificationPreferenceCommands,
+  WorkspaceAttentionOpen,
   WorkspaceCommands,
   BrowserCommands,
   EventsCommands,
 } from "@neuxbot/platform-contracts/services";
 export type DesktopCommands = HostCommands &
+  NotificationPreferenceCommands &
   Pick<WorkspaceCommands, "open_workspace_file"> &
   BrowserCommands &
   EventsCommands & {
@@ -54,7 +57,7 @@ export type DesktopCommands = HostCommands &
 export type DesktopEvents = {
   "core-event": GlobalEventDelivery;
   "browser-navigation": BrowserNavigationEvent;
-  "notification-action": { id: string; action: "click" | "close" };
+  "workspace-attention-open": WorkspaceAttentionOpen;
 };
 export type DesktopBridge = {
   [K in keyof DesktopCommands]: (
@@ -67,8 +70,8 @@ export type DesktopBridge = {
   onBrowserNavigation(
     handler: (event: BrowserNavigationEvent) => void,
   ): () => void;
-  onNotificationAction(
-    handler: (event: DesktopEvents["notification-action"]) => void,
+  onWorkspaceAttentionOpen(
+    handler: (event: WorkspaceAttentionOpen) => void,
   ): () => void;
   onFileDrop(handler: (event: FileDropEvent) => void): () => void;
 };

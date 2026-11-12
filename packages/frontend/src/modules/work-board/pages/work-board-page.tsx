@@ -1,28 +1,20 @@
 import { useWorkBoardDateBoundary } from "../model/use-work-board-date-boundary";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { FolderSearch, ListTodo } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
-import {
-  getWorkBoardSummaryOptions,
-  listWorkBoardOptions,
-  listWorkBoardQueryKey,
-  listWorkBoardInfiniteQueryKey,
-  getWorkBoardSummaryQueryKey,
-  clearNotificationUnreadMutation,
-} from "@/shared/api/generated/@tanstack/react-query.gen";
-import {
-  localApiErrorMessage,
-  withLocalErrorSurface,
-  withLocalErrorMutation,
-} from "@/shared/api/local-error-surface";
-import { useVisibleScene } from "@/shared/api/work-result-reading";
+import { localApiErrorMessage } from "@/shared/api/local-error-surface";
+import { useVisibleScene } from "@/shared/api/chat-reading";
 import { useQueryEvents } from "@/shared/api/use-query-events";
+import { workspaceAttentionResource } from "@/shared/api/reading-queries";
 import {
-  getNotificationSnapshotQueryKey,
-  listNotificationsQueryKey,
-} from "@/modules/notification";
+  workBoardKeys,
+  workBoardListOptions,
+  workBoardSummaryOptions,
+  type WorkBoardMode,
+} from "../api/queries";
+import { MarkViewedDialog } from "../components/mark-viewed-dialog";
 import {
   localDateRangeBounds,
   normalizeDateInput,
@@ -44,34 +36,19 @@ import {
   WorkBoardOverview,
   WorkBoardTable,
   type WorkBoardMetric,
-  type WorkBoardMode,
 } from "../components/work-board-content";
 
 const requestStates: readonly string[] = ["approval", "input", "review"];
 
 export function WorkBoardPage() {
   const { t } = useTranslation("workBoard");
-  const client = useQueryClient();
-  const clearResults = useMutation({
-    ...withLocalErrorMutation(clearNotificationUnreadMutation()),
-    onSuccess: async () => {
-      await Promise.all([
-        client.invalidateQueries({ queryKey: listWorkBoardQueryKey() }),
-        client.invalidateQueries({ queryKey: getWorkBoardSummaryQueryKey() }),
-        client.invalidateQueries({
-          queryKey: getNotificationSnapshotQueryKey(),
-        }),
-        client.invalidateQueries({ queryKey: listNotificationsQueryKey() }),
-      ]);
-    },
-  });
   const [params, setParams] = useSearchParams();
   const active = useVisibleScene();
   const mode: WorkBoardMode =
-    params.get("mode") === "attention"
-      ? "attention"
-      : params.get("mode") === "results"
-        ? "results"
+    params.get("mode") === "action"
+      ? "action"
+      : params.get("mode") === "awaiting_view"
+        ? "awaiting_view"
         : "all";
   const executorId = params.get("executorId") ?? "";
   const executorKind = params.get("executorKind") ?? "";
@@ -94,54 +71,40 @@ export function WorkBoardPage() {
   const states = (params.get("states") ?? "").split(",").filter(Boolean);
   const pendingStates = states.filter((value) => requestStates.includes(value));
   const selectedStates =
-    mode === "attention"
+    mode === "action"
       ? pendingStates.length
         ? pendingStates
         : requestStates
-      : mode === "results"
-        ? ["results"]
+      : mode === "awaiting_view"
+        ? ["awaiting_view"]
         : states;
   useEffect(() => {
     const timer = window.setTimeout(() => setSearch(text), 250);
     return () => window.clearTimeout(timer);
   }, [text]);
-  const listOptions = listWorkBoardOptions(
-    withLocalErrorSurface({
-      query: {
-        mode,
-        executorId: executorId || undefined,
-        source: source || undefined,
-        query: search,
-        cursor: cursor || undefined,
-        page: cursor ? undefined : page,
-        limit: pageSize,
-        ...(mode === "all"
-          ? {
-              from: dates.start,
-              to: dates.end,
-              states: states.join(",") || undefined,
-            }
-          : mode === "attention"
-            ? { states: pendingStates.join(",") || undefined }
-            : {}),
-      },
-    }),
-  );
+  const filters = {
+    executorId: executorId || undefined,
+    source: source || undefined,
+    query: search,
+  };
+  const listOptions = workBoardListOptions({
+    ...filters,
+    mode,
+    limit: pageSize,
+    cursor: cursor || undefined,
+    page: cursor ? undefined : page,
+    ...(mode === "all"
+      ? {
+          from: dates.start,
+          to: dates.end,
+          states: states.join(",") || undefined,
+        }
+      : mode === "action"
+        ? { states: pendingStates.join(",") || undefined }
+        : {}),
+  });
   const list = useQuery({
     ...listOptions,
-    queryFn: async (context) => {
-      if (typeof listOptions.queryFn !== "function")
-        throw new Error(t("loadFailed"));
-      const data = await listOptions.queryFn(context);
-      if (
-        !data ||
-        typeof data.totalSize !== "number" ||
-        !Number.isSafeInteger(data.totalSize) ||
-        data.totalSize < 0
-      )
-        throw new Error(t("loadFailed"));
-      return data;
-    },
     enabled: active && (mode !== "all" || dates.valid),
   });
   useEffect(() => {
@@ -149,6 +112,7 @@ export function WorkBoardPage() {
     if (
       !active ||
       !list.isSuccess ||
+      list.data?.complete === false ||
       list.isFetching ||
       typeof total !== "number" ||
       (mode === "all" && !dates.valid)
@@ -171,6 +135,7 @@ export function WorkBoardPage() {
   }, [
     active,
     dates.valid,
+    list.data?.complete,
     list.data?.totalSize,
     list.isFetching,
     list.isSuccess,
@@ -179,68 +144,19 @@ export function WorkBoardPage() {
     pageSize,
     setParams,
   ]);
-  // 概览与关注使用全局数据，工作记录筛选只传给列表请求。
-  const summaryOptions = getWorkBoardSummaryOptions(withLocalErrorSurface({}));
-  const summary = useQuery({
-    ...summaryOptions,
-    queryFn: async (context) => {
-      if (typeof summaryOptions.queryFn !== "function")
-        throw new Error(t("loadFailed"));
-      const data = await summaryOptions.queryFn(context);
-      if (
-        !data ||
-        (
-          [
-            "workCount",
-            "runningCount",
-            "endedCount",
-            "actionWorkCount",
-            "attentionCount",
-            "resultCount",
-          ] as const
-        ).some(
-          (key) =>
-            typeof data[key] !== "number" ||
-            !Number.isSafeInteger(data[key]) ||
-            (data[key] ?? -1) < 0,
-        )
-      )
-        throw new Error(t("loadFailed"));
-      return data;
-    },
-    enabled: active,
-  });
+  const summary = useQuery({ ...workBoardSummaryOptions, enabled: active });
   useWorkBoardDateBoundary(active, [
-    summaryOptions.queryKey,
+    workBoardKeys.summary,
     listOptions.queryKey,
   ]);
   useQueryEvents({
     topic: "work-board",
-    resource: { kind: "global" },
-    queryKeys: [
-      listWorkBoardQueryKey(),
-      listWorkBoardInfiniteQueryKey(),
-      getWorkBoardSummaryQueryKey(),
-    ],
+    resource: workspaceAttentionResource,
+    queryKeys: [workBoardKeys.list, workBoardKeys.summary],
+    eventTypes: ["work-board.changed"],
+    authority: true,
     active,
   });
-  useQueryEvents({
-    topic: "work-results",
-    resource: { kind: "global" },
-    queryKeys: [
-      listWorkBoardQueryKey(),
-      listWorkBoardInfiniteQueryKey(),
-      getWorkBoardSummaryQueryKey(),
-    ],
-    active,
-  });
-  useEffect(() => {
-    if (active && summary.isSuccess && summary.dataUpdatedAt) {
-      void client.invalidateQueries({
-        queryKey: listWorkBoardInfiniteQueryKey(),
-      });
-    }
-  }, [active, client, summary.isSuccess, summary.dataUpdatedAt]);
   const change = (values: Record<string, string>) => {
     pageCursors.current.clear();
     setParams(
@@ -299,10 +215,13 @@ export function WorkBoardPage() {
   const canClearFilters =
     mode !== "all" || filtered || Boolean(states.length || from || to);
   const count =
-    mode === "attention"
+    mode === "action"
       ? (list.data?.attention?.length ?? 0)
-      : (list.data?.resources?.length ?? 0);
+      : mode === "awaiting_view"
+        ? (list.data?.awaitingView?.length ?? 0)
+        : (list.data?.resources?.length ?? 0);
   const invalidDates = mode === "all" && !dates.valid;
+  const incomplete = list.data?.complete === false;
 
   return (
     <ResourcePageSurface>
@@ -321,6 +240,8 @@ export function WorkBoardPage() {
       <WorkBoardOverview
         summary={summary.data}
         pending={summary.isPending}
+        active={active}
+        mode={mode}
         error={
           summary.isError
             ? localApiErrorMessage(summary.error, t("loadFailed"))
@@ -328,8 +249,8 @@ export function WorkBoardPage() {
         }
         onRetry={() => void summary.refetch()}
         selected={
-          mode === "attention"
-            ? "attention"
+          mode === "action"
+            ? "action"
             : mode !== "all"
               ? undefined
               : states.length === 1 && states[0] === "running"
@@ -346,7 +267,7 @@ export function WorkBoardPage() {
         onSelect={(metric: WorkBoardMetric) => {
           setSearch("");
           change({
-            mode: metric === "attention" ? "attention" : "all",
+            mode: metric === "action" ? "action" : "all",
             states:
               metric === "running"
                 ? "running"
@@ -363,12 +284,17 @@ export function WorkBoardPage() {
               : "smooth",
           });
         }}
-        onClearResults={() => clearResults.mutate({})}
-        clearingResults={clearResults.isPending}
-        clearError={
-          clearResults.isError
-            ? localApiErrorMessage(clearResults.error, t("clearResultsFailed"))
-            : undefined
+        markViewed={
+          <MarkViewedDialog
+            active={active}
+            visible={(summary.data?.awaitingViewWorkCount ?? 0) > 0}
+            filters={{
+              ...filters,
+              query: text,
+              states:
+                mode === "all" ? states.join(",") || undefined : undefined,
+            }}
+          />
         }
       />
       <section
@@ -399,17 +325,17 @@ export function WorkBoardPage() {
                     const added = values.find(
                       (value) => !selectedStates.includes(value),
                     );
-                    if (added === "results") {
-                      change({ mode: "results", states: "" });
+                    if (added === "awaiting_view") {
+                      change({ mode: "awaiting_view", states: "" });
                     } else if (
                       (added && requestStates.includes(added)) ||
-                      (mode === "attention" && !added)
+                      (mode === "action" && !added)
                     ) {
                       const pending = values.filter((value) =>
                         requestStates.includes(value),
                       );
                       change({
-                        mode: pending.length ? "attention" : "all",
+                        mode: pending.length ? "action" : "all",
                         states: pending.join(","),
                       });
                     } else {
@@ -419,7 +345,7 @@ export function WorkBoardPage() {
                           .filter(
                             (value) =>
                               !requestStates.includes(value) &&
-                              value !== "results",
+                              value !== "awaiting_view",
                           )
                           .join(","),
                       });
@@ -446,7 +372,7 @@ export function WorkBoardPage() {
                     { value: "approval", label: t("pendingApproval") },
                     { value: "input", label: t("pendingInput") },
                     { value: "review", label: t("pendingReview") },
-                    { value: "results", label: t("results") },
+                    { value: "awaiting_view", label: t("results") },
                   ]}
                 />
               </div>
@@ -495,6 +421,21 @@ export function WorkBoardPage() {
           </div>
         </ResourcePageToolbar>
         <div className="min-h-64 min-w-0 pt-6" aria-busy={list.isFetching}>
+          {incomplete && !list.isError ? (
+            <div
+              role="status"
+              className="text-content-secondary type-ui mb-3 flex items-center gap-2"
+            >
+              {t("attentionIncomplete")}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => void list.refetch()}
+              >
+                {t("retry")}
+              </Button>
+            </div>
+          ) : null}
           {list.isError && list.data ? (
             <div
               role="alert"
@@ -512,10 +453,16 @@ export function WorkBoardPage() {
           ) : null}
           <WorkBoardTable
             mode={mode}
-            entries={list.data?.resources}
+            entries={
+              mode === "awaiting_view"
+                ? list.data?.awaitingView
+                : list.data?.resources
+            }
             attention={list.data?.attention}
             pagination={
-              typeof list.data?.totalSize === "number" && !invalidDates
+              typeof list.data?.totalSize === "number" &&
+              !invalidDates &&
+              !(incomplete && mode === "awaiting_view")
                 ? {
                     labels: {
                       navigation: t("pagination"),
@@ -578,7 +525,7 @@ export function WorkBoardPage() {
                     </Button>
                   }
                 />
-              ) : !count ? (
+              ) : !count && !incomplete ? (
                 <EmptyState
                   icon={filtered ? FolderSearch : ListTodo}
                   title={t(
@@ -586,7 +533,7 @@ export function WorkBoardPage() {
                       ? "noMatches"
                       : mode === "all"
                         ? "empty"
-                        : mode === "attention"
+                        : mode === "action"
                           ? "attentionEmpty"
                           : "resultsEmpty",
                   )}
@@ -595,7 +542,7 @@ export function WorkBoardPage() {
                       ? "noMatchesHint"
                       : mode === "all"
                         ? "emptyHint"
-                        : mode === "attention"
+                        : mode === "action"
                           ? "attentionEmptyHint"
                           : "resultsEmptyHint",
                   )}

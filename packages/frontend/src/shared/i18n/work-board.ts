@@ -1,4 +1,12 @@
 export const workBoardZh = {
+  markAllViewed: "全部标为已查看",
+  markAllViewedConfirm: "标记当前筛选范围内的 {{count}} 项工作为已查看。",
+  markViewedProgress:
+    "已标记 {{applied}} 项，跳过状态变化 {{conflict}} 项和已删除 {{deleted}} 项，剩余 {{remaining}} 项。",
+  viewTargetsFailed: "无法准备待查看项目",
+  attentionIncomplete: "部分关注事项尚未同步",
+  close: "关闭",
+  cancel: "取消",
   taskState: "任务状态",
   pendingApproval: "待审核",
   pendingInput: "待补充",
@@ -76,9 +84,8 @@ export const workBoardZh = {
   view: "查看结果",
   open: "打开",
   handle: "去处理",
-  clearResults: "清空",
-  clearingResults: "清空中…",
-  clearResultsFailed: "清空待查看结果失败，请重试。",
+  markingViewed: "正在标记…",
+  markViewedFailed: "未能标记当前批次，请重试。",
   search: "搜索工作标题",
   executorSearch: "搜索执行者名称",
   empty: "还没有近期工作记录",
@@ -123,6 +130,14 @@ export const workBoardZh = {
 };
 
 export const workBoardEn: Record<keyof typeof workBoardZh, string> = {
+  markAllViewed: "Mark all as viewed",
+  markAllViewedConfirm: "Mark {{count}} items in the current filter as viewed.",
+  markViewedProgress:
+    "Marked {{applied}}, skipped {{conflict}} changed and {{deleted}} deleted, {{remaining}} remaining.",
+  viewTargetsFailed: "Could not prepare items to mark viewed",
+  attentionIncomplete: "Some attention items are not synced",
+  close: "Close",
+  cancel: "Cancel",
   taskState: "Task state",
   pendingApproval: "Awaiting approval",
   pendingInput: "Awaiting input",
@@ -202,9 +217,8 @@ export const workBoardEn: Record<keyof typeof workBoardZh, string> = {
   view: "View result",
   open: "Open",
   handle: "Handle",
-  clearResults: "Clear",
-  clearingResults: "Clearing…",
-  clearResultsFailed: "Could not clear unread results. Try again.",
+  markingViewed: "Marking…",
+  markViewedFailed: "Could not mark this batch as viewed. Try again.",
   search: "Search work titles",
   executorSearch: "Search executor names",
   empty: "No work yet",

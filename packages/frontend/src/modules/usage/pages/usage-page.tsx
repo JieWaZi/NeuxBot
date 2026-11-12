@@ -2,11 +2,11 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useVisibleScene } from "@/shared/api/chat-reading";
 import { ApiError } from "@/shared/api/errors";
 import type { ListUsageGroupsResponse } from "@/shared/api/generated/types.gen";
 import { listRuntimesOptions } from "@/shared/api/runtime-queries";
 import { useQueryEvents } from "@/shared/api/use-query-events";
-import { useVisibleScene } from "@/shared/api/work-result-reading";
 import { DateRangePicker } from "@/shared/ui/date-range-picker";
 import { QueryRefreshError, QueryState } from "@/shared/ui/query-state";
 import {
