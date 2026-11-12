@@ -1,0 +1,55 @@
+# 伙伴创建与对话建档设计
+
+## 创建与建档
+
+侧栏「新建伙伴」打开右侧 Scene，左栏保留伙伴列表。右侧由头像预览、形状和颜色选择、名称、概要、默认模型与「创建伙伴」组成。名称必填，概要可空。模型选择复用聊天的智能体、账号和模型数据，默认提供「跟随全局默认」。创建页和伙伴维护入口移除角色预设选择及管理。
+
+创建成功后打开新伙伴的首个普通对话。Core 发起首轮，伙伴结合概要用用户的语言询问两到三个有必要的问题，覆盖核心职能、工作风格和工作方式。用户回答后，伙伴整理展示字段及一份 Markdown 草稿，在同一对话请用户确认。用户可以继续修改。确认后伙伴通过 allycli 保存，收到成功回执后结束建档，用户可以在原对话继续工作。
+
+创建记录先于模型执行提交。重复提交复用同一个伙伴和首个建档对话。模型无法启动时仍可查看伙伴和重试；已有对话时在原对话继续，首轮未接纳时复用同一个建档入口。Core 通过权威 Chat 日志恢复问答、确认和执行，使用现有执行错误反馈。系统发起的首条输入采用内部来源，界面首条可见业务消息是伙伴的问题。系统引导只对绑定的建档对话生效。
+
+```mermaid
+sequenceDiagram
+    actor User as 用户
+    participant UI as 伙伴 Scene
+    participant Core
+    participant CLI as 伙伴 CLI
+    User->>UI: 填写资料并创建
+    UI->>Core: 创建伙伴和建档入口
+    Core->>CLI: 通过 Chat / Execution 发起首轮
+    Core-->>UI: 返回伙伴和已接纳的对话标识
+    CLI-->>User: 询问职责和协作方式
+    User->>CLI: 回答
+    CLI->>Core: 提交待确认草稿
+    Core-->>User: 展示草稿并询问是否保存
+    User->>Core: 确认该版本
+    CLI->>Core: 通过 allycli 保存已确认草稿
+    Core-->>CLI: 返回事务回执
+    Core-->>UI: 伙伴资源变化
+    CLI-->>User: 告知已建档
+```
+
+## 模型默认值
+
+默认模型保存 `runtimeId`、`accountId`、`model`，以及用户选定时的 `reasoning`。使用 `system` 表示原生登录账号。明确绑定的配置用于首次建档及普通新聊天的初始选择。已有聊天优先恢复自己的最后一次执行配置，聊天内临时切换不更新伙伴资料。编辑伙伴时允许改绑或清除绑定。明确绑定的模型或账号不可用时展示对应错误和更换入口，发送与重试沿用本地配置校验和原生调用反馈。
+
+## 概览与档案
+
+概览沿用 `Expertise`、`WorkStyle`、`WorkMethods` 展示核心职能、工作风格、工作方式。伙伴档案区直接渲染完整 Markdown，标题旁保留一个编辑动作。待建档伙伴显示「继续设置」。移除档案文件列表、三个文件行与 ZIP 下载入口。
+
+Core 在现有伙伴文档存储中增加 `agents` 类型，名称固定为 `AGENTS.md`。页面读取与 Runtime 注入使用同一份已保存正文。独立编辑正文只写正文。展示字段只服务界面，团队的 `TEAM.md` 移除对展示型职能的读取，团队分派规则使用团队成员和已有职责上下文。项目指令、团队协作规则和系统任务指令各由原入口负责。
+
+存量伙伴按身份、风格、方法顺序合并旧正文，并保留现有概览值。内置伙伴通过同一解析入口读取合并后的 seed 或用户覆盖。旧档案回退必须在读取和执行处一致，显式保存的 `agents` 优先，重复启动不会重复合并或覆盖。原始数据可保留作迁移来源。旧伙伴可直接工作，首次问答只从这次创建的新伙伴开始。
+
+## 确认、提交与恢复
+
+建档能力按伙伴、建档 Chat 和活跃 Execution 绑定。CLI 提议草稿时保存确定版本的展示字段和 Markdown，通过现有结构化问答请求确认。用户应能看到实际待保存版本，预览包含完整正文或可展开查看。CLI 的保存操作引用草稿标识，Core 验证实际接受的确认回执、版本、当前归属和待建档状态。在 SQLite 同一事务写展示字段、正文、建档完成状态与幂等回执。重复请求重放原回执，其他对话、跳过、拒绝、过期或不同版本均不能提交。更新完成后使用现有资源事件通知前端刷新伙伴及档案查询。下一轮由 ThreadLifecycle 按实际指令摘要判断是否重用原生会话。
+
+## 前后端契约
+
+- `POST /wakers`（`createWaker`）接收 `requestId, name, avatar?, bio?, defaultModel?`。同一标识同一输入重放，输入变化报冲突。响应 `{ wakerId, chatId?, startError? }`。请求已持久但启动失败时通过 `startError` 提供可展示原因。资料校验或重名按正常 API 错误返回。
+- `POST /wakers/:wakerId/onboarding`（`startWakerOnboarding`）接收空请求，返回相同结构。已存在且可继续的对话直接返回其标识。
+- 伙伴响应附带 `defaultModel?`、`onboardingStatus?`（`pending` 或 `ready`）、`onboardingChatId?`。缺省建档状态表示已有可用伙伴。更新伙伴允许保存 `defaultModel`，省略表示沿用，空对象表示清除。
+- 档案 GET/PUT 复用 `/wakers/:wakerId/documents/:kind`，新界面使用 `kind=agents`，现有 `content` 字段承载 Markdown。
+- CLI 增加 `waker.profile.propose` 和 `waker.profile.save`。前者提交 `expertise, workStyle, workMethods, content`，返回草稿和问答标识。后者使用 `draftId` 与既有 `requestId`。实际参数以能力目录为准。
+- Core 在完成建档后发布 `resources.changed`，资源为 `{ kind: "waker", id: wakerId }`。
