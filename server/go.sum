@@ -22,6 +22,8 @@ github.com/JieWaZi/acp-go v0.1.1-0.20261109093321-19977ae20941 h1:UsaCcu8L7JFsdf
 github.com/JieWaZi/acp-go v0.1.1-0.20261109093321-19977ae20941/go.mod h1:GC3wtmyMzKixwzHmH0IgYY++4UDJnSQS2a8d0C6SJQs=
 github.com/JieWaZi/acp-go v0.1.1-0.20261110004610-b12597301d79 h1:6guGjptWuYMVv6Gz+8SKUs+hQNeMvKLMrro01UGHLEA=
 github.com/JieWaZi/acp-go v0.1.1-0.20261110004610-b12597301d79/go.mod h1:GC3wtmyMzKixwzHmH0IgYY++4UDJnSQS2a8d0C6SJQs=
+github.com/JieWaZi/acp-go v0.1.1-0.20261112030522-c220d9708b52 h1:MHImpK5EqfvOumq8igaqfRvt4aOyqtv+yyXrIsVxO8s=
+github.com/JieWaZi/acp-go v0.1.1-0.20261112030522-c220d9708b52/go.mod h1:GC3wtmyMzKixwzHmH0IgYY++4UDJnSQS2a8d0C6SJQs=
 github.com/JieWaZi/acp-go-sdk v0.13.6-0.20261106052225-bbb4e22da7a0 h1:Y46nCi5hp+5nSYHyGqW5wwxiaWpjM8ET9balw/wfcOk=
 github.com/JieWaZi/acp-go-sdk v0.13.6-0.20261106052225-bbb4e22da7a0/go.mod h1:ihZeWNFaLNhbUws7YVMJf/4yf4aR3ZXokGCrRyDbwek=
 github.com/JieWaZi/acp-go/sdk v0.0.0-20261026093029-d283676c207f h1:isuES04rUQmRGm7ZrztG+u96kFEDpNbS7yJTkxLXshs=

@@ -1869,7 +1869,14 @@ func (c *directAgentClient) LoadSession(ctx context.Context, id string, options 
 	if err != nil {
 		return AgentSession{}, err
 	}
-	result, err := loader.LoadSession(ctx, acp.LoadSessionRequest{
+	load := loader.LoadSession
+	// ConversationStore owns chat history. Continuation only needs the native session identity and settings.
+	if continuation, ok := c.native.(interface {
+		LoadSessionForContinuation(context.Context, acp.LoadSessionRequest) (acp.LoadSessionResponse, error)
+	}); ok {
+		load = continuation.LoadSessionForContinuation
+	}
+	result, err := load(ctx, acp.LoadSessionRequest{
 		SessionId: acp.SessionId(id), Cwd: c.cwd, AdditionalDirectories: directories, McpServers: c.mcp, Meta: meta,
 	})
 	if err != nil {
