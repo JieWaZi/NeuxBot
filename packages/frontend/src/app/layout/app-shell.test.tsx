@@ -40,6 +40,7 @@ import { useSettingsDraftGuard } from "@/modules/settings";
 import { AppShell } from "./app-shell";
 import { getChatOptions } from "@/modules/chat";
 import type * as PluginQueries from "@/modules/plugin/api/plugin-queries";
+import type { ExecutorAttention } from "@/modules/workspaceattention";
 import { getWakerQueryKey } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { ApiError } from "@/shared/api/errors";
 import type { AppModuleId } from "./app-navigation-model";
@@ -69,6 +70,9 @@ function closeContent(label: string) {
 }
 
 const teamHistoryRender = vi.hoisted(() => vi.fn());
+const executorAttentionFixture = vi.hoisted(
+  () => new Map<string, ExecutorAttention>(),
+);
 const railActivityFixture = vi.hoisted(() => ({
   team: "running" as "idle" | "running" | "waiting",
   waker: "running" as "idle" | "running" | "waiting",
@@ -107,7 +111,7 @@ vi.mock("@/modules/workspaceattention", () => ({
     hasUnread: false,
     synced: true,
   }),
-  useExecutorAttention: () => new Map(),
+  useExecutorAttention: () => executorAttentionFixture,
   AttentionBell: ({
     active,
     onOpen,
@@ -838,6 +842,7 @@ describe("AppShell 伙伴导航", () => {
     latestChatFixture.threadTitles.clear();
     latestChatFixture.resolvedEntryOwner = undefined;
     teamHistoryRender.mockClear();
+    executorAttentionFixture.clear();
     railActivityFixture.team = "running";
     railActivityFixture.waker = "running";
     sceneLifecycle.mounts = 0;
@@ -851,6 +856,31 @@ describe("AppShell 伙伴导航", () => {
       },
     });
   });
+
+  it.each([
+    { requestKinds: ["approval"], nativeState: "waiting-approval" },
+    { requestKinds: ["input"], nativeState: "waiting-answer" },
+    { requestKinds: [], nativeState: "working" },
+  ])(
+    "会话标签使用 Bloub 的 $nativeState 图形",
+    async ({ requestKinds, nativeState }) => {
+      executorAttentionFixture.set("waker-1", {
+        chats: [
+          {
+            work: { kind: "chat", id: "chat-a" },
+            activity: "running",
+            requestKinds,
+          },
+        ],
+      });
+      renderShell();
+
+      const tab = await screen.findByRole("tab", { name: /会话 chat-a/ });
+      expect(
+        tab.querySelector(`[data-native-attention="${nativeState}"]`),
+      ).toBeInTheDocument();
+    },
+  );
 
   it("伙伴和团队活动状态由统一资源事件刷新", async () => {
     renderShell();

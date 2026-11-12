@@ -8,6 +8,9 @@ patchedDependencies:
   '@ncdai/react-wheel-picker@1.2.2':
     hash: 130e78bbd51826cb5c60ed0b8c8c59bd9d06640ac425c6887e82b15f601051f8
     path: patches/@ncdai__react-wheel-picker@1.2.2.patch
+  '@neuxbot/bloub@0.1.0':
+    hash: fe6d3fd83f02eb5ba46cda730669b421d81a9f42935f7c7613b300728bd9f034
+    path: patches/@neuxbot__bloub@0.1.0.patch
 
 importers:
 
@@ -123,7 +126,7 @@ importers:
     dependencies:
       '@neuxbot/bloub':
         specifier: github:JieWaZi/bloub#main
-        version: https://codeload.github.com/JieWaZi/bloub/tar.gz/51070007171a1e1d727b1f0bf3fae2700f1d1368
+        version: https://codeload.github.com/JieWaZi/bloub/tar.gz/51070007171a1e1d727b1f0bf3fae2700f1d1368(patch_hash=fe6d3fd83f02eb5ba46cda730669b421d81a9f42935f7c7613b300728bd9f034)
       '@paper-design/shaders':
         specifier: 0.0.80
         version: 0.0.80
@@ -10514,7 +10517,7 @@ snapshots:
     dependencies:
       react: 19.2.8
 
-  '@neuxbot/bloub@https://codeload.github.com/JieWaZi/bloub/tar.gz/51070007171a1e1d727b1f0bf3fae2700f1d1368': {}
+  '@neuxbot/bloub@https://codeload.github.com/JieWaZi/bloub/tar.gz/51070007171a1e1d727b1f0bf3fae2700f1d1368(patch_hash=fe6d3fd83f02eb5ba46cda730669b421d81a9f42935f7c7613b300728bd9f034)': {}
 
   '@noble/hashes@1.4.0': {}
 

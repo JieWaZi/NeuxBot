@@ -8,3 +8,4 @@ onlyBuiltDependencies:
   - node-pty
 patchedDependencies:
   "@ncdai/react-wheel-picker@1.2.2": patches/@ncdai__react-wheel-picker@1.2.2.patch
+  "@neuxbot/bloub@0.1.0": patches/@neuxbot__bloub@0.1.0.patch

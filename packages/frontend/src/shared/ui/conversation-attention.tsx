@@ -6,6 +6,9 @@ import {
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { drawAttention } from "@neuxbot/bloub/attention-drawing";
+import type { CompanionAttention } from "@/shared/companion/activity";
+import { renderDrawing } from "@/shared/companion/render-drawing";
 import { cn } from "@/shared/lib/cn";
 
 export type ConversationMark =
@@ -14,16 +17,23 @@ export type ConversationMark =
   | { kind: "failed" }
   | { kind: "unread"; count: number };
 
+export function companionAttention(
+  mark?: ConversationMark,
+): CompanionAttention | undefined {
+  if (mark?.kind === "working" || mark?.kind === "unread") return mark;
+  if (mark?.kind !== "action") return;
+  if (mark.request === "input") return { kind: "waiting-answer" };
+  if (mark.request === "approval") return { kind: "waiting-approval" };
+}
+
 export function ConversationAttentionMark({
   mark,
   className,
-  unreadDot,
   variant = "inline",
 }: {
   mark?: ConversationMark;
   className?: string;
-  unreadDot?: boolean;
-  variant?: "inline" | "avatar";
+  variant?: "inline" | "avatar" | "tab";
 }) {
   const { t } = useTranslation("common");
   if (!mark) return null;
@@ -41,8 +51,7 @@ export function ConversationAttentionMark({
         : mark.kind === "failed"
           ? t("partnerNavigation.recentFailed")
           : t("partnerNavigation.unreadMessages", { count: mark.count });
-  const waitingForAnswer = mark.kind === "action" && mark.request === "input";
-  if (mark.kind === "unread" && unreadDot)
+  if (mark.kind === "unread" && variant === "tab")
     return (
       <span
         role="img"
@@ -55,6 +64,36 @@ export function ConversationAttentionMark({
         )}
       />
     );
+  const attention = variant === "tab" ? companionAttention(mark) : undefined;
+  if (attention && attention.kind !== "unread") {
+    const { kind } = attention;
+    const drawing = drawAttention(
+      { x: 0, y: 0, r: 1, attention: { kind, progress: 1, phase: 0 } },
+      null,
+      0,
+      "currentColor",
+    );
+    return (
+      <svg
+        aria-label={label}
+        role="img"
+        data-conversation-attention={mark.kind}
+        viewBox="-4.25 -6.25 9 9"
+        className={cn(
+          "size-icon-sm shrink-0",
+          kind === "waiting-approval" && "text-status-warning-content",
+          kind === "waiting-answer" && "text-accent-content",
+          kind === "working" &&
+            "text-accent-secondary motion-safe:[&_circle]:animate-avatar-attention-wave [&_circle:nth-child(2)]:[animation-delay:130ms] [&_circle:nth-child(3)]:[animation-delay:260ms]",
+          className,
+        )}
+      >
+        <title>{label}</title>
+        {drawing && renderDrawing(drawing.mark, 0)}
+      </svg>
+    );
+  }
+  const waitingForAnswer = mark.kind === "action" && mark.request === "input";
   const Icon =
     mark.kind === "failed"
       ? X

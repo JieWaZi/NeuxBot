@@ -929,7 +929,7 @@ function AppShellContent({
                     separatorBefore: tab.id === memberTabs[0]?.id,
                     label: tab.customLabel ?? tab.label,
                     indicator: mark ? (
-                      <ConversationAttentionMark mark={mark} unreadDot />
+                      <ConversationAttentionMark mark={mark} variant="tab" />
                     ) : undefined,
                     description:
                       mark?.kind !== "unread" && reading?.unreadMessageCount

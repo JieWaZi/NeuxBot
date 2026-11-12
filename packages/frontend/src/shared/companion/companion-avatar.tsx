@@ -1,11 +1,4 @@
-import {
-  createElement,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { BotEngine } from "@neuxbot/bloub/engine";
 import { avatarExpressionById as EXPRESSION_BY_ID } from "./avatar-expressions";
 import { SHAPE_BY_ID } from "@neuxbot/bloub/skins";
@@ -15,19 +8,9 @@ import { alignMaterialDrawing, materialViewBox } from "./materials";
 import type { CompanionActivity, CompanionAttention } from "./activity";
 import { companionPlayback, companionPresentation } from "./playback";
 import { nextHoverFace, type HoverFace } from "./interaction-expressions";
-import { avatarDrawing, type SvgDrawing } from "@neuxbot/bloub/drawing";
+import { avatarDrawing } from "@neuxbot/bloub/drawing";
 import { enlargedEyes } from "@neuxbot/bloub/eyes";
-
-function renderDrawing(
-  drawing: SvgDrawing,
-  key: number,
-): ReturnType<typeof createElement> {
-  return createElement(
-    drawing.tag,
-    { ...drawing.attributes, key },
-    ...drawing.children.map(renderDrawing),
-  );
-}
+import { renderDrawing } from "./render-drawing";
 
 /** React 只拥有可见性和播放时钟，几何、眨眼、形变与状态过渡由 Bloub 计算。 */
 export function CompanionAvatar({

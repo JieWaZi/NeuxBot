@@ -37,7 +37,6 @@ import { useTranslation } from "react-i18next";
 import { TeamAvatarStack } from "@/modules/team";
 import type { Waker } from "@/modules/waker";
 import type { GithubComJieWaZiNeuxBotServerApisChannelsChannelDetail as ChannelDetail } from "@/shared/api/generated/types.gen";
-import type { CompanionAttention } from "@/shared/companion/activity";
 import { cn } from "@/shared/lib/cn";
 import { Avatar } from "@/shared/ui/avatar";
 import { Button } from "@/shared/ui/button";
@@ -53,8 +52,8 @@ import {
 
 import type { ExecutorAttention } from "@/modules/workspaceattention";
 import {
+  companionAttention,
   ConversationAttentionMark,
-  type ConversationMark,
   conversationAttentionMark,
 } from "@/shared/ui/conversation-attention";
 import type { PartnerNavigationPreferences } from "./partner-navigation-preferences";
@@ -163,15 +162,6 @@ function TeamEntityAvatar({ team }: { team: ChannelDetail }) {
 // 头像素材四周有透明留白，角标以主体右上部为中心，确保小点也压住主体。
 const avatarAttentionPosition =
   "absolute right-2 top-3 inline-flex translate-x-1/2 -translate-y-1/2";
-
-function companionAttention(
-  mark?: ConversationMark,
-): CompanionAttention | undefined {
-  if (mark?.kind === "working" || mark?.kind === "unread") return mark;
-  if (mark?.kind !== "action") return;
-  if (mark.request === "input") return { kind: "waiting-answer" };
-  if (mark.request === "approval") return { kind: "waiting-approval" };
-}
 
 function EntityAvatar({
   item,

@@ -76,7 +76,9 @@ describe("EntityNavigation", () => {
           "cancelAnimationFrame",
         ],
       });
-      onTestFinished(() => vi.useRealTimers());
+      onTestFinished(() => {
+        vi.useRealTimers();
+      });
       const advanceAvatar = () => act(() => vi.advanceTimersByTime(750));
       const onSelectPartner = vi.fn();
       const renderEntity = (
