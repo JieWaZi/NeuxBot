@@ -361,6 +361,10 @@ function ChatView({
     wakers.find((waker) => waker.id === targetWakerID) ??
     (targetWakerID ? undefined : wakers[0]);
   const selectedWakerID = targetWakerID || selectedWaker?.id;
+  const ordinaryDraft = !activeChatId && !entry && presentation !== "composer";
+  const wakerDefaultModel = ordinaryDraft
+    ? selectedWaker?.defaultModel
+    : undefined;
   const projectsQuery = useQuery({
     ...listProjectsOptions({
       path: { wakerId: selectedWakerID ?? "pending" },
@@ -530,6 +534,7 @@ function ChatView({
     (presentation === "composer" ? entry?.defaults?.runtimeId : undefined) ||
     detailQuery.data?.chat?.lastRuntimeId ||
     entry?.defaults?.runtimeId ||
+    wakerDefaultModel?.runtimeId ||
     defaultRuntime?.id ||
     readyRuntimes[0]?.id ||
     "";
@@ -544,18 +549,24 @@ function ChatView({
         entry?.defaults?.accountId ||
         "system"
       : entry?.defaults?.accountId ||
+        (effectiveRuntimeID === wakerDefaultModel?.runtimeId
+          ? wakerDefaultModel.accountId
+          : undefined) ||
         selectedRuntime?.defaultAccountId ||
         "system");
   const matchesLastExecutionSelection =
     selectedAccountId === (detailQuery.data?.chat?.lastAccountId || "system") &&
     effectiveRuntimeID === detailQuery.data?.chat?.lastRuntimeId;
+  const matchesWakerDefault =
+    effectiveRuntimeID === wakerDefaultModel?.runtimeId &&
+    selectedAccountId === wakerDefaultModel?.accountId;
   const lastModel = detailQuery.data?.chat?.lastModel;
   const requestedModel =
     model ||
     (presentation === "composer" ? entry?.defaults?.model : undefined) ||
     (matchesLastExecutionSelection ? lastModel : undefined) ||
     entry?.defaults?.model ||
-    undefined;
+    (matchesWakerDefault ? wakerDefaultModel?.model : undefined);
   const executionSelection = useExecutionSelection({
     runtime: selectedRuntime,
     value: {
@@ -584,7 +595,7 @@ function ChatView({
             ? detailQuery.data?.chat?.lastReasoning
             : undefined) ||
           entry?.defaults?.reasoning ||
-          undefined),
+          (matchesWakerDefault ? wakerDefaultModel?.reasoning : undefined)),
       permissionLevel:
         permissionLevel ||
         (presentation === "composer"
@@ -596,6 +607,16 @@ function ChatView({
     },
     enabled: Boolean(selectedRuntime),
   });
+  const wakerDefaultUnavailable =
+    matchesWakerDefault &&
+    !runtimesQuery.isPending &&
+    (!selectedRuntime ||
+      (selectedAccountId !== "system" &&
+        !accountsQuery.isPending &&
+        !executionSelection.accounts.some(
+          (account) =>
+            account.id === selectedAccountId && account.hasCredential,
+        )));
   const availableModels = executionSelection.models;
   const selectedModel = executionSelection.effectiveModel;
   const selectedModelOption = availableModels.find(
@@ -821,6 +842,8 @@ function ChatView({
       entry?.isSendDisabled ||
       !selectedWakerID ||
       !effectiveRuntimeID ||
+      (ordinaryDraft && wakersQuery.isPending) ||
+      wakerDefaultUnavailable ||
       (executionSelection.usesNativeCatalog && !executionSelection.valid) ||
       (presentation === "composer" &&
         Boolean(detailQuery.data?.chat?.activeExecutionId)),
@@ -1177,6 +1200,7 @@ function ChatView({
     thinkingPending: executionSelection.catalogPending,
     historicalRuntime,
     historicalRuntimeDisabled,
+    wakerDefaultUnavailable,
     onPickDirectory: pickDirectory,
     onSelectManaged: () => {
       if (!selectedWakerID) return;

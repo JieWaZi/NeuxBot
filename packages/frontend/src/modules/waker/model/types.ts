@@ -1,18 +1,12 @@
 import type {
-  GithubComJieWaZiNeuxBotServerApisRolePresetsRolePresetWriteRequest,
-  GithubComJieWaZiNeuxBotServerInternalProfileDocument,
   GithubComJieWaZiNeuxBotServerInternalProfileExpertise,
   GithubComJieWaZiNeuxBotServerInternalProfileWorkMethod,
-  GithubComJieWaZiNeuxBotServerRepositoriesModelsRolePreset,
   GithubComJieWaZiNeuxBotServerRepositoriesModelsWaker,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerDefaultModel,
 } from "@/shared/api/generated/types.gen";
 
 export type Waker = GithubComJieWaZiNeuxBotServerRepositoriesModelsWaker;
-export type RolePreset =
-  GithubComJieWaZiNeuxBotServerRepositoriesModelsRolePreset;
-export type ProfileDocument =
-  GithubComJieWaZiNeuxBotServerInternalProfileDocument;
+export type WakerDefaultModel =
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerDefaultModel;
 export type Expertise = GithubComJieWaZiNeuxBotServerInternalProfileExpertise;
 export type WorkMethod = GithubComJieWaZiNeuxBotServerInternalProfileWorkMethod;
-export type RolePresetWriteRequest =
-  GithubComJieWaZiNeuxBotServerApisRolePresetsRolePresetWriteRequest;

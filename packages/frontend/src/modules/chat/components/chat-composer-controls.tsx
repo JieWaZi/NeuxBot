@@ -60,6 +60,7 @@ type ChatComposerControlsProps = {
   thinkingPending?: boolean;
   historicalRuntime?: RuntimeOption;
   historicalRuntimeDisabled: boolean;
+  wakerDefaultUnavailable?: boolean;
   onPickDirectory: () => void | Promise<void>;
   onSelectManaged: () => void;
   onSelectProject: (projectId: string) => void;
@@ -104,6 +105,7 @@ export function useChatComposerControls({
   thinkingPending,
   historicalRuntime,
   historicalRuntimeDisabled,
+  wakerDefaultUnavailable,
   onPickDirectory,
   onSelectManaged,
   onSelectProject,
@@ -123,7 +125,7 @@ export function useChatComposerControls({
   workspaceDirectory,
   workspaceLabel,
 }: ChatComposerControlsProps) {
-  const { t } = useTranslation(["chat", "common"]);
+  const { t } = useTranslation(["chat", "common", "waker"]);
   const accountsQuery = useQuery({
     ...listAiAccountsOptions(),
     enabled: selectedAccountId !== undefined,
@@ -272,6 +274,11 @@ export function useChatComposerControls({
           });
         }}
       />
+      {wakerDefaultUnavailable ? (
+        <span role="alert" className="text-destructive type-caption">
+          {t("waker:form.modelUnavailable")}
+        </span>
+      ) : null}
       {historicalRuntimeDisabled && !runtimeId ? (
         <span className="text-destructive type-caption">
           {t("chat:runtimeDisabledSwitch")}

@@ -23,6 +23,7 @@ export type RouteSceneLabels = {
   chat: string;
   detail: string;
   newChat: string;
+  newWaker?: string;
   page: string;
   partner: string;
   settings: string;
@@ -181,6 +182,13 @@ export function routeSceneForLocation(
       location,
     );
   }
+
+  if (pathname === "/wakers/new")
+    return routeTab(
+      "waker-create",
+      labels.newWaker ?? labels.partner,
+      location,
+    );
 
   const waker = /^\/wakers\/([^/]+)(?:\/([^/]+))?/.exec(pathname);
   const wakerId = waker?.[1];

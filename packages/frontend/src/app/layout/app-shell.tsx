@@ -33,7 +33,7 @@ import {
   SettingsScene,
   type SettingsSection,
 } from "@/modules/settings";
-import { listWakersOptions, WakerFormDialog } from "@/modules/waker";
+import { listWakersOptions } from "@/modules/waker";
 import {
   AttentionBell,
   useWorkspaceAttention,
@@ -217,7 +217,7 @@ function AppShellContent({
         : undefined;
   const settingsOpen = appScenes.snapshot.activeTabId === "settings";
   const entitySelectionRequestRef = useRef(0);
-  const [creatingEntity, setCreatingEntity] = useState<"team" | "waker">();
+  const [creatingTeam, setCreatingTeam] = useState(false);
   const [lastSettingsSection, setSettingsSection] =
     useState<SettingsSection>("general");
   const settingsTab = appScenes.snapshot.tabs.find(
@@ -346,14 +346,17 @@ function AppShellContent({
   }, [teamChatScope]);
   const isChatSurface = isChat || isTeamChat;
   const activeRightPanel = chatRightPanel;
+  const isWakerCreate = location.pathname === "/wakers/new";
   const isWakerDetail =
+    !isWakerCreate &&
     /^\/wakers\/[^/]+(?:\/(?:connectors|memory|overview|projects|skills|resources|plugins)(?:\/.*)?)?$/.test(
       location.pathname,
     );
   const hasPartnerContext = navigation.moduleId === "partners";
-  const routePartnerId = location.pathname.startsWith("/wakers/")
-    ? location.pathname.split("/")[2]
-    : searchParams.get("wakerId")?.trim();
+  const routePartnerId =
+    !isWakerCreate && location.pathname.startsWith("/wakers/")
+      ? location.pathname.split("/")[2]
+      : searchParams.get("wakerId")?.trim();
   const currentChatHint = chatLastActiveFromLocation(location);
   const currentChatId = /^\/chats\/([^/]+)$/.exec(location.pathname)?.[1];
   const currentChatQuery = useQuery({
@@ -619,6 +622,7 @@ function AppShellContent({
       chat: t("common:sceneTabs.chat"),
       detail: t("common:sceneTabs.detail"),
       newChat: t("common:sceneTabs.newChat"),
+      newWaker: t("common:partnerNavigation.createWaker"),
       page: t("common:sceneTabs.page"),
       partner: t("common:sceneTabs.partner"),
       settings: t("common:sceneTabs.settings"),
@@ -1030,7 +1034,14 @@ function AppShellContent({
           contextSidebarHidden={!hasActiveScene || !isWakerDetail}
           entityStatus={entityStatus}
           executorAttention={executorAttention}
-          onManageEntities={setCreatingEntity}
+          onManageEntities={(mode) => {
+            if (mode === "team") setCreatingTeam(true);
+            else
+              guardSettingsNavigation(() => {
+                entitySelectionRequestRef.current += 1;
+                navigate("/wakers/new", { flushSync: true });
+              });
+          }}
           onOpenPartnerDetail={openPartnerDetail}
           onNavigateModule={navigateModule}
           moduleSidebar={
@@ -1070,6 +1081,7 @@ function AppShellContent({
           sceneContentFlush={
             settingsOpen ||
             isChatSurface ||
+            isWakerCreate ||
             /^\/(?:knowledge|resources|usage|work-board|workflows|im|automatic-tasks)(?:\/|$)/.test(
               location.pathname,
             )
@@ -1174,20 +1186,8 @@ function AppShellContent({
             ) : null}
           </div>
         </PartnerNavigationLayout>
-        {creatingEntity === "waker" ? (
-          <WakerFormDialog
-            open
-            onOpenChange={(open) => {
-              if (!open) setCreatingEntity(undefined);
-            }}
-          />
-        ) : creatingEntity === "team" ? (
-          <TeamFormDialog
-            open
-            onOpenChange={(open) => {
-              if (!open) setCreatingEntity(undefined);
-            }}
-          />
+        {creatingTeam ? (
+          <TeamFormDialog open onOpenChange={setCreatingTeam} />
         ) : null}
         <Toaster position="top-right" />
       </div>

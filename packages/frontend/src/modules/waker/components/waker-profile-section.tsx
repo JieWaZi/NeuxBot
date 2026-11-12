@@ -1,147 +1,173 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { LoaderCircle, Pencil } from "lucide-react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "@tanstack/react-query";
-import { Download, FileText } from "lucide-react";
-import { useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import {
-  exportWakerProfile,
-  listWakerDocumentsOptions,
-} from "../api/waker-queries";
-import { withLocalErrorSurface } from "@/shared/api/local-error-surface";
-import type { ProfileDocument, Waker } from "../model/types";
-import { ProfileDocumentEditorDialog } from "./profile-document-editor-dialog";
-import { saveBlob, sanitizeDownloadFileName } from "@/shared/platform";
+  localApiErrorMessage,
+  withLocalErrorMutation,
+  withLocalErrorSurface,
+} from "@/shared/api/local-error-surface";
+import { useQueryEvents } from "@/shared/api/use-query-events";
+import { chatHref } from "@/shared/lib/chat-navigation";
 import { Button } from "@/shared/ui/button";
+import { PageAction } from "@/shared/ui/resource-page";
+import { Skeleton } from "@/shared/ui/skeleton";
+import { StaticMarkdown } from "@/shared/ui/static-markdown";
+import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
+import {
+  getWakerDocumentOptions,
+  getWakerQueryKey,
+  listWakersQueryKey,
+  startWakerOnboardingMutation,
+} from "../api/waker-queries";
+import type { Waker } from "../model/types";
+import { ProfileDocumentEditorDialog } from "./profile-document-editor-dialog";
 
-import { WakerAccentBlock } from "./waker-accent-block";
-
-type Props = {
-  waker: Waker;
-};
-
-export function WakerProfileSection({ waker }: Props) {
+export function WakerProfileSection({ waker }: { waker: Waker }) {
   const { t } = useTranslation("waker");
+  const navigate = useNavigate();
+  const { state } = useLocation();
+  const client = useQueryClient();
+  const active = useRouteSceneActive();
+  const canNavigate = useRef(false);
+  useLayoutEffect(() => {
+    canNavigate.current = active;
+    return () => {
+      canNavigate.current = false;
+    };
+  }, [active]);
   const wakerId = waker.id ?? "";
-  const query = useQuery(
-    listWakerDocumentsOptions(withLocalErrorSurface({ path: { wakerId } })),
+  const options = getWakerDocumentOptions(
+    withLocalErrorSurface({ path: { wakerId, kind: "agents" } }),
   );
-  const [selectedDocument, setSelectedDocument] = useState<ProfileDocument>();
-  const [downloading, setDownloading] = useState(false);
-  const [downloadError, setDownloadError] = useState("");
-  const documents = query.data ?? [];
+  const query = useQuery({ ...options, enabled: Boolean(wakerId) });
+  const start = useMutation(
+    withLocalErrorMutation(startWakerOnboardingMutation()),
+  );
+  const [editing, setEditing] = useState(false);
+  const [startError, setStartError] = useState<string>();
+  const initialError =
+    typeof state?.onboardingStartError === "string"
+      ? state.onboardingStartError
+      : "";
+  const launchError = start.error
+    ? localApiErrorMessage(start.error, t("profile.startError"))
+    : (startError ?? initialError);
+  const pending = waker.onboardingStatus === "pending";
 
-  const downloadProfile = async () => {
-    if (!wakerId) return;
-    setDownloading(true);
-    setDownloadError("");
+  useQueryEvents({
+    topic: "resources",
+    resource: { kind: "waker", id: wakerId },
+    queryKeys: [
+      options.queryKey,
+      getWakerQueryKey({ path: { wakerId } }),
+      listWakersQueryKey(),
+    ],
+    eventTypes: ["resources.changed"],
+    enabled: Boolean(wakerId),
+    active,
+  });
+
+  const continueOnboarding = async () => {
+    setStartError("");
     try {
-      const result = await exportWakerProfile({
+      const { chatId, startError } = await start.mutateAsync({
         path: { wakerId },
-        parseAs: "blob",
       });
-      if (result.data instanceof Blob) {
-        await saveBlob(
-          result.data,
-          sanitizeDownloadFileName(
-            `waker-${waker.name ?? "profile"}-profile.zip`,
-          ),
-        );
+      if (chatId) {
+        void client.invalidateQueries({
+          queryKey: getWakerQueryKey({ path: { wakerId } }),
+        });
+        if (!startError && canNavigate.current)
+          navigate(chatHref(chatId, wakerId));
       }
+      if (startError || !chatId)
+        setStartError(startError || t("profile.startError"));
     } catch {
-      setDownloadError(t("profile.downloadError"));
-    } finally {
-      setDownloading(false);
+      // Mutation 在档案区显示启动错误。
     }
   };
 
   return (
-    <>
-      <section>
-        <header className="mb-3 flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="type-label font-semibold">{t("profile.title")}</h2>
-            <p className="text-content-secondary type-caption mt-1">
-              {t("profile.lead")}
-            </p>
-          </div>
-          <Button
-            size="icon"
-            variant="ghost"
-            aria-label={t("profile.download")}
-            title={t("profile.download")}
-            disabled={downloading || !wakerId}
-            onClick={() => void downloadProfile()}
-          >
-            <Download />
-          </Button>
-        </header>
-
-        <div>
-          {downloadError ? (
-            <p role="alert" className="text-destructive type-body mb-3">
-              {downloadError}
-            </p>
+    <section className="min-w-0">
+      <header className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="type-label font-semibold">{t("profile.title")}</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          {!pending && query.data?.editable ? (
+            <PageAction
+              intent="edit"
+              label={t("profile.edit")}
+              onClick={() => setEditing(true)}
+            >
+              <Pencil />
+            </PageAction>
           ) : null}
-          {query.isPending ? (
-            <p className="text-muted-foreground type-body">
-              {t("profile.loading")}
-            </p>
-          ) : query.isError ? (
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <p className="text-destructive type-body">
-                {t("profile.loadError")}
-              </p>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => void query.refetch()}
-              >
-                {t("profile.retry")}
-              </Button>
-            </div>
-          ) : (
-            <WakerAccentBlock divided className="p-0">
-              {documents.map((document) => (
-                <button
-                  key={document.kind}
-                  type="button"
-                  className="hover:bg-card-hover focus-visible:ring-ring duration-quick min-h-row-default type-body flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left transition-colors outline-none focus-visible:ring-2 motion-reduce:transition-none"
-                  onClick={() => setSelectedDocument(document)}
-                >
-                  <FileText
-                    aria-hidden="true"
-                    className="text-muted-foreground size-icon-md shrink-0"
-                    strokeWidth={1.5}
-                  />
-                  <span className="min-w-0 flex-1 font-mono [overflow-wrap:anywhere]">
-                    {document.fileName}
-                  </span>
-                  {document.kind === "memory" ? (
-                    <span className="bg-surface-scene text-muted-foreground type-caption border-border-subtle rounded-full border px-2 py-0.5">
-                      {t("profile.memory")}
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground type-caption">
-                      {t("profile.edit")}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </WakerAccentBlock>
-          )}
+          {pending && start.data?.chatId && !start.isPending ? (
+            <Button asChild variant="secondary">
+              <Link to={chatHref(start.data.chatId, wakerId)}>
+                {t("profile.openChat")}
+              </Link>
+            </Button>
+          ) : null}
+          {pending ? (
+            <Button
+              type="button"
+              disabled={start.isPending}
+              onClick={() => void continueOnboarding()}
+            >
+              {start.isPending ? (
+                <LoaderCircle className="animate-spin" />
+              ) : null}
+              {t("profile.continue")}
+            </Button>
+          ) : null}
         </div>
-      </section>
+      </header>
 
-      {selectedDocument ? (
+      {pending && launchError ? (
+        <p role="alert" className="text-destructive type-body mb-3">
+          {launchError}
+        </p>
+      ) : null}
+      {query.isPending ? (
+        <div
+          role="status"
+          aria-busy="true"
+          aria-label={t("profile.loading")}
+          className="grid gap-3"
+        >
+          <Skeleton className="h-4 w-48 max-w-full" />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-3/4" />
+        </div>
+      ) : null}
+      {query.isError ? (
+        <div role="alert" className="flex flex-wrap items-center gap-3">
+          <p className="text-destructive type-body">{t("profile.loadError")}</p>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void query.refetch()}
+          >
+            {t("profile.retry")}
+          </Button>
+        </div>
+      ) : null}
+      {query.data?.content?.trim() ? (
+        <StaticMarkdown source={query.data.content} />
+      ) : query.isSuccess && !pending ? (
+        <p className="text-muted-foreground type-body">{t("profile.empty")}</p>
+      ) : null}
+
+      {editing && !pending && query.data?.editable ? (
         <ProfileDocumentEditorDialog
-          open
-          document={selectedDocument}
+          content={query.data.content ?? ""}
           wakerId={wakerId}
-          onOpenChange={(nextOpen) => {
-            if (!nextOpen) setSelectedDocument(undefined);
-          }}
+          onClose={() => setEditing(false)}
         />
       ) : null}
-    </>
+    </section>
   );
 }

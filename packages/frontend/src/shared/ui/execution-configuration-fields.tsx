@@ -32,6 +32,7 @@ export function ExecutionConfigurationFields({
   name,
   defaults = false,
   required = false,
+  modelRequired = false,
   leadingField,
   helpHidden = false,
   fastEnabled = false,
@@ -46,11 +47,12 @@ export function ExecutionConfigurationFields({
   name?: string;
   defaults?: boolean;
   required?: boolean;
+  modelRequired?: boolean;
   leadingField?: ReactNode;
   helpHidden?: boolean;
   fastEnabled?: boolean;
 }) {
-  const { t } = useTranslation("common");
+  const { t } = useTranslation(["common", "chat"]);
   const id = useId();
   const { selection, runtime, models, reasoningOptions } = state;
   const change = (patch: Partial<ExecutionSelectionState["selection"]>) =>
@@ -71,15 +73,17 @@ export function ExecutionConfigurationFields({
     unavailable = false,
   ) => {
     const label = t(`executionSelection.${key}`);
+    const explicitModel = modelRequired && key === "model";
     const fieldRequired =
-      required && ["runtime", "account", "permission"].includes(key);
+      (required && ["runtime", "account", "permission"].includes(key)) ||
+      explicitModel;
     return (
       <div className="relative grid min-w-0 gap-2">
         <FieldLabel htmlFor={`${id}-${key}`} required={fieldRequired}>
           {label}
         </FieldLabel>
         <Select
-          value={value || "__default"}
+          value={value || (explicitModel ? "" : "__default")}
           disabled={disabled || unavailable}
           onValueChange={(next) => {
             if (next) onValueChange(next);
@@ -90,7 +94,13 @@ export function ExecutionConfigurationFields({
             aria-required={fieldRequired}
             aria-label={name ? `${name} · ${label}` : label}
           >
-            <SelectValue placeholder={t("executionSelection.empty")} />
+            <SelectValue
+              placeholder={t(
+                explicitModel && options.length
+                  ? "chat:modelPicker.chooseModel"
+                  : "executionSelection.empty",
+              )}
+            />
           </SelectTrigger>
           <SelectContent>
             {value && !options.some((item) => item.id === value) ? (
@@ -156,9 +166,9 @@ export function ExecutionConfigurationFields({
         )}
         {field(
           defaults ? "defaultModel" : "model",
-          selection.model || "__default",
+          selection.model,
           [
-            ...(!defaults
+            ...(!defaults && !modelRequired
               ? [
                   {
                     id: "__default",
@@ -174,7 +184,7 @@ export function ExecutionConfigurationFields({
               reasoning: "",
               fast: undefined,
             }),
-          models.length === 0 && defaults,
+          models.length === 0 && (defaults || modelRequired),
         )}
         {!reasoningHidden &&
           field(

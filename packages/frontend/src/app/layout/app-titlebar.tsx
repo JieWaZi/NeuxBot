@@ -110,7 +110,7 @@ export function AppTitlebar({ breadcrumbs }: { breadcrumbs?: ReactNode }) {
 export function pageOwnsSceneHeader(pathname: string) {
   return (
     /^\/settings(?:\/|$)/.test(pathname) ||
-    /^\/wakers\/[^/]+(?:\/|$)/.test(pathname) ||
+    (pathname !== "/wakers/new" && /^\/wakers\/[^/]+(?:\/|$)/.test(pathname)) ||
     /^\/teams\/[^/]+\/chats$/.test(pathname) ||
     /^\/resources(?:\/|$)/.test(pathname) ||
     /^\/knowledge\/[^/]+$/.test(pathname) ||

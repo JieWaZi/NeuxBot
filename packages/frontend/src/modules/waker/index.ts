@@ -4,5 +4,3 @@ export { WakerShowcaseDialog } from "./components/waker-showcase-dialog";
 export type { Waker } from "./model/types";
 
 export { PERSONAL_ASSISTANT_WAKER_ID } from "./model/builtin-waker";
-
-export { WakerFormDialog } from "./components/waker-form-dialog";

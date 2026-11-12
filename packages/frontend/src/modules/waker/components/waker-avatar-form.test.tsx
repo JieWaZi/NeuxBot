@@ -4,27 +4,16 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import "@/shared/i18n";
-import { RolePresetFormDialog } from "./role-preset-form-dialog";
 import { WakerFormDialog } from "./waker-form-dialog";
 
 const { save } = vi.hoisted(() => ({
   save: vi.fn<(request: unknown) => Promise<unknown>>(async () => ({})),
 }));
 vi.mock("../api/waker-queries", () => ({
-  createWakerMutation: () => ({ mutationFn: save }),
   updateWakerMutation: () => ({ mutationFn: save }),
   listWakersQueryKey: () => ["wakers"],
   getWakerQueryKey: () => ["waker"],
-  listWakerDocumentsQueryKey: () => ["documents"],
-  createRolePresetMutation: () => ({ mutationFn: save }),
-  updateRolePresetMutation: () => ({ mutationFn: save }),
-  listRolePresetsQueryKey: () => ["role-presets"],
-  listRolePresetDocumentsOptions: () => ({
-    queryKey: ["role-preset-documents"],
-    queryFn: async () => [],
-  }),
 }));
-vi.mock("./role-preset-picker", () => ({ RolePresetPicker: () => null }));
 vi.mock("@/shared/ui/avatar", () => ({ Avatar: () => null }));
 
 const savedAvatar = "bloub:plush:nuage:curieux:38bdf8";
@@ -112,40 +101,6 @@ describe("头像编辑保存", () => {
     await waitFor(() => expect(save).toHaveBeenCalledOnce());
     expect(save.mock.calls[0]?.[0]).toMatchObject({
       body: { avatar: savedAvatar },
-    });
-  });
-
-  it("角色预设保存选择后的完整头像配置", async () => {
-    const client = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-        mutations: { retry: false },
-      },
-    });
-    render(
-      <QueryClientProvider client={client}>
-        <RolePresetFormDialog
-          open
-          onOpenChange={vi.fn()}
-          onSaved={vi.fn()}
-          preset={{
-            id: "designer",
-            source: "user",
-            roleName: "设计师",
-            description: "把需求转化为清晰的界面。",
-            defaultAvatar: savedAvatar,
-          }}
-        />
-      </QueryClientProvider>,
-    );
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "编辑默认头像" }));
-    await user.click(screen.getByRole("button", { name: "粒子" }));
-    await user.keyboard("{Escape}");
-    await user.click(screen.getByRole("button", { name: "保存角色预设" }));
-    await waitFor(() => expect(save).toHaveBeenCalledOnce());
-    expect(save.mock.calls[0]?.[0]).toMatchObject({
-      body: { defaultAvatar: "bloub:particles:nuage:curieux:38bdf8" },
     });
   });
 });

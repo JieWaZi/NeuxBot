@@ -304,18 +304,6 @@ vi.mock("@/shared/theme", () => ({
 }));
 
 vi.mock("@/modules/waker", async () => ({
-  WakerFormDialog: ({
-    open,
-    onOpenChange,
-  }: {
-    open: boolean;
-    onOpenChange: (value: boolean) => void;
-  }) =>
-    open ? (
-      <div role="dialog" aria-label="新建伙伴">
-        <button onClick={() => onOpenChange(false)}>关闭新建伙伴</button>
-      </div>
-    ) : null,
   WakerDetailLayout: (
     await import("@/modules/waker/components/waker-detail-layout")
   ).WakerDetailLayout,
@@ -516,7 +504,7 @@ vi.mock("./partner-navigation-layout", async () => {
               </button>
             ))}
             <button type="button" onClick={() => onManageEntities("waker")}>
-              伙伴管理
+              新建伙伴
             </button>
           </nav>
           {settingsSidebar}
@@ -682,6 +670,10 @@ function activeRouteScene() {
 }
 
 function TestRouteScene({ location, outletContext }: AppRouteSceneProps) {
+  if (location === "/wakers/new")
+    return (
+      <ProductionRouteScene location={location} outletContext={outletContext} />
+    );
   return (
     <Routes location={location}>
       <Route element={<Outlet context={outletContext} />}>
@@ -1301,24 +1293,31 @@ describe("AppShell 伙伴导航", () => {
     ).toBeVisible();
   });
 
-  it("侧栏新建伙伴直接打开表单且保留当前聊天", async () => {
+  it("侧栏新建伙伴在正文打开创建表单，保留左栏伙伴及原聊天", async () => {
     const user = userEvent.setup();
     renderShell("/chats/current-chat?wakerId=waker-1");
     await findContent({ name: "会话 current-chat" });
-    await user.click(screen.getByRole("button", { name: "伙伴管理" }));
+    await user.click(screen.getByRole("button", { name: "新建伙伴" }));
+
+    const form = await screen.findByRole("form", { name: "新建伙伴" });
+    expect(activeRouteScene()).toContainElement(form);
+    expect(within(form).getByRole("textbox", { name: "名称" })).toBeRequired();
+    expect(within(form).getByRole("textbox", { name: "概要" })).toHaveAttribute(
+      "rows",
+      "2",
+    );
     expect(
-      await screen.findByRole("dialog", { name: "新建伙伴" }),
+      within(form).getByRole("button", { name: "创建伙伴" }),
     ).toBeVisible();
-    expect(activeRouteScene()).toHaveTextContent(
-      "/chats/current-chat?wakerId=waker-1",
-    );
-    await user.click(screen.getByRole("button", { name: "关闭新建伙伴" }));
+    expect(within(form).getByRole("group", { name: "形状" })).toBeVisible();
+    expect(within(form).getByRole("group", { name: "颜色" })).toBeVisible();
     expect(
-      screen.queryByRole("dialog", { name: "新建伙伴" }),
-    ).not.toBeInTheDocument();
-    expect(activeRouteScene()).toHaveTextContent(
-      "/chats/current-chat?wakerId=waker-1",
-    );
+      within(form).getByRole("button", { name: "默认模型" }),
+    ).toHaveTextContent("跟随全局默认");
+    expect(screen.getByRole("button", { name: "伙伴一" })).toBeVisible();
+    expect(
+      screen.getByText("/chats/current-chat?wakerId=waker-1"),
+    ).not.toBeVisible();
   });
 
   it("伙伴管理页面不展示添加内容入口", async () => {

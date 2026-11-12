@@ -132,6 +132,7 @@ const {
   historyMessageConnectors,
   chatLastPermissionLevel,
   chatLastRuntimeID,
+  chatLastModel,
   accountCIncludesOldModel,
   chatActiveExecutionID,
   chatPendingApprovals,
@@ -179,6 +180,7 @@ const {
   },
   chatLastPermissionLevel: { current: "" },
   chatLastRuntimeID: { current: "" },
+  chatLastModel: { current: "" },
   accountCIncludesOldModel: { current: false },
   chatActiveExecutionID: { current: "" },
   chatPendingApprovals: {
@@ -686,7 +688,8 @@ vi.mock("../api/chat-queries", async (importOriginal) => ({
           lastPermissionLevel: chatLastPermissionLevel.current,
           lastRuntimeId: chatLastRuntimeID.current,
           lastAccountId: path.chatId === "member-chat" ? "B" : "system",
-          lastModel: path.chatId === "member-chat" ? "b-model" : "",
+          lastModel:
+            path.chatId === "member-chat" ? "b-model" : chatLastModel.current,
           pendingApprovals: chatPendingApprovals.current,
         },
       };
@@ -765,6 +768,7 @@ beforeEach(() => {
   historyMessageConnectors.current = [];
   chatLastPermissionLevel.current = "";
   chatLastRuntimeID.current = "";
+  chatLastModel.current = "";
   accountCIncludesOldModel.current = false;
   chatActiveExecutionID.current = "";
   chatPendingApprovals.current = [];
@@ -895,6 +899,144 @@ function renderConnectorPromptDraft({
 }
 
 describe("ChatPage", () => {
+  it.each([
+    {
+      route: "/chat?draftId=bound&wakerId=waker-1",
+      selected: "bound-model",
+      reasoning: "high",
+    },
+    {
+      route: "/chats/chat-1?wakerId=waker-1",
+      selected: "historical-model",
+      reasoning: undefined,
+    },
+  ])(
+    "仅在普通新聊天使用伙伴绑定模型 $route",
+    async ({ route, selected, reasoning }) => {
+      wakerResources.current = [
+        {
+          id: "waker-1",
+          name: "测试伙伴",
+          defaultModel: {
+            runtimeId: "codex",
+            accountId: "system",
+            model: "bound-model",
+            reasoning: "high",
+          },
+        },
+      ];
+      runtimeOptions.current = [
+        {
+          id: "codex",
+          name: "Codex",
+          enabled: true,
+          state: "ready",
+          defaultModel: "gpt-5",
+          models: [
+            { id: "gpt-5", name: "GPT-5" },
+            { id: "historical-model", name: "Historical Model" },
+            {
+              id: "bound-model",
+              name: "Bound Model",
+              reasoningOptions: [
+                { id: "low", name: "Low" },
+                { id: "high", name: "High" },
+              ],
+            },
+          ],
+        },
+      ];
+      chatLastRuntimeID.current = "codex";
+      chatLastModel.current = "historical-model";
+      const user = userEvent.setup();
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={client}>
+          <ChatQueueProvider>
+            <TooltipProvider delayDuration={0}>
+              <MemoryRouter initialEntries={[route]}>
+                <Routes>
+                  <Route element={<ChatLayout />}>
+                    <Route path="/chat" element={<ChatPage />} />
+                    <Route path="/chats/:chatId" element={<ChatPage />} />
+                  </Route>
+                </Routes>
+              </MemoryRouter>
+            </TooltipProvider>
+          </ChatQueueProvider>
+        </QueryClientProvider>,
+      );
+      const control = await screen.findByTestId("composer-model-control");
+      await waitFor(() =>
+        expect(control).toHaveTextContent(
+          selected === "bound-model" ? "Bound Model" : "Historical Model",
+        ),
+      );
+      if (reasoning) {
+        await waitFor(() => expect(control).toHaveTextContent("高"));
+        await user.click(control);
+        await user.click(screen.getByRole("radio", { name: "GPT-5" }));
+        expect(control).toHaveTextContent("GPT-5");
+      }
+    },
+  );
+
+  it("失效的绑定账号可以切回原生登录并选用其他模型", async () => {
+    wakerResources.current = [
+      {
+        id: "waker-1",
+        name: "测试伙伴",
+        defaultModel: {
+          runtimeId: "fixture-runtime",
+          accountId: "removed-account",
+          model: "old-model",
+        },
+      },
+    ];
+    runtimeOptions.current = [
+      {
+        id: "fixture-runtime",
+        name: "Fixture Agent",
+        enabled: true,
+        state: "ready",
+        defaultModel: "new-model",
+        models: [{ id: "new-model", name: "Available Model" }],
+      },
+    ];
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatQueueProvider>
+          <TooltipProvider delayDuration={0}>
+            <MemoryRouter
+              initialEntries={["/chat?draftId=recover&wakerId=waker-1"]}
+            >
+              <Routes>
+                <Route element={<ChatLayout />}>
+                  <Route path="/chat" element={<ChatPage />} />
+                </Route>
+              </Routes>
+            </MemoryRouter>
+          </TooltipProvider>
+        </ChatQueueProvider>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText(/伙伴绑定的模型配置不可用/)).toBeVisible();
+    const control = screen.getByTestId("composer-model-control");
+    await user.click(control);
+    await user.click(screen.getByRole("combobox", { name: "账号" }));
+    await user.click(await screen.findByRole("option", { name: "内置账号" }));
+    await user.click(
+      await screen.findByRole("radio", { name: "Available Model" }),
+    );
+    expect(control).toHaveTextContent("Available Model");
+    expect(
+      screen.queryByText(/伙伴绑定的模型配置不可用/),
+    ).not.toBeInTheDocument();
+  });
+
   it("根欢迎入口把既有最近伙伴解析贡献给主顶栏，不按伙伴列表首项猜owner", async () => {
     wakerResources.current = [
       { id: "first-other", name: "另一个伙伴" },

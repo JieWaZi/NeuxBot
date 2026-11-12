@@ -132,9 +132,11 @@ export function WakerDetailPage() {
                     <span className="[overflow-wrap:anywhere]">
                       {waker.name}
                     </span>
-                    <span className="bg-muted text-muted-foreground type-ui max-w-full rounded-md px-2 py-1 font-normal [overflow-wrap:anywhere]">
-                      {waker.roleName}
-                    </span>
+                    {waker.roleName ? (
+                      <span className="bg-muted text-muted-foreground type-ui max-w-full rounded-md px-2 py-1 font-normal [overflow-wrap:anywhere]">
+                        {waker.roleName}
+                      </span>
+                    ) : null}
                   </span>
                 }
                 description={waker.bio || undefined}
@@ -199,6 +201,9 @@ export function WakerDetailPage() {
             </WakerPatternPanel>
 
             <div className="border-border-subtle mt-3 grid gap-8 border-t pt-3">
+              {waker.onboardingStatus === "pending" ? (
+                <WakerProfileSection waker={waker} />
+              ) : null}
               <AutomaticTaskAttentionSection wakerId={wakerId} />
               <WakerWorkRecordSection
                 wakerId={wakerId}
@@ -230,11 +235,12 @@ export function WakerDetailPage() {
                         navigate(`/wakers/${wakerId}/resources/connectors/new`)
                       }
                     />
-
-                    <WakerProfileSection waker={waker} />
                   </>
                 }
               />
+              {waker.onboardingStatus !== "pending" ? (
+                <WakerProfileSection waker={waker} />
+              ) : null}
             </div>
           </div>
         </ResourcePageSurface>

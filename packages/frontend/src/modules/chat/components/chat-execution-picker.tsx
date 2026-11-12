@@ -158,6 +158,7 @@ export function ChatExecutionPicker(props: Props) {
   );
   const accountId = preview?.accountId || props.accountId || "system";
   const account = compatible.find((item) => item.id === accountId);
+  const accountMissing = accountId !== "system" && !account;
   const browsing = Boolean(
     runtime &&
     (runtime.id !== props.runtime?.id ||
@@ -405,7 +406,7 @@ export function ChatExecutionPicker(props: Props) {
                   </Tooltip>
                 ) : null}
               </div>
-              {compatible.length ? (
+              {compatible.length || accountMissing ? (
                 <Select
                   value={accountId}
                   onValueChange={(value) => {
@@ -423,6 +424,12 @@ export function ChatExecutionPicker(props: Props) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    {accountMissing ? (
+                      <SelectItem value={accountId} disabled>
+                        {accountId} ·{" "}
+                        {t("common:executionSelection.unavailable")}
+                      </SelectItem>
+                    ) : null}
                     <SelectItem value="system">
                       {t("aiAccounts:system")}
                     </SelectItem>
