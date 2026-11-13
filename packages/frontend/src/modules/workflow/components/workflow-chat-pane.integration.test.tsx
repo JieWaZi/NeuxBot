@@ -25,7 +25,7 @@ import {
 import "@/shared/i18n";
 import { client } from "@/shared/api/generated/client.gen";
 import { TooltipProvider } from "@/shared/ui/tooltip";
-import type { subscribeChat } from "@/shared/api/events";
+import type { ChatEvent, subscribeChat } from "@/shared/api/events";
 import type * as SceneWorkspace from "@/shared/workspace/app-scene-workspace";
 import { chatWorkspaceHandlers } from "../test/chat-workspace-handlers";
 import { WorkflowChatPane } from "./workflow-chat-pane";
@@ -471,17 +471,20 @@ it("工作流对话仅在活跃场景处理本 Chat 的原生请求，默认不�
   );
   const view = render(content());
   const question = await screen.findByText("补充创作操作范围");
+  expect(question.closest("[data-chat-scroll-viewport]")).toBeInTheDocument();
   expect(question.closest("[data-chat-main-content]")).toBeNull();
-  expect(question.closest("[data-chat-composer]")).toBeInTheDocument();
-  expect(screen.queryByText("读取创作批准的工作目录")).not.toBeInTheDocument();
+  const approval = screen.getByText("读取创作批准的工作目录");
+  expect(approval.closest("[data-chat-composer]")).toBeInTheDocument();
   expect(approvals).toEqual([]);
   expect(inputs).toEqual([]);
 
   scene.active = false;
   view.rerender(content());
   expect(screen.queryByText("补充创作操作范围")).not.toBeInTheDocument();
+  expect(screen.queryByText("读取创作批准的工作目录")).not.toBeInTheDocument();
   fireEvent.keyDown(window, { key: "Enter" });
   expect(approvals).toEqual([]);
+  expect(inputs).toEqual([]);
   scene.active = true;
   view.rerender(content());
   const user = userEvent.setup();
@@ -493,18 +496,31 @@ it("工作流对话仅在活跃场景处理本 Chat 的原生请求，默认不�
   expect(approvals).toEqual([]);
   await user.click(screen.getByRole("button", { name: /允许本次/ }));
   await waitFor(() => expect(approvals).toEqual([{ optionId: "allow-1" }]));
+  expect(inputs).toHaveLength(1);
   queryClient.clear();
 });
 
 it("工作流创作通过实时事件呈现 WorkBuddy 三题并提交原 Chat 后继续执行", async () => {
   const answers: unknown[] = [];
   const pendingElicitations: unknown[] = [];
+  let questionMessage: ChatEvent["message"];
+  const publicAnswers = {
+    question_0: ["主流科技媒体", "官方博客与论文"],
+    question_0_custom: "公司研究博客",
+    question_1: "近 7 天",
+    question_2: "生成 Markdown 报告文件",
+  };
+  const model = {
+    id: "deepseek-v4.1-flash",
+    name: "DeepSeek",
+    permissionLevels: ["full-access"],
+  };
   const snapshot = {
     id: "creation-live-chat",
     activeExecutionId: "creation-live-execution",
     latestSequence: 1,
     lastRuntimeId: "workbuddy",
-    lastModel: "deepseek-v4.1-flash",
+    lastModel: model.id,
     lastPermissionLevel: "full-access",
     pendingElicitations,
   };
@@ -518,17 +534,21 @@ it("工作流创作通过实时事件呈现 WorkBuddy 三题并提交原 Chat �
             enabled: true,
             state: "ready",
             isDefault: true,
-            defaultModel: "deepseek-v4.1-flash",
+            defaultModel: model.id,
             defaultPermissionLevel: "full-access",
-            models: [
-              {
-                id: "deepseek-v4.1-flash",
-                name: "DeepSeek",
-                permissionLevels: ["full-access"],
-              },
-            ],
+            models: [model],
           },
         ],
+      }),
+    ),
+    http.get(`${api}/runtimes/workbuddy/models`, ({ request }) =>
+      HttpResponse.json({
+        runtimeId: "workbuddy",
+        accountId: new URL(request.url).searchParams.get("accountId"),
+        authGeneration: 0,
+        state: "fresh",
+        defaultModel: model.id,
+        models: [model],
       }),
     ),
     http.get(`${api}/chats/creation-live-chat`, () =>
@@ -536,7 +556,7 @@ it("工作流创作通过实时事件呈现 WorkBuddy 三题并提交原 Chat �
     ),
     http.get(`${api}/chats/creation-live-chat/messages`, () =>
       HttpResponse.json({
-        resources: [],
+        resources: questionMessage ? [questionMessage] : [],
         latestSequence: snapshot.latestSequence,
       }),
     ),
@@ -682,21 +702,35 @@ it("工作流创作通过实时事件呈现 WorkBuddy 三题并提交原 Chat �
   act(() => {
     snapshot.latestSequence = 2;
     pendingElicitations.push(requestedEvent.elicitationRequest);
+    questionMessage = {
+      id: "native-question",
+      role: "assistant",
+      executionId: snapshot.activeExecutionId,
+      createdSequence: 2,
+      revision: 2,
+      question: requestedEvent.elicitationRequest,
+    };
     // 使用原生 JSON 形状进入事件边界；RawMessage 生成类型不能表达实际对象表单。
     chatSubscriptions
       .get("creation-live-chat")
-      ?.onEvent(JSON.parse(JSON.stringify(requestedEvent)));
+      ?.onEvent(
+        JSON.parse(
+          JSON.stringify({ ...requestedEvent, message: questionMessage }),
+        ),
+      );
   });
   const source = await screen.findByRole("group", {
     name: "从哪些类型的数据源抓取 AI 资讯？",
   });
-  expect(source.closest("[data-chat-composer]")).toBeInTheDocument();
+  expect(source.closest("[data-chat-scroll-viewport]")).toBeInTheDocument();
   expect(source.closest("[data-chat-main-content]")).toBeNull();
-  expect(
-    screen.queryByRole("textbox", { name: /输入消息/ }),
-  ).not.toBeInTheDocument();
-  expect(answers).toEqual([]);
   const user = userEvent.setup();
+  const composer = screen.getByRole("textbox", { name: /输入消息/ });
+  await user.type(composer, "回答后继续调整工作流");
+  expect(screen.getByRole("button", { name: "加入发送队列" })).toBeDisabled();
+  await user.keyboard("{Enter}");
+  expect(composer).toHaveTextContent("回答后继续调整工作流");
+  expect(answers).toEqual([]);
   await user.click(
     within(source).getByRole("button", { name: /主流科技媒体/ }),
   );
@@ -724,12 +758,7 @@ it("工作流创作通过实时事件呈现 WorkBuddy 三题并提交原 Chat �
   await waitFor(() =>
     expect(answers).toEqual([
       {
-        content: {
-          question_0: ["主流科技媒体", "官方博客与论文"],
-          question_0_custom: "公司研究博客",
-          question_1: "近 7 天",
-          question_2: "生成 Markdown 报告文件",
-        },
+        content: publicAnswers,
         declined: false,
       },
     ]),
@@ -741,23 +770,36 @@ it("工作流创作通过实时事件呈现 WorkBuddy 三题并提交原 Chat �
   act(() => {
     snapshot.latestSequence = 3;
     pendingElicitations.length = 0;
+    questionMessage = {
+      ...questionMessage,
+      revision: 3,
+      question: {
+        ...requestedEvent.elicitationRequest,
+        result: "accepted",
+        answers: publicAnswers,
+      },
+    };
     chatSubscriptions.get("creation-live-chat")?.onEvent({
       sequence: 3,
       type: "elicitation.resolved",
       elicitationResolution: {
         elicitationId: "native-question",
         result: "accepted",
+        content: publicAnswers,
       },
+      message: questionMessage,
     });
   });
-  await waitFor(() =>
-    expect(
-      screen.queryByText("Please answer the following questions."),
-    ).not.toBeInTheDocument(),
+  const summary = (await screen.findByText("已回答")).closest(
+    "[data-chat-elicitation-card]",
   );
+  expect(summary).toHaveTextContent("公司研究博客");
   expect(
-    await screen.findByRole("textbox", { name: /输入消息/ }),
-  ).toBeInTheDocument();
+    screen.queryByRole("button", { name: "继续" }),
+  ).not.toBeInTheDocument();
+  expect(composer).toHaveTextContent("回答后继续调整工作流");
+  expect(screen.getByRole("button", { name: "加入发送队列" })).toBeEnabled();
+  await user.clear(composer);
   expect(screen.getByRole("button", { name: "停止执行" })).toBeInTheDocument();
   expect(answers).toHaveLength(1);
   queryClient.clear();
