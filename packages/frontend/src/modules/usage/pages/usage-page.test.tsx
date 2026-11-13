@@ -8,13 +8,17 @@ import {
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
 
+import type { GetUsageSummaryResponse } from "@/shared/api/generated/types.gen";
 import { UsagePage } from "./usage-page";
 
 const fixture = vi.hoisted(() => ({
   snapshot: "old",
   empty: false,
+  summary:
+    vi.fn<(provider: string) => Promise<GetUsageSummaryResponse> | undefined>(),
   groups:
     vi.fn<
       (
@@ -40,17 +44,18 @@ vi.mock("@/shared/api/runtime-queries", () => ({
 }));
 
 vi.mock("../api/usage-queries", () => ({
-  usageSummaryOptions: () => ({
-    queryKey: ["usage-summary"],
-    queryFn: async () => ({
-      snapshot: fixture.snapshot,
-      metrics: fixture.empty
-        ? { invocations: 0 }
-        : {
-            invocations: fixture.snapshot === "old" ? 11 : 22,
-            knownTotalWithCacheRead: 200,
-          },
-    }),
+  usageSummaryOptions: ({ provider }: { provider: string }) => ({
+    queryKey: ["usage-summary", provider],
+    queryFn: async () =>
+      fixture.summary(provider) ?? {
+        snapshot: fixture.snapshot,
+        metrics: fixture.empty
+          ? { invocations: 0 }
+          : {
+              invocations: fixture.snapshot === "old" ? 11 : 22,
+              knownTotalWithCacheRead: 200,
+            },
+      },
   }),
   usageGroupsOptions: ({ groupBy }: { groupBy: string }, snapshot: string) => ({
     queryKey: ["usage-groups", snapshot, groupBy],
@@ -76,9 +81,9 @@ const page = (snapshot: string, key: string, nextCursor?: string) => ({
   nextCursor,
 });
 
-function deferred() {
-  let resolve: (value: unknown) => void = () => {};
-  const promise = new Promise<unknown>((done) => {
+function deferred<T = unknown>() {
+  let resolve: (value: T) => void = () => {};
+  const promise = new Promise<T>((done) => {
     resolve = done;
   });
   return { promise, resolve };
@@ -93,22 +98,27 @@ function openPage(
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, retryDelay: 0 } },
   });
-  const page = () => (
-    <QueryClientProvider client={client}>
-      <UsagePage
-        search={new URLSearchParams(search)}
-        onSearchChange={onSearchChange}
-        wakerOptions={[{ value: "partner", label: "测试伙伴" }]}
-      />
-    </QueryClientProvider>
-  );
-  render(page());
+  function Page() {
+    const [params, setParams] = useState(() => new URLSearchParams(search));
+    return (
+      <QueryClientProvider client={client}>
+        <UsagePage
+          search={params}
+          onSearchChange={(next) => {
+            setParams(next);
+            onSearchChange(next);
+          }}
+          wakerOptions={[{ value: "partner", label: "测试伙伴" }]}
+        />
+      </QueryClientProvider>
+    );
+  }
+  render(<Page />);
   return async () => {
     fixture.snapshot = "new";
     await act(async () => {
       await client.invalidateQueries({
         queryKey: ["usage-summary"],
-        exact: true,
       });
     });
   };
@@ -118,6 +128,51 @@ beforeEach(() => {
   fixture.snapshot = "old";
   fixture.empty = false;
   fixture.groups.mockReset();
+  fixture.summary.mockReset();
+});
+
+it("switches usage details with the shared shell segmented control", async () => {
+  const user = userEvent.setup();
+  fixture.groups.mockImplementation(async (snapshot, _, __, groupBy) =>
+    page(
+      snapshot,
+      groupBy === "model"
+        ? "test-model"
+        : groupBy === "waker"
+          ? "partner"
+          : "2026-11-01",
+    ),
+  );
+  const navigate = vi.fn<(search: URLSearchParams) => void>();
+  openPage(`${novemberRange}&source=workflow`, navigate);
+
+  const dimensions = screen.getByRole("radiogroup", { name: "统计维度" });
+  expect(dimensions).toHaveClass("segmented-control-shell");
+  const options = within(dimensions);
+  const date = options.getByRole("radio", { name: "日期", checked: true });
+  expect(
+    await screen.findByRole("rowheader", { name: "2026-11-01" }),
+  ).toBeInTheDocument();
+
+  date.focus();
+  await user.keyboard("{ArrowRight}");
+  expect(
+    options.getByRole("radio", { name: "模型", checked: true }),
+  ).toHaveFocus();
+  expect(
+    await screen.findByRole("rowheader", { name: "test-model" }),
+  ).toBeInTheDocument();
+  expect(navigate.mock.lastCall?.[0].get("groupBy")).toBe("model");
+
+  await user.click(options.getByRole("radio", { name: "伙伴" }));
+  expect(
+    options.getByRole("radio", { name: "伙伴", checked: true }),
+  ).toBeInTheDocument();
+  expect(
+    await screen.findByRole("rowheader", { name: "测试伙伴" }),
+  ).toBeInTheDocument();
+  expect(navigate.mock.lastCall?.[0].get("groupBy")).toBe("waker");
+  expect(navigate.mock.lastCall?.[0].get("source")).toBe("workflow");
 });
 
 it("shows zero counters and a zero trend when the selected range has no invocations", async () => {
@@ -131,10 +186,9 @@ it("shows zero counters and a zero trend when the selected range has no invocati
   expect(
     screen.getByText("缓存写入", { selector: "dt" }).parentElement,
   ).toHaveTextContent("0");
-  expect(screen.getByRole("meter", { name: "缓存命中率" })).toHaveAttribute(
-    "aria-valuetext",
-    "0%",
-  );
+  expect(
+    screen.getByText("推理输出").parentElement?.querySelector("dd"),
+  ).toHaveTextContent(/^0$/);
   const trend = screen.getByRole("group", { name: "用量趋势" });
   expect(
     within(trend).getByRole("button", { name: "11月1日 · 0 Token" }),
@@ -346,4 +400,70 @@ it("keeps the trend and runtime shares on the same snapshot as model statistics"
   expect(await screen.findByRole("button", newDay)).toBeInTheDocument();
   expect(await screen.findByText("占已记录 Token 的 25%")).toBeInTheDocument();
   expect(screen.queryByRole("button", oldDay)).not.toBeInTheDocument();
+});
+
+it("keeps the overview and chart visible when switching dimensions during a refresh", async () => {
+  const user = userEvent.setup();
+  const newDay = deferred();
+  const newModels = deferred();
+  fixture.groups.mockImplementation(async (snapshot, _, __, groupBy) => {
+    if (groupBy === "model") return newModels.promise;
+    return snapshot === "old" ? page("old", "2026-11-01") : newDay.promise;
+  });
+  const refresh = openPage(`${novemberRange}&provider=codex`);
+  expect(
+    await screen.findByRole("rowheader", { name: "2026-11-01" }),
+  ).toBeInTheDocument();
+  const trend = screen.getByRole("group", { name: "用量趋势" });
+
+  await refresh();
+  expect(screen.getByText("11 次调用")).toBeInTheDocument();
+  const dimensions = screen.getByRole("radiogroup", { name: "统计维度" });
+  await user.click(within(dimensions).getByRole("radio", { name: "模型" }));
+
+  expect(screen.getByRole("status", { name: "用量明细" })).toBeInTheDocument();
+  expect(screen.queryByRole("rowheader", { name: "2026-11-01" })).toBeNull();
+  expect(screen.getByText("11 次调用")).toBeInTheDocument();
+  expect(screen.getByRole("group", { name: "用量趋势" })).toBe(trend);
+
+  newModels.resolve(page("new", "test-model"));
+  newDay.resolve(page("new", "2026-11-01"));
+  expect(
+    await screen.findByRole("rowheader", { name: "test-model" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText("22 次调用")).toBeInTheDocument();
+});
+
+it("keeps the chart and breakdown regions while loading another agent's usage", async () => {
+  const user = userEvent.setup();
+  const codexSummary = deferred<GetUsageSummaryResponse>();
+  const codexGroups = deferred();
+  fixture.summary.mockImplementation((provider) =>
+    provider === "codex" ? codexSummary.promise : undefined,
+  );
+  fixture.groups.mockImplementation(async (snapshot) =>
+    snapshot === "old" ? page("old", "2026-11-01") : codexGroups.promise,
+  );
+  openPage(`${novemberRange}&provider=claude`);
+  expect(
+    await screen.findByRole("rowheader", { name: "2026-11-01" }),
+  ).toBeInTheDocument();
+
+  const filters = screen.getByRole("radiogroup", { name: "筛选智能体" });
+  await user.click(within(filters).getByRole("radio", { name: "Codex" }));
+  const chart = screen.getByRole("status", { name: "用量趋势" });
+  const breakdown = screen.getByRole("status", { name: "用量明细" });
+  expect(screen.queryByText("11 次调用")).toBeNull();
+
+  await act(async () => {
+    codexSummary.resolve({ snapshot: "new", metrics: { invocations: 22 } });
+  });
+  expect(await screen.findByText("22 次调用")).toBeInTheDocument();
+  expect(screen.getByRole("status", { name: "用量趋势" })).toBe(chart);
+  expect(screen.getByRole("status", { name: "用量明细" })).toBe(breakdown);
+
+  codexGroups.resolve(page("new", "2026-11-02"));
+  expect(
+    await screen.findByRole("rowheader", { name: "2026-11-02" }),
+  ).toBeInTheDocument();
 });

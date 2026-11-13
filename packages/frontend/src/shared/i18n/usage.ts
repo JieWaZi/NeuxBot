@@ -55,8 +55,8 @@ export const usageZh = {
   output: "输出",
   cacheRead: "缓存输入",
   cacheWrite: "缓存写入",
-  cacheHitRate: "缓存命中率",
-  recordedCacheHitRate: "已记录缓存命中率",
+  reasoning: "推理输出",
+  recordedReasoning: "已记录推理输出",
   retry: "重试",
 } as const;
 
@@ -121,7 +121,7 @@ export const usageEn = {
   output: "Output",
   cacheRead: "Cache read",
   cacheWrite: "Cache write",
-  cacheHitRate: "Cache hit rate",
-  recordedCacheHitRate: "Recorded cache hit rate",
+  reasoning: "Reasoning output",
+  recordedReasoning: "Recorded reasoning output",
   retry: "Retry",
 } as const;

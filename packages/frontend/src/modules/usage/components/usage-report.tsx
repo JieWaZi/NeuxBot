@@ -1,4 +1,4 @@
-import { Activity, LayoutGrid } from "lucide-react";
+import { Activity, Brain, LayoutGrid } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type {
@@ -39,13 +39,10 @@ function TokenValue({ metrics }: { metrics: Metrics }) {
 
 const metricCell =
   "bg-surface-tertiary grid min-w-0 content-start gap-1 rounded-lg p-3";
-
-function cacheHitRate(tokens: Metrics["tokens"]) {
-  const { input, cacheRead, cacheWrite } = tokens ?? {};
-  if (input == null || cacheRead == null || cacheWrite == null) return;
-  const total = input + cacheRead + cacheWrite;
-  return total > 0 ? cacheRead / total : undefined;
-}
+const overviewCounters = [
+  ...usageSeries,
+  { key: "reasoning", color: "text-status-success-content", icon: Brain },
+] as const;
 
 export function UsageOverview({
   summary,
@@ -57,27 +54,26 @@ export function UsageOverview({
   const { t, i18n } = useTranslation("usage");
   const locale = i18n.resolvedLanguage;
   const { coverage, metrics = {} } = summary;
-  const missing = metrics.missingUsageInvocations ?? 0;
-  const incomplete = metrics.incompleteUsageInvocations ?? 0;
+  const { invocations, missingUsageInvocations, incompleteUsageInvocations } =
+    metrics;
+  const missing = missingUsageInvocations ?? 0;
+  const incomplete = incompleteUsageInvocations ?? 0;
   const partial = coverage?.reasons?.includes("native_projection_incomplete");
-  const empty = !partial && metrics.invocations === 0;
+  const empty = !partial && invocations === 0;
   const total = empty
     ? 0
     : (metrics.totalWithCacheRead ?? metrics.knownTotalWithCacheRead);
   const recorded =
     !empty && total != null && (metrics.totalWithCacheRead == null || partial);
-  const completeRate = partial ? undefined : cacheHitRate(metrics.tokens);
-  const rate = empty ? 0 : (completeRate ?? summary.observedCacheHitRate);
-  const rateLabel = t(
-    !empty && completeRate == null && rate != null
-      ? "recordedCacheHitRate"
-      : "cacheHitRate",
-  );
   const numbers = new Intl.NumberFormat(locale);
-  const percent = new Intl.NumberFormat(locale, {
-    style: "percent",
-    maximumFractionDigits: 1,
-  });
+  const completeReasoning = metrics.tokens?.reasoning;
+  const reasoning = empty
+    ? 0
+    : (completeReasoning ?? metrics.knownTokens?.reasoning);
+  const reasoningLabel =
+    !empty && (partial || completeReasoning == null)
+      ? "recordedReasoning"
+      : "reasoning";
   const notes = [
     partial && t("projectionPartial"),
     missing > 0 && t("tokenMissing", { count: missing }),
@@ -109,64 +105,52 @@ export function UsageOverview({
             </p>
           </div>
         </div>
-        {metrics.invocations != null &&
-        (!partial || metrics.invocations > 0) ? (
+        {invocations != null && (!partial || invocations > 0) ? (
           <p className="bg-surface-tertiary type-label flex items-center gap-2 rounded-lg px-3 py-2 font-medium tabular-nums">
             <Activity
               aria-hidden="true"
               className="text-status-info-content size-icon-md"
             />
-            {t("invocationCount", { count: metrics.invocations })}
+            {t("invocationCount", { count: invocations })}
           </p>
         ) : null}
       </div>
-      <dl className="grid grid-cols-2 gap-2 @[38rem]/resource-page:grid-cols-3 @[52rem]/resource-page:grid-cols-5">
-        {usageSeries.map(({ key, color, icon: Icon }) => {
+      <dl
+        className={cn(
+          "grid grid-cols-2 gap-2",
+          reasoning == null
+            ? "@[38rem]/resource-page:grid-cols-4"
+            : "@[38rem]/resource-page:grid-cols-3 @[52rem]/resource-page:grid-cols-5",
+        )}
+      >
+        {overviewCounters.map(({ key, color, icon: Icon }) => {
           const value = empty ? 0 : metrics.knownTokens?.[key];
+          const isReasoning = key === "reasoning";
+          const count = isReasoning ? reasoning : value;
+          if (isReasoning && count == null) return null;
           return (
-            <div key={key} className={metricCell}>
+            <div
+              key={key}
+              className={cn(
+                metricCell,
+                isReasoning && "col-span-2 @[38rem]/resource-page:col-span-1",
+              )}
+            >
               <dt className="text-content-secondary type-ui flex min-w-0 items-center gap-1.5">
                 <Icon
                   aria-hidden="true"
                   className={cn("size-icon-sm shrink-0", color)}
                 />
-                {t(key)}
+                {t(isReasoning ? reasoningLabel : key)}
               </dt>
               <dd className="type-label font-medium wrap-anywhere tabular-nums">
-                {value == null
+                {count == null
                   ? t("unknown")
-                  : formatUsageTokens(value, locale)}
+                  : formatUsageTokens(count, locale)}
               </dd>
             </div>
           );
         })}
-        <div
-          className={cn(
-            metricCell,
-            "col-span-2 @[38rem]/resource-page:col-span-1",
-          )}
-        >
-          <dt className="text-content-secondary type-ui">{rateLabel}</dt>
-          <dd className="type-label font-medium tabular-nums">
-            {rate == null ? t("unknown") : percent.format(rate)}
-            {rate != null ? (
-              <div
-                role="meter"
-                aria-label={rateLabel}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={rate * 100}
-                aria-valuetext={percent.format(rate)}
-                className="bg-surface-raised mt-1.5 h-1.5 overflow-hidden rounded-full"
-              >
-                <div
-                  className="bg-status-success-content h-full rounded-full"
-                  style={{ width: `${rate * 100}%` }}
-                />
-              </div>
-            ) : null}
-          </dd>
-        </div>
       </dl>
       {notes.length ? (
         <p className="text-content-secondary type-ui">{notes.join(" · ")}</p>

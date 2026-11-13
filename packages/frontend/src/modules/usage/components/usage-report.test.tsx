@@ -27,6 +27,9 @@ it("shows a last-request Token subtotal and measured zero", () => {
 
   expect(screen.getByText("17")).toBeInTheDocument();
   expect(screen.getByText("已记录 Token")).toBeInTheDocument();
+  expect(screen.getByText("已记录推理输出").parentElement).toHaveTextContent(
+    "2",
+  );
   expect(screen.queryByText("费用")).not.toBeInTheDocument();
   expect(screen.getByText(/1 次调用的 Token 数据不完整/)).toBeInTheDocument();
   expect(screen.getByText("0")).toBeInTheDocument();
@@ -84,41 +87,23 @@ it("uses the reported totals and shows the token categories without raw counters
   expect(screen.queryByText("1,200")).not.toBeInTheDocument();
 });
 
-it("includes cache writes in the hit-rate denominator and distinguishes missing counters", () => {
-  const tokens = { input: 15, cacheRead: 80, cacheWrite: 5, output: 20 };
+it("shows an explicitly measured reasoning zero and hides missing reasoning", () => {
   const { rerender } = render(
     <UsageOverview
-      summary={{ metrics: { knownTokens: tokens, tokens, invocations: 1 } }}
-    />,
-  );
-  expect(screen.getByRole("meter", { name: "缓存命中率" })).toHaveAttribute(
-    "aria-valuenow",
-    "80",
-  );
-  rerender(
-    <UsageOverview
-      summary={{ metrics: { knownTokens: tokens, invocations: 1 } }}
-    />,
-  );
-  expect(screen.queryByRole("meter")).not.toBeInTheDocument();
-  expect(screen.getByText("缓存命中率").parentElement).toHaveTextContent(
-    "未知",
-  );
-});
-
-it("labels the paired cache rate as recorded when some requests are incomplete", () => {
-  render(
-    <UsageOverview
-      provider="codex"
       summary={{
-        metrics: { invocations: 20, incompleteUsageInvocations: 6 },
-        observedCacheHitRate: 0.805,
+        metrics: { invocations: 1, tokens: { reasoning: 0 } },
       }}
     />,
   );
   expect(
-    screen.getByRole("meter", { name: "已记录缓存命中率" }),
-  ).toHaveAttribute("aria-valuetext", "80.5%");
+    screen.getByText("推理输出").parentElement?.querySelector("dd"),
+  ).toHaveTextContent(/^0$/);
+  rerender(
+    <UsageOverview
+      summary={{ metrics: { invocations: 1, knownTokens: { output: 25 } } }}
+    />,
+  );
+  expect(screen.queryByText(/推理输出/)).not.toBeInTheDocument();
 });
 
 it("keeps Token counts unknown when an incomplete projection has no recorded calls", () => {
@@ -136,7 +121,7 @@ it("keeps Token counts unknown when an incomplete projection has no recorded cal
   expect(screen.getByText("未缓存输入").parentElement).toHaveTextContent(
     "未知",
   );
-  expect(screen.queryByRole("meter")).not.toBeInTheDocument();
+  expect(screen.queryByText(/推理输出/)).not.toBeInTheDocument();
   expect(screen.queryByText("0 次调用")).not.toBeInTheDocument();
 });
 
