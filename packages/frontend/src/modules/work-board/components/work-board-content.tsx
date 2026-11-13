@@ -1,14 +1,11 @@
 import {
   ArrowRight,
-  ListTodo,
   CheckCheck,
+  ShieldCheck,
   CircleCheck,
   CircleMinus,
   CirclePause,
   LoaderCircle,
-  ShieldCheck,
-  ShieldQuestion,
-  type LucideIcon,
 } from "lucide-react";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -21,10 +18,9 @@ import {
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router-dom";
 import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention as Attention } from "@/shared/api/generated/types.gen";
+import { EmptyState } from "@/shared/ui/empty-state";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
-import { OverviewCard } from "@/shared/ui/overview-card";
-import { EmptyState } from "@/shared/ui/empty-state";
 import { Skeleton } from "@/shared/ui/skeleton";
 import {
   refreshWorkBoardFocus,
@@ -35,7 +31,6 @@ import {
   type WorkBoardSummary as Summary,
   type WorkBoardEntry as Entry,
 } from "../api/queries";
-import { SegmentedControl } from "@/shared/ui/segmented-control";
 import { localApiErrorMessage } from "@/shared/api/local-error-surface";
 import { ChatReadingLink } from "@/shared/api/chat-reading";
 import {
@@ -55,8 +50,6 @@ import {
   TableHead,
   TableCell,
 } from "@/shared/ui/table";
-
-export type WorkBoardMetric = "all" | "running" | "action" | "ended";
 
 function ResultTime({ at, compact }: { at?: number; compact?: boolean }) {
   const { i18n } = useTranslation("workBoard");
@@ -116,7 +109,7 @@ function WorkFocusRow({
   at,
   href,
   chatId,
-  failed,
+  status,
   action,
 }: {
   avatar: ReactNode;
@@ -125,7 +118,7 @@ function WorkFocusRow({
   at?: number;
   href: string;
   chatId?: string;
-  failed?: boolean;
+  status?: ReactNode;
   action: boolean;
 }) {
   const { t } = useTranslation("workBoard");
@@ -134,7 +127,7 @@ function WorkFocusRow({
       {avatar}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="type-label font-medium break-words">
+          <p className="type-label min-w-0 font-medium break-words">
             <ChatReadingLink
               chatId={chatId}
               className="hover:text-link"
@@ -143,7 +136,7 @@ function WorkFocusRow({
               {title}
             </ChatReadingLink>
           </p>
-          {failed ? <Badge variant="destructive">{t("failed")}</Badge> : null}
+          {status}
         </div>
         {context || at ? (
           <div className="text-content-secondary type-ui mt-1 flex flex-wrap gap-x-3 gap-y-1">
@@ -199,7 +192,11 @@ function WorkEntryRow({ entry }: { entry: Entry }) {
       at={entry.updatedAt}
       href={workEntryHref(entry, true)}
       chatId={entry.chatId}
-      failed={entry.lastStatus === "failed"}
+      status={
+        entry.lastStatus === "failed" ? (
+          <Badge variant="destructive">{t("failed")}</Badge>
+        ) : null
+      }
       action={false}
     />
   );
@@ -265,30 +262,20 @@ function useWorkBoardFocusEvents(
   return () => refreshQueryFromEvent(client, queryKey, read);
 }
 
-/** 精确事项数量作为筛选入口；不从当前页推算全历史总数。 */
 export function WorkBoardOverview({
   summary,
   pending,
   active,
-  mode,
   error,
   onRetry,
-  selected,
-  onSelect,
-  markViewed,
 }: {
   summary?: Summary;
   pending: boolean;
   active: boolean;
-  mode: WorkBoardMode;
   error?: string;
   onRetry: () => void;
-  selected?: WorkBoardMetric;
-  onSelect: (metric: WorkBoardMetric) => void;
-  markViewed: ReactNode;
 }) {
   const { t } = useTranslation("workBoard");
-  const sceneActive = useRouteSceneActive();
   const navigationState: unknown = useLocation().state;
   const openToken =
     navigationState &&
@@ -297,37 +284,70 @@ export function WorkBoardOverview({
     typeof navigationState.workBoardOpenToken === "string"
       ? navigationState.workBoardOpenToken
       : undefined;
-  const counts = {
-    attention: summary?.pendingRequestCount,
-    results: summary?.awaitingViewWorkCount,
-  };
-  const defaultFocus: WorkBoardFocus =
-    mode === "awaiting_view" ||
-    (mode === "all" && counts.attention === 0 && (counts.results ?? 0) > 0)
-      ? "results"
-      : "attention";
-  const [selection, setSelection] = useState<{
-    mode: WorkBoardMode;
-    focus: WorkBoardFocus;
-    openToken?: string;
-    explicit: boolean;
-    deep: boolean;
-  }>();
-  // 默认页签随摘要对账，显式选择和正在浏览的深页保留当前分组。
-  if (
-    selection &&
-    (!sceneActive ||
-      selection.mode !== mode ||
-      (openToken !== undefined && selection.openToken !== openToken))
-  ) {
-    setSelection(undefined);
-  }
-  const focus = selection?.focus ?? defaultFocus;
-  const focusMode = focus === "attention" ? "action" : "awaiting_view";
-  const deep = Boolean(selection?.deep);
-  const paged = deep || (counts[focus] ?? 0) > focusVisibleRows;
+  return (
+    <section aria-label={t("currentWork")} className="min-w-0">
+      <h2 className="type-title mb-3 font-semibold">{t("currentWork")}</h2>
+      {error || summary?.complete === false ? (
+        <div
+          role="status"
+          className="text-content-secondary type-ui mb-3 flex items-center gap-2"
+        >
+          {error ?? t("attentionIncomplete")}
+          <Button size="sm" variant="ghost" onClick={onRetry}>
+            {t("retry")}
+          </Button>
+        </div>
+      ) : null}
+      <div className="grid min-w-0 gap-3 @[48rem]/resource-page:grid-cols-2">
+        <WorkBoardFocusPanel
+          focus="attention"
+          summary={summary}
+          pending={pending}
+          active={active}
+          openToken={openToken}
+        />
+        <WorkBoardFocusPanel
+          focus="results"
+          summary={summary}
+          pending={pending}
+          active={active}
+          openToken={openToken}
+        />
+      </div>
+    </section>
+  );
+}
+
+function WorkBoardFocusPanel({
+  focus,
+  summary,
+  pending,
+  active,
+  openToken,
+}: {
+  focus: WorkBoardFocus;
+  summary?: Summary;
+  pending: boolean;
+  active: boolean;
+  openToken?: string;
+}) {
+  const { t } = useTranslation("workBoard");
+  const sceneActive = useRouteSceneActive();
+  const isAction = focus === "attention";
+  const focusMode = isAction ? "action" : "awaiting_view";
+  const count = isAction
+    ? summary?.pendingRequestCount
+    : summary?.awaitingViewWorkCount;
+  const label = t(isAction ? "needsAction" : "results");
+  const [deepScope, setDeepScope] = useState<{ openToken?: string }>();
+  const deep = Boolean(
+    sceneActive && deepScope && deepScope.openToken === openToken,
+  );
+  if (deepScope && !deep) setDeepScope(undefined);
+  const paged = deep || (count ?? 0) > focusVisibleRows;
   const listRef = useRef<HTMLUListElement>(null);
-  const viewportRef = useRef<HTMLElement>(null);
+  const headerRef = useRef<HTMLHeadingElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const isBrowsingDeep = useCallback(() => {
     const viewport = viewportRef.current;
     const boundary = listRef.current?.children.item(workBoardFocusHeadLimit);
@@ -336,17 +356,10 @@ export function WorkBoardOverview({
       viewport.scrollTop > 0 &&
       boundary &&
       boundary.getBoundingClientRect().top <=
-        viewport.getBoundingClientRect().top,
+        (headerRef.current?.getBoundingClientRect().bottom ??
+          viewport.getBoundingClientRect().top),
     );
   }, []);
-  const chooseFocus = (value: WorkBoardFocus) =>
-    setSelection({
-      mode,
-      focus: value,
-      openToken,
-      explicit: true,
-      deep: value === focus && deep,
-    });
   const refreshFocus = useWorkBoardFocusEvents(
     focusMode,
     active && paged,
@@ -361,259 +374,152 @@ export function WorkBoardOverview({
   const focusIncomplete =
     focusQuery.error instanceof WorkBoardFocusIncomplete ||
     pages?.some((page) => page.complete === false);
-  const actionRows =
-    focus === "attention"
-      ? (pages?.flatMap((page) => page.attention ?? []) ??
-        summary?.actionPreview ??
-        [])
-      : [];
-  const resultRows =
-    focus === "results"
-      ? (pages?.flatMap((page) => page.awaitingView ?? []) ??
-        summary?.awaitingViewPreview ??
-        [])
-      : [];
+  const actionRows = isAction
+    ? (pages?.flatMap((page) => page.attention ?? []) ??
+      summary?.actionPreview ??
+      [])
+    : [];
+  const resultRows = isAction
+    ? []
+    : (pages?.flatMap((page) => page.awaitingView ?? []) ??
+      summary?.awaitingViewPreview ??
+      []);
   const rowCount = actionRows.length + resultRows.length;
   const [focusMaxHeight, setFocusMaxHeight] = useState<number>();
 
   useLayoutEffect(() => {
     if (viewportRef.current) viewportRef.current.scrollTop = 0;
-  }, [focus, sceneActive]);
+  }, [openToken, sceneActive]);
   useLayoutEffect(() => {
-    if (openToken && viewportRef.current) viewportRef.current.scrollTop = 0;
-  }, [openToken]);
-  useLayoutEffect(() => {
-    const list = listRef.current;
-    const rows = [...(list?.children ?? [])].slice(0, focusVisibleRows);
-    const first = rows[0];
+    const rows = [...(listRef.current?.children ?? [])].slice(
+      0,
+      focusVisibleRows,
+    );
     const last = rows[focusVisibleRows - 1];
-    if (!list || !first || !last) {
+    const viewport = viewportRef.current;
+    if (!last || !viewport) {
       setFocusMaxHeight(undefined);
       return;
     }
     const measure = () => {
-      // 实际行高和行间距一起计入五条可见记录的高度。
+      const padding =
+        Number.parseFloat(getComputedStyle(viewport).paddingBottom) || 0;
       const height =
-        last.getBoundingClientRect().bottom - first.getBoundingClientRect().top;
-      setFocusMaxHeight(height > 0 ? height : undefined);
+        last.getBoundingClientRect().bottom -
+        viewport.getBoundingClientRect().top +
+        viewport.scrollTop +
+        padding;
+      setFocusMaxHeight(height > 0 ? Math.ceil(height) : undefined);
     };
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
-    observer.observe(list);
+    if (headerRef.current) observer.observe(headerRef.current);
+    if (listRef.current) observer.observe(listRef.current);
     for (const row of rows) observer.observe(row);
     return () => observer.disconnect();
-  }, [focus, summary, focusQuery.dataUpdatedAt, rowCount]);
+  }, [rowCount, summary, focusQuery.dataUpdatedAt]);
 
-  const cards: {
-    metric: WorkBoardMetric;
-    Icon: LucideIcon;
-    value?: number;
-    description: string;
-  }[] = [
-    {
-      metric: "all",
-      Icon: ListTodo,
-      value: summary?.workCount,
-      description: t("totalHint"),
-    },
-    {
-      metric: "running",
-      Icon: LoaderCircle,
-      value: summary?.runningCount,
-      description: t("runningHint"),
-    },
-    {
-      metric: "action",
-      Icon: ShieldQuestion,
-      value: summary?.waitingWorkCount,
-      description: t("attentionHint"),
-    },
-    {
-      metric: "ended",
-      Icon: CircleCheck,
-      value: summary?.endedCount,
-      description: t("endedHint"),
-    },
-  ];
+  const loading = pending || (paged && focusQuery.isPending);
   return (
-    <section aria-label={t("overview")} className="min-w-0">
-      <div className="grid grid-cols-1 gap-3 @[24rem]/resource-page:grid-cols-2 @[48rem]/resource-page:grid-cols-4">
-        {cards.map((item) => (
-          <OverviewCard
-            key={item.metric}
-            className="bg-surface-raised"
-            description={item.description}
-            label={t(
-              item.metric === "all"
-                ? "totalWork"
-                : item.metric === "running"
-                  ? "runningWork"
-                  : item.metric === "ended"
-                    ? "endedWork"
-                    : "attention",
-            )}
-            selected={selected === item.metric}
-            onClick={() => {
-              if (item.metric === "action" && selected === item.metric)
-                chooseFocus("attention");
-              if (selected !== item.metric) onSelect(item.metric);
-            }}
-            icon={
-              <item.Icon
-                className={
-                  item.metric === "action" &&
-                  (summary?.waitingWorkCount ?? 0) > 0
-                    ? "text-warning"
-                    : undefined
-                }
-                strokeWidth={1.5}
-                aria-hidden="true"
-              />
-            }
-            value={
-              typeof item.value !== "number" && pending ? (
-                <Skeleton className="h-control-md w-12" />
-              ) : typeof item.value !== "number" ? (
-                <span className="type-ui text-destructive">
-                  {t("loadFailed")}
-                </span>
-              ) : (
-                item.value
-              )
-            }
-          />
-        ))}
-      </div>
-      {error || summary?.complete === false ? (
-        <div
-          role="status"
-          className="text-content-secondary type-ui mt-4 flex items-center gap-2"
+    <section className="min-w-0">
+      <div
+        ref={viewportRef}
+        role="region"
+        aria-label={label}
+        aria-busy={pending || (paged && focusQuery.isFetching)}
+        tabIndex={rowCount >= focusVisibleRows ? 0 : undefined}
+        style={focusMaxHeight ? { maxHeight: focusMaxHeight } : undefined}
+        onScroll={(event) => {
+          const viewport = event.currentTarget;
+          const nextDeep = isBrowsingDeep();
+          if (nextDeep !== deep)
+            setDeepScope(nextDeep ? { openToken } : undefined);
+          if (
+            paged &&
+            focusQuery.hasNextPage &&
+            !focusQuery.isFetching &&
+            !focusQuery.isError &&
+            !focusIncomplete &&
+            viewport.scrollHeight -
+              viewport.scrollTop -
+              viewport.clientHeight <=
+              viewport.clientHeight
+          )
+            void focusQuery.fetchNextPage({ cancelRefetch: false });
+        }}
+        className="focus-visible:ring-ring max-h-work-board-focus-list min-h-work-board-focus-min bg-card flex min-w-0 flex-col gap-2 overflow-y-auto overscroll-y-auto rounded-md px-3 pb-2 outline-none focus-visible:ring-2 focus-visible:ring-inset"
+      >
+        <h3
+          ref={headerRef}
+          className="bg-card type-label sticky top-0 z-10 flex min-w-0 shrink-0 flex-wrap items-center gap-2 pt-2 pb-1 font-semibold"
         >
-          {error ?? t("attentionIncomplete")}
-          <Button size="sm" variant="ghost" onClick={onRetry}>
-            {t("retry")}
-          </Button>
-        </div>
-      ) : null}
-      <section className="mt-6 min-w-0" aria-label={t("focus")}>
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="type-title font-semibold">{t("focus")}</h2>
-          <div className="flex flex-wrap items-center gap-2">
-            {markViewed}
-            <SegmentedControl
+          {label}
+          {typeof count === "number" ? (
+            <span className="text-content-secondary type-ui tabular-nums">
+              {count}
+            </span>
+          ) : pending ? (
+            <Skeleton className="h-4 w-6" />
+          ) : null}
+        </h3>
+        {paged && (focusQuery.isError || focusIncomplete) ? (
+          <div
+            role="alert"
+            className="bg-surface-raised text-destructive type-body flex items-center justify-between gap-2 rounded-md px-3 py-2"
+          >
+            {focusIncomplete
+              ? t("attentionIncomplete")
+              : localApiErrorMessage(focusQuery.error, t("loadFailed"))}
+            <Button
               size="sm"
-              ariaLabel={t("focus")}
-              value={focus}
-              onValueChange={chooseFocus}
-              options={(["attention", "results"] as const).map((value) => ({
-                value,
-                label:
-                  counts[value] === undefined
-                    ? t(value)
-                    : `${t(value)} ${counts[value]}`,
-              }))}
-            />
+              variant="surface"
+              disabled={focusQuery.isFetching}
+              onClick={() => {
+                if (focusQuery.isFetchNextPageError)
+                  void focusQuery.fetchNextPage({ cancelRefetch: false });
+                else void refreshFocus().catch(() => {});
+              }}
+            >
+              {t("retry")}
+            </Button>
           </div>
-        </div>
-        <section
-          ref={viewportRef}
-          aria-label={t(focus)}
-          aria-busy={pending || (paged && focusQuery.isFetching)}
-          tabIndex={0}
-          style={focusMaxHeight ? { maxHeight: focusMaxHeight } : undefined}
-          onScroll={(event) => {
-            const viewport = event.currentTarget;
-            const nextDeep = isBrowsingDeep();
-            if (nextDeep !== deep)
-              setSelection(
-                nextDeep || selection?.explicit
-                  ? {
-                      mode,
-                      focus,
-                      openToken,
-                      explicit: Boolean(selection?.explicit),
-                      deep: nextDeep,
-                    }
-                  : undefined,
-              );
-            if (
-              focusQuery.hasNextPage &&
-              !focusQuery.isFetching &&
-              !focusQuery.isError &&
-              !focusIncomplete &&
-              viewport.scrollHeight -
-                viewport.scrollTop -
-                viewport.clientHeight <=
-                viewport.clientHeight
-            )
-              void focusQuery.fetchNextPage({ cancelRefetch: false });
-          }}
-          className="focus-visible:ring-ring max-h-work-board-focus-list grid min-w-0 content-start gap-2 overflow-y-auto overscroll-y-auto rounded-md outline-none focus-visible:ring-2 focus-visible:ring-inset"
-        >
-          {paged && (focusQuery.isError || focusIncomplete) ? (
-            <div
-              role="alert"
-              className="bg-surface-raised text-destructive type-body flex items-center justify-between gap-2 rounded-md px-3 py-2"
-            >
-              {focusIncomplete
-                ? t("attentionIncomplete")
-                : localApiErrorMessage(focusQuery.error, t("loadFailed"))}
-              <Button
-                size="sm"
-                variant="surface"
-                disabled={focusQuery.isFetching}
-                onClick={() => {
-                  if (focusQuery.isFetchNextPageError)
-                    void focusQuery.fetchNextPage({ cancelRefetch: false });
-                  else void refreshFocus().catch(() => {});
-                }}
-              >
-                {t("retry")}
-              </Button>
-            </div>
-          ) : null}
-          {rowCount ? (
-            <ul ref={listRef} className="grid min-w-0 gap-2">
-              {actionRows.map((entry) => (
-                <li key={entry.id}>
-                  <WorkAttentionRow entry={entry} />
-                </li>
-              ))}
-              {resultRows.map((entry) => (
-                <li key={`${entry.ownerKind}:${entry.ownerId}`}>
-                  <WorkEntryRow entry={entry} />
-                </li>
-              ))}
-            </ul>
-          ) : pending || (paged && focusQuery.isPending) ? (
-            <div
-              role="status"
-              aria-label={t("loadingRecords")}
-              className="bg-surface-raised grid min-h-44 content-center gap-3 rounded-md px-3 py-2"
-            >
-              <Skeleton className="h-4 w-3/4" />
-              <Skeleton className="h-4 w-1/2" />
-            </div>
-          ) : !focusIncomplete &&
-            summary?.complete &&
-            (!paged || counts[focus] === 0) ? (
-            <EmptyState
-              className="bg-surface-raised rounded-md"
-              density="compact"
-              icon={focus === "attention" ? ShieldCheck : CheckCheck}
-              title={t(
-                focus === "attention" ? "attentionEmpty" : "resultsEmpty",
-              )}
-              description={t(
-                focus === "attention"
-                  ? "attentionEmptyHint"
-                  : "resultsEmptyHint",
-              )}
-            />
-          ) : null}
-        </section>
-      </section>
+        ) : null}
+        {rowCount ? (
+          <ul ref={listRef} className="grid min-w-0 shrink-0 gap-2">
+            {actionRows.map((entry) => (
+              <li key={entry.id}>
+                <WorkAttentionRow entry={entry} />
+              </li>
+            ))}
+            {resultRows.map((entry) => (
+              <li key={`${entry.ownerKind}:${entry.ownerId}`}>
+                <WorkEntryRow entry={entry} />
+              </li>
+            ))}
+          </ul>
+        ) : loading ? (
+          <div
+            role="status"
+            aria-busy="true"
+            aria-label={t("loadingRecords")}
+            className="grid min-h-24 flex-1 content-center gap-3 px-3 py-2"
+          >
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-4 w-1/2" />
+          </div>
+        ) : !focusIncomplete && summary?.complete && (!paged || count === 0) ? (
+          <EmptyState
+            className="min-h-24 flex-1"
+            density="compact"
+            icon={isAction ? ShieldCheck : CheckCheck}
+            title={t(isAction ? "attentionEmpty" : "resultsEmpty")}
+            description={t(
+              isAction ? "attentionEmptyHint" : "resultsEmptyHint",
+            )}
+          />
+        ) : null}
+      </div>
     </section>
   );
 }

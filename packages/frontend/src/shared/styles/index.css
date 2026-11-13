@@ -199,6 +199,7 @@
   --container-chat-question: 33.75rem;
   --spacing-row-navigation: 2.75rem;
   --spacing-row-rich: 3.5rem;
+  --spacing-work-board-focus-min: calc(3 * var(--spacing-row-rich) + 4rem);
   --spacing-work-board-focus-list: calc(5 * var(--spacing-row-rich) + 3.5rem);
   /* 连接器内容区与技能卡片的 128px 基线一致，标签固定同行，说明保留两行。 */
   --spacing-connector-card-content: 8rem;
@@ -937,7 +938,7 @@ button:disabled {
 [data-chat-composer-input] {
   display: block;
   max-height: 10rem;
-  min-height: 2.5rem;
+  min-height: var(--composer-input-min-height, 2.5rem);
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;

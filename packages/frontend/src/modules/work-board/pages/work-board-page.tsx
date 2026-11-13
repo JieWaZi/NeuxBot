@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { FolderSearch, ListTodo } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { localApiErrorMessage } from "@/shared/api/local-error-surface";
 import { useVisibleScene } from "@/shared/api/chat-reading";
 import { useQueryEvents } from "@/shared/api/use-query-events";
@@ -22,9 +22,9 @@ import {
 import { Button } from "@/shared/ui/button";
 import { DateRangePicker } from "@/shared/ui/date-range-picker";
 import { EmptyState } from "@/shared/ui/empty-state";
+import type { PaginationProps } from "@/shared/ui/pagination";
 import { ResourceFilterSelect } from "@/shared/ui/resource-filter-select";
 import {
-  ResourcePageHeader,
   ResourcePageSearchField,
   ResourcePageSurface,
   ResourcePageToolbar,
@@ -35,13 +35,15 @@ import { ExecutorFilter } from "../components/executor-filter";
 import {
   WorkBoardOverview,
   WorkBoardTable,
-  type WorkBoardMetric,
 } from "../components/work-board-content";
+
+import { WorkBoardIntro } from "../components/work-board-intro";
 
 const requestStates: readonly string[] = ["approval", "input", "review"];
 
 export function WorkBoardPage() {
   const { t } = useTranslation("workBoard");
+  const { state: navigationState } = useLocation();
   const [params, setParams] = useSearchParams();
   const active = useVisibleScene();
   const mode: WorkBoardMode =
@@ -56,8 +58,9 @@ export function WorkBoardPage() {
   const text = params.get("query") ?? "";
   const [search, setSearch] = useState(text);
   const pageCursors = useRef(new Map<number, string>());
-  const records = useRef<HTMLElement>(null);
-  const requestedPage = Number(params.get("page") ?? 1);
+  // 旧交付视图的游标只适用于当时的结果范围。
+  const requestedPage =
+    params.get("view") === "deliveries" ? 1 : Number(params.get("page") ?? 1);
   const page =
     Number.isSafeInteger(requestedPage) && requestedPage > 0
       ? requestedPage
@@ -130,7 +133,7 @@ export function WorkBoardPage() {
         else next.delete("page");
         return next;
       },
-      { replace: true },
+      { replace: true, state: navigationState },
     );
   }, [
     active,
@@ -140,6 +143,7 @@ export function WorkBoardPage() {
     list.isFetching,
     list.isSuccess,
     mode,
+    navigationState,
     page,
     pageSize,
     setParams,
@@ -162,6 +166,7 @@ export function WorkBoardPage() {
     setParams(
       (old) => {
         const next = new URLSearchParams(old);
+        next.delete("view");
         next.delete("cursor");
         next.delete("page");
         for (const [key, value] of Object.entries(values)) {
@@ -170,7 +175,7 @@ export function WorkBoardPage() {
         }
         return next;
       },
-      { replace: true },
+      { replace: true, state: navigationState },
     );
   };
   const move = (target: number) => {
@@ -183,13 +188,14 @@ export function WorkBoardPage() {
     setParams(
       (old) => {
         const next = new URLSearchParams(old);
+        next.delete("view");
         if (target > 1) next.set("page", String(target));
         else next.delete("page");
         if (target > 1 && anchor) next.set("cursor", anchor);
         else next.delete("cursor");
         return next;
       },
-      { replace: true },
+      { replace: true, state: navigationState },
     );
   };
   const clearFilters = () => {
@@ -223,85 +229,98 @@ export function WorkBoardPage() {
   const invalidDates = mode === "all" && !dates.valid;
   const incomplete = list.data?.complete === false;
 
+  const pagination: PaginationProps | undefined =
+    typeof list.data?.totalSize === "number" &&
+    !invalidDates &&
+    !(incomplete && mode === "awaiting_view")
+      ? {
+          labels: {
+            navigation: t("pagination"),
+            next: t("next"),
+            previous: t("previous"),
+            page: (page) => t("page", { page }),
+            pageSize: (size) => t("pageSize", { size }),
+            pageSizeSelection: t("pageSizeSelection"),
+            total: (count) => t("totalCount", { count }),
+          },
+          page,
+          pageSize,
+          pageSizeOptions: [10, 20, 50],
+          onPageSizeChange: (size) => change({ pageSize: String(size) }),
+          totalItems: list.data?.totalSize ?? 0,
+          pending: list.isFetching,
+          onPageChange: move,
+        }
+      : undefined;
+  const empty = invalidDates ? (
+    <EmptyState
+      icon={FolderSearch}
+      title={t("invalidRange")}
+      description={t("invalidRangeHint")}
+      actions={
+        <Button
+          variant="secondary"
+          onClick={() => change({ from: "", to: "" })}
+        >
+          {t("clear")}
+        </Button>
+      }
+    />
+  ) : list.isPending && !list.data ? (
+    <div className="grid gap-3" role="status" aria-label={t("loadingRecords")}>
+      <Skeleton className="h-20 w-full rounded-xl" />
+      <Skeleton className="h-20 w-full rounded-xl" />
+      <Skeleton className="h-20 w-full rounded-xl" />
+    </div>
+  ) : list.isError && !list.data ? (
+    <EmptyState
+      title={t("loadFailed")}
+      description={localApiErrorMessage(list.error, t("loadFailed"))}
+      actions={
+        <Button variant="secondary" onClick={() => void list.refetch()}>
+          {t("retry")}
+        </Button>
+      }
+    />
+  ) : !count && !incomplete ? (
+    <EmptyState
+      icon={filtered ? FolderSearch : ListTodo}
+      title={t(
+        filtered
+          ? "noMatches"
+          : mode === "all"
+            ? "empty"
+            : mode === "action"
+              ? "attentionEmpty"
+              : "resultsEmpty",
+      )}
+      description={t(
+        filtered
+          ? "noMatchesHint"
+          : mode === "all"
+            ? "emptyHint"
+            : mode === "action"
+              ? "attentionEmptyHint"
+              : "resultsEmptyHint",
+      )}
+    />
+  ) : undefined;
+
   return (
     <ResourcePageSurface>
-      <ResourcePageHeader
-        title={t("title")}
-        description={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span>{t("description")}</span>
-            <span className="type-caption whitespace-nowrap">
-              {t("recent")}
-            </span>
-          </div>
-        }
-        actions={null}
-      />
+      <WorkBoardIntro active={active} />
       <WorkBoardOverview
         summary={summary.data}
         pending={summary.isPending}
         active={active}
-        mode={mode}
         error={
           summary.isError
             ? localApiErrorMessage(summary.error, t("loadFailed"))
             : undefined
         }
         onRetry={() => void summary.refetch()}
-        selected={
-          mode === "action"
-            ? "action"
-            : mode !== "all"
-              ? undefined
-              : states.length === 1 && states[0] === "running"
-                ? "running"
-                : states.length === 3 &&
-                    ["completed", "failed", "canceled"].every((state) =>
-                      states.includes(state),
-                    )
-                  ? "ended"
-                  : !states.length && !text
-                    ? "all"
-                    : undefined
-        }
-        onSelect={(metric: WorkBoardMetric) => {
-          setSearch("");
-          change({
-            mode: metric === "action" ? "action" : "all",
-            states:
-              metric === "running"
-                ? "running"
-                : metric === "ended"
-                  ? "completed,failed,canceled"
-                  : "",
-            query: "",
-          });
-          records.current?.scrollIntoView?.({
-            block: "start",
-            behavior: window.matchMedia("(prefers-reduced-motion: reduce)")
-              .matches
-              ? "auto"
-              : "smooth",
-          });
-        }}
-        markViewed={
-          <MarkViewedDialog
-            active={active}
-            visible={(summary.data?.awaitingViewWorkCount ?? 0) > 0}
-            filters={{
-              ...filters,
-              query: text,
-              states:
-                mode === "all" ? states.join(",") || undefined : undefined,
-            }}
-          />
-        }
       />
-      <section
-        ref={records}
-        className="mt-8 min-w-0 scroll-mt-4"
-        aria-label={t("records")}
-      >
+      <section className="mt-8 min-w-0 scroll-mt-4" aria-label={t("records")}>
         <ResourcePageToolbar
           filters={
             <>
@@ -408,11 +427,21 @@ export function WorkBoardPage() {
                 value={text}
                 onChange={(event) => change({ query: event.target.value })}
               />
+              <MarkViewedDialog
+                active={active}
+                visible={(summary.data?.awaitingViewWorkCount ?? 0) > 0}
+                filters={{
+                  ...filters,
+                  query: text,
+                  states:
+                    mode === "all" ? states.join(",") || undefined : undefined,
+                }}
+              />
             </>
           }
         >
           <div className="flex items-center gap-2">
-            <h2 className="type-title font-semibold">{t("records")}</h2>
+            <h2 className="type-title font-semibold">{t("allTasks")}</h2>
             {canClearFilters ? (
               <Button variant="ghost" size="sm" onClick={clearFilters}>
                 {t("clearFilters")}
@@ -420,7 +449,7 @@ export function WorkBoardPage() {
             ) : null}
           </div>
         </ResourcePageToolbar>
-        <div className="min-h-64 min-w-0 pt-6" aria-busy={list.isFetching}>
+        <div className="min-h-64 min-w-0 pt-3" aria-busy={list.isFetching}>
           {incomplete && !list.isError ? (
             <div
               role="status"
@@ -459,96 +488,8 @@ export function WorkBoardPage() {
                 : list.data?.resources
             }
             attention={list.data?.attention}
-            pagination={
-              typeof list.data?.totalSize === "number" &&
-              !invalidDates &&
-              !(incomplete && mode === "awaiting_view")
-                ? {
-                    labels: {
-                      navigation: t("pagination"),
-                      next: t("next"),
-                      previous: t("previous"),
-                      page: (page) => t("page", { page }),
-                      pageSize: (size) => t("pageSize", { size }),
-                      pageSizeSelection: t("pageSizeSelection"),
-                      total: (count) => t("totalCount", { count }),
-                    },
-                    page,
-                    pageSize,
-                    pageSizeOptions: [10, 20, 50],
-                    onPageSizeChange: (size) =>
-                      change({ pageSize: String(size) }),
-                    totalItems: list.data?.totalSize ?? 0,
-                    pending: list.isFetching,
-                    onPageChange: move,
-                  }
-                : undefined
-            }
-            empty={
-              invalidDates ? (
-                <EmptyState
-                  icon={FolderSearch}
-                  title={t("invalidRange")}
-                  description={t("invalidRangeHint")}
-                  actions={
-                    <Button
-                      variant="secondary"
-                      onClick={() => change({ from: "", to: "" })}
-                    >
-                      {t("clear")}
-                    </Button>
-                  }
-                />
-              ) : list.isPending && !list.data ? (
-                <div
-                  className="grid gap-3"
-                  role="status"
-                  aria-label={t("loadingRecords")}
-                >
-                  <Skeleton className="h-20 w-full rounded-xl" />
-                  <Skeleton className="h-20 w-full rounded-xl" />
-                  <Skeleton className="h-20 w-full rounded-xl" />
-                </div>
-              ) : list.isError && !list.data ? (
-                <EmptyState
-                  title={t("loadFailed")}
-                  description={localApiErrorMessage(
-                    list.error,
-                    t("loadFailed"),
-                  )}
-                  actions={
-                    <Button
-                      variant="secondary"
-                      onClick={() => void list.refetch()}
-                    >
-                      {t("retry")}
-                    </Button>
-                  }
-                />
-              ) : !count && !incomplete ? (
-                <EmptyState
-                  icon={filtered ? FolderSearch : ListTodo}
-                  title={t(
-                    filtered
-                      ? "noMatches"
-                      : mode === "all"
-                        ? "empty"
-                        : mode === "action"
-                          ? "attentionEmpty"
-                          : "resultsEmpty",
-                  )}
-                  description={t(
-                    filtered
-                      ? "noMatchesHint"
-                      : mode === "all"
-                        ? "emptyHint"
-                        : mode === "action"
-                          ? "attentionEmptyHint"
-                          : "resultsEmptyHint",
-                  )}
-                />
-              ) : undefined
-            }
+            pagination={pagination}
+            empty={empty}
           />
         </div>
       </section>

@@ -1,6 +1,14 @@
 export const workBoardZh = {
+  startChat: "和<partner>伙伴</partner>一起创造",
+  choosePartner: "选择伙伴",
+  noPartners: "暂无可选伙伴",
+  loadingPartners: "正在读取伙伴",
+  currentWork: "当前任务",
+  needsAction: "需要处理",
+  allTasks: "全部任务",
   markAllViewed: "全部标为已查看",
-  markAllViewedConfirm: "标记当前筛选范围内的 {{count}} 项工作为已查看。",
+  markAllViewedConfirm:
+    "将 {{count}} 项待查看工作标为已查看。范围按来源、执行者、标题和状态筛选，覆盖所有日期。",
   markViewedProgress:
     "已标记 {{applied}} 项，跳过状态变化 {{conflict}} 项和已删除 {{deleted}} 项，剩余 {{remaining}} 项。",
   viewTargetsFailed: "无法准备待查看项目",
@@ -75,7 +83,7 @@ export const workBoardZh = {
   allExecutors: "全部执行者",
   source: "来源",
   executor: "执行者",
-  titleColumn: "工作",
+  titleColumn: "任务",
   state: "当前状态",
   time: "最近活动",
   resultTime: "结果时间",
@@ -86,7 +94,7 @@ export const workBoardZh = {
   handle: "去处理",
   markingViewed: "正在标记…",
   markViewedFailed: "未能标记当前批次，请重试。",
-  search: "搜索工作标题",
+  search: "搜索任务标题",
   executorSearch: "搜索执行者名称",
   empty: "还没有近期工作记录",
   emptyHint: "已有对话、团队工作和工作流运行会显示在这里。",
@@ -130,8 +138,16 @@ export const workBoardZh = {
 };
 
 export const workBoardEn: Record<keyof typeof workBoardZh, string> = {
+  startChat: "Create with a <partner>partner</partner>",
+  choosePartner: "Choose a partner",
+  noPartners: "No partners available",
+  loadingPartners: "Loading partners",
+  currentWork: "Current tasks",
+  needsAction: "Needs action",
+  allTasks: "All tasks",
   markAllViewed: "Mark all as viewed",
-  markAllViewedConfirm: "Mark {{count}} items in the current filter as viewed.",
+  markAllViewedConfirm:
+    "Mark {{count}} items as viewed across all dates, using the source, executor, title, and state filters.",
   markViewedProgress:
     "Marked {{applied}}, skipped {{conflict}} changed and {{deleted}} deleted, {{remaining}} remaining.",
   viewTargetsFailed: "Could not prepare items to mark viewed",
@@ -208,7 +224,7 @@ export const workBoardEn: Record<keyof typeof workBoardZh, string> = {
   allExecutors: "All executors",
   source: "Source",
   executor: "Executor",
-  titleColumn: "Work",
+  titleColumn: "Task",
   state: "Current state",
   time: "Recent activity",
   resultTime: "Result time",
@@ -219,7 +235,7 @@ export const workBoardEn: Record<keyof typeof workBoardZh, string> = {
   handle: "Handle",
   markingViewed: "Marking…",
   markViewedFailed: "Could not mark this batch as viewed. Try again.",
-  search: "Search work titles",
+  search: "Search task titles",
   executorSearch: "Search executor names",
   empty: "No work yet",
   emptyHint: "Existing conversations, team work and workflow runs appear here.",

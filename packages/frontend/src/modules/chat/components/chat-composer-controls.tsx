@@ -41,6 +41,9 @@ export type ChatExecutionSelectionPatch = Partial<{
 }>;
 
 type ChatComposerControlsProps = {
+  loadAccounts?: boolean;
+  onModelPickerOpenChange?: (open: boolean) => void;
+  preservePermissionOnModelChange?: boolean;
   workspaceReadOnly?: boolean;
   selectedAccountId?: string;
   activeChatId?: string;
@@ -86,6 +89,9 @@ const stripControlClassName = composerContextControlClassName;
 
 /** 普通与 Team composer 共用工作区、权限、Runtime、模型和推理控件。 */
 export function useChatComposerControls({
+  loadAccounts = true,
+  onModelPickerOpenChange,
+  preservePermissionOnModelChange = true,
   workspaceReadOnly = false,
   selectedAccountId,
   activeChatId,
@@ -128,7 +134,7 @@ export function useChatComposerControls({
   const { t } = useTranslation(["chat", "common", "waker"]);
   const accountsQuery = useQuery({
     ...listAiAccountsOptions(),
-    enabled: selectedAccountId !== undefined,
+    enabled: loadAccounts && selectedAccountId !== undefined,
   });
   const accounts = accountsQuery.data?.resources ?? [];
   const selectedAccount = accounts.find(
@@ -216,6 +222,7 @@ export function useChatComposerControls({
   const composerSettings = (
     <>
       <ExecutionPicker
+        onOpenChange={onModelPickerOpenChange}
         runtimes={runtimes}
         accounts={accounts}
         runtime={selectedRuntime}
@@ -267,7 +274,9 @@ export function useChatComposerControls({
             runtimeId: runtime.id ?? "",
             accountId,
             model: model.id ?? "",
-            permissionLevel: selectedPermissionLevel,
+            ...(preservePermissionOnModelChange
+              ? { permissionLevel: selectedPermissionLevel }
+              : {}),
             reasoning,
             fast: null,
             ...(enableContextWindow ? { contextWindow: "" } : {}),

@@ -204,6 +204,7 @@ type ChatThreadProps = {
   isHistoryLoading?: boolean;
   historyError?: { message: string; onRetry: () => void; error?: unknown };
   composerSettings?: ReactNode;
+  composerInputSize?: "default" | "tall";
   composerActions?: ReactNode;
   composerEffects?: ReactNode;
   composerReferences?: ChatComposerContextReference[];
@@ -1813,6 +1814,7 @@ export function ChatMessageColumn({ children }: { children: ReactNode }) {
 const Composer = memo(function Composer({
   autoFocus,
   disabled = false,
+  inputSize = "default",
   activityStatus,
   settings,
   actions,
@@ -1861,6 +1863,7 @@ const Composer = memo(function Composer({
 }: {
   autoFocus?: boolean;
   disabled?: boolean;
+  inputSize?: ChatThreadProps["composerInputSize"];
   activityStatus?: ReactNode;
   settings?: ReactNode;
   actions?: ReactNode;
@@ -2052,7 +2055,14 @@ const Composer = memo(function Composer({
           ) : null}
           {/* 审批期间保留输入草稿和发送恢复状态。 */}
           <div hidden={Boolean(currentApproval)}>
-            <ComposerInputBody data-chat-composer-input-body>
+            <ComposerInputBody
+              data-chat-composer-input-body
+              className={
+                inputSize === "tall"
+                  ? "min-h-24 [--composer-input-min-height:4.5rem]"
+                  : undefined
+              }
+            >
               <ChatComposerInput
                 contextReferences={contextReferences}
                 onContextReferencesChange={onContextReferencesChange}
@@ -2244,6 +2254,7 @@ function ChatThreadContent({
   isHistoryLoading = false,
   historyError,
   composerSettings,
+  composerInputSize,
   composerActions,
   composerEffects,
   composerReferences,
@@ -2614,6 +2625,7 @@ function ChatThreadContent({
                   <Composer
                     autoFocus={composerAutoFocus}
                     disabled={composerDisabled}
+                    inputSize={composerInputSize}
                     activityStatus={activityStatus}
                     settings={composerSettings}
                     actions={composerActions}

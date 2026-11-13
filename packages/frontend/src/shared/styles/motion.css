@@ -222,6 +222,46 @@
   }
 }
 
+/* 静态构图用于减少动态效果和物理模块未加载时。 */
+.work-board-avatar-light {
+  background: radial-gradient(
+    ellipse at 50% 83%,
+    color-mix(in oklab, var(--accent-default) 15%, transparent),
+    transparent 67%
+  );
+}
+
+.work-board-avatar-piece {
+  --pile-radius: calc(var(--pile-size) * 0.36);
+  width: var(--pile-size);
+  height: var(--pile-size);
+  bottom: calc(12px + var(--pile-radius) + var(--pile-lift));
+  left: clamp(
+    var(--pile-radius),
+    var(--pile-rest-x),
+    calc(100% - var(--pile-radius))
+  );
+  translate: -50% 50%;
+  rotate: var(--pile-rest-angle);
+  line-height: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .work-board-avatar-piece[data-falling] {
+    bottom: var(--pile-live-y);
+    left: var(--pile-live-x);
+    rotate: var(--pile-live-angle);
+  }
+}
+
+.work-board-avatar-piece > span {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(
+    0 0.2rem 0.3rem color-mix(in oklab, var(--foreground) 16%, transparent)
+  );
+}
+
 @keyframes running-shimmer {
   to {
     transform: translateX(110%);
