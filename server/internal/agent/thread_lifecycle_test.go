@@ -1584,9 +1584,10 @@ func fixtureCursorFrame(out *json.Encoder, frame map[string]any, session string,
 					"locations": []any{map[string]any{"path": "/fixture/terminal", "line": 7}}})
 				deltas := []string{"first ", "second"}
 				if strings.Contains(string(body), "long-independent-terminal-output") {
-					deltas = make([]string, 40)
+					// Keep the full payload while limiting durable writes before the ACP delivery deadline.
+					deltas = make([]string, 8)
 					for i := range deltas {
-						deltas[i] = strings.Repeat("terminal-line\n", 100)
+						deltas[i] = strings.Repeat("terminal-line\n", 500)
 					}
 				}
 				largeFrame := strings.Contains(string(body), "large-frame-independent-terminal-output")

@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"encoding/base64"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -99,8 +100,16 @@ func TestOpenChatScopeEndpointsKeepPrivateFilesSeparateAndReadActualProjects(t *
 	if _, err = (&DeleteChatFile{ScopeID: scopes[0].ID, Root: cwd, RelativePath: "attachments/input.txt"}).Output(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = (&ReadFile{ScopeID: scopes[1].ID, Root: cwd, RelativePath: "attachments/input.txt"}).Output(ctx); err != nil {
-		t.Fatal("other Chat attachment removed", err)
+	if _, err = (&ReadFile{ScopeID: scopes[0].ID, RelativePath: "attachments/input.txt"}).Output(ctx); !errors.Is(err, status_error.WorkspaceResourceNotFound) {
+		t.Fatalf("deleted Chat attachment remains readable: %v", err)
+	}
+	value, err := (&ReadFile{ScopeID: scopes[1].ID, RelativePath: "attachments/input.txt"}).Output(ctx)
+	if err != nil {
+		t.Fatal("other Chat attachment unavailable", err)
+	}
+	content, err := base64.StdEncoding.DecodeString(value.(ReadResponse).BytesBase64)
+	if err != nil || string(content) != "second" {
+		t.Fatalf("other Chat attachment content: %q %v", content, err)
 	}
 	second, _ := layout.ChatRoot("second")
 	if _, _, err = files.Read("desktop", scopes[0].ID, filepath.Join(second, "attachments"), "input.txt"); err != status_error.WorkspacePathInvalid {
