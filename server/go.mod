@@ -23,6 +23,7 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/shrewx/ginx v1.2.7-0.20260801090805-290a56f47cbc
 	github.com/spf13/cobra v1.10.2
+	github.com/tiktoken-go/tokenizer v0.7.0
 	golang.org/x/mod v0.35.0
 	golang.org/x/sys v0.44.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -30,6 +31,7 @@ require (
 )
 
 require (
+	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/go-courier/codegen v1.1.2 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect

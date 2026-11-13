@@ -853,19 +853,28 @@ const (
 const ReadingExecutionInterrupted StatusError = http.StatusServiceUnavailable*1e8 + 9202
 
 const (
-	// @errZH 当前伙伴建档草稿已失效，请重新提交草稿
-	// @errEN the partner profile draft is stale; propose the draft again
-	WakerProfileDraftStale StatusError = http.StatusConflict*1e8 + 9100
-	// @errZH 用户尚未确认保存此版本的伙伴档案
-	// @errEN the user has not confirmed saving this partner profile draft
-	WakerProfileConfirmationRequired StatusError = http.StatusConflict*1e8 + 9101
-	// @errZH 当前伙伴建档草稿仍在等待用户决定
-	// @errEN the current partner profile draft is still awaiting the user's decision
-	WakerProfileConfirmationPending StatusError = http.StatusConflict*1e8 + 9102
+	// @errZH 伙伴建档状态已变化，请继续设置
+	// @errEN partner onboarding changed; continue setup
+	WakerOnboardingStateChanged StatusError = http.StatusConflict*1e8 + 9100
+	// @errZH 伙伴档案还未保存，请继续设置
+	// @errEN the partner profile has not been saved; continue setup
+	WakerOnboardingIncomplete StatusError = http.StatusConflict*1e8 + 9101
+	// @errZH 建档问答正在等待回复或已经回答
+	// @errEN the onboarding interview is pending or already answered
+	WakerOnboardingInterviewPending StatusError = http.StatusConflict*1e8 + 9102
 	// @errZH 当前伙伴尚无可恢复的建档对话
 	// @errEN this partner has no onboarding chat to resume
 	WakerOnboardingUnavailable StatusError = http.StatusConflict*1e8 + 9103
 	// @errZH 伙伴尚未完成互动问答。请继续设置，在问答卡片中填写答案。
 	// @errEN the partner has not completed the interactive interview; continue setup and answer in the question card
 	WakerOnboardingInterviewRequired StatusError = http.StatusConflict*1e8 + 9104
+	// @errZH 伙伴档案超过长度上限，请精简到 {{.MaxTokens}} token 以内
+	// @errEN partner profile is too long; shorten it to {{.MaxTokens}} tokens or fewer
+	WakerProfileTooLong StatusError = http.StatusRequestEntityTooLarge*1e8 + 9100
+	// @errZH 伙伴档案已更新，请读取最新档案后再保存
+	// @errEN the partner profile changed; read the latest profile before saving again
+	WakerProfileChanged StatusError = http.StatusConflict*1e8 + 9105
+	// @errZH 暂时无法计算伙伴档案的 token 数
+	// @errEN the partner profile token count could not be calculated
+	WakerProfileTokenizationFailed StatusError = http.StatusInternalServerError*1e8 + 9100
 )

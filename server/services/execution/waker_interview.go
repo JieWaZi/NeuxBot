@@ -13,11 +13,11 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
-// wakerInterviewRequest 是伙伴根据概要生成的单选问题与备选项。
+// wakerInterviewRequest 是伙伴根据概要生成的问题与备选项。
 type wakerInterviewRequest struct {
 	// Message 是卡片引导语。
 	Message string `json:"message"`
-	// Questions 是用户需要回答的两到三个单选题。
+	// Questions 是用户需要回答的两到三个多选题。
 	Questions []wakerInterviewQuestion `json:"questions"`
 }
 
@@ -67,7 +67,7 @@ func (m *service) wakerInterviewBinding(chat models.Chat, executionID string) ca
 		}
 		if interview := waker.OnboardingInterview; interview != nil && interview.ID != id {
 			if acceptedWakerInterview(answer) || interview.ExecutionID == executionID && answer["status"] == "pending" {
-				return capability.Result{}, status_error.WakerProfileConfirmationPending
+				return capability.Result{}, status_error.WakerOnboardingInterviewPending
 			}
 		}
 		// 先登记位置，只有原日志确认有效回答后才允许提交档案草稿。
@@ -76,8 +76,8 @@ func (m *service) wakerInterviewBinding(chat models.Chat, executionID string) ca
 		}); err != nil {
 			return capability.Result{}, err
 		}
-		answer, replayed, err := m.elicitations.createQuestionWithLimit(ctx, chat.ID, executionID, id,
-			capability.Request{RequestID: request.RequestID, Params: params}, 4096, validateWakerInterviewForm)
+		answer, replayed, err := m.elicitations.createQuestionWithValidation(ctx, chat.ID, executionID, id,
+			capability.Request{RequestID: request.RequestID, Params: params}, validateWakerInterviewForm)
 		return wakerInterviewResult(id, answer, replayed), err
 	}, Receipt: func(_ context.Context, requestID string) (capability.Result, error) {
 		id := questionID(requestID)
@@ -114,10 +114,12 @@ func wakerInterviewForm(input wakerInterviewRequest) (map[string]any, error) {
 			labels[label], values[option.ID] = true, true
 			options = append(options, map[string]any{"const": option.ID, "title": label, "description": option.Description})
 		}
-		fields[question.ID] = map[string]any{"type": "string", "title": title, "oneOf": options}
+		fields[question.ID] = map[string]any{
+			"type": "array", "title": title, "minItems": 1, "maxItems": len(options),
+			"uniqueItems": true, "items": map[string]any{"type": "string", "anyOf": options},
+		}
 		fields[otherID] = map[string]any{"type": "string", "minLength": 1, "maxLength": 1000, "pattern": `\S`}
-		// 只有标准选项和 Other 其中一项存在时，对应 oneOf 才成立。
-		requiredAnswers = append(requiredAnswers, map[string]any{"oneOf": []map[string]any{
+		requiredAnswers = append(requiredAnswers, map[string]any{"anyOf": []map[string]any{
 			{"required": []string{question.ID}}, {"required": []string{otherID}},
 		}})
 	}
@@ -153,19 +155,11 @@ func (m *service) onboardingInterviewAnswer(waker models.Waker) (map[string]any,
 
 func acceptedWakerInterview(answer map[string]any) bool {
 	content, _ := answer["content"].(map[string]any)
-	if answer["status"] != string(constants.ElicitationResultAccepted) || len(content) < 2 || len(content) > 3 {
-		return false
-	}
-	for _, value := range content {
-		text, ok := value.(string)
-		if !ok || strings.TrimSpace(text) == "" {
-			return false
-		}
-	}
-	return true
+	// 提交时已按原请求冻结的 Schema 校验，接受旧单选和新多选结果。
+	return answer["status"] == string(constants.ElicitationResultAccepted) && len(content) > 0
 }
 
-func (m *service) checkWakerOnboardingInterview(ctx context.Context, chat models.Chat) error {
+func (m *service) checkWakerOnboardingProgress(ctx context.Context, chat models.Chat, finished bool) error {
 	waker, err := m.wakerController.Get(ctx, chat.WakerID)
 	if err != nil || waker.OnboardingStatus != constants.WakerOnboardingStatusPending {
 		return err
@@ -176,6 +170,9 @@ func (m *service) checkWakerOnboardingInterview(ctx context.Context, chat models
 	}
 	if !acceptedWakerInterview(answer) {
 		return status_error.WakerOnboardingInterviewRequired
+	}
+	if finished {
+		return status_error.WakerOnboardingIncomplete
 	}
 	return nil
 }

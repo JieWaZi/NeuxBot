@@ -62,13 +62,10 @@ func startWakerOnboarding(ctx *gin.Context, waker models.Waker, retry bool) Wake
 			if !retry || waker.OnboardingStatus != constants.WakerOnboardingStatusPending {
 				return response
 			}
-			retryAfter, err = failedWakerOnboardingKickoff(ctx, chat)
-			if err != nil {
-				return failure(err)
-			}
-			if retryAfter == "" {
+			if chat.ActiveExecutionID != "" || chat.LastEndedExecutionID == "" {
 				return response
 			}
+			retryAfter = chat.LastEndedExecutionID
 		case err == nil:
 			return failure(status_error.AgentContextUnauthorized)
 		case !util.HasStatusCode(err, status_error.ChatNotFound):
@@ -101,7 +98,7 @@ func startWakerOnboarding(ctx *gin.Context, waker models.Waker, retry bool) Wake
 	intent := execution.WorkIntent{
 		ClientRequestID: waker.ID,
 		Chat:            execution.ChatTarget{Create: &execution.CreateChatSpec{WakerID: waker.ID}},
-		Input:           execution.WorkInput{Actor: constants.WakerOnboardingActor, Content: "Begin my partner setup with an interactive choice card. Start in " + language + ", unless my overview clearly indicates another language."},
+		Input:           execution.WorkInput{Actor: constants.WakerOnboardingActor, Content: "Set up my partner profile. Use any previously accepted interview answers supplied by Core, or begin with an interactive choice card. Start in " + language + ", unless my overview clearly indicates another language."},
 		Options:         options,
 		Admission:       constants.ExecutionAdmissionCommitBeforeDispatch,
 	}
@@ -115,46 +112,13 @@ func startWakerOnboarding(ctx *gin.Context, waker models.Waker, retry bool) Wake
 	accepted, err := global.ExecutionService.Start(ctx, intent)
 	if err != nil {
 		// 原对话已被并发重试或用户续聊接管。
-		if retryAfter != "" && (util.HasStatusCode(err, status_error.ChatHasActiveExecution) || util.HasStatusCode(err, status_error.WakerProfileDraftStale)) {
+		if retryAfter != "" && (util.HasStatusCode(err, status_error.ChatHasActiveExecution) || util.HasStatusCode(err, status_error.WakerOnboardingStateChanged)) {
 			return response
 		}
 		return failure(err)
 	}
 	response.ChatID = accepted.Chat.ID
 	return response
-}
-
-func failedWakerOnboardingKickoff(ctx *gin.Context, chat models.Chat) (string, error) {
-	if chat.ActiveExecutionID != "" || chat.LastEndedExecutionID == "" ||
-		(chat.LastEndedExecutionStatus != constants.ExecutionStatusFailed && chat.LastEndedExecutionStatus != constants.ExecutionStatusCanceled) {
-		return "", nil
-	}
-	messages, err := global.ChatService.ReadExecutionMessages(ctx, chat.ID, chat.LastEndedExecutionID)
-	if err != nil {
-		return "", err
-	}
-	var internal bool
-	for _, message := range messages {
-		internal = internal || message.Actor == constants.WakerOnboardingActor
-		if message.Role != constants.MessageRoleAssistant {
-			continue
-		}
-		if message.ErrorCode == status_error.WakerOnboardingInterviewRequired.Key() {
-			continue
-		}
-		if strings.TrimSpace(message.Content) != "" {
-			return "", nil
-		}
-		for _, part := range message.DisplayParts {
-			if part.Type == constants.MessageDisplayPartText && strings.TrimSpace(part.Text) != "" {
-				return "", nil
-			}
-		}
-	}
-	if internal {
-		return chat.LastEndedExecutionID, nil
-	}
-	return "", nil
 }
 
 func onboardingEnvironment(ctx *gin.Context, binding *models.WakerDefaultModel) (models.RuntimeEnvironment, error) {

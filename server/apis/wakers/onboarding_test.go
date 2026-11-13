@@ -11,7 +11,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
-	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/profile"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -51,8 +50,6 @@ type onboardingChatStub struct {
 	chatservice.Module
 	// chat 是已经持久的建档对话。
 	chat models.Chat
-	// messages 是最近已结束回合中的输入与输出。
-	messages []messageview.Message
 }
 
 func (s *onboardingChatStub) LoadExecutionChat(_ context.Context, id string) (models.Chat, error) {
@@ -60,10 +57,6 @@ func (s *onboardingChatStub) LoadExecutionChat(_ context.Context, id string) (mo
 		return models.Chat{}, status_error.ChatNotFound
 	}
 	return s.chat, nil
-}
-
-func (s *onboardingChatStub) ReadExecutionMessages(_ context.Context, _, _ string) ([]messageview.Message, error) {
-	return s.messages, nil
 }
 
 func TestCreateWakerOnboardingReplaysAndRecoversInitialFailure(t *testing.T) {
@@ -122,7 +115,7 @@ func TestCreateWakerOnboardingReplaysAndRecoversInitialFailure(t *testing.T) {
 	}
 	for _, kind := range []constants.ProfileDocumentKind{constants.ProfileDocumentKindAgents, constants.ProfileDocumentKindIdentity} {
 		manual := &UpdateWakerDocument{WakerID: waker.ID, Kind: kind, Body: UpdateWakerDocumentRequest{Content: "unconfirmed"}}
-		if _, err := manual.Output(ctx); !errors.Is(err, status_error.WakerProfileConfirmationRequired) {
+		if _, err := manual.Output(ctx); !errors.Is(err, status_error.WakerOnboardingIncomplete) {
 			t.Fatalf("pending %s write = %v", kind, err)
 		}
 	}
@@ -142,12 +135,8 @@ func TestCreateWakerOnboardingReplaysAndRecoversInitialFailure(t *testing.T) {
 		t.Fatalf("kickoff dropped the explicit model selection: %+v", stub.starts[0].Options)
 	}
 	chats.chat.ActiveExecutionID = ""
-	chats.chat.LastEndedExecutionID = "failed-execution"
-	chats.chat.LastEndedExecutionStatus = constants.ExecutionStatusFailed
-	chats.messages = []messageview.Message{
-		{Role: constants.MessageRoleUser, Actor: constants.WakerOnboardingActor},
-		{Role: constants.MessageRoleAssistant, ErrorCode: status_error.WakerOnboardingInterviewRequired.Key(), Content: "The provider produced prose instead of opening the card"},
-	}
+	chats.chat.LastEndedExecutionID = "ended-execution"
+	chats.chat.LastEndedExecutionStatus = constants.ExecutionStatusCompleted
 	replay, err = first.Output(ctx)
 	if err != nil || len(stub.starts) != 2 || parseOnboardingResponse(t, replay).ChatID != replayResult.ChatID {
 		t.Fatalf("create replay unexpectedly retried an accepted chat: %+v, %v", replay, err)
@@ -173,7 +162,7 @@ func TestCreateWakerOnboardingReplaysAndRecoversInitialFailure(t *testing.T) {
 		t.Fatalf("explicit retry did not resume the same accepted chat: %+v, %v", retried, err)
 	}
 	retry := stub.starts[2]
-	if retry.Chat.Create != nil || retry.Chat.ChatID != replayResult.ChatID || retry.Options.ParentExecutionID != "failed-execution" || retry.Input.SubmissionID == "" ||
+	if retry.Chat.Create != nil || retry.Chat.ChatID != replayResult.ChatID || retry.Options.ParentExecutionID != "ended-execution" || retry.Input.SubmissionID == "" ||
 		retry.Options.Model != "" || retry.Options.ConfigurationResolved {
 		t.Fatalf("retry must keep the accepted chat and use the corrected defaults: %+v", retry)
 	}

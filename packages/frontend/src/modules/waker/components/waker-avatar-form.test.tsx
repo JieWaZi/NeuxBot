@@ -17,7 +17,7 @@ vi.mock("../api/waker-queries", () => ({
 vi.mock("@/shared/ui/avatar", () => ({ Avatar: () => null }));
 
 const savedAvatar = "bloub:plush:nuage:curieux:38bdf8";
-function openForm(avatar = savedAvatar) {
+function openForm(avatar = savedAvatar, roleName = "设计师") {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false } },
   });
@@ -32,7 +32,7 @@ function openForm(avatar = savedAvatar) {
           waker={{
             id: "alice",
             name: "Alice",
-            roleName: "设计师",
+            roleName,
             avatar,
           }}
         />
@@ -43,6 +43,19 @@ function openForm(avatar = savedAvatar) {
 }
 
 beforeEach(() => save.mockClear());
+
+it("角色名称为空时也能补填角色和简介", async () => {
+  openForm(savedAvatar, "");
+  const user = userEvent.setup();
+  await user.type(screen.getByLabelText("角色名称"), "文档评审员");
+  await user.type(screen.getByLabelText("概要"), "复核草稿与来源。");
+  await user.click(screen.getByRole("button", { name: "保存修改" }));
+  await waitFor(() => expect(save).toHaveBeenCalledOnce());
+  expect(save.mock.calls[0]?.[0]).toMatchObject({
+    body: { roleName: "文档评审员", bio: "复核草稿与来源。" },
+  });
+  expect(save.mock.calls[0]?.[0]).not.toHaveProperty("body.manual");
+});
 
 describe("头像编辑保存", () => {
   it.each([savedAvatar, "companion:0123456789abcdef0123456789abcdef"])(

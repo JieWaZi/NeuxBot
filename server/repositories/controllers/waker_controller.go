@@ -39,10 +39,8 @@ type WakerController interface {
 	) error
 	// SetOnboardingInterview 记录未完成伙伴的结构化建档问答位置。
 	SetOnboardingInterview(ctx context.Context, wakerID, chatID string, interview models.WakerOnboardingInterview) error
-	// SetOnboardingDraft 绑定待建档伙伴的最新未发布草稿。
-	SetOnboardingDraft(ctx context.Context, wakerID, chatID string, draft models.WakerOnboardingDraft) error
-	// CompleteOnboarding 发布展示字段并清理未发布草稿。
-	CompleteOnboarding(ctx context.Context, wakerID, chatID string, projection profile.Projection, updatedAt int64) error
+	// CompleteOnboarding 保存展示字段并完成建档。
+	CompleteOnboarding(ctx context.Context, wakerID, chatID string, overview models.Waker) error
 	// Delete 删除伙伴。
 	Delete(ctx context.Context, id string) error
 }
@@ -247,34 +245,20 @@ func (c *wakerController) SetOnboardingInterview(ctx context.Context, wakerID, c
 	return nil
 }
 
-// SetOnboardingDraft 绑定待建档伙伴的最新未发布草稿。
-func (c *wakerController) SetOnboardingDraft(ctx context.Context, wakerID, chatID string, draft models.WakerOnboardingDraft) error {
+// CompleteOnboarding 保存展示字段并完成建档。
+func (c *wakerController) CompleteOnboarding(ctx context.Context, wakerID, chatID string, overview models.Waker) error {
+	overview.OnboardingStatus = constants.WakerOnboardingStatusReady
+	overview.OnboardingInterview = nil
 	result := controllerDB(ctx, c.db).Model(&models.Waker{}).
 		Where("id = ? AND onboarding_chat_id = ? AND onboarding_status = ?", wakerID, chatID, constants.WakerOnboardingStatusPending).
-		Select("onboarding_draft").UpdateColumns(&models.Waker{OnboardingDraft: &draft})
-	if result.Error != nil {
-		return databaseError("set_waker_onboarding_draft", "waker_id="+wakerID, result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return status_error.WakerProfileDraftStale
-	}
-	return nil
-}
-
-// CompleteOnboarding 发布展示字段并清理未发布草稿。
-func (c *wakerController) CompleteOnboarding(ctx context.Context, wakerID, chatID string, projection profile.Projection, updatedAt int64) error {
-	result := controllerDB(ctx, c.db).Model(&models.Waker{}).
-		Where("id = ? AND onboarding_chat_id = ? AND onboarding_status = ?", wakerID, chatID, constants.WakerOnboardingStatusPending).
-		Select("onboarding_status", "onboarding_interview", "onboarding_draft", "expertise", "work_style", "work_methods", "updated_at").
-		Updates(&models.Waker{
-			OnboardingStatus: constants.WakerOnboardingStatusReady,
-			Expertise:        projection.Expertise, WorkStyle: projection.WorkStyle, WorkMethods: projection.WorkMethods, UpdatedAt: updatedAt,
-		})
+		Select("onboarding_status", "onboarding_interview", "role_name", "bio", "expertise", "work_style", "work_methods", "updated_at").
+		Updates(&overview)
 	if result.Error != nil {
 		return databaseError("complete_waker_onboarding", "waker_id="+wakerID, result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return status_error.WakerProfileDraftStale
+		return status_error.WakerOnboardingStateChanged
 	}
+	publishCommittedChange(ctx, c.db, "entities", eventsResource("waker", wakerID))
 	return nil
 }

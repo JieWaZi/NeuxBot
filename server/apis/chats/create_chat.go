@@ -7,6 +7,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
@@ -22,6 +23,8 @@ type CreateChatRequest struct {
 	ProjectID string `json:"projectId" validate:"max=32"`
 	// 工作目录
 	WorkingDirectory string `json:"workingDirectory" validate:"max=4096"`
+	// 档案优化首发
+	OptimizeProfile bool `json:"optimizeProfile,omitempty"`
 	// 首条消息
 	MessageRequest
 }
@@ -50,6 +53,12 @@ func (c *CreateChat) Validate(*gin.Context) error {
 // Output 调用 Chat 首发用例并返回启动后的对话和执行标识。
 func (c *CreateChat) Output(ctx *gin.Context) (interface{}, error) {
 	input, options := c.Body.MessageRequest.workInput()
+	if c.Body.OptimizeProfile {
+		input.ContextInstructions = []workinput.Instruction{{
+			Name:    "Partner profile edit",
+			Content: "The user opened this conversation from their partner profile editor. Interpret the first message as a profile edit request. Read the current profile with waker.profile.get and follow the partner profile guide. Ask for clarification if needed.",
+		}}
+	}
 	release, err := uploads.ClaimWork(ctx, &input, ctx.Request.URL.Path+":"+strings.TrimSpace(c.Body.ClientRequestID))
 	if err != nil {
 		return nil, err

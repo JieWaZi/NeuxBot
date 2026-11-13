@@ -133,15 +133,24 @@ func TestLegacyWakerAPIResolvesAndMaintainsIndependentDocuments(t *testing.T) {
 	}
 
 	wantMerged := "## 擅长领域\n\n### 界面设计\n\n设计清晰一致的产品界面\n\n## 工作风格\n\n- 先验证\n\n## 工作方式\n\n### 设计\n\n1. 分析"
-	checkAgents := func(want string) {
+	checkAgents := func(want string) profile.Document {
 		t.Helper()
 		result, err := (&GetWakerDocument{WakerID: waker.ID, Kind: constants.ProfileDocumentKindAgents}).Output(ctx)
 		document, ok := result.(profile.Document)
 		if err != nil || !ok || document.Content != want || document.FileName != "AGENTS.md" {
 			t.Fatalf("resolved AGENTS = %+v, err = %v", result, err)
 		}
+		if len(document.Revision) != 64 {
+			t.Fatalf("document revision = %q", document.Revision)
+		}
+		return document
 	}
-	checkAgents(wantMerged)
+	openedDocument := checkAgents(wantMerged)
+	openedOverview, err := (&GetWaker{WakerID: waker.ID}).Output(ctx)
+	initialWaker, ok := openedOverview.(models.Waker)
+	if err != nil || !ok || len(initialWaker.OverviewRevision) != 64 {
+		t.Fatalf("opened overview = %+v, err = %v", openedOverview, err)
+	}
 	documents, err := global.ProfileDocumentControllerManager.ListWakerDocuments(
 		ctx,
 		waker.ID,
@@ -178,11 +187,12 @@ func TestLegacyWakerAPIResolvesAndMaintainsIndependentDocuments(t *testing.T) {
 	updateProfile := UpdateWaker{
 		WakerID: waker.ID,
 		Body: UpdateWakerRequest{
-			Name:     waker.Name,
-			RoleName: "用户研究员",
-			Avatar:   "",
-			Bio:      "更新后的独立简介",
-			Manual: profile.ManualInput{
+			Name:                     waker.Name,
+			RoleName:                 "用户研究员",
+			Avatar:                   "",
+			Bio:                      "更新后的独立简介",
+			ExpectedOverviewRevision: initialWaker.OverviewRevision,
+			Manual: &profile.ManualInput{
 				Expertise: []profile.Expertise{{
 					Title:       "用户研究",
 					Description: "通过访谈与观察识别真实需求",
@@ -196,6 +206,11 @@ func TestLegacyWakerAPIResolvesAndMaintainsIndependentDocuments(t *testing.T) {
 	}
 	if _, err := updateProfile.Output(ctx); err != nil {
 		t.Fatalf("update waker profile output: %v", err)
+	}
+	staleProfile := updateProfile
+	staleProfile.Body.Bio = "old draft"
+	if _, err := staleProfile.Output(ctx); !errors.Is(err, status_error.WakerProfileChanged) {
+		t.Fatalf("stale overview save = %v", err)
 	}
 	manuallyUpdatedWaker, err := global.WakerControllerManager.Get(ctx, waker.ID)
 	if err != nil {
@@ -241,10 +256,15 @@ func TestLegacyWakerAPIResolvesAndMaintainsIndependentDocuments(t *testing.T) {
 	updateDocument := UpdateWakerDocument{
 		WakerID: waker.ID,
 		Kind:    constants.ProfileDocumentKindAgents,
-		Body:    UpdateWakerDocumentRequest{Content: "  explicit AGENTS\n"},
+		Body:    UpdateWakerDocumentRequest{Content: "  explicit AGENTS\n", ExpectedRevision: openedDocument.Revision},
 	}
 	if _, err := updateDocument.Output(ctx); err != nil {
 		t.Fatalf("update waker document: %v", err)
+	}
+	checkAgents("  explicit AGENTS\n")
+	updateDocument.Body.Content = "old draft"
+	if _, err := updateDocument.Output(ctx); !errors.Is(err, status_error.WakerProfileChanged) {
+		t.Fatalf("stale document save = %v", err)
 	}
 	checkAgents("  explicit AGENTS\n")
 	updatedWaker, err := global.WakerControllerManager.Get(ctx, waker.ID)

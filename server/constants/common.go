@@ -871,16 +871,20 @@ const ProfileDocumentAgentsFileName = "AGENTS.md"
 const (
 	// WakerProfileInterviewOperation 标识伙伴建档的模型选项问答。
 	WakerProfileInterviewOperation = "waker.profile.interview"
-	// WakerProfileProposeOperation 标识提议伙伴档案命令。
-	WakerProfileProposeOperation = "waker.profile.propose"
-	// WakerProfileSaveOperation 标识保存已确认伙伴档案命令。
+	// WakerProfileSaveOperation 标识保存已完成建档问答的伙伴档案命令。
 	WakerProfileSaveOperation = "waker.profile.save"
+	// WakerProfileGetOperation 标识读取当前聊天伙伴的档案及修订版本。
+	WakerProfileGetOperation = "waker.profile.get"
+	// WakerProfileOptimizeOperation 标识保存当前聊天伙伴的档案修订。
+	WakerProfileOptimizeOperation = "waker.profile.optimize"
+	// WakerProfileOptimizationGuide 标识档案优化指南。
+	WakerProfileOptimizationGuide = "waker.profile-optimization"
 	// WakerProfileOnboardingGuide 是伙伴建档系统技能的按需指南标识。
 	WakerProfileOnboardingGuide = "waker.onboarding"
 	// WakerProfileOnboardingFileName 是建档 Chat 的系统指令名。
 	WakerProfileOnboardingFileName = "PARTNER_ONBOARDING.md"
-	// WakerProfilePreviewMaximumBytes 限制公开确认卡片的完整预览大小。
-	WakerProfilePreviewMaximumBytes = 32768
-	// WakerProfileSaveDecision 标识用户在结构化确认中选择保存。
-	WakerProfileSaveDecision = "save"
+	// WakerProfileContentMaximumBytes 限制送入档案分词器的输入大小。
+	WakerProfileContentMaximumBytes = 32768
+	// WakerProfileContentMaximumTokens 是伙伴长期指令的 cl100k_base 分词上限。
+	WakerProfileContentMaximumTokens = 1300
 )

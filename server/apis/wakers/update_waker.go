@@ -27,7 +27,9 @@ type UpdateWakerRequest struct {
 	// 默认模型
 	DefaultModel *models.WakerDefaultModel `json:"defaultModel,omitempty"`
 	// 关于我
-	Manual profile.ManualInput `json:"manual"`
+	Manual *profile.ManualInput `json:"manual,omitempty"`
+	// 当前概览版本
+	ExpectedOverviewRevision string `json:"expectedOverviewRevision,omitempty" validate:"omitempty,len=64"`
 }
 
 // 更新伙伴
@@ -57,6 +59,9 @@ func (u *UpdateWaker) Output(ctx *gin.Context) (interface{}, error) {
 			)
 			if err != nil {
 				return err
+			}
+			if u.Body.Manual != nil && u.Body.ExpectedOverviewRevision != "" && waker.ProfileOverview().Revision() != u.Body.ExpectedOverviewRevision {
+				return status_error.WakerProfileChanged
 			}
 			name := util.NormalizeName(u.Body.Name)
 			occupied, err := global.WakerControllerManager.NameExists(
@@ -95,10 +100,13 @@ func (u *UpdateWaker) Output(ctx *gin.Context) (interface{}, error) {
 			); err != nil {
 				return err
 			}
+			if u.Body.Manual == nil {
+				return nil
+			}
 			return global.WakerControllerManager.UpdateProfileProjection(
 				transactionContext,
 				waker.ID,
-				profile.ProjectionFromManual(u.Body.Manual),
+				profile.ProjectionFromManual(*u.Body.Manual),
 				now,
 			)
 		},

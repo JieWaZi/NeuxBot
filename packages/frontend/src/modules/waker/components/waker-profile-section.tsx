@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LoaderCircle, Pencil } from "lucide-react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
@@ -10,7 +10,11 @@ import {
   withLocalErrorSurface,
 } from "@/shared/api/local-error-surface";
 import { useQueryEvents } from "@/shared/api/use-query-events";
-import { chatHref } from "@/shared/lib/chat-navigation";
+import {
+  chatHref,
+  wakerProfileOptimizationHref,
+} from "@/shared/lib/chat-navigation";
+import { parseGfm } from "@/shared/markdown/parse";
 import { Button } from "@/shared/ui/button";
 import { PageAction } from "@/shared/ui/resource-page";
 import { Skeleton } from "@/shared/ui/skeleton";
@@ -19,11 +23,24 @@ import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import {
   getWakerDocumentOptions,
   getWakerQueryKey,
-  listWakersQueryKey,
   startWakerOnboardingMutation,
 } from "../api/waker-queries";
 import type { Waker } from "../model/types";
 import { ProfileDocumentEditorDialog } from "./profile-document-editor-dialog";
+
+function profileExcerpt(content: string): string {
+  const markdown = content.trim();
+  if (!markdown) return "";
+  const { children } = parseGfm(markdown);
+  const firstBodyIndex = children.findIndex(
+    (block) => block.type !== "heading",
+  );
+  const lastBlock =
+    children[firstBodyIndex < 0 ? 1 : Math.min(firstBodyIndex, 2)];
+  const opening = markdown.slice(0, lastBlock?.position?.end.offset);
+  const prefix = opening.match(/^.{0,300}/su)?.[0] ?? opening;
+  return prefix.length < opening.length ? `${prefix.trimEnd()}…` : opening;
+}
 
 export function WakerProfileSection({ waker }: { waker: Waker }) {
   const { t } = useTranslation("waker");
@@ -43,10 +60,13 @@ export function WakerProfileSection({ waker }: { waker: Waker }) {
     withLocalErrorSurface({ path: { wakerId, kind: "agents" } }),
   );
   const query = useQuery({ ...options, enabled: Boolean(wakerId) });
+  const content = query.data?.content ?? "";
+  const preview = useMemo(() => profileExcerpt(content), [content]);
   const start = useMutation(
     withLocalErrorMutation(startWakerOnboardingMutation()),
   );
   const [editing, setEditing] = useState(false);
+  const editButton = useRef<HTMLButtonElement>(null);
   const [startError, setStartError] = useState<string>();
   const initialError =
     typeof state?.onboardingStartError === "string"
@@ -60,11 +80,7 @@ export function WakerProfileSection({ waker }: { waker: Waker }) {
   useQueryEvents({
     topic: "resources",
     resource: { kind: "waker", id: wakerId },
-    queryKeys: [
-      options.queryKey,
-      getWakerQueryKey({ path: { wakerId } }),
-      listWakersQueryKey(),
-    ],
+    queryKeys: [options.queryKey],
     eventTypes: ["resources.changed"],
     enabled: Boolean(wakerId),
     active,
@@ -99,7 +115,10 @@ export function WakerProfileSection({ waker }: { waker: Waker }) {
             <PageAction
               intent="edit"
               label={t("profile.edit")}
-              onClick={() => setEditing(true)}
+              onClick={(event) => {
+                editButton.current = event.currentTarget;
+                setEditing(true);
+              }}
             >
               <Pencil />
             </PageAction>
@@ -155,17 +174,27 @@ export function WakerProfileSection({ waker }: { waker: Waker }) {
           </Button>
         </div>
       ) : null}
-      {query.data?.content?.trim() ? (
-        <StaticMarkdown source={query.data.content} />
+      {preview ? (
+        <StaticMarkdown source={preview} />
       ) : query.isSuccess && !pending ? (
         <p className="text-muted-foreground type-body">{t("profile.empty")}</p>
       ) : null}
 
       {editing && !pending && query.data?.editable ? (
         <ProfileDocumentEditorDialog
-          content={query.data.content ?? ""}
+          content={content}
+          revision={query.data.revision}
+          maxTokens={query.data.maxTokens}
           wakerId={wakerId}
           onClose={() => setEditing(false)}
+          onOptimize={() => {
+            setEditing(false);
+            navigate(wakerProfileOptimizationHref(wakerId));
+          }}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            if (canNavigate.current) editButton.current?.focus();
+          }}
         />
       ) : null}
     </section>

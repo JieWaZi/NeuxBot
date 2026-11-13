@@ -512,6 +512,8 @@ const resources = {
         markdown: "伙伴档案 Markdown",
         markdownPlaceholder: "用 Markdown 编写伙伴长期遵循的指令。",
         saveError: "暂时无法保存档案，请重试。",
+        optimize: "AI 优化",
+        tokenLimit: "上限 {{count}} token",
         discardTitle: "放弃未保存的修改？",
         discardDescription: "关闭后，本次对档案的修改不会保存。",
         keepEditing: "继续编辑",
@@ -1803,6 +1805,7 @@ const resources = {
       recent: "最近对话",
       manageWakers: "管理伙伴",
       createWakerFirst: "先创建一位伙伴",
+      profileOptimizationHint: "告诉伙伴你想怎样修改档案。",
       draftDescription: "选择项目目录和智能体，然后发送第一条消息。",
       working: "工作中",
       teamWorking: "团队执行中",
@@ -2591,6 +2594,8 @@ const resources = {
         markdownPlaceholder:
           "Write lasting instructions for this partner in Markdown.",
         saveError: "Could not save the profile. Try again.",
+        optimize: "Optimize with AI",
+        tokenLimit: "{{count}}-token limit",
         discardTitle: "Discard unsaved changes?",
         discardDescription: "Closing discards your changes to the profile.",
         keepEditing: "Keep editing",
@@ -2703,6 +2708,7 @@ const resources = {
       },
     },
     chat: {
+      profileOptimizationHint: "Tell your partner how to revise its profile.",
       approval: {
         waitingForTurn:
           "“{{title}}” is queued. Handle the current approval first.",
@@ -2726,6 +2732,7 @@ const resources = {
       },
       elicitation: {
         waitingForTurn: "Answer the preceding question first.",
+        multipleChoiceHint: "You can select more than one option.",
         result: {
           accepted: "Answered",
           declined: "Skipped",

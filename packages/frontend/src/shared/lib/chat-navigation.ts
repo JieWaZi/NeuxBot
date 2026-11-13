@@ -139,6 +139,12 @@ export function chatDraftHref(wakerId?: string) {
   return `/chat?${params.toString()}`;
 }
 
+export const wakerProfileOptimizationParam = "optimizeProfile";
+
+export function wakerProfileOptimizationHref(wakerId: string) {
+  return `${chatDraftHref(wakerId)}&${wakerProfileOptimizationParam}=1`;
+}
+
 export function chatEntryHref(wakerId?: string) {
   if (!wakerId?.trim()) return "/chat";
   const params = new URLSearchParams({ wakerId: wakerId.trim() });

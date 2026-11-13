@@ -357,16 +357,18 @@ func (v StatusError) Key() string {
 		return "AgentCommandOutcomeUnknown"
 	case AgentCommandRequestConflict:
 		return "AgentCommandRequestConflict"
-	case WakerProfileDraftStale:
-		return "WakerProfileDraftStale"
-	case WakerProfileConfirmationRequired:
-		return "WakerProfileConfirmationRequired"
-	case WakerProfileConfirmationPending:
-		return "WakerProfileConfirmationPending"
+	case WakerOnboardingStateChanged:
+		return "WakerOnboardingStateChanged"
+	case WakerOnboardingIncomplete:
+		return "WakerOnboardingIncomplete"
+	case WakerOnboardingInterviewPending:
+		return "WakerOnboardingInterviewPending"
 	case WakerOnboardingUnavailable:
 		return "WakerOnboardingUnavailable"
 	case WakerOnboardingInterviewRequired:
 		return "WakerOnboardingInterviewRequired"
+	case WakerProfileChanged:
+		return "WakerProfileChanged"
 	case ReadingIntentConflict:
 		return "ReadingIntentConflict"
 	case KnowledgeConflict:
@@ -381,6 +383,8 @@ func (v StatusError) Key() string {
 		return "IntegrationConflict"
 	case WorkspaceResourceTooLarge:
 		return "WorkspaceResourceTooLarge"
+	case WakerProfileTooLong:
+		return "WakerProfileTooLong"
 	case ReadingTargetLimitExceeded:
 		return "ReadingTargetLimitExceeded"
 	case PluginCapabilityUnsupported:
@@ -539,6 +543,8 @@ func (v StatusError) Key() string {
 		return "WorkspaceGitFailed"
 	case AgentContextStorageError:
 		return "AgentContextStorageError"
+	case WakerProfileTokenizationFailed:
+		return "WakerProfileTokenizationFailed"
 	case KnowledgeStorageError:
 		return "KnowledgeStorageError"
 	case IntegrationCredentialError:
@@ -776,11 +782,12 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			RuntimeVersionUnknown:                "the current version is unknown; whether an update is needed cannot be determined",
 			AgentCommandOutcomeUnknown:           "command outcome is uncertain; inspect the original request receipt",
 			AgentCommandRequestConflict:          "command request identifier was already used with different content",
-			WakerProfileDraftStale:               "the partner profile draft is stale; propose the draft again",
-			WakerProfileConfirmationRequired:     "the user has not confirmed saving this partner profile draft",
-			WakerProfileConfirmationPending:      "the current partner profile draft is still awaiting the user's decision",
+			WakerOnboardingStateChanged:          "partner onboarding changed; continue setup",
+			WakerOnboardingIncomplete:            "the partner profile has not been saved; continue setup",
+			WakerOnboardingInterviewPending:      "the onboarding interview is pending or already answered",
 			WakerOnboardingUnavailable:           "this partner has no onboarding chat to resume",
 			WakerOnboardingInterviewRequired:     "the partner has not completed the interactive interview; continue setup and answer in the question card",
+			WakerProfileChanged:                  "the partner profile changed; read the latest profile before saving again",
 			ReadingIntentConflict:                "the reading position changed; refresh before trying again",
 			KnowledgeConflict:                    "knowledge version or request content has changed",
 			KnowledgeCancelled:                   "knowledge operation was cancelled or its attempt is stale",
@@ -788,6 +795,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			KnowledgeFolderHasPages:              "folder contains pages; move them out first",
 			IntegrationConflict:                  "integration revision or request identity conflicts",
 			WorkspaceResourceTooLarge:            "workspace resource exceeds the size limit",
+			WakerProfileTooLong:                  "partner profile is too long; shorten it to {{.MaxTokens}} tokens or fewer",
 			ReadingTargetLimitExceeded:           "too many awaiting-view targets; narrow the filter",
 			PluginCapabilityUnsupported:          "plugin capability is unsupported by the current target",
 			PluginPackageUnsupported:             "This plugin package is unsupported. Reinstall it from the plugin catalog.",
@@ -867,6 +875,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkspaceStorageFailed:               "workspace storage operation failed",
 			WorkspaceGitFailed:                   "workspace git operation failed",
 			AgentContextStorageError:             "capability context file could not be safely prepared or read",
+			WakerProfileTokenizationFailed:       "the partner profile token count could not be calculated",
 			KnowledgeStorageError:                "knowledge storage failed",
 			IntegrationCredentialError:           "integration credential generation failed",
 			MemoryEmbeddingUnavailable:           "embedding service is unavailable",
@@ -1051,11 +1060,12 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			RuntimeVersionUnknown:                "无法确认当前版本，暂不能判断是否需要更新",
 			AgentCommandOutcomeUnknown:           "软件能力命令提交结果尚不确定，请查询原请求回执",
 			AgentCommandRequestConflict:          "同一命令请求标识不能用于不同内容",
-			WakerProfileDraftStale:               "当前伙伴建档草稿已失效，请重新提交草稿",
-			WakerProfileConfirmationRequired:     "用户尚未确认保存此版本的伙伴档案",
-			WakerProfileConfirmationPending:      "当前伙伴建档草稿仍在等待用户决定",
+			WakerOnboardingStateChanged:          "伙伴建档状态已变化，请继续设置",
+			WakerOnboardingIncomplete:            "伙伴档案还未保存，请继续设置",
+			WakerOnboardingInterviewPending:      "建档问答正在等待回复或已经回答",
 			WakerOnboardingUnavailable:           "当前伙伴尚无可恢复的建档对话",
 			WakerOnboardingInterviewRequired:     "伙伴尚未完成互动问答。请继续设置，在问答卡片中填写答案。",
+			WakerProfileChanged:                  "伙伴档案已更新，请读取最新档案后再保存",
 			ReadingIntentConflict:                "会话阅读位置已变化，请刷新后重新操作",
 			KnowledgeConflict:                    "知识版本或请求内容已变化，请刷新后重试",
 			KnowledgeCancelled:                   "当前知识操作已取消或阶段已失效",
@@ -1063,6 +1073,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			KnowledgeFolderHasPages:              "目录下还有页面，请先移出页面",
 			IntegrationConflict:                  "API 集成配置已变化，请刷新后重试",
 			WorkspaceResourceTooLarge:            "工作区资源超过大小限制",
+			WakerProfileTooLong:                  "伙伴档案超过长度上限，请精简到 {{.MaxTokens}} token 以内",
 			ReadingTargetLimitExceeded:           "待查看工作过多，请缩小筛选范围",
 			PluginCapabilityUnsupported:          "当前运行目标尚不支持该插件声明的能力",
 			PluginPackageUnsupported:             "当前插件包不受支持，请从插件目录重新安装",
@@ -1142,6 +1153,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkspaceStorageFailed:               "工作区文件操作失败",
 			WorkspaceGitFailed:                   "Git 操作失败",
 			AgentContextStorageError:             "软件能力连接文件无法安全准备或读取",
+			WakerProfileTokenizationFailed:       "暂时无法计算伙伴档案的 token 数",
 			KnowledgeStorageError:                "知识存储访问失败",
 			IntegrationCredentialError:           "无法生成 API Key，请稍后重试",
 			MemoryEmbeddingUnavailable:           "Embedding 服务当前不可用",

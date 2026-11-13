@@ -1,4 +1,8 @@
-import { useOptionalAppSceneWorkspace } from "@/shared/workspace/app-scene-workspace";
+import { useQueryEvents } from "@/shared/api/use-query-events";
+import {
+  useOptionalAppSceneWorkspace,
+  useRouteSceneActive,
+} from "@/shared/workspace/app-scene-workspace";
 import { PageAction, ResourcePageSurface } from "@/shared/ui/resource-page";
 import { useQuery } from "@tanstack/react-query";
 import { MessageCircle, Pencil } from "lucide-react";
@@ -33,7 +37,17 @@ export function WakerDetailPage() {
   const { t } = useTranslation("waker");
   const [editing, setEditing] = useState(false);
   const navigate = useNavigate();
-  const query = useQuery(getWakerOptions({ path: { wakerId } }));
+  const active = useRouteSceneActive();
+  const wakerOptions = getWakerOptions({ path: { wakerId } });
+  const query = useQuery(wakerOptions);
+  useQueryEvents({
+    topic: "entities",
+    resource: { kind: "waker", id: wakerId },
+    queryKeys: [wakerOptions.queryKey],
+    eventTypes: ["entities.changed"],
+    enabled: Boolean(wakerId),
+    active,
+  });
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const workRecordQuery = useQuery(
     getWakerWorkRecordOptions({
@@ -235,12 +249,12 @@ export function WakerDetailPage() {
                         navigate(`/wakers/${wakerId}/resources/connectors/new`)
                       }
                     />
+                    {waker.onboardingStatus !== "pending" ? (
+                      <WakerProfileSection waker={waker} />
+                    ) : null}
                   </>
                 }
               />
-              {waker.onboardingStatus !== "pending" ? (
-                <WakerProfileSection waker={waker} />
-              ) : null}
             </div>
           </div>
         </ResourcePageSurface>

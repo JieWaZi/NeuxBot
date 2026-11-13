@@ -541,7 +541,7 @@ func (work *nativeExecutionWork) ports(m *service) agent.TurnPorts {
 		},
 		Input: func(ctx context.Context, _ agent.AgentScope, input agent.AgentInputRequest) (agent.AgentInputResponse, error) {
 			if work.input.message.Actor == constants.WakerOnboardingActor && m.onboardingCommands != nil {
-				err := m.checkWakerOnboardingInterview(ctx, work.chat)
+				err := m.checkWakerOnboardingProgress(ctx, work.chat, false)
 				if errors.Is(err, status_error.WakerOnboardingInterviewRequired) {
 					return agent.AgentInputResponse{Action: "cancel"}, nil
 				}
@@ -698,7 +698,7 @@ func (work *nativeExecutionWork) settle(m *service, result agent.TurnResult) {
 	outcome := nativeExecutionOutcome(result)
 	if outcome.status == constants.ExecutionStatusCompleted && work.input.message.Actor == constants.WakerOnboardingActor &&
 		m.agent != nil && m.onboardingCommands != nil && m.onboardingTransactions != nil {
-		if err := m.checkWakerOnboardingInterview(context.Background(), work.chat); err != nil {
+		if err := m.checkWakerOnboardingProgress(context.Background(), work.chat, true); err != nil {
 			result.OperationError = err
 			outcome = nativeExecutionOutcome(result)
 		}

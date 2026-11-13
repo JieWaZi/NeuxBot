@@ -3217,6 +3217,32 @@ export const statusErrorCatalog = {
       },
     ],
   },
+  WakerOnboardingIncomplete: {
+    code: 40900009101,
+    en: [
+      {
+        text: "the partner profile has not been saved; continue setup",
+      },
+    ],
+    zh: [
+      {
+        text: "伙伴档案还未保存，请继续设置",
+      },
+    ],
+  },
+  WakerOnboardingInterviewPending: {
+    code: 40900009102,
+    en: [
+      {
+        text: "the onboarding interview is pending or already answered",
+      },
+    ],
+    zh: [
+      {
+        text: "建档问答正在等待回复或已经回答",
+      },
+    ],
+  },
   WakerOnboardingInterviewRequired: {
     code: 40900009104,
     en: [
@@ -3227,6 +3253,19 @@ export const statusErrorCatalog = {
     zh: [
       {
         text: "伙伴尚未完成互动问答。请继续设置，在问答卡片中填写答案。",
+      },
+    ],
+  },
+  WakerOnboardingStateChanged: {
+    code: 40900009100,
+    en: [
+      {
+        text: "partner onboarding changed; continue setup",
+      },
+    ],
+    zh: [
+      {
+        text: "伙伴建档状态已变化，请继续设置",
       },
     ],
   },
@@ -3243,42 +3282,54 @@ export const statusErrorCatalog = {
       },
     ],
   },
-  WakerProfileConfirmationPending: {
-    code: 40900009102,
+  WakerProfileChanged: {
+    code: 40900009105,
     en: [
       {
-        text: "the current partner profile draft is still awaiting the user's decision",
+        text: "the partner profile changed; read the latest profile before saving again",
       },
     ],
     zh: [
       {
-        text: "当前伙伴建档草稿仍在等待用户决定",
+        text: "伙伴档案已更新，请读取最新档案后再保存",
       },
     ],
   },
-  WakerProfileConfirmationRequired: {
-    code: 40900009101,
+  WakerProfileTokenizationFailed: {
+    code: 50000009100,
     en: [
       {
-        text: "the user has not confirmed saving this partner profile draft",
+        text: "the partner profile token count could not be calculated",
       },
     ],
     zh: [
       {
-        text: "用户尚未确认保存此版本的伙伴档案",
+        text: "暂时无法计算伙伴档案的 token 数",
       },
     ],
   },
-  WakerProfileDraftStale: {
-    code: 40900009100,
+  WakerProfileTooLong: {
+    code: 41300009100,
     en: [
       {
-        text: "the partner profile draft is stale; propose the draft again",
+        text: "partner profile is too long; shorten it to ",
+      },
+      {
+        field: "MaxTokens",
+      },
+      {
+        text: " tokens or fewer",
       },
     ],
     zh: [
       {
-        text: "当前伙伴建档草稿已失效，请重新提交草稿",
+        text: "伙伴档案超过长度上限，请精简到 ",
+      },
+      {
+        field: "MaxTokens",
+      },
+      {
+        text: " token 以内",
       },
     ],
   },

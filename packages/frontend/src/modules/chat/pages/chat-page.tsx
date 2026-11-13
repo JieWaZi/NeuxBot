@@ -90,7 +90,10 @@ import {
   useRouteSceneActive,
   useScenePresentationKey,
 } from "@/shared/workspace/app-scene-workspace";
-import { chatHref } from "@/shared/lib/chat-navigation";
+import {
+  chatHref,
+  wakerProfileOptimizationParam,
+} from "@/shared/lib/chat-navigation";
 import { listProjectsOptions } from "@/modules/project";
 import {
   connectorSelectableInComposer,
@@ -202,6 +205,8 @@ function ChatView({
   const routeActive = useRouteSceneActive();
   const sceneActive = routeActive && (entry?.active ?? true);
   const [searchParams] = useSearchParams();
+  const optimizeProfile =
+    !entry && !chatId && searchParams.get(wakerProfileOptimizationParam) === "1";
   const navigate = useNavigate();
   const location = useLocation();
   const promptDraft =
@@ -978,6 +983,7 @@ function ChatView({
       }
       const createRequest = withStableCreateRequest(workspaceScopeKey, {
         ...message,
+        ...(optimizeProfile ? { optimizeProfile: true } : {}),
         wakerId: selectedWaker?.id ?? "",
         projectId: selectedDraftProject?.id ?? "",
         workingDirectory: selectedDraftProject ? "" : workspaceDirectory,
@@ -1151,11 +1157,12 @@ function ChatView({
         ? t("permissionDowngraded")
         : "";
 
-  const emptyState = selectedWaker ? null : (
-    <div className="text-content-secondary type-body grid h-full place-items-center px-6 text-center">
-      {t("createWakerFirst")}
-    </div>
-  );
+  const emptyState =
+    selectedWaker && !optimizeProfile ? null : (
+      <div className="text-content-secondary type-body grid h-full place-items-center px-6 text-center">
+        {t(selectedWaker ? "profileOptimizationHint" : "createWakerFirst")}
+      </div>
+    );
   const contributedEmptyState =
     typeof entry?.emptyState === "function"
       ? entry.emptyState({

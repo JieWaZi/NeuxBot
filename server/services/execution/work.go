@@ -425,9 +425,13 @@ func (m *service) startMessage(
 		if state.chat.HiddenFromWakerHistory || state.chat.ID != requestidempotency.WakerOnboardingChatID(state.chat.WakerID) {
 			return AcceptedExecution{}, status_error.AgentContextUnauthorized
 		}
-		if state.chat.ActiveExecutionID != "" || state.chat.LastEndedExecutionID != request.parentExecutionID ||
-			(state.chat.LastEndedExecutionStatus != constants.ExecutionStatusFailed && state.chat.LastEndedExecutionStatus != constants.ExecutionStatusCanceled) {
-			return AcceptedExecution{}, status_error.WakerProfileDraftStale
+		waker, err := m.wakerController.Get(ctx, state.chat.WakerID)
+		if err != nil {
+			return AcceptedExecution{}, err
+		}
+		if waker.OnboardingStatus != constants.WakerOnboardingStatusPending || waker.OnboardingChatID != state.chat.ID ||
+			state.chat.ActiveExecutionID != "" || state.chat.LastEndedExecutionID == "" || state.chat.LastEndedExecutionID != request.parentExecutionID {
+			return AcceptedExecution{}, status_error.WakerOnboardingStateChanged
 		}
 	}
 	// 普通续聊只在同一 Runtime 中沿用最近有效选择；已接纳配置的空值不再继承默认。

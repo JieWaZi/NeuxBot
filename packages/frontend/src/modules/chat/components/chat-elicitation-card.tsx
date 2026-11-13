@@ -24,12 +24,15 @@ type SchemaField = {
   description?: string;
   options: Array<{ value: string; label: string; description?: string }>;
   multiSelect: boolean;
+  minItems: number;
   customKey?: string;
   secret?: boolean;
 };
 
 type ParsedSchema = {
   fields: SchemaField[];
+  required: string[];
+  answerGroups: { keys: string[]; exclusive: boolean }[];
 };
 
 type Question = NonNullable<AllyChatMessage["question"]>;
@@ -94,13 +97,50 @@ function parseRequestedSchema(raw: unknown): ParsedSchema | null {
       description,
       options,
       multiSelect,
+      minItems: typeof field.minItems === "number" ? field.minItems : 0,
       customKey:
         customByQuestion.get(key) ??
         findOtherFieldKey(key, properties as Record<string, unknown>),
       secret,
     });
   }
-  return fields.length > 0 ? { fields } : null;
+  if (!fields.length) return null;
+  const required = requiredKeys(schema.required);
+  // 已发出的单选卡使用 oneOf，多选卡使用 anyOf 并允许补充「其他」。
+  const answerGroups = (
+    Array.isArray(schema.allOf) ? schema.allOf : []
+  ).flatMap((group: unknown) => {
+    if (!group || typeof group !== "object" || Object.keys(group).length !== 1)
+      return [];
+    const exclusive = "oneOf" in group;
+    const choices = exclusive
+      ? group.oneOf
+      : "anyOf" in group
+        ? group.anyOf
+        : undefined;
+    if (!Array.isArray(choices)) return [];
+    const keys = choices.flatMap((option: unknown) => {
+      if (
+        !option ||
+        typeof option !== "object" ||
+        !("required" in option) ||
+        Object.keys(option).length !== 1
+      )
+        return [];
+      const keys = requiredKeys(option.required);
+      return keys.length === 1 ? keys : [];
+    });
+    return keys.length > 1 && keys.length === choices.length
+      ? [{ keys, exclusive }]
+      : [];
+  });
+  return { fields, required, answerGroups };
+}
+
+function requiredKeys(raw: unknown): string[] {
+  return Array.isArray(raw)
+    ? raw.filter((key): key is string => typeof key === "string")
+    : [];
 }
 
 function findOtherFieldKey(
@@ -183,17 +223,13 @@ export function ChatElicitationCard({
     setValues((current) => ({ ...current, [key]: value }));
   }, []);
 
-  const submit = useCallback(() => {
-    if (!elicitationId) return;
+  const content = useMemo(() => {
     const content: Record<string, unknown> = {};
     for (const field of parsedSchema?.fields ?? []) {
       const value = values[field.key];
       if (field.multiSelect) {
-        content[field.key] = Array.isArray(value)
-          ? value
-          : value
-            ? [value]
-            : [];
+        const selected = Array.isArray(value) ? value : value ? [value] : [];
+        if (selected.length || !field.minItems) content[field.key] = selected;
       } else if (typeof value === "string" && value.trim()) {
         content[field.key] = field.options.length ? value : value.trim();
       }
@@ -204,8 +240,31 @@ export function ChatElicitationCard({
         }
       }
     }
+    return content;
+  }, [parsedSchema?.fields, values]);
+  const canSubmit =
+    !parsedSchema ||
+    (parsedSchema.required.every((key) => Object.hasOwn(content, key)) &&
+      parsedSchema.answerGroups.every(({ keys, exclusive }) => {
+        const count = keys.filter((key) => Object.hasOwn(content, key)).length;
+        return exclusive ? count === 1 : count > 0;
+      }) &&
+      parsedSchema.fields.every((field) => {
+        const selection = content[field.key];
+        if (Array.isArray(selection) && selection.length < field.minItems)
+          return false;
+        return (
+          !field.multiSelect ||
+          !field.minItems ||
+          !field.customKey ||
+          !customFields[field.key] ||
+          Object.hasOwn(content, field.customKey)
+        );
+      }));
+  const submit = useCallback(() => {
+    if (!elicitationId || !canSubmit) return;
     onResolve?.(elicitationId, content, false);
-  }, [elicitationId, onResolve, parsedSchema?.fields, values]);
+  }, [canSubmit, content, elicitationId, onResolve]);
 
   const decline = useCallback(() => {
     if (!elicitationId) return;
@@ -507,7 +566,12 @@ export function ChatElicitationCard({
             {t("elicitation.skip")}
           </Button>
         ) : null}
-        <Button type="button" size="sm" disabled={disabled} onClick={submit}>
+        <Button
+          type="button"
+          size="sm"
+          disabled={disabled || !canSubmit}
+          onClick={submit}
+        >
           {isSubmitting ? <Loader2 className="animate-spin" /> : null}
           {t("elicitation.next")}
           {!isSubmitting ? <CornerDownLeft aria-hidden="true" /> : null}

@@ -33,6 +33,7 @@ import {
   Outlet,
   Route,
   Routes,
+  useLocation,
   useNavigate,
   useParams,
 } from "react-router-dom";
@@ -899,6 +900,65 @@ function renderConnectorPromptDraft({
 }
 
 describe("ChatPage", () => {
+  it("伙伴档案优化只向首发提交修改意图，接纳后进入普通对话", async () => {
+    function Location() {
+      const { pathname, search } = useLocation();
+      return <output aria-label="对话路由">{pathname + search}</output>;
+    }
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const user = userEvent.setup();
+    const view = render(
+      <QueryClientProvider client={client}>
+        <ChatQueueProvider>
+          <TooltipProvider>
+            <MemoryRouter
+              initialEntries={[
+                "/chat?draftId=profile&wakerId=waker-1&optimizeProfile=1",
+              ]}
+            >
+              <Routes>
+                <Route
+                  element={
+                    <ChatLayout>
+                      <Location />
+                    </ChatLayout>
+                  }
+                >
+                  <Route path="/chat" element={<ChatPage />} />
+                  <Route path="/chats/:chatId" element={<ChatPage />} />
+                </Route>
+              </Routes>
+            </MemoryRouter>
+          </TooltipProvider>
+        </ChatQueueProvider>
+      </QueryClientProvider>,
+    );
+    await screen.findByText("告诉伙伴你想怎样修改档案。");
+    expect(createChat).not.toHaveBeenCalled();
+    await user.type(
+      screen.getByRole("textbox", { name: "输入消息" }),
+      "只保留代码审查职责",
+    );
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+    await waitFor(() => expect(createChat).toHaveBeenCalledOnce());
+    expect(createChat.mock.calls[0]?.[0]).toMatchObject({
+      body: {
+        wakerId: "waker-1",
+        text: "只保留代码审查职责",
+        optimizeProfile: true,
+      },
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText("对话路由")).toHaveTextContent(
+        /^\/chats\/chat-1\?wakerId=waker-1$/,
+      ),
+    );
+    view.unmount();
+    client.clear();
+  });
+
   it.each([
     {
       route: "/chat?draftId=bound&wakerId=waker-1",

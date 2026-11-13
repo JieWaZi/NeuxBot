@@ -706,6 +706,10 @@ export type GithubComJieWaZiNeuxBotServerApisChatsCreateChatRequest = GithubComJ
      */
     clientRequestId: string;
     /**
+     * 档案优化首发
+     */
+    optimizeProfile?: boolean;
+    /**
      * 项目标识
      */
     projectId?: string;
@@ -5471,6 +5475,10 @@ export type GithubComJieWaZiNeuxBotServerApisWakersUpdateWakerDocumentRequest = 
      * 文件内容
      */
     content?: string;
+    /**
+     * 当前正文版本
+     */
+    expectedRevision?: string;
 };
 
 /**
@@ -5486,6 +5494,10 @@ export type GithubComJieWaZiNeuxBotServerApisWakersUpdateWakerRequest = {
      */
     bio?: string;
     defaultModel?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerDefaultModel & unknown;
+    /**
+     * 当前概览版本
+     */
+    expectedOverviewRevision?: string;
     manual?: GithubComJieWaZiNeuxBotServerInternalProfileManualInput & unknown;
     /**
      * 名称
@@ -9123,6 +9135,14 @@ export type GithubComJieWaZiNeuxBotServerInternalProfileDocument = {
     fileName?: string;
     kind?: GithubComJieWaZiNeuxBotServerConstantsProfileDocumentKind & unknown;
     /**
+     * MaxTokens 是伙伴长期指令的正文上限。
+     */
+    maxTokens?: number;
+    /**
+     * Revision 是当前正文版本。
+     */
+    revision?: string;
+    /**
      * UpdatedAt 是文档最近修改时的 Unix 毫秒时间。
      */
     updatedAt?: number;
@@ -11954,6 +11974,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWaker = {
      */
     onboardingChatId?: string;
     onboardingStatus?: GithubComJieWaZiNeuxBotServerConstantsWakerOnboardingStatus & unknown;
+    /**
+     * OverviewRevision 是查询返回的概览编辑版本。
+     */
+    overviewRevision?: string;
     /**
      * RoleName 是伙伴当前承担的角色名称。
      */
@@ -15111,11 +15135,12 @@ export type ReadErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -15129,6 +15154,7 @@ export type ReadErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -15216,6 +15242,7 @@ export type ReadErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -15468,11 +15495,12 @@ export type CommandErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -15486,6 +15514,7 @@ export type CommandErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -15573,6 +15602,7 @@ export type CommandErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -16095,11 +16125,12 @@ export type StartAiAccountLoginErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -16113,6 +16144,7 @@ export type StartAiAccountLoginErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -16200,6 +16232,7 @@ export type StartAiAccountLoginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -16461,11 +16494,12 @@ export type CancelAiAccountLoginErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -16479,6 +16513,7 @@ export type CancelAiAccountLoginErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -16566,6 +16601,7 @@ export type CancelAiAccountLoginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -16922,11 +16958,12 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -16940,6 +16977,7 @@ export type ListGlobalAutomaticTasksErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -17027,6 +17065,7 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -17370,11 +17409,12 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -17388,6 +17428,7 @@ export type GetGlobalAutomaticTaskErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -17475,6 +17516,7 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -17732,11 +17774,12 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -17750,6 +17793,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -17837,6 +17881,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -19648,11 +19693,12 @@ export type StreamEventsErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -19666,6 +19712,7 @@ export type StreamEventsErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -19753,6 +19800,7 @@ export type StreamEventsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -20717,11 +20765,12 @@ export type UpdateMcpServiceErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -20735,6 +20784,7 @@ export type UpdateMcpServiceErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -20822,6 +20872,7 @@ export type UpdateMcpServiceErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -21173,11 +21224,12 @@ export type UpdateApiServiceErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -21191,6 +21243,7 @@ export type UpdateApiServiceErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -21278,6 +21331,7 @@ export type UpdateApiServiceErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -29950,11 +30004,12 @@ export type ListPluginsErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -29968,6 +30023,7 @@ export type ListPluginsErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -30055,6 +30111,7 @@ export type ListPluginsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -30328,11 +30385,12 @@ export type BrowsePluginsErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -30346,6 +30404,7 @@ export type BrowsePluginsErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -30433,6 +30492,7 @@ export type BrowsePluginsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -30685,11 +30745,12 @@ export type RefreshPluginCatalogErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -30703,6 +30764,7 @@ export type RefreshPluginCatalogErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -30790,6 +30852,7 @@ export type RefreshPluginCatalogErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -31052,11 +31115,12 @@ export type GetCatalogPluginErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -31070,6 +31134,7 @@ export type GetCatalogPluginErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -31157,6 +31222,7 @@ export type GetCatalogPluginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -31427,11 +31493,12 @@ export type GetCatalogPluginConnectorErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -31445,6 +31512,7 @@ export type GetCatalogPluginConnectorErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -31532,6 +31600,7 @@ export type GetCatalogPluginConnectorErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -31789,11 +31858,12 @@ export type PrepareCatalogPluginErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -31807,6 +31877,7 @@ export type PrepareCatalogPluginErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -31894,6 +31965,7 @@ export type PrepareCatalogPluginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -32164,11 +32236,12 @@ export type GetCatalogPluginReadmeErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -32182,6 +32255,7 @@ export type GetCatalogPluginReadmeErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -32269,6 +32343,7 @@ export type GetCatalogPluginReadmeErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -32543,11 +32618,12 @@ export type GetCatalogPluginSkillErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -32561,6 +32637,7 @@ export type GetCatalogPluginSkillErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -32648,6 +32725,7 @@ export type GetCatalogPluginSkillErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -32900,11 +32978,12 @@ export type CreatePluginFromSkillsErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -32918,6 +32997,7 @@ export type CreatePluginFromSkillsErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -33005,6 +33085,7 @@ export type CreatePluginFromSkillsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -33361,11 +33442,12 @@ export type GetPluginErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -33379,6 +33461,7 @@ export type GetPluginErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -33466,6 +33549,7 @@ export type GetPluginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -33817,11 +33901,12 @@ export type StartPluginAuthorizationErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -33835,6 +33920,7 @@ export type StartPluginAuthorizationErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -33922,6 +34008,7 @@ export type StartPluginAuthorizationErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -34490,11 +34577,12 @@ export type GetPluginConfigurationErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -34508,6 +34596,7 @@ export type GetPluginConfigurationErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -34595,6 +34684,7 @@ export type GetPluginConfigurationErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -35071,11 +35161,12 @@ export type InstallPluginErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -35089,6 +35180,7 @@ export type InstallPluginErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -35176,6 +35268,7 @@ export type InstallPluginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -35576,11 +35669,12 @@ export type UpdatePluginInstallationsErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -35594,6 +35688,7 @@ export type UpdatePluginInstallationsErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -35681,6 +35776,7 @@ export type UpdatePluginInstallationsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -37091,11 +37187,12 @@ export type SetAutomaticTaskApiErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -37109,6 +37206,7 @@ export type SetAutomaticTaskApiErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -37196,6 +37294,7 @@ export type SetAutomaticTaskApiErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -37868,11 +37967,12 @@ export type CreateWakerErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -37886,6 +37986,7 @@ export type CreateWakerErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -37973,6 +38074,7 @@ export type CreateWakerErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -38137,6 +38239,7 @@ export type UpdateWakerErrors = {
     /**
      * >
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerProfileChanged][40900009105]`
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -38366,11 +38469,12 @@ export type ListAutomaticTasksErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -38384,6 +38488,7 @@ export type ListAutomaticTasksErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -38471,6 +38576,7 @@ export type ListAutomaticTasksErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -38795,11 +38901,12 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -38813,6 +38920,7 @@ export type ListAutomaticTaskAttentionErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -38900,6 +39008,7 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -39190,11 +39299,12 @@ export type DeleteAutomaticTaskErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -39208,6 +39318,7 @@ export type DeleteAutomaticTaskErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -39295,6 +39406,7 @@ export type DeleteAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -39556,11 +39668,12 @@ export type GetAutomaticTaskErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -39574,6 +39687,7 @@ export type GetAutomaticTaskErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -39661,6 +39775,7 @@ export type GetAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -40073,11 +40188,12 @@ export type ListAutomaticRunsErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -40091,6 +40207,7 @@ export type ListAutomaticRunsErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -40178,6 +40295,7 @@ export type ListAutomaticRunsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -40439,11 +40557,12 @@ export type TriggerAutomaticTaskErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -40457,6 +40576,7 @@ export type TriggerAutomaticTaskErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -40544,6 +40664,7 @@ export type TriggerAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -41023,9 +41144,7 @@ export type UpdateWakerDocumentData = {
 export type UpdateWakerDocumentErrors = {
     /**
      * >
-     * * `[ProfileDocumentEncodingInvalid][40000000004]`
      * * `[ProfileDocumentKindInvalid][40000000002]`
-     * * `[ProfileDocumentTooLarge][40000000003]`
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -41037,7 +41156,8 @@ export type UpdateWakerDocumentErrors = {
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
-     * * `[WakerProfileConfirmationRequired][40900009101]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerProfileChanged][40900009105]`
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -41249,11 +41369,12 @@ export type StartWakerOnboardingErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -41267,6 +41388,7 @@ export type StartWakerOnboardingErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -41354,6 +41476,7 @@ export type StartWakerOnboardingErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -41642,11 +41765,12 @@ export type ListWakerPluginsErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -41660,6 +41784,7 @@ export type ListWakerPluginsErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -41747,6 +41872,7 @@ export type ListWakerPluginsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -43209,11 +43335,12 @@ export type CreateWorkflowErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -43227,6 +43354,7 @@ export type CreateWorkflowErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -43314,6 +43442,7 @@ export type CreateWorkflowErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -43584,11 +43713,12 @@ export type DeleteWorkflowErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -43602,6 +43732,7 @@ export type DeleteWorkflowErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -43689,6 +43820,7 @@ export type DeleteWorkflowErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -43969,11 +44101,12 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -43987,6 +44120,7 @@ export type CreateWorkflowAnnotationErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -44074,6 +44208,7 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -44360,11 +44495,12 @@ export type EditWorkflowConfigurationErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -44378,6 +44514,7 @@ export type EditWorkflowConfigurationErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -44465,6 +44602,7 @@ export type EditWorkflowConfigurationErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -44722,11 +44860,12 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -44740,6 +44879,7 @@ export type SendWorkflowCreationMessageErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -44827,6 +44967,7 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -45172,11 +45313,12 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -45190,6 +45332,7 @@ export type RestoreWorkflowRevisionErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -45277,6 +45420,7 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -45565,11 +45709,12 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -45583,6 +45728,7 @@ export type DeleteWorkflowRevisionErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -45670,6 +45816,7 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -45958,11 +46105,12 @@ export type StartWorkflowRunErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -45976,6 +46124,7 @@ export type StartWorkflowRunErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -46063,6 +46212,7 @@ export type StartWorkflowRunErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -46324,11 +46474,12 @@ export type DeleteWorkflowRunErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -46342,6 +46493,7 @@ export type DeleteWorkflowRunErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -46429,6 +46581,7 @@ export type DeleteWorkflowRunErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -46800,11 +46953,12 @@ export type AnswerWorkflowHumanErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -46818,6 +46972,7 @@ export type AnswerWorkflowHumanErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -46905,6 +47060,7 @@ export type AnswerWorkflowHumanErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -47170,11 +47326,12 @@ export type GetWorkflowInstanceErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -47188,6 +47345,7 @@ export type GetWorkflowInstanceErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -47275,6 +47433,7 @@ export type GetWorkflowInstanceErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -47540,11 +47699,12 @@ export type SkipWorkflowWorkerErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -47558,6 +47718,7 @@ export type SkipWorkflowWorkerErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -47645,6 +47806,7 @@ export type SkipWorkflowWorkerErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -47910,11 +48072,12 @@ export type AnswerWorkflowOperationErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -47928,6 +48091,7 @@ export type AnswerWorkflowOperationErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -48015,6 +48179,7 @@ export type AnswerWorkflowOperationErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -48276,11 +48441,12 @@ export type RetryWorkflowRunErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -48294,6 +48460,7 @@ export type RetryWorkflowRunErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -48381,6 +48548,7 @@ export type RetryWorkflowRunErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -48712,11 +48880,12 @@ export type SaveWorkflowSourceErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
      * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
      * * `[WakerOnboardingUnavailable][40900009103]`
-     * * `[WakerProfileConfirmationPending][40900009102]`
-     * * `[WakerProfileConfirmationRequired][40900009101]`
-     * * `[WakerProfileDraftStale][40900009100]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -48730,6 +48899,7 @@ export type SaveWorkflowSourceErrors = {
     /**
      * >
      * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -48817,6 +48987,7 @@ export type SaveWorkflowSourceErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`

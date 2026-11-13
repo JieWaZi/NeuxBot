@@ -101,10 +101,10 @@ func (c *elicitationCoordinator) questionSnapshot(chatID, executionID, questionI
 }
 
 func (c *elicitationCoordinator) createQuestion(ctx context.Context, chatID, executionID, id string, request capability.Request) (map[string]any, bool, error) {
-	return c.createQuestionWithLimit(ctx, chatID, executionID, id, request, 4096, validateQuestionForm)
+	return c.createQuestionWithValidation(ctx, chatID, executionID, id, request, validateQuestionForm)
 }
 
-func (c *elicitationCoordinator) createQuestionWithLimit(ctx context.Context, chatID, executionID, id string, request capability.Request, maximumMessageBytes int, validateForm func(*jsonschema.Schema) error) (map[string]any, bool, error) {
+func (c *elicitationCoordinator) createQuestionWithValidation(ctx context.Context, chatID, executionID, id string, request capability.Request, validateForm func(*jsonschema.Schema) error) (map[string]any, bool, error) {
 	var input struct {
 		// Message 是用户可以理解的决定说明。
 		Message string `json:"message"`
@@ -117,7 +117,7 @@ func (c *elicitationCoordinator) createQuestionWithLimit(ctx context.Context, ch
 		return nil, false, err
 	}
 	encoded, err := json.Marshal(input.RequestedSchema)
-	if err != nil || len(encoded) > 65536 || len(input.Message) > maximumMessageBytes || strings.TrimSpace(input.Message) == "" || input.RequestedSchema["type"] != "object" {
+	if err != nil || len(encoded) > 65536 || len(input.Message) > 4096 || strings.TrimSpace(input.Message) == "" || input.RequestedSchema["type"] != "object" {
 		return nil, false, status_error.AgentInputInvalid
 	}
 	var schema jsonschema.Schema
@@ -130,11 +130,7 @@ func (c *elicitationCoordinator) createQuestionWithLimit(ctx context.Context, ch
 	if err := validateForm(&schema); err != nil {
 		return nil, false, err
 	}
-	var hashInput any = request.Params
-	if len(request.InputDigests) > 0 {
-		hashInput = []any{request.Params, request.InputDigests}
-	}
-	body, _ := json.Marshal(hashInput)
+	body, _ := json.Marshal(request.Params)
 	digest := sha256.Sum256(body)
 	hash := hex.EncodeToString(digest[:])
 	c.commitMutex.Lock()

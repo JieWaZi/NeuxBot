@@ -31,8 +31,6 @@ type Waker struct {
 	OnboardingChatID string `gorm:"column:onboarding_chat_id;type:varchar(32);not null;default:''" json:"onboardingChatId,omitempty"`
 	// OnboardingInterview 定位建档问答在 Chat 日志中的原始请求。
 	OnboardingInterview *WakerOnboardingInterview `gorm:"column:onboarding_interview;type:text;serializer:json" json:"-"`
-	// OnboardingDraft 是尚未发布的最新建档版本；用户决定以 Chat 日志为准。
-	OnboardingDraft *WakerOnboardingDraft `gorm:"column:onboarding_draft;type:text;serializer:json" json:"-"`
 	// CreateRequestHash 是创建伙伴时的规范化请求摘要，供重放比对。
 	CreateRequestHash string `gorm:"column:create_request_hash;type:varchar(64);not null;default:''" json:"-"`
 	// Expertise 保存从身份档案解析出的擅长领域展示投影。
@@ -41,6 +39,8 @@ type Waker struct {
 	WorkStyle []string `gorm:"column:work_style;type:text;not null;serializer:json" json:"workStyle"`
 	// WorkMethods 保存从工作方式档案解析出的具名流程展示投影。
 	WorkMethods []profile.WorkMethod `gorm:"column:work_methods;type:text;not null;serializer:json" json:"workMethods"`
+	// OverviewRevision 是查询返回的概览编辑版本。
+	OverviewRevision string `gorm:"-" json:"overviewRevision,omitempty"`
 	// ActivityState 是列表查询按伙伴普通 Chat 聚合出的只读活动状态。
 	ActivityState constants.WakerActivityState `gorm:"-" json:"activityState,omitempty"`
 	// RunningCount 是列表查询聚合出的运行中普通会话数量。
@@ -60,6 +60,11 @@ func (Waker) TableName() string {
 	return "wakers"
 }
 
+// ProfileOverview 返回当前的结构化档案概览。
+func (w Waker) ProfileOverview() profile.Projection {
+	return profile.Projection{Expertise: w.Expertise, WorkStyle: w.WorkStyle, WorkMethods: w.WorkMethods}
+}
+
 // WakerDefaultModel 保存伙伴选择的明确执行配置。
 type WakerDefaultModel struct {
 	// 智能体
@@ -70,20 +75,6 @@ type WakerDefaultModel struct {
 	Model string `json:"model,omitempty" validate:"max=200"`
 	// 推理强度
 	Reasoning string `json:"reasoning,omitempty" validate:"max=80"`
-}
-
-// WakerOnboardingDraft 冻结待确认的伙伴档案及其原问答归属。
-type WakerOnboardingDraft struct {
-	// ID 是不可变的草稿版本标识，也是该版本的问答标识。
-	ID string `json:"id"`
-	// ExecutionID 是首次提交草稿的执行标识。
-	ExecutionID string `json:"executionId"`
-	// RequestHash 是提议命令的规范化输入摘要。
-	RequestHash string `json:"requestHash"`
-	// Projection 是草稿的展示字段。
-	Projection profile.Projection `json:"projection"`
-	// Content 是用户实际确认的完整 Markdown。
-	Content string `json:"content"`
 }
 
 // WakerOnboardingInterview 定位用户填写的结构化建档问答。

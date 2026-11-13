@@ -6,6 +6,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
 
+import { ApiError } from "@/shared/api/errors";
 import {
   localApiErrorMessage,
   withLocalErrorMutation,
@@ -46,12 +47,19 @@ function OpenWakerFormDialog({ onOpenChange, waker }: Props) {
   const { t } = useTranslation(["waker", "common"]);
   const id = useId();
   const queryClient = useQueryClient();
-  const [expertise, setExpertise] = useState(waker.expertise ?? []);
-  const [workStyle, setWorkStyle] = useState(waker.workStyle ?? []);
-  const [workMethods, setWorkMethods] = useState(waker.workMethods ?? []);
+  const [initial] = useState(() => ({
+    expertise: waker.expertise ?? [],
+    workStyle: waker.workStyle ?? [],
+    workMethods: waker.workMethods ?? [],
+    overviewRevision: waker.overviewRevision,
+    defaultModel: waker.defaultModel,
+  }));
+  const [expertise, setExpertise] = useState(initial.expertise);
+  const [workStyle, setWorkStyle] = useState(initial.workStyle);
+  const [workMethods, setWorkMethods] = useState(initial.workMethods);
   const [defaultModel, setDefaultModel] = useState<
     WakerDefaultModel | undefined
-  >(waker.defaultModel);
+  >(initial.defaultModel);
   const schema = z.object({
     name: z
       .string()
@@ -82,26 +90,37 @@ function OpenWakerFormDialog({ onOpenChange, waker }: Props) {
 
   const submit = form.handleSubmit(async (values) => {
     if (!waker.id) return;
+    const wakerQuery = getWakerQueryKey({ path: { wakerId: waker.id } });
+    const overviewChanged =
+      expertise !== initial.expertise ||
+      workStyle !== initial.workStyle ||
+      workMethods !== initial.workMethods;
+    const refresh = () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: wakerQuery }),
+        queryClient.invalidateQueries({ queryKey: listWakersQueryKey() }),
+      ]);
     try {
       await update.mutateAsync({
         path: { wakerId: waker.id },
         body: {
           ...values,
-          ...(defaultModel === waker.defaultModel
+          ...(defaultModel === initial.defaultModel
             ? {}
             : { defaultModel: defaultModel ?? {} }),
-          manual: cleanManualProfile(expertise, workStyle, workMethods),
+          ...(overviewChanged
+            ? {
+                manual: cleanManualProfile(expertise, workStyle, workMethods),
+                expectedOverviewRevision: initial.overviewRevision,
+              }
+            : {}),
         },
       });
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: getWakerQueryKey({ path: { wakerId: waker.id } }),
-        }),
-        queryClient.invalidateQueries({ queryKey: listWakersQueryKey() }),
-      ]);
+      await refresh();
       onOpenChange(false);
-    } catch {
-      // Mutation 保留错误，供当前表单显示。
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "WakerProfileChanged")
+        void refresh();
     }
   });
 
@@ -151,23 +170,21 @@ function OpenWakerFormDialog({ onOpenChange, waker }: Props) {
                   </p>
                 ) : null}
               </div>
-              {waker.roleName ? (
-                <div className="grid gap-2">
-                  <FieldLabel htmlFor={`${id}-role`}>
-                    {t("form.roleName")}
-                  </FieldLabel>
-                  <Input
-                    id={`${id}-role`}
-                    placeholder={t("form.roleNamePlaceholder")}
-                    {...form.register("roleName")}
-                  />
-                  {errors.roleName?.message ? (
-                    <p role="alert" className="text-destructive type-caption">
-                      {errors.roleName.message}
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
+              <div className="grid gap-2">
+                <FieldLabel htmlFor={`${id}-role`}>
+                  {t("form.roleName")}
+                </FieldLabel>
+                <Input
+                  id={`${id}-role`}
+                  placeholder={t("form.roleNamePlaceholder")}
+                  {...form.register("roleName")}
+                />
+                {errors.roleName?.message ? (
+                  <p role="alert" className="text-destructive type-caption">
+                    {errors.roleName.message}
+                  </p>
+                ) : null}
+              </div>
               <div className="grid gap-2">
                 <FieldLabel htmlFor={`${id}-bio`}>{t("form.bio")}</FieldLabel>
                 <Textarea

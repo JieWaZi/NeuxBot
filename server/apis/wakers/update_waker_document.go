@@ -20,6 +20,8 @@ import (
 type UpdateWakerDocumentRequest struct {
 	// 文件内容
 	Content string `json:"content" validate:"max=1048576"`
+	// 当前正文版本
+	ExpectedRevision string `json:"expectedRevision,omitempty" validate:"omitempty,len=64"`
 }
 
 // 更新伙伴文档
@@ -48,7 +50,11 @@ func (u *UpdateWakerDocument) Validate(*gin.Context) error {
 
 // Output 保存完整 Markdown；档案编辑不再重算关于我展示投影。
 func (u *UpdateWakerDocument) Output(ctx *gin.Context) (interface{}, error) {
-	if err := profile.ValidateContent(u.Body.Content); err != nil {
+	validate := profile.ValidateContent
+	if u.Kind == constants.ProfileDocumentKindAgents {
+		validate = profile.ValidateWakerAgents
+	}
+	if err := validate(u.Body.Content); err != nil {
 		return nil, ginx.WithStack(err)
 	}
 	now := time.Now().UnixMilli()
@@ -60,9 +66,19 @@ func (u *UpdateWakerDocument) Output(ctx *gin.Context) (interface{}, error) {
 				return err
 			}
 			if waker.OnboardingStatus == constants.WakerOnboardingStatusPending {
-				return status_error.WakerProfileConfirmationRequired
+				return status_error.WakerOnboardingIncomplete
 			}
 			if u.Kind == constants.ProfileDocumentKindAgents {
+				if u.Body.ExpectedRevision != "" {
+					rows, err := global.ProfileDocumentControllerManager.ListWakerDocuments(transactionContext, waker.ID)
+					if err != nil {
+						return err
+					}
+					current := builtinrolepreset.ResolveWakerAgents(waker.ID, rows, waker.UpdatedAt)
+					if profile.ContentRevision(current.Content) != u.Body.ExpectedRevision {
+						return status_error.WakerProfileChanged
+					}
+				}
 				return global.ProfileDocumentControllerManager.SaveWakerAgents(transactionContext, u.WakerID, u.Body.Content, now)
 			}
 			documents, err := global.ProfileDocumentControllerManager.ListWakerDocuments(

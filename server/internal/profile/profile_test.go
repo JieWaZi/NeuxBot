@@ -4,10 +4,23 @@ import (
 	"archive/zip"
 	"bytes"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
 )
+
+func TestWakerAgentsUsesTokenBudget(t *testing.T) {
+	atLimit := strings.Repeat(" work", constants.WakerProfileContentMaximumTokens)
+	if err := ValidateWakerAgents(atLimit); err != nil {
+		t.Fatalf("profile at the token limit: %v", err)
+	}
+	if err := ValidateWakerAgents(atLimit + " work"); !util.HasStatusCode(err, status_error.WakerProfileTooLong) {
+		t.Fatalf("profile one token over the limit: %v", err)
+	}
+}
 
 func TestPatchManualPreservesOtherSectionsAndParsesProjection(t *testing.T) {
 	documents := map[constants.ProfileDocumentKind]string{

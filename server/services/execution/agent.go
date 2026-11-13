@@ -94,6 +94,9 @@ func (m *service) prepareAgent(ctx context.Context, environment models.RuntimeEn
 		return nil, nil, err
 	}
 	bindings = append(bindings, onboardingBindings...)
+	if len(onboardingBindings) == 0 {
+		bindings = append(bindings, m.wakerProfileEditBindings(chat, executionID, request)...)
+	}
 	if request.allowedAgentDomains == nil || slices.Contains(*request.allowedAgentDomains, "interaction") {
 		for _, question := range m.questionBindings(chat.ID, executionID) {
 			// 建档使用专用选项卡；保留同一问答读取与等待能力。
