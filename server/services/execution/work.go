@@ -256,6 +256,7 @@ func validCodeReferences(references []CodeReferenceInput) bool {
 func (m *service) startMessage(
 	ctx context.Context,
 	request pendingMessage,
+	claimAttachments func([]AttachmentInput) (func(bool), error),
 ) (AcceptedExecution, error) {
 	if request.requestedAt == 0 {
 		request.requestedAt = nowMillis()
@@ -291,6 +292,7 @@ func (m *service) startMessage(
 	}
 	if isNew != (request.create != nil) ||
 		isNew != (request.clientRequestID != "") ||
+		(!isNew && claimAttachments != nil) ||
 		request.message.Actor == "" ||
 		validateMessage(request.message.Text) != nil ||
 		request.runtime.RuntimeID == "" ||
@@ -309,6 +311,7 @@ func (m *service) startMessage(
 		}
 	}
 
+	var files *preparedMessageFiles
 	var createRequestIdentity requestidempotency.Identity
 	if isNew {
 		var err error
@@ -340,6 +343,14 @@ func (m *service) startMessage(
 			createRequestIdentity,
 		); err != nil || exists {
 			return replayed, err
+		}
+		if claimAttachments != nil {
+			// 已提交的请求只需原引用即可对账，新请求仍须领取实际附件。
+			releaseAttachments, err := claimAttachments(request.message.Attachments)
+			if err != nil {
+				return AcceptedExecution{}, err
+			}
+			defer func() { releaseAttachments(files != nil && files.committed) }()
 		}
 	}
 	if m.runtimeEnvironments == nil {
@@ -477,7 +488,7 @@ func (m *service) startMessage(
 		return AcceptedExecution{}, status_error.ChatHasActiveExecution
 	}
 	// 上下文和附件必须先完整准备，并在权威提交失败时统一回滚。
-	files, err := m.prepareMessageFiles(
+	files, err = m.prepareMessageFiles(
 		ctx,
 		state,
 		userMessageID,

@@ -10,6 +10,7 @@ import {
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -239,8 +240,8 @@ type WorkBoardFocus = "attention" | "results";
 
 function useWorkBoardFocusEvents(
   mode: Exclude<WorkBoardMode, "all">,
-  enabled: boolean,
-  paused: boolean,
+  expanded: boolean,
+  active: boolean,
   isBrowsingDeep: () => boolean,
 ) {
   const client = useQueryClient();
@@ -248,18 +249,26 @@ function useWorkBoardFocusEvents(
     () => refreshWorkBoardFocus(client, mode, isBrowsingDeep),
     [client, mode, isBrowsingDeep],
   );
-  const { queryKey } = workBoardFocusOptions(mode);
   useQueryEvents({
     topic: "work-board",
     resource: workspaceAttentionResource,
-    queryKeys: [queryKey],
+    queryKeys: expanded ? [workBoardFocusOptions(mode).queryKey] : [],
     eventTypes: ["work-board.changed"],
     authority: true,
-    enabled,
-    active: enabled && !paused,
+    active,
     read,
   });
-  return () => refreshQueryFromEvent(client, queryKey, read);
+  return useCallback(
+    (signal?: AbortSignal) =>
+      refreshQueryFromEvent(
+        client,
+        workBoardFocusOptions(mode).queryKey,
+        read,
+        0,
+        signal,
+      ),
+    [client, mode, read],
+  );
 }
 
 export function WorkBoardOverview({
@@ -339,14 +348,26 @@ function WorkBoardFocusPanel({
     ? summary?.pendingRequestCount
     : summary?.awaitingViewWorkCount;
   const label = t(isAction ? "needsAction" : "results");
-  const [deepScope, setDeepScope] = useState<{ openToken?: string }>();
-  const deep = Boolean(
-    sceneActive && deepScope && deepScope.openToken === openToken,
+  const client = useQueryClient();
+  const focusOptions = workBoardFocusOptions(focusMode);
+  const focusQuery = useInfiniteQuery({ ...focusOptions, enabled: false });
+  const { dataUpdateCount = 0, errorUpdateCount = 0 } =
+    client.getQueryState(focusOptions.queryKey) ?? {};
+  const [expansion, setExpansion] = useState<{
+    openToken?: string;
+    dataUpdateCount: number;
+    errorUpdateCount: number;
+    deep: boolean;
+  }>();
+  const inScene = sceneActive && expansion && expansion.openToken === openToken;
+  const canExpand = (count ?? 0) > focusVisibleRows;
+  const deep = Boolean(inScene && expansion?.deep);
+  const paged = Boolean(
+    inScene && (canExpand || deep || summary?.complete !== true),
   );
-  if (deepScope && !deep) setDeepScope(undefined);
-  const paged = deep || (count ?? 0) > focusVisibleRows;
+  if (expansion && !paged) setExpansion(undefined);
   const listRef = useRef<HTMLUListElement>(null);
-  const headerRef = useRef<HTMLHeadingElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const isBrowsingDeep = useCallback(() => {
     const viewport = viewportRef.current;
@@ -362,17 +383,28 @@ function WorkBoardFocusPanel({
   }, []);
   const refreshFocus = useWorkBoardFocusEvents(
     focusMode,
-    active && paged,
-    deep,
+    paged,
+    active && paged && !deep,
     isBrowsingDeep,
   );
-  const focusQuery = useInfiniteQuery({
-    ...workBoardFocusOptions(focusMode),
-    enabled: active && paged,
-  });
-  const pages = paged ? focusQuery.data?.pages : undefined;
+  // 首次展开沿用摘要预览，直到当前展开取得新的权威页面。
+  const pages =
+    paged && expansion && dataUpdateCount > expansion.dataUpdateCount
+      ? focusQuery.data?.pages
+      : undefined;
+  const focusError =
+    paged && expansion && errorUpdateCount > expansion.errorUpdateCount
+      ? focusQuery.error
+      : null;
+  const waitingForFocus = paged && !pages && !focusError;
+  useEffect(() => {
+    if (!active || !waitingForFocus) return;
+    const controller = new AbortController();
+    void refreshFocus(controller.signal).catch(() => {});
+    return () => controller.abort();
+  }, [active, refreshFocus, waitingForFocus]);
   const focusIncomplete =
-    focusQuery.error instanceof WorkBoardFocusIncomplete ||
+    focusError instanceof WorkBoardFocusIncomplete ||
     pages?.some((page) => page.complete === false);
   const actionRows = isAction
     ? (pages?.flatMap((page) => page.attention ?? []) ??
@@ -418,25 +450,24 @@ function WorkBoardFocusPanel({
     if (listRef.current) observer.observe(listRef.current);
     for (const row of rows) observer.observe(row);
     return () => observer.disconnect();
-  }, [rowCount, summary, focusQuery.dataUpdatedAt]);
+  }, [rowCount, summary, focusError, focusQuery.dataUpdatedAt]);
 
-  const loading = pending || (paged && focusQuery.isPending);
+  const loading = pending || waitingForFocus;
   return (
     <section className="min-w-0">
       <div
         ref={viewportRef}
         role="region"
         aria-label={label}
-        aria-busy={pending || (paged && focusQuery.isFetching)}
-        tabIndex={rowCount >= focusVisibleRows ? 0 : undefined}
+        aria-busy={loading || (paged && focusQuery.isFetching)}
+        tabIndex={canExpand || rowCount >= focusVisibleRows ? 0 : undefined}
         style={focusMaxHeight ? { maxHeight: focusMaxHeight } : undefined}
         onScroll={(event) => {
           const viewport = event.currentTarget;
+          if (!active || !expansion || !pages) return;
           const nextDeep = isBrowsingDeep();
-          if (nextDeep !== deep)
-            setDeepScope(nextDeep ? { openToken } : undefined);
+          if (nextDeep !== deep) setExpansion({ ...expansion, deep: nextDeep });
           if (
-            paged &&
             focusQuery.hasNextPage &&
             !focusQuery.isFetching &&
             !focusQuery.isError &&
@@ -450,27 +481,47 @@ function WorkBoardFocusPanel({
         }}
         className="focus-visible:ring-ring max-h-work-board-focus-list min-h-work-board-focus-min bg-card flex min-w-0 flex-col gap-2 overflow-y-auto overscroll-y-auto rounded-md px-3 pb-2 outline-none focus-visible:ring-2 focus-visible:ring-inset"
       >
-        <h3
+        <div
           ref={headerRef}
-          className="bg-card type-label sticky top-0 z-10 flex min-w-0 shrink-0 flex-wrap items-center gap-2 pt-2 pb-1 font-semibold"
+          className="bg-card sticky top-0 z-10 flex min-w-0 shrink-0 flex-wrap items-center justify-between gap-2 pt-2 pb-1"
         >
-          {label}
-          {typeof count === "number" ? (
-            <span className="text-content-secondary type-ui tabular-nums">
-              {count}
-            </span>
-          ) : pending ? (
-            <Skeleton className="h-4 w-6" />
+          <h3 className="type-label flex min-w-0 flex-wrap items-center gap-2 font-semibold">
+            {label}
+            {typeof count === "number" ? (
+              <span className="text-content-secondary type-ui tabular-nums">
+                {count}
+              </span>
+            ) : pending ? (
+              <Skeleton className="h-4 w-6" />
+            ) : null}
+          </h3>
+          {canExpand && !paged ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={(event) => {
+                if (event.detail === 0)
+                  viewportRef.current?.focus({ preventScroll: true });
+                setExpansion({
+                  openToken,
+                  dataUpdateCount,
+                  errorUpdateCount,
+                  deep: false,
+                });
+              }}
+            >
+              {t("more")}
+            </Button>
           ) : null}
-        </h3>
-        {paged && (focusQuery.isError || focusIncomplete) ? (
+        </div>
+        {focusError || focusIncomplete ? (
           <div
             role="alert"
             className="bg-surface-raised text-destructive type-body flex items-center justify-between gap-2 rounded-md px-3 py-2"
           >
             {focusIncomplete
               ? t("attentionIncomplete")
-              : localApiErrorMessage(focusQuery.error, t("loadFailed"))}
+              : localApiErrorMessage(focusError, t("loadFailed"))}
             <Button
               size="sm"
               variant="surface"

@@ -2511,6 +2511,8 @@ const resources = {
         "本次发送标识已用于其他内容。输入已保留，请修改内容后重试。",
       sendUnknown:
         "发送结果未知。输入已保留，历史正在重新同步；请核对后再决定是否发送新消息。",
+      firstSendUnconfirmed: "首条消息尚未确认，将使用原伙伴、模型和权限重试。",
+      retryFirstSend: "重试原发送",
       team: {
         memberConfigUpdateFailed: "成员执行配置保存失败，请稍后重试。",
         memberConfigInvalid: "请检查{{name}}的执行配置后再发送。",
@@ -3085,6 +3087,9 @@ const resources = {
         "The operation failed. Check the status and try again.",
       sendUnknown:
         "The send outcome is unknown. Your input is saved while chat history resyncs; check it before sending another message.",
+      firstSendUnconfirmed:
+        "The first message is unconfirmed. Retrying uses the original partner, model, and permissions.",
+      retryFirstSend: "Retry original send",
       runtimeFailure: {
         thinkingRequired:
           "This model requires thinking. Adjust the thinking setting and try again.",

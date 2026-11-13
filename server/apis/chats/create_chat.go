@@ -51,6 +51,7 @@ func (c *CreateChat) Validate(*gin.Context) error {
 }
 
 // Output 调用 Chat 首发用例并返回启动后的对话和执行标识。
+// [MessageAttachmentInvalid][40000000017][消息附件不合法或不可读取]
 func (c *CreateChat) Output(ctx *gin.Context) (interface{}, error) {
 	input, options := c.Body.MessageRequest.workInput()
 	if c.Body.OptimizeProfile {
@@ -59,12 +60,6 @@ func (c *CreateChat) Output(ctx *gin.Context) (interface{}, error) {
 			Content: "The user opened this conversation from their partner profile editor. Interpret the first message as a profile edit request. Read the current profile with waker.profile.get and follow the partner profile guide. Ask for clarification if needed.",
 		}}
 	}
-	release, err := uploads.ClaimWork(ctx, &input, ctx.Request.URL.Path+":"+strings.TrimSpace(c.Body.ClientRequestID))
-	if err != nil {
-		return nil, err
-	}
-	accepted := false
-	defer func() { release(accepted) }()
 	intent := execution.WorkIntent{
 		ClientRequestID: strings.TrimSpace(c.Body.ClientRequestID),
 		Chat: execution.ChatTarget{Create: &execution.CreateChatSpec{
@@ -75,11 +70,17 @@ func (c *CreateChat) Output(ctx *gin.Context) (interface{}, error) {
 		Input:     input,
 		Options:   options,
 		Admission: constants.ExecutionAdmissionCommitOnRuntimeAccept,
+		ClaimAttachments: func(attachments []execution.AttachmentInput) (func(bool), error) {
+			release, err := uploads.ClaimWork(ctx, &execution.WorkInput{Attachments: attachments})
+			if err != nil {
+				return nil, status_error.MessageAttachmentInvalid
+			}
+			return release, nil
+		},
 	}
 	result, err := global.ExecutionService.Start(ctx, intent)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	accepted = true
 	return result, nil
 }

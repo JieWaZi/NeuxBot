@@ -577,7 +577,9 @@ func (work *nativeExecutionWork) ports(m *service) agent.TurnPorts {
 
 func (work *nativeExecutionWork) projectAdmission(ctx context.Context, receipt agent.CommitReceipt) error {
 	// The original admission is authoritative even if cancellation interrupted projection.
-	work.files.commit()
+	if !work.precommitted {
+		work.files.commit()
+	}
 	accepted, err := work.journal.ProjectTurnAdmission(ctx, work.admissionFacts, receipt)
 	if err != nil {
 		return err

@@ -38,6 +38,7 @@ export const workBoardKeys = {
   summary: ["work-board", "summary"] as const,
 };
 export const workBoardFocusHeadLimit = 100;
+const workBoardFocusPageSize = 50;
 
 async function fetchWorkBoardPage(
   filters: BoardListFilters,
@@ -73,7 +74,10 @@ export function workBoardFocusOptions(mode: Exclude<WorkBoardMode, "all">) {
     queryKey: [...workBoardKeys.focus, mode] as const,
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam, signal }) =>
-      fetchWorkBoardPage({ mode, cursor: pageParam, limit: 50 }, signal),
+      fetchWorkBoardPage(
+        { mode, cursor: pageParam, limit: workBoardFocusPageSize },
+        signal,
+      ),
     getNextPageParam: (lastPage) => lastPage.nextCursor || undefined,
     retry: false,
     // 自动重抓会重放所有已缓存页，关注区由握手和领域失效对账头部。
@@ -95,15 +99,14 @@ export function refreshWorkBoardFocus(
   isBrowsingDeep: () => boolean,
 ) {
   const options = workBoardFocusOptions(mode);
+  const hasPage = Boolean(client.getQueryData(options.queryKey));
+  const limit = hasPage ? workBoardFocusHeadLimit : workBoardFocusPageSize;
   return client.fetchInfiniteQuery({
     ...options,
     pages: 1,
     staleTime: 0,
     queryFn: async ({ signal }) => {
-      const data = await fetchWorkBoardPage(
-        { mode, limit: workBoardFocusHeadLimit },
-        signal,
-      );
+      const data = await fetchWorkBoardPage({ mode, limit }, signal);
       signal.throwIfAborted();
       // 读取期间也可能滚过刷新窗口。原查询回退，等待用户返回后再对账。
       if (isBrowsingDeep()) {
@@ -113,7 +116,8 @@ export function refreshWorkBoardFocus(
         );
         signal.throwIfAborted();
       }
-      if (data.complete !== true)
+      // 首读可展示已知的部分结果。已有窗口时等待完整结果再替换。
+      if (hasPage && data.complete !== true)
         throw new WorkBoardFocusIncomplete(data.incompleteReason);
       return data;
     },

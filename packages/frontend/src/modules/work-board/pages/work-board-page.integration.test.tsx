@@ -23,7 +23,7 @@ import {
 } from "vitest";
 import "@/shared/i18n";
 import { ChatQueueProvider, WorkbenchProvider } from "@/modules/chat";
-import { listWakersOptions } from "@/modules/waker";
+import { getWakerOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { client } from "@/shared/api/generated/client.gen";
 import { WorkBoardPage } from "./work-board-page";
 import type { GlobalEventObserver } from "@/shared/api/global-events";
@@ -192,6 +192,7 @@ function mount(initial = "/work-board", controls?: ReactNode) {
 it("关注区保留准确统计，列表标题过滤不改变关注区；查看结果链接不提前提交已读", async () => {
   const summaries = vi.fn();
   const lists = vi.fn();
+  const focusReads = vi.fn();
   const viewed = vi.fn();
   server.use(
     http.get(`${origin}/api/v1/work-board/summary`, () => {
@@ -205,7 +206,8 @@ it("关注区保留准确统计，列表标题过滤不改变关注区；查看�
     }),
     http.get(`${origin}/api/v1/work-board`, ({ request }) => {
       const params = new URL(request.url).searchParams;
-      if (params.get("limit") === "50") {
+      if (["50", "100"].includes(params.get("limit") ?? "")) {
+        focusReads(params.get("mode"));
         const isResults = params.get("mode") === "awaiting_view";
         return boardResponse({
           resources: [],
@@ -245,8 +247,12 @@ it("关注区保留准确统计，列表标题过滤不改变关注区；查看�
   );
   await waitFor(() => expect(lists).toHaveBeenLastCalledWith("归档"));
   expect(summaries).toHaveBeenCalledTimes(1);
+  expect(focusReads).not.toHaveBeenCalled();
   expect(viewed).not.toHaveBeenCalled();
   expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
+  publishWorkBoardChange();
+  await waitFor(() => expect(summaries).toHaveBeenCalledTimes(2));
+  expect(focusReads).not.toHaveBeenCalled();
 });
 
 it("并排关注区复用执行者头像和精确链接，省去重复名称及审批标签", async () => {
@@ -978,6 +984,9 @@ it("关注列表等待在途深页，再用一次有界头部读取对账并沿�
   mount();
   try {
     const focus = await screen.findByRole("region", { name: "待我查看" });
+    await userEvent.click(
+      await within(focus).findByRole("button", { name: "更多" }),
+    );
     await within(focus).findByText("原关注首屏");
     fireEvent.scroll(focus);
     await within(focus).findByText("第二页旧关注");
@@ -1066,6 +1075,9 @@ it("关注头部重连拒绝旧 epoch，临时不完整保留旧窗口并自动�
   );
   mount();
   const focus = await screen.findByRole("region", { name: "待我查看" });
+  await userEvent.click(
+    await within(focus).findByRole("button", { name: "更多" }),
+  );
   await within(focus).findByText("保留的旧头部");
   fireEvent.scroll(focus);
   await within(focus).findByText("保留的旧尾页");
@@ -1111,6 +1123,9 @@ it("关注栏后台读取失败时保留旧页，握手后重新对账", async (
   );
   mount();
   const focus = await screen.findByRole("region", { name: "待我查看" });
+  await userEvent.click(
+    await within(focus).findByRole("button", { name: "更多" }),
+  );
   await within(focus).findByText("原关注头部");
   fireEvent.scroll(focus);
   await within(focus).findByText("原关注尾页");
@@ -1185,6 +1200,9 @@ it("深处浏览保留窗口和滚动，头部请求在途也等返回后再替�
   mount();
   try {
     const focus = await screen.findByRole("region", { name: "待我查看" });
+    await userEvent.click(
+      await within(focus).findByRole("button", { name: "更多" }),
+    );
     await within(focus).findByText("关注项 50");
     fireEvent.scroll(focus);
     await within(focus).findByText("关注项 100");
@@ -1302,35 +1320,40 @@ it("看板发送伙伴首条消息失败后保留草稿，以同一请求重试�
   const wakerId = "f".repeat(32);
   const chatId = "e".repeat(32);
   const read = vi.fn();
-  const partnerPages: string[] = [];
+  const partnerSearches: string[] = [];
+  let releaseFirstResponse = () => {};
+  const firstResponse = new Promise<void>((resolve) => {
+    releaseFirstResponse = resolve;
+  });
   let model = "sonnet";
+  const partner = () => ({
+    id: wakerId,
+    name: "设计伙伴",
+    defaultModel: {
+      runtimeId: "claude",
+      accountId: "configured",
+      model,
+      reasoning: "low",
+    },
+  });
   server.use(
     http.get(`${origin}/api/v1/wakers`, ({ request }) => {
-      const page = new URL(request.url).searchParams.get("pageNum") ?? "1";
-      partnerPages.push(page);
+      const search = new URL(request.url).searchParams.get("query") ?? "";
+      partnerSearches.push(search);
       return boardResponse({
-        resources:
-          page === "1"
-            ? Array.from({ length: 100 }, (_, index) => ({
-                id: String(index).padStart(32, "0"),
-                name: `伙伴 ${index + 1}`,
-                isDefault: index === 0,
-              }))
-            : [
-                {
-                  id: wakerId,
-                  name: "设计伙伴",
-                  defaultModel: {
-                    runtimeId: "claude",
-                    accountId: "configured",
-                    model,
-                    reasoning: "low",
-                  },
-                },
-              ],
-        totalSize: 101,
+        resources: search
+          ? [partner()]
+          : [{ id: entry.wakerId, name: "默认伙伴", isDefault: true }],
+        totalSize: search ? 1 : 101,
       });
     }),
+    http.get(`${origin}/api/v1/wakers/:wakerId`, ({ params }) =>
+      HttpResponse.json(
+        params.wakerId === wakerId
+          ? partner()
+          : { id: entry.wakerId, name: "默认伙伴", isDefault: true },
+      ),
+    ),
     http.get(`${origin}/api/v1/runtimes`, () =>
       HttpResponse.json({
         resources: [
@@ -1369,7 +1392,11 @@ it("看板发送伙伴首条消息失败后保留草稿，以同一请求重试�
     }),
     http.post(`${origin}/api/v1/chats`, async ({ request }) => {
       bodies.push(await request.json());
-      if (bodies.length === 1) return new HttpResponse(null, { status: 503 });
+      if (bodies.length === 1) {
+        await firstResponse;
+        return new HttpResponse(null, { status: 503 });
+      }
+      if (bodies.length === 2) return new HttpResponse(null, { status: 400 });
       return HttpResponse.json({
         chat: { id: chatId, wakerId, latestSequence: 1 },
       });
@@ -1388,18 +1415,33 @@ it("看板发送伙伴首条消息失败后保留草稿，以同一请求重试�
   expect(input).toHaveAttribute("contenteditable", "true");
   expect(form.getByRole("button", { name: "添加附件" })).toBeInTheDocument();
   expect(form.getByRole("button", { name: "发送消息" })).toBeDisabled();
-  const picker = form.getByRole("combobox", { name: "选择伙伴" });
+  const picker = form.getByRole("button", { name: "选择伙伴" });
   const cliPicker = form.getByTestId("composer-model-control");
   expect(picker.parentElement).toBe(cliPicker.parentElement);
   expect(picker.compareDocumentPosition(cliPicker)).toBe(
     Node.DOCUMENT_POSITION_FOLLOWING,
   );
   await waitFor(() => expect(picker).toBeEnabled());
-  expect(partnerPages).toEqual(["1"]);
+  expect(partnerSearches).toEqual([""]);
   fireEvent.keyDown(picker, { key: "ArrowDown" });
-  await user.click(await screen.findByRole("option", { name: "设计伙伴" }));
+  await user.type(
+    await screen.findByRole("searchbox", { name: "搜索伙伴" }),
+    "设计伙伴",
+  );
+  await user.click(await screen.findByRole("button", { name: "设计伙伴" }));
   expect(form.getByTestId("composer-permission-control")).toHaveTextContent(
     "完全访问",
+  );
+  // 该账号的模型不在本机账号快照里，仍允许显式收紧权限。
+  const permission = form.getByTestId("composer-permission-control");
+  await user.click(permission);
+  await user.click(
+    await screen.findByRole("menuitemradio", { name: /^默认权限/ }),
+  );
+  expect(permission).toHaveTextContent("默认权限");
+  await user.click(permission);
+  await user.click(
+    await screen.findByRole("menuitemradio", { name: /^完全访问/ }),
   );
   await user.type(input, "整理设计稿");
   const send = await form.findByRole("button", { name: "发送消息" });
@@ -1407,19 +1449,38 @@ it("看板发送伙伴首条消息失败后保留草稿，以同一请求重试�
   fireEvent.keyDown(input, { key: "Enter", isComposing: true });
   expect(bodies).toHaveLength(0);
   await user.click(await form.findByRole("button", { name: "发送消息" }));
-  await form.findByRole("alert");
+  await waitFor(() => expect(bodies).toHaveLength(1));
+  expect(form.getByRole("button", { name: "发送消息" })).toBeDisabled();
+  expect(form.queryByRole("button", { name: "停止执行" })).toBeNull();
+  expect(picker).toBeDisabled();
+  releaseFirstResponse();
+  await form.findByRole("button", { name: "重试原发送" });
   await waitFor(() => expect(input).toHaveTextContent("整理设计稿"));
+  expect(picker).toBeDisabled();
+  expect(cliPicker).toBeDisabled();
+  const lockedPermission = form.queryByTestId("composer-permission-control");
+  if (lockedPermission) expect(lockedPermission).toBeDisabled();
+  expect(form.getByRole("button", { name: "发送消息" })).toBeDisabled();
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(bodies).toHaveLength(1);
   model = "opus";
   await act(() =>
-    queryClient.invalidateQueries({ queryKey: listWakersOptions().queryKey }),
+    queryClient.invalidateQueries({
+      queryKey: getWakerOptions({ path: { wakerId } }).queryKey,
+    }),
   );
-  await user.click(await form.findByRole("button", { name: "发送消息" }));
+  await user.click(await form.findByRole("button", { name: "重试原发送" }));
+  await waitFor(() => expect(bodies).toHaveLength(2));
+  await waitFor(() =>
+    expect(form.getByRole("button", { name: "重试原发送" })).toBeEnabled(),
+  );
+  await user.click(form.getByRole("button", { name: "重试原发送" }));
   await waitFor(() =>
     expect(screen.getByLabelText("当前路由")).toHaveTextContent(
       `/chats/${chatId}?wakerId=${wakerId}`,
     ),
   );
-  expect(bodies).toHaveLength(2);
+  expect(bodies).toHaveLength(3);
   expect(bodies[0]).toMatchObject({
     clientRequestId: expect.any(String),
     wakerId,
@@ -1431,5 +1492,6 @@ it("看板发送伙伴首条消息失败后保留草稿，以同一请求重试�
     text: "整理设计稿",
   });
   expect(bodies[1]).toEqual(bodies[0]);
+  expect(bodies[2]).toEqual(bodies[0]);
   expect(read).not.toHaveBeenCalled();
 });

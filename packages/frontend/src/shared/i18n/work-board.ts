@@ -1,8 +1,11 @@
 export const workBoardZh = {
   startChat: "和<partner>伙伴</partner>一起创造",
   choosePartner: "选择伙伴",
+  partnerSearch: "搜索伙伴",
+  noMatchingPartners: "没有匹配的伙伴",
   noPartners: "暂无可选伙伴",
   loadingPartners: "正在读取伙伴",
+  selectedPartnerUnavailable: "所选伙伴已不可用，请重新选择。",
   currentWork: "当前任务",
   needsAction: "需要处理",
   allTasks: "全部任务",
@@ -140,8 +143,12 @@ export const workBoardZh = {
 export const workBoardEn: Record<keyof typeof workBoardZh, string> = {
   startChat: "Create with a <partner>partner</partner>",
   choosePartner: "Choose a partner",
+  partnerSearch: "Search partners",
+  noMatchingPartners: "No matching partners",
   noPartners: "No partners available",
   loadingPartners: "Loading partners",
+  selectedPartnerUnavailable:
+    "The selected partner is unavailable. Choose another partner.",
   currentWork: "Current tasks",
   needsAction: "Needs action",
   allTasks: "All tasks",

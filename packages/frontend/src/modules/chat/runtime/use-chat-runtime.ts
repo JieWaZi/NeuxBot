@@ -101,6 +101,8 @@ type ChatRuntimeOptions = {
   initialPendingElicitations?: ChatPendingElicitation[];
   isLoading: boolean;
   isSendDisabled: boolean;
+  /** 看板首发在得到接纳结果前只允许一个输入。 */
+  singleSubmission?: boolean;
   serverManagedQueue?: boolean;
   messageVisibility?: ChatMessageVisibility;
   attachmentOnlyText: string;
@@ -127,6 +129,7 @@ type ChatRuntimeResult = {
   isRunning: boolean;
   hasVisibleMessages: boolean;
   sendFailure: ChatSendFailure;
+  retryFirstSubmission?: () => void;
   contextMetrics?: ChatRunMetrics;
   pendingApprovals: PendingApproval[];
   pendingElicitations: ChatPendingElicitation[];
@@ -138,6 +141,12 @@ type SendSnapshot = {
   chatId?: string;
   selection: ChatSendSelection;
   prepareSubmission: ChatSubmissionPreparer;
+};
+
+type FirstSubmissionRecovery = {
+  prepared: PreparedChatSubmission;
+  message: AppendMessage;
+  snapshot: SendSnapshot;
 };
 
 function textOf(message: AppendMessage): string {
@@ -226,6 +235,9 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
   const currentSubmissionRef = useRef<PreparedChatSubmission | undefined>(
     undefined,
   );
+  const recoveryRef = useRef<FirstSubmissionRecovery | undefined>(undefined);
+  const [firstSubmissionRecovery, setFirstSubmissionRecovery] =
+    useState<FirstSubmissionRecovery>();
   const [sendFailure, setSendFailure] = useState<{
     chatId?: string;
     value: ChatSendFailure;
@@ -244,6 +256,10 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     if (!pending) return;
     pendingSubmissionsRef.current.delete(submissionId);
     pending.submission.confirmAccepted?.();
+    if (recoveryRef.current?.prepared === pending.submission) {
+      recoveryRef.current = undefined;
+      setFirstSubmissionRecovery(undefined);
+    }
     const { noticeId } = pending;
     if (noticeId) {
       dismissErrorNotice(noticeId);
@@ -486,6 +502,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     async function submitMessage(
       message: AppendMessage,
       snapshot: SendSnapshot,
+      original?: PreparedChatSubmission,
     ) {
       const attachmentPaths = attachmentPathsOf(message);
       const text =
@@ -498,14 +515,19 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       if (!text) return;
 
       const now = Date.now();
-      const prepared = snapshot.prepareSubmission(
-        text,
-        snapshot.chatId,
-        attachmentPaths,
-        snapshot.selection,
-      );
+      const prepared =
+        original ??
+        snapshot.prepareSubmission(
+          text,
+          snapshot.chatId,
+          attachmentPaths,
+          snapshot.selection,
+        );
       currentSubmissionRef.current = prepared;
-      if (prepared.submissionId)
+      if (
+        prepared.submissionId &&
+        (!original || !pendingSubmissionsRef.current.has(prepared.submissionId))
+      )
         pendingSubmissionsRef.current.set(prepared.submissionId, {
           submission: prepared,
         });
@@ -673,9 +695,21 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           observedChatKeyRef.current === snapshot.conversationKey;
         if (current) runningRef.current = false;
         const failure = classifyChatSendFailure(error);
+        const needsReceipt = prepared.hasUnconfirmedReceipt?.() === true;
+        if (needsReceipt) {
+          const next = { prepared, message, snapshot };
+          recoveryRef.current = next;
+          setFirstSubmissionRecovery(next);
+        } else if (recoveryRef.current?.prepared === prepared) {
+          recoveryRef.current = undefined;
+          setFirstSubmissionRecovery(undefined);
+        }
         // 只重放服务端明确拒绝的限流请求；响应丢失时先核对权威历史。
         const canRetry =
-          current && error instanceof ApiError && error.status === 429;
+          current &&
+          !needsReceipt &&
+          error instanceof ApiError &&
+          error.status === 429;
         const canCheck =
           current &&
           snapshot.chatId &&
@@ -689,42 +723,43 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           );
           if (pending) pending.noticeId = noticeId;
         }
-        reportErrorNotice(
-          {
-            id: noticeId,
-            scope: snapshot.queueKey,
-            lifetime: "session",
-            operation,
-            ...apiErrorNoticePresentation(
-              error,
-              sendFailureDisplayText(failure, (key) =>
-                i18n.t(key, { ns: "chat" }),
+        if (!needsReceipt)
+          reportErrorNotice(
+            {
+              id: noticeId,
+              scope: snapshot.queueKey,
+              lifetime: "session",
+              operation,
+              ...apiErrorNoticePresentation(
+                error,
+                sendFailureDisplayText(failure, (key) =>
+                  i18n.t(key, { ns: "chat" }),
+                ),
               ),
-            ),
-            action: canRetry ? "retry" : canCheck ? "check" : undefined,
-          },
-          canRetry
-            ? async () => {
-                if (
-                  !mountedRef.current ||
-                  observedChatKeyRef.current !== snapshot.conversationKey ||
-                  currentSubmissionRef.current !== prepared ||
-                  runningRef.current
-                )
-                  return;
-                await submitMessage(message, snapshot);
-              }
-            : canCheck
-              ? () => {
+              action: canRetry ? "retry" : canCheck ? "check" : undefined,
+            },
+            canRetry
+              ? async () => {
                   if (
-                    mountedRef.current &&
-                    observedChatKeyRef.current === snapshot.conversationKey
+                    !mountedRef.current ||
+                    observedChatKeyRef.current !== snapshot.conversationKey ||
+                    currentSubmissionRef.current !== prepared ||
+                    runningRef.current
                   )
-                    reconcileHistory();
-                  terminalRef.current();
+                    return;
+                  await submitMessage(message, snapshot);
                 }
-              : undefined,
-        );
+              : canCheck
+                ? () => {
+                    if (
+                      mountedRef.current &&
+                      observedChatKeyRef.current === snapshot.conversationKey
+                    )
+                      reconcileHistory();
+                    terminalRef.current();
+                  }
+                : undefined,
+          );
         if (current) {
           const authoritativeIDs = new Set<string>(
             sourceRef.current.snapshot.messages.flatMap((message) =>
@@ -758,6 +793,12 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           ) {
             return;
           }
+          if (
+            !needsReceipt &&
+            prepared.hasUnconfirmedReceipt &&
+            prepared.submissionId
+          )
+            pendingSubmissionsRef.current.delete(prepared.submissionId);
           messageRejectedRef.current?.(snapshot.selection);
           const composer = runtimeRef.current?.thread?.composer;
           composer?.setText(text);
@@ -768,6 +809,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           }
         }, 0);
         if (
+          !needsReceipt &&
           failure.kind === "unknown" &&
           mountedRef.current &&
           observedChatKeyRef.current === snapshot.conversationKey
@@ -834,6 +876,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
   const advanceQueue = useCallback(
     (queueKey: string) => {
       if (options.queueActive === false) return;
+      if (recoveryRef.current) return;
       if (queueKey !== options.queueKey) return;
       if (runningByQueueRef.current[queueKey]) return;
       if (interactionPendingRef.current) return;
@@ -1273,11 +1316,16 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
 
   const onNew = useCallback(
     async (message: AppendMessage) => {
-      if (interactionPendingRef.current) return;
+      if (
+        interactionPendingRef.current ||
+        recoveryRef.current ||
+        (options.singleSubmission && runningRef.current)
+      )
+        return;
       messageAcceptedRef.current?.();
       return submit(message, currentSnapshot);
     },
-    [currentSnapshot, submit],
+    [currentSnapshot, options.singleSubmission, submit],
   );
   const queue = useMemo<ExternalThreadQueueAdapter>(() => {
     const currentAssistant = messages.findLast(
@@ -1298,7 +1346,12 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         ? []
         : queuedEntries.map(({ id, prompt }) => ({ id, prompt })),
       enqueue: (message, { steer }) => {
-        if (interactionPendingRef.current) return;
+        if (
+          interactionPendingRef.current ||
+          recoveryRef.current ||
+          (options.singleSubmission && runningRef.current)
+        )
+          return;
         if (options.serverManagedQueue) {
           messageAcceptedRef.current?.();
           void submit(message, currentSnapshot);
@@ -1359,6 +1412,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     queueStore,
     submit,
     options.serverManagedQueue,
+    options.singleSubmission,
     options.queueActive,
   ]);
 
@@ -1367,7 +1421,11 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     convertMessage: convertComposerMessage,
     isRunning,
     isLoading: options.isLoading,
-    isSendDisabled: options.isSendDisabled || hasPendingInteraction,
+    isSendDisabled:
+      options.isSendDisabled ||
+      hasPendingInteraction ||
+      (options.singleSubmission && isRunning) ||
+      Boolean(firstSubmissionRecovery),
     queue,
     onNew,
     onCancel: options.cancel,
@@ -1388,6 +1446,22 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     isRunning,
     hasVisibleMessages: messages.length > 0,
     sendFailure: currentSendFailure,
+    retryFirstSubmission:
+      firstSubmissionRecovery?.snapshot.conversationKey ===
+      options.conversationKey
+        ? () => {
+            const recovery = recoveryRef.current;
+            if (
+              !recovery ||
+              recovery !== firstSubmissionRecovery ||
+              runningRef.current ||
+              options.queueActive === false
+            )
+              return;
+            messageAcceptedRef.current?.();
+            void submit(recovery.message, recovery.snapshot, recovery.prepared);
+          }
+        : undefined,
     contextMetrics: latestContextMetrics(messages),
     pendingApprovals,
     pendingElicitations,

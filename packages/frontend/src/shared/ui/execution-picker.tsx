@@ -150,6 +150,8 @@ export function ExecutionPicker(props: Props) {
     maximumFractionDigits: 4,
   });
   const [open, setOpen] = useState(false);
+  const visible = open && !props.disabled;
+  if (open && props.disabled) setOpen(false);
   const [preview, setPreview] = useState<{
     runtimeId: string;
     accountId: string;
@@ -179,7 +181,7 @@ export function ExecutionPicker(props: Props) {
   const directory = useExecutionSelection({
     runtime,
     value: { runtimeId: runtime?.id, accountId },
-    enabled: open && browsing,
+    enabled: visible && browsing,
   });
   const models = browsing ? directory.models : props.models;
   const defaultModel =
@@ -289,7 +291,7 @@ export function ExecutionPicker(props: Props) {
 
   return (
     <Popover
-      open={open}
+      open={visible}
       onOpenChange={(next) => {
         setOpen(next);
         props.onOpenChange?.(next);
@@ -322,6 +324,7 @@ export function ExecutionPicker(props: Props) {
           <Button
             type="button"
             data-testid="composer-model-control"
+            disabled={props.disabled}
             size="sm"
             variant="ghost"
             shape="capsule"

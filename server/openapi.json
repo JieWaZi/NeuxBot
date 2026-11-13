@@ -5944,7 +5944,7 @@
             }
           },
           "400": {
-            "description": ">\n* `[BadRequest][40000000001]`\n",
+            "description": ">\n* `[BadRequest][40000000001]`\n* `[MessageAttachmentInvalid][40000000017]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5953,7 +5953,8 @@
               }
             },
             "x-status-errors": [
-              "[BadRequest][40000000001]"
+              "[BadRequest][40000000001]",
+              "[MessageAttachmentInvalid][40000000017]"
             ]
           }
         }

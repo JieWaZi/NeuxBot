@@ -22,7 +22,6 @@ import {
   type ReactNode,
 } from "react";
 import type {
-  CreateChatData,
   GithubComJieWaZiNeuxBotServerApisChatsMessageRequest as ChatMessageRequest,
   GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution as AcceptedExecution,
 } from "@/shared/api/generated/types.gen";
@@ -102,18 +101,15 @@ import {
 } from "@/modules/connector";
 import { listWakersOptions } from "@/modules/waker";
 import type { Waker } from "@/modules/waker";
-import { ApiError } from "@/shared/api/errors";
-import { applicationErrorKey } from "@/shared/api/error-presentation";
+import { prepareFirstChatSubmission } from "../model/first-chat-submission";
+import { resolveNewChatExecution } from "../model/new-chat-execution";
 import { selectDirectory } from "@/shared/platform";
 import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingApproval as PendingApproval } from "@/shared/api/generated/types.gen";
 import {
   clearStableCreateRequest,
   withStableCreateRequest,
 } from "@/shared/lib/create-request-idempotency";
-import {
-  modelPermissionLevels,
-  type PermissionLevel,
-} from "@/shared/lib/runtime-permissions";
+import type { PermissionLevel } from "@/shared/lib/runtime-permissions";
 import { useSceneWorkspace } from "@/shared/workspace/workspace-context";
 import type { WorkspaceMemberTab } from "@/shared/workspace/workspace-tab";
 import type { ChatOutletContext } from "./chat-page-shared";
@@ -301,12 +297,12 @@ function ChatView({
     key: string;
     result: AcceptedExecution;
   } | null>(null);
-  const boardCreateAttempt = useRef<{
-    input: string;
-    body: CreateChatData["body"];
-  }>(undefined);
   const [boardModelPickerOpen, setBoardModelPickerOpen] = useState(false);
+  if (boardModelPickerOpen && !sceneActive) setBoardModelPickerOpen(false);
   const composerHost = useChatWorkspaceHost();
+  const readDraftResources = !boardDraft || sceneActive;
+  const readExecutionCatalog =
+    !boardDraft || (sceneActive && boardModelPickerOpen);
   const selectionScopeKey = boardDraft
     ? `${workspaceScopeKey}:partner:${boardDraft.partner?.id ?? ""}`
     : workspaceScopeKey;
@@ -377,10 +373,13 @@ function ChatView({
     ...chatMessagesInfiniteOptions(activeChatId ?? "pending"),
     enabled: sceneActive && Boolean(activeChatId),
   });
-  const runtimesQuery = useQuery(listRuntimesOptions());
+  const runtimesQuery = useQuery({
+    ...listRuntimesOptions(),
+    enabled: readDraftResources,
+  });
   const accountsQuery = useQuery({
     ...listAiAccountsOptions(),
-    enabled: !boardDraft || boardModelPickerOpen,
+    enabled: readExecutionCatalog,
   });
   const wakers = wakersQuery.data?.resources ?? [];
   const requestedWaker = searchParams.get("wakerId")?.trim() ?? "";
@@ -410,7 +409,7 @@ function ChatView({
       path: { wakerId: selectedWakerID ?? "pending" },
       query: { pageNum: 1, pageSize: 100 },
     }),
-    enabled: Boolean(selectedWakerID),
+    enabled: readDraftResources && Boolean(selectedWakerID),
   });
   const pluginsQuery = useInstalledPluginReferences(
     selectedWakerID,
@@ -434,13 +433,13 @@ function ChatView({
     ...listWakerSkillsOptions({
       path: { wakerId: selectedWakerID ?? "pending" },
     }),
-    enabled: Boolean(selectedWakerID),
+    enabled: readDraftResources && Boolean(selectedWakerID),
   });
   const connectorsQuery = useQuery({
     ...listWakerConnectorsOptions({
       path: { wakerId: selectedWakerID ?? "pending" },
     }),
-    enabled: Boolean(selectedWakerID),
+    enabled: readDraftResources && Boolean(selectedWakerID),
   });
   const recentProjectQuery = useQuery({
     ...getWakerRecentProjectOptions({
@@ -645,7 +644,7 @@ function ChatView({
         entry?.defaults?.permissionLevel ||
         undefined,
     },
-    enabled: Boolean(selectedRuntime) && (!boardDraft || boardModelPickerOpen),
+    enabled: Boolean(selectedRuntime) && readExecutionCatalog,
   });
   const wakerDefaultUnavailable =
     !boardDraft &&
@@ -658,64 +657,53 @@ function ChatView({
           (account) =>
             account.id === selectedAccountId && account.hasCredential,
         )));
-  const availableModels =
-    boardDraft && !executionSelection.models.length
-      ? (selectedRuntime?.models ?? [])
-      : executionSelection.models;
-  const selectedModel = boardDraft
-    ? requestedModel ||
-      (selectedAccountId === (selectedRuntime?.defaultAccountId || "system")
-        ? selectedRuntime?.defaultModel
-        : undefined) ||
-      ""
-    : executionSelection.effectiveModel;
+  const boardExecution = boardDraft
+    ? resolveNewChatExecution({
+        runtime: selectedRuntime,
+        accountId: selectedAccountId,
+        model: requestedModel,
+        catalog: executionSelection.usesNativeCatalog
+          ? executionSelection.models
+          : [],
+        reasoning,
+        partnerDefault: matchesWakerDefault ? wakerDefaultModel : undefined,
+        permission: permissionLevel,
+        configuredPermission: executionSelection.selection.permissionLevel,
+      })
+    : undefined;
+  const availableModels = boardExecution?.models ?? executionSelection.models;
+  const selectedModel =
+    boardExecution?.model ?? executionSelection.effectiveModel;
   const selectedModelOption = availableModels.find(
     (item) => item.id === selectedModel,
   );
   const supportedPermissions =
-    boardDraft && !executionSelection.supportedPermissions.size
-      ? modelPermissionLevels(availableModels, selectedModel)
-      : executionSelection.supportedPermissions;
-  const configuredPermissionLevel =
-    executionSelection.selection.permissionLevel;
-  // 看板首发优先使用完全访问，已知不支持时沿用智能体可用的权限。
-  const boardPrefersFullAccess = Boolean(
-    boardDraft &&
+    boardExecution?.permissionOptions ??
+    executionSelection.supportedPermissions;
+  const selectedPermissionLevel =
+    boardExecution?.permission ?? executionSelection.selection.permissionLevel;
+  const selectedPermissionUnsupported =
+    boardExecution?.permissionUnsupported ??
+    Boolean(
+      selectedRuntime && !supportedPermissions.has(selectedPermissionLevel),
+    );
+  const defaultPermissionWasDowngraded =
     !permissionLevel &&
-    (!supportedPermissions.size || supportedPermissions.has("full-access")),
-  );
-  const selectedPermissionLevel = boardPrefersFullAccess
-    ? "full-access"
-    : boardDraft &&
-        !permissionLevel &&
-        supportedPermissions.size &&
-        !supportedPermissions.has(configuredPermissionLevel)
-      ? ([...supportedPermissions][0] ?? configuredPermissionLevel)
-      : configuredPermissionLevel;
-  const selectedPermissionUnsupported = Boolean(
-    selectedRuntime && !supportedPermissions.has(selectedPermissionLevel),
-  );
-  const defaultPermissionWasDowngraded = Boolean(
-    !boardPrefersFullAccess &&
-    selectedRuntime &&
-    !permissionLevel &&
-    !detailQuery.data?.chat?.lastPermissionLevel &&
-    (selectedRuntime?.defaultPermissionLevel !== selectedPermissionLevel ||
-      selectedRuntime?.diagnostics?.some(
-        (item) => item.code === "PERMISSION_DEFAULT_DOWNGRADED",
-      )),
-  );
-  const availableReasoningOptions = boardDraft
-    ? (selectedModelOption?.reasoningOptions ??
-      selectedRuntime?.reasoningOptions ??
-      [])
-    : executionSelection.reasoningOptions;
-  const selectedReasoning = boardDraft
-    ? reasoning ||
-      (matchesWakerDefault ? wakerDefaultModel?.reasoning : undefined) ||
-      selectedRuntime?.defaultReasoning ||
-      ""
-    : executionSelection.selection.reasoning;
+    (boardExecution
+      ? boardExecution.permissionKnown &&
+        selectedPermissionLevel !== "full-access"
+      : Boolean(
+          selectedRuntime &&
+          !detailQuery.data?.chat?.lastPermissionLevel &&
+          (selectedRuntime.defaultPermissionLevel !== selectedPermissionLevel ||
+            selectedRuntime.diagnostics?.some(
+              (item) => item.code === "PERMISSION_DEFAULT_DOWNGRADED",
+            )),
+        ));
+  const availableReasoningOptions =
+    boardExecution?.reasoningOptions ?? executionSelection.reasoningOptions;
+  const selectedReasoning =
+    boardExecution?.reasoning ?? executionSelection.selection.reasoning;
   const selectedFast = executionSelection.selection.fast;
   const summaryRuntime = historicalRuntime ?? selectedRuntime;
   const summaryAccountId = detailQuery.data?.chat?.lastAccountId || "system";
@@ -751,7 +739,6 @@ function ChatView({
       runtimeId: string;
     }>,
   ) => {
-    if (boardDraft) boardCreateAttempt.current = undefined;
     if (
       activeChatId &&
       runtimeMessages.length > 0 &&
@@ -904,6 +891,7 @@ function ChatView({
     conversationKey: currentChatKey,
     queueKey: runtimeQueueKey,
     queueActive: sceneActive,
+    singleSubmission: Boolean(boardDraft),
     chatId: activeChatId,
     messageSource,
     activeExecutionId: detailQuery.data?.chat?.activeExecutionId,
@@ -921,6 +909,7 @@ function ChatView({
       !selectedWakerID ||
       !effectiveRuntimeID ||
       (boardDraft && !selectedRuntime) ||
+      (boardExecution && selectedPermissionUnsupported) ||
       (ordinaryDraft && !boardDraft && wakersQuery.isPending) ||
       wakerDefaultUnavailable ||
       (!boardDraft &&
@@ -1064,55 +1053,27 @@ function ChatView({
         projectId: selectedDraftProject?.id ?? "",
         workingDirectory: selectedDraftProject ? "" : workspaceDirectory,
       };
-      // 回执不明确时复用原首发配置，避免刷新伙伴默认值后重复创建。
-      const input = boardDraft
-        ? JSON.stringify({
-            wakerId: createInput.wakerId,
-            text: message.text,
-            projectId: createInput.projectId,
-            workingDirectory: createInput.workingDirectory,
-            attachments: message.attachments,
-            skills: message.skillIds,
-            plugins: message.pluginIds,
-            connectors: message.connectorIds,
-            references: message.codeReferences,
-          })
-        : "";
-      const retry =
-        boardDraft && boardCreateAttempt.current?.input === input
-          ? boardCreateAttempt.current.body
-          : undefined;
-      const createRequest =
-        retry ?? withStableCreateRequest(workspaceScopeKey, createInput);
-      if (boardDraft)
-        boardCreateAttempt.current = { input, body: createRequest };
+      const createRequest = withStableCreateRequest(
+        workspaceScopeKey,
+        createInput,
+      );
+      const finish = () =>
+        clearStableCreateRequest(
+          workspaceScopeKey,
+          createRequest.clientRequestId,
+        );
+      if (boardDraft) {
+        setBoardModelPickerOpen(false);
+        return prepareFirstChatSubmission(
+          createRequest,
+          (body) => create.mutateAsync({ body }),
+          finish,
+        );
+      }
       return {
         submissionId: createRequest.clientRequestId,
-        confirmAccepted: () => {
-          if (boardCreateAttempt.current?.body === createRequest)
-            boardCreateAttempt.current = undefined;
-          clearStableCreateRequest(
-            workspaceScopeKey,
-            createRequest.clientRequestId,
-          );
-        },
-        accept: async () => {
-          try {
-            return await create.mutateAsync({ body: createRequest });
-          } catch (error) {
-            if (
-              boardCreateAttempt.current?.body === createRequest &&
-              error instanceof ApiError &&
-              error.status &&
-              error.status >= 400 &&
-              error.status < 500 &&
-              error.status !== 408 &&
-              applicationErrorKey(error.code) !== "CreateRequestInProgress"
-            )
-              boardCreateAttempt.current = undefined;
-            throw error;
-          }
-        },
+        confirmAccepted: finish,
+        accept: () => create.mutateAsync({ body: createRequest }),
       };
     },
     cancel: async () => {
@@ -1297,15 +1258,22 @@ function ChatView({
         ? contributedEmptyState
         : emptyState;
 
+  const retryFirstSubmission = chatRuntime.retryFirstSubmission;
+  const boardInputLocked = Boolean(boardDraft && retryFirstSubmission);
   const {
     composerSettings,
     composerEffects,
     renderContextStrip: renderComposerContextStrip,
   } = useChatComposerControls({
     preservePermissionOnModelChange: !boardDraft,
-    loadAccounts: !boardDraft || boardModelPickerOpen,
+    executionControlsDisabled: Boolean(
+      boardDraft && (boardInputLocked || chatRuntime.isRunning || !sceneActive),
+    ),
+    loadAccounts: readExecutionCatalog,
     onModelPickerOpenChange: boardDraft ? setBoardModelPickerOpen : undefined,
-    workspaceReadOnly: Boolean(entry),
+    workspaceReadOnly: Boolean(
+      entry || boardInputLocked || (boardDraft && chatRuntime.isRunning),
+    ),
     selectedAccountId,
     activeChatId,
     availableReasoningOptions,
@@ -1426,6 +1394,23 @@ function ChatView({
         : undefined,
       runtime: chatRuntime.runtime,
       messages: chatRuntime.messages,
+      activityStatus: retryFirstSubmission ? (
+        <div
+          role="status"
+          className="type-ui flex min-w-0 flex-wrap items-center justify-between gap-2"
+        >
+          {t("firstSendUnconfirmed")}
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={chatRuntime.isRunning || !sceneActive}
+            onClick={retryFirstSubmission}
+          >
+            {t("retryFirstSend")}
+          </Button>
+        </div>
+      ) : undefined,
       presentationScopeKey,
       active: sceneActive,
       wakerName,
@@ -1435,7 +1420,9 @@ function ChatView({
       isHistoryLoading: historyIsLoading,
       composerSettings: boardDraft ? (
         <>
-          {boardDraft.renderPartnerPicker(chatRuntime.isRunning)}
+          {boardDraft.renderPartnerPicker(
+            chatRuntime.isRunning || boardInputLocked || !sceneActive,
+          )}
           {composerSettings}
         </>
       ) : (
@@ -1552,8 +1539,12 @@ function ChatView({
           presentation="composer"
           composerAutoFocus={!boardDraft}
           composerInputSize={boardDraft ? "tall" : undefined}
+          composerSingleSubmission={Boolean(boardDraft)}
           composerDisabled={Boolean(
-            entry?.isSendDisabled || detailQuery.data?.chat?.activeExecutionId,
+            boardInputLocked ||
+            (boardDraft && chatRuntime.isRunning) ||
+            entry?.isSendDisabled ||
+            detailQuery.data?.chat?.activeExecutionId,
           )}
           isRunning={chatAdapter.snapshot.isRunning}
         />

@@ -18,6 +18,8 @@ export type PreparedChatSubmission = {
   submissionId?: string;
   /** 权威消息或成功回执确认接纳后，按本命令身份退役重试记录；重复确认无副作用。 */
   confirmAccepted?: () => void;
+  /** 仅支持幂等重放的首发入口提供；待确认期间禁止开始替代提交。 */
+  hasUnconfirmedReceipt?: () => boolean;
   accept: () => Promise<MessageResult>;
 };
 

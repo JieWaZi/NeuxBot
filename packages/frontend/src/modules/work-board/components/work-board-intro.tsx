@@ -1,25 +1,24 @@
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { NewChatComposer } from "@/modules/chat";
-import { listWakersOptions } from "@/modules/waker";
+import type { Waker } from "@/modules/waker";
+import { ApiError } from "@/shared/api/errors";
+import { getWakerOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
 import {
   localApiErrorMessage,
   withLocalErrorSurface,
 } from "@/shared/api/local-error-surface";
+import { useQueryEvents } from "@/shared/api/use-query-events";
 import { defaultCompanionAvatar } from "@/shared/companion/appearance";
 import { StaticAvatar } from "@/shared/ui/avatar";
 import { Button } from "@/shared/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/shared/ui/select";
 import { WorkBoardAvatars } from "./work-board-avatars";
-
-const partnerPageSize = 100;
+import {
+  WorkBoardPartnerPicker,
+  WorkBoardPartnersLoading,
+  workBoardPartnerPageOptions,
+} from "./work-board-partner-picker";
 
 function TitlePartner({ children }: { children?: ReactNode }) {
   return (
@@ -30,54 +29,68 @@ function TitlePartner({ children }: { children?: ReactNode }) {
   );
 }
 
+function partnerDetailOptions(wakerId: string) {
+  const options = { path: { wakerId } };
+  return {
+    ...getWakerOptions(withLocalErrorSurface(options)),
+    queryKey: getWakerOptions(options).queryKey,
+  };
+}
+
+function missingPartner(error: unknown) {
+  return error instanceof ApiError && error.status === 404;
+}
+
 export function WorkBoardIntro({ active }: { active: boolean }) {
   const { t } = useTranslation("workBoard");
+  const queryClient = useQueryClient();
   const labelId = useId();
   const [scope] = useState(() => `draft:work-board:${crypto.randomUUID()}`);
   const [selectedId, setSelectedId] = useState("");
-  const [showAllPartners, setShowAllPartners] = useState(false);
   const wakers = useQuery({
-    ...listWakersOptions({ query: { pageNum: 1, pageSize: partnerPageSize } }),
+    ...workBoardPartnerPageOptions(1),
     enabled: active,
   });
-  const additionalPageCount = showAllPartners
-    ? Math.max(
-        0,
-        Math.ceil((wakers.data?.totalSize ?? 0) / partnerPageSize) - 1,
-      )
-    : 0;
-  const additionalPages = useQueries({
-    queries: Array.from({ length: additionalPageCount }, (_, index) => ({
-      ...listWakersOptions(
-        withLocalErrorSurface({
-          query: { pageNum: index + 2, pageSize: partnerPageSize },
-        }),
-      ),
-      enabled: active,
-    })),
+  const partners = (wakers.data?.resources ?? []).flatMap((waker) =>
+    waker.id
+      ? [{ ...waker, id: waker.id, name: waker.name || t("waker") }]
+      : [],
+  );
+  const defaultPartner =
+    partners.find((partner) => partner.isDefault) ?? partners[0];
+  // 列表排序与刷新只影响候选，草稿收件人由已确定的伙伴 ID 持有。
+  if (!selectedId && defaultPartner) setSelectedId(defaultPartner.id);
+  const detailOptions = partnerDetailOptions(selectedId || "pending");
+  const detail = useQuery({
+    ...detailOptions,
+    enabled: active && Boolean(selectedId),
+    initialData: () => partners.find((partner) => partner.id === selectedId),
+    initialDataUpdatedAt: 0,
+    retry: (failures, error) => !missingPartner(error) && failures < 2,
   });
-  const partners = Array.from(
-    new Map(
-      [wakers, ...additionalPages].flatMap(({ data }) =>
-        (data?.resources ?? []).flatMap((waker) =>
-          waker.id
-            ? [
-                [
-                  waker.id,
-                  { ...waker, id: waker.id, name: waker.name || t("waker") },
-                ] as const,
-              ]
-            : [],
-        ),
-      ),
-    ).values(),
-  );
-  const partnerError = [wakers, ...additionalPages].find(
-    (page) => page.isError,
-  );
-  const selected = selectedId
-    ? partners.find((partner) => partner.id === selectedId)
-    : (partners.find((partner) => partner.isDefault) ?? partners[0]);
+  useQueryEvents({
+    topic: "entities",
+    resource: { kind: "waker", id: selectedId },
+    queryKeys: [detailOptions.queryKey],
+    eventTypes: ["entities.changed"],
+    enabled: Boolean(selectedId),
+    active,
+  });
+  const removed = missingPartner(detail.error);
+  const selected = !removed && detail.data?.id ? detail.data : undefined;
+  const choosePartner = (partner: Waker & { id: string }) => {
+    const { queryKey } = partnerDetailOptions(partner.id);
+    const known = queryClient.getQueryState(queryKey);
+    if (!known?.data && !missingPartner(known?.error)) {
+      // 搜索结果已足以开始草稿，精确详情在后台核对和刷新。
+      queryClient.setQueryData(queryKey, partner, { updatedAt: 0 });
+    }
+    setSelectedId(partner.id);
+  };
+  const pending = wakers.isPending || Boolean(selectedId && detail.isPending);
+  const partnerError =
+    !removed && detail.isError ? detail : wakers.isError ? wakers : undefined;
+
   return (
     <header className="mb-8 grid min-w-0 grid-cols-[minmax(0,44rem)] items-end justify-center gap-4 @[52rem]/resource-page:grid-cols-[minmax(0,1fr)_minmax(0,min(60%,44rem))_minmax(0,1fr)]">
       {partners.length ? (
@@ -98,70 +111,27 @@ export function WorkBoardIntro({ active }: { active: boolean }) {
           scopeKey={scope}
           active={active}
           partner={selected}
-          renderPartnerPicker={(pending) => (
-            <Select
-              value={selected?.id ?? ""}
-              onValueChange={setSelectedId}
-              onOpenChange={(open) => {
-                if (open) setShowAllPartners(true);
-              }}
-              disabled={!partners.length || pending}
-            >
-              <SelectTrigger
-                appearance="composer"
-                className="max-w-36"
-                aria-label={t("choosePartner")}
-              >
-                <SelectValue
-                  className="min-w-0 truncate"
-                  placeholder={t("choosePartner")}
-                >
-                  {selected && (
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <StaticAvatar
-                        name={selected.name}
-                        src={selected.avatar}
-                        size="xs"
-                      />
-                      <span className="truncate">{selected.name}</span>
-                    </span>
-                  )}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent side="top" align="end">
-                {partners.map((partner) => (
-                  <SelectItem
-                    key={partner.id}
-                    value={partner.id}
-                    textValue={partner.name}
-                  >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <StaticAvatar
-                        name={partner.name}
-                        src={partner.avatar}
-                        size="xs"
-                      />
-                      <span className="truncate">{partner.name}</span>
-                    </span>
-                  </SelectItem>
-                ))}
-                {additionalPages.some((page) => page.isPending) ? (
-                  <div
-                    role="status"
-                    aria-busy="true"
-                    className="text-content-secondary type-ui px-2 py-1"
-                  >
-                    {t("loadingPartners")}
-                  </div>
-                ) : null}
-              </SelectContent>
-            </Select>
+          renderPartnerPicker={(sending) => (
+            <WorkBoardPartnerPicker
+              selected={selected}
+              onSelect={choosePartner}
+              disabled={
+                !active ||
+                sending ||
+                wakers.isPending ||
+                (!partners.length && !wakers.isError && !selectedId)
+              }
+            />
           )}
         />
-        {partnerError ? (
+        {removed ? (
+          <p role="alert" className="text-destructive type-ui">
+            {t("selectedPartnerUnavailable")}
+          </p>
+        ) : partnerError ? (
           <div
             role="alert"
-            className="text-destructive type-ui flex items-center gap-2"
+            className="text-destructive type-ui flex flex-wrap items-center gap-2"
           >
             {localApiErrorMessage(partnerError.error, t("loadFailed"))}
             <Button
@@ -173,6 +143,8 @@ export function WorkBoardIntro({ active }: { active: boolean }) {
               {t("retry")}
             </Button>
           </div>
+        ) : pending ? (
+          <WorkBoardPartnersLoading />
         ) : wakers.isSuccess && !partners.length ? (
           <p className="text-content-secondary type-ui">{t("noPartners")}</p>
         ) : null}

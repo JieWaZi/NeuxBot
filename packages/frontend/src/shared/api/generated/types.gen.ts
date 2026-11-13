@@ -18737,6 +18737,7 @@ export type CreateChatErrors = {
     /**
      * >
      * * `[BadRequest][40000000001]`
+     * * `[MessageAttachmentInvalid][40000000017]`
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;

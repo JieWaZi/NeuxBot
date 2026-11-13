@@ -44,6 +44,7 @@ type ChatComposerControlsProps = {
   loadAccounts?: boolean;
   onModelPickerOpenChange?: (open: boolean) => void;
   preservePermissionOnModelChange?: boolean;
+  executionControlsDisabled?: boolean;
   workspaceReadOnly?: boolean;
   selectedAccountId?: string;
   activeChatId?: string;
@@ -92,6 +93,7 @@ export function useChatComposerControls({
   loadAccounts = true,
   onModelPickerOpenChange,
   preservePermissionOnModelChange = true,
+  executionControlsDisabled = false,
   workspaceReadOnly = false,
   selectedAccountId,
   activeChatId,
@@ -211,6 +213,7 @@ export function useChatComposerControls({
 
   const permissionControl = (
     <ExecutionPermissionControl
+      disabled={executionControlsDisabled}
       selectedPermissionLevel={selectedPermissionLevel}
       supportedPermissions={supportedPermissions}
       triggerClassName={stripControlClassName}
@@ -222,6 +225,7 @@ export function useChatComposerControls({
   const composerSettings = (
     <>
       <ExecutionPicker
+        disabled={executionControlsDisabled}
         onOpenChange={onModelPickerOpenChange}
         runtimes={runtimes}
         accounts={accounts}

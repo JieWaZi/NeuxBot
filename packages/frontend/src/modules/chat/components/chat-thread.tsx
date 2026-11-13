@@ -237,6 +237,8 @@ type ChatThreadProps = {
   presentation?: "thread" | "composer";
   composerAutoFocus?: boolean;
   composerDisabled?: boolean;
+  /** 首发获得对话标识前只显示发送操作。 */
+  composerSingleSubmission?: boolean;
   composerClearRevision?: number;
   composerRestoreRevision?: number;
   terminalEnabled?: boolean;
@@ -1814,6 +1816,7 @@ export function ChatMessageColumn({ children }: { children: ReactNode }) {
 const Composer = memo(function Composer({
   autoFocus,
   disabled = false,
+  singleSubmission = false,
   inputSize = "default",
   activityStatus,
   settings,
@@ -1863,6 +1866,7 @@ const Composer = memo(function Composer({
 }: {
   autoFocus?: boolean;
   disabled?: boolean;
+  singleSubmission?: boolean;
   inputSize?: ChatThreadProps["composerInputSize"];
   activityStatus?: ReactNode;
   settings?: ReactNode;
@@ -1931,13 +1935,16 @@ const Composer = memo(function Composer({
     setSubmissionState({ isRunning, pending: false, sendFailure });
   }
   const effectiveIsRunning = isRunning || submissionState.pending;
-  const primaryAction = chatPrimaryAction({
-    isComposerEmpty: composerIsEmpty,
-    isRunning: effectiveIsRunning,
-    isWorkRunning,
-  });
+  const primaryAction = singleSubmission
+    ? "send"
+    : chatPrimaryAction({
+        isComposerEmpty: composerIsEmpty,
+        isRunning: effectiveIsRunning,
+        isWorkRunning,
+      });
+  const sendDisabled = disabled || (singleSubmission && effectiveIsRunning);
   const prepareComposerSend = () => {
-    if (waitingForAnswer || disabled || !aui.composer.getState().canSend)
+    if (waitingForAnswer || sendDisabled || !aui.composer.getState().canSend)
       return false;
     setSubmissionState((current) => ({ ...current, pending: true }));
     return true;
@@ -2169,7 +2176,7 @@ const Composer = memo(function Composer({
                       aria-label={t("send")}
                       title={t("send")}
                       disabled={
-                        waitingForAnswer || disabled || !composerCanSend
+                        waitingForAnswer || sendDisabled || !composerCanSend
                       }
                       data-chat-primary-action="send"
                       onClickCapture={prepareComposerSend}
@@ -2286,6 +2293,7 @@ function ChatThreadContent({
   presentation = "thread",
   composerAutoFocus,
   composerDisabled,
+  composerSingleSubmission,
   composerClearRevision,
   composerRestoreRevision,
   onOpenLink,
@@ -2625,6 +2633,7 @@ function ChatThreadContent({
                   <Composer
                     autoFocus={composerAutoFocus}
                     disabled={composerDisabled}
+                    singleSubmission={composerSingleSubmission}
                     inputSize={composerInputSize}
                     activityStatus={activityStatus}
                     settings={composerSettings}

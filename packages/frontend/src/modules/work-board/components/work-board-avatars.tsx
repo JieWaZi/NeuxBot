@@ -1,4 +1,10 @@
-import { useEffect, useRef, type CSSProperties } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import {
   defaultCompanionAvatar,
   encodeCompanionAppearance,
@@ -93,15 +99,47 @@ const accents = [
   },
 ] satisfies CompanionAppearance[];
 
-export function WorkBoardAvatars({
-  partners,
-  active,
-  side,
-}: {
+type WorkBoardAvatarsProps = {
   partners: readonly Partner[];
   active: boolean;
   side: keyof typeof slotsBySide;
-}) {
+};
+
+export function WorkBoardAvatars({ active, ...pile }: WorkBoardAvatarsProps) {
+  const slot = useRef<HTMLDivElement>(null);
+  const [hasRoom, setHasRoom] = useState(false);
+  if (!active && hasRoom) setHasRoom(false);
+  // 容器查询决定何时显示；实际可用尺寸决定何时创建头像与动画资源。
+  useLayoutEffect(() => {
+    const element = slot.current;
+    if (!element || !active) return;
+    const measure = () => setHasRoom(element.clientWidth > 0);
+    measure();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [active]);
+
+  return (
+    <div
+      ref={slot}
+      aria-hidden="true"
+      data-work-board-avatars={pile.side}
+      className="@container/avatar-pile relative isolate hidden min-h-44 min-w-0 overflow-hidden @[52rem]/resource-page:block"
+    >
+      {active && hasRoom ? <WorkBoardAvatarPile {...pile} /> : null}
+    </div>
+  );
+}
+
+function WorkBoardAvatarPile({
+  partners,
+  side,
+}: Omit<WorkBoardAvatarsProps, "active">) {
   const stage = useRef<HTMLDivElement>(null);
   const leadPartners = partners
     .slice(0, 6)
@@ -112,8 +150,10 @@ export function WorkBoardAvatars({
 
   useEffect(() => {
     const element = stage.current;
-    if (!active || !element) return;
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    if (!element) return;
+    const reducedMotion = window.matchMedia?.(
+      "(prefers-reduced-motion: reduce)",
+    );
     let disposed = false;
     let visible = !("IntersectionObserver" in window);
     let loading = false;
@@ -125,7 +165,7 @@ export function WorkBoardAvatars({
 
     function sync() {
       if (!element || disposed) return;
-      if (reducedMotion.matches || document.hidden || !visible) {
+      if (reducedMotion?.matches || document.hidden || !visible) {
         stop?.();
         stop = undefined;
         return;
@@ -170,7 +210,7 @@ export function WorkBoardAvatars({
           });
     resizeObserver?.observe(element);
     document.addEventListener("visibilitychange", sync);
-    reducedMotion.addEventListener("change", sync);
+    reducedMotion?.addEventListener("change", sync);
     sync();
     return () => {
       disposed = true;
@@ -178,53 +218,43 @@ export function WorkBoardAvatars({
       observer?.disconnect();
       resizeObserver?.disconnect();
       document.removeEventListener("visibilitychange", sync);
-      reducedMotion.removeEventListener("change", sync);
+      reducedMotion?.removeEventListener("change", sync);
     };
-  }, [active, pileKey]);
+  }, [pileKey]);
 
   return (
-    <div
-      aria-hidden="true"
-      data-work-board-avatars={side}
-      className="@container/avatar-pile relative isolate hidden min-h-44 min-w-0 overflow-hidden @[52rem]/resource-page:block"
-    >
-      <div
-        key={pileKey}
-        ref={stage}
-        className="relative h-full min-h-44 w-full"
-      >
-        <div className="work-board-avatar-light absolute inset-x-0 bottom-1 h-20" />
-        {slotsBySide[side].map(({ size, x, lift, angle }, index) => {
-          const partner = leadPartners[index];
-          const accent =
-            accents[(index + (side === "left" ? 0 : 5)) % accents.length];
-          return (
-            <div
-              key={partner?.id ?? index}
-              data-pile-avatar
-              className={cn("work-board-avatar-piece absolute", sizes[size])}
-              style={
-                {
-                  "--pile-rest-x": `${x}%`,
-                  "--pile-lift": `${lift}px`,
-                  "--pile-rest-angle": `${angle}deg`,
-                } as CSSProperties
+    <div key={pileKey} ref={stage} className="relative h-full min-h-44 w-full">
+      <div className="work-board-avatar-light absolute inset-x-0 bottom-1 h-20" />
+      {slotsBySide[side].map(({ size, x, lift, angle }, index) => {
+        const partner = leadPartners[index];
+        const accent =
+          accents[(index + (side === "left" ? 0 : 5)) % accents.length];
+        return (
+          <div
+            key={partner?.id ?? index}
+            data-pile-avatar
+            className={cn("work-board-avatar-piece absolute", sizes[size])}
+            style={
+              {
+                "--pile-rest-x": `${x}%`,
+                "--pile-lift": `${lift}px`,
+                "--pile-rest-angle": `${angle}deg`,
+              } as CSSProperties
+            }
+          >
+            <StaticAvatar
+              name={partner?.name ?? ""}
+              src={
+                partner
+                  ? partner.avatar
+                  : accent
+                    ? encodeCompanionAppearance(accent)
+                    : defaultCompanionAvatar
               }
-            >
-              <StaticAvatar
-                name={partner?.name ?? ""}
-                src={
-                  partner
-                    ? partner.avatar
-                    : accent
-                      ? encodeCompanionAppearance(accent)
-                      : defaultCompanionAvatar
-                }
-              />
-            </div>
-          );
-        })}
-      </div>
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }
