@@ -112,7 +112,7 @@ func run(args []string) error {
 		return status_error.PluginStorageError
 	}
 	defer os.RemoveAll(stage)
-	frozen, err := freezeReleaseSource(root, filepath.Join(stage, ".source"), *expected)
+	frozen, err := freezeReleaseSource(root, filepath.Join(stage, ".source"), *expected, plugins.CopyDeliveryTreeWithDigest)
 	if err != nil {
 		return err
 	}

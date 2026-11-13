@@ -3,16 +3,17 @@ package main
 import (
 	"archive/zip"
 	"encoding/json"
-	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/packagefiles"
-	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/packagefiles"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 )
 
 func TestCommandPackagesAllTargetsWithPortableProvenance(t *testing.T) {
@@ -310,61 +311,27 @@ func TestFreezeSourceBindsCopiedRawBytesToAcceptedDigestDuringABAChange(t *testi
 	if err := os.WriteFile(revision, []byte("version-A"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(source, "000-asset.bin"), []byte(strings.Repeat("a", 16*1024*1024)), 0600); err != nil {
-		t.Fatal(err)
-	}
 	expected, err := plugins.ContentDigest(source)
 	if err != nil {
 		t.Fatal(err)
 	}
 	destination := filepath.Join(t.TempDir(), "frozen")
-	result := make(chan error, 1)
-	stop := make(chan struct{})
-	go func() {
-		deadline := time.NewTimer(5 * time.Second)
-		defer deadline.Stop()
-		changed := false
-		for {
-			select {
-			case <-stop:
-				return
-			case <-deadline.C:
-				result <- status_error.PluginNotReady
-				return
-			default:
-				if !changed {
-					if _, err := os.Stat(destination); err == nil {
-						if err := os.WriteFile(revision, []byte("version-B"), 0600); err != nil {
-							result <- err
-							return
-						}
-						changed = true
-					}
-				}
-				if changed {
-					if body, err := os.ReadFile(filepath.Join(destination, "revision.txt")); err == nil && string(body) == "version-B" {
-						result <- os.WriteFile(revision, []byte("version-A"), 0600)
-						return
-					}
-				}
-				runtime.Gosched()
-			}
-		}
-	}()
-	frozen, freezeErr := freezeReleaseSource(source, destination, expected)
-	close(stop)
-	select {
-	case err := <-result:
-		if err != nil {
+	_, err = freezeReleaseSource(source, destination, expected, func(source, destination, digest string) error {
+		// 两次源摘要读取都看到 A，实际复制读取 B。
+		if err := os.WriteFile(revision, []byte("version-B"), 0600); err != nil {
 			t.Fatal(err)
 		}
-	default:
-		t.Fatal("fixture did not perform A-to-B-to-A during raw snapshot copy")
-	}
-	if freezeErr == nil {
-		body, err := os.ReadFile(filepath.Join(frozen.Root, "revision.txt"))
-		if err != nil || string(body) != "version-A" {
-			t.Fatal("raw copied version B was accepted using digest for version A", err)
+		copyErr := plugins.CopyDeliveryTreeWithDigest(source, destination, digest)
+		if err := os.WriteFile(revision, []byte("version-A"), 0600); err != nil {
+			t.Fatal(err)
 		}
+		return copyErr
+	})
+	if !errors.Is(err, status_error.PluginVersionConflict) {
+		t.Fatalf("freeze with different copied bytes = %v, want PluginVersionConflict", err)
+	}
+	body, err := os.ReadFile(filepath.Join(destination, "revision.txt"))
+	if err != nil || string(body) != "version-B" {
+		t.Fatalf("copied fixture = %q, %v; want version-B", body, err)
 	}
 }
