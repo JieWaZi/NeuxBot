@@ -46224,6 +46224,114 @@
         }
       }
     },
+    "/api/v1/wakers/{wakerId}/duplicate": {
+      "post": {
+        "tags": [
+          "github.com/JieWaZi/NeuxBot/server/apis/wakers"
+        ],
+        "summary": "复制伙伴",
+        "operationId": "DuplicateWaker",
+        "parameters": [
+          {
+            "name": "wakerId",
+            "in": "path",
+            "description": "伙伴标识",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "伙伴标识",
+              "x-go-field-name": "WakerID",
+              "x-tag-in": "path",
+              "x-tag-name": "wakerId",
+              "x-tag-validate": "required"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisWakersDuplicateWakerRequest"
+                  },
+                  {
+                    "description": "请求体",
+                    "x-go-field-name": "Body",
+                    "x-tag-in": "body"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisWakersDuplicateWakerResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": ">\n* `[BadRequest][40000000001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[BadRequest][40000000001]"
+            ]
+          },
+          "404": {
+            "description": ">\n* `[WakerNotFound][40400000001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[WakerNotFound][40400000001]"
+            ]
+          },
+          "409": {
+            "description": ">\n* `[CreateRequestConflict][40900000023]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[CreateRequestConflict][40900000023]"
+            ]
+          },
+          "500": {
+            "description": ">\n* `[InternalServerError][50000000001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[InternalServerError][50000000001]"
+            ]
+          }
+        }
+      }
+    },
     "/api/v1/wakers/{wakerId}/onboarding": {
       "post": {
         "tags": [
@@ -71612,6 +71720,36 @@
         "description": "删除伙伴请求",
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisWakersDeleteWakerRequest",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/wakers.DeleteWakerRequest"
+      },
+      "GithubComJieWaZiNeuxBotServerApisWakersDuplicateWakerRequest": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "description": "请求标识",
+            "x-go-field-name": "RequestID",
+            "x-tag-validate": "required,max=64"
+          }
+        },
+        "required": [
+          "requestId"
+        ],
+        "description": "复制伙伴请求",
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisWakersDuplicateWakerRequest",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/wakers.DuplicateWakerRequest"
+      },
+      "GithubComJieWaZiNeuxBotServerApisWakersDuplicateWakerResponse": {
+        "type": "object",
+        "properties": {
+          "wakerId": {
+            "type": "string",
+            "description": "伙伴标识",
+            "x-go-field-name": "WakerID"
+          }
+        },
+        "description": "复制伙伴响应",
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisWakersDuplicateWakerResponse",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/wakers.DuplicateWakerResponse"
       },
       "GithubComJieWaZiNeuxBotServerApisWakersGetWakerRecentProjectResponse": {
         "type": "object",

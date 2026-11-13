@@ -107,6 +107,56 @@ function serializeChatWrite(
   });
 }
 
+async function refreshChatReading(client: QueryClient, chatId: string) {
+  const options = chatReadingOptions(chatId);
+  await refreshQueryFromEvent(client, options.queryKey, () =>
+    client.fetchQuery({ ...options, staleTime: 0 }),
+  );
+  return cachedReading(client, chatId);
+}
+
+async function writeChatUnread(
+  client: QueryClient,
+  chatId: string,
+  fromMessageID: string,
+  generation: number,
+) {
+  if (openIntents.get(client)?.chatId === chatId) openIntents.delete(client);
+  const pending = unreadWrites.get(client) ?? new Map<string, number>();
+  unreadWrites.set(client, pending);
+  pending.set(chatId, (pending.get(chatId) ?? 0) + 1);
+  try {
+    await serializeChatWrite(client, chatId, async () => {
+      try {
+        await markChatUnread(chatId, {
+          fromMessageID,
+          observedUnreadGeneration: generation,
+        });
+      } finally {
+        await refreshChatReading(client, chatId);
+      }
+    });
+  } finally {
+    const count = pending.get(chatId) ?? 0;
+    if (count > 1) pending.set(chatId, count - 1);
+    else pending.delete(chatId);
+  }
+}
+
+/** 侧栏手动未读复用对话游标、写入顺序和持久 hold。 */
+export async function markLatestChatUnread(
+  client: QueryClient,
+  chatId: string,
+) {
+  const state = await refreshChatReading(client, chatId);
+  if (!state) throw new Error("Chat reading boundary is unavailable");
+  const boundary = state.firstUnreadMessageID ?? state.latestReadableMessageID;
+  if (!boundary) return false;
+  if (!state.holdUnread)
+    await writeChatUnread(client, chatId, boundary, state.unreadGeneration);
+  return true;
+}
+
 function subscribeVisibility(update: () => void) {
   document.addEventListener("visibilitychange", update);
   return () => document.removeEventListener("visibilitychange", update);
@@ -171,13 +221,10 @@ export function useChatReading({
     () => cachedReading(client, chatId),
     [client, chatId],
   );
-  const recover = useCallback(async () => {
-    const read = chatReadingOptions(chatId);
-    await refreshQueryFromEvent(client, read.queryKey, () =>
-      client.fetchQuery({ ...read, staleTime: 0 }),
-    );
-    return cachedReading(client, chatId);
-  }, [chatId, client]);
+  const recover = useCallback(
+    () => refreshChatReading(client, chatId),
+    [chatId, client],
+  );
 
   const submit = useCallback(
     (
@@ -312,29 +359,14 @@ export function useChatReading({
     async (fromMessageID: string) => {
       const state = readState();
       if (!state?.complete || !fromMessageID) return;
-      if (openIntents.get(client)?.chatId === chatId)
-        openIntents.delete(client);
-      const pending = unreadWrites.get(client) ?? new Map<string, number>();
-      unreadWrites.set(client, pending);
-      pending.set(chatId, (pending.get(chatId) ?? 0) + 1);
-      try {
-        await serializeChatWrite(client, chatId, async () => {
-          try {
-            await markChatUnread(chatId, {
-              fromMessageID,
-              observedUnreadGeneration: state.unreadGeneration,
-            });
-          } finally {
-            await recover();
-          }
-        });
-      } finally {
-        const count = pending.get(chatId) ?? 0;
-        if (count > 1) pending.set(chatId, count - 1);
-        else pending.delete(chatId);
-      }
+      await writeChatUnread(
+        client,
+        chatId,
+        fromMessageID,
+        state.unreadGeneration,
+      );
     },
-    [chatId, client, readState, recover],
+    [chatId, client, readState],
   );
   return {
     state: query.isSuccess ? query.data : undefined,

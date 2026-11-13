@@ -40,6 +40,7 @@ import { useSettingsDraftGuard } from "@/modules/settings";
 import { AppShell } from "./app-shell";
 import { getChatOptions } from "@/modules/chat";
 import type * as PluginQueries from "@/modules/plugin/api/plugin-queries";
+import type * as WakerModule from "@/modules/waker";
 import type { ExecutorAttention } from "@/modules/workspaceattention";
 import { getWakerQueryKey } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { ApiError } from "@/shared/api/errors";
@@ -303,10 +304,8 @@ vi.mock("@/shared/theme", () => ({
   useTheme: () => ({ mode: "system", setMode: vi.fn() }),
 }));
 
-vi.mock("@/modules/waker", async () => ({
-  WakerDetailLayout: (
-    await import("@/modules/waker/components/waker-detail-layout")
-  ).WakerDetailLayout,
+vi.mock("@/modules/waker", async (importOriginal) => ({
+  ...(await importOriginal<typeof WakerModule>()),
   listWakersOptions: () => ({
     queryKey: ["wakers"],
     queryFn: async () => ({

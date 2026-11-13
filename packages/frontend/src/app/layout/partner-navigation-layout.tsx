@@ -59,9 +59,12 @@ import {
   pinnedAppModules,
   contextSidebarWidthRange,
   moveItem,
+  moveWakerToNavigationGroup,
   reconcilePartnerOrder,
+  type NavigationDropPlacement,
   type PartnerNavigationPreferences,
 } from "./partner-navigation-preferences";
+import { WakerNavigationMenu } from "./waker-navigation-menu";
 import { VerticalResizeHandle } from "@/shared/ui/vertical-resize-handle";
 import {
   SceneChromeHost,
@@ -312,11 +315,55 @@ function PartnerNavigationLayoutContent({
     waker: Waker;
   } | null>(null);
   useEffect(() => () => resizeCleanup.current(), []);
-  const updateOrder = (sourceId: string, targetId: string) => {
+  const moveWaker = (wakerId: string, groupName: string) => {
     onPreferencesChange((current) => ({
       ...current,
-      railOrder: moveItem(orderedRailKeys, sourceId, targetId),
+      wakerGroups: moveWakerToNavigationGroup(
+        current.wakerGroups ?? [],
+        wakerId,
+        groupName,
+      ),
     }));
+  };
+  const updateOrder = (
+    sourceId: string,
+    targetId: string,
+    placement: NavigationDropPlacement,
+  ) => {
+    onPreferencesChange((current) => {
+      const source = navigationEntityByKey.get(sourceId);
+      const target = navigationEntityByKey.get(targetId);
+      const groups = current.wakerGroups ?? [];
+      let wakerGroups = current.wakerGroups;
+      if (
+        groups.length &&
+        source?.kind === "waker" &&
+        target?.kind === "waker"
+      ) {
+        const sourceGroup = groups.find((group) =>
+          group.wakerIds.includes(source.id),
+        );
+        const targetGroup = groups.find((group) =>
+          group.wakerIds.includes(target.id),
+        );
+        if (sourceGroup !== targetGroup)
+          wakerGroups = moveWakerToNavigationGroup(
+            groups,
+            source.id,
+            targetGroup?.name ?? "",
+          );
+      }
+      return {
+        ...current,
+        railOrder: moveItem(
+          reconcilePartnerOrder(availableRailKeys, current.railOrder),
+          sourceId,
+          targetId,
+          placement,
+        ),
+        wakerGroups,
+      };
+    });
   };
   const settingsLayout = settingsOpen ? settingsSidebar : undefined;
   const partnerContext = !settingsOpen && navigation.sidebarKind === "partners";
@@ -450,6 +497,44 @@ function PartnerNavigationLayoutContent({
                 }
                 selectedKey={selectedRailKey}
                 items={visibleRailItems}
+                wakerGroups={preferences.wakerGroups}
+                renderWakerRow={(item, row) => (
+                  <WakerNavigationMenu
+                    key={item.key}
+                    waker={item.waker}
+                    wakerId={item.id}
+                    groups={preferences.wakerGroups ?? []}
+                    onMove={(groupName) => moveWaker(item.id, groupName)}
+                    onCopied={(newId) => {
+                      onPreferencesChange((current) => {
+                        const groups = current.wakerGroups ?? [];
+                        const sourceGroup = groups.find((group) =>
+                          group.wakerIds.includes(item.id),
+                        );
+                        return sourceGroup
+                          ? {
+                              ...current,
+                              wakerGroups: moveWakerToNavigationGroup(
+                                groups,
+                                newId,
+                                sourceGroup.name,
+                              ),
+                            }
+                          : current;
+                      });
+                    }}
+                    onDeleted={() => {
+                      moveWaker(item.id, "");
+                      if (
+                        selectedRailKey === item.key &&
+                        (location.pathname === "/chat" || activeChatId)
+                      )
+                        navigate("/wakers", { replace: true });
+                    }}
+                  >
+                    {row}
+                  </WakerNavigationMenu>
+                )}
               />
             </div>
             {sidebar || showPartnerSidebarNavigation ? (

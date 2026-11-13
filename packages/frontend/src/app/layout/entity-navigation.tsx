@@ -30,6 +30,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type ReactElement,
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
@@ -56,7 +57,11 @@ import {
   ConversationAttentionMark,
   conversationAttentionMark,
 } from "@/shared/ui/conversation-attention";
-import type { PartnerNavigationPreferences } from "./partner-navigation-preferences";
+import type {
+  NavigationDropPlacement,
+  PartnerNavigationPreferences,
+  WakerNavigationGroup,
+} from "./partner-navigation-preferences";
 
 export type NavigationEntity =
   | {
@@ -74,6 +79,8 @@ export type NavigationEntity =
       attention?: ExecutorAttention;
     };
 
+type NavigationWaker = Extract<NavigationEntity, { kind: "waker" }>;
+
 type EntityNavigationProps = {
   collapsed: boolean;
   entityStatus?: "error" | "loading" | "ready";
@@ -83,12 +90,18 @@ type EntityNavigationProps = {
   onManageEntities: (mode: PartnerNavigationPreferences["entityMode"]) => void;
   onModeChange: (mode: PartnerNavigationPreferences["entityMode"]) => void;
   onNewChat: (item: NavigationEntity) => void;
-  onReorder: (sourceId: string, targetId: string) => void;
+  onReorder: (
+    sourceId: string,
+    targetId: string,
+    placement: NavigationDropPlacement,
+  ) => void;
   onSelectPartner: (partnerId: string) => void;
   onSelectTeam: (channelId: string) => void;
   onShowcaseWaker?: (waker: Waker, origin: HTMLElement) => void;
   selectedKey: string;
   history?: ReactNode;
+  wakerGroups?: readonly WakerNavigationGroup[];
+  renderWakerRow?: (item: NavigationWaker, row: ReactElement) => ReactElement;
 };
 
 const modeSwitchDurationMs = 220;
@@ -366,6 +379,7 @@ function EntityRow({
         </span>
         <button
           type="button"
+          data-waker-nav-row={item.kind === "waker" ? "" : undefined}
           aria-current={selected ? "page" : undefined}
           aria-label={accessibleLabel}
           onClick={handleRowClick}
@@ -467,6 +481,8 @@ export function EntityNavigation({
   onShowcaseWaker,
   selectedKey,
   history,
+  wakerGroups = [],
+  renderWakerRow,
 }: EntityNavigationProps) {
   const { t } = useTranslation("common");
   const [activeKey, setActiveKey] = useState("");
@@ -496,7 +512,23 @@ export function EntityNavigation({
         );
       })
     : items;
-  const navigationItems = collapsed ? items : visibleItems;
+  const groupNames = new Map(
+    wakerGroups.flatMap(({ name, wakerIds }) =>
+      wakerIds.map((id) => [id, name] as const),
+    ),
+  );
+  const groups = (
+    mode === "waker" ? ["", ...wakerGroups.map(({ name }) => name)] : [""]
+  ).map((name) => ({
+    name,
+    items: visibleItems.filter(
+      (item) =>
+        (item.kind === "waker" ? (groupNames.get(item.id) ?? "") : "") === name,
+    ),
+  }));
+  const navigationItems = collapsed
+    ? items
+    : groups.flatMap((group) => group.items);
   const activeItem = navigationItems.find((item) => item.key === activeKey);
   const itemKeys = navigationItems.map((item) => item.key);
   const entityName =
@@ -696,8 +728,14 @@ export function EntityNavigation({
   const finishDrag = ({ active, over }: DragEndEvent) => {
     const sourceId = String(active.id);
     const targetId = over ? String(over.id) : "";
-    if (targetId && targetId !== sourceId) {
-      onReorder(sourceId, targetId);
+    const sourceIndex = itemKeys.indexOf(sourceId);
+    const targetIndex = itemKeys.indexOf(targetId);
+    if (sourceIndex >= 0 && targetIndex >= 0 && sourceIndex !== targetIndex) {
+      onReorder(
+        sourceId,
+        targetId,
+        sourceIndex < targetIndex ? "after" : "before",
+      );
     }
     setActiveKey("");
     syncIndicator();
@@ -886,18 +924,37 @@ export function EntityNavigation({
                       {t("partnerNavigation.noSearchResults")}
                     </p>
                   ) : null}
-                  {visibleItems.map((item) => (
-                    <EntityRow
-                      key={item.key}
-                      collapsed={false}
-                      item={item}
-                      onNewChat={onNewChat}
-                      onSelectPartner={onSelectPartner}
-                      onSelectTeam={onSelectTeam}
-                      onShowcaseWaker={onShowcaseWaker}
-                      selected={item.key === selectedKey}
-                    />
-                  ))}
+                  {groups.flatMap((group) => {
+                    const rows = group.items.map((item) => {
+                      const row = (
+                        <EntityRow
+                          key={item.key}
+                          collapsed={false}
+                          item={item}
+                          onNewChat={onNewChat}
+                          onSelectPartner={onSelectPartner}
+                          onSelectTeam={onSelectTeam}
+                          onShowcaseWaker={onShowcaseWaker}
+                          selected={item.key === selectedKey}
+                        />
+                      );
+                      return item.kind === "waker" && renderWakerRow
+                        ? renderWakerRow(item, row)
+                        : row;
+                    });
+                    if (!rows.length || !wakerGroups.length || mode !== "waker")
+                      return rows;
+                    return [
+                      <h3
+                        key={`group:${group.name}`}
+                        className="text-muted-foreground type-caption truncate px-3 pt-2 pb-1"
+                      >
+                        {group.name ||
+                          t("partnerNavigation.wakerActions.ungrouped")}
+                      </h3>,
+                      ...rows,
+                    ];
+                  })}
                 </nav>
               </SortableContext>
               <DragOverlay>

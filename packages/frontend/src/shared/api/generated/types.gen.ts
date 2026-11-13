@@ -5414,6 +5414,26 @@ export type GithubComJieWaZiNeuxBotServerApisWakersDeleteWakerRequest = {
 };
 
 /**
+ * 复制伙伴请求
+ */
+export type GithubComJieWaZiNeuxBotServerApisWakersDuplicateWakerRequest = {
+    /**
+     * 请求标识
+     */
+    requestId: string;
+};
+
+/**
+ * 复制伙伴响应
+ */
+export type GithubComJieWaZiNeuxBotServerApisWakersDuplicateWakerResponse = {
+    /**
+     * 伙伴标识
+     */
+    wakerId?: string;
+};
+
+/**
  * 伙伴最近可用项目响应
  */
 export type GithubComJieWaZiNeuxBotServerApisWakersGetWakerRecentProjectResponse = {
@@ -41170,6 +41190,53 @@ export type UpdateWakerDocumentResponses = {
 };
 
 export type UpdateWakerDocumentResponse = UpdateWakerDocumentResponses[keyof UpdateWakerDocumentResponses];
+
+export type DuplicateWakerData = {
+    body: GithubComJieWaZiNeuxBotServerApisWakersDuplicateWakerRequest & unknown;
+    path: {
+        /**
+         * 伙伴标识
+         */
+        wakerId: string;
+    };
+    query?: never;
+    url: '/api/v1/wakers/{wakerId}/duplicate';
+};
+
+export type DuplicateWakerErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[WakerNotFound][40400000001]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[CreateRequestConflict][40900000023]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type DuplicateWakerError = DuplicateWakerErrors[keyof DuplicateWakerErrors];
+
+export type DuplicateWakerResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisWakersDuplicateWakerResponse;
+};
+
+export type DuplicateWakerResponse = DuplicateWakerResponses[keyof DuplicateWakerResponses];
 
 export type StartWakerOnboardingData = {
     body?: never;

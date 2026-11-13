@@ -13,6 +13,7 @@ import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import type * as ChatModule from "@/modules/chat";
+import type * as WakerModule from "@/modules/waker";
 import type { Waker } from "@/modules/waker";
 import { FloatingChat } from "@/modules/chat/components/floating-chat";
 import { SettingsContextSidebar } from "@/modules/settings/components/settings-context-sidebar";
@@ -29,6 +30,12 @@ const history = vi.hoisted(() => ({
   waitingApproval: false,
   waitingElicitation: false,
   observers: new Set<GlobalEventObserver>(),
+}));
+const duplicateWaker = vi.hoisted(() => vi.fn());
+
+vi.mock("@/modules/waker", async (importOriginal) => ({
+  ...(await importOriginal<typeof WakerModule>()),
+  duplicateWakerMutation: () => ({ mutationFn: duplicateWaker }),
 }));
 
 vi.mock(import("@/shared/api/global-events"), async (importOriginal) => ({
@@ -399,6 +406,74 @@ function renderLayout({
 }
 
 describe("PartnerNavigationLayout", () => {
+  it("伙伴右键菜单可新建分组、移入已有分组、编辑和打开删除确认", async () => {
+    renderLayout({
+      navigationPreferences: {
+        wakerGroups: [{ name: "已有分组", wakerIds: ["waker-2"] }],
+      },
+    });
+    const user = userEvent.setup();
+    const row = screen.getByRole("button", { name: "伙伴 1" });
+    row.focus();
+    await user.keyboard("{Shift>}{F10}{/Shift}");
+    expect(screen.getByRole("menuitem", { name: "标为未读" })).toBeVisible();
+    expect(screen.getByRole("menuitem", { name: "复制伙伴" })).toBeVisible();
+    const openMove = async () => {
+      screen.getByRole("menuitem", { name: "移动到" }).focus();
+      await user.keyboard("{ArrowRight}");
+    };
+    await openMove();
+    await user.click(screen.getByRole("menuitem", { name: "新建分组" }));
+    const groupDialog = screen.getByRole("dialog", { name: "新建分组" });
+    await user.type(within(groupDialog).getByLabelText("分组名称"), "研究");
+    await user.click(within(groupDialog).getByRole("button", { name: "保存" }));
+    const heading = screen.getByRole("heading", { name: "研究" });
+    expect(heading.nextElementSibling).toContainElement(row);
+
+    fireEvent.contextMenu(row);
+    await openMove();
+    await user.click(screen.getByRole("menuitem", { name: "已有分组" }));
+    expect(heading).not.toBeInTheDocument();
+    const existing = screen.getByRole("heading", { name: "已有分组" });
+    expect(existing.nextElementSibling).toContainElement(row);
+
+    fireEvent.contextMenu(row);
+    await openMove();
+    await user.click(screen.getByRole("menuitem", { name: "未分组" }));
+    expect(
+      screen.getByRole("heading", { name: "未分组" }).nextElementSibling,
+    ).toContainElement(row);
+
+    fireEvent.contextMenu(row);
+    await user.click(screen.getByRole("menuitem", { name: "编辑伙伴" }));
+    expect(screen.getByRole("dialog", { name: "编辑伙伴" })).toBeVisible();
+    await user.keyboard("{Escape}");
+    fireEvent.contextMenu(row);
+    await user.click(screen.getByRole("menuitem", { name: "删除伙伴" }));
+    const deleteDialog = screen.getByRole("dialog", { name: "删除伙伴" });
+    expect(
+      within(deleteDialog).getByRole("button", { name: "删除伙伴" }),
+    ).toBeDisabled();
+  });
+
+  it("复制通过原伙伴标识请求新伙伴", async () => {
+    duplicateWaker.mockResolvedValueOnce({ wakerId: "new-partner" });
+    renderLayout();
+    fireEvent.contextMenu(screen.getByRole("button", { name: "伙伴 1" }));
+    await userEvent
+      .setup()
+      .click(screen.getByRole("menuitem", { name: "复制伙伴" }));
+    await waitFor(() =>
+      expect(duplicateWaker).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: { wakerId: "waker-1" },
+          body: { requestId: expect.any(String) },
+        }),
+        expect.anything(),
+      ),
+    );
+  });
+
   it("通知紧跟前进按钮，模块栏不重复显示通知", () => {
     renderLayout({
       sidebarToolbar: (

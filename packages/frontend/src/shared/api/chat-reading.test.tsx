@@ -5,6 +5,7 @@ import { expect, it, vi } from "vitest";
 import { useRef, type ReactNode } from "react";
 import {
   captureChatOpenIntent,
+  markLatestChatUnread,
   useChatReading,
   usePresentedChatBoundary,
 } from "./chat-reading";
@@ -17,6 +18,55 @@ vi.mock("./global-events", () => ({
   getReadyEventEpoch: () => undefined,
   subscribeGlobalEvents: () => () => {},
 }));
+
+it("侧栏标未读使用最新可读消息和服务端代次，并保持已有手动未读", async () => {
+  const queryClient = new QueryClient();
+  const chatId = "chat";
+  const base = "http://127.0.0.1:19923/api/v1/chats/chat";
+  let authority: ChatReadingState = {
+    chatId,
+    throughSequence: 12,
+    unreadGeneration: 3,
+    holdUnread: false,
+    unreadMessageCount: 0,
+    latestReadableMessageID: "last-reply",
+    complete: true,
+  };
+  const writes: unknown[] = [];
+  const server = setupServer(
+    http.get(base + "/reading", () => HttpResponse.json(authority)),
+    http.post(base + "/unread", async ({ request }) => {
+      writes.push(await request.json());
+      authority = {
+        ...authority,
+        throughSequence: 11,
+        unreadGeneration: 4,
+        holdUnread: true,
+        unreadMessageCount: 1,
+        firstUnreadMessageID: "last-reply",
+      };
+      return HttpResponse.json({});
+    }),
+  );
+  server.listen({ onUnhandledRequest: "error" });
+  client.setConfig({ baseUrl: "http://127.0.0.1:19923" });
+  try {
+    await expect(markLatestChatUnread(queryClient, chatId)).resolves.toBe(true);
+    await expect(markLatestChatUnread(queryClient, chatId)).resolves.toBe(true);
+    expect(writes).toEqual([
+      { fromMessageID: "last-reply", observedUnreadGeneration: 3 },
+    ]);
+    expect(
+      queryClient.getQueryData(chatReadingOptions(chatId).queryKey),
+    ).toMatchObject({
+      holdUnread: true,
+      unreadGeneration: 4,
+    });
+  } finally {
+    queryClient.clear();
+    server.close();
+  }
+});
 
 it("在途的显式打开发生代次冲突后只重读，不重放旧动作", async () => {
   const focus = vi.spyOn(document, "hasFocus").mockReturnValue(true);

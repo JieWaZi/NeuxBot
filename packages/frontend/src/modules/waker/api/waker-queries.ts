@@ -2,6 +2,7 @@ export {
   createWakerMutation,
   startWakerOnboardingMutation,
   deleteWakerMutation,
+  duplicateWakerMutation,
   getWakerOptions,
   getWakerDocumentOptions,
   getWakerDocumentQueryKey,

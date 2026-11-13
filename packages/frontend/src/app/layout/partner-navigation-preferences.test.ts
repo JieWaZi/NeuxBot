@@ -36,7 +36,18 @@ describe("partner navigation preferences", () => {
   });
 
   it("支持拖拽目标稳定排序", () => {
-    expect(moveItem(["a", "b", "c"], "c", "a")).toEqual(["c", "a", "b"]);
+    expect(moveItem(["a", "b", "c"], "c", "a", "before")).toEqual([
+      "c",
+      "a",
+      "b",
+    ]);
+  });
+
+  it("按可见拖动方向落到目标指定的一侧", () => {
+    const stored = ["a", "b", "c", "d"];
+    // 分组后的可见顺序是 a/c/b/d，与持久顺序不同。
+    expect(moveItem(stored, "c", "b", "after")).toEqual(["a", "b", "c", "d"]);
+    expect(moveItem(stored, "b", "c", "before")).toEqual(["a", "b", "c", "d"]);
   });
 
   it("把上下文侧栏宽度限制在可用范围", () => {
