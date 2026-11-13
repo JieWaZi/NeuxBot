@@ -89,6 +89,8 @@ type AutomaticTaskController interface {
 	CountAcceptedRuns(context.Context, string) (int64, error)
 	// UpdateRunAdmission 只更新接纳阶段、关联身份和安全错误码。
 	UpdateRunAdmission(context.Context, models.AutomaticRun) error
+	// AcceptRunAdmission 确认本次派发，交付绑定前已结束的实际执行。
+	AcceptRunAdmission(context.Context, models.AutomaticRun) error
 	// FindOpenTeamRun 查询团队对话关联且尚未冻结终态的自动运行。
 	FindOpenTeamRun(context.Context, string) (models.AutomaticRun, bool, error)
 	// CloseTeamRun 只在团队首次整体结束时保存终态投影，后续续聊不能覆盖。
@@ -286,13 +288,17 @@ func (c *automaticTaskController) Delete(ctx context.Context, id string) error {
 		if err := removeIntegrationResourceGrants(tx, c.db, constants.IntegrationResourceKindAutomaticTask, []string{id}); err != nil {
 			return err
 		}
+		if err := c.deleteRunViewMarks(tx, []string{id}); err != nil {
+			return err
+		}
 		if err := db.Where("task_id = ?", id).Delete(&models.AutomaticRun{}).Error; err != nil {
 			return databaseError("delete_automatic_runs", id, err)
 		}
 		if err := db.Where("id = ?", id).Delete(&models.AutomaticTask{}).Error; err != nil {
 			return databaseError("delete_automatic_task", id, err)
 		}
-		publishCommittedChange(tx, c.db, "automatic-tasks", eventsResource("global", ""))
+		publishCommittedChange(tx, c.db, "work-board", eventsResource("global", ""))
+		publishCommittedChange(tx, c.db, "reading", eventsResource("global", ""))
 		return nil
 	})
 }
@@ -313,19 +319,32 @@ func (c *automaticTaskController) DeleteByWaker(ctx context.Context, wakerID str
 				if err := removeIntegrationResourceGrants(tx, c.db, constants.IntegrationResourceKindAutomaticTask, ids); err != nil {
 					return err
 				}
+				if err := c.deleteRunViewMarks(tx, ids); err != nil {
+					return err
+				}
 				if err := controllerDB(tx, c.db).Where("task_id IN ?", ids).Delete(&models.AutomaticRun{}).Error; err != nil {
 					return databaseError("delete_waker_automatic_runs", wakerID, err)
 				}
 				if err := controllerDB(tx, c.db).Where("id IN ?", ids).Delete(&models.AutomaticTask{}).Error; err != nil {
 					return databaseError("delete_waker_automatic_tasks", wakerID, err)
 				}
-				publishCommittedChange(tx, c.db, "automatic-tasks", eventsResource("global", ""))
+				publishCommittedChange(tx, c.db, "work-board", eventsResource("global", ""))
+				publishCommittedChange(tx, c.db, "reading", eventsResource("global", ""))
 			}
 			if len(tasks) < 100 {
 				return nil
 			}
 		}
 	})
+}
+
+func (c *automaticTaskController) deleteRunViewMarks(ctx context.Context, taskIDs []string) error {
+	db := controllerDB(ctx, c.db)
+	owners := db.Model(&models.AutomaticRun{}).Select("id").Where("task_id IN ?", taskIDs)
+	if err := db.Where("owner_kind=? AND owner_id IN (?)", constants.RunOwnerKindAutomaticRun, owners).Delete(&models.RunViewMark{}).Error; err != nil {
+		return databaseError("delete_automatic_run_view_marks", "", err)
+	}
+	return nil
 }
 
 // CreateRun 建立受唯一机会约束保护的运行记录。
@@ -338,9 +357,7 @@ func (c *automaticTaskController) CreateRun(ctx context.Context, run models.Auto
 		return databaseError("create_automatic_run", "task_id="+run.TaskID, err)
 	}
 	publishCommittedChange(ctx, c.db, "automatic-tasks", eventsResource("global", ""))
-	if run.Admission == constants.AutomaticRunAdmissionFailed {
-		publishCommittedNoticeIDs(ctx, c.db, []string{"automatic-run-failed:" + run.ID}, nil)
-	}
+	c.publishAutomaticFailure(ctx, run)
 	return nil
 }
 
@@ -399,22 +416,44 @@ func (c *automaticTaskController) CountAcceptedRuns(ctx context.Context, taskID 
 
 // UpdateRunAdmission 只更新接纳阶段、关联身份和安全错误码。
 func (c *automaticTaskController) UpdateRunAdmission(ctx context.Context, run models.AutomaticRun) error {
-	var wasFailed bool
-	if _, enabled := c.db.Get(eventPublisherSetting); enabled && run.Admission == constants.AutomaticRunAdmissionFailed {
-		previous, err := c.GetRun(ctx, run.ID)
-		if err != nil {
-			return err
+	return c.updateRunAdmission(ctx, run, "")
+}
+
+// AcceptRunAdmission 确认本次派发，交付绑定前已结束的实际执行。
+func (c *automaticTaskController) AcceptRunAdmission(ctx context.Context, run models.AutomaticRun) error {
+	return c.updateRunAdmission(ctx, run, run.ExecutionID)
+}
+
+func (c *automaticTaskController) updateRunAdmission(ctx context.Context, run models.AutomaticRun, liveExecutionID string) error {
+	db := controllerDB(ctx, c.db)
+	partnerAccepted := run.Admission == constants.AutomaticRunAdmissionAccepted && run.ChatID != "" && run.ThreadID == ""
+	var previous models.AutomaticRun
+	if _, enabled := c.db.Get(eventPublisherSetting); enabled && (partnerAccepted || run.Admission == constants.AutomaticRunAdmissionFailed) {
+		if err := db.Select("admission,chat_id").Where("id=?", run.ID).Take(&previous).Error; err != nil {
+			_ = databaseError("read_automatic_admission_for_reminder", run.ID, err)
 		}
-		wasFailed = previous.Admission == constants.AutomaticRunAdmissionFailed
 	}
-	err := controllerDB(ctx, c.db).Model(&models.AutomaticRun{}).Where("id = ?", run.ID).
-		Updates(map[string]any{"admission": run.Admission, "waker_id": run.WakerID, "chat_id": run.ChatID, "thread_id": run.ThreadID, "workflow_run_id": run.WorkflowRunID, "execution_id": run.ExecutionID, "error_code": run.ErrorCode, "updated_at": run.UpdatedAt}).Error
-	if err != nil {
-		return databaseError("update_automatic_run_admission", "run_id="+run.ID, err)
+	result := db.Model(&models.AutomaticRun{}).Where("id = ?", run.ID).
+		Updates(map[string]any{"admission": run.Admission, "waker_id": run.WakerID, "chat_id": run.ChatID, "thread_id": run.ThreadID, "workflow_run_id": run.WorkflowRunID, "execution_id": run.ExecutionID, "error_code": run.ErrorCode, "updated_at": run.UpdatedAt})
+	if result.Error != nil {
+		return databaseError("update_automatic_run_admission", "run_id="+run.ID, result.Error)
 	}
 	publishCommittedChange(ctx, c.db, "automatic-tasks", eventsResource("global", ""))
-	if !wasFailed && run.Admission == constants.AutomaticRunAdmissionFailed {
-		publishCommittedNoticeIDs(ctx, c.db, []string{"automatic-run-failed:" + run.ID}, nil)
+	if previous.Admission != constants.AutomaticRunAdmissionFailed {
+		c.publishAutomaticFailure(ctx, run)
+	}
+	if run.ThreadID != "" {
+		publishCommittedChange(ctx, c.db, "work-board", eventsResource("team_thread", run.ThreadID))
+	} else if run.ChatID != "" {
+		resource := eventsResource("chat", run.ChatID)
+		publishCommittedChange(ctx, c.db, "work-board", resource)
+		if result.RowsAffected > 0 && partnerAccepted && (previous.Admission != constants.AutomaticRunAdmissionAccepted || previous.ChatID != run.ChatID) {
+			publishLinkedChatAttention(ctx, c.db, resource, liveExecutionID)
+		}
+	} else if run.WorkflowRunID != "" {
+		publishCommittedChange(ctx, c.db, "work-board", eventsResource("workflow_run", run.WorkflowRunID))
+	} else {
+		publishCommittedChange(ctx, c.db, "work-board", eventsResource("global", ""))
 	}
 	return nil
 }
@@ -430,9 +469,7 @@ func (c *automaticTaskController) CloseTeamRun(ctx context.Context, id string, s
 		return nil
 	}
 	publishCommittedChange(ctx, c.db, "automatic-tasks", eventsResource("global", ""))
-	if state == constants.AutomaticRunStateFailed {
-		publishCommittedNoticeIDs(ctx, c.db, []string{"automatic-run-failed:" + id}, nil)
-	}
+	publishCommittedChange(ctx, c.db, "work-board", eventsResource("global", ""))
 	return nil
 }
 
@@ -447,4 +484,13 @@ func (c *automaticTaskController) FindOpenTeamRun(ctx context.Context, threadID 
 		return run, false, databaseError("find_open_team_automatic_run", "thread_id="+threadID, err)
 	}
 	return run, true, nil
+}
+
+func (c *automaticTaskController) publishAutomaticFailure(ctx context.Context, run models.AutomaticRun) {
+	if run.Admission != constants.AutomaticRunAdmissionFailed && run.Admission != constants.AutomaticRunAdmissionInterrupted || run.ErrorCode == "" || run.ChatID != "" || run.ThreadID != "" || run.WorkflowRunID != "" {
+		return
+	}
+	work := models.WorkRef{Kind: constants.WorkOwnerKindAutomaticRun, ID: run.ID}
+	publishCommittedChange(ctx, c.db, "work-board", eventsResource(string(work.Kind), work.ID))
+	publishWorkLive(ctx, c.db, models.WorkBoardLiveEvent{Operation: "failed", Work: work})
 }

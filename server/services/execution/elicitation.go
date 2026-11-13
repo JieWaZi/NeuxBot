@@ -13,7 +13,6 @@ import (
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
-	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/google/jsonschema-go/jsonschema"
 )
@@ -32,8 +31,6 @@ type pendingElicitation struct {
 	invocationID string
 	// requested 是已经安全归一化并进入权威日志的输入内容。
 	requested eventlog.ElicitationRequestedData
-	// requestedAt 是请求进入权威日志的 Unix 毫秒时间。
-	requestedAt int64
 	// response 把最终选择交回正在等待的 Runtime 回调。
 	response chan agentapi.ElicitationDecision
 }
@@ -144,7 +141,7 @@ func (c *elicitationCoordinator) request(
 	}
 
 	c.commitMutex.Lock()
-	record, err := c.journal.AppendElicitationFact(chatID, eventlog.AppendInput{
+	record, err := c.journal.AppendInteractionFact(chatID, eventlog.AppendInput{
 		Type:         constants.ChatEventTypeElicitationRequested,
 		ExecutionID:  executionID,
 		InvocationID: pending.invocationID,
@@ -155,14 +152,13 @@ func (c *elicitationCoordinator) request(
 		return agentapi.ElicitationDecision{Cancelled: true}, err
 	}
 	c.mutex.Lock()
-	pending.requestedAt = record.RecordedAt
 	c.byID[requested.ElicitationID] = pending
 	c.orderByChat[chatID] = append(
 		c.orderByChat[chatID],
 		requested.ElicitationID,
 	)
 	c.mutex.Unlock()
-	c.journal.PublishElicitationFact(ctx, record, c.pendingProjection(chatID))
+	c.journal.PublishInteractionFact(ctx, record)
 	c.commitMutex.Unlock()
 
 	select {
@@ -354,7 +350,7 @@ func (c *elicitationCoordinator) commitResolution(
 ) error {
 	c.commitMutex.Lock()
 	defer c.commitMutex.Unlock()
-	record, err := c.journal.AppendElicitationFact(
+	record, err := c.journal.AppendInteractionFact(
 		pending.chatID,
 		eventlog.AppendInput{
 			Type:         constants.ChatEventTypeElicitationResolved,
@@ -383,46 +379,10 @@ func (c *elicitationCoordinator) commitResolution(
 	}
 	c.mutex.Unlock()
 
-	c.journal.PublishElicitationFact(ctx, record, c.pendingProjection(pending.chatID))
+	c.journal.PublishInteractionFact(ctx, record)
 	if c.events != nil {
 		_ = events.Emit(c.events, "interaction", "interaction.changed", events.Resource{Kind: "execution", ID: pending.executionID}, map[string]any{"questionId": pending.requested.ElicitationID})
 	}
 	pending.response <- decision
 	return nil
-}
-
-func (c *elicitationCoordinator) pendingProjection(
-	chatID string,
-) []models.PendingElicitation {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	order := c.orderByChat[chatID]
-	result := make([]models.PendingElicitation, 0, len(order))
-	for _, elicitationID := range order {
-		pending := c.byID[elicitationID]
-		if pending == nil {
-			continue
-		}
-		result = append(result, pendingElicitationProjection(
-			pending.requested,
-			pending.requestedAt,
-		))
-	}
-	return result
-}
-
-func pendingElicitationProjection(
-	requested eventlog.ElicitationRequestedData,
-	requestedAt int64,
-) models.PendingElicitation {
-	return models.PendingElicitation{
-		AllowSkip:       requested.AllowSkip,
-		ElicitationID:   requested.ElicitationID,
-		ToolCallID:      requested.ToolCallID,
-		Mode:            requested.Mode,
-		Message:         requested.Message,
-		RequestedSchema: append(json.RawMessage(nil), requested.RequestedSchema...),
-		URL:             requested.URL,
-		RequestedAt:     requestedAt,
-	}
 }

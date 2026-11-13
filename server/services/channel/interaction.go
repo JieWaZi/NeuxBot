@@ -220,6 +220,11 @@ func (s *service) mirrorInteractionEvent(
 		eventType = constants.ChannelEventElicitationRequested
 	case constants.ChatEventTypeElicitationResolved:
 		eventType = constants.ChannelEventElicitationResolved
+		if event.ElicitationResolution != nil {
+			resolution := *event.ElicitationResolution
+			resolution.Content = nil
+			payload.ElicitationResolution = &resolution
+		}
 	default:
 		return nil
 	}

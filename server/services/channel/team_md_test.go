@@ -68,12 +68,12 @@ func TestTeamDispatchReadsCurrentProfilesWithoutChangingAdmittedMembership(t *te
 		t.Fatalf("已接纳负责人映射或执行选择被新团队配置覆盖: %+v", intent)
 	}
 	content := intent.Options.SupplementalInstructions[0].Content
-	for _, want := range []string{"当前成员名称", "当前设计师", "当前交互职责", "当前专长: 当前可访问性设计", "缺失伙伴历史名称", "缺失伙伴历史简介"} {
+	for _, want := range []string{"当前成员名称", "当前设计师", "当前交互职责", "缺失伙伴历史名称", "缺失伙伴历史简介"} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("派发未使用当前资料或缺失伙伴回退，缺少 %q:\n%s", want, content)
 		}
 	}
-	if strings.Contains(content, "历史成员") || strings.Contains(content, "`future`") {
+	if strings.Contains(content, "历史成员") || strings.Contains(content, "`future`") || strings.Contains(content, "当前专长") {
 		t.Fatalf("资料投影残留旧资料或扩大资格:\n%s", content)
 	}
 	retained, err := fixture.threads.GetMember(ctx, thread.ID, "member")
@@ -96,7 +96,7 @@ func TestTeamDispatchReadsCurrentProfilesWithoutChangingAdmittedMembership(t *te
 			t.Fatal(err)
 		}
 		items := result.Data.(map[string]any)["items"].([]map[string]any)
-		if len(items) != 3 || items[1]["wakerId"] != "member" || items[1]["name"] != "当前成员名称" || items[1]["role"] != "当前设计师" || items[1]["bio"] != "当前交互职责" || items[0]["isLead"] != true || items[2]["name"] != "缺失伙伴历史名称" {
+		if len(items) != 3 || items[1]["wakerId"] != "member" || items[1]["name"] != "当前成员名称" || items[1]["role"] != "当前设计师" || items[1]["bio"] != "当前交互职责" || items[1]["expertise"] != nil || items[0]["isLead"] != true || items[2]["name"] != "缺失伙伴历史名称" {
 			t.Fatalf("成员发现未使用同一当前资料或改变资格: %+v", items)
 		}
 		if err := wakers.Update(ctx, "member", models.Waker{Name: "当前成员名称"}); err != nil {
@@ -117,23 +117,6 @@ func TestTeamDispatchReadsCurrentProfilesWithoutChangingAdmittedMembership(t *te
 		return
 	}
 	t.Fatal("负责人未获准发现原对话成员")
-}
-
-func TestMemberFrontmatterKeepsBoundedPublicProjection(t *testing.T) {
-	frontmatter := memberFrontmatter(
-		"负责桌面端界面与交互实现。",
-		[]profile.Expertise{{
-			Title:       "前端交互",
-			Description: "设计并实现可访问的桌面端组件。",
-		}},
-	)
-	if !strings.Contains(frontmatter, "负责桌面端界面与交互实现。") ||
-		!strings.Contains(frontmatter, "前端交互: 设计并实现可访问的桌面端组件。") {
-		t.Fatalf("frontmatter = %q", frontmatter)
-	}
-	if strings.Contains(frontmatter, "{") || strings.Contains(frontmatter, "[") {
-		t.Fatalf("frontmatter unexpectedly embeds JSON: %q", frontmatter)
-	}
 }
 
 func TestTeamWorkspaceSectionOmitEmptyPath(t *testing.T) {

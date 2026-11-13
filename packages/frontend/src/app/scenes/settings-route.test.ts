@@ -60,6 +60,18 @@ describe("IM 设置路由", () => {
   });
 });
 
+it("通知深链定位独立分类并复用唯一设置 Scene", () => {
+  expect(settingsSectionFromPath("/settings/notifications")).toBe(
+    "notifications",
+  );
+  expect(
+    routeSceneForLocation(
+      { pathname: "/settings/notifications", search: "" },
+      labels,
+    ),
+  ).toMatchObject({ id: "settings", href: "/settings/notifications" });
+});
+
 it("智能体详情深链保留实际配置身份并复用唯一设置 Scene", () => {
   expect(settingsSectionFromPath("/settings/agents")).toBe("agents");
   const tab = routeSceneForLocation(

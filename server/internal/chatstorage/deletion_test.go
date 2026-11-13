@@ -49,8 +49,36 @@ func TestDeletionCoordinatorResumesByCommittedDatabaseFact(t *testing.T) {
 	); err != nil {
 		t.Fatalf("second Stage() error = %v", err)
 	}
-	if err := coordinator.Resume(func(string, []string) (bool, error) { return true, nil }, nil); err != nil {
+	otherChatID := "22222222222222222222222222222222"
+	otherChatRoot, err := layout.ChatRoot(otherChatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(otherChatRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := coordinator.Stage("cccccccccccccccccccccccccccccccc", []DeletionTarget{
+		{Kind: AggregateKindChat, AggregateID: otherChatID},
+	}, []string{otherChatID}); err != nil {
+		t.Fatal(err)
+	}
+	cleanupCalls := 0
+	coordinator.SetChatCleanup(func(logs map[string]string) error {
+		cleanupCalls++
+		data, err := os.ReadFile(logs[chatID])
+		if err != nil || string(data) != "authority" {
+			t.Fatalf("cleanup could not read staged authority: %s, %v", data, err)
+		}
+		if _, err := os.Stat(otherChatRoot); err != nil {
+			t.Fatalf("uncommitted chat was still staged while checking retained references: %v", err)
+		}
+		return nil
+	})
+	if err := coordinator.Resume(func(_ string, ids []string) (bool, error) { return ids[0] == chatID, nil }, nil); err != nil {
 		t.Fatalf("Resume(commit) error = %v", err)
+	}
+	if cleanupCalls != 1 {
+		t.Fatalf("cleanup called %d times on committed restart", cleanupCalls)
 	}
 	if exists, existsErr := pathExists(chatRoot); existsErr != nil || exists {
 		t.Fatal("committed aggregate was restored")

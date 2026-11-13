@@ -153,7 +153,6 @@ export function WorkExecutorAvatar({
     wakerIds,
     teamIds,
   });
-  const label = name.trim() || "—";
   const waker =
     resolvedKind === "waker"
       ? executors.data?.wakers.find((item) => item.id === executorId)
@@ -162,15 +161,17 @@ export function WorkExecutorAvatar({
     resolvedKind === "team"
       ? executors.data?.teams.find((item) => item.channel?.id === executorId)
       : undefined;
+  const label = name.trim() || waker?.name || team?.channel?.name;
   const visual: ReactNode = (
     <ExecutorAvatarVisual
       kind={resolvedKind}
-      name={label}
+      name={label ?? ""}
       size={size}
       wakerAvatar={waker?.avatar}
       teamMembers={team?.members}
     />
   );
+  if (!label) return visual;
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>

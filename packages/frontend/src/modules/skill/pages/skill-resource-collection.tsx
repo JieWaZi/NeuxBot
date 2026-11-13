@@ -109,7 +109,7 @@ export function SkillResourceCollection({
     <div className="grid min-w-0 gap-8">
       <div className="flex min-w-0 flex-wrap items-center gap-2">{filters}</div>
       <div className="grid min-w-0 gap-3">
-        {query.data !== undefined && (
+        {wakerId && query.data !== undefined && (
           <p className="type-resource-body text-resource-muted">
             {t("skill:count", { count })}
           </p>

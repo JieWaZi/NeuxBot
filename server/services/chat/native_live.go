@@ -87,6 +87,7 @@ func (l *NativeLiveMessage) Checkpoint(ctx context.Context, receipt agent.Commit
 			l.disable(err)
 		}
 	}
+	l.chat.observeReadingCheckpoint(l.chatID)
 	l.chat.subscriptions.publishMessageCheckpoint(l.chatID, receipt.Version, change.MessageID, change.Revision)
 }
 

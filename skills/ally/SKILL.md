@@ -56,6 +56,8 @@ reference's spelling. `--library` and `--libraryId` are not `--library-id`.
 | Message/file delivery | [IM delivery](references/im-delivery.md#command-examples) |
 | Team coordination/reporting | [Lead](references/team-lead.md#command-examples), [member](references/team-member.md#command-examples) |
 | Durable memory | [Memory](references/memory.md#command-examples) |
+| Host-bound partner setup | [Partner onboarding](references/partner-onboarding.md#command-examples) |
+| User-initiated profile optimization | [Partner profile optimization](references/partner-profile-optimization.md) |
 | Structured questions | [Questions](references/user-questions.md#command-examples) |
 
 ## Discover and invoke

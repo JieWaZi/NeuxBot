@@ -14,7 +14,7 @@ export function StaticMarkdown({
   remarkPlugins,
 }: {
   source: string;
-  onLink: (href: string) => void;
+  onLink?: (href: string) => void;
   remarkPlugins?: StreamdownProps["remarkPlugins"];
 }) {
   return (
@@ -33,20 +33,24 @@ export function StaticMarkdown({
         markdownTableContainerClassName,
       )}
       components={{
-        a: ({ href, children }) => (
-          <a
-            href={href}
-            className="text-link hover:text-link-hover focus-visible:ring-ring decoration-link/50 rounded-sm underline underline-offset-4 outline-none hover:decoration-current focus-visible:ring-2"
-            onClick={(event) => {
-              if (!href) return;
-              event.preventDefault();
-              if (/^(https?:|mailto:)/i.test(href)) void openExternalURL(href);
-              else onLink(href);
-            }}
-          >
-            {children}
-          </a>
-        ),
+        a: ({ href, children }) =>
+          href && (onLink || /^(https?:|mailto:)/i.test(href)) ? (
+            <a
+              href={href}
+              className="text-link hover:text-link-hover focus-visible:ring-ring decoration-link/50 rounded-sm underline underline-offset-4 outline-none hover:decoration-current focus-visible:ring-2"
+              onClick={(event) => {
+                if (!href) return;
+                event.preventDefault();
+                if (/^(https?:|mailto:)/i.test(href))
+                  void openExternalURL(href);
+                else onLink?.(href);
+              }}
+            >
+              {children}
+            </a>
+          ) : (
+            <span>{children}</span>
+          ),
         img: ({ alt }) => <span>{alt}</span>,
       }}
     >

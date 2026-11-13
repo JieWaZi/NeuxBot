@@ -58,13 +58,7 @@ export const webHost: HostService = {
       throw new Error(webText("unsafeLink"));
     window.open(target.href, "_blank", "noopener,noreferrer");
   },
-  async show_notification() {
-    return false;
-  },
   onFileDrop() {
-    return () => undefined;
-  },
-  onNotificationAction() {
     return () => undefined;
   },
 };

@@ -2,6 +2,7 @@ import type { CoreConnection } from "./resources";
 import {
   globalEventFrameSchema,
   globalEventResourceKey,
+  type GlobalEventFrame,
   type GlobalEventObserver,
   type GlobalEventResource,
   type GlobalEventState,
@@ -18,8 +19,14 @@ type Subscription = {
   state: GlobalEventState;
   failures: number;
   requestId?: string;
+  ready?: GlobalEventFrame;
+  awaitingReadyAck?: boolean;
   retry?: ReturnType<typeof setTimeout>;
 };
+
+function usesReadySnapshot(topic: GlobalEventTopic) {
+  return topic === "reading" || topic === "work-board";
+}
 
 /** 单个运行环境只有一个物理连接；领域游标与连接交付序号各自保留。 */
 export class CoreEventClient {
@@ -80,8 +87,10 @@ export class CoreEventClient {
         if (
           this.subscriptions.get(key) === current &&
           current.observers.has(observer)
-        )
+        ) {
           observer.onResync?.("subscription_joined");
+          if (current.ready) observer.onEvent(current.ready);
+        }
       });
     }
     if (this.socket === undefined && this.retry === undefined)
@@ -102,6 +111,7 @@ export class CoreEventClient {
     this.state = state;
     for (const subscription of this.subscriptions.values()) {
       subscription.state = state;
+      if (state !== "open" || changed) subscription.ready = undefined;
       for (const observer of subscription.observers)
         observer.onState?.(state, changed);
     }
@@ -110,10 +120,18 @@ export class CoreEventClient {
     const subscriptions = key
       ? [this.subscriptions.get(key)]
       : this.subscriptions.values();
-    for (const subscription of subscriptions)
-      if (subscription)
-        for (const observer of subscription.observers)
-          observer.onResync?.(reason);
+    const renewSnapshot =
+      reason === "resync_required" ||
+      reason === "delivery_gap" ||
+      reason === "invalid_frame";
+    for (const subscription of subscriptions) {
+      if (!subscription) continue;
+      const renew = renewSnapshot && usesReadySnapshot(subscription.topic);
+      if (renew) subscription.ready = undefined;
+      for (const observer of subscription.observers)
+        observer.onResync?.(reason);
+      if (renew) this.control("resync", subscription);
+    }
   }
   private control(
     type: "subscribe" | "unsubscribe" | "resync",
@@ -124,6 +142,10 @@ export class CoreEventClient {
     subscription.retry = undefined;
     const requestId = String(++this.requestSequence);
     subscription.requestId = requestId;
+    if (usesReadySnapshot(subscription.topic)) {
+      subscription.ready = undefined;
+      subscription.awaitingReadyAck = type !== "unsubscribe";
+    }
     this.socket.send(
       JSON.stringify({
         type,
@@ -224,13 +246,12 @@ export class CoreEventClient {
       frame.deliverySequence <= this.sequence
     )
       return;
-    if (
+    const deliveryGap =
       (!this.connectionId && frame.deliverySequence !== 1) ||
       (this.connectionId &&
         (this.connectionId !== frame.connectionId ||
-          frame.deliverySequence !== this.sequence + 1))
-    )
-      this.resync("delivery_gap");
+          frame.deliverySequence !== this.sequence + 1));
+    if (deliveryGap) this.resync("delivery_gap");
     this.connectionId = frame.connectionId;
     this.sequence = frame.deliverySequence;
     if (frame.type === "heartbeat") return;
@@ -251,6 +272,7 @@ export class CoreEventClient {
         subscription.retry = undefined;
         subscription.failures = 0;
         subscription.state = "open";
+        subscription.awaitingReadyAck = false;
         for (const observer of subscription.observers)
           observer.onState?.("open");
         if (recovering) this.resync("resource_recovered", key);
@@ -258,9 +280,11 @@ export class CoreEventClient {
       return;
     }
     if (frame.type === "resync_required") {
-      this.resync("resync_required", subscription ? key : undefined);
+      if (!deliveryGap)
+        this.resync("resync_required", subscription ? key : undefined);
       if (
         subscription &&
+        !usesReadySnapshot(subscription.topic) &&
         [...subscription.observers].every((observer) => !observer.onResync)
       )
         this.control("resync", subscription);
@@ -283,6 +307,20 @@ export class CoreEventClient {
       if ("retryable" in frame.payload && frame.payload.retryable === true)
         this.retryResource(key, subscription);
       else this.resync("subscription_rejected", key);
+      return;
+    }
+    if (
+      usesReadySnapshot(frame.topic) &&
+      frame.type === `${frame.topic}.ready`
+    ) {
+      if (
+        !subscription ||
+        subscription.awaitingReadyAck ||
+        subscription.state !== "open"
+      )
+        return;
+      subscription.ready = frame;
+      for (const observer of subscription.observers) observer.onEvent(frame);
       return;
     }
     const global = this.subscriptions.get(

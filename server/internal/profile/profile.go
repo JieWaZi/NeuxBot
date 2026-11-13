@@ -4,16 +4,24 @@ package profile
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/tiktoken-go/tokenizer/codec"
 )
 
 const maxProfileDocumentBytes = 1024 * 1024
+
+var wakerProfileTokenizer = sync.OnceValue(codec.NewCl100kBase)
 
 // WorkMethod 表示面向用户展示的一套具名工作过程。
 type WorkMethod struct {
@@ -39,6 +47,19 @@ type Projection struct {
 	WorkStyle []string `json:"workStyle"`
 	// WorkMethods 是按原始顺序展示的具名工作过程。
 	WorkMethods []WorkMethod `json:"workMethods"`
+}
+
+// Revision 标识当前概览内容，供编辑器提交时检测其他来源的修改。
+func (p Projection) Revision() string {
+	// 概览只含字符串和列表，可以完整编码为 JSON。
+	data, _ := json.Marshal(p)
+	return ContentRevision(string(data))
+}
+
+// ContentRevision 标识编辑器读取的档案正文。
+func ContentRevision(content string) string {
+	hash := sha256.Sum256([]byte(content))
+	return hex.EncodeToString(hash[:])
 }
 
 // DocumentsInput 保存三份标准档案的完整 Markdown 输入。
@@ -73,6 +94,10 @@ type Document struct {
 	Editable bool `json:"editable"`
 	// UpdatedAt 是文档最近修改时的 Unix 毫秒时间。
 	UpdatedAt int64 `json:"updatedAt"`
+	// Revision 是当前正文版本。
+	Revision string `json:"revision,omitempty"`
+	// MaxTokens 是伙伴长期指令的正文上限。
+	MaxTokens int `json:"maxTokens,omitempty"`
 }
 
 // ValidateContent 校验单份档案的编码和大小限制。
@@ -84,6 +109,26 @@ func ValidateContent(content string) error {
 		return status_error.ProfileDocumentTooLarge
 	}
 	return nil
+}
+
+// ValidateWakerAgents 校验运行时伙伴指令的正文预算，使用本地固定分词表。
+func ValidateWakerAgents(content string) error {
+	if err := ValidateContent(content); err != nil {
+		return err
+	}
+	if len(content) <= constants.WakerProfileContentMaximumBytes {
+		count, err := wakerProfileTokenizer().Count(content)
+		if err != nil {
+			logx.Errorf("count waker profile tokens: bytes=%d error=%v", len(content), err)
+			return status_error.WakerProfileTokenizationFailed
+		}
+		if count <= constants.WakerProfileContentMaximumTokens {
+			return nil
+		}
+	}
+	return status_error.WakerProfileTooLong.WithParams(map[string]interface{}{
+		"MaxTokens": constants.WakerProfileContentMaximumTokens,
+	})
 }
 
 // ParseDocuments 从三份标准档案解析面向页面的展示投影。

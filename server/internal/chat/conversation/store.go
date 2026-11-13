@@ -149,6 +149,9 @@ func (s *Store) Commit(ctx context.Context, batch agent.ConversationBatch) (agen
 	if err := slot.append(ctx, path, idx, header, rows, raw); err != nil {
 		return agent.CommitReceipt{}, err
 	}
+	if header.Receipt.First == 1 {
+		s.catalog.Remember(chatstorage.LogAddress{ChatID: batch.ChatID, LogPath: path})
+	}
 	return header.Receipt, nil
 }
 
@@ -283,6 +286,9 @@ func findAdmittedInput(file *os.File, idx *streamIndex, inputs map[string]*agent
 }
 
 func validDiskRow(row diskRow, chat bool) bool {
+	if row.Purged {
+		return !chat && row.Chat == nil && row.Fragment == nil && row.Terminal == nil && row.DetachedInput == nil
+	}
 	if chat {
 		return row.Chat != nil && row.Fragment == nil && row.Terminal == nil && row.DetachedInput == nil && validChatChange(*row.Chat)
 	}
@@ -367,6 +373,8 @@ func validChatChange(change agent.ConversationChange) bool {
 func describe(row diskRow, where location, at int64) rowIndex {
 	r := rowIndex{Where: where, At: at}
 	switch {
+	case row.Purged:
+		return r
 	case row.Fragment != nil:
 		r.Native, r.Message, r.Content = nativeRowID(row.Fragment.Key), row.Fragment.MessageID, row.Fragment.Change.ContentType
 		r.Revision = row.Fragment.Change.Revision
@@ -418,6 +426,19 @@ func describe(row diskRow, where location, at int64) rowIndex {
 			r.Kind = indexExecutionCompleted
 		case constants.ChatEventTypeExecutionFailed, constants.ChatEventTypeExecutionCanceled:
 			r.Kind = indexExecutionEnded
+		case constants.ChatEventTypeElicitationRequested, constants.ChatEventTypeElicitationResolved:
+			var question struct {
+				// ElicitationID 是请求和结果共用的权威身份。
+				ElicitationID string `json:"elicitationId"`
+			}
+			if json.Unmarshal(f.Data, &question) == nil && question.ElicitationID != "" {
+				r.Message = "question:" + question.ElicitationID
+				if f.Type == constants.ChatEventTypeElicitationRequested {
+					r.Kind = indexQuestionRequested
+				} else {
+					r.Kind = indexQuestionResolved
+				}
+			}
 		}
 	case row.Chat.Message != nil:
 		m := row.Chat.Message

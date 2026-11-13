@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -133,6 +134,133 @@ func TestCommittedActivityRollbackPublishesNoScopes(t *testing.T) {
 	}
 }
 
+func TestCommittedChatAttentionRefreshesWhenPendingIdentityChangesAtSameCount(t *testing.T) {
+	hub := events.New()
+	t.Cleanup(hub.Close)
+	db := WithEventPublisher(newTestDB(t), hub)
+	if err := db.Create(&models.Chat{
+		ID: "chat", WakerID: "waker", ActiveExecutionID: "execution", LatestSequence: 2,
+		WaitingApproval: true, PendingApprovals: []models.PendingApproval{{ApprovalID: "earlier"}},
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	subscription := hub.Subscribe("work-board", eventsResource("chat", "chat"))
+	defer subscription.Close()
+	if err := NewChatController(db).AdvanceProjection(t.Context(), "chat", 2, map[string]any{
+		"pending_approvals": `[{"approvalId":"replacement"}]`, "latest_sequence": int64(4),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case frame := <-subscription.Events:
+		if frame.Type != "work-board.changed" {
+			t.Fatalf("unexpected event %+v", frame)
+		}
+	default:
+		t.Fatal("a different pending request must invalidate the board even when the count stays the same")
+	}
+}
+
+func TestAutomaticAdmissionPublishesRequestsThatBecameVisibleAtBinding(t *testing.T) {
+	hub := events.New()
+	t.Cleanup(hub.Close)
+	db := WithEventPublisher(newTestDB(t), hub)
+	run := models.AutomaticRun{
+		ID: "run", TaskID: "task", OccurrenceKey: "unique", Admission: constants.AutomaticRunAdmissionPending,
+	}
+	if err := db.Create(&run).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&models.Chat{
+		ID: "chat", WakerID: "waker", ActiveExecutionID: "execution", HiddenFromWakerHistory: true,
+		WaitingApproval: true, PendingApprovals: []models.PendingApproval{{ApprovalID: "approval"}},
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	subscription := hub.Subscribe("work-board", eventsResource("chat", "chat"))
+	defer subscription.Close()
+	runs := NewAutomaticTaskController(db)
+	run.ChatID, run.ExecutionID, run.Admission = "chat", "execution", constants.AutomaticRunAdmissionAccepted
+	for _, want := range []int{1, 0} {
+		if err := runs.UpdateRunAdmission(t.Context(), run); err != nil {
+			t.Fatal(err)
+		}
+		count := 0
+		for len(subscription.Events) > 0 {
+			frame := <-subscription.Events
+			if frame.Type == "work-board.live" {
+				count++
+			}
+		}
+		if count != want {
+			t.Fatalf("binding published %d live requests, want %d", count, want)
+		}
+	}
+}
+
+func TestLiveAutomaticAdmissionPublishesAnAlreadyFinishedResult(t *testing.T) {
+	for _, status := range []constants.ExecutionStatus{constants.ExecutionStatusCompleted, constants.ExecutionStatusFailed} {
+		t.Run(string(status), func(t *testing.T) {
+			hub := events.New()
+			t.Cleanup(hub.Close)
+			db := WithEventPublisher(newTestDB(t), hub)
+			run := models.AutomaticRun{ID: "run", TaskID: "task", OccurrenceKey: "unique", Admission: constants.AutomaticRunAdmissionPending}
+			kind, operation := "answer", "completed"
+			if status == constants.ExecutionStatusFailed {
+				kind, operation = "failure", "failed"
+			}
+			for _, row := range []any{
+				&run,
+				&models.Chat{ID: "chat", WakerID: "waker", HiddenFromWakerHistory: true, LastEndedExecutionID: "execution", LastEndedExecutionStatus: status},
+				&models.ChatReadableMessage{ChatID: "chat", MessageID: "execution", ExecutionID: "execution", OrderSequence: 4, Kind: kind},
+			} {
+				if err := db.Create(row).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			subscription := hub.Subscribe("work-board", eventsResource("chat", "chat"))
+			defer subscription.Close()
+			runs := NewAutomaticTaskController(db)
+			run.ChatID, run.ExecutionID, run.Admission = "chat", "execution", constants.AutomaticRunAdmissionAccepted
+			for _, want := range []int{1, 0} {
+				if err := runs.AcceptRunAdmission(t.Context(), run); err != nil {
+					t.Fatal(err)
+				}
+				count := 0
+				for len(subscription.Events) > 0 {
+					frame := <-subscription.Events
+					if frame.Type != "work-board.live" {
+						continue
+					}
+					var value models.WorkBoardLiveEvent
+					if err := json.Unmarshal(frame.Payload, &value); err != nil {
+						t.Fatal(err)
+					}
+					if value.Operation != operation || value.ChatID != run.ChatID || value.MessageID != run.ExecutionID || value.ExecutionID != run.ExecutionID {
+						t.Fatalf("wrong terminal reminder: %+v", value)
+					}
+					count++
+				}
+				if count != want {
+					t.Fatalf("terminal reminders after binding = %d, want %d", count, want)
+				}
+			}
+			if err := db.Model(&models.AutomaticRun{}).Where("id=?", run.ID).
+				Updates(map[string]any{"admission": constants.AutomaticRunAdmissionPending, "chat_id": ""}).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := runs.UpdateRunAdmission(t.Context(), run); err != nil {
+				t.Fatal(err)
+			}
+			for len(subscription.Events) > 0 {
+				if frame := <-subscription.Events; frame.Type == "work-board.live" {
+					t.Fatal("receipt reconciliation replayed a finished result")
+				}
+			}
+		})
+	}
+}
+
 func TestCommittedActivityLookupsStayIndexedAndSkipStreamingContent(t *testing.T) {
 	hub := events.New()
 	defer hub.Close()
@@ -147,7 +275,7 @@ func TestCommittedActivityLookupsStayIndexedAndSkipStreamingContent(t *testing.T
 			t.Fatal(err)
 		}
 	}
-	log := &notificationQueryLog{Interface: logger.Discard}
+	log := &repositoryQueryLog{Interface: logger.Discard}
 	observed := database.Session(&gorm.Session{Logger: log})
 	for _, example := range []struct {
 		// resource 是需要捕获依赖范围的原工作身份。

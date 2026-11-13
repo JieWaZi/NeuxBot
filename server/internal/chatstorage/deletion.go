@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -64,6 +65,8 @@ type DeletionCoordinator struct {
 	intentRoot string
 	// stagingRoot 保存已从正式目录原子移出的聚合目录。
 	stagingRoot string
+	// cleanupChats 在暂存日志仍可读取时清理已提交 Chat 的分片和查询投影。
+	cleanupChats func(map[string]string) error
 }
 
 // deletionIntent 是崩溃后判断恢复或继续清理所需的全部持久事实。
@@ -109,6 +112,11 @@ func NewDeletionCoordinator(layout *Layout) (*DeletionCoordinator, error) {
 		stagingRoot: filepath.Join(root, deletionStagingDirectoryName),
 	}
 	return coordinator, nil
+}
+
+// SetChatCleanup 在装配时接入已提交 Chat 的数据清理，启动恢复复用同一入口。
+func (c *DeletionCoordinator) SetChatCleanup(cleanup func(map[string]string) error) {
+	c.cleanupChats = cleanup
 }
 
 // Stage 持久化意图后把全部聚合目录原子移入受管 staging。
@@ -235,6 +243,17 @@ func (s *StagedDeletion) Commit() error {
 	if err := s.coordinator.writeIntent(s.intent); err != nil {
 		return err
 	}
+	if s.coordinator.cleanupChats != nil && len(s.intent.ChatIDs) != 0 {
+		logs := make(map[string]string, len(s.intent.ChatIDs))
+		for _, target := range s.intent.Targets {
+			if target.Kind == AggregateKindChat {
+				logs[target.AggregateID] = filepath.Join(target.StagedPath, logDirectoryName, target.AggregateID+".jsonl")
+			}
+		}
+		if err := s.coordinator.cleanupChats(logs); err != nil {
+			return err
+		}
+	}
 	for _, target := range s.intent.Targets {
 		if err := os.RemoveAll(target.StagedPath); err != nil {
 			logx.Errorf("purge staged deletion failed: intent_id=%s path=%s error=%v", s.intent.ID, target.StagedPath, err)
@@ -242,6 +261,26 @@ func (s *StagedDeletion) Commit() error {
 		}
 	}
 	return s.coordinator.removeIntent(s.intent)
+}
+
+// CommitPendingChats 重试数据库已经确认提交、但尚未清理的精确删除意图。
+func (c *DeletionCoordinator) CommitPendingChats(intentID string, chatIDs []string) error {
+	if !safeSegment(intentID) || len(chatIDs) == 0 {
+		return status_error.BadRequest
+	}
+	name := intentID + ".json"
+	content, err := os.ReadFile(filepath.Join(c.intentRoot, name))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return status_error.ManagedWorkspaceError
+	}
+	intent, err := c.decodeIntent(name, content)
+	if err != nil || !slices.Equal(intent.ChatIDs, uniqueSorted(chatIDs)) {
+		return status_error.ManagedWorkspaceError
+	}
+	return (&StagedDeletion{coordinator: c, intent: intent}).Commit()
 }
 
 // Resume 恢复全部残留意图；decideCommitted 必须只依据数据库 tombstone。
@@ -278,6 +317,7 @@ func (c *DeletionCoordinator) resume(decideCommitted func(deletionIntent) (bool,
 	if err != nil {
 		return status_error.ManagedWorkspaceError
 	}
+	var pendingCommits []*StagedDeletion
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
 			continue
@@ -286,12 +326,9 @@ func (c *DeletionCoordinator) resume(decideCommitted func(deletionIntent) (bool,
 		if readErr != nil {
 			return status_error.ManagedWorkspaceError
 		}
-		var intent deletionIntent
-		jsonErr := json.Unmarshal(content, &intent)
-		validationErr := c.validateIntent(intent)
-		if jsonErr != nil || validationErr != nil || entry.Name() != intent.ID+".json" {
-			logx.Errorf("decode deletion intent failed: file=%s decode_error=%v validation_error=%v", entry.Name(), jsonErr, validationErr)
-			return status_error.ManagedWorkspaceError
+		intent, err := c.decodeIntent(entry.Name(), content)
+		if err != nil {
+			return err
 		}
 		if (intent.Targets[0].Kind == AggregateKindWaker) != wakers {
 			continue
@@ -302,10 +339,10 @@ func (c *DeletionCoordinator) resume(decideCommitted func(deletionIntent) (bool,
 		}
 		staged := &StagedDeletion{coordinator: c, intent: intent}
 		if committed {
-			if commitErr := staged.Commit(); commitErr != nil {
-				return commitErr
-			}
-		} else if rollbackErr := staged.Rollback(); rollbackErr != nil {
+			pendingCommits = append(pendingCommits, staged)
+			continue
+		}
+		if rollbackErr := staged.Rollback(); rollbackErr != nil {
 			return rollbackErr
 		}
 		if completed != nil {
@@ -314,7 +351,29 @@ func (c *DeletionCoordinator) resume(decideCommitted func(deletionIntent) (bool,
 			}
 		}
 	}
+	// 先恢复未提交的目录，已提交的 Chat 才能检查仍存续的会话引用。
+	for _, staged := range pendingCommits {
+		if err := staged.Commit(); err != nil {
+			return err
+		}
+		if completed != nil {
+			if err := completed(staged.intent.ID); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
+}
+
+func (c *DeletionCoordinator) decodeIntent(name string, content []byte) (deletionIntent, error) {
+	var intent deletionIntent
+	jsonErr := json.Unmarshal(content, &intent)
+	validationErr := c.validateIntent(intent)
+	if jsonErr != nil || validationErr != nil || name != intent.ID+".json" {
+		logx.Errorf("decode deletion intent failed: file=%s decode_error=%v validation_error=%v", name, jsonErr, validationErr)
+		return deletionIntent{}, status_error.ManagedWorkspaceError
+	}
+	return intent, nil
 }
 
 func (c *DeletionCoordinator) aggregatePath(kind AggregateKind, aggregateID, wakerID, workspaceDirectory string) (string, error) {

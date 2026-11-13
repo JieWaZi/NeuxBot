@@ -90,20 +90,26 @@ import {
   useRouteSceneActive,
   useScenePresentationKey,
 } from "@/shared/workspace/app-scene-workspace";
-import { chatHref } from "@/shared/lib/chat-navigation";
+import {
+  chatHref,
+  wakerProfileOptimizationParam,
+} from "@/shared/lib/chat-navigation";
 import { listProjectsOptions } from "@/modules/project";
 import {
   connectorSelectableInComposer,
   listWakerConnectorsOptions,
 } from "@/modules/connector";
 import { listWakersOptions } from "@/modules/waker";
+import type { Waker } from "@/modules/waker";
+import { prepareFirstChatSubmission } from "../model/first-chat-submission";
+import { resolveNewChatExecution } from "../model/new-chat-execution";
 import { selectDirectory } from "@/shared/platform";
 import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingApproval as PendingApproval } from "@/shared/api/generated/types.gen";
 import {
   clearStableCreateRequest,
   withStableCreateRequest,
 } from "@/shared/lib/create-request-idempotency";
-import { type PermissionLevel } from "@/shared/lib/runtime-permissions";
+import type { PermissionLevel } from "@/shared/lib/runtime-permissions";
 import { useSceneWorkspace } from "@/shared/workspace/workspace-context";
 import type { WorkspaceMemberTab } from "@/shared/workspace/workspace-tab";
 import type { ChatOutletContext } from "./chat-page-shared";
@@ -163,6 +169,11 @@ type ChatPageContentProps = {
   entry?: ChatWorkspaceEntry;
   presentation?: "workspace" | "composer";
   presentationScopeKey: string;
+  boardDraft?: {
+    partner?: Waker;
+    active: boolean;
+    renderPartnerPicker: (sending: boolean) => ReactNode;
+  };
 };
 
 /** 呈现作用域拥有消息视图；接纳只绑定服务器 Chat，不重建同一草稿的视图。 */
@@ -170,6 +181,7 @@ export function ChatPageContent(props: ChatPageContentProps) {
   const [searchParams] = useSearchParams();
   const composerHost = useChatWorkspaceHost();
   const workspaceScopeKey =
+    (props.boardDraft ? props.presentationScopeKey : undefined) ??
     (props.presentation === "composer" ? composerHost?.scopeKey : undefined) ??
     props.entry?.scopeKey ??
     (props.chatId
@@ -197,15 +209,22 @@ function ChatView({
   presentation = "workspace",
   presentationScopeKey,
   workspaceScopeKey,
+  boardDraft,
 }: ChatPageContentProps & { workspaceScopeKey: string }) {
   const { t } = useTranslation("chat");
   const routeActive = useRouteSceneActive();
-  const sceneActive = routeActive && (entry?.active ?? true);
+  const sceneActive =
+    routeActive && (boardDraft?.active ?? entry?.active ?? true);
   const [searchParams] = useSearchParams();
+  const optimizeProfile =
+    !entry &&
+    !boardDraft &&
+    !chatId &&
+    searchParams.get(wakerProfileOptimizationParam) === "1";
   const navigate = useNavigate();
   const location = useLocation();
   const promptDraft =
-    !entry && !chatId
+    !entry && !boardDraft && !chatId
       ? readChatDraftIntent(
           location.state,
           searchParams.get("draftId") ?? "",
@@ -278,9 +297,17 @@ function ChatView({
     key: string;
     result: AcceptedExecution;
   } | null>(null);
+  const [boardModelPickerOpen, setBoardModelPickerOpen] = useState(false);
+  if (boardModelPickerOpen && !sceneActive) setBoardModelPickerOpen(false);
   const composerHost = useChatWorkspaceHost();
+  const readDraftResources = !boardDraft || sceneActive;
+  const readExecutionCatalog =
+    !boardDraft || (sceneActive && boardModelPickerOpen);
+  const selectionScopeKey = boardDraft
+    ? `${workspaceScopeKey}:partner:${boardDraft.partner?.id ?? ""}`
+    : workspaceScopeKey;
   const { state: chatViewState, update: updateChatViewState } =
-    useChatViewState(workspaceScopeKey);
+    useChatViewState(selectionScopeKey);
   const workspace = useSceneWorkspace(workspaceScopeKey);
   const workbench = useWorkbench(workspaceScopeKey);
   const activeMemberTab = workspace.snapshot.tabs.find(
@@ -292,7 +319,7 @@ function ChatView({
   const currentChatKey = conversationKeyOf(workspaceScopeKey, activeChatId);
   const { accountId, selectAccount } = useChatAccountSelection(
     presentation === "composer"
-      ? `composer:${entry?.scopeKey ?? workspaceScopeKey}`
+      ? `composer:${entry?.scopeKey ?? selectionScopeKey}`
       : activeChatId
         ? `chat:${activeChatId}`
         : workspaceScopeKey,
@@ -331,9 +358,10 @@ function ChatView({
     selectedCodeReferences,
   } = chatViewState;
 
-  const wakersQuery = useQuery(
-    listWakersOptions({ query: { pageNum: 1, pageSize: 100 } }),
-  );
+  const wakersQuery = useQuery({
+    ...listWakersOptions({ query: { pageNum: 1, pageSize: 100 } }),
+    enabled: !boardDraft,
+  });
   const detailQuery = useQuery({
     ...getChatOptions({
       path: { chatId: activeChatId ?? "pending" },
@@ -345,28 +373,43 @@ function ChatView({
     ...chatMessagesInfiniteOptions(activeChatId ?? "pending"),
     enabled: sceneActive && Boolean(activeChatId),
   });
-  const runtimesQuery = useQuery(listRuntimesOptions());
-  const accountsQuery = useQuery(listAiAccountsOptions());
+  const runtimesQuery = useQuery({
+    ...listRuntimesOptions(),
+    enabled: readDraftResources,
+  });
+  const accountsQuery = useQuery({
+    ...listAiAccountsOptions(),
+    enabled: readExecutionCatalog,
+  });
   const wakers = wakersQuery.data?.resources ?? [];
   const requestedWaker = searchParams.get("wakerId")?.trim() ?? "";
-  const targetWakerID =
-    activeMemberWakerId ||
-    detailQuery.data?.chat?.wakerId ||
-    entry?.wakerId ||
-    resolvedWakerId ||
-    requestedWaker ||
-    wakers[0]?.id ||
-    "";
-  const selectedWaker =
-    wakers.find((waker) => waker.id === targetWakerID) ??
-    (targetWakerID ? undefined : wakers[0]);
+  const targetWakerID = boardDraft
+    ? (boardDraft.partner?.id ?? "")
+    : activeMemberWakerId ||
+      detailQuery.data?.chat?.wakerId ||
+      entry?.wakerId ||
+      resolvedWakerId ||
+      requestedWaker ||
+      wakers[0]?.id ||
+      "";
+  const selectedWaker = boardDraft
+    ? boardDraft.partner
+    : (wakers.find((waker) => waker.id === targetWakerID) ??
+      (targetWakerID ? undefined : wakers[0]));
   const selectedWakerID = targetWakerID || selectedWaker?.id;
+  const ordinaryDraft =
+    !activeChatId &&
+    !entry &&
+    (Boolean(boardDraft) || presentation !== "composer");
+  const wakerDefaultModel = ordinaryDraft
+    ? selectedWaker?.defaultModel
+    : undefined;
   const projectsQuery = useQuery({
     ...listProjectsOptions({
       path: { wakerId: selectedWakerID ?? "pending" },
       query: { pageNum: 1, pageSize: 100 },
     }),
-    enabled: Boolean(selectedWakerID),
+    enabled: readDraftResources && Boolean(selectedWakerID),
   });
   const pluginsQuery = useInstalledPluginReferences(
     selectedWakerID,
@@ -390,13 +433,13 @@ function ChatView({
     ...listWakerSkillsOptions({
       path: { wakerId: selectedWakerID ?? "pending" },
     }),
-    enabled: Boolean(selectedWakerID),
+    enabled: readDraftResources && Boolean(selectedWakerID),
   });
   const connectorsQuery = useQuery({
     ...listWakerConnectorsOptions({
       path: { wakerId: selectedWakerID ?? "pending" },
     }),
-    enabled: Boolean(selectedWakerID),
+    enabled: readDraftResources && Boolean(selectedWakerID),
   });
   const recentProjectQuery = useQuery({
     ...getWakerRecentProjectOptions({
@@ -530,6 +573,7 @@ function ChatView({
     (presentation === "composer" ? entry?.defaults?.runtimeId : undefined) ||
     detailQuery.data?.chat?.lastRuntimeId ||
     entry?.defaults?.runtimeId ||
+    wakerDefaultModel?.runtimeId ||
     defaultRuntime?.id ||
     readyRuntimes[0]?.id ||
     "";
@@ -544,18 +588,24 @@ function ChatView({
         entry?.defaults?.accountId ||
         "system"
       : entry?.defaults?.accountId ||
+        (effectiveRuntimeID === wakerDefaultModel?.runtimeId
+          ? wakerDefaultModel.accountId
+          : undefined) ||
         selectedRuntime?.defaultAccountId ||
         "system");
   const matchesLastExecutionSelection =
     selectedAccountId === (detailQuery.data?.chat?.lastAccountId || "system") &&
     effectiveRuntimeID === detailQuery.data?.chat?.lastRuntimeId;
+  const matchesWakerDefault =
+    effectiveRuntimeID === wakerDefaultModel?.runtimeId &&
+    selectedAccountId === wakerDefaultModel?.accountId;
   const lastModel = detailQuery.data?.chat?.lastModel;
   const requestedModel =
     model ||
     (presentation === "composer" ? entry?.defaults?.model : undefined) ||
     (matchesLastExecutionSelection ? lastModel : undefined) ||
     entry?.defaults?.model ||
-    undefined;
+    (matchesWakerDefault ? wakerDefaultModel?.model : undefined);
   const executionSelection = useExecutionSelection({
     runtime: selectedRuntime,
     value: {
@@ -584,7 +634,7 @@ function ChatView({
             ? detailQuery.data?.chat?.lastReasoning
             : undefined) ||
           entry?.defaults?.reasoning ||
-          undefined),
+          (matchesWakerDefault ? wakerDefaultModel?.reasoning : undefined)),
       permissionLevel:
         permissionLevel ||
         (presentation === "composer"
@@ -594,29 +644,66 @@ function ChatView({
         entry?.defaults?.permissionLevel ||
         undefined,
     },
-    enabled: Boolean(selectedRuntime),
+    enabled: Boolean(selectedRuntime) && readExecutionCatalog,
   });
-  const availableModels = executionSelection.models;
-  const selectedModel = executionSelection.effectiveModel;
+  const wakerDefaultUnavailable =
+    !boardDraft &&
+    matchesWakerDefault &&
+    !runtimesQuery.isPending &&
+    (!selectedRuntime ||
+      (selectedAccountId !== "system" &&
+        !accountsQuery.isPending &&
+        !executionSelection.accounts.some(
+          (account) =>
+            account.id === selectedAccountId && account.hasCredential,
+        )));
+  const boardExecution = boardDraft
+    ? resolveNewChatExecution({
+        runtime: selectedRuntime,
+        accountId: selectedAccountId,
+        model: requestedModel,
+        catalog: executionSelection.usesNativeCatalog
+          ? executionSelection.models
+          : [],
+        reasoning,
+        partnerDefault: matchesWakerDefault ? wakerDefaultModel : undefined,
+        permission: permissionLevel,
+        configuredPermission: executionSelection.selection.permissionLevel,
+      })
+    : undefined;
+  const availableModels = boardExecution?.models ?? executionSelection.models;
+  const selectedModel =
+    boardExecution?.model ?? executionSelection.effectiveModel;
   const selectedModelOption = availableModels.find(
     (item) => item.id === selectedModel,
   );
-  const supportedPermissions = executionSelection.supportedPermissions;
-  const selectedPermissionLevel = executionSelection.selection.permissionLevel;
-  const selectedPermissionUnsupported = Boolean(
-    selectedRuntime && !supportedPermissions.has(selectedPermissionLevel),
-  );
-  const defaultPermissionWasDowngraded = Boolean(
-    selectedRuntime &&
+  const supportedPermissions =
+    boardExecution?.permissionOptions ??
+    executionSelection.supportedPermissions;
+  const selectedPermissionLevel =
+    boardExecution?.permission ?? executionSelection.selection.permissionLevel;
+  const selectedPermissionUnsupported =
+    boardExecution?.permissionUnsupported ??
+    Boolean(
+      selectedRuntime && !supportedPermissions.has(selectedPermissionLevel),
+    );
+  const defaultPermissionWasDowngraded =
     !permissionLevel &&
-    !detailQuery.data?.chat?.lastPermissionLevel &&
-    (selectedRuntime?.defaultPermissionLevel !== selectedPermissionLevel ||
-      selectedRuntime?.diagnostics?.some(
-        (item) => item.code === "PERMISSION_DEFAULT_DOWNGRADED",
-      )),
-  );
-  const availableReasoningOptions = executionSelection.reasoningOptions;
-  const selectedReasoning = executionSelection.selection.reasoning;
+    (boardExecution
+      ? boardExecution.permissionKnown &&
+        selectedPermissionLevel !== "full-access"
+      : Boolean(
+          selectedRuntime &&
+          !detailQuery.data?.chat?.lastPermissionLevel &&
+          (selectedRuntime.defaultPermissionLevel !== selectedPermissionLevel ||
+            selectedRuntime.diagnostics?.some(
+              (item) => item.code === "PERMISSION_DEFAULT_DOWNGRADED",
+            )),
+        ));
+  const availableReasoningOptions =
+    boardExecution?.reasoningOptions ?? executionSelection.reasoningOptions;
+  const selectedReasoning =
+    boardExecution?.reasoning ?? executionSelection.selection.reasoning;
   const selectedFast = executionSelection.selection.fast;
   const summaryRuntime = historicalRuntime ?? selectedRuntime;
   const summaryAccountId = detailQuery.data?.chat?.lastAccountId || "system";
@@ -761,14 +848,13 @@ function ChatView({
           type: "migrate",
           toScopeKey: `chat:${createdID}`,
         });
-        navigate(
-          chatHref(createdID, result.chat?.wakerId ?? selectedWaker?.id ?? ""),
-          { replace: true },
-        );
+        const wakerId = result.chat?.wakerId ?? selectedWaker?.id ?? "";
+        navigate(chatHref(createdID, wakerId), { replace: !boardDraft });
       }
     },
     [
       activeChatId,
+      boardDraft,
       chatId,
       entry,
       markSkipComposerClearOnCreate,
@@ -796,16 +882,18 @@ function ChatView({
     },
     [queryClient, selectedWakerID],
   );
+  const messageSource = chatMessageSource(queryClient, activeChatId, {
+    messages: runtimeMessages,
+    latestSequence: latestMessageSequence,
+    ready: !activeChatId || Boolean(messagesQuery.data),
+  });
   const chatRuntime = useChatRuntime({
     conversationKey: currentChatKey,
     queueKey: runtimeQueueKey,
     queueActive: sceneActive,
+    singleSubmission: Boolean(boardDraft),
     chatId: activeChatId,
-    messageSource: chatMessageSource(queryClient, activeChatId, {
-      messages: runtimeMessages,
-      latestSequence: latestMessageSequence,
-      ready: !activeChatId || Boolean(messagesQuery.data),
-    }),
+    messageSource,
     activeExecutionId: detailQuery.data?.chat?.activeExecutionId,
     initialInteractionSequence: detailQuery.data?.chat?.latestSequence,
     initialPendingApprovals: detailQuery.data?.chat?.pendingApprovals,
@@ -820,7 +908,13 @@ function ChatView({
       entry?.isSendDisabled ||
       !selectedWakerID ||
       !effectiveRuntimeID ||
-      (executionSelection.usesNativeCatalog && !executionSelection.valid) ||
+      (boardDraft && !selectedRuntime) ||
+      (boardExecution && selectedPermissionUnsupported) ||
+      (ordinaryDraft && !boardDraft && wakersQuery.isPending) ||
+      wakerDefaultUnavailable ||
+      (!boardDraft &&
+        executionSelection.usesNativeCatalog &&
+        !executionSelection.valid) ||
       (presentation === "composer" &&
         Boolean(detailQuery.data?.chat?.activeExecutionId)),
     ),
@@ -952,19 +1046,33 @@ function ChatView({
             }),
         };
       }
-      const createRequest = withStableCreateRequest(workspaceScopeKey, {
+      const createInput = {
         ...message,
+        ...(optimizeProfile ? { optimizeProfile: true } : {}),
         wakerId: selectedWaker?.id ?? "",
         projectId: selectedDraftProject?.id ?? "",
         workingDirectory: selectedDraftProject ? "" : workspaceDirectory,
-      });
+      };
+      const createRequest = withStableCreateRequest(
+        workspaceScopeKey,
+        createInput,
+      );
+      const finish = () =>
+        clearStableCreateRequest(
+          workspaceScopeKey,
+          createRequest.clientRequestId,
+        );
+      if (boardDraft) {
+        setBoardModelPickerOpen(false);
+        return prepareFirstChatSubmission(
+          createRequest,
+          (body) => create.mutateAsync({ body }),
+          finish,
+        );
+      }
       return {
         submissionId: createRequest.clientRequestId,
-        confirmAccepted: () =>
-          clearStableCreateRequest(
-            workspaceScopeKey,
-            createRequest.clientRequestId,
-          ),
+        confirmAccepted: finish,
         accept: () => create.mutateAsync({ body: createRequest }),
       };
     },
@@ -1073,6 +1181,7 @@ function ChatView({
     guard: chatInvocationGuard,
     onSettled: (targetChatId) =>
       refreshChatMetadata(targetChatId, selectedWakerID),
+    onElicitationSettled: () => void messageSource.reconcile().catch(() => {}),
     pendingApprovals: chatRuntime.pendingApprovals,
     pendingElicitations: chatRuntime.pendingElicitations,
     queueKey: runtimeQueueKey,
@@ -1126,11 +1235,12 @@ function ChatView({
         ? t("permissionDowngraded")
         : "";
 
-  const emptyState = selectedWaker ? null : (
-    <div className="text-content-secondary type-body grid h-full place-items-center px-6 text-center">
-      {t("createWakerFirst")}
-    </div>
-  );
+  const emptyState =
+    selectedWaker && !optimizeProfile ? null : (
+      <div className="text-content-secondary type-body grid h-full place-items-center px-6 text-center">
+        {t(selectedWaker ? "profileOptimizationHint" : "createWakerFirst")}
+      </div>
+    );
   const contributedEmptyState =
     typeof entry?.emptyState === "function"
       ? entry.emptyState({
@@ -1148,12 +1258,22 @@ function ChatView({
         ? contributedEmptyState
         : emptyState;
 
+  const retryFirstSubmission = chatRuntime.retryFirstSubmission;
+  const boardInputLocked = Boolean(boardDraft && retryFirstSubmission);
   const {
     composerSettings,
     composerEffects,
     renderContextStrip: renderComposerContextStrip,
   } = useChatComposerControls({
-    workspaceReadOnly: Boolean(entry),
+    preservePermissionOnModelChange: !boardDraft,
+    executionControlsDisabled: Boolean(
+      boardDraft && (boardInputLocked || chatRuntime.isRunning || !sceneActive),
+    ),
+    loadAccounts: readExecutionCatalog,
+    onModelPickerOpenChange: boardDraft ? setBoardModelPickerOpen : undefined,
+    workspaceReadOnly: Boolean(
+      entry || boardInputLocked || (boardDraft && chatRuntime.isRunning),
+    ),
     selectedAccountId,
     activeChatId,
     availableReasoningOptions,
@@ -1175,7 +1295,12 @@ function ChatView({
     thinkingPending: executionSelection.catalogPending,
     historicalRuntime,
     historicalRuntimeDisabled,
+    wakerDefaultUnavailable,
     onPickDirectory: pickDirectory,
+    onSelectManaged: () => {
+      if (!selectedWakerID) return;
+      selectDraftWorkspace(selectedWakerID, { type: "managed" });
+    },
     onSelectProject: (projectId) => {
       if (!selectedWakerID) return;
       selectDraftWorkspace(selectedWakerID, { type: "project", projectId });
@@ -1245,12 +1370,10 @@ function ChatView({
     thread: {
       showFileChanges: entry?.showFileChanges,
       fileScopeChatId: activeChatId,
-      resultSource:
-        activeChatId && !entry
-          ? {
-              chatId: activeChatId,
-              owner: { kind: "chat", id: activeChatId },
-            }
+      readingChatId:
+        !activeMemberTab &&
+        (entry || detailQuery.data?.chat?.id === activeChatId)
+          ? activeChatId
           : undefined,
       fork: activeMemberTab || entry ? undefined : fork,
       forkSourceChatId: detailQuery.data?.chat?.forkSourceChatId,
@@ -1271,6 +1394,23 @@ function ChatView({
         : undefined,
       runtime: chatRuntime.runtime,
       messages: chatRuntime.messages,
+      activityStatus: retryFirstSubmission ? (
+        <div
+          role="status"
+          className="type-ui flex min-w-0 flex-wrap items-center justify-between gap-2"
+        >
+          {t("firstSendUnconfirmed")}
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={chatRuntime.isRunning || !sceneActive}
+            onClick={retryFirstSubmission}
+          >
+            {t("retryFirstSend")}
+          </Button>
+        </div>
+      ) : undefined,
       presentationScopeKey,
       active: sceneActive,
       wakerName,
@@ -1278,7 +1418,16 @@ function ChatView({
       wakerAvatar: conversationAvatar,
       emptyState: messageEmptyState,
       isHistoryLoading: historyIsLoading,
-      composerSettings,
+      composerSettings: boardDraft ? (
+        <>
+          {boardDraft.renderPartnerPicker(
+            chatRuntime.isRunning || boardInputLocked || !sceneActive,
+          )}
+          {composerSettings}
+        </>
+      ) : (
+        composerSettings
+      ),
       composerActions:
         entry?.showTerminalAction && activeChatId && workspaceDirectory ? (
           <Tooltip>
@@ -1359,7 +1508,7 @@ function ChatView({
           .fetchNextPage({ cancelRefetch: false, throwOnError: true })
           .then(() => {}),
       warning: permissionWarning || undefined,
-      requestedInteractionId: searchParams.get("request")?.split(":").at(-1),
+      requestedInteractionId: searchParams.get("request") ?? undefined,
       pendingApprovals: sceneActive ? chatRuntime.pendingApprovals : [],
       approvalSubmissionState,
       onResolveApproval: (approvalId, optionId) =>
@@ -1388,9 +1537,14 @@ function ChatView({
         <ChatThread
           {...chatAdapter.thread}
           presentation="composer"
-          composerAutoFocus
+          composerAutoFocus={!boardDraft}
+          composerInputSize={boardDraft ? "tall" : undefined}
+          composerSingleSubmission={Boolean(boardDraft)}
           composerDisabled={Boolean(
-            entry?.isSendDisabled || detailQuery.data?.chat?.activeExecutionId,
+            boardInputLocked ||
+            (boardDraft && chatRuntime.isRunning) ||
+            entry?.isSendDisabled ||
+            detailQuery.data?.chat?.activeExecutionId,
           )}
           isRunning={chatAdapter.snapshot.isRunning}
         />

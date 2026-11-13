@@ -116,6 +116,9 @@ func TestSkillInstalledPartnersReadCompleteListWithBatchedPublicProfiles(t *test
 		if partner.ID != partners[index].ID || partner.Name != partners[index].Name || partner.Avatar != partners[index].Avatar || partner.Bio != "" {
 			t.Fatalf("public profile read changed order, lost disabled relation, or leaked fields: %+v", partner)
 		}
+		if partner.Enabled != (index%2 == 0) {
+			t.Fatalf("unexpected installation state for %s: %v", partner.ID, partner.Enabled)
+		}
 	}
 }
 

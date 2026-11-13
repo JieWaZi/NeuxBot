@@ -1,7 +1,9 @@
 import { useState } from "react";
 
 type WorkspaceSelection =
-  { type: "folder"; path: string } | { type: "project"; projectId: string };
+  | { type: "managed" }
+  | { type: "folder"; path: string }
+  | { type: "project"; projectId: string };
 type WorkspaceSelections = Record<string, WorkspaceSelection>;
 
 export const draftWorkspaceStorageKey = "ally.chat.workspace-selections";
@@ -14,7 +16,9 @@ function readSelections(): WorkspaceSelections {
     const selections: WorkspaceSelections = {};
     for (const [scopeId, selection] of Object.entries(value)) {
       if (!scopeId || !selection || typeof selection !== "object") continue;
-      if (
+      if ("type" in selection && selection.type === "managed") {
+        selections[scopeId] = { type: "managed" };
+      } else if (
         "type" in selection &&
         selection.type === "folder" &&
         "path" in selection &&

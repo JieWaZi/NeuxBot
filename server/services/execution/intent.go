@@ -39,6 +39,9 @@ type WorkIntent struct {
 	Options WorkOptions
 	// Admission 描述本次工作何时进入权威事实源。
 	Admission constants.ExecutionAdmission
+	// ClaimAttachments 在首发幂等检查后将原附件引用转换为本地路径，回调由宿主提供。
+	// 返回的释放函数以权威接纳结果结算附件租约。
+	ClaimAttachments func([]AttachmentInput) (func(bool), error) `json:"-"`
 }
 
 // ChatTarget 描述一个已有 Chat 或待创建 Chat，两者必须且只能提供一个。
@@ -269,7 +272,7 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 		request.contextInstructions = append(request.contextInstructions, agentapi.Instruction{Name: instruction.Name, Content: instruction.Content})
 	}
 	request.requestedAt = requestedAt
-	return m.startMessage(ctx, request)
+	return m.startMessage(ctx, request, intent.ClaimAttachments)
 }
 
 // cloneToolCapabilities 深拷贝内部能力，避免调用方在执行期间改变审批白名单。

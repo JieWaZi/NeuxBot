@@ -7,9 +7,16 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import type { ReactNode } from "react";
 import { i18n } from "@/shared/i18n";
+import { AppSceneWorkspaceContextProvider } from "@/shared/workspace/app-scene-workspace";
 import { PluginPresentation } from "./plugin-presentation";
 import type { PluginCatalogEntry, PluginDetail } from "../model/plugin-view";
 
@@ -65,25 +72,30 @@ vi.mock("./deferred-plugin-dialogs", () => ({
     <button onClick={onClose}>取消安装</button>
   ),
 }));
-vi.mock("@/modules/waker", () => ({
-  WakerFormDialog: ({
-    onOpenChange,
-  }: {
-    onOpenChange: (open: boolean) => void;
-  }) => <button onClick={() => onOpenChange(false)}>取消创建</button>,
-}));
 function RetainedScene({ children }: { children: ReactNode }) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const active = location.pathname === "/resources/plugins/p1";
   return (
     <>
-      <div
-        data-testid="retained-plugin-page"
-        hidden={location.pathname === "/chat"}
-      >
-        {children}
+      <div data-testid="retained-plugin-page" hidden={!active}>
+        <AppSceneWorkspaceContextProvider
+          value={{
+            routeSceneId: "plugin",
+            snapshot: { activeTabId: active ? "plugin" : undefined, tabs: [] },
+            dispatch: () => {},
+            syncWorkspace: () => {},
+          }}
+        >
+          {children}
+        </AppSceneWorkspaceContextProvider>
       </div>
       <Routes>
         <Route path="/chat" element={<div>聊天草稿页</div>} />
+        <Route
+          path="/wakers/new"
+          element={<button onClick={() => navigate(-1)}>取消创建</button>}
+        />
         <Route path="*" element={null} />
       </Routes>
       <Location />
@@ -256,7 +268,9 @@ it("opening and cancelling partner creation retains the example", async () => {
   mount();
   fireEvent.click(screen.getByRole("button", { name: "检查变更" }));
   fireEvent.click(screen.getByRole("button", { name: "创建伙伴" }));
-  fireEvent.click(await screen.findByRole("button", { name: "取消创建" }));
+  const cancel = await screen.findByRole("button", { name: "取消创建" });
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  fireEvent.click(cancel);
   expect(screen.getByRole("dialog")).toBeVisible();
   expect(screen.getAllByText("检查变更")).toHaveLength(2);
 });

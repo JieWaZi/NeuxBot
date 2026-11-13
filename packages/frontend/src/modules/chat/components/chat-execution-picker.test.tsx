@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 
 import "@/shared/i18n";
-import { ChatExecutionPicker } from "./chat-execution-picker";
+import { ExecutionPicker } from "@/shared/ui/execution-picker";
 
 vi.mock("@/shared/hooks/use-execution-selection", () => ({
   useExecutionSelection: () => ({}),
@@ -15,7 +15,7 @@ it.each([false, true])(
     const user = userEvent.setup();
     const runtime = { id: "qoder", enabled: true };
     render(
-      <ChatExecutionPicker
+      <ExecutionPicker
         runtimes={[runtime]}
         accounts={[]}
         runtime={runtime}

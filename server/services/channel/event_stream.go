@@ -2,6 +2,7 @@ package channel
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"sync"
 
@@ -194,6 +195,33 @@ func (s *service) publishCommittedEvent(event models.ChannelEvent) {
 	}
 }
 
+// ListEvents 读取团队公开事件，答复正文仅从所属 Chat 的安全卡片投影读取。
+func (s *service) ListEvents(ctx context.Context, threadID string, after string, limit int) ([]models.ChannelEvent, error) {
+	events, err := s.threads.ListEvents(ctx, threadID, after, limit)
+	if err != nil {
+		return nil, err
+	}
+	for index, event := range events {
+		if event.Type != constants.ChannelEventElicitationResolved {
+			continue
+		}
+		var payload teamInteractionEventPayload
+		if json.Unmarshal(event.Payload, &payload) != nil {
+			return nil, status_error.ChatLogCorrupted
+		}
+		if payload.ElicitationResolution == nil || len(payload.ElicitationResolution.Content) == 0 {
+			continue
+		}
+		payload.ElicitationResolution.Content = nil
+		encoded, err := json.Marshal(payload)
+		if err != nil {
+			return nil, status_error.InternalServerError
+		}
+		events[index].Payload = encoded
+	}
+	return events, nil
+}
+
 // SubscribeEvents 先完成持久交互补偿，再衔接 Team backlog 和实时 broker。
 func (s *service) SubscribeEvents(
 	ctx context.Context,
@@ -219,7 +247,7 @@ func (s *service) SubscribeEvents(
 			return EventSubscription{}, err
 		}
 	}
-	backlog, err := s.threads.ListEvents(
+	backlog, err := s.ListEvents(
 		ctx,
 		threadID,
 		after,
@@ -271,7 +299,7 @@ func (s *service) forwardChannelEvents(
 			}
 		}
 		for {
-			events, err := s.threads.ListEvents(
+			events, err := s.ListEvents(
 				ctx,
 				threadID,
 				after,

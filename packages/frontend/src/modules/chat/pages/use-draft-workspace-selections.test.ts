@@ -18,7 +18,7 @@ beforeEach(() => {
 });
 
 describe("new conversation workspace preferences", () => {
-  it("restores the latest explicit directory or project after remount, separately for each partner and team", () => {
+  it("restores the latest explicit workspace after remount, separately for each partner and team", () => {
     const first = renderHook(useDraftWorkspaceSelections);
     act(() =>
       first.result.current[1]("a", { type: "folder", path: "/work/目录" }),
@@ -36,13 +36,12 @@ describe("new conversation workspace preferences", () => {
       a: { type: "folder", path: "/work/目录" },
       "team:b": { type: "project", projectId: "project-b" },
     });
-    act(() =>
-      next.result.current[1]("a", { type: "project", projectId: "project-a" }),
-    );
+    act(() => next.result.current[1]("a", { type: "managed" }));
     next.unmount();
-    expect(renderHook(useDraftWorkspaceSelections).result.current[0].a).toEqual(
-      { type: "project", projectId: "project-a" },
-    );
+    expect(renderHook(useDraftWorkspaceSelections).result.current[0]).toEqual({
+      a: { type: "managed" },
+      "team:b": { type: "project", projectId: "project-b" },
+    });
   });
 
   it("ignores malformed preferences and keeps valid entries", () => {

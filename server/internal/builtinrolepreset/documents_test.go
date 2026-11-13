@@ -107,3 +107,24 @@ func TestResolveWakerContentsPrefersStoredOverride(t *testing.T) {
 		t.Fatalf("stored override was ignored: %q", contents[constants.ProfileDocumentKindPersona])
 	}
 }
+
+func TestResolveWakerAgentsPreservesBuiltinOverridesAndUsesExplicitEmptyBody(t *testing.T) {
+	definition, ok := DefinitionByWakerID(PersonalAssistantWakerID)
+	if !ok {
+		t.Fatal("builtin partner unavailable")
+	}
+	docs := []models.WakerDocument{
+		{Kind: constants.ProfileDocumentKindMemory, Content: "private memory"},
+		{Kind: constants.ProfileDocumentKindPersona, Content: "  user override\n"},
+	}
+	got := ResolveWakerAgents(PersonalAssistantWakerID, docs, 0)
+	want := definition.Documents[constants.ProfileDocumentKindIdentity] + "\n\n  user override\n\n\n" + definition.Documents[constants.ProfileDocumentKindPlaybook]
+	if got.FileName != "AGENTS.md" || got.Content != want {
+		t.Fatalf("resolved builtin profile = %q", got.Content)
+	}
+	docs = append(docs, models.WakerDocument{Kind: constants.ProfileDocumentKindAgents, Content: "", UpdatedAt: 12})
+	got = ResolveWakerAgents(PersonalAssistantWakerID, docs, 1)
+	if got.Content != "" || got.UpdatedAt != 12 {
+		t.Fatalf("explicit empty profile did not override builtin defaults: %+v", got)
+	}
+}

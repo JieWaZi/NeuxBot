@@ -1,10 +1,4 @@
-import {
-  dialog,
-  ipcMain,
-  Notification,
-  shell,
-  type BrowserWindow,
-} from "electron";
+import { dialog, ipcMain, shell, type BrowserWindow } from "electron";
 import { writeFile as save } from "node:fs/promises";
 import path from "node:path";
 import type { DesktopCommands, DesktopEvents } from "../shared/contracts";
@@ -16,12 +10,20 @@ import { authorizeBrowserRoot } from "./browser-workspace-root";
 import * as files from "./workspace-files";
 import { createAttachmentStaging } from "./attachment-staging";
 import type { CoreEventClient } from "../shared/core-event-client";
+import type { loadNotificationPreferences } from "./notification-preferences";
+import {
+  openNotificationSettings,
+  sendTestNotification,
+} from "./desktop-notifications";
 
 export function installDesktopServices(
   window: BrowserWindow,
   core: CoreSupervisor,
   trustedURL: string,
   events?: CoreEventClient,
+  notificationPreferences?: Awaited<
+    ReturnType<typeof loadNotificationPreferences>
+  >,
 ) {
   // BrowserWindow 的 closed 事件触发时再读取 window.webContents 会抛出
   // “Object has been destroyed”，因此安装阶段固定持有本次窗口的内容对象。
@@ -37,7 +39,6 @@ export function installDesktopServices(
     emit("browser-navigation", event),
   );
   const browserWebviews = new BrowserWebviewPolicy(window);
-  const notifications = new Map<string, Notification>();
   const eventSubscriptions = new Map<
     string,
     { stop: () => void; resync: (after?: number | string) => void }
@@ -141,28 +142,16 @@ export function installDesktopServices(
         throw new Error("外链仅支持 HTTP 或 HTTPS");
       await shell.openExternal(parsed.href);
     },
-    show_notification: ({ id, title, body }) => {
-      if (!Notification.isSupported()) return false;
-      notifications.get(id)?.close();
-      const notification = new Notification({ title, body });
-      notifications.set(id, notification);
-      const finish = (action: "click" | "close") => {
-        if (notifications.get(id) !== notification) return;
-        notifications.delete(id);
-        emit("notification-action", { id, action });
-      };
-      notification.on("click", () => {
-        if (!window.isDestroyed()) {
-          window.show();
-          window.focus();
-        }
-        finish("click");
-      });
-      notification.on("close", () => finish("close"));
-      notification.on("failed", () => finish("close"));
-      notification.show();
-      return true;
+    get_notification_preferences: () => {
+      if (!notificationPreferences) throw new Error("系统提醒偏好尚未装配");
+      return notificationPreferences.get();
     },
+    set_notification_preferences: (value) => {
+      if (!notificationPreferences) throw new Error("系统提醒偏好尚未装配");
+      return notificationPreferences.set(value);
+    },
+    send_test_notification: sendTestNotification,
+    open_notification_settings: openNotificationSettings,
   };
   const trusted = (url: string) =>
     url.split("#")[0] === trustedURL.split("#")[0];
@@ -187,8 +176,6 @@ export function installDesktopServices(
     void attachments.dispose();
     browser.dispose();
     browserWebviews.reset();
-    for (const notification of notifications.values()) notification.close();
-    notifications.clear();
   };
   const handleRenderProcessGone = () => releaseViews();
   const handleNavigation = (

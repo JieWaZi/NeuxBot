@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { notificationPreferencesSchema } from "@neuxbot/platform-contracts/workspace-attention";
 import { globalEventSubscriptionSchema } from "./core-event-protocol";
 
 import type { DesktopCommands } from "./contracts";
@@ -66,5 +67,8 @@ export const commandSchemas = {
   browser_set_visible: z.object({ viewId: root, visible: z.boolean() }),
   browser_close: z.object({ viewId: root }),
   open_external_url: z.object({ url: text }),
-  show_notification: z.object({ id: root, title: text, body: text }),
+  get_notification_preferences: z.undefined(),
+  set_notification_preferences: notificationPreferencesSchema,
+  send_test_notification: z.undefined(),
+  open_notification_settings: z.undefined(),
 } satisfies CommandSchemaMap;

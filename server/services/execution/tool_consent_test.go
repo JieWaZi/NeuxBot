@@ -6,7 +6,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
@@ -15,10 +14,10 @@ type consentTestJournal struct {
 	// interactionTestJournal 提供真实记录读取及未使用端口的断言。
 	*interactionTestJournal
 	// updates 把许可请求投影交给测试中的用户响应。
-	updates chan []models.PendingElicitation
+	updates chan eventlog.Record
 }
 
-func (j *consentTestJournal) AppendElicitationFact(chatID string, input eventlog.AppendInput) (eventlog.Record, error) {
+func (j *consentTestJournal) AppendInteractionFact(chatID string, input eventlog.AppendInput) (eventlog.Record, error) {
 	records, err := conversationfixture.CommitFacts(context.Background(), j.store, chatID, []eventlog.AppendInput{input})
 	if err != nil {
 		return eventlog.Record{}, err
@@ -26,8 +25,8 @@ func (j *consentTestJournal) AppendElicitationFact(chatID string, input eventlog
 	return records[0], nil
 }
 
-func (j *consentTestJournal) PublishElicitationFact(_ context.Context, _ eventlog.Record, pending []models.PendingElicitation) {
-	j.updates <- pending
+func (j *consentTestJournal) PublishInteractionFact(_ context.Context, record eventlog.Record) {
+	j.updates <- record
 }
 
 // interactionTestJournal observes exact reads on a real temporary journal.

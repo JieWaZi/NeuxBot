@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -224,12 +225,27 @@ func (m *service) RecentAvailableProject(ctx context.Context, wakerID string) (s
 	}
 }
 
-// ReadMessageHistory 按 JSONL 消息创建序号读取一个有界历史窗口。
+// ReadMessageHistory 按 JSONL 创建游标分页读取普通消息。
 func (m *service) ReadMessageHistory(
+	ctx context.Context, chatID string, beforeSequence int64, limit int,
+) (MessageHistoryPage, error) {
+	return m.readMessageHistory(ctx, chatID, beforeSequence, 0, limit, false)
+}
+
+// ReadMessageTimeline 按创建游标读取时间线，可用日志上界固定未入页的历史。
+func (m *service) ReadMessageTimeline(
+	ctx context.Context, chatID string, beforeSequence, throughSequence int64, limit int,
+) (MessageHistoryPage, error) {
+	return m.readMessageHistory(ctx, chatID, beforeSequence, throughSequence, limit, true)
+}
+
+func (m *service) readMessageHistory(
 	ctx context.Context,
 	chatID string,
 	beforeSequence int64,
+	throughSequence int64,
 	limit int,
+	includeQuestions bool,
 ) (MessageHistoryPage, error) {
 	chatID = strings.TrimSpace(chatID)
 	if chatID == "" || beforeSequence < 0 || limit < 1 || limit > 100 {
@@ -239,7 +255,10 @@ func (m *service) ReadMessageHistory(
 		return MessageHistoryPage{}, chatContextStatus(err)
 	}
 	if journal, ok := m.logStore.(*conversationJournal); ok {
-		return journal.nativeHistory(ctx, chatID, beforeSequence, limit)
+		return journal.nativeHistory(ctx, chatID, beforeSequence, throughSequence, limit, includeQuestions)
+	}
+	if throughSequence != 0 {
+		return MessageHistoryPage{}, status_error.ChatMessageCursorInvalid
 	}
 	window, err := m.logStore.ReadMessageWindow(chatID, beforeSequence, limit)
 	if err != nil {
@@ -771,6 +790,18 @@ func (m *service) deleteChatsAtomically(ctx context.Context, chatIDs []string, p
 		}
 	}
 	canonicalChatIDs := uniqueChatIDs(chatIDs)
+	if m.closeNativeThread != nil {
+		for _, chatID := range canonicalChatIDs {
+			if err := m.closeNativeThread(ctx, chatID); err != nil {
+				return err
+			}
+		}
+	}
+	if len(targets) < len(canonicalChatIDs) {
+		if err := m.finishCommittedChatDeletions(ctx, seen); err != nil {
+			return err
+		}
+	}
 	if len(targets) == 0 {
 		if prepare != nil {
 			if err := prepare(); err != nil {
@@ -830,6 +861,30 @@ func (m *service) deleteChatsAtomically(ctx context.Context, chatIDs []string, p
 		return err
 	}
 	return m.cancelForksFromDeletedChats(seen)
+}
+
+func (m *service) finishCommittedChatDeletions(ctx context.Context, selected map[string]struct{}) error {
+	m.deletionMu.Lock()
+	defer m.deletionMu.Unlock()
+	intents, err := m.deletionIntents.List(ctx)
+	if err != nil {
+		return err
+	}
+	for _, intent := range intents {
+		if intent.State != "committed" || !slices.ContainsFunc(intent.ChatIDs, func(id string) bool {
+			_, ok := selected[id]
+			return ok
+		}) {
+			continue
+		}
+		if err := m.deletions.CommitPendingChats(intent.ID, intent.ChatIDs); err != nil {
+			return err
+		}
+		if err := m.deletionIntents.Delete(ctx, intent.ID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // DeleteProvisionalTeam 回滚未 ready 的 Team 聚合和可能只完成一部分的成员 Chat。
@@ -924,6 +979,8 @@ func (m *service) deleteAggregatesAtomically(
 	canonicalChatIDs []string,
 	finalize func(context.Context) error,
 ) error {
+	m.deletionMu.Lock()
+	defer m.deletionMu.Unlock()
 	intentID := util.New()
 	if err := m.deletionIntents.CreatePrepared(ctx, models.ChatDeletionIntent{
 		ID: intentID, State: "prepared", ChatIDs: canonicalChatIDs,

@@ -113,6 +113,7 @@ const teamThreadFixture = vi.hoisted(() => ({
   tasks: [
     {
       assigneeWakerId: "member-2",
+      currentFence: 7,
       description: "检查实现并提交结果",
       errorMessage: undefined as string | undefined,
       id: "task-1",
@@ -122,6 +123,7 @@ const teamThreadFixture = vi.hoisted(() => ({
   ] as Array<{
     assigneeWakerId: string;
     changedPaths?: string[];
+    currentFence?: number;
     description?: string;
     errorMessage?: string;
     id: string;
@@ -488,6 +490,7 @@ describe("TeamThreadPage", () => {
     teamThreadFixture.tasks = [
       {
         assigneeWakerId: "member-2",
+        currentFence: 7,
         description: "检查实现并提交结果",
         errorMessage: undefined,
         id: "task-1",
@@ -702,8 +705,41 @@ describe("TeamThreadPage", () => {
     await waitFor(() =>
       expect(teamThreadFixture.reviewTask).toHaveBeenCalledWith(
         expect.objectContaining({
-          body: { approved: false, feedback: "请补充边界测试" },
+          body: {
+            approved: false,
+            feedback: "请补充边界测试",
+            expectedFence: 7,
+          },
         }),
+        expect.anything(),
+      ),
+    );
+  });
+
+  it("新一轮验收关闭上一轮的驳回对话框", async () => {
+    const page = renderPage("/teams/channel-1/threads/thread-1");
+
+    fireEvent.click(await screen.findByRole("button", { name: "驳回" }));
+    fireEvent.change(screen.getByLabelText("驳回反馈"), {
+      target: { value: "针对第七轮的反馈" },
+    });
+    teamThreadFixture.tasks = teamThreadFixture.tasks.map((task) => ({
+      ...task,
+      currentFence: 8,
+    }));
+    await act(async () => {
+      await page.queryClient.invalidateQueries({
+        queryKey: ["channel-thread", "channel-1", "thread-1"],
+      });
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "确认驳回" })).toBeNull(),
+    );
+    expect(teamThreadFixture.reviewTask).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "通过" }));
+    await waitFor(() =>
+      expect(teamThreadFixture.reviewTask).toHaveBeenCalledWith(
+        expect.objectContaining({ body: { approved: true, expectedFence: 8 } }),
         expect.anything(),
       ),
     );

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 	"testing"
 	"testing/synctest"
@@ -55,9 +54,9 @@ func TestNativeQuestionsSharePendingFactsAndResolveExactlyOnce(t *testing.T) {
 			if _, err := conversationfixture.CommitFacts(t.Context(), store, chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated}}); err != nil {
 				t.Fatal(err)
 			}
-			journal := &consentTestJournal{interactionTestJournal: &interactionTestJournal{store: store}, updates: make(chan []models.PendingElicitation, 4)}
+			journal := &consentTestJournal{interactionTestJournal: &interactionTestJournal{store: store}, updates: make(chan eventlog.Record, 4)}
 			coordinator := newElicitationCoordinator(journal)
-			if len(coordinator.pendingProjection(chatID)) > 0 {
+			if coordinator.pendingCount(chatID) > 0 {
 				t.Fatal("undelivered request appeared in the pending projection")
 			}
 			ctx, cancel := context.WithCancel(context.Background())
@@ -70,11 +69,12 @@ func TestNativeQuestionsSharePendingFactsAndResolveExactlyOnce(t *testing.T) {
 				}
 				done <- decision
 			}()
-			pending := <-journal.updates
-			if len(pending) != 1 || !(len(coordinator.pendingProjection(chatID)) > 0) {
-				t.Fatalf("durable request missing: %+v", pending)
+			published := <-journal.updates
+			var pending eventlog.ElicitationRequestedData
+			if err := json.Unmarshal(published.Data, &pending); err != nil || pending.ElicitationID == "" || coordinator.pendingCount(chatID) != 1 {
+				t.Fatalf("durable request missing: %+v %v", pending, err)
 			}
-			id := pending[0].ElicitationID
+			id := pending.ElicitationID
 			var err error
 			wantResult := constants.ElicitationResultAccepted
 			switch action {
@@ -98,7 +98,7 @@ func TestNativeQuestionsSharePendingFactsAndResolveExactlyOnce(t *testing.T) {
 			case <-time.After(time.Second):
 				t.Fatal("native wait was not released")
 			}
-			if len(coordinator.pendingProjection(chatID)) > 0 {
+			if coordinator.pendingCount(chatID) > 0 {
 				t.Fatal("resolved request remained in the pending projection")
 			}
 			if err := coordinator.resolveAccepted(context.Background(), chatID, id, map[string]any{"answer": "late"}); !errors.Is(err, status_error.ElicitationAlreadyResolved) {
@@ -143,23 +143,26 @@ func (j *interactionDeadlineJournal) append(chatID string, input eventlog.Append
 	}
 	return records[0], nil
 }
-func (j *interactionDeadlineJournal) AppendElicitationFact(chatID string, input eventlog.AppendInput) (eventlog.Record, error) {
+func (j *interactionDeadlineJournal) AppendInteractionFact(chatID string, input eventlog.AppendInput) (eventlog.Record, error) {
 	return j.append(chatID, input)
 }
-func (j *interactionDeadlineJournal) AppendApprovalFact(chatID string, input eventlog.AppendInput) (eventlog.Record, error) {
-	return j.append(chatID, input)
-}
-func (j *interactionDeadlineJournal) PublishElicitationFact(_ context.Context, r eventlog.Record, _ []models.PendingElicitation) {
-	if r.Type == constants.ChatEventTypeElicitationResolved && j.duringPublication != nil {
+func (j *interactionDeadlineJournal) PublishInteractionFact(_ context.Context, r eventlog.Record) {
+	if (r.Type == constants.ChatEventTypeElicitationResolved || r.Type == constants.ChatEventTypeApprovalResolved) && j.duringPublication != nil {
 		j.duringPublication()
 	}
 	j.published <- r
 }
-func (j *interactionDeadlineJournal) PublishApprovalFact(_ context.Context, r eventlog.Record, _ []models.PendingApproval) {
-	if r.Type == constants.ChatEventTypeApprovalResolved && j.duringPublication != nil {
-		j.duringPublication()
-	}
-	j.published <- r
+
+func (c *elicitationCoordinator) pendingCount(chatID string) int {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	return len(c.orderByChat[chatID])
+}
+
+func (c *approvalCoordinator) pendingCount(chatID string) int {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	return len(c.orderByChat[chatID])
 }
 
 func TestNativeInteractionAdmissionOwnsDeadlineRace(t *testing.T) {
@@ -253,7 +256,7 @@ func TestNativeInteractionAdmissionOwnsDeadlineRace(t *testing.T) {
 					if accepted := <-done; accepted == late {
 						t.Fatalf("wrong resolution winner: accepted=%v late=%v", accepted, late)
 					}
-					if len(inputs.pendingProjection(chatID)) != 0 || len(approvals.pendingProjection(chatID)) != 0 {
+					if inputs.pendingCount(chatID) != 0 || approvals.pendingCount(chatID) != 0 {
 						t.Fatal("finished request remained pending")
 					}
 					records, err := conversationfixture.ReadFacts(t.Context(), store, chatID)

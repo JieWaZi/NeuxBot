@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -34,16 +35,14 @@ type WorkBoardSummary struct {
 	RunningCount int64 `json:"runningCount"`
 	// 已结束工作数
 	EndedCount int64 `json:"endedCount"`
-	// 需操作工作数
-	ActionWorkCount int64 `json:"actionWorkCount"`
-	// AttentionCount 是全部有效请求数量。
-	AttentionCount int64 `json:"attentionCount"`
-	// ResultCount 是存在最新未读成果的容器数。
-	ResultCount int64 `json:"resultCount"`
-	// Attention 是最多五个最久等待的有效请求。
-	Attention []models.WorkBoardAttention `json:"attention"`
-	// Results 是最多五个最新未读结果的原容器引用。
-	Results []models.WorkBoardEntry `json:"results"`
+	// AttentionMetrics 是独立的阅读、待办和运行计数。
+	models.AttentionMetrics
+	// AttentionCompleteness 是范围完整性及当前 Core 进程。
+	models.AttentionCompleteness
+	// ActionPreview 是最多五个原有效请求。
+	ActionPreview []models.WorkBoardAttention `json:"actionPreview"`
+	// AwaitingViewPreview 是最多五个待查看原工作。
+	AwaitingViewPreview []models.WorkBoardEntry `json:"awaitingViewPreview"`
 }
 
 // Path 返回顶部关注区路径。
@@ -77,7 +76,6 @@ func (d *GetWorkBoardSummary) Output(ctx *gin.Context) (interface{}, error) {
 func (d *GetWorkBoardSummary) readSummary(request context.Context) (WorkBoardSummary, error) {
 	query := controllers.WorkBoardQuery{ExecutorID: d.ExecutorID, Source: d.Source, Limit: 5}
 	var value WorkBoardSummary
-	var err error
 	history := query
 	history.From, history.To = d.From, d.To
 	if history.From == 0 {
@@ -88,31 +86,30 @@ func (d *GetWorkBoardSummary) readSummary(request context.Context) (WorkBoardSum
 		return WorkBoardSummary{}, ginx.WithStack(err)
 	}
 	value.WorkCount, value.RunningCount, value.EndedCount = counts.Total, counts.Running, counts.Ended
-	value.Attention, value.AttentionCount, value.ActionWorkCount, err = global.WorkBoardControllerManager.AttentionOverview(request, query)
+	if isolated := global.WorkspaceAttention.Isolated; isolated != nil {
+		query.IsolatedChats = isolated()
+	}
+	board := global.WorkBoardControllerManager
+	metrics, missing, err := board.ReadingMetrics(request, constants.LocalReaderID, query)
 	if err != nil {
-		return WorkBoardSummary{}, ginx.WithStack(err)
+		return value, err
 	}
-	value.ResultCount, err = global.WorkBoardControllerManager.ResultCount(request, query)
+	value.AttentionMetrics = metrics
+	actions, pending, waiting, err := board.Attention(request, query)
 	if err != nil {
-		return WorkBoardSummary{}, ginx.WithStack(err)
+		return value, err
 	}
-	if value.ResultCount > 0 {
-		value.Results, err = global.WorkBoardControllerManager.Results(request, query)
-		if err != nil {
-			return WorkBoardSummary{}, ginx.WithStack(err)
-		}
+	value.PendingRequestCount, value.WaitingWorkCount = pending, waiting
+	value.ActionPreview = append([]models.WorkBoardAttention{}, actions[:min(query.Limit, len(actions))]...)
+	awaiting, err := board.AwaitingView(request, constants.LocalReaderID, query)
+	if err != nil {
+		return value, err
 	}
-	if len(value.Attention) > 5 {
-		value.Attention = value.Attention[:5]
+	awaiting = awaiting[:min(query.Limit, len(awaiting))]
+	if _, err := board.AttachReadings(request, constants.LocalReaderID, awaiting, query.IsolatedChats); err != nil {
+		return value, err
 	}
-	if len(value.Results) > 5 {
-		value.Results = value.Results[:5]
-	}
-	if value.Attention == nil {
-		value.Attention = []models.WorkBoardAttention{}
-	}
-	if value.Results == nil {
-		value.Results = []models.WorkBoardEntry{}
-	}
-	return value, nil
+	value.AwaitingViewPreview = append([]models.WorkBoardEntry{}, awaiting...)
+	value.AttentionCompleteness, err = boardCompleteness(request, query, missing)
+	return value, err
 }

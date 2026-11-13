@@ -51,6 +51,7 @@ export function resolveAppNavigation({
   search,
 }: AppNavigationLocation): AppNavigationRoute {
   const params = new URLSearchParams(search);
+  if (pathname === "/wakers/new") return route("partners", "partners");
   const waker = /^\/wakers\/([^/]+)(?:\/([^/]+))?/.exec(pathname);
   if (waker?.[1]) {
     const root = `/wakers/${waker[1]}`;

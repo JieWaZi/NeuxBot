@@ -3,7 +3,7 @@ import type { RefObject } from "react";
 export type ScrollSession = {
   scope: string;
   live: boolean;
-  pending?: Promise<void>;
+  pending?: Promise<boolean | undefined>;
   frame?: number;
   previousTop?: number;
   anchor?: { element: HTMLElement; offset: number };

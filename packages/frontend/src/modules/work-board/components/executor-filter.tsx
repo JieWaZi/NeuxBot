@@ -7,7 +7,6 @@ import { Button } from "@/shared/ui/button";
 import { FieldControlTrigger } from "@/shared/ui/field-control-trigger";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { SearchField } from "@/shared/ui/search-field";
-import { NavigationItem } from "@/shared/ui/navigation-panel";
 import { cn } from "@/shared/lib/cn";
 import { WorkExecutorAvatar } from "./work-executor-avatar";
 
@@ -77,11 +76,6 @@ export function ExecutorFilter({
           {t("executorHint")}
         </p>
         <div className="max-h-64 overflow-y-auto">
-          <NavigationItem
-            label={t("allExecutors")}
-            active={!value}
-            onClick={() => select("", "", "")}
-          />
           {query.isError ? (
             <Button variant="ghost" onClick={() => void query.refetch()}>
               {t("retry")}

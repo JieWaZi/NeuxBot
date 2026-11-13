@@ -156,11 +156,11 @@ it("主Chat连续终态只提交原时间线，保留旧页、待投递输入与
       key,
     );
   expect(data?.pages[0]?.resources?.map((item) => item.message?.id)).toEqual([
-    "pending",
     "report",
     "current",
+    "pending",
   ]);
-  expect(data?.pages[0]?.resources?.[1]?.directDelivered).toBe(true);
+  expect(data?.pages[0]?.resources?.[0]?.directDelivered).toBe(true);
   expect(data?.pages[1]?.resources?.[0]?.message?.status).toBe("completed");
   expect(
     queryClient.getQueryData<ChannelThreadDetail>(detailKey)
@@ -267,8 +267,8 @@ it("领域和Chat同时恢复共用一个HTTP头部，保留翻过旧页且迟�
     expect(data?.pages).toHaveLength(2);
     expect(data?.pages[1]).toEqual(older);
     expect(data?.pages[0]?.resources?.map((item) => item.message?.id)).toEqual([
-      "new-pending",
       "live-terminal",
+      "new-pending",
     ]);
   } finally {
     release();
@@ -970,4 +970,59 @@ it("团队负责人晚到成果更新原始Chat消息且不新建时间线条目
     fileChangeRecord: record,
   });
   client.clear();
+});
+
+it("同毫秒的团队报告按持久消息创建序号排在待投递输入之前", () => {
+  const queryClient = new QueryClient();
+  const key = teamQueryKeys.timelinePages("channel", "thread");
+  queryClient.setQueryData(key, {
+    pages: [
+      {
+        leadChatLatestSequence: 8,
+        resources: [
+          {
+            chatId: "lead",
+            coordinator: true,
+            message: {
+              id: "z-report",
+              actor: "team_member",
+              role: "user",
+              createdSequence: 8,
+              createdAt: 100,
+            },
+          },
+          {
+            chatId: "lead",
+            message: { id: "input-2", role: "user", createdAt: 50 },
+          },
+          {
+            chatId: "lead",
+            message: { id: "input-1", role: "user", createdAt: 20 },
+          },
+        ],
+      },
+    ],
+    pageParams: [""],
+  });
+  const message = {
+    id: "a-report",
+    actor: "team_member",
+    role: "user" as const,
+    createdSequence: 9,
+    createdAt: 100,
+  };
+  commitTeamTimelineEvents(queryClient, "channel", "thread", "lead", "waker", [
+    { sequence: 9, message },
+  ]);
+  const data =
+    queryClient.getQueryData<InfiniteData<ListChannelTimelineResponse, string>>(
+      key,
+    );
+  expect(data?.pages[0]?.resources?.map((item) => item.message?.id)).toEqual([
+    "z-report",
+    "a-report",
+    "input-2",
+    "input-1",
+  ]);
+  queryClient.clear();
 });

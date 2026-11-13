@@ -121,7 +121,7 @@ func (s *Store) ReadMessagePositions(ctx context.Context, id, messageID string) 
 	}
 	defer r.close()
 	anchor, err := r.index.anchor(messageID)
-	if err != nil || anchor.Cursor == 0 {
+	if err != nil || anchor.Cursor == 0 || anchor.Kind == indexQuestionRequested {
 		return nil, err
 	}
 	groups, err := r.index.forMessages([]int64{anchor.Ref})
@@ -172,8 +172,9 @@ func (s *Store) ReadExecutionProjection(ctx context.Context, id string, after in
 	defer r.close()
 	var rows []rowIndex
 	err = r.index.query(func(db *gorm.DB) error {
-		return db.Where("stream = ? AND cursor > ? AND (kind IN ? OR (kind = ? AND execution_ref <> 0))", r.index.coverage.Stream, after,
-			[]indexKind{indexExecutionCreated, indexExecutionCompleted, indexExecutionEnded, indexInherited, indexUserMessage}, indexOther).
+		return db.Where("stream = ? AND cursor > ? AND (kind IN ? OR (kind IN ? AND execution_ref <> 0))", r.index.coverage.Stream, after,
+			[]indexKind{indexExecutionCreated, indexExecutionCompleted, indexExecutionEnded, indexInherited, indexUserMessage},
+			[]indexKind{indexOther, indexQuestionRequested, indexQuestionResolved}).
 			Order("cursor").Find(&rows).Error
 	})
 	if err != nil {

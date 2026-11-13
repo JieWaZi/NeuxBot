@@ -539,7 +539,10 @@ func serveNativeExecutionACP(in *bufio.Scanner, out *json.Encoder, trace *os.Fil
 				os.Exit(4)
 			}
 			if workBuddy {
-				notify("user_message_chunk", acpFirstQuestion)
+				// Native load can replay more events than either adapter queue holds.
+				for range 300 {
+					notify("user_message_chunk", acpFirstQuestion)
+				}
 			}
 			reply(id, map[string]any{"configOptions": settings(), "modes": modes()})
 		case "session/set_config_option":

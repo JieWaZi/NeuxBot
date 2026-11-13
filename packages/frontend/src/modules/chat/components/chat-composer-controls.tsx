@@ -22,7 +22,7 @@ import { Button } from "@/shared/ui/button";
 import { WorkspaceScopePicker } from "@/shared/ui/workspace-scope-picker";
 import { OverflowText } from "@/shared/ui/overflow-text";
 import { ChatComposerBranchSelector } from "./chat-composer-branch-selector";
-import { ChatExecutionPicker } from "./chat-execution-picker";
+import { ExecutionPicker } from "@/shared/ui/execution-picker";
 import { ChatEffortEffects } from "./chat-effort-effects";
 import { isMaximumReasoning } from "@/shared/lib/runtime-reasoning";
 import {
@@ -41,6 +41,10 @@ export type ChatExecutionSelectionPatch = Partial<{
 }>;
 
 type ChatComposerControlsProps = {
+  loadAccounts?: boolean;
+  onModelPickerOpenChange?: (open: boolean) => void;
+  preservePermissionOnModelChange?: boolean;
+  executionControlsDisabled?: boolean;
   workspaceReadOnly?: boolean;
   selectedAccountId?: string;
   activeChatId?: string;
@@ -60,7 +64,9 @@ type ChatComposerControlsProps = {
   thinkingPending?: boolean;
   historicalRuntime?: RuntimeOption;
   historicalRuntimeDisabled: boolean;
+  wakerDefaultUnavailable?: boolean;
   onPickDirectory: () => void | Promise<void>;
+  onSelectManaged: () => void;
   onSelectProject: (projectId: string) => void;
   projects: ProjectResource[];
   runtimeId: string;
@@ -84,6 +90,10 @@ const stripControlClassName = composerContextControlClassName;
 
 /** 普通与 Team composer 共用工作区、权限、Runtime、模型和推理控件。 */
 export function useChatComposerControls({
+  loadAccounts = true,
+  onModelPickerOpenChange,
+  preservePermissionOnModelChange = true,
+  executionControlsDisabled = false,
   workspaceReadOnly = false,
   selectedAccountId,
   activeChatId,
@@ -103,7 +113,9 @@ export function useChatComposerControls({
   thinkingPending,
   historicalRuntime,
   historicalRuntimeDisabled,
+  wakerDefaultUnavailable,
   onPickDirectory,
+  onSelectManaged,
   onSelectProject,
   projects,
   runtimeId,
@@ -121,10 +133,10 @@ export function useChatComposerControls({
   workspaceDirectory,
   workspaceLabel,
 }: ChatComposerControlsProps) {
-  const { t } = useTranslation(["chat", "common"]);
+  const { t } = useTranslation(["chat", "common", "waker"]);
   const accountsQuery = useQuery({
     ...listAiAccountsOptions(),
-    enabled: selectedAccountId !== undefined,
+    enabled: loadAccounts && selectedAccountId !== undefined,
   });
   const accounts = accountsQuery.data?.resources ?? [];
   const selectedAccount = accounts.find(
@@ -179,6 +191,7 @@ export function useChatComposerControls({
       projectId={selectedDraftProject?.id}
       ownerId={selectedWakerId}
       onPickDirectory={onPickDirectory}
+      onSelectManaged={onSelectManaged}
       onSelectProject={onSelectProject}
       trigger={
         <Button
@@ -200,6 +213,7 @@ export function useChatComposerControls({
 
   const permissionControl = (
     <ExecutionPermissionControl
+      disabled={executionControlsDisabled}
       selectedPermissionLevel={selectedPermissionLevel}
       supportedPermissions={supportedPermissions}
       triggerClassName={stripControlClassName}
@@ -210,7 +224,9 @@ export function useChatComposerControls({
   );
   const composerSettings = (
     <>
-      <ChatExecutionPicker
+      <ExecutionPicker
+        disabled={executionControlsDisabled}
+        onOpenChange={onModelPickerOpenChange}
         runtimes={runtimes}
         accounts={accounts}
         runtime={selectedRuntime}
@@ -262,13 +278,20 @@ export function useChatComposerControls({
             runtimeId: runtime.id ?? "",
             accountId,
             model: model.id ?? "",
-            permissionLevel: selectedPermissionLevel,
+            ...(preservePermissionOnModelChange
+              ? { permissionLevel: selectedPermissionLevel }
+              : {}),
             reasoning,
             fast: null,
             ...(enableContextWindow ? { contextWindow: "" } : {}),
           });
         }}
       />
+      {wakerDefaultUnavailable ? (
+        <span role="alert" className="text-destructive type-caption">
+          {t("waker:form.modelUnavailable")}
+        </span>
+      ) : null}
       {historicalRuntimeDisabled && !runtimeId ? (
         <span className="text-destructive type-caption">
           {t("chat:runtimeDisabledSwitch")}

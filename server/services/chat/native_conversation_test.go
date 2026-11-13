@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -19,6 +20,123 @@ import (
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
+
+func TestNativeQuestionHistoryPagesAtRequestAndReadsLateResolution(t *testing.T) {
+	ctx := t.Context()
+	root := t.TempDir()
+	store, err := conversation.NewStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := "99999999999999999999999999999999"
+	schema := json.RawMessage(`{
+		"type":"object","properties":{
+			"choice":{"type":"string","enum":["green"]},
+			"credential":{"type":"string","_meta":{"codex":{"isSecret":true}}},
+			"credential_custom":{"type":"string","_meta":{"_askUserQuestionCustomAnswer":{"questionId":"credential"}}},
+			"credential__other":{"type":"string"},
+			"codex-other-id":{"type":"string","_meta":{"codex":{"isOtherAnswer":true,"questionId":"credential"}}},
+			"password":{"type":"string","format":"password"},
+			"nested":{"type":"object","properties":{"token":{"type":"string","writeOnly":true}}},
+			"private-list":{"type":"array","items":{"type":"string","writeOnly":true}}
+		}
+	}`)
+	journal := &conversationJournal{Store: store}
+	records, err := journal.Create(id, []eventlog.AppendInput{
+		{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: "waker"})},
+		{Type: constants.ChatEventTypeUserMessageCreated, MessageID: "user", Data: marshalData(eventlog.MessageCreatedData{Role: constants.MessageRoleUser, Content: "input"})},
+		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "exec", Data: marshalData(eventlog.ExecutionCreatedData{UserMessageID: "user"})},
+		{Type: constants.ChatEventTypeElicitationRequested, ExecutionID: "exec", Data: marshalData(eventlog.ElicitationRequestedData{ElicitationID: "first-question", Mode: "form", Message: "Which color?", RequestedSchema: schema})},
+		{Type: constants.ChatEventTypeElicitationRequested, ExecutionID: "exec", Data: marshalData(eventlog.ElicitationRequestedData{ElicitationID: "second-question", Mode: "form", Message: "Anything else?", RequestedSchema: schema})},
+		{Type: constants.ChatEventTypeElicitationResolved, ExecutionID: "exec", Data: marshalData(eventlog.ElicitationResolvedData{
+			ElicitationID: "first-question", Result: constants.ElicitationResultAccepted,
+			Content: map[string]any{
+				"choice": "green", "credential": "secret-direct", "credential_custom": "secret-custom",
+				"credential__other": "secret-other", "codex-other-id": "secret-codex-other",
+				"password": "secret-password", "unrecognized": "secret-unknown",
+				"nested": map[string]any{"token": "secret-nested"}, "private-list": []string{"secret-list"},
+			},
+		})},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := agent.NativeResultKey{Session: agent.NativeSessionKey{Provider: "codex", Subject: "subject", SessionID: "session"}, InvocationID: "prompt"}
+	native, err := store.CommitNativeFragments(ctx, agent.NativeFragmentBatch{Key: key, CommitKey: "fragment", MessageID: "native-message", Changes: []agent.MessageChange{
+		{Kind: agent.MessageAppend, ContentType: constants.RuntimeEventTypeTextDelta, Text: "final answer", Revision: 1},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.Commit(ctx, agent.ConversationBatch{ChatID: id, Key: "link", ExpectedVersion: records[len(records)-1].Sequence, Changes: []agent.ConversationChange{
+		{Message: &agent.MessageChange{MessageID: "exec", ExecutionID: "exec", Kind: agent.MessageNativeFragment, Fragments: &native, Revision: 1}},
+		{Fact: &agent.ChatFact{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: "exec", Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.Close()
+	store, err = conversation.NewStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chats := newTestService(t, Config{StorageDirectory: root, Conversations: store})
+	defer chats.Close()
+
+	latest, err := chats.ReadMessageTimeline(ctx, id, 0, 0, 1)
+	if err != nil || len(latest.Resources) != 1 || latest.Resources[0].ID != "second-question" || latest.NextBeforeSequence != records[4].Sequence {
+		t.Fatalf("newest question page = %+v, err = %v", latest, err)
+	}
+	secondJSON := marshalData(latest.Resources[0])
+	if !strings.Contains(string(secondJSON), `"result":"invalidated"`) {
+		t.Fatalf("question without resolution after terminal = %s", secondJSON)
+	}
+	previous, err := chats.ReadMessageTimeline(ctx, id, latest.NextBeforeSequence, 0, 1)
+	if err != nil || len(previous.Resources) != 1 || previous.Resources[0].ID != "first-question" || previous.NextBeforeSequence != records[3].Sequence {
+		t.Fatalf("previous question page = %+v, err = %v", previous, err)
+	}
+	first := previous.Resources[0]
+	if first.CreatedSequence != records[3].Sequence || first.Revision != records[5].Sequence || first.Readable || first.Fork != nil {
+		t.Fatalf("question identity, revision or reading state = %+v", first)
+	}
+	assertSafeQuestionResult(t, marshalData(first))
+	older, err := chats.ReadMessageTimeline(ctx, id, previous.NextBeforeSequence, 0, 2)
+	if err != nil || len(older.Resources) != 2 || older.HasMore || older.Resources[0].ID != "user" ||
+		older.Resources[1].ID != "exec" || older.Resources[1].Content != "final answer" || older.Resources[1].Status != constants.ExecutionStatusCompleted {
+		t.Fatalf("ordinary history separated by question cursor = %+v, err = %v", older, err)
+	}
+	nativePage, err := store.ReadMessages(ctx, agent.MessageQuery{ChatID: id, Limit: 10})
+	if err != nil || len(nativePage.Messages) != 2 || nativePage.Messages[1].ID != "exec" {
+		t.Fatalf("native message page includes presentation rows: %+v, err = %v", nativePage, err)
+	}
+	history, err := chats.ReadMessageHistory(ctx, id, 0, 1)
+	if err != nil || len(history.Resources) != 1 || history.Resources[0].ID != "exec" || history.Resources[0].Content != "final answer" {
+		t.Fatalf("question consumed a machine history slot: %+v, err = %v", history, err)
+	}
+
+	public, err := chats.ListEvents(ctx, id, records[4].Sequence, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range public {
+		if event.Type == constants.ChatEventTypeElicitationResolved {
+			if event.Message == nil || event.Message.ID != first.ID || event.Message.Revision != first.Revision {
+				t.Fatalf("replayed question resolution message = %+v", event.Message)
+			}
+			assertSafeQuestionResult(t, marshalData(event))
+			return
+		}
+	}
+	t.Fatal("replayed events omitted the resolution")
+}
+
+func assertSafeQuestionResult(t *testing.T, encoded []byte) {
+	t.Helper()
+	body := string(encoded)
+	if !strings.Contains(body, `"result":"accepted"`) || !strings.Contains(body, `"answers":{"choice":"green"}`) || strings.Contains(body, "secret-") {
+		t.Fatalf("unsafe or missing public question result: %s", body)
+	}
+}
 
 func TestChatHistoryProjectsCommittedNativeFragments(t *testing.T) {
 	ctx := context.Background()
@@ -82,16 +200,13 @@ func TestChatNativeAdmissionStreamsTerminalAndReopens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	results := controllers.NewWorkResultController(db.DB)
-	if err := results.EnableTracking(ctx, 1); err != nil {
-		t.Fatal(err)
-	}
+	reading := controllers.NewChatReadingController(db.DB)
 	config := Config{
-		Results:          results,
 		StorageDirectory: root,
 		Conversations:    store,
 		Projects:         controllers.NewProjectController(db.DB),
 		QueryIndexes: QueryIndexDependencies{
+			Reading:         reading,
 			Chats:           controllers.NewChatController(db.DB),
 			DeletionIntents: controllers.NewChatDeletionIntentController(db.DB),
 			Transactions:    controllers.NewTransactionController(dbhelper.NewGormTransactionManager(db.DB)),
@@ -200,8 +315,36 @@ func TestChatNativeAdmissionStreamsTerminalAndReopens(t *testing.T) {
 		return change, part.PartID
 	}
 	first, partID := appendPart("partial", constants.RuntimeEventTypeTextDelta, 1, started)
+	uncommitted, err := reading.Get(ctx, constants.LocalReaderID, id)
+	if err != nil || uncommitted.UnreadMessageCount != 0 {
+		t.Fatalf("transient text was counted: %+v %v", uncommitted, err)
+	}
 	if message := checkpoint("native-message", first); message.Content != "partial" || message.DisplayParts[0].ID != partID {
 		t.Fatalf("first checkpoint changed the live part: %+v", message)
+	}
+	// 在没有阅读请求和终态的情况下，原投影所有者会覆盖已提交的公开正文。
+	deadline := time.NewTimer(4 * time.Second)
+	t.Cleanup(func() { deadline.Stop() })
+	probe := time.NewTicker(10 * time.Millisecond)
+	defer probe.Stop()
+	var seen models.ChatReadingState
+readingCheckpoint:
+	for {
+		select {
+		case <-deadline.C:
+			t.Fatalf("durable native answer remained unreadable before terminal: %+v", seen)
+		case <-probe.C:
+			seen, err = reading.Get(ctx, constants.LocalReaderID, id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if seen.UnreadMessageCount == 1 && seen.FirstUnreadMessageID == "exec" {
+				break readingCheckpoint
+			}
+		}
+	}
+	if err := reading.MarkRead(ctx, constants.LocalReaderID, id, "exec", seen.UnreadGeneration, constants.ReadingIntentExplicit); err != nil {
+		t.Fatal(err)
 	}
 	second, samePart := appendPart(" suffix", constants.RuntimeEventTypeTextDelta, 2, first.Revision)
 	if samePart != partID {
@@ -274,9 +417,9 @@ reopen:
 	if err != nil || len(page) != 1 || page[0].Sequence != settled.Version || page[0].Message == nil || page[0].Message.Content != "final" {
 		t.Fatalf("coalesced replay page = %+v, err = %v", page, err)
 	}
-	result, found, err := results.Get(ctx, constants.WorkResultOwnerKindChat, id)
-	if err != nil || !found || result.Reference.MessageID != "exec" || result.LatestVersion <= settled.Version {
-		t.Fatalf("result receipt = %+v, found = %v, err = %v", result, found, err)
+	readingState, err := reading.Get(ctx, constants.LocalReaderID, id)
+	if err != nil || readingState.UnreadMessageCount != 0 || readingState.LatestReadableMessageID != "exec" {
+		t.Fatalf("native answer reading state: %+v %v", readingState, err)
 	}
 	subscription.Close()
 	chats.Close()

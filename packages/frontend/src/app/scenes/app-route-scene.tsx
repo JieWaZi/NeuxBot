@@ -39,6 +39,7 @@ import {
   ProjectListPage,
   SkillDetailPage,
   WakerConnectorsPage,
+  WakerCreatePage,
   WakerDetailPage,
   WakerMemoryPage,
   WakerSkillsPage,
@@ -178,6 +179,7 @@ export function AppRouteScene({
         <Route path="usage" element={<UsageScene />} />
         <Route path="work-board" element={<WorkBoardPage />} />
         <Route path="wakers" element={<WakerListPage />} />
+        <Route path="wakers/new" element={<WakerCreatePage />} />
         <Route path="wakers/:wakerId" element={<WakerDetailPage />} />
         <Route path="workflows" element={<WorkflowListPage />} />
         <Route path="workflows/:workflowId" element={<WorkflowDetailPage />}>

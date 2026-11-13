@@ -127,8 +127,13 @@ func sqlPerformanceDatabase(b *testing.B, data sqlPerformanceDataset) *gorm.DB {
 	if err := db.Transaction(func(tx *gorm.DB) error {
 		seedSQLPerformance(b, tx, &models.Chat{WakerID: "waker", Title: "普通历史", AdditionalWorkingDirectories: []string{}}, data.History, map[string]string{"id": "'h'||printf('%031d',n)", "title": "CASE WHEN n%997=0 THEN '稀疏目标' ELSE '普通历史' END", "updated_at": "n+1"})
 		seedSQLPerformance(b, tx, &models.Chat{WakerID: "waker", Title: "待处理", ActiveExecutionID: "execution", WaitingApproval: true, PendingApprovals: []models.PendingApproval{{ApprovalID: "request", Title: strings.Repeat("审批内容", 64), RequestedAt: 10}}}, data.Pending, map[string]string{"id": "'p'||printf('%031d',n)", "updated_at": "n+1000000", "pending_approvals": "json_array(json_object('approvalId','request-'||n,'title','审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容审批内容','requestedAt',10))"})
-		seedSQLPerformance(b, tx, &models.Chat{WakerID: "waker", Title: "未读成果"}, data.Results, map[string]string{"id": "'r'||printf('%031d',n)", "updated_at": "n+2000000"})
-		seedSQLPerformance(b, tx, &models.WorkResultReceipt{OwnerKind: constants.WorkResultOwnerKindChat, LatestVersion: 1, AvailableAt: 2000000, Reference: models.WorkResultReference{ChatID: "reference", MessageID: "message"}}, data.Results, map[string]string{"owner_id": "'r'||printf('%031d',n)", "available_at": "n+2000000"})
+		seedSQLPerformance(b, tx, &models.Chat{WakerID: "waker", Title: "未读成果", LatestReadableSequence: 1}, data.Results, map[string]string{"id": "'r'||printf('%031d',n)", "updated_at": "n+2000000"})
+		if err := tx.Exec("INSERT INTO chat_read_cursors(reader_id,chat_id,updated_at) SELECT ?,id,1 FROM chats", constants.LocalReaderID).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("INSERT INTO chat_readable_messages(chat_id,message_id,order_sequence,kind,created_at) SELECT id,'answer',1,'answer',1 FROM chats WHERE latest_readable_sequence=1").Error; err != nil {
+			return err
+		}
 		seedSQLPerformance(b, tx, &models.AutomaticTask{WakerID: "waker", AutomaticTaskConfiguration: models.AutomaticTaskConfiguration{Name: "自动失败", Instruction: strings.Repeat("失败工作", 256)}}, data.Failures, map[string]string{"id": "'t'||printf('%031d',n)"})
 		seedSQLPerformance(b, tx, &models.AutomaticRun{WakerID: "waker", Admission: constants.AutomaticRunAdmissionFailed, Configuration: models.AutomaticTaskConfiguration{Name: "自动失败", Instruction: strings.Repeat("冻结指令", 256)}, CreatedAt: 1, UpdatedAt: 3000000}, data.Failures, map[string]string{"id": "'f'||printf('%031d',n)", "task_id": "'t'||printf('%031d',n)", "updated_at": "n+3000000"})
 		if data.Failures > 0 {
@@ -168,58 +173,19 @@ func BenchmarkSQLRead(b *testing.B) {
 						if err != nil {
 							return err
 						}
-						actions, actionCount, actionWorks, err := board.AttentionOverview(ctx, q)
+						actions, actionCount, actionWorks, err := board.Attention(ctx, q)
 						if err != nil {
 							return err
 						}
-						resultCount, err := board.ResultCount(ctx, q)
+						reading, _, err := board.ReadingMetrics(ctx, constants.LocalReaderID, q)
 						if err != nil {
 							return err
 						}
-						results, err := board.Results(ctx, q)
-						if err != nil {
-							return err
-						}
-						if counts.Total != int64(data.History+data.Pending+data.Results) || actionWorks != int64(data.Pending) || actionCount != int64(data.Pending) || len(actions) != 6 || resultCount != int64(data.Results) || len(results) != 6 {
-							b.Fatalf("incorrect board summary: %+v %d %d %d", counts, actionWorks, actionCount, resultCount)
+						if counts.Total != int64(data.History+data.Pending+data.Results) || actionWorks != int64(data.Pending) || actionCount != int64(data.Pending) || len(actions) != 6 || reading.AwaitingViewWorkCount != int64(data.Results) {
+							b.Fatalf("incorrect board summary: %+v %d %d", counts, actionWorks, actionCount)
 						}
 						return nil
 					})
-				}},
-				{"Snapshot", func(ctx context.Context, db *gorm.DB) error {
-					facts, err := NewNotificationController(db).Snapshot(ctx)
-					if err == nil && (facts.ActionCount != int64(data.Pending) || facts.UnreadResultCount != int64(data.Results) || facts.UnreadFailureCount != int64(data.Failures)) {
-						b.Fatalf("incorrect snapshot: %+v", facts)
-					}
-					return err
-				}},
-				{"ActionFirst", func(ctx context.Context, db *gorm.DB) error {
-					items, count, err := NewNotificationController(db).List(ctx, NotificationQuery{Bucket: "action", Limit: 50})
-					if err == nil && (count != int64(data.Pending) || len(items) != 51) {
-						b.Fatalf("incorrect actions: %d %d", len(items), count)
-					}
-					return err
-				}},
-				{"ActionDeep", func(ctx context.Context, db *gorm.DB) error {
-					items, count, err := NewNotificationController(db).List(ctx, NotificationQuery{Bucket: "action", Limit: 50, Offset: data.Pending - 50})
-					if err == nil && (count != int64(data.Pending) || len(items) != 50) {
-						b.Fatalf("incorrect deep actions: %d %d", len(items), count)
-					}
-					return err
-				}},
-				{"UnreadFirst", func(ctx context.Context, db *gorm.DB) error {
-					items, count, err := NewNotificationController(db).List(ctx, NotificationQuery{Bucket: "unread", Limit: 50})
-					if err == nil && (count != int64(data.Results+data.Failures) || len(items) != 51) {
-						b.Fatalf("incorrect unread: %d %d", len(items), count)
-					}
-					return err
-				}},
-				{"UnreadDeep", func(ctx context.Context, db *gorm.DB) error {
-					items, count, err := NewNotificationController(db).List(ctx, NotificationQuery{Bucket: "unread", Limit: 50, Offset: data.Results + data.Failures - 50})
-					if err == nil && (count != int64(data.Results+data.Failures) || len(items) != 50) {
-						b.Fatalf("incorrect unread deep: %d %d", len(items), count)
-					}
-					return err
 				}},
 				{"BoardFirst", func(ctx context.Context, db *gorm.DB) error {
 					return NewTransactionController(dbhelper.NewGormTransactionManager(db)).Transaction(ctx, func(ctx context.Context) error {
@@ -244,24 +210,9 @@ func BenchmarkSQLRead(b *testing.B) {
 						if err != nil {
 							return err
 						}
-						page, err := board.Page(ctx, q, false)
+						page, err := board.Page(ctx, q)
 						if err == nil && (count != int64(data.History+data.Pending+data.Results) || len(page) != 50) {
 							b.Fatalf("incorrect board deep: %d %d", len(page), count)
-						}
-						return err
-					})
-				}},
-				{"ResultPage", func(ctx context.Context, db *gorm.DB) error {
-					return NewTransactionController(dbhelper.NewGormTransactionManager(db)).Transaction(ctx, func(ctx context.Context) error {
-						board := NewWorkBoardController(db)
-						q := WorkBoardQuery{Limit: 50}
-						count, err := board.ResultCount(ctx, q)
-						if err != nil {
-							return err
-						}
-						page, err := board.Results(ctx, q)
-						if err == nil && (count != int64(data.Results) || len(page) != 51) {
-							b.Fatalf("incorrect results: %d %d", len(page), count)
 						}
 						return err
 					})
@@ -284,41 +235,6 @@ func BenchmarkSQLRead(b *testing.B) {
 			}
 			for _, scenario := range cases {
 				b.Run(scenario.Name, func(b *testing.B) { benchmarkSQLRead(b, db, scenario.Read) })
-			}
-		})
-	}
-}
-
-// BenchmarkSQLClearFailures 每次计时前移除上轮确认；清空本身包含实际写入和事务提交。
-func BenchmarkSQLClearFailures(b *testing.B) {
-	for _, count := range []int{100, 1000, 10000} {
-		b.Run(fmt.Sprintf("Failures%d", count), func(b *testing.B) {
-			db := sqlPerformanceDatabase(b, sqlPerformanceDataset{History: 10000, Failures: count})
-			log := &sqlPerformanceLog{Interface: logger.Discard}
-			controller := NewNotificationController(db.Session(&gorm.Session{Logger: log}))
-			samples := make([]float64, b.N)
-			b.ReportAllocs()
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				if err := db.Exec("DELETE FROM attention_notice_acks").Error; err != nil {
-					b.Fatal(err)
-				}
-				b.StartTimer()
-				start := time.Now()
-				if err := controller.ClearFailures(context.Background(), 100); err != nil {
-					b.Fatal(err)
-				}
-				samples[i] = float64(time.Since(start).Nanoseconds()) / 1e6
-			}
-			b.StopTimer()
-			sort.Float64s(samples)
-			b.ReportMetric(samples[(len(samples)-1)/2], "p50-ms/op")
-			b.ReportMetric(samples[int(math.Ceil(float64(len(samples))*.95))-1], "p95-ms/op")
-			b.ReportMetric(float64(log.Queries)/float64(b.N), "SQL/op")
-			var actual int64
-			if err := db.Model(&models.AttentionNoticeAck{}).Where("viewed_at=100").Count(&actual).Error; err != nil || actual != int64(count) {
-				b.Fatalf("clear count=%d err=%v", actual, err)
 			}
 		})
 	}
@@ -368,10 +284,10 @@ func BenchmarkSQLIMDependencies(b *testing.B) {
 // TestSQLPendingBatchPlan 覆盖真实主键续批的排序，避免只检查无排序查询而遗漏重复排序。
 func TestSQLPendingBatchPlan(t *testing.T) {
 	db := newTestDB(t)
-	log := &notificationQueryLog{Interface: logger.Discard}
+	log := &repositoryQueryLog{Interface: logger.Discard}
 	measured := db.Session(&gorm.Session{Logger: log})
 	if err := NewTransactionController(dbhelper.NewGormTransactionManager(measured)).Transaction(context.Background(), func(ctx context.Context) error {
-		return (&workBoardController{db: measured}).walkAttention(ctx, time.Now().UnixMilli(), nil, func(boardAttentionFact) error { return nil })
+		return (&workBoardController{db: measured}).walkAttention(ctx, time.Now().UnixMilli(), boardAttentionScope{}, false, func(models.WorkBoardAttention) error { return nil })
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -426,34 +342,24 @@ func BenchmarkSQLBoardOwners(b *testing.B) {
 				seedSQLPerformance(b, tx, &models.Chat{WakerID: "waker", Title: "团队成员", HiddenFromWakerHistory: true, AdditionalWorkingDirectories: []string{}}, count, map[string]string{"id": "'l'||printf('%031d',n)"})
 				seedSQLPerformance(b, tx, &models.ChannelThreadMember{WakerID: "waker", DisplayName: "团队成员"}, count, map[string]string{"thread_id": "'t'||printf('%031d',n)", "chat_id": "'l'||printf('%031d',n)"})
 				seedSQLPerformance(b, tx, &models.WorkflowRun{DefinitionID: "workflow", Status: constants.WorkflowRunStatusSucceeded}, count, map[string]string{"id": "'w'||printf('%031d',n)", "updated_at": "n+2000000"})
-				seedSQLPerformance(b, tx, &models.WorkResultReceipt{OwnerKind: constants.WorkResultOwnerKindTeamThread, LatestVersion: 1, AvailableAt: 1000000}, count, map[string]string{"owner_id": "'t'||printf('%031d',n)", "available_at": "n+1000000"})
-				seedSQLPerformance(b, tx, &models.WorkResultReceipt{OwnerKind: constants.WorkResultOwnerKindWorkflowRun, LatestVersion: 1, AvailableAt: 2000000}, count, map[string]string{"owner_id": "'w'||printf('%031d',n)", "available_at": "n+2000000"})
 				return nil
 			}); err != nil {
 				b.Fatal(err)
 			}
-			for _, mode := range []string{"First", "Deep", "Results"} {
+			for _, mode := range []string{"First", "Deep"} {
 				b.Run(mode, func(b *testing.B) {
 					benchmarkSQLRead(b, db, func(ctx context.Context, db *gorm.DB) error {
 						return NewTransactionController(dbhelper.NewGormTransactionManager(db)).Transaction(ctx, func(ctx context.Context) error {
 							board := NewWorkBoardController(db)
 							q := WorkBoardQuery{Limit: 50}
-							var total int64
+							total, err := board.Count(ctx, q)
 							var page []models.WorkBoardEntry
-							var err error
-							if mode == "Results" {
-								total, err = board.ResultCount(ctx, q)
-							} else {
-								total, err = board.Count(ctx, q)
-							}
 							if err != nil {
 								return err
 							}
 							if mode == "Deep" {
 								q.Offset = 2*count - 50
-								page, err = board.Page(ctx, q, false)
-							} else if mode == "Results" {
-								page, err = board.Results(ctx, q)
+								page, err = board.Page(ctx, q)
 							} else {
 								page, err = board.List(ctx, q)
 							}

@@ -1,28 +1,20 @@
 import { useWorkBoardDateBoundary } from "../model/use-work-board-date-boundary";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { FolderSearch, ListTodo } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router-dom";
-import {
-  getWorkBoardSummaryOptions,
-  listWorkBoardOptions,
-  listWorkBoardQueryKey,
-  listWorkBoardInfiniteQueryKey,
-  getWorkBoardSummaryQueryKey,
-  clearNotificationUnreadMutation,
-} from "@/shared/api/generated/@tanstack/react-query.gen";
-import {
-  localApiErrorMessage,
-  withLocalErrorSurface,
-  withLocalErrorMutation,
-} from "@/shared/api/local-error-surface";
-import { useVisibleScene } from "@/shared/api/work-result-reading";
+import { useLocation, useSearchParams } from "react-router-dom";
+import { localApiErrorMessage } from "@/shared/api/local-error-surface";
+import { useVisibleScene } from "@/shared/api/chat-reading";
 import { useQueryEvents } from "@/shared/api/use-query-events";
+import { workspaceAttentionResource } from "@/shared/api/reading-queries";
 import {
-  getNotificationSnapshotQueryKey,
-  listNotificationsQueryKey,
-} from "@/modules/notification";
+  workBoardKeys,
+  workBoardListOptions,
+  workBoardSummaryOptions,
+  type WorkBoardMode,
+} from "../api/queries";
+import { MarkViewedDialog } from "../components/mark-viewed-dialog";
 import {
   localDateRangeBounds,
   normalizeDateInput,
@@ -30,9 +22,9 @@ import {
 import { Button } from "@/shared/ui/button";
 import { DateRangePicker } from "@/shared/ui/date-range-picker";
 import { EmptyState } from "@/shared/ui/empty-state";
+import type { PaginationProps } from "@/shared/ui/pagination";
 import { ResourceFilterSelect } from "@/shared/ui/resource-filter-select";
 import {
-  ResourcePageHeader,
   ResourcePageSearchField,
   ResourcePageSurface,
   ResourcePageToolbar,
@@ -43,35 +35,22 @@ import { ExecutorFilter } from "../components/executor-filter";
 import {
   WorkBoardOverview,
   WorkBoardTable,
-  type WorkBoardMetric,
-  type WorkBoardMode,
 } from "../components/work-board-content";
+
+import { WorkBoardIntro } from "../components/work-board-intro";
 
 const requestStates: readonly string[] = ["approval", "input", "review"];
 
 export function WorkBoardPage() {
   const { t } = useTranslation("workBoard");
-  const client = useQueryClient();
-  const clearResults = useMutation({
-    ...withLocalErrorMutation(clearNotificationUnreadMutation()),
-    onSuccess: async () => {
-      await Promise.all([
-        client.invalidateQueries({ queryKey: listWorkBoardQueryKey() }),
-        client.invalidateQueries({ queryKey: getWorkBoardSummaryQueryKey() }),
-        client.invalidateQueries({
-          queryKey: getNotificationSnapshotQueryKey(),
-        }),
-        client.invalidateQueries({ queryKey: listNotificationsQueryKey() }),
-      ]);
-    },
-  });
+  const { state: navigationState } = useLocation();
   const [params, setParams] = useSearchParams();
   const active = useVisibleScene();
   const mode: WorkBoardMode =
-    params.get("mode") === "attention"
-      ? "attention"
-      : params.get("mode") === "results"
-        ? "results"
+    params.get("mode") === "action"
+      ? "action"
+      : params.get("mode") === "awaiting_view"
+        ? "awaiting_view"
         : "all";
   const executorId = params.get("executorId") ?? "";
   const executorKind = params.get("executorKind") ?? "";
@@ -79,8 +58,9 @@ export function WorkBoardPage() {
   const text = params.get("query") ?? "";
   const [search, setSearch] = useState(text);
   const pageCursors = useRef(new Map<number, string>());
-  const records = useRef<HTMLElement>(null);
-  const requestedPage = Number(params.get("page") ?? 1);
+  // 旧交付视图的游标只适用于当时的结果范围。
+  const requestedPage =
+    params.get("view") === "deliveries" ? 1 : Number(params.get("page") ?? 1);
   const page =
     Number.isSafeInteger(requestedPage) && requestedPage > 0
       ? requestedPage
@@ -94,54 +74,40 @@ export function WorkBoardPage() {
   const states = (params.get("states") ?? "").split(",").filter(Boolean);
   const pendingStates = states.filter((value) => requestStates.includes(value));
   const selectedStates =
-    mode === "attention"
+    mode === "action"
       ? pendingStates.length
         ? pendingStates
         : requestStates
-      : mode === "results"
-        ? ["results"]
+      : mode === "awaiting_view"
+        ? ["awaiting_view"]
         : states;
   useEffect(() => {
     const timer = window.setTimeout(() => setSearch(text), 250);
     return () => window.clearTimeout(timer);
   }, [text]);
-  const listOptions = listWorkBoardOptions(
-    withLocalErrorSurface({
-      query: {
-        mode,
-        executorId: executorId || undefined,
-        source: source || undefined,
-        query: search,
-        cursor: cursor || undefined,
-        page: cursor ? undefined : page,
-        limit: pageSize,
-        ...(mode === "all"
-          ? {
-              from: dates.start,
-              to: dates.end,
-              states: states.join(",") || undefined,
-            }
-          : mode === "attention"
-            ? { states: pendingStates.join(",") || undefined }
-            : {}),
-      },
-    }),
-  );
+  const filters = {
+    executorId: executorId || undefined,
+    source: source || undefined,
+    query: search,
+  };
+  const listOptions = workBoardListOptions({
+    ...filters,
+    mode,
+    limit: pageSize,
+    cursor: cursor || undefined,
+    page: cursor ? undefined : page,
+    ...(mode === "all"
+      ? {
+          from: dates.start,
+          to: dates.end,
+          states: states.join(",") || undefined,
+        }
+      : mode === "action"
+        ? { states: pendingStates.join(",") || undefined }
+        : {}),
+  });
   const list = useQuery({
     ...listOptions,
-    queryFn: async (context) => {
-      if (typeof listOptions.queryFn !== "function")
-        throw new Error(t("loadFailed"));
-      const data = await listOptions.queryFn(context);
-      if (
-        !data ||
-        typeof data.totalSize !== "number" ||
-        !Number.isSafeInteger(data.totalSize) ||
-        data.totalSize < 0
-      )
-        throw new Error(t("loadFailed"));
-      return data;
-    },
     enabled: active && (mode !== "all" || dates.valid),
   });
   useEffect(() => {
@@ -149,6 +115,7 @@ export function WorkBoardPage() {
     if (
       !active ||
       !list.isSuccess ||
+      list.data?.complete === false ||
       list.isFetching ||
       typeof total !== "number" ||
       (mode === "all" && !dates.valid)
@@ -166,86 +133,40 @@ export function WorkBoardPage() {
         else next.delete("page");
         return next;
       },
-      { replace: true },
+      { replace: true, state: navigationState },
     );
   }, [
     active,
     dates.valid,
+    list.data?.complete,
     list.data?.totalSize,
     list.isFetching,
     list.isSuccess,
     mode,
+    navigationState,
     page,
     pageSize,
     setParams,
   ]);
-  // 概览与关注使用全局数据，工作记录筛选只传给列表请求。
-  const summaryOptions = getWorkBoardSummaryOptions(withLocalErrorSurface({}));
-  const summary = useQuery({
-    ...summaryOptions,
-    queryFn: async (context) => {
-      if (typeof summaryOptions.queryFn !== "function")
-        throw new Error(t("loadFailed"));
-      const data = await summaryOptions.queryFn(context);
-      if (
-        !data ||
-        (
-          [
-            "workCount",
-            "runningCount",
-            "endedCount",
-            "actionWorkCount",
-            "attentionCount",
-            "resultCount",
-          ] as const
-        ).some(
-          (key) =>
-            typeof data[key] !== "number" ||
-            !Number.isSafeInteger(data[key]) ||
-            (data[key] ?? -1) < 0,
-        )
-      )
-        throw new Error(t("loadFailed"));
-      return data;
-    },
-    enabled: active,
-  });
+  const summary = useQuery({ ...workBoardSummaryOptions, enabled: active });
   useWorkBoardDateBoundary(active, [
-    summaryOptions.queryKey,
+    workBoardKeys.summary,
     listOptions.queryKey,
   ]);
   useQueryEvents({
     topic: "work-board",
-    resource: { kind: "global" },
-    queryKeys: [
-      listWorkBoardQueryKey(),
-      listWorkBoardInfiniteQueryKey(),
-      getWorkBoardSummaryQueryKey(),
-    ],
+    resource: workspaceAttentionResource,
+    queryKeys: [workBoardKeys.list, workBoardKeys.summary],
+    eventTypes: ["work-board.changed"],
+    authority: true,
     active,
   });
-  useQueryEvents({
-    topic: "work-results",
-    resource: { kind: "global" },
-    queryKeys: [
-      listWorkBoardQueryKey(),
-      listWorkBoardInfiniteQueryKey(),
-      getWorkBoardSummaryQueryKey(),
-    ],
-    active,
-  });
-  useEffect(() => {
-    if (active && summary.isSuccess && summary.dataUpdatedAt) {
-      void client.invalidateQueries({
-        queryKey: listWorkBoardInfiniteQueryKey(),
-      });
-    }
-  }, [active, client, summary.isSuccess, summary.dataUpdatedAt]);
   const change = (values: Record<string, string>) => {
     pageCursors.current.clear();
     setParams(
       (old) => {
         const next = new URLSearchParams(old);
+        next.delete("view");
         next.delete("cursor");
         next.delete("page");
         for (const [key, value] of Object.entries(values)) {
@@ -254,7 +175,7 @@ export function WorkBoardPage() {
         }
         return next;
       },
-      { replace: true },
+      { replace: true, state: navigationState },
     );
   };
   const move = (target: number) => {
@@ -267,13 +188,14 @@ export function WorkBoardPage() {
     setParams(
       (old) => {
         const next = new URLSearchParams(old);
+        next.delete("view");
         if (target > 1) next.set("page", String(target));
         else next.delete("page");
         if (target > 1 && anchor) next.set("cursor", anchor);
         else next.delete("cursor");
         return next;
       },
-      { replace: true },
+      { replace: true, state: navigationState },
     );
   };
   const clearFilters = () => {
@@ -299,83 +221,106 @@ export function WorkBoardPage() {
   const canClearFilters =
     mode !== "all" || filtered || Boolean(states.length || from || to);
   const count =
-    mode === "attention"
+    mode === "action"
       ? (list.data?.attention?.length ?? 0)
-      : (list.data?.resources?.length ?? 0);
+      : mode === "awaiting_view"
+        ? (list.data?.awaitingView?.length ?? 0)
+        : (list.data?.resources?.length ?? 0);
   const invalidDates = mode === "all" && !dates.valid;
+  const incomplete = list.data?.complete === false;
+
+  const pagination: PaginationProps | undefined =
+    typeof list.data?.totalSize === "number" &&
+    !invalidDates &&
+    !(incomplete && mode === "awaiting_view")
+      ? {
+          labels: {
+            navigation: t("pagination"),
+            next: t("next"),
+            previous: t("previous"),
+            page: (page) => t("page", { page }),
+            pageSize: (size) => t("pageSize", { size }),
+            pageSizeSelection: t("pageSizeSelection"),
+            total: (count) => t("totalCount", { count }),
+          },
+          page,
+          pageSize,
+          pageSizeOptions: [10, 20, 50],
+          onPageSizeChange: (size) => change({ pageSize: String(size) }),
+          totalItems: list.data?.totalSize ?? 0,
+          pending: list.isFetching,
+          onPageChange: move,
+        }
+      : undefined;
+  const empty = invalidDates ? (
+    <EmptyState
+      icon={FolderSearch}
+      title={t("invalidRange")}
+      description={t("invalidRangeHint")}
+      actions={
+        <Button
+          variant="secondary"
+          onClick={() => change({ from: "", to: "" })}
+        >
+          {t("clear")}
+        </Button>
+      }
+    />
+  ) : list.isPending && !list.data ? (
+    <div className="grid gap-3" role="status" aria-label={t("loadingRecords")}>
+      <Skeleton className="h-20 w-full rounded-xl" />
+      <Skeleton className="h-20 w-full rounded-xl" />
+      <Skeleton className="h-20 w-full rounded-xl" />
+    </div>
+  ) : list.isError && !list.data ? (
+    <EmptyState
+      title={t("loadFailed")}
+      description={localApiErrorMessage(list.error, t("loadFailed"))}
+      actions={
+        <Button variant="secondary" onClick={() => void list.refetch()}>
+          {t("retry")}
+        </Button>
+      }
+    />
+  ) : !count && !incomplete ? (
+    <EmptyState
+      icon={filtered ? FolderSearch : ListTodo}
+      title={t(
+        filtered
+          ? "noMatches"
+          : mode === "all"
+            ? "empty"
+            : mode === "action"
+              ? "attentionEmpty"
+              : "resultsEmpty",
+      )}
+      description={t(
+        filtered
+          ? "noMatchesHint"
+          : mode === "all"
+            ? "emptyHint"
+            : mode === "action"
+              ? "attentionEmptyHint"
+              : "resultsEmptyHint",
+      )}
+    />
+  ) : undefined;
 
   return (
     <ResourcePageSurface>
-      <ResourcePageHeader
-        title={t("title")}
-        description={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span>{t("description")}</span>
-            <span className="type-caption whitespace-nowrap">
-              {t("recent")}
-            </span>
-          </div>
-        }
-        actions={null}
-      />
+      <WorkBoardIntro active={active} />
       <WorkBoardOverview
         summary={summary.data}
         pending={summary.isPending}
+        active={active}
         error={
           summary.isError
             ? localApiErrorMessage(summary.error, t("loadFailed"))
             : undefined
         }
         onRetry={() => void summary.refetch()}
-        selected={
-          mode === "attention"
-            ? "attention"
-            : mode !== "all"
-              ? undefined
-              : states.length === 1 && states[0] === "running"
-                ? "running"
-                : states.length === 3 &&
-                    ["completed", "failed", "canceled"].every((state) =>
-                      states.includes(state),
-                    )
-                  ? "ended"
-                  : !states.length && !text
-                    ? "all"
-                    : undefined
-        }
-        onSelect={(metric: WorkBoardMetric) => {
-          setSearch("");
-          change({
-            mode: metric === "attention" ? "attention" : "all",
-            states:
-              metric === "running"
-                ? "running"
-                : metric === "ended"
-                  ? "completed,failed,canceled"
-                  : "",
-            query: "",
-          });
-          records.current?.scrollIntoView?.({
-            block: "start",
-            behavior: window.matchMedia("(prefers-reduced-motion: reduce)")
-              .matches
-              ? "auto"
-              : "smooth",
-          });
-        }}
-        onClearResults={() => clearResults.mutate({})}
-        clearingResults={clearResults.isPending}
-        clearError={
-          clearResults.isError
-            ? localApiErrorMessage(clearResults.error, t("clearResultsFailed"))
-            : undefined
-        }
       />
-      <section
-        ref={records}
-        className="mt-8 min-w-0 scroll-mt-4"
-        aria-label={t("records")}
-      >
+      <section className="mt-8 min-w-0 scroll-mt-4" aria-label={t("records")}>
         <ResourcePageToolbar
           filters={
             <>
@@ -399,17 +344,17 @@ export function WorkBoardPage() {
                     const added = values.find(
                       (value) => !selectedStates.includes(value),
                     );
-                    if (added === "results") {
-                      change({ mode: "results", states: "" });
+                    if (added === "awaiting_view") {
+                      change({ mode: "awaiting_view", states: "" });
                     } else if (
                       (added && requestStates.includes(added)) ||
-                      (mode === "attention" && !added)
+                      (mode === "action" && !added)
                     ) {
                       const pending = values.filter((value) =>
                         requestStates.includes(value),
                       );
                       change({
-                        mode: pending.length ? "attention" : "all",
+                        mode: pending.length ? "action" : "all",
                         states: pending.join(","),
                       });
                     } else {
@@ -419,7 +364,7 @@ export function WorkBoardPage() {
                           .filter(
                             (value) =>
                               !requestStates.includes(value) &&
-                              value !== "results",
+                              value !== "awaiting_view",
                           )
                           .join(","),
                       });
@@ -446,7 +391,7 @@ export function WorkBoardPage() {
                     { value: "approval", label: t("pendingApproval") },
                     { value: "input", label: t("pendingInput") },
                     { value: "review", label: t("pendingReview") },
-                    { value: "results", label: t("results") },
+                    { value: "awaiting_view", label: t("results") },
                   ]}
                 />
               </div>
@@ -482,11 +427,21 @@ export function WorkBoardPage() {
                 value={text}
                 onChange={(event) => change({ query: event.target.value })}
               />
+              <MarkViewedDialog
+                active={active}
+                visible={(summary.data?.awaitingViewWorkCount ?? 0) > 0}
+                filters={{
+                  ...filters,
+                  query: text,
+                  states:
+                    mode === "all" ? states.join(",") || undefined : undefined,
+                }}
+              />
             </>
           }
         >
           <div className="flex items-center gap-2">
-            <h2 className="type-title font-semibold">{t("records")}</h2>
+            <h2 className="type-title font-semibold">{t("allTasks")}</h2>
             {canClearFilters ? (
               <Button variant="ghost" size="sm" onClick={clearFilters}>
                 {t("clearFilters")}
@@ -494,7 +449,22 @@ export function WorkBoardPage() {
             ) : null}
           </div>
         </ResourcePageToolbar>
-        <div className="min-h-64 min-w-0 pt-6" aria-busy={list.isFetching}>
+        <div className="min-h-64 min-w-0 pt-3" aria-busy={list.isFetching}>
+          {incomplete && !list.isError ? (
+            <div
+              role="status"
+              className="text-content-secondary type-ui mb-3 flex items-center gap-2"
+            >
+              {t("attentionIncomplete")}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => void list.refetch()}
+              >
+                {t("retry")}
+              </Button>
+            </div>
+          ) : null}
           {list.isError && list.data ? (
             <div
               role="alert"
@@ -512,96 +482,14 @@ export function WorkBoardPage() {
           ) : null}
           <WorkBoardTable
             mode={mode}
-            entries={list.data?.resources}
+            entries={
+              mode === "awaiting_view"
+                ? list.data?.awaitingView
+                : list.data?.resources
+            }
             attention={list.data?.attention}
-            pagination={
-              typeof list.data?.totalSize === "number" && !invalidDates
-                ? {
-                    labels: {
-                      navigation: t("pagination"),
-                      next: t("next"),
-                      previous: t("previous"),
-                      page: (page) => t("page", { page }),
-                      pageSize: (size) => t("pageSize", { size }),
-                      pageSizeSelection: t("pageSizeSelection"),
-                      total: (count) => t("totalCount", { count }),
-                    },
-                    page,
-                    pageSize,
-                    pageSizeOptions: [10, 20, 50],
-                    onPageSizeChange: (size) =>
-                      change({ pageSize: String(size) }),
-                    totalItems: list.data?.totalSize ?? 0,
-                    pending: list.isFetching,
-                    onPageChange: move,
-                  }
-                : undefined
-            }
-            empty={
-              invalidDates ? (
-                <EmptyState
-                  icon={FolderSearch}
-                  title={t("invalidRange")}
-                  description={t("invalidRangeHint")}
-                  actions={
-                    <Button
-                      variant="secondary"
-                      onClick={() => change({ from: "", to: "" })}
-                    >
-                      {t("clear")}
-                    </Button>
-                  }
-                />
-              ) : list.isPending && !list.data ? (
-                <div
-                  className="grid gap-3"
-                  role="status"
-                  aria-label={t("loadingRecords")}
-                >
-                  <Skeleton className="h-20 w-full rounded-xl" />
-                  <Skeleton className="h-20 w-full rounded-xl" />
-                  <Skeleton className="h-20 w-full rounded-xl" />
-                </div>
-              ) : list.isError && !list.data ? (
-                <EmptyState
-                  title={t("loadFailed")}
-                  description={localApiErrorMessage(
-                    list.error,
-                    t("loadFailed"),
-                  )}
-                  actions={
-                    <Button
-                      variant="secondary"
-                      onClick={() => void list.refetch()}
-                    >
-                      {t("retry")}
-                    </Button>
-                  }
-                />
-              ) : !count ? (
-                <EmptyState
-                  icon={filtered ? FolderSearch : ListTodo}
-                  title={t(
-                    filtered
-                      ? "noMatches"
-                      : mode === "all"
-                        ? "empty"
-                        : mode === "attention"
-                          ? "attentionEmpty"
-                          : "resultsEmpty",
-                  )}
-                  description={t(
-                    filtered
-                      ? "noMatchesHint"
-                      : mode === "all"
-                        ? "emptyHint"
-                        : mode === "attention"
-                          ? "attentionEmptyHint"
-                          : "resultsEmptyHint",
-                  )}
-                />
-              ) : undefined
-            }
+            pagination={pagination}
+            empty={empty}
           />
         </div>
       </section>

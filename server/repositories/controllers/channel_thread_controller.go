@@ -8,6 +8,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -44,7 +45,7 @@ type ChannelThreadController interface {
 	// UpdateProvisioned 保存 staging 发布后由成员 Chat 冻结的工作区信息。
 	UpdateProvisioned(ctx context.Context, thread models.ChannelThread) error
 	// MarkReady 标记全部成员 Chat 和团队对话首发事实已经完成。
-	MarkReady(ctx context.Context, threadID string, provisioningID string, readyAt int64) error
+	MarkReady(ctx context.Context, threadID string, provisioningID string, leadExecutionID string, readyAt int64) error
 	// BeginCanceling 原子写入停止意图并冻结新的任务名额与派发。
 	BeginCanceling(ctx context.Context, threadID string, cancelingAt int64) (bool, error)
 	// FinishCanceling 在停止收敛事务末尾按原意图清除冻结状态。
@@ -531,6 +532,7 @@ func (c *channelThreadController) MarkReady(
 	ctx context.Context,
 	threadID string,
 	provisioningID string,
+	leadExecutionID string,
 	readyAt int64,
 ) error {
 	result := controllerDB(ctx, c.db).Model(&models.ChannelThread{}).
@@ -547,6 +549,7 @@ func (c *channelThreadController) MarkReady(
 		return status_error.ChannelTaskStateConflict
 	}
 	publishCommittedChange(ctx, c.db, "work-board", eventsResource("thread", threadID))
+	publishLinkedChatAttention(ctx, c.db, eventsResource("team_thread", threadID), leadExecutionID)
 	return nil
 }
 
@@ -689,7 +692,11 @@ func (c *channelThreadController) CountActiveWork(
 
 // Delete 删除一个团队对话的全部结构化编排事实。
 func (c *channelThreadController) Delete(ctx context.Context, threadID string) error {
-	return c.deleteThreadFacts(controllerDB(ctx, c.db), threadID, false)
+	if err := c.deleteThreadFacts(controllerDB(ctx, c.db), threadID, false); err != nil {
+		return err
+	}
+	publishWorkRequestRecheck(ctx, c.db, eventsResource("team_thread", threadID))
+	return nil
 }
 
 // DeleteByChannel 删除一个团队下全部团队对话的结构化编排事实。
@@ -698,9 +705,8 @@ func (c *channelThreadController) DeleteByChannel(ctx context.Context, channelID
 	if err != nil {
 		return err
 	}
-	db := controllerDB(ctx, c.db)
 	for _, threadID := range ids {
-		if err := c.deleteThreadFacts(db, threadID, false); err != nil {
+		if err := c.Delete(ctx, threadID); err != nil {
 			return err
 		}
 	}
@@ -714,9 +720,6 @@ func (c *channelThreadController) deleteThreadFacts(
 	threadID string,
 	initializingOnly bool,
 ) error {
-	if err := db.Where("owner_kind = ? AND owner_id = ?", constants.WorkResultOwnerKindTeamThread, threadID).Delete(&models.WorkResultReceipt{}).Error; err != nil {
-		return databaseError("delete_thread_work_result", threadID, err)
-	}
 	taskIDs := db.Model(&models.ChannelTask{}).Select("id").Where("thread_id = ?", threadID)
 	if err := db.Where("task_id IN (?) OR depends_on_task_id IN (?)", taskIDs, taskIDs).
 		Delete(&models.ChannelTaskDependency{}).Error; err != nil {
@@ -768,16 +771,43 @@ func (c *channelThreadController) AppendEvent(
 	if event.ID == "" || len(event.Payload) == 0 || !json.Valid(event.Payload) {
 		return models.ChannelEvent{}, status_error.BadRequest
 	}
-	if err := controllerDB(ctx, c.db).
-		Clauses(clause.OnConflict{DoNothing: true}).
-		Create(&event).Error; err != nil {
-		return models.ChannelEvent{}, databaseError(
-			"append_channel_event",
-			"thread_id="+event.ThreadID,
-			err,
-		)
+	db := controllerDB(ctx, c.db)
+	result := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&event)
+	if result.Error != nil {
+		return models.ChannelEvent{}, databaseError("append_channel_event", "thread_id="+event.ThreadID, result.Error)
+	}
+	if result.RowsAffected > 0 && event.Type == constants.ChannelEventMemberDirectDelivered {
+		if _, enabled := c.db.Get(eventPublisherSetting); enabled {
+			events.AfterCommit(ctx, func() { c.publishDirectDelivery(event) })
+		}
 	}
 	return event, nil
+}
+
+// publishDirectDelivery 核验正式团队报告的阅读索引，提醒失败不影响原投递。
+func (c *channelThreadController) publishDirectDelivery(event models.ChannelEvent) {
+	var payload struct {
+		// NotificationID 是已投递到主 Chat 的原成员消息身份。
+		NotificationID string `json:"notificationId"`
+	}
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return
+	}
+	ctx := context.Background()
+	db := c.db.WithContext(ctx)
+	var thread models.ChannelThread
+	if err := db.Select("id,lead_chat_id").Where("id=? AND ready_at IS NOT NULL", event.ThreadID).Limit(1).Find(&thread).Error; err != nil {
+		_ = databaseError("resolve_team_direct_delivery", event.ThreadID, err)
+		return
+	}
+	var row models.ChatReadableMessage
+	if err := db.Select("message_id").Where("chat_id=? AND message_id=? AND kind='member_report'", thread.LeadChatID, payload.NotificationID).Limit(1).Find(&row).Error; err != nil {
+		_ = databaseError("resolve_team_direct_message", event.ThreadID, err)
+		return
+	}
+	if row.MessageID != "" {
+		publishWorkLive(ctx, c.db, models.WorkBoardLiveEvent{Operation: "completed", Work: models.WorkRef{Kind: constants.WorkOwnerKindTeamThread, ID: thread.ID}, ChatID: thread.LeadChatID, MessageID: row.MessageID})
+	}
 }
 
 // ListEvents 返回指定全局游标之后的团队对话持久事件。

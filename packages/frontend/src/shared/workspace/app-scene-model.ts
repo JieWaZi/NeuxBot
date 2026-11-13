@@ -79,6 +79,11 @@ function replacesTemporaryScene(
     next.id.startsWith("chat:");
   if (replacingTemporaryChat) return true;
   if (
+    active.id === "waker-create" &&
+    (next.id.startsWith("chat:") || next.id.startsWith("waker:"))
+  )
+    return true;
+  if (
     active.id.startsWith("workflow-draft:") &&
     next.id.startsWith("workflow:")
   )

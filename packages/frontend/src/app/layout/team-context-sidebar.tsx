@@ -52,8 +52,21 @@ import {
 } from "@/shared/ui/dropdown-menu";
 import { useSceneWorkspace } from "@/shared/workspace/workspace-context";
 
+import type { ChatAttention } from "@/modules/workspaceattention";
+import { captureChatOpenIntent } from "@/shared/api/chat-reading";
+import { useQueryEvents } from "@/shared/api/use-query-events";
+import {
+  ConversationAttentionMark,
+  conversationAttentionMark,
+} from "@/shared/ui/conversation-attention";
+import {
+  workAttentionHref,
+  waitingConversations,
+  WorkRequestChooser,
+  type WaitingConversation,
+} from "@/modules/work-board";
 import { navigateRouteImmediately } from "./immediate-route-navigation";
-import { ChatGroupHeader } from "@/modules/chat";
+import { ChatGroupHeader, ChatHistoryRowStatus } from "@/modules/chat";
 import {
   forgetTeamThread,
   type PartnerNavigationPreferences,
@@ -138,6 +151,7 @@ function teamLocationHref(channelId: string, threadId: string | undefined) {
 }
 
 type TeamNavigationProps = {
+  attention?: ChatAttention[];
   channelId: string;
   onPreferencesChange: Dispatch<SetStateAction<PartnerNavigationPreferences>>;
   onThreadOpened?: () => void;
@@ -267,6 +281,7 @@ export function TeamMemberMenu({
 
 export function TeamChatTree({
   channelId,
+  attention,
   onPreferencesChange,
   onThreadOpened,
   preferences,
@@ -287,13 +302,26 @@ export function TeamChatTree({
     id: string;
     title: string;
   }>();
+  const [pendingRequests, setPendingRequests] =
+    useState<WaitingConversation[]>();
   const [deleteError, setDeleteError] = useState("");
   const removeThread = useMutation(
     withLocalErrorMutation(deleteChannelThreadMutation()),
   );
+  const historyOptions = teamThreadsInfiniteOptions(channelId || "pending");
   const threadsQuery = useInfiniteQuery({
-    ...teamThreadsInfiniteOptions(channelId || "pending"),
+    ...historyOptions,
     enabled: Boolean(channelId),
+  });
+  useQueryEvents({
+    topic: "entities",
+    resource: { kind: "global" },
+    queryKeys: [historyOptions.queryKey],
+    enabled: Boolean(channelId),
+    eventTypes: ["entities.activity.changed"],
+    eventFilter: ({ resource }) =>
+      resource.kind === "global" ||
+      (resource.kind === "channel" && resource.id === channelId),
   });
   const activeThreadQuery = useQuery({
     ...getChannelThreadOptions({
@@ -387,7 +415,29 @@ export function TeamChatTree({
   const threadRow = (thread: ChannelThread) => {
     const targetThreadId = thread.id ?? "";
     const title = thread.title || t("chatNavigation.unnamedChat");
-    const href = teamLocationHref(channelId, targetThreadId);
+    const chatAttention = attention?.find(
+      (entry) => entry.work?.id === targetThreadId,
+    );
+    const choices = waitingConversations(chatAttention?.requests);
+    const first = choices[0];
+    const question = first?.request.chatId
+      ? chatAttention?.requests?.find(
+          (request) =>
+            request.kind === "input" && request.chatId === first.request.chatId,
+        )
+      : undefined;
+    const href =
+      choices.length === 1 && first
+        ? workAttentionHref(question ?? first.request)
+        : teamLocationHref(channelId, targetThreadId);
+    const status =
+      thread.activityState === "running" || thread.activityState === "waiting"
+        ? thread.activityState
+        : "idle";
+    const mark = conversationAttentionMark({
+      requestKinds: chatAttention?.requestKinds,
+      unread: chatAttention?.unreadMessageCount,
+    });
     return (
       <div
         key={targetThreadId}
@@ -403,18 +453,34 @@ export function TeamChatTree({
         <Link
           to={href}
           onClick={(event) => {
+            if (
+              choices.length > 1 &&
+              event.button === 0 &&
+              !event.ctrlKey &&
+              !event.metaKey &&
+              !event.shiftKey &&
+              !event.altKey
+            ) {
+              event.preventDefault();
+              setPendingRequests(choices);
+              return;
+            }
             onThreadOpened?.();
-            navigateRouteImmediately(event, navigate, href);
+            navigateRouteImmediately(event, navigate, href, () =>
+              !first && thread.leadChatId
+                ? captureChatOpenIntent(queryClient, thread.leadChatId)
+                : undefined,
+            );
           }}
-          className="focus-visible:ring-ring type-body grid min-w-0 grid-cols-[14px_14px_minmax(0,1fr)_auto] items-center gap-1 rounded-sm px-1 py-1 outline-none focus-visible:ring-2 focus-visible:ring-inset"
+          className="focus-visible:ring-ring type-body grid min-w-0 grid-cols-[14px_20px_minmax(0,1fr)_auto_auto] items-center gap-1 rounded-sm px-1 py-1 outline-none focus-visible:ring-2 focus-visible:ring-inset"
           title={title}
         >
           <span aria-hidden="true" />
-          <span
-            aria-hidden="true"
-            className="bg-border block size-1.5 place-self-center rounded-full"
-          />
+          <ChatHistoryRowStatus status={status} mark={mark} />
           <span className="truncate">{title}</span>
+          <ConversationAttentionMark
+            mark={mark?.kind === "unread" ? mark : undefined}
+          />
           <time className="text-muted-foreground type-caption group-focus-within/chat:hidden group-hover/chat:hidden">
             {formatRelativeTime(thread.updatedAt)}
           </time>
@@ -525,6 +591,14 @@ export function TeamChatTree({
           ) : null}
         </div>
       </div>
+      <WorkRequestChooser
+        choices={pendingRequests}
+        onClose={() => setPendingRequests(undefined)}
+        onOpen={(href) => {
+          onThreadOpened?.();
+          navigate(href, { flushSync: true });
+        }}
+      />
       <TeamConfirmationDialog
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => {

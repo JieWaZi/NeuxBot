@@ -393,7 +393,7 @@ func sendCreationMessage(ctx context.Context, d *workflowDependencies, command S
 		current.ChatID = accepted.Chat.ID
 		current.AcceptedExecutionID = accepted.Execution.ID
 		session = current
-		if err := d.CreationSessions.UpdateCreationSession(ctx, current); err != nil {
+		if err := d.CreationSessions.AcceptCreationSession(ctx, current); err != nil {
 			return err
 		}
 		_, err = d.Store.AppendEvent(ctx, models.WorkflowEvent{StreamID: current.DefinitionID, EventID: util.New(), Type: "workflow.creation.changed", EntityID: current.ID, Payload: map[string]any{"sessionId": current.ID, "chatId": current.ChatID}})

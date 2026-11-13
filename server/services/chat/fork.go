@@ -18,6 +18,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // ForkInput 保存用户明确选择的会话、回合及幂等请求身份。
@@ -304,6 +305,9 @@ func (m *service) prepareFork(ctx context.Context, input ForkInput) (chatstorage
 		Boundary: selected.boundary,
 	}
 	for _, message := range messages {
+		if message.Actor == constants.WakerOnboardingActor {
+			continue
+		}
 		sourceMessageID := message.ID
 		message.ID = util.New()
 		message.SourceChatID = input.ChatID
@@ -438,7 +442,7 @@ func (m *service) publishFork(ctx context.Context, directory string, operation c
 	if err != nil {
 		return err
 	}
-	return m.queryIndexes.replaceCurrentProjection(ctx, currentProjection{chat: state.chat})
+	return m.queryIndexes.createChats(ctx, []models.Chat{state.chat})
 }
 
 // writeForkFacts 分批提交历史，完整日志在目录原子发布之前保持私有。

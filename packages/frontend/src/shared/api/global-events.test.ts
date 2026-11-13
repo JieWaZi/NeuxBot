@@ -6,6 +6,7 @@ import type {
 import {
   subscribeGlobalEvents,
   registerCoreConnectionRecovery,
+  getReadyEventEpoch,
   updateGlobalEventCursor,
 } from "./global-events";
 const mocks = vi.hoisted(() => ({
@@ -61,40 +62,33 @@ function snapshot(): GlobalEventFrame {
     epoch: "epoch",
     connectionId: "connection",
     deliverySequence: 1,
-    topic: "notifications",
-    type: "notifications.snapshot",
+    topic: "work-board",
+    type: "work-board.ready",
     resource: { kind: "global" },
     eventId: "event",
-    payload: { snapshot: {} },
+    payload: {},
   };
 }
 describe("Renderer 全局事件边界", () => {
-  it("主进程已有通知订阅时，晚加入者主动补快照以结束同步等待", async () => {
-    let recovering = false;
-    let recoveryStarted = false;
-    mocks.resync.mockImplementation(async () => {
-      deliver({ kind: "event", frame: snapshot() });
-      return true;
-    });
+  it("主进程已有工作看板订阅时，晚加入收到 ready 并补读而不重置物理流", async () => {
+    const read = vi.fn();
+    const delivered = vi.fn();
     const close = subscribeGlobalEvents(
-      "notifications",
+      "work-board",
       { kind: "global" },
-      {
-        onResync: () => {
-          recovering = true;
-          recoveryStarted = true;
-        },
-        onEvent: () => {
-          recovering = false;
-        },
-      },
+      { onEvent: delivered, onResync: read },
     );
     try {
       deliver({ kind: "state", state: "open" });
       deliver({ kind: "resync", reason: "subscription_joined" });
-      await vi.waitFor(() => expect(recoveryStarted).toBe(true));
-      await vi.waitFor(() => expect(recovering).toBe(false));
-      expect(mocks.resync).toHaveBeenCalledTimes(1);
+      deliver({ kind: "event", frame: snapshot() });
+      await vi.waitFor(() =>
+        expect(read).toHaveBeenCalledWith("subscription_joined"),
+      );
+      await vi.waitFor(() =>
+        expect(delivered).toHaveBeenCalledWith(snapshot()),
+      );
+      expect(mocks.resync).not.toHaveBeenCalled();
     } finally {
       close();
     }
@@ -104,13 +98,13 @@ describe("Renderer 全局事件边界", () => {
     const second = vi.fn();
     const restore = vi.fn();
     const closeFirst = subscribeGlobalEvents(
-      "notifications",
+      "work-board",
       { kind: "global" },
       { onEvent: first },
     );
     deliver({ kind: "state", state: "open" });
     const closeSecond = subscribeGlobalEvents(
-      "notifications",
+      "work-board",
       { kind: "global" },
       { onEvent: second, onResync: restore },
     );
@@ -137,7 +131,7 @@ describe("Renderer 全局事件边界", () => {
     );
     const order: string[] = [];
     const close = subscribeGlobalEvents(
-      "notifications",
+      "work-board",
       { kind: "global" },
       {
         onEvent: () => order.push("snapshot"),
@@ -154,9 +148,9 @@ describe("Renderer 全局事件边界", () => {
     await vi.waitFor(() => expect(order).toEqual(["resync", "snapshot"]));
     close();
   });
-  it("恢复缓冲超限明确重新请求权威快照，不静默丢失持久事件", async () => {
+  it("工作看板恢复缓冲超限再次读取权威查询，保留 epoch 且不重置物理流", async () => {
     let finish!: (value: object) => void;
-    mocks.initialize.mockImplementation(
+    mocks.initialize.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           finish = resolve;
@@ -165,7 +159,7 @@ describe("Renderer 全局事件边界", () => {
     const onEvent = vi.fn();
     const onResync = vi.fn();
     const close = subscribeGlobalEvents(
-      "notifications",
+      "work-board",
       { kind: "global" },
       { onEvent, onResync },
     );
@@ -173,15 +167,23 @@ describe("Renderer 全局事件边界", () => {
     for (let index = 0; index < 300; index++)
       deliver({ kind: "event", frame: snapshot() });
     finish({});
-    await vi.waitFor(() => expect(mocks.resync).toHaveBeenCalledTimes(1));
-    expect(onResync).toHaveBeenCalledWith("buffer_overflow");
-    expect(onEvent).not.toHaveBeenCalled();
-    close();
+    try {
+      await vi.waitFor(() =>
+        expect(onResync).toHaveBeenCalledWith("buffer_overflow"),
+      );
+      expect(mocks.resync).not.toHaveBeenCalled();
+      expect(getReadyEventEpoch("work-board", { kind: "global" })).toBe(
+        "epoch",
+      );
+      expect(onEvent).not.toHaveBeenCalled();
+    } finally {
+      close();
+    }
   });
   it("首次握手失败后成功不等待不存在的旧连接恢复", () => {
     const onEvent = vi.fn();
     const close = subscribeGlobalEvents(
-      "notifications",
+      "work-board",
       { kind: "global" },
       { onEvent },
     );
@@ -269,7 +271,7 @@ describe("Renderer 全局事件边界", () => {
       const onEvent = vi.fn();
       const onResync = vi.fn();
       const close = subscribeGlobalEvents(
-        "notifications",
+        "work-board",
         { kind: "global" },
         { onEvent, onResync },
       );
@@ -286,7 +288,7 @@ describe("Renderer 全局事件边界", () => {
   );
   it("新连接恢复完成后只通知原生观察一次，释放监听后不再调用", async () => {
     const close = subscribeGlobalEvents(
-      "notifications",
+      "work-board",
       { kind: "global" },
       { onEvent: vi.fn() },
     );
@@ -340,7 +342,7 @@ describe("Renderer 全局事件边界", () => {
         }),
     );
     const close = subscribeGlobalEvents(
-      "notifications",
+      "work-board",
       { kind: "global" },
       { onEvent: vi.fn() },
     );

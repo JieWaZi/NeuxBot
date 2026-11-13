@@ -19,13 +19,17 @@ type UpdateWakerRequest struct {
 	// 名称
 	Name string `json:"name" validate:"required,max=80"`
 	// 角色名称
-	RoleName string `json:"roleName" validate:"required,max=80"`
+	RoleName string `json:"roleName" validate:"max=80"`
 	// 头像
 	Avatar string `json:"avatar" validate:"omitempty,max=2800000"`
 	// 简介
 	Bio string `json:"bio" validate:"omitempty,max=1000"`
+	// 默认模型
+	DefaultModel *models.WakerDefaultModel `json:"defaultModel,omitempty"`
 	// 关于我
-	Manual profile.ManualInput `json:"manual"`
+	Manual *profile.ManualInput `json:"manual,omitempty"`
+	// 当前概览版本
+	ExpectedOverviewRevision string `json:"expectedOverviewRevision,omitempty" validate:"omitempty,len=64"`
 }
 
 // 更新伙伴
@@ -56,6 +60,9 @@ func (u *UpdateWaker) Output(ctx *gin.Context) (interface{}, error) {
 			if err != nil {
 				return err
 			}
+			if u.Body.Manual != nil && u.Body.ExpectedOverviewRevision != "" && waker.ProfileOverview().Revision() != u.Body.ExpectedOverviewRevision {
+				return status_error.WakerProfileChanged
+			}
 			name := util.NormalizeName(u.Body.Name)
 			occupied, err := global.WakerControllerManager.NameExists(
 				transactionContext,
@@ -72,23 +79,34 @@ func (u *UpdateWaker) Output(ctx *gin.Context) (interface{}, error) {
 			if avatar == "" {
 				avatar = waker.Avatar
 			}
+			defaultModel := waker.DefaultModel
+			if u.Body.DefaultModel != nil {
+				defaultModel, err = normalizeDefaultModel(u.Body.DefaultModel)
+				if err != nil {
+					return err
+				}
+			}
 			if err := global.WakerControllerManager.Update(
 				transactionContext,
 				waker.ID,
 				models.Waker{
-					Name:      name,
-					RoleName:  util.NormalizeName(u.Body.RoleName),
-					Avatar:    avatar,
-					Bio:       strings.TrimSpace(u.Body.Bio),
-					UpdatedAt: now,
+					Name:         name,
+					RoleName:     util.NormalizeName(u.Body.RoleName),
+					Avatar:       avatar,
+					Bio:          strings.TrimSpace(u.Body.Bio),
+					UpdatedAt:    now,
+					DefaultModel: defaultModel,
 				},
 			); err != nil {
 				return err
 			}
+			if u.Body.Manual == nil {
+				return nil
+			}
 			return global.WakerControllerManager.UpdateProfileProjection(
 				transactionContext,
 				waker.ID,
-				profile.ProjectionFromManual(u.Body.Manual),
+				profile.ProjectionFromManual(*u.Body.Manual),
 				now,
 			)
 		},

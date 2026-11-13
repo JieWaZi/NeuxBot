@@ -20,6 +20,8 @@ import (
 type UpdateWakerDocumentRequest struct {
 	// 文件内容
 	Content string `json:"content" validate:"max=1048576"`
+	// 当前正文版本
+	ExpectedRevision string `json:"expectedRevision,omitempty" validate:"omitempty,len=64"`
 }
 
 // 更新伙伴文档
@@ -38,9 +40,9 @@ func (u *UpdateWakerDocument) Path() string {
 	return "/:wakerId/documents/:kind"
 }
 
-// Validate 只允许更新三份伙伴档案。
+// Validate 只允许更新伙伴档案。
 func (u *UpdateWakerDocument) Validate(*gin.Context) error {
-	if !isEditableProfileKind(u.Kind) {
+	if !validProfileDocumentKind(u.Kind) {
 		return ginx.WithStack(status_error.ProfileDocumentKindInvalid)
 	}
 	return nil
@@ -48,15 +50,36 @@ func (u *UpdateWakerDocument) Validate(*gin.Context) error {
 
 // Output 保存完整 Markdown；档案编辑不再重算关于我展示投影。
 func (u *UpdateWakerDocument) Output(ctx *gin.Context) (interface{}, error) {
-	if err := profile.ValidateContent(u.Body.Content); err != nil {
+	validate := profile.ValidateContent
+	if u.Kind == constants.ProfileDocumentKindAgents {
+		validate = profile.ValidateWakerAgents
+	}
+	if err := validate(u.Body.Content); err != nil {
 		return nil, ginx.WithStack(err)
 	}
 	now := time.Now().UnixMilli()
 	err := global.TransactionControllerManager.Transaction(
 		ctx,
 		func(transactionContext context.Context) error {
-			if _, err := global.WakerControllerManager.Get(transactionContext, u.WakerID); err != nil {
+			waker, err := global.WakerControllerManager.Get(transactionContext, u.WakerID)
+			if err != nil {
 				return err
+			}
+			if waker.OnboardingStatus == constants.WakerOnboardingStatusPending {
+				return status_error.WakerOnboardingIncomplete
+			}
+			if u.Kind == constants.ProfileDocumentKindAgents {
+				if u.Body.ExpectedRevision != "" {
+					rows, err := global.ProfileDocumentControllerManager.ListWakerDocuments(transactionContext, waker.ID)
+					if err != nil {
+						return err
+					}
+					current := builtinrolepreset.ResolveWakerAgents(waker.ID, rows, waker.UpdatedAt)
+					if profile.ContentRevision(current.Content) != u.Body.ExpectedRevision {
+						return status_error.WakerProfileChanged
+					}
+				}
+				return global.ProfileDocumentControllerManager.SaveWakerAgents(transactionContext, u.WakerID, u.Body.Content, now)
 			}
 			documents, err := global.ProfileDocumentControllerManager.ListWakerDocuments(
 				transactionContext,

@@ -25,6 +25,8 @@ type activeExecution struct {
 
 // executionSettlement 记录同一后台所有者的文件冻结与最终退出屏障，不复制业务状态。
 type executionSettlement struct {
+	// cancel 在后台工作退出后释放执行上下文。
+	cancel context.CancelFunc
 	// frozen 在结束侧冻结或明确放弃采集后关闭；nil 表示已关闭。
 	frozen chan struct{}
 	// done 在差异计算、发布和后台资源清理全部退出后关闭。
@@ -104,7 +106,7 @@ func (r *executionRegistry) reserve(
 	if r.settling[chatID] == nil {
 		r.settling[chatID] = make(map[string]*executionSettlement)
 	}
-	r.settling[chatID][executionID] = &executionSettlement{frozen: make(chan struct{}), done: make(chan struct{})}
+	r.settling[chatID][executionID] = &executionSettlement{cancel: cancel, frozen: make(chan struct{}), done: make(chan struct{})}
 	r.active[chatID] = activeExecution{
 		executionID: executionID,
 		cancel:      cancel,
@@ -135,6 +137,7 @@ func (r *executionRegistry) release(chatID string, executionID string) {
 		close(active.done)
 	}
 	if settlement, exists := r.settling[chatID][executionID]; exists {
+		settlement.cancel()
 		delete(r.settling[chatID], executionID)
 		if len(r.settling[chatID]) == 0 {
 			delete(r.settling, chatID)
@@ -180,6 +183,15 @@ func (r *executionRegistry) freezeFileSnapshots(chatID, executionID string) {
 		close(settlement.frozen)
 		settlement.frozen = nil
 	}
+}
+
+// IsExecutionActive 检查指定执行是否仍持有会话占位。
+func (m *service) IsExecutionActive(chatID, executionID string) bool {
+	r := m.executions
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	active, exists := r.active[chatID]
+	return exists && active.executionID == executionID
 }
 
 // complete 在同一临界区内释放执行占用并发布终态，避免订阅者先于下一轮入口观察到完成。

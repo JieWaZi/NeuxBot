@@ -19,6 +19,12 @@ import { installIMPowerLifecycle } from "./im-power-lifecycle";
 import { createCoreEvents } from "./core-events";
 import type { CoreEventClient } from "../shared/core-event-client";
 import { installAutomaticTaskPowerLifecycle } from "./automatic-task-power-lifecycle";
+import { loadNotificationPreferences } from "./notification-preferences";
+import { createDesktopNotification } from "./desktop-notifications";
+import {
+  installWorkspaceAttention,
+  resolveWorkspaceAttentionTarget,
+} from "./workspace-attention";
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -43,6 +49,9 @@ let core: CoreSupervisor | undefined;
 let coreEvents: CoreEventClient | undefined;
 let disposePowerLifecycle: (() => void) | undefined;
 let disposeIMPowerLifecycle: (() => void) | undefined;
+let disposeWorkspaceAttention: (() => void) | undefined;
+let notificationPreferences:
+  Awaited<ReturnType<typeof loadNotificationPreferences>> | undefined;
 async function log(message: string) {
   if (isDevelopment) {
     process.stderr.write(message.endsWith("\n") ? message : `${message}\n`);
@@ -93,6 +102,7 @@ async function createWindow(): Promise<BrowserWindow> {
     core,
     rendererURL,
     coreEvents,
+    notificationPreferences,
   );
   current.webContents.on("will-prevent-unload", (event) => {
     const answer = dialog.showMessageBoxSync(current, {
@@ -124,6 +134,7 @@ else {
     stopCore: async () => {
       disposePowerLifecycle?.();
       disposeIMPowerLifecycle?.();
+      disposeWorkspaceAttention?.();
       await coreEvents?.close();
       await core?.stop();
     },
@@ -189,10 +200,41 @@ else {
         },
         log,
       );
-      coreEvents = createCoreEvents(() => {
+      const coreConnection = () => {
         if (!core) return Promise.reject(new Error("Core 尚未装配"));
         return core.connection();
-      }, log);
+      };
+      coreEvents = createCoreEvents(coreConnection, log);
+      const preferencesPath = app.getPath("userData");
+      await mkdir(preferencesPath, { recursive: true });
+      const preferences = await loadNotificationPreferences(
+        path.join(preferencesPath, "notification-preferences.json"),
+      );
+      notificationPreferences = preferences;
+      disposeWorkspaceAttention = installWorkspaceAttention({
+        events: coreEvents,
+        preferences: preferences.get,
+        isFocused: () =>
+          BrowserWindow.getAllWindows().some((window) => window.isFocused()),
+        resolveTarget: resolveWorkspaceAttentionTarget(coreConnection),
+        showNotification: createDesktopNotification,
+        async open(takeTarget) {
+          const window = await lifecycle.showWindow();
+          if (!window || window.isDestroyed()) {
+            takeTarget();
+            return;
+          }
+          const contents = window.webContents;
+          const send = () => {
+            const target = takeTarget();
+            if (target !== undefined && !contents.isDestroyed())
+              contents.send("ally:workspace-attention-open", target);
+          };
+          if (contents.isLoadingMainFrame())
+            contents.once("did-finish-load", send);
+          else send();
+        },
+      });
       disposeIMPowerLifecycle = installIMPowerLifecycle(
         powerSaveBlocker,
         coreEvents,
@@ -204,6 +246,7 @@ else {
       await log(String(error));
       try {
         disposeIMPowerLifecycle?.();
+        disposeWorkspaceAttention?.();
         await coreEvents?.close();
         await core?.stop();
       } catch (stopError) {

@@ -46,8 +46,10 @@ const browserNetworkMessages = new Set([
   "load failed",
   "networkerror when attempting to fetch resource.",
 ]);
-/** 网络断连提示只用于当前会话，不从本地存储跨重启恢复。 */
-function isTransientNetworkNotice(notice: ErrorNotice): boolean {
+/** 清掉旧版持久保存的发送回执与断连提示。 */
+function isLegacySessionNotice(notice: ErrorNotice): boolean {
+  if (notice.id.startsWith("send:") && notice.operation.startsWith("send:"))
+    return true;
   if (!notice.id.startsWith("api:") && !notice.id.startsWith("history:")) {
     return false;
   }
@@ -103,8 +105,7 @@ let notices: ErrorNotice[] = Array.isArray(stored)
           typeof item.createdAt === "number",
       )
       .filter(
-        (item) =>
-          item.lifetime !== "session" && !isTransientNetworkNotice(item),
+        (item) => item.lifetime !== "session" && !isLegacySessionNotice(item),
       )
       .map((item) => ({
         ...storedNotice(item),

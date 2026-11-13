@@ -72,8 +72,6 @@ type recoveryCoordinator struct {
 type currentProjection struct {
 	// chat 是一 Chat 一行的当前查询状态。
 	chat models.Chat
-	// result 是事务外准备的原成果引用，不承载正文。
-	result *models.WorkResultReceipt
 }
 
 // newRecoveryCoordinator 创建仅在 Chat 模块启动阶段运行的恢复器。
@@ -113,10 +111,22 @@ func (c *recoveryCoordinator) reconcileAll(ctx context.Context) error {
 	if err != nil {
 		return status_error.ChatLogError
 	}
+	if c.queryIndexes.reading != nil {
+		indexedIDs, err := c.queryIndexes.chatController.ListProjectionIDs(ctx)
+		if err != nil {
+			return err
+		}
+		chatIDs = append(chatIDs, indexedIDs...)
+		slices.Sort(chatIDs)
+		chatIDs = slices.Compact(chatIDs)
+	}
 	health := RecoveryHealth{Chats: make([]RecoveryDiagnostic, 0, len(chatIDs))}
 	for _, chatID := range chatIDs {
 		diagnostic, recoveryErr := c.reconcileChat(ctx, chatID)
 		if recoveryErr != nil {
+			if infrastructureReadingError(recoveryErr) {
+				return recoveryErr
+			}
 			diagnostic.ChatID = chatID
 			diagnostic.State = constants.ChatRecoveryStateIsolated
 			diagnostic.Issues = appendIssue(
@@ -160,20 +170,32 @@ func (c *recoveryCoordinator) reconcileChat(
 	}
 	if missing {
 		diagnostic.Issues = appendIssue(diagnostic.Issues, constants.ChatRecoveryIssueChatProjectionMissing)
-		return c.rebuildProjection(ctx, chatID, diagnostic)
+		return c.rebuildProjection(ctx, chatID, diagnostic, true, false)
 	}
 	diagnostic.IndexedSequence = indexed.LatestSequence
 	if indexed.LatestSequence > latest {
 		diagnostic.Issues = appendIssue(diagnostic.Issues, constants.ChatRecoveryIssueChatProjectionAhead)
-		return c.rebuildProjection(ctx, chatID, diagnostic)
+		if c.queryIndexes.reading != nil {
+			return diagnostic, status_error.ChatLogCorrupted
+		}
+		return c.rebuildProjection(ctx, chatID, diagnostic, true, false)
 	}
 	if valid, validateErr := c.staticProjectionMatches(chatID, indexed); validateErr != nil {
 		return diagnostic, validateErr
 	} else if !valid {
 		diagnostic.Issues = appendIssue(diagnostic.Issues, constants.ChatRecoveryIssueChatProjectionContentMismatch)
-		return c.rebuildProjection(ctx, chatID, diagnostic)
+		return c.rebuildProjection(ctx, chatID, diagnostic, true, false)
 	}
 
+	if c.queryIndexes.reading != nil {
+		exists, err := c.queryIndexes.reading.HasCursor(ctx, constants.LocalReaderID, chatID)
+		if err != nil {
+			return diagnostic, err
+		}
+		if !exists {
+			return c.rebuildProjection(ctx, chatID, diagnostic, true, false)
+		}
+	}
 	projection := currentProjection{chat: indexed}
 	tail, err := c.logStore.ReadAfter(chatID, indexed.LatestSequence, 0)
 	if err != nil {
@@ -183,24 +205,18 @@ func (c *recoveryCoordinator) reconcileChat(
 		diagnostic.Issues = appendIssue(diagnostic.Issues, constants.ChatRecoveryIssueChatProjectionLagging)
 		diagnostic.State = constants.ChatRecoveryStateRepaired
 		if err := applyProjectionTail(&projection, tail); err != nil {
-			return c.rebuildProjection(ctx, chatID, diagnostic)
+			return c.rebuildProjection(ctx, chatID, diagnostic, true, false)
 		}
 	}
 	if projection.chat.ActiveExecutionID != "" {
-		canceled, appendErr := c.logStore.Append(chatID, []eventlog.AppendInput{{
-			Type:        constants.ChatEventTypeExecutionCanceled,
-			ExecutionID: projection.chat.ActiveExecutionID,
-			Data: marshalData(eventlog.ExecutionFinishedData{
-				Status:   constants.ExecutionStatusCanceled,
-				ExitCode: -1,
-			}),
-		}})
+		canceled, appendErr := c.appendInterruptedRecovery(chatID, projection.chat.ActiveExecutionID, projection.chat.PendingElicitations)
 		if appendErr != nil {
 			return diagnostic, appendErr
 		}
 		if err := applyProjectionTail(&projection, canceled); err != nil {
 			return diagnostic, err
 		}
+		tail = append(tail, canceled...)
 		diagnostic.LogLatestSequence = canceled[len(canceled)-1].Sequence
 		diagnostic.Issues = appendIssue(
 			diagnostic.Issues,
@@ -209,7 +225,8 @@ func (c *recoveryCoordinator) reconcileChat(
 		diagnostic.State = constants.ChatRecoveryStateRepaired
 	}
 	if len(tail) > 0 || projection.chat.LatestSequence != indexed.LatestSequence {
-		if err := c.queryIndexes.replaceCurrentProjection(ctx, projection); err != nil {
+		fields := chatProjectionFields(projection.chat)
+		if err := c.queryIndexes.advanceChatReading(ctx, chatID, indexed.LatestSequence, fields, tail); err != nil {
 			return diagnostic, err
 		}
 	}
@@ -221,8 +238,18 @@ func (c *recoveryCoordinator) rebuildProjection(
 	ctx context.Context,
 	chatID string,
 	diagnostic RecoveryDiagnostic,
+	interrupt, baseline bool,
 ) (RecoveryDiagnostic, error) {
-	records, err := c.logStore.ReadAll(chatID)
+	if baseline {
+		indexed, missing, err := c.queryIndexes.inspectChat(ctx, chatID)
+		if err != nil {
+			return diagnostic, err
+		}
+		if !missing && indexed.LatestSequence > diagnostic.LogLatestSequence {
+			return diagnostic, status_error.ChatLogCorrupted
+		}
+	}
+	records, err := c.logStore.ReadAfter(chatID, 0, int(diagnostic.LogLatestSequence))
 	if err != nil {
 		return diagnostic, err
 	}
@@ -230,15 +257,8 @@ func (c *recoveryCoordinator) rebuildProjection(
 	if err != nil {
 		return diagnostic, err
 	}
-	if state.chat.ActiveExecutionID != "" {
-		canceled, appendErr := c.logStore.Append(chatID, []eventlog.AppendInput{{
-			Type:        constants.ChatEventTypeExecutionCanceled,
-			ExecutionID: state.chat.ActiveExecutionID,
-			Data: marshalData(eventlog.ExecutionFinishedData{
-				Status:   constants.ExecutionStatusCanceled,
-				ExitCode: -1,
-			}),
-		}})
+	if interrupt && state.chat.ActiveExecutionID != "" {
+		canceled, appendErr := c.appendInterruptedRecovery(chatID, state.chat.ActiveExecutionID, state.chat.PendingElicitations)
 		if appendErr != nil {
 			return diagnostic, appendErr
 		}
@@ -255,7 +275,7 @@ func (c *recoveryCoordinator) rebuildProjection(
 	projection := currentProjection{
 		chat: state.chat,
 	}
-	if err := c.queryIndexes.replaceCurrentProjection(ctx, projection); err != nil {
+	if err := c.queryIndexes.replaceReadingProjection(ctx, projection, baseline); err != nil {
 		return diagnostic, err
 	}
 	diagnostic.LogLatestSequence = state.chat.LatestSequence
@@ -408,21 +428,39 @@ func (p *queryIndexStore) replaceCurrentProjection(
 	ctx context.Context,
 	projection currentProjection,
 ) error {
-	if projection.result == nil && projection.chat.LastEndedExecutionID != "" {
-		var err error
-		projection.result, err = p.prepareResult(projection.chat.ID, projection.chat.LastEndedExecutionID)
+	return p.replaceReadingProjection(ctx, projection, false)
+}
+
+// replaceReadingProjection 重建索引并保留所有原阅读意图。
+func (p *queryIndexStore) replaceReadingProjection(ctx context.Context, projection currentProjection, baseline bool) error {
+	var changes readingChanges
+	if p.reading != nil {
+		records, err := p.logStore.ReadAfter(projection.chat.ID, 0, int(projection.chat.LatestSequence))
+		if err != nil {
+			return err
+		}
+		changes, err = p.prepareReading(ctx, projection.chat.ID, records, projection.chat.LatestSequence)
 		if err != nil {
 			return err
 		}
 	}
 	return p.transactionController.Transaction(ctx, func(transactionContext context.Context) error {
+		initial := changes.inheritedThrough
+		if baseline && len(changes.rows) > 0 {
+			initial = changes.rows[len(changes.rows)-1].OrderSequence
+		}
+		latest, err := p.projectReadableMessages(transactionContext, projection.chat.ID, changes, true, &initial)
+		if err != nil {
+			return err
+		}
+		projection.chat.LatestReadableSequence = latest
 		if err := p.chatController.Delete(transactionContext, projection.chat.ID); err != nil {
 			return err
 		}
 		if err := p.chatController.Create(transactionContext, projection.chat); err != nil {
 			return err
 		}
-		return p.publishResult(transactionContext, projection.result)
+		return nil
 	})
 }
 

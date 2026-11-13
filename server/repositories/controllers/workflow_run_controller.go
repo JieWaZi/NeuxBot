@@ -348,10 +348,7 @@ func (c *workflowRunController) LoadRunState(ctx context.Context, id string) (Wo
 	return value, nil
 }
 func (c *workflowRunController) CommitRunState(ctx context.Context, value WorkflowRunState, expected, now int64) error {
-	publish, changeErr := c.workflowNoticeChanges(ctx, value)
-	if changeErr != nil {
-		return changeErr
-	}
+	publish := c.workflowAttentionChanges(ctx, value)
 	db := controllerDB(ctx, c.db)
 	run := value.Run
 	run.Version = expected + 1
@@ -421,11 +418,6 @@ func (c *workflowRunController) CommitRunState(ctx context.Context, value Workfl
 	terminal := run.Status == constants.WorkflowRunStatusSucceeded || run.Status == constants.WorkflowRunStatusFailed || run.Status == constants.WorkflowRunStatusCancelled
 	if terminal {
 		if err := c.pruneRunHistory(ctx, run.DefinitionID, now); err != nil {
-			return err
-		}
-	}
-	if run.ParentRunID == "" && run.CompletedAt != nil && terminal && (run.Result != nil || run.Failure != nil) {
-		if err := NewWorkResultController(c.db).Publish(ctx, models.WorkResultReceipt{OwnerKind: constants.WorkResultOwnerKindWorkflowRun, OwnerID: run.ID, LatestVersion: 1, AvailableAt: *run.CompletedAt, Reference: models.WorkResultReference{WorkflowRunID: run.ID}}); err != nil {
 			return err
 		}
 	}

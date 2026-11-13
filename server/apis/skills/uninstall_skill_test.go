@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -255,9 +256,38 @@ func TestUninstallSkillPreservesOtherPartnersAndAllVersions(t *testing.T) {
 		if err != nil || len(detail.InstalledPartners) != 6 || detail.AffectedWakerCount != 6 || detail.InstalledPartners[4].ID != "partner-5" {
 			t.Fatalf("detail must include fifth partner and disabled installations: %+v, error = %v", detail, err)
 		}
+		encoded, err := json.Marshal(detail.InstalledPartners)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var partners []map[string]any
+		if err := json.Unmarshal(encoded, &partners); err != nil {
+			t.Fatal(err)
+		}
+		if partners[4]["enabled"] != true || partners[5]["enabled"] != false {
+			t.Fatalf("detail must expose both enabled and disabled relationships: %s", encoded)
+		}
+	}
+	toggle := SetWakerSkillEnabled{WakerID: "partner-6", SkillID: skill.ID, Body: SetSkillEnabledRequest{Enabled: true}}
+	if _, err := toggle.Output(ctx); err != nil {
+		t.Fatalf("enabling an installed partner failed: %v", err)
+	}
+	if detail, err := getSkill(ctx, &GetWakerSkill{WakerID: toggle.WakerID, SkillID: skill.ID}); err != nil || !detail.Enabled {
+		t.Fatalf("enabled installation did not persist: %+v %v", detail, err)
+	}
+	toggle.Body.Enabled = false
+	if _, err := toggle.Output(ctx); err != nil {
+		t.Fatalf("disabling an installed partner failed: %v", err)
 	}
 	if _, err := (&UninstallSkill{WakerID: "partner-5", SkillID: skill.ID}).Output(ctx); err != nil {
 		t.Fatal(err)
+	}
+	toggle.WakerID = "partner-5"
+	toggle.Body.Enabled = true
+	_, err = toggle.Output(ctx)
+	var codedError interface{ Code() int64 }
+	if !errors.As(err, &codedError) || codedError.Code() != status_error.SkillNotFound.Code() {
+		t.Fatalf("toggle of removed partner returned %v, want SkillNotFound", err)
 	}
 	afterPackage, err := global.SkillControllerManager.GetPackage(ctx, skill.ID)
 	if err != nil || !reflect.DeepEqual(afterPackage, beforePackage) {

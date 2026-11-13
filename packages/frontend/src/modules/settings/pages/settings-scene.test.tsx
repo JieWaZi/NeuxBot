@@ -5,6 +5,8 @@ import {
   waitFor,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { NotificationPreferences } from "@neuxbot/platform-contracts/services";
 import { useState, type ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
@@ -16,8 +18,31 @@ import { useNativeOverlayVisible } from "@/shared/ui/native-overlay";
 import "@/shared/i18n";
 
 function render(content: ReactNode) {
-  return renderView(<MemoryRouter>{content}</MemoryRouter>);
+  const client = new QueryClient();
+  return renderView(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>{content}</MemoryRouter>
+    </QueryClientProvider>,
+  );
 }
+
+const host = vi.hoisted(() => ({
+  get_notification_preferences: vi.fn(),
+  set_notification_preferences: vi.fn(),
+  send_test_notification: vi.fn(),
+  open_notification_settings: vi.fn(),
+}));
+
+vi.mock(import("@/shared/platform/provider"), async (importOriginal) => {
+  const original = await importOriginal();
+  return {
+    ...original,
+    platform: () => {
+      const platform = original.platform();
+      return { ...platform, host: { ...platform.host, ...host } };
+    },
+  };
+});
 
 vi.mock("@/shared/theme", () => ({
   useTheme: () => ({ mode: "system", setMode: vi.fn() }),
@@ -51,6 +76,60 @@ vi.mock("../components/integrations-section", () => ({
 }));
 
 describe("SettingsScene", () => {
+  it("从独立通知栏更改提醒范围和本机设置，并可发送测试", async () => {
+    let preferences: NotificationPreferences = {
+      mode: "all",
+      enabled: true,
+      preview: false,
+    };
+    host.get_notification_preferences.mockImplementation(
+      async () => preferences,
+    );
+    host.set_notification_preferences.mockImplementation(async (next) => {
+      preferences = next;
+      return preferences;
+    });
+    host.send_test_notification.mockRejectedValueOnce(new Error("denied"));
+    const user = userEvent.setup();
+    function Harness() {
+      const [section, setSection] = useState<SettingsSection>("general");
+      return (
+        <>
+          <SettingsContextSidebar
+            activeSection={section}
+            onSelect={setSection}
+          />
+          <SettingsScene section={section} onClose={() => undefined} />
+        </>
+      );
+    }
+    render(<Harness />);
+    expect(screen.queryByRole("switch", { name: "显示消息预览" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "通知" }));
+    const needsMe = await screen.findByRole("radio", { name: "需要我时" });
+    await user.click(needsMe);
+    await waitFor(() => expect(needsMe).toBeChecked());
+    const preview = screen.getByRole("switch", { name: "显示消息预览" });
+    await user.click(preview);
+    await waitFor(() => expect(preview).toBeChecked());
+    const desktop = screen.getByRole("switch", { name: "桌面通知" });
+    await user.click(desktop);
+    await waitFor(() => expect(desktop).not.toBeChecked());
+    expect(preview).toBeDisabled();
+    expect(preferences).toEqual({
+      mode: "needs-me",
+      enabled: false,
+      preview: true,
+    });
+    await user.click(screen.getByRole("button", { name: "打开系统设置" }));
+    expect(host.open_notification_settings).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole("button", { name: "发送测试" }));
+    expect(host.send_test_notification).toHaveBeenCalledOnce();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "未能发送测试通知",
+    );
+  });
+
   it("集成是唯一入口并显示应用装配的 IM 内容", async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();

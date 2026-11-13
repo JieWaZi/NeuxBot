@@ -418,6 +418,9 @@ describe("useChatRuntime queue", () => {
       scope: "chat-unknown",
       action: "check",
     });
+    expect(
+      JSON.parse(localStorage.getItem("ally:error-notices") ?? "[]"),
+    ).not.toContainEqual(expect.objectContaining({ id: notice?.id }));
     await act(async () => {
       if (!notice) throw new Error("发送错误提示缺失");
       await runErrorNoticeAction(notice.id);
@@ -440,6 +443,88 @@ describe("useChatRuntime queue", () => {
     expect(result.current.notices.map((item) => item.id)).toEqual([
       "other-query",
     ]);
+  });
+
+  it("发送中卸载后收到网络错误，不污染重新打开的聊天", async () => {
+    let reject!: (error: Error) => void;
+    const send = vi.fn(
+      () =>
+        new Promise<MessageResult>((_, fail) => {
+          reject = fail;
+        }),
+    );
+    const options = {
+      ...runtimeOptions("chat-reloaded"),
+      activeExecutionId: undefined,
+      send,
+    };
+    const notices = renderHook(useErrorNotices);
+    const original = renderHook(() => useChatRuntime(options), { wrapper });
+    let pending: Promise<void> | void;
+    act(() => {
+      pending = runtimeAdapter.current?.onNew?.(queuedMessage);
+    });
+    original.unmount();
+    const reopened = renderHook(
+      () =>
+        useChatRuntime({
+          ...options,
+          messages: [
+            {
+              id: "accepted-answer",
+              role: "assistant",
+              status: "running",
+              content: "已从 Core 恢复",
+              executionId: "accepted-answer",
+            },
+          ],
+          activeExecutionId: "accepted-answer",
+        }),
+      { wrapper },
+    );
+    await act(async () => {
+      reject(new ApiError("Failed to fetch", "NETWORK"));
+      await pending;
+    });
+    expect(notices.result.current).toEqual([]);
+    expect(reopened.result.current.isRunning).toBe(true);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("原提交随后出现在持久历史时清除本次回执提示", async () => {
+    const queue = "chat-late-confirmation";
+    const options = {
+      ...runtimeOptions(queue),
+      activeExecutionId: undefined,
+      send: vi
+        .fn()
+        .mockRejectedValue(new ApiError("Failed to fetch", "NETWORK")),
+    };
+    const { result } = renderHook(
+      () => ({ chat: useChatRuntime(options), notices: useErrorNotices() }),
+      { wrapper },
+    );
+    await act(async () => {
+      await runtimeAdapter.current?.onNew?.(queuedMessage);
+    });
+    expect(result.current.chat.sendFailure.kind).toBe("unknown");
+    expect(result.current.notices).toHaveLength(1);
+    act(() =>
+      subscriptionOptions.current?.onEvent({
+        sequence: 2,
+        type: "message.user_created",
+        message: {
+          id: "confirmed-user",
+          submissionId: `input:${queue}`,
+          role: "user",
+          content: "排队消息",
+          revision: 2,
+        },
+      }),
+    );
+    expect(result.current.chat.sendFailure.kind).toBe("none");
+    expect(result.current.notices).toEqual([]);
+    expect(options.send).toHaveBeenCalledTimes(1);
   });
 
   it("流恢复成功只清理连接错误，其他操作错误继续保留", () => {
@@ -2223,6 +2308,82 @@ describe("useChatRuntime queue", () => {
     );
     act(() => subscriptionOptions.current?.onUnavailable?.());
     await waitFor(() => expect(result.current.pendingElicitations).toEqual([]));
+  });
+
+  it("已提交的回答在重连时压过较旧详情中的待答状态", () => {
+    const request = {
+      elicitationId: "question-one",
+      mode: "form" as const,
+      message: "选择交付方式",
+    };
+    const options = runtimeOptions("chat-1");
+    options.initialPendingElicitations = [request];
+    const { result } = renderHook(() => useChatRuntime(options), { wrapper });
+    expect(result.current.pendingElicitations).toHaveLength(1);
+
+    act(() => {
+      subscriptionOptions.current?.onEvent({
+        sequence: 3,
+        type: "elicitation.resolved",
+        elicitationResolution: {
+          elicitationId: request.elicitationId,
+          result: "accepted",
+        },
+        message: {
+          id: request.elicitationId,
+          role: "assistant",
+          revision: 3,
+          question: {
+            ...request,
+            result: "accepted",
+            answers: { delivery: "file" },
+          },
+        },
+      });
+    });
+    expect(result.current.pendingElicitations).toEqual([]);
+    act(() => subscriptionOptions.current?.onState?.("reconnecting"));
+    expect(result.current.pendingElicitations).toEqual([]);
+    expect(result.current.messages[0]?.question?.answers).toEqual({
+      delivery: "file",
+    });
+  });
+
+  it("历史读取覆盖新提问事件时，旧详情仍能恢复待答卡", () => {
+    const options = runtimeOptions("chat-1");
+    options.initialInteractionSequence = 4;
+    options.initialPendingElicitations = [];
+    options.latestSequence = 5;
+    options.messages = [
+      {
+        id: "question-new",
+        role: "assistant",
+        createdSequence: 5,
+        revision: 5,
+        question: {
+          elicitationId: "question-new",
+          mode: "form",
+          message: "选择交付方式",
+        },
+      },
+    ];
+    const { result, rerender } = renderHook(() => useChatRuntime(options), {
+      wrapper,
+    });
+    expect(subscribeChatMock).toHaveBeenCalledWith(
+      "chat-1",
+      expect.objectContaining({ after: 5 }),
+    );
+    expect(result.current.pendingElicitations).toEqual([
+      expect.objectContaining({
+        elicitationId: "question-new",
+        requestedSequence: 5,
+      }),
+    ]);
+
+    options.initialInteractionSequence = 6;
+    rerender();
+    expect(result.current.pendingElicitations).toEqual([]);
   });
 
   it("已有可见消息时报告 hasVisibleMessages", () => {

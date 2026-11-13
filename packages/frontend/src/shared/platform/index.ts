@@ -76,37 +76,6 @@ export function isDesktopRuntime(): boolean {
   return platform().kind === "desktop";
 }
 
-type DesktopNotificationInput = {
-  id: string;
-  title: string;
-  body: string;
-  onClick?: () => void;
-};
-
-/** 通知点击通过事件标识返回当前界面，不跨进程传递回调函数。 */
-export async function showDesktopNotification({
-  id,
-  title,
-  body,
-  onClick,
-}: DesktopNotificationInput): Promise<boolean> {
-  if (!isDesktopRuntime()) return false;
-  const bridge = requirePlatformService("host");
-  const stop = bridge.onNotificationAction((event) => {
-    if (event.id !== id) return;
-    stop();
-    if (event.action === "click") onClick?.();
-  });
-  try {
-    const shown = await bridge.show_notification({ id, title, body });
-    if (!shown) stop();
-    return shown;
-  } catch {
-    stop();
-    return false;
-  }
-}
-
 export async function getCoreConnection(): Promise<CoreConnection> {
   return platform().getConnection();
 }

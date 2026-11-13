@@ -11,6 +11,7 @@ import type {
   GithubComJieWaZiNeuxBotServerInternalChatMessageviewToolApprovalResult as ToolApprovalResult,
   GithubComJieWaZiNeuxBotServerInternalChatMessageviewToolFileChangeSummary as ToolFileChangeSummary,
   GithubComJieWaZiNeuxBotServerInternalChatMessageviewToolSafeSummary as ToolSafeSummary,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingElicitation as PendingElicitation,
 } from "@/shared/api/generated/types.gen";
 import type { ChatEvent } from "@/shared/api/events";
 import type { ChatCodeReference } from "./chat-queue-store";
@@ -64,6 +65,14 @@ export type ChatToolArgs = {
 
 export type ChatRunMetrics = MessageRunMetrics;
 export type ChatFileChange = ToolFileChangeSummary & { path: string };
+
+export type ChatPendingElicitation = Omit<
+  PendingElicitation,
+  "requestedSchema"
+> & {
+  // 动态表单在渲染时解析；旧详情契约中的 RawMessage 被生成器推断为字节数组。
+  requestedSchema?: unknown;
+};
 
 export type AllyChatMessage = ChatMessage & {
   optimistic?: boolean;
@@ -301,6 +310,14 @@ export function mergeAuthoritativeMessages(
 
   for (const message of currentByID.values()) {
     merged.push(message);
+  }
+  // 仅在存在提问记录时按创建游标定位，晚到的回答不会把旧提问移到当前回复之后。
+  if (merged.some((message) => message.question && message.createdSequence)) {
+    merged.sort(
+      (left, right) =>
+        (left.createdSequence ?? Number.MAX_SAFE_INTEGER) -
+        (right.createdSequence ?? Number.MAX_SAFE_INTEGER),
+    );
   }
   return merged;
 }

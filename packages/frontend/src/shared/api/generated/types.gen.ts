@@ -641,6 +641,10 @@ export type GithubComJieWaZiNeuxBotServerApisChannelsReviewChannelTaskRequest = 
      */
     approved?: boolean;
     /**
+     * ExpectedFence 是用户确认的原验收代次。
+     */
+    expectedFence: number;
+    /**
      * 驳回反馈
      */
     feedback?: string;
@@ -663,11 +667,48 @@ export type GithubComJieWaZiNeuxBotServerApisChannelsUpdateChannelThreadMemberCo
     members: Array<GithubComJieWaZiNeuxBotServerApisChannelsChannelMemberInput>;
 };
 
+export type GithubComJieWaZiNeuxBotServerApisChatReadingChatReadingResponse = GithubComJieWaZiNeuxBotServerRepositoriesModelsChatReadingState & GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionCompleteness & {
+    [key: string]: unknown;
+};
+
+/**
+ * MarkChatReadRequest 保存普通或显式阅读意图。
+ */
+export type GithubComJieWaZiNeuxBotServerApisChatReadingMarkChatReadRequest = {
+    intent: GithubComJieWaZiNeuxBotServerConstantsReadingIntent & unknown;
+    /**
+     * ObservedUnreadGeneration 是客户端观察到的手动未读代次。
+     */
+    observedUnreadGeneration?: number;
+    /**
+     * ThroughMessageID 是用户实际看到的公开消息。
+     */
+    throughMessageID: string;
+};
+
+/**
+ * MarkChatUnreadRequest 把阅读位置移动到指定公开消息之前。
+ */
+export type GithubComJieWaZiNeuxBotServerApisChatReadingMarkChatUnreadRequest = {
+    /**
+     * FromMessageID 是用户希望标为未读的首条公开消息。
+     */
+    fromMessageID: string;
+    /**
+     * ObservedUnreadGeneration 是客户端观察到的手动未读代次。
+     */
+    observedUnreadGeneration?: number;
+};
+
 export type GithubComJieWaZiNeuxBotServerApisChatsCreateChatRequest = GithubComJieWaZiNeuxBotServerApisChatsMessageRequest & {
     /**
      * 客户端首次发送标识
      */
     clientRequestId: string;
+    /**
+     * 档案优化首发
+     */
+    optimizeProfile?: boolean;
     /**
      * 项目标识
      */
@@ -3711,55 +3752,6 @@ export type GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter
     };
 };
 
-/**
- * 通知分页响应
- */
-export type GithubComJieWaZiNeuxBotServerApisNotificationsListNotificationsResponse = {
-    /**
-     * 生命周期
-     */
-    epoch?: string;
-    /**
-     * 存在续页
-     */
-    hasMore?: boolean;
-    /**
-     * 下页游标
-     */
-    nextCursor?: string;
-    /**
-     * 页码
-     */
-    pageNum?: number;
-    /**
-     * 每页数量
-     */
-    pageSize?: number;
-    /**
-     * 通知条目
-     */
-    resources?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationItem>;
-    /**
-     * 观察水位
-     */
-    revision?: number;
-    /**
-     * 总条目数
-     */
-    totalSize?: number;
-};
-
-/**
- * 通知阅读请求
- */
-export type GithubComJieWaZiNeuxBotServerApisNotificationsViewNotificationRequest = {
-    target?: GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationTarget & unknown;
-    /**
-     * 观察版本
-     */
-    version?: number;
-};
-
 export type GithubComJieWaZiNeuxBotServerApisPluginsAuthorizationScopeRequest = GithubComJieWaZiNeuxBotServerApisPluginsPluginAccountRequest & {
     /**
      * 补充权限
@@ -4582,6 +4574,17 @@ export type GithubComJieWaZiNeuxBotServerApisRolePresetsRolePresetWriteRequest =
     roleName: string;
 };
 
+export type GithubComJieWaZiNeuxBotServerApisRunViewingRunViewingResponse = GithubComJieWaZiNeuxBotServerRepositoriesModelsRunViewingState & GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionCompleteness & {
+    /**
+     * AutomaticTaskID 定位失败机会的自动任务配置。
+     */
+    automaticTaskId?: string;
+    /**
+     * ErrorCode 是未接纳自动机会的稳定错误码。
+     */
+    errorCode?: string;
+};
+
 /**
  * 原生登录请求
  */
@@ -5111,6 +5114,10 @@ export type GithubComJieWaZiNeuxBotServerApisSkillsSkillPartnerResponse = {
      */
     avatar?: string;
     /**
+     * 启用状态
+     */
+    enabled?: boolean;
+    /**
      * 伙伴标识
      */
     id?: string;
@@ -5368,17 +5375,18 @@ export type GithubComJieWaZiNeuxBotServerApisWakersCreateWakerRequest = {
      */
     avatar?: string;
     /**
-     * 简介
+     * 概要
      */
     bio?: string;
+    defaultModel?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerDefaultModel & unknown;
     /**
      * 名称
      */
     name: string;
     /**
-     * 预设标识
+     * 请求标识
      */
-    rolePresetId: string;
+    requestId: string;
 };
 
 /**
@@ -5403,6 +5411,26 @@ export type GithubComJieWaZiNeuxBotServerApisWakersDeleteWakerRequest = {
      * 确认名称
      */
     confirmationName: string;
+};
+
+/**
+ * 复制伙伴请求
+ */
+export type GithubComJieWaZiNeuxBotServerApisWakersDuplicateWakerRequest = {
+    /**
+     * 请求标识
+     */
+    requestId: string;
+};
+
+/**
+ * 复制伙伴响应
+ */
+export type GithubComJieWaZiNeuxBotServerApisWakersDuplicateWakerResponse = {
+    /**
+     * 伙伴标识
+     */
+    wakerId?: string;
 };
 
 /**
@@ -5467,6 +5495,10 @@ export type GithubComJieWaZiNeuxBotServerApisWakersUpdateWakerDocumentRequest = 
      * 文件内容
      */
     content?: string;
+    /**
+     * 当前正文版本
+     */
+    expectedRevision?: string;
 };
 
 /**
@@ -5481,6 +5513,11 @@ export type GithubComJieWaZiNeuxBotServerApisWakersUpdateWakerRequest = {
      * 简介
      */
     bio?: string;
+    defaultModel?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerDefaultModel & unknown;
+    /**
+     * 当前概览版本
+     */
+    expectedOverviewRevision?: string;
     manual?: GithubComJieWaZiNeuxBotServerInternalProfileManualInput & unknown;
     /**
      * 名称
@@ -5489,7 +5526,25 @@ export type GithubComJieWaZiNeuxBotServerApisWakersUpdateWakerRequest = {
     /**
      * 角色名称
      */
-    roleName: string;
+    roleName?: string;
+};
+
+/**
+ * 伙伴建档接纳结果
+ */
+export type GithubComJieWaZiNeuxBotServerApisWakersWakerOnboardingResponse = {
+    /**
+     * 已接纳对话
+     */
+    chatId?: string;
+    /**
+     * 启动错误
+     */
+    startError?: string;
+    /**
+     * 伙伴标识
+     */
+    wakerId?: string;
 };
 
 /**
@@ -5556,14 +5611,13 @@ export type GithubComJieWaZiNeuxBotServerApisWebsessionSessionResponse = {
 };
 
 /**
- * ViewWorkResultRequest 固定客户端本次真正渲染的版本与引用。
+ * MarkWorkBoardViewedRequest 保存最多 128 个固定目标。
  */
-export type GithubComJieWaZiNeuxBotServerApisWorkBoardViewWorkResultRequest = {
-    reference: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReference & unknown;
+export type GithubComJieWaZiNeuxBotServerApisWorkBoardMarkWorkBoardViewedRequest = {
     /**
-     * Version 是本次渲染真正观察到的版本，禁止使用请求时最新版本代替。
+     * Targets 可在传输中断后原样重试。
      */
-    version?: number;
+    targets: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkViewTarget>;
 };
 
 /**
@@ -5577,13 +5631,69 @@ export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardExecutorsResponse
 };
 
 /**
- * WorkBoardPage 返回当前筛选的准确总数及游标页。
+ * WorkBoardLiveTarget 返回有效原目标的安全导航信息。
  */
-export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardPage = {
+export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardLiveTarget = {
+    /**
+     * AutomaticTaskID 是独立自动机会的任务标识。
+     */
+    automaticTaskId?: string;
+    /**
+     * ChannelID 是原团队标识。
+     */
+    channelId?: string;
+    /**
+     * ChatID 是导航的实际会话标识。
+     */
+    chatId?: string;
+    /**
+     * DefinitionID 是原工作流定义标识。
+     */
+    definitionId?: string;
+    /**
+     * InstanceID 是原工作流步骤实例标识。
+     */
+    instanceId?: string;
+    /**
+     * Preview 是可选的公开短文本。
+     */
+    preview?: string;
+    /**
+     * RunID 是实际工作流运行标识。
+     */
+    runId?: string;
+    /**
+     * TaskID 是原团队任务标识。
+     */
+    taskId?: string;
+    /**
+     * ThreadID 是原团队对话标识。
+     */
+    threadId?: string;
+    /**
+     * Title 是公开工作标题。
+     */
+    title?: string;
+    /**
+     * Valid 表示原目标仍可打开。
+     */
+    valid?: boolean;
+    /**
+     * WakerID 是实际伙伴标识。
+     */
+    wakerId?: string;
+    work?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkRef & unknown;
+};
+
+export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardPage = GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionMetrics & GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionCompleteness & {
     /**
      * Attention 是当前需要操作页，按等待最久优先。
      */
     attention?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention>;
+    /**
+     * AwaitingView 是当前待查看页的原工作。
+     */
+    awaitingView?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardEntry>;
     /**
      * HasMore 表示查询窗口之外仍存在候选。
      */
@@ -5602,34 +5712,19 @@ export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardPage = {
     totalSize?: number;
 };
 
-/**
- * WorkBoardSummary 不把不同统计单位相加为任务总数。
- */
-export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardSummary = {
+export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardSummary = GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionMetrics & GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionCompleteness & {
     /**
-     * 需操作工作数
+     * ActionPreview 是最多五个原有效请求。
      */
-    actionWorkCount?: number;
+    actionPreview?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention>;
     /**
-     * Attention 是最多五个最久等待的有效请求。
+     * AwaitingViewPreview 是最多五个待查看原工作。
      */
-    attention?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention>;
-    /**
-     * AttentionCount 是全部有效请求数量。
-     */
-    attentionCount?: number;
+    awaitingViewPreview?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardEntry>;
     /**
      * 已结束工作数
      */
     endedCount?: number;
-    /**
-     * ResultCount 是存在最新未读成果的容器数。
-     */
-    resultCount?: number;
-    /**
-     * Results 是最多五个最新未读结果的原容器引用。
-     */
-    results?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardEntry>;
     /**
      * 进行中工作数
      */
@@ -5641,10 +5736,21 @@ export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardSummary = {
 };
 
 /**
- * WorkResultResponse 容器没有新结果时允许空引用。
+ * WorkBoardViewTargets 返回本次操作固定的有界目标。
  */
-export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkResultResponse = {
-    result?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReceipt & unknown;
+export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardViewTargets = {
+    /**
+     * Epoch 是当前权威 Core 的生命周期标识。
+     */
+    epoch?: string;
+    /**
+     * TargetCount 是本次固定目标数量。
+     */
+    targetCount?: number;
+    /**
+     * Targets 保存准确的原工作及阅读边界。
+     */
+    targets?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkViewTarget>;
 };
 
 /**
@@ -6457,6 +6563,13 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowValidationResponse
      * 校验通过
      */
     valid?: boolean;
+};
+
+export type GithubComJieWaZiNeuxBotServerApisWorkspaceAttentionExecutorAttentionResponse = GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionCompleteness & {
+    /**
+     * Resources 是指定执行对象的摘要。
+     */
+    resources?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsExecutorAttentionSummary>;
 };
 
 /**
@@ -7295,18 +7408,6 @@ export type GithubComJieWaZiNeuxBotServerConstantsMessageToolStatus = 'completed
 
 /**
  * >
- * * `` - NotificationKindUnspecified 表示未指定通知类型。
- * * `approval` - NotificationKindApproval 表示原工具审批或工作流操作许可。
- * * `automatic_failure` - NotificationKindAutomaticFailure 表示没有原成果覆盖的当前自动失败。
- * * `input` - NotificationKindInput 表示原结构化输入或工作流人工请求。
- * * `result` - NotificationKindResult 表示原工作容器最新未确认成果。
- * * `review` - NotificationKindReview 表示当前围栏的团队人工验收。
- *
- */
-export type GithubComJieWaZiNeuxBotServerConstantsNotificationKind = '' | 'approval' | 'automatic_failure' | 'input' | 'result' | 'review';
-
-/**
- * >
  * * `` - PermissionLevelUnspecified 表示尚未选择或未写入的空权限等级。
  * * `auto` - PermissionLevelAuto 表示 Runtime 可以自动执行风险可接受的操作。
  * * `default` - PermissionLevelDefault 表示敏感操作需要用户逐次确认。
@@ -7330,13 +7431,22 @@ export type GithubComJieWaZiNeuxBotServerConstantsPluginAuthorizationState = '' 
 /**
  * >
  * * `` - ProfileDocumentKindUnspecified 表示数据库或框架产生的空文档种类。
+ * * `agents` - ProfileDocumentKindAgents 表示伙伴唯一生效的长期指令。
  * * `identity` - ProfileDocumentKindIdentity 表示身份与擅长领域文档。
  * * `memory` - ProfileDocumentKindMemory 表示伙伴独立拥有的记忆文档。
  * * `persona` - ProfileDocumentKindPersona 表示工作风格文档。
  * * `playbook` - ProfileDocumentKindPlaybook 表示工作方式文档。
  *
  */
-export type GithubComJieWaZiNeuxBotServerConstantsProfileDocumentKind = '' | 'identity' | 'memory' | 'persona' | 'playbook';
+export type GithubComJieWaZiNeuxBotServerConstantsProfileDocumentKind = '' | 'agents' | 'identity' | 'memory' | 'persona' | 'playbook';
+
+/**
+ * >
+ * * `automatic` - ReadingIntentAutomatic 表示公开消息实际呈现后自动读取。
+ * * `explicit` - ReadingIntentExplicit 表示用户主动打开会话或标为已读。
+ *
+ */
+export type GithubComJieWaZiNeuxBotServerConstantsReadingIntent = 'automatic' | 'explicit';
 
 /**
  * >
@@ -7376,6 +7486,14 @@ export type GithubComJieWaZiNeuxBotServerConstantsRolePresetInputMode = 'manual'
  *
  */
 export type GithubComJieWaZiNeuxBotServerConstantsRolePresetSource = '' | 'system' | 'user';
+
+/**
+ * >
+ * * `automatic_run` - RunOwnerKindAutomaticRun 表示无已接纳目标的自动任务机会。
+ * * `workflow_run` - RunOwnerKindWorkflowRun 表示工作流运行。
+ *
+ */
+export type GithubComJieWaZiNeuxBotServerConstantsRunOwnerKind = 'automatic_run' | 'workflow_run';
 
 /**
  * >
@@ -7490,13 +7608,22 @@ export type GithubComJieWaZiNeuxBotServerConstantsWakerActivityState = 'idle' | 
 
 /**
  * >
- * * `` - WorkResultOwnerKindUnspecified 表示未指定容器。
- * * `chat` - WorkResultOwnerKindChat 表示独立伙伴对话。
- * * `team_thread` - WorkResultOwnerKindTeamThread 表示团队对话。
- * * `workflow_run` - WorkResultOwnerKindWorkflowRun 表示顶层工作流运行。
+ * * `` - WakerOnboardingStatusUnspecified 表示已可使用的旧伙伴。
+ * * `pending` - WakerOnboardingStatusPending 表示伙伴仍在建档。
+ * * `ready` - WakerOnboardingStatusReady 表示用户已确认且档案已保存。
  *
  */
-export type GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind = '' | 'chat' | 'team_thread' | 'workflow_run';
+export type GithubComJieWaZiNeuxBotServerConstantsWakerOnboardingStatus = '' | 'pending' | 'ready';
+
+/**
+ * >
+ * * `automatic_run` - WorkOwnerKindAutomaticRun 表示没有接纳目标的自动机会。
+ * * `chat` - WorkOwnerKindChat 表示独立会话。
+ * * `team_thread` - WorkOwnerKindTeamThread 表示团队对话。
+ * * `workflow_run` - WorkOwnerKindWorkflowRun 表示对用户可见的工作流运行。
+ *
+ */
+export type GithubComJieWaZiNeuxBotServerConstantsWorkOwnerKind = 'automatic_run' | 'chat' | 'team_thread' | 'workflow_run';
 
 /**
  * >
@@ -7974,6 +8101,10 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage = {
      */
     createdAt?: number;
     /**
+     * CreatedSequence 是持久公开消息的建立序号，决定分页和阅读顺序。
+     */
+    createdSequence?: number;
+    /**
      * DisplayParts 是供聊天界面渲染的最小跨 Runtime 展示视图。
      */
     displayParts?: Array<GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageDisplayPart>;
@@ -8014,6 +8145,11 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage = {
      * Plugins 是接纳时冻结的插件身份、版本与配置修订。
      */
     plugins?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsSnapshot>;
+    question?: GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageQuestion & unknown;
+    /**
+     * Readable 表示该持久消息具有用户可读正文或公开失败。
+     */
+    readable?: boolean;
     /**
      * Revision 是最后一次改变公开消息快照的权威事件序号。
      */
@@ -8158,6 +8294,45 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessagePartIncre
      * Text 只包含本次新增文本，空值不代表清空。
      */
     text?: string;
+};
+
+/**
+ * MessageQuestion 是原结构化输入请求及其安全处理结果。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageQuestion = {
+    /**
+     * 允许跳过
+     */
+    allowSkip?: boolean;
+    /**
+     * 公开答案
+     */
+    answers?: {
+        [key: string]: unknown;
+    };
+    /**
+     * 问题标识
+     */
+    elicitationId?: string;
+    /**
+     * 问题说明
+     */
+    message?: string;
+    /**
+     * 输入模式
+     */
+    mode?: string;
+    /**
+     * 表单结构
+     */
+    requestedSchema?: {
+        [key: string]: unknown;
+    };
+    result?: GithubComJieWaZiNeuxBotServerConstantsElicitationResult & unknown;
+    /**
+     * 访问地址
+     */
+    url?: string;
 };
 
 /**
@@ -8979,6 +9154,14 @@ export type GithubComJieWaZiNeuxBotServerInternalProfileDocument = {
      */
     fileName?: string;
     kind?: GithubComJieWaZiNeuxBotServerConstantsProfileDocumentKind & unknown;
+    /**
+     * MaxTokens 是伙伴长期指令的正文上限。
+     */
+    maxTokens?: number;
+    /**
+     * Revision 是当前正文版本。
+     */
+    revision?: string;
     /**
      * UpdatedAt 是文档最近修改时的 Unix 毫秒时间。
      */
@@ -10077,6 +10260,54 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccountEndpoint = {
 };
 
 /**
+ * AttentionCompleteness 报告查询是否覆盖全部原事实。
+ */
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionCompleteness = {
+    /**
+     * Complete 表示该查询范围的阅读投影完整。
+     */
+    complete?: boolean;
+    /**
+     * Epoch 标识提供本次结果的 Core 进程。
+     */
+    epoch?: string;
+    /**
+     * IncompleteReason 区分暂时恢复与已隔离的资源。
+     */
+    incompleteReason?: string;
+};
+
+/**
+ * AttentionMetrics 保留各自业务口径的独立聚合。
+ */
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionMetrics = {
+    /**
+     * AwaitingViewWorkCount 是仍有未读消息或未查看结果的工作容器数。
+     */
+    awaitingViewWorkCount?: number;
+    /**
+     * PendingRequestCount 是有效的原请求数。
+     */
+    pendingRequestCount?: number;
+    /**
+     * RunningChatCount 是原活动状态为运行中的可见对话数。
+     */
+    runningChatCount?: number;
+    /**
+     * UnreadChatCount 是有合格未读消息的会话数。
+     */
+    unreadChatCount?: number;
+    /**
+     * UnreadMessageCount 是可见会话的合格未读消息数。
+     */
+    unreadMessageCount?: number;
+    /**
+     * WaitingWorkCount 是有有效请求的工作容器数。
+     */
+    waitingWorkCount?: number;
+};
+
+/**
  * AutomaticRun 保存一次机会的不可变输入和标准 Chat 接纳关系。
  */
 export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticRun = {
@@ -10722,6 +10953,47 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsChat = {
 };
 
 /**
+ * ChatReadCursor 保存一个阅读者在指定 Chat 的阅读边界及手动未读代次。
+ */
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsChatReadCursor = {
+    /**
+     * ChatID 是阅读事实所属对话。
+     */
+    chatId?: string;
+    /**
+     * HoldUnread 阻止自动读，直到新的明确阅读意图生效。
+     */
+    holdUnread?: boolean;
+    /**
+     * ThroughSequence 是已确认的公开展示前缀。
+     */
+    throughSequence?: number;
+    /**
+     * UnreadGeneration 仅在主动标未读后递增。
+     */
+    unreadGeneration?: number;
+    /**
+     * UpdatedAt 是阅读事实最后变更的 Unix 毫秒时间。
+     */
+    updatedAt?: number;
+};
+
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsChatReadingState = GithubComJieWaZiNeuxBotServerRepositoriesModelsChatReadCursor & {
+    /**
+     * FirstUnreadMessageID 是第一条合格未读消息的原身份。
+     */
+    firstUnreadMessageID?: string;
+    /**
+     * LatestReadableMessageID 是最后一条公开合格消息的原身份。
+     */
+    latestReadableMessageID?: string;
+    /**
+     * UnreadMessageCount 是展示顺序位于阅读边界之后的合格消息数。
+     */
+    unreadMessageCount?: number;
+};
+
+/**
  * Execution 保存一次 Chat 执行在服务边界流转的领域状态。
  *
  * 历史执行事实只写入 Chat JSONL；该结构不注册为 GORM 表，也不形成 SQLite 历史投影。
@@ -10816,6 +11088,70 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsExecution = {
      * WorkspaceReadOnly 表示本次 Runtime 只能读取工作区且不能申请文件修改。
      */
     workspaceReadOnly?: boolean;
+};
+
+/**
+ * ExecutorAttentionChat 供伙伴和团队侧栏直接定位公开会话和请求。
+ */
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsExecutorAttentionChat = {
+    activity?: GithubComJieWaZiNeuxBotServerConstantsChannelActivityState & unknown;
+    /**
+     * ChatID 是公开会话的阅读对象。
+     */
+    chatId?: string;
+    /**
+     * FirstUnreadMessageID 是公开展示顺序中的第一条未读消息。
+     */
+    firstUnreadMessageID?: string;
+    /**
+     * LastStatus 是原会话最近一次执行状态。
+     */
+    lastStatus?: string;
+    /**
+     * RequestKinds 是当前有效请求的不同操作类型。
+     */
+    requestKinds?: Array<string>;
+    /**
+     * Requests 定位这条公开会话归属的有效请求。
+     */
+    requests?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention>;
+    /**
+     * Title 是公开会话的原名称。
+     */
+    title?: string;
+    /**
+     * UnreadMessageCount 是会话内待查看消息数。
+     */
+    unreadMessageCount?: number;
+    work?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkRef & unknown;
+};
+
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsExecutorAttentionSummary = GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionMetrics & {
+    /**
+     * Chats 定位具备关注或正在工作的公开会话。
+     */
+    chats?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsExecutorAttentionChat>;
+    /**
+     * ExecutorID 是请求的原伙伴或团队。
+     */
+    executorId?: string;
+    /**
+     * Kind 是执行对象类型。
+     */
+    kind?: string;
+    /**
+     * LastStatus 是该最近公开对话的最后一次真实执行结果。
+     */
+    lastStatus?: string;
+    /**
+     * LatestChatID 是按当前活动时间及稳定身份选出的最近公开对话。
+     */
+    latestChatId?: string;
+    latestWork?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkRef & unknown;
+    /**
+     * Requests 定位每个仍有效的原操作及真实成员或子运行。
+     */
+    requests?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention>;
 };
 
 /**
@@ -11248,109 +11584,21 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsMcpToolSummary = {
 };
 
 /**
- * NotificationItem 是由原领域事实派生的安全通知，不注册持久化表。
+ * MarkViewedResult 是一批实际提交的结果。
  */
-export type GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationItem = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsMarkViewedResult = {
     /**
-     * 关注分桶
+     * Applied 是本批已确认的原目标数量。
      */
-    bucket?: string;
+    applied?: number;
     /**
-     * 发生时间
+     * SkippedConflict 是代次或原对象状态已经变化的目标数量。
      */
-    createdAt?: number;
+    skippedConflict?: number;
     /**
-     * 有界摘要
+     * SkippedDeleted 是原工作或边界已被删除的目标数量。
      */
-    description?: string;
-    /**
-     * 提示已收起
-     */
-    dismissed?: boolean;
-    executor?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardExecutor & unknown;
-    /**
-     * 原交付失败
-     */
-    failed?: boolean;
-    /**
-     * 通知标识
-     */
-    id?: string;
-    kind?: GithubComJieWaZiNeuxBotServerConstantsNotificationKind & unknown;
-    /**
-     * 原始来源
-     */
-    source?: string;
-    target?: GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationTarget & unknown;
-    /**
-     * 安全标题
-     */
-    title?: string;
-    /**
-     * 原始版本
-     */
-    version?: number;
-};
-
-/**
- * NotificationTarget 是原业务入口的有判别定位，不保存任意可执行地址。
- */
-export type GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationTarget = {
-    /**
-     * 自动运行
-     */
-    automaticRunId?: string;
-    /**
-     * 团队标识
-     */
-    channelId?: string;
-    /**
-     * 对话标识
-     */
-    chatId?: string;
-    /**
-     * 流程标识
-     */
-    definitionId?: string;
-    /**
-     * 提交围栏
-     */
-    fence?: number;
-    kind?: GithubComJieWaZiNeuxBotServerConstantsNotificationKind & unknown;
-    /**
-     * 精确消息
-     */
-    messageId?: string;
-    /**
-     * 容器标识
-     */
-    ownerId?: string;
-    ownerKind?: GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind & unknown;
-    reference?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReference & unknown;
-    /**
-     * 原请求标识
-     */
-    requestId?: string;
-    /**
-     * 成果版本
-     */
-    resultVersion?: number;
-    /**
-     * 运行标识
-     */
-    runId?: string;
-    /**
-     * 验收任务
-     */
-    taskId?: string;
-    /**
-     * 团队对话
-     */
-    threadId?: string;
-    /**
-     * 伙伴标识
-     */
-    wakerId?: string;
+    skippedDeleted?: number;
 };
 
 /**
@@ -11593,6 +11841,28 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsRolePreset = {
 };
 
 /**
+ * RunOwnerRef 定位具有独立最终结果的原运行。
+ */
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsRunOwnerRef = {
+    /**
+     * OwnerID 是不可变的原运行标识。
+     */
+    ownerId?: string;
+    ownerKind?: GithubComJieWaZiNeuxBotServerConstantsRunOwnerKind & unknown;
+};
+
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsRunViewingState = GithubComJieWaZiNeuxBotServerRepositoriesModelsRunOwnerRef & {
+    /**
+     * Viewable 表示已发布可见终态结果。
+     */
+    viewable?: boolean;
+    /**
+     * Viewed 表示该原运行的可见结果已被查看。
+     */
+    viewed?: boolean;
+};
+
+/**
  * SkillPackage 保存一个技能包的共享元数据和来源信息。
  */
 export type GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillPackage = {
@@ -11702,6 +11972,7 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWaker = {
      * CreatedAt 是记录创建时的 Unix 毫秒时间。
      */
     createdAt?: number;
+    defaultModel?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerDefaultModel & unknown;
     /**
      * Expertise 保存从身份档案解析出的擅长领域展示投影。
      */
@@ -11718,6 +11989,15 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWaker = {
      * Name 是用户识别伙伴时看到的名称。
      */
     name?: string;
+    /**
+     * OnboardingChatID 是唯一允许建档的普通 Chat 身份，先于接纳首轮保存。
+     */
+    onboardingChatId?: string;
+    onboardingStatus?: GithubComJieWaZiNeuxBotServerConstantsWakerOnboardingStatus & unknown;
+    /**
+     * OverviewRevision 是查询返回的概览编辑版本。
+     */
+    overviewRevision?: string;
     /**
      * RoleName 是伙伴当前承担的角色名称。
      */
@@ -11742,6 +12022,28 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWaker = {
      * WorkStyle 保存从角色风格档案解析出的工作风格展示投影。
      */
     workStyle?: Array<string>;
+};
+
+/**
+ * WakerDefaultModel 保存伙伴选择的明确执行配置。
+ */
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerDefaultModel = {
+    /**
+     * 账号
+     */
+    accountId?: string;
+    /**
+     * 模型
+     */
+    model?: string;
+    /**
+     * 推理强度
+     */
+    reasoning?: string;
+    /**
+     * 智能体
+     */
+    runtimeId?: string;
 };
 
 /**
@@ -11799,6 +12101,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention = 
      */
     createdAt?: number;
     /**
+     * ExecutionID 是请求实际等待的原执行或子运行。
+     */
+    executionId?: string;
+    /**
      * ExecutorID 是原工作执行对象，用于范围筛选。
      */
     executorId?: string;
@@ -11807,6 +12113,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention = 
      */
     id?: string;
     /**
+     * InstanceID 是人工请求对应的原工作流步骤实例。
+     */
+    instanceId?: string;
+    /**
      * Kind 是审批、输入或验收的操作类别。
      */
     kind?: string;
@@ -11814,7 +12124,19 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention = 
      * OwnerID 是事项所属的原工作身份。
      */
     ownerId?: string;
-    ownerKind?: GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind & unknown;
+    ownerKind?: GithubComJieWaZiNeuxBotServerConstantsWorkOwnerKind & unknown;
+    /**
+     * RequestFence 是团队当前验收代次。
+     */
+    requestFence?: number;
+    /**
+     * RequestID 是原请求或原验收任务身份。
+     */
+    requestId?: string;
+    /**
+     * RequestSequence 是同一 Chat 内待答请求的原始到达顺序。
+     */
+    requestSequence?: number;
     /**
      * RunID 是实际等待操作的运行，可能是子运行。
      */
@@ -11855,6 +12177,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardEntry = {
      */
     approvalCount?: number;
     /**
+     * AutomaticTaskID 定位未接纳自动机会的原配置。
+     */
+    automaticTaskId?: string;
+    /**
      * ChannelID 定位所属团队。
      */
     channelId?: string;
@@ -11871,6 +12197,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardEntry = {
      */
     executorName?: string;
     /**
+     * FirstUnreadMessageID 是最早合格未读消息的原身份。
+     */
+    firstUnreadMessageID?: string;
+    /**
      * InputCount 是此工作仍有效的输入请求数量。
      */
     inputCount?: number;
@@ -11879,11 +12209,14 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardEntry = {
      */
     lastStatus?: string;
     /**
+     * LatestReadableMessageID 是冻结阅读目标的最后消息身份。
+     */
+    latestReadableMessageID?: string;
+    /**
      * OwnerID 是原容器标识。
      */
     ownerId?: string;
-    ownerKind?: GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind & unknown;
-    result?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReceipt & unknown;
+    ownerKind?: GithubComJieWaZiNeuxBotServerConstantsWorkOwnerKind & unknown;
     /**
      * ReviewCount 是此工作等待团队人工验收的任务数。
      */
@@ -11896,6 +12229,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardEntry = {
      * Title 是原容器当前标题。
      */
     title?: string;
+    /**
+     * UnreadMessageCount 是本工作公开会话的未读消息数。
+     */
+    unreadMessageCount?: number;
     /**
      * UpdatedAt 是原工作最近活动时间。
      */
@@ -11929,61 +12266,38 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardExecutor = {
 };
 
 /**
- * WorkResultReceipt 保存每个既有容器的最新交付与用户查看或主动清空确认。
+ * WorkRef 定位原工作，无独立持久身份。
  */
-export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReceipt = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkRef = {
     /**
-     * AvailableAt 是该结果真实交付时间及未读排序键。
+     * ID 是该原容器的身份。
      */
-    availableAt?: number;
-    /**
-     * LatestVersion 是最新已交付可读结果的单调版本。
-     */
-    latestVersion?: number;
-    /**
-     * OwnerID 是原容器身份，不另建 WorkID。
-     */
-    ownerId?: string;
-    ownerKind?: GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind & unknown;
-    reference?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReference & unknown;
-    /**
-     * ViewedAt 是最后一次有效查看或主动清空确认时间，不改变工作活动时间。
-     */
-    viewedAt?: number;
-    /**
-     * ViewedVersion 是用户实际查看或主动清空待查看标记的最大版本。
-     */
-    viewedVersion?: number;
+    id?: string;
+    kind?: GithubComJieWaZiNeuxBotServerConstantsWorkOwnerKind & unknown;
 };
 
 /**
- * WorkResultReference 引用原结果身份，不复制正文或执行状态。
+ * WorkViewTarget 冻结一次用户操作所见的原对象及阅读边界。
  */
-export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReference = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkViewTarget = {
     /**
-     * ChatID 是结果所在的真实对话。
+     * ChatID 是实际阅读的公开会话。
      */
     chatId?: string;
     /**
-     * ExecutionID 是产生结果的真实执行。
+     * ObservedUnreadGeneration 是操作时观察的手动未读代次。
      */
-    executionId?: string;
+    observedUnreadGeneration?: number;
     /**
-     * 文件成果标识
+     * OwnerID 是查看最终结果时的原运行标识。
      */
-    fileChangeRecordId?: string;
+    ownerId?: string;
+    ownerKind?: GithubComJieWaZiNeuxBotServerConstantsRunOwnerKind & unknown;
     /**
-     * 文件成果版本
+     * ThroughMessageID 是操作时已存在的最后一条合格消息。
      */
-    fileChangeRecordVersion?: number;
-    /**
-     * MessageID 是持久交付给用户的精确消息。
-     */
-    messageId?: string;
-    /**
-     * WorkflowRunID 是形成最终结果的工作流运行。
-     */
-    workflowRunId?: string;
+    throughMessageID?: string;
+    work?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkRef & unknown;
 };
 
 /**
@@ -12427,6 +12741,17 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowScopeBinding 
      * WorkingDirectory 是明确批准的目录，空值时由运行创建受管目录。
      */
     workingDirectory?: string;
+};
+
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkspaceAttentionSnapshot = GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionCompleteness & {
+    /**
+     * HasAction 表示至少有一个有效请求。
+     */
+    hasAction?: boolean;
+    /**
+     * HasUnread 表示至少有一个工作仍待查看。
+     */
+    hasUnread?: boolean;
 };
 
 /**
@@ -12987,52 +13312,6 @@ export type GithubComJieWaZiNeuxBotServerServicesKnowledgeChatLibrary = {
 };
 
 /**
- * Snapshot 是 REST 与 WS 共同读取的带版本通知摘要。
- */
-export type GithubComJieWaZiNeuxBotServerServicesNotificationSnapshot = {
-    /**
-     * 待处理数
-     */
-    actionCount?: number;
-    /**
-     * 待处理预览
-     */
-    actionPreview?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationItem>;
-    /**
-     * 生命周期
-     */
-    epoch?: string;
-    /**
-     * 生成时间
-     */
-    generatedAt?: number;
-    /**
-     * 投影版本
-     */
-    revision?: number;
-    /**
-     * 摘要已同步
-     */
-    synced?: boolean;
-    /**
-     * 总关注数
-     */
-    totalCount?: number;
-    /**
-     * 未读失败数
-     */
-    unreadFailureCount?: number;
-    /**
-     * 待查看预览
-     */
-    unreadPreview?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationItem>;
-    /**
-     * 未读成果数
-     */
-    unreadResultCount?: number;
-};
-
-/**
  * 原生认证方法
  */
 export type GithubComJieWaZiNeuxBotServerServicesRuntimeenvironmentRuntimeAuthenticationMethod = {
@@ -13389,14 +13668,18 @@ export type GithubComJieWaZiNeuxBotServerServicesUsageGroupsPage = GithubComJieW
 };
 
 /**
- * Summary reports exact known subtotals for a snapshot.
+ * 用量概要
  */
 export type GithubComJieWaZiNeuxBotServerServicesUsageSummary = {
     coverage?: GithubComJieWaZiNeuxBotServerServicesUsageCoverage & unknown;
     metrics?: GithubComJieWaZiNeuxBotServerInternalUsageTokenMetrics & unknown;
+    /**
+     * 已记录命中率
+     */
+    observedCacheHitRate?: number;
     range?: GithubComJieWaZiNeuxBotServerServicesUsageFilter & unknown;
     /**
-     * Snapshot fixes the projection boundary for subsequent grouped reads.
+     * 用量快照
      */
     snapshot?: string;
 };
@@ -14862,6 +15145,7 @@ export type ReadErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -14871,6 +15155,12 @@ export type ReadErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -14883,6 +15173,8 @@ export type ReadErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -14970,6 +15262,7 @@ export type ReadErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -15007,6 +15300,8 @@ export type ReadErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -15210,6 +15505,7 @@ export type CommandErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -15219,6 +15515,12 @@ export type CommandErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -15231,6 +15533,8 @@ export type CommandErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -15318,6 +15622,7 @@ export type CommandErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -15355,6 +15660,8 @@ export type CommandErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -15828,6 +16135,7 @@ export type StartAiAccountLoginErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -15837,6 +16145,12 @@ export type StartAiAccountLoginErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -15849,6 +16163,8 @@ export type StartAiAccountLoginErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -15936,6 +16252,7 @@ export type StartAiAccountLoginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -15973,6 +16290,8 @@ export type StartAiAccountLoginErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -16185,6 +16504,7 @@ export type CancelAiAccountLoginErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -16194,6 +16514,12 @@ export type CancelAiAccountLoginErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -16206,6 +16532,8 @@ export type CancelAiAccountLoginErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -16293,6 +16621,7 @@ export type CancelAiAccountLoginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -16330,6 +16659,8 @@ export type CancelAiAccountLoginErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -16637,6 +16968,7 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -16646,6 +16978,12 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -16658,6 +16996,8 @@ export type ListGlobalAutomaticTasksErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -16745,6 +17085,7 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -16782,6 +17123,8 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -17076,6 +17419,7 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -17085,6 +17429,12 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -17097,6 +17447,8 @@ export type GetGlobalAutomaticTaskErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -17184,6 +17536,7 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -17221,6 +17574,8 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -17429,6 +17784,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -17438,6 +17794,12 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -17450,6 +17812,8 @@ export type UpdateWorkflowAutomaticTaskErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -17537,6 +17901,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -17574,6 +17939,8 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -18370,6 +18737,7 @@ export type CreateChatErrors = {
     /**
      * >
      * * `[BadRequest][40000000001]`
+     * * `[MessageAttachmentInvalid][40000000017]`
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -18762,6 +19130,119 @@ export type GetChatMessageFileChangesResponses = {
 
 export type GetChatMessageFileChangesResponse = GetChatMessageFileChangesResponses[keyof GetChatMessageFileChangesResponses];
 
+export type GetChatReadingData = {
+    body?: never;
+    path: {
+        /**
+         * ChatID 是原公开 Chat 的身份。
+         */
+        chatId: string;
+    };
+    query?: never;
+    url: '/api/v1/chats/{chatId}/reading';
+};
+
+export type GetChatReadingErrors = {
+    /**
+     * >
+     * * `[ChatNotFound][40400000005]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ReadingProjectionIncomplete][50300009201]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type GetChatReadingError = GetChatReadingErrors[keyof GetChatReadingErrors];
+
+export type GetChatReadingResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisChatReadingChatReadingResponse;
+};
+
+export type GetChatReadingResponse = GetChatReadingResponses[keyof GetChatReadingResponses];
+
+export type MarkChatReadData = {
+    body: GithubComJieWaZiNeuxBotServerApisChatReadingMarkChatReadRequest & unknown;
+    path: {
+        /**
+         * ChatID 是原公开会话标识。
+         */
+        chatId: string;
+    };
+    query?: never;
+    url: '/api/v1/chats/{chatId}/reading';
+};
+
+export type MarkChatReadErrors = {
+    /**
+     * >
+     * * `[ChatNotFound][40400000005]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ReadingProjectionIncomplete][50300009201]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type MarkChatReadError = MarkChatReadErrors[keyof MarkChatReadErrors];
+
+export type MarkChatReadResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type MarkChatReadResponse = MarkChatReadResponses[keyof MarkChatReadResponses];
+
+export type MarkChatUnreadData = {
+    body: GithubComJieWaZiNeuxBotServerApisChatReadingMarkChatUnreadRequest & unknown;
+    path: {
+        /**
+         * ChatID 是原公开会话标识。
+         */
+        chatId: string;
+    };
+    query?: never;
+    url: '/api/v1/chats/{chatId}/unread';
+};
+
+export type MarkChatUnreadErrors = {
+    /**
+     * >
+     * * `[ChatNotFound][40400000005]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ReadingProjectionIncomplete][50300009201]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type MarkChatUnreadError = MarkChatUnreadErrors[keyof MarkChatUnreadErrors];
+
+export type MarkChatUnreadResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type MarkChatUnreadResponse = MarkChatUnreadResponses[keyof MarkChatUnreadResponses];
+
 export type ListLibraryConnectorsData = {
     body?: never;
     path?: never;
@@ -18814,6 +19295,12 @@ export type CreateLibraryConnectorErrors = {
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateLibraryConnectorError = CreateLibraryConnectorErrors[keyof CreateLibraryConnectorErrors];
@@ -18859,6 +19346,12 @@ export type DeleteLibraryConnectorErrors = {
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteLibraryConnectorError = DeleteLibraryConnectorErrors[keyof DeleteLibraryConnectorErrors];
@@ -18930,6 +19423,12 @@ export type UpdateLibraryConnectorErrors = {
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateLibraryConnectorError = UpdateLibraryConnectorErrors[keyof UpdateLibraryConnectorErrors];
@@ -18965,6 +19464,12 @@ export type InstallLibraryConnectorErrors = {
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type InstallLibraryConnectorError = InstallLibraryConnectorErrors[keyof InstallLibraryConnectorErrors];
@@ -19000,6 +19505,12 @@ export type TestLibraryConnectorErrors = {
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type TestLibraryConnectorError = TestLibraryConnectorErrors[keyof TestLibraryConnectorErrors];
@@ -19193,6 +19704,7 @@ export type StreamEventsErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -19202,6 +19714,12 @@ export type StreamEventsErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -19214,6 +19732,8 @@ export type StreamEventsErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -19301,6 +19821,7 @@ export type StreamEventsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -19338,6 +19859,8 @@ export type StreamEventsErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -19655,6 +20178,7 @@ export type StartImLoginErrors = {
     /**
      * >
      * * `[IMCredentialError][50000004001]`
+     * * `[InternalServerError][50000000001]`
      *
      */
     500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -19700,6 +20224,12 @@ export type CancelImLoginErrors = {
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CancelImLoginError = CancelImLoginErrors[keyof CancelImLoginErrors];
@@ -20246,6 +20776,7 @@ export type UpdateMcpServiceErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -20255,6 +20786,12 @@ export type UpdateMcpServiceErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -20267,6 +20804,8 @@ export type UpdateMcpServiceErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -20354,6 +20893,7 @@ export type UpdateMcpServiceErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -20391,6 +20931,8 @@ export type UpdateMcpServiceErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -20693,6 +21235,7 @@ export type UpdateApiServiceErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -20702,6 +21245,12 @@ export type UpdateApiServiceErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -20714,6 +21263,8 @@ export type UpdateApiServiceErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -20801,6 +21352,7 @@ export type UpdateApiServiceErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -20838,6 +21390,8 @@ export type UpdateApiServiceErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -21101,6 +21655,7 @@ export type OrganizeRemoteChatErrors = {
     /**
      * >
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      * * `[ManagedWorkspaceError][50000000033]`
      * * `[MessageAttachmentStorageError][50000000032]`
@@ -21910,6 +22465,12 @@ export type CreateRemoteLibraryErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
@@ -21986,6 +22547,12 @@ export type DeleteRemoteLibraryErrors = {
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
@@ -22142,6 +22709,12 @@ export type UpdateRemoteLibraryErrors = {
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
@@ -22555,6 +23128,12 @@ export type RecoverRemoteLibraryDeletionErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
@@ -22898,6 +23477,12 @@ export type MaintainRemoteErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
@@ -23143,6 +23728,12 @@ export type OrganizeRemoteErrors = {
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
@@ -23493,6 +24084,12 @@ export type CreateRemotePageErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
@@ -23662,6 +24259,12 @@ export type WriteRemotePageErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
@@ -23742,6 +24345,12 @@ export type RestoreRemotePageErrors = {
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
@@ -24013,6 +24622,12 @@ export type GetRemoteReceiptErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
@@ -24176,6 +24791,12 @@ export type ConfirmRemoteSourcePurgeErrors = {
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
@@ -24425,6 +25046,12 @@ export type RecoverRemoteSourcePurgeErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
@@ -24602,6 +25229,12 @@ export type ImportRemoteSourceErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
@@ -24764,6 +25397,12 @@ export type ArchiveRemoteSourceErrors = {
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
@@ -25095,6 +25734,12 @@ export type CreateRemoteThemeErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
@@ -25177,6 +25822,12 @@ export type WriteRemoteThemeErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
      *
@@ -25253,6 +25904,12 @@ export type UploadRemoteSourceErrors = {
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
@@ -25335,6 +25992,12 @@ export type GetRemoteUploadStatusErrors = {
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[KnowledgeRemoteIncompatible][50200009502]`
@@ -25556,6 +26219,7 @@ export type CreateLibraryErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -25631,6 +26295,7 @@ export type DeleteLibraryErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -25769,6 +26434,7 @@ export type UpdateLibraryErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -26072,6 +26738,7 @@ export type RecoverLibraryDeletionErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -26210,6 +26877,7 @@ export type UpdateLibraryEmbeddingProfileErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -26348,6 +27016,7 @@ export type UpdateLibraryExecutionDefaultsErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -26583,6 +27252,7 @@ export type ResumeJobErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      * * `[SkillUnavailable][50000000008]`
      *
@@ -26680,6 +27350,7 @@ export type RetryJobErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      * * `[SkillUnavailable][50000000008]`
      *
@@ -26773,6 +27444,7 @@ export type MaintainWikiErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      * * `[SkillUnavailable][50000000008]`
      *
@@ -26940,6 +27612,7 @@ export type OrganizeErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      * * `[SkillUnavailable][50000000008]`
      *
@@ -27266,6 +27939,7 @@ export type CreatePageErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -27412,6 +28086,7 @@ export type WritePageErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -27485,6 +28160,7 @@ export type RestorePageErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -27715,6 +28391,7 @@ export type ConfirmSourcePurgeErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -27935,6 +28612,7 @@ export type RecoverSourcePurgeErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -28094,6 +28772,7 @@ export type ImportSourceErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -28240,6 +28919,7 @@ export type ArchiveSourceErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -28524,6 +29204,7 @@ export type CreateThemeErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -28597,6 +29278,7 @@ export type WriteThemeErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      *
      */
@@ -29133,161 +29815,6 @@ export type ListTimelineResponses = {
 
 export type ListTimelineResponse = ListTimelineResponses[keyof ListTimelineResponses];
 
-export type ListNotificationsData = {
-    body?: never;
-    path?: never;
-    query: {
-        /**
-         * 关注分桶
-         */
-        bucket: string;
-        /**
-         * 续页游标
-         */
-        cursor?: string;
-        /**
-         * 执行对象
-         */
-        executorId?: string;
-        /**
-         * 页码
-         */
-        pageNum?: number;
-        /**
-         * 每页数量
-         */
-        pageSize?: number;
-        /**
-         * 标题搜索
-         */
-        query?: string;
-        /**
-         * 原始来源
-         */
-        source?: string;
-    };
-    url: '/api/v1/notifications';
-};
-
-export type ListNotificationsErrors = {
-    /**
-     * >
-     * * `[InternalServerError][50000000001]`
-     *
-     */
-    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
-};
-
-export type ListNotificationsError = ListNotificationsErrors[keyof ListNotificationsErrors];
-
-export type ListNotificationsResponses = {
-    200: GithubComJieWaZiNeuxBotServerApisNotificationsListNotificationsResponse;
-};
-
-export type ListNotificationsResponse = ListNotificationsResponses[keyof ListNotificationsResponses];
-
-export type GetNotificationSnapshotData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/v1/notifications/snapshot';
-};
-
-export type GetNotificationSnapshotErrors = {
-    /**
-     * >
-     * * `[InternalServerError][50000000001]`
-     *
-     */
-    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
-};
-
-export type GetNotificationSnapshotError = GetNotificationSnapshotErrors[keyof GetNotificationSnapshotErrors];
-
-export type GetNotificationSnapshotResponses = {
-    200: GithubComJieWaZiNeuxBotServerServicesNotificationSnapshot;
-};
-
-export type GetNotificationSnapshotResponse = GetNotificationSnapshotResponses[keyof GetNotificationSnapshotResponses];
-
-export type ClearNotificationUnreadData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/v1/notifications/unread/clear';
-};
-
-export type ClearNotificationUnreadResponses = {
-    200: GithubComShrewxGinxCommonResponse;
-};
-
-export type ClearNotificationUnreadResponse = ClearNotificationUnreadResponses[keyof ClearNotificationUnreadResponses];
-
-export type GetNotificationData = {
-    body?: never;
-    path: {
-        /**
-         * 通知标识
-         */
-        noticeId: string;
-    };
-    query?: never;
-    url: '/api/v1/notifications/{noticeId}';
-};
-
-export type GetNotificationResponses = {
-    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationItem;
-};
-
-export type GetNotificationResponse = GetNotificationResponses[keyof GetNotificationResponses];
-
-export type DismissNotificationData = {
-    body?: never;
-    path: {
-        /**
-         * 通知标识
-         */
-        noticeId: string;
-    };
-    query?: never;
-    url: '/api/v1/notifications/{noticeId}/dismiss';
-};
-
-export type DismissNotificationResponses = {
-    200: GithubComShrewxGinxCommonResponse;
-};
-
-export type DismissNotificationResponse = DismissNotificationResponses[keyof DismissNotificationResponses];
-
-export type ViewNotificationData = {
-    body: GithubComJieWaZiNeuxBotServerApisNotificationsViewNotificationRequest & unknown;
-    path: {
-        /**
-         * 通知标识
-         */
-        noticeId: string;
-    };
-    query?: never;
-    url: '/api/v1/notifications/{noticeId}/view';
-};
-
-export type ViewNotificationErrors = {
-    /**
-     * >
-     * * `[BadRequest][40000000001]`
-     *
-     */
-    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
-};
-
-export type ViewNotificationError = ViewNotificationErrors[keyof ViewNotificationErrors];
-
-export type ViewNotificationResponses = {
-    200: GithubComShrewxGinxCommonResponse;
-};
-
-export type ViewNotificationResponse = ViewNotificationResponses[keyof ViewNotificationResponses];
-
 export type ListPluginsData = {
     body?: never;
     path?: never;
@@ -29488,6 +30015,7 @@ export type ListPluginsErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -29497,6 +30025,12 @@ export type ListPluginsErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -29509,6 +30043,8 @@ export type ListPluginsErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -29596,6 +30132,7 @@ export type ListPluginsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -29633,6 +30170,8 @@ export type ListPluginsErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -29857,6 +30396,7 @@ export type BrowsePluginsErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -29866,6 +30406,12 @@ export type BrowsePluginsErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -29878,6 +30424,8 @@ export type BrowsePluginsErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -29965,6 +30513,7 @@ export type BrowsePluginsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -30002,6 +30551,8 @@ export type BrowsePluginsErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -30205,6 +30756,7 @@ export type RefreshPluginCatalogErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -30214,6 +30766,12 @@ export type RefreshPluginCatalogErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -30226,6 +30784,8 @@ export type RefreshPluginCatalogErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -30313,6 +30873,7 @@ export type RefreshPluginCatalogErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -30350,6 +30911,8 @@ export type RefreshPluginCatalogErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -30563,6 +31126,7 @@ export type GetCatalogPluginErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -30572,6 +31136,12 @@ export type GetCatalogPluginErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -30584,6 +31154,8 @@ export type GetCatalogPluginErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -30671,6 +31243,7 @@ export type GetCatalogPluginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -30708,6 +31281,8 @@ export type GetCatalogPluginErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -30929,6 +31504,7 @@ export type GetCatalogPluginConnectorErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -30938,6 +31514,12 @@ export type GetCatalogPluginConnectorErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -30950,6 +31532,8 @@ export type GetCatalogPluginConnectorErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -31037,6 +31621,7 @@ export type GetCatalogPluginConnectorErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -31074,6 +31659,8 @@ export type GetCatalogPluginConnectorErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -31282,6 +31869,7 @@ export type PrepareCatalogPluginErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -31291,6 +31879,12 @@ export type PrepareCatalogPluginErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -31303,6 +31897,8 @@ export type PrepareCatalogPluginErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -31390,6 +31986,7 @@ export type PrepareCatalogPluginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -31427,6 +32024,8 @@ export type PrepareCatalogPluginErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -31648,6 +32247,7 @@ export type GetCatalogPluginReadmeErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -31657,6 +32257,12 @@ export type GetCatalogPluginReadmeErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -31669,6 +32275,8 @@ export type GetCatalogPluginReadmeErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -31756,6 +32364,7 @@ export type GetCatalogPluginReadmeErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -31793,6 +32402,8 @@ export type GetCatalogPluginReadmeErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -32018,6 +32629,7 @@ export type GetCatalogPluginSkillErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -32027,6 +32639,12 @@ export type GetCatalogPluginSkillErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -32039,6 +32657,8 @@ export type GetCatalogPluginSkillErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -32126,6 +32746,7 @@ export type GetCatalogPluginSkillErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -32163,6 +32784,8 @@ export type GetCatalogPluginSkillErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -32366,6 +32989,7 @@ export type CreatePluginFromSkillsErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -32375,6 +32999,12 @@ export type CreatePluginFromSkillsErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -32387,6 +33017,8 @@ export type CreatePluginFromSkillsErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -32474,6 +33106,7 @@ export type CreatePluginFromSkillsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -32511,6 +33144,8 @@ export type CreatePluginFromSkillsErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -32591,6 +33226,7 @@ export type DeletePluginErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[PluginStorageError][50000006501]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
      * * `[RuntimeEventQueueOverflow][50000000050]`
@@ -32817,6 +33453,7 @@ export type GetPluginErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -32826,6 +33463,12 @@ export type GetPluginErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -32838,6 +33481,8 @@ export type GetPluginErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -32925,6 +33570,7 @@ export type GetPluginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -32962,6 +33608,8 @@ export type GetPluginErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -33264,6 +33912,7 @@ export type StartPluginAuthorizationErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -33273,6 +33922,12 @@ export type StartPluginAuthorizationErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -33285,6 +33940,8 @@ export type StartPluginAuthorizationErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -33372,6 +34029,7 @@ export type StartPluginAuthorizationErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -33409,6 +34067,8 @@ export type StartPluginAuthorizationErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -33705,6 +34365,7 @@ export type LogoutPluginAuthorizationErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[PluginStorageError][50000006501]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
      * * `[RuntimeEventQueueOverflow][50000000050]`
@@ -33927,6 +34588,7 @@ export type GetPluginConfigurationErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -33936,6 +34598,12 @@ export type GetPluginConfigurationErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -33948,6 +34616,8 @@ export type GetPluginConfigurationErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -34035,6 +34705,7 @@ export type GetPluginConfigurationErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -34072,6 +34743,8 @@ export type GetPluginConfigurationErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -34499,6 +35172,7 @@ export type InstallPluginErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -34508,6 +35182,12 @@ export type InstallPluginErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -34520,6 +35200,8 @@ export type InstallPluginErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -34607,6 +35289,7 @@ export type InstallPluginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -34644,6 +35327,8 @@ export type InstallPluginErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -34995,6 +35680,7 @@ export type UpdatePluginInstallationsErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -35004,6 +35690,12 @@ export type UpdatePluginInstallationsErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -35016,6 +35708,8 @@ export type UpdatePluginInstallationsErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -35103,6 +35797,7 @@ export type UpdatePluginInstallationsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -35140,6 +35835,8 @@ export type UpdatePluginInstallationsErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -35435,6 +36132,44 @@ export type ExportRolePresetResponses = {
 };
 
 export type ExportRolePresetResponse = ExportRolePresetResponses[keyof ExportRolePresetResponses];
+
+export type GetRunViewingData = {
+    body?: never;
+    path: {
+        /**
+         * OwnerID 是指定原运行的标识。
+         */
+        ownerId: string;
+        ownerKind: GithubComJieWaZiNeuxBotServerConstantsRunOwnerKind & unknown;
+    };
+    query?: never;
+    url: '/api/v1/runs/{ownerKind}/{ownerId}/viewing';
+};
+
+export type GetRunViewingResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisRunViewingRunViewingResponse;
+};
+
+export type GetRunViewingResponse = GetRunViewingResponses[keyof GetRunViewingResponses];
+
+export type MarkRunViewedData = {
+    body?: never;
+    path: {
+        /**
+         * OwnerID 是不可变的原运行标识。
+         */
+        ownerId: string;
+        ownerKind: GithubComJieWaZiNeuxBotServerConstantsRunOwnerKind & unknown;
+    };
+    query?: never;
+    url: '/api/v1/runs/{ownerKind}/{ownerId}/viewing';
+};
+
+export type MarkRunViewedResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type MarkRunViewedResponse = MarkRunViewedResponses[keyof MarkRunViewedResponses];
 
 export type ListRuntimesData = {
     body?: never;
@@ -35777,6 +36512,7 @@ export type ImportLibrarySkillsErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
      *
@@ -35870,6 +36606,7 @@ export type DeleteLibrarySkillErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[SkillStorageError][50000000031]`
      *
      */
@@ -35932,6 +36669,12 @@ export type UpdateLibrarySkillErrors = {
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateLibrarySkillError = UpdateLibrarySkillErrors[keyof UpdateLibrarySkillErrors];
@@ -35961,6 +36704,12 @@ export type InstallLibrarySkillErrors = {
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type InstallLibrarySkillError = InstallLibrarySkillErrors[keyof InstallLibrarySkillErrors];
@@ -36006,6 +36755,7 @@ export type PullLibrarySkillUpdateErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[SkillStorageError][50000000031]`
      *
      */
@@ -36083,6 +36833,7 @@ export type CreateLibrarySkillVersionErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
      *
@@ -36235,6 +36986,7 @@ export type RestoreLibrarySkillVersionErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
      *
@@ -36446,6 +37198,7 @@ export type SetAutomaticTaskApiErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -36455,6 +37208,12 @@ export type SetAutomaticTaskApiErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -36467,6 +37226,8 @@ export type SetAutomaticTaskApiErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -36554,6 +37315,7 @@ export type SetAutomaticTaskApiErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -36591,6 +37353,8 @@ export type SetAutomaticTaskApiErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -37041,35 +37805,352 @@ export type CreateWakerData = {
 export type CreateWakerErrors = {
     /**
      * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
      * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
      * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
      * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
+     * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
     500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
+     * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
+     *
+     */
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateWakerError = CreateWakerErrors[keyof CreateWakerErrors];
 
 export type CreateWakerResponses = {
-    200: GithubComShrewxGinxCommonResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWakersWakerOnboardingResponse;
 };
 
 export type CreateWakerResponse = CreateWakerResponses[keyof CreateWakerResponses];
@@ -37172,7 +38253,14 @@ export type UpdateWakerData = {
 export type UpdateWakerErrors = {
     /**
      * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerProfileChanged][40900009105]`
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -37392,6 +38480,7 @@ export type ListAutomaticTasksErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -37401,6 +38490,12 @@ export type ListAutomaticTasksErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -37413,6 +38508,8 @@ export type ListAutomaticTasksErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -37500,6 +38597,7 @@ export type ListAutomaticTasksErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -37537,6 +38635,8 @@ export type ListAutomaticTasksErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -37812,6 +38912,7 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -37821,6 +38922,12 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -37833,6 +38940,8 @@ export type ListAutomaticTaskAttentionErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -37920,6 +39029,7 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -37957,6 +39067,8 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -38198,6 +39310,7 @@ export type DeleteAutomaticTaskErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -38207,6 +39320,12 @@ export type DeleteAutomaticTaskErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -38219,6 +39338,8 @@ export type DeleteAutomaticTaskErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -38306,6 +39427,7 @@ export type DeleteAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -38343,6 +39465,8 @@ export type DeleteAutomaticTaskErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -38555,6 +39679,7 @@ export type GetAutomaticTaskErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -38564,6 +39689,12 @@ export type GetAutomaticTaskErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -38576,6 +39707,8 @@ export type GetAutomaticTaskErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -38663,6 +39796,7 @@ export type GetAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -38700,6 +39834,8 @@ export type GetAutomaticTaskErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -39063,6 +40199,7 @@ export type ListAutomaticRunsErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -39072,6 +40209,12 @@ export type ListAutomaticRunsErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -39084,6 +40227,8 @@ export type ListAutomaticRunsErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -39171,6 +40316,7 @@ export type ListAutomaticRunsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -39208,6 +40354,8 @@ export type ListAutomaticRunsErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -39420,6 +40568,7 @@ export type TriggerAutomaticTaskErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -39429,6 +40578,12 @@ export type TriggerAutomaticTaskErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -39441,6 +40596,8 @@ export type TriggerAutomaticTaskErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -39528,6 +40685,7 @@ export type TriggerAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -39565,6 +40723,8 @@ export type TriggerAutomaticTaskErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -39678,6 +40838,12 @@ export type CreateWakerConnectorErrors = {
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateWakerConnectorError = CreateWakerConnectorErrors[keyof CreateWakerConnectorErrors];
@@ -39727,6 +40893,12 @@ export type DeleteWakerConnectorErrors = {
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteWakerConnectorError = DeleteWakerConnectorErrors[keyof DeleteWakerConnectorErrors];
@@ -39806,6 +40978,12 @@ export type UpdateWakerConnectorErrors = {
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateWakerConnectorError = UpdateWakerConnectorErrors[keyof UpdateWakerConnectorErrors];
@@ -39839,6 +41017,12 @@ export type SetWakerConnectorEnabledErrors = {
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type SetWakerConnectorEnabledError = SetWakerConnectorEnabledErrors[keyof SetWakerConnectorEnabledErrors];
@@ -39878,6 +41062,12 @@ export type TestWakerConnectorErrors = {
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type TestWakerConnectorError = TestWakerConnectorErrors[keyof TestWakerConnectorErrors];
@@ -39975,9 +41165,7 @@ export type UpdateWakerDocumentData = {
 export type UpdateWakerDocumentErrors = {
     /**
      * >
-     * * `[ProfileDocumentEncodingInvalid][40000000004]`
      * * `[ProfileDocumentKindInvalid][40000000002]`
-     * * `[ProfileDocumentTooLarge][40000000003]`
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -39987,6 +41175,13 @@ export type UpdateWakerDocumentErrors = {
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerProfileChanged][40900009105]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateWakerDocumentError = UpdateWakerDocumentErrors[keyof UpdateWakerDocumentErrors];
@@ -39996,6 +41191,418 @@ export type UpdateWakerDocumentResponses = {
 };
 
 export type UpdateWakerDocumentResponse = UpdateWakerDocumentResponses[keyof UpdateWakerDocumentResponses];
+
+export type DuplicateWakerData = {
+    body: GithubComJieWaZiNeuxBotServerApisWakersDuplicateWakerRequest & unknown;
+    path: {
+        /**
+         * 伙伴标识
+         */
+        wakerId: string;
+    };
+    query?: never;
+    url: '/api/v1/wakers/{wakerId}/duplicate';
+};
+
+export type DuplicateWakerErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[WakerNotFound][40400000001]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[CreateRequestConflict][40900000023]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type DuplicateWakerError = DuplicateWakerErrors[keyof DuplicateWakerErrors];
+
+export type DuplicateWakerResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisWakersDuplicateWakerResponse;
+};
+
+export type DuplicateWakerResponse = DuplicateWakerResponses[keyof DuplicateWakerResponses];
+
+export type StartWakerOnboardingData = {
+    body?: never;
+    path: {
+        /**
+         * 伙伴标识
+         */
+        wakerId: string;
+    };
+    query?: never;
+    url: '/api/v1/wakers/{wakerId}/onboarding';
+};
+
+export type StartWakerOnboardingErrors = {
+    /**
+     * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
+     * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
+     * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
+     * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
+     *
+     */
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type StartWakerOnboardingError = StartWakerOnboardingErrors[keyof StartWakerOnboardingErrors];
+
+export type StartWakerOnboardingResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisWakersWakerOnboardingResponse;
+};
+
+export type StartWakerOnboardingResponse = StartWakerOnboardingResponses[keyof StartWakerOnboardingResponses];
 
 export type ListWakerPluginReferencesData = {
     body?: never;
@@ -40216,6 +41823,7 @@ export type ListWakerPluginsErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -40225,6 +41833,12 @@ export type ListWakerPluginsErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -40237,6 +41851,8 @@ export type ListWakerPluginsErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -40324,6 +41940,7 @@ export type ListWakerPluginsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -40361,6 +41978,8 @@ export type ListWakerPluginsErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -40439,6 +42058,7 @@ export type UninstallWakerPluginErrors = {
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[PluginStorageError][50000006501]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
      * * `[RuntimeEventQueueOverflow][50000000050]`
@@ -40822,6 +42442,7 @@ export type UninstallSkillErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[SkillStorageError][50000000031]`
      *
      */
@@ -40892,6 +42513,12 @@ export type UpdateWakerSkillErrors = {
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateWakerSkillError = UpdateWakerSkillErrors[keyof UpdateWakerSkillErrors];
@@ -40925,6 +42552,12 @@ export type SetWakerSkillEnabledErrors = {
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type SetWakerSkillEnabledError = SetWakerSkillEnabledErrors[keyof SetWakerSkillEnabledErrors];
@@ -40974,6 +42607,7 @@ export type PullSkillUpdateErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[SkillStorageError][50000000031]`
      *
      */
@@ -41059,6 +42693,7 @@ export type CreateSkillVersionErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
      *
@@ -41223,6 +42858,7 @@ export type RestoreSkillVersionErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[InternalServerError][50000000001]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
      *
@@ -41283,7 +42919,7 @@ export type ListWorkBoardData = {
          */
         limit?: number;
         /**
-         * Mode 是 all、attention 或 results。
+         * Mode 是 all、action 或 awaiting_view。
          */
         mode?: string;
         /**
@@ -41345,67 +42981,118 @@ export type ListWorkBoardExecutorsResponses = {
 
 export type ListWorkBoardExecutorsResponse = ListWorkBoardExecutorsResponses[keyof ListWorkBoardExecutorsResponses];
 
-export type ClearWorkResultsData = {
+export type GetWorkBoardLiveTargetData = {
     body?: never;
     path?: never;
-    query?: never;
-    url: '/api/v1/work-board/results/clear';
-};
-
-export type ClearWorkResultsResponses = {
-    200: GithubComShrewxGinxCommonResponse;
-};
-
-export type ClearWorkResultsResponse = ClearWorkResultsResponses[keyof ClearWorkResultsResponses];
-
-export type GetWorkResultData = {
-    body?: never;
-    path: {
+    query: {
         /**
-         * OwnerID 是原容器标识。
+         * ChatID 是实际产生消息或请求的会话。
          */
-        ownerId: string;
-        ownerKind: GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind & unknown;
-    };
-    query?: never;
-    url: '/api/v1/work-board/results/{ownerKind}/{ownerId}';
-};
-
-export type GetWorkResultResponses = {
-    200: GithubComJieWaZiNeuxBotServerApisWorkBoardWorkResultResponse;
-};
-
-export type GetWorkResultResponse = GetWorkResultResponses[keyof GetWorkResultResponses];
-
-export type ViewWorkResultData = {
-    body: GithubComJieWaZiNeuxBotServerApisWorkBoardViewWorkResultRequest & unknown;
-    path: {
+        chatId?: string;
         /**
-         * OwnerID 是原容器身份。
+         * ExecutionID 定位实际等待的会话执行或工作流运行。
          */
-        ownerId: string;
-        ownerKind: GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind & unknown;
+        executionId?: string;
+        /**
+         * IncludePreview 表示需要有界公开预览。
+         */
+        includePreview?: boolean;
+        /**
+         * MessageID 是已提交的原公开消息标识。
+         */
+        messageId?: string;
+        /**
+         * Operation 是原实时事件操作类型。
+         */
+        operation: string;
+        /**
+         * RequestFence 是原团队验收围栏。
+         */
+        requestFence?: number;
+        /**
+         * RequestID 是准确的原待办请求标识。
+         */
+        requestId?: string;
+        /**
+         * RequestKind 是原交互类型。
+         */
+        requestKind?: string;
+        /**
+         * WorkID 是原公开工作标识。
+         */
+        workId: string;
+        workKind: GithubComJieWaZiNeuxBotServerConstantsWorkOwnerKind & unknown;
     };
-    query?: never;
-    url: '/api/v1/work-board/results/{ownerKind}/{ownerId}/view';
+    url: '/api/v1/work-board/live-target';
 };
 
-export type ViewWorkResultErrors = {
+export type GetWorkBoardLiveTargetErrors = {
     /**
      * >
      * * `[BadRequest][40000000001]`
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatMessageNotFound][40400007201]`
+     * * `[ChatNotFound][40400000005]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
-export type ViewWorkResultError = ViewWorkResultErrors[keyof ViewWorkResultErrors];
+export type GetWorkBoardLiveTargetError = GetWorkBoardLiveTargetErrors[keyof GetWorkBoardLiveTargetErrors];
 
-export type ViewWorkResultResponses = {
-    200: GithubComShrewxGinxCommonResponse;
+export type GetWorkBoardLiveTargetResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardLiveTarget;
 };
 
-export type ViewWorkResultResponse = ViewWorkResultResponses[keyof ViewWorkResultResponses];
+export type GetWorkBoardLiveTargetResponse = GetWorkBoardLiveTargetResponses[keyof GetWorkBoardLiveTargetResponses];
+
+export type MarkWorkBoardViewedData = {
+    body: GithubComJieWaZiNeuxBotServerApisWorkBoardMarkWorkBoardViewedRequest & unknown;
+    path?: never;
+    query?: never;
+    url: '/api/v1/work-board/mark-viewed';
+};
+
+export type MarkWorkBoardViewedErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[WorkflowNotFound][40400003001]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ReadingIntentConflict][40900009201]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ReadingProjectionIncomplete][50300009201]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type MarkWorkBoardViewedError = MarkWorkBoardViewedErrors[keyof MarkWorkBoardViewedErrors];
+
+export type MarkWorkBoardViewedResponses = {
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsMarkViewedResult;
+};
+
+export type MarkWorkBoardViewedResponse = MarkWorkBoardViewedResponses[keyof MarkWorkBoardViewedResponses];
 
 export type GetWorkBoardSummaryData = {
     body?: never;
@@ -41436,6 +43123,54 @@ export type GetWorkBoardSummaryResponses = {
 };
 
 export type GetWorkBoardSummaryResponse = GetWorkBoardSummaryResponses[keyof GetWorkBoardSummaryResponses];
+
+export type GetWorkBoardViewTargetsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        activity?: GithubComJieWaZiNeuxBotServerConstantsChannelActivityState & unknown;
+        /**
+         * ExecutorID 是原执行对象筛选。
+         */
+        executorId?: string;
+        /**
+         * Query 按原工作标题筛选。
+         */
+        query?: string;
+        /**
+         * Source 是工作入口来源。
+         */
+        source?: string;
+        /**
+         * States 是逗号分隔的可选工作状态。
+         */
+        states?: string;
+    };
+    url: '/api/v1/work-board/view-targets';
+};
+
+export type GetWorkBoardViewTargetsErrors = {
+    /**
+     * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     *
+     */
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ReadingProjectionIncomplete][50300009201]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type GetWorkBoardViewTargetsError = GetWorkBoardViewTargetsErrors[keyof GetWorkBoardViewTargetsErrors];
+
+export type GetWorkBoardViewTargetsResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardViewTargets;
+};
+
+export type GetWorkBoardViewTargetsResponse = GetWorkBoardViewTargetsResponses[keyof GetWorkBoardViewTargetsResponses];
 
 export type ListWorkflowsData = {
     body?: never;
@@ -41658,6 +43393,7 @@ export type CreateWorkflowErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -41667,6 +43403,12 @@ export type CreateWorkflowErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -41679,6 +43421,8 @@ export type CreateWorkflowErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -41766,6 +43510,7 @@ export type CreateWorkflowErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -41803,6 +43548,8 @@ export type CreateWorkflowErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -42024,6 +43771,7 @@ export type DeleteWorkflowErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -42033,6 +43781,12 @@ export type DeleteWorkflowErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -42045,6 +43799,8 @@ export type DeleteWorkflowErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -42132,6 +43888,7 @@ export type DeleteWorkflowErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -42169,6 +43926,8 @@ export type DeleteWorkflowErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -42400,6 +44159,7 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -42409,6 +44169,12 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -42421,6 +44187,8 @@ export type CreateWorkflowAnnotationErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -42508,6 +44276,7 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -42545,6 +44314,8 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -42782,6 +44553,7 @@ export type EditWorkflowConfigurationErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -42791,6 +44563,12 @@ export type EditWorkflowConfigurationErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -42803,6 +44581,8 @@ export type EditWorkflowConfigurationErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -42890,6 +44670,7 @@ export type EditWorkflowConfigurationErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -42927,6 +44708,8 @@ export type EditWorkflowConfigurationErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -43135,6 +44918,7 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -43144,6 +44928,12 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -43156,6 +44946,8 @@ export type SendWorkflowCreationMessageErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -43243,6 +45035,7 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -43280,6 +45073,8 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -43576,6 +45371,7 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -43585,6 +45381,12 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -43597,6 +45399,8 @@ export type RestoreWorkflowRevisionErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -43684,6 +45488,7 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -43721,6 +45526,8 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -43960,6 +45767,7 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -43969,6 +45777,12 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -43981,6 +45795,8 @@ export type DeleteWorkflowRevisionErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -44068,6 +45884,7 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -44105,6 +45922,8 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -44344,6 +46163,7 @@ export type StartWorkflowRunErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -44353,6 +46173,12 @@ export type StartWorkflowRunErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -44365,6 +46191,8 @@ export type StartWorkflowRunErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -44452,6 +46280,7 @@ export type StartWorkflowRunErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -44489,6 +46318,8 @@ export type StartWorkflowRunErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -44701,6 +46532,7 @@ export type DeleteWorkflowRunErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -44710,6 +46542,12 @@ export type DeleteWorkflowRunErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -44722,6 +46560,8 @@ export type DeleteWorkflowRunErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -44809,6 +46649,7 @@ export type DeleteWorkflowRunErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -44846,6 +46687,8 @@ export type DeleteWorkflowRunErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -45168,6 +47011,7 @@ export type AnswerWorkflowHumanErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -45177,6 +47021,12 @@ export type AnswerWorkflowHumanErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -45189,6 +47039,8 @@ export type AnswerWorkflowHumanErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -45276,6 +47128,7 @@ export type AnswerWorkflowHumanErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -45313,6 +47166,8 @@ export type AnswerWorkflowHumanErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -45529,6 +47384,7 @@ export type GetWorkflowInstanceErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -45538,6 +47394,12 @@ export type GetWorkflowInstanceErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -45550,6 +47412,8 @@ export type GetWorkflowInstanceErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -45637,6 +47501,7 @@ export type GetWorkflowInstanceErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -45674,6 +47539,8 @@ export type GetWorkflowInstanceErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -45890,6 +47757,7 @@ export type SkipWorkflowWorkerErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -45899,6 +47767,12 @@ export type SkipWorkflowWorkerErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -45911,6 +47785,8 @@ export type SkipWorkflowWorkerErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -45998,6 +47874,7 @@ export type SkipWorkflowWorkerErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -46035,6 +47912,8 @@ export type SkipWorkflowWorkerErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -46251,6 +48130,7 @@ export type AnswerWorkflowOperationErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -46260,6 +48140,12 @@ export type AnswerWorkflowOperationErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -46272,6 +48158,8 @@ export type AnswerWorkflowOperationErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -46359,6 +48247,7 @@ export type AnswerWorkflowOperationErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -46396,6 +48285,8 @@ export type AnswerWorkflowOperationErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -46608,6 +48499,7 @@ export type RetryWorkflowRunErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -46617,6 +48509,12 @@ export type RetryWorkflowRunErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -46629,6 +48527,8 @@ export type RetryWorkflowRunErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -46716,6 +48616,7 @@ export type RetryWorkflowRunErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -46753,6 +48654,8 @@ export type RetryWorkflowRunErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -47035,6 +48938,7 @@ export type SaveWorkflowSourceErrors = {
      * * `[PluginSkillSelectionConflict][40900006507]`
      * * `[PluginVersionConflict][40900006501]`
      * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
      * * `[RolePresetNameConflict][40900000003]`
      * * `[RuntimeInstallationBusy][40900007301]`
      * * `[RuntimeRestartBusy][40900007302]`
@@ -47044,6 +48948,12 @@ export type SaveWorkflowSourceErrors = {
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
@@ -47056,6 +48966,8 @@ export type SaveWorkflowSourceErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
      * * `[WorkspaceResourceTooLarge][41300007105]`
      *
      */
@@ -47143,6 +49055,7 @@ export type SaveWorkflowSourceErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
@@ -47180,6 +49093,8 @@ export type SaveWorkflowSourceErrors = {
      * * `[DatabaseBusy][50300001001]`
      * * `[IMServiceUnavailable][50300004001]`
      * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
      * * `[TerminalUnavailable][50300007108]`
      *
      */
@@ -47321,6 +49236,37 @@ export type ValidateWorkflowSourceResponses = {
 };
 
 export type ValidateWorkflowSourceResponse = ValidateWorkflowSourceResponses[keyof ValidateWorkflowSourceResponses];
+
+export type GetWorkspaceAttentionData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/workspace-attention';
+};
+
+export type GetWorkspaceAttentionResponses = {
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkspaceAttentionSnapshot;
+};
+
+export type GetWorkspaceAttentionResponse = GetWorkspaceAttentionResponses[keyof GetWorkspaceAttentionResponses];
+
+export type GetExecutorAttentionData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * ExecutorIDs 是逗号分隔的原执行对象标识。
+         */
+        executorIds: string;
+    };
+    url: '/api/v1/workspace-attention/executors';
+};
+
+export type GetExecutorAttentionResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisWorkspaceAttentionExecutorAttentionResponse;
+};
+
+export type GetExecutorAttentionResponse = GetExecutorAttentionResponses[keyof GetExecutorAttentionResponses];
 
 export type DeleteChatFileData = {
     body?: never;

@@ -136,64 +136,65 @@ func TestFileChangesReadKeepsActivePendingAndStartupRecoversOnlyItsOriginalBasel
 	}
 }
 
-func TestLateFileChangesAdvanceUnreadVersionWithoutReopeningExecution(t *testing.T) {
-	ctx := context.Background()
-	service, chatID := forkFixture(t)
-	store := service.logStore.(*conversationJournal).Store
-	if _, err := conversationfixture.Commit(t.Context(), store, chatID, workResultRound(t, store, chatID, "readable", constants.RuntimeEventTypeTextDelta, "answer")); err != nil {
+func TestLateFileChangesKeepOriginalReadingBoundary(t *testing.T) {
+	ctx := t.Context()
+	source, chatID := forkFixture(t)
+	store := source.logStore.(*conversationJournal).Store
+	const executionID = "readable"
+	if _, err := conversationfixture.Commit(ctx, store, chatID, []agent.ConversationChange{
+		{Fact: &agent.ChatFact{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: executionID, Data: marshalData(eventlog.ExecutionCreatedData{RuntimeID: "codex"})}},
+		{Fact: &agent.ChatFact{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: executionID}},
+		conversationfixture.NativeMessage(t, store, chatID, executionID, agent.MessageChange{Kind: agent.MessageAppend, ContentType: constants.RuntimeEventTypeTextDelta, Text: "answer"}),
+		{Fact: &agent.ChatFact{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: executionID, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})}},
+	}); err != nil {
 		t.Fatal(err)
 	}
-	database, recovered := newRecoveryTestService(t, service.logStore.Root(), store)
-	results := controllers.NewWorkResultController(database)
-	if err := results.EnableTracking(ctx, 1); err != nil {
+	database, chats := newRecoveryTestService(t, source.logStore.Root(), store)
+	reading := controllers.NewChatReadingController(database)
+	chats.queryIndexes.reading = reading
+	chats.readingRepair = newReadingRepair()
+	if err := chats.InitializeReadingBaseline(ctx); err != nil {
 		t.Fatal(err)
 	}
-	recovered.queryIndexes.results = results
-	if err := recovered.Start(ctx); err != nil {
+	if err := chats.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	chat, err := recovered.LoadExecutionChat(ctx, chatID)
+	before, err := reading.Get(ctx, constants.LocalReaderID, chatID)
+	if err != nil || before.ThroughSequence == 0 || before.UnreadMessageCount != 0 || before.LatestReadableMessageID != executionID {
+		t.Fatalf("baseline reading = %+v, %v", before, err)
+	}
+	chat, err := chats.LoadExecutionChat(ctx, chatID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	recording, err := recovered.BeginFileChanges(ctx, chat, "readable", nil, nil)
+	recording, err := chats.BeginFileChanges(ctx, chat, executionID, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer recording.Close()
-	if err = recording.PublishPending(ctx); err != nil {
+	if err := recording.PublishPending(ctx); err != nil {
 		t.Fatal(err)
 	}
-	first, found, err := results.Get(ctx, constants.WorkResultOwnerKindChat, chatID)
-	if err != nil || !found {
-		t.Fatalf("initial readable result missing: %+v %v", first, err)
-	}
-	if _, err = results.MarkViewed(ctx, first.OwnerKind, first.OwnerID, first.LatestVersion, first.AvailableAt+1); err != nil {
+	if err := os.WriteFile(filepath.Join(chat.WorkspaceDirectory, "result.txt"), []byte("new\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(filepath.Join(chat.WorkspaceDirectory, "result.txt"), []byte("new\n"), 0600); err != nil {
+	if err := recording.Finish(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err = recording.Finish(ctx); err != nil {
+	if err := chats.CatchUpReading(ctx, chatID); err != nil {
 		t.Fatal(err)
 	}
-	latest, _, err := results.Get(ctx, first.OwnerKind, first.OwnerID)
-	if err != nil {
-		t.Fatal(err)
+	after, err := reading.Get(ctx, constants.LocalReaderID, chatID)
+	if err != nil || after != before {
+		t.Fatalf("late file result moved the reading state: before=%+v after=%+v error=%v", before, after, err)
 	}
-	if latest.LatestVersion <= first.LatestVersion || latest.ViewedVersion != first.LatestVersion || latest.Reference.FileChangeRecordID != recording.capture.Summary().ID || latest.Reference.FileChangeRecordVersion != 2 {
-		t.Fatalf("late delivery cleared precise read state: %+v", latest)
+	delivery, err := chats.GetMessageFileChanges(ctx, chatID, executionID)
+	if err != nil || delivery.State != "ready" || delivery.TotalFiles != 1 || delivery.Version != 2 {
+		t.Fatalf("late file was not published on the original message: %+v %v", delivery, err)
 	}
-	if _, err = results.MarkViewed(ctx, latest.OwnerKind, latest.OwnerID, first.LatestVersion, latest.AvailableAt+1); err != nil {
-		t.Fatal(err)
-	}
-	after, _, _ := results.Get(ctx, first.OwnerKind, first.OwnerID)
-	if after.ViewedVersion != first.LatestVersion {
-		t.Fatal("stale read confirmed newer file version")
-	}
-	current, err := recovered.GetChatSummary(ctx, chatID)
+	current, err := chats.GetChatSummary(ctx, chatID)
 	if err != nil || current.Chat.ActiveExecutionID != "" || current.Chat.LastEndedExecutionStatus != constants.ExecutionStatusCompleted {
-		t.Fatalf("late file outcome reopened execution: %+v %v", current, err)
+		t.Fatalf("late file reopened execution: %+v %v", current, err)
 	}
 }
 

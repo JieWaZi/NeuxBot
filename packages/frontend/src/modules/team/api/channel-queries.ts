@@ -240,23 +240,24 @@ function mutableTimelineItem(
 ) {
   return Boolean(
     item.message?.id?.startsWith("channel-task-") ||
+    (item.message?.question && !item.message.question.result) ||
     (scope === "recovery" &&
       item.message?.actor === "team_member" &&
       !item.directDelivered),
   );
 }
 
-function compareTimelineItems(left: TeamTimelineItem, right: TeamTimelineItem) {
-  const time = (left.message?.createdAt ?? 0) - (right.message?.createdAt ?? 0);
-  if (time) return time;
-  if (left.message?.role !== right.message?.role)
-    return left.message?.role === "user" ? -1 : 1;
-  const leftId = left.message?.id ?? "",
-    rightId = right.message?.id ?? "";
-  if (leftId !== rightId) return leftId < rightId ? -1 : 1;
-  const leftChat = left.chatId ?? "",
-    rightChat = right.chatId ?? "";
-  return leftChat === rightChat ? 0 : leftChat < rightChat ? -1 : 1;
+export function compareTimelineItems(
+  left: TeamTimelineItem,
+  right: TeamTimelineItem,
+) {
+  if (Boolean(left.coordinator) !== Boolean(right.coordinator))
+    return left.coordinator ? -1 : 1;
+  // 临时输入保留原队列顺序；只有主 Chat 持久正文有阅读边界。
+  if (!left.coordinator) return 0;
+  return (
+    (left.message?.createdSequence ?? 0) - (right.message?.createdSequence ?? 0)
+  );
 }
 
 function timelineItemKey(item: TeamTimelineItem) {
@@ -541,14 +542,18 @@ export function commitTeamTimelineEvents(
         ? {
             ...page,
             leadChatLatestSequence: sequence,
-            resources: [...(page.resources ?? []), ...added.values()],
+            resources: [...(page.resources ?? []), ...added.values()].sort(
+              compareTimelineItems,
+            ),
           }
         : page,
     ),
   });
   const assistant = [...updates.values()]
     .reverse()
-    .find((item) => item.message?.role === "assistant")?.message;
+    .find(
+      (item) => item.message?.role === "assistant" && !item.message.question,
+    )?.message;
   if (assistant?.executionId) {
     queryClient.setQueryData<ChannelThreadDetail>(
       generatedGetChannelThreadQueryKey({ path: { channelId, threadId } }),

@@ -25,6 +25,7 @@ type Subscription = {
   state: GlobalEventState;
   resync: () => void;
   after?: number | string;
+  readyEpoch?: string;
 };
 const subscriptions = new Map<string, Subscription>();
 let browserClient: CoreEventClient | undefined;
@@ -85,6 +86,7 @@ export function subscribeGlobalEvents(
       after: observer.after,
       onEvent: (frame) => {
         if (!active) return;
+        if (frame.type === `${topic}.ready`) current.readyEpoch = frame.epoch;
         if (restoring) {
           bufferBytes += JSON.stringify(frame).length;
           if (buffer.length >= 256 || bufferBytes > 1_048_576) {
@@ -109,6 +111,7 @@ export function subscribeGlobalEvents(
       onState: (state, changed) => {
         if (!active) return;
         current.state = state;
+        if (state !== "open") current.readyEpoch = undefined;
         if (
           hasOpened &&
           (state === "reconnecting" || state === "unavailable")
@@ -124,6 +127,10 @@ export function subscribeGlobalEvents(
       onResync: (reason) => {
         if (!active) return;
         restoring = true;
+        if (
+          ["resync_required", "delivery_gap", "invalid_frame"].includes(reason)
+        )
+          current.readyEpoch = undefined;
         if (retry) clearTimeout(retry);
         retry = undefined;
         const version = ++restoreVersion;
@@ -142,21 +149,24 @@ export function subscribeGlobalEvents(
               overflow = false;
               buffer = [];
               bufferBytes = 0;
-              current.resync();
+              if (topic === "work-board" || topic === "reading") {
+                deliver.onResync?.("buffer_overflow");
+              } else {
+                current.resync();
+              }
               return;
             }
             const pending = buffer;
             buffer = [];
             bufferBytes = 0;
             for (const frame of pending) deliver.onEvent(frame);
-            // 原连接仍可用的缺口/非法帧需要服务器补快照或 backlog；
-            // 通知晚加入者同样依赖 WS 快照结束恢复，主进程不会自动重订阅。
-            // 重连和资源重试已自动补齐，不能重复注册形成恢复循环。
+            // 阅读主题的传输缺口由连接所有者重登记；其他主题仍使用原恢复。
             if (
-              reason === "resync_required" ||
-              reason === "delivery_gap" ||
-              reason === "invalid_frame" ||
-              (reason === "subscription_joined" && topic === "notifications")
+              topic !== "work-board" &&
+              topic !== "reading" &&
+              (reason === "resync_required" ||
+                reason === "delivery_gap" ||
+                reason === "invalid_frame")
             )
               current.resync();
           })
@@ -233,8 +243,7 @@ export function subscribeGlobalEvents(
     void restoreConnection()
       .then(() => {
         if (!current.observers.has(observer)) return;
-        observer.onResync?.("subscription_joined");
-        if (topic === "notifications") current.resync();
+        return observer.onResync?.("subscription_joined");
       })
       .catch(() => observer.onState?.("unavailable"));
   }
@@ -248,6 +257,14 @@ export function subscribeGlobalEvents(
       subscription.stop();
     }
   };
+}
+
+/** 最近一次资源 ready 的进程身份；重连期间未得到 ready 时没有已确认身份。 */
+export function getReadyEventEpoch(
+  topic: GlobalEventTopic,
+  resource: GlobalEventResource,
+) {
+  return subscriptions.get(globalEventResourceKey(topic, resource))?.readyEpoch;
 }
 
 /** 恢复历史后更新传输游标；不发业务请求，也不替代领域权威事实。 */

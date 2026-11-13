@@ -1,3 +1,4 @@
+import { waitingConversations, workAttentionHref } from "@/modules/work-board";
 import {
   ChatHistoryPopover,
   ChatHistoryPanelSurface,
@@ -36,6 +37,12 @@ import type {
   GithubComJieWaZiNeuxBotServerRepositoriesModelsChat as Chat,
 } from "@/shared/api/generated/types.gen";
 import { cn } from "@/shared/lib/cn";
+import type {
+  ChatAttention,
+  ExecutorAttention,
+} from "@/modules/workspaceattention";
+import { captureChatOpenIntent } from "@/shared/api/chat-reading";
+import { useQueryEvents } from "@/shared/api/use-query-events";
 import { platform } from "@/shared/platform/provider";
 import { navigateRouteImmediately } from "./immediate-route-navigation";
 import { AppModuleRail } from "./app-module-rail";
@@ -52,9 +59,12 @@ import {
   pinnedAppModules,
   contextSidebarWidthRange,
   moveItem,
+  moveWakerToNavigationGroup,
   reconcilePartnerOrder,
+  type NavigationDropPlacement,
   type PartnerNavigationPreferences,
 } from "./partner-navigation-preferences";
+import { WakerNavigationMenu } from "./waker-navigation-menu";
 import { VerticalResizeHandle } from "@/shared/ui/vertical-resize-handle";
 import {
   SceneChromeHost,
@@ -75,6 +85,7 @@ type PartnerNavigationLayoutProps = {
   sidebarToolbar?: ReactNode;
   contextSidebarHidden?: boolean;
   entityStatus?: "error" | "loading" | "ready";
+  executorAttention?: ReadonlyMap<string, ExecutorAttention>;
   onManageEntities: (mode: PartnerNavigationPreferences["entityMode"]) => void;
   onOpenPartnerDetail: (partnerId: string) => void;
   onNavigateModule: (moduleId: AppModuleId) => void;
@@ -196,6 +207,7 @@ function PartnerNavigationLayoutContent({
   sidebarToolbar,
   contextSidebarHidden = false,
   entityStatus = "ready",
+  executorAttention,
   onManageEntities,
   onOpenPartnerDetail,
   onNavigateModule,
@@ -271,6 +283,7 @@ function PartnerNavigationLayoutContent({
       key: `waker:${waker.id}`,
       kind: "waker",
       waker,
+      attention: executorAttention?.get(waker.id),
     });
   }
   for (const team of channels) {
@@ -281,6 +294,7 @@ function PartnerNavigationLayoutContent({
       key: `team:${channelId}`,
       kind: "team",
       team,
+      attention: executorAttention?.get(channelId),
     });
   }
   const modeRailKeys = orderedRailKeys.filter((key) =>
@@ -301,11 +315,55 @@ function PartnerNavigationLayoutContent({
     waker: Waker;
   } | null>(null);
   useEffect(() => () => resizeCleanup.current(), []);
-  const updateOrder = (sourceId: string, targetId: string) => {
+  const moveWaker = (wakerId: string, groupName: string) => {
     onPreferencesChange((current) => ({
       ...current,
-      railOrder: moveItem(orderedRailKeys, sourceId, targetId),
+      wakerGroups: moveWakerToNavigationGroup(
+        current.wakerGroups ?? [],
+        wakerId,
+        groupName,
+      ),
     }));
+  };
+  const updateOrder = (
+    sourceId: string,
+    targetId: string,
+    placement: NavigationDropPlacement,
+  ) => {
+    onPreferencesChange((current) => {
+      const source = navigationEntityByKey.get(sourceId);
+      const target = navigationEntityByKey.get(targetId);
+      const groups = current.wakerGroups ?? [];
+      let wakerGroups = current.wakerGroups;
+      if (
+        groups.length &&
+        source?.kind === "waker" &&
+        target?.kind === "waker"
+      ) {
+        const sourceGroup = groups.find((group) =>
+          group.wakerIds.includes(source.id),
+        );
+        const targetGroup = groups.find((group) =>
+          group.wakerIds.includes(target.id),
+        );
+        if (sourceGroup !== targetGroup)
+          wakerGroups = moveWakerToNavigationGroup(
+            groups,
+            source.id,
+            targetGroup?.name ?? "",
+          );
+      }
+      return {
+        ...current,
+        railOrder: moveItem(
+          reconcilePartnerOrder(availableRailKeys, current.railOrder),
+          sourceId,
+          targetId,
+          placement,
+        ),
+        wakerGroups,
+      };
+    });
   };
   const settingsLayout = settingsOpen ? settingsSidebar : undefined;
   const partnerContext = !settingsOpen && navigation.sidebarKind === "partners";
@@ -439,6 +497,44 @@ function PartnerNavigationLayoutContent({
                 }
                 selectedKey={selectedRailKey}
                 items={visibleRailItems}
+                wakerGroups={preferences.wakerGroups}
+                renderWakerRow={(item, row) => (
+                  <WakerNavigationMenu
+                    key={item.key}
+                    waker={item.waker}
+                    wakerId={item.id}
+                    groups={preferences.wakerGroups ?? []}
+                    onMove={(groupName) => moveWaker(item.id, groupName)}
+                    onCopied={(newId) => {
+                      onPreferencesChange((current) => {
+                        const groups = current.wakerGroups ?? [];
+                        const sourceGroup = groups.find((group) =>
+                          group.wakerIds.includes(item.id),
+                        );
+                        return sourceGroup
+                          ? {
+                              ...current,
+                              wakerGroups: moveWakerToNavigationGroup(
+                                groups,
+                                newId,
+                                sourceGroup.name,
+                              ),
+                            }
+                          : current;
+                      });
+                    }}
+                    onDeleted={() => {
+                      moveWaker(item.id, "");
+                      if (
+                        selectedRailKey === item.key &&
+                        (location.pathname === "/chat" || activeChatId)
+                      )
+                        navigate("/wakers", { replace: true });
+                    }}
+                  >
+                    {row}
+                  </WakerNavigationMenu>
+                )}
               />
             </div>
             {sidebar || showPartnerSidebarNavigation ? (
@@ -666,10 +762,12 @@ function ChatHistoryPanel({
           onPreferencesChange={onPreferencesChange}
           preferences={preferences}
           selectedPartnerId={item.id}
+          attention={item.attention?.chats}
         />
       ) : (
         <TeamChatTree
           channelId={item.id}
+          attention={item.attention?.chats}
           onPreferencesChange={onPreferencesChange}
           onThreadOpened={onClose}
           preferences={preferences}
@@ -686,12 +784,14 @@ function ChatHistoryPanel({
 
 function PartnerChatTree({
   activeChatId,
+  attention,
   onChatOpened,
   onPreferencesChange,
   preferences,
   selectedPartnerId,
 }: {
   activeChatId?: string;
+  attention?: ChatAttention[];
   onChatOpened?: () => void;
   onPreferencesChange: Dispatch<SetStateAction<PartnerNavigationPreferences>>;
   preferences: PartnerNavigationPreferences;
@@ -701,9 +801,22 @@ function PartnerChatTree({
   const navigate = useNavigate();
   const appScenes = useOptionalAppSceneWorkspace();
   const queryClient = useQueryClient();
+  const historyOptions = chatListInfiniteOptions(
+    selectedPartnerId || "pending",
+  );
   const chatsQuery = useInfiniteQuery({
-    ...chatListInfiniteOptions(selectedPartnerId || "pending"),
+    ...historyOptions,
     enabled: Boolean(selectedPartnerId),
+  });
+  useQueryEvents({
+    topic: "entities",
+    resource: { kind: "global" },
+    queryKeys: [historyOptions.queryKey],
+    enabled: Boolean(selectedPartnerId),
+    eventTypes: ["entities.activity.changed"],
+    eventFilter: ({ resource }) =>
+      resource.kind === "global" ||
+      (resource.kind === "waker" && resource.id === selectedPartnerId),
   });
   const chats = useMemo(
     () => chatsQuery.data?.pages.flatMap((page) => page.resources ?? []) ?? [],
@@ -847,6 +960,9 @@ function PartnerChatTree({
                           key={chat.id}
                           active={chat.id === activeChatId}
                           chat={chat}
+                          attention={attention?.find(
+                            (entry) => entry.work?.id === chat.id,
+                          )}
                           onAction={(mode) =>
                             setTaskAction({
                               chatId: chat.id ?? "",
@@ -908,6 +1024,7 @@ function PartnerChatTree({
 
 type ChatNavigationRowProps = {
   active: boolean;
+  attention?: ChatAttention;
   chat: Chat;
   onAction: (mode: "delete" | "rename") => void;
   onPrefetch: (chatId: string) => void;
@@ -916,6 +1033,7 @@ type ChatNavigationRowProps = {
 
 function ChatNavigationRow({
   active,
+  attention,
   chat,
   onAction,
   onPrefetch,
@@ -923,8 +1041,21 @@ function ChatNavigationRow({
 }: ChatNavigationRowProps) {
   const { t } = useTranslation("common");
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const chatId = chat.id ?? "";
-  const href = chatHref(chatId, chat.wakerId ?? "");
+  const questions = attention?.requests?.filter(({ kind }) => kind === "input");
+  const pending = waitingConversations(
+    questions?.length ? questions : attention?.requests,
+  )[0];
+  const requestKinds = attention?.requestKinds?.length
+    ? attention.requestKinds
+    : [
+        ...(chat.waitingElicitation ? ["input"] : []),
+        ...(chat.waitingApproval ? ["approval"] : []),
+      ];
+  const href = pending
+    ? workAttentionHref(pending.request)
+    : chatHref(chatId, chat.wakerId ?? "");
   const status = waitingInteraction(chat)
     ? "waiting"
     : chat.activeExecutionId
@@ -935,10 +1066,14 @@ function ChatNavigationRow({
       active={active}
       title={chat.title || t("partnerNavigation.untitledChat")}
       status={status}
+      requestKinds={requestKinds}
+      unreadCount={attention?.unreadMessageCount}
       href={href}
       onOpen={(event) => {
         onOpened?.();
-        navigateRouteImmediately(event, navigate, href);
+        navigateRouteImmediately(event, navigate, href, () =>
+          pending ? undefined : captureChatOpenIntent(queryClient, chatId),
+        );
       }}
       onPrefetch={() => onPrefetch(chatId)}
       onAction={onAction}

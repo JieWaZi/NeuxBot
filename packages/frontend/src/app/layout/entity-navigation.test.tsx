@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 
 import type { Waker } from "@/modules/waker";
 import "@/shared/i18n";
@@ -65,18 +65,41 @@ function NavigationHarness({
 }
 
 describe("EntityNavigation", () => {
-  it.each(["running", "waiting"] as const)(
-    "左侧伙伴头像不受 %s 工作状态影响",
-    (activityState) => {
-      render(
+  it.each([false, true])(
+    "伙伴头像在展开和紧凑导航共用等待、工作和未读状态 (%s)",
+    (collapsed) => {
+      // jsdom 的帧回调与 Node 的 performance 时钟起点不同，测试统一推进。
+      vi.useFakeTimers({
+        toFake: [
+          "performance",
+          "requestAnimationFrame",
+          "cancelAnimationFrame",
+        ],
+      });
+      onTestFinished(() => {
+        vi.useRealTimers();
+      });
+      const advanceAvatar = () => act(() => vi.advanceTimersByTime(750));
+      const onSelectPartner = vi.fn();
+      const renderEntity = (
+        requestKinds: string[],
+        runningChatCount: number,
+      ) => (
         <EntityNavigation
-          collapsed={false}
+          collapsed={collapsed}
           items={[
             {
               id: "waker-1",
               key: "waker:waker-1",
               kind: "waker",
-              waker: { id: "waker-1", name: "伙伴一", activityState } as Waker,
+              waker: { id: "waker-1", name: "伙伴一" } as Waker,
+              attention: {
+                executorId: "waker-1",
+                waitingWorkCount: requestKinds.length,
+                runningChatCount,
+                unreadMessageCount: 12,
+                chats: [{ requestKinds }],
+              },
             },
           ]}
           mode="waker"
@@ -84,14 +107,49 @@ describe("EntityNavigation", () => {
           onModeChange={() => undefined}
           onNewChat={() => undefined}
           onReorder={() => undefined}
-          onSelectPartner={() => undefined}
+          onSelectPartner={onSelectPartner}
           onSelectTeam={() => undefined}
           selectedKey="waker:waker-1"
-        />,
+        />
       );
+      const view = render(renderEntity(["input"], 3));
+      const avatar = view.container.querySelector<SVGElement>(
+        "svg[data-companion-avatar]",
+      );
+      const nativeMark = (kind: string) =>
+        avatar?.querySelector(`[data-native-attention="${kind}"]`);
+      advanceAvatar();
+      expect(nativeMark("waiting-answer")).toBeInTheDocument();
+      expect(avatar).toHaveAttribute("data-animation", "waiting-answer");
       expect(
-        document.querySelector("svg[data-companion-avatar]"),
-      ).toHaveAttribute("data-activity", "idle");
+        screen.getByRole("button", { name: "伙伴一，待输入" }),
+      ).toBeInTheDocument();
+      expect(
+        view.container.querySelector(".lucide-message-circle-question-mark"),
+      ).toBeNull();
+      if (!collapsed) {
+        fireEvent.click(screen.getByRole("button", { name: "待输入" }));
+        expect(onSelectPartner).toHaveBeenCalledWith("waker-1");
+      }
+
+      view.rerender(renderEntity(["approval"], 3));
+      advanceAvatar();
+      expect(nativeMark("waiting-approval")).toBeInTheDocument();
+      expect(view.container.querySelector(".lucide-shield-check")).toBeNull();
+
+      view.rerender(renderEntity([], 3));
+      advanceAvatar();
+      expect(nativeMark("working")?.children).toHaveLength(3);
+      expect(
+        view.container.querySelector("[data-avatar-attention]"),
+      ).toBeNull();
+
+      view.rerender(renderEntity([], 0));
+      advanceAvatar();
+      expect(nativeMark("unread")).toHaveAttribute("data-unread-count", "12");
+      expect(
+        screen.getByRole("button", { name: "伙伴一，12 条未读消息" }),
+      ).toBeInTheDocument();
     },
   );
   it.each([true, false])(
@@ -315,7 +373,7 @@ describe("EntityNavigation", () => {
     const row = screen.getByRole("button", { name: "测试" }).closest("div");
     const avatarSlot = row?.querySelector(".size-avatar-sm");
     expect(row).toHaveClass("grid-cols-[auto_minmax(0,1fr)_auto]");
-    expect(avatarSlot?.parentElement).toHaveClass("flex", "shrink-0");
+    expect(avatarSlot?.parentElement).toHaveClass("inline-flex", "shrink-0");
     expect(avatarSlot).toHaveClass("inline-flex", "size-avatar-sm");
   });
 

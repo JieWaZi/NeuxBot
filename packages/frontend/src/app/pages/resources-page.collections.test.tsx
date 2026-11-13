@@ -145,7 +145,7 @@ vi.mock("@/shared/api/generated/sdk.gen", async (original) => {
                       categories: index < 29 ? ["编程"] : [],
                       builtIn: index === 0,
                     },
-                    affectedWakerCount: 2,
+                    affectedWakerCount: index === 1 ? 2 : 0,
                   };
                 },
               ),
@@ -280,34 +280,28 @@ async function scrollNext() {
 
 it("技能分类页使用面包屑与分类内搜索，滚动追加且不重复展示插件技能", async () => {
   state.skillTotal = 31;
-  const { listPlugins } = await import("@/shared/api/generated/sdk.gen");
-  vi.mocked(listPlugins).mockClear();
   mount("?category=skills&source=plugins");
   await screen.findByRole("link", { name: "查看技能 独立技能1" });
-  expect(screen.getByText("30 个技能")).toBeVisible();
+  const installed = within(screen.getByRole("region", { name: "我的技能" }));
+  const coding = within(screen.getByRole("region", { name: "编程" }));
+  const uncategorized = within(screen.getByRole("region", { name: "未分类" }));
+  expect(screen.queryByText(/^\d+ 个技能$/)).not.toBeInTheDocument();
   expect(
-    within(screen.getByRole("region", { name: "编程" })).getByRole("heading", {
-      name: "编程28",
-    }),
-  ).toHaveTextContent("编程28");
+    installed.getByRole("heading", { name: /^我的技能\s*1$/ }),
+  ).toBeVisible();
   expect(
-    within(screen.getByRole("region", { name: "未分类" })).getByRole(
-      "heading",
-      {
-        name: "未分类2",
-      },
-    ),
-  ).toHaveTextContent("未分类2");
+    installed.getByRole("link", { name: "查看技能 独立技能1" }),
+  ).toBeVisible();
+  expect(installed.getAllByRole("article")).toHaveLength(1);
   expect(
-    within(screen.getByRole("region", { name: "编程" })).getAllByRole(
-      "article",
-    ),
-  ).toHaveLength(6);
+    coding.queryByRole("link", { name: "查看技能 独立技能1" }),
+  ).not.toBeInTheDocument();
+  expect(coding.getByRole("heading", { name: /^编程\s*27$/ })).toBeVisible();
   expect(
-    within(screen.getByRole("region", { name: "未分类" })).getAllByRole(
-      "article",
-    ),
-  ).toHaveLength(2);
+    uncategorized.getByRole("heading", { name: /^未分类\s*2$/ }),
+  ).toBeVisible();
+  expect(coding.getAllByRole("article")).toHaveLength(6);
+  expect(uncategorized.getAllByRole("article")).toHaveLength(2);
   expect(
     screen.queryByText(/插件技能|来自插件|独立安装/),
   ).not.toBeInTheDocument();
@@ -318,8 +312,7 @@ it("技能分类页使用面包屑与分类内搜索，滚动追加且不重复�
   fireEvent.click(screen.getByRole("button", { name: "查看编程全部技能" }));
   expect(screen.getByRole("heading", { level: 1, name: "编程" })).toBeVisible();
   expect(screen.getAllByRole("article")).toHaveLength(24);
-  expect(screen.getByText("28 个技能")).toBeVisible();
-  expect(screen.getByRole("searchbox", { name: "在编程中搜索" })).toBeVisible();
+  const search = screen.getByRole("searchbox", { name: "在编程中搜索" });
   expect(screen.getByRole("navigation", { name: "技能" })).toHaveTextContent(
     "技能编程",
   );
@@ -328,20 +321,27 @@ it("技能分类页使用面包屑与分类内搜索，滚动追加且不重复�
   ).not.toBeInTheDocument();
   await scrollNext();
   expect(screen.getAllByRole("article")).toHaveLength(28);
-  expect(screen.getByText("28 个技能")).toBeVisible();
+  expect(screen.queryByText(/^\d+ 个技能$/)).not.toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: "加载更多" }),
   ).not.toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: "全部分类" }),
   ).not.toBeInTheDocument();
+  fireEvent.change(search, { target: { value: "独立技能2" } });
+  await screen.findByRole("link", { name: "查看技能 独立技能28" });
+  expect(screen.getAllByRole("article")).toHaveLength(10);
+  expect(
+    screen.queryByRole("link", { name: "查看技能 独立技能29" }),
+  ).not.toBeInTheDocument();
+  fireEvent.change(search, { target: { value: "" } });
   fireEvent.click(
     within(screen.getByRole("navigation", { name: "技能" })).getByRole("link", {
       name: "技能",
     }),
   );
   expect(screen.getByRole("heading", { level: 1, name: "技能" })).toBeVisible();
-  expect(screen.getAllByRole("article")).toHaveLength(8);
+  expect(screen.getAllByRole("article")).toHaveLength(9);
   expect(listPlugins).not.toHaveBeenCalled();
 });
 
@@ -554,7 +554,9 @@ it("技能目录只保留 Git/ZIP 技能与安装入口，不展示内部内置�
   await screen.findByRole("link", { name: "查看技能 独立技能1" });
   expect(screen.getByRole("searchbox", { name: "在编程中搜索" })).toBeVisible();
   expect(screen.getAllByRole("article")).toHaveLength(12);
-  expect(screen.getAllByRole("button", { name: "安装" })).toHaveLength(12);
+  expect(screen.getAllByRole("button", { name: "安装" })).toHaveLength(11);
+  expect(screen.getByText("已安装到 2 个伙伴")).toBeVisible();
+  expect(screen.getByRole("button", { name: "安装到伙伴" })).toBeVisible();
   expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   expect(
     screen.queryByRole("link", { name: "查看技能 独立技能0" }),
@@ -566,20 +568,33 @@ it("独立技能为空时只展示一个空态", async () => {
   state.bundledEmpty = true;
   mount("?category=skills");
   await screen.findByText("暂无资源");
-  expect(screen.getByText("0 个技能")).toBeVisible();
   expect(screen.getAllByText("暂无资源")).toHaveLength(1);
+  expect(screen.queryByRole("article")).not.toBeInTheDocument();
+  expect(screen.queryByText("0 个技能")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "添加技能" })).toBeVisible();
 });
 
 it("技能摘要后续页失败不发布不完整分类，重试后恢复完整概览", async () => {
   state.skillTotal = 131;
   state.failNextPage = true;
   mount("?category=skills");
-  await screen.findByRole("alert");
+  const alert = await screen.findByRole("alert");
   expect(screen.queryByRole("article")).not.toBeInTheDocument();
-  expect(screen.queryByText(/\d+ 个技能/)).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("region", { name: "编程" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("region", { name: "未分类" }),
+  ).not.toBeInTheDocument();
   state.failNextPage = false;
-  fireEvent.click(screen.getByRole("button", { name: "重试" }));
-  await screen.findByRole("region", { name: "编程" });
-  expect(screen.getAllByRole("article")).toHaveLength(12);
-  expect(screen.getByText("130 个技能")).toBeVisible();
+  fireEvent.click(within(alert).getByRole("button", { name: "重试" }));
+  const uncategorized = within(
+    await screen.findByRole("region", { name: "未分类" }),
+  );
+  expect(
+    uncategorized.getByRole("heading", { name: /^未分类\s*102$/ }),
+  ).toBeVisible();
+  expect(uncategorized.getAllByRole("article")).toHaveLength(6);
+  expect(screen.getAllByRole("article")).toHaveLength(13);
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });

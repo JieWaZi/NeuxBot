@@ -479,6 +479,7 @@ function KeyedHistoryHarness(props: ComponentProps<typeof HistoryHarness>) {
 }
 
 function ChatThreadLayoutHarness({
+  active,
   activeExecutionId,
   activityStatus,
   isWorkRunning = false,
@@ -486,13 +487,21 @@ function ChatThreadLayoutHarness({
   cancel = vi.fn(),
   onStopWork,
   pendingApprovals = [],
+  pendingElicitations,
+  messages = [],
   composerDraft,
   requestedInteractionId,
+  presentation,
+  onResolveElicitation,
+  onResolveApproval,
+  onLoadEarlier,
+  readingChatId,
   send = vi.fn(),
   sendFailure = { kind: "none" },
   terminalEnabled = false,
   onOpenTerminal,
 }: {
+  active?: boolean;
   activeExecutionId?: string;
   activityStatus?: ComponentProps<typeof ChatThread>["activityStatus"];
   cancel?: () => Promise<void>;
@@ -500,8 +509,19 @@ function ChatThreadLayoutHarness({
   isSendDisabled?: boolean;
   onStopWork?: () => void;
   pendingApprovals?: ComponentProps<typeof ChatThread>["pendingApprovals"];
+  pendingElicitations?: ComponentProps<
+    typeof ChatThread
+  >["pendingElicitations"];
+  messages?: ChatMessage[];
   composerDraft?: string;
   requestedInteractionId?: string;
+  presentation?: ComponentProps<typeof ChatThread>["presentation"];
+  onResolveElicitation?: ComponentProps<
+    typeof ChatThread
+  >["onResolveElicitation"];
+  onResolveApproval?: ComponentProps<typeof ChatThread>["onResolveApproval"];
+  onLoadEarlier?: ComponentProps<typeof ChatThread>["onLoadEarlier"];
+  readingChatId?: string;
   send?: SendMessage;
   sendFailure?: ComponentProps<typeof ChatThread>["sendFailure"];
   terminalEnabled?: boolean;
@@ -519,8 +539,9 @@ function ChatThreadLayoutHarness({
     conversationKey: conversationKeyOf("scope:chat-layout", "chat-layout"),
     queueKey: "chat-layout",
     chatId: "chat-layout",
-    messages: [],
+    messages,
     latestSequence: 0,
+    initialPendingElicitations: pendingElicitations,
     activeExecutionId,
     isHistoryReady: true,
     isLoading: false,
@@ -542,6 +563,7 @@ function ChatThreadLayoutHarness({
 
   return (
     <ChatThread
+      active={active}
       runtime={runtime}
       messages={timeline}
       wakerName="测试伙伴"
@@ -556,7 +578,12 @@ function ChatThreadLayoutHarness({
       composerClearRevision={clearRevision}
       composerDraft={composerDraft}
       pendingApprovals={pendingApprovals}
+      pendingElicitations={pendingElicitations}
       requestedInteractionId={requestedInteractionId}
+      readingChatId={readingChatId}
+      presentation={presentation}
+      onResolveApproval={onResolveApproval}
+      onResolveElicitation={onResolveElicitation}
       terminalEnabled={terminalEnabled}
       onOpenTerminal={onOpenTerminal}
       activityStatus={activityStatus}
@@ -564,9 +591,9 @@ function ChatThreadLayoutHarness({
       isWorkRunning={isWorkRunning}
       onStopWork={onStopWork}
       sendFailure={sendFailure}
-      hasEarlierMessages={false}
+      hasEarlierMessages={Boolean(onLoadEarlier)}
       isLoadingEarlier={false}
-      onLoadEarlier={async () => undefined}
+      onLoadEarlier={onLoadEarlier ?? (async () => undefined)}
     />
   );
 }
@@ -2134,6 +2161,177 @@ describe("chat composer", () => {
     await waitFor(() => expect(send).toHaveBeenCalled());
   });
 
+  it("提问在消息区显示一次，回答后保留只读历史和输入草稿", async () => {
+    const user = userEvent.setup();
+    const onResolveElicitation = vi.fn();
+    const send = vi.fn<SendMessage>();
+    const question = {
+      elicitationId: "question-one",
+      message: "交付到哪里？",
+      mode: "form",
+    };
+    const requestedSchema = {
+      type: "object",
+      properties: {
+        delivery: { type: "string", oneOf: [{ const: "file", title: "文件" }] },
+      },
+    };
+    const view = (settled: boolean) => {
+      const request = { ...question, requestedSchema };
+      const history: ChatMessage = {
+        id: question.elicitationId,
+        role: "assistant",
+        executionId: "execution-one",
+        createdSequence: 3,
+        question: settled
+          ? { ...request, result: "accepted", answers: { delivery: "file" } }
+          : request,
+      };
+      return (
+        <ChatQueueProvider>
+          <ChatThreadLayoutHarness
+            messages={[
+              {
+                id: "assistant-reply",
+                role: "assistant",
+                executionId: "execution-one",
+                createdSequence: 2,
+                status: settled ? "completed" : "running",
+                displayParts: [{ type: "text", text: "助手回复" }],
+              },
+              history,
+            ]}
+            pendingElicitations={settled ? [] : [request]}
+            onResolveElicitation={onResolveElicitation}
+            send={send}
+          />
+        </ChatQueueProvider>
+      );
+    };
+    const { container, rerender } = render(view(false));
+    const viewport = container.querySelector("[data-chat-scroll-viewport]");
+    const composer = container.querySelector("[data-chat-composer]");
+    const expectAligned = () => {
+      const replyRow = viewport?.querySelector(
+        '[data-message-id="assistant-reply"]',
+      );
+      const questionCard = screen
+        .getByText(question.message)
+        .closest("[data-chat-elicitation-card]");
+      const questionColumn = questionCard?.parentElement;
+      expect(questionColumn).toHaveClass("col-start-2");
+      for (const row of [replyRow, questionColumn?.parentElement]) {
+        expect(row).toHaveClass(
+          "grid",
+          "grid-cols-[32px_minmax(0,1fr)]",
+          "gap-3",
+          "px-6",
+        );
+      }
+      expect(questionCard?.closest("[data-chat-message-column]")).toHaveClass(
+        "pb-8",
+      );
+    };
+    expect(screen.getByText(question.message)).toBeInTheDocument();
+    expect(viewport).toContainElement(screen.getByText(question.message));
+    expect(composer).not.toContainElement(screen.getByText(question.message));
+    expectAligned();
+    expect(
+      screen
+        .getByText("助手回复")
+        .compareDocumentPosition(screen.getByText(question.message)) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    const input = screen.getByRole("textbox", { name: "输入消息" });
+    await user.type(input, "待发送的消息");
+    await user.keyboard("{Enter}");
+    expect(send).not.toHaveBeenCalled();
+    expect(onResolveElicitation).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "文件" }));
+    await user.click(screen.getByRole("button", { name: "继续" }));
+    expect(onResolveElicitation).toHaveBeenCalledExactlyOnceWith(
+      question.elicitationId,
+      { delivery: "file" },
+      false,
+    );
+
+    rerender(view(true));
+    expect(viewport).toContainElement(screen.getByText(question.message));
+    expect(viewport).toContainElement(screen.getByText("文件"));
+    const result = screen.getByText("已回答");
+    expect(result.parentElement).toContainElement(
+      screen.getByText(question.message),
+    );
+    expect(result).toHaveClass("ms-auto", "shrink-0");
+    expectAligned();
+    expect(
+      screen
+        .getByText(question.message)
+        .compareDocumentPosition(screen.getByText("助手回复")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "继续" }),
+    ).not.toBeInTheDocument();
+    expect(input).toHaveTextContent("待发送的消息");
+  });
+
+  it("异步到达的待办深链滚动到对应提问", async () => {
+    const scrollIntoView = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
+    const view = (pending: boolean) => (
+      <MemoryRouter initialEntries={["/chat?request=target-question"]}>
+        <ChatQueueProvider>
+          <ChatThreadLayoutHarness
+            requestedInteractionId="target-question"
+            pendingElicitations={
+              pending
+                ? [
+                    { elicitationId: "other-question", message: "另一个问题" },
+                    {
+                      elicitationId: "target-question",
+                      message: "看板打开的问题",
+                    },
+                  ]
+                : []
+            }
+          />
+        </ChatQueueProvider>
+      </MemoryRouter>
+    );
+    try {
+      const { rerender } = render(view(false));
+      rerender(view(true));
+      const question = screen.getByText("看板打开的问题");
+      const card = question.closest<HTMLElement>(
+        "[data-chat-elicitation-card]",
+      );
+      expect(card).not.toBeNull();
+      if (!card) throw new Error("missing targeted question card");
+      await waitFor(() => expect(scrollIntoView.mock.contexts).toContain(card));
+      expect(within(card).getByRole("button", { name: "继续" })).toBeDisabled();
+    } finally {
+      scrollIntoView.mockRestore();
+    }
+  });
+
+  it("独立输入区也在输入表面外呈现当前提问", () => {
+    const { container } = render(
+      <ChatQueueProvider>
+        <ChatThreadLayoutHarness
+          presentation="composer"
+          pendingElicitations={[
+            { elicitationId: "workflow-question", message: "要调整哪个步骤？" },
+          ]}
+        />
+      </ChatQueueProvider>,
+    );
+    const composer = container.querySelector("[data-chat-composer]");
+    expect(screen.getByText("要调整哪个步骤？")).toBeVisible();
+    expect(composer).not.toContainElement(screen.getByText("要调整哪个步骤？"));
+    expect(screen.getByRole("textbox", { name: "输入消息" })).toBeVisible();
+  });
+
   it("旧待办失效但有新审批时仍保留审批操作和上下文", () => {
     render(
       <ChatQueueProvider>
@@ -2175,6 +2373,155 @@ describe("chat composer", () => {
     expect(
       screen.queryByRole("button", { name: "停止执行" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("看板跳到非队首审批时仍允许先处理真正的队首", async () => {
+    const user = userEvent.setup();
+    const resolve = vi.fn();
+    const approval = (id: string, title: string) => ({
+      approvalId: id,
+      toolCallId: id,
+      title,
+      options: [
+        { id: "allow", name: "Allow once", kind: "allow_once" as const },
+      ],
+    });
+    render(
+      <ChatQueueProvider>
+        <ChatThreadLayoutHarness
+          requestedInteractionId="second"
+          pendingApprovals={[
+            approval("first", "先处理的审批"),
+            approval("second", "看板选择的审批"),
+          ]}
+          onResolveApproval={resolve}
+        />
+      </ChatQueueProvider>,
+    );
+    expect(screen.getByText("先处理的审批")).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent("看板选择的审批");
+    await user.click(screen.getByRole("button", { name: /允许本次/ }));
+    expect(resolve).toHaveBeenCalledExactlyOnceWith("first", "allow");
+  });
+
+  it("结果定位遇到历史分页错误时只请求一次，并提供重试", async () => {
+    const load = vi.fn(async () => {
+      throw new Error("history unavailable");
+    });
+    render(
+      <MemoryRouter initialEntries={["/chat?message=older"]}>
+        <ChatQueueProvider>
+          <ChatThreadLayoutHarness
+            readingChatId={"a".repeat(32)}
+            onLoadEarlier={load}
+            messages={[
+              { id: "latest", role: "assistant", content: "最近正文" },
+            ]}
+          />
+        </ChatQueueProvider>
+      </MemoryRouter>,
+    );
+    await screen.findByText("定位结果失败。");
+    expect(load).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole("button", { name: "继续定位" }));
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+  });
+
+  it.each(["定位后不恢复吸底", "切回后先重定位"])("%s", async (scenario) => {
+    let finishHistory = () => {};
+    const history = new Promise<void>((resolve) => {
+      finishHistory = resolve;
+    });
+    const height = vi
+      .spyOn(HTMLElement.prototype, "clientHeight", "get")
+      .mockReturnValue(200);
+    const scroll = vi.mocked(HTMLElement.prototype.scrollTo);
+    const jump = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
+    const observe = vi.fn();
+    class Intersection {
+      observe = observe;
+      unobserve() {}
+      disconnect() {}
+    }
+    const originalIntersection = globalThis.IntersectionObserver;
+    vi.stubGlobal("IntersectionObserver", Intersection);
+    scroll.mockClear();
+    const message = (
+      id: string,
+      sequence: number,
+      text: string,
+    ): ChatMessage => ({
+      id,
+      role: "assistant",
+      readable: true,
+      createdSequence: sequence,
+      status: "completed",
+      displayParts: [{ id: `text:${id}`, type: "text", text }],
+    });
+    const newest = message("latest", 5, "最新正文");
+    const older = message("older", 2, "原结果");
+    const content = (loaded: boolean, active = true) => (
+      <MemoryRouter initialEntries={["/chat?message=older"]}>
+        <ChatQueueProvider>
+          <ChatThreadLayoutHarness
+            active={active}
+            readingChatId={"a".repeat(32)}
+            onLoadEarlier={() => history}
+            messages={loaded ? [older, newest] : [newest]}
+          />
+        </ChatQueueProvider>
+      </MemoryRouter>
+    );
+    const view = render(content(false));
+    try {
+      await screen.findByText("正在定位原结果…");
+      const viewport = view.container.querySelector<HTMLDivElement>(
+        "[data-chat-scroll-viewport]",
+      );
+      if (!viewport) throw new Error("missing chat viewport");
+      Object.defineProperty(viewport, "scrollHeight", { value: 600 });
+      jump.mockImplementation(() => {
+        viewport.scrollTop = 390;
+      });
+      const newBody = viewport?.querySelector("[data-chat-readable-body]");
+      expect(newBody).not.toBeNull();
+      expect(scroll.mock.contexts).not.toContain(viewport);
+      expect(observe).not.toHaveBeenCalledWith(newBody);
+      view.rerender(content(true));
+      finishHistory();
+      const target = viewport?.querySelector('[data-message-id="older"]');
+      await waitFor(() => expect(jump.mock.contexts).toContain(target));
+      await waitFor(() =>
+        expect(observe).toHaveBeenCalledWith(
+          target?.querySelector("[data-chat-readable-body]"),
+        ),
+      );
+      expect(scroll.mock.contexts).not.toContain(viewport);
+      if (scenario === "定位后不恢复吸底") {
+        // scrollIntoView 的事件可能在聊天滚动监听重新装配后才到达。
+        fireEvent.scroll(viewport);
+        view.rerender(content(true));
+        await act(async () => {
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          );
+        });
+        expect(scroll.mock.contexts).not.toContain(viewport);
+      } else {
+        view.rerender(content(false, false));
+        observe.mockClear();
+        view.rerender(content(false));
+        const body = viewport.querySelector("[data-chat-readable-body]");
+        expect(body).not.toBeNull();
+        expect(observe).not.toHaveBeenCalledWith(body);
+      }
+    } finally {
+      view.unmount();
+      finishHistory();
+      height.mockRestore();
+      jump.mockRestore();
+      vi.stubGlobal("IntersectionObserver", originalIntersection);
+    }
   });
 
   it.each([false, true])(

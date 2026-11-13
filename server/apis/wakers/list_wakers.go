@@ -78,6 +78,7 @@ func (l *ListWakers) Output(ctx *gin.Context) (interface{}, error) {
 		return nil, ginx.WithStack(err)
 	}
 	for index := range resources {
+		resources[index].OverviewRevision = resources[index].ProfileOverview().Revision()
 		_, resources[index].IsDefault = builtinrolepreset.DefinitionByWakerID(
 			resources[index].ID,
 		)

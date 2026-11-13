@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -30,17 +31,17 @@ type timelineHistoryFake struct {
 	calls int
 }
 
-// ReadMessageHistory 返回测试配置的完整消息窗口。
-func (f *timelineHistoryFake) ReadMessageHistory(
+// ReadMessageTimeline 返回测试配置的完整消息窗口。
+func (f *timelineHistoryFake) ReadMessageTimeline(
 	_ context.Context,
 	_ string,
-	before int64,
+	before, through int64,
 	limit int,
 ) (chatservice.MessageHistoryPage, error) {
 	f.calls++
 	resources := make([]messageview.Message, 0, len(f.resources))
 	for _, message := range f.resources {
-		if before == 0 || message.CreatedSequence < before {
+		if (before == 0 || message.CreatedSequence < before) && (through == 0 || message.CreatedSequence <= through) {
 			resources = append(resources, message)
 		}
 	}
@@ -52,7 +53,7 @@ func (f *timelineHistoryFake) ReadMessageHistory(
 	if len(resources) > 0 {
 		page.NextBeforeSequence = resources[0].CreatedSequence
 	}
-	if before == 0 {
+	if before == 0 && through == 0 {
 		page.LatestSequence = f.latestSequence
 	}
 	return page, nil
@@ -371,6 +372,77 @@ func TestTimelineLongFollowUpsPageSameMillisecondAcrossAuthorsWithoutGaps(t *tes
 	for index := 1; index < len(assembled); index++ {
 		if timelineMessageLess(assembled[index], assembled[index-1]) {
 			t.Fatalf("cursor order changed at %d: %s -> %s", index, assembled[index-1].Message.ID, assembled[index].Message.ID)
+		}
+	}
+}
+
+func TestTimelineUsesSequenceForSameMillisecondMemberReports(t *testing.T) {
+	fixture := newDeletionFixture(t)
+	_, threadID, _ := fixture.seedTeam(t)
+	fixture.service.chats = &timelineHistoryFake{latestSequence: 9, resources: []messageview.Message{
+		{ID: "z-report", Role: constants.MessageRoleUser, Actor: string(constants.ChannelMessageActorMemberReport), Content: "first committed", CreatedAt: 100, CreatedSequence: 5},
+		{ID: "a-report", Role: constants.MessageRoleUser, Actor: string(constants.ChannelMessageActorMemberReport), Content: "second committed", CreatedAt: 100, CreatedSequence: 8},
+	}}
+	fixture.service.tasks = controllers.NewChannelTaskController(fixture.db)
+	page, err := fixture.service.ReadTimeline(context.Background(), TimelineQuery{ThreadID: threadID, Limit: 2})
+	if err != nil || len(page.Resources) != 2 || page.Resources[0].Message.ID != "z-report" || page.Resources[1].Message.ID != "a-report" {
+		t.Fatalf("same-millisecond report order differed from original Chat sequence: %+v %v", page.Resources, err)
+	}
+}
+
+func TestTimelinePendingPageKeepsFrozenLeadHistory(t *testing.T) {
+	ctx := context.Background()
+	fixture := newDeletionFixture(t)
+	_, threadID, _ := fixture.seedTeam(t)
+	thread, err := fixture.threads.Get(ctx, threadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	store, err := conversation.NewStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	chats, err := chatservice.New(chatservice.Config{Conversations: store, StorageDirectory: root, Projects: controllers.NewProjectController(fixture.db), QueryIndexes: chatservice.QueryIndexDependencies{
+		Chats: controllers.NewChatController(fixture.db), Transactions: fixture.service.transactions,
+		DeletionIntents: controllers.NewChatDeletionIntentController(fixture.db),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer chats.Close()
+	workspace := t.TempDir()
+	if _, err = chats.CreateDormantChats(ctx, []chatservice.DormantChat{{Chat: models.Chat{ID: thread.LeadChatID, WakerID: thread.LeadWakerID, WorkspaceDirectory: workspace, AdditionalWorkingDirectories: []string{workspace}}}}); err != nil {
+		t.Fatal(err)
+	}
+	appendReport := func(id string) {
+		t.Helper()
+		if err := chats.AppendParticipantMessages(ctx, thread.LeadChatID, []chatservice.ParticipantMessageInput{{ID: id, Actor: string(constants.ChannelMessageActorMemberReport), Content: id, SourceWakerID: "55555555555555555555555555555555", SourceChatID: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	appendReport("earlier-report")
+	fixture.service.chats = chats
+	fixture.service.tasks = controllers.NewChannelTaskController(fixture.db)
+	if err := fixture.service.tasks.Create(ctx, models.ChannelTask{
+		ID: "pending", ThreadID: threadID, AssigneeWakerID: "55555555555555555555555555555555",
+		Status: constants.ChannelTaskStatusPending, CreatedAt: 1000,
+		DirectInput: &workinput.Input{Actor: string(constants.ChannelMessageActorUser), Content: "未投递"},
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	first, err := fixture.service.ReadTimeline(ctx, TimelineQuery{ThreadID: threadID, Limit: 1})
+	if err != nil || !first.HasMore || len(first.Resources) != 1 || first.Resources[0].Message.ID != "channel-task-input:pending" {
+		t.Fatalf("expected a pending-only first page: %+v %v", first, err)
+	}
+	for _, appendLater := range []bool{false, true} {
+		if appendLater {
+			appendReport("later-report")
+		}
+		older, err := fixture.service.ReadTimeline(ctx, TimelineQuery{ThreadID: threadID, Limit: 1, Cursor: first.NextCursor})
+		if err != nil || older.HasMore || len(older.Resources) != 1 || older.Resources[0].Message.ID != "earlier-report" || older.LeadChatLatestSequence != nil {
+			t.Fatalf("older page did not honor the frozen lead history: %+v %v", older, err)
 		}
 	}
 }

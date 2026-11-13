@@ -3,7 +3,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
+import { Link, MemoryRouter, Route, Routes, useParams } from "react-router-dom";
 import {
   afterAll,
   afterEach,
@@ -214,7 +214,20 @@ afterAll(() => {
   vi.unstubAllGlobals();
 });
 
-function renderRun(request?: string) {
+function RunRoute() {
+  const { workflowId = "", runId = "" } = useParams();
+  return (
+    <>
+      <Link to={`/workflows/${workflowId}/runs/${runId}?result=1`}>
+        查看执行结果
+      </Link>
+      <Link to="/workflows/flow-1/runs/run-2">切换执行记录</Link>
+      <WorkflowRunView id={workflowId} runId={runId} />
+    </>
+  );
+}
+
+function renderRun(search?: string) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -223,20 +236,13 @@ function renderRun(request?: string) {
       <TooltipProvider>
         <MemoryRouter
           initialEntries={[
-            `/workflows/flow-1/runs/run-1${request ? `?request=${request}` : ""}`,
+            `/workflows/flow-1/runs/run-1${search ? `?${search}` : ""}`,
           ]}
         >
           <Routes>
             <Route
               path="/workflows/:workflowId/runs/:runId"
-              element={
-                <>
-                  <Link to="/workflows/flow-1/runs/run-1?result=1">
-                    查看执行结果
-                  </Link>
-                  <WorkflowRunView id="flow-1" runId="run-1" />
-                </>
-              }
+              element={<RunRoute />}
             />
           </Routes>
         </MemoryRouter>
@@ -245,16 +251,27 @@ function renderRun(request?: string) {
   );
 }
 
-it("真实执行画布登记当前运行身份且切换后不保留旧提示抑制范围", async () => {
+it("切换执行记录后，画布展示当前运行的冻结参数", async () => {
   snapshot.humanRequests = [];
   snapshot.operationRequests = [];
-  const view = renderRun();
-  await screen.findByRole("button", { name: "输入参数" });
-  expect(
-    document.querySelector("[data-notification-workflow-run]"),
-  ).toHaveAttribute("data-notification-workflow-run", "run-1");
-  view.unmount();
-  expect(document.querySelector("[data-notification-workflow-run]")).toBeNull();
+  server.use(
+    http.get(`${api}/runs/run-2`, () =>
+      HttpResponse.json({
+        ...snapshot,
+        run: { ...snapshot.run, id: "run-2", args: { client: "B" } },
+      }),
+    ),
+  );
+  const user = userEvent.setup();
+  renderRun();
+  const input = await screen.findByRole("button", { name: "输入参数" });
+  expect(within(input).getByText("A")).toBeInTheDocument();
+  await user.click(screen.getByRole("link", { name: "切换执行记录" }));
+  await waitFor(() => {
+    const current = within(screen.getByRole("button", { name: "输入参数" }));
+    expect(current.getByText("B")).toBeInTheDocument();
+    expect(current.queryByText("A")).not.toBeInTheDocument();
+  });
 });
 
 it("执行输入节点使用冻结参数，弹窗只读且不读取保存输入或默认值", async () => {
@@ -367,14 +384,14 @@ it("后台查询失败保留运行画布与人工输入草稿，就近重试后�
 it.each([
   ["提交答案", undefined],
   ["跳过", undefined],
-  ["提交答案", "human:human-1"],
-  ["跳过", "human:human-1"],
+  ["提交答案", "request=human-1&instance=actual-1"],
+  ["跳过", "request=human-1&instance=actual-1"],
 ] as const)(
   "用户%s成功后收起弹层，仍可手动查看节点详情（请求入口=%s）",
-  async (action, request) => {
+  async (action, search) => {
     const user = userEvent.setup();
     snapshot.operationRequests = [];
-    renderRun(request);
+    renderRun(search);
     await screen.findByText("是否批准客户 A 的风险？", undefined, {
       timeout: 5000,
     });

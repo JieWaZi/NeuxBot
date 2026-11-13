@@ -5,6 +5,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
+	"github.com/JieWaZi/NeuxBot/server/internal/profile"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -40,6 +41,13 @@ func (g *GetWakerDocument) Output(ctx *gin.Context) (interface{}, error) {
 	rows, err := global.ProfileDocumentControllerManager.ListWakerDocuments(ctx, g.WakerID)
 	if err != nil {
 		return nil, ginx.WithStack(err)
+	}
+	if g.Kind == constants.ProfileDocumentKindAgents {
+		document := builtinrolepreset.ResolveWakerAgents(waker.ID, rows, waker.UpdatedAt)
+		document.Editable = waker.OnboardingStatus != constants.WakerOnboardingStatusPending
+		document.MaxTokens = constants.WakerProfileContentMaximumTokens
+		document.Revision = profile.ContentRevision(document.Content)
+		return document, nil
 	}
 	documents, err := builtinrolepreset.ResolvedWakerDocuments(
 		g.WakerID,

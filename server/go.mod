@@ -4,7 +4,7 @@ go 1.25.8
 
 require (
 	github.com/BurntSushi/toml v1.5.0
-	github.com/JieWaZi/acp-go v0.1.1-0.20261110004610-b12597301d79
+	github.com/JieWaZi/acp-go v0.1.1-0.20261112030522-c220d9708b52
 	github.com/JieWaZi/neux-knowledge v0.1.2-0.20261030094232-fff1c7595373
 	github.com/dop251/goja v0.0.0-20261002135814-104bc28c3abd
 	github.com/fsnotify/fsnotify v1.9.0
@@ -23,6 +23,7 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/shrewx/ginx v1.2.7-0.20260801090805-290a56f47cbc
 	github.com/spf13/cobra v1.10.2
+	github.com/tiktoken-go/tokenizer v0.7.0
 	golang.org/x/mod v0.35.0
 	golang.org/x/sys v0.44.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -30,6 +31,7 @@ require (
 )
 
 require (
+	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/go-courier/codegen v1.1.2 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect

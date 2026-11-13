@@ -25,6 +25,8 @@ type ReviewChannelTaskRequest struct {
 	Approved bool `json:"approved"`
 	// 驳回反馈
 	Feedback string `json:"feedback" validate:"max=1048576"`
+	// ExpectedFence 是用户确认的原验收代次。
+	ExpectedFence int `json:"expectedFence" validate:"required,min=1"`
 }
 
 // 验收团队任务
@@ -47,6 +49,9 @@ func (r *ReviewChannelTask) Path() string {
 
 // Output 由用户通过或驳回等待人工验收的任务。
 func (r *ReviewChannelTask) Output(ctx *gin.Context) (interface{}, error) {
+	if r.Body.ExpectedFence <= 0 {
+		return nil, ginx.WithStack(status_error.BadRequest)
+	}
 	operationContext, release, lockErr := teamwork.Acquire(ctx, r.ChannelID)
 	if lockErr != nil {
 		return nil, ginx.WithStack(lockErr)
@@ -60,7 +65,7 @@ func (r *ReviewChannelTask) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	if task.Status != constants.ChannelTaskStatusInReview {
+	if task.Status != constants.ChannelTaskStatusInReview || task.CurrentFence != r.Body.ExpectedFence {
 		return nil, ginx.WithStack(status_error.ChannelTaskStateConflict)
 	}
 	feedback := strings.TrimSpace(r.Body.Feedback)
@@ -76,7 +81,7 @@ func (r *ReviewChannelTask) Output(ctx *gin.Context) (interface{}, error) {
 		if currentErr != nil {
 			return currentErr
 		}
-		if current.Status != constants.ChannelTaskStatusInReview {
+		if current.Status != constants.ChannelTaskStatusInReview || current.CurrentFence != r.Body.ExpectedFence {
 			return status_error.ChannelTaskStateConflict
 		}
 		if !r.Body.Approved {

@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -12,15 +13,42 @@ import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import type * as ChatModule from "@/modules/chat";
+import type * as WakerModule from "@/modules/waker";
 import type { Waker } from "@/modules/waker";
 import { FloatingChat } from "@/modules/chat/components/floating-chat";
 import { SettingsContextSidebar } from "@/modules/settings/components/settings-context-sidebar";
+import type { GlobalEventObserver } from "@/shared/api/global-events";
 import { i18n } from "@/shared/i18n";
 import { configurePlatform, platform } from "@/shared/platform/provider";
 import { WorkspaceProvider } from "@/shared/workspace/workspace-context";
 import { ResourcesContextSidebar } from "./resources-context-sidebar";
 import { PartnerNavigationLayout } from "./partner-navigation-layout";
 import type { PartnerNavigationPreferences } from "./partner-navigation-preferences";
+
+const history = vi.hoisted(() => ({
+  executionId: undefined as string | undefined,
+  waitingApproval: false,
+  waitingElicitation: false,
+  observers: new Set<GlobalEventObserver>(),
+}));
+const duplicateWaker = vi.hoisted(() => vi.fn());
+
+vi.mock("@/modules/waker", async (importOriginal) => ({
+  ...(await importOriginal<typeof WakerModule>()),
+  duplicateWakerMutation: () => ({ mutationFn: duplicateWaker }),
+}));
+
+vi.mock(import("@/shared/api/global-events"), async (importOriginal) => ({
+  ...(await importOriginal()),
+  subscribeGlobalEvents: (
+    _topic: string,
+    _resource: unknown,
+    observer: GlobalEventObserver,
+  ) => {
+    history.observers.add(observer);
+    return () => history.observers.delete(observer);
+  },
+}));
 
 vi.mock("@/modules/chat", async (importOriginal) => ({
   ...(await importOriginal<typeof ChatModule>()),
@@ -35,6 +63,9 @@ vi.mock("@/modules/chat", async (importOriginal) => ({
           ? [
               {
                 id: "chat-project",
+                activeExecutionId: history.executionId,
+                waitingApproval: history.waitingApproval,
+                waitingElicitation: history.waitingElicitation,
                 projectId: "project-1",
                 projectName: "项目甲",
                 title: "项目会话",
@@ -375,6 +406,74 @@ function renderLayout({
 }
 
 describe("PartnerNavigationLayout", () => {
+  it("伙伴右键菜单可新建分组、移入已有分组、编辑和打开删除确认", async () => {
+    renderLayout({
+      navigationPreferences: {
+        wakerGroups: [{ name: "已有分组", wakerIds: ["waker-2"] }],
+      },
+    });
+    const user = userEvent.setup();
+    const row = screen.getByRole("button", { name: "伙伴 1" });
+    row.focus();
+    await user.keyboard("{Shift>}{F10}{/Shift}");
+    expect(screen.getByRole("menuitem", { name: "标为未读" })).toBeVisible();
+    expect(screen.getByRole("menuitem", { name: "复制伙伴" })).toBeVisible();
+    const openMove = async () => {
+      screen.getByRole("menuitem", { name: "移动到" }).focus();
+      await user.keyboard("{ArrowRight}");
+    };
+    await openMove();
+    await user.click(screen.getByRole("menuitem", { name: "新建分组" }));
+    const groupDialog = screen.getByRole("dialog", { name: "新建分组" });
+    await user.type(within(groupDialog).getByLabelText("分组名称"), "研究");
+    await user.click(within(groupDialog).getByRole("button", { name: "保存" }));
+    const heading = screen.getByRole("heading", { name: "研究" });
+    expect(heading.nextElementSibling).toContainElement(row);
+
+    fireEvent.contextMenu(row);
+    await openMove();
+    await user.click(screen.getByRole("menuitem", { name: "已有分组" }));
+    expect(heading).not.toBeInTheDocument();
+    const existing = screen.getByRole("heading", { name: "已有分组" });
+    expect(existing.nextElementSibling).toContainElement(row);
+
+    fireEvent.contextMenu(row);
+    await openMove();
+    await user.click(screen.getByRole("menuitem", { name: "未分组" }));
+    expect(
+      screen.getByRole("heading", { name: "未分组" }).nextElementSibling,
+    ).toContainElement(row);
+
+    fireEvent.contextMenu(row);
+    await user.click(screen.getByRole("menuitem", { name: "编辑伙伴" }));
+    expect(screen.getByRole("dialog", { name: "编辑伙伴" })).toBeVisible();
+    await user.keyboard("{Escape}");
+    fireEvent.contextMenu(row);
+    await user.click(screen.getByRole("menuitem", { name: "删除伙伴" }));
+    const deleteDialog = screen.getByRole("dialog", { name: "删除伙伴" });
+    expect(
+      within(deleteDialog).getByRole("button", { name: "删除伙伴" }),
+    ).toBeDisabled();
+  });
+
+  it("复制通过原伙伴标识请求新伙伴", async () => {
+    duplicateWaker.mockResolvedValueOnce({ wakerId: "new-partner" });
+    renderLayout();
+    fireEvent.contextMenu(screen.getByRole("button", { name: "伙伴 1" }));
+    await userEvent
+      .setup()
+      .click(screen.getByRole("menuitem", { name: "复制伙伴" }));
+    await waitFor(() =>
+      expect(duplicateWaker).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: { wakerId: "waker-1" },
+          body: { requestId: expect.any(String) },
+        }),
+        expect.anything(),
+      ),
+    );
+  });
+
   it("通知紧跟前进按钮，模块栏不重复显示通知", () => {
     renderLayout({
       sidebarToolbar: (
@@ -687,10 +786,10 @@ describe("PartnerNavigationLayout", () => {
     ).toBe("");
     const rail = screen.getByRole("navigation", { name: "伙伴" });
     expect(
-      within(rail).getByRole("button", { name: "伙伴 5，1 个会话需要处理" }),
+      within(rail).getByRole("button", { name: "伙伴 5，需要操作" }),
     ).toBeVisible();
     expect(
-      within(rail).getByRole("button", { name: "伙伴 6，4 个会话正在运行" }),
+      within(rail).getByRole("button", { name: "伙伴 6，工作中" }),
     ).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("button", { name: "查看历史会话" })).toBe(history);
     expect(
@@ -914,9 +1013,7 @@ describe("PartnerNavigationLayout", () => {
     expect(
       within(screen.getByLabelText("历史会话")).queryByText("伙伴 6"),
     ).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "伙伴 6，4 个会话正在运行" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "伙伴 6，工作中" })).toBeNull();
     expect(screen.queryByRole("button", { name: "置顶" })).toBeNull();
     const taskListLink = await screen.findByRole("link", { name: "对话任务" });
     expect(taskListLink).toHaveAttribute("href", "/wakers/waker-6/chats");
@@ -987,4 +1084,76 @@ describe("PartnerNavigationLayout", () => {
       expect(link.parentElement).not.toHaveClass("focus-within:bg-muted");
     }
   });
+});
+
+it.each([
+  { waitingElicitation: false, label: "待审批", glyph: "lucide-shield-check" },
+  {
+    waitingElicitation: true,
+    label: "待输入",
+    glyph: "lucide-message-circle-question-mark",
+  },
+])("伙伴历史用图标区分$label", async ({ waitingElicitation, label, glyph }) => {
+  history.waitingApproval = true;
+  history.waitingElicitation = waitingElicitation;
+  const user = userEvent.setup();
+  const view = renderLayout();
+  try {
+    await user.click(screen.getByRole("button", { name: "查看历史会话" }));
+    const link = await screen.findByRole("link", { name: /项目会话/ });
+    expect(
+      within(link).getByRole("img", { name: label }).querySelector("svg"),
+    ).toHaveClass(glyph);
+    expect(link.querySelector("[data-history-status]")).toBeNull();
+  } finally {
+    view.unmount();
+    history.waitingApproval = false;
+    history.waitingElicitation = false;
+  }
+});
+
+it.each([
+  {
+    cause: "同一伙伴已提交的活动变化",
+    type: "entities.activity.changed",
+    resource: { kind: "waker", id: "waker-6" },
+  },
+  {
+    cause: "连接就绪",
+    type: "entities.ready",
+    resource: { kind: "global" },
+  },
+])("伙伴历史在$cause后刷新，终态清除运行状态点", async ({ type, resource }) => {
+  history.executionId = "execution";
+  const user = userEvent.setup();
+  const view = renderLayout();
+  try {
+    await user.click(screen.getByRole("button", { name: "查看历史会话" }));
+    const link = await screen.findByRole("link", { name: /项目会话/ });
+    const dot = () => link.querySelector("[data-history-status]");
+    expect(dot()).toHaveAttribute("data-history-status", "running");
+    expect(dot()).toHaveClass("bg-success");
+    expect(link.querySelector("svg")).toBeNull();
+    history.executionId = undefined;
+    act(() => {
+      for (const observer of history.observers)
+        observer.onEvent({
+          protocolVersion: 1,
+          epoch: "core",
+          connectionId: "connection",
+          deliverySequence: 1,
+          topic: "entities",
+          type,
+          resource,
+          eventId: "updated",
+          payload: { kind: "chat", id: "chat-project" },
+        });
+    });
+    await waitFor(() =>
+      expect(dot()).toHaveAttribute("data-history-status", "idle"),
+    );
+  } finally {
+    view.unmount();
+    history.executionId = undefined;
+  }
 });

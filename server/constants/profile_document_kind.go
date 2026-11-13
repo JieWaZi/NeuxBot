@@ -15,6 +15,8 @@ const (
 	ProfileDocumentKindPersona ProfileDocumentKind = "persona"
 	// ProfileDocumentKindPlaybook 表示工作方式文档。
 	ProfileDocumentKindPlaybook ProfileDocumentKind = "playbook"
+	// ProfileDocumentKindAgents 表示伙伴唯一生效的长期指令。
+	ProfileDocumentKindAgents ProfileDocumentKind = "agents"
 	// ProfileDocumentKindMemory 表示伙伴独立拥有的记忆文档。
 	ProfileDocumentKindMemory ProfileDocumentKind = "memory"
 )
@@ -28,6 +30,8 @@ func ProfileDocumentFileName(kind ProfileDocumentKind) (string, bool) {
 		return ProfileDocumentPersonaFileName, true
 	case ProfileDocumentKindPlaybook:
 		return ProfileDocumentPlaybookFileName, true
+	case ProfileDocumentKindAgents:
+		return ProfileDocumentAgentsFileName, true
 	case ProfileDocumentKindMemory:
 		return ProfileDocumentMemoryFileName, true
 	default:

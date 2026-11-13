@@ -1,4 +1,8 @@
-import { useOptionalAppSceneWorkspace } from "@/shared/workspace/app-scene-workspace";
+import { useQueryEvents } from "@/shared/api/use-query-events";
+import {
+  useOptionalAppSceneWorkspace,
+  useRouteSceneActive,
+} from "@/shared/workspace/app-scene-workspace";
 import { PageAction, ResourcePageSurface } from "@/shared/ui/resource-page";
 import { useQuery } from "@tanstack/react-query";
 import { MessageCircle, Pencil } from "lucide-react";
@@ -33,7 +37,17 @@ export function WakerDetailPage() {
   const { t } = useTranslation("waker");
   const [editing, setEditing] = useState(false);
   const navigate = useNavigate();
-  const query = useQuery(getWakerOptions({ path: { wakerId } }));
+  const active = useRouteSceneActive();
+  const wakerOptions = getWakerOptions({ path: { wakerId } });
+  const query = useQuery(wakerOptions);
+  useQueryEvents({
+    topic: "entities",
+    resource: { kind: "waker", id: wakerId },
+    queryKeys: [wakerOptions.queryKey],
+    eventTypes: ["entities.changed"],
+    enabled: Boolean(wakerId),
+    active,
+  });
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const workRecordQuery = useQuery(
     getWakerWorkRecordOptions({
@@ -132,9 +146,11 @@ export function WakerDetailPage() {
                     <span className="[overflow-wrap:anywhere]">
                       {waker.name}
                     </span>
-                    <span className="bg-muted text-muted-foreground type-ui max-w-full rounded-md px-2 py-1 font-normal [overflow-wrap:anywhere]">
-                      {waker.roleName}
-                    </span>
+                    {waker.roleName ? (
+                      <span className="bg-muted text-muted-foreground type-ui max-w-full rounded-md px-2 py-1 font-normal [overflow-wrap:anywhere]">
+                        {waker.roleName}
+                      </span>
+                    ) : null}
                   </span>
                 }
                 description={waker.bio || undefined}
@@ -199,6 +215,9 @@ export function WakerDetailPage() {
             </WakerPatternPanel>
 
             <div className="border-border-subtle mt-3 grid gap-8 border-t pt-3">
+              {waker.onboardingStatus === "pending" ? (
+                <WakerProfileSection waker={waker} />
+              ) : null}
               <AutomaticTaskAttentionSection wakerId={wakerId} />
               <WakerWorkRecordSection
                 wakerId={wakerId}
@@ -230,8 +249,9 @@ export function WakerDetailPage() {
                         navigate(`/wakers/${wakerId}/resources/connectors/new`)
                       }
                     />
-
-                    <WakerProfileSection waker={waker} />
+                    {waker.onboardingStatus !== "pending" ? (
+                      <WakerProfileSection waker={waker} />
+                    ) : null}
                   </>
                 }
               />

@@ -81,17 +81,6 @@ func (s *service) drainNotifications(ctx context.Context, threadID string) error
 		return err
 	}
 	if direct {
-		var receipt *models.WorkResultReceipt
-		if s.prepareDirectResult != nil && s.results != nil {
-			receipt, err = s.prepareDirectResult(ctx, thread.LeadChatID, entries[0].NotificationID)
-			if err != nil {
-				return err
-			}
-			if receipt != nil {
-				receipt.OwnerKind = constants.WorkResultOwnerKindTeamThread
-				receipt.OwnerID = thread.ID
-			}
-		}
 		return s.transaction(ctx, func(transactionContext context.Context) error {
 			consumed, consumeErr := s.tasks.ConsumePendingNotification(
 				transactionContext, entries[0].NotificationID, time.Now().UnixMilli(),
@@ -99,17 +88,13 @@ func (s *service) drainNotifications(ctx context.Context, threadID string) error
 			if consumeErr != nil || !consumed {
 				return consumeErr
 			}
-			deliveryEvent, eventErr := s.appendEvent(
+			_, eventErr := s.appendEvent(
 				transactionContext, thread.ChannelID, thread.ID,
 				constants.ChannelEventMemberDirectDelivered,
 				map[string]string{"notificationId": entries[0].NotificationID},
 			)
 			if eventErr != nil {
 				return eventErr
-			}
-			if receipt != nil {
-				receipt.AvailableAt = deliveryEvent.CreatedAt
-				return s.results.Publish(transactionContext, *receipt)
 			}
 			return nil
 		})

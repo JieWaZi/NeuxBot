@@ -14,6 +14,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -22,7 +23,11 @@ import {
   type SetStateAction,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { useOutletContext, useSearchParams } from "react-router-dom";
+import {
+  useLocation,
+  useOutletContext,
+  useSearchParams,
+} from "react-router-dom";
 
 import {
   cancelChatExecutionMutation,
@@ -116,8 +121,23 @@ type TeamDraftConfigurations = Record<
 export function TeamChatPageContent(props: TeamChatPageContentProps) {
   const scopeKey = useScenePresentationKey(props.presentationScopeKey);
   const [searchParams] = useSearchParams();
+  const { key: routeKey } = useLocation();
+  const sceneActive = useRouteSceneActive();
   const workspaceScopeKey = `team:${props.teamContext.channelId}:${props.teamContext.threadId ?? `draft:${searchParams.get("draftId") ?? "default"}`}`;
   const workspace = useSceneWorkspace(workspaceScopeKey);
+  const requestedMessage = searchParams.get("message");
+  const locatedRoute = useRef<string>(undefined);
+  useLayoutEffect(() => {
+    if (!sceneActive || !requestedMessage) {
+      locatedRoute.current = undefined;
+      return;
+    }
+    const target = `${workspaceScopeKey}:${routeKey}:${requestedMessage}`;
+    if (locatedRoute.current === target) return;
+    locatedRoute.current = target;
+    const primary = workspace.snapshot.tabs.find((tab) => tab.kind === "chat");
+    if (primary) workspace.dispatch({ type: "select-tab", tabId: primary.id });
+  }, [requestedMessage, routeKey, sceneActive, workspace, workspaceScopeKey]);
   const memberConfigurations = useState<TeamDraftConfigurations>({});
   const createdTeamThreadIds = useRef(new Map<ChatScopeKey, string>());
   const member = workspace.snapshot.tabs.find(
@@ -200,6 +220,54 @@ function TeamChatView({
     taskWorkbench,
     setChatRightPanel,
     t,
+  ]);
+  const requestedInteraction = searchParams.get("request");
+  const requestedMemberChat = searchParams.get("requestChat");
+  const requestedMemberId = searchParams.get("wakerId");
+  const openedInteraction = useRef("");
+  useEffect(() => {
+    if (
+      !sceneActive ||
+      !requestedInteraction ||
+      teamContext.threadDetailLoading ||
+      (!requestedMemberChat && !requestedMemberId)
+    ) {
+      if (!requestedInteraction) openedInteraction.current = "";
+      return;
+    }
+    const member = teamContext.members.find(
+      (entry) =>
+        entry.chatId &&
+        (!requestedMemberChat || entry.chatId === requestedMemberChat) &&
+        (!requestedMemberId || entry.id === requestedMemberId),
+    );
+    if (!member?.chatId) return;
+    const key = `${teamContext.threadId}:${member.chatId}:${requestedInteraction}`;
+    if (openedInteraction.current === key) return;
+    if (member.isLead) {
+      const main = workspace.snapshot.tabs.find((tab) => tab.kind === "chat");
+      if (!main) return;
+      workspace.dispatch({ type: "select-tab", tabId: main.id });
+    } else {
+      workspace.dispatch({
+        type: "open-member",
+        member: {
+          chatId: member.chatId,
+          label: member.name,
+          wakerId: member.id,
+        },
+      });
+    }
+    openedInteraction.current = key;
+  }, [
+    requestedInteraction,
+    requestedMemberChat,
+    requestedMemberId,
+    sceneActive,
+    teamContext.members,
+    teamContext.threadDetailLoading,
+    teamContext.threadId,
+    workspace,
   ]);
   const activeMemberTab = workspace.snapshot.tabs.find(
     (tab): tab is WorkspaceMemberTab =>
@@ -681,18 +749,19 @@ function TeamChatView({
       });
     }
   };
+  const messageSource = isTeamMainChat
+    ? teamContext.messageSource
+    : chatMessageSource(queryClient, activeChatId, {
+        messages: runtimeMessages,
+        latestSequence: latestMessageSequence,
+        ready: !activeChatId || Boolean(messagesQuery.data),
+      });
   const chatRuntime = useChatRuntime({
     conversationKey: currentChatKey,
     queueKey: runtimeQueueKey,
     queueActive: sceneActive,
     chatId: activeChatId,
-    messageSource: isTeamMainChat
-      ? teamContext.messageSource
-      : chatMessageSource(queryClient, activeChatId, {
-          messages: runtimeMessages,
-          latestSequence: latestMessageSequence,
-          ready: !activeChatId || Boolean(messagesQuery.data),
-        }),
+    messageSource,
     activeExecutionId: isTeamMainChat
       ? teamContext.leadActiveExecutionId
       : detailQuery.data?.chat?.activeExecutionId,
@@ -969,6 +1038,7 @@ function TeamChatView({
       });
       if (!isTeamMainChat && targetChatId !== activeChatId) refreshDetail();
     },
+    onElicitationSettled: () => void messageSource.reconcile().catch(() => {}),
     pendingApprovals: chatRuntime.pendingApprovals,
     pendingElicitations: chatRuntime.pendingElicitations,
     queueKey: runtimeQueueKey,
@@ -1070,6 +1140,9 @@ function TeamChatView({
     historicalRuntime,
     historicalRuntimeDisabled,
     onPickDirectory: pickDirectory,
+    onSelectManaged: () => {
+      selectDraftWorkspace(draftWorkspacePreferenceKey, { type: "managed" });
+    },
     onSelectProject: (projectId) => {
       selectDraftWorkspace(draftWorkspacePreferenceKey, {
         type: "project",
@@ -1157,6 +1230,28 @@ function TeamChatView({
         );
       });
   };
+  const displayedTeamMessages = useMemo(() => {
+    if (!isTeamMainChat) return chatRuntime.messages;
+    const seen = new Set(
+      chatRuntime.messages.flatMap((message) =>
+        [message.id, message.submissionId].filter(Boolean),
+      ),
+    );
+    const queued = teamContext.timeline.flatMap((entry) =>
+      !entry.coordinator &&
+      entry.message.id?.startsWith("channel-task-") &&
+      !seen.has(entry.message.id) &&
+      (!entry.message.submissionId || !seen.has(entry.message.submissionId))
+        ? [entry.message]
+        : [],
+    );
+    if (!queued.length) return chatRuntime.messages;
+    return [
+      ...chatRuntime.messages.filter((message) => !message.optimistic),
+      ...queued,
+      ...chatRuntime.messages.filter((message) => message.optimistic),
+    ];
+  }, [chatRuntime.messages, isTeamMainChat, teamContext.timeline]);
   const chatAdapter: ChatWorkspaceAdapter = {
     identity: {
       chatId: activeChatId,
@@ -1183,17 +1278,9 @@ function TeamChatView({
         : tab,
     ),
     thread: {
-      resultSource: activeChatId
-        ? {
-            chatId: activeChatId,
-            owner:
-              isTeamMainChat && teamContext.threadId
-                ? { kind: "team_thread", id: teamContext.threadId }
-                : { kind: "chat", id: activeChatId },
-          }
-        : undefined,
+      readingChatId: isTeamMainChat ? activeChatId : undefined,
       runtime: chatRuntime.runtime,
-      messages: chatRuntime.messages,
+      messages: displayedTeamMessages,
       presentationScopeKey,
       fileScopeChatId: activeChatId,
       active: sceneActive,
@@ -1295,7 +1382,14 @@ function TeamChatView({
               .fetchNextPage({ cancelRefetch: false, throwOnError: true })
               .then(() => {}),
       warning: permissionWarning || undefined,
-      requestedInteractionId: searchParams.get("request")?.split(":").at(-1),
+      requestedInteractionId:
+        requestedInteraction &&
+        (requestedMemberChat
+          ? requestedMemberChat === activeChatId
+          : requestedMemberId ===
+            (activeMemberWakerId ?? teamContext.leadWakerId))
+          ? requestedInteraction
+          : undefined,
       pendingApprovals: chatRuntime.pendingApprovals,
       approvalSubmissionState,
       onResolveApproval: (approvalId, optionId) =>

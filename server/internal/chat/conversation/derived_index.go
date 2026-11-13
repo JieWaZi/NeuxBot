@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -18,10 +19,14 @@ import (
 )
 
 const (
-	indexFilename   = "conversation-index.sqlite"
-	indexWriteBatch = 128
-	indexReadBatch  = 256
+	indexFilename          = "conversation-index.sqlite"
+	indexWriteBatch        = 128
+	indexReadBatch         = 256
+	executionTerminalIndex = "conversation_execution_terminals"
 )
+
+var executionTerminalPredicate = "execution_ref <> 0 AND kind IN (" +
+	strconv.Itoa(int(indexExecutionCompleted)) + "," + strconv.Itoa(int(indexExecutionEnded)) + ")"
 
 // indexDB owns the disposable SQLite locator and its connection lifecycle.
 type indexDB struct {
@@ -42,18 +47,20 @@ type indexDB struct {
 }
 
 type streamCoverage struct {
-	// Stream is the compact technical reference used in derived rows.
+	// Stream 是派生索引记录使用的紧凑会话引用。
 	Stream int64 `gorm:"primaryKey;autoIncrement"`
-	// Path locates the authoritative file relative to the managed root.
+	// Path 是权威日志相对受管根目录的位置。
 	Path string `gorm:"uniqueIndex;not null"`
-	// Size is the validated end of the JSONL prefix.
+	// Size 是已核验日志覆盖的字节边界。
 	Size int64
-	// Stamp identifies the file modification time that supplied this projection.
+	// Stamp 是派生覆盖所对应的文件修改时间。
 	Stamp int64
-	// Version is the durable logical row count at Size.
+	// Version 是字节边界内的权威逻辑行数。
 	Version int64
-	// Binding is the most recent v2 binding or clear cursor.
+	// Binding 是最近一次设置或清理原生会话绑定的游标。
 	Binding int64
+	// QuestionsIndexed 表示该 Chat 的原问答事件已纳入定位覆盖。
+	QuestionsIndexed bool
 }
 
 func (streamCoverage) TableName() string { return "conversation_streams" }
@@ -129,7 +136,11 @@ func migrateIndex(db *gorm.DB) error {
 	if err := db.Set("gorm:table_options", "WITHOUT ROWID").AutoMigrate(&indexBatch{}, &rowIndex{}, &executionLocator{}, &nativeIdentityLocator{}, &nativeMessageLocator{}, &displayPosition{}); err != nil {
 		return err
 	}
-	return db.Exec("CREATE INDEX IF NOT EXISTS " + usageTerminalIndex + " ON conversation_positions (stream, cursor) WHERE " + usageTerminalPredicate).Error
+	if err := db.Exec("CREATE INDEX IF NOT EXISTS " + usageTerminalIndex + " ON conversation_positions (stream, cursor) WHERE " + usageTerminalPredicate).Error; err != nil {
+		return err
+	}
+	return db.Exec("CREATE INDEX IF NOT EXISTS " + executionTerminalIndex +
+		" ON conversation_positions (stream, execution_ref, cursor) WHERE " + executionTerminalPredicate).Error
 }
 
 func (i *indexDB) open() error {
@@ -381,12 +392,14 @@ func (i *streamIndex) anchor(message string) (messageAnchor, error) {
 	return value, err
 }
 
-func (i *streamIndex) anchors(before int64, limit int, history bool) ([]messageAnchor, error) {
+func (i *streamIndex) anchors(before int64, limit int, history, includeQuestions bool) ([]messageAnchor, error) {
 	var result []messageAnchor
 	err := i.query(func(db *gorm.DB) error {
 		query := db.Where("stream = ? AND cursor > 0 AND cursor < ?", i.coverage.Stream, before)
 		if history {
 			query = query.Where("history = ?", true)
+		} else if !includeQuestions {
+			query = query.Where("kind <> ?", indexQuestionRequested)
 		}
 		return query.Order("cursor DESC").Limit(limit).Find(&result).Error
 	})
@@ -502,7 +515,7 @@ func internIndexIdentities(db *gorm.DB, stream int64, rows []rowIndex) error {
 		}
 		if anchor.Cursor == 0 {
 			switch row.Kind {
-			case indexUserMessage, indexAssistantMessage, indexTextReplace, indexInherited, indexExecutionCreated:
+			case indexUserMessage, indexAssistantMessage, indexTextReplace, indexInherited, indexExecutionCreated, indexQuestionRequested:
 				anchor.Cursor, anchor.Kind, anchor.ExecutionRef = row.Cursor, row.Kind, row.ExecutionRef
 				anchor.History = row.Kind == indexInherited
 			}
@@ -636,11 +649,12 @@ func indexConsumptionExecutions(db *gorm.DB, stream int64, rows []rowIndex) erro
 	return nil
 }
 
-func (i *streamIndex) publish(info os.FileInfo, rows []rowIndex, header batchHeader) error {
+func (i *streamIndex) publish(info os.FileInfo, rows []rowIndex, header batchHeader, public bool) error {
 	return i.query(func(db *gorm.DB) error {
 		return db.Transaction(func(tx *gorm.DB) error {
 			coverage := i.coverage
 			if coverage.Stream == 0 {
+				coverage.QuestionsIndexed = public
 				var stale streamCoverage
 				if err := tx.Where("path = ?", coverage.Path).Limit(1).Find(&stale).Error; err != nil {
 					return err

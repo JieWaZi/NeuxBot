@@ -1,6 +1,10 @@
 import { Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { ResourceListItem } from "@/shared/ui/resource-list-item";
+import {
+  ResourceItemAction,
+  ResourceListItem,
+} from "@/shared/ui/resource-list-item";
+import { ResourceCatalogStatus } from "@/shared/ui/resource-catalog";
 import { Button } from "@/shared/ui/button";
 import { Switch } from "@/shared/ui/switch";
 import { SkillIcon } from "./skill-icon";
@@ -48,6 +52,22 @@ export function SkillCard({
             })}
             onClick={() => onEnabledChange(!skill.enabled)}
           />
+        ) : skill.affectedWakerCount > 0 ? (
+          <>
+            <ResourceCatalogStatus>
+              {t("installedOnPartners", { count: skill.affectedWakerCount })}
+            </ResourceCatalogStatus>
+            {onInstall && (
+              <ResourceItemAction
+                label={t("plugin:installToPartners")}
+                variant="catalog-ghost"
+                disabled={disabled}
+                onClick={onInstall}
+              >
+                <Plus aria-hidden="true" />
+              </ResourceItemAction>
+            )}
+          </>
         ) : onInstall ? (
           <Button
             size="catalog"

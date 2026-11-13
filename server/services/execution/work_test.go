@@ -17,6 +17,7 @@ import (
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
+	"github.com/JieWaZi/NeuxBot/server/internal/uploads"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -325,6 +326,128 @@ func TestCreateChatReplaysSameFirstRequestAndRejectsChangedContent(t *testing.T)
 	}
 }
 
+func TestCreateChatReplaysAcceptedUploadAfterStagingIsGone(t *testing.T) {
+	manager := newMessageTestService(t, t.TempDir())
+	staging, err := uploads.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer staging.Close()
+	ctx := t.Context()
+	const subject = "web:local"
+	ref, err := staging.Stage(ctx, subject, "note.txt", strings.NewReader("待整理的内容"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settlements []bool
+	var claims int
+	claimSubject := subject
+	intent := WorkIntent{
+		ClientRequestID: "stable-upload-create",
+		Chat:            ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1"}},
+		Input:           WorkInput{Actor: "user", Content: "整理附件", Attachments: []AttachmentInput{{SourcePath: ref}}},
+		Options:         WorkOptions{RuntimeID: constants.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto},
+		ClaimAttachments: func(attachments []AttachmentInput) (func(bool), error) {
+			claims++
+			paths, release, err := staging.Claim(claimSubject, []string{attachments[0].SourcePath})
+			if err != nil {
+				return nil, status_error.MessageAttachmentInvalid
+			}
+			attachments[0].SourcePath = paths[0]
+			return func(accepted bool) {
+				settlements = append(settlements, accepted)
+				release(accepted)
+			}, nil
+		},
+	}
+
+	claimSubject = "web:another"
+	if _, err := manager.execution.Start(ctx, intent); !errors.Is(err, status_error.MessageAttachmentInvalid) {
+		t.Fatalf("fresh admission crossed the upload's subject boundary: %v", err)
+	}
+	claimSubject = subject
+	rejected := intent
+	rejected.Input.CodeReferences = []CodeReferenceInput{{Path: filepath.Join(t.TempDir(), "outside.txt")}}
+	if _, err := manager.execution.Start(ctx, rejected); !errors.Is(err, status_error.BadRequest) {
+		t.Fatalf("invalid file preparation = %v", err)
+	}
+	first, err := manager.execution.Start(ctx, intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claims != 3 || !slices.Equal(settlements, []bool{false, true}) {
+		t.Fatalf("attachment claims = %d, settlements = %v", claims, settlements)
+	}
+	waitForChatTerminal(t, manager, first.Chat.ID)
+
+	if _, release, err := staging.Claim(subject, []string{ref}); err == nil {
+		release(false)
+		t.Fatal("durably accepted upload must no longer be available to claim")
+	}
+	replayed, err := manager.execution.Start(ctx, intent)
+	if err != nil || !replayed.Replayed || replayed.Chat.ID != first.Chat.ID || replayed.Execution.ID != first.Execution.ID {
+		t.Fatalf("replay with expired staging = %+v, %v", replayed, err)
+	}
+	changed := intent
+	changed.Input.Attachments = []AttachmentInput{{SourcePath: "upload:different/note.txt"}}
+	if _, err := manager.execution.Start(ctx, changed); !errors.Is(err, status_error.CreateRequestConflict) {
+		t.Fatalf("different upload reference reused the accepted request: %v", err)
+	}
+	changed = intent
+	changed.Options.PermissionLevel = constants.PermissionLevelFullAccess
+	if _, err := manager.execution.Start(ctx, changed); !errors.Is(err, status_error.CreateRequestConflict) {
+		t.Fatalf("different permissions reused the accepted request: %v", err)
+	}
+	if claims != 3 || len(manager.nativeCalls(t, "turn/start")) != 1 {
+		t.Fatalf("replay invoked attachment or native work: claims = %d", claims)
+	}
+	absent := intent
+	absent.ClientRequestID = "unknown-upload-create"
+	if _, err := manager.execution.Start(ctx, absent); !errors.Is(err, status_error.MessageAttachmentInvalid) {
+		t.Fatalf("expired upload with no accepted receipt = %v", err)
+	}
+}
+
+func TestCreateChatAttachmentClaimKeepsDesktopRequestFingerprint(t *testing.T) {
+	manager := newMessageTestService(t, t.TempDir())
+	ctx := t.Context()
+	path := filepath.Join(t.TempDir(), "note.txt")
+	if err := os.WriteFile(path, []byte("桌面附件"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		// id 区分有附件与无附件的首发请求。
+		id string
+		// attachments 保存原本由 HTTP 入口原样传给 Core 的本地路径。
+		attachments []AttachmentInput
+	}{
+		{id: "desktop-create-without-upload"},
+		{id: "desktop-create-with-local-file", attachments: []AttachmentInput{{SourcePath: path}}},
+	} {
+		t.Run(test.id, func(t *testing.T) {
+			intent := WorkIntent{
+				ClientRequestID: test.id,
+				Chat:            ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1"}},
+				Input:           WorkInput{Actor: "user", Content: "整理桌面文件", Attachments: test.attachments},
+				Options:         WorkOptions{RuntimeID: constants.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto},
+			}
+			first, err := manager.execution.Start(ctx, intent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			waitForChatTerminal(t, manager, first.Chat.ID)
+			intent.ClaimAttachments = func([]AttachmentInput) (func(bool), error) {
+				t.Fatal("legacy receipt should replay before attachment preparation")
+				return nil, nil
+			}
+			replayed, err := manager.execution.Start(ctx, intent)
+			if err != nil || !replayed.Replayed || replayed.Execution.ID != first.Execution.ID {
+				t.Fatalf("legacy desktop receipt = %+v, %v", replayed, err)
+			}
+		})
+	}
+}
+
 func TestSendMessageRollsBackNewWorkspaceWhenWholeFileReferenceIsOutsideProject(t *testing.T) {
 	project := t.TempDir()
 	outsideFile := filepath.Join(t.TempDir(), "outside.go")
@@ -389,7 +512,7 @@ func TestPrepareMessageFilesKeepsUnchangedProfileInstructionsStable(t *testing.T
 	}
 	first := firstFiles.instructions
 	firstFiles.rollback()
-	if len(first) != 5 || !hasInstructionContent(first, "项目约束") {
+	if len(first) != 3 || first[1] != (agent.Instruction{Name: "AGENTS.md", Content: "# Test\n\n# Test\n\n# Test"}) || !hasInstructionContent(first, "项目约束") {
 		t.Fatalf("initial profile and project instructions = %+v", first)
 	}
 	// 反复经过真实档案读取和工作区准备，覆盖 map 遍历顺序变化造成的静态配置抖动。
@@ -662,16 +785,18 @@ func newMessageTestService(
 			request.Subject = "fixture-subject"
 			return request, nil
 		},
-		Journal:             chatModule,
-		DormantChats:        chatModule,
-		Wakers:              wakers,
-		Profiles:            profiles,
-		Projects:            projects,
-		Skills:              selectedOptions.skills,
-		Plugins:             selectedOptions.plugins,
-		RuntimeEnvironments: runtimeEnvironments,
-		SkillDataDirectory:  selectedOptions.skillDataDirectory,
-		StorageDirectory:    logDirectory,
+		Journal:                chatModule,
+		DormantChats:           chatModule,
+		Wakers:                 wakers,
+		Profiles:               profiles,
+		OnboardingTransactions: transactions,
+		OnboardingCommands:     controllers.NewAgentCommandController(database.DB),
+		Projects:               projects,
+		Skills:                 selectedOptions.skills,
+		Plugins:                selectedOptions.plugins,
+		RuntimeEnvironments:    runtimeEnvironments,
+		SkillDataDirectory:     selectedOptions.skillDataDirectory,
+		StorageDirectory:       logDirectory,
 	})
 	if err != nil {
 		t.Fatalf("new Execution Core: %v", err)
@@ -884,7 +1009,7 @@ func (r recordedRun) turnRequest(id string, detection agent.DetectionResult) (ag
 }
 func (r *recordedRun) prepare(m *service, chat models.Chat, id string, capabilities []ToolCapability, domains *[]string, paths []string) (func(), func(), error) {
 	r.Runtime.WorkspaceReadOnly = r.ReadOnly
-	return m.prepareAgent(models.RuntimeEnvironment{Detection: r.Detection}, r.Workspace, &r.Skills, &r.Instructions, &r.Connectors, &r.ContextInstructions, chat, id, pendingMessage{runtime: r.Runtime, toolCapabilities: capabilities, allowedAgentDomains: domains}, paths)
+	return m.prepareAgent(context.Background(), models.RuntimeEnvironment{Detection: r.Detection}, r.Workspace, &r.Skills, &r.Instructions, &r.Connectors, &r.ContextInstructions, chat, id, pendingMessage{runtime: r.Runtime, toolCapabilities: capabilities, allowedAgentDomains: domains}, paths)
 }
 func recordBusinessInputs(m *service, state messageChat, request pendingMessage, files *preparedMessageFiles, skills []models.SkillWithState, connectors []models.MCPConnector, environment models.RuntimeEnvironment) recordedRun {
 	r := recordedRun{Runtime: request.runtime, Detection: environment.Detection, Workspace: nativeWorkspace(state, request, files), Instructions: nativeInstructions(request, files), Skills: m.nativeSkills(skills), Connectors: runtimeConnectorDeclarations(connectors), Message: nativeMessage(request, files), ContextInstructions: nativeContextInstructions(request, files), SelectedSkills: selectedSkillNames(request, skills), SelectedConnectors: request.message.ConnectorIDs}

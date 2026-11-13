@@ -16,6 +16,8 @@ func (v ProfileDocumentKind) String() string {
 	switch v {
 	case ProfileDocumentKindUnspecified:
 		return ""
+	case ProfileDocumentKindAgents:
+		return "agents"
 	case ProfileDocumentKindIdentity:
 		return "identity"
 	case ProfileDocumentKindMemory:
@@ -32,6 +34,8 @@ func (v ProfileDocumentKind) Label() string {
 	switch v {
 	case ProfileDocumentKindUnspecified:
 		return "ProfileDocumentKindUnspecified 表示数据库或框架产生的空文档种类。"
+	case ProfileDocumentKindAgents:
+		return "ProfileDocumentKindAgents 表示伙伴唯一生效的长期指令。"
 	case ProfileDocumentKindIdentity:
 		return "ProfileDocumentKindIdentity 表示身份与擅长领域文档。"
 	case ProfileDocumentKindMemory:
@@ -45,7 +49,7 @@ func (v ProfileDocumentKind) Label() string {
 }
 
 func (v ProfileDocumentKind) Values() []enum.Enum {
-	return []enum.Enum{ProfileDocumentKindUnspecified, ProfileDocumentKindIdentity, ProfileDocumentKindMemory, ProfileDocumentKindPersona, ProfileDocumentKindPlaybook}
+	return []enum.Enum{ProfileDocumentKindUnspecified, ProfileDocumentKindAgents, ProfileDocumentKindIdentity, ProfileDocumentKindMemory, ProfileDocumentKindPersona, ProfileDocumentKindPlaybook}
 }
 
 func (v ProfileDocumentKind) Type() string {
@@ -54,7 +58,7 @@ func (v ProfileDocumentKind) Type() string {
 
 func (v ProfileDocumentKind) MarshalText() ([]byte, error) {
 	switch v {
-	case ProfileDocumentKindUnspecified, ProfileDocumentKindIdentity, ProfileDocumentKindMemory, ProfileDocumentKindPersona, ProfileDocumentKindPlaybook:
+	case ProfileDocumentKindUnspecified, ProfileDocumentKindAgents, ProfileDocumentKindIdentity, ProfileDocumentKindMemory, ProfileDocumentKindPersona, ProfileDocumentKindPlaybook:
 		return []byte(v.String()), nil
 	default:
 		return nil, enum.InvalidTypeError
@@ -65,6 +69,8 @@ func (v *ProfileDocumentKind) UnmarshalText(text []byte) error {
 	switch string(text) {
 	case ProfileDocumentKindUnspecified.String():
 		*v = ProfileDocumentKindUnspecified
+	case ProfileDocumentKindAgents.String():
+		*v = ProfileDocumentKindAgents
 	case ProfileDocumentKindIdentity.String():
 		*v = ProfileDocumentKindIdentity
 	case ProfileDocumentKindMemory.String():
