@@ -1,5 +1,5 @@
 import { ChevronDown, CircleAlert, RotateCw, Zap } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type {
@@ -14,8 +14,10 @@ import {
   type ExecutionSelectionState,
 } from "@/shared/hooks/use-execution-selection";
 import { accountSupportsRuntime } from "@/shared/lib/account-runtime-compatibility";
+import { cn } from "@/shared/lib/cn";
 import { runtimeDisplayName } from "@/shared/lib/runtime-display-name";
 import { Button } from "@/shared/ui/button";
+import { FieldControlTrigger } from "@/shared/ui/field-control-trigger";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { RadioGroup, RadioGroupOption } from "@/shared/ui/radio-group";
 import { RuntimeCliIcon } from "@/shared/ui/runtime-cli-icon";
@@ -105,6 +107,7 @@ function modelGroups(models: Model[], provider: string, search: string) {
 }
 
 type Props = {
+  onOpenChange?: (open: boolean) => void;
   runtimes: Runtime[];
   accounts: Account[];
   runtime?: Runtime;
@@ -124,16 +127,24 @@ type Props = {
   pending?: boolean;
   refreshing?: boolean;
   sessionSwitchPending?: boolean;
+  disabled?: boolean;
+  field?: {
+    label: string;
+    stacked?: boolean;
+    invalid?: boolean;
+    inherited?: boolean;
+    reset?: { label: string; onSelect: () => void };
+  };
   onRefresh?: () => unknown;
   onModel: (runtime: Runtime, accountId: string, model: Model) => void;
   onReasoning: (reasoning: string) => void;
-  onFast: (fast: boolean) => void;
+  onFast?: (fast: boolean) => void;
   contextWindow?: string;
   onContextWindow?: (contextWindow: string) => void;
 };
 
-/** 聊天选择器用临时浏览状态预览目录，选中模型后一次提交执行配置。 */
-export function ChatExecutionPicker(props: Props) {
+/** 浏览目录时保留当前配置，选中模型后一次提交执行选择。 */
+export function ExecutionPicker(props: Props) {
   const { t, i18n } = useTranslation(["chat", "common", "aiAccounts"]);
   const creditMultiplier = new Intl.NumberFormat(i18n.resolvedLanguage, {
     maximumFractionDigits: 4,
@@ -144,6 +155,7 @@ export function ChatExecutionPicker(props: Props) {
     accountId: string;
   }>();
   const [search, setSearch] = useState("");
+  const fieldValueId = useId();
   const runtimes = props.runtimes.filter((runtime) => runtime.id);
   const runtime =
     runtimes.find((item) => item.id === preview?.runtimeId) ??
@@ -177,7 +189,11 @@ export function ChatExecutionPicker(props: Props) {
       : account?.defaultModel);
   const modelId = browsing ? "" : props.modelId;
   const selected = models.find((model) => model.id === modelId);
-  const reasoningOptions = browsing ? [] : (props.reasoningOptions ?? []);
+  const reasoningOptions = browsing
+    ? []
+    : (props.reasoningOptions ?? []).flatMap(({ id, name }) =>
+        id ? [{ id, name }] : [],
+      );
   const native = usesNativeModelCatalog(provider);
   const catalogState = browsing ? directory.catalogState : props.catalogState;
   const catalogIssue = browsing ? directory.catalogIssue : props.catalogIssue;
@@ -195,19 +211,24 @@ export function ChatExecutionPicker(props: Props) {
       ? directory.refreshCatalog
       : props.onRefresh
     : undefined;
-  const settingsDisabled = Boolean(props.sessionSwitchPending);
-  const modelsDisabled = settingsDisabled;
+  const settingsDisabled = Boolean(
+    props.disabled || props.sessionSwitchPending,
+  );
+  const modelsDisabled = settingsDisabled || runtime?.enabled === false;
   const fixed = cursorSettings(provider, selected);
   const contextWindows = (selected?.contextWindowOptions ?? []).flatMap(
     ({ id, tokens }) => (id && tokens ? [{ id, tokens }] : []),
   );
-  const hasEffort = reasoningOptions.filter((option) => option.id).length > 1;
-  const showReasoning = !browsing && (hasEffort || Boolean(fixed?.effort));
-  const showContextWindow =
-    Boolean(props.onContextWindow) && contextWindows.length > 1;
   const nativeDefaultEffort = reasoningOptions.find(
     (option) => option.id === "default",
   )?.id;
+  const canInheritEffort = props.allowDefaultReasoning && !nativeDefaultEffort;
+  const hasEffort =
+    reasoningOptions.length > 1 ||
+    (Boolean(props.field) && canInheritEffort && reasoningOptions.length === 1);
+  const showReasoning = !browsing && (hasEffort || Boolean(fixed?.effort));
+  const showContextWindow =
+    Boolean(props.onContextWindow) && contextWindows.length > 1;
   const fallbackEffort =
     nativeDefaultEffort ??
     (props.allowDefaultReasoning ? inheritEffort : reasoningOptions[0]?.id);
@@ -239,47 +260,83 @@ export function ChatExecutionPicker(props: Props) {
     return label ? t(`chat:modelPicker.efforts.${label}`) : name || value;
   };
 
+  const icon = (
+    <RuntimeCliIcon
+      runtimeId={triggerRuntime?.baseRuntimeId || triggerRuntime?.id}
+      size={14}
+    />
+  );
+  const selection = (
+    <>
+      {icon}
+      <span className="truncate">{triggerName}</span>
+      {triggerAccount ? (
+        <span className="text-content-secondary truncate">
+          {triggerAccount.name}
+        </span>
+      ) : null}
+      {selectedEffort?.id && showReasoning ? (
+        <span className="text-content-secondary shrink-0 truncate">
+          {effortName(selectedEffort.id, selectedEffort.name)}
+        </span>
+      ) : null}
+    </>
+  );
+  const selectModel = (id: string) => {
+    const model = models.find((item) => item.id === id);
+    if (runtime && model) props.onModel(runtime, accountId, model);
+  };
+
   return (
     <Popover
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
+        props.onOpenChange?.(next);
         setPreview(undefined);
         setSearch("");
       }}
     >
       <PopoverTrigger asChild>
-        <Button
-          type="button"
-          data-testid="composer-model-control"
-          size="sm"
-          variant="ghost"
-          shape="capsule"
-          className="max-w-65"
-        >
-          <RuntimeCliIcon
-            runtimeId={triggerRuntime?.baseRuntimeId || triggerRuntime?.id}
-            size={14}
-          />
-          <span className="truncate">{triggerName}</span>
-          {triggerAccount ? (
-            <span className="text-content-secondary truncate">
-              {triggerAccount.name}
+        {props.field ? (
+          <FieldControlTrigger
+            aria-label={props.field.label}
+            aria-describedby={fieldValueId}
+            aria-invalid={props.field.invalid || undefined}
+            disabled={props.disabled}
+          >
+            {!props.field.stacked ? (
+              <span className="shrink-0 font-medium">{props.field.label}</span>
+            ) : null}
+            <span
+              id={fieldValueId}
+              className={cn(
+                "flex min-w-0 flex-1 items-center gap-1.5",
+                !props.field.stacked && "justify-end",
+              )}
+            >
+              {selection}
             </span>
-          ) : null}
-          {selectedEffort?.id && showReasoning ? (
-            <span className="text-content-secondary truncate">
-              {effortName(selectedEffort.id, selectedEffort.name)}
-            </span>
-          ) : null}
-          {props.fast ? (
-            <Zap aria-hidden className="text-accent fill-current" />
-          ) : null}
-          <ChevronDown
-            aria-hidden
-            className="text-content-secondary shrink-0"
-          />
-        </Button>
+          </FieldControlTrigger>
+        ) : (
+          <Button
+            type="button"
+            data-testid="composer-model-control"
+            size="sm"
+            variant="ghost"
+            shape="capsule"
+            className="max-w-65"
+          >
+            {selection}
+            {props.fast ? (
+              <Zap aria-hidden className="text-accent fill-current" />
+            ) : null}
+            <ChevronDown
+              aria-hidden
+              className="text-content-secondary shrink-0"
+            />
+          </Button>
+        )}
       </PopoverTrigger>
       <PopoverContent
         side="top"
@@ -307,7 +364,7 @@ export function ChatExecutionPicker(props: Props) {
                       type="button"
                       variant="choice"
                       size="icon"
-                      disabled={!item.enabled}
+                      disabled={!item.enabled || props.disabled}
                       aria-label={name}
                       aria-pressed={runtime?.id === item.id}
                       onClick={() => {
@@ -345,7 +402,7 @@ export function ChatExecutionPicker(props: Props) {
                     </div>
                   ) : null}
                 </div>
-                {props.fastSupported && !browsing ? (
+                {props.onFast && props.fastSupported && !browsing ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -355,7 +412,7 @@ export function ChatExecutionPicker(props: Props) {
                         disabled={settingsDisabled}
                         aria-label={t("common:executionSelection.fast")}
                         aria-pressed={props.fast === true}
-                        onClick={() => props.onFast(!props.fast)}
+                        onClick={() => props.onFast?.(!props.fast)}
                       >
                         <Zap
                           aria-hidden
@@ -409,6 +466,7 @@ export function ChatExecutionPicker(props: Props) {
               {compatible.length || accountMissing ? (
                 <Select
                   value={accountId}
+                  disabled={props.disabled}
                   onValueChange={(value) => {
                     setPreview({
                       runtimeId: runtime?.id ?? "",
@@ -458,11 +516,7 @@ export function ChatExecutionPicker(props: Props) {
                 aria-label={chooseModel}
                 value={modelId}
                 className="gap-0"
-                onValueChange={(id) => {
-                  const model = models.find((item) => item.id === id);
-                  if (!runtime || !model) return;
-                  props.onModel(runtime, accountId, model);
-                }}
+                onValueChange={selectModel}
               >
                 {groups.map(({ id, label, rows }) => (
                   <div key={id} role="group" aria-label={label || undefined}>
@@ -530,6 +584,13 @@ export function ChatExecutionPicker(props: Props) {
                               : undefined
                           }
                           disabled={modelsDisabled}
+                          onClick={
+                            props.field?.inherited &&
+                            model.id === modelId &&
+                            model.id
+                              ? () => selectModel(model.id ?? "")
+                              : undefined
+                          }
                         >
                           <span className="flex min-w-0 items-center gap-1.5">
                             <span className="min-w-0 flex-1 truncate">
@@ -580,8 +641,19 @@ export function ChatExecutionPicker(props: Props) {
                 </div>
               ) : null}
             </div>
-            {showReasoning || showContextWindow ? (
+            {showReasoning || showContextWindow || props.field?.reset ? (
               <div className="border-border-default flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-t px-3 py-2">
+                {props.field?.reset ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={settingsDisabled}
+                    onClick={props.field.reset.onSelect}
+                  >
+                    {props.field.reset.label}
+                  </Button>
+                ) : null}
                 {showReasoning ? (
                   <div className="flex min-w-0 flex-auto items-center justify-between gap-2">
                     <span className="text-content-secondary type-ui shrink-0 whitespace-nowrap">
@@ -605,20 +677,16 @@ export function ChatExecutionPicker(props: Props) {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {fallbackEffort === inheritEffort ? (
+                          {canInheritEffort ? (
                             <SelectItem value={inheritEffort}>
                               {t("chat:modelPicker.defaultReasoning")}
                             </SelectItem>
                           ) : null}
-                          {reasoningOptions.flatMap((option) =>
-                            option.id
-                              ? [
-                                  <SelectItem key={option.id} value={option.id}>
-                                    {effortName(option.id, option.name)}
-                                  </SelectItem>,
-                                ]
-                              : [],
-                          )}
+                          {reasoningOptions.map((option) => (
+                            <SelectItem key={option.id} value={option.id}>
+                              {effortName(option.id, option.name)}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     ) : (

@@ -15,6 +15,10 @@ import { WakerCreatePage } from "./waker-create-page";
 const create = vi.hoisted(() =>
   vi.fn<(data: CreateWakerData) => Promise<CreateWakerResponse>>(),
 );
+const directoryReads = vi.hoisted(() => ({
+  runtimes: vi.fn(),
+  accounts: vi.fn(),
+}));
 vi.mock(
   "@/shared/api/generated/@tanstack/react-query.gen",
   async (importOriginal) => ({
@@ -22,32 +26,42 @@ vi.mock(
     createWakerMutation: () => ({ mutationFn: create }),
     listRuntimesOptions: () => ({
       queryKey: ["runtime-fixture"],
-      queryFn: async () => ({
-        resources: [
-          {
-            id: "fixture-runtime",
-            name: "Fixture Agent",
-            enabled: true,
-            isDefault: true,
-            state: "ready",
-            models: [
-              {
-                id: "partner-model",
-                name: "Partner Model",
-                reasoningOptions: [{ id: "high", name: "High" }],
-              },
-            ],
-          },
-        ],
-      }),
+      queryFn: async () => {
+        directoryReads.runtimes();
+        return {
+          resources: [
+            {
+              id: "fixture-runtime",
+              name: "Fixture Agent",
+              enabled: true,
+              isDefault: true,
+              state: "ready",
+              defaultModel: "global-model",
+              models: [
+                {
+                  id: "partner-model",
+                  name: "Partner Model",
+                  reasoningOptions: [{ id: "high", name: "High" }],
+                },
+                { id: "global-model", name: "Global Model" },
+              ],
+            },
+          ],
+        };
+      },
     }),
     listAiAccountsOptions: () => ({
       queryKey: ["accounts-fixture"],
-      queryFn: async () => ({ resources: [] }),
+      queryFn: async () => {
+        directoryReads.accounts();
+        return { resources: [] };
+      },
     }),
   }),
 );
-vi.mock("@/shared/ui/avatar", () => ({ Avatar: () => null }));
+vi.mock("@/shared/ui/avatar", () => ({
+  Avatar: ({ size }: { size: string }) => <span data-testid={size} />,
+}));
 
 function CreateScene() {
   const { pathname, search, state } = useLocation();
@@ -82,7 +96,25 @@ beforeAll(() => {
   Element.prototype.hasPointerCapture = () => false;
   Element.prototype.scrollIntoView = () => {};
 });
-afterEach(() => create.mockReset());
+afterEach(() => {
+  create.mockReset();
+  directoryReads.runtimes.mockClear();
+  directoryReads.accounts.mockClear();
+});
+
+it("跟随全局默认时仅在打开模型选择器后读取目录", async () => {
+  renderCreate();
+  const user = userEvent.setup();
+  await user.type(screen.getByRole("textbox", { name: "名称" }), "协作伙伴");
+  expect(directoryReads.runtimes).not.toHaveBeenCalled();
+  expect(directoryReads.accounts).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("button", { name: "默认模型" }));
+  expect(
+    await screen.findByRole("radio", { name: "Global Model" }),
+  ).toBeVisible();
+  expect(directoryReads.runtimes).toHaveBeenCalled();
+  expect(directoryReads.accounts).toHaveBeenCalled();
+});
 
 it("选择默认模型后携带原请求标识重试，进入已接纳的建档对话", async () => {
   create
@@ -95,21 +127,23 @@ it("选择默认模型后携带原请求标识重试，进入已接纳的建档�
     screen.getByRole("textbox", { name: "概要" }),
     "整理协作记录",
   );
+  expect(screen.getByTestId("hero")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "粒子" }));
   await user.click(screen.getByRole("button", { name: "默认模型" }));
-  const picker = screen.getByRole("dialog", { name: "默认模型" });
-  const model = within(picker).getByRole("combobox", { name: "模型" });
-  await user.click(model);
+  const picker = screen.getByRole("dialog", { name: "选择模型" });
+  await within(picker).findByRole("radio", { name: "Partner Model" });
+  await user.type(within(picker).getByRole("searchbox"), "Partner");
   await user.click(
-    await screen.findByRole("option", { name: "Partner Model" }),
+    within(picker).getByRole("radio", { name: "Partner Model" }),
   );
-  await user.click(within(picker).getByRole("combobox", { name: "推理强度" }));
-  await user.click(await screen.findByRole("option", { name: "High" }));
-  await user.click(within(picker).getByRole("button", { name: "应用" }));
+  await user.click(within(picker).getByRole("combobox"));
+  await user.click(await screen.findByRole("option", { name: "高" }));
+  await user.keyboard("{Escape}");
   expect(screen.getByRole("button", { name: "默认模型" })).toHaveTextContent(
     "Partner Model",
   );
   expect(
-    screen.queryByRole("combobox", { name: "模型" }),
+    screen.queryByRole("dialog", { name: "选择模型" }),
   ).not.toBeInTheDocument();
 
   await user.click(screen.getByRole("button", { name: "创建伙伴" }));
@@ -126,7 +160,7 @@ it("选择默认模型后携带原请求标识重试，进入已接纳的建档�
     requestId: expect.any(String),
     name: "协作伙伴",
     bio: "整理协作记录",
-    avatar: expect.stringMatching(/^bloub:/),
+    avatar: expect.stringMatching(/^bloub:particles:/),
     defaultModel: {
       runtimeId: "fixture-runtime",
       accountId: "system",
@@ -145,6 +179,15 @@ it("模型启动失败时进入已持久化的伙伴概览，保留具体原因"
   renderCreate();
   const user = userEvent.setup();
   await user.type(screen.getByRole("textbox", { name: "名称" }), "协作伙伴");
+  await user.click(screen.getByRole("button", { name: "默认模型" }));
+  const picker = screen.getByRole("dialog", { name: "选择模型" });
+  await user.click(
+    await within(picker).findByRole("radio", { name: "Global Model" }),
+  );
+  await user.click(
+    within(picker).getByRole("button", { name: "跟随全局默认" }),
+  );
+  await user.keyboard("{Escape}");
   await user.click(screen.getByRole("button", { name: "创建伙伴" }));
   expect(await screen.findByLabelText("目标 Scene")).toHaveTextContent(
     "/wakers/new-partner账号已失效",

@@ -43,7 +43,7 @@ import {
   useChatComposerControls,
   type ChatExecutionSelectionPatch,
 } from "./chat-composer-controls";
-import { ChatExecutionPicker } from "./chat-execution-picker";
+import { ExecutionPicker } from "@/shared/ui/execution-picker";
 
 vi.mock("@/shared/api/generated/@tanstack/react-query.gen", () => ({
   listAiAccountsOptions: () => ({
@@ -245,7 +245,7 @@ it("目录刷新失败时用感叹号提示并允许选择已有模型", async (
   ];
   const runtime = { id: "cursor", enabled: true, state: "ready", models };
   render(
-    <ChatExecutionPicker
+    <ExecutionPicker
       runtimes={[runtime]}
       accounts={[]}
       runtime={runtime}
@@ -365,7 +365,7 @@ it("聊天切换同协议 Profile 时只展示目标账号，并采用目标默�
     models: [{ id: "profile-default", name: "Profile Default" }],
   };
   render(
-    <ChatExecutionPicker
+    <ExecutionPicker
       runtimes={[root, profile]}
       accounts={[
         {
@@ -534,7 +534,7 @@ it("有效目录后台刷新只占用刷新按钮，不锁模型与推理选择"
   const refresh = vi.fn();
   const select = vi.fn();
   render(
-    <ChatExecutionPicker
+    <ExecutionPicker
       runtimes={[runtime]}
       accounts={[]}
       runtime={runtime}

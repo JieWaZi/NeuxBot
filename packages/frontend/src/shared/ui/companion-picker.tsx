@@ -42,7 +42,32 @@ export function CompanionPicker({
     onChange(encodeCompanionAppearance({ ...appearance, ...patch }));
 
   const preview = (
-    <Avatar name={name} src={avatar} size="xl" preview interactive={false} />
+    <Avatar
+      name={name}
+      src={avatar}
+      size={inline ? "hero" : "xl"}
+      preview
+      interactive={false}
+    />
+  );
+  const materials = (
+    <fieldset
+      aria-label={t("companion.picker.material")}
+      className={cn("flex gap-1", inline && "justify-center")}
+    >
+      {avatarMaterials.map((material) => (
+        <Button
+          key={material}
+          type="button"
+          size="sm"
+          variant="choice"
+          aria-pressed={appearance.material === material}
+          onClick={() => change({ material })}
+        >
+          {t(`companion.materials.${material}`)}
+        </Button>
+      ))}
+    </fieldset>
   );
   const shapes = (
     <fieldset className="grid min-w-0 gap-1">
@@ -55,23 +80,7 @@ export function CompanionPicker({
           >
             {t("companion.picker.shape")}
           </span>
-          <fieldset
-            aria-label={t("companion.picker.material")}
-            className="flex gap-1"
-          >
-            {avatarMaterials.map((material) => (
-              <Button
-                key={material}
-                type="button"
-                size="sm"
-                variant="choice"
-                aria-pressed={appearance.material === material}
-                onClick={() => change({ material })}
-              >
-                {t(`companion.materials.${material}`)}
-              </Button>
-            ))}
-          </fieldset>
+          {materials}
           <TooltipProvider>
             <div className="flex items-center">
               <Tooltip>
@@ -234,6 +243,7 @@ export function CompanionPicker({
         <div className="justify-self-center">{preview}</div>
         {colors}
         {shapes}
+        {materials}
       </fieldset>
     );
 

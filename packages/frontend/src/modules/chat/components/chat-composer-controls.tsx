@@ -22,7 +22,7 @@ import { Button } from "@/shared/ui/button";
 import { WorkspaceScopePicker } from "@/shared/ui/workspace-scope-picker";
 import { OverflowText } from "@/shared/ui/overflow-text";
 import { ChatComposerBranchSelector } from "./chat-composer-branch-selector";
-import { ChatExecutionPicker } from "./chat-execution-picker";
+import { ExecutionPicker } from "@/shared/ui/execution-picker";
 import { ChatEffortEffects } from "./chat-effort-effects";
 import { isMaximumReasoning } from "@/shared/lib/runtime-reasoning";
 import {
@@ -215,7 +215,7 @@ export function useChatComposerControls({
   );
   const composerSettings = (
     <>
-      <ChatExecutionPicker
+      <ExecutionPicker
         runtimes={runtimes}
         accounts={accounts}
         runtime={selectedRuntime}

@@ -489,7 +489,6 @@ const resources = {
         avatarInvalid: "请重新选择头像。",
         defaultModel: "默认模型",
         inheritModel: "跟随全局默认",
-        applyModel: "应用",
         modelUnavailable:
           "伙伴绑定的模型配置不可用，请选择其他智能体、账号或模型。",
         create: "创建伙伴",
@@ -2570,7 +2569,6 @@ const resources = {
         avatarInvalid: "Select an avatar again.",
         defaultModel: "Default model",
         inheritModel: "Use global default",
-        applyModel: "Apply",
         modelUnavailable:
           "This partner’s model configuration is unavailable. Choose another agent, account, or model.",
         create: "Create partner",

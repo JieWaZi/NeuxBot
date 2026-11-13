@@ -4,6 +4,7 @@ import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import type { ComponentProps } from "react";
 
 import { cn } from "@/shared/lib/cn";
+import { buttonVariants } from "@/shared/ui/button";
 import { fieldControlTriggerVariants } from "@/shared/ui/field-control-trigger";
 import { NativeOverlayPresence } from "@/shared/ui/native-overlay";
 
@@ -11,7 +12,11 @@ export const Select = SelectPrimitive.Root;
 export const SelectValue = SelectPrimitive.Value;
 
 type SelectTriggerProps = ComponentProps<typeof SelectPrimitive.Trigger> &
-  VariantProps<typeof fieldControlTriggerVariants>;
+  Omit<VariantProps<typeof fieldControlTriggerVariants>, "appearance"> & {
+    appearance?:
+      | VariantProps<typeof fieldControlTriggerVariants>["appearance"]
+      | "composer";
+  };
 
 export function SelectTrigger({
   children,
@@ -24,7 +29,9 @@ export function SelectTrigger({
   return (
     <SelectPrimitive.Trigger
       className={cn(
-        fieldControlTriggerVariants({ appearance, size, width }),
+        appearance === "composer"
+          ? buttonVariants({ size: "sm", variant: "ghost", shape: "capsule" })
+          : fieldControlTriggerVariants({ appearance, size, width }),
         className,
       )}
       {...props}
@@ -32,7 +39,12 @@ export function SelectTrigger({
       {children}
       <SelectPrimitive.Icon asChild>
         <ChevronDown
-          className="text-muted-foreground size-icon-sm shrink-0"
+          className={cn(
+            "size-icon-sm shrink-0",
+            appearance === "composer"
+              ? "text-content-secondary"
+              : "text-muted-foreground",
+          )}
           strokeWidth={1.5}
         />
       </SelectPrimitive.Icon>
