@@ -31,6 +31,8 @@ type SkillPartnerResponse struct {
 	Name string `json:"name"`
 	// 伙伴头像
 	Avatar string `json:"avatar"`
+	// 启用状态
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 // resourceSkill 验证资源存在及伙伴入口的实际安装关系。
@@ -115,7 +117,9 @@ func wakerSkillDetailResponse(ctx context.Context, item models.SkillWithState) (
 			return err
 		}
 		for _, partner := range partners {
-			response.InstalledPartners = append(response.InstalledPartners, SkillPartnerResponse{ID: partner.ID, Name: partner.Name, Avatar: partner.Avatar})
+			response.InstalledPartners = append(response.InstalledPartners, SkillPartnerResponse{
+				ID: partner.ID, Name: partner.Name, Avatar: partner.Avatar, Enabled: &partner.Enabled,
+			})
 		}
 		return nil
 	})

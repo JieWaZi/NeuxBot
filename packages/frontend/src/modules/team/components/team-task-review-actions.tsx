@@ -32,9 +32,11 @@ export function TeamTaskReviewActions({
   const [feedbackTouched, setFeedbackTouched] = useState(false);
   const [actionError, setActionError] = useState("");
   const path = { channelId, threadId, taskId: task.id ?? "" };
+  const expectedFence = task.currentFence ?? 0;
+  const disabled = actionsDisabled || review.isPending || expectedFence <= 0;
 
   const run = async (action: () => Promise<unknown>) => {
-    if (actionsDisabled) return false;
+    if (disabled) return false;
     setActionError("");
     try {
       await action();
@@ -53,7 +55,7 @@ export function TeamTaskReviewActions({
       await run(() =>
         review.mutateAsync({
           path,
-          body: { approved: false, feedback: nextFeedback },
+          body: { approved: false, feedback: nextFeedback, expectedFence },
         }),
       )
     ) {
@@ -69,10 +71,13 @@ export function TeamTaskReviewActions({
         <Button
           size="sm"
           variant="success"
-          disabled={actionsDisabled || review.isPending}
+          disabled={disabled}
           onClick={() =>
             void run(() =>
-              review.mutateAsync({ path, body: { approved: true } }),
+              review.mutateAsync({
+                path,
+                body: { approved: true, expectedFence },
+              }),
             )
           }
         >
@@ -82,7 +87,7 @@ export function TeamTaskReviewActions({
         <Button
           size="sm"
           variant="secondary"
-          disabled={actionsDisabled || review.isPending}
+          disabled={disabled}
           onClick={() => setRejectOpen(true)}
         >
           <X />
@@ -97,7 +102,7 @@ export function TeamTaskReviewActions({
       <Dialog
         open={rejectOpen}
         onOpenChange={(nextOpen) => {
-          if (actionsDisabled || review.isPending) return;
+          if (disabled) return;
           setRejectOpen(nextOpen);
           if (!nextOpen) {
             setFeedback("");
@@ -116,7 +121,7 @@ export function TeamTaskReviewActions({
             </label>
             <Textarea
               id={`task-feedback-${task.id}`}
-              disabled={actionsDisabled || review.isPending}
+              disabled={disabled}
               value={feedback}
               onChange={(event) => setFeedback(event.target.value)}
               placeholder={t("taskBoard.rejectPlaceholder")}
@@ -137,7 +142,7 @@ export function TeamTaskReviewActions({
             <Button
               type="button"
               variant="secondary"
-              disabled={actionsDisabled || review.isPending}
+              disabled={disabled}
               onClick={() => setRejectOpen(false)}
             >
               {t("common:cancel")}
@@ -145,7 +150,7 @@ export function TeamTaskReviewActions({
             <Button
               type="button"
               variant="danger"
-              disabled={actionsDisabled || review.isPending || !feedback.trim()}
+              disabled={disabled || !feedback.trim()}
               onClick={() => void rejectTask()}
             >
               {t("taskBoard.confirmReject")}

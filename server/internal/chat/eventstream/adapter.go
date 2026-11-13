@@ -69,6 +69,8 @@ type Adapter struct {
 	lastSequence int64
 	// messageRevisions 保存每条消息已经观察到的最大修订号，供订阅拒绝落后实时快照。
 	messageRevisions map[string]int64
+	// pendingQuestions 保存尚未处理的请求，以同一身份发出脱敏的冻结卡片。
+	pendingQuestions map[string]eventlog.Record
 	// retainEvents 表示调用方仍需要公开历史；实时订阅取完积压后关闭保留。
 	retainEvents bool
 }
@@ -79,6 +81,7 @@ func NewAdapter() *Adapter {
 		messageView:      messageview.NewPublicMessageViewBuilder(),
 		events:           make([]PublicEvent, 0),
 		messageRevisions: make(map[string]int64),
+		pendingQuestions: make(map[string]eventlog.Record),
 		retainEvents:     true,
 	}
 }
@@ -136,6 +139,11 @@ func (a *Adapter) apply(record eventlog.Record, emit bool) (PublicEvent, error) 
 		event.ErrorMessage = finished.ErrorMessage
 		event.ErrorParams = finished.ErrorParams
 		event.ErrorMessageSource = finished.ErrorMessageSource
+		for id, request := range a.pendingQuestions {
+			if request.ExecutionID == record.ExecutionID {
+				delete(a.pendingQuestions, id)
+			}
+		}
 	}
 	if record.Type == constants.ChatEventTypeApprovalRequested {
 		var requested eventlog.ApprovalRequestedData
@@ -156,12 +164,28 @@ func (a *Adapter) apply(record eventlog.Record, emit bool) (PublicEvent, error) 
 		if err := json.Unmarshal(record.Data, &requested); err != nil {
 			return PublicEvent{}, status_error.ChatLogCorrupted
 		}
+		message, err := messageview.ProjectQuestionMessage(record, eventlog.Record{})
+		if err != nil {
+			return PublicEvent{}, err
+		}
+		a.pendingQuestions[requested.ElicitationID] = record
+		event.Message = &message
 		event.ElicitationRequest = &requested
 	}
 	if record.Type == constants.ChatEventTypeElicitationResolved {
 		var resolved eventlog.ElicitationResolvedData
 		if err := json.Unmarshal(record.Data, &resolved); err != nil {
 			return PublicEvent{}, status_error.ChatLogCorrupted
+		}
+		resolved.Content = nil
+		if request, ok := a.pendingQuestions[resolved.ElicitationID]; ok {
+			message, err := messageview.ProjectQuestionMessage(request, record)
+			if err != nil {
+				return PublicEvent{}, err
+			}
+			delete(a.pendingQuestions, resolved.ElicitationID)
+			event.Message = &message
+			resolved.Content = message.Question.Answers
 		}
 		event.ElicitationResolution = &resolved
 	}
@@ -292,6 +316,16 @@ func ClonePublicEvent(event PublicEvent) PublicEvent {
 			fork := *event.Message.Fork
 			message.Fork = &fork
 		}
+		if event.Message.Question != nil {
+			question := *event.Message.Question
+			question.RequestedSchema = cloneStringAnyMap(question.RequestedSchema)
+			if question.AllowSkip != nil {
+				allowSkip := *question.AllowSkip
+				question.AllowSkip = &allowSkip
+			}
+			question.Answers = cloneStringAnyMap(question.Answers)
+			message.Question = &question
+		}
 		message.Attachments = append([]eventlog.AttachmentReference(nil), event.Message.Attachments...)
 		message.Skills = append([]eventlog.MessageSkillReference(nil), event.Message.Skills...)
 		message.Connectors = append([]eventlog.MessageConnectorReference(nil), event.Message.Connectors...)
@@ -322,9 +356,24 @@ func cloneStringAnyMap(source map[string]any) map[string]any {
 	}
 	clone := make(map[string]any, len(source))
 	for key, value := range source {
-		clone[key] = value
+		clone[key] = cloneJSONValue(value)
 	}
 	return clone
+}
+
+func cloneJSONValue(value any) any {
+	switch value := value.(type) {
+	case map[string]any:
+		return cloneStringAnyMap(value)
+	case []any:
+		clone := make([]any, len(value))
+		for index, item := range value {
+			clone[index] = cloneJSONValue(item)
+		}
+		return clone
+	default:
+		return value
+	}
 }
 
 // ApplyNativeCheckpoint replaces projected content with the effective native lanes.

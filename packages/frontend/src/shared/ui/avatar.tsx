@@ -3,7 +3,10 @@ import { useTranslation } from "react-i18next";
 import { cn } from "@/shared/lib/cn";
 import { companionAvatar } from "@/shared/companion/appearance";
 import { CompanionAvatar } from "@/shared/companion/companion-avatar";
-import type { CompanionActivity } from "@/shared/companion/activity";
+import type {
+  CompanionActivity,
+  CompanionAttention,
+} from "@/shared/companion/activity";
 
 type AvatarProps = {
   name: string;
@@ -12,6 +15,7 @@ type AvatarProps = {
   size?: "xs" | "sm" | "md" | "lg" | "xl" | "hero" | "docked";
   className?: string;
   activity?: CompanionActivity;
+  attention?: CompanionAttention;
   interactive?: boolean;
   /** 静态头像保留形状、材质和默认表情，不启动帧循环。 */
   animated?: boolean;
@@ -35,6 +39,7 @@ export function Avatar({
   size = "md",
   src,
   activity,
+  attention,
   interactive = true,
   animated = true,
   preview = false,
@@ -47,6 +52,7 @@ export function Avatar({
     <CompanionAvatar
       avatar={companionAvatar(src, name)}
       activity={activity}
+      attention={attention}
       animated={animated}
       interactive={canInteract}
       preview={preview}

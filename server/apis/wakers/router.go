@@ -9,6 +9,8 @@ var Router = ginx.NewRouter(ginx.Group("/wakers"))
 func init() {
 	Router.Register(&ListWakers{})
 	Router.Register(&CreateWaker{})
+	Router.Register(&DuplicateWaker{})
+	Router.Register(&StartWakerOnboarding{})
 	Router.Register(&GetWaker{})
 	Router.Register(&GetWakerWorkRecord{})
 	Router.Register(&ListWakerChats{})

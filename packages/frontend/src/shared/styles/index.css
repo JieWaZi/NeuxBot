@@ -91,6 +91,7 @@
   --color-accent-surface-strong: var(--accent-surface-strong);
   --color-accent-border: var(--accent-border);
   --color-accent-secondary: var(--accent-secondary);
+  --color-accent-secondary-strong: var(--accent-secondary-hover);
   --color-accent-secondary-surface: var(--accent-secondary-surface);
   --color-accent-secondary-border: var(--accent-secondary-border);
   --color-accent-foreground: var(--accent-foreground);
@@ -195,8 +196,10 @@
   --spacing-row-settings: 2rem;
   --spacing-row-detail: 4rem;
   --container-settings-content: 49rem;
+  --container-chat-question: 33.75rem;
   --spacing-row-navigation: 2.75rem;
   --spacing-row-rich: 3.5rem;
+  --spacing-work-board-focus-min: calc(3 * var(--spacing-row-rich) + 4rem);
   --spacing-work-board-focus-list: calc(5 * var(--spacing-row-rich) + 3.5rem);
   /* 连接器内容区与技能卡片的 128px 基线一致，标签固定同行，说明保留两行。 */
   --spacing-connector-card-content: 8rem;
@@ -235,6 +238,8 @@
   --animate-popover-out: dialog-out var(--duration-quick) var(--ease-ui) both;
   --animate-fade-in: fade-in var(--duration-enter) var(--ease-ui);
   --animate-fade-out: fade-out var(--duration-exit) var(--ease-ui);
+  --animate-avatar-attention-wave: avatar-attention-wave 1.2s var(--ease-ui)
+    infinite;
   --animate-dialog-in: dialog-in var(--duration-enter) var(--ease-ui) both;
   --animate-dialog-out: dialog-out var(--duration-exit) var(--ease-ui) both;
   --animate-shell-side-panel-in: shell-side-panel-in var(--duration-layout)
@@ -349,6 +354,11 @@
 @utility type-display {
   font-size: 1.5rem;
   line-height: 2rem;
+}
+
+@utility type-usage-total {
+  font-size: clamp(1.75rem, 4.5cqi, 2.5rem);
+  line-height: 1.15;
 }
 
 :root {
@@ -928,7 +938,7 @@ button:disabled {
 [data-chat-composer-input] {
   display: block;
   max-height: 10rem;
-  min-height: 2.5rem;
+  min-height: var(--composer-input-min-height, 2.5rem);
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;

@@ -84,10 +84,6 @@ func TestRunHistoryProtectsActiveRunsAndPrunesWhenTheyEnd(t *testing.T) {
 	}
 	ended := int64(101)
 	run.Status, run.CompletedAt, run.Result = constants.WorkflowRunStatusSucceeded, &ended, map[string]any{"report": "完成"}
-	results := NewWorkResultController(db)
-	if err := results.EnableTracking(ctx, 1); err != nil {
-		t.Fatal(err)
-	}
 	if err := NewTransactionController(dbhelper.NewGormTransactionManager(db)).Transaction(ctx, func(ctx context.Context) error {
 		return runs.CommitRunState(ctx, WorkflowRunState{Run: run}, 1, 101)
 	}); err != nil {
@@ -101,9 +97,7 @@ func TestRunHistoryProtectsActiveRunsAndPrunesWhenTheyEnd(t *testing.T) {
 	if err != nil || completed.HistoryDeletedAt == nil || completed.Result == nil {
 		t.Fatalf("隐藏入口不得删除真实完成结果: %+v %v", completed, err)
 	}
-	if _, found, err := results.Get(ctx, constants.WorkResultOwnerKindWorkflowRun, run.ID); err != nil || !found {
-		t.Fatalf("清理不得跳过成果回执提交: %v %v", found, err)
-	}
+
 }
 
 func TestRunHistoryPrunesBacklogButKeepsChildFacts(t *testing.T) {
@@ -160,32 +154,27 @@ func TestRemovedRunHistoryDoesNotAppearInWorkBoardOrUnreadCounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	seedRunHistory(t, db, "flow", 2, constants.WorkflowRunStatusSucceeded)
-	results := NewWorkResultController(db)
-	if err := results.EnableTracking(ctx, 1); err != nil {
+	completedAt := int64(200)
+	if err := db.Model(&models.WorkflowRun{}).Where("definition_id=?", "flow").Updates(map[string]any{"completed_at": completedAt, "result": `{"answer":"done"}`}).Error; err != nil {
 		t.Fatal(err)
-	}
-	for _, id := range []string{"flow-000", "flow-001"} {
-		if err := results.Publish(ctx, models.WorkResultReceipt{OwnerKind: constants.WorkResultOwnerKindWorkflowRun, OwnerID: id, LatestVersion: 1, AvailableAt: 200, Reference: models.WorkResultReference{WorkflowRunID: id}}); err != nil {
-			t.Fatal(err)
-		}
 	}
 	if err := NewWorkflowRunController(db).DeleteRunHistory(ctx, "flow", "flow-000", 300); err != nil {
 		t.Fatal(err)
 	}
 	board := NewWorkBoardController(db)
 	for _, query := range []WorkBoardQuery{{}, {Source: "workflow"}, {ExecutorID: "flow"}, {Query: "历史"}} {
-		count, err := board.ResultCount(ctx, query)
-		if err != nil || count != 1 {
-			t.Fatalf("所有未读计数路径应排除删除的历史: %+v %d %v", query, count, err)
+		query.Limit = 5
+		rows, err := board.AwaitingView(ctx, constants.LocalReaderID, query)
+		if err != nil || len(rows) != 1 || rows[0].OwnerID != "flow-001" {
+			t.Fatalf("hidden result counted: %+v %v", rows, err)
 		}
 	}
-	for _, method := range []func(context.Context, WorkBoardQuery) ([]models.WorkBoardEntry, error){board.List, board.Results} {
-		values, err := method(ctx, WorkBoardQuery{Limit: 50})
-		if err != nil || len(values) != 1 || values[0].OwnerID != "flow-001" {
-			t.Fatalf("工作看板不得继续出现已移除的记录: %+v %v", values, err)
-		}
+	values, err := board.List(ctx, WorkBoardQuery{Limit: 50})
+	if err != nil || len(values) != 1 || values[0].OwnerID != "flow-001" {
+		t.Fatalf("work history contains hidden run: %+v %v", values, err)
 	}
-	if _, found, err := results.Get(ctx, constants.WorkResultOwnerKindWorkflowRun, "flow-000"); err != nil || !found {
-		t.Fatalf("成果凭据必须保留: %v %v", found, err)
+	if run, err := NewWorkflowRunController(db).GetRun(ctx, "flow-000"); err != nil || run.Result == nil {
+		t.Fatalf("original result lost: %+v %v", run, err)
 	}
+
 }

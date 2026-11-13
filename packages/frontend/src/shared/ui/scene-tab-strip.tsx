@@ -31,6 +31,8 @@ export type SceneTab = {
   id: string;
   label: string;
   icon?: LucideIcon;
+  indicator?: ReactNode;
+  description?: string;
   autoFocus?: boolean;
   closeable?: boolean;
   draggable?: boolean;
@@ -171,7 +173,7 @@ export function SceneTabStrip({
               role="tab"
               aria-selected={active}
               aria-description={
-                tab.notFound ? t("sceneTabs.notFound") : undefined
+                tab.notFound ? t("sceneTabs.notFound") : tab.description
               }
               autoFocus={tab.autoFocus}
               tabIndex={
@@ -194,13 +196,16 @@ export function SceneTabStrip({
                   strokeWidth={1.5}
                   aria-hidden="true"
                 />
-              ) : Icon ? (
-                <Icon
-                  className="size-icon-sm shrink-0"
-                  strokeWidth={1.5}
-                  aria-hidden="true"
-                />
-              ) : null}
+              ) : (
+                (tab.indicator ??
+                (Icon ? (
+                  <Icon
+                    className="size-icon-sm shrink-0"
+                    strokeWidth={1.5}
+                    aria-hidden="true"
+                  />
+                ) : null))
+              )}
               {tab.notFound ? (
                 <span className="min-w-0 flex-1 truncate">{tab.label}</span>
               ) : (

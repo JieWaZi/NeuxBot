@@ -2,6 +2,8 @@ import type { AppModuleId } from "./app-navigation-model";
 
 const partnerNavigationStorageKey = "ally.partner-navigation";
 
+export type WakerNavigationGroup = { name: string; wakerIds: string[] };
+
 export type PartnerNavigationPreferences = {
   collapsedGroups: Record<string, string[]>;
   contextSidebarWidth: number;
@@ -14,6 +16,7 @@ export type PartnerNavigationPreferences = {
   railExpanded: boolean;
   railOrder: string[];
   railPins?: Record<string, boolean>;
+  wakerGroups?: WakerNavigationGroup[];
 };
 
 const defaultPreferences: PartnerNavigationPreferences = {
@@ -95,6 +98,39 @@ function stringRecord(value: unknown): Record<string, string> {
   );
 }
 
+function normalizeWakerGroups(value: unknown): WakerNavigationGroup[] {
+  if (!Array.isArray(value)) return [];
+  const groups: WakerNavigationGroup[] = [];
+  const names = new Set<string>();
+  const assigned = new Set<string>();
+  for (const group of value) {
+    if (!group || typeof group.name !== "string") continue;
+    const name = group.name.trim();
+    if (!name || names.has(name)) continue;
+    names.add(name);
+    const wakerIds = stringArray(group.wakerIds).filter(
+      (id) => !assigned.has(id),
+    );
+    for (const id of wakerIds) assigned.add(id);
+    groups.push({ name, wakerIds });
+  }
+  return groups;
+}
+
+export function moveWakerToNavigationGroup(
+  groups: readonly WakerNavigationGroup[],
+  wakerId: string,
+  groupName: string,
+): WakerNavigationGroup[] {
+  const next = groups.map(({ name, wakerIds }) => {
+    const ids = wakerIds.filter((id) => id !== wakerId);
+    return { name, wakerIds: name === groupName ? [...ids, wakerId] : ids };
+  });
+  if (groupName && !next.some((group) => group.name === groupName))
+    next.push({ name: groupName, wakerIds: [wakerId] });
+  return next;
+}
+
 export function readPartnerNavigationPreferences(): PartnerNavigationPreferences {
   if (typeof window === "undefined") return defaultPreferences;
   try {
@@ -131,6 +167,8 @@ export function readPartnerNavigationPreferences(): PartnerNavigationPreferences
       railExpanded: "railExpanded" in value && value.railExpanded === true,
       railOrder: "railOrder" in value ? stringArray(value.railOrder) : [],
       railPins: "railPins" in value ? booleanRecord(value.railPins) : {},
+      wakerGroups:
+        "wakerGroups" in value ? normalizeWakerGroups(value.wakerGroups) : [],
     };
   } catch {
     return defaultPreferences;
@@ -194,18 +232,21 @@ export function reconcilePartnerOrder(
   return ordered;
 }
 
+export type NavigationDropPlacement = "before" | "after";
+
 export function moveItem(
   items: readonly string[],
   sourceId: string,
   targetId: string,
+  placement: NavigationDropPlacement,
 ): string[] {
   const sourceIndex = items.indexOf(sourceId);
-  const targetIndex = items.indexOf(targetId);
-  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+  if (sourceIndex < 0 || !items.includes(targetId) || sourceId === targetId) {
     return [...items];
   }
   const next = [...items];
   next.splice(sourceIndex, 1);
-  next.splice(targetIndex, 0, sourceId);
+  const targetIndex = next.indexOf(targetId);
+  next.splice(targetIndex + Number(placement === "after"), 0, sourceId);
   return next;
 }

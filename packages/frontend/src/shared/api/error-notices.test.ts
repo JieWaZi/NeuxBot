@@ -160,6 +160,36 @@ describe("持久错误通知", () => {
     unmount();
   });
 
+  it("重载不恢复旧发送回执提示，其他持久错误仍可恢复", async () => {
+    const notice = {
+      id: "send:user-optimistic",
+      scope: "chat-one",
+      operation: "send:chat-one",
+      version: "unconfirmed-send",
+      messageSource: "public",
+      message:
+        "发送结果未知。输入已保留，历史正在重新同步；请核对后再决定是否发送新消息。",
+      createdAt: 1,
+    };
+    localStorage.setItem(
+      "ally:error-notices",
+      JSON.stringify([
+        notice,
+        {
+          ...notice,
+          id: "permission",
+          operation: "access:chat-one",
+          message: "授权失败",
+        },
+      ]),
+    );
+    vi.resetModules();
+    const restored = await import("./error-notices");
+    const { result, unmount } = renderHook(restored.useErrorNotices);
+    expect(result.current.map((item) => item.id)).toEqual(["permission"]);
+    unmount();
+  });
+
   it("新上报的底层网络异常使用客户可读文案", () => {
     const { result } = renderHook(useErrorNotices);
     act(() =>

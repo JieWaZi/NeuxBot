@@ -46,9 +46,14 @@ export function createDesktopPlatform(bridge: DesktopBridge): Platform {
       select_files: bridge.select_files,
       stage_attachment: bridge.stage_attachment,
       open_external_url: bridge.open_external_url,
-      show_notification: bridge.show_notification,
+      get_notification_preferences: bridge.get_notification_preferences,
+      set_notification_preferences: bridge.set_notification_preferences,
+      send_test_notification: bridge.send_test_notification,
+      open_notification_settings: /^(Mac|Win)/.test(navigator.platform)
+        ? bridge.open_notification_settings
+        : undefined,
       onFileDrop: bridge.onFileDrop,
-      onNotificationAction: bridge.onNotificationAction,
+      onWorkspaceAttentionOpen: bridge.onWorkspaceAttentionOpen,
     },
     browser: {
       browser_create: bridge.browser_create,

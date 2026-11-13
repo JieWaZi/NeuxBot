@@ -62,6 +62,8 @@ export function ChatErrorCard({
   actionLabel,
   disabled,
   execution = false,
+  readingMessageId,
+  readingSequence,
   historical = false,
   appearance = "card",
 }: {
@@ -73,6 +75,8 @@ export function ChatErrorCard({
   actionLabel?: string;
   disabled?: boolean;
   execution?: boolean;
+  readingMessageId?: string;
+  readingSequence?: number;
   historical?: boolean;
   appearance?: "card" | "composer";
 }) {
@@ -89,11 +93,45 @@ export function ChatErrorCard({
     t(actionError ? "errorActionFailed" : "executionIncomplete"),
   );
   const details = presentation.details;
+  const action =
+    onContinue || (onRetry && !missingSession) ? (
+      <Button
+        size="sm"
+        variant="ghost"
+        className="shrink-0"
+        disabled={disabled || pending}
+        onClick={() => {
+          if (onContinue) {
+            onContinue();
+            return;
+          }
+          if (pending) return;
+          setPending(true);
+          void Promise.resolve()
+            .then(() => onRetry?.())
+            .catch((error: unknown) =>
+              setActionError(
+                error instanceof ApiError
+                  ? error.message
+                  : t("errorActionFailed"),
+              ),
+            )
+            .finally(() => setPending(false));
+        }}
+      >
+        {pending ? <LoaderCircle className="animate-spin" /> : null}
+        {onContinue
+          ? t("sessionTransitionAction")
+          : (actionLabel ?? t("common:retry"))}
+      </Button>
+    ) : null;
   const card = (
     <div
       role={historical ? undefined : "alert"}
       data-chat-error={id}
-      data-work-result-body={execution ? "" : undefined}
+      data-chat-readable-body={readingMessageId ? "" : undefined}
+      data-chat-reading-message-id={readingMessageId}
+      data-chat-readable-sequence={readingSequence}
       className={cn(
         appearance === "composer"
           ? "type-ui w-full min-w-0"
@@ -124,9 +162,11 @@ export function ChatErrorCard({
             {presentation.message}
           </p>
         </div>
+        {appearance === "composer" ? action : null}
         <Button
           size="icon-sm"
           variant="ghost"
+          className="shrink-0"
           aria-label={execution ? t("collapseFailure") : t("dismissError")}
           onClick={() => {
             if (execution) setExpanded(false);
@@ -151,36 +191,9 @@ export function ChatErrorCard({
           </CollapsibleContent>
         </Collapsible>
       ) : null}
-      {onContinue || (onRetry && !missingSession) ? (
+      {appearance === "card" && action ? (
         <div data-chat-error-actions className="mt-2 flex justify-end">
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={disabled || pending}
-            onClick={() => {
-              if (onContinue) {
-                onContinue();
-                return;
-              }
-              if (pending) return;
-              setPending(true);
-              void Promise.resolve()
-                .then(() => onRetry?.())
-                .catch((error: unknown) =>
-                  setActionError(
-                    error instanceof ApiError
-                      ? error.message
-                      : t("errorActionFailed"),
-                  ),
-                )
-                .finally(() => setPending(false));
-            }}
-          >
-            {pending ? <LoaderCircle className="animate-spin" /> : null}
-            {onContinue
-              ? t("sessionTransitionAction")
-              : (actionLabel ?? t("common:retry"))}
-          </Button>
+          {action}
         </div>
       ) : null}
     </div>
@@ -235,6 +248,12 @@ export function MessageFailure({
       key={`${executionId}:${last}`}
       id={`execution:${executionId}`}
       execution={placement === "message"}
+      readingMessageId={message.id}
+      readingSequence={
+        message.readable && !message.optimistic
+          ? message.createdSequence
+          : undefined
+      }
       historical={!last}
       message={text}
       onDismiss={onDismiss}

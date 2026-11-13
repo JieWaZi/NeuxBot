@@ -53,6 +53,7 @@ describe("ChatElicitationCard", () => {
         onResolve={onResolve}
       />,
     );
+    expect(screen.getByRole("button", { name: "继续" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "file" }));
     await user.click(screen.getByRole("button", { name: "继续" }));
     expect(onResolve).toHaveBeenCalledWith(
@@ -61,6 +62,110 @@ describe("ChatElicitationCard", () => {
       false,
     );
   });
+
+  it("已发出的单选建档题仍可以只提交其他", async () => {
+    const user = userEvent.setup();
+    const onResolve = vi.fn();
+    const question = request();
+    render(
+      <ChatElicitationCard
+        elicitation={{
+          ...question,
+          allowSkip: false,
+          requestedSchema: {
+            ...question.requestedSchema,
+            allOf: [
+              {
+                oneOf: [
+                  { required: ["fruit"] },
+                  { required: ["fruit__other"] },
+                ],
+              },
+            ],
+          },
+        }}
+        onResolve={onResolve}
+      />,
+    );
+    const next = screen.getByRole("button", { name: "继续" });
+    expect(next).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "其他…" }));
+    const input = screen.getByRole("textbox", { name: "其他…" });
+    await user.type(input, " ");
+    await user.keyboard("{Enter}");
+    expect(next).toBeDisabled();
+    expect(onResolve).not.toHaveBeenCalled();
+    await user.type(input, "芒果");
+    await user.click(next);
+    expect(onResolve).toHaveBeenCalledWith(
+      "fruit-question",
+      { fruit__other: "芒果" },
+      false,
+    );
+  });
+
+  it.each([true, false])(
+    "建档多选保留多个预设选项和其他（含预设：%s）",
+    async (withOptions) => {
+      const user = userEvent.setup();
+      const onResolve = vi.fn();
+      const card = request(true);
+      render(
+        <ChatElicitationCard
+          elicitation={{
+            ...card,
+            allowSkip: false,
+            requestedSchema: {
+              ...card.requestedSchema,
+              properties: {
+                ...card.requestedSchema.properties,
+                fruit: {
+                  ...card.requestedSchema.properties.fruit,
+                  minItems: 1,
+                  uniqueItems: true,
+                },
+              },
+              allOf: [
+                {
+                  anyOf: [
+                    { required: ["fruit"] },
+                    { required: ["fruit__other"] },
+                  ],
+                },
+              ],
+            },
+          }}
+          onResolve={onResolve}
+        />,
+      );
+      const next = screen.getByRole("button", { name: "继续" });
+      expect(next).toBeDisabled();
+      if (withOptions) {
+        const apple = screen.getByRole("button", { name: /苹果/ });
+        const banana = screen.getByRole("button", { name: /香蕉/ });
+        await user.click(apple);
+        await user.click(banana);
+        await user.click(apple);
+        expect(apple).toHaveAttribute("aria-pressed", "false");
+        await user.click(apple);
+        expect(banana).toHaveAttribute("aria-pressed", "true");
+        expect(next).toBeEnabled();
+      }
+      await user.click(screen.getByRole("button", { name: "其他…" }));
+      const custom = screen.getByRole("textbox", { name: "其他…" });
+      await user.type(custom, " ");
+      expect(next).toBeDisabled();
+      await user.type(custom, "芒果");
+      await user.click(next);
+      expect(onResolve).toHaveBeenCalledWith(
+        "fruit-question",
+        withOptions
+          ? { fruit: ["banana", "apple"], fruit__other: "芒果" }
+          : { fruit__other: "芒果" },
+        false,
+      );
+    },
+  );
 
   it.each([false, true])(
     "提交 CLI 的 enum 选项并隐藏不可跳过入口，多选=%s",

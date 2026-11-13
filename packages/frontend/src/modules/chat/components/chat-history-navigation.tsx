@@ -1,4 +1,9 @@
 import {
+  ConversationAttentionMark,
+  conversationAttentionMark,
+  type ConversationMark,
+} from "@/shared/ui/conversation-attention";
+import {
   ArrowLeft,
   MessageSquareText,
   MoreHorizontal,
@@ -116,10 +121,36 @@ export function ChatHistoryPanelSurface({
   );
 }
 
+export function ChatHistoryRowStatus({
+  status,
+  mark,
+}: {
+  status: "idle" | "running" | "waiting";
+  mark?: ConversationMark;
+}) {
+  if (mark?.kind === "action") {
+    return <ConversationAttentionMark mark={mark} />;
+  }
+  return (
+    <span
+      aria-hidden="true"
+      data-history-status={status}
+      className={cn(
+        "block size-1.5 shrink-0 place-self-center rounded-full",
+        status === "running" && "bg-success",
+        status === "waiting" && "bg-warning",
+        status === "idle" && "bg-border",
+      )}
+    />
+  );
+}
+
 export function ChatHistoryNavigationRow({
   active,
   title,
   status,
+  requestKinds,
+  unreadCount,
   href,
   onOpen,
   onPrefetch,
@@ -129,6 +160,8 @@ export function ChatHistoryNavigationRow({
   active: boolean;
   title: string;
   status: "idle" | "running" | "waiting";
+  requestKinds?: readonly string[];
+  unreadCount?: number;
   href?: string;
   onOpen: (event: MouseEvent<HTMLElement>) => void;
   onPrefetch?: () => void;
@@ -137,18 +170,17 @@ export function ChatHistoryNavigationRow({
 }) {
   const { t } = useTranslation("common");
   const [menuOpen, setMenuOpen] = useState(false);
+  const mark = conversationAttentionMark({
+    requestKinds,
+    unread: unreadCount,
+  });
   const contents = (
     <>
-      <span
-        aria-hidden="true"
-        className={cn(
-          "bg-border block size-1.5 shrink-0 place-self-center rounded-full",
-          status === "waiting"
-            ? "bg-warning"
-            : status === "running" && "bg-success animate-pulse",
-        )}
-      />
+      <ChatHistoryRowStatus status={status} mark={mark} />
       <span className="min-w-0 truncate">{title}</span>
+      <ConversationAttentionMark
+        mark={mark?.kind === "unread" ? mark : undefined}
+      />
     </>
   );
   const props = {
@@ -157,7 +189,7 @@ export function ChatHistoryNavigationRow({
     onMouseEnter: onPrefetch,
     title,
     className:
-      "focus-visible:ring-ring type-body grid min-w-0 grid-cols-[14px_minmax(0,1fr)] items-center gap-1 overflow-hidden rounded-sm px-1 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset",
+      "focus-visible:ring-ring type-body grid min-w-0 grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-1 overflow-hidden rounded-sm px-1 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset",
   };
   return (
     <div

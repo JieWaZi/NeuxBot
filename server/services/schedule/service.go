@@ -190,8 +190,13 @@ func (s *Service) ForgetTask(ctx context.Context, taskID string) {
 	delete(s.rates, taskID)
 }
 
-// Start 先对账未完成接纳并聚合错过计划，再显式启动扫描和本机监听器。
+// Start 先对账未完成接纳并聚合错过计划，再启动扫描和本机监听器。
 func (s *Service) Start(ctx context.Context) error {
+	return s.StartAfterRecovery(ctx, nil)
+}
+
+// StartAfterRecovery 允许 Core 在原调度恢复结束后提交启动屏障，再开放后台派发。
+func (s *Service) StartAfterRecovery(ctx context.Context, afterRecovery func(context.Context) error) error {
 	if s.config.APIHandler == nil {
 		return status_error.AutomaticTaskServiceInvalid
 	}
@@ -209,6 +214,9 @@ func (s *Service) Start(ctx context.Context) error {
 	}
 	s.lastTick = s.config.Now()
 	s.gate.Unlock()
+	if err == nil && afterRecovery != nil {
+		err = afterRecovery(s.ctx)
+	}
 	if err != nil {
 		s.cancel()
 		return err

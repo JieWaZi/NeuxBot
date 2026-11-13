@@ -97,28 +97,28 @@ func TestCommittedInteractionResolutionSurvivesRequestCancellation(t *testing.T)
 			cancel()
 			if kind == "elicitation" {
 				requested := eventlog.ElicitationRequestedData{ElicitationID: "question", Mode: "form", Message: "选择交付方式"}
-				record, appendErr := manager.AppendElicitationFact(chatID, eventlog.AppendInput{Type: constants.ChatEventTypeElicitationRequested, Data: marshalData(requested)})
+				record, appendErr := manager.AppendInteractionFact(chatID, eventlog.AppendInput{Type: constants.ChatEventTypeElicitationRequested, Data: marshalData(requested)})
 				if appendErr != nil {
 					t.Fatal(appendErr)
 				}
-				manager.PublishElicitationFact(ctx, record, []models.PendingElicitation{{ElicitationID: "question"}})
-				resolved, err = manager.AppendElicitationFact(chatID, eventlog.AppendInput{Type: constants.ChatEventTypeElicitationResolved, Data: marshalData(eventlog.ElicitationResolvedData{ElicitationID: "question", Result: constants.ElicitationResultInvalidated})})
+				manager.PublishInteractionFact(ctx, record)
+				resolved, err = manager.AppendInteractionFact(chatID, eventlog.AppendInput{Type: constants.ChatEventTypeElicitationResolved, Data: marshalData(eventlog.ElicitationResolvedData{ElicitationID: "question", Result: constants.ElicitationResultInvalidated})})
 				if err != nil {
 					t.Fatal(err)
 				}
-				manager.PublishElicitationFact(cancelled, resolved, nil)
+				manager.PublishInteractionFact(cancelled, resolved)
 			} else {
 				requested := eventlog.ApprovalRequestedData{ApprovalID: "approval", Title: "批准读取"}
-				record, appendErr := manager.AppendApprovalFact(chatID, eventlog.AppendInput{Type: constants.ChatEventTypeApprovalRequested, Data: marshalData(requested)})
+				record, appendErr := manager.AppendInteractionFact(chatID, eventlog.AppendInput{Type: constants.ChatEventTypeApprovalRequested, Data: marshalData(requested)})
 				if appendErr != nil {
 					t.Fatal(appendErr)
 				}
-				manager.PublishApprovalFact(ctx, record, []models.PendingApproval{{ApprovalID: "approval"}})
-				resolved, err = manager.AppendApprovalFact(chatID, eventlog.AppendInput{Type: constants.ChatEventTypeApprovalResolved, Data: marshalData(eventlog.ApprovalResolvedData{ApprovalID: "approval", Result: constants.ApprovalResultInvalidated})})
+				manager.PublishInteractionFact(ctx, record)
+				resolved, err = manager.AppendInteractionFact(chatID, eventlog.AppendInput{Type: constants.ChatEventTypeApprovalResolved, Data: marshalData(eventlog.ApprovalResolvedData{ApprovalID: "approval", Result: constants.ApprovalResultInvalidated})})
 				if err != nil {
 					t.Fatal(err)
 				}
-				manager.PublishApprovalFact(cancelled, resolved, nil)
+				manager.PublishInteractionFact(cancelled, resolved)
 			}
 			// 直接读取SQLite，避免摘要的惰性恢复掩盖提交后投影丢失。
 			indexed, err := manager.queryIndexes.chatController.Get(ctx, chatID)

@@ -10,7 +10,7 @@ func init() {
 	Router.Register(&ListWorkBoard{})
 	Router.Register(&ListWorkBoardExecutors{})
 	Router.Register(&GetWorkBoardSummary{})
-	Router.Register(&GetWorkResult{})
-	Router.Register(&ViewWorkResult{})
-	Router.Register(&ClearWorkResults{})
+	Router.Register(&GetWorkBoardViewTargets{})
+	Router.Register(&MarkWorkBoardViewed{})
+	Router.Register(&GetWorkBoardLiveTarget{})
 }

@@ -200,6 +200,23 @@ func (s *Store) readAdmissionRows(ctx context.Context, session agent.NativeSessi
 			return err
 		}
 		row, err := readDiskRow(file, pos.Where)
+		if err != nil && chatID == "" {
+			// A deletion may rewrite physical offsets before this reader takes the
+			// shard lock. The logical cursor continues to identify the same row.
+			idx, loadErr := slot.load(ctx, path, false)
+			if loadErr != nil {
+				return loadErr
+			}
+			positions, lookupErr := idx.positions([]int64{pos.Cursor})
+			if lookupErr != nil {
+				return lookupErr
+			}
+			updated := positions[pos.Cursor]
+			if updated.Kind != indexDetachedInput {
+				return status_error.ChatLogNativeOutcomePending
+			}
+			row, err = readDiskRow(file, updated.Where)
+		}
 		if err != nil {
 			return err
 		}

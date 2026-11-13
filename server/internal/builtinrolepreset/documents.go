@@ -1,6 +1,8 @@
 package builtinrolepreset
 
 import (
+	"strings"
+
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/profile"
@@ -31,7 +33,7 @@ func ResolveWakerContents(
 	}
 	storedEditable := false
 	for _, document := range stored {
-		if document.Kind == constants.ProfileDocumentKindMemory {
+		if document.Kind == constants.ProfileDocumentKindMemory || document.Kind == constants.ProfileDocumentKindAgents {
 			continue
 		}
 		if !isEditableProfileKind(document.Kind) {
@@ -142,4 +144,34 @@ func isEditableProfileKind(kind constants.ProfileDocumentKind) bool {
 	return kind == constants.ProfileDocumentKindIdentity ||
 		kind == constants.ProfileDocumentKindPersona ||
 		kind == constants.ProfileDocumentKindPlaybook
+}
+
+// ResolveWakerAgents 读取保存的完整正文，或按身份、风格、方法顺序合并旧文档及内置默认内容。
+func ResolveWakerAgents(wakerID string, stored []models.WakerDocument, updatedAt int64) profile.Document {
+	result := profile.Document{
+		Kind: constants.ProfileDocumentKindAgents, FileName: constants.ProfileDocumentAgentsFileName,
+		Editable: true, UpdatedAt: updatedAt,
+	}
+	legacy := make(map[constants.ProfileDocumentKind]string, 3)
+	if definition, exists := DefinitionByWakerID(wakerID); exists {
+		legacy = cloneDocuments(definition.Documents)
+	}
+	for _, document := range stored {
+		if document.Kind == constants.ProfileDocumentKindAgents {
+			result.Content, result.UpdatedAt = document.Content, document.UpdatedAt
+			return result
+		}
+		if isEditableProfileKind(document.Kind) {
+			legacy[document.Kind] = document.Content
+			result.UpdatedAt = max(result.UpdatedAt, document.UpdatedAt)
+		}
+	}
+	parts := make([]string, 0, len(legacy))
+	for _, kind := range profile.EditableKinds() {
+		if content := legacy[kind]; content != "" {
+			parts = append(parts, content)
+		}
+	}
+	result.Content = strings.Join(parts, "\n\n")
+	return result
 }

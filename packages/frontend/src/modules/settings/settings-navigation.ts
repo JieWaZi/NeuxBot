@@ -1,10 +1,12 @@
-import { Bot, Settings2, Plug } from "lucide-react";
+import { Bell, Bot, Settings2, Plug } from "lucide-react";
 
-export type SettingsSection = "general" | "agents" | "integrations";
+export type SettingsSection =
+  "general" | "notifications" | "agents" | "integrations";
 export type IntegrationTab = "im" | "api" | "mcp";
 
 export const settingsNavigation = [
   { key: "general", labelKey: "sections.general", icon: Settings2 },
+  { key: "notifications", labelKey: "sections.notifications", icon: Bell },
   { key: "agents", labelKey: "sections.runtimeEnvironments", icon: Bot },
   { key: "integrations", labelKey: "sections.integrations", icon: Plug },
 ] as const satisfies ReadonlyArray<{
@@ -23,7 +25,7 @@ export function settingsSectionOf(value?: string): SettingsSection {
     ].includes(value ?? "")
   )
     return "integrations";
-  return value === "agents" ? value : "general";
+  return value === "agents" || value === "notifications" ? value : "general";
 }
 
 /** 旧入口仍可定位所属详情类型；显式类型优先，参数由原 URL 持有。 */

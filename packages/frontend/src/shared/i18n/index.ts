@@ -5,7 +5,7 @@ import { initReactI18next } from "react-i18next";
 
 import { imZh, imEn } from "./im";
 import { workBoardZh, workBoardEn } from "./work-board";
-import { usageZh } from "./usage";
+import { usageEn, usageZh } from "./usage";
 
 const resources = {
   "zh-CN": {
@@ -343,6 +343,12 @@ const resources = {
         pinModule: "固定{{name}}",
       },
       partnerNavigation: {
+        working: "工作中",
+        recentFailed: "最近运行失败",
+        unreadMessages: "{{count}} 条未读消息",
+        needsAction: "需要操作",
+        chooseActionChat: "选择需要操作的会话",
+        request: { input: "待输入", approval: "待审批", review: "待验收" },
         partner: "伙伴",
         team: "团队",
         noPartner: "还没有伙伴",
@@ -395,6 +401,21 @@ const resources = {
         renameChat: "重命名",
         deleteChat: "删除",
         entityMenu: "“{{name}}”操作",
+        wakerActions: {
+          menu: "“{{name}}”伙伴操作",
+          markUnread: "标为未读",
+          noReadableMessages: "这个伙伴还没有可标为未读的消息。",
+          markUnreadError: "暂时无法标为未读，请重试。",
+          moveTo: "移动到",
+          ungrouped: "未分组",
+          newGroup: "新建分组",
+          groupName: "分组名称",
+          edit: "编辑伙伴",
+          duplicate: "复制伙伴",
+          duplicating: "正在复制…",
+          duplicateError: "复制伙伴失败，请重试。",
+          delete: "删除伙伴",
+        },
         openEntityDetail: "打开{{name}}详情",
         sections: {
           resources: "资源",
@@ -455,7 +476,7 @@ const resources = {
       installed: "全部伙伴",
       count: "{{count}} 位伙伴",
       emptyTitle: "创建你的第一个伙伴",
-      emptyDescription: "选择一个角色，开始你的第一段对话。",
+      emptyDescription: "创建伙伴，在第一段对话中设置档案。",
       about: {
         title: "关于我",
         expertise: "核心职能",
@@ -468,16 +489,49 @@ const resources = {
         expandMore: "展开更多 ({{count}})",
         showLess: "收起",
       },
+      form: {
+        avatar: "头像",
+        name: "名称",
+        namePlaceholder: "例如：小艾",
+        nameRequired: "请输入名称。",
+        nameTooLong: "名称不能超过 80 字。",
+        roleName: "角色名称",
+        roleNamePlaceholder: "例如：前端开发工程师",
+        roleNameTooLong: "角色名称不能超过 80 字。",
+        bio: "概要",
+        bioPlaceholder: "例如：帮我整理会议记录，跟进项目进度。",
+        bioTooLong: "概要不能超过 1000 字。",
+        avatarInvalid: "请重新选择头像。",
+        defaultModel: "默认模型",
+        inheritModel: "跟随全局默认",
+        modelUnavailable:
+          "伙伴绑定的模型配置不可用，请选择其他智能体、账号或模型。",
+        create: "创建伙伴",
+        openPartner: "打开伙伴",
+        createError: "暂时无法创建伙伴，请重试。",
+        edit: "编辑伙伴",
+        save: "保存修改",
+        saveError: "暂时无法保存伙伴，请重试。",
+      },
       profile: {
         title: "伙伴档案",
-        lead: "身份、人设与协作说明文档",
-        download: "下载伙伴档案",
-        downloadError: "档案 ZIP 导出失败，请重试。",
         loading: "正在载入档案…",
         loadError: "暂时无法载入档案。",
         retry: "重新载入",
-        edit: "编辑",
-        memory: "记忆",
+        edit: "编辑伙伴档案",
+        empty: "尚未填写档案。",
+        continue: "继续设置",
+        openChat: "打开对话",
+        startError: "暂时无法开始建档，请重试。",
+        markdown: "伙伴档案 Markdown",
+        markdownPlaceholder: "用 Markdown 编写伙伴长期遵循的指令。",
+        saveError: "暂时无法保存档案，请重试。",
+        optimize: "AI 优化",
+        tokenLimit: "上限 {{count}} token",
+        discardTitle: "放弃未保存的修改？",
+        discardDescription: "关闭后，本次对档案的修改不会保存。",
+        keepEditing: "继续编辑",
+        discard: "放弃修改",
       },
       workRecord: {
         title: "工作记录",
@@ -1356,6 +1410,7 @@ const resources = {
       },
       sections: {
         general: "通用",
+        notifications: "通知",
         runtimeEnvironments: "智能体",
         integrations: "集成",
         integrationAPI: "API 集成",
@@ -1399,6 +1454,8 @@ const resources = {
       },
       add: "新建",
       installed: "已安装",
+      mySkills: "我的技能",
+      installedOnPartners: "已安装到 {{count}} 个伙伴",
       search: "搜索技能",
       statusFilter: "技能启用状态",
       all: "全部",
@@ -1514,6 +1571,7 @@ const resources = {
         manage: "管理",
         information: "信息",
         installedPartners: "伙伴",
+        partnerSkill: "{{partner}}的技能 {{name}}",
         sourceVersion: "来源版本",
         version: "版本",
         updated: "更新时间",
@@ -1704,6 +1762,12 @@ const resources = {
       },
     },
     chat: {
+      reading: {
+        actions: "阅读操作",
+        markUnread: "从此处标为未读",
+        failed: "无法更新会话阅读状态。",
+        markRead: "标为已读",
+      },
       sessionTransitionTitle: "在当前聊天中继续",
       sessionTransitionDescription:
         "切换智能体或账号后，下一条消息会按你选择的方式继续当前聊天。完整聊天记录仍可查看。",
@@ -1755,6 +1819,7 @@ const resources = {
       recent: "最近对话",
       manageWakers: "管理伙伴",
       createWakerFirst: "先创建一位伙伴",
+      profileOptimizationHint: "告诉伙伴你想怎样修改档案。",
       draftDescription: "选择项目目录和智能体，然后发送第一条消息。",
       working: "工作中",
       teamWorking: "团队执行中",
@@ -2250,6 +2315,7 @@ const resources = {
         modified: "修改",
       },
       fileChanges: {
+        label: "文件变更",
         pending: "正在采集文件改动…",
         unavailable: "文件改动暂时无法读取",
         incomplete: "文件采集未完成",
@@ -2311,6 +2377,7 @@ const resources = {
       approval: {
         aria: "等待工具审批",
         position: "等待审批 · {{current}} / {{total}}",
+        waitingForTurn: "「{{title}}」正在排队，请先处理当前审批。",
         fallbackTitle: "允许执行此工具操作吗？",
         submitting: "正在提交",
         confirming: "结果确认中",
@@ -2346,7 +2413,6 @@ const resources = {
         },
       },
       elicitation: {
-        question: "提问",
         other: "其他…",
         answerPlaceholder: "请输入答案",
         multipleChoiceHint: "可选择多项",
@@ -2355,6 +2421,13 @@ const resources = {
         decline: "拒绝",
         continue: "已完成",
         otherPlaceholder: "或输入自定义答案",
+        waitingForTurn: "请先回答上一条提问。",
+        result: {
+          accepted: "已回答",
+          declined: "已跳过",
+          cancelled: "已取消",
+          invalidated: "已失效",
+        },
       },
       send: "发送消息",
       copy: "复制",
@@ -2438,6 +2511,8 @@ const resources = {
         "本次发送标识已用于其他内容。输入已保留，请修改内容后重试。",
       sendUnknown:
         "发送结果未知。输入已保留，历史正在重新同步；请核对后再决定是否发送新消息。",
+      firstSendUnconfirmed: "首条消息尚未确认，将使用原伙伴、模型和权限重试。",
+      retryFirstSend: "重试原发送",
       team: {
         memberConfigUpdateFailed: "成员执行配置保存失败，请稍后重试。",
         memberConfigInvalid: "请检查{{name}}的执行配置后再发送。",
@@ -2488,11 +2563,97 @@ const resources = {
     },
   },
   "en-US": {
+    usage: usageEn,
     knowledge: knowledgeEn,
     notification: notificationEn,
     im: imEn,
     workBoard: workBoardEn,
+    waker: {
+      create: "New partner",
+      form: {
+        avatar: "Avatar",
+        name: "Name",
+        namePlaceholder: "For example, Avery",
+        nameRequired: "Enter a name.",
+        nameTooLong: "Names can be up to 80 characters.",
+        roleName: "Role name",
+        roleNamePlaceholder: "For example, Frontend engineer",
+        roleNameTooLong: "Role names can be up to 80 characters.",
+        bio: "Overview",
+        bioPlaceholder:
+          "For example, organize my meeting notes and track project progress.",
+        bioTooLong: "The overview can be up to 1,000 characters.",
+        avatarInvalid: "Select an avatar again.",
+        defaultModel: "Default model",
+        inheritModel: "Use global default",
+        modelUnavailable:
+          "This partner’s model configuration is unavailable. Choose another agent, account, or model.",
+        create: "Create partner",
+        openPartner: "Open partner",
+        createError: "Could not create the partner. Try again.",
+        edit: "Edit partner",
+        save: "Save changes",
+        saveError: "Could not save the partner. Try again.",
+      },
+      profile: {
+        title: "Partner profile",
+        loading: "Loading profile…",
+        loadError: "Could not load the profile.",
+        retry: "Reload",
+        edit: "Edit partner profile",
+        empty: "No profile content yet.",
+        continue: "Continue setup",
+        openChat: "Open chat",
+        startError: "Could not start partner setup. Try again.",
+        markdown: "Partner profile Markdown",
+        markdownPlaceholder:
+          "Write lasting instructions for this partner in Markdown.",
+        saveError: "Could not save the profile. Try again.",
+        optimize: "Optimize with AI",
+        tokenLimit: "{{count}}-token limit",
+        discardTitle: "Discard unsaved changes?",
+        discardDescription: "Closing discards your changes to the profile.",
+        keepEditing: "Keep editing",
+        discard: "Discard changes",
+      },
+    },
+    skill: {
+      mySkills: "My skills",
+      installedOnPartners_one: "Installed for {{count}} partner",
+      installedOnPartners_other: "Installed for {{count}} partners",
+      detail: {
+        partnerSkill: "{{name}} for {{partner}}",
+      },
+    },
     common: {
+      partnerNavigation: {
+        createWaker: "New partner",
+        wakerActions: {
+          menu: "Actions for {{name}}",
+          markUnread: "Mark as unread",
+          noReadableMessages: "This partner has no messages to mark as unread.",
+          markUnreadError: "Could not mark the conversation as unread. Try again.",
+          moveTo: "Move to",
+          ungrouped: "Ungrouped",
+          newGroup: "New group",
+          groupName: "Group name",
+          edit: "Edit partner",
+          duplicate: "Duplicate partner",
+          duplicating: "Duplicating…",
+          duplicateError: "Could not duplicate the partner. Try again.",
+          delete: "Delete partner",
+        },
+        working: "Working",
+        recentFailed: "Most recent run failed",
+        unreadMessages: "{{count}} unread messages",
+        needsAction: "Needs action",
+        chooseActionChat: "Select a conversation that needs action",
+        request: {
+          input: "Input required",
+          approval: "Approval required",
+          review: "Review required",
+        },
+      },
       resourceCategory: {
         label: "Categories",
         placeholder: "Select or enter a category",
@@ -2577,6 +2738,44 @@ const resources = {
       },
     },
     chat: {
+      profileOptimizationHint: "Tell your partner how to revise its profile.",
+      approval: {
+        waitingForTurn:
+          "“{{title}}” is queued. Handle the current approval first.",
+        option: {
+          allowSession: "Allow for this session",
+          allowRootSession: "Allow writes to this directory for this session",
+          allowHostSession: "Allow access to this host for this session",
+          allowCommandPrefix:
+            "Always allow commands starting with `{{command}}`",
+          allowCommandPattern: "Allow and remember this command pattern",
+          allowFuture: "Allow {{target}} in the future",
+          blockFuture: "Block {{target}} in the future",
+          allowAlways: "Always allow",
+          rejectAlways: "Always reject",
+        },
+      },
+      toolApproval: {
+        allowedAlways: "Always allowed",
+        rejectedAlways: "Always rejected",
+        allowedSession: "Allowed for this session",
+      },
+      elicitation: {
+        waitingForTurn: "Answer the preceding question first.",
+        multipleChoiceHint: "You can select more than one option.",
+        result: {
+          accepted: "Answered",
+          declined: "Skipped",
+          cancelled: "Cancelled",
+          invalidated: "Expired",
+        },
+      },
+      reading: {
+        actions: "Reading actions",
+        markUnread: "Mark unread from here",
+        failed: "Could not update conversation reading state.",
+        markRead: "Mark as read",
+      },
       modelPicker: {
         contextWindow: "Context window",
         defaultReasoning: "Default",
@@ -2847,6 +3046,7 @@ const resources = {
         "This agent cannot continue from its previous chat. After you confirm, your next message will continue this chat using your chosen method. The full chat will remain available.",
       sessionTransitionTurns: "Recent turns to include",
       sessionTransitionMode: "How to continue",
+      fileChanges: { label: "File changes" },
       sessionTransitionRecent: "Recent turns",
       sessionTransitionSummary: "Automatic summary",
       sessionTransitionSummaryHint:
@@ -2887,6 +3087,9 @@ const resources = {
         "The operation failed. Check the status and try again.",
       sendUnknown:
         "The send outcome is unknown. Your input is saved while chat history resyncs; check it before sending another message.",
+      firstSendUnconfirmed:
+        "The first message is unconfirmed. Retrying uses the original partner, model, and permissions.",
+      retryFirstSend: "Retry original send",
       runtimeFailure: {
         thinkingRequired:
           "This model requires thinking. Adjust the thinking setting and try again.",

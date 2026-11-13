@@ -33,6 +33,8 @@ type ChatController interface {
 	ListRecentProjectCandidates(ctx context.Context, wakerID string, beforeUpdatedAt int64, beforeID string, limit int) ([]RecentProjectCandidate, error)
 	// ListIDsByWaker 返回伙伴拥有的全部 Chat 标识。
 	ListIDsByWaker(ctx context.Context, wakerID string) ([]string, error)
+	// ListProjectionIDs 返回启动恢复需要和权威日志目录核对的 Chat 标识。
+	ListProjectionIDs(ctx context.Context) ([]string, error)
 	// CountByWaker 返回伙伴对话总数。
 	CountByWaker(ctx context.Context, wakerID string) (int64, error)
 	// CountByWakerUpdatedRange 返回伙伴符合标题和最近活动时间筛选的对话总数。
@@ -50,6 +52,10 @@ type ChatController interface {
 	CountUpdatedByWakerBetween(ctx context.Context, wakerID string, startMs int64, endMs int64) (int64, error)
 	// AdvanceProjection 仅在当前游标匹配时原子推进由 JSONL 派生的字段。
 	AdvanceProjection(ctx context.Context, id string, afterSequence int64, fields map[string]any) error
+	// PublishChatAttention 发布已提交的原会话请求或结果身份。
+	PublishChatAttention(context.Context, models.WorkBoardLiveEvent)
+	// RecheckChatRequests 使已显示的请求提醒在执行结束后核对原状态。
+	RecheckChatRequests(context.Context, string)
 	// Delete 删除一条 Chat 索引。
 	Delete(ctx context.Context, id string) error
 	// ListByWakerForDelete 返回删除伙伴时需要清理的全部 Chat。
@@ -281,6 +287,15 @@ func (c *chatController) ListIDsByWaker(
 	return ids, nil
 }
 
+// ListProjectionIDs 读取原查询投影的全部标识，不读取正文或执行详情。
+func (c *chatController) ListProjectionIDs(ctx context.Context) ([]string, error) {
+	var ids []string
+	if err := controllerDB(ctx, c.db).Model(&models.Chat{}).Order("id").Pluck("id", &ids).Error; err != nil {
+		return nil, databaseError("list_chat_projection_ids", "", err)
+	}
+	return ids, nil
+}
+
 // CountByWaker 返回伙伴对话总数。
 func (c *chatController) CountByWaker(
 	ctx context.Context,
@@ -441,7 +456,7 @@ func (c *chatController) AdvanceProjection(
 	afterSequence int64,
 	fields map[string]any,
 ) error {
-	publish, err := c.chatNoticeChanges(ctx, id, fields)
+	publish, err := c.chatAttentionChanges(ctx, id, fields)
 	if err != nil {
 		return err
 	}

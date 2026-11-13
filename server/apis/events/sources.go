@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	eventhub "github.com/JieWaZi/NeuxBot/server/internal/notification/events"
@@ -63,7 +62,7 @@ func validateResource(ctx context.Context, command control) error {
 				err = status_error.WorkflowNotFound
 			}
 		}
-	case "work-board", "work-results":
+	case "work-board", "reading":
 		switch resource.Kind {
 		case "chat":
 			_, err = global.ChatControllerManager.Get(ctx, resource.ID)
@@ -71,6 +70,8 @@ func validateResource(ctx context.Context, command control) error {
 			_, err = global.ChannelThreadControllerManager.Get(ctx, resource.ID)
 		case "workflow_run":
 			_, err = global.WorkflowRunControllerManager.GetRun(ctx, resource.ID)
+		case "automatic_run":
+			_, err = global.AutomaticTaskControllerManager.GetRun(ctx, resource.ID)
 		}
 	case "entities", "automatic-tasks":
 		switch resource.Kind {
@@ -322,17 +323,6 @@ func stateSource(ctx context.Context, command control) (source, error) {
 					}
 					continue
 				}
-				if command.Topic == "work-results" {
-					value, err := resultFrame(ctx, event.Resource)
-					if err != nil {
-						emit(resyncFrame(command, "gap"), false)
-						return
-					}
-					if !emit(value, false) {
-						return
-					}
-					continue
-				}
 				if !emit(fromHub(event), false) {
 					return
 				}
@@ -344,14 +334,6 @@ func initialState(ctx context.Context, command control) ([]frame, error) {
 	var value frame
 	var err error
 	switch command.Topic {
-	case "notifications":
-		snapshot, readErr := global.NotificationService.Snapshot()
-		err = readErr
-		if err == nil {
-			value, err = encodedFrame("notifications.snapshot", command.Resource, map[string]any{"snapshot": snapshot})
-		}
-	case "work-results":
-		value, err = resultFrame(ctx, command.Resource)
 	case "system":
 		awake, readErr := global.IMService.KeepAwake(ctx)
 		err = readErr
@@ -384,20 +366,4 @@ func initialState(ctx context.Context, command control) ([]frame, error) {
 		}
 	}
 	return []frame{value}, nil
-}
-func resultFrame(ctx context.Context, resource eventhub.Resource) (frame, error) {
-	if resource.Kind == "global" {
-		return encodedFrame("work-results.changed", resource, map[string]bool{"reset": true})
-	}
-	receipt, found, err := global.WorkResultControllerManager.Get(ctx, constants.WorkResultOwnerKind(resource.Kind), resource.ID)
-	if err != nil {
-		return frame{}, err
-	}
-	payload := map[string]any{"ownerKind": resource.Kind, "ownerId": resource.ID}
-	if found {
-		payload["receipt"] = receipt
-	} else {
-		payload["deleted"] = true
-	}
-	return encodedFrame("work-results.changed", resource, payload)
 }

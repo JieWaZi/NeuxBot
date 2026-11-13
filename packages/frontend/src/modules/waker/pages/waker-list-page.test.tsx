@@ -15,10 +15,6 @@ vi.mock("../api/waker-queries", () => ({
   }),
 }));
 
-vi.mock("../components/waker-form-dialog", () => ({
-  WakerFormDialog: () => null,
-}));
-
 function renderPage(initialEntry = "/wakers") {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },

@@ -156,7 +156,7 @@ export function ExecutionConfigurationFields({
         )}
         {field(
           defaults ? "defaultModel" : "model",
-          selection.model || "__default",
+          selection.model,
           [
             ...(!defaults
               ? [

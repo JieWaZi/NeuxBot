@@ -6,6 +6,7 @@ import {
   SettingsGroup,
   SettingsRow,
 } from "../components/settings-section-layout";
+import { DesktopNotificationSettings } from "../components/desktop-notification-settings";
 import { SettingsPageFooterHost } from "../components/settings-page-footer";
 import { IntegrationBreadcrumbs } from "../components/integration-breadcrumbs";
 import { type SettingsSection } from "../settings-navigation";
@@ -116,6 +117,7 @@ export function SettingsScene({
   const { t } = useTranslation("appSettings");
   const sectionKey = {
     general: "general",
+    notifications: "notifications",
     agents: "runtimeEnvironments",
     integrations: "integrations",
   }[section];
@@ -161,6 +163,9 @@ export function SettingsScene({
                 }
               >
                 {section === "general" ? <GeneralSettings /> : null}
+                {section === "notifications" ? (
+                  <DesktopNotificationSettings />
+                ) : null}
                 {section === "agents" ? (
                   <RuntimeEnvironmentsSection
                     runtimeId={runtimeId}

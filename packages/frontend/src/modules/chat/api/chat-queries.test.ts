@@ -607,6 +607,72 @@ describe("chat history network budget", () => {
     }
   });
 
+  it("恢复时重新读取包含待答提问的旧页，取得另一窗口的回答", async () => {
+    let settled = false;
+    let olderReads = 0;
+    server.use(
+      http.get(
+        "http://127.0.0.1:19876/api/v1/chats/history-question/messages",
+        ({ request }) => {
+          if (!new URL(request.url).searchParams.has("beforeSequence")) {
+            return HttpResponse.json({
+              resources: [
+                { id: "current", role: "assistant", createdSequence: 10 },
+              ],
+              latestSequence: settled ? 11 : 10,
+              hasMore: true,
+              nextBeforeSequence: 10,
+            });
+          }
+          olderReads += 1;
+          return HttpResponse.json({
+            resources: [
+              {
+                id: "question-one",
+                role: "assistant",
+                createdSequence: 3,
+                revision: settled ? 11 : 3,
+                question: {
+                  elicitationId: "question-one",
+                  message: "交付到哪里？",
+                  ...(settled
+                    ? { result: "accepted", answers: { delivery: "file" } }
+                    : {}),
+                },
+              },
+            ],
+            hasMore: false,
+          });
+        },
+      ),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const observer = new InfiniteQueryObserver(
+      queryClient,
+      chatMessagesInfiniteOptions("history-question"),
+    );
+    const unsubscribe = observer.subscribe(() => {});
+    try {
+      await observer.refetch();
+      await observer.fetchNextPage();
+      settled = true;
+      await observer.refetch();
+      expect(olderReads).toBe(2);
+      expect(
+        observer.getCurrentResult().data?.pages[1]?.resources?.[0],
+      ).toMatchObject({
+        createdSequence: 3,
+        revision: 11,
+        question: { result: "accepted", answers: { delivery: "file" } },
+      });
+    } finally {
+      unsubscribe();
+      queryClient.clear();
+    }
+  });
+
   it("真实头部终态快照淘汰在途旧metadata GET，消息提交不等待metadata", async () => {
     let releaseOld!: () => void;
     let releaseFresh!: () => void;

@@ -10,7 +10,7 @@ export type ChatViewState = {
   openedCodeReference?: ChatCodeReference;
   permissionLevel?: PermissionLevel;
   query: string;
-  reasoning: string;
+  reasoning?: string;
   fast?: boolean | null;
   contextWindow?: string;
   runtimeId: string;
@@ -22,7 +22,6 @@ function initialChatViewState(): ChatViewState {
     fileSource: "project",
     model: "",
     query: "",
-    reasoning: "",
     runtimeId: "",
     selectedCodeReferences: [],
   };

@@ -61,6 +61,7 @@ export function AppSceneWorkspaceProvider({
       chat: t("sceneTabs.chat"),
       detail: t("sceneTabs.detail"),
       newChat: t("sceneTabs.newChat"),
+      newWaker: t("partnerNavigation.createWaker"),
       page: t("sceneTabs.page"),
       partner: t("sceneTabs.partner"),
       settings: t("sceneTabs.settings"),

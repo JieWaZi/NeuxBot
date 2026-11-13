@@ -5,6 +5,7 @@ export function navigateRouteImmediately(
   event: MouseEvent<HTMLElement>,
   navigate: NavigateFunction,
   to: To,
+  captureState?: () => unknown,
 ) {
   if (
     event.defaultPrevented ||
@@ -17,5 +18,5 @@ export function navigateRouteImmediately(
     return;
   }
   event.preventDefault();
-  void navigate(to, { flushSync: true });
+  void navigate(to, { flushSync: true, state: captureState?.() });
 }

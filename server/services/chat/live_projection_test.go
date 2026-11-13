@@ -10,9 +10,113 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
+
+func TestLiveRemindersSurviveOrdinaryProjectionWinningTheRace(t *testing.T) {
+	ctx := context.Background()
+	db, manager := newRecoveryTestService(t, t.TempDir())
+	hub := events.New()
+	t.Cleanup(hub.Close)
+	db = controllers.WithEventPublisher(db, hub)
+	manager.queryIndexes.chatController = controllers.NewChatController(db)
+	manager.queryIndexes.reading = controllers.NewChatReadingController(db)
+	chatID, executionID := "91919191919191919191919191919196", "92929292929292929292929292929294"
+	workspace := t.TempDir()
+	if _, err := manager.CreateDormantChats(ctx, []DormantChat{{Chat: models.Chat{
+		ID: chatID, WakerID: "worker", WorkspaceDirectory: workspace, AdditionalWorkingDirectories: []string{workspace},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.logStore.Append(chatID, []eventlog.AppendInput{
+		{Type: constants.ChatEventTypeUserMessageCreated, MessageID: "input", Data: marshalData(eventlog.MessageCreatedData{Role: constants.MessageRoleUser, Content: "读取文件"})},
+		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: executionID, Data: marshalData(eventlog.ExecutionCreatedData{UserMessageID: "input"})},
+		{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: executionID},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sub := hub.Subscribe("work-board", events.Resource{Kind: "global"})
+	defer sub.Close()
+	liveOperations := func() []string {
+		var operations []string
+		for {
+			select {
+			case frame, ok := <-sub.Events:
+				if !ok {
+					t.Fatal("work board subscription overflow")
+				}
+				if frame.Type != "work-board.live" {
+					continue
+				}
+				var live models.WorkBoardLiveEvent
+				if err := json.Unmarshal(frame.Payload, &live); err != nil {
+					t.Fatal(err)
+				}
+				operations = append(operations, live.Operation)
+			default:
+				return operations
+			}
+		}
+	}
+	requireLive := func(want string) {
+		t.Helper()
+		if got := liveOperations(); len(got) != 1 || got[0] != want {
+			t.Errorf("live operations = %v, want exactly %s", got, want)
+		}
+	}
+	request, err := manager.AppendInteractionFact(chatID, eventlog.AppendInput{
+		Type: constants.ChatEventTypeApprovalRequested, ExecutionID: executionID,
+		Data: marshalData(eventlog.ApprovalRequestedData{ApprovalID: "approval", Title: "读取文件"}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.GetChatSummary(ctx, chatID); err != nil {
+		t.Fatal(err)
+	}
+	if got := liveOperations(); len(got) != 0 {
+		t.Fatalf("ordinary catch-up replayed a reminder: %v", got)
+	}
+	manager.PublishInteractionFact(ctx, request)
+	requireLive("request_opened")
+	resolved, err := manager.AppendInteractionFact(chatID, eventlog.AppendInput{
+		Type: constants.ChatEventTypeApprovalResolved, ExecutionID: executionID,
+		Data: marshalData(eventlog.ApprovalResolvedData{ApprovalID: "approval", Result: constants.ApprovalResultInvalidated}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.GetChatSummary(ctx, chatID); err != nil {
+		t.Fatal(err)
+	}
+	manager.PublishInteractionFact(ctx, resolved)
+	requireLive("request_closed")
+
+	original := manager.queryIndexes.transactionController
+	manager.queryIndexes.transactionController = liveProjectionRaceTransaction{
+		TransactionController: original,
+		beforeTransaction: func(context.Context) error {
+			manager.queryIndexes.transactionController = original
+			_, err := manager.GetChatSummary(ctx, chatID)
+			return err
+		},
+	}
+	commit, err := manager.CommitTerminal(ctx, TerminalFact{
+		Execution: models.Execution{ID: executionID, ChatID: chatID},
+		Type:      constants.ChatEventTypeExecutionFailed, Status: constants.ExecutionStatusFailed,
+		Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusFailed, ErrorCode: status_error.ChatLogError.Key()}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := liveOperations(); len(got) != 0 {
+		t.Fatalf("terminal reminder preceded publication: %v", got)
+	}
+	manager.PublishTerminal(commit)
+	requireLive("failed")
+}
 
 func TestLiveSummaryRecoversUnpublishedNativeQuestionWithoutCancellingExecution(t *testing.T) {
 	ctx := context.Background()

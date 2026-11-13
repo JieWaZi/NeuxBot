@@ -1,296 +1,235 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { withLocalErrorMutation } from "@/shared/api/local-error-surface";
 import { LoaderCircle } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
+import { useTranslation } from "react-i18next";
 import { z } from "zod";
 
+import { ApiError } from "@/shared/api/errors";
 import {
-  createWakerMutation,
+  localApiErrorMessage,
+  withLocalErrorMutation,
+} from "@/shared/api/local-error-surface";
+import {
+  companionAvatar,
+  isCompanionAvatar,
+} from "@/shared/companion/appearance";
+import { Button } from "@/shared/ui/button";
+import { CompanionPicker } from "@/shared/ui/companion-picker";
+import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
+import { FieldLabel } from "@/shared/ui/field-label";
+import { Input } from "@/shared/ui/input";
+import { Textarea } from "@/shared/ui/textarea";
+import {
   getWakerQueryKey,
-  listWakerDocumentsQueryKey,
   listWakersQueryKey,
   updateWakerMutation,
 } from "../api/waker-queries";
-import type { Expertise, RolePreset, Waker, WorkMethod } from "../model/types";
+import type { Waker, WakerDefaultModel } from "../model/types";
 import {
   cleanManualProfile,
   ProfileManualEditor,
 } from "./profile-manual-editor";
-import { RolePresetPicker } from "./role-preset-picker";
-import { ApiError } from "@/shared/api/errors";
-import { CompanionPicker } from "@/shared/ui/companion-picker";
-import {
-  companionAvatar,
-  isCompanionAvatar,
-  randomCompanionAvatar,
-} from "@/shared/companion/appearance";
-import { Button } from "@/shared/ui/button";
-import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
-import { Input } from "@/shared/ui/input";
-import { Textarea } from "@/shared/ui/textarea";
-
-const schema = z
-  .object({
-    rolePresetId: z.string(),
-    name: z.string().trim().min(1, "请输入名称").max(80, "名称不能超过 80 字"),
-    roleName: z.string().trim().max(80, "角色名称不能超过 80 字"),
-    bio: z.string().trim().max(1000, "简介不能超过 1000 字"),
-    avatar: z.string().trim().refine(isCompanionAvatar, "请重新生成形象"),
-  })
-  .superRefine((values, context) => {
-    if (!values.rolePresetId && !values.roleName) {
-      context.addIssue({
-        code: "custom",
-        path: ["rolePresetId"],
-        message: "请选择或创建角色预设",
-      });
-    }
-  });
-
-type Values = z.infer<typeof schema>;
+import { WakerDefaultModelField } from "./waker-default-model-field";
 
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  waker?: Waker;
+  waker: Waker;
 };
 
-export function WakerFormDialog({ onOpenChange, open, waker }: Props) {
-  if (!open) return null;
-  return (
-    <OpenWakerFormDialog
-      open={open}
-      onOpenChange={onOpenChange}
-      waker={waker}
-    />
-  );
+export function WakerFormDialog(props: Props) {
+  return props.open ? <OpenWakerFormDialog {...props} /> : null;
 }
 
-function OpenWakerFormDialog({ onOpenChange, open, waker }: Props) {
+function OpenWakerFormDialog({ onOpenChange, waker }: Props) {
+  const { t } = useTranslation(["waker", "common"]);
+  const id = useId();
   const queryClient = useQueryClient();
-  const [initialAvatar] = useState(() =>
-    waker
-      ? companionAvatar(waker.avatar, waker.name ?? "")
-      : randomCompanionAvatar(),
-  );
-  const [expertise, setExpertise] = useState<Expertise[]>(
-    waker?.expertise ?? [],
-  );
-  const [workStyle, setWorkStyle] = useState<string[]>(waker?.workStyle ?? []);
-  const [workMethods, setWorkMethods] = useState<WorkMethod[]>(
-    waker?.workMethods ?? [],
-  );
-  const form = useForm<Values>({
+  const [initial] = useState(() => ({
+    expertise: waker.expertise ?? [],
+    workStyle: waker.workStyle ?? [],
+    workMethods: waker.workMethods ?? [],
+    overviewRevision: waker.overviewRevision,
+    defaultModel: waker.defaultModel,
+  }));
+  const [expertise, setExpertise] = useState(initial.expertise);
+  const [workStyle, setWorkStyle] = useState(initial.workStyle);
+  const [workMethods, setWorkMethods] = useState(initial.workMethods);
+  const [defaultModel, setDefaultModel] = useState<
+    WakerDefaultModel | undefined
+  >(initial.defaultModel);
+  const schema = z.object({
+    name: z
+      .string()
+      .trim()
+      .min(1, t("form.nameRequired"))
+      .max(80, t("form.nameTooLong")),
+    roleName: z.string().trim().max(80, t("form.roleNameTooLong")),
+    bio: z.string().trim().max(1000, t("form.bioTooLong")),
+    avatar: z
+      .string()
+      .trim()
+      .refine(isCompanionAvatar, t("form.avatarInvalid")),
+  });
+  const form = useForm({
     resolver: zodResolver(schema),
     defaultValues: {
-      rolePresetId: "",
-      name: waker?.name ?? "",
-      roleName: waker?.roleName ?? "",
-      bio: waker?.bio ?? "",
-      avatar: initialAvatar,
+      name: waker.name ?? "",
+      roleName: waker.roleName ?? "",
+      bio: waker.bio ?? "",
+      avatar: companionAvatar(waker.avatar, waker.name ?? ""),
     },
   });
-
-  const create = useMutation(withLocalErrorMutation(createWakerMutation()));
-  const update = useMutation(withLocalErrorMutation(updateWakerMutation()));
-  const pending = create.isPending || update.isPending;
   const avatar = useWatch({ control: form.control, name: "avatar" });
-  const selectedPresetId = useWatch({
-    control: form.control,
-    name: "rolePresetId",
-  });
-
-  const choosePreset = (preset: RolePreset) => {
-    form.setValue("rolePresetId", preset.id ?? "", {
-      shouldDirty: true,
-      shouldValidate: true,
-    });
-  };
+  const name = useWatch({ control: form.control, name: "name" });
+  const update = useMutation(withLocalErrorMutation(updateWakerMutation()));
+  const pending = form.formState.isSubmitting;
+  const errors = form.formState.errors;
 
   const submit = form.handleSubmit(async (values) => {
+    if (!waker.id) return;
+    const wakerQuery = getWakerQueryKey({ path: { wakerId: waker.id } });
+    const overviewChanged =
+      expertise !== initial.expertise ||
+      workStyle !== initial.workStyle ||
+      workMethods !== initial.workMethods;
+    const refresh = () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: wakerQuery }),
+        queryClient.invalidateQueries({ queryKey: listWakersQueryKey() }),
+      ]);
     try {
-      if (waker?.id) {
-        await update.mutateAsync({
-          path: { wakerId: waker.id },
-          body: {
-            name: values.name,
-            roleName: values.roleName,
-            bio: values.bio,
-            avatar: values.avatar,
-            manual: cleanManualProfile(expertise, workStyle, workMethods),
-          },
-        });
-        await Promise.all([
-          queryClient.invalidateQueries({
-            queryKey: getWakerQueryKey({ path: { wakerId: waker.id } }),
-          }),
-          queryClient.invalidateQueries({
-            queryKey: listWakerDocumentsQueryKey({
-              path: { wakerId: waker.id },
-            }),
-          }),
-        ]);
-      } else {
-        await create.mutateAsync({
-          body: {
-            rolePresetId: values.rolePresetId,
-            name: values.name,
-            bio: values.bio,
-            avatar: values.avatar,
-          },
-        });
-      }
-      await queryClient.invalidateQueries({ queryKey: listWakersQueryKey() });
+      await update.mutateAsync({
+        path: { wakerId: waker.id },
+        body: {
+          ...values,
+          ...(defaultModel === initial.defaultModel
+            ? {}
+            : { defaultModel: defaultModel ?? {} }),
+          ...(overviewChanged
+            ? {
+                manual: cleanManualProfile(expertise, workStyle, workMethods),
+                expectedOverviewRevision: initial.overviewRevision,
+              }
+            : {}),
+        },
+      });
+      await refresh();
       onOpenChange(false);
-    } catch {
-      // React Query 保存错误，表单在字段附近展示稳定错误。
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "WakerProfileChanged")
+        void refresh();
     }
   });
 
-  const mutationError = create.error ?? update.error;
-  const nameConflict =
-    mutationError instanceof ApiError &&
-    mutationError.code === "WakerNameConflict";
-  const errorMessage =
-    mutationError && !nameConflict ? "保存失败，请检查输入后重试。" : "";
-
   return (
     <Dialog
-      open={open}
-      onOpenChange={(nextOpen) => {
-        onOpenChange(nextOpen);
+      open
+      onOpenChange={(open) => {
+        if (!pending) onOpenChange(open);
       }}
     >
-      <DialogContent
-        layout="form"
-        size="xl"
-        title={waker ? "编辑伙伴" : "新建伙伴"}
-      >
+      <DialogContent layout="form" size="xl" title={t("form.edit")}>
         <form
           onSubmit={submit}
           className="flex min-h-0 flex-1 flex-col overflow-hidden"
         >
           <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-5">
-            <div className="grid gap-4">
-              <div className="grid grid-cols-[1fr_1fr] gap-4">
-                <label className="type-label grid gap-2 font-medium">
-                  <span>
-                    名称 <b className="text-destructive">*</b>
-                  </span>
-                  <Input placeholder="例如：小艾" {...form.register("name")} />
-                  <span className="text-muted-foreground type-caption font-normal">
-                    用于识别这位伙伴，名称不可与已有伙伴重复。
-                  </span>
-                  {form.formState.errors.name?.message ? (
-                    <span className="text-destructive type-caption">
-                      {form.formState.errors.name.message}
-                    </span>
-                  ) : nameConflict && mutationError instanceof ApiError ? (
-                    <span className="text-destructive type-caption">
-                      {mutationError.message}
-                    </span>
-                  ) : null}
-                </label>
-                <CompanionPicker
-                  label="头像"
-                  name={form.getValues("name") || "伙伴"}
-                  value={avatar}
-                  onChange={(value) =>
-                    form.setValue("avatar", value, {
-                      shouldDirty: true,
-                      shouldValidate: true,
-                    })
-                  }
-                />
-              </div>
-
-              {waker ? (
-                <label className="type-label grid gap-2 font-medium">
-                  <span>
-                    角色名称 <b className="text-destructive">*</b>
-                  </span>
-                  <Input
-                    placeholder="例如：前端开发工程师"
-                    {...form.register("roleName")}
-                  />
-                  <span className="text-muted-foreground type-caption font-normal">
-                    描述这位伙伴当前承担的角色，不再与创建时的角色预设关联。
-                  </span>
-                  {form.formState.errors.roleName?.message ? (
-                    <span className="text-destructive type-caption">
-                      {form.formState.errors.roleName.message}
-                    </span>
-                  ) : null}
-                </label>
+            <fieldset disabled={pending} className="grid min-w-0 gap-4">
+              <CompanionPicker
+                label={t("form.avatar")}
+                name={name || t("form.avatar")}
+                value={avatar}
+                onChange={(value) =>
+                  form.setValue("avatar", value, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  })
+                }
+              />
+              {errors.avatar?.message ? (
+                <p role="alert" className="text-destructive type-caption">
+                  {errors.avatar.message}
+                </p>
               ) : null}
-
-              <label className="type-label grid gap-2 font-medium">
-                简介
+              <div className="grid gap-2">
+                <FieldLabel htmlFor={`${id}-name`} required>
+                  {t("form.name")}
+                </FieldLabel>
+                <Input
+                  id={`${id}-name`}
+                  required
+                  placeholder={t("form.namePlaceholder")}
+                  {...form.register("name")}
+                />
+                {errors.name?.message ? (
+                  <p role="alert" className="text-destructive type-caption">
+                    {errors.name.message}
+                  </p>
+                ) : null}
+              </div>
+              <div className="grid gap-2">
+                <FieldLabel htmlFor={`${id}-role`}>
+                  {t("form.roleName")}
+                </FieldLabel>
+                <Input
+                  id={`${id}-role`}
+                  placeholder={t("form.roleNamePlaceholder")}
+                  {...form.register("roleName")}
+                />
+                {errors.roleName?.message ? (
+                  <p role="alert" className="text-destructive type-caption">
+                    {errors.roleName.message}
+                  </p>
+                ) : null}
+              </div>
+              <div className="grid gap-2">
+                <FieldLabel htmlFor={`${id}-bio`}>{t("form.bio")}</FieldLabel>
                 <Textarea
-                  placeholder="例如：专注于把复杂需求转化为清晰、可靠的产品实现。"
+                  id={`${id}-bio`}
+                  placeholder={t("form.bioPlaceholder")}
                   {...form.register("bio")}
                 />
-                {form.formState.errors.bio?.message ? (
-                  <span className="text-destructive type-caption">
-                    {form.formState.errors.bio.message}
-                  </span>
+                {errors.bio?.message ? (
+                  <p role="alert" className="text-destructive type-caption">
+                    {errors.bio.message}
+                  </p>
                 ) : null}
-              </label>
-
-              {!waker ? (
-                <div>
-                  <RolePresetPicker
-                    selectedId={selectedPresetId}
-                    onSelect={choosePreset}
-                    onClearSelection={() =>
-                      form.setValue("rolePresetId", "", {
-                        shouldDirty: true,
-                        shouldValidate: true,
-                      })
-                    }
-                  />
-                  {form.formState.errors.rolePresetId?.message ? (
-                    <p className="text-destructive type-caption mt-2">
-                      {form.formState.errors.rolePresetId.message}
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {waker ? (
-                <ProfileManualEditor
-                  expertise={expertise}
-                  onExpertiseChange={setExpertise}
-                  workStyle={workStyle}
-                  onWorkStyleChange={setWorkStyle}
-                  workMethods={workMethods}
-                  onWorkMethodsChange={setWorkMethods}
-                />
-              ) : null}
-            </div>
-            {errorMessage ? (
+              </div>
+              <WakerDefaultModelField
+                value={defaultModel}
+                onChange={setDefaultModel}
+                disabled={pending}
+              />
+              <ProfileManualEditor
+                expertise={expertise}
+                onExpertiseChange={setExpertise}
+                workStyle={workStyle}
+                onWorkStyleChange={setWorkStyle}
+                workMethods={workMethods}
+                onWorkMethodsChange={setWorkMethods}
+              />
+            </fieldset>
+            {update.error ? (
               <p role="alert" className="text-destructive type-body mt-3">
-                {errorMessage}
+                {localApiErrorMessage(update.error, t("form.saveError"))}
               </p>
             ) : null}
           </div>
-
           <DialogFooter>
-            <Button
-              type="submit"
-              disabled={pending || (!waker && !selectedPresetId)}
-            >
+            <Button type="submit" disabled={pending}>
               {pending ? <LoaderCircle className="animate-spin" /> : null}
-              {waker ? "保存修改" : "创建伙伴"}
+              {t("form.save")}
             </Button>
             <Button
               type="button"
               variant="secondary"
+              disabled={pending}
               onClick={() => onOpenChange(false)}
             >
-              取消
+              {t("common:cancel")}
             </Button>
           </DialogFooter>
         </form>

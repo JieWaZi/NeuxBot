@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"sync"
 
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 )
 
@@ -128,6 +129,7 @@ func (h *Hub) Subscribe(topic string, resource Resource) Subscription {
 // Publish 不阻塞提交；慢消费者队列关闭后必须从权威事实恢复。
 func (h *Hub) Publish(event Event) {
 	if len(event.Payload) > MaximumFrameBytes {
+		h.Resync(event.Topic, event.Resource)
 		return
 	}
 	if event.EventID == "" {
@@ -157,15 +159,53 @@ func (h *Hub) Publish(event Event) {
 
 // Emit 序列化安全载荷并发布；序列化错误由调用方处理。
 func Emit(publisher Publisher, topic, kind string, resource Resource, payload any) error {
+	return emit(publisher, topic, kind, resource, payload, false)
+}
+
+// EmitTransient 发布无持久游标的安全实时帧。
+func EmitTransient(publisher Publisher, topic, kind string, resource Resource, payload any) error {
+	return emit(publisher, topic, kind, resource, payload, true)
+}
+
+func emit(publisher Publisher, topic, kind string, resource Resource, payload any, transient bool) (err error) {
 	if publisher == nil {
 		return nil
 	}
+	defer func() {
+		if failure := recover(); failure != nil {
+			if scoped, ok := publisher.(interface{ Resync(string, Resource) }); ok {
+				scoped.Resync(topic, resource)
+				err = status_error.InternalServerError
+				return
+			}
+			panic(failure)
+		}
+	}()
 	encoded, err := json.Marshal(payload)
 	if err != nil {
+		if scoped, ok := publisher.(interface{ Resync(string, Resource) }); ok {
+			scoped.Resync(topic, resource)
+		}
 		return err
 	}
-	publisher.Publish(Event{Topic: topic, Type: kind, Resource: resource, Payload: encoded})
+	publisher.Publish(Event{Topic: topic, Type: kind, Resource: resource, Payload: encoded, Transient: transient})
 	return nil
+}
+
+// Resync 关闭受失败交付影响的订阅以要求重新对账。
+func (h *Hub) Resync(topic string, resource Resource) {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+	for id, current := range h.listeners {
+		if current.topic != "" && current.topic != topic {
+			continue
+		}
+		if current.resource.Kind != "" && current.resource.Kind != "global" && resource.Kind != "global" && current.resource != resource {
+			continue
+		}
+		delete(h.listeners, id)
+		close(current.queue)
+	}
 }
 
 // Close 释放全部监听，不取消任何原业务执行。

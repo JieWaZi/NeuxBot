@@ -78,16 +78,18 @@ type Coverage struct {
 	Reasons []string `json:"reasons"`
 }
 
-// Summary reports exact known subtotals for a snapshot.
+// 用量概要
 type Summary struct {
-	// Range is the applied filter.
+	// 筛选范围
 	Range Filter `json:"range"`
-	// Snapshot fixes the projection boundary for subsequent grouped reads.
+	// 用量快照
 	Snapshot string `json:"snapshot"`
-	// Coverage describes retained native terminal evidence.
+	// 统计覆盖
 	Coverage Coverage `json:"coverage"`
-	// Metrics reports token and invocation counts for the selected range.
+	// 用量计数
 	Metrics ledger.TokenMetrics `json:"metrics"`
+	// 已记录命中率
+	ObservedCacheHitRate *float64 `json:"observedCacheHitRate,omitempty"`
 }
 
 // Group contains usage for one group in this snapshot.

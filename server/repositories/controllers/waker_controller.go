@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/profile"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -36,6 +37,10 @@ type WakerController interface {
 		projection profile.Projection,
 		updatedAt int64,
 	) error
+	// SetOnboardingInterview 记录未完成伙伴的结构化建档问答位置。
+	SetOnboardingInterview(ctx context.Context, wakerID, chatID string, interview models.WakerOnboardingInterview) error
+	// CompleteOnboarding 保存展示字段并完成建档。
+	CompleteOnboarding(ctx context.Context, wakerID, chatID string, overview models.Waker) error
 	// Delete 删除伙伴。
 	Delete(ctx context.Context, id string) error
 }
@@ -163,7 +168,7 @@ func (c *wakerController) Update(
 	result := controllerDB(ctx, c.db).
 		Model(&models.Waker{}).
 		Where("id = ?", id).
-		Select("name", "role_name", "avatar", "bio", "updated_at").
+		Select("name", "role_name", "avatar", "bio", "default_model", "updated_at").
 		Updates(&waker)
 	if result.Error != nil {
 		if dbhelper.IsDuplicateError(result.Error) {
@@ -224,4 +229,36 @@ func filterWakers(
 		)
 	}
 	return db
+}
+
+// SetOnboardingInterview 记录未完成伙伴的结构化建档问答位置。
+func (c *wakerController) SetOnboardingInterview(ctx context.Context, wakerID, chatID string, interview models.WakerOnboardingInterview) error {
+	result := controllerDB(ctx, c.db).Model(&models.Waker{}).
+		Where("id = ? AND onboarding_chat_id = ? AND onboarding_status = ?", wakerID, chatID, constants.WakerOnboardingStatusPending).
+		Select("onboarding_interview").UpdateColumns(&models.Waker{OnboardingInterview: &interview})
+	if result.Error != nil {
+		return databaseError("set_waker_onboarding_interview", "waker_id="+wakerID, result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return status_error.WakerOnboardingUnavailable
+	}
+	return nil
+}
+
+// CompleteOnboarding 保存展示字段并完成建档。
+func (c *wakerController) CompleteOnboarding(ctx context.Context, wakerID, chatID string, overview models.Waker) error {
+	overview.OnboardingStatus = constants.WakerOnboardingStatusReady
+	overview.OnboardingInterview = nil
+	result := controllerDB(ctx, c.db).Model(&models.Waker{}).
+		Where("id = ? AND onboarding_chat_id = ? AND onboarding_status = ?", wakerID, chatID, constants.WakerOnboardingStatusPending).
+		Select("onboarding_status", "onboarding_interview", "role_name", "bio", "expertise", "work_style", "work_methods", "updated_at").
+		Updates(&overview)
+	if result.Error != nil {
+		return databaseError("complete_waker_onboarding", "waker_id="+wakerID, result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return status_error.WakerOnboardingStateChanged
+	}
+	publishCommittedChange(ctx, c.db, "entities", eventsResource("waker", wakerID))
+	return nil
 }

@@ -2,6 +2,7 @@ import {
   InfiniteQueryObserver,
   QueryClient,
   QueryClientProvider,
+  useInfiniteQuery,
   useQuery,
 } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
@@ -1137,6 +1138,102 @@ it("等待分页的恢复命令退出时及时结束等待，原分页继续正�
   } finally {
     release();
     await Promise.allSettled([page, command]);
+    client.clear();
+  }
+});
+
+it("工作看板连接正常时，失败及暂时不完整的读取保留 dirty 并自动补读", async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const read = vi
+    .fn<() => Promise<{ complete: boolean; count: number }>>()
+    .mockResolvedValueOnce({ complete: true, count: 2 })
+    .mockRejectedValueOnce(new Error("temporary"))
+    .mockResolvedValueOnce({ complete: false, count: 2 })
+    .mockResolvedValue({ complete: true, count: 5 });
+  function Content() {
+    const queryKey = ["attention"];
+    const query = useQuery({ queryKey, queryFn: read, staleTime: Infinity });
+    useQueryEvents({
+      topic: "work-board",
+      resource: { kind: "global" },
+      queryKeys: [queryKey],
+      authority: true,
+    });
+    return <output>{query.data?.count}</output>;
+  }
+  const view = render(
+    <QueryClientProvider client={client}>
+      <Content />
+    </QueryClientProvider>,
+  );
+  try {
+    await screen.findByText("2");
+    act(() => {
+      for (const listener of listeners)
+        listener.onEvent({
+          ...frame(),
+          topic: "work-board",
+          type: "work-board.changed",
+          resource: { kind: "global" },
+        });
+    });
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("2")).toBeInTheDocument();
+    await screen.findByText("5", {}, { timeout: 4500 });
+    expect(read).toHaveBeenCalledTimes(4);
+  } finally {
+    view.unmount();
+    client.clear();
+  }
+});
+
+it("关注列表的分页快照暂时不完整时继续补读", async () => {
+  const client = new QueryClient();
+  const read = vi
+    .fn<() => Promise<{ complete: boolean; count: number }>>()
+    .mockResolvedValueOnce({ complete: true, count: 2 })
+    .mockResolvedValueOnce({ complete: false, count: 2 })
+    .mockResolvedValue({ complete: true, count: 5 });
+  function Content() {
+    const queryKey = ["work-board", "list", "focus", "awaiting_view"];
+    const query = useInfiniteQuery({
+      queryKey,
+      queryFn: read,
+      initialPageParam: 0,
+      getNextPageParam: () => undefined,
+      staleTime: Infinity,
+      retry: false,
+    });
+    useQueryEvents({
+      topic: "work-board",
+      resource: { kind: "global" },
+      queryKeys: [queryKey],
+      authority: true,
+    });
+    return <output>{query.data?.pages[0]?.count}</output>;
+  }
+  const view = render(
+    <QueryClientProvider client={client}>
+      <Content />
+    </QueryClientProvider>,
+  );
+  try {
+    await screen.findByText("2");
+    act(() => {
+      for (const listener of listeners)
+        listener.onEvent({
+          ...frame(),
+          topic: "work-board",
+          type: "work-board.changed",
+          resource: { kind: "global" },
+        });
+    });
+    await screen.findByText("5", {}, { timeout: 2500 });
+    expect(read).toHaveBeenCalledTimes(3);
+  } finally {
+    view.unmount();
     client.clear();
   }
 });

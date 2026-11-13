@@ -54,7 +54,7 @@ type frame struct {
 	Payload json.RawMessage `json:"payload"`
 }
 
-var allowedTopics = map[string]bool{"notifications": true, "work-board": true, "work-results": true, "entities": true, "automatic-tasks": true, "im": true, "runtimes": true, "usage": true, "system": true, "chat": true, "team": true, "workflow": true, "account-login": true, "plugins": true, "resources": true, "knowledge": true, "workspace": true}
+var allowedTopics = map[string]bool{"reading": true, "work-board": true, "entities": true, "automatic-tasks": true, "im": true, "runtimes": true, "usage": true, "system": true, "chat": true, "team": true, "workflow": true, "account-login": true, "plugins": true, "resources": true, "knowledge": true, "workspace": true}
 
 func decodeControl(data []byte) (control, error) {
 	var result control
@@ -92,7 +92,7 @@ func validResourceShape(topic string, resource eventhub.Resource) bool {
 		return false
 	}
 	if resource.Kind == "global" {
-		return resource.ID == "" && resource.ParentID == "" && topic != "chat" && topic != "team" && topic != "workflow" && topic != "account-login" && topic != "workspace"
+		return resource.ID == "" && resource.ParentID == "" && topic != "chat" && topic != "team" && topic != "workflow" && topic != "account-login" && topic != "workspace" && topic != "reading"
 	}
 	if resource.ID == "" {
 		return false
@@ -110,8 +110,10 @@ func validResourceShape(topic string, resource eventhub.Resource) bool {
 		return resource.Kind == "workflow"
 	case "account-login":
 		return resource.Kind == "account" && resource.ParentID != ""
-	case "work-board", "work-results":
-		return (resource.Kind == "chat" || resource.Kind == "team_thread" || resource.Kind == "workflow_run") && resource.ParentID == ""
+	case "work-board":
+		return (resource.Kind == "chat" || resource.Kind == "team_thread" || resource.Kind == "workflow_run" || resource.Kind == "automatic_run") && resource.ParentID == ""
+	case "reading":
+		return (resource.Kind == "chat" || resource.Kind == "workflow_run" || resource.Kind == "automatic_run") && resource.ParentID == ""
 	case "entities":
 		return (resource.Kind == "waker" || resource.Kind == "channel") && resource.ParentID == ""
 	case "automatic-tasks":

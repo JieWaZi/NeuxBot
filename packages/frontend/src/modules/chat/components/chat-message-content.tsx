@@ -148,7 +148,7 @@ function MarkdownBody({
 }
 export function AssistantMarkdown(props: AssistantMarkdownProps) {
   return (
-    <div data-work-result-body={props.isTerminal !== false || undefined}>
+    <div data-chat-readable-body>
       <MarkdownBody {...props} role="assistant" />
     </div>
   );

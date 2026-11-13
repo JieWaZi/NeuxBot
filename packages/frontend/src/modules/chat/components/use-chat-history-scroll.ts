@@ -56,12 +56,15 @@ export function useChatHistoryScroll({
           await import("./chat-history-anchor");
         if (!session.live) return;
         await loadChatHistoryWithAnchor(session, viewport, load);
-        if (session.live) setFailure(undefined);
+        if (!session.live) return;
+        setFailure(undefined);
+        return true;
       } catch (error) {
         if (!session.live) return;
         session.anchor = undefined;
         setFailure({ scope, error });
         onError(error);
+        return false;
       } finally {
         session.pending = undefined;
       }

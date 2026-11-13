@@ -72,6 +72,5 @@ func (c *knowledgeController) DeleteLibraryReferences(ctx context.Context, backe
 	if err != nil {
 		return err
 	}
-	publishCommittedChange(ctx, c.db, "work-results", eventsResource("global", ""))
 	return nil
 }

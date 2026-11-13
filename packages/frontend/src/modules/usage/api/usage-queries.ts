@@ -5,12 +5,23 @@ import {
 import { withLocalErrorSurface } from "@/shared/api/local-error-surface";
 import type { UsageFilters } from "../model/usage-filters";
 
-function rangeQuery({ from, to, timezone, wakerIds }: UsageFilters) {
+type UsageRange = Omit<UsageFilters, "groupBy">;
+
+function rangeQuery({
+  from,
+  to,
+  timezone,
+  wakerIds,
+  provider,
+  source,
+}: UsageRange) {
   return {
     from,
     to,
     timezone,
     ...(wakerIds.length ? { wakerIds: wakerIds.join(",") } : {}),
+    ...(provider ? { provider } : {}),
+    ...(source ? { source } : {}),
   };
 }
 
@@ -20,7 +31,12 @@ export function usageSummaryOptions(filters: UsageFilters) {
   );
 }
 
-export function usageGroupsOptions(filters: UsageFilters, snapshot: string) {
+export function usageGroupsOptions(
+  filters: UsageRange & {
+    groupBy: UsageFilters["groupBy"] | "provider";
+  },
+  snapshot: string,
+) {
   return listUsageGroupsInfiniteOptions(
     withLocalErrorSurface({
       query: {

@@ -1,5 +1,5 @@
 import { WakerDetailLayout } from "@/modules/waker";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Package, Sparkles, Cable, Plus } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -23,11 +23,14 @@ import { StatusNotice } from "@/shared/ui/status-notice";
 import { SegmentedControl } from "@/shared/ui/segmented-control";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
+import { QueryRefreshError, QueryState } from "@/shared/ui/query-state";
 import {
+  getLibrarySkillOptions,
   installLibrarySkillMutation,
   installLibraryConnectorMutation,
 } from "@/shared/api/generated/@tanstack/react-query.gen";
 import {
+  withLocalErrorSurface,
   withLocalErrorMutation,
   localApiErrorMessage,
 } from "@/shared/api/local-error-surface";
@@ -325,6 +328,14 @@ function IndependentInstallDialog({
     targetPartner ? [targetPartner] : [],
   );
   const [done, setDone] = useState(false);
+  const isSkill = resource.kind === "skill";
+  const skillDetail = useQuery({
+    ...getLibrarySkillOptions(
+      withLocalErrorSurface({ path: { skillId: resource.id } }),
+    ),
+    enabled: isSkill && !done,
+    refetchOnMount: "always",
+  });
   const skill = useMutation(
     withLocalErrorMutation(installLibrarySkillMutation()),
   );
@@ -333,17 +344,32 @@ function IndependentInstallDialog({
   );
   const pending = skill.isPending || connector.isPending;
   const error = skill.error ?? connector.error;
+  const installed = isSkill
+    ? (skillDetail.data?.installedPartners?.flatMap(({ id }) =>
+        id ? [id] : [],
+      ) ?? [])
+    : [];
+  const wakerIds = selected.filter((id) => !installed.includes(id));
+  const hasPartnerStatus =
+    !isSkill ||
+    (skillDetail.isFetchedAfterMount && skillDetail.data !== undefined);
+  const canChoosePartners =
+    !pending &&
+    hasPartnerStatus &&
+    (!isSkill || (!skillDetail.isError && skillDetail.fetchStatus === "idle"));
+  const canInstall = canChoosePartners && wakerIds.length > 0;
   const install = async () => {
+    if (!canInstall) return;
     try {
-      if (resource.kind === "skill")
+      if (isSkill)
         await skill.mutateAsync({
           path: { skillId: resource.id },
-          body: { wakerIds: selected },
+          body: { wakerIds },
         });
       else
         await connector.mutateAsync({
           path: { connectorId: resource.id },
-          body: { wakerIds: selected },
+          body: { wakerIds },
         });
       await client.invalidateQueries({
         predicate: (query) =>
@@ -370,13 +396,33 @@ function IndependentInstallDialog({
         <div className="min-h-0 space-y-4 overflow-y-auto px-6 pb-5">
           {done ? (
             <StatusNotice tone="success">{t("succeeded")}</StatusNotice>
-          ) : (
-            <PartnerPicker
-              selected={selected}
-              onChange={setSelected}
-              onlyPartner={targetPartner}
+          ) : !hasPartnerStatus ? (
+            <QueryState
+              loadingLayout="content"
+              pending={
+                !skillDetail.isFetchedAfterMount || skillDetail.isPending
+              }
+              error={skillDetail.error}
+              onRetry={() => void skillDetail.refetch()}
             />
-          )}{" "}
+          ) : (
+            <>
+              <PartnerPicker
+                selected={wakerIds}
+                onChange={setSelected}
+                onlyPartner={targetPartner}
+                installed={installed}
+                disabled={isSkill && !canChoosePartners}
+              />
+              {isSkill && skillDetail.isError && (
+                <QueryRefreshError
+                  error={skillDetail.error}
+                  pending={skillDetail.isFetching}
+                  onRetry={() => void skillDetail.refetch()}
+                />
+              )}
+            </>
+          )}
           {error && (
             <p role="alert" className="type-body text-destructive">
               {localApiErrorMessage(error, t("failed"))}
@@ -388,10 +434,7 @@ function IndependentInstallDialog({
             {t(done ? "close" : "cancel")}
           </Button>
           {!done && (
-            <Button
-              disabled={pending || selected.length === 0}
-              onClick={() => void install()}
-            >
+            <Button disabled={!canInstall} onClick={() => void install()}>
               {t("install")}
             </Button>
           )}

@@ -108,6 +108,92 @@ test("预加载只暴露白名单方法，事件注销幂等且不泄露 Electro
   stop();
   assert.equal(ipc.listenerCount("ally:browser-navigation"), 0);
 });
+test("桌面提醒点击在 Renderer 挂载前暂存，订阅后只交付一次", () => {
+  const ipc = new EventEmitter();
+  let bridge;
+  loadModule(
+    "preload/index.ts",
+    {
+      electron: {
+        ipcRenderer: ipc,
+        contextBridge: {
+          exposeInMainWorld(_name, value) {
+            bridge = value;
+          },
+        },
+        webUtils: {},
+      },
+    },
+    { addEventListener() {} },
+  );
+  const received = [];
+  const channel = "ally:workspace-attention-open";
+  ipc.emit(channel, { sender: "privileged" }, null);
+  const stop = bridge.onWorkspaceAttentionOpen((target) =>
+    received.push(target),
+  );
+  stop();
+  const stopAgain = bridge.onWorkspaceAttentionOpen((target) =>
+    received.push(target),
+  );
+  ipc.emit(channel, { sender: "privileged" }, { operation: "completed" });
+  stopAgain();
+  assert.deepEqual(received, [null, { operation: "completed" }]);
+});
+
+test("测试通知通过受限 IPC 调用原生通知并反馈投递失败", async () => {
+  const registered = new Map();
+  const shown = [];
+  let outcome = "show";
+  class FakeNotification extends EventEmitter {
+    static isSupported() {
+      return outcome !== "unsupported";
+    }
+    constructor(content) {
+      super();
+      this.content = content;
+    }
+    show() {
+      shown.push(this.content);
+      this.emit(outcome);
+    }
+  }
+  const { installDesktopServices } = loadModule("main/desktop-services.ts", {
+    electron: {
+      app: { getLocale: () => "zh-CN" },
+      ipcMain: {
+        handle: (name, handler) => registered.set(name, handler),
+        removeHandler: (name) => registered.delete(name),
+      },
+      Notification: FakeNotification,
+    },
+    "node-pty": {},
+  });
+  const contents = new EventEmitter();
+  contents.mainFrame = { url: "ally://app/index.html" };
+  contents.isDestroyed = () => false;
+  const dispose = installDesktopServices(
+    { webContents: contents, isDestroyed: () => false },
+    {},
+    contents.mainFrame.url,
+  );
+  try {
+    const send = registered.get("ally:send_test_notification");
+    assert.equal(typeof send, "function");
+    const sender = { sender: contents, senderFrame: contents.mainFrame };
+    assert.throws(() => send(sender, { body: "renderer payload" }));
+    await send(sender);
+    assert.deepEqual(shown, [{ title: "NeuxBot", body: "这是一条测试通知。" }]);
+    outcome = "failed";
+    await assert.rejects(send(sender));
+    outcome = "unsupported";
+    await assert.rejects(send(sender));
+    assert.equal(shown.length, 2);
+  } finally {
+    dispose();
+  }
+});
+
 test("文件拖放在预加载层解析路径，注销后不再交付", () => {
   let bridge;
   const listeners = new Map();

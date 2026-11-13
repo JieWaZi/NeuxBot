@@ -6,12 +6,14 @@ export function useChatViewportScroll({
   scope,
   revision,
   enabled = true,
+  followInitially = true,
   isHistoryAnchoring,
 }: {
   viewport: RefObject<HTMLDivElement | null>;
   scope: string;
   revision: unknown;
   enabled?: boolean;
+  followInitially?: boolean;
   isHistoryAnchoring?: () => boolean;
 }) {
   const refresh = useRef<(() => void) | undefined>(undefined);
@@ -26,11 +28,15 @@ export function useChatViewportScroll({
   useLayoutEffect(() => {
     const element = viewport.current;
     if (!enabled || !element) return;
-    const previous = saved.current?.scope === scope ? saved.current : undefined;
-    let following = previous?.following ?? true;
+    const previous =
+      followInitially && saved.current?.scope === scope
+        ? saved.current
+        : undefined;
+    let following = previous?.following ?? followInitially;
     let frame: number | undefined;
     let anchor = previous?.anchor;
-    let programmaticTop: number | undefined;
+    // 重新启用时，定位的原生滚动事件可能还未送达。
+    let programmaticTop = followInitially ? undefined : element.scrollTop;
     const capture = () => {
       const box = element.getBoundingClientRect();
       const pointTargets =
@@ -174,7 +180,7 @@ export function useChatViewportScroll({
       document.removeEventListener("visibilitychange", visibility);
       if (frame !== undefined) cancelAnimationFrame(frame);
     };
-  }, [viewport, scope, enabled, isHistoryAnchoring]);
+  }, [viewport, scope, enabled, followInitially, isHistoryAnchoring]);
   useLayoutEffect(() => {
     refresh.current?.();
   }, [revision]);

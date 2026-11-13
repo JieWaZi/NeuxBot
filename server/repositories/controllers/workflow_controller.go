@@ -85,8 +85,8 @@ func (c *workflowController) DeleteDefinition(ctx context.Context, id, expectedR
 	if result.RowsAffected != 1 {
 		return status_error.WorkflowRevisionConflict
 	}
-	if err := db.Where("owner_kind = ? AND owner_id IN (?)", constants.WorkResultOwnerKindWorkflowRun, db.Model(&models.WorkflowRun{}).Select("id").Where("definition_id = ?", id)).Delete(&models.WorkResultReceipt{}).Error; err != nil {
-		return databaseError("delete_workflow_results", id, err)
+	if err := db.Where("owner_kind = ? AND owner_id IN (?)", constants.RunOwnerKindWorkflowRun, db.Model(&models.WorkflowRun{}).Select("id").Where("definition_id = ?", id)).Delete(&models.RunViewMark{}).Error; err != nil {
+		return databaseError("delete_workflow_view_marks", id, err)
 	}
 	publishCommittedChange(ctx, c.db, "work-board", eventsResource("global", ""))
 	return nil

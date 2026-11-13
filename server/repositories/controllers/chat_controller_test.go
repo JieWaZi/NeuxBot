@@ -43,6 +43,23 @@ func TestChatNotificationProjectionRejectsMalformedFieldsWithStableError(t *test
 	}
 }
 
+func TestChatProjectionRejectsMalformedPendingRequestsWithoutPublisher(t *testing.T) {
+	ctx := t.Context()
+	database := newTestDB(t)
+	if err := database.Create(&models.Chat{ID: "chat", WakerID: "waker"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	controller := NewChatController(database)
+	err := controller.AdvanceProjection(ctx, "chat", 0, map[string]any{"pending_approvals": `{}`, "latest_sequence": 1})
+	if !util.HasStatusCode(err, status_error.ChatLogIndexCorrupted) {
+		t.Fatalf("malformed pending requests returned %v", err)
+	}
+	chat, err := controller.Get(ctx, "chat")
+	if err != nil || chat.LatestSequence != 0 {
+		t.Fatalf("invalid projection advanced the Chat cursor: %d, %v", chat.LatestSequence, err)
+	}
+}
+
 func TestDeleteChatPublishesIMChangesOnlyForAffectedConnections(t *testing.T) {
 	for _, target := range []string{"partner_chat", "team_member_chat"} {
 		t.Run(target, func(t *testing.T) {

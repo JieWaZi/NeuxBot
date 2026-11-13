@@ -1,10 +1,21 @@
 export type UsageGroupBy = "day" | "model" | "waker";
 
+export const usageSources = [
+  { value: "chat", label: "sourceChat" },
+  { value: "team", label: "sourceTeam" },
+  { value: "workflow", label: "sourceWorkflow" },
+  { value: "automatic", label: "sourceAutomatic" },
+] as const;
+
+export type UsageSource = "" | (typeof usageSources)[number]["value"];
+
 export type UsageFilters = {
   from: number;
   to: number;
   timezone: string;
   wakerIds: string[];
+  provider: string;
+  source: UsageSource;
   groupBy: UsageGroupBy;
 };
 
@@ -91,6 +102,14 @@ function timezoneValue(value: string | null) {
   }
 }
 
+function attributionFilter(value: string | null) {
+  return value &&
+    value.trim() === value &&
+    new TextEncoder().encode(value).length <= 32
+    ? value
+    : "";
+}
+
 export function parseUsageFilters(
   search: URLSearchParams,
   now = new Date(),
@@ -100,6 +119,7 @@ export function parseUsageFilters(
   const from = Number(search.get("from"));
   const to = Number(search.get("to"));
   const group = search.get("groupBy");
+  const source = search.get("source");
   const valid =
     Number.isSafeInteger(from) &&
     Number.isSafeInteger(to) &&
@@ -119,6 +139,8 @@ export function parseUsageFilters(
   return {
     ...range,
     timezone,
+    provider: attributionFilter(search.get("provider")),
+    source: usageSources.find(({ value }) => value === source)?.value ?? "",
     wakerIds: Array.from(
       new Set(
         search
@@ -146,5 +168,7 @@ export function usageFiltersSearch(filters: UsageFilters) {
     groupBy: filters.groupBy,
   });
   for (const id of filters.wakerIds) search.append("waker", id);
+  if (filters.provider) search.set("provider", filters.provider);
+  if (filters.source) search.set("source", filters.source);
   return search;
 }

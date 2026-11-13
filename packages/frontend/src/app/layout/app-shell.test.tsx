@@ -40,6 +40,8 @@ import { useSettingsDraftGuard } from "@/modules/settings";
 import { AppShell } from "./app-shell";
 import { getChatOptions } from "@/modules/chat";
 import type * as PluginQueries from "@/modules/plugin/api/plugin-queries";
+import type * as WakerModule from "@/modules/waker";
+import type { ExecutorAttention } from "@/modules/workspaceattention";
 import { getWakerQueryKey } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { ApiError } from "@/shared/api/errors";
 import type { AppModuleId } from "./app-navigation-model";
@@ -69,6 +71,9 @@ function closeContent(label: string) {
 }
 
 const teamHistoryRender = vi.hoisted(() => vi.fn());
+const executorAttentionFixture = vi.hoisted(
+  () => new Map<string, ExecutorAttention>(),
+);
 const railActivityFixture = vi.hoisted(() => ({
   team: "running" as "idle" | "running" | "waiting",
   waker: "running" as "idle" | "running" | "waiting",
@@ -101,11 +106,14 @@ vi.mock("@/shared/api/global-events", () => ({
     return () => listeners.delete(observer);
   },
 }));
-vi.mock("@/modules/notification", () => ({
-  NotificationNavigationProvider: ({ children }: { children: ReactNode }) =>
-    children,
-  NotificationPresenter: () => null,
-  NotificationBell: ({
+vi.mock("@/modules/workspaceattention", () => ({
+  useWorkspaceAttention: () => ({
+    hasAction: false,
+    hasUnread: false,
+    synced: true,
+  }),
+  useExecutorAttention: () => executorAttentionFixture,
+  AttentionBell: ({
     active,
     onOpen,
   }: {
@@ -115,7 +123,7 @@ vi.mock("@/modules/notification", () => ({
     <button
       aria-label="通知，打开任务看板"
       aria-current={active ? "page" : undefined}
-      onClick={onOpen}
+      onClick={() => onOpen()}
     />
   ),
 }));
@@ -296,22 +304,8 @@ vi.mock("@/shared/theme", () => ({
   useTheme: () => ({ mode: "system", setMode: vi.fn() }),
 }));
 
-vi.mock("@/modules/waker", async () => ({
-  WakerFormDialog: ({
-    open,
-    onOpenChange,
-  }: {
-    open: boolean;
-    onOpenChange: (value: boolean) => void;
-  }) =>
-    open ? (
-      <div role="dialog" aria-label="新建伙伴">
-        <button onClick={() => onOpenChange(false)}>关闭新建伙伴</button>
-      </div>
-    ) : null,
-  WakerDetailLayout: (
-    await import("@/modules/waker/components/waker-detail-layout")
-  ).WakerDetailLayout,
+vi.mock("@/modules/waker", async (importOriginal) => ({
+  ...(await importOriginal<typeof WakerModule>()),
   listWakersOptions: () => ({
     queryKey: ["wakers"],
     queryFn: async () => ({
@@ -509,7 +503,7 @@ vi.mock("./partner-navigation-layout", async () => {
               </button>
             ))}
             <button type="button" onClick={() => onManageEntities("waker")}>
-              伙伴管理
+              新建伙伴
             </button>
           </nav>
           {settingsSidebar}
@@ -675,6 +669,10 @@ function activeRouteScene() {
 }
 
 function TestRouteScene({ location, outletContext }: AppRouteSceneProps) {
+  if (location === "/wakers/new")
+    return (
+      <ProductionRouteScene location={location} outletContext={outletContext} />
+    );
   return (
     <Routes location={location}>
       <Route element={<Outlet context={outletContext} />}>
@@ -835,6 +833,7 @@ describe("AppShell 伙伴导航", () => {
     latestChatFixture.threadTitles.clear();
     latestChatFixture.resolvedEntryOwner = undefined;
     teamHistoryRender.mockClear();
+    executorAttentionFixture.clear();
     railActivityFixture.team = "running";
     railActivityFixture.waker = "running";
     sceneLifecycle.mounts = 0;
@@ -848,6 +847,31 @@ describe("AppShell 伙伴导航", () => {
       },
     });
   });
+
+  it.each([
+    { requestKinds: ["approval"], nativeState: "waiting-approval" },
+    { requestKinds: ["input"], nativeState: "waiting-answer" },
+    { requestKinds: [], nativeState: "working" },
+  ])(
+    "会话标签使用 Bloub 的 $nativeState 图形",
+    async ({ requestKinds, nativeState }) => {
+      executorAttentionFixture.set("waker-1", {
+        chats: [
+          {
+            work: { kind: "chat", id: "chat-a" },
+            activity: "running",
+            requestKinds,
+          },
+        ],
+      });
+      renderShell();
+
+      const tab = await screen.findByRole("tab", { name: /会话 chat-a/ });
+      expect(
+        tab.querySelector(`[data-native-attention="${nativeState}"]`),
+      ).toBeInTheDocument();
+    },
+  );
 
   it("伙伴和团队活动状态由统一资源事件刷新", async () => {
     renderShell();
@@ -1268,24 +1292,31 @@ describe("AppShell 伙伴导航", () => {
     ).toBeVisible();
   });
 
-  it("侧栏新建伙伴直接打开表单且保留当前聊天", async () => {
+  it("侧栏新建伙伴在正文打开创建表单，保留左栏伙伴及原聊天", async () => {
     const user = userEvent.setup();
     renderShell("/chats/current-chat?wakerId=waker-1");
     await findContent({ name: "会话 current-chat" });
-    await user.click(screen.getByRole("button", { name: "伙伴管理" }));
+    await user.click(screen.getByRole("button", { name: "新建伙伴" }));
+
+    const form = await screen.findByRole("form", { name: "新建伙伴" });
+    expect(activeRouteScene()).toContainElement(form);
+    expect(within(form).getByRole("textbox", { name: "名称" })).toBeRequired();
+    expect(within(form).getByRole("textbox", { name: "概要" })).toHaveAttribute(
+      "rows",
+      "2",
+    );
     expect(
-      await screen.findByRole("dialog", { name: "新建伙伴" }),
+      within(form).getByRole("button", { name: "创建伙伴" }),
     ).toBeVisible();
-    expect(activeRouteScene()).toHaveTextContent(
-      "/chats/current-chat?wakerId=waker-1",
-    );
-    await user.click(screen.getByRole("button", { name: "关闭新建伙伴" }));
+    expect(within(form).getByRole("group", { name: "形状" })).toBeVisible();
+    expect(within(form).getByRole("group", { name: "颜色" })).toBeVisible();
     expect(
-      screen.queryByRole("dialog", { name: "新建伙伴" }),
-    ).not.toBeInTheDocument();
-    expect(activeRouteScene()).toHaveTextContent(
-      "/chats/current-chat?wakerId=waker-1",
-    );
+      within(form).getByRole("button", { name: "默认模型" }),
+    ).toHaveTextContent("跟随全局默认");
+    expect(screen.getByRole("button", { name: "伙伴一" })).toBeVisible();
+    expect(
+      screen.getByText("/chats/current-chat?wakerId=waker-1"),
+    ).not.toBeVisible();
   });
 
   it("伙伴管理页面不展示添加内容入口", async () => {

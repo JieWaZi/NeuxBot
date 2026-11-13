@@ -1,4 +1,4 @@
-import { lazy, Suspense, useId, useState } from "react";
+import { useId, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -8,6 +8,7 @@ import { withLocalErrorSurface } from "@/shared/api/local-error-surface";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
 import { ResourceCatalogTry } from "@/shared/ui/resource-catalog-try";
+import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import { PluginIcon } from "./plugin-icon";
 import { getPluginOptions } from "../api/plugin-queries";
 import {
@@ -19,12 +20,6 @@ import {
 } from "../model/plugin-view";
 import { PartnerPicker } from "./partner-picker";
 import { PluginInstallDialog } from "./deferred-plugin-dialogs";
-
-const CreatePartner = lazy(() =>
-  import("@/modules/waker").then((module) => ({
-    default: module.WakerFormDialog,
-  })),
-);
 
 /** 作者示例或产品默认提示只贡献输入草稿；安装、启用与发送仍分别确认。 */
 export function PluginPresentation({
@@ -57,7 +52,7 @@ export function PluginPresentation({
   const [prompt, setPrompt] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>(wakerId ? [wakerId] : []);
   const [installing, setInstalling] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const active = useRouteSceneActive();
   const pluginId = detail?.plugin?.id;
   const current = useQuery({
     ...getPluginOptions(
@@ -115,7 +110,7 @@ export function PluginPresentation({
         }}
       />
       <Dialog
-        open={Boolean(prompt && !installing && !creating)}
+        open={Boolean(active && prompt && !installing)}
         onOpenChange={(open) => {
           if (!open) setPrompt(null);
         }}
@@ -133,7 +128,7 @@ export function PluginPresentation({
               <Button
                 variant="catalog-ghost"
                 size="catalog"
-                onClick={() => setCreating(true)}
+                onClick={() => navigate("/wakers/new")}
               >
                 <Plus />
                 {t("createExamplePartner")}
@@ -209,11 +204,6 @@ export function PluginPresentation({
             void current.refetch();
           }}
         />
-      )}
-      {creating && (
-        <Suspense fallback={null}>
-          <CreatePartner open onOpenChange={setCreating} />
-        </Suspense>
       )}
     </>
   );

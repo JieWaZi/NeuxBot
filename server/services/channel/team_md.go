@@ -97,7 +97,7 @@ func (s *service) buildTeamMD(
 		builder.WriteString("- Call `list` or `search` before creating, updating, or retrying a task to avoid duplicate work\n")
 		builder.WriteString("- `assigneeWakerId` must be the Waker ID of a non-lead member from Members; the lead cannot be a task assignee\n")
 		builder.WriteString("- Describe exactly one clear deliverable per task; split work that spans specialties into separate tasks\n")
-		builder.WriteString("- Match tasks semantically to member roles, biographies, and expertise; structured `@` mentions are already routed by the system, so do not reassign them\n")
+		builder.WriteString("- Match tasks semantically to member roles and biographies; structured `@` mentions are already routed by the system, so do not reassign them\n")
 		builder.WriteString("- Build the complete task graph in one pass, tell the user work has started, and then end the turn; do not poll or wait for members\n")
 		builder.WriteString("- When a single task can answer the user in one complete member report, set `directDelivery=true` on create. Use normal lead review for multiple tasks, dependencies, human review, or work needing synthesis\n")
 		builder.WriteString("- Do not claim that team work is complete while the task board contains any pending, in_progress, or in_review task\n")
@@ -148,7 +148,6 @@ func (s *service) currentThreadMemberProfiles(ctx context.Context, threadID stri
 		members[index].DisplayName = rosterText(waker.Name, constants.ChannelRosterMaximumNameRunes, "Not provided")
 		members[index].RoleName = rosterText(waker.RoleName, constants.ChannelRosterMaximumRoleNameRunes, "")
 		members[index].Bio = rosterText(waker.Bio, constants.ChannelRosterMaximumBioRunes, "")
-		members[index].Expertise = snapshotMemberExpertise(waker.Expertise)
 	}
 	return members, nil
 }
@@ -175,7 +174,7 @@ func memberRoster(
 			continue
 		}
 		roleName := rosterText(member.RoleName, constants.ChannelRosterMaximumRoleNameRunes, "Not provided")
-		frontmatter := memberFrontmatter(member.Bio, member.Expertise)
+		frontmatter := rosterText(member.Bio, constants.ChannelRosterMaximumBioRunes, "")
 		if member.WakerID == selfWakerID {
 			roster.WriteString(fmt.Sprintf("- **you** `%s` (%s)\n  Role: %s", member.WakerID, teamRole, roleName))
 		} else {
@@ -196,7 +195,7 @@ func memberRoster(
 	return roster.String()
 }
 
-// snapshotMemberExpertise 提取有界专长摘要，供当前指令与缺失伙伴的历史展示使用。
+// snapshotMemberExpertise 提取有界专长摘要，供团队成员的历史展示使用。
 func snapshotMemberExpertise(expertise []profile.Expertise) []profile.Expertise {
 	result := make([]profile.Expertise, 0, constants.ChannelRosterMaximumExpertiseCount)
 	for _, item := range expertise {
@@ -211,39 +210,6 @@ func snapshotMemberExpertise(expertise []profile.Expertise) []profile.Expertise 
 		result = append(result, profile.Expertise{Title: title, Description: description})
 	}
 	return result
-}
-
-// memberFrontmatter 把简介与专长压成有界单行摘要，供负责人分派使用。
-func memberFrontmatter(bio string, expertise []profile.Expertise) string {
-	parts := make([]string, 0, 1+constants.ChannelRosterMaximumExpertiseCount)
-	if summary := rosterText(bio, constants.ChannelRosterMaximumBioRunes, ""); summary != "" {
-		parts = append(parts, summary)
-	}
-	writtenExpertise := 0
-	for _, item := range expertise {
-		if writtenExpertise >= constants.ChannelRosterMaximumExpertiseCount {
-			break
-		}
-		title := rosterText(item.Title, constants.ChannelRosterMaximumExpertiseTitleRunes, "")
-		description := rosterText(
-			item.Description,
-			constants.ChannelRosterMaximumExpertiseDescriptionRunes,
-			"",
-		)
-		if title == "" && description == "" {
-			continue
-		}
-		if title == "" {
-			title = "Untitled"
-		}
-		if description != "" {
-			parts = append(parts, title+": "+description)
-		} else {
-			parts = append(parts, title)
-		}
-		writtenExpertise++
-	}
-	return strings.Join(parts, "; ")
 }
 
 // teamWorkspaceSection 生成共享执行工作区说明；路径为空时不注入。

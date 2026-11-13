@@ -15,7 +15,7 @@ type WorkBoardCursor struct {
 	// At 是上一页最后一行的排序时间。
 	At int64 `json:"at"`
 	// Kind 是上一页最后一行的原容器种类。
-	Kind constants.WorkResultOwnerKind `json:"kind"`
+	Kind constants.WorkOwnerKind `json:"kind"`
 	// ID 是上一页最后一行的原容器标识。
 	ID string `json:"id"`
 }
@@ -42,10 +42,33 @@ type WorkBoardQuery struct {
 	Offset int
 	// Limit 是当前页条数，不用于截断统计。
 	Limit int
+	// IsolatedChats 排除无法验证的会话投影，不过滤历史容器本身。
+	IsolatedChats []string
 }
 
 // WorkBoardController 只读取原工作及阅读事实，不维护工作副本。
 type WorkBoardController interface {
+	ExecutorAttentionFacts(context.Context, string, []string, []string) (ExecutorAttentionFacts, error)
+	// HasAttention 从原有效请求和阅读候选中查询存在性。
+	HasAttention(context.Context, string, WorkBoardQuery) (models.WorkspaceAttentionSnapshot, error)
+	// MissingReading 检查公开会话是否缺少阅读基线。
+	MissingReading(context.Context, string, WorkBoardQuery) (bool, error)
+	// ReadingChatIDs 读取筛选范围的 Chat 身份以核对已登记的投影故障。
+	ReadingChatIDs(context.Context, WorkBoardQuery) ([]string, error)
+	// ReadingMetrics 统计筛选范围内的阅读与运行指标并报告缺少阅读基线的会话。
+	ReadingMetrics(context.Context, string, WorkBoardQuery) (models.AttentionMetrics, bool, error)
+	// AwaitingView 先选择待查看身份窗口，再读取当前页详情。
+	AwaitingView(context.Context, string, WorkBoardQuery) ([]models.WorkBoardEntry, error)
+	// AttachReadings 补齐指定窗口的会话阅读信息及游标。
+	AttachReadings(context.Context, string, []models.WorkBoardEntry, []string) (map[string]models.ChatReadingState, error)
+	ResolveWorkRef(context.Context, models.WorkRef) (models.WorkBoardEntry, error)
+	// ResolveChatOutcome 找到公开消息所属的普通会话或团队主对话。
+	ResolveChatOutcome(context.Context, string) (models.WorkBoardEntry, error)
+	// ResolveWorkRefs 校验一批原容器并返回仍可见的身份。
+	ResolveWorkRefs(context.Context, []models.WorkRef) (map[models.WorkRef]models.WorkBoardEntry, error)
+	// PublishReadingChanged 发布一批阅读确认的聚合失效。
+	PublishReadingChanged(context.Context)
+	FindPendingRequest(context.Context, models.WorkBoardLiveEvent) (models.WorkBoardAttention, error)
 	// Executors 搜索原配置对象，最多返回五十项，不枚举工作历史。
 	Executors(context.Context, string) ([]models.WorkBoardExecutor, error)
 	// List 返回各来源过滤后合并的稳定候选窗口。
@@ -54,16 +77,10 @@ type WorkBoardController interface {
 	Count(context.Context, WorkBoardQuery) (int64, error)
 	// Counts 统计日期范围内的工作容器总数、进行中和已结束数。
 	Counts(context.Context, WorkBoardQuery) (models.WorkBoardCounts, error)
-	// AttentionOverview 一次遍历返回待办预览、有效请求数与其归属的不同工作数。
-	AttentionOverview(context.Context, WorkBoardQuery) ([]models.WorkBoardAttention, int64, int64, error)
-	// Page 仅为数字跳页读取有序原身份，再批量补齐这一页，resultMode 区分成果排序。
-	Page(context.Context, WorkBoardQuery, bool) ([]models.WorkBoardEntry, error)
-	// ResultCount 返回执行对象与来源范围内的未读容器数。
-	ResultCount(context.Context, WorkBoardQuery) (int64, error)
-	// Attention 返回仍有效的交互窗口及准确总数。
-	Attention(context.Context, WorkBoardQuery) ([]models.WorkBoardAttention, int64, error)
-	// Results 返回未读部分索引上的有界结果窗口。
-	Results(context.Context, WorkBoardQuery) ([]models.WorkBoardEntry, error)
+	// Page 仅为数字跳页读取有序原身份，再批量补齐这一页。
+	Page(context.Context, WorkBoardQuery) ([]models.WorkBoardEntry, error)
+	// Attention 返回仍有效的交互窗口、请求数及不同归属工作数。
+	Attention(context.Context, WorkBoardQuery) ([]models.WorkBoardAttention, int64, int64, error)
 }
 
 // Executors 只查询配置表，名称搜索不关联历史工作。
@@ -89,23 +106,26 @@ type workBoardController struct {
 // NewWorkBoardController 创建窄查询仓储。
 func NewWorkBoardController(db *gorm.DB) WorkBoardController { return &workBoardController{db: db} }
 
+const workBoardIndependentChat = `NOT EXISTS(SELECT 1 FROM channel_thread_members m WHERE m.chat_id=chat.id)
+ AND NOT EXISTS(SELECT 1 FROM workflow_effects e WHERE e.chat_id=chat.id)`
+
 const workBoardChatSelect = `SELECT 'chat' AS owner_kind, chat.id AS owner_id, chat.title,
 chat.waker_id AS executor_id, '' AS executor_name,
 CASE WHEN EXISTS(SELECT 1 FROM automatic_runs a WHERE a.chat_id=chat.id AND a.thread_id='') THEN 'automatic'
- WHEN EXISTS(SELECT 1 FROM im_conversation_links im WHERE im.chat_id=chat.id AND im.thread_id='') THEN 'im' ELSE 'chat' END AS source,
-chat.id AS chat_id, '' AS channel_id, '' AS workflow_id, chat.waker_id,
+ WHEN EXISTS(SELECT 1 FROM im_conversation_links im WHERE im.chat_id=chat.id AND im.thread_id='') THEN 'im'
+ WHEN EXISTS(SELECT 1 FROM workflow_creation_sessions s WHERE s.chat_id=chat.id) THEN 'workflow' ELSE 'chat' END AS source,
+chat.id AS chat_id, '' AS channel_id, COALESCE((SELECT definition_id FROM workflow_creation_sessions WHERE chat_id=chat.id),'') AS workflow_id, chat.waker_id,
 CASE WHEN chat.active_execution_id<>'' AND (chat.waiting_approval=1 OR chat.waiting_elicitation=1) THEN 'waiting'
  WHEN chat.active_execution_id<>'' THEN 'running' ELSE 'idle' END AS activity,
-chat.last_ended_execution_status AS last_status, chat.updated_at,
+chat.last_ended_execution_status AS last_status, chat.updated_at, chat.latest_readable_sequence,
 0 AS approval_count,0 AS input_count,0 AS review_count
 FROM chats chat
-WHERE NOT EXISTS(SELECT 1 FROM channel_thread_members m WHERE m.chat_id=chat.id)
- AND NOT EXISTS(SELECT 1 FROM workflow_effects e WHERE e.chat_id=chat.id)
- AND NOT EXISTS(SELECT 1 FROM workflow_creation_sessions s WHERE s.chat_id=chat.id)
+WHERE ` + workBoardIndependentChat + `
+
  AND (chat.hidden_from_waker_history=0
  OR EXISTS(SELECT 1 FROM automatic_runs a WHERE a.chat_id=chat.id AND a.thread_id='')
  OR EXISTS(SELECT 1 FROM im_conversation_links im WHERE im.chat_id=chat.id AND im.thread_id='')
- OR EXISTS(SELECT 1 FROM work_result_receipts receipt WHERE receipt.owner_kind='chat' AND receipt.owner_id=chat.id))`
+ OR EXISTS(SELECT 1 FROM workflow_creation_sessions s WHERE s.chat_id=chat.id AND EXISTS(SELECT 1 FROM workflow_definitions WHERE id=s.definition_id)))`
 
 const workBoardThreadSelect = `SELECT 'team_thread' AS owner_kind, thread.id AS owner_id, thread.title,
 thread.channel_id AS executor_id, '' AS executor_name,
@@ -114,6 +134,7 @@ CASE WHEN EXISTS(SELECT 1 FROM automatic_runs a WHERE a.thread_id=thread.id) THE
 thread.lead_chat_id AS chat_id, thread.channel_id, '' AS workflow_id, thread.lead_waker_id AS waker_id,
 CASE WHEN ` + channelThreadWaitingSQL + ` THEN 'waiting' WHEN ` + channelThreadRunningSQL + ` THEN 'running' ELSE 'idle' END AS activity,
 COALESCE((SELECT c.last_ended_execution_status FROM chats c WHERE c.id=thread.lead_chat_id),'') AS last_status, thread.updated_at,
+COALESCE((SELECT c.latest_readable_sequence FROM chats c WHERE c.id=thread.lead_chat_id),0) AS latest_readable_sequence,
 0 AS approval_count,0 AS input_count,0 AS review_count
 FROM channel_threads thread WHERE thread.ready_at IS NOT NULL`
 
@@ -124,11 +145,21 @@ CASE WHEN EXISTS(SELECT 1 FROM automatic_runs a WHERE a.workflow_run_id=run.id) 
 CASE WHEN run.status='waiting' THEN 'waiting' WHEN run.status IN ('queued','running','recovering','cancelling') THEN 'running' ELSE 'idle' END AS activity,
 run.status AS last_status, run.updated_at,
 0 AS approval_count,0 AS input_count,0 AS review_count
-FROM workflow_runs run WHERE run.parent_run_id='' AND run.history_deleted_at IS NULL AND EXISTS(SELECT 1 FROM workflow_definitions WHERE id=run.definition_id)`
+FROM workflow_runs run WHERE (run.parent_run_id='' OR NOT run.joined) AND run.history_deleted_at IS NULL AND EXISTS(SELECT 1 FROM workflow_definitions WHERE id=run.definition_id)`
+
+const workBoardAutomaticSelect = `SELECT 'automatic_run' AS owner_kind, auto.id AS owner_id,
+COALESCE((SELECT name FROM automatic_tasks WHERE id=auto.task_id),'') AS title,
+COALESCE(NULLIF(json_extract(auto.configuration,'$.workflowId'),''),NULLIF(json_extract(auto.configuration,'$.channelId'),''),auto.waker_id) AS executor_id,
+'' AS executor_name, 'automatic' AS source, '' AS chat_id,
+COALESCE(json_extract(auto.configuration,'$.channelId'),'') AS channel_id,
+COALESCE(json_extract(auto.configuration,'$.workflowId'),'') AS workflow_id,
+auto.waker_id, auto.task_id AS automatic_task_id, 'idle' AS activity, 'failed' AS last_status,
+auto.updated_at, 0 AS approval_count, 0 AS input_count, 0 AS review_count FROM automatic_runs auto
+WHERE ` + automaticRunResultAvailableSQL + ` AND EXISTS (SELECT 1 FROM automatic_tasks WHERE id=auto.task_id)`
 
 // workBoardBranches 只返回每条工作一个来源，自动与 IM 不创建第二层包装行。
 func workBoardBranches() []string {
-	return []string{workBoardChatSelect, workBoardThreadSelect, workBoardRunSelect}
+	return []string{workBoardChatSelect, workBoardThreadSelect, workBoardRunSelect, workBoardAutomaticSelect}
 }
 
 func workBoardScope(db *gorm.DB, query WorkBoardQuery) *gorm.DB {
@@ -180,21 +211,21 @@ func workBoardScope(db *gorm.DB, query WorkBoardQuery) *gorm.DB {
 // Count 只读取覆盖索引上的范围和归属，不为分页加载整页或成果正文。
 func (c *workBoardController) Count(ctx context.Context, query WorkBoardQuery) (int64, error) {
 	db := controllerDB(ctx, c.db)
-	kinds := []constants.WorkResultOwnerKind{constants.WorkResultOwnerKindChat, constants.WorkResultOwnerKindTeamThread, constants.WorkResultOwnerKindWorkflowRun}
+	kinds := []constants.WorkOwnerKind{constants.WorkOwnerKindChat, constants.WorkOwnerKindTeamThread, constants.WorkOwnerKindWorkflowRun, constants.WorkOwnerKindAutomaticRun}
 	var total int64
 	for i, branch := range workBoardBranches() {
 		if !boardKindMatchesSource(kinds[i], query.Source) {
 			continue
 		}
-		if query.Source == "automatic" || query.Source == "im" {
+		if kinds[i] != constants.WorkOwnerKindAutomaticRun && (query.Source == "automatic" || query.Source == "im") {
 			table, column := "automatic_runs", "chat_id"
 			if query.Source == "im" {
 				table = "im_conversation_links"
 			}
-			if kinds[i] == constants.WorkResultOwnerKindTeamThread {
+			if kinds[i] == constants.WorkOwnerKindTeamThread {
 				column = "thread_id"
 			}
-			if kinds[i] == constants.WorkResultOwnerKindWorkflowRun {
+			if kinds[i] == constants.WorkOwnerKindWorkflowRun {
 				column = "workflow_run_id"
 			}
 			var exists int64
@@ -205,7 +236,7 @@ func (c *workBoardController) Count(ctx context.Context, query WorkBoardQuery) (
 				continue
 			}
 		}
-		if kinds[i] == constants.WorkResultOwnerKindChat && (query.Activity == constants.ChannelActivityStateRunning || (len(query.States) == 1 && query.States[0] == string(constants.WorkBoardStateRunning))) {
+		if kinds[i] == constants.WorkOwnerKindChat && (query.Activity == constants.ChannelActivityStateRunning || (len(query.States) == 1 && query.States[0] == string(constants.WorkBoardStateRunning))) {
 			var exists int64
 			if err := db.Raw("SELECT EXISTS(SELECT 1 FROM chats WHERE active_execution_id > '')").Find(&exists).Error; err != nil {
 				return 0, databaseError("probe_running_count", "", err)
@@ -247,7 +278,7 @@ func (c *workBoardController) Counts(ctx context.Context, query WorkBoardQuery) 
 // List 在每个来源先筛选并 seek，再合并有界候选；不查询历史总数。
 func (c *workBoardController) List(ctx context.Context, query WorkBoardQuery) ([]models.WorkBoardEntry, error) {
 	values := make([]models.WorkBoardEntry, 0, 3*(query.Limit+1))
-	kinds := []constants.WorkResultOwnerKind{constants.WorkResultOwnerKindChat, constants.WorkResultOwnerKindTeamThread, constants.WorkResultOwnerKindWorkflowRun}
+	kinds := []constants.WorkOwnerKind{constants.WorkOwnerKindChat, constants.WorkOwnerKindTeamThread, constants.WorkOwnerKindWorkflowRun, constants.WorkOwnerKindAutomaticRun}
 	for i, branch := range workBoardBranches() {
 		if !boardKindMatchesSource(kinds[i], query.Source) {
 			continue
@@ -272,68 +303,19 @@ func (c *workBoardController) List(ctx context.Context, query WorkBoardQuery) ([
 	if len(values) > query.Limit+1 {
 		values = values[:query.Limit+1]
 	}
-	if err := c.attachAttentionCounts(ctx, values); err != nil {
+	if err := c.attachAttentionCounts(ctx, values, query.IsolatedChats); err != nil {
 		return nil, err
 	}
 	if err := c.attachExecutorNames(ctx, values); err != nil {
 		return nil, err
 	}
-	if err := c.attachResults(ctx, values); err != nil {
-		return nil, err
-	}
 	return values, nil
-}
-
-// attachResults 用一条查询补齐当前窗口的阅读引用。
-func (c *workBoardController) attachResults(ctx context.Context, values []models.WorkBoardEntry) error {
-	if len(values) == 0 {
-		return nil
-	}
-	keys := make([][]any, 0, len(values))
-	for _, v := range values {
-		keys = append(keys, []any{v.OwnerKind, v.OwnerID})
-	}
-	var receipts []models.WorkResultReceipt
-	if err := controllerDB(ctx, c.db).Where("(owner_kind,owner_id) IN ?", keys).Find(&receipts).Error; err != nil {
-		return databaseError("attach_work_results", "", err)
-	}
-	byID := make(map[string]*models.WorkResultReceipt, len(receipts))
-	for i := range receipts {
-		r := &receipts[i]
-		byID[string(r.OwnerKind)+":"+r.OwnerID] = r
-	}
-	for i := range values {
-		values[i].Result = byID[string(values[i].OwnerKind)+":"+values[i].OwnerID]
-	}
-	return nil
-}
-
-// resultScope 只使用执行对象、来源及标题；待查看不受历史日期限制。
-func resultScope(db *gorm.DB, query WorkBoardQuery) *gorm.DB {
-	if query.ExecutorID != "" {
-		db = db.Where("board.executor_id = ?", query.ExecutorID)
-	}
-	if query.Source != "" {
-		db = db.Where("board.source = ?", query.Source)
-	}
-	if query.Query != "" {
-		db = db.Where("board.title LIKE ? ESCAPE '\\'", "%"+strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(query.Query)+"%")
-	}
-	return db
-}
-
-// resultBranch 从未读部分索引读取身份与时间；原容器只作存在性过滤，保留索引排序。
-func (c *workBoardController) resultBranch(ctx context.Context, query WorkBoardQuery, branch string, kind constants.WorkResultOwnerKind) *gorm.DB {
-	db := controllerDB(ctx, c.db)
-	owners := resultScope(db.Table("(?) board", boardReadBranch(db, boardNativeCandidates(branch, kind, WorkBoardQuery{Source: query.Source}), kind, query.Query)), query).Where("board.owner_id=receipt.owner_id").Select("1")
-	receipts := boardReceiptSource(db.Table("work_result_receipts receipt").Where("receipt.owner_kind=? AND receipt.latest_version>receipt.viewed_version", kind), kind, query.Source).Where("EXISTS (?)", owners)
-	return db.Table("(?) board", receipts.Select("receipt.owner_kind,receipt.owner_id,receipt.available_at AS updated_at,receipt.available_at AS result_available_at,receipt.latest_version AS result_version"))
 }
 
 // attachWorkEntries 在身份窗口确定后按种类批量读取详情，保留成果时间与原窗口顺序。
 func (c *workBoardController) attachWorkEntries(ctx context.Context, keys []models.WorkBoardEntry) ([]models.WorkBoardEntry, error) {
 	db := controllerDB(ctx, c.db)
-	kinds := []constants.WorkResultOwnerKind{constants.WorkResultOwnerKindChat, constants.WorkResultOwnerKindTeamThread, constants.WorkResultOwnerKindWorkflowRun}
+	kinds := []constants.WorkOwnerKind{constants.WorkOwnerKindChat, constants.WorkOwnerKindTeamThread, constants.WorkOwnerKindWorkflowRun, constants.WorkOwnerKindAutomaticRun}
 	byID := map[string]models.WorkBoardEntry{}
 	for i, branch := range workBoardBranches() {
 		ids := []string{}
@@ -362,36 +344,6 @@ func (c *workBoardController) attachWorkEntries(ctx context.Context, keys []mode
 	return values, nil
 }
 
-// Results 分来源从未读部分索引 seek，再合并三个有界窗口。
-func (c *workBoardController) Results(ctx context.Context, query WorkBoardQuery) ([]models.WorkBoardEntry, error) {
-	values := make([]models.WorkBoardEntry, 0, 3*(query.Limit+1))
-	kinds := []constants.WorkResultOwnerKind{constants.WorkResultOwnerKindChat, constants.WorkResultOwnerKindTeamThread, constants.WorkResultOwnerKindWorkflowRun}
-	for i, branch := range workBoardBranches() {
-		if !boardKindMatchesSource(kinds[i], query.Source) {
-			continue
-		}
-		page, err := c.resultBranchPage(ctx, query, branch, kinds[i])
-		if err != nil {
-			return nil, err
-		}
-		values = append(values, page...)
-	}
-	sortBoardEntries(values)
-	if len(values) > query.Limit+1 {
-		values = values[:query.Limit+1]
-	}
-	if err := c.attachAttentionCounts(ctx, values); err != nil {
-		return nil, err
-	}
-	if err := c.attachExecutorNames(ctx, values); err != nil {
-		return nil, err
-	}
-	if err := c.attachResults(ctx, values); err != nil {
-		return nil, err
-	}
-	return values, nil
-}
-
 // sortBoardEntries 为跨来源页使用统一时间、种类和身份排序。
 func sortBoardEntries(values []models.WorkBoardEntry) {
 	sort.Slice(values, func(i, j int) bool {
@@ -404,21 +356,4 @@ func sortBoardEntries(values []models.WorkBoardEntry) {
 		}
 		return a.OwnerID > b.OwnerID
 	})
-}
-
-// ResultCount 与成果分页使用相同的原容器可见性和范围谓词，计数不补齐展示字段。
-func (c *workBoardController) ResultCount(ctx context.Context, query WorkBoardQuery) (int64, error) {
-	kinds := []constants.WorkResultOwnerKind{constants.WorkResultOwnerKindChat, constants.WorkResultOwnerKindTeamThread, constants.WorkResultOwnerKindWorkflowRun}
-	var total int64
-	for i, branch := range workBoardBranches() {
-		if !boardKindMatchesSource(kinds[i], query.Source) {
-			continue
-		}
-		var count int64
-		if err := c.resultBranch(ctx, query, branch, kinds[i]).Count(&count).Error; err != nil {
-			return 0, databaseError("count_work_results", "", err)
-		}
-		total += count
-	}
-	return total, nil
 }

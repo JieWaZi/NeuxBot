@@ -38,6 +38,8 @@ type diskRow struct {
 	DetachedInput *agent.HostInput `json:"h,omitempty"`
 	// Terminal is a canonical native terminal fact.
 	Terminal *nativeTerminal `json:"t,omitempty"`
+	// Purged preserves the cursor of a physically removed native record.
+	Purged bool `json:"x,omitempty"`
 }
 
 // rowIndex stores just enough identity to select an exact read.
@@ -109,6 +111,8 @@ const (
 	indexDetachedInput
 	indexNativeClassification
 	indexNativeToolOutput
+	indexQuestionRequested
+	indexQuestionResolved
 )
 
 func contextError(ctx context.Context) error {
@@ -142,7 +146,8 @@ func (s *streamSlot) load(ctx context.Context, path string, public bool) (*strea
 	if err := idx.loadCoverage(); err != nil {
 		return nil, err
 	}
-	if idx.coverage.Stream != 0 && idx.coverage.Size == info.Size() && idx.coverage.Stamp == info.ModTime().UnixNano() {
+	if idx.coverage.Stream != 0 && (!public || idx.coverage.QuestionsIndexed) &&
+		idx.coverage.Size == info.Size() && idx.coverage.Stamp == info.ModTime().UnixNano() {
 		s.indexes.markDirty(rel, false)
 		return idx, nil
 	}
@@ -172,7 +177,7 @@ func (i *streamIndex) rebuild(path string, public bool) error {
 	var scanError error
 	err = i.query(func(db *gorm.DB) error {
 		return db.Transaction(func(tx *gorm.DB) error {
-			coverage := streamCoverage{Path: i.coverage.Path}
+			coverage := streamCoverage{Path: i.coverage.Path, QuestionsIndexed: public}
 			if i.coverage.Stream != 0 {
 				if err := clearIndexStream(tx, i.coverage.Stream); err != nil {
 					return err
@@ -337,7 +342,7 @@ func (s *streamSlot) append(ctx context.Context, path string, idx *streamIndex, 
 	}
 	// The authoritative commit has succeeded. Stale coverage forces the next access to rebuild.
 	header.Where = rowLocation(idx.size(), frame[:positions[0].Offset-idx.size()])
-	err = idx.publish(info, additions, header)
+	err = idx.publish(info, additions, header, rows[0].Chat != nil)
 	s.indexes.markDirty(idx.coverage.Path, err != nil)
 	return nil
 }

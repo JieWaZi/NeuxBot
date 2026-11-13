@@ -151,6 +151,26 @@ type MessageFork struct {
 	ReasonCode string `json:"reasonCode,omitempty"`
 }
 
+// MessageQuestion 是原结构化输入请求及其安全处理结果。
+type MessageQuestion struct {
+	// 问题标识
+	ElicitationID string `json:"elicitationId"`
+	// 输入模式
+	Mode string `json:"mode"`
+	// 问题说明
+	Message string `json:"message"`
+	// 表单结构
+	RequestedSchema map[string]any `json:"requestedSchema,omitempty"`
+	// 访问地址
+	URL string `json:"url,omitempty"`
+	// 允许跳过
+	AllowSkip *bool `json:"allowSkip,omitempty"`
+	// 处理结果
+	Result constants.ElicitationResult `json:"result,omitempty"`
+	// 公开答案
+	Answers map[string]any `json:"answers,omitempty"`
+}
+
 // Message 是从权威事件重放出的聊天消息视图。
 type Message struct {
 	// 接续执行标识
@@ -176,6 +196,8 @@ type Message struct {
 	Truncated bool `json:"truncated,omitempty"`
 	// Content 是截至当前日志游标构建出的完整文本。
 	Content string `json:"content"`
+	// 问题卡
+	Question *MessageQuestion `json:"question,omitempty"`
 	// Attachments 是用户消息携带的有序附件引用。
 	Attachments []eventlog.AttachmentReference `json:"attachments,omitempty"`
 	// Skills 是用户发送消息时明确选择的技能快照。
@@ -198,8 +220,10 @@ type Message struct {
 	Revision int64 `json:"revision"`
 	// LiveRevision 是完整内容已持久化覆盖的实时消息版本，交互事实不冒充正文覆盖。
 	LiveRevision int64 `json:"liveRevision"`
-	// CreatedSequence 是消息建立事件在 Chat JSONL 中的权威序号，仅供 Core 游标分页。
-	CreatedSequence int64 `json:"-"`
+	// CreatedSequence 是持久公开消息的建立序号，决定分页和阅读顺序。
+	CreatedSequence int64 `json:"createdSequence"`
+	// Readable 表示该持久消息具有用户可读正文或公开失败。
+	Readable bool `json:"readable"`
 	// ExecutionID 是 Assistant 消息对应的执行标识。
 	ExecutionID string `json:"executionId,omitempty"`
 	// Status 是 Assistant 消息对应执行的当前状态。

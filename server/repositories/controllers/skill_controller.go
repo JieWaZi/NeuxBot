@@ -24,8 +24,8 @@ type SkillController interface {
 	InstalledCounts(context.Context, []string) (map[string]int64, error)
 	// InstalledPartnerPreviews 批量返回每项技能的实际安装伙伴资料预览，包含停用关系。
 	InstalledPartnerPreviews(context.Context, []string) (map[string][]models.Waker, error)
-	// InstalledPartners 返回单项技能的全部实际安装伙伴公开资料，包含停用关系。
-	InstalledPartners(context.Context, string) ([]models.Waker, error)
+	// InstalledPartners 返回单项技能的全部实际安装伙伴及各自启停状态。
+	InstalledPartners(context.Context, string) ([]SkillInstalledPartner, error)
 	// CreatePackage 创建技能包元数据。
 	CreatePackage(ctx context.Context, skill models.SkillPackage) error
 	// GetPackage 按标识查询技能包。
@@ -46,6 +46,8 @@ type SkillController interface {
 	UpsertWakerSkill(ctx context.Context, relation models.WakerSkill) error
 	// EnsureWakerSkill 只在关系不存在时创建默认启用状态，不覆盖用户选择。
 	EnsureWakerSkill(ctx context.Context, relation models.WakerSkill) error
+	// SetWakerSkillEnabled 只更新实际存在的安装关系。
+	SetWakerSkillEnabled(ctx context.Context, wakerID string, skillID string, enabled bool) error
 	// ListEnabled 返回伙伴当前安装且启用的技能版本。
 	ListEnabled(ctx context.Context, wakerID string) ([]models.SkillWithState, error)
 	// DeleteWakerSkill 删除伙伴技能关系，使其恢复未关联状态。
@@ -280,6 +282,22 @@ func (c *skillController) EnsureWakerSkill(ctx context.Context, relation models.
 	return nil
 }
 
+// SetWakerSkillEnabled 原子更新启停状态，避免重新创建已移除的安装关系。
+func (c *skillController) SetWakerSkillEnabled(ctx context.Context, wakerID string, skillID string, enabled bool) error {
+	db := controllerDB(ctx, c.db)
+	packages := db.Model(&models.SkillPackage{}).Select("id").Where("id = ?", skillID)
+	result := db.Model(&models.WakerSkill{}).
+		Where("waker_id = ? AND skill_package_id IN (?)", wakerID, packages).
+		Update("enabled", enabled)
+	if result.Error != nil {
+		return databaseError("update_waker_skill", wakerID, result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return status_error.SkillNotFound.WithParams(map[string]interface{}{"SkillID": skillID})
+	}
+	return nil
+}
+
 // DeleteWakerSkill 删除伙伴技能关系。
 func (c *skillController) DeleteWakerSkill(ctx context.Context, wakerID string, skillID string) error {
 	if err := controllerDB(ctx, c.db).Where("waker_id = ? AND skill_package_id = ?", wakerID, skillID).Delete(&models.WakerSkill{}).Error; err != nil {
@@ -410,26 +428,38 @@ func (c *skillController) InstalledPartnerPreviews(ctx context.Context, ids []st
 }
 
 // InstalledPartners 仅为技能详情读取完整安装关系，再分批补齐伙伴公开资料。
-func (c *skillController) InstalledPartners(ctx context.Context, skillID string) ([]models.Waker, error) {
+func (c *skillController) InstalledPartners(ctx context.Context, skillID string) ([]SkillInstalledPartner, error) {
 	db := controllerDB(ctx, c.db)
 	var relations []models.WakerSkill
-	if err := db.Select("waker_id").Where("skill_package_id = ?", skillID).Order("waker_id").Find(&relations).Error; err != nil {
+	if err := db.Select("waker_id", "enabled").Where("skill_package_id = ?", skillID).Order("waker_id").Find(&relations).Error; err != nil {
 		return nil, databaseError("read_skill_installed_partners", "skill_id="+skillID, err)
 	}
-	result := make([]models.Waker, 0, len(relations))
+	result := make([]SkillInstalledPartner, 0, len(relations))
 	for start := 0; start < len(relations); start += 100 {
 		end := min(start+100, len(relations))
 		ids := make([]string, 0, end-start)
+		enabled := make(map[string]bool, end-start)
 		for _, relation := range relations[start:end] {
 			ids = append(ids, relation.WakerID)
+			enabled[relation.WakerID] = relation.Enabled
 		}
 		var partners []models.Waker
 		if err := db.Select("id", "name", "avatar").Where("id IN ?", ids).Order("id").Find(&partners).Error; err != nil {
 			return nil, databaseError("read_skill_partner_profiles", "skill_id="+skillID, err)
 		}
-		result = append(result, partners...)
+		for _, partner := range partners {
+			result = append(result, SkillInstalledPartner{Waker: partner, Enabled: enabled[partner.ID]})
+		}
 	}
 	return result, nil
+}
+
+// SkillInstalledPartner 包含安装伙伴的公开资料及技能启停状态。
+type SkillInstalledPartner struct {
+	// 伙伴的公开身份资料。
+	models.Waker
+	// Enabled 表示该伙伴是否启用技能。
+	Enabled bool
 }
 
 // ExistingLibraryContent 每批按索引查找当前独立技能版本，同内容已有多项时稳定选择一个资源。

@@ -3,7 +3,6 @@ package conversation
 import (
 	"context"
 	"encoding/json"
-	"gorm.io/gorm"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,6 +11,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"gorm.io/gorm"
 )
 
 const maxPageSize = 256
@@ -199,18 +199,54 @@ func (s *Store) ReadHostInputConsumption(ctx context.Context, ref agent.HostInpu
 }
 
 func (s *Store) ReadMessages(ctx context.Context, q agent.MessageQuery) (agent.MessagePage, error) {
-	var page agent.MessagePage
-	if q.Limit < 1 || q.Limit > maxPageSize || q.Before < 0 {
-		return page, status_error.ChatMessageCursorInvalid
+	page, err := s.readTimeline(ctx, q, 0, false)
+	return page.Messages, err
+}
+
+// TimelineQuestion 定位当前页的一条原请求及其已经持久化的终态。
+type TimelineQuestion struct {
+	// Request 是问题在 Chat 日志中的首次提交。
+	Request agent.ConversationRecord
+	// Outcome 是原处理结果，缺失时以同一执行的终态收口。
+	Outcome agent.ConversationRecord
+}
+
+// TimelinePage 保存共用创建游标的普通消息与独立问答项。
+type TimelinePage struct {
+	// Messages 保存普通消息及整个时间线窗口的覆盖游标。
+	Messages agent.MessagePage
+	// Questions 保存当前页的独立问答项。
+	Questions []TimelineQuestion
+	// MessageBefore 是普通消息窗口的上界；问答分页不能截断一条回复的后续事件。
+	MessageBefore int64
+}
+
+// ReadTimeline 分页读取公开时间线。团队分页可提供冻结的包含式日志上界。
+func (s *Store) ReadTimeline(ctx context.Context, q agent.MessageQuery, through int64) (TimelinePage, error) {
+	return s.readTimeline(ctx, q, through, true)
+}
+
+func (s *Store) readTimeline(ctx context.Context, q agent.MessageQuery, through int64, includeQuestions bool) (TimelinePage, error) {
+	var result TimelinePage
+	if q.Limit < 1 || q.Limit > maxPageSize || q.Before < 0 || through < 0 || (q.Before != 0 && through != 0) {
+		return result, status_error.ChatMessageCursorInvalid
 	}
 	r, err := s.openChat(ctx, q.ChatID)
 	if err != nil {
-		return page, err
+		return result, err
 	}
 	defer r.close()
+	page := &result.Messages
 	page.Version = r.index.version()
+	if through > page.Version {
+		return result, status_error.ChatMessageCursorInvalid
+	}
 	before := q.Before
-	if before == 0 {
+	result.MessageBefore = before
+	if through > 0 {
+		before = through + 1
+		result.MessageBefore = before
+	} else if before == 0 {
 		before = page.Version + 1
 	} else {
 		var boundary messageAnchor
@@ -218,15 +254,26 @@ func (s *Store) ReadMessages(ctx context.Context, q agent.MessageQuery) (agent.M
 			return db.Where("stream = ? AND cursor = ?", r.index.coverage.Stream, before).Limit(1).Find(&boundary).Error
 		})
 		if err != nil {
-			return page, err
+			return result, err
 		}
-		if boundary.Cursor == 0 {
-			return page, status_error.ChatMessageCursorInvalid
+		if boundary.Cursor == 0 || (!includeQuestions && boundary.Kind == indexQuestionRequested) {
+			return result, status_error.ChatMessageCursorInvalid
+		}
+		if boundary.Kind == indexQuestionRequested {
+			var next messageAnchor
+			err := r.index.query(func(db *gorm.DB) error {
+				return db.Where("stream = ? AND cursor > ? AND kind <> ?", r.index.coverage.Stream, before, indexQuestionRequested).
+					Order("cursor ASC").Limit(1).Find(&next).Error
+			})
+			if err != nil {
+				return result, err
+			}
+			result.MessageBefore = next.Cursor
 		}
 	}
-	anchors, err := r.index.anchors(before, q.Limit+1, false)
+	anchors, err := r.index.anchors(before, q.Limit+1, false, includeQuestions)
 	if err != nil {
-		return page, err
+		return result, err
 	}
 	if len(anchors) > q.Limit {
 		anchors = anchors[:q.Limit]
@@ -239,13 +286,82 @@ func (s *Store) ReadMessages(ctx context.Context, q agent.MessageQuery) (agent.M
 	}
 	groups, err := r.index.forMessages(ids)
 	if err != nil {
-		return page, err
+		return result, err
+	}
+	if includeQuestions {
+		var questions []messageAnchor
+		anchors = slices.DeleteFunc(anchors, func(anchor messageAnchor) bool {
+			if anchor.Kind != indexQuestionRequested {
+				return false
+			}
+			questions = append(questions, anchor)
+			return true
+		})
+		result.Questions, err = readTimelineQuestions(ctx, r, questions, groups)
+		if err != nil {
+			return TimelinePage{}, err
+		}
 	}
 	page.Messages, err = s.projectPage(ctx, r, anchors, groups, true)
 	if err != nil {
-		return agent.MessagePage{}, err
+		return TimelinePage{}, err
 	}
-	return page, nil
+	return result, nil
+}
+
+func readTimelineQuestions(ctx context.Context, reader chatReader, anchors []messageAnchor, groups map[int64][]rowIndex) ([]TimelineQuestion, error) {
+	questions := make([]TimelineQuestion, 0, len(anchors))
+	byExecution := make(map[int64][]int)
+	for _, anchor := range anchors {
+		var question TimelineQuestion
+		for _, pos := range groups[anchor.Ref] {
+			var err error
+			switch {
+			case pos.Cursor == anchor.Cursor:
+				question.Request, err = reader.record(ctx, pos)
+			case pos.Kind == indexQuestionResolved:
+				question.Outcome, err = reader.record(ctx, pos)
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+		if question.Request.Cursor == 0 {
+			return nil, status_error.ChatLogIndexCorrupted
+		}
+		if question.Outcome.Cursor == 0 && anchor.ExecutionRef != 0 {
+			byExecution[anchor.ExecutionRef] = append(byExecution[anchor.ExecutionRef], len(questions))
+		}
+		questions = append(questions, question)
+	}
+	if len(byExecution) == 0 {
+		return questions, nil
+	}
+	executions := make([]int64, 0, len(byExecution))
+	for ref := range byExecution {
+		executions = append(executions, ref)
+	}
+	var terminals []rowIndex
+	err := reader.index.query(func(db *gorm.DB) error {
+		return db.Table("conversation_positions INDEXED BY "+executionTerminalIndex).
+			Where("stream = ? AND execution_ref IN ?", reader.index.coverage.Stream, executions).
+			Where(executionTerminalPredicate).Order("cursor").Find(&terminals).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, terminal := range terminals {
+		outcome, err := reader.record(ctx, terminal)
+		if err != nil {
+			return nil, err
+		}
+		for _, index := range byExecution[terminal.ExecutionRef] {
+			if outcome.Cursor > questions[index].Request.Cursor {
+				questions[index].Outcome = outcome
+			}
+		}
+	}
+	return questions, nil
 }
 
 func readChatMessage(ctx context.Context, reader chatReader, anchor messageAnchor, positions []rowIndex) (agent.StoredMessage, error) {
@@ -527,7 +643,7 @@ func (s *Store) ReadHistoryCandidates(ctx context.Context, q agent.MessageQuery)
 	if before == 0 {
 		before = r.index.version() + 1
 	}
-	anchors, err := r.index.anchors(before, q.Limit+1, true)
+	anchors, err := r.index.anchors(before, q.Limit+1, true, false)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -590,7 +706,7 @@ func (s *Store) readMessage(ctx context.Context, chatID, messageID string, at in
 	if err != nil {
 		return agent.StoredMessage{}, 0, err
 	}
-	if anchor.Cursor == 0 {
+	if anchor.Cursor == 0 || anchor.Kind == indexQuestionRequested {
 		return agent.StoredMessage{}, 0, status_error.ChatMessageNotFound
 	}
 	var checkpoint rowIndex

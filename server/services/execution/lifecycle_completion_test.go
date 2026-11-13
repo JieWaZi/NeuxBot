@@ -42,20 +42,12 @@ func (j *terminalJournal) AppendExecutionFacts(context.Context, string, []eventl
 	panic("unexpected AppendExecutionFacts call")
 }
 
-func (j *terminalJournal) AppendApprovalFact(string, eventlog.AppendInput) (eventlog.Record, error) {
-	panic("unexpected AppendApprovalFact call")
+func (*terminalJournal) AppendInteractionFact(string, eventlog.AppendInput) (eventlog.Record, error) {
+	panic("unexpected AppendInteractionFact call")
 }
 
-func (j *terminalJournal) AppendElicitationFact(string, eventlog.AppendInput) (eventlog.Record, error) {
-	panic("unexpected AppendElicitationFact call")
-}
-
-func (j *terminalJournal) PublishApprovalFact(context.Context, eventlog.Record, []models.PendingApproval) {
-	panic("unexpected PublishApprovalFact call")
-}
-
-func (j *terminalJournal) PublishElicitationFact(context.Context, eventlog.Record, []models.PendingElicitation) {
-	panic("unexpected PublishElicitationFact call")
+func (*terminalJournal) PublishInteractionFact(context.Context, eventlog.Record) {
+	panic("unexpected PublishInteractionFact call")
 }
 
 func (j *terminalJournal) CommitTerminal(_ context.Context, fact chatservice.TerminalFact) (chatservice.TerminalCommit, error) {

@@ -344,20 +344,9 @@ func TestSingleUserReadyReportIsDeliveredWithoutLeadExecution(t *testing.T) {
 		leadChatID: {Chat: models.Chat{ID: leadChatID}},
 	}}
 	executionFake := &postTurnExecutionFake{}
-	results := controllers.NewWorkResultController(database.DB)
-	if err := results.EnableTracking(ctx, 1); err != nil {
-		t.Fatal(err)
-	}
 	service := &service{
 		channels: channels, threads: threads, tasks: tasks, transactions: transactions,
 		chats: chatFake, executions: executionFake,
-		results: results,
-		prepareDirectResult: func(_ context.Context, chatID, messageID string) (*models.WorkResultReceipt, error) {
-			if chatID != leadChatID || messageID != attemptID || len(chatFake.participantMessages) != 1 {
-				t.Fatal("必须先提交原成员报告，才能定位交付结果")
-			}
-			return &models.WorkResultReceipt{LatestVersion: 10, Reference: models.WorkResultReference{ChatID: chatID, MessageID: messageID, FileChangeRecordID: "copied-file-record", FileChangeRecordVersion: 2}}, nil
-		},
 	}
 	directIDs, err := tasks.ListDirectDeliveredNotificationIDs(ctx, threadID, []string{attemptID})
 	if err != nil || len(directIDs) != 0 {
@@ -431,15 +420,6 @@ func TestSingleUserReadyReportIsDeliveredWithoutLeadExecution(t *testing.T) {
 	}
 	if directEvents != 1 {
 		t.Fatalf("direct delivery events = %d, want one", directEvents)
-	}
-	receipt, found, err := results.Get(ctx, constants.WorkResultOwnerKindTeamThread, threadID)
-	if err != nil || !found || receipt.LatestVersion != 10 || receipt.ViewedVersion != 0 || receipt.Reference.MessageID != attemptID || receipt.Reference.FileChangeRecordID != "copied-file-record" || receipt.Reference.FileChangeRecordVersion != 2 {
-		t.Fatalf("直达交付未形成团队未读结果: %+v, %v", receipt, err)
-	}
-	for _, event := range events {
-		if event.Type == constants.ChannelEventMemberDirectDelivered && receipt.AvailableAt != event.CreatedAt {
-			t.Fatal("结果发布时间必须来自已提交的交付事件")
-		}
 	}
 	service.chats = &timelineHistoryFake{resources: []messageview.Message{
 		{

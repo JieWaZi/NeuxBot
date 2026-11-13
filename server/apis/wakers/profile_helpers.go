@@ -8,7 +8,7 @@ import (
 )
 
 func validProfileDocumentKind(kind constants.ProfileDocumentKind) bool {
-	return isEditableProfileKind(kind)
+	return kind == constants.ProfileDocumentKindAgents || isEditableProfileKind(kind)
 }
 
 func isEditableProfileKind(kind constants.ProfileDocumentKind) bool {

@@ -73,7 +73,7 @@ func TestSingleWriterSubscriptionsResyncAndCoreShutdown(t *testing.T) {
 		created.Add(1)
 		subscription := hub.Subscribe(request.Topic, request.Resource)
 		return source{close: func() { subscription.Close(); closed.Add(1) }, run: func(ctx context.Context, emit func(frame, bool) bool) {
-			initial, _ := encodedFrame("notifications.snapshot", request.Resource, map[string]any{"snapshot": map[string]int{"revision": int(created.Load())}})
+			initial, _ := encodedFrame("work-board.ready", request.Resource, map[string]any{"snapshot": map[string]int{"revision": int(created.Load())}})
 			if !emit(initial, true) {
 				return
 			}
@@ -95,33 +95,33 @@ func TestSingleWriterSubscriptionsResyncAndCoreShutdown(t *testing.T) {
 	server := testServer(t, hub, factory)
 	connection := dial(t, server)
 	resource := eventhub.Resource{Kind: "global"}
-	command(t, connection, "subscribe", "notifications", resource, nil)
+	command(t, connection, "subscribe", "work-board", resource, nil)
 	first, second := read(t, connection), read(t, connection)
 	if first.DeliverySequence != 1 || second.DeliverySequence != 2 || first.ConnectionID != second.ConnectionID || first.Epoch != hub.Epoch() {
 		t.Fatalf("发送信封不连续：%+v %+v", first, second)
 	}
-	if first.Type != "subscribed" || second.Type != "notifications.snapshot" {
+	if first.Type != "subscribed" || second.Type != "work-board.ready" {
 		t.Fatalf("初始确认/快照=%s/%s", first.Type, second.Type)
 	}
-	command(t, connection, "subscribe", "notifications", resource, nil)
+	command(t, connection, "subscribe", "work-board", resource, nil)
 	ack := read(t, connection)
 	if ack.Type != "subscribed" || created.Load() != 1 {
 		t.Fatal("重复订阅不应创建另一资源流")
 	}
-	if err := eventhub.Emit(hub, "notifications", "notifications.updated", resource, map[string]int{"revision": 2}); err != nil {
+	if err := eventhub.Emit(hub, "work-board", "work-board.changed", resource, map[string]int{"revision": 2}); err != nil {
 		t.Fatal(err)
 	}
 	update := read(t, connection)
-	if update.Type != "notifications.updated" || update.DeliverySequence != 4 {
+	if update.Type != "work-board.changed" || update.DeliverySequence != 4 {
 		t.Fatalf("更新=%+v", update)
 	}
-	command(t, connection, "resync", "notifications", resource, nil)
+	command(t, connection, "resync", "work-board", resource, nil)
 	read(t, connection)
 	read(t, connection)
 	if created.Load() != 2 {
 		t.Fatal("恢复应重新注册并读取当前权威快照")
 	}
-	command(t, connection, "unsubscribe", "notifications", resource, nil)
+	command(t, connection, "unsubscribe", "work-board", resource, nil)
 	if read(t, connection).Type != "unsubscribed" {
 		t.Fatal("缺少释放确认")
 	}
@@ -160,7 +160,7 @@ func TestWebSocketTokenOriginAndControlValidation(t *testing.T) {
 		t.Fatal("错误令牌未拒绝")
 	}
 	connection := dial(t, server)
-	if err := connection.WriteJSON(map[string]any{"type": "run", "requestId": "invalid", "topic": "notifications", "resource": map[string]string{"kind": "global"}}); err != nil {
+	if err := connection.WriteJSON(map[string]any{"type": "run", "requestId": "invalid", "topic": "work-board", "resource": map[string]string{"kind": "global"}}); err != nil {
 		t.Fatal(err)
 	}
 	if read(t, connection).Type != "error" || called.Load() != 0 {
@@ -209,7 +209,7 @@ func TestControlRejectsResourceForgeryAndCursorCoercion(t *testing.T) {
 	for _, raw := range []string{
 		`{"type":"subscribe","requestId":"a","topic":"chat","resource":{"kind":"global"}}`,
 		`{"type":"subscribe","requestId":"a","topic":"team","resource":{"kind":"thread","id":"thread"}}`,
-		`{"type":"subscribe","requestId":"a","topic":"notifications","resource":{"kind":"global"},"url":"https://evil.example"}`,
+		`{"type":"subscribe","requestId":"a","topic":"work-board","resource":{"kind":"global"},"url":"https://evil.example"}`,
 	} {
 		if _, err := decodeControl([]byte(raw)); err == nil {
 			t.Fatalf("伪造控制被接受：%s", raw)
@@ -385,5 +385,72 @@ func TestUsageSubscriptionUsesGlobalAuthority(t *testing.T) {
 	}
 	if _, err := decodeControl([]byte(`{"type":"subscribe","requestId":"usage","topic":"usage","resource":{"kind":"account","id":"another"}}`)); err == nil {
 		t.Fatal("usage accepted a private resource without an authority contract")
+	}
+}
+
+func TestAttentionColdChatGlobalEvents(t *testing.T) {
+	hub := eventhub.New()
+	previous := global.EventHub
+	global.EventHub = hub
+	t.Cleanup(func() { global.EventHub = previous })
+	connection := dial(t, testServer(t, hub, newSource))
+	board := eventhub.Resource{Kind: "global"}
+	chatResource := eventhub.Resource{Kind: "chat", ID: "unopened-chat"}
+	publish := func(kind, id string, transient bool) {
+		hub.Publish(eventhub.Event{
+			Topic: "work-board", Type: kind, Resource: chatResource,
+			EventID: id, Payload: json.RawMessage(`{}`), Transient: transient,
+		})
+	}
+	publish("work-board.live", "before-subscription", true)
+	command(t, connection, "subscribe", "work-board", board, nil)
+	if ack, ready := read(t, connection), read(t, connection); ack.Type != "subscribed" || ready.Type != "work-board.ready" {
+		t.Fatalf("确认与就绪帧顺序错误：%s / %s", ack.Type, ready.Type)
+	}
+	publish("work-board.changed", "cold-chat-changed", false)
+	publish("work-board.live", "cold-chat-live", true)
+	changed, live := read(t, connection), read(t, connection)
+	if changed.EventID != "cold-chat-changed" || changed.Resource != chatResource ||
+		live.EventID != "cold-chat-live" || live.Resource != chatResource || !live.Transient || len(live.SourceCursor) > 0 {
+		t.Fatalf("全局订阅未交付原会话失效或实时提醒：%+v / %+v", changed, live)
+	}
+	command(t, connection, "resync", "work-board", board, nil)
+	if ack, ready := read(t, connection), read(t, connection); ack.Type != "subscribed" || ready.Type != "work-board.ready" {
+		t.Fatalf("恢复应重新登记监听并发布就绪帧：%s / %s", ack.Type, ready.Type)
+	}
+	publish("work-board.changed", "after-resync", false)
+	if output := read(t, connection); output.EventID != "after-resync" {
+		t.Fatalf("恢复重放了历史提醒：%+v", output)
+	}
+}
+
+func TestReadingProtocolRejectsRetiredTopicsAndValidatesKinds(t *testing.T) {
+	for _, tc := range []struct {
+		topic string
+		kind  string
+		id    string
+		valid bool
+	}{
+		{"notifications", "global", "", false},
+		{"work-results", "chat", "chat-a", false},
+		{"reading", "global", "", false},
+		{"reading", "chat", "chat-a", true},
+		{"reading", "team_thread", "thread-a", false},
+		{"reading", "workflow_run", "run-a", true},
+		{"reading", "automatic_run", "run-a", true},
+		{"work-board", "global", "", true},
+		{"work-board", "team_thread", "thread-a", true},
+		{"work-board", "automatic_run", "run-a", true},
+	} {
+		input, err := json.Marshal(control{
+			Type: "subscribe", RequestID: "test", Topic: tc.topic,
+			Resource: eventhub.Resource{Kind: tc.kind, ID: tc.id},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := decodeControl(input); (err == nil) != tc.valid {
+			t.Errorf("%s/%s: 是否允许 = %t，期望 %t", tc.topic, tc.kind, err == nil, tc.valid)
+		}
 	}
 }

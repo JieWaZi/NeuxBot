@@ -2,6 +2,21 @@
 
 NeuxBot 自有代码与文档采用根目录 [MIT License](LICENSE)。以下版权及许可适用于对应的第三方组成，集中保存在本文件，并随安装包分发。
 
+## 伙伴档案分词
+
+Go Core 使用 [tiktoken-go/tokenizer v0.7.0](https://github.com/tiktoken-go/tokenizer/tree/v0.7.0) 的内置 `cl100k_base` 词表和 [regexp2 v1.11.5](https://github.com/dlclark/regexp2/tree/v1.11.5) 进行本地分词。两者采用 MIT 许可。
+
+```text
+Copyright (c) 2023 tiktoken-go
+Copyright (c) Doug Clark
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
 ## Material Icon Theme 文件图标
 
 工作区文件树、消息文件引用及共用文件展示使用 [material-extensions/vscode-material-icon-theme](https://github.com/material-extensions/vscode-material-icon-theme/tree/ced21b9b5241c1efa502a8c46ec7363a690a7058) 的精选 SVG，固定提交 `ced21b9b5241c1efa502a8c46ec7363a690a7058`。类型图标从上游原样复制，通用文件和目录图标通过本项目同步命令按同一提交的上游生成器路径及默认色生成。来源与更新命令见 [NOTICE](packages/frontend/src/shared/assets/material-icon-theme/NOTICE.md)，完整许可如下：
@@ -351,6 +366,34 @@ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
 THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+## 工作看板头像堆叠
+
+头像的重力和碰撞使用 [Matter.js v0.20.0](https://github.com/liabru/matter-js/tree/0.20.0)。
+
+```text
+The MIT License (MIT)
+
+Copyright (c) Liam Brummitt and contributors.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
 ```
 
 ## 知识库

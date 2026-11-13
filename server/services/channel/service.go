@@ -52,6 +52,8 @@ type Service interface {
 	ListPendingInteractions(ctx context.Context, threadID string) ([]PendingTeamInteraction, []TeamMemberActivity, error)
 	// SyncInteractionEvents 把成员 Chat 的交互事实幂等投影到团队持久事件流。
 	SyncInteractionEvents(ctx context.Context, threadID string) error
+	// ListEvents 读取团队公开事件，过滤旧交互投影中的提交内容。
+	ListEvents(ctx context.Context, threadID string, after string, limit int) ([]models.ChannelEvent, error)
 	// SubscribeEvents 衔接 Team 持久事件 backlog、共享成员交互投影和实时 broker。
 	SubscribeEvents(ctx context.Context, threadID string, after string) (EventSubscription, error)
 }
@@ -60,10 +62,6 @@ type Service interface {
 type Config struct {
 	// Commands 保存与任务事务一起提交的 CLI 回执。
 	Commands capability.Store
-	// PrepareDirectResult 在事务外读取原成员交付消息的位置。
-	PrepareDirectResult func(context.Context, string, string) (*models.WorkResultReceipt, error)
-	// Results 在正式直达资格提交事务中发布原结果引用。
-	Results controllers.WorkResultController
 	// AutomaticRun 读取原自动运行的封闭事实，区分自动内部接力与用户新工作。
 	AutomaticRun func(context.Context, string) (models.AutomaticRun, error)
 	// BeforeUserInput 在新用户输入提交前冻结已结束的自动运行，回调不持有调度全局锁。
@@ -90,10 +88,6 @@ type Config struct {
 type service struct {
 	// commands 持久化任务命令接纳事实。
 	commands capability.Store
-	// prepareDirectResult 在事务外定位原成员消息。
-	prepareDirectResult func(context.Context, string, string) (*models.WorkResultReceipt, error)
-	// results 持久化正式结果交付与阅读事实。
-	results controllers.WorkResultController
 	// automaticRun 读取原运行的权威封闭事实，不另存工作来源状态。
 	automaticRun func(context.Context, string) (models.AutomaticRun, error)
 	// beforeUserInput 在新用户输入前封闭已结束的自动运行。
@@ -158,25 +152,24 @@ func New(config Config) (Service, error) {
 		return nil, status_error.CoreChannelInitializationFailed
 	}
 	return &service{
-		commands:            config.Commands,
-		channels:            config.Channels,
-		beforeUserInput:     config.BeforeUserInput,
-		automaticRun:        config.AutomaticRun,
-		prepareDirectResult: config.PrepareDirectResult,
-		results:             config.Results,
-		threads:             config.Threads,
-		tasks:               config.Tasks,
-		transactions:        config.Transactions,
-		wakers:              config.Wakers,
-		chats:               config.Chats,
-		executions:          config.Executions,
-		chatGroups:          config.ChatGroups,
-		watchers:            make(map[string]struct{}),
-		scheduleLocks:       make(map[string]*threadScheduleLock),
-		interactionCursors:  make(map[string]int64),
-		events:              newChannelEventBroker(),
-		capabilities:        channeltool.NewRegistry(),
-		watcherPolicy:       defaultDeliveryWatcherPolicy(),
+		commands:        config.Commands,
+		channels:        config.Channels,
+		beforeUserInput: config.BeforeUserInput,
+		automaticRun:    config.AutomaticRun,
+
+		threads:            config.Threads,
+		tasks:              config.Tasks,
+		transactions:       config.Transactions,
+		wakers:             config.Wakers,
+		chats:              config.Chats,
+		executions:         config.Executions,
+		chatGroups:         config.ChatGroups,
+		watchers:           make(map[string]struct{}),
+		scheduleLocks:      make(map[string]*threadScheduleLock),
+		interactionCursors: make(map[string]int64),
+		events:             newChannelEventBroker(),
+		capabilities:       channeltool.NewRegistry(),
+		watcherPolicy:      defaultDeliveryWatcherPolicy(),
 	}, nil
 }
 

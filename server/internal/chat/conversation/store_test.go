@@ -24,6 +24,32 @@ import (
 
 const chatID = "0123456789abcdef0123456789abcdef"
 
+func TestTimelineRebuildsLegacyQuestionLocators(t *testing.T) {
+	ctx := t.Context()
+	root := t.TempDir()
+	store := openTestStore(t, root)
+	receipt := writeBatch(t, store, "create", 0,
+		fact(constants.ChatEventTypeCreated, "", ""),
+		fact(constants.ChatEventTypeElicitationRequested, "", `{"elicitationId":"old-question","mode":"form","message":"Choose"}`),
+		fact(constants.ChatEventTypeElicitationResolved, "", `{"elicitationId":"old-question","result":"declined"}`))
+	// Simulate a fully covered pre-question index. Keep the authoritative JSONL intact.
+	if err := store.indexes.with(ctx, func(db *gorm.DB) error {
+		if err := db.Model(&streamCoverage{}).Where("version = ?", receipt.Version).Update("questions_indexed", false).Error; err != nil {
+			return err
+		}
+		return db.Where("kind = ?", indexQuestionRequested).Delete(&messageAnchor{}).Error
+	}); err != nil {
+		t.Fatal(err)
+	}
+	store.Close()
+	store = openTestStore(t, root)
+	page, err := store.ReadTimeline(ctx, agent.MessageQuery{ChatID: chatID, Limit: 1}, 0)
+	if err != nil || page.Messages.Version != receipt.Version || len(page.Questions) != 1 ||
+		page.Questions[0].Request.Cursor != 2 || page.Questions[0].Outcome.Cursor != 3 {
+		t.Fatalf("reopened history lost legacy question facts: %+v %v", page, err)
+	}
+}
+
 func openTestStore(t *testing.T, root string) *Store {
 	t.Helper()
 	store, err := NewStore(root)
@@ -233,6 +259,101 @@ func TestNativeOutcomeReconcilesEitherArrivalOrder(t *testing.T) {
 			got.Turn.Usage.OutputTokens != nil || *got.Turn.Usage.Observations[0].Tokens.InputTokens != 12 {
 			t.Fatalf("native outcome after deletion = %+v, %v", got, err)
 		}
+	}
+}
+
+func TestNativeDeletionPreservesOtherSessionCursorsInSharedShard(t *testing.T) {
+	ctx := t.Context()
+	root := t.TempDir()
+	store := openTestStore(t, root)
+	removed := agent.NativeSessionKey{Provider: "codex", Subject: "account", SessionID: "removed"}
+	kept := removed
+	for i := 0; kept == removed || nativeShard(kept) != nativeShard(removed); i++ {
+		kept.SessionID = "kept-" + strconv.Itoa(i)
+	}
+	writeBatch(t, store, "create", 0, fact(constants.ChatEventTypeCreated, "", ""),
+		agent.ConversationChange{Binding: &agent.NativeBinding{Session: removed}})
+	commit := func(session agent.NativeSessionKey, body string) agent.NativeFragmentBatch {
+		return agent.NativeFragmentBatch{
+			Key: agent.NativeResultKey{Session: session, InvocationID: "prompt"}, CommitKey: "fragment", MessageID: "answer",
+			Changes: []agent.MessageChange{{Kind: agent.MessageAppend, Text: body}},
+		}
+	}
+	const privateBody = "private body to remove"
+	gone, err := store.CommitNativeFragments(ctx, commit(removed, privateBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	keepBatch := commit(kept, "kept body")
+	keep, err := store.CommitNativeFragments(ctx, keepBatch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logPath, err := store.LogPath(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	staged := filepath.Join(t.TempDir(), "staged.jsonl")
+	if err := os.Rename(logPath, staged); err != nil {
+		t.Fatal(err)
+	}
+	store.Forget([]string{chatID})
+	const aliasChat = "fedcba9876543210fedcba9876543210"
+	if _, err := store.Commit(ctx, agent.ConversationBatch{ChatID: aliasChat, Key: "bind-existing-session",
+		Changes: []agent.ConversationChange{
+			fact(constants.ChatEventTypeCreated, "", ""),
+			{Binding: &agent.NativeBinding{Session: removed}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if purged, err := store.PurgeDeletedChatNativeRecords(ctx, map[string]string{chatID: staged}); purged || err != nil {
+		t.Fatalf("purging a shared session returned %v, %v", purged, err)
+	}
+	if changes, err := store.ReadNativeFragments(ctx, gone); err != nil || len(changes) != 1 || changes[0].Text != privateBody {
+		t.Fatalf("a surviving chat lost its shared native session: %+v, %v", changes, err)
+	}
+	aliasPath, err := store.LogPath(aliasChat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aliasStaged := filepath.Join(t.TempDir(), "alias.jsonl")
+	if err := os.Rename(aliasPath, aliasStaged); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if purged, err := store.PurgeDeletedChatNativeRecords(ctx, map[string]string{aliasChat: aliasStaged}); !purged || err != nil {
+			t.Fatalf("purging an exclusive session returned %v, %v", purged, err)
+		}
+	}
+	store.Close()
+	store = openTestStore(t, root)
+	changes, err := store.ReadNativeFragments(ctx, keep)
+	if err != nil || len(changes) != 1 || changes[0].Text != "kept body" {
+		t.Fatalf("original cursor could not read retained fragments: %+v, %v", changes, err)
+	}
+	if receipt, err := store.CommitNativeFragments(ctx, keepBatch); err != nil || receipt != keep {
+		t.Fatalf("retained fragment was no longer idempotent: %+v, %v", receipt, err)
+	}
+	if _, err := store.ReadNativeFragments(ctx, gone); err == nil {
+		t.Fatal("deleted fragment could still be read")
+	}
+	shard, err := os.ReadFile(filepath.Join(root, nativeBucketPath(nativeShard(removed))))
+	if err != nil || bytes.Contains(shard, []byte(privateBody)) {
+		t.Fatalf("deleted body remained in the native shard: %v", err)
+	}
+}
+
+func TestReadingMissingChatDoesNotRetainCatalogEntry(t *testing.T) {
+	store := openTestStore(t, t.TempDir())
+	writeBatch(t, store, "create", 0, fact(constants.ChatEventTypeCreated, "", ""))
+	const missing = "fedcba9876543210fedcba9876543210"
+	if version, err := store.ReadVersion(t.Context(), missing); err != nil || version != 0 {
+		t.Fatalf("version of missing chat = %d, %v", version, err)
+	}
+	ids, err := store.ListChatIDs()
+	if err != nil || len(ids) != 1 || ids[0] != chatID {
+		t.Fatalf("read of a missing chat changed the catalog: %v, %v", ids, err)
 	}
 }
 

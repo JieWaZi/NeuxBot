@@ -21,6 +21,26 @@ func WithEventPublisher(database *gorm.DB, publisher events.Publisher) *gorm.DB 
 
 // publishCommittedChange 由拥有领域写入的方法在成功后明确登记语义变化。
 func publishCommittedChange(ctx context.Context, database *gorm.DB, topic string, resource events.Resource, affectedEntities ...events.Resource) {
+	publishCommittedEvent(ctx, database, topic, resource, resource, affectedEntities...)
+}
+
+// PublishReadingChanged 合并同一批阅读写入对派生摘要的失效。
+func (c *workBoardController) PublishReadingChanged(ctx context.Context) {
+	resource := eventsResource("global", "")
+	publishCommittedChange(ctx, c.db, "work-board", resource, resource)
+}
+
+func publishCommittedWorkBoardChange(ctx context.Context, database *gorm.DB, resource events.Resource, reason string) {
+	payload := struct {
+		// Resource 是此次修复覆盖的原资源。
+		events.Resource
+		// Reason 说明已有客户端提醒需重新核对。
+		Reason string `json:"reason"`
+	}{Resource: resource, Reason: reason}
+	publishCommittedEvent(ctx, database, "work-board", resource, payload)
+}
+
+func publishCommittedEvent(ctx context.Context, database *gorm.DB, topic string, resource events.Resource, payload any, affectedEntities ...events.Resource) {
 	value, exists := database.Get(eventPublisherSetting)
 	if !exists {
 		return
@@ -40,9 +60,11 @@ func publishCommittedChange(ctx context.Context, database *gorm.DB, topic string
 			automaticTaskResources = []events.Resource{eventsResource("global", "")}
 		}
 		entityResources = append(entityResources, affectedEntities...)
+		entityResources = boundedWorkResources(entityResources)
+		automaticTaskResources = boundedWorkResources(automaticTaskResources)
 	}
 	events.AfterCommit(ctx, func() {
-		_ = events.Emit(publisher, topic, topic+".changed", resource, resource)
+		_ = events.Emit(publisher, topic, topic+".changed", resource, payload)
 		for _, entity := range entityResources {
 			_ = events.Emit(publisher, "entities", constants.EntityActivityChangedEventType, entity, resource)
 		}
@@ -61,26 +83,41 @@ func workBoardActivityResources(ctx context.Context, database *gorm.DB, resource
 	configuredTasks := db.Model(&models.AutomaticTask{}).Select("id", "waker_id")
 	switch resource.Kind {
 	case "chat":
-		var chat models.Chat
-		if err := db.Select("id", "waker_id", "hidden_from_waker_history").Where("id = ?", resource.ID).Find(&chat).Error; err != nil {
+		var chat struct {
+			// ID 是原会话。
+			ID string
+			// WakerID 是原会话所属伙伴。
+			WakerID string
+			// HiddenFromWakerHistory 表示该会话从其他产品入口进入。
+			HiddenFromWakerHistory bool
+			// VisibleExternal 表示外部入口已绑定可见原工作。
+			VisibleExternal bool
+		}
+		projection := `id,waker_id,hidden_from_waker_history,
+   CASE WHEN hidden_from_waker_history AND NOT EXISTS(SELECT 1 FROM workflow_effects WHERE chat_id=chats.id)
+    AND (EXISTS(SELECT 1 FROM automatic_runs WHERE chat_id=chats.id AND thread_id='' AND admission='accepted')
+     OR EXISTS(SELECT 1 FROM im_conversation_links WHERE chat_id=chats.id AND thread_id='')
+     OR EXISTS(SELECT 1 FROM workflow_creation_sessions WHERE chat_id=chats.id)) THEN 1 ELSE 0 END AS visible_external`
+		if err := db.Model(&models.Chat{}).Select(projection).Where("id=?", resource.ID).Find(&chat).Error; err != nil {
 			return nil, nil, err
 		}
-		if chat.ID != "" && chat.WakerID != "" && !chat.HiddenFromWakerHistory {
-			entityResources = append(entityResources, eventsResource("waker", chat.WakerID))
-		}
+
 		// 成员 Chat 的等待与执行也是团队活动事实；普通 Chat 沿唯一 chat_id 索引立即结束。
 		memberThread := db.Model(&models.ChannelThreadMember{}).Select("thread_id").Where("chat_id = ?", resource.ID)
 		if err := db.Select("id", "channel_id").Where("id IN (?)", memberThread).Find(&thread).Error; err != nil {
 			return nil, nil, err
 		}
 		if thread.ID == "" {
-			runs = runs.Where("chat_id = ?", resource.ID)
+			if chat.ID != "" && chat.WakerID != "" && (!chat.HiddenFromWakerHistory || chat.VisibleExternal) {
+				entityResources = append(entityResources, eventsResource("waker", chat.WakerID))
+			}
+			runs = runs.Where("chat_id=?", resource.ID)
 		} else {
 			runs = runs.Where("chat_id = ? OR thread_id = ?", resource.ID, thread.ID)
 		}
-	case "thread", "task":
+	case "thread", "team_thread", "task":
 		threads := db.Select("id", "channel_id")
-		if resource.Kind == "thread" {
+		if resource.Kind == "thread" || resource.Kind == "team_thread" {
 			threads = threads.Where("id = ?", resource.ID)
 		} else {
 			taskThread := db.Model(&models.ChannelTask{}).Select("thread_id").Where("id = ?", resource.ID)
@@ -90,7 +127,7 @@ func workBoardActivityResources(ctx context.Context, database *gorm.DB, resource
 			return nil, nil, err
 		}
 		threadID := thread.ID
-		if resource.Kind == "thread" {
+		if resource.Kind == "thread" || resource.Kind == "team_thread" {
 			threadID = resource.ID
 		}
 		if threadID == "" {
@@ -99,6 +136,8 @@ func workBoardActivityResources(ctx context.Context, database *gorm.DB, resource
 		runs = runs.Where("thread_id = ?", threadID)
 	case "workflow_run":
 		runs = runs.Where("workflow_run_id = ?", resource.ID)
+	case "automatic_run":
+		runs = runs.Where("id = ?", resource.ID)
 	case "channel":
 		entityResources = append(entityResources, resource)
 		// 配置依赖不要求已有运行；团队删除也必须刷新尚未执行的任务详情。
@@ -150,16 +189,24 @@ func workBoardActivityResources(ctx context.Context, database *gorm.DB, resource
 	return entityResources, tasks, nil
 }
 
-// publishCommittedNoticeIDs 仅登记真实新增/失效身份，不能由有限预览差集推算。
-func publishCommittedNoticeIDs(ctx context.Context, database *gorm.DB, upserts, removals []string) {
-	value, exists := database.Get(eventPublisherSetting)
-	publisher, ok := value.(events.Publisher)
-	if !exists || !ok || len(upserts)+len(removals) == 0 {
+// publishWorkLive 发送原身份及不参与补读的实时提醒。
+func publishWorkLive(ctx context.Context, db *gorm.DB, value models.WorkBoardLiveEvent) {
+	if value.Work.ID == "" {
 		return
 	}
-	upserts = append([]string{}, upserts...)
-	removals = append([]string{}, removals...)
+	configured, _ := db.Get(eventPublisherSetting)
+	publisher, ok := configured.(events.Publisher)
+	if !ok {
+		return
+	}
 	events.AfterCommit(ctx, func() {
-		_ = events.Emit(publisher, "notification-state", "changed", events.Resource{Kind: "global"}, map[string]any{"noticeIds": upserts, "removedIds": removals})
+		_ = events.EmitTransient(publisher, "work-board", "work-board.live", eventsResource(string(value.Work.Kind), value.Work.ID), value)
 	})
+}
+
+func boundedWorkResources(values []events.Resource) []events.Resource {
+	if len(values) > events.MaximumSubscriptions {
+		return []events.Resource{eventsResource("global", "")}
+	}
+	return values
 }

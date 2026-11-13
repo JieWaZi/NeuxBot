@@ -4,14 +4,24 @@ import { useRef, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "@/shared/lib/cn";
 import { OverviewCard } from "./overview-card";
 import { SegmentedControlHighlight } from "./segmented-control-highlight";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./tooltip";
+
+const segmentTrack =
+  "bg-button-fill relative isolate inline-flex w-fit gap-0.5 rounded-control p-0.5";
+const shellTrack =
+  "segmented-control-shell relative isolate inline-flex w-fit rounded-control";
 
 const segmentedControlVariants = cva("items-stretch", {
   variants: {
     appearance: {
-      segments:
-        "bg-button-fill relative isolate inline-flex w-fit gap-0.5 rounded-control p-0.5",
-      shell:
-        "segmented-control-shell relative isolate inline-flex w-fit rounded-control",
+      segments: segmentTrack,
+      icons: shellTrack,
+      shell: shellTrack,
       "catalog-form":
         "segmented-control-catalog-form relative isolate inline-flex w-fit",
       cards:
@@ -54,6 +64,8 @@ const segmentedOptionVariants = cva(
       appearance: {
         segments:
           "[&_svg]:size-icon-md h-full items-center justify-center gap-1.5 rounded-control-inner px-2",
+        icons:
+          "[&_svg]:size-icon-md h-full w-control-md shrink-0 items-center justify-center rounded-control-inner focus-visible:ring-inset",
         shell:
           "[&_svg]:size-icon-md h-full items-center justify-center gap-1.5 rounded-control-inner px-2",
         "catalog-form": "segmented-control-catalog-form-option catalog-focus",
@@ -97,6 +109,7 @@ type SegmentedControlProps<T extends string> = VariantProps<
   ariaLabel: string;
   className?: string;
   disabled?: boolean;
+  trailingAction?: { content: ReactNode; selected?: boolean };
 };
 
 export function SegmentedControl<T extends string>({
@@ -108,14 +121,18 @@ export function SegmentedControl<T extends string>({
   onValueChange,
   options,
   size,
+  trailingAction,
   value,
 }: SegmentedControlProps<T>) {
+  const iconOnly = appearance === "icons";
+  const isShell = iconOnly || appearance === "shell";
   const isSegments =
-    appearance === "segments" ||
-    appearance === "shell" ||
-    appearance === "catalog-form";
-  const controlSize = appearance === "catalog-form" ? null : size;
+    isShell || appearance === "segments" || appearance === "catalog-form";
+  const controlSize = iconOnly || appearance === "catalog-form" ? null : size;
   const segmentRefs = useRef(new Map<string, HTMLButtonElement>());
+  const tabStop = options.some((option) => option.value === value)
+    ? value
+    : options.find((option) => !option.disabled)?.value;
 
   const moveSelection = (
     event: KeyboardEvent<HTMLButtonElement>,
@@ -152,9 +169,106 @@ export function SegmentedControl<T extends string>({
     segmentRefs.current.get(target.option.value)?.focus();
   };
 
-  return (
+  const groupProps = {
+    role: "radiogroup",
+    "aria-label": ariaLabel,
+    "aria-disabled": disabled || undefined,
+  };
+  const optionElements = options.map((option, index) => {
+    const selected = option.value === value;
+    if (appearance === "resources") {
+      return (
+        <OverviewCard
+          key={option.value}
+          ref={(node) => {
+            if (node) segmentRefs.current.set(option.value, node);
+            else segmentRefs.current.delete(option.value);
+          }}
+          role="radio"
+          aria-checked={selected}
+          selected={selected}
+          label={option.label}
+          icon={option.icon}
+          description={option.description}
+          disabled={disabled || option.disabled}
+          tabIndex={option.value === tabStop ? 0 : -1}
+          onClick={() => onValueChange(option.value)}
+          onKeyDown={(event) => moveSelection(event, index)}
+        />
+      );
+    }
+    const button = (
+      <button
+        key={option.value}
+        ref={(node) => {
+          if (node) segmentRefs.current.set(option.value, node);
+          else segmentRefs.current.delete(option.value);
+        }}
+        type="button"
+        role="radio"
+        aria-label={
+          appearance === "cards" || iconOnly ? option.label : undefined
+        }
+        aria-description={
+          appearance === "cards" ? option.description : undefined
+        }
+        aria-checked={selected}
+        disabled={disabled || option.disabled}
+        tabIndex={option.value === tabStop ? 0 : -1}
+        onClick={() => onValueChange(option.value)}
+        onKeyDown={(event) => moveSelection(event, index)}
+        className={cn(
+          segmentedOptionVariants({
+            appearance,
+            size: controlSize,
+            distribution,
+          }),
+          appearance === "catalog-form"
+            ? null
+            : appearance === "underline"
+              ? selected
+                ? "text-content-primary font-medium"
+                : "text-content-secondary hover:text-content-primary"
+              : selected
+                ? cn(
+                    "text-content-primary font-medium",
+                    !isSegments && "bg-surface-raised",
+                  )
+                : isSegments
+                  ? "text-button-content opacity-70 [@media(hover:hover)_and_(pointer:fine)]:hover:opacity-90"
+                  : "text-button-content hover:bg-button-fill-hover active:bg-button-fill-pressed",
+          option.disabled &&
+            appearance !== "catalog-form" &&
+            "pointer-events-none opacity-45",
+        )}
+      >
+        {option.icon}
+        {appearance === "cards" ? (
+          <span className="grid min-w-0 gap-1">
+            <span className="type-body font-medium">{option.label}</span>
+            {option.description ? (
+              <span className="text-content-secondary type-ui">
+                {option.description}
+              </span>
+            ) : null}
+          </span>
+        ) : !iconOnly ? (
+          <span className="whitespace-nowrap">{option.label}</span>
+        ) : null}
+      </button>
+    );
+    return iconOnly ? (
+      <Tooltip key={option.value}>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
+        <TooltipContent>{option.label}</TooltipContent>
+      </Tooltip>
+    ) : (
+      button
+    );
+  });
+
+  const control = (
     <div
-      aria-disabled={disabled || undefined}
       className={cn(
         segmentedControlVariants({
           appearance,
@@ -166,91 +280,29 @@ export function SegmentedControl<T extends string>({
           "@[56rem]/resource-page:grid-cols-4",
         className,
       )}
-      role="radiogroup"
-      aria-label={ariaLabel}
+      {...(trailingAction ? {} : groupProps)}
     >
-      {options.map((option, index) => {
-        const selected = option.value === value;
-        if (appearance === "resources") {
-          return (
-            <OverviewCard
-              key={option.value}
-              ref={(node) => {
-                if (node) segmentRefs.current.set(option.value, node);
-                else segmentRefs.current.delete(option.value);
-              }}
-              role="radio"
-              aria-checked={selected}
-              selected={selected}
-              label={option.label}
-              icon={option.icon}
-              description={option.description}
-              disabled={disabled || option.disabled}
-              tabIndex={selected ? 0 : -1}
-              onClick={() => onValueChange(option.value)}
-              onKeyDown={(event) => moveSelection(event, index)}
-            />
-          );
-        }
-        return (
-          <button
-            key={option.value}
-            ref={(node) => {
-              if (node) segmentRefs.current.set(option.value, node);
-              else segmentRefs.current.delete(option.value);
-            }}
-            type="button"
-            role="radio"
-            aria-label={appearance === "cards" ? option.label : undefined}
-            aria-description={
-              appearance === "cards" ? option.description : undefined
-            }
-            aria-checked={selected}
-            disabled={disabled || option.disabled}
-            tabIndex={selected ? 0 : -1}
-            onClick={() => onValueChange(option.value)}
-            onKeyDown={(event) => moveSelection(event, index)}
+      {trailingAction ? (
+        <>
+          <div
+            className="flex shrink-0 items-stretch gap-[inherit]"
+            {...groupProps}
+          >
+            {optionElements}
+          </div>
+          <div
             className={cn(
-              segmentedOptionVariants({
-                appearance,
-                size: controlSize,
-                distribution,
-              }),
-              appearance === "catalog-form"
-                ? null
-                : appearance === "underline"
-                  ? selected
-                    ? "text-content-primary font-medium"
-                    : "text-content-secondary hover:text-content-primary"
-                  : selected
-                    ? cn(
-                        "text-content-primary font-medium",
-                        !isSegments && "bg-surface-raised",
-                      )
-                    : isSegments
-                      ? "text-button-content opacity-70 [@media(hover:hover)_and_(pointer:fine)]:hover:opacity-90"
-                      : "text-button-content hover:bg-button-fill-hover active:bg-button-fill-pressed",
-              option.disabled &&
-                appearance !== "catalog-form" &&
-                "pointer-events-none opacity-45",
+              "relative isolate flex shrink-0 [&>button:focus-visible]:ring-offset-0 [&>button:focus-visible]:ring-inset",
+              trailingAction.selected &&
+                "before:rounded-control-inner before:pointer-events-none before:absolute before:inset-x-0 before:inset-y-1.5 before:-z-10 before:bg-(--shell-tabs-pill)",
             )}
           >
-            {option.icon}
-            {appearance === "cards" ? (
-              <span className="grid min-w-0 gap-1">
-                <span className="type-body font-medium">{option.label}</span>
-                {option.description ? (
-                  <span className="text-content-secondary type-ui">
-                    {option.description}
-                  </span>
-                ) : null}
-              </span>
-            ) : (
-              <span className="whitespace-nowrap">{option.label}</span>
-            )}
-          </button>
-        );
-      })}
+            {trailingAction.content}
+          </div>
+        </>
+      ) : (
+        optionElements
+      )}
       {isSegments ? (
         <SegmentedControlHighlight
           optionRefs={segmentRefs}
@@ -268,7 +320,7 @@ export function SegmentedControl<T extends string>({
               distribution,
             }),
             "text-content-primary pointer-events-none absolute inset-0 w-full",
-            appearance === "shell" || appearance === "catalog-form"
+            isShell || appearance === "catalog-form"
               ? "bg-transparent"
               : "bg-surface-raised",
           )}
@@ -278,17 +330,32 @@ export function SegmentedControl<T extends string>({
               <span
                 key={option.value}
                 className={cn(
-                  segmentedOptionVariants({ appearance, size, distribution }),
+                  segmentedOptionVariants({
+                    appearance,
+                    size: controlSize,
+                    distribution,
+                  }),
                   option.value === value && "font-medium",
                   option.disabled && "opacity-45",
                 )}
               >
                 {option.icon}
-                <span className="whitespace-nowrap">{option.label}</span>
+                {!iconOnly ? (
+                  <span className="whitespace-nowrap">{option.label}</span>
+                ) : null}
               </span>
             ))}
         </SegmentedControlHighlight>
       ) : null}
     </div>
+  );
+  return iconOnly ? (
+    <TooltipProvider>
+      <div className="scrollbar-hidden max-w-full min-w-0 overflow-x-auto">
+        {control}
+      </div>
+    </TooltipProvider>
+  ) : (
+    control
   );
 }

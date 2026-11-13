@@ -1,11 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { GlobalEventObserver } from "@/shared/api/global-events";
 import { i18n } from "@/shared/i18n";
+import type { ChatAttention } from "@/modules/workspaceattention";
 
 import type { PartnerNavigationPreferences } from "./partner-navigation-preferences";
 import { TeamChatTree, TeamMemberMenu } from "./team-context-sidebar";
@@ -15,12 +17,26 @@ import {
 } from "@/shared/workspace/workspace-context";
 
 const fixture = vi.hoisted(() => ({
+  activity: undefined as "running" | "waiting" | "idle" | undefined,
+  observers: new Set<GlobalEventObserver>(),
   remove: vi.fn(
     async (request: { path: { channelId: string; threadId: string } }) => {
       void request;
       return {};
     },
   ),
+}));
+
+vi.mock(import("@/shared/api/global-events"), async (importOriginal) => ({
+  ...(await importOriginal()),
+  subscribeGlobalEvents: (
+    _topic: string,
+    _resource: unknown,
+    observer: GlobalEventObserver,
+  ) => {
+    fixture.observers.add(observer);
+    return () => fixture.observers.delete(observer);
+  },
 }));
 
 vi.mock("@/modules/team/api/channel-queries", () => ({
@@ -118,6 +134,7 @@ vi.mock("@/modules/team/api/channel-queries", () => ({
         { id: "thread-temp-empty", title: "无路径团队" },
         {
           id: "thread-1",
+          activityState: fixture.activity,
           projectId: "project-1",
           projectName: "NeuxBot",
           title: "研发会话",
@@ -142,9 +159,11 @@ const initialPreferences: PartnerNavigationPreferences = {
 };
 
 function SidebarHarness({
+  attention,
   threadId,
   view = "members",
 }: {
+  attention?: ChatAttention[];
   threadId?: string | null;
   view?: "chats" | "members";
 } = {}) {
@@ -156,6 +175,7 @@ function SidebarHarness({
     <>
       {view === "chats" ? (
         <TeamChatTree
+          attention={attention}
           channelId="team-1"
           onPreferencesChange={setPreferences}
           preferences={preferences}
@@ -267,6 +287,93 @@ describe("团队导航菜单", () => {
     expect(screen.getByLabelText("location")).toHaveTextContent(
       "/teams/team-1",
     );
+  });
+
+  it("团队历史按同一团队的活动变化刷新会话状态点", async () => {
+    fixture.activity = "running";
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/teams/team-1/threads/thread-1"]}>
+          <SidebarHarness view="chats" />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    try {
+      const link = await screen.findByRole("link", { name: /研发会话/ });
+      const dot = () => link.querySelector("[data-history-status]");
+      expect(dot()).toHaveAttribute("data-history-status", "running");
+      fixture.activity = "waiting";
+      act(() => {
+        for (const observer of fixture.observers)
+          observer.onEvent({
+            protocolVersion: 1,
+            epoch: "core",
+            connectionId: "connection",
+            deliverySequence: 1,
+            topic: "entities",
+            type: "entities.activity.changed",
+            resource: { kind: "channel", id: "team-1" },
+            eventId: "updated",
+            payload: { kind: "team_thread", id: "thread-1" },
+          });
+      });
+      await waitFor(() =>
+        expect(dot()).toHaveAttribute("data-history-status", "waiting"),
+      );
+      expect(dot()).toHaveClass("bg-warning");
+      expect(link.querySelector("svg")).toBeNull();
+    } finally {
+      view.unmount();
+      fixture.activity = undefined;
+    }
+  });
+
+  it("团队历史优先显示提问，处理完成后显示原来的未读", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const sidebar = (requestKinds: string[]) => (
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/teams/team-1/threads/thread-1"]}>
+          <SidebarHarness
+            view="chats"
+            attention={[
+              {
+                work: { id: "thread-1" },
+                requestKinds,
+                unreadMessageCount: 2,
+                requests: requestKinds.map((kind) => ({
+                  kind,
+                  ownerKind: "team_thread" as const,
+                  ownerId: "thread-1",
+                  channelId: "team-1",
+                  chatId: "lead-chat",
+                  requestId: `request-${kind}`,
+                  requestSequence: kind === "approval" ? 1 : 2,
+                })),
+              },
+            ]}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const view = render(sidebar(["approval", "input"]));
+    const row = await screen.findByRole("link", { name: /研发会话/ });
+    expect(
+      row.querySelector(".lucide-message-circle-question-mark"),
+    ).toBeInTheDocument();
+    expect(row).not.toHaveTextContent("2");
+    expect(row).toHaveAttribute(
+      "href",
+      expect.stringContaining("request=request-input"),
+    );
+    view.rerender(sidebar([]));
+    expect(
+      row.querySelector("[data-conversation-attention=unread]"),
+    ).toHaveTextContent("2");
   });
 
   it("菜单只展示成员列表，并从侧栏打开成员 Tab", async () => {

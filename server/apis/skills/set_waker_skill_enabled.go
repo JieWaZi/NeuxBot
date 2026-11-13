@@ -4,8 +4,6 @@ import (
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/global"
-	"github.com/JieWaZi/NeuxBot/server/internal/util"
-	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -31,17 +29,15 @@ type SetSkillEnabledRequest struct {
 func (s *SetWakerSkillEnabled) Path() string { return "/:wakerId/skills/:skillId/enabled" }
 
 // Output 保存技能启停关系。
+// @err[SkillNotFound][40400000007][技能未安装]
 func (s *SetWakerSkillEnabled) Output(ctx *gin.Context) (interface{}, error) {
-	if _, err := global.WakerControllerManager.Get(ctx, strings.TrimSpace(s.WakerID)); err != nil {
+	wakerID, skillID := strings.TrimSpace(s.WakerID), strings.TrimSpace(s.SkillID)
+	if _, err := global.WakerControllerManager.Get(ctx, wakerID); err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	if _, err := resourceSkill(ctx, strings.TrimSpace(s.WakerID), strings.TrimSpace(s.SkillID)); err != nil {
+	if err := global.SkillControllerManager.SetWakerSkillEnabled(ctx, wakerID, skillID, s.Body.Enabled); err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	err := global.SkillControllerManager.UpsertWakerSkill(ctx, models.WakerSkill{ID: util.New(), WakerID: s.WakerID, SkillPackageID: s.SkillID, Enabled: s.Body.Enabled})
-	if err != nil {
-		return nil, ginx.WithStack(err)
-	}
-	notifyResourceChanged(ctx, s.SkillID)
+	notifyResourceChanged(ctx, skillID)
 	return ginx.CommonSuccessResponse(), nil
 }

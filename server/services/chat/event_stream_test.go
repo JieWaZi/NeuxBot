@@ -55,7 +55,7 @@ func TestSubscriptionHubReplaysLatestLiveSnapshotToNewSubscriber(t *testing.T) {
 		Live:      &eventstream.LiveMessageIncrement{Generation: "test-generation", Sequence: 1, MessageID: "assistant-1", BaseRevision: 1, Revision: 2, Updates: []messageview.MessageIncrement{{BaseRevision: 1, Revision: 2}}},
 	})
 
-	_, listener := hub.add("event-1", "")
+	_, listener, _ := hub.add(t.Context(), "event-1", "")
 	select {
 	case event := <-listener:
 		if event.Live == nil || event.Live.Live == nil {
@@ -79,7 +79,7 @@ func TestSubscriptionHubClearsLatestLiveSnapshotAtExecutionTerminal(t *testing.T
 		{Type: constants.ChatEventTypeExecutionCompleted},
 	})
 
-	_, listener := hub.add("event-1", "")
+	_, listener, _ := hub.add(t.Context(), "event-1", "")
 	select {
 	case event := <-listener:
 		t.Fatalf("replayed event after terminal = %+v", event)
@@ -152,14 +152,14 @@ func TestSubscriptionHubReplaysUncoveredIncrementSuffixAtomically(t *testing.T) 
 	}
 	publish(1, 3, 4, "a")
 	publish(2, 4, 5, "b")
-	_, listener := hub.add("chat", "")
+	_, listener, _ := hub.add(t.Context(), "chat", "")
 	replay := <-listener
 	if replay.Live == nil || replay.Live.Message != nil || replay.Live.Live.Sequence != 2 || len(replay.Live.Live.Updates) != 2 || replay.Live.Live.BaseRevision != 3 {
 		t.Fatalf("invalid replay suffix: %+v", replay.Live)
 	}
 	data, _ := eventlog.MarshalData(eventlog.RuntimeMessageData{MessageRevision: 4})
 	hub.publishCommitted("chat", []eventlog.Record{{Type: constants.ChatEventTypeAssistantMessage, MessageID: "message", Data: data}})
-	_, listener = hub.add("chat", "")
+	_, listener, _ = hub.add(t.Context(), "chat", "")
 	replay = <-listener
 	if replay.Live.Live.Sequence != 2 || replay.Live.Live.BaseRevision != 4 || len(replay.Live.Live.Updates) != 1 || replay.Live.Live.Updates[0].Parts[0].Text != "b" {
 		t.Fatalf("durable handover kept covered prefix: %+v", replay.Live.Live)
@@ -174,7 +174,7 @@ func TestSubscriptionHubBoundsMetadataOnlyRecoveryWithoutLosingLatestUsage(t *te
 	if len(hub.latestLive["chat"]) != 1 {
 		t.Fatalf("metadata recovery retained %d frames", len(hub.latestLive["chat"]))
 	}
-	_, listener := hub.add("chat", "")
+	_, listener, _ := hub.add(t.Context(), "chat", "")
 	replay := <-listener
 	if replay.Live.Live.Sequence != 1000 || replay.Live.Live.BaseRevision != 3 || replay.Live.Live.Updates[0].RunMetrics.OutputTokens != 1000 {
 		t.Fatalf("metadata recovery lost latest usage: %+v", replay.Live.Live)
@@ -186,9 +186,12 @@ func TestSubscriptionHubOverflowRequiresCoveredBaselineBeforeReplay(t *testing.T
 	for i := int64(1); i <= subscriberBufferSize; i++ {
 		hub.publishLive("chat", eventstream.PublicEvent{Transient: true, Live: &eventstream.LiveMessageIncrement{Generation: "generation", Sequence: i, MessageID: "message", BaseRevision: i, Revision: i + 1, Updates: []messageview.MessageIncrement{{BaseRevision: i, Revision: i + 1, Parts: []messageview.MessagePartIncrement{{Kind: constants.MessageIncrementTextAppend, PartID: "body", PartType: constants.MessageDisplayPartText, Text: "a"}}}}}})
 	}
-	_, listener := hub.add("chat", "")
+	_, listener, streamContext := hub.add(t.Context(), "chat", "")
 	if _, open := <-listener; open {
 		t.Fatal("overflow replay exposed an unprovable suffix")
+	}
+	if streamContext.Err() == nil || len(hub.subscribers) != 0 {
+		t.Fatal("rejected replay retained its subscriber")
 	}
 	data, _ := eventlog.MarshalData(eventlog.RuntimeMessageData{MessageRevision: subscriberBufferSize + 1})
 	hub.publishCommitted("chat", []eventlog.Record{{Type: constants.ChatEventTypeAssistantMessage, MessageID: "message", Data: data}})
@@ -197,12 +200,32 @@ func TestSubscriptionHubOverflowRequiresCoveredBaselineBeforeReplay(t *testing.T
 	}
 }
 
+func TestSubscriptionHubEvictionStopsBlockedForwarding(t *testing.T) {
+	hub := newSubscriptionHub()
+	_, _, streamContext := hub.add(t.Context(), "chat", "")
+	forwarded := make(chan bool, 1)
+	go func() {
+		forwarded <- sendPublicEvent(streamContext, make(chan PublicEvent), PublicEvent{})
+	}()
+	for version := 1; version <= subscriberBufferSize+1; version++ {
+		hub.publishCheckpoint("chat", int64(version))
+	}
+	select {
+	case delivered := <-forwarded:
+		if delivered || len(hub.subscribers) != 0 {
+			t.Fatal("evicted subscriber remained registered or delivered to a blocked consumer")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("evicted subscriber could not stop blocked forwarding")
+	}
+}
+
 func TestSubscriptionHubRecoveryFramesStayBoundedAndContinueLiveSequence(t *testing.T) {
 	hub := newSubscriptionHub()
 	for i := int64(1); i <= 100; i++ {
 		hub.publishLive("chat", eventstream.PublicEvent{Transient: true, Live: &eventstream.LiveMessageIncrement{Generation: "generation", Sequence: i, MessageID: "message", BaseRevision: i, Revision: i + 1, Updates: []messageview.MessageIncrement{{BaseRevision: i, Revision: i + 1, Parts: []messageview.MessagePartIncrement{{Kind: constants.MessageIncrementTextAppend, PartID: "body", PartType: constants.MessageDisplayPartText, Text: strings.Repeat("x", 1024)}}}}}})
 	}
-	_, listener := hub.add("chat", "")
+	_, listener, _ := hub.add(t.Context(), "chat", "")
 	previous, bodyBytes := int64(0), 0
 	for {
 		event := <-listener

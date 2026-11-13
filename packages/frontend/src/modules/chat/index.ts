@@ -38,6 +38,7 @@ export {
   ChatHistoryPopover,
   ChatHistoryPanelSurface,
   ChatHistoryNavigationRow,
+  ChatHistoryRowStatus,
 } from "./components/chat-history-navigation";
 export { ChatGroupHeader } from "./components/chat-group-header";
 
@@ -55,5 +56,6 @@ export type {
 export type { WorkbenchContentReference } from "./workbench/workbench-model";
 
 export { ChatComposerPanel } from "./components/chat-composer-panel";
+export { NewChatComposer } from "./components/new-chat-composer";
 
 export type { ChatMessageSource } from "./runtime/chat-projection";

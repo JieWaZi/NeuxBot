@@ -103,15 +103,16 @@ describe("消息错误卡片", () => {
       <ChatErrorCard
         id="execution:old"
         execution
+        readingMessageId="failed-message"
         historical
         message="额度已用尽"
       />,
     );
     expect(screen.queryByText("额度已用尽")).not.toBeInTheDocument();
-    expect(container.querySelector("[data-work-result-body]")).toBeNull();
+    expect(container.querySelector("[data-chat-readable-body]")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "展开失败详情" }));
     expect(screen.getByText("额度已用尽")).toBeInTheDocument();
-    expect(container.querySelector("[data-work-result-body]")).not.toBeNull();
+    expect(container.querySelector("[data-chat-readable-body]")).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "收起失败详情" }));
     expect(screen.queryByText("额度已用尽")).not.toBeInTheDocument();
     expect(
@@ -121,7 +122,12 @@ describe("消息错误卡片", () => {
 
   it("关闭当前执行错误只收起，仍能展开查看", () => {
     render(
-      <ChatErrorCard id="execution:current" execution message="执行失败原因" />,
+      <ChatErrorCard
+        id="execution:current"
+        execution
+        readingMessageId="failed-message"
+        message="执行失败原因"
+      />,
     );
     expect(screen.getByRole("alert")).toHaveTextContent("执行失败原因");
     fireEvent.click(screen.getByRole("button", { name: "收起失败详情" }));
@@ -173,6 +179,25 @@ describe("消息错误卡片", () => {
     expect(
       screen.getByRole("button", { name: "关闭错误提示" }),
     ).toBeInTheDocument();
+  });
+
+  it("输入框提示把刷新消息和关闭放在错误文案同一行", () => {
+    render(
+      <ChatErrorCard
+        id="composer-check-position"
+        appearance="composer"
+        message="智能体执行失败"
+        onRetry={() => undefined}
+        actionLabel="刷新消息"
+      />,
+    );
+    const row = screen.getByText("智能体执行失败").parentElement?.parentElement;
+    expect(row).toContainElement(
+      screen.getByRole("button", { name: "刷新消息" }),
+    );
+    expect(row).toContainElement(
+      screen.getByRole("button", { name: "关闭错误提示" }),
+    );
   });
 
   it("结构化会话错误展示可读原因，原始 JSON 仅在详情展开后可见", () => {

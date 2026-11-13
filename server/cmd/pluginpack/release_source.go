@@ -25,7 +25,7 @@ type releaseSource struct {
 }
 
 // freezeReleaseSource 先取得独立快照，再绑定原包摘要与后续全部生成输入。
-func freezeReleaseSource(source, destination, expected string) (releaseSource, error) {
+func freezeReleaseSource(source, destination, expected string, copyTree func(string, string, string) error) (releaseSource, error) {
 	empty := releaseSource{}
 	if err := validatePublishSource(source, false); err != nil {
 		return empty, err
@@ -40,7 +40,7 @@ func freezeReleaseSource(source, destination, expected string) (releaseSource, e
 	if err := os.Mkdir(destination, 0700); err != nil {
 		return empty, status_error.PluginStorageError
 	}
-	if err := plugins.CopyDeliveryTreeWithDigest(source, destination, before); err != nil {
+	if err := copyTree(source, destination, before); err != nil {
 		return empty, err
 	}
 	frozen, err := plugins.ContentDigest(destination)

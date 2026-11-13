@@ -1,35 +1,65 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, FilePenLine } from "lucide-react";
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useState } from "react";
 import { ContentVisibility } from "@/shared/lib/content-visibility";
-import { observeViewportActivation } from "@/shared/lib/viewport-activation";
 import { useTranslation } from "react-i18next";
 
 import { useFileReferenceContext } from "@/shared/workspace/file-reference-link";
 import { Button } from "@/shared/ui/button";
-import { Card } from "@/shared/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { getChatMessageFileChangesOptions } from "../api/chat-queries";
 import type { AllyChatMessage } from "../runtime/chat-projection";
 import type { ChatFileChangeOpenRequest } from "./chat-thread";
+
+type ExecutionFileChangesProps = {
+  message: AllyChatMessage;
+  chatId?: string;
+  onOpenFile?: (file: ChatFileChangeOpenRequest) => void;
+};
+
+/** 消息操作栏只展示入口，展开后才挂载摘要。 */
+export function ExecutionFileChangesAction(props: ExecutionFileChangesProps) {
+  const { t } = useTranslation("chat");
+  const active = useContext(ContentVisibility);
+  if (!active) return null;
+  const label = t("fileChanges.label");
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label={label}
+          title={label}
+        >
+          <FilePenLine aria-hidden="true" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        width="wide"
+        className="p-0"
+        aria-label={label}
+      >
+        <ExecutionFileChangesCard {...props} />
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 /** 消息只持有成果引用，摘要以版本作为缓存身份，文件内容在打开时读取。 */
 export function ExecutionFileChangesCard({
   message,
   chatId,
-  visible = false,
   onOpenFile,
-}: {
-  message: AllyChatMessage;
-  chatId?: string;
-  visible?: boolean;
-  onOpenFile?: (file: ChatFileChangeOpenRequest) => void;
-}) {
+}: ExecutionFileChangesProps) {
   const { t } = useTranslation("chat");
   const scope = useFileReferenceContext();
   const active = useContext(ContentVisibility);
@@ -38,20 +68,6 @@ export function ExecutionFileChangesCard({
   // 授权范围与采集状态不是编辑证据；确认有净变更后才展示文件成果。
   const empty =
     reference?.state === "pending" || (reference?.totalFiles ?? 0) <= 0;
-  const element = useRef<HTMLElement>(null);
-  const [activated, setActivated] = useState(false);
-  useEffect(() => {
-    if (
-      !reference ||
-      empty ||
-      !visible ||
-      !active ||
-      activated ||
-      !element.current
-    )
-      return;
-    return observeViewportActivation(element.current, () => setActivated(true));
-  }, [visible, active, activated, empty, reference]);
   const [expanded, setExpanded] = useState(false);
   const options = getChatMessageFileChangesOptions({
     path: { chatId: owner ?? "", messageId: message.id ?? "" },
@@ -64,18 +80,12 @@ export function ExecutionFileChangesCard({
         tags: [reference?.recordId ?? "", String(reference?.version ?? 0)],
       },
     ],
-    enabled:
-      visible &&
-      active &&
-      activated &&
-      !empty &&
-      Boolean(owner && message.id && reference) &&
-      reference?.state !== "pending",
+    enabled: active && !empty && Boolean(owner && message.id && reference),
     staleTime: Infinity,
     retry: false,
     throwOnError: false,
   });
-  if (!visible || !reference || empty) return null;
+  if (!reference || empty) return null;
   const files = summary.data?.files ?? [];
   // 明细按需读取不改变采集状态；切换会话时保留已确认的成果与文件数。
   const state = summary.data?.state ?? reference.state;
@@ -134,177 +144,161 @@ export function ExecutionFileChangesCard({
     </Button>
   );
   return (
-    <Card
-      asChild
-      className="border-border-subtle bg-surface-scene mt-3 gap-0 overflow-hidden border py-0"
+    <section
+      data-file-change-record-id={reference.recordId}
+      data-file-change-record-version={reference.version}
+      aria-label={t("fileChanges.title", { count })}
     >
-      <section
-        ref={element}
-        data-work-result-body={
-          (summary.data && !summary.isPending) ||
-          state === "unavailable" ||
-          state === "incomplete"
-            ? true
-            : undefined
-        }
-        data-file-change-record-id={reference.recordId}
-        data-file-change-record-version={reference.version}
-        aria-label={t("fileChanges.title", { count })}
-      >
-        <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-          <span className="text-muted-foreground shrink-0 rounded-lg p-2">
-            <FilePenLine className="size-icon-lg" aria-hidden="true" />
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+        <div className="min-w-0 flex-1 basis-24">
+          <span className="type-label font-medium">
+            {state === "unavailable" || summary.isError
+              ? t("fileChanges.unavailable")
+              : state === "incomplete" || (state === "partial" && count === 0)
+                ? t("fileChanges.incomplete")
+                : state === "pending"
+                  ? t("fileChanges.pending")
+                  : t("fileChanges.title", { count })}
           </span>
-          <div className="min-w-0 flex-1 basis-24">
-            <span className="type-label font-medium">
-              {state === "unavailable" || summary.isError
-                ? t("fileChanges.unavailable")
-                : state === "incomplete" || (state === "partial" && count === 0)
-                  ? t("fileChanges.incomplete")
-                  : state === "pending"
-                    ? t("fileChanges.pending")
-                    : t("fileChanges.title", { count })}
+          {totals ? (
+            <div className="type-body mt-0.5 flex gap-2 tabular-nums">
+              <span className="text-success">+{totals.added}</span>
+              <span className="text-destructive">-{totals.deleted}</span>
+            </div>
+          ) : null}
+          {incomplete ? (
+            <span className="type-caption text-muted-foreground block">
+              {t("fileChanges.partial")}
             </span>
-            {totals ? (
-              <div className="type-body mt-0.5 flex gap-2 tabular-nums">
-                <span className="text-success">+{totals.added}</span>
-                <span className="text-destructive">-{totals.deleted}</span>
-              </div>
-            ) : null}
-            {incomplete ? (
-              <span className="type-caption text-muted-foreground block">
-                {t("fileChanges.partial")}
-              </span>
-            ) : null}
-          </div>
-          {onOpenFile ? (
-            files.length > 1 ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  {viewChangesAction}
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  aria-label={t("fileChanges.viewChanges")}
-                >
-                  {files.map((file) => (
-                    <DropdownMenuItem
-                      key={`${file.rootId}:${file.path}`}
-                      onSelect={() => openFile(file)}
-                      title={file.absolutePath ?? file.path}
-                    >
-                      <span className="min-w-0 truncate">
-                        {file.path || file.absolutePath}
-                      </span>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              viewChangesAction
-            )
           ) : null}
         </div>
-        {summary.isError ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="mx-3 mb-2"
-            onClick={() => void summary.refetch()}
-          >
-            {t("workspace.retry")}
-          </Button>
-        ) : null}
-        {rows.length ? (
-          <ul className="border-border-subtle border-t py-1">
-            {rows.map((file) => {
-              const path = file.absolutePath ?? file.path ?? "";
-              const displayPath = file.path || path;
-              const separator = Math.max(
-                displayPath.lastIndexOf("/"),
-                displayPath.lastIndexOf("\\"),
-              );
-              const directory = displayPath.slice(0, separator + 1);
-              const name = displayPath.slice(separator + 1);
-              const content = (
-                <>
-                  <span
-                    className="type-body flex min-w-0 items-baseline text-left"
-                    title={path}
+        {onOpenFile ? (
+          files.length > 1 ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                {viewChangesAction}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                aria-label={t("fileChanges.viewChanges")}
+              >
+                {files.map((file) => (
+                  <DropdownMenuItem
+                    key={`${file.rootId}:${file.path}`}
+                    onSelect={() => openFile(file)}
+                    title={file.absolutePath ?? file.path}
                   >
-                    {directory ? (
-                      <span className="text-muted-foreground truncate">
-                        {directory}
-                      </span>
-                    ) : null}
-                    <span className="max-w-full min-w-0 shrink-0 truncate">
-                      {name}
+                    <span className="min-w-0 truncate">
+                      {file.path || file.absolutePath}
                     </span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            viewChangesAction
+          )
+        ) : null}
+      </div>
+      {summary.isError ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="mx-3 mb-2"
+          onClick={() => void summary.refetch()}
+        >
+          {t("workspace.retry")}
+        </Button>
+      ) : null}
+      {rows.length ? (
+        <ul className="border-border-subtle border-t py-1">
+          {rows.map((file) => {
+            const path = file.absolutePath ?? file.path ?? "";
+            const displayPath = file.path || path;
+            const separator = Math.max(
+              displayPath.lastIndexOf("/"),
+              displayPath.lastIndexOf("\\"),
+            );
+            const directory = displayPath.slice(0, separator + 1);
+            const name = displayPath.slice(separator + 1);
+            const content = (
+              <>
+                <span
+                  className="type-body flex min-w-0 items-baseline text-left"
+                  title={path}
+                >
+                  {directory ? (
+                    <span className="text-muted-foreground truncate">
+                      {directory}
+                    </span>
+                  ) : null}
+                  <span className="max-w-full min-w-0 shrink-0 truncate">
+                    {name}
                   </span>
-                  <span className="type-body flex shrink-0 gap-2 tabular-nums">
-                    {file.added !== undefined ? (
-                      <span className="text-success">+{file.added}</span>
-                    ) : null}
-                    {file.deleted !== undefined ? (
-                      <span className="text-destructive">-{file.deleted}</span>
-                    ) : null}
-                    {file.content !== "text" ? (
-                      <span className="type-caption text-muted-foreground">
-                        {t(
-                          `fileChanges.${file.content === "binary" ? "binary" : file.content === "oversized" ? "oversized" : "unreadable"}`,
-                        )}
-                      </span>
-                    ) : null}
-                  </span>
-                </>
-              );
-              return (
-                <li key={`${file.rootId}:${file.path}`}>
-                  {onOpenFile ? (
-                    <button
-                      type="button"
-                      className="hover:bg-card-hover focus-visible:ring-ring min-h-control-md grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
-                      aria-label={t("fileChanges.openFile", { path })}
-                      onClick={() => openFile(file)}
-                    >
-                      {content}
-                    </button>
-                  ) : (
-                    <div className="min-h-control-md grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2">
-                      {content}
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        ) : null}
-        {files.length > 3 ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="mx-3 mb-2"
-            onClick={() => setExpanded((value) => !value)}
-          >
-            {expanded
-              ? t("fileChanges.showLess")
-              : t("fileChanges.showMore", {
-                  count: files.length - rows.length,
-                })}
-            <ChevronRight
-              className={expanded ? "rotate-90" : ""}
-              aria-hidden="true"
-            />
-          </Button>
-        ) : null}
-        {summary.data?.truncated ? (
-          <p className="type-caption text-muted-foreground px-3 pb-2">
-            {t("fileChanges.truncated")}
-          </p>
-        ) : null}
-      </section>
-    </Card>
+                </span>
+                <span className="type-body flex shrink-0 gap-2 tabular-nums">
+                  {file.added !== undefined ? (
+                    <span className="text-success">+{file.added}</span>
+                  ) : null}
+                  {file.deleted !== undefined ? (
+                    <span className="text-destructive">-{file.deleted}</span>
+                  ) : null}
+                  {file.content !== "text" ? (
+                    <span className="type-caption text-muted-foreground">
+                      {t(
+                        `fileChanges.${file.content === "binary" ? "binary" : file.content === "oversized" ? "oversized" : "unreadable"}`,
+                      )}
+                    </span>
+                  ) : null}
+                </span>
+              </>
+            );
+            return (
+              <li key={`${file.rootId}:${file.path}`}>
+                {onOpenFile ? (
+                  <button
+                    type="button"
+                    className="hover:bg-card-hover focus-visible:ring-ring min-h-control-md grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
+                    aria-label={t("fileChanges.openFile", { path })}
+                    onClick={() => openFile(file)}
+                  >
+                    {content}
+                  </button>
+                ) : (
+                  <div className="min-h-control-md grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2">
+                    {content}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+      {files.length > 3 ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="mx-3 mb-2"
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {expanded
+            ? t("fileChanges.showLess")
+            : t("fileChanges.showMore", {
+                count: files.length - rows.length,
+              })}
+          <ChevronRight
+            className={expanded ? "rotate-90" : ""}
+            aria-hidden="true"
+          />
+        </Button>
+      ) : null}
+      {summary.data?.truncated ? (
+        <p className="type-caption text-muted-foreground px-3 pb-2">
+          {t("fileChanges.truncated")}
+        </p>
+      ) : null}
+    </section>
   );
 }

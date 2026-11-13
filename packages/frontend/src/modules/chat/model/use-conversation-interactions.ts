@@ -4,7 +4,8 @@ import {
   resolveErrorNoticeRecovery,
 } from "@/shared/api/error-notices";
 import { i18n } from "@/shared/i18n";
-import { useCallback, useState } from "react";
+import { ApiError } from "@/shared/api/errors";
+import { useCallback, useRef, useState } from "react";
 
 import type { ApprovalSubmissionState } from "../components/chat-approval-card";
 import type { ElicitationSubmissionState } from "../components/chat-elicitation-card";
@@ -12,18 +13,17 @@ import type {
   ChatInvocationGuard,
   ChatScopeKey,
 } from "./conversation-identity";
-import type {
-  GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingApproval as PendingApproval,
-  GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingElicitation as PendingElicitation,
-} from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingApproval as PendingApproval } from "@/shared/api/generated/types.gen";
+import type { ChatPendingElicitation } from "../runtime/chat-projection";
 
 type ChatInteractionOptions = {
   chatId?: string;
   conversationKey: ChatScopeKey;
   guard: ChatInvocationGuard;
   onSettled: (chatId: string) => void;
+  onElicitationSettled?: () => void;
   pendingApprovals: readonly PendingApproval[];
-  pendingElicitations: readonly PendingElicitation[];
+  pendingElicitations: readonly ChatPendingElicitation[];
   queueKey: string;
   resolveApproval: (
     chatId: string,
@@ -56,6 +56,7 @@ export function useChatInteractions({
   conversationKey,
   guard,
   onSettled,
+  onElicitationSettled,
   pendingApprovals,
   pendingElicitations,
   queueKey,
@@ -66,6 +67,13 @@ export function useChatInteractions({
     useState<ApprovalSubmission>({ state: "idle" });
   const [elicitationSubmission, setElicitationSubmission] =
     useState<ElicitationSubmission>({ state: "idle" });
+  const inFlightElicitations = useRef(new Set<string>());
+  const elicitationInProgress =
+    elicitationSubmission.state !== "idle" &&
+    elicitationSubmission.conversationKey === conversationKey &&
+    pendingElicitations.some(
+      (item) => item.elicitationId === elicitationSubmission.elicitationId,
+    );
 
   const resolveApprovalChoice = useCallback(
     async (approvalId: string, optionId: string) => {
@@ -128,24 +136,33 @@ export function useChatInteractions({
       content: Record<string, unknown>,
       declined: boolean,
     ) => {
-      const currentIsSubmitting =
-        elicitationSubmission.state !== "idle" &&
-        elicitationSubmission.conversationKey === conversationKey &&
-        pendingElicitations.some(
-          (elicitation) =>
-            elicitation.elicitationId === elicitationSubmission.elicitationId,
-        );
-      if (!chatId || currentIsSubmitting) return;
+      if (
+        !chatId ||
+        elicitationInProgress ||
+        pendingElicitations[0]?.elicitationId !== elicitationId
+      )
+        return;
       const invocation = guard.capture(chatId, queueKey);
       if (!guard.isCurrent(invocation) || !invocation.chatId) return;
       const capturedChatId = invocation.chatId;
       const operation = `elicitation:${capturedChatId}:${elicitationId}`;
+      if (inFlightElicitations.current.has(operation)) return;
+      inFlightElicitations.current.add(operation);
       const recovery = captureErrorNoticeRecovery(operation);
       setElicitationSubmission({
         conversationKey: invocation.key,
         elicitationId,
         state: "submitting",
       });
+      const settleSubmission = (state: ElicitationSubmissionState) => {
+        if (!guard.isCurrent(invocation)) return;
+        setElicitationSubmission((current) =>
+          current.conversationKey === invocation.key &&
+          current.elicitationId === elicitationId
+            ? { ...current, state }
+            : current,
+        );
+      };
       try {
         await resolveElicitation(
           capturedChatId,
@@ -154,32 +171,30 @@ export function useChatInteractions({
           declined,
         );
         resolveErrorNoticeRecovery(recovery);
-        if (guard.isCurrent(invocation)) {
-          setElicitationSubmission({
-            conversationKey: invocation.key,
-            elicitationId,
-            state: "confirming",
-          });
-        }
+        onElicitationSettled?.();
+        settleSubmission("confirming");
       } catch (error) {
+        const resolvedElsewhere =
+          error instanceof ApiError &&
+          error.code === "ElicitationAlreadyResolved";
+        if (resolvedElsewhere) onElicitationSettled?.();
         reportChatError(
           error,
           `chat:${capturedChatId}`,
           i18n.t("errorActionFailed", { ns: "chat" }),
           operation,
         );
-        if (guard.isCurrent(invocation)) {
-          setElicitationSubmission({ state: "idle" });
-        }
+        settleSubmission(resolvedElsewhere ? "confirming" : "idle");
       } finally {
+        inFlightElicitations.current.delete(operation);
         onSettled(capturedChatId);
       }
     },
     [
       chatId,
-      conversationKey,
-      elicitationSubmission,
+      elicitationInProgress,
       guard,
+      onElicitationSettled,
       onSettled,
       pendingElicitations,
       queueKey,
@@ -193,12 +208,9 @@ export function useChatInteractions({
       approvalSubmission.approvalId === pendingApprovals[0]?.approvalId
         ? approvalSubmission.state
         : "idle",
-    elicitationSubmissionState:
-      elicitationSubmission.conversationKey === conversationKey &&
-      elicitationSubmission.elicitationId ===
-        pendingElicitations[0]?.elicitationId
-        ? elicitationSubmission.state
-        : "idle",
+    elicitationSubmissionState: elicitationInProgress
+      ? elicitationSubmission.state
+      : "idle",
     resolveApprovalChoice,
     resolveElicitationChoice,
   };

@@ -1,3 +1,4 @@
+import { captureChatOpenIntent } from "@/shared/api/chat-reading";
 import { SceneBreadcrumbs } from "@/shared/ui/scene-breadcrumbs";
 import {
   useInfiniteQuery,
@@ -265,18 +266,26 @@ export function WorkflowDetailPage() {
   const setSessionSelection = (
     sessionId: string | null,
     clearParam?: string,
+    openedChatId?: string,
   ) => {
     setSelectedSession(sessionId);
-    // 会话切换与清理通知定位共用一次导航，避免同一事件内的参数更新相互覆盖。
+    // 用户从创作历史打开已有会话时，在导航发生前冻结已知阅读代次。
+    const intent = openedChatId
+      ? captureChatOpenIntent(client, openedChatId)
+      : undefined;
     setParams(
       (previous) => {
         const next = new URLSearchParams(previous);
         next.delete("chat");
         next.delete("request");
+        next.delete("message");
         if (clearParam) next.delete(clearParam);
         return next;
       },
-      { replace: true, state: resourceState },
+      {
+        replace: true,
+        state: intent ? { ...resourceState, ...intent } : resourceState,
+      },
     );
   };
   const [closedChatIds, setClosedChatIds] = useState<string[]>([]);
@@ -1018,7 +1027,10 @@ export function WorkflowDetailPage() {
           onRefresh={() => detail.refetch().then(() => {})}
           onSelect={(sessionId) => {
             setChatExpanded(true);
-            setSessionSelection(sessionId, "revision");
+            const chatId = detail.data?.creationSessions?.find(
+              (item) => item.id === sessionId,
+            )?.chatId;
+            setSessionSelection(sessionId, "revision", chatId);
             setCreationDraft("");
           }}
           onDeleted={(sessionId, chatId) => {

@@ -20,8 +20,8 @@ import (
 type ListWorkBoard struct {
 	// MethodGet 声明只读 HTTP 方法。
 	ginx.MethodGet
-	// Mode 是 all、attention 或 results。
-	Mode string `in:"query" name:"mode" validate:"omitempty,oneof=all attention results"`
+	// Mode 是 all、action 或 awaiting_view。
+	Mode string `in:"query" name:"mode" validate:"omitempty,oneof=all action awaiting_view"`
 	// ExecutorID 是伙伴、团队或流程定义的原标识。
 	ExecutorID string `in:"query" name:"executorId" validate:"omitempty,len=32"`
 	// Source 是原入口来源。
@@ -52,6 +52,12 @@ type WorkBoardPage struct {
 	Resources []models.WorkBoardEntry `json:"resources"`
 	// Attention 是当前需要操作页，按等待最久优先。
 	Attention []models.WorkBoardAttention `json:"attention"`
+	// AwaitingView 是当前待查看页的原工作。
+	AwaitingView []models.WorkBoardEntry `json:"awaitingView"`
+	// AttentionMetrics 是各自独立的范围统计。
+	models.AttentionMetrics
+	// AttentionCompleteness 表示范围是否完整及原 Core 进程。
+	models.AttentionCompleteness
 	// HasMore 表示查询窗口之外仍存在候选。
 	HasMore bool `json:"hasMore"`
 	// NextCursor 是当前页最后一项的稳定身份。
@@ -67,9 +73,9 @@ func (d *ListWorkBoard) Validate(*gin.Context) error {
 		if raw == "" {
 			continue
 		}
-		if d.Mode == "attention" {
-			switch constants.NotificationKind(raw) {
-			case constants.NotificationKindApproval, constants.NotificationKindInput, constants.NotificationKindReview:
+		if d.Mode == "action" {
+			switch raw {
+			case "approval", "input", "review":
 				continue
 			default:
 				return status_error.BadRequest
@@ -147,60 +153,88 @@ func (d *ListWorkBoard) Output(ctx *gin.Context) (interface{}, error) {
 
 // readPage 在用例的同一事务内读取准确总量与当前页。
 func (d *ListWorkBoard) readPage(request context.Context, query controllers.WorkBoardQuery, limit int, cursor *controllers.WorkBoardCursor) (WorkBoardPage, error) {
-	var err error
-	page := WorkBoardPage{Resources: []models.WorkBoardEntry{}, Attention: []models.WorkBoardAttention{}}
-	if d.Mode == "attention" {
-		page.Attention, page.TotalSize, err = global.WorkBoardControllerManager.Attention(request, query)
-		if err != nil {
-			return WorkBoardPage{}, ginx.WithStack(err)
-		}
-		page.HasMore = len(page.Attention) > limit
+	page := WorkBoardPage{Resources: []models.WorkBoardEntry{}, Attention: []models.WorkBoardAttention{}, AwaitingView: []models.WorkBoardEntry{}}
+	board := global.WorkBoardControllerManager
+	attention := global.WorkspaceAttention
+	if attention.Isolated != nil {
+		query.IsolatedChats = attention.Isolated()
+	}
+	attentionQuery := query
+	attentionQuery.From, attentionQuery.To = 0, 0
+	readingQuery := attentionQuery
+	if d.Mode == "action" {
+		readingQuery.States = nil
+	}
+	metrics, missing, err := board.ReadingMetrics(request, constants.LocalReaderID, readingQuery)
+	if err != nil {
+		return page, err
+	}
+	page.AttentionMetrics = metrics
+	if d.Mode != "action" {
+		attentionQuery.Limit = 0
+	}
+	actions, pending, waiting, err := board.Attention(request, attentionQuery)
+	if err != nil {
+		return page, err
+	}
+	page.PendingRequestCount, page.WaitingWorkCount = pending, waiting
+	if d.Mode == "action" {
+		page.TotalSize = pending
+		page.Attention = append(page.Attention, actions[:min(limit, len(actions))]...)
+		page.HasMore = len(actions) > limit
 		if page.HasMore {
-			page.Attention = page.Attention[:limit]
-			v := page.Attention[limit-1]
+			v := actions[limit-1]
 			page.NextCursor = encodeCursor(controllers.WorkBoardCursor{At: v.CreatedAt, Kind: v.OwnerKind, ID: v.ID})
 		}
-	} else {
-		if d.Mode == "results" {
-			page.TotalSize, err = global.WorkBoardControllerManager.ResultCount(request, query)
-			if err != nil {
-				return WorkBoardPage{}, ginx.WithStack(err)
-			}
-			if page.TotalSize == 0 {
-				return page, nil
-			}
-			if cursor == nil && d.Page > 1 {
-				page.Resources, err = global.WorkBoardControllerManager.Page(request, query, true)
-			} else {
-				page.Resources, err = global.WorkBoardControllerManager.Results(request, query)
-			}
-		} else {
-			total, countErr := global.WorkBoardControllerManager.Count(request, query)
-			if countErr != nil {
-				return WorkBoardPage{}, ginx.WithStack(countErr)
-			}
-			page.TotalSize = total
-			if cursor == nil && d.Page > 1 {
-				page.Resources, err = global.WorkBoardControllerManager.Page(request, query, false)
-			} else {
-				page.Resources, err = global.WorkBoardControllerManager.List(request, query)
-			}
-		}
+		page.AttentionCompleteness, err = boardCompleteness(request, readingQuery, missing)
+		return page, err
+	}
+
+	var rows []models.WorkBoardEntry
+	switch d.Mode {
+	case "awaiting_view":
+		page.TotalSize = metrics.AwaitingViewWorkCount
+		rows, err = board.AwaitingView(request, constants.LocalReaderID, readingQuery)
+	default:
+		page.TotalSize, err = board.Count(request, query)
 		if err != nil {
-			return WorkBoardPage{}, ginx.WithStack(err)
+			return page, err
 		}
-		page.HasMore = len(page.Resources) > limit
-		if page.HasMore {
-			page.Resources = page.Resources[:limit]
-			v := page.Resources[limit-1]
-			page.NextCursor = encodeCursor(controllers.WorkBoardCursor{At: v.UpdatedAt, Kind: v.OwnerKind, ID: v.OwnerID})
+		if cursor == nil && d.Page > 1 {
+			rows, err = board.Page(request, query)
+		} else {
+			rows, err = board.List(request, query)
 		}
 	}
-	if page.Resources == nil {
-		page.Resources = []models.WorkBoardEntry{}
+	if err != nil {
+		return page, err
 	}
-	if page.Attention == nil {
-		page.Attention = []models.WorkBoardAttention{}
+	page.HasMore = len(rows) > limit
+	if page.HasMore {
+		rows = rows[:limit]
+		v := rows[limit-1]
+		page.NextCursor = encodeCursor(controllers.WorkBoardCursor{At: v.UpdatedAt, Kind: v.OwnerKind, ID: v.OwnerID})
 	}
-	return page, nil
+	if _, err := board.AttachReadings(request, constants.LocalReaderID, rows, query.IsolatedChats); err != nil {
+		return page, err
+	}
+	if d.Mode == "awaiting_view" {
+		page.AwaitingView = append(page.AwaitingView, rows...)
+	} else {
+		page.Resources = append(page.Resources, rows...)
+	}
+	page.AttentionCompleteness, err = boardCompleteness(request, readingQuery, missing)
+	return page, err
+}
+
+func boardCompleteness(ctx context.Context, query controllers.WorkBoardQuery, missing bool) (models.AttentionCompleteness, error) {
+	reason := ""
+	if missing {
+		reason = "isolated"
+	}
+	return global.WorkspaceAttention.Completeness(ctx, query, reason)
+}
+
+func validOwner(kind constants.WorkOwnerKind) bool {
+	return kind == constants.WorkOwnerKindChat || kind == constants.WorkOwnerKindTeamThread || kind == constants.WorkOwnerKindWorkflowRun || kind == "automatic_run"
 }

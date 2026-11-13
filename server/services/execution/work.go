@@ -21,7 +21,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
-	"github.com/JieWaZi/NeuxBot/server/internal/profile"
 	"github.com/JieWaZi/NeuxBot/server/internal/projectsource"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
@@ -257,6 +256,7 @@ func validCodeReferences(references []CodeReferenceInput) bool {
 func (m *service) startMessage(
 	ctx context.Context,
 	request pendingMessage,
+	claimAttachments func([]AttachmentInput) (func(bool), error),
 ) (AcceptedExecution, error) {
 	if request.requestedAt == 0 {
 		request.requestedAt = nowMillis()
@@ -292,6 +292,7 @@ func (m *service) startMessage(
 	}
 	if isNew != (request.create != nil) ||
 		isNew != (request.clientRequestID != "") ||
+		(!isNew && claimAttachments != nil) ||
 		request.message.Actor == "" ||
 		validateMessage(request.message.Text) != nil ||
 		request.runtime.RuntimeID == "" ||
@@ -310,6 +311,7 @@ func (m *service) startMessage(
 		}
 	}
 
+	var files *preparedMessageFiles
 	var createRequestIdentity requestidempotency.Identity
 	if isNew {
 		var err error
@@ -341,6 +343,14 @@ func (m *service) startMessage(
 			createRequestIdentity,
 		); err != nil || exists {
 			return replayed, err
+		}
+		if claimAttachments != nil {
+			// 已提交的请求只需原引用即可对账，新请求仍须领取实际附件。
+			releaseAttachments, err := claimAttachments(request.message.Attachments)
+			if err != nil {
+				return AcceptedExecution{}, err
+			}
+			defer func() { releaseAttachments(files != nil && files.committed) }()
 		}
 	}
 	if m.runtimeEnvironments == nil {
@@ -422,6 +432,19 @@ func (m *service) startMessage(
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
+	if !isNew && request.message.Actor == constants.WakerOnboardingActor {
+		if state.chat.HiddenFromWakerHistory || state.chat.ID != requestidempotency.WakerOnboardingChatID(state.chat.WakerID) {
+			return AcceptedExecution{}, status_error.AgentContextUnauthorized
+		}
+		waker, err := m.wakerController.Get(ctx, state.chat.WakerID)
+		if err != nil {
+			return AcceptedExecution{}, err
+		}
+		if waker.OnboardingStatus != constants.WakerOnboardingStatusPending || waker.OnboardingChatID != state.chat.ID ||
+			state.chat.ActiveExecutionID != "" || state.chat.LastEndedExecutionID == "" || state.chat.LastEndedExecutionID != request.parentExecutionID {
+			return AcceptedExecution{}, status_error.WakerOnboardingStateChanged
+		}
+	}
 	// 普通续聊只在同一 Runtime 中沿用最近有效选择；已接纳配置的空值不再继承默认。
 	config := ExecutionConfiguration{Resolved: request.runtime.ConfigurationResolved, RuntimeID: request.runtime.RuntimeID, AccountID: request.runtime.AccountID, Model: request.runtime.Model, Reasoning: request.runtime.Reasoning, Fast: request.runtime.Fast, PermissionLevel: requiredPermissionLevel}
 	if !config.Resolved && !state.isNew && state.chat.LastRuntimeID == config.RuntimeID && state.lastExecutionID != "" {
@@ -465,7 +488,7 @@ func (m *service) startMessage(
 		return AcceptedExecution{}, status_error.ChatHasActiveExecution
 	}
 	// 上下文和附件必须先完整准备，并在权威提交失败时统一回滚。
-	files, err := m.prepareMessageFiles(
+	files, err = m.prepareMessageFiles(
 		ctx,
 		state,
 		userMessageID,
@@ -769,8 +792,13 @@ func (m *service) resolveMessageChat(
 	if input.wakerID == "" || (input.projectID != "" && input.workingDirectory != "") {
 		return messageChat{}, status_error.BadRequest
 	}
-	if _, err := m.wakerController.Get(ctx, input.wakerID); err != nil {
+	waker, err := m.wakerController.Get(ctx, input.wakerID)
+	if err != nil {
 		return messageChat{}, err
+	}
+	isOnboarding := request.message.Actor == constants.WakerOnboardingActor
+	if isOnboarding != (waker.OnboardingChatID != "" && waker.OnboardingChatID == request.createChatID) {
+		return messageChat{}, status_error.AgentContextUnauthorized
 	}
 	resolvedWorkspace, err := m.resolveNewChatWorkspace(
 		ctx,
@@ -799,6 +827,10 @@ func (m *service) resolveMessageChat(
 	}
 
 	now := nowMillis()
+	title := defaultTitle(request.message.Text)
+	if isOnboarding {
+		title = waker.Name
+	}
 	chat := models.Chat{
 		HiddenFromWakerHistory:       input.hiddenFromWakerHistory,
 		ID:                           chatID,
@@ -807,7 +839,7 @@ func (m *service) resolveMessageChat(
 		ProjectName:                  resolvedWorkspace.projectName,
 		WorkspaceDirectory:           workspaceDirectory,
 		AdditionalWorkingDirectories: resolvedWorkspace.additionalDirectories,
-		Title:                        defaultTitle(request.message.Text),
+		Title:                        title,
 		ActiveExecutionID:            executionID,
 		LastAccountID:                request.runtime.AccountID,
 		LastRuntimeID:                request.runtime.RuntimeID,
@@ -1056,28 +1088,10 @@ func (m *service) prepareNativeInstructions(ctx context.Context, state messageCh
 	if err != nil {
 		return nil, err
 	}
-	profileContents, err := builtinrolepreset.ResolveWakerContents(
-		state.chat.WakerID,
-		storedDocuments,
-	)
-	if err != nil {
-		return nil, err
-	}
+	profileDocument := builtinrolepreset.ResolveWakerAgents(state.chat.WakerID, storedDocuments, 0)
 	instructions := []agent.Instruction{{Name: "Workspace directories", Content: "The working directory is persistent and may be shared by several chats of this partner. Organize your persistent files here as needed; no output or temporary subdirectory is required. Use the system temporary directory (TMPDIR or /tmp) for disposable intermediate files. User projects remain at their authorized absolute roots."}}
-	// 档案按固定业务顺序进入静态配置，避免相同内容因 map 遍历顺序变化重建原生会话。
-	for _, kind := range profile.EditableKinds() {
-		content, exists := profileContents[kind]
-		if !exists {
-			continue
-		}
-		fileName, ok := constants.ProfileDocumentFileName(kind)
-		if !ok {
-			fileName = constants.ProfileDocumentDefaultFileName
-		}
-		instructions = append(instructions, agent.Instruction{
-			Name:    fileName,
-			Content: content,
-		})
+	if profileDocument.Content != "" {
+		instructions = append(instructions, agent.Instruction{Name: profileDocument.FileName, Content: profileDocument.Content})
 	}
 	for _, source := range state.projectSources {
 		if !source.LoadInstructions {

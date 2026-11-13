@@ -6,9 +6,11 @@ import {
   type QueryKey,
   isCancelledError,
 } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   subscribeGlobalEvents,
+  getReadyEventEpoch,
+  type GlobalEventState,
   type GlobalEventResource,
   type GlobalEventTopic,
   type GlobalEventFrame,
@@ -18,6 +20,7 @@ type Consumer = {
   current: { active: boolean; queryKeys: readonly QueryKey[] };
   read?: () => Promise<unknown>;
   priority?: number;
+  authority?: boolean;
 };
 type Refresh = {
   query: Query;
@@ -29,6 +32,7 @@ type Refresh = {
   readingRevision?: number;
   completion?: Promise<void>;
   ownedFetch?: boolean;
+  failures?: number;
 };
 type RefreshOwner = {
   consumers: Set<Consumer>;
@@ -45,6 +49,57 @@ function matches(consumer: Consumer, query: Query) {
 
 function isPageFetch(query: Query) {
   return Boolean(query.state.fetchMeta?.fetchMore?.direction);
+}
+
+function requiresCompleteRead(refresh: Refresh) {
+  return [...refresh.dirty].some((consumer) => consumer.authority);
+}
+
+function authorityState(data: unknown): "complete" | "recovering" | "isolated" {
+  if (
+    data &&
+    typeof data === "object" &&
+    "pages" in data &&
+    Array.isArray(data.pages)
+  ) {
+    const states = data.pages.map(authorityState);
+    if (states.includes("recovering")) return "recovering";
+    if (states.includes("isolated")) return "isolated";
+  }
+  if (
+    data &&
+    typeof data === "object" &&
+    "complete" in data &&
+    data.complete === false
+  )
+    return "incompleteReason" in data && data.incompleteReason === "isolated"
+      ? "isolated"
+      : "recovering";
+  return "complete";
+}
+
+function shouldRetryAuthority(query: Query) {
+  return query.state.status === "error"
+    ? authorityState(query.state.error) !== "isolated"
+    : authorityState(query.state.data) === "recovering";
+}
+
+export function hasPendingQueryEventRefresh(
+  client: QueryClient,
+  queryKey: QueryKey,
+) {
+  const query = client.getQueryCache().find({ queryKey, exact: true });
+  return Boolean(
+    query &&
+    refreshOwners.get(client)?.queries.get(query.queryHash)?.dirty.size,
+  );
+}
+
+function completeRefresh(refresh: Refresh) {
+  refresh.dirty.clear();
+  refresh.failures = 0;
+  if (refresh.timer !== undefined) clearTimeout(refresh.timer);
+  refresh.timer = undefined;
 }
 
 /** 只保存失效调度与消费者身份；查询和业务事实仍由 Query Cache 唯一持有。 */
@@ -73,9 +128,21 @@ function acquireOwner(client: QueryClient): RefreshOwner {
         !isPageFetch(event.query) &&
         refresh.freshFetchRevision === refresh.revision
       ) {
-        refresh.dirty.clear();
-        if (refresh.timer !== undefined) clearTimeout(refresh.timer);
-        refresh.timer = undefined;
+        if (
+          !requiresCompleteRead(refresh) ||
+          (event.action.type === "success" &&
+            !event.action.manual &&
+            authorityState(event.query.state.data) === "complete")
+        )
+          completeRefresh(refresh);
+        else if (
+          !refresh.running &&
+          document.visibilityState === "visible" &&
+          shouldRetryAuthority(event.query)
+        ) {
+          refresh.failures = (refresh.failures ?? 0) + 1;
+          scheduleRefresh(client, current, refresh);
+        }
       }
       // 外部取消会以 setState 恢复 idle；被采纳的 GET 尚未完成原来的对账。
       if (
@@ -135,7 +202,11 @@ function scheduleRefresh(
       refresh.timer = undefined;
       void reconcile(client, owner, refresh).catch(() => {});
     },
-    immediate ? 0 : 250,
+    immediate
+      ? 0
+      : refresh.failures
+        ? Math.min(1000 * 2 ** (refresh.failures - 1), 30_000)
+        : 250,
   );
 }
 
@@ -187,30 +258,38 @@ function reconcile(
         .filter((consumer) => consumer.read)
         .sort((left, right) => (right.priority ?? 0) - (left.priority ?? 0))[0];
       if (read && command?.read) {
-        await client.invalidateQueries({ ...filters, refetchType: "none" });
+        if (!command.authority)
+          await client.invalidateQueries({ ...filters, refetchType: "none" });
         if (!alive() || !visible()) return;
         refresh.ownedFetch = true;
         await command.read();
-      } else {
+      } else if (!command?.authority) {
         refresh.ownedFetch = read;
         await client.invalidateQueries(
           { ...filters, refetchType: read ? "active" : "none" },
           { cancelRefetch: false },
         );
       }
-      if (read && refresh.revision === revision) refresh.dirty.clear();
+      if (read && refresh.revision === revision) {
+        if (!requiresCompleteRead(refresh)) completeRefresh(refresh);
+        else if (command && !command.authority) refresh.dirty.delete(command);
+      }
     } finally {
       refresh.ownedFetch = false;
       refresh.running = false;
       refresh.completion = undefined;
-      if (
-        alive() &&
-        refresh.dirty.size &&
-        visible() &&
-        (refresh.revision !== revision ||
-          refresh.freshFetchRevision === undefined)
-      )
-        scheduleRefresh(client, owner, refresh);
+      if (alive() && refresh.dirty.size && visible()) {
+        if (refresh.revision !== revision) {
+          scheduleRefresh(client, owner, refresh, true);
+        } else if (requiresCompleteRead(refresh)) {
+          if (shouldRetryAuthority(refresh.query)) {
+            refresh.failures = (refresh.failures ?? 0) + 1;
+            scheduleRefresh(client, owner, refresh);
+          }
+        } else if (refresh.freshFetchRevision === undefined) {
+          scheduleRefresh(client, owner, refresh);
+        }
+      }
     }
   };
   refresh.running = true;
@@ -347,6 +426,8 @@ export function useQueryEvents({
   enabled = true,
   eventTypes,
   eventFilter,
+  authority = false,
+  read,
 }: {
   topic: GlobalEventTopic;
   resource: GlobalEventResource;
@@ -355,9 +436,16 @@ export function useQueryEvents({
   enabled?: boolean;
   eventTypes?: readonly string[];
   eventFilter?: (frame: GlobalEventFrame) => boolean;
+  authority?: boolean;
+  /** 权威查询可提供自身的有界读取；它仍由原 owner 调度与核对。 */
+  read?: () => Promise<unknown>;
 }) {
   const client = useQueryClient();
   const current = useRef({ active, queryKeys, eventTypes, eventFilter });
+  const [connection, setConnection] = useState<{
+    state: GlobalEventState;
+    epoch?: string;
+  }>({ state: "connecting" });
   useEffect(() => {
     current.current = { active, queryKeys, eventTypes, eventFilter };
   }, [active, queryKeys, eventTypes, eventFilter]);
@@ -370,7 +458,14 @@ export function useQueryEvents({
   useEffect(() => {
     if (!enabled) return;
     const owner = acquireOwner(client);
-    owner.consumers.add(current);
+    const consumer: Consumer = {
+      get current() {
+        return current.current;
+      },
+      authority,
+      read,
+    };
+    owner.consumers.add(consumer);
     const refresh = (immediate = false) => {
       const queries = new Set(
         current.current.queryKeys.flatMap((queryKey) =>
@@ -383,7 +478,12 @@ export function useQueryEvents({
           pending = { query, dirty: new Set(), revision: 0, running: false };
           owner.queries.set(query.queryHash, pending);
         }
-        pending.dirty.add(current);
+        pending.dirty.add(consumer);
+        if (pending.failures && pending.timer !== undefined) {
+          clearTimeout(pending.timer);
+          pending.timer = undefined;
+        }
+        pending.failures = 0;
         pending.revision++;
         scheduleRefresh(client, owner, pending, immediate);
       }
@@ -392,13 +492,14 @@ export function useQueryEvents({
       if (!current.current.active || document.visibilityState !== "visible")
         return;
       for (const pending of owner.queries.values())
-        if (pending.dirty.has(current) && matches(current, pending.query))
+        if (pending.dirty.has(consumer) && matches(consumer, pending.query))
           scheduleRefresh(client, owner, pending, true);
     };
     restore.current = restoreVisible;
     const close = subscribeGlobalEvents(topic, resourceRef.current, {
       onEvent: (frame: GlobalEventFrame) => {
         if (frame.type === `${topic}.ready`) {
+          if (authority) setConnection({ state: "open", epoch: frame.epoch });
           refresh(true);
           return;
         }
@@ -426,17 +527,29 @@ export function useQueryEvents({
           return;
         refresh();
       },
-      onResync: () => refresh(),
+      onState: (state) => {
+        if (authority && state !== "open") setConnection({ state });
+      },
+      onResync: () => {
+        if (authority) {
+          const epoch = getReadyEventEpoch(topic, resourceRef.current);
+          setConnection(
+            epoch ? { state: "open", epoch } : { state: "connecting" },
+          );
+        }
+        refresh(true);
+      },
     });
     document.addEventListener("visibilitychange", restoreVisible);
     return () => {
       restore.current = undefined;
       document.removeEventListener("visibilitychange", restoreVisible);
       close();
-      releaseConsumer(client, owner, current);
+      releaseConsumer(client, owner, consumer);
     };
-  }, [client, enabled, resourceKey, topic]);
+  }, [authority, client, enabled, read, resourceKey, topic]);
   useEffect(() => {
     restore.current?.();
   }, [active, client]);
+  return connection;
 }

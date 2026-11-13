@@ -16,6 +16,13 @@ function subscribe<K extends keyof DesktopEvents>(
   ipcRenderer.on(`ally:${name}`, listener);
   return () => ipcRenderer.removeListener(`ally:${name}`, listener);
 }
+type AttentionOpen = DesktopEvents["workspace-attention-open"];
+const attentionHandlers = new Set<(target: AttentionOpen) => void>();
+let pendingAttention: AttentionOpen | undefined;
+subscribe("workspace-attention-open", (target) => {
+  if (!attentionHandlers.size) pendingAttention = target;
+  else for (const handler of attentionHandlers) handler(target);
+});
 const drops = new Set<(event: FileDropEvent) => void>();
 for (const [name, type] of [
   ["dragenter", "enter"],
@@ -74,10 +81,26 @@ const bridge: DesktopBridge = {
   browser_close: (args) => ipcRenderer.invoke("ally:browser_close", args),
   open_external_url: (args) =>
     ipcRenderer.invoke("ally:open_external_url", args),
-  show_notification: (args) =>
-    ipcRenderer.invoke("ally:show_notification", args),
+  get_notification_preferences: (args) =>
+    ipcRenderer.invoke("ally:get_notification_preferences", args),
+  set_notification_preferences: (args) =>
+    ipcRenderer.invoke("ally:set_notification_preferences", args),
+  send_test_notification: () =>
+    ipcRenderer.invoke("ally:send_test_notification"),
+  open_notification_settings: () =>
+    ipcRenderer.invoke("ally:open_notification_settings"),
   onBrowserNavigation: (handler) => subscribe("browser-navigation", handler),
-  onNotificationAction: (handler) => subscribe("notification-action", handler),
+  onWorkspaceAttentionOpen: (handler) => {
+    attentionHandlers.add(handler);
+    if (pendingAttention !== undefined) {
+      const target = pendingAttention;
+      pendingAttention = undefined;
+      handler(target);
+    }
+    return () => {
+      attentionHandlers.delete(handler);
+    };
+  },
   onFileDrop: (handler) => {
     drops.add(handler);
     return () => {

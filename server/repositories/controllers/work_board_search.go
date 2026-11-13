@@ -29,15 +29,15 @@ func boardCandidateIDs(db *gorm.DB, ids []string) *gorm.DB {
 }
 
 // boardReadBranch 用 CASE 明确先判断标题，再计算归属和活动关联，避免低匹配率时重复反查。
-func boardReadBranch(db *gorm.DB, branch string, kind constants.WorkResultOwnerKind, query string) *gorm.DB {
+func boardReadBranch(db *gorm.DB, branch string, kind constants.WorkOwnerKind, query string) *gorm.DB {
 	if query == "" {
 		return db.Raw(branch)
 	}
 	marker, title := "WHERE NOT EXISTS", "chat.title"
-	if kind == constants.WorkResultOwnerKindTeamThread {
+	if kind == constants.WorkOwnerKindTeamThread {
 		marker, title = "WHERE thread.ready_at", "thread.title"
 	}
-	if kind == constants.WorkResultOwnerKindWorkflowRun {
+	if kind == constants.WorkOwnerKindWorkflowRun {
 		marker, title = "WHERE run.parent_run_id", "(SELECT title FROM workflow_definitions WHERE id=run.definition_id)"
 	}
 	index := strings.LastIndex(branch, marker)
@@ -48,12 +48,14 @@ func boardReadBranch(db *gorm.DB, branch string, kind constants.WorkResultOwnerK
 }
 
 // titleOwners 只扫描原标题的窄覆盖索引；它不是新增业务副本或正文全文索引。
-func (c *workBoardController) titleOwners(ctx context.Context, kind constants.WorkResultOwnerKind, query string) *gorm.DB {
+func (c *workBoardController) titleOwners(ctx context.Context, kind constants.WorkOwnerKind, query string) *gorm.DB {
 	db := controllerDB(ctx, c.db)
 	switch kind {
-	case constants.WorkResultOwnerKindTeamThread:
+	case constants.WorkOwnerKindAutomaticRun:
+		return db.Model(&models.AutomaticRun{}).Select("id").Where("task_id IN (?)", db.Model(&models.AutomaticTask{}).Select("id").Where("name LIKE ? ESCAPE '\\'", boardTitlePattern(query)))
+	case constants.WorkOwnerKindTeamThread:
 		return db.Model(&models.ChannelThread{}).Select("id").Where("title LIKE ? ESCAPE '\\'", boardTitlePattern(query))
-	case constants.WorkResultOwnerKindWorkflowRun:
+	case constants.WorkOwnerKindWorkflowRun:
 		return db.Model(&models.WorkflowRun{}).Select("id").Where("definition_id IN (?)", db.Model(&models.WorkflowDefinition{}).Select("id").Where("title LIKE ? ESCAPE '\\'", boardTitlePattern(query)))
 	default:
 		return db.Model(&models.Chat{}).Select("id").Where("title LIKE ? ESCAPE '\\'", boardTitlePattern(query))
@@ -61,7 +63,7 @@ func (c *workBoardController) titleOwners(ctx context.Context, kind constants.Wo
 }
 
 // boardSeek 把固定种类比较折叠掉，让时间与身份元组匹配原表索引。
-func boardSeek(db *gorm.DB, query WorkBoardQuery, kind constants.WorkResultOwnerKind, at, id string) *gorm.DB {
+func boardSeek(db *gorm.DB, query WorkBoardQuery, kind constants.WorkOwnerKind, at, id string) *gorm.DB {
 	if v := query.Cursor; v != nil {
 		if kind < v.Kind {
 			return db.Where(at+" <= ?", v.At)
@@ -75,7 +77,7 @@ func boardSeek(db *gorm.DB, query WorkBoardQuery, kind constants.WorkResultOwner
 }
 
 // listBranchPage 命中密集标题时只查有序前缀；不足一页时从原游标完整重查。
-func (c *workBoardController) listBranchPage(ctx context.Context, q WorkBoardQuery, branch string, kind constants.WorkResultOwnerKind) ([]models.WorkBoardEntry, error) {
+func (c *workBoardController) listBranchPage(ctx context.Context, q WorkBoardQuery, branch string, kind constants.WorkOwnerKind) ([]models.WorkBoardEntry, error) {
 	db := controllerDB(ctx, c.db)
 	base := func(query WorkBoardQuery) *gorm.DB {
 		return boardSeek(workBoardScope(db.Table("(?) board", boardReadBranch(db, branch, kind, query.Query)), query), query, kind, "updated_at", "owner_id")
@@ -130,84 +132,17 @@ func (c *workBoardController) listBranchPage(ctx context.Context, q WorkBoardQue
 	return values, nil
 }
 
-// resultBranchPage 在未读部分索引上探测，不把低匹配前缀误当成完整结果。
-func (c *workBoardController) resultBranchPage(ctx context.Context, q WorkBoardQuery, branch string, kind constants.WorkResultOwnerKind) ([]models.WorkBoardEntry, error) {
-	base := func() *gorm.DB {
-		return boardSeek(c.resultBranch(ctx, q, branch, kind), q, kind, "board.result_available_at", "board.owner_id")
-	}
-	var values []models.WorkBoardEntry
-	read := func(query *gorm.DB) error {
-		return query.Select("board.*,board.result_available_at AS updated_at").Order("board.result_available_at DESC,board.owner_id DESC").Limit(q.Limit + 1).Find(&values).Error
-	}
-	if q.Query != "" {
-		var candidates []models.WorkResultReceipt
-		probe := boardSeek(controllerDB(ctx, c.db).Model(&models.WorkResultReceipt{}).Where("owner_kind = ? AND latest_version > viewed_version", kind), q, kind, "available_at", "owner_id")
-		if err := probe.Select("owner_id").Order("available_at DESC,owner_id DESC").Limit(workBoardSearchProbeLimit + 1).Find(&candidates).Error; err != nil {
-			return nil, databaseError("probe_result_titles", "", err)
-		}
-		ids := make([]string, 0, min(len(candidates), workBoardSearchProbeLimit))
-		for _, v := range candidates[:min(len(candidates), workBoardSearchProbeLimit)] {
-			ids = append(ids, v.OwnerID)
-		}
-		if len(ids) == 0 {
-			return c.attachWorkEntries(ctx, values)
-		}
-		window := c.resultCandidates(ctx, q, branch, kind, boardCandidateIDs(controllerDB(ctx, c.db), ids))
-		if err := read(window); err != nil {
-			return nil, databaseError("search_result_title_window", "", err)
-		}
-		if len(values) >= q.Limit+1 || len(candidates) <= workBoardSearchProbeLimit {
-			return c.attachWorkEntries(ctx, values)
-		}
-		values = nil
-		var matches []models.Chat
-		if err := c.titleOwners(ctx, kind, q.Query).Limit(workBoardSearchProbeLimit + 1).Find(&matches).Error; err != nil {
-			return nil, databaseError("find_result_title_ids", "", err)
-		}
-		if len(matches) <= workBoardSearchProbeLimit {
-			if len(matches) == 0 {
-				return c.attachWorkEntries(ctx, values)
-			}
-			ids = ids[:0]
-			for _, v := range matches {
-				ids = append(ids, v.ID)
-			}
-			if err := read(c.resultCandidates(ctx, q, branch, kind, boardCandidateIDs(controllerDB(ctx, c.db), ids))); err != nil {
-				return nil, databaseError("search_sparse_result_titles", "", err)
-			}
-		} else if err := read(base()); err != nil {
-			return nil, databaseError("search_dense_result_titles", "", err)
-		}
-		return c.attachWorkEntries(ctx, values)
-	}
-	if err := read(base()); err != nil {
-		return nil, databaseError("list_unread_work_results", "", err)
-	}
-	return c.attachWorkEntries(ctx, values)
-}
-
-// resultCandidates 从有界 ID 或原标题匹配集合驱动精确主键查询。
-func (c *workBoardController) resultCandidates(ctx context.Context, q WorkBoardQuery, branch string, kind constants.WorkResultOwnerKind, candidates *gorm.DB) *gorm.DB {
-	base := c.resultBranch(ctx, q, branch, kind).Where("board.owner_id IN (?)", candidates)
-	return boardSeek(base, q, kind, "board.result_available_at", "board.owner_id")
-}
-
 // Page 只在数字跳页时由 SQL 合并有序身份；深页不向 Go 加载已跳过的正文和历史行。
-func (c *workBoardController) Page(ctx context.Context, q WorkBoardQuery, resultMode bool) ([]models.WorkBoardEntry, error) {
+func (c *workBoardController) Page(ctx context.Context, q WorkBoardQuery) ([]models.WorkBoardEntry, error) {
 	db := controllerDB(ctx, c.db)
-	kinds := []constants.WorkResultOwnerKind{constants.WorkResultOwnerKindChat, constants.WorkResultOwnerKindTeamThread, constants.WorkResultOwnerKindWorkflowRun}
+	kinds := []constants.WorkOwnerKind{constants.WorkOwnerKindChat, constants.WorkOwnerKindTeamThread, constants.WorkOwnerKindWorkflowRun, constants.WorkOwnerKindAutomaticRun}
 	parts := make([]string, 0, 3)
 	args := make([]any, 0, 3)
 	for i, branch := range workBoardBranches() {
 		if !boardKindMatchesSource(kinds[i], q.Source) {
 			continue
 		}
-		var keys *gorm.DB
-		if resultMode {
-			keys = c.resultBranch(ctx, q, branch, kinds[i]).Select("board.owner_kind,board.owner_id,board.result_available_at AS updated_at")
-		} else {
-			keys = workBoardScope(db.Table("(?) board", db.Raw(boardCountBranch(boardNativeCandidates(branch, kinds[i], q), kinds[i], q))), q).Select("owner_kind,owner_id,updated_at")
-		}
+		keys := workBoardScope(db.Table("(?) board", db.Raw(boardCountBranch(boardNativeCandidates(branch, kinds[i], q), kinds[i], q))), q).Select("owner_kind,owner_id,updated_at")
 		parts = append(parts, "SELECT * FROM (?)")
 		args = append(args, keys)
 	}
@@ -222,13 +157,10 @@ func (c *workBoardController) Page(ctx context.Context, q WorkBoardQuery, result
 	if err != nil {
 		return nil, err
 	}
-	if err := c.attachAttentionCounts(ctx, page); err != nil {
+	if err := c.attachAttentionCounts(ctx, page, q.IsolatedChats); err != nil {
 		return nil, err
 	}
 	if err := c.attachExecutorNames(ctx, page); err != nil {
-		return nil, err
-	}
-	if err := c.attachResults(ctx, page); err != nil {
 		return nil, err
 	}
 	return page, nil

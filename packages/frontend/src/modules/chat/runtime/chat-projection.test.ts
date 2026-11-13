@@ -11,6 +11,27 @@ import {
 import type { ChatEvent } from "@/shared/api/events";
 
 describe("chat projection", () => {
+  it("晚到的提问答案仍位于最初提问的时间位置", () => {
+    const question: AllyChatMessage = {
+      id: "question",
+      role: "assistant",
+      createdSequence: 4,
+      revision: 12,
+      question: { elicitationId: "question", result: "accepted" },
+    };
+    const history: AllyChatMessage[] = [
+      { id: "first", role: "user", createdSequence: 1 },
+      { id: "later", role: "assistant", createdSequence: 8 },
+    ];
+    const merged = mergeAuthoritativeMessages([question], history);
+    expect(merged.map((message) => message.id)).toEqual([
+      "first",
+      "question",
+      "later",
+    ]);
+    expect(merged[1]?.question?.result).toBe("accepted");
+  });
+
   it("输入身份只接管乐观助手，两个真实助手同submission仍只取最后一条", () => {
     const optimistic = toThreadMessage({
       id: "optimistic",

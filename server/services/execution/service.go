@@ -49,6 +49,8 @@ type Service interface {
 	CancelAndWait(ctx context.Context, chatID string) error
 	// CancelExecutionAndWait 只取消指定执行占用，旧任务不得影响同Chat后续输入。
 	CancelExecutionAndWait(ctx context.Context, chatID, executionID string) error
+	// IsExecutionActive 检查指定执行是否仍持有会话占位。
+	IsExecutionActive(chatID, executionID string) bool
 	// ResolveApproval 处理 Chat 当前执行的一次未决审批。
 	ResolveApproval(ctx context.Context, chatID string, approvalID string, optionID string) error
 	// ResolveElicitation 处理 Chat 当前执行的一次未决结构化用户输入。
@@ -125,6 +127,12 @@ type service struct {
 	dormantChats dormantChatCreator
 	// wakerController 读取并验证伙伴。
 	wakerController controllers.WakerController
+	// onboardingMu 串行化建档草稿版本与问答的接纳。
+	onboardingMu sync.Mutex
+	// onboardingTransactions 提交建档资料和幂等回执。
+	onboardingTransactions controllers.TransactionController
+	// onboardingCommands 保存已提交的伙伴档案命令回执。
+	onboardingCommands capability.Store
 	// profileController 读取执行上下文所需的伙伴文档。
 	profileController controllers.ProfileDocumentController
 	// projectController 解析新 Chat 选择的项目和冻结目录范围。
@@ -189,6 +197,10 @@ type Config struct {
 	DormantChats dormantChatCreator
 	// Wakers 读取并验证伙伴。
 	Wakers controllers.WakerController
+	// OnboardingTransactions 提交建档资料和幂等回执。
+	OnboardingTransactions controllers.TransactionController
+	// OnboardingCommands 保存伙伴档案命令回执。
+	OnboardingCommands capability.Store
 	// Profiles 读取执行上下文所需的伙伴文档。
 	Profiles controllers.ProfileDocumentController
 	// Projects 读取新 Chat 选择的项目及其有序目录。
@@ -272,26 +284,28 @@ func New(config Config) (Core, error) {
 		}
 	}
 	return &service{
-		agent:                config.Agent,
-		events:               config.Events,
-		agentEndpoint:        config.AgentEndpoint,
-		systemSkillDirectory: systemSkillDirectory,
-		agentBindings:        config.AgentBindings,
-		validateIntent:       config.ValidateIntent,
-		accounts:             config.Accounts,
-		acquireTeamChatInput: config.AcquireTeamChatInput,
-		threads:              config.Threads,
-		resolveAccount:       config.ResolveAccount,
-		runtimeSummaries:     slices.Clone(config.RuntimeSummaries),
-		journal:              config.Journal,
-		dormantChats:         config.DormantChats,
-		wakerController:      config.Wakers,
-		profileController:    config.Profiles,
-		projectController:    config.Projects,
-		skillController:      config.Skills,
-		pluginContents:       config.PluginContents,
-		pluginInstallations:  config.PluginInstallations,
-		pluginController:     config.Plugins, pluginLauncher: config.PluginLauncher,
+		agent:                  config.Agent,
+		events:                 config.Events,
+		agentEndpoint:          config.AgentEndpoint,
+		systemSkillDirectory:   systemSkillDirectory,
+		agentBindings:          config.AgentBindings,
+		validateIntent:         config.ValidateIntent,
+		accounts:               config.Accounts,
+		acquireTeamChatInput:   config.AcquireTeamChatInput,
+		threads:                config.Threads,
+		resolveAccount:         config.ResolveAccount,
+		runtimeSummaries:       slices.Clone(config.RuntimeSummaries),
+		journal:                config.Journal,
+		dormantChats:           config.DormantChats,
+		wakerController:        config.Wakers,
+		profileController:      config.Profiles,
+		onboardingTransactions: config.OnboardingTransactions,
+		onboardingCommands:     config.OnboardingCommands,
+		projectController:      config.Projects,
+		skillController:        config.Skills,
+		pluginContents:         config.PluginContents,
+		pluginInstallations:    config.PluginInstallations,
+		pluginController:       config.Plugins, pluginLauncher: config.PluginLauncher,
 		connectorController: config.Connectors,
 		runtimeEnvironments: config.RuntimeEnvironments,
 		skillDataDirectory:  strings.TrimSpace(config.SkillDataDirectory),

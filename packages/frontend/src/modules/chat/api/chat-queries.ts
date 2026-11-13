@@ -184,6 +184,7 @@ export function mergeChatHistoryEvents(
     if (
       ["execution.created", "message.inherited"].includes(event.type ?? "") &&
       event.message.role === "assistant" &&
+      !event.message.question &&
       (event.message.inherited ? event.message.id : event.message.executionId)
     )
       forkLatestExecutionId = event.message.inherited
@@ -330,7 +331,13 @@ export function chatMessagesInfiniteOptions(chatId: string) {
         );
         if (index !== undefined && index >= 0) {
           const page = cached?.pages[index];
-          if (page) return page;
+          if (
+            page &&
+            !page.resources?.some(
+              (message) => message.question && !message.question.result,
+            )
+          )
+            return page;
         }
       }
       const { data } = await listChatMessages({
@@ -359,6 +366,7 @@ export function chatMessagesInfiniteOptions(chatId: string) {
             data.resources?.some(
               (message) =>
                 message.role === "assistant" &&
+                !message.question &&
                 message.executionId === current.chat?.activeExecutionId &&
                 ["completed", "failed", "canceled"].includes(
                   message.status ?? "",

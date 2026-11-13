@@ -287,7 +287,7 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 		run.ExecutionID = accepted.Execution.ID
 		run.Admission = constants.AutomaticRunAdmissionAccepted
 		run.UpdatedAt = now.UnixMilli()
-		if err := s.config.Tasks.UpdateRunAdmission(context.WithoutCancel(ctx), run); err != nil {
+		if err := s.config.Tasks.AcceptRunAdmission(context.WithoutCancel(ctx), run); err != nil {
 			return RunView{}, err
 		}
 	}

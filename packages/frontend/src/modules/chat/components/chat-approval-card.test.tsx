@@ -84,6 +84,38 @@ describe("ChatApprovalCard", () => {
     expect(onResolve).toHaveBeenCalledWith("approval-1", "allow-once");
   });
 
+  it("翻译原生 Always Allow 并提交原选项 ID", async () => {
+    const user = userEvent.setup();
+    const onResolve = vi.fn();
+    render(
+      <ChatApprovalCard
+        approval={{
+          ...approval,
+          options: [
+            ...approval.options,
+            { id: "accept_always", name: "Always Allow", kind: "allow_always" },
+          ],
+        }}
+        current={1}
+        total={1}
+        submissionState="idle"
+        onResolve={onResolve}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "更多审批选项" }));
+    await user.click(screen.getByRole("menuitem", { name: "始终允许" }));
+
+    expect(onResolve).toHaveBeenCalledExactlyOnceWith(
+      "approval-1",
+      "accept_always",
+    );
+    const tEnglish = i18n.getFixedT("en-US", "chat");
+    expect(approvalOptionLabel({ name: "Always Allow" }, tEnglish)).toBe(
+      "Always allow",
+    );
+  });
+
   it("设置弹层打开时不响应 Enter 和 Esc", () => {
     const onResolve = vi.fn();
     render(

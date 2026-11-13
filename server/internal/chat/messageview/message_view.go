@@ -303,6 +303,9 @@ func (p *MessageViewBuilder) applyMessageCreated(record eventlog.Record) (string
 	if err := json.Unmarshal(record.Data, &data); err != nil {
 		return "", status_error.ChatLogError
 	}
+	if p.publicOnly && data.Actor == constants.WakerOnboardingActor {
+		return "", nil
+	}
 	message := Message{
 		ID:              record.MessageID,
 		SubmissionID:    data.SubmissionID,
@@ -824,6 +827,7 @@ func displayPartID(messageID string, sequence int64) string {
 // cloneMessage 深拷贝可变字段，并按公开视图要求移除 Runtime 原始事件。
 func cloneMessage(message Message, public bool) Message {
 	clone := message
+	clone.Readable = ReadingKind(message) != ""
 	if message.FileChangeRecord != nil {
 		record := *message.FileChangeRecord
 		clone.FileChangeRecord = &record

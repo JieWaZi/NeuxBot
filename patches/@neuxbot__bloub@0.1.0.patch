@@ -1,0 +1,12 @@
+diff --git a/package.json b/package.json
+index a63635b305d5f18ff4a100fbc5bb35008edbf443..9098bb5423967767e69758e74e899fc9dec990ba 100644
+--- a/package.json
++++ b/package.json
+@@ -20,6 +20,7 @@
+     "./plush-catalogue": "./neuxbot/src/plush/catalogue.ts",
+     "./tint": "./neuxbot/src/plush/tint.ts",
+     "./drawing": "./neuxbot/src/materials/drawing.ts",
++    "./attention-drawing": "./neuxbot/src/materials/attention-drawing.ts",
+     "./materials": "./neuxbot/src/materials/catalogue.ts",
+     "./effects": "./neuxbot/src/materials/effects.ts",
+     "./eyes": "./neuxbot/src/materials/eyes.ts",

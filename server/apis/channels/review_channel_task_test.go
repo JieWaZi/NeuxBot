@@ -2,6 +2,8 @@ package channels
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http/httptest"
 	"path/filepath"
 	"sync"
@@ -220,6 +222,9 @@ func TestReviewChannelTaskKeepsHumanDecisionInAPIUseCase(t *testing.T) {
 			Feedback: "请补充回归验证",
 		},
 	}
+	if err := json.Unmarshal([]byte(`{"expectedFence":1}`), &reject.Body); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := reject.Output(ginContext); err != nil {
 		t.Fatalf("reject review Output() error = %v", err)
 	}
@@ -241,6 +246,18 @@ func TestReviewChannelTaskKeepsHumanDecisionInAPIUseCase(t *testing.T) {
 		ThreadID:  threadID,
 		TaskID:    approvedID,
 		Body:      ReviewChannelTaskRequest{Approved: true},
+	}
+	if err := global.ChannelTaskControllerManager.UpdateFields(ctx, approvedID, map[string]interface{}{"current_fence": 2}); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(`{"expectedFence":1}`), &approve.Body); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := approve.Output(ginContext); !errors.Is(err, status_error.ChannelTaskStateConflict) {
+		t.Fatalf("stale approval committed against the next review: %v", err)
+	}
+	if err := json.Unmarshal([]byte(`{"expectedFence":2}`), &approve.Body); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := approve.Output(ginContext); err != nil {
 		t.Fatalf("approve review Output() error = %v", err)

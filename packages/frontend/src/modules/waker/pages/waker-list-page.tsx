@@ -2,12 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { Plus, UsersRound } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { listWakersOptions } from "../api/waker-queries";
 import { withLocalErrorSurface } from "@/shared/api/local-error-surface";
 import { WakerCard } from "../components/waker-card";
-import { WakerFormDialog } from "../components/waker-form-dialog";
 import { WakerListSkeleton } from "../components/waker-list-skeleton";
 import { Button } from "@/shared/ui/button";
 import { EmptyState } from "@/shared/ui/empty-state";
@@ -36,7 +35,7 @@ export function WakerListPage({
 }: WakerListPageProps = {}) {
   const { t } = useTranslation("waker");
   const { t: tTeam } = useTranslation("team");
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const navigate = useNavigate();
   const [teamDialogOpen, setTeamDialogOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get("tab") === "teams" ? "teams" : "wakers";
@@ -77,7 +76,7 @@ export function WakerListPage({
               onClick={() =>
                 activeTab === "teams"
                   ? setTeamDialogOpen(true)
-                  : setDialogOpen(true)
+                  : navigate("/wakers/new")
               }
             >
               <Plus />
@@ -145,7 +144,7 @@ export function WakerListPage({
                   <Button
                     size="sm"
                     variant="secondary"
-                    onClick={() => setDialogOpen(true)}
+                    onClick={() => navigate("/wakers/new")}
                   >
                     新建第一位伙伴
                   </Button>
@@ -155,7 +154,6 @@ export function WakerListPage({
           )}
         </section>
       </ResourcePageSurface>
-      <WakerFormDialog open={dialogOpen} onOpenChange={setDialogOpen} />
       {teamDialogOpen
         ? renderTeamDialog?.({
             open: true,

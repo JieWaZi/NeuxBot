@@ -42,7 +42,7 @@ func (l *ListChannelEvents) Output(ctx *gin.Context) (interface{}, error) {
 	if _, err := channelThread(ctx, l.ChannelID, l.ThreadID); err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	events, err := global.ChannelThreadControllerManager.ListEvents(
+	events, err := global.ChannelService.ListEvents(
 		ctx,
 		l.ThreadID,
 		l.After,

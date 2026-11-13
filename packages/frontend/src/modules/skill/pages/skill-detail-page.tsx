@@ -202,7 +202,6 @@ export function SkillDetailPage() {
   const instructions = currentVersionQuery.data?.content ?? "";
   const metadataDescription =
     currentVersion?.description ?? skill?.description ?? "";
-  // 完整安装名单只提供身份资料；其他伙伴的启停与版本仍由各自上下文读取。
   const partners = detailQuery.data?.installedPartners ?? [];
   const currentPartner = partners.find((partner) => partner.id === wakerId);
   const shownPartners = wakerId
@@ -211,6 +210,7 @@ export function SkillDetailPage() {
           id: wakerId,
           name: currentPartner?.name,
           avatar: currentPartner?.avatar,
+          enabled: detailQuery.data?.enabled,
         },
       ]
     : partners;
@@ -320,12 +320,16 @@ export function SkillDetailPage() {
               >
                 <ResourceCatalogRows>
                   {shownPartners.map((partner) => {
+                    const partnerId = partner.id;
+                    if (!partnerId) return null;
                     const name =
                       partner.name || t("common:partnerNavigation.partner");
                     return (
                       <ResourceCatalogRow
-                        key={partner.id}
+                        key={partnerId}
                         className="flex-wrap"
+                        role="group"
+                        aria-label={name}
                       >
                         <ResourcePartnerAvatar
                           name={name}
@@ -339,73 +343,67 @@ export function SkillDetailPage() {
                           >
                             {name}
                           </h3>
-                          {wakerId && currentVersionNumber && (
+                          {currentVersionNumber && (
                             <p className="type-resource-caption text-resource-muted">
                               v{currentVersionNumber}
                             </p>
                           )}
                         </div>
-                        {wakerId && (
-                          <div className="ml-auto flex max-w-full flex-wrap items-center gap-2">
-                            {skill.source === "git" && (
-                              <SkillGitPullDialog
-                                currentVersion={currentVersionNumber}
-                                error={pullUpdate.isError}
-                                pending={pullUpdate.isPending}
-                                onPull={(version, notes, onSuccess) =>
-                                  pullUpdate.mutate(
-                                    {
-                                      path: { wakerId, skillId },
-                                      body: { version, notes },
-                                    },
-                                    { onSuccess },
-                                  )
-                                }
-                              />
-                            )}
+                        <div className="ml-auto flex max-w-full flex-wrap items-center gap-2">
+                          {wakerId && skill.source === "git" && (
+                            <SkillGitPullDialog
+                              currentVersion={currentVersionNumber}
+                              error={pullUpdate.isError}
+                              pending={pullUpdate.isPending}
+                              onPull={(version, notes, onSuccess) =>
+                                pullUpdate.mutate(
+                                  {
+                                    path: { wakerId, skillId },
+                                    body: { version, notes },
+                                  },
+                                  { onSuccess },
+                                )
+                              }
+                            />
+                          )}
+                          {typeof partner.enabled === "boolean" && (
                             <Switch
                               hitArea="comfortable"
-                              checked={detailQuery.data?.enabled ?? false}
+                              checked={partner.enabled}
                               disabled={toggleSkill.isPending}
-                              aria-label={t(
-                                detailQuery.data?.enabled
-                                  ? "detail.disable"
-                                  : "detail.enable",
-                                { name: skill.name },
-                              )}
+                              aria-label={
+                                wakerId
+                                  ? t(
+                                      partner.enabled
+                                        ? "detail.disable"
+                                        : "detail.enable",
+                                      { name: skill.name },
+                                    )
+                                  : t("detail.partnerSkill", {
+                                      name: skill.name,
+                                      partner: name,
+                                    })
+                              }
                               onClick={() =>
                                 toggleSkill.mutate({
-                                  path: { wakerId, skillId },
-                                  body: {
-                                    enabled: !(
-                                      detailQuery.data?.enabled ?? false
-                                    ),
-                                  },
+                                  path: { wakerId: partnerId, skillId },
+                                  body: { enabled: !partner.enabled },
                                 })
                               }
                             />
-                            <Button
-                              size="catalog"
-                              variant="catalog-danger"
-                              onClick={() => setDeleteOpen(true)}
-                            >
-                              {t("detail.remove")}
-                            </Button>
-                          </div>
-                        )}
-                        {!wakerId && (
+                          )}
                           <Button
                             size="catalog"
                             variant="catalog-danger"
-                            disabled={!partner.id}
+                            disabled={toggleSkill.isPending}
                             onClick={() => {
-                              if (partner.id)
-                                setRemovingPartner({ id: partner.id, name });
+                              if (wakerId) setDeleteOpen(true);
+                              else setRemovingPartner({ id: partnerId, name });
                             }}
                           >
                             {t("detail.remove")}
                           </Button>
-                        )}
+                        </div>
                       </ResourceCatalogRow>
                     );
                   })}

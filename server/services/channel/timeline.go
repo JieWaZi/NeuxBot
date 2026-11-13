@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"maps"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -64,6 +65,8 @@ type TimelinePage struct {
 type timelineCursor struct {
 	// BeforeByChat 按 Chat 标识记录下一页读取使用的消息创建序号。
 	BeforeByChat map[string]int64 `json:"beforeByChat"`
+	// ThroughByChat 是尚无消息锚点时的包含式日志上界。
+	ThroughByChat map[string]int64 `json:"throughByChat,omitempty"`
 	// PendingBeforeCreatedAt 是下一页临时输入必须早于的 Unix 毫秒时间。
 	PendingBeforeCreatedAt int64 `json:"pendingBeforeCreatedAt,omitempty"`
 	// PendingBeforeRole 是同毫秒临时输入保持用户先于负责人排序的角色边界。
@@ -117,19 +120,21 @@ func (s *service) ReadTimeline(ctx context.Context, input TimelineQuery) (Timeli
 	var leadChatLatestSequence *int64
 	readSource := func(chatID string, wakerID string, coordinator bool) error {
 		beforeSequence := cursor.BeforeByChat[chatID]
+		throughSequence := cursor.ThroughByChat[chatID]
 		if beforeSequence == exhaustedTimelineSequence {
 			return nil
 		}
-		page, readErr := s.chats.ReadMessageHistory(
+		page, readErr := s.chats.ReadMessageTimeline(
 			ctx,
 			chatID,
 			beforeSequence,
+			throughSequence,
 			input.Limit,
 		)
 		if readErr != nil {
 			return readErr
 		}
-		if coordinator && beforeSequence == 0 {
+		if coordinator && beforeSequence == 0 && throughSequence == 0 {
 			sequence := page.LatestSequence
 			leadChatLatestSequence = &sequence
 		}
@@ -313,17 +318,17 @@ func nextTimelineCursor(
 		}
 		if sequence := selectedSequenceByChat[source.ChatID]; sequence > 0 {
 			next.BeforeByChat[source.ChatID] = sequence
+			delete(next.ThroughByChat, source.ChatID)
 			continue
 		}
 		if len(source.Resources) > 0 {
 			// 该 Chat 有较旧的可见候选但未入选本页；首次读取时固定当前 JSONL 上界，
 			// 避免后续新消息插入“加载更早”结果。
-			if _, exists := next.BeforeByChat[source.ChatID]; !exists {
-				upper := source.Page.LatestSequence + 1
-				if upper <= 1 {
-					upper = newestCreatedSequence(source.Resources) + 1
+			if source.Page.LatestSequence > 0 {
+				if next.ThroughByChat == nil {
+					next.ThroughByChat = make(map[string]int64)
 				}
-				next.BeforeByChat[source.ChatID] = upper
+				next.ThroughByChat[source.ChatID] = source.Page.LatestSequence
 			}
 			continue
 		}
@@ -333,6 +338,7 @@ func nextTimelineCursor(
 		} else {
 			next.BeforeByChat[source.ChatID] = exhaustedTimelineSequence
 		}
+		delete(next.ThroughByChat, source.ChatID)
 	}
 
 	if len(selectedPending) > 0 {
@@ -358,17 +364,6 @@ func nextTimelineCursor(
 	return encoded, true, nil
 }
 
-// newestCreatedSequence 返回一个公开 Chat 窗口中最大的消息创建序号。
-func newestCreatedSequence(resources []TimelineMessage) int64 {
-	var newest int64
-	for _, resource := range resources {
-		if resource.Message.CreatedSequence > newest {
-			newest = resource.Message.CreatedSequence
-		}
-	}
-	return newest
-}
-
 // hasPendingCandidate 判断当前候选集合是否仍含临时用户输入。
 func hasPendingCandidate(candidates []timelineCandidate) bool {
 	for _, candidate := range candidates {
@@ -386,6 +381,7 @@ func cloneTimelineCursor(cursor timelineCursor) timelineCursor {
 	for chatID, beforeSequence := range cursor.BeforeByChat {
 		result.BeforeByChat[chatID] = beforeSequence
 	}
+	result.ThroughByChat = maps.Clone(cursor.ThroughByChat)
 	return result
 }
 
@@ -412,6 +408,11 @@ func decodeTimelineCursor(encoded string) (timelineCursor, error) {
 			return timelineCursor{}, status_error.BadRequest
 		}
 	}
+	for chatID, sequence := range cursor.ThroughByChat {
+		if strings.TrimSpace(chatID) == "" || sequence <= 0 || cursor.BeforeByChat[chatID] != 0 {
+			return timelineCursor{}, status_error.BadRequest
+		}
+	}
 	if cursor.PendingBeforeCreatedAt < 0 ||
 		(cursor.PendingBeforeCreatedAt == 0 && (cursor.PendingBeforeID != "" || cursor.PendingBeforeRole != "")) ||
 		(cursor.PendingBeforeCreatedAt > 0 && (cursor.PendingBeforeID == "" || (cursor.PendingBeforeRole != constants.MessageRoleUser && cursor.PendingBeforeRole != constants.MessageRoleAssistant))) {
@@ -430,8 +431,12 @@ func encodeTimelineCursor(cursor timelineCursor) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(payload), nil
 }
 
-// timelineMessageLess 按公开时间、角色、来源与标识建立稳定全序。
+// timelineMessageLess 使用主 Chat 持久序号，临时输入排在持久消息之后。
 func timelineMessageLess(left TimelineMessage, right TimelineMessage) bool {
+	l, r := left.Message.CreatedSequence, right.Message.CreatedSequence
+	if l > 0 || r > 0 {
+		return l > 0 && (r == 0 || l < r)
+	}
 	if left.Message.CreatedAt != right.Message.CreatedAt {
 		return left.Message.CreatedAt < right.Message.CreatedAt
 	}

@@ -61,9 +61,6 @@ const WorkflowDefinitionUpdatedEvent = "workflow.definition.updated"
 // WorkflowEventHistoryPageSize 限制每次事件或日志历史读取的条数。
 const WorkflowEventHistoryPageSize = 500
 
-// WorkResultTrackingID 是唯一阅读跟踪启用记录的身份。
-const WorkResultTrackingID = "00000000000000000000000000000001"
-
 // WorkflowFileFormat 标记以字符串传递的工作流文件参数及产物。
 const WorkflowFileFormat = "file"
 
@@ -864,3 +861,30 @@ const ResourceCategoryMaximumCount = 50
 
 // ResourceCategoryMaximumNameLength 限制分类名称的 Unicode 字符数。
 const ResourceCategoryMaximumNameLength = 120
+
+// WakerOnboardingActor 标识 Core 发起的伙伴建档输入。
+const WakerOnboardingActor = "waker_onboarding"
+
+// ProfileDocumentAgentsFileName 是伙伴长期指令的固定文件名。
+const ProfileDocumentAgentsFileName = "AGENTS.md"
+
+const (
+	// WakerProfileInterviewOperation 标识伙伴建档的模型选项问答。
+	WakerProfileInterviewOperation = "waker.profile.interview"
+	// WakerProfileSaveOperation 标识保存已完成建档问答的伙伴档案命令。
+	WakerProfileSaveOperation = "waker.profile.save"
+	// WakerProfileGetOperation 标识读取当前聊天伙伴的档案及修订版本。
+	WakerProfileGetOperation = "waker.profile.get"
+	// WakerProfileOptimizeOperation 标识保存当前聊天伙伴的档案修订。
+	WakerProfileOptimizeOperation = "waker.profile.optimize"
+	// WakerProfileOptimizationGuide 标识档案优化指南。
+	WakerProfileOptimizationGuide = "waker.profile-optimization"
+	// WakerProfileOnboardingGuide 是伙伴建档系统技能的按需指南标识。
+	WakerProfileOnboardingGuide = "waker.onboarding"
+	// WakerProfileOnboardingFileName 是建档 Chat 的系统指令名。
+	WakerProfileOnboardingFileName = "PARTNER_ONBOARDING.md"
+	// WakerProfileContentMaximumBytes 限制送入档案分词器的输入大小。
+	WakerProfileContentMaximumBytes = 32768
+	// WakerProfileContentMaximumTokens 是伙伴长期指令的 cl100k_base 分词上限。
+	WakerProfileContentMaximumTokens = 1300
+)

@@ -120,8 +120,7 @@ func TestCancelExecutionAndWaitCannotCancelNextChatExecution(t *testing.T) {
 	registry := newExecutionRegistry()
 	registry.start(context.Background())
 	defer registry.close()
-	old, err := registry.reserve("shared-chat", "old-worker")
-	if err != nil {
+	if _, err := registry.reserve("shared-chat", "old-worker"); err != nil {
 		t.Fatal(err)
 	}
 	registry.release("shared-chat", "old-worker")
@@ -135,9 +134,6 @@ func TestCancelExecutionAndWaitCannotCancelNextChatExecution(t *testing.T) {
 	}
 	if next.Err() != nil {
 		t.Fatal("stopping old worker cancelled the new ordinary input")
-	}
-	if old.Err() != nil {
-		t.Fatal("obsolete cancel invoked old reservation after release")
 	}
 }
 
@@ -172,5 +168,24 @@ func TestExecutionRegistryReleasesAdmissionBeforeFileSettlementButDeletionStillW
 	registry.release("chat", "old")
 	if err := registry.cancelAndWait(context.Background(), "chat"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestExecutionRegistryReleasesContextAfterSettlement(t *testing.T) {
+	registry := newExecutionRegistry()
+	registry.start(context.Background())
+	defer registry.close()
+	ctx, err := registry.reserve("chat", "execution")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer registry.release("chat", "execution")
+	registry.complete("chat", "execution", nil)
+	if ctx.Err() != nil {
+		t.Fatal("completion canceled the context before file settlement")
+	}
+	registry.release("chat", "execution")
+	if ctx.Err() != context.Canceled {
+		t.Fatal("settled execution context is still retained by the registry lifecycle")
 	}
 }

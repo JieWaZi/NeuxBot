@@ -1,4 +1,3 @@
-import { notificationPresentationProps } from "@/shared/api/notification-presentation";
 import {
   Brain,
   ChevronDown,
@@ -64,6 +63,7 @@ type ChatApprovalCardProps = {
   approval: PendingApproval;
   current: number;
   total: number;
+  queuedApproval?: PendingApproval;
   submissionState: ApprovalSubmissionState;
   onResolve: (approvalId: string, optionId: string) => void;
 };
@@ -88,14 +88,14 @@ const allowFuturePattern = /^Allow (.+) in the Future$/;
 const blockFuturePattern = /^Block (.+) in the Future$/;
 
 const approvalOptionNameKeys = {
-  "Allow for Session": "allowSession",
-  "Allow Root for Session": "allowRootSession",
-  "Allow Host for Session": "allowHostSession",
-  "Allow and Remember Command Pattern": "allowCommandPattern",
-  "Always allow": "allowAlways",
-  "Allow always": "allowAlways",
-  "Always reject": "rejectAlways",
-  "Reject always": "rejectAlways",
+  "allow for session": "allowSession",
+  "allow root for session": "allowRootSession",
+  "allow host for session": "allowHostSession",
+  "allow and remember command pattern": "allowCommandPattern",
+  "always allow": "allowAlways",
+  "allow always": "allowAlways",
+  "always reject": "rejectAlways",
+  "reject always": "rejectAlways",
 } as const;
 
 const approvalOptionLabelKeys = {
@@ -150,9 +150,12 @@ export function matchApprovalOptionName(name: string): ApprovalOptionMatch {
   if (allowedTarget) return { type: "allowFuture", target: allowedTarget };
   const blockedTarget = patternTarget(blockFuturePattern, trimmed);
   if (blockedTarget) return { type: "blockFuture", target: blockedTarget };
-  const key =
-    approvalOptionNameKeys[trimmed as keyof typeof approvalOptionNameKeys];
-  if (key) return { type: "named", key };
+  const normalized = trimmed.toLowerCase();
+  if (Object.hasOwn(approvalOptionNameKeys, normalized)) {
+    const key =
+      approvalOptionNameKeys[normalized as keyof typeof approvalOptionNameKeys];
+    return { type: "named", key };
+  }
   return { type: "custom", name: trimmed };
 }
 
@@ -244,6 +247,7 @@ export function ChatApprovalCard({
   approval,
   current,
   total,
+  queuedApproval,
   submissionState,
   onResolve,
 }: ChatApprovalCardProps) {
@@ -291,10 +295,6 @@ export function ChatApprovalCard({
   return (
     <section
       data-chat-approval-card
-      {...notificationPresentationProps({
-        kind: "request",
-        noticeId: `approval:${approval.approvalId}`,
-      })}
       className="grid min-h-32 gap-3 px-4 py-3"
       aria-label={t("approval.aria")}
     >
@@ -345,6 +345,14 @@ export function ChatApprovalCard({
           ) : null}
         </div>
       </div>
+
+      {queuedApproval ? (
+        <p role="status" className="text-muted-foreground type-caption">
+          {t("approval.waitingForTurn", {
+            title: queuedApproval.title || t("approval.fallbackTitle"),
+          })}
+        </p>
+      ) : null}
 
       <div className="flex flex-wrap items-center justify-end gap-2">
         {submissionState === "submitting" ? (

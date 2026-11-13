@@ -2491,6 +2491,45 @@ export const statusErrorCatalog = {
       },
     ],
   },
+  ReadingIntentConflict: {
+    code: 40900009201,
+    en: [
+      {
+        text: "the reading position changed; refresh before trying again",
+      },
+    ],
+    zh: [
+      {
+        text: "会话阅读位置已变化，请刷新后重新操作",
+      },
+    ],
+  },
+  ReadingProjectionIncomplete: {
+    code: 50300009201,
+    en: [
+      {
+        text: "the conversation reading index is unavailable; wait for recovery or refresh",
+      },
+    ],
+    zh: [
+      {
+        text: "会话阅读索引暂不可用，请等待恢复或刷新",
+      },
+    ],
+  },
+  ReadingTargetLimitExceeded: {
+    code: 41300009201,
+    en: [
+      {
+        text: "too many awaiting-view targets; narrow the filter",
+      },
+    ],
+    zh: [
+      {
+        text: "待查看工作过多，请缩小筛选范围",
+      },
+    ],
+  },
   RolePresetNameConflict: {
     code: 40900000003,
     en: [
@@ -3175,6 +3214,122 @@ export const statusErrorCatalog = {
       },
       {
         field: "WakerID",
+      },
+    ],
+  },
+  WakerOnboardingIncomplete: {
+    code: 40900009101,
+    en: [
+      {
+        text: "the partner profile has not been saved; continue setup",
+      },
+    ],
+    zh: [
+      {
+        text: "伙伴档案还未保存，请继续设置",
+      },
+    ],
+  },
+  WakerOnboardingInterviewPending: {
+    code: 40900009102,
+    en: [
+      {
+        text: "the onboarding interview is pending or already answered",
+      },
+    ],
+    zh: [
+      {
+        text: "建档问答正在等待回复或已经回答",
+      },
+    ],
+  },
+  WakerOnboardingInterviewRequired: {
+    code: 40900009104,
+    en: [
+      {
+        text: "the partner has not completed the interactive interview; continue setup and answer in the question card",
+      },
+    ],
+    zh: [
+      {
+        text: "伙伴尚未完成互动问答。请继续设置，在问答卡片中填写答案。",
+      },
+    ],
+  },
+  WakerOnboardingStateChanged: {
+    code: 40900009100,
+    en: [
+      {
+        text: "partner onboarding changed; continue setup",
+      },
+    ],
+    zh: [
+      {
+        text: "伙伴建档状态已变化，请继续设置",
+      },
+    ],
+  },
+  WakerOnboardingUnavailable: {
+    code: 40900009103,
+    en: [
+      {
+        text: "this partner has no onboarding chat to resume",
+      },
+    ],
+    zh: [
+      {
+        text: "当前伙伴尚无可恢复的建档对话",
+      },
+    ],
+  },
+  WakerProfileChanged: {
+    code: 40900009105,
+    en: [
+      {
+        text: "the partner profile changed; read the latest profile before saving again",
+      },
+    ],
+    zh: [
+      {
+        text: "伙伴档案已更新，请读取最新档案后再保存",
+      },
+    ],
+  },
+  WakerProfileTokenizationFailed: {
+    code: 50000009100,
+    en: [
+      {
+        text: "the partner profile token count could not be calculated",
+      },
+    ],
+    zh: [
+      {
+        text: "暂时无法计算伙伴档案的 token 数",
+      },
+    ],
+  },
+  WakerProfileTooLong: {
+    code: 41300009100,
+    en: [
+      {
+        text: "partner profile is too long; shorten it to ",
+      },
+      {
+        field: "MaxTokens",
+      },
+      {
+        text: " tokens or fewer",
+      },
+    ],
+    zh: [
+      {
+        text: "伙伴档案超过长度上限，请精简到 ",
+      },
+      {
+        field: "MaxTokens",
+      },
+      {
+        text: " token 以内",
       },
     ],
   },

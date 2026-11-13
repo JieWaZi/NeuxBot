@@ -7,3 +7,4 @@ export { ProjectListPage } from "@/modules/project/pages/project-list-page";
 export { SkillDetailPage } from "@/modules/skill/pages/skill-detail-page";
 export { WakerSkillsPage } from "@/modules/skill/pages/waker-skills-page";
 export { WakerDetailPage } from "@/modules/waker/pages/waker-detail-page";
+export { WakerCreatePage } from "@/modules/waker/pages/waker-create-page";

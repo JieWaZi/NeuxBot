@@ -48,11 +48,11 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
 	imservice "github.com/JieWaZi/NeuxBot/server/services/im"
 	knowledgeservice "github.com/JieWaZi/NeuxBot/server/services/knowledge"
-	"github.com/JieWaZi/NeuxBot/server/services/notification"
 	"github.com/JieWaZi/NeuxBot/server/services/runtimeenvironment"
 	"github.com/JieWaZi/NeuxBot/server/services/schedule"
 	"github.com/JieWaZi/NeuxBot/server/services/usage"
 	"github.com/JieWaZi/NeuxBot/server/services/workflow"
+	"github.com/JieWaZi/NeuxBot/server/services/workspaceattention"
 	"github.com/JieWaZi/neux-knowledge/core"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
@@ -72,10 +72,12 @@ var (
 	AgentCapabilities *capability.Registry
 	// EventHub 是当前 Core 生命周期内所有安全事件的窄路由器。
 	EventHub *events.Hub
-	// NotificationControllerManager 查询原事实与版本化通知定位。
-	NotificationControllerManager controllers.NotificationController
-	// NotificationService 聚合原待办与待查看事实并维护带版本摘要。
-	NotificationService *notification.Service
+	// WorkspaceAttention 读取原待办、公开消息和运行查看事实。
+	WorkspaceAttention *workspaceattention.Query
+	// ChatReadingControllerManager 保存独立阅读事实及可重建消息索引。
+	ChatReadingControllerManager controllers.ChatReadingController
+	// RunViewingControllerManager 保存原运行的查看事实。
+	RunViewingControllerManager controllers.RunViewingController
 	// IMControllerManager 持久保存平台连接、聊天授权和投递。
 	IMControllerManager controllers.IMController
 	// IMService 接纳平台输入并管理独立交付生命周期。
@@ -92,8 +94,6 @@ var (
 	WorkflowService *workflow.Service
 	// AutomaticTaskControllerManager 持久保存自动任务及唯一运行机会。
 	AutomaticTaskControllerManager controllers.AutomaticTaskController
-	// AttentionNoticeControllerManager 持久保存应用内工作提醒的关闭记录。
-	AttentionNoticeControllerManager controllers.AttentionNoticeController
 	// ScheduleService 管理定时机会及独立本机任务 API 的生命周期。
 	ScheduleService *schedule.Service
 	// AIAccountControllerManager 保存账号及加密凭据。
@@ -116,8 +116,6 @@ var (
 	ProjectSourceControllerManager controllers.ProjectSourceController
 	// ProjectControllerManager 提供全局伙伴项目持久化接口。
 	ProjectControllerManager controllers.ProjectController
-	// WorkResultControllerManager 保存结果交付与阅读事实。
-	WorkResultControllerManager controllers.WorkResultController
 	// WorkBoardControllerManager 聚合原工作的窄查询。
 	WorkBoardControllerManager controllers.WorkBoardController
 	// ChatControllerManager 提供全局对话查询索引接口。
@@ -290,7 +288,7 @@ func Load(ctx context.Context, configuration *Configuration, handlerFactory sche
 		func() error { return loadKnowledge(ctx, configuration) },
 		func() error { return loadRuntime(ctx) },
 		func() error { return loadChat(ctx, configuration, handlerFactory) },
-		func() error { return loadNotifications(ctx) },
+
 		func() error { return loadIntegrationAPI(ctx) },
 		func() error {
 			hub, source := EventHub, PluginCatalogSource()
@@ -340,12 +338,10 @@ func loadDB(ctx context.Context, configuration *Configuration) error {
 	loadIntegrationAuthorization()
 	ProjectSourceControllerManager = controllers.NewProjectSourceController(DB)
 	ProjectControllerManager = controllers.NewProjectController(DB)
-	WorkResultControllerManager = controllers.NewWorkResultController(DB)
+	ChatReadingControllerManager = controllers.NewChatReadingController(DB)
+	RunViewingControllerManager = controllers.NewRunViewingController(DB)
 	WorkBoardControllerManager = controllers.NewWorkBoardController(DB)
-	NotificationControllerManager = controllers.NewNotificationController(DB)
-	if err := WorkResultControllerManager.EnableTracking(ctx, time.Now().UnixMilli()); err != nil {
-		return err
-	}
+
 	ChatControllerManager = controllers.NewChatController(DB)
 	ChatDeletionIntentControllerManager = controllers.NewChatDeletionIntentController(DB)
 	ChannelControllerManager = controllers.NewChannelController(DB)
@@ -376,7 +372,6 @@ func loadDB(ctx context.Context, configuration *Configuration) error {
 	RuntimeEnvironmentControllerManager = controllers.NewRuntimeEnvironmentController(DB)
 	AIAccountControllerManager = controllers.NewAIAccountController(DB)
 	AutomaticTaskControllerManager = IntegrationService.CoordinateTasks(controllers.NewAutomaticTaskController(DB))
-	AttentionNoticeControllerManager = controllers.NewAttentionNoticeController(DB)
 	WorkflowControllerManager = controllers.NewWorkflowController(DB)
 	WorkflowRunControllerManager = controllers.NewWorkflowRunController(DB)
 	WorkflowCreationControllerManager = controllers.NewWorkflowCreationController(DB)
@@ -568,13 +563,30 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 	if err != nil {
 		return mapCoreError("initialize_conversation_store", status_error.CoreChatInitializationFailed, err)
 	}
+	threads := agent.NewThreadLifecycle(AgentProviders, conversations)
+	usageProjection := controllers.NewUsageController(DB)
+	hub := EventHub
+	usageChanged := func() {
+		hub.Publish(events.Event{Topic: "usage", Type: "usage.changed", Resource: events.Resource{Kind: "global"}})
+	}
 	chatModule, err := chat.New(chat.Config{
-		StorageDirectory: configuration.ManagedFilesDirectory,
-		Conversations:    conversations,
-		Projects:         ProjectControllerManager,
-		Results:          WorkResultControllerManager,
+		StorageDirectory:  configuration.ManagedFilesDirectory,
+		Conversations:     conversations,
+		Projects:          ProjectControllerManager,
+		CloseNativeThread: threads.CloseThread,
+		ResetUsageProjection: func(ctx context.Context) error {
+			if err := usageProjection.ResetProjection(ctx); err != nil {
+				return err
+			}
+			usageChanged()
+			return nil
+		},
+		BeforeRecovery: func(ctx context.Context, chatModule chat.Module) error {
+			return workspaceattention.InitializeBaseline(ctx, controllers.NewReadingInitializationController(DB), chatModule.InitializeReadingBaseline)
+		},
 		QueryIndexes: chat.QueryIndexDependencies{
 			Chats:           ChatControllerManager,
+			Reading:         ChatReadingControllerManager,
 			Transactions:    TransactionControllerManager,
 			DeletionIntents: ChatDeletionIntentControllerManager,
 		},
@@ -584,15 +596,17 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		return mapCoreError("initialize_chat_service", status_error.CoreChatInitializationFailed, err)
 	}
 	ChatService = chatModule
+	WorkspaceAttention = &workspaceattention.Query{
+		Board:        WorkBoardControllerManager,
+		Transactions: TransactionControllerManager, Incomplete: ChatService.ReadingIncompleteReason,
+		Isolated: ChatService.IsolatedReadingIDs, Epoch: EventHub.Epoch,
+	}
 	if err := ChatService.Start(ctx); err != nil {
 		return mapCoreError("start_chat_service", status_error.CoreChatInitializationFailed, err)
 	}
-	AgentThreads = agent.NewThreadLifecycle(AgentProviders, conversations)
-	UsageService = usage.NewService(conversations, controllers.NewUsageController(DB))
-	hub := EventHub
-	conversations.SetUsageChanged(func() {
-		hub.Publish(events.Event{Topic: "usage", Type: "usage.changed", Resource: events.Resource{Kind: "global"}})
-	})
+	AgentThreads = threads
+	UsageService = usage.NewService(conversations, usageProjection)
+	conversations.SetUsageChanged(usageChanged)
 	AIAccountService.SetIdleSessionCloser(AgentThreads.CloseIdleAccount)
 	providers, environments := AgentProviders, RuntimeEnvironmentService
 	AIAccountService.SetAccountAuthInvalidator(func(ctx context.Context, provider, id string, generation uint64) {
@@ -635,18 +649,20 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 			}
 			return bindings
 		},
-		Accounts:            AIAccountService,
-		Threads:             AgentThreads,
-		ResolveAccount:      AIAccountService.ResolveAccount,
-		RuntimeSummaries:    RuntimeCatalog.Runtimes(),
-		Journal:             chatModule,
-		DormantChats:        chatModule,
-		Wakers:              WakerControllerManager,
-		Profiles:            ProfileDocumentControllerManager,
-		Projects:            ProjectControllerManager,
-		Skills:              SkillControllerManager,
-		PluginInstallations: plugininstallation.New(plugininstallation.Config{Transactions: TransactionControllerManager, Contents: PluginContents, DataDirectory: configuration.DataDirectory, Bridges: PluginBridges, BridgeEnvironment: PluginBridgeEnvironment, Store: PluginControllerManager}),
-		PluginContents:      PluginContents, Plugins: PluginControllerManager, PluginLauncher: coreExecutablePath(),
+		Accounts:               AIAccountService,
+		Threads:                AgentThreads,
+		ResolveAccount:         AIAccountService.ResolveAccount,
+		RuntimeSummaries:       RuntimeCatalog.Runtimes(),
+		Journal:                chatModule,
+		DormantChats:           chatModule,
+		Wakers:                 WakerControllerManager,
+		Profiles:               ProfileDocumentControllerManager,
+		OnboardingTransactions: TransactionControllerManager,
+		OnboardingCommands:     controllers.NewAgentCommandController(DB),
+		Projects:               ProjectControllerManager,
+		Skills:                 SkillControllerManager,
+		PluginInstallations:    plugininstallation.New(plugininstallation.Config{Transactions: TransactionControllerManager, Contents: PluginContents, DataDirectory: configuration.DataDirectory, Bridges: PluginBridges, BridgeEnvironment: PluginBridgeEnvironment, Store: PluginControllerManager}),
+		PluginContents:         PluginContents, Plugins: PluginControllerManager, PluginLauncher: coreExecutablePath(),
 		Connectors:          MCPConnectorControllerManager,
 		RuntimeEnvironments: RuntimeEnvironmentControllerManager,
 		SkillDataDirectory:  configuration.DataDirectory,
@@ -665,10 +681,9 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		return mapCoreError("open_execution_service", status_error.CoreChatInitializationFailed, err)
 	}
 	channelModule, err := channelservice.New(channelservice.Config{
-		AutomaticRun:        AutomaticTaskControllerManager.GetRun,
-		Commands:            controllers.NewAgentCommandController(DB),
-		PrepareDirectResult: ChatService.PrepareParticipantResult,
-		Results:             WorkResultControllerManager,
+		AutomaticRun: AutomaticTaskControllerManager.GetRun,
+		Commands:     controllers.NewAgentCommandController(DB),
+
 		BeforeUserInput: func(ctx context.Context, threadID string) error {
 			if ScheduleService == nil {
 				return nil
@@ -734,10 +749,12 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 	})
 	scheduleConfig.APIListener = IntegrationAPIListener
 	ScheduleService = schedule.New(scheduleConfig)
-	if err := WorkflowService.Start(ctx); err != nil {
-		return err
-	}
-	if err := ScheduleService.Start(ctx); err != nil {
+	if err := ScheduleService.StartAfterRecovery(ctx, func(recoveryCtx context.Context) error {
+		if err := workspaceattention.FinishInitialization(recoveryCtx, controllers.NewReadingInitializationController(DB), TransactionControllerManager); err != nil {
+			return err
+		}
+		return WorkflowService.Start(ctx)
+	}); err != nil {
 		return mapCoreError("start_schedule_service", status_error.AutomaticTaskServiceInvalid, err)
 	}
 	if err := IMService.Start(ctx); err != nil {
@@ -764,10 +781,7 @@ func Close() error {
 		AgentCapabilities.Close()
 		AgentCapabilities = nil
 	}
-	if NotificationService != nil {
-		NotificationService.Close()
-		NotificationService = nil
-	}
+	WorkspaceAttention = nil
 	if EventHub != nil {
 		EventHub.Close()
 		EventHub = nil
@@ -880,12 +894,6 @@ func mapCoreError(operation string, fallback status_error.StatusError, err error
 	}
 	logx.Errorf("core operation failed: operation=%s error=%v", operation, err)
 	return fallback
-}
-
-// loadNotifications 在原领域恢复后启用提交监听及初始权威摘要。
-func loadNotifications(ctx context.Context) error {
-	NotificationService = notification.New(NotificationControllerManager, WorkResultControllerManager, TransactionControllerManager, EventHub)
-	return NotificationService.Start(ctx)
 }
 
 // agentBinaryPath 只接受应用装配路径，不接受模型命令行提供的服务地址或令牌。
