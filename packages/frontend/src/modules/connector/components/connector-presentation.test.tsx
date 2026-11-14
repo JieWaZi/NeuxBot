@@ -18,7 +18,6 @@ const state = vi.hoisted(() => ({
   connectorId: "c1",
   policy: "per_execution" as string | undefined,
   version: "v1",
-  packageStatus: "available" as string | undefined,
   error: false,
 }));
 const connectorRead = vi.hoisted(() => vi.fn());
@@ -55,7 +54,6 @@ vi.mock("@/shared/api/generated/@tanstack/react-query.gen", () => ({
     queryFn: async () => {
       pluginRead(options);
       return {
-        packageStatus: state.packageStatus,
         installations: state.installed
           ? [
               {
@@ -123,7 +121,6 @@ afterEach(() => {
     connectorId: "c1",
     policy: "per_execution",
     version: "v1",
-    packageStatus: "available",
     error: false,
   });
   connectorRead.mockClear();
@@ -234,32 +231,23 @@ it("references only the owning plugin after checking the same enabled version", 
   expect(destination().state.chatDraftIntent.connectorId).toBeUndefined();
 });
 
-it.each([
-  "missing",
-  "disabled",
-  "old version",
-  "unsupported",
-  "unknown package",
-])("does not reference an unavailable plugin snapshot: %s", async (reason) => {
-  state.installed = reason !== "missing";
-  state.enabled = reason !== "disabled";
-  state.version = reason === "old version" ? "old" : "v1";
-  state.packageStatus =
-    reason === "unsupported"
-      ? "unsupported"
-      : reason === "unknown package"
-        ? undefined
-        : "available";
-  mount({
-    name: "插件服务",
-    context: { kind: "plugin", pluginId: "p1", versionId: "v1" },
-  });
-  await selectPartner();
-  expect(
-    await screen.findByText("需要已安装并启用此连接器的伙伴。"),
-  ).toBeVisible();
-  expect(screen.getByRole("button", { name: "继续填写草稿" })).toBeDisabled();
-});
+it.each(["missing", "disabled", "different version"])(
+  "does not reference an unavailable plugin snapshot: %s",
+  async (reason) => {
+    state.installed = reason !== "missing";
+    state.enabled = reason !== "disabled";
+    state.version = reason === "different version" ? "old" : "v1";
+    mount({
+      name: "插件服务",
+      context: { kind: "plugin", pluginId: "p1", versionId: "v1" },
+    });
+    await selectPartner();
+    expect(
+      await screen.findByText("需要已安装并启用此连接器的伙伴。"),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "继续填写草稿" })).toBeDisabled();
+  },
+);
 
 it.each(["preview", "system", "disabled current partner"])(
   "always keeps the TryCard with an honest disabled arrow for %s",

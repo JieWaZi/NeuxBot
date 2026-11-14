@@ -16,7 +16,6 @@ const state = vi.hoisted(() => ({
   installed: true,
   enabled: true,
   version: "v1",
-  packageStatus: "available" as string | undefined,
 }));
 vi.mock("@/modules/plugin", () => ({
   PartnerPicker: ({ onChange }: { onChange: (ids: string[]) => void }) => (
@@ -43,7 +42,6 @@ vi.mock("@/shared/api/generated/@tanstack/react-query.gen", () => ({
   getPluginOptions: () => ({
     queryKey: ["try-plugin"],
     queryFn: async () => ({
-      packageStatus: state.packageStatus,
       installations: state.installed
         ? [{ wakerId: "w1", enabled: state.enabled, versionId: state.version }]
         : [],
@@ -100,7 +98,6 @@ afterEach(() => {
   state.installed = true;
   state.enabled = true;
   state.version = "v1";
-  state.packageStatus = "available";
 });
 it("always shows the fallback TryCard and prepares a referenced skill draft for the current usable partner", () => {
   mount({
@@ -190,10 +187,12 @@ it("references the containing plugin only after checking the same installed snap
   expect(intent.skillId).toBeUndefined();
 });
 
-it.each([undefined, "unsupported", "unknown"])(
-  "does not prepare a plugin reference when package availability is %s",
-  async (status) => {
-    state.packageStatus = status;
+it.each(["missing", "disabled", "different version"])(
+  "does not prepare a plugin reference when the requested installation is %s",
+  async (reason) => {
+    state.installed = reason !== "missing";
+    state.enabled = reason !== "disabled";
+    state.version = reason === "different version" ? "other" : "v1";
     mount({
       name: "插件技能",
       context: { kind: "plugin", pluginId: "p1", versionId: "v1" },

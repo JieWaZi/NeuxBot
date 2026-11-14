@@ -1,7 +1,5 @@
 export const pluginZh = {
   support: "支持",
-  packageUnsupported: "当前插件包不受支持，请从插件目录重新安装。",
-  packageUnsupportedStatus: "不可用",
   authorCapabilities: "作者能力说明",
   accountUnchecked: "尚未核验账号",
   examples: "试一试",
@@ -213,9 +211,6 @@ export const pluginZh = {
 } as const;
 export const pluginEn: { [K in keyof typeof pluginZh]: string } = {
   support: "Support",
-  packageUnsupported:
-    "This plugin package is not supported. Reinstall it from the plugin catalog.",
-  packageUnsupportedStatus: "Unavailable",
   authorCapabilities: "Author-declared capabilities",
   accountUnchecked: "Account not yet checked",
   examples: "Try it",

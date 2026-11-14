@@ -114,10 +114,7 @@ export function PluginConnectorDetailPage() {
     (matchingSnapshot ? version?.version : "") ||
     (catalogKey ? sourceCommit.slice(0, 12) : "");
   const supportedSnapshot = Boolean(
-    matchingSnapshot &&
-    version &&
-    parent.data?.packageStatus === "available" &&
-    !parent.isError,
+    matchingSnapshot && version && !parent.isError,
   );
   const installations =
     matchingSnapshot && version

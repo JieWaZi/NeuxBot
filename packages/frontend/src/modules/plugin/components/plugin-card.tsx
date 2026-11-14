@@ -50,10 +50,7 @@ export function PluginCard({
       );
   const canUpdate =
     installed &&
-    (entry
-      ? entry.update?.available
-      : detail?.packageStatus !== "unsupported" &&
-        pluginHasUpdate(detail, wakerId));
+    (entry ? entry.update?.available : pluginHasUpdate(detail, wakerId));
   return (
     <ResourceListItem
       appearance="row"

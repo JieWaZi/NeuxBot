@@ -2,6 +2,7 @@ package plugins
 
 import (
 	"context"
+
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/gin-gonic/gin"
@@ -30,10 +31,6 @@ func (o *DeletePlugin) Output(ctx *gin.Context) (interface{}, error) {
 	if !o.Body.Confirmed {
 		return nil, ginx.WithStack(status_error.BadRequest)
 	}
-	versions, err := global.PluginControllerManager.Versions(ctx, o.PluginID)
-	if err != nil {
-		return nil, ginx.WithStack(err)
-	}
 	validate := func(txctx context.Context) error {
 		relations, err := global.PluginControllerManager.Installations(txctx, o.PluginID, "")
 		if err != nil {
@@ -53,7 +50,7 @@ func (o *DeletePlugin) Output(ctx *gin.Context) (interface{}, error) {
 		}
 		return nil
 	}
-	err = removePluginReferences(ctx, o.PluginID, "", versions, validate, func(txctx context.Context) error {
+	err := removePluginReferences(ctx, o.PluginID, "", validate, func(txctx context.Context) error {
 		return global.PluginControllerManager.Delete(txctx, o.PluginID)
 	})
 	if err != nil {

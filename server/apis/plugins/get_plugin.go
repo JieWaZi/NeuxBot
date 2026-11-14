@@ -1,7 +1,6 @@
 package plugins
 
 import (
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
@@ -49,10 +48,6 @@ func (o *GetPlugin) Output(ctx *gin.Context) (interface{}, error) {
 	}
 	entries, source := catalog.Snapshot(global.PluginCatalogSource())
 	applyPluginUpdate(&result, entries, source)
-	// 不受支持的保留版本只提供管理事实，不尝试读取或重解析包内容。
-	if result.PackageStatus != constants.PluginPackageStatusAvailable {
-		return result, nil
-	}
 	for index, version := range states[resource.ID].Versions {
 		if version.ID != result.ResolvedVersionID {
 			continue

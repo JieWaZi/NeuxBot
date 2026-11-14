@@ -213,8 +213,8 @@ type PluginAccount struct {
 	PluginID string `gorm:"column:plugin_id;primaryKey" json:"pluginId"`
 	// Generation 是账号或交付材料变化的乐观并发代次。
 	Generation int64 `gorm:"column:generation;not null" json:"generation"`
-	// AuthorizedVersionID 固定退出所需的授权实现，空值表示已清理，nil 表示尚未确认。
-	AuthorizedVersionID *string `gorm:"column:authorized_version_id" json:"-"`
+	// AuthorizedVersionID 固定注销使用的授权版本，空字符串表示没有已确认的授权。
+	AuthorizedVersionID string `gorm:"column:authorized_version_id;not null;default:''" json:"-"`
 	// DeliveryMaterials 是按固定版本、组件和端点加密保存的私有材料。
 	DeliveryMaterials []MCPSecretDefinition `gorm:"column:delivery_materials;type:text;serializer:json" json:"-"`
 	// UpdatedAt 是最近一次账号代次变更的 Unix 毫秒时间。

@@ -2,9 +2,9 @@ package plugins
 
 import (
 	"context"
+
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
-	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -37,21 +37,18 @@ func (o *UninstallWakerPlugin) Output(ctx *gin.Context) (interface{}, error) {
 	if len(relations) == 0 {
 		return ginx.CommonSuccessResponse(), nil
 	}
-	version, err := store.Version(ctx, relations[0].VersionID)
-	if err != nil {
-		return nil, ginx.WithStack(err)
-	}
+	versionID := relations[0].VersionID
 	validate := func(txctx context.Context) error {
 		current, err := store.Installations(txctx, o.PluginID, o.WakerID)
 		if err != nil {
 			return err
 		}
-		if len(current) != 1 || current[0].VersionID != version.ID {
+		if len(current) != 1 || current[0].VersionID != versionID {
 			return status_error.PluginVersionConflict
 		}
 		return nil
 	}
-	if err := removePluginReferences(ctx, o.PluginID, o.WakerID, []models.PluginVersion{version}, validate, func(txctx context.Context) error {
+	if err := removePluginReferences(ctx, o.PluginID, o.WakerID, validate, func(txctx context.Context) error {
 		return store.Uninstall(txctx, o.WakerID, o.PluginID)
 	}); err != nil {
 		return nil, ginx.WithStack(err)

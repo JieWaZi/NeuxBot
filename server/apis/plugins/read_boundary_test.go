@@ -89,7 +89,7 @@ func TestOrdinaryPluginReadsDoNotExecuteAuthorizationOrVerifyWholeContent(t *tes
 	if err != nil {
 		t.Fatal("ordinary detail scanned or reparsed package", err)
 	}
-	if got.(PluginDetailResponse).Versions[0].Package.Readme != "中文说明" || got.(PluginDetailResponse).PackageStatus != constants.PluginPackageStatusAvailable || got.(PluginDetailResponse).PackageErrorCode != "" {
+	if got.(PluginDetailResponse).Versions[0].Package.Readme != "中文说明" {
 		t.Fatal("localized README was lost")
 	}
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
@@ -106,7 +106,7 @@ func TestOrdinaryPluginReadsDoNotExecuteAuthorizationOrVerifyWholeContent(t *tes
 	}
 }
 
-func TestUnsupportedPluginPackagesRemainManageableWithoutReparsingOrReadingContent(t *testing.T) {
+func TestPluginDetailRejectsUnsupportedPackageContracts(t *testing.T) {
 	for _, scenario := range []struct {
 		// name 是历史快照或无效声明的场景名称。
 		name string
@@ -155,13 +155,8 @@ func TestUnsupportedPluginPackagesRemainManageableWithoutReparsingOrReadingConte
 			if err := store.Install(ctx, models.WakerPlugin{PluginID: "retained", VersionID: "retained-v1", WakerID: "w1", Enabled: true}); err != nil {
 				t.Fatal(err)
 			}
-			value, err := (&GetPlugin{PluginID: "retained", VersionID: "retained-v1", WakerID: "w1"}).Output(ctx)
-			if err != nil {
-				t.Fatalf("retained package blocks management: %v", err)
-			}
-			detail := value.(PluginDetailResponse)
-			if detail.PackageStatus != constants.PluginPackageStatusUnsupported || detail.PackageErrorCode != errorKey(scenario.expected) || detail.ResolvedVersionID != "retained-v1" || len(detail.Installations) != 1 || detail.Versions[0].Package.Readme != "" {
-				t.Fatalf("unsupported package presented as available: %+v", detail)
+			if _, err := (&GetPlugin{PluginID: "retained", VersionID: "retained-v1", WakerID: "w1"}).Output(ctx); !errors.Is(err, scenario.expected) {
+				t.Fatalf("unsupported package was returned as a detail response: %v", err)
 			}
 			if _, err := (&GetPluginSkill{PluginID: "retained", VersionID: "retained-v1", Key: "skills/reports", WakerID: "w1"}).Output(ctx); !errors.Is(err, scenario.expected) {
 				t.Fatalf("unsupported skill read: %v", err)
@@ -172,9 +167,6 @@ func TestUnsupportedPluginPackagesRemainManageableWithoutReparsingOrReadingConte
 			}
 			if err := packageplugin.VerifyContent(filepath.Join(global.Config.DataDirectory, saved.ContentPath), digest); err != nil {
 				t.Fatal("ordinary read rewrote original files", err)
-			}
-			if _, err := (&UninstallWakerPlugin{PluginID: "retained", WakerID: "w1"}).Output(ctx); err != nil {
-				t.Fatal("unsupported installation cannot be removed", err)
 			}
 		})
 	}

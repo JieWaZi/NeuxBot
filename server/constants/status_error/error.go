@@ -772,8 +772,8 @@ const (
 	// @errZH 当前运行目标尚不支持该插件声明的能力
 	// @errEN plugin capability is unsupported by the current target
 	PluginCapabilityUnsupported StatusError = http.StatusUnprocessableEntity*1e8 + 6501
-	// @errZH 当前插件包不受支持，请从插件目录重新安装
-	// @errEN This plugin package is unsupported. Reinstall it from the plugin catalog.
+	// @errZH 插件包不符合当前解析规范
+	// @errEN The plugin package does not match the current package contract.
 	PluginPackageUnsupported StatusError = http.StatusUnprocessableEntity*1e8 + 6502
 )
 

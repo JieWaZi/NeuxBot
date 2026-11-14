@@ -2,14 +2,10 @@ package plugins
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/JieWaZi/NeuxBot/server/constants"
-	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -265,10 +261,6 @@ func TestDeletePluginChecksConfirmationAndActiveLeaseBeforeLogout(t *testing.T) 
 	f := removalAuth(t, nil)
 	detail := removalPlugin(t, ctx, "delete-office", f)
 	installRemovalPlugin(t, ctx, detail, f, "w1")
-	// 无效历史版本排在最新位置时，清理仍应使用实际可用桥接，不能被旧声明阻塞。
-	if _, err := global.PluginControllerManager.PutVersion(ctx, models.PluginVersion{ID: "unsupported-history", PluginID: detail.Plugin.ID, Version: "2", Digest: strings.Repeat("b", 64), CreatedAt: time.Now().Add(time.Minute).UnixMilli(), Package: packageplugin.Package{Manifest: packageplugin.Manifest{Extensions: map[string]json.RawMessage{constants.PluginExtensionNamespace: json.RawMessage(`{"provider":"github"}`)}}}}); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := (&DeletePlugin{PluginID: detail.Plugin.ID, Body: DeletePluginRequest{Confirmed: true}}).Output(ctx); !errors.Is(err, status_error.PluginVersionConflict) {
 		t.Fatalf("stale confirmation accepted: %v", err)
 	}
@@ -293,45 +285,6 @@ func TestDeletePluginChecksConfirmationAndActiveLeaseBeforeLogout(t *testing.T) 
 	}
 	if f.available.Load() || f.logouts.Load() != 1 {
 		t.Fatal("deletion retained shared identity")
-	}
-}
-
-// 已持久化的旧声明仍可移除，删除不启动已经不受支持的授权入口。
-func TestLegacyProviderResourcesCanBeUninstalledAndDeleted(t *testing.T) {
-	for _, withBridge := range []bool{false, true} {
-		t.Run(fmt.Sprint(withBridge), func(t *testing.T) {
-			ctx := pluginAPIContext(t)
-			store := global.PluginControllerManager
-			if err := store.Create(ctx, models.Plugin{ID: "legacy", Name: "legacy", SourceKey: "legacy"}); err != nil {
-				t.Fatal(err)
-			}
-			pkg := packageplugin.Package{Manifest: packageplugin.Manifest{Extensions: map[string]json.RawMessage{constants.PluginExtensionNamespace: json.RawMessage(`{"provider":"github"}`)}}}
-			if withBridge {
-				pkg.Integration.Authentication = &packageplugin.Authentication{Strategy: constants.PluginAuthCommandStrategy, Protocol: constants.PluginAuthProtocol, Command: "./unsupported-entry"}
-			}
-			if _, err := store.PutVersion(ctx, models.PluginVersion{ID: "legacy-v1", PluginID: "legacy", Version: "1", Digest: strings.Repeat("a", 64), Package: pkg, TrustedAt: 1}); err != nil {
-				t.Fatal(err)
-			}
-			if err := store.Install(ctx, models.WakerPlugin{PluginID: "legacy", VersionID: "legacy-v1", WakerID: "w1", Enabled: true}); err != nil {
-				t.Fatal(err)
-			}
-			listed, err := listPluginResources(ctx, "", "", 1, 50)
-			if err != nil || len(listed.Resources) != 1 {
-				t.Fatalf("legacy resource cannot be inspected for removal: %+v %v", listed, err)
-			}
-			if _, err := (&GetPluginAuthorization{PluginID: "legacy", VersionID: "legacy-v1"}).Output(ctx); !errors.Is(err, status_error.PluginPackageUnsupported) {
-				t.Fatalf("legacy auth was accepted: %v", err)
-			}
-			if _, err := (&UninstallWakerPlugin{PluginID: "legacy", WakerID: "w1"}).Output(ctx); err != nil {
-				t.Fatalf("legacy resource cannot be uninstalled: %v", err)
-			}
-			if _, err := (&DeletePlugin{PluginID: "legacy", Body: DeletePluginRequest{Confirmed: true}}).Output(ctx); err != nil {
-				t.Fatalf("legacy resource cannot be deleted: %v", err)
-			}
-			if _, err := store.Get(ctx, "legacy"); !errors.Is(err, status_error.PluginNotFound) {
-				t.Fatalf("legacy resource retained: %v", err)
-			}
-		})
 	}
 }
 

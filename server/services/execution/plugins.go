@@ -482,38 +482,21 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 		}
 		if hasAuthentication {
 			for _, binding := range bindings {
-				isSkill := false
-				for _, declaration := range version.Package.Skills {
-					if plugins.ComponentID(id, "skill:"+declaration.Key) == binding.ComponentID && slices.ContainsFunc(candidateSkills, func(skill agentapi.Skill) bool { return skill.Name == declaration.Name }) {
-						isSkill = true
-					}
-				}
-				if isSkill {
-					for key, value := range binding.Environment {
-						if key == "PATH" {
-							candidateEnvironment[key] = plugininstallation.MergeDeliveryPath(candidateEnvironment[key], value, m.skillDataDirectory)
-							continue
-						}
-						if old, ok := candidateEnvironment[key]; ok && old != value {
-							return result, status_error.PluginConfigurationConflict
-						}
-						candidateEnvironment[key] = value
-					}
+				if !slices.ContainsFunc(version.Package.Skills, func(declaration plugins.Skill) bool {
+					return plugins.ComponentID(id, "skill:"+declaration.Key) == binding.ComponentID &&
+						slices.ContainsFunc(candidateSkills, func(skill agentapi.Skill) bool { return skill.Name == declaration.Name })
+				}) {
 					continue
 				}
-				if len(authenticationBindings) > 0 {
-					continue
-				}
-				for index := range candidateConnectors {
-					if candidateConnectors[index].ID != binding.ComponentID {
+				for key, value := range binding.Environment {
+					if key == "PATH" {
+						candidateEnvironment[key] = plugininstallation.MergeDeliveryPath(candidateEnvironment[key], value, m.skillDataDirectory)
 						continue
 					}
-					for key, value := range binding.Environment {
-						candidateConnectors[index].Environment = append(candidateConnectors[index].Environment, models.MCPSecretDefinition{Name: key, Value: value, Configured: true})
+					if old, ok := candidateEnvironment[key]; ok && old != value {
+						return result, status_error.PluginConfigurationConflict
 					}
-					for key, value := range binding.Headers {
-						candidateConnectors[index].Headers = append(candidateConnectors[index].Headers, models.MCPSecretDefinition{Name: key, Value: value, Configured: true})
-					}
+					candidateEnvironment[key] = value
 				}
 			}
 		}

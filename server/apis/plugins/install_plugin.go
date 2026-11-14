@@ -2,9 +2,6 @@ package plugins
 
 import (
 	"context"
-	"encoding/hex"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -44,10 +41,7 @@ func (o *InstallPlugin) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	if version.PluginID != resource.ID {
-		return nil, ginx.WithStack(status_error.PluginVersionConflict)
-	}
-	if err := validatePluginInstallationSource(ctx.Request.Context(), resource, version, false); err != nil {
+	if err := validatePluginInstallationSource(resource, version); err != nil {
 		return nil, ginx.WithStack(err)
 	}
 	if err := packageplugin.ValidateContract(version.Package); err != nil {
@@ -103,7 +97,7 @@ func (o *InstallPlugin) Output(ctx *gin.Context) (interface{}, error) {
 			if currentRevision != config.Revision {
 				return status_error.PluginConfigurationConflict
 			}
-			if version.PreparedUntil > 0 {
+			if version.CatalogBinding != "" && version.PreparedUntil <= time.Now().UnixMilli() {
 				current, err := store.Version(txctx, version.ID)
 				if err != nil {
 					return err
@@ -139,8 +133,8 @@ func (o *InstallPlugin) Output(ctx *gin.Context) (interface{}, error) {
 	return response, nil
 }
 
-// validatePluginInstallationSource 核对准备时保存的本机证据。缺少证明的旧记录需重新核验原目录。
-func validatePluginInstallationSource(ctx context.Context, resource models.Plugin, version models.PluginVersion, rollback bool) error {
+// validatePluginInstallationSource 核对固定包的本机准备证明，切换与安装共用同一来源约束。
+func validatePluginInstallationSource(resource models.Plugin, version models.PluginVersion) error {
 	if version.Retired || version.PluginID != resource.ID {
 		return status_error.PluginVersionConflict
 	}
@@ -152,38 +146,11 @@ func validatePluginInstallationSource(ctx context.Context, resource models.Plugi
 	if source := catalog.SourceKey(global.PluginCatalogSource(), key); source == "" || source != resource.SourceKey {
 		return status_error.PluginForbidden
 	}
-	for field, length := range map[string]int{"sourceCommit": 40, "archiveSHA256": 64} {
-		value, _ := version.Provenance[field].(string)
-		if len(value) != length {
-			return status_error.PluginForbidden
-		}
-		if _, err := hex.DecodeString(value); err != nil {
-			return status_error.PluginForbidden
-		}
+	if version.CatalogBinding == "" {
+		return status_error.PluginForbidden
 	}
-	if version.CatalogBinding != "" {
-		if version.CatalogBinding != catalogContentBinding(resource.SourceKey, version.Version, version.Digest, version.Provenance) {
-			return status_error.PluginVersionConflict
-		}
-		return nil
+	if version.CatalogBinding != catalogContentBinding(resource.SourceKey, version.Version, version.Digest, version.Provenance) {
+		return status_error.PluginVersionConflict
 	}
-	if rollback {
-		// 回滚目标由成功的安装切换事务记录，旧数据库的来源摘要仍需完整。
-		return nil
-	}
-	archive, _ := version.Provenance["archiveSHA256"].(string)
-	return catalog.WithCurrentArchive(ctx, global.PluginCatalogSource(), key, archive, func(entry catalog.Entry, location string) error {
-		if entry.Package.Manifest.Version != version.Version {
-			return status_error.PluginVersionConflict
-		}
-		stage, err := packageplugin.StageSource(stagedRoot(), location, entry.PackagePath)
-		if err != nil {
-			return err
-		}
-		defer os.RemoveAll(filepath.Join(stagedRoot(), stage.Token))
-		if stage.Digest != version.Digest {
-			return status_error.PluginVersionConflict
-		}
-		return nil
-	})
+	return nil
 }

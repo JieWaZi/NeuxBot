@@ -30,15 +30,8 @@ type deliveryMaterial struct {
 // materialKey 使用不可变版本、交付目标和授权端点限定材料；普通配置修订不改变身份。
 func materialKey(version models.PluginVersion, target string) string {
 	endpoints := []string{}
-	declaration := version.Package.Integration.Authentication
-	if declaration != nil && len(declaration.Bindings) > 0 {
-		for _, binding := range plugins.TargetAuthenticationBindings(version.Package, target) {
-			endpoints = append(endpoints, binding.Server+"\x00"+binding.URL+"\x00"+strings.ToLower(binding.Header))
-		}
-	} else {
-		for _, server := range version.Package.Servers {
-			endpoints = append(endpoints, server.Key+"\x00"+server.URL)
-		}
+	for _, binding := range plugins.TargetAuthenticationBindings(version.Package, target) {
+		endpoints = append(endpoints, binding.Server+"\x00"+binding.URL+"\x00"+strings.ToLower(binding.Header))
 	}
 	for _, binding := range plugins.TargetSkillAuthenticationBindings(version.Package, target) {
 		keys, paths := slices.Clone(binding.EnvironmentKeys), slices.Clone(binding.PrivatePathKeys)
@@ -314,7 +307,7 @@ func (s *Service) persistDelivery(ctx context.Context, version models.PluginVers
 		if selected.Retired || selected.PluginID != version.PluginID || selected.Digest != version.Digest {
 			return status_error.PluginVersionConflict
 		}
-		account.AuthorizedVersionID = &selected.ID
+		account.AuthorizedVersionID = selected.ID
 		account.DeliveryMaterials = materials
 		return s.config.Store.UpdateAccount(txctx, account, account.Generation)
 	})
@@ -339,7 +332,7 @@ func (s *Service) resetDelivery(ctx context.Context, id string, expected int64, 
 		if account.Generation != expected {
 			return status_error.PluginAccountConflict
 		}
-		account.AuthorizedVersionID = &authorizedVersionID
+		account.AuthorizedVersionID = authorizedVersionID
 		account.DeliveryMaterials = nil
 		return s.config.Store.UpdateAccount(txctx, account, expected)
 	})

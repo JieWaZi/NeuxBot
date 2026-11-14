@@ -17,16 +17,12 @@ func TestStageBindsSnapshotAndRejectsChangedContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	fixtureFile(t, root, "README.md", "source changed")
-	reopened, err := OpenStaged(parent, staged.Token)
-	if err != nil || reopened.Digest != staged.Digest {
+	if err := VerifyContent(staged.Root, staged.Digest); err != nil {
 		t.Fatalf("source mutation changed snapshot: %v", err)
 	}
-	fixtureFile(t, reopened.Root, "README.md", "managed snapshot changed")
-	if _, err := OpenStaged(parent, staged.Token); err == nil {
+	fixtureFile(t, staged.Root, "README.md", "managed snapshot changed")
+	if err := VerifyContent(staged.Root, staged.Digest); err == nil {
 		t.Fatal("accepted changed managed snapshot")
-	}
-	if _, err := OpenStaged(parent, "../outside"); err == nil {
-		t.Fatal("accepted invalid token")
 	}
 }
 
@@ -104,10 +100,10 @@ func TestContentDigestFramesFileBoundariesAndRejectsCollidingReplacement(t *test
 	if _, err := os.Stat(filepath.Join(two, "b")); err != nil {
 		t.Error("second package lost b", err)
 	}
-	// 即使攻击者保留原令牌与摘要，也不能以重新分段后的文件树替换暂存内容。
+	// 重新分段的文件树不能复用暂存内容的原摘要。
 	fixtureFile(t, first.Root, "a", "x")
 	fixtureFile(t, first.Root, "b", "y")
-	if _, err := OpenStaged(parent, first.Token); err == nil {
+	if err := VerifyContent(first.Root, first.Digest); err == nil {
 		t.Error("accepted a framed-content staging replacement")
 	}
 }

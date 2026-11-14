@@ -71,7 +71,6 @@ export function SkillPresentation({
           skill.currentVersion?.id === context.versionId,
         )
       : Boolean(
-          plugin.data?.packageStatus === "available" &&
           installation?.enabled &&
           context.kind === "plugin" &&
           context.versionId &&

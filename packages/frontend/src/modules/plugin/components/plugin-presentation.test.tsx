@@ -33,7 +33,6 @@ vi.mock("../api/plugin-queries", () => ({
     queryKey: ["example-plugin"],
     queryFn: async () => ({
       plugin: { id: "p1", sourceKey: state.sourceKey },
-      packageStatus: "available",
       resolvedVersionId: state.versionId,
       versions: [
         {
@@ -142,7 +141,6 @@ function mount(
   });
   const detail: PluginDetail = {
     plugin: { id: "p1", sourceKey },
-    packageStatus: "available",
     resolvedVersionId: "v1",
     installations: installed
       ? [{ wakerId: "w1", enabled: true, versionId: "v1" }]
@@ -274,28 +272,6 @@ it("opening and cancelling partner creation retains the example", async () => {
   expect(screen.getByRole("dialog")).toBeVisible();
   expect(screen.getAllByText("检查变更")).toHaveLength(2);
 });
-
-it.each([pkg, {}])(
-  "does not offer a draft or installation from an unsupported plugin snapshot (%j)",
-  (packageData) => {
-    render(
-      <QueryClientProvider client={new QueryClient()}>
-        <MemoryRouter>
-          <PluginPresentation
-            pkg={packageData}
-            detail={{
-              plugin: { id: "p1" },
-              packageStatus: "unsupported",
-              installations: [{ wakerId: "w1", enabled: true }],
-            }}
-            wakerId="w1"
-          />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
-  },
-);
 
 it("closes its partner dialog when navigation hides the retained scene", async () => {
   mount();

@@ -149,7 +149,7 @@ func BuildSkillBundle(parent string, batch skills.StagedBatch, ids []string, plu
 		return empty, nil, err
 	}
 	if len(stage.Package.Skills) != len(selected) || ValidateSkillBundle(constants.PluginLocalSkillSourcePrefix+pluginID, pluginID, stage.Package, provenance) != nil {
-		_ = os.RemoveAll(filepath.Join(parent, stage.Token))
+		_ = os.RemoveAll(stage.Directory)
 		return empty, nil, status_error.PluginContentInvalid
 	}
 	return stage, provenance, nil

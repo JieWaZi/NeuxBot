@@ -41,7 +41,7 @@ func (o *UpdatePluginInstallations) Output(ctx *gin.Context) (interface{}, error
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	if err := validatePluginInstallationSource(ctx.Request.Context(), resource, target, o.Body.Rollback); err != nil {
+	if err := validatePluginInstallationSource(resource, target); err != nil {
 		return nil, ginx.WithStack(err)
 	}
 
@@ -186,7 +186,7 @@ func (o *UpdatePluginInstallations) validateSwitch(ctx context.Context, target m
 		}
 		checked[relation.VersionID] = true
 	}
-	if !changed || o.Body.Rollback && previous == "" || !pinned && currentTarget.PreparedUntil != 0 && currentTarget.PreparedUntil <= time.Now().UnixMilli() {
+	if !changed || o.Body.Rollback && previous == "" || !pinned && currentTarget.PreparedUntil <= time.Now().UnixMilli() {
 		return "", status_error.PluginVersionConflict
 	}
 	return previous, nil

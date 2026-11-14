@@ -200,7 +200,7 @@ func TestAuthorizedUpdateKeepsSharedAccountVisibleOnlyAfterCommit(t *testing.T) 
 		t.Fatalf("successful update lost the verified identity: %+v", current)
 	}
 	material, err := global.PluginControllerManager.Account(ctx, id)
-	if err != nil || len(material.DeliveryMaterials) != 1 || material.AuthorizedVersionID == nil || *material.AuthorizedVersionID != next.ResolvedVersionID {
+	if err != nil || len(material.DeliveryMaterials) != 1 || material.AuthorizedVersionID != next.ResolvedVersionID {
 		t.Fatalf("upgrade retained previous delivery material or lost its logout version: generation=%d count=%d error=%v", material.Generation, len(material.DeliveryMaterials), err)
 	}
 	page, err := (&GetPlugin{PluginID: id}).Output(ctx)
@@ -320,7 +320,7 @@ func TestStageOneAccountGetIsCachedAndCheckIsExplicit(t *testing.T) {
 		t.Fatal("completed authorization did not publish account generation", generation, err)
 	}
 	anchored, err := global.PluginControllerManager.Account(ctx, id)
-	if err != nil || anchored.AuthorizedVersionID == nil || *anchored.AuthorizedVersionID != version || len(anchored.DeliveryMaterials) != 0 {
+	if err != nil || anchored.AuthorizedVersionID != version || len(anchored.DeliveryMaterials) != 0 {
 		t.Fatalf("login without component bindings lost its cleanup anchor: %+v %v", anchored, err)
 	}
 	value, err = (&GetPluginAuthorization{PluginID: id, VersionID: version}).Output(ctx)
@@ -566,7 +566,7 @@ func TestStageOneLastUninstallUsesAuthorizedVersionOutsideInstallation(t *testin
 		t.Fatal(err)
 	}
 	account, err := global.PluginControllerManager.Account(ctx, id)
-	if err != nil || account.AuthorizedVersionID == nil || *account.AuthorizedVersionID != "" || len(account.DeliveryMaterials) != 0 || account.Generation != 2 {
+	if err != nil || account.AuthorizedVersionID != "" || len(account.DeliveryMaterials) != 0 || account.Generation != 2 {
 		t.Fatalf("last uninstall skipped durable account reset: %+v %v", account, err)
 	}
 	calls, err := os.ReadFile(filepath.Join(global.Config.DataDirectory, "plugins", "data", id, "calls"))
@@ -608,6 +608,30 @@ func TestStageOneDeleteRetainsExactAuthorizedVersionAcrossCollection(t *testing.
 	calls, err := os.ReadFile(filepath.Join(global.Config.DataDirectory, "plugins", "data", id, "calls"))
 	if err != nil || !strings.Contains(string(calls), "auth/logout\n") {
 		t.Fatalf("delete skipped logout through retained anchor: %s, %v", calls, err)
+	}
+}
+
+func TestPreparedPluginWithoutAuthorizationRetiresWithoutLogout(t *testing.T) {
+	ctx := pluginAPIContext(t)
+	stageOneRegistry(t)
+	store := global.PluginControllerManager
+	prepared := stageOneAPIFixture(t, ctx, "unused-auth", "1.0.0", true)
+	db := ctx.MustGet("plugin-api-test-db").(*gorm.DB)
+	if err := db.Model(&models.PluginVersion{}).Where("id = ?", prepared.ResolvedVersionID).UpdateColumn("prepared_until", 1).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RetireUnusedVersions(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	version, err := store.Version(ctx, prepared.ResolvedVersionID)
+	if err != nil || !version.Retired {
+		t.Fatalf("expired package was retained without an authorized account: %v", err)
+	}
+	if _, err := (&DeletePlugin{PluginID: prepared.Plugin.ID, Body: DeletePluginRequest{Confirmed: true}}).Output(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(global.Config.DataDirectory, "plugins/data", prepared.Plugin.ID, "calls")); !os.IsNotExist(err) {
+		t.Fatalf("delete used an authorization driver without an account: %v", err)
 	}
 }
 

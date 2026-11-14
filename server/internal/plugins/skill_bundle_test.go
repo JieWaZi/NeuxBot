@@ -56,7 +56,7 @@ func TestBuildSkillBundlePreservesSelectedResourcesAndLicenses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stage.Package.Manifest.Name == "审阅与测试" || stage.Package.Presentation.DisplayName != "审阅与测试" || stage.Package.Manifest.Schema != constants.PluginManifestSchema || len(stage.Package.Skills) != 2 || len(stage.Package.Servers) != 0 || stage.TrustRequired || stage.Package.Manifest.License != "" {
+	if stage.Package.Manifest.Name == "审阅与测试" || stage.Package.Presentation.DisplayName != "审阅与测试" || stage.Package.Manifest.Schema != constants.PluginManifestSchema || len(stage.Package.Skills) != 2 || len(stage.Package.Servers) != 0 || stage.Package.RequiresTrust() || stage.Package.Manifest.License != "" {
 		t.Fatalf("not a standard skills-only package: %+v", stage.Package)
 	}
 	for path, expected := range map[string]string{"skills/review/resources/data.bin": "\x00\x01\x02", "skills/review/LICENSE": "Skill-specific license", "docs/source-licenses/LICENSE": "Root license", "docs/source-licenses/catalog/NOTICE": "Ancestor notice", "docs/source-licenses/LICENSES/MIT.txt": "License directory"} {

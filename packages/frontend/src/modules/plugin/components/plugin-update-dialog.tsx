@@ -77,11 +77,9 @@ export function PluginUpdateDialog({
   } | null>(null);
   const cancelled = useRef(new Set<string>());
   const pluginId = snapshot.plugin?.id ?? "";
-  const update =
-    pluginHasUpdate(snapshot, wakerId) &&
-    (!wakerId || snapshot.packageStatus !== "unsupported")
-      ? snapshot.update
-      : undefined;
+  const update = pluginHasUpdate(snapshot, wakerId)
+    ? snapshot.update
+    : undefined;
   const catalogKey = update?.catalogKey;
   const archiveSHA256 = update?.archiveSHA256;
   const rollbackVersionId = snapshot.rollback?.available

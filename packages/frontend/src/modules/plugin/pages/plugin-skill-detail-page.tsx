@@ -169,7 +169,6 @@ export function PluginSkillDetailPage() {
                   wakerId &&
                   !parent.isError &&
                   !query.isError &&
-                  parent.data?.packageStatus !== "unsupported" &&
                   parent.data?.installations?.some(
                     (item) =>
                       item.wakerId === wakerId &&

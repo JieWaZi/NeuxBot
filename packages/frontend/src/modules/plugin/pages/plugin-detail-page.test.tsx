@@ -18,7 +18,6 @@ const { togglePlugin, renamePlugin, fixture } = vi.hoisted(() => ({
     updateAvailable: false,
     updateWakerIds: ["w1"],
     rollbackAvailable: false,
-    unsupported: false,
     readError: false,
     hold: false,
     request: vi.fn(),
@@ -62,10 +61,6 @@ vi.mock("../api/plugin-queries", () => ({
       return {
         plugin: { id: "p", name: "办公室" },
         resolvedVersionId: "v1",
-        packageStatus: fixture.unsupported ? "unsupported" : "available",
-        packageErrorCode: fixture.unsupported
-          ? "PluginPackageUnsupported"
-          : undefined,
         update: {
           available: fixture.updateAvailable,
           wakerIds: fixture.updateWakerIds,
@@ -139,7 +134,6 @@ afterEach(async () => {
   fixture.updateAvailable = false;
   fixture.updateWakerIds = ["w1"];
   fixture.rollbackAvailable = false;
-  fixture.unsupported = false;
   fixture.readError = false;
   fixture.hold = false;
   await i18n.changeLanguage("zh-CN");
@@ -332,9 +326,8 @@ it("keeps the partner detail current when another partner has an update", async 
   expect(screen.queryByRole("button", { name: "可更新" })).toBeNull();
 });
 
-it("offers the Core-approved rollback in partner detail for an unsupported current package", async () => {
+it("offers the Core-approved rollback in partner detail", async () => {
   fixture.rollbackAvailable = true;
-  fixture.unsupported = true;
   open("/wakers/w1/plugins/p");
   fireEvent.click(await screen.findByRole("button", { name: "回滚到 0.9.0" }));
   expect(await screen.findByText("将回滚全部 1 个伙伴")).toBeVisible();
@@ -397,35 +390,3 @@ it("opens global deletion from the final section with the original resource scop
   fireEvent.click(remove);
   expect(screen.getByRole("dialog")).toHaveTextContent("resource:");
 });
-
-it.each(["/resources/plugins/p", "/wakers/w1/plugins/p"])(
-  "%s exposes an unsupported snapshot as unavailable while preserving removal",
-  async (path) => {
-    fixture.unsupported = true;
-    fixture.updateAvailable = true;
-    open(path);
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "当前插件包不受支持，请从插件目录重新安装。",
-    );
-    expect(screen.getByText("不可用")).toBeVisible();
-    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", {
-        name: /安装到伙伴|可更新|编辑插件|查看技能|查看连接器/,
-      }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: "插件信息" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("按任务整理笔记，协助处理办公资料。"),
-    ).not.toBeInTheDocument();
-    const remove = screen.getByRole("button", {
-      name: path.startsWith("/resources") ? "删除资源" : "从伙伴卸载",
-    });
-    fireEvent.click(remove);
-    expect(screen.getByRole("dialog")).toHaveTextContent(
-      path.startsWith("/resources") ? "resource:" : "installation:w1",
-    );
-  },
-);

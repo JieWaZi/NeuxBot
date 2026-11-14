@@ -3,6 +3,7 @@ package plugins
 import (
 	"testing"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -15,7 +16,12 @@ func TestInstalledPluginListFiltersBeforeCountingAndPaging(t *testing.T) {
 		if err := store.Create(ctx, models.Plugin{ID: id, Name: "Office " + id, SourceKey: id, UpdatedAt: 1}); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := store.PutVersion(ctx, models.PluginVersion{ID: "v-" + id, PluginID: id, Version: "1", Package: packageplugin.Package{}}); err != nil {
+		pkg := packageplugin.Package{
+			ContractVersion: constants.PluginTargetContractVersion,
+			Format:          constants.PluginFormatPortable,
+			Manifest:        packageplugin.Manifest{Schema: constants.PluginManifestSchema, Name: id, Version: "1.0.0"},
+		}
+		if _, err := store.PutVersion(ctx, models.PluginVersion{ID: "v-" + id, PluginID: id, Version: "1.0.0", Package: pkg}); err != nil {
 			t.Fatal(err)
 		}
 	}

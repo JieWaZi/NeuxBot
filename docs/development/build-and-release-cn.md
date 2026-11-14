@@ -24,9 +24,9 @@ API 生成器从锁定 ginx 模块的临时源码副本构建，应用 `scripts/
 
 本地跨仓库开发需明确选择插件源码：在插件仓库先运行 `npm ci`，再在主仓库运行 `pnpm dev:native:plugins --plugins ../neux-plugins`。启动器调用插件仓库的 `build-review-snapshot.mjs`，将未提交源码复制到独立临时 Git 快照，按新规范构建到插件仓库 `.cache/development/catalog`；真实仓库的提交和索引不变。它只重写开发目录中的下载地址到本机回环服务，摘要、版本及来源隔离保持不变，服务随开发子进程退出。输出持久保留，每次启动重新构建并更新下载端口；普通 `dev:native` 和正式包仍使用默认发布源。
 
-正式目录、公开资料与自有扩展沿用 `schemaVersion: 1`，标准清单使用 Agent Plugins `1.0.0`，授权使用 `neuxbot-auth/1`。兼容这些契约的插件改动在独立仓库提升该插件的版本。将 `<key>@<version>` 标签指向合入提交，再从受保护的插件仓库 `main` 运行发布流程。固定版本工件发布后，流程将完整目录的对应条目更新为 Latest。Core 从[固定目录入口](https://github.com/JieWaZi/neux-plugins/releases/latest/download/catalog.json)同步，无需为兼容的插件发布重发应用。应用打包和插件 CI 的工具输出分别维护，插件 CI 锁定生成器。发布前用实际 Core 核对目录、公开资料及完整归档；格式升级需为仍在支持范围的旧客户端提供可读的目录。
+正式目录、公开资料与自有扩展沿用 `schemaVersion: 1`，标准清单使用 Agent Plugins `1.0.0`，授权使用 `neuxbot-auth/1`。兼容这些契约的插件改动在独立仓库提升该插件的版本。将 `<key>@<version>` 标签指向合入提交，再从受保护的插件仓库 `main` 运行发布流程。固定版本工件发布后，流程将完整目录的对应条目更新为 Latest。Core 从[固定目录入口](https://github.com/JieWaZi/neux-plugins/releases/latest/download/catalog.json)同步，无需为兼容的插件发布重发应用。应用打包和插件 CI 的工具输出分别维护，插件 CI 锁定生成器。发布前用实际 Core 核对目录、公开资料及完整归档；目录、包和宿主解析采用当前发布契约。开发测试可使用独立数据目录重新安装插件。
 
-仅为另一个明确配置的 Core 提供工件时，添加 `--serve-only`，并将启动器打印的目录路径设置为该 Core 的 `ALLY_PLUGIN_CATALOG_URL`。此模式不启动桌面或浏览器。新目录使用独立来源身份，不接管已有正式源资源或旧授权。验证真实三包的跨仓库目录、公开详情、技能、不可变准备与固定版本读取，可运行：
+仅为另一个明确配置的 Core 提供工件时，添加 `--serve-only`，并将启动器打印的目录路径设置为该 Core 的 `ALLY_PLUGIN_CATALOG_URL`。此模式不启动桌面或浏览器。开发目录使用独立来源身份。验证真实三包的跨仓库目录、公开详情、技能、不可变准备与固定版本读取，可运行：
 
 ```sh
 NEUX_VERIFY_LOCAL_PLUGIN_ARTIFACTS=1 pnpm dev:native:plugins --plugins ../neux-plugins -- go -C server test ./apis/plugins -run '^TestDevelopmentPluginArtifacts$' -count=1 -v

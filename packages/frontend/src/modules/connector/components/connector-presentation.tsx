@@ -72,7 +72,6 @@ export function ConnectorPresentation({
     context.kind === "connector"
       ? connectorReferenceAvailable(connector, context.connectorId)
       : context.kind === "plugin" &&
-        plugin.data?.packageStatus === "available" &&
         installation?.enabled === true &&
         Boolean(context.versionId) &&
         installation.versionId === context.versionId;

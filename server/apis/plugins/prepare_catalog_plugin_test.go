@@ -109,7 +109,7 @@ func TestPreparedResourceResolvesStableIdentityInsideContentBoundary(t *testing.
 	defer release()
 	completed := make(chan error, 1)
 	go func() {
-		_, _, err := persistPreparedResource(ctx, stage, false, models.Plugin{ID: "temporary-id", Name: "stable", SourceKey: "catalog:stable"}, nil)
+		_, _, err := persistPreparedResource(ctx, stage, false, models.Plugin{ID: "temporary-id", Name: "stable", SourceKey: "catalog:stable"}, nil, "")
 		completed <- err
 	}()
 	lookupBeforeBoundary := false

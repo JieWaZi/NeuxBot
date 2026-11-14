@@ -21,9 +21,9 @@ const read = vi.hoisted(() => vi.fn());
 const probe = vi.hoisted(() => vi.fn());
 const readCatalog = vi.hoisted(() => vi.fn());
 const parentState = vi.hoisted(() => ({
+  error: false,
   value: {
     plugin: { id: "p", name: "GitHub" },
-    packageStatus: "available",
     installations: [] as Array<{
       wakerId: string;
       enabled: boolean;
@@ -68,7 +68,10 @@ vi.mock("../api/plugin-queries", () => ({
   }),
   getPluginOptions: () => ({
     queryKey: ["parent"],
-    queryFn: async () => parentState.value,
+    queryFn: async () => {
+      if (parentState.error) throw new Error("fixture plugin detail failure");
+      return parentState.value;
+    },
   }),
 }));
 afterEach(() => {
@@ -77,7 +80,7 @@ afterEach(() => {
   probe.mockReset();
   readCatalog.mockReset();
   parentState.value.installations = [];
-  parentState.value.packageStatus = "available";
+  parentState.error = false;
 });
 function NavigationState() {
   const location = useLocation();
@@ -378,7 +381,7 @@ it("prepares a plugin reference from a fixed MCP only for the actual enabled cur
   });
 });
 
-it.each(["disabled", "different version", "unsupported"])(
+it.each(["disabled", "different version", "details unavailable"])(
   "does not offer a current-partner plugin reference when %s",
   async (reason) => {
     parentState.value.installations = [
@@ -388,8 +391,7 @@ it.each(["disabled", "different version", "unsupported"])(
         versionId: reason === "different version" ? "new-version" : "v-old",
       },
     ];
-    if (reason === "unsupported")
-      parentState.value.packageStatus = "unsupported";
+    parentState.error = reason === "details unavailable";
     read.mockResolvedValue({
       connector: { id: "c", name: "github", activationPolicy: "per_execution" },
     });

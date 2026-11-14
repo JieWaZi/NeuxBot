@@ -8,7 +8,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
-	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -21,7 +20,7 @@ func publishProviderChange(provider string) {
 }
 
 // removePluginReferences 与全量删除共用插件唯一身份边界。
-func removePluginReferences(ctx context.Context, plugin, waker string, versions []models.PluginVersion, validate, remove func(context.Context) error) error {
+func removePluginReferences(ctx context.Context, plugin, waker string, validate, remove func(context.Context) error) error {
 	store := global.PluginControllerManager
 	otherInstallations := func(readContext context.Context) (bool, error) {
 		if waker == "" {
@@ -58,18 +57,22 @@ func removePluginReferences(ctx context.Context, plugin, waker string, versions 
 	if err != nil {
 		return err
 	}
-	bridgeVersion, err := removalBridgeVersion(ctx, plugin, account.AuthorizedVersionID, versions)
-	if err != nil {
-		return err
-	}
 	var guard *authorization.ReferenceGuard
-	resetRequired := bridgeVersion != nil
+	resetRequired := false
 	if global.PluginBridges != nil {
-		if bridgeVersion != nil {
-			guard, err = installationService().BridgeRemoval(ctx, *bridgeVersion)
+		if account.AuthorizedVersionID != "" {
+			version, err := store.Version(ctx, account.AuthorizedVersionID)
 			if err != nil {
 				return err
 			}
+			if version.PluginID != plugin || version.Retired {
+				return status_error.PluginVersionConflict
+			}
+			guard, err = installationService().BridgeRemoval(ctx, version)
+			if err != nil {
+				return err
+			}
+			resetRequired = true
 		} else {
 			var driver *commandbridge.Driver
 			driver, guard, err = global.PluginBridges.GuardRemoval(plugin)
@@ -128,44 +131,4 @@ func removePluginReferences(ctx context.Context, plugin, waker string, versions 
 		global.PluginBridges.Retire(plugin, guard)
 	}
 	return nil
-}
-
-func removalBridgeVersion(ctx context.Context, plugin string, authorizedVersionID *string, versions []models.PluginVersion) (*models.PluginVersion, error) {
-	usable := func(version models.PluginVersion) bool {
-		if version.Retired || version.Package.Integration.Authentication == nil || packageplugin.ValidateContract(version.Package) != nil {
-			return false
-		}
-		_, err := packageplugin.ClientExtension(version.Package)
-		return err == nil
-	}
-	store := global.PluginControllerManager
-	if authorizedVersionID != nil {
-		if *authorizedVersionID == "" {
-			return nil, nil
-		}
-		version, err := store.Version(ctx, *authorizedVersionID)
-		if err != nil {
-			return nil, err
-		}
-		if version.PluginID != plugin || !usable(version) {
-			return nil, status_error.PluginVersionConflict
-		}
-		return &version, nil
-	}
-	for _, version := range versions {
-		if usable(version) {
-			return &version, nil
-		}
-	}
-	// 旧记录可能曾经授权后切换到无需账号的版本，最后卸载仍使用最近保留的合法驱动。
-	retained, err := store.Versions(ctx, plugin)
-	if err != nil {
-		return nil, err
-	}
-	for _, version := range retained {
-		if usable(version) {
-			return &version, nil
-		}
-	}
-	return nil, nil
 }

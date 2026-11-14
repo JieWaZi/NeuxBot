@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
@@ -86,11 +85,8 @@ func detailFromState(ctx context.Context, resource models.Plugin, state models.P
 	}
 	result.ResolvedVersionID = version.ID
 	if err := packageplugin.ValidateContract(version.Package); err != nil {
-		result.PackageStatus = constants.PluginPackageStatusUnsupported
-		result.PackageErrorCode = errorKey(err)
-		return result, nil
+		return result, err
 	}
-	result.PackageStatus = constants.PluginPackageStatusAvailable
 	if global.PluginBridges != nil && version.Package.Integration.Authentication != nil {
 		result.Account, _, _ = global.PluginBridges.CachedAuthorization(resource.ID, version.Digest+":"+filepath.ToSlash(version.Package.SourcePath), commandbridge.OperationContext{PluginID: resource.ID, VersionID: version.ID, Digest: version.Digest, ConfigurationRevision: config.Revision, AccountGeneration: state.Account.Generation})
 	}

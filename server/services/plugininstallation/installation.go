@@ -171,7 +171,7 @@ func (s *Service) PrepareVersion(ctx context.Context, version models.PluginVersi
 		if err != nil {
 			return nil, err
 		}
-		account.AuthorizedVersionID = &version.ID
+		account.AuthorizedVersionID = version.ID
 	}
 	if switching {
 		account.DeliveryMaterials = resolved

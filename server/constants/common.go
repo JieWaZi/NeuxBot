@@ -824,12 +824,7 @@ const (
 // PluginTargetContractVersion 标识宿主严格接纳的标准插件解析快照。
 const PluginTargetContractVersion = "neuxbot-plugin/1"
 
-const (
-	// PluginPackageStatusAvailable 表示当前固定版本符合宿主包契约。
-	PluginPackageStatusAvailable = "available"
-	// PluginPackageStatusUnsupported 表示当前固定版本不能作为可用包读取或执行。
-	PluginPackageStatusUnsupported = "unsupported"
-)
+const ()
 
 // PluginAuthInitializeMethod 核对新授权驱动的协议及完整操作上下文。
 const PluginAuthInitializeMethod = "auth/initialize"

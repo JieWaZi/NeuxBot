@@ -84,9 +84,7 @@ export function PluginInstallDialog({
   const [prepared, setPrepared] = useState(() => {
     if (!catalog) return initial;
     const version = pluginCatalogSnapshotVersion(initial, catalog);
-    return version && initial?.packageStatus !== "unsupported"
-      ? { ...initial, resolvedVersionId: version.id }
-      : undefined;
+    return version ? { ...initial, resolvedVersionId: version.id } : undefined;
   });
   const [selected, setSelected] = useState<string[]>(
     wakerId

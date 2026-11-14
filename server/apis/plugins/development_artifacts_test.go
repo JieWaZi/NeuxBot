@@ -53,11 +53,11 @@ func TestDevelopmentPluginArtifacts(t *testing.T) {
 				t.Fatal("real archive preparation rejected", err)
 			}
 			detail := value.(PluginDetailResponse)
-			if detail.PackageStatus != constants.PluginPackageStatusAvailable || len(detail.Installations) != 0 {
+			if detail.ResolvedVersionID == "" || len(detail.Installations) != 0 {
 				t.Fatalf("preparation created installation or unsupported version: %+v", detail)
 			}
 			managed, err := (&GetPlugin{PluginID: detail.Plugin.ID, VersionID: detail.ResolvedVersionID, Locale: "zh-CN"}).Output(ctx)
-			if err != nil || managed.(PluginDetailResponse).PackageStatus != constants.PluginPackageStatusAvailable {
+			if err != nil || managed.(PluginDetailResponse).ResolvedVersionID != detail.ResolvedVersionID {
 				t.Fatal("prepared real version cannot be managed", err)
 			}
 			for _, server := range pkg.Servers {

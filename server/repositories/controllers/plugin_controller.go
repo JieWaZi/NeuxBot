@@ -197,7 +197,7 @@ func (c *pluginController) PutVersion(ctx context.Context, v models.PluginVersio
 	if err := db.Where("plugin_id = ? AND version = ?", v.PluginID, v.Version).Find(&stored).Error; err != nil {
 		return v, databaseError("get_plugin_version", v.PluginID, err)
 	}
-	if stored.Digest != v.Digest || v.CatalogBinding != "" && stored.CatalogBinding != "" && stored.CatalogBinding != v.CatalogBinding {
+	if stored.Digest != v.Digest || stored.CatalogBinding != v.CatalogBinding {
 		return v, status_error.PluginVersionConflict
 	}
 	if v.CatalogBinding != "" && stored.ID != v.ID {
@@ -708,16 +708,11 @@ func (c *pluginController) RetireUnusedVersions(ctx context.Context, active []st
 	installedPlugins := db.Model(&models.WakerPlugin{}).Select("plugin_id")
 	rollbacks := db.Model(&models.Plugin{}).Select("rollback_version_id").Where("rollback_version_id <> '' AND id IN (?)", installedPlugins)
 	authorized := db.Model(&models.PluginAccount{}).Select("authorized_version_id").Where("authorized_version_id <> ''")
-	// 旧数据没有记录授权入口，每个资源保留最近的一个桥接版本供注销。
-	knownAccounts := db.Model(&models.PluginAccount{}).Select("plugin_id").Where("authorized_version_id IS NOT NULL")
-	legacy := db.Model(&models.Plugin{}).Where("id NOT IN (?)", knownAccounts).
-		Select("(SELECT id FROM plugin_versions pv WHERE pv.plugin_id = plugins.id AND pv.retired = false AND json_type(pv.package, '$.integration.authentication') = 'object' ORDER BY pv.created_at DESC, pv.id ASC LIMIT 1) AS version_id")
 	catalogs := db.Model(&models.Plugin{}).Select("id").Where("source_key LIKE ?", "catalog:%")
 	candidates := db.Model(&models.PluginVersion{}).
 		Where("plugin_id IN (?) AND retired = ?", catalogs, false).
 		Where("id NOT IN (?) AND id NOT IN (?) AND id NOT IN (?)", installed, rollbacks, authorized).
-		Where("NOT EXISTS (?)", db.Table("(?) AS legacy_auth", legacy).Where("legacy_auth.version_id = plugin_versions.id")).
-		Where("(prepared_until BETWEEN 1 AND ?) OR (prepared_until = 0 AND created_at <= ?)", now, now-constants.PluginPreparationLifetime.Milliseconds())
+		Where("prepared_until <= ?", now)
 	if len(active) > 0 {
 		candidates = candidates.Where("content_path NOT IN ?", active)
 	}

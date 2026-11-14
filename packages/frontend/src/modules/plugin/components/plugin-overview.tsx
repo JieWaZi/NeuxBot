@@ -160,20 +160,6 @@ export function PluginOverview({
       },
     });
   };
-  // 旧快照仍可管理真实安装，但其组件和包内说明不能被当成可用能力。
-  if (detail?.packageStatus === "unsupported" && !skillContext?.catalogKey) {
-    return scope === "global" &&
-      (installationStatus != null || detail.installations?.length) ? (
-      <DetailSection appearance="catalog" title={t("installedPartners")}>
-        <PluginInstalledPartners
-          detail={detail}
-          installationStatus={installationStatus}
-          onUninstall={onUninstall}
-          uninstalling={uninstalling}
-        />
-      </DetailSection>
-    ) : null;
-  }
   return (
     <div className="space-y-6">
       {scope === "global" &&

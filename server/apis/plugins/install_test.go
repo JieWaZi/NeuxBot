@@ -33,6 +33,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
+	"gorm.io/gorm"
 )
 
 func pluginAPIContext(t *testing.T, publishers ...events.Publisher) *gin.Context {
@@ -124,6 +125,7 @@ func TestConfigurationUpgradeRequiresAllInstallationsIncludingDisabled(t *testin
 	if err := store.Create(ctx, models.Plugin{ID: "p", Name: "Plugin", SourceKey: catalog.SourceKey(global.PluginCatalogSource(), "tools")}); err != nil {
 		t.Fatal(err)
 	}
+	versions := make(map[string]string, 2)
 	for _, name := range []string{"old", "new"} {
 		semanticVersion := map[string]string{"old": "1.0.0", "new": "2.0.0"}[name]
 		root := t.TempDir()
@@ -135,30 +137,21 @@ func TestConfigurationUpgradeRequiresAllInstallationsIncludingDisabled(t *testin
 		if err != nil {
 			t.Fatal(err)
 		}
-		content, err := packageplugin.CopyContent(filepath.Join(global.Config.DataDirectory, "plugins", "content"), staged.Root, staged.Digest)
+		prepared, err := prepareCatalogFixture(t, ctx, staged, "p", false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		relative, err := filepath.Rel(global.Config.DataDirectory, content)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := store.PutVersion(ctx, models.PluginVersion{ID: name, PluginID: "p", Version: semanticVersion, Digest: staged.Digest, ContentPath: filepath.ToSlash(relative), Package: staged.Package, Provenance: map[string]any{"sourceCommit": strings.Repeat("a", 40), "archiveSHA256": strings.Repeat("b", 64)}}); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := prepareCatalogFixture(t, ctx, staged, "p", false); err != nil {
-			t.Fatal(err)
-		}
+		versions[name] = prepared.ResolvedVersionID
 	}
 	if err := store.UpdateConfiguration(ctx, models.PluginConfiguration{PluginID: "p", Values: map[string]string{"old": "value"}}, 0); err != nil {
 		t.Fatal(err)
 	}
 	for _, waker := range []string{"w1", "w2"} {
-		if err := store.Install(ctx, models.WakerPlugin{ID: waker, PluginID: "p", VersionID: "old", WakerID: waker, Enabled: waker == "w1"}); err != nil {
+		if err := store.Install(ctx, models.WakerPlugin{ID: waker, PluginID: "p", VersionID: versions["old"], WakerID: waker, Enabled: waker == "w1"}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	body := UpdatePluginInstallationsRequest{ExpectedRevision: 1, Values: map[string]string{"new": "value"}, Switches: []VersionSwitch{{WakerID: "w1", ExpectedVersionID: "old", VersionID: "new"}}}
+	body := UpdatePluginInstallationsRequest{ExpectedRevision: 1, Values: map[string]string{"new": "value"}, Switches: []VersionSwitch{{WakerID: "w1", ExpectedVersionID: versions["old"], VersionID: versions["new"]}}}
 	if _, err := (&UpdatePluginInstallations{PluginID: "p", Body: body}).Output(ctx); !errors.Is(err, status_error.PluginVersionConflict) {
 		t.Fatalf("incomplete installation set accepted: %v", err)
 	}
@@ -166,7 +159,7 @@ func TestConfigurationUpgradeRequiresAllInstallationsIncludingDisabled(t *testin
 	if err != nil || got.Revision != 1 || got.Values["old"] != "value" {
 		t.Fatalf("failed upgrade changed config: %+v %v", got, err)
 	}
-	body.Switches = append(body.Switches, VersionSwitch{WakerID: "w2", ExpectedVersionID: "old", VersionID: "new"})
+	body.Switches = append(body.Switches, VersionSwitch{WakerID: "w2", ExpectedVersionID: versions["old"], VersionID: versions["new"]})
 	if _, err := (&UpdatePluginInstallations{PluginID: "p", Body: body}).Output(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +168,7 @@ func TestConfigurationUpgradeRequiresAllInstallationsIncludingDisabled(t *testin
 		t.Fatal(err)
 	}
 	for _, r := range relations {
-		if r.VersionID != "new" {
+		if r.VersionID != versions["new"] {
 			t.Fatalf("partial upgrade: %+v", relations)
 		}
 	}
@@ -630,6 +623,30 @@ func TestInstallRejectsUnverifiedOrOtherCatalogSources(t *testing.T) {
 	}
 }
 
+func TestInstallRequiresCurrentCatalogPreparation(t *testing.T) {
+	ctx := pluginAPIContext(t)
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "plugin.json"), []byte(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"verified","version":"1.0.0"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	stage, err := packageplugin.Stage(stagedRoot(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	detail, err := prepareCatalogFixture(t, ctx, stage, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := ctx.MustGet("plugin-api-test-db").(*gorm.DB)
+	if err := db.Model(&models.PluginVersion{}).Where("id = ?", detail.ResolvedVersionID).UpdateColumn("catalog_binding", "").Error; err != nil {
+		t.Fatal(err)
+	}
+	request := InstallPlugin{PluginID: detail.Plugin.ID, Body: InstallPluginRequest{VersionID: detail.ResolvedVersionID, WakerIDs: []string{"w1"}}}
+	if _, err := request.Output(ctx); !errors.Is(err, status_error.PluginForbidden) {
+		t.Fatalf("installation accepted catalog provenance without current preparation: %v", err)
+	}
+}
+
 func TestVersionSwitchRejectsLegacyImportedVersionWithoutChangingPin(t *testing.T) {
 	ctx := pluginAPIContext(t)
 	root := t.TempDir()
@@ -651,7 +668,7 @@ func TestVersionSwitchRejectsLegacyImportedVersionWithoutChangingPin(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacy.ID, legacy.Version, legacy.Provenance = "imported-version", "local-import", nil
+	legacy.ID, legacy.Version, legacy.Provenance, legacy.CatalogBinding = "imported-version", "local-import", nil, ""
 	if _, err := global.PluginControllerManager.PutVersion(ctx, legacy); err != nil {
 		t.Fatal(err)
 	}

@@ -17,7 +17,6 @@ import {
   ResourceCatalogStatus,
   ResourceCatalogRow,
 } from "@/shared/ui/resource-catalog";
-import { StatusNotice } from "@/shared/ui/status-notice";
 import { Switch } from "@/shared/ui/switch";
 import { ResourcePageSurface, PageAction } from "@/shared/ui/resource-page";
 import { QueryState, QueryRefreshError } from "@/shared/ui/query-state";
@@ -97,7 +96,6 @@ export function PluginDetailPage() {
   });
   const detail = query.data;
   const resource = detail?.plugin;
-  const unsupported = detail?.packageStatus === "unsupported";
   const canUpdate = pluginHasUpdate(detail, wakerId);
   const rollback = detail?.rollback;
   const canRollback = Boolean(
@@ -130,22 +128,14 @@ export function PluginDetailPage() {
     >
       <ResourcePageSurface appearance="catalog">
         <PluginDetailHeader
-          pkg={unsupported ? undefined : pkg}
+          pkg={pkg}
           name={resource?.name}
           description={resource?.description}
           sourceKey={resource?.sourceKey}
           backAction={{ label: t("back"), onClick: () => navigate(back) }}
           status={
             resource &&
-            (unsupported ? (
-              <ResourceCatalogStatus
-                pill
-                tone="warning"
-                data-status="unavailable"
-              >
-                {t("packageUnsupportedStatus")}
-              </ResourceCatalogStatus>
-            ) : relation ? (
+            (relation ? (
               <ResourceCatalogStatus
                 pill
                 data-status={
@@ -176,11 +166,10 @@ export function PluginDetailPage() {
             ))
           }
           actions={
-            resource &&
-            (!unsupported || canRollback) && (
+            resource && (
               <div className="grid max-w-full justify-items-end gap-2">
                 <div className="flex max-w-full flex-wrap items-center gap-2">
-                  {!unsupported && relation && (
+                  {relation && (
                     <Switch
                       hitArea="comfortable"
                       checked={relation.enabled ?? false}
@@ -194,8 +183,7 @@ export function PluginDetailPage() {
                       }
                     />
                   )}
-                  {!unsupported &&
-                    !wakerId &&
+                  {!wakerId &&
                     !pluginHasAuthorization(pkg) &&
                     !pluginHasConfiguration(pkg) && (
                       <PageAction
@@ -207,7 +195,7 @@ export function PluginDetailPage() {
                         <Pencil />
                       </PageAction>
                     )}
-                  {!unsupported && !wakerId && (
+                  {!wakerId && (
                     <PageAction
                       appearance="catalog"
                       intent={canUpdate ? "secondary" : "primary"}
@@ -217,7 +205,7 @@ export function PluginDetailPage() {
                       {t("installToPartners")}
                     </PageAction>
                   )}
-                  {!unsupported && canUpdate && (
+                  {canUpdate && (
                     <PageAction
                       appearance="catalog"
                       intent="primary"
@@ -276,18 +264,7 @@ export function PluginDetailPage() {
                   onRetry={() => void query.refetch()}
                 />
               )}
-              {unsupported && (
-                <StatusNotice role="alert">
-                  {t("packageUnsupported")}
-                </StatusNotice>
-              )}
-              {!unsupported && (
-                <PluginPresentation
-                  pkg={pkg}
-                  detail={detail}
-                  wakerId={wakerId}
-                />
-              )}
+              <PluginPresentation pkg={pkg} detail={detail} wakerId={wakerId} />
               <PluginOverview
                 pkg={pkg}
                 detail={detail}
@@ -297,9 +274,7 @@ export function PluginDetailPage() {
                     : undefined
                 }
                 scope={wakerId ? "partner" : "global"}
-                onEdit={
-                  !wakerId && !unsupported ? () => setEditing(true) : undefined
-                }
+                onEdit={!wakerId ? () => setEditing(true) : undefined}
                 skillContext={{ pluginId, versionId: version?.id, wakerId }}
                 onUninstall={(id) =>
                   setRemoving({ mode: "installation", wakerId: id })
@@ -338,7 +313,7 @@ export function PluginDetailPage() {
             </div>
           )}
         </div>
-        {editing && detail && !unsupported && (
+        {editing && detail && (
           <PluginSettingsDialog
             key={`${pluginId}:${version?.id}`}
             detail={detail}
@@ -355,7 +330,7 @@ export function PluginDetailPage() {
             onClose={() => setVersionChange(undefined)}
           />
         )}
-        {install && detail && !unsupported && (
+        {install && detail && (
           <PluginInstallDialog
             detail={detail}
             onClose={() => setInstall(false)}

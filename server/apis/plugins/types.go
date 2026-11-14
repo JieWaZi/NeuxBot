@@ -13,10 +13,6 @@ type PluginDetailResponse struct {
 	Plugin models.Plugin `json:"plugin"`
 	// 当前解析版本
 	ResolvedVersionID string `json:"resolvedVersionId"`
-	// 当前版本包状态
-	PackageStatus string `json:"packageStatus"`
-	// 当前版本包错误标识
-	PackageErrorCode string `json:"packageErrorCode,omitempty"`
 	// 保留版本
 	Versions []PluginVersionResponse `json:"versions"`
 	// 安装伙伴名称

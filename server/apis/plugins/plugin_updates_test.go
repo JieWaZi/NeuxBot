@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
@@ -37,7 +38,12 @@ func TestPluginUpdatesCompareActualInstallationsAndExactSource(t *testing.T) {
 			t.Fatal(err)
 		}
 		for i, version := range []string{"1.0.0", "2.0.0", "3.0.0"} {
-			_, err := store.PutVersion(ctx, models.PluginVersion{ID: id + version, PluginID: id, Version: version, CreatedAt: int64(i + 1), Package: packageplugin.Package{Manifest: packageplugin.Manifest{Name: "tools", Version: version}}})
+			pkg := packageplugin.Package{
+				ContractVersion: constants.PluginTargetContractVersion,
+				Format:          constants.PluginFormatPortable,
+				Manifest:        packageplugin.Manifest{Schema: constants.PluginManifestSchema, Name: "tools", Version: version},
+			}
+			_, err := store.PutVersion(ctx, models.PluginVersion{ID: id + version, PluginID: id, Version: version, CreatedAt: int64(i + 1), Package: pkg})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -106,7 +112,12 @@ func TestPluginUpdateReadDoesNotContactColdRemoteCatalog(t *testing.T) {
 	if err := store.Create(ctx, models.Plugin{ID: "p", Name: "Tools", SourceKey: catalog.SourceKey(global.PluginCatalogSource(), "tools")}); err != nil {
 		t.Fatal(err)
 	}
-	_, err := store.PutVersion(ctx, models.PluginVersion{ID: "old", PluginID: "p", Version: "1.0.0", Package: packageplugin.Package{}})
+	pkg := packageplugin.Package{
+		ContractVersion: constants.PluginTargetContractVersion,
+		Format:          constants.PluginFormatPortable,
+		Manifest:        packageplugin.Manifest{Schema: constants.PluginManifestSchema, Name: "tools", Version: "1.0.0"},
+	}
+	_, err := store.PutVersion(ctx, models.PluginVersion{ID: "old", PluginID: "p", Version: "1.0.0", Package: pkg})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,7 +308,7 @@ func TestPluginCollectionKeepsInstalledAndRollbackContent(t *testing.T) {
 	if err := store.Create(ctx, models.Plugin{ID: id, Name: "Retention", SourceKey: "catalog:retention"}); err != nil {
 		t.Fatal(err)
 	}
-	versions := []string{"installed", "rollback", "prepared", "expired", "legacy"}
+	versions := []string{"installed", "rollback", "prepared", "expired", "unused"}
 	paths := map[string]string{}
 	now := time.Now()
 	for index, key := range versions {
@@ -322,9 +333,6 @@ func TestPluginCollectionKeepsInstalledAndRollbackContent(t *testing.T) {
 		expiry := now.Add(-time.Minute).UnixMilli()
 		if key == "prepared" {
 			expiry = now.Add(time.Hour).UnixMilli()
-		}
-		if key == "legacy" {
-			expiry = 0
 		}
 		record := models.PluginVersion{ID: key, PluginID: id, Version: version, Digest: stage.Digest, ContentPath: filepath.ToSlash(relative), Package: stage.Package, PreparedUntil: expiry, CreatedAt: now.Add(-time.Hour).UnixMilli()}
 		if _, err := store.PutVersion(ctx, record); err != nil {
@@ -358,7 +366,7 @@ func TestPluginCollectionKeepsInstalledAndRollbackContent(t *testing.T) {
 	if err := collect(); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"expired", "legacy"} {
+	for _, key := range []string{"expired", "unused"} {
 		if _, err := os.Stat(paths[key]); !os.IsNotExist(err) {
 			t.Fatalf("unreferenced %s content was retained: %v", key, err)
 		}

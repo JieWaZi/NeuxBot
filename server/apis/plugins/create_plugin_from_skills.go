@@ -71,8 +71,8 @@ func (o *CreatePluginFromSkills) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	defer os.RemoveAll(filepath.Join(stagedRoot(), stage.Token))
-	resource, version, err := persistPreparedResource(ctx, stage, false, models.Plugin{ID: id, Name: o.Body.Name, Description: o.Body.Description, SourceKey: constants.PluginLocalSkillSourcePrefix + id}, provenance)
+	defer os.RemoveAll(stage.Directory)
+	resource, version, err := persistPreparedResource(ctx, stage, false, models.Plugin{ID: id, Name: o.Body.Name, Description: o.Body.Description, SourceKey: constants.PluginLocalSkillSourcePrefix + id}, provenance, "")
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}

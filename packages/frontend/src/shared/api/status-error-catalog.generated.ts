@@ -2307,12 +2307,12 @@ export const statusErrorCatalog = {
     code: 42200006502,
     en: [
       {
-        text: "This plugin package is unsupported. Reinstall it from the plugin catalog.",
+        text: "The plugin package does not match the current package contract.",
       },
     ],
     zh: [
       {
-        text: "当前插件包不受支持，请从插件目录重新安装",
+        text: "插件包不符合当前解析规范",
       },
     ],
   },

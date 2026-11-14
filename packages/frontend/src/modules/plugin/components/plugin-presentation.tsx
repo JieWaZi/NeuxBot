@@ -64,7 +64,6 @@ export function PluginPresentation({
     enabled: Boolean(pluginId && prompt && selected[0]),
   });
   const selectedDetail = current.data ?? detail;
-  const selectedUnsupported = selectedDetail?.packageStatus === "unsupported";
   const matchesSnapshot = (
     candidate: PluginDetail | undefined,
     target: string,
@@ -75,7 +74,6 @@ export function PluginPresentation({
     return Boolean(
       pluginId &&
       candidate?.plugin?.id === pluginId &&
-      candidate.packageStatus === "available" &&
       versionId &&
       candidate.installations?.some(
         (item) =>
@@ -95,7 +93,6 @@ export function PluginPresentation({
     setPrompt(null);
     navigate(destination.to, { state: destination.state });
   };
-  if (detail?.packageStatus === "unsupported") return null;
   return (
     <>
       <ResourceCatalogTry
@@ -146,11 +143,7 @@ export function PluginPresentation({
                   <Button
                     variant="catalog-secondary"
                     size="catalog"
-                    disabled={
-                      current.isFetching ||
-                      current.isError ||
-                      selectedUnsupported
-                    }
+                    disabled={current.isFetching || current.isError}
                     onClick={() => setInstalling(true)}
                   >
                     {t("install")}
@@ -158,9 +151,9 @@ export function PluginPresentation({
                 )}
               </div>
             )}
-            {(current.isError || selectedUnsupported) && (
+            {current.isError && (
               <p role="alert" className="type-resource-body text-destructive">
-                {t(selectedUnsupported ? "packageUnsupported" : "failed")}
+                {t("failed")}
               </p>
             )}
           </div>

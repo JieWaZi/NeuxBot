@@ -50,7 +50,7 @@ func (o *PrepareCatalogPlugin) Output(ctx *gin.Context) (interface{}, error) {
 		if err != nil {
 			return err
 		}
-		defer os.RemoveAll(filepath.Join(stagedRoot(), stage.Token))
+		defer os.RemoveAll(stage.Directory)
 		resource, version, err = prepareCatalogResource(ctx, stage, o.Body.TrustConfirmed, entry)
 		return err
 	})
@@ -86,7 +86,7 @@ func prepareCatalogResource(ctx context.Context, stage packageplugin.StagedPacka
 }
 
 // persistPreparedResource 为目录准备和本地技能封装复用不可变内容与资源提交边界。
-func persistPreparedResource(ctx context.Context, stage packageplugin.StagedPackage, trusted bool, resource models.Plugin, provenance map[string]any, binding ...string) (models.Plugin, string, error) {
+func persistPreparedResource(ctx context.Context, stage packageplugin.StagedPackage, trusted bool, resource models.Plugin, provenance map[string]any, catalogBinding string) (models.Plugin, string, error) {
 	if stage.Package.RequiresTrust() && !trusted {
 		return models.Plugin{}, "", status_error.MCPConnectorTrustRequired
 	}
@@ -114,9 +114,8 @@ func persistPreparedResource(ctx context.Context, stage packageplugin.StagedPack
 	if versionName == "" {
 		versionName = stage.Digest[:12]
 	}
-	version := models.PluginVersion{ID: util.New(), PluginID: resource.ID, Version: versionName, ContentPath: filepath.ToSlash(relative), Digest: stage.Digest, Package: stage.Package, Provenance: provenance}
-	if len(binding) > 0 {
-		version.CatalogBinding = binding[0]
+	version := models.PluginVersion{ID: util.New(), PluginID: resource.ID, Version: versionName, ContentPath: filepath.ToSlash(relative), Digest: stage.Digest, Package: stage.Package, Provenance: provenance, CatalogBinding: catalogBinding}
+	if catalogBinding != "" {
 		version.PreparedUntil = time.Now().Add(constants.PluginPreparationLifetime).UnixMilli()
 	}
 	if trusted {

@@ -12,13 +12,8 @@ import (
 
 // installationAccountChanged 判断是否需要原子提交材料或注销入口的新状态。
 func installationAccountChanged(before, after models.PluginAccount) bool {
-	if len(before.DeliveryMaterials) != 0 || len(after.DeliveryMaterials) != 0 {
-		return true
-	}
-	if before.AuthorizedVersionID == nil || after.AuthorizedVersionID == nil {
-		return before.AuthorizedVersionID != after.AuthorizedVersionID
-	}
-	return *before.AuthorizedVersionID != *after.AuthorizedVersionID
+	return len(before.DeliveryMaterials) != 0 || len(after.DeliveryMaterials) != 0 ||
+		before.AuthorizedVersionID != after.AuthorizedVersionID
 }
 
 // commitInstallationAccount 推进绑定固定版本的公开账号摘要，保留同次核验结果。
