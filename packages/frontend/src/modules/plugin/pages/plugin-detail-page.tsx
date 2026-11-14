@@ -58,7 +58,17 @@ export function PluginDetailPage() {
   const active = useRouteSceneActive();
   const client = useQueryClient();
   const [install, setInstall] = useState(false);
-  const [updating, setUpdating] = useState(false);
+  const [versionChange, setVersionChange] = useState<{
+    pluginId: string;
+    wakerId: string;
+    name: string;
+    rollback?: boolean;
+  }>();
+  if (
+    versionChange &&
+    (versionChange.pluginId !== pluginId || versionChange.wakerId !== wakerId)
+  )
+    setVersionChange(undefined);
   const [editing, setEditing] = useState(false);
   const [removing, setRemoving] = useState<{
     mode: "resource" | "installation";
@@ -89,6 +99,10 @@ export function PluginDetailPage() {
   const resource = detail?.plugin;
   const unsupported = detail?.packageStatus === "unsupported";
   const canUpdate = pluginHasUpdate(detail, wakerId);
+  const rollback = detail?.rollback;
+  const canRollback = Boolean(
+    rollback?.available && rollback.versionId && rollback.version,
+  );
   const relation = detail?.installations?.find(
     (item) => item.wakerId === wakerId,
   );
@@ -163,10 +177,10 @@ export function PluginDetailPage() {
           }
           actions={
             resource &&
-            !unsupported && (
+            (!unsupported || canRollback) && (
               <div className="grid max-w-full justify-items-end gap-2">
                 <div className="flex max-w-full flex-wrap items-center gap-2">
-                  {relation && (
+                  {!unsupported && relation && (
                     <Switch
                       hitArea="comfortable"
                       checked={relation.enabled ?? false}
@@ -180,7 +194,8 @@ export function PluginDetailPage() {
                       }
                     />
                   )}
-                  {!wakerId &&
+                  {!unsupported &&
+                    !wakerId &&
                     !pluginHasAuthorization(pkg) &&
                     !pluginHasConfiguration(pkg) && (
                       <PageAction
@@ -192,7 +207,7 @@ export function PluginDetailPage() {
                         <Pencil />
                       </PageAction>
                     )}
-                  {!wakerId && (
+                  {!unsupported && !wakerId && (
                     <PageAction
                       appearance="catalog"
                       intent={canUpdate ? "secondary" : "primary"}
@@ -202,14 +217,36 @@ export function PluginDetailPage() {
                       {t("installToPartners")}
                     </PageAction>
                   )}
-                  {canUpdate && (
+                  {!unsupported && canUpdate && (
                     <PageAction
                       appearance="catalog"
                       intent="primary"
-                      onClick={() => setUpdating(true)}
+                      onClick={() =>
+                        setVersionChange({
+                          pluginId,
+                          wakerId,
+                          name: pluginDisplayName(pkg, resource?.name),
+                        })
+                      }
                     >
                       <RefreshCw />
                       {t("updateAvailable")}
+                    </PageAction>
+                  )}
+                  {canRollback && (
+                    <PageAction
+                      appearance="catalog"
+                      intent="secondary"
+                      onClick={() =>
+                        setVersionChange({
+                          pluginId,
+                          wakerId,
+                          name: pluginDisplayName(pkg, resource?.name),
+                          rollback: true,
+                        })
+                      }
+                    >
+                      {t("rollbackAction", { version: rollback?.version })}
                     </PageAction>
                   )}
                 </div>
@@ -309,12 +346,13 @@ export function PluginDetailPage() {
             onClose={() => setEditing(false)}
           />
         )}
-        {updating && detail && !unsupported && (
+        {versionChange && (
           <PluginUpdateDialog
-            pluginId={pluginId}
-            name={pluginDisplayName(pkg, resource?.name)}
-            wakerId={wakerId}
-            onClose={() => setUpdating(false)}
+            pluginId={versionChange.pluginId}
+            name={versionChange.name}
+            rollback={versionChange.rollback}
+            wakerId={versionChange.wakerId}
+            onClose={() => setVersionChange(undefined)}
           />
         )}
         {install && detail && !unsupported && (

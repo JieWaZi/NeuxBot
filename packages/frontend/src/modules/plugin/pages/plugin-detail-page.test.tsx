@@ -17,6 +17,7 @@ const { togglePlugin, renamePlugin, fixture } = vi.hoisted(() => ({
   fixture: {
     updateAvailable: false,
     updateWakerIds: ["w1"],
+    rollbackAvailable: false,
     unsupported: false,
     readError: false,
     hold: false,
@@ -49,6 +50,7 @@ vi.mock("../api/plugin-queries", () => ({
   }),
   cancelPluginAuthorizationMutation: () => ({ mutationFn: vi.fn() }),
   prepareCatalogPluginMutation: () => ({ mutationFn: vi.fn() }),
+  updatePluginInstallationsMutation: () => ({ mutationFn: vi.fn() }),
   getPluginOptions: (options: {
     query?: { locale?: string; wakerId?: string; versionId?: string };
   }) => ({
@@ -69,6 +71,11 @@ vi.mock("../api/plugin-queries", () => ({
           wakerIds: fixture.updateWakerIds,
           catalogKey: "office",
           archiveSHA256: "fixed",
+        },
+        rollback: {
+          available: fixture.rollbackAvailable,
+          versionId: "previous",
+          version: "0.9.0",
         },
         installations: [{ wakerId: "w1", versionId: "v1", enabled: true }],
         partnerNames: { w1: "工作伙伴" },
@@ -131,6 +138,7 @@ afterEach(async () => {
   vi.clearAllMocks();
   fixture.updateAvailable = false;
   fixture.updateWakerIds = ["w1"];
+  fixture.rollbackAvailable = false;
   fixture.unsupported = false;
   fixture.readError = false;
   fixture.hold = false;
@@ -322,6 +330,19 @@ it("keeps the partner detail current when another partner has an update", async 
   open("/wakers/w1/plugins/p");
   await screen.findByRole("heading", { name: "办公室" });
   expect(screen.queryByRole("button", { name: "可更新" })).toBeNull();
+});
+
+it("offers the Core-approved rollback in partner detail for an unsupported current package", async () => {
+  fixture.rollbackAvailable = true;
+  fixture.unsupported = true;
+  open("/wakers/w1/plugins/p");
+  fireEvent.click(await screen.findByRole("button", { name: "回滚到 0.9.0" }));
+  expect(await screen.findByText("将回滚全部 1 个伙伴")).toBeVisible();
+  expect(fixture.request).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      query: expect.objectContaining({ wakerId: "w1" }),
+    }),
+  );
 });
 
 it("keeps installed content visible after a failed background read and retries in place", async () => {

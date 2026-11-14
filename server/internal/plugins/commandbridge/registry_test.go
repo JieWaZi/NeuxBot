@@ -75,13 +75,18 @@ func TestCommittedPreparationPreservesOnlyTheExactVerifiedIdentity(t *testing.T)
 		t.Fatal("another entry advanced this identity")
 	}
 	registry.CommitPreparation(expected, "fixed-entry", expected.ConfigurationRevision+1, expected.AccountGeneration+1)
-	committed := driver.OperationContext()
+	committed := expected
+	committed.ConfigurationRevision++
+	committed.AccountGeneration++
+	if driver.OperationContext() != expected {
+		t.Fatal("committed summary mutated the running driver's operation")
+	}
 	got, _, _ := registry.CachedAuthorization("plugin-one", "fixed-entry", committed)
 	if got.ID != account.ID || got.CheckedAt != account.CheckedAt || !got.Available {
 		t.Fatal("commit discarded verified account", got)
 	}
 	registry.CommitPreparation(expected, "fixed-entry", expected.ConfigurationRevision, expected.AccountGeneration)
-	if driver.OperationContext() != committed {
+	if driver.OperationContext() != expected {
 		t.Fatal("late old commit rewound the current identity")
 	}
 	old, _, _ := registry.CachedAuthorization("plugin-one", "fixed-entry", expected)
@@ -163,5 +168,54 @@ func TestRegistryClassifiesUsageAndAuthorizationChanges(t *testing.T) {
 				t.Fatal("authorization session change was classified as usage", changes)
 			}
 		})
+	}
+}
+
+func TestCommittedDeletionRetiresPreviouslyAcquiredIdentity(t *testing.T) {
+	registry := NewRegistry(t.Context(), nil)
+	defer registry.Close()
+	cfg := Config{PluginID: "plugin"}
+	auth, _, err := registry.Get("plugin", "source", cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	guard, err := registry.GuardDeletion("plugin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry.Retire("plugin", guard)
+	guard.Close()
+	if _, exists := registry.entries["plugin"]; exists {
+		t.Fatal("deleted identity remains indexed")
+	}
+	if _, err := auth.Acquire(); err == nil {
+		t.Fatal("holder of old identity entered after deletion")
+	}
+}
+
+func TestStaleRetirementCannotRemoveReplacementIdentity(t *testing.T) {
+	registry := NewRegistry(t.Context(), nil)
+	defer registry.Close()
+	old, _, err := registry.Get("plugin", "old", Config{PluginID: "plugin"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	guard, err := registry.GuardDeletion("plugin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry.ForgetMissing("plugin")
+	if registry.entries["plugin"].auth != old {
+		t.Fatal("cleanup bypassed the active deletion fence")
+	}
+	registry.Retire("plugin", guard)
+	guard.Close()
+	newAuth, _, err := registry.Get("plugin", "new", Config{PluginID: "plugin"}, nil)
+	if err != nil || newAuth == old {
+		t.Fatalf("replacement identity was not created: %v", err)
+	}
+	registry.Retire("plugin", guard)
+	if registry.entries["plugin"].auth != newAuth {
+		t.Fatal("late retirement removed a replacement identity")
 	}
 }

@@ -14,7 +14,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
-	"golang.org/x/mod/semver"
 )
 
 // 浏览插件
@@ -276,21 +275,13 @@ func catalogBrowseMatches(entry catalog.Entry, query string) bool {
 }
 
 func browseUpdate(versions []models.PluginBrowseVersion, entry catalog.Entry) PluginBrowseUpdate {
-	result := PluginBrowseUpdate{}
-	target := normalizedPluginVersion(entry.Package.Manifest.Version)
-	if !semver.IsValid(target) || len(versions) == 0 {
-		return result
-	}
-	available := false
+	installed := make([]string, 0, len(versions))
 	for _, version := range versions {
-		current := normalizedPluginVersion(version.Version)
-		if !semver.IsValid(current) || semver.Compare(target, current) < 0 {
-			return result
-		}
-		available = available || semver.Compare(target, current) > 0
+		installed = append(installed, version.Version)
 	}
-	if available {
-		result = PluginBrowseUpdate{Available: true, CatalogKey: entry.Key, Version: entry.Package.Manifest.Version, ArchiveSHA256: entry.ArchiveSHA256}
+	target := entry.Package.Manifest.Version
+	if len(upgradeIndices(target, installed)) == 0 {
+		return PluginBrowseUpdate{}
 	}
-	return result
+	return PluginBrowseUpdate{Available: true, CatalogKey: entry.Key, Version: target, ArchiveSHA256: entry.ArchiveSHA256}
 }

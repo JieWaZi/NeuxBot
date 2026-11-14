@@ -25,3 +25,7 @@ func killProcessGroup(command *exec.Cmd) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+func manageProcessTree(command *exec.Cmd) (func(), error) {
+	return func() { killProcessGroup(command) }, nil
+}

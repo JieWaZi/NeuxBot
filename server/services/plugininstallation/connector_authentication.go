@@ -5,13 +5,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
@@ -28,7 +28,7 @@ type deliveryMaterial struct {
 }
 
 // materialKey 使用不可变版本、交付目标和授权端点限定材料；普通配置修订不改变身份。
-func materialKey(version models.PluginVersion, config models.PluginConfiguration, target string) string {
+func materialKey(version models.PluginVersion, target string) string {
 	endpoints := []string{}
 	declaration := version.Package.Integration.Authentication
 	if declaration != nil && len(declaration.Bindings) > 0 {
@@ -37,11 +37,7 @@ func materialKey(version models.PluginVersion, config models.PluginConfiguration
 		}
 	} else {
 		for _, server := range version.Package.Servers {
-			address, err := deliveryEndpoint(version.Package, config, server.URL)
-			if err != nil {
-				address = server.URL
-			}
-			endpoints = append(endpoints, server.Key+"\x00"+address)
+			endpoints = append(endpoints, server.Key+"\x00"+server.URL)
 		}
 	}
 	for _, binding := range plugins.TargetSkillAuthenticationBindings(version.Package, target) {
@@ -56,14 +52,6 @@ func materialKey(version models.PluginVersion, config models.PluginConfiguration
 	return hex.EncodeToString(sum[:])
 }
 
-// deliveryEndpoint 与实际连接器使用同一普通配置展开规则，材料不能跨端点交付。
-func deliveryEndpoint(pkg plugins.Package, config models.PluginConfiguration, address string) (string, error) {
-	if err := plugins.ValidateContract(pkg); err != nil {
-		return "", err
-	}
-	return address, nil
-}
-
 // materialScope 限定当前版本和目标的唯一保存槽位，端点变化替换旧材料。
 func materialScope(version models.PluginVersion, target string) string {
 	body, _ := json.Marshal([]any{version.ID, version.Digest, filepath.ToSlash(version.Package.SourcePath), target})
@@ -71,14 +59,10 @@ func materialScope(version models.PluginVersion, target string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// ResolveDeliveryMaterials 仅由安装和授权管理调用，严格核验返回组件后生成私有保存材料。
-func ResolveDeliveryMaterials(ctx context.Context, driver *commandbridge.Driver, version models.PluginVersion, config models.PluginConfiguration, accountID ...string) ([]models.MCPSecretDefinition, error) {
-	if err := plugins.ValidateContract(version.Package); err != nil {
-		return nil, err
-	}
-	declaration := version.Package.Integration.Authentication
+// authenticationTargets 给出包实际声明的私有材料槽位，空字符串表示共享目标。
+func authenticationTargets(declaration *plugins.Authentication) []string {
 	if declaration == nil {
-		return nil, nil
+		return nil
 	}
 	targets := []string{}
 	for _, binding := range declaration.Bindings {
@@ -92,8 +76,20 @@ func ResolveDeliveryMaterials(ctx context.Context, driver *commandbridge.Driver,
 		}
 	}
 	sort.Strings(targets)
+	return targets
+}
+
+// ResolveDeliveryMaterials 仅由安装和授权管理调用，严格核验返回组件后生成私有保存材料。
+func ResolveDeliveryMaterials(ctx context.Context, driver *commandbridge.Driver, version models.PluginVersion, accountID ...string) ([]models.MCPSecretDefinition, error) {
+	if err := plugins.ValidateContract(version.Package); err != nil {
+		return nil, err
+	}
+	declaration := version.Package.Integration.Authentication
+	if declaration == nil {
+		return nil, nil
+	}
 	materials := []models.MCPSecretDefinition{}
-	for _, target := range targets {
+	for _, target := range authenticationTargets(declaration) {
 		components := []commandbridge.Component{}
 		allowed := map[string][]plugins.AuthenticationBinding{}
 		for _, binding := range plugins.TargetAuthenticationBindings(version.Package, target) {
@@ -156,7 +152,7 @@ func ResolveDeliveryMaterials(ctx context.Context, driver *commandbridge.Driver,
 		if err != nil {
 			return nil, status_error.PluginAuthorizationFailed
 		}
-		key := materialKey(version, config, target)
+		key := materialKey(version, target)
 		materials = append(materials, models.MCPSecretDefinition{ID: materialScope(version, target), Name: key, Configured: true, Value: string(body)})
 	}
 	return materials, nil
@@ -171,17 +167,17 @@ func (s *Service) persistDelivery(ctx context.Context, version models.PluginVers
 		}
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Duration(constants.PluginAccountInvalidationTimeoutSeconds)*time.Second)
 		defer cancel()
-		if err := s.clearDelivery(cleanup, version.PluginID, driver.OperationContext().AccountGeneration); err != nil && err != status_error.PluginAccountConflict {
+		if err := s.resetDelivery(cleanup, version.PluginID, driver.OperationContext().AccountGeneration, version.ID); err != nil && err != status_error.PluginAccountConflict {
 			resultErr = err
 		}
 	}()
 
-	config, err := s.config.Store.Configuration(ctx, version.PluginID)
+	revision, err := s.config.Store.ConfigurationRevision(ctx, version.PluginID)
 	if err != nil {
 		return err
 	}
 
-	if config.Revision != driver.OperationContext().ConfigurationRevision {
+	if revision != driver.OperationContext().ConfigurationRevision {
 		return status_error.PluginConfigurationConflict
 	}
 
@@ -203,14 +199,6 @@ func (s *Service) persistDelivery(ctx context.Context, version models.PluginVers
 	materials := []models.MCPSecretDefinition{}
 	var resolveErr error
 	for _, current := range versions {
-		if err := plugins.ValidateContract(current.Package); err != nil {
-			resolveErr = err
-			break
-		}
-		if err := plugins.ValidateValues(current.Package, config.Values, secretValues(config)); err != nil {
-			resolveErr = err
-			break
-		}
 		if current.Package.Integration.Authentication == nil {
 			continue
 		}
@@ -254,13 +242,7 @@ func (s *Service) persistDelivery(ctx context.Context, version models.PluginVers
 			}
 			active = commandbridge.New(command)
 		}
-		if err := plugins.ValidateValues(current.Package, config.Values, secretValues(config)); err != nil {
-			if release != nil {
-				release()
-			}
-			resolveErr = err
-			break
-		}
+		// 授权仅依赖固定版本及账号代次。拟提交的配置由安装或切换用例核验。
 		account, err := active.Status(ctx, true)
 		if err == nil && (!account.Available || account.ID != accountID) {
 			err = status_error.PluginNotReady
@@ -275,7 +257,7 @@ func (s *Service) persistDelivery(ctx context.Context, version models.PluginVers
 		}
 		var resolved []models.MCPSecretDefinition
 		if err == nil {
-			resolved, err = ResolveDeliveryMaterials(ctx, active, current, config, accountID)
+			resolved, err = ResolveDeliveryMaterials(ctx, active, current, accountID)
 		}
 		if release != nil {
 			release()
@@ -325,6 +307,14 @@ func (s *Service) persistDelivery(ctx context.Context, version models.PluginVers
 				return status_error.PluginVersionConflict
 			}
 		}
+		selected, err := s.config.Store.Version(txctx, version.ID)
+		if err != nil {
+			return err
+		}
+		if selected.Retired || selected.PluginID != version.PluginID || selected.Digest != version.Digest {
+			return status_error.PluginVersionConflict
+		}
+		account.AuthorizedVersionID = &selected.ID
 		account.DeliveryMaterials = materials
 		return s.config.Store.UpdateAccount(txctx, account, account.Generation)
 	})
@@ -337,7 +327,7 @@ func (s *Service) persistDelivery(ctx context.Context, version models.PluginVers
 	return resolveErr
 }
 
-func (s *Service) clearDelivery(ctx context.Context, id string, expected int64) error {
+func (s *Service) resetDelivery(ctx context.Context, id string, expected int64, authorizedVersionID string) error {
 	if s.config.Transactions == nil {
 		return status_error.PluginNotReady
 	}
@@ -349,13 +339,14 @@ func (s *Service) clearDelivery(ctx context.Context, id string, expected int64) 
 		if account.Generation != expected {
 			return status_error.PluginAccountConflict
 		}
+		account.AuthorizedVersionID = &authorizedVersionID
 		account.DeliveryMaterials = nil
 		return s.config.Store.UpdateAccount(txctx, account, expected)
 	})
 }
 
 // DeliveryAuthentication 只读取与版本、组件及授权端点匹配的私有材料。
-func DeliveryAuthentication(version models.PluginVersion, config models.PluginConfiguration, account models.PluginAccount, target string) ([]commandbridge.Binding, string, error) {
+func DeliveryAuthentication(version models.PluginVersion, account models.PluginAccount, target string) ([]commandbridge.Binding, string, error) {
 	if err := plugins.ValidateContract(version.Package); err != nil {
 		return nil, "", err
 	}
@@ -367,7 +358,7 @@ func DeliveryAuthentication(version models.PluginVersion, config models.PluginCo
 	}
 	// 公共组件使用同一账号材料，显式目标差异使用其声明的槽位。
 	target = plugins.AuthenticationTargetRuntime(version.Package, target)
-	key := materialKey(version, config, target)
+	key := materialKey(version, target)
 	for _, material := range account.DeliveryMaterials {
 		if material.Name != key || !material.Configured {
 			continue
@@ -500,7 +491,7 @@ func MergeDeliveryPath(current, incoming, dataDirectory string) string {
 }
 
 // ResolveBoundAuthentication 为显式连接测试解析已获准组件；聊天使用已有材料的本地投射。
-func ResolveBoundAuthentication(ctx context.Context, driver *commandbridge.Driver, version models.PluginVersion, config models.PluginConfiguration, declarations []plugins.AuthenticationBinding, native bool, connectors []models.MCPConnector, environment map[string]string) error {
+func ResolveBoundAuthentication(ctx context.Context, driver *commandbridge.Driver, version models.PluginVersion, declarations []plugins.AuthenticationBinding, native bool, connectors []models.MCPConnector, environment map[string]string) error {
 	id := version.PluginID
 	selected := []plugins.AuthenticationBinding{}
 	for _, declaration := range declarations {
@@ -523,7 +514,7 @@ func ResolveBoundAuthentication(ctx context.Context, driver *commandbridge.Drive
 	declaration.SkillBindings = nil
 	pkg.Integration.Authentication = &declaration
 	version.Package = pkg
-	materials, err := ResolveDeliveryMaterials(ctx, driver, version, config)
+	materials, err := ResolveDeliveryMaterials(ctx, driver, version)
 	if err != nil {
 		return err
 	}

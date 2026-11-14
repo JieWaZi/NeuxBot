@@ -83,7 +83,7 @@ func TestStageOneAccountMaterialLifecycleAndRestart(t *testing.T) {
 	owner := New(Config{Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB)), DataDirectory: data, Bridges: registry, BridgeEnvironment: os.Environ(), Store: store})
 	config := models.PluginConfiguration{PluginID: "p"}
 	account := models.PluginAccount{PluginID: "p"}
-	release, err := owner.PrepareVersions(ctx, []models.PluginVersion{version, second}, &config, &account)
+	release, err := owner.PrepareVersion(ctx, version, config, &account, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestStageOneAccountMaterialLifecycleAndRestart(t *testing.T) {
 	if err := database.DB.Where("plugin_id = ?", "p").First(&raw).Error; err != nil {
 		t.Fatal(err)
 	}
-	if raw.Generation != 1 || len(raw.DeliveryMaterials) != 2 || raw.DeliveryMaterials[0].Value != "" || raw.DeliveryMaterials[0].Ciphertext == "" {
+	if raw.Generation != 1 || len(raw.DeliveryMaterials) != 1 || raw.DeliveryMaterials[0].Value != "" || raw.DeliveryMaterials[0].Ciphertext == "" {
 		t.Fatal("account material was not protected", raw.Generation)
 	}
 	auth, driver, err := owner.Bridge(context.Background(), version)
@@ -117,11 +117,11 @@ func TestStageOneAccountMaterialLifecycleAndRestart(t *testing.T) {
 	if saved.Generation != 2 {
 		t.Fatal("authorization did not advance account generation", saved.Generation)
 	}
-	bindings, subject, err := DeliveryAuthentication(version, config, saved, "codex")
+	bindings, subject, err := DeliveryAuthentication(version, saved, "codex")
 	if err != nil || subject != "second-user" || len(bindings) != 1 || bindings[0].Headers["Authorization"] != "Bearer private-second-user" {
 		t.Fatal("new identity material was not durable", subject, err)
 	}
-	previousBindings, previousSubject, err := DeliveryAuthentication(second, config, saved, "codex")
+	previousBindings, previousSubject, err := DeliveryAuthentication(second, saved, "codex")
 	if err != nil || previousSubject != "second-user" || len(previousBindings) != 1 {
 		t.Fatal("still installed disabled version was not revalidated", previousSubject, err)
 	}
@@ -130,6 +130,11 @@ func TestStageOneAccountMaterialLifecycleAndRestart(t *testing.T) {
 	}
 	if generation, _ := store.AccountGeneration(ctx, "p"); generation != 2 {
 		t.Fatal("ordinary check changed identity generation")
+	}
+	// 新操作使用已完成登录的最新代次。原驱动保持固定，不能清除该次登录提交的材料。
+	_, driver, err = owner.Bridge(ctx, version)
+	if err != nil {
+		t.Fatal(err)
 	}
 	if err := store.UpdateConfiguration(ctx, config, 0); err != nil {
 		t.Fatal(err)
@@ -179,24 +184,23 @@ func TestStageOneAccountMaterialLifecycleAndRestart(t *testing.T) {
 
 func TestStageOneMaterialBoundToExactEndpointAndVersion(t *testing.T) {
 	version := models.PluginVersion{ID: "v", PluginID: "p", Digest: strings.Repeat("a", 64), Package: plugins.Package{ContractVersion: constants.PluginTargetContractVersion, Format: constants.PluginFormatPortable, Manifest: plugins.Manifest{Schema: constants.PluginManifestSchema}, Integration: plugins.Integration{Authentication: &plugins.Authentication{Strategy: constants.PluginAuthCommandStrategy, Protocol: constants.PluginAuthProtocol, Bindings: []plugins.AuthenticationBinding{{Server: "service", URL: "https://first.invalid/mcp", Header: "Authorization"}}}}, Servers: []plugins.Server{{Key: "service", URL: "https://first.invalid/mcp"}}}}
-	config := models.PluginConfiguration{}
-	key := materialKey(version, config, "")
+	key := materialKey(version, "")
 	account := models.PluginAccount{PluginID: "p", Generation: 1, DeliveryMaterials: []models.MCPSecretDefinition{{Name: key, Configured: true, Value: `{"accountId":"first-user","bindings":[{"componentId":"component","headers":{"Authorization":"private"}}]}`}}}
 	// 同一组件的公共约束只生成一个材料槽位。
-	bindings, subject, err := DeliveryAuthentication(version, config, account, "workbuddy")
+	bindings, subject, err := DeliveryAuthentication(version, account, "workbuddy")
 	if err != nil || len(bindings) != 1 || subject != "first-user" || bindings[0].Headers["Authorization"] != "private" {
 		t.Fatal("equivalent standard target lost its existing encrypted material", subject, err)
 	}
 	version.Package.Servers[0].URL = "https://second.invalid/mcp"
 	version.Package.Integration.Authentication.Bindings[0].URL = "https://second.invalid/mcp"
-	bindings, subject, err = DeliveryAuthentication(version, config, account, "codex")
+	bindings, subject, err = DeliveryAuthentication(version, account, "codex")
 	if err != nil || len(bindings) != 0 || subject != "" {
 		t.Fatal("credential crossed the endpoint boundary", subject, err)
 	}
 	version.Package.Servers[0].URL = "https://first.invalid/mcp"
 	version.Package.Integration.Authentication.Bindings[0].URL = "https://first.invalid/mcp"
 	version.ID = "other-version"
-	bindings, _, err = DeliveryAuthentication(version, config, account, "codex")
+	bindings, _, err = DeliveryAuthentication(version, account, "codex")
 	if err != nil || len(bindings) != 0 {
 		t.Fatal("credential crossed the version boundary", err)
 	}
@@ -207,9 +211,9 @@ func TestStageOneMaterialBoundToExactEndpointAndVersion(t *testing.T) {
 
 func TestMaterialIdentityIncludesSkillComponentAndPermittedEnvironment(t *testing.T) {
 	version := models.PluginVersion{ID: "v", Digest: "fixed", Package: plugins.Package{Format: constants.PluginFormatPortable, ContractVersion: constants.PluginTargetContractVersion, Integration: plugins.Integration{Authentication: &plugins.Authentication{SkillBindings: []plugins.SkillAuthenticationBinding{{Skill: "skills/review", EnvironmentKeys: []string{"PATH"}, PrivatePathKeys: []string{"PATH"}}}}}}}
-	key := materialKey(version, models.PluginConfiguration{}, "")
+	key := materialKey(version, "")
 	version.Package.Integration.Authentication.SkillBindings[0].EnvironmentKeys = append(version.Package.Integration.Authentication.SkillBindings[0].EnvironmentKeys, "EXTRA_KEY")
-	if next := materialKey(version, models.PluginConfiguration{}, ""); next == key {
+	if next := materialKey(version, ""); next == key {
 		t.Fatal("material reused after skill environment constraint changed")
 	}
 }

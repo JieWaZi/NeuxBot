@@ -2,9 +2,12 @@ package plugins
 
 import (
 	"context"
+
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -29,7 +32,22 @@ func (o *UpdatePluginConfiguration) Output(ctx *gin.Context) (interface{}, error
 		return nil, ginx.WithStack(err)
 	}
 	store := global.PluginControllerManager
-	err := global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
+	commitctx, publish := events.HoldCommitEvents(ctx)
+	defer publish()
+	if err := closeIdlePlugin(ctx.Request.Context(), o.PluginID); err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	if global.PluginBridges != nil {
+		guard, err := global.PluginBridges.BeginChange(o.PluginID, func() error {
+			_, err := store.Get(ctx, o.PluginID)
+			return err
+		})
+		if err != nil {
+			return nil, ginx.WithStack(err)
+		}
+		defer guard.Close()
+	}
+	err := global.TransactionControllerManager.Transaction(commitctx, func(txctx context.Context) error {
 		config, err := store.Configuration(txctx, o.PluginID)
 		if err != nil {
 			return err
@@ -38,34 +56,34 @@ func (o *UpdatePluginConfiguration) Output(ctx *gin.Context) (interface{}, error
 			return status_error.PluginConfigurationConflict
 		}
 		config = configurationChange(config, o.Body)
-		versions, err := store.Versions(txctx, o.PluginID)
-		if err != nil {
-			return err
-		}
 		relations, err := store.Installations(txctx, o.PluginID, "")
 		if err != nil {
 			return err
 		}
-		used := map[string]bool{}
-		for _, r := range relations {
-			used[r.VersionID] = true
+		if len(relations) == 0 {
+			version, err := store.LatestVersion(txctx, o.PluginID)
+			if err != nil {
+				return err
+			}
+			relations = append(relations, models.WakerPlugin{VersionID: version.ID})
 		}
-		if len(relations) == 0 && len(versions) > 0 {
-			used[versions[0].ID] = true
-		}
-		if len(used) == 0 {
-			return status_error.PluginNotFound
-		}
-		for _, v := range versions {
-			if !used[v.ID] {
+		checked := map[string]bool{}
+		secrets := secretValues(config)
+		for _, relation := range relations {
+			if checked[relation.VersionID] {
 				continue
 			}
-			if err := packageplugin.ValidateContract(v.Package); err != nil {
+			version, err := store.Version(txctx, relation.VersionID)
+			if err != nil {
 				return err
 			}
-			if err := packageplugin.ValidateValues(v.Package, config.Values, secretValues(config)); err != nil {
+			if err := packageplugin.ValidateContract(version.Package); err != nil {
 				return err
 			}
+			if err := packageplugin.ValidateValues(version.Package, config.Values, secrets); err != nil {
+				return err
+			}
+			checked[version.ID] = true
 		}
 		return store.UpdateConfiguration(txctx, config, o.Body.ExpectedRevision)
 	})

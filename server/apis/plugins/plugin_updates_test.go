@@ -217,6 +217,183 @@ func TestUpdateAllRequiresCompleteInstallationSetAndPreservesEnabled(t *testing.
 	}
 }
 
+func TestPreparedUpdateAndRollbackKeepExactLocalVersions(t *testing.T) {
+	ctx := pluginAPIContext(t)
+	prepare := func(version string) PluginDetailResponse {
+		t.Helper()
+		root := t.TempDir()
+		body := fmt.Sprintf(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"fixed-tools","version":%q}`, version)
+		if err := os.WriteFile(filepath.Join(root, "plugin.json"), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+		stage, err := packageplugin.Stage(stagedRoot(), root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		detail, err := prepareCatalogFixture(t, ctx, stage, "", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return detail
+	}
+	old := prepare("1.0.0")
+	id := old.Plugin.ID
+	install := &InstallPlugin{PluginID: id, Body: InstallPluginRequest{VersionID: old.ResolvedVersionID, WakerIDs: []string{"w1", "w2"}}}
+	if _, err := install.Output(ctx); err != nil {
+		t.Fatal(err)
+	}
+	store := global.PluginControllerManager
+	if err := store.SetEnabled(ctx, "w2", id, false); err != nil {
+		t.Fatal(err)
+	}
+	next := prepare("2.0.0")
+	unused := prepare("3.0.0")
+	if err := os.Remove(filepath.Join(global.PluginCatalogSource(), "catalog.json")); err != nil {
+		t.Fatal(err)
+	}
+	switchTo := func(from, to string, revision int64, rollback bool) error {
+		t.Helper()
+		// 使用 HTTP 字段名固定回滚语义。
+		var body UpdatePluginInstallationsRequest
+		raw := fmt.Sprintf(`{"expectedRevision":%d,"rollback":%t,"switches":[{"wakerId":"w1","expectedVersionId":%q,"versionId":%q},{"wakerId":"w2","expectedVersionId":%q,"versionId":%q}]}`, revision, rollback, from, to, from, to)
+		if err := json.Unmarshal([]byte(raw), &body); err != nil {
+			t.Fatal(err)
+		}
+		_, err := (&UpdatePluginInstallations{PluginID: id, Body: body}).Output(ctx)
+		return err
+	}
+	if err := switchTo(old.ResolvedVersionID, next.ResolvedVersionID, 0, false); err != nil {
+		t.Fatal("prepared version required Latest again", err)
+	}
+	value, err := (&GetPlugin{PluginID: id, WakerID: "w2"}).Output(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rollback := value.(PluginDetailResponse).Rollback; rollback == nil || !rollback.Available || rollback.VersionID != old.ResolvedVersionID {
+		t.Fatalf("disabled partner lost the rollback offer: %+v", rollback)
+	}
+	if err := switchTo(next.ResolvedVersionID, old.ResolvedVersionID, 1, false); !errors.Is(err, status_error.PluginVersionConflict) {
+		t.Fatalf("normal update accepted a downgrade: %v", err)
+	}
+	if err := switchTo(next.ResolvedVersionID, unused.ResolvedVersionID, 1, true); !errors.Is(err, status_error.PluginVersionConflict) {
+		t.Fatalf("rollback accepted a prepared-only version: %v", err)
+	}
+	if err := switchTo(next.ResolvedVersionID, old.ResolvedVersionID, 1, true); err != nil {
+		t.Fatal("rollback required network or failed to use the previous installed version", err)
+	}
+	if source, err := store.Get(ctx, id); err != nil || source.RollbackVersionID != "" {
+		t.Fatalf("rollback left a reversible toggle: %+v %v", source, err)
+	}
+	relations, err := store.Installations(ctx, id, "")
+	if err != nil || len(relations) != 2 || relations[0].VersionID != old.ResolvedVersionID || !relations[0].Enabled || relations[1].VersionID != old.ResolvedVersionID || relations[1].Enabled {
+		t.Fatalf("rollback lost installation facts: %+v %v", relations, err)
+	}
+}
+
+func TestPluginCollectionKeepsInstalledAndRollbackContent(t *testing.T) {
+	ctx := pluginAPIContext(t)
+	store := global.PluginControllerManager
+	id := "retention"
+	if err := store.Create(ctx, models.Plugin{ID: id, Name: "Retention", SourceKey: "catalog:retention"}); err != nil {
+		t.Fatal(err)
+	}
+	versions := []string{"installed", "rollback", "prepared", "expired", "legacy"}
+	paths := map[string]string{}
+	now := time.Now()
+	for index, key := range versions {
+		source := t.TempDir()
+		version := fmt.Sprintf("%d.0.0", index+1)
+		manifest := fmt.Sprintf(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"retention","version":%q}`, version)
+		if err := os.WriteFile(filepath.Join(source, "plugin.json"), []byte(manifest), 0600); err != nil {
+			t.Fatal(err)
+		}
+		stage, err := packageplugin.Stage(stagedRoot(), source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path, err := packageplugin.CopyContent(filepath.Join(global.Config.DataDirectory, "plugins", "content"), stage.Root, stage.Digest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		relative, err := filepath.Rel(global.Config.DataDirectory, path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expiry := now.Add(-time.Minute).UnixMilli()
+		if key == "prepared" {
+			expiry = now.Add(time.Hour).UnixMilli()
+		}
+		if key == "legacy" {
+			expiry = 0
+		}
+		record := models.PluginVersion{ID: key, PluginID: id, Version: version, Digest: stage.Digest, ContentPath: filepath.ToSlash(relative), Package: stage.Package, PreparedUntil: expiry, CreatedAt: now.Add(-time.Hour).UnixMilli()}
+		if _, err := store.PutVersion(ctx, record); err != nil {
+			t.Fatal(err)
+		}
+		paths[key] = path
+	}
+	if err := store.Install(ctx, models.WakerPlugin{ID: "retained", PluginID: id, WakerID: "w1", VersionID: "installed", Enabled: false}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetRollbackVersion(ctx, id, "rollback"); err != nil {
+		t.Fatal(err)
+	}
+	contents := packageplugin.NewContentStore(global.Config.DataDirectory, func() ([]string, error) { return store.ContentReferences(ctx) })
+	release, err := contents.Acquire(paths["expired"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	collect := func() error {
+		return contents.CollectAfter(func(active []string) error { return store.RetireUnusedVersions(ctx, active) })
+	}
+	if err := collect(); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"installed", "rollback", "prepared", "expired"} {
+		if _, err := os.Stat(paths[key]); err != nil {
+			t.Fatalf("lost pinned %s: %v", key, err)
+		}
+	}
+	release()
+	if err := collect(); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"expired", "legacy"} {
+		if _, err := os.Stat(paths[key]); !os.IsNotExist(err) {
+			t.Fatalf("unreferenced %s content was retained: %v", key, err)
+		}
+		record, err := store.Version(ctx, key)
+		if err != nil || !record.Retired || record.ContentPath != "" || record.Digest == "" {
+			t.Fatalf("lost immutable identity of %s: %+v %v", key, record, err)
+		}
+	}
+	states, err := store.ReadInstalledStates(ctx, []string{id})
+	if err != nil || len(states[id].Versions) != 1 || states[id].Versions[0].ID != "installed" {
+		t.Fatalf("partner pages loaded unrelated versions: %+v %v", states[id].Versions, err)
+	}
+	if err := store.Install(ctx, models.WakerPlugin{ID: "second", PluginID: id, WakerID: "w2", VersionID: "installed", Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Uninstall(ctx, "w2", id); err != nil {
+		t.Fatal(err)
+	}
+	if resource, err := store.Get(ctx, id); err != nil || resource.RollbackVersionID != "rollback" {
+		t.Fatalf("uninstall cleared rollback while another installation remained: %+v %v", resource, err)
+	}
+	if err := global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error { return store.DeleteByWaker(txctx, "w1") }); err != nil {
+		t.Fatal(err)
+	}
+	if err := collect(); err != nil {
+		t.Fatal(err)
+	}
+	if resource, err := store.Get(ctx, id); err != nil || resource.RollbackVersionID != "" {
+		t.Fatalf("last removal retained an unusable rollback target: %+v %v", resource, err)
+	}
+	if _, err := os.Stat(paths["rollback"]); !os.IsNotExist(err) {
+		t.Fatalf("expired rollback content survived the last uninstall: %v", err)
+	}
+}
+
 func TestPluginUpdateSemanticOrderingAndCatalogRollback(t *testing.T) {
 	for _, test := range []struct {
 		// 目录目标

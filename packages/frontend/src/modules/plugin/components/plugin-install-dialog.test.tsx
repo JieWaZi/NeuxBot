@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  act,
   render,
   screen,
   fireEvent,
@@ -157,6 +158,7 @@ beforeEach(() => {
   fixture.authorization.mockResolvedValue({
     id: "attempt-1",
     state: "waiting",
+    created: true,
   });
   fixture.cancel.mockClear();
   for (const version of fixture.detail.versions)
@@ -580,7 +582,9 @@ it.each(["close", "escape", "overlay", "unmount"])(
 );
 
 it("cancels a pending start response after closing before its session ID exists", async () => {
-  let finish: ((value: { id: string; state: string }) => void) | undefined;
+  let finish:
+    | ((value: { id: string; state: string; created: boolean }) => void)
+    | undefined;
   fixture.authorization.mockImplementationOnce(
     () =>
       new Promise((resolve) => {
@@ -591,12 +595,28 @@ it("cancels a pending start response after closing before its session ID exists"
   fireEvent.click(screen.getByRole("button", { name: "关闭" }));
   cleanup();
   expect(fixture.cancel).not.toHaveBeenCalled();
-  finish?.({ id: "late-attempt", state: "waiting" });
+  finish?.({ id: "late-attempt", state: "waiting", created: true });
   await waitFor(() => expect(fixture.cancel).toHaveBeenCalledOnce());
   expect(fixture.cancel.mock.calls[0]?.[0]).toMatchObject({
     path: { sessionId: "late-attempt" },
   });
   expect(fixture.install).not.toHaveBeenCalled();
+});
+
+it("leaves a waiting authorization created by another dialog open", async () => {
+  fixture.authorization.mockResolvedValueOnce({
+    id: "other-attempt",
+    state: "waiting",
+    created: false,
+  });
+  const close = await beginWaitingInstallation();
+  await screen.findByText("扫码授权区域");
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
+    cleanup();
+  });
+  expect(close).toHaveBeenCalledOnce();
+  expect(fixture.cancel).not.toHaveBeenCalled();
 });
 
 it("does not cancel or disconnect an authorization after successful installation closes", async () => {
@@ -621,6 +641,7 @@ it("waits for the previous owned challenge to stop before replacing it and cance
   fixture.authorization.mockResolvedValueOnce({
     id: "replacement-attempt",
     state: "waiting",
+    created: true,
   });
   fireEvent.click(await screen.findByRole("button", { name: "刷新设备授权" }));
   await waitFor(() => expect(fixture.cancel).toHaveBeenCalledOnce());

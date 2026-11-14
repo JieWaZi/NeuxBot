@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   lazy,
   Suspense,
+  useId,
   useState,
   type ComponentProps,
   type ReactNode,
@@ -73,29 +74,38 @@ export function PluginUpdateDialog({
   pluginId,
   name,
   wakerId,
+  rollback = false,
   onClose,
 }: {
   pluginId: string;
   name: string;
   wakerId?: string;
+  rollback?: boolean;
   onClose: () => void;
 }) {
   const { t, i18n } = useTranslation("plugin");
+  const openingId = useId();
   const [snapshot, setSnapshot] = useState<PluginDetail>();
   const locale = pluginLocale(i18n.resolvedLanguage ?? i18n.language);
+  const options = getPluginOptions(
+    withLocalErrorSurface({
+      path: { pluginId },
+      query: { locale, wakerId: wakerId || undefined },
+    }),
+  );
   const detail = useQuery({
-    ...getPluginOptions(
-      withLocalErrorSurface({
-        path: { pluginId },
-        query: { locale, wakerId: wakerId || undefined },
-      }),
-    ),
+    ...options,
+    queryKey: [
+      {
+        ...options.queryKey[0],
+        _id: `pluginVersionChangeOpening:${openingId}`,
+      },
+    ],
     enabled: !snapshot,
-    refetchOnMount: "always",
+    gcTime: 0,
   });
-  // 首次成功读回才打开确认内容，后续详情重取不卸载已经准备好的表单。
-  if (!snapshot && detail.isSuccess && detail.isFetchedAfterMount)
-    setSnapshot(detail.data);
+  // 本次打开独立读取确认依据，避免复用管理详情在同步前发起的请求。
+  if (!snapshot && detail.data) setSnapshot(detail.data);
   if (!snapshot) {
     return (
       <Dialog
@@ -104,7 +114,9 @@ export function PluginUpdateDialog({
           if (!open) onClose();
         }}
       >
-        <DialogContent title={t("updateNamed", { name })}>
+        <DialogContent
+          title={t(rollback ? "rollbackNamed" : "updateNamed", { name })}
+        >
           <div className="px-6 pb-5">
             <QueryState
               loadingLayout="content"
@@ -119,7 +131,12 @@ export function PluginUpdateDialog({
   }
   return (
     <DeferredDialog onClose={onClose}>
-      <UpdateContent detail={snapshot} wakerId={wakerId} onClose={onClose} />
+      <UpdateContent
+        detail={snapshot}
+        rollback={rollback}
+        wakerId={wakerId}
+        onClose={onClose}
+      />
     </DeferredDialog>
   );
 }

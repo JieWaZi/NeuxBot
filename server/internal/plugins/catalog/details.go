@@ -13,7 +13,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -42,59 +41,65 @@ type Details struct {
 	SkillContents map[string]string `json:"skillContents"`
 }
 
-var detailsLocks sync.Map
-
 // ReadDetails 核验公开资料内容摘要和来源绑定，不读取或执行安装包。
 func ReadDetails(ctx context.Context, entry Entry) (Details, error) {
-	location, err := detailsLocation(ctx, entry)
-	if err != nil {
-		return Details{}, err
-	}
-	raw, err := os.ReadFile(location)
-	if err != nil {
-		return Details{}, status_error.PluginStorageError
-	}
-	return parseDetails(raw, entry)
+	_, result, err := loadDetails(ctx, entry)
+	return result, err
+}
+
+// ReadCurrentDetails 解析当前公开资料，分发失效时按同一可信目录恢复一次。
+func ReadCurrentDetails(ctx context.Context, root, key string) (Entry, Details, error) {
+	var result Details
+	entry, _, err := resolveCurrent(ctx, root, key, true, func(entry Entry) (string, error) {
+		var location string
+		var err error
+		location, result, err = loadDetails(ctx, entry)
+		return location, err
+	})
+	return entry, result, err
 }
 
 func detailsLocation(ctx context.Context, entry Entry) (string, error) {
-	return loadDetails(ctx, entry)
+	location, _, err := loadDetails(ctx, entry)
+	return location, err
 }
 
-func loadDetails(ctx context.Context, entry Entry) (string, error) {
+func loadDetails(ctx context.Context, entry Entry) (string, Details, error) {
 	if !httpAddress(entry.DetailsURL) || len(entry.DetailsSHA256) != 64 || entry.DetailsSize <= 0 || entry.DetailsSize > maxDetailsBytes {
-		return "", status_error.PluginContentInvalid
+		return "", Details{}, status_error.PluginContentInvalid
 	}
 	if _, err := hex.DecodeString(entry.DetailsSHA256); err != nil {
-		return "", status_error.PluginContentInvalid
+		return "", Details{}, status_error.PluginContentInvalid
 	}
 	directory := filepath.Join(entryStorageRoot(entry), "details")
 	location := filepath.Join(directory, entry.DetailsSHA256+".json")
-	state := artifactState(&detailsLocks, location)
-	if err := state.acquire(ctx); err != nil {
-		return "", err
+	state, release, err := artifactStates.acquire(ctx, location)
+	if err != nil {
+		return "", Details{}, err
 	}
-	defer state.release()
-	if raw, err := os.ReadFile(location); err == nil {
-		if err := validateDetailsBytes(raw, entry); err == nil {
-			_, err = parseDetails(raw, entry)
-			return location, err
+	defer release()
+	if file, err := os.Open(location); err == nil {
+		raw, readErr := io.ReadAll(io.LimitReader(file, entry.DetailsSize+1))
+		_ = file.Close()
+		if readErr == nil && validateDetailsBytes(raw, entry) == nil {
+			result, err := parseDetails(raw, entry)
+			return location, result, err
 		}
 	}
-	if state.failure != nil && state.failedURL == entry.DetailsURL && time.Since(state.failedAt) < 5*time.Second {
-		return "", state.failure
+	if err := state.failed(entry.DetailsURL); err != nil {
+		return "", Details{}, err
 	}
-	fail := func(err error) (string, error) {
+	fail := func(err error) (string, Details, error) {
 		if ctx.Err() == nil {
 			state.fail(entry.DetailsURL, err)
 		}
-		return "", err
+		return "", Details{}, err
 	}
 	client := http.Client{Timeout: 15 * time.Second}
 	started := time.Now()
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, entry.DetailsURL, nil)
 	if err != nil {
-		return "", status_error.PluginContentInvalid
+		return "", Details{}, status_error.PluginContentInvalid
 	}
 	response, err := client.Do(request)
 	if err != nil {
@@ -114,39 +119,40 @@ func loadDetails(ctx context.Context, entry Entry) (string, error) {
 	if err := validateDetailsBytes(raw, entry); err != nil {
 		return fail(err)
 	}
-	if _, err := parseDetails(raw, entry); err != nil {
+	result, err := parseDetails(raw, entry)
+	if err != nil {
 		return fail(err)
 	}
 	if ctx.Err() != nil {
-		return "", status_error.PluginDistributionUnavailable
+		return "", Details{}, status_error.PluginDistributionUnavailable
+	}
+	if err := publishDetails(directory, location, raw); err != nil {
+		return "", Details{}, err
 	}
 	state.failure = nil
-	return publishDetails(directory, location, raw, entry)
+	return location, result, nil
 }
 
-func publishDetails(directory, location string, raw []byte, entry Entry) (string, error) {
-	if _, err := parseDetails(raw, entry); err != nil {
-		return "", err
-	}
+func publishDetails(directory, location string, raw []byte) error {
 	if err := os.MkdirAll(directory, 0700); err != nil {
-		return "", status_error.PluginStorageError
+		return status_error.PluginStorageError
 	}
 	temporary, err := os.CreateTemp(directory, "details-*.json")
 	if err != nil {
-		return "", status_error.PluginStorageError
+		return status_error.PluginStorageError
 	}
 	defer os.Remove(temporary.Name())
 	if _, err := temporary.Write(raw); err != nil {
 		temporary.Close()
-		return "", status_error.PluginStorageError
+		return status_error.PluginStorageError
 	}
 	if err := temporary.Close(); err != nil {
-		return "", status_error.PluginStorageError
+		return status_error.PluginStorageError
 	}
 	if err := os.Rename(temporary.Name(), location); err != nil {
-		return "", status_error.PluginStorageError
+		return status_error.PluginStorageError
 	}
-	return location, nil
+	return nil
 }
 
 func validateDetailsBytes(raw []byte, entry Entry) error {

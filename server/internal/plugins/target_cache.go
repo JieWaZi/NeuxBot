@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"container/list"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -16,6 +17,8 @@ import (
 	"github.com/gofrs/flock"
 )
 
+const maxIdleTargetPreparations = 128
+
 // targetPreparation 只缓存本进程从已核验来源计算出的派生摘要，不信任磁盘自报摘要。
 type targetPreparation struct {
 	// gate 合并同一份完整生成输入的并发准备。
@@ -24,10 +27,18 @@ type targetPreparation struct {
 	root string
 	// digest 是本进程实际生成并验证的字节摘要，每次命中仍复验目录。
 	digest string
+	// users 统计当前持有者及等待者，均退出后才能淘汰。
+	users int
+	// idle 指向空闲队列中的键；持有或等待期间为空。
+	idle *list.Element
 }
 
-// targetPreparations 仅在当前 Core 生命周期复用可信派生摘要，重启后重新从来源生成。
-var targetPreparations sync.Map
+var (
+	// 公开打包入口复用有界的可信派生摘要，连接私有目标不进入此队列。
+	targetPreparationsMu   sync.Mutex
+	targetPreparations     = make(map[[sha256.Size]byte]*targetPreparation)
+	idleTargetPreparations list.List
+)
 
 func lockTargetPreparation(ctx context.Context, parent, id, source, cli string, pkg Package, authentication []AuthenticationBinding) (*targetPreparation, func(), error) {
 	parent, err := plannedPluginDirectory(parent)
@@ -39,16 +50,43 @@ func lockTargetPreparation(ctx context.Context, parent, id, source, cli string, 
 		return nil, nil, status_error.PluginContentInvalid
 	}
 	sum := sha256.Sum256(input)
-	value, _ := targetPreparations.LoadOrStore(sum, &targetPreparation{gate: make(chan struct{}, 1)})
-	prepared := value.(*targetPreparation)
+	targetPreparationsMu.Lock()
+	prepared := targetPreparations[sum]
+	if prepared == nil {
+		prepared = &targetPreparation{gate: make(chan struct{}, 1)}
+		targetPreparations[sum] = prepared
+	}
+	if prepared.idle != nil {
+		idleTargetPreparations.Remove(prepared.idle)
+		prepared.idle = nil
+	}
+	prepared.users++
+	targetPreparationsMu.Unlock()
+	releaseUser := func() {
+		targetPreparationsMu.Lock()
+		defer targetPreparationsMu.Unlock()
+		prepared.users--
+		if prepared.users == 0 {
+			prepared.idle = idleTargetPreparations.PushBack(sum)
+			if idleTargetPreparations.Len() > maxIdleTargetPreparations {
+				oldest := idleTargetPreparations.Remove(idleTargetPreparations.Front()).([sha256.Size]byte)
+				delete(targetPreparations, oldest)
+			}
+		}
+	}
 	select {
 	case prepared.gate <- struct{}{}:
 		if err := ctx.Err(); err != nil {
 			<-prepared.gate
+			releaseUser()
 			return nil, nil, err
 		}
-		return prepared, func() { <-prepared.gate }, nil
+		return prepared, sync.OnceFunc(func() {
+			<-prepared.gate
+			releaseUser()
+		}), nil
 	case <-ctx.Done():
+		releaseUser()
 		return nil, nil, ctx.Err()
 	}
 }

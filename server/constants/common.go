@@ -1,5 +1,7 @@
 package constants
 
+import "time"
+
 const (
 	// RuntimeEventTopic 是智能体程序与探测状态共用的事件主题。
 	RuntimeEventTopic = "runtimes"
@@ -852,6 +854,9 @@ const PluginExtensionSchemaVersion = 1
 
 // PluginCatalogSchemaVersion 是唯一标准包目录的发布工件版本。
 const PluginCatalogSchemaVersion = 1
+
+// PluginPreparationLifetime 是未安装目录版本可用于确认的有效期。
+const PluginPreparationLifetime = 30 * time.Minute
 
 // PluginDetailsSchemaVersion 是标准展示公开资料的工件版本。
 const PluginDetailsSchemaVersion = 1

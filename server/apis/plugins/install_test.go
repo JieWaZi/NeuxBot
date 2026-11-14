@@ -66,6 +66,7 @@ func pluginAPIContext(t *testing.T, publishers ...events.Publisher) *gin.Context
 	})
 	ctx, _ := gin.CreateTestContext(nil)
 	ctx.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+	ctx.Set("plugin-api-test-db", database.DB)
 	for _, id := range []string{"w1", "w2"} {
 		if err := global.WakerControllerManager.Create(ctx, models.Waker{ID: id, Name: id}); err != nil {
 			t.Fatal(err)
@@ -495,6 +496,7 @@ func prepareCatalogFixture(t *testing.T, ctx *gin.Context, stage packageplugin.S
 			return err
 		}
 		header.Name = filepath.ToSlash(relative)
+		header.Modified = time.Unix(0, 0).UTC()
 		output, err := writer.CreateHeader(header)
 		if err != nil {
 			return err
@@ -575,13 +577,13 @@ func TestExistingPinSurvivesUnavailableCatalogAndNewInstallRejects(t *testing.T)
 		t.Fatalf("unavailable catalog blocked saved plugin detail: %+v %v", visible, readErr)
 	}
 
-	_, err = (&InstallPlugin{PluginID: detail.Plugin.ID, Body: InstallPluginRequest{VersionID: detail.ResolvedVersionID, WakerIDs: []string{"w2"}}}).Output(ctx)
-	if !errors.Is(err, status_error.PluginStorageError) {
-		t.Fatalf("new installation accepted an unverifiable source: %v", err)
+	result, err := (&InstallPlugin{PluginID: detail.Plugin.ID, Body: InstallPluginRequest{VersionID: detail.ResolvedVersionID, WakerIDs: []string{"w2"}}}).Output(ctx)
+	if err != nil || !result.(InstallPluginResponse).Results[0].Installed {
+		t.Fatalf("locally verified version required the catalog again: %+v %v", result, err)
 	}
 	relations, err := global.PluginControllerManager.Installations(ctx, detail.Plugin.ID, "")
-	if err != nil || len(relations) != 1 || relations[0].WakerID != "w1" || relations[0].VersionID != detail.ResolvedVersionID {
-		t.Fatalf("unavailable catalog changed existing pin: %+v %v", relations, err)
+	if err != nil || len(relations) != 2 || relations[0].VersionID != detail.ResolvedVersionID || relations[1].VersionID != detail.ResolvedVersionID {
+		t.Fatalf("offline installation changed the pinned version: %+v %v", relations, err)
 	}
 
 }

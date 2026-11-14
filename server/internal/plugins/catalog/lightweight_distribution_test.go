@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 func TestCatalogStartupPublishesWithoutDownloadingDetails(t *testing.T) {
@@ -248,5 +249,54 @@ func TestCurrentResolutionCanCancelWhileStartupIndexWaits(t *testing.T) {
 		<-index.recoveryGate
 	default:
 		t.Fatal("cancelled recovery retained its source gate")
+	}
+}
+
+func TestDistributionCachePrunesOldAssetsAndKeepsLeasedFiles(t *testing.T) {
+	root := t.TempDir()
+	archiveRoot := filepath.Join(root, "archives")
+	if err := os.MkdirAll(archiveRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	write := func(digit string) string {
+		file := filepath.Join(archiveRoot, strings.Repeat(digit, 64)+".zip")
+		if err := os.WriteFile(file, []byte("archive"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(file, now.Add(-8*24*time.Hour), now.Add(-8*24*time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+		return file
+	}
+	current, leased, old := write("a"), write("b"), write("c")
+	release := artifactStates.pin(leased)
+	defer release()
+	if err := pruneArtifacts(root, []Entry{{ArchiveSHA256: strings.Repeat("a", 64)}}, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(old); !os.IsNotExist(err) {
+		t.Fatalf("expired archive remained: %v", err)
+	}
+	for _, file := range []string{current, leased} {
+		if _, err := os.Stat(file); err != nil {
+			t.Fatalf("protected archive was removed: %v", err)
+		}
+	}
+}
+
+func TestWithCurrentArchiveRejectsUnconfirmedDigestWithoutDownload(t *testing.T) {
+	f := newDistributionFixture(t, false)
+	source := f.server.URL + "/catalog.json"
+	ctx := t.Context()
+	if err := Refresh(ctx, source); err != nil {
+		t.Fatal(err)
+	}
+	err := WithCurrentArchive(ctx, source, "first", strings.Repeat("f", 64), func(Entry, string) error {
+		t.Error("an unconfirmed archive was passed to the caller")
+		return nil
+	})
+	if err != status_error.PluginVersionConflict || f.archiveRequests.Load() != 0 {
+		t.Fatalf("unconfirmed archive contacted distribution: requests=%d err=%v", f.archiveRequests.Load(), err)
 	}
 }

@@ -23,17 +23,23 @@ func (*LogoutPluginAuthorization) Path() string { return "/:pluginId/account/log
 
 // Output 在无执行占用时通过官方 CLI 退出共享身份。
 func (o *LogoutPluginAuthorization) Output(ctx *gin.Context) (interface{}, error) {
-	if _, err := validateAccountRequest(ctx, o.PluginID, o.WakerID, o.VersionID, o.Body); err != nil {
-		return nil, ginx.WithStack(err)
-	}
-	if err := closeIdlePlugin(ctx, o.PluginID); err != nil {
-		return nil, ginx.WithStack(err)
-	}
-	auth, _, err := pluginAuthorizer(ctx, o.PluginID, o.WakerID, o.VersionID, o.Body)
+	request := ctx.Request.Context()
+	_, version, err := validateAccountRequest(request, o.PluginID, o.WakerID, o.VersionID, o.Body)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	if err := auth.Logout(ctx); err != nil {
+	if err := closeIdlePlugin(request, o.PluginID); err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	guard, driver, err := installationService().BridgeChange(request, version)
+	if err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	defer guard.Close()
+	if err := checkOperationContext(driver.OperationContext(), o.Body); err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	if err := guard.Logout(request); err != nil {
 		return nil, ginx.WithStack(err)
 	}
 	publishProviderChange("plugin:" + o.PluginID)

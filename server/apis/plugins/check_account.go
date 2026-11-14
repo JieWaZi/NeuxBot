@@ -23,17 +23,23 @@ func (*CheckPluginAccount) Path() string { return "/:pluginId/account/check" }
 
 // Output 显式启动固定上下文的核验，并在完成后拒绝配置或账号已经变化的结果。
 func (o *CheckPluginAccount) Output(ctx *gin.Context) (interface{}, error) {
-	if _, err := validateAccountRequest(ctx, o.PluginID, o.WakerID, o.VersionID, o.Body); err != nil {
-		return nil, ginx.WithStack(err)
-	}
-	auth, _, err := pluginAuthorizer(ctx, o.PluginID, o.WakerID, o.VersionID, o.Body)
+	request := ctx.Request.Context()
+	_, version, err := validateAccountRequest(request, o.PluginID, o.WakerID, o.VersionID, o.Body)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	if _, err := auth.Status(ctx, true); err != nil {
+	auth, driver, release, err := installationService().BridgeLease(request, version)
+	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	result, err := validateAccountRequest(ctx, o.PluginID, o.WakerID, o.VersionID, o.Body)
+	defer release()
+	if err := checkOperationContext(driver.OperationContext(), o.Body); err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	if _, err := auth.Status(request, true); err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	result, _, err := validateAccountRequest(request, o.PluginID, o.WakerID, o.VersionID, o.Body)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}

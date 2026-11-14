@@ -111,7 +111,7 @@ func removalPlugin(t *testing.T, ctx *gin.Context, name string, fixture *removal
 	return detail
 }
 
-func installRemovalPlugin(t *testing.T, ctx *gin.Context, detail PluginDetailResponse, partners ...string) {
+func installRemovalPlugin(t *testing.T, ctx *gin.Context, detail PluginDetailResponse, fixture *removalAuthFixture, partners ...string) {
 	t.Helper()
 	value, err := (&InstallPlugin{PluginID: detail.Plugin.ID, Body: InstallPluginRequest{VersionID: detail.ResolvedVersionID, WakerIDs: partners}}).Output(ctx)
 	if err != nil {
@@ -122,20 +122,42 @@ func installRemovalPlugin(t *testing.T, ctx *gin.Context, detail PluginDetailRes
 			t.Fatalf("fixture installation failed: %+v", result)
 		}
 	}
+	bindRemovalDriver(t, ctx, detail, fixture)
+}
+
+func bindRemovalDriver(t *testing.T, ctx *gin.Context, detail PluginDetailResponse, fixture *removalAuthFixture) {
+	t.Helper()
+	// 安装或退出提交可能推进代次，替身应固定下一次操作的实际持久代次。
+	version, err := global.PluginControllerManager.Version(ctx, detail.ResolvedVersionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.auth, _, err = installationService().Bridge(ctx, version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.auth.ReplaceDriver(removalDriver{fixture: fixture}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestLastPluginUninstallClearsAuthorizationAndRequiresLoginAgain(t *testing.T) {
 	ctx := pluginAPIContext(t)
 	f := removalAuth(t, nil)
 	detail := removalPlugin(t, ctx, "office", f)
-	installRemovalPlugin(t, ctx, detail, "w1")
+	installRemovalPlugin(t, ctx, detail, f, "w1")
 	if _, err := (&UninstallWakerPlugin{WakerID: "w1", PluginID: detail.Plugin.ID}).Output(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if f.available.Load() || f.logouts.Load() != 1 {
 		t.Fatal("last uninstall retained official authorization")
 	}
-	if _, err := (&InstallPlugin{PluginID: detail.Plugin.ID, Body: InstallPluginRequest{VersionID: detail.ResolvedVersionID, WakerIDs: []string{"w1"}}}).Output(ctx); !errors.Is(err, status_error.PluginNotReady) {
+	bindRemovalDriver(t, ctx, detail, f)
+	generation, err := global.PluginControllerManager.AccountGeneration(ctx, detail.Plugin.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (&InstallPlugin{PluginID: detail.Plugin.ID, Body: InstallPluginRequest{VersionID: detail.ResolvedVersionID, WakerIDs: []string{"w1"}, ExpectedAccountGeneration: generation}}).Output(ctx); !errors.Is(err, status_error.PluginNotReady) {
 		t.Fatalf("reinstallation skipped authorization: %v", err)
 	}
 }
@@ -144,7 +166,7 @@ func TestProviderAuthorizationSurvivesOtherPartnersAndActiveWorkBlocksLastUninst
 	ctx := pluginAPIContext(t)
 	f := removalAuth(t, nil)
 	other := removalPlugin(t, ctx, "office", f)
-	installRemovalPlugin(t, ctx, other, "w1", "w2")
+	installRemovalPlugin(t, ctx, other, f, "w1", "w2")
 	if err := global.PluginControllerManager.SetEnabled(ctx, "w2", other.Plugin.ID, false); err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +250,7 @@ func TestFailedAuthorizationCleanupRetainsInstallation(t *testing.T) {
 	ctx := pluginAPIContext(t)
 	f := removalAuth(t, status_error.PluginStorageError)
 	detail := removalPlugin(t, ctx, "retry-office", f)
-	installRemovalPlugin(t, ctx, detail, "w1")
+	installRemovalPlugin(t, ctx, detail, f, "w1")
 	if _, err := (&UninstallWakerPlugin{WakerID: "w1", PluginID: detail.Plugin.ID}).Output(ctx); !errors.Is(err, status_error.PluginStorageError) {
 		t.Fatalf("cleanup failure hidden: %v", err)
 	}
@@ -242,7 +264,7 @@ func TestDeletePluginChecksConfirmationAndActiveLeaseBeforeLogout(t *testing.T) 
 	ctx := pluginAPIContext(t)
 	f := removalAuth(t, nil)
 	detail := removalPlugin(t, ctx, "delete-office", f)
-	installRemovalPlugin(t, ctx, detail, "w1")
+	installRemovalPlugin(t, ctx, detail, f, "w1")
 	// 无效历史版本排在最新位置时，清理仍应使用实际可用桥接，不能被旧声明阻塞。
 	if _, err := global.PluginControllerManager.PutVersion(ctx, models.PluginVersion{ID: "unsupported-history", PluginID: detail.Plugin.ID, Version: "2", Digest: strings.Repeat("b", 64), CreatedAt: time.Now().Add(time.Minute).UnixMilli(), Package: packageplugin.Package{Manifest: packageplugin.Manifest{Extensions: map[string]json.RawMessage{constants.PluginExtensionNamespace: json.RawMessage(`{"provider":"github"}`)}}}}); err != nil {
 		t.Fatal(err)
@@ -317,7 +339,7 @@ func TestNonLastUninstallDoesNotPrepareBridgeForColdIdentityConsumer(t *testing.
 	ctx := pluginAPIContext(t)
 	fixture := removalAuth(t, nil)
 	detail := removalPlugin(t, ctx, "cold-consumer", fixture)
-	installRemovalPlugin(t, ctx, detail, "w1", "w2")
+	installRemovalPlugin(t, ctx, detail, fixture, "w1", "w2")
 	global.PluginBridges.Close()
 	global.PluginBridges = commandbridge.NewRegistry(context.Background(), nil)
 	_, release, err := global.PluginBridges.AcquireIdentity(detail.Plugin.ID, authorization.Usage{WakerID: "w2", ExecutionID: "active-cold-round"})
@@ -341,11 +363,11 @@ func TestUnrelatedInstallationDoesNotBypassLastPluginCleanup(t *testing.T) {
 				ctx := pluginAPIContext(t)
 				fixture := removalAuth(t, nil)
 				target := removalPlugin(t, ctx, "cleanup-target", fixture)
-				installRemovalPlugin(t, ctx, target, "w1")
+				installRemovalPlugin(t, ctx, target, fixture, "w1")
 				unrelatedFixture := &removalAuthFixture{}
 				unrelatedFixture.available.Store(true)
 				unrelated := removalPlugin(t, ctx, "unrelated-plugin", unrelatedFixture)
-				installRemovalPlugin(t, ctx, unrelated, "w2")
+				installRemovalPlugin(t, ctx, unrelated, unrelatedFixture, "w2")
 				release := func() {}
 				if active {
 					var err error

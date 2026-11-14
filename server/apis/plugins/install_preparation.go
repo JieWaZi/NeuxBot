@@ -1,55 +1,32 @@
 package plugins
 
 import (
-	"context"
 	"maps"
 	"path/filepath"
 	"slices"
 
 	"github.com/JieWaZi/NeuxBot/server/global"
-	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
-// prepareInstallationVersions 为首次安装和版本切换复用内容、依赖与认证预检。
-// 文件和官方 CLI 在事务外读取；返回的占用必须在数据库提交后释放。
-func prepareInstallationVersions(ctx context.Context, versions []models.PluginVersion, config *models.PluginConfiguration, account *models.PluginAccount) (func(), error) {
-	release, err := installationService().PrepareVersions(ctx, versions, config, account)
-	if err != nil {
-		return nil, err
+// installationAccountChanged 判断是否需要原子提交材料或注销入口的新状态。
+func installationAccountChanged(before, after models.PluginAccount) bool {
+	if len(before.DeliveryMaterials) != 0 || len(after.DeliveryMaterials) != 0 {
+		return true
 	}
-	for _, version := range versions {
-		root, err := packageplugin.ContentPath(global.Config.DataDirectory, version.ContentPath)
-		if err == nil {
-			err = packageplugin.VerifyContent(root, version.Digest)
-		}
-		if err == nil {
-			root, err = packageplugin.PackageRoot(root, version.Package)
-		}
-		if err == nil {
-			_, err = packageplugin.PrepareTargets(ctx, filepath.Join(global.Config.DataDirectory, "plugins", "targets"), version.PluginID, version.Package, root)
-		}
-		if err != nil {
-			release()
-			return nil, err
-		}
+	if before.AuthorizedVersionID == nil || after.AuthorizedVersionID == nil {
+		return before.AuthorizedVersionID != after.AuthorizedVersionID
 	}
-	return release, nil
+	return *before.AuthorizedVersionID != *after.AuthorizedVersionID
 }
 
-// commitInstallationAccount 在预检租约释放前同步已提交的配置和账号代次，保留同次核验的公开身份。
-func commitInstallationAccount(versions []models.PluginVersion, expectedRevision, expectedGeneration, revision, generation int64) {
-	if global.PluginBridges == nil {
+// commitInstallationAccount 推进绑定固定版本的公开账号摘要，保留同次核验结果。
+func commitInstallationAccount(version models.PluginVersion, expectedRevision, expectedGeneration, revision, generation int64) {
+	if global.PluginBridges == nil || version.Package.Integration.Authentication == nil {
 		return
 	}
-	for _, version := range versions {
-		if version.Package.Integration.Authentication == nil {
-			continue
-		}
-		// 只更新持有的精确入口；其他版本的临时核验不能替换当前共享身份。
-		global.PluginBridges.CommitPreparation(commandbridge.OperationContext{PluginID: version.PluginID, VersionID: version.ID, Digest: version.Digest, ConfigurationRevision: expectedRevision, AccountGeneration: expectedGeneration}, version.Digest+":"+filepath.ToSlash(version.Package.SourcePath), revision, generation)
-	}
+	global.PluginBridges.CommitPreparation(commandbridge.OperationContext{PluginID: version.PluginID, VersionID: version.ID, Digest: version.Digest, ConfigurationRevision: expectedRevision, AccountGeneration: expectedGeneration}, version.Digest+":"+filepath.ToSlash(version.Package.SourcePath), revision, generation)
 }
 
 // configurationChange 生成请求后的独立配置副本，预检和事务使用同一规则。

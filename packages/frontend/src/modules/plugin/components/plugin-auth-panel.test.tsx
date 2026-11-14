@@ -645,7 +645,11 @@ it.each(["session", "new-session"])(
   "reports only newly started authorization sessions to its owner (%s)",
   async (id) => {
     const onSessionStarted = vi.fn();
-    fixture.login.mockResolvedValueOnce({ id, state: "waiting" });
+    fixture.login.mockResolvedValueOnce({
+      id,
+      state: "waiting",
+      created: id === "new-session",
+    });
     show(false, vi.fn(), "show-qr", onSessionStarted);
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "刷新二维码" })).toBeEnabled(),
@@ -658,8 +662,12 @@ it.each(["session", "new-session"])(
     if (id === "session") expect(onSessionStarted).not.toHaveBeenCalled();
     else
       expect(onSessionStarted).toHaveBeenCalledWith(
-        { id: "new-session", state: "waiting" },
-        { expectedConfigurationRevision: 3, expectedAccountGeneration: 4 },
+        { id: "new-session", state: "waiting", created: true },
+        {
+          expectedConfigurationRevision: 3,
+          expectedAccountGeneration: 4,
+          ownershipNonce: expect.any(String),
+        },
       );
   },
 );
@@ -729,7 +737,9 @@ it("confirms the shared impact before logging out with the exact account context
 it("compensates a settings-owned authorization that arrives after the panel unmounts", async () => {
   fixture.status.account.available = false;
   fixture.status.session.state = "";
-  let resolve: ((value: { id: string; state: string }) => void) | undefined;
+  let resolve:
+    | ((value: { id: string; state: string; created: boolean }) => void)
+    | undefined;
   fixture.login.mockImplementationOnce(
     () =>
       new Promise((r) => {
@@ -749,7 +759,9 @@ it("compensates a settings-owned authorization that arrives after the panel unmo
   fireEvent.click(await screen.findByRole("button", { name: "重新授权" }));
   await waitFor(() => expect(fixture.login).toHaveBeenCalledOnce());
   view.unmount();
-  await act(async () => resolve?.({ id: "late-settings", state: "waiting" }));
+  await act(async () =>
+    resolve?.({ id: "late-settings", state: "waiting", created: true }),
+  );
   await waitFor(() => expect(fixture.cancel).toHaveBeenCalledOnce());
   expect(fixture.cancel.mock.calls[0]?.[0]).toMatchObject({
     path: { pluginId: "p", sessionId: "late-settings" },

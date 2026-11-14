@@ -24,6 +24,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
+	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	internalskills "github.com/JieWaZi/NeuxBot/server/internal/skills"
 	uploadstore "github.com/JieWaZi/NeuxBot/server/internal/uploads"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -137,7 +138,7 @@ func TestCreatePluginFromSkillsConsumesBatchAndKeepsLibraryBoundaries(t *testing
 	}
 }
 
-func TestSkillBundlePreparesAllCLITargetsBeforePartnerInstallation(t *testing.T) {
+func TestSkillBundleKeepsSourceUntilASelectedTargetIsNeeded(t *testing.T) {
 	ctx := skillBundleAPIContext(t)
 	batch := stageSkillBundleBatch(t, ctx)
 	value, err := (&CreatePluginFromSkills{Body: CreatePluginFromSkillsRequest{Token: batch.Token, CandidateIDs: []string{"review", "tests"}, Name: "Prepared bundle"}}).Output(ctx)
@@ -149,59 +150,36 @@ func TestSkillBundlePreparesAllCLITargetsBeforePartnerInstallation(t *testing.T)
 		t.Fatal("target preparation created a partner installation")
 	}
 	parent := filepath.Join(global.Config.DataDirectory, "plugins", "targets")
-	targets, err := os.ReadDir(parent)
+	if _, err := os.Stat(parent); !os.IsNotExist(err) {
+		t.Fatal("creating a skill bundle published runtime targets", err)
+	}
+	version, err := global.PluginControllerManager.Version(ctx, detail.ResolvedVersionID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	entries := []string{".claude-plugin/plugin.json", ".cursor-plugin/plugin.json", ".codebuddy-plugin/plugin.json", ".qoder-plugin/plugin.json", "kimi.plugin.json", "gemini-extension.json", "package.json", "opencode.json", "plugin.json"}
-	checked := map[string]bool{}
-	for _, target := range targets {
-		if strings.HasPrefix(target.Name(), ".") {
-			continue
-		}
-		root := filepath.Join(parent, target.Name())
-		entry := ""
-		for _, candidate := range entries {
-			body, err := os.ReadFile(filepath.Join(root, candidate))
-			if os.IsNotExist(err) {
-				continue
-			}
-			var fields map[string]json.RawMessage
-			if err != nil || json.Unmarshal(body, &fields) != nil || fields == nil {
-				t.Fatalf("generated target has an unreadable declaration %s: %v", candidate, err)
-			}
-			if candidate == "plugin.json" && fields["$schema"] != nil {
-				continue
-			}
-			if candidate != "opencode.json" {
-				var name string
-				if json.Unmarshal(fields["name"], &name) != nil || name != detail.Versions[0].Package.Manifest.Name {
-					t.Fatalf("generated declaration %s lost the bundled plugin identity", candidate)
-				}
-			}
-			entry = candidate
-			break
-		}
-		if entry == "" || checked[entry] {
-			t.Fatalf("target has missing or duplicate native declaration: %s", entry)
-		}
-		checked[entry] = true
-		for _, name := range []string{"review", "tests"} {
-			metadata, err := internalskills.ReadMetadata(filepath.Join(root, "skills", name))
-			if err != nil || metadata.Name != name {
-				t.Fatalf("target %s cannot discover the bundled %s skill: %v", entry, name, err)
-			}
-		}
-		body, err := os.ReadFile(filepath.Join(root, "skills", "review", "references", "rules.md"))
-		if err != nil || string(body) != "Actual review resource" {
-			t.Fatalf("target %s lost the skill's actual resource: %v", entry, err)
+	source, err := packageplugin.ContentPath(global.Config.DataDirectory, version.ContentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, release, err := packageplugin.PrepareRuntimeTarget(t.Context(), parent, detail.Plugin.ID, version.Package, source, "claude", version.Digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if _, err := os.Stat(filepath.Join(target.Root, ".claude-plugin", "plugin.json")); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"review", "tests"} {
+		metadata, err := internalskills.ReadMetadata(filepath.Join(target.Root, "skills", name))
+		if err != nil || metadata.Name != name {
+			t.Fatalf("target cannot discover the bundled %s skill: %v", name, err)
 		}
 	}
-	for _, entry := range entries {
-		if !checked[entry] {
-			t.Fatalf("created plugin lacks a usable target declaration: %s", entry)
-		}
+	body, err := os.ReadFile(filepath.Join(target.Root, "skills", "review", "references", "rules.md"))
+	if err != nil || string(body) != "Actual review resource" {
+		t.Fatal("target lost the skill's actual resource", err)
 	}
+
 }
 
 func TestCreatePluginFromSkillsRejectsInvalidSelectionAndChangedBatch(t *testing.T) {

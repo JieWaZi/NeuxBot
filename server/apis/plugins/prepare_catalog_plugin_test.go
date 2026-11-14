@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -13,10 +12,9 @@ import (
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
-	"github.com/gofrs/flock"
 )
 
-func TestPrepareCatalogNestedPackageGeneratesUsableLogicalTargets(t *testing.T) {
+func TestPrepareCatalogKeepsOnlyTheVerifiedSource(t *testing.T) {
 	ctx := pluginAPIContext(t)
 	source := t.TempDir()
 	for name, body := range map[string]string{
@@ -53,119 +51,26 @@ func TestPrepareCatalogNestedPackageGeneratesUsableLogicalTargets(t *testing.T) 
 		t.Fatal("persisted source lost its repository-level content", err)
 	}
 	targetsRoot := filepath.Join(global.Config.DataDirectory, "plugins", "targets")
-	targets, err := os.ReadDir(targetsRoot)
-	if err != nil || len(targets) == 0 {
-		t.Fatalf("catalog preparation did not publish derived targets: count=%d error=%v", len(targets), err)
+	if _, err := os.Stat(targetsRoot); !os.IsNotExist(err) {
+		t.Fatal("preparation materialized derived targets before any runtime was selected", err)
 	}
-	checkedClaude := false
-	for _, target := range targets {
-		if strings.HasPrefix(target.Name(), ".") {
-			continue
-		}
-		root := filepath.Join(targetsRoot, target.Name())
-		for _, name := range []string{"skills/setup/SKILL.md", "skills/setup/scripts/verify.mjs"} {
-			if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(name))); err != nil {
-				t.Fatalf("derived target cannot resolve its declared setup resource %s: %v", name, err)
-			}
-		}
-		if _, err := os.Stat(filepath.Join(root, ".claude-plugin", "plugin.json")); err == nil {
-			pkg, err := packageplugin.Load(root)
-			if err != nil || len(pkg.Skills) != 1 || pkg.Skills[0].Name != "setup" {
-				t.Fatalf("derived Claude target does not validate at its real plugin root: %v", err)
-			}
-			checkedClaude = true
-		}
-	}
-	if !checkedClaude {
-		t.Fatal("catalog preparation did not publish a usable Claude entry")
-	}
-}
-
-func TestPreparingTargetsDoesNotHoldContentAdmissionGuard(t *testing.T) {
-	ctx := pluginAPIContext(t)
-	source := t.TempDir()
-	if err := os.WriteFile(filepath.Join(source, "plugin.json"), []byte(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"parallel","version":"1.0.0"}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-	stage, err := packageplugin.Stage(stagedRoot(), source)
+	pluginRoot, err := packageplugin.PackageRoot(content, version.Package)
 	if err != nil {
 		t.Fatal(err)
 	}
-	parent := filepath.Join(global.Config.DataDirectory, "plugins", "targets")
-	if _, err := packageplugin.PrepareTargets(t.Context(), parent, "parallel", stage.Package, stage.Root); err != nil {
-		t.Fatal(err)
-	}
-	locks, err := os.ReadDir(filepath.Join(parent, ".locks"))
-	if err != nil || len(locks) == 0 {
-		t.Fatal("target generation did not create publication locks", err)
-	}
-	held := []*flock.Flock{}
-	for _, entry := range locks {
-		lock := flock.New(filepath.Join(parent, ".locks", entry.Name()))
-		if err := lock.Lock(); err != nil {
-			t.Fatal(err)
-		}
-		held = append(held, lock)
-	}
-	unlock := sync.OnceFunc(func() {
-		for _, lock := range held {
-			_ = lock.Close()
-		}
-	})
-	defer unlock()
-	entries, err := os.ReadDir(parent)
+	digest, err := packageplugin.ContentDigest(pluginRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, entry := range entries {
-		if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
-			if err := os.RemoveAll(filepath.Join(parent, entry.Name())); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-	content, err := packageplugin.CopyContent(filepath.Join(global.Config.DataDirectory, "plugins", "content"), stage.Root, stage.Digest)
+	target, release, err := packageplugin.PrepareRuntimeTarget(t.Context(), targetsRoot, version.PluginID, version.Package, pluginRoot, "claude", digest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	previousContents := global.PluginContents
-	t.Cleanup(func() { global.PluginContents = previousContents })
-	contents := packageplugin.NewContentStore(global.Config.DataDirectory, func() ([]string, error) { return []string{content}, nil })
-	global.PluginContents = contents
-	queried := make(chan struct{}, 8)
-	global.PluginControllerManager = observedSourceController{PluginController: global.PluginControllerManager, queried: queried}
-	prepared := make(chan error, 1)
-	go func() {
-		_, _, err := persistPreparedResource(ctx, stage, false, models.Plugin{ID: "parallel", Name: "parallel", SourceKey: "catalog:parallel"}, nil)
-		prepared <- err
-	}()
-	<-queried
-	admitted := make(chan error, 1)
-	go func() {
-		release, err := contents.Acquire(content)
-		if err == nil {
-			release()
+	defer release()
+	for _, name := range []string{".claude-plugin/plugin.json", "skills/setup/SKILL.md", "skills/setup/scripts/verify.mjs"} {
+		if _, err := os.Stat(filepath.Join(target.Root, filepath.FromSlash(name))); err != nil {
+			t.Fatalf("derived target lost its declared resource %s: %v", name, err)
 		}
-		admitted <- err
-	}()
-	blocked := false
-	select {
-	case err := <-admitted:
-		if err != nil {
-			t.Error(err)
-		}
-	case <-time.After(time.Second):
-		blocked = true
-	}
-	unlock()
-	if err := <-prepared; err != nil {
-		t.Error(err)
-	}
-	if blocked {
-		if err := <-admitted; err != nil {
-			t.Error(err)
-		}
-		t.Fatal("target publication blocked an unrelated content lease")
 	}
 }
 
@@ -223,16 +128,12 @@ func TestPreparedResourceResolvesStableIdentityInsideContentBoundary(t *testing.
 	if lookupBeforeBoundary {
 		t.Fatal("resource preparation selected its identity before owning the content boundary")
 	}
-	parent := filepath.Join(global.Config.DataDirectory, "plugins", "targets")
-	before, err := os.ReadDir(parent)
-	if err != nil {
-		t.Fatal(err)
+	resource, err := store.FindSource(ctx, "catalog:stable")
+	if err != nil || resource.ID != "settled-id" {
+		t.Fatalf("preparation did not use the committed resource identity: %+v %v", resource, err)
 	}
-	if _, err := packageplugin.PrepareTargets(t.Context(), parent, "settled-id", stage.Package, stage.Root); err != nil {
-		t.Fatal(err)
-	}
-	after, err := os.ReadDir(parent)
-	if err != nil || len(before) == 0 || len(after) != len(before) {
-		t.Fatalf("prepared targets did not use the committed identity: before=%d after=%d error=%v", len(before), len(after), err)
+	versions, err := store.Versions(ctx, resource.ID)
+	if err != nil || len(versions) != 1 || versions[0].Digest != stage.Digest {
+		t.Fatalf("prepared content was not attached to the settled identity: %+v %v", versions, err)
 	}
 }

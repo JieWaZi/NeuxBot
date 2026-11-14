@@ -58,6 +58,27 @@ func TestContentStoreKeepsSharedVersionAndRejectsForeignRoots(t *testing.T) {
 	}
 }
 
+func TestContentReleaseOnlyChecksPathsDeferredByCollection(t *testing.T) {
+	root := t.TempDir()
+	content := filepath.Join(root, "plugins", "content", "snapshot")
+	if err := os.MkdirAll(content, 0700); err != nil {
+		t.Fatal(err)
+	}
+	reads := 0
+	store := NewContentStore(root, func() ([]string, error) {
+		reads++
+		return []string{content}, nil
+	})
+	release, err := store.Acquire(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	if reads != 0 {
+		t.Fatalf("normal release rescanned all persistent references: %d reads", reads)
+	}
+}
+
 func TestContentStoreNeverCollectsThroughForeignManagedDirectoryLink(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()

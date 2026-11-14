@@ -1,11 +1,12 @@
 package plugins
 
 import (
+	"regexp"
+	"slices"
+
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
-	"regexp"
-	"slices"
 )
 
 // 发起插件授权
@@ -26,28 +27,44 @@ func (*StartPluginAuthorization) Path() string { return "/:pluginId/account/auth
 
 // Output 创建或恢复唯一设备等待，由 Core 生命周期继续等待官方结果。
 func (o *StartPluginAuthorization) Output(ctx *gin.Context) (interface{}, error) {
-	if _, err := validateAccountRequest(ctx, o.PluginID, o.WakerID, o.VersionID, o.Body.PluginAccountRequest); err != nil {
-		return nil, ginx.WithStack(err)
-	}
-	if err := closeIdlePlugin(ctx, o.PluginID); err != nil {
-		return nil, ginx.WithStack(err)
-	}
-	auth, extension, err := pluginAuthorizer(ctx, o.PluginID, o.WakerID, o.VersionID, o.Body.PluginAccountRequest)
+	request := ctx.Request.Context()
+	_, version, err := validateAccountRequest(request, o.PluginID, o.WakerID, o.VersionID, o.Body.PluginAccountRequest)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	scopes := auth.RequiredScopes(extension.Scopes...)
+	declaration := version.Package.Integration.Authentication
+	if declaration == nil {
+		return nil, ginx.WithStack(status_error.PluginNotReady)
+	}
 	for _, scope := range o.Body.AdditionalScopes {
-		if !slices.Contains(extension.Scopes, scope) {
+		if !slices.Contains(declaration.Scopes, scope) {
 			return nil, ginx.WithStack(status_error.PluginForbidden)
 		}
 	}
-	scopes = append(scopes, o.Body.AdditionalScopes...)
-	result, err := auth.Login(ctx, scopes...)
+	if err := closeIdlePlugin(request, o.PluginID); err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	service := installationService()
+	auth, driver, err := service.Bridge(request, version)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	return result, nil
+	operation := driver.OperationContext()
+	if err := checkOperationContext(operation, o.Body.PluginAccountRequest); err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	scopes := auth.RequiredScopes(declaration.Scopes...)
+	scopes = append(scopes, o.Body.AdditionalScopes...)
+	result, created, err := auth.LoginSelected(request, driver, func() error {
+		if _, err := visiblePlugin(request, o.PluginID, o.WakerID); err != nil {
+			return err
+		}
+		return service.ValidateOperation(request, operation)
+	}, o.Body.OwnershipNonce, scopes...)
+	if err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	return StartPluginAuthorizationResponse{Session: result, Created: created}, nil
 }
 
 // Validate 只允许明确的单项权限标识，禁止空白、超量或命令文本。

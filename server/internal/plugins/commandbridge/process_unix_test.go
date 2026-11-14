@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -83,5 +84,18 @@ func TestReviewCancellationReapsBridgeChildren(t *testing.T) {
 		case <-time.After(time.Second):
 		}
 		t.Fatalf("cancellation remains blocked after 4s; child still alive=%t", alive)
+	}
+}
+
+func TestResolveCancellationUnblocksRequestWrite(t *testing.T) {
+	root := t.TempDir()
+	driver := New(Config{Command: "/bin/sleep", Args: []string{"4"}, Directory: root, DataDirectory: root,
+		PluginID: "p", VersionID: "version", Digest: strings.Repeat("a", 64)})
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	_, err := driver.Resolve(ctx, []Component{{ComponentID: "component", Key: "mcp", Target: "mcp", URL: "https://example.com/" + strings.Repeat("a", 256*1024)}})
+	if elapsed := time.Since(started); elapsed > 3*time.Second || err != status_error.OperationCanceled {
+		t.Fatalf("blocked request ignored cancellation: elapsed=%v err=%v", elapsed, err)
 	}
 }

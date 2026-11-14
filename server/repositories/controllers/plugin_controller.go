@@ -25,6 +25,8 @@ type PluginController interface {
 	ReadBrowseStates(context.Context, []string) (map[string]models.PluginBrowseState, error)
 	// ContentReferences 返回数据库仍保留的受管目录相对路径。
 	ContentReferences(context.Context) ([]string, error)
+	// RetireUnusedVersions 将已失去引用和准备窗口的目录包收敛为版本与摘要记录。
+	RetireUnusedVersions(context.Context, []string) error
 	// InstalledReferences 只读取伙伴已启用安装的展示身份和固定版本。
 	InstalledReferences(context.Context, string) ([]models.PluginReference, error)
 	// ExecutionDeclarations 在短读事务内声明伙伴启用安装的固定版本与配置修订。
@@ -33,6 +35,8 @@ type PluginController interface {
 	ExecutionConfiguration(context.Context, string) (models.PluginConfiguration, error)
 	// ReadStates 批量补齐最多一百个资源的版本、安装及公开配置修订。
 	ReadStates(context.Context, []string) (map[string]models.PluginState, error)
+	// ReadInstalledStates 为伙伴列表仅补齐实际使用的版本与安装事实。
+	ReadInstalledStates(context.Context, []string) (map[string]models.PluginState, error)
 	// Create 登记稳定资源。
 	Create(context.Context, models.Plugin) error
 	// Get 查询资源，缺失返回明确领域错误。
@@ -49,6 +53,8 @@ type PluginController interface {
 	Version(context.Context, string) (models.PluginVersion, error)
 	// Versions 查询资源版本分布。
 	Versions(context.Context, string) ([]models.PluginVersion, error)
+	// LatestVersion 返回最近登记的可用本地版本。
+	LatestVersion(context.Context, string) (models.PluginVersion, error)
 	// Install 新建安装关系，不隐式覆盖旧版本或启停。
 	Install(context.Context, models.WakerPlugin) error
 	// Installations 按插件或伙伴查询真实安装。
@@ -59,7 +65,9 @@ type PluginController interface {
 	SetEnabled(context.Context, string, string, bool) error
 	// SwitchVersion 按旧版本条件切换已有安装。
 	SwitchVersion(context.Context, string, string, string, string) error
-	// Uninstall 仅移除一个伙伴的安装关系。
+	// SetRollbackVersion 依附安装切换事务记录上一成功安装版本，空值清除入口。
+	SetRollbackVersion(context.Context, string, string) error
+	// Uninstall 由卸载事务调用，移除一个伙伴的安装关系。
 	Uninstall(context.Context, string, string) error
 	// Configuration 返回可在服务端使用的共享配置。
 	Configuration(context.Context, string) (models.PluginConfiguration, error)
@@ -189,8 +197,19 @@ func (c *pluginController) PutVersion(ctx context.Context, v models.PluginVersio
 	if err := db.Where("plugin_id = ? AND version = ?", v.PluginID, v.Version).Find(&stored).Error; err != nil {
 		return v, databaseError("get_plugin_version", v.PluginID, err)
 	}
-	if stored.Digest != v.Digest {
+	if stored.Digest != v.Digest || v.CatalogBinding != "" && stored.CatalogBinding != "" && stored.CatalogBinding != v.CatalogBinding {
 		return v, status_error.PluginVersionConflict
+	}
+	if v.CatalogBinding != "" && stored.ID != v.ID {
+		// 只在可信目录完成同一固定版本的核验后刷新准备窗口和可重建快照。
+		v.ID = stored.ID
+		v.CreatedAt = stored.CreatedAt
+		v.TrustedAt = max(v.TrustedAt, stored.TrustedAt)
+		v.PreparedUntil = max(v.PreparedUntil, stored.PreparedUntil)
+		if err := db.Model(&stored).Select("Package", "ContentPath", "Provenance", "CatalogBinding", "PreparedUntil", "TrustedAt", "Retired").Updates(&v).Error; err != nil {
+			return v, databaseError("refresh_plugin_preparation", v.PluginID, err)
+		}
+		stored = v
 	}
 	publishCommittedChange(ctx, controllerDB(ctx, c.db), constants.PluginEventTopic, eventsResource("plugin", v.PluginID))
 	return stored, nil
@@ -212,11 +231,24 @@ func (c *pluginController) Version(ctx context.Context, id string) (models.Plugi
 // Versions 按确定顺序返回资源保留的不可变版本。
 func (c *pluginController) Versions(ctx context.Context, id string) ([]models.PluginVersion, error) {
 	result := []models.PluginVersion{}
-	err := controllerDB(ctx, c.db).Where("plugin_id = ?", id).Order("created_at DESC, id ASC").Find(&result).Error
+	err := controllerDB(ctx, c.db).Where("plugin_id = ? AND retired = ?", id, false).Order("created_at DESC, id ASC").Find(&result).Error
 	if err != nil {
 		return nil, databaseError("list_plugin_versions", id, err)
 	}
 	return result, nil
+}
+
+// LatestVersion 读取无安装时的配置目标，不加载历史列表。
+func (c *pluginController) LatestVersion(ctx context.Context, id string) (models.PluginVersion, error) {
+	var version models.PluginVersion
+	result := controllerDB(ctx, c.db).Where("plugin_id = ? AND retired = ?", id, false).Order("created_at DESC, id ASC").Limit(1).Find(&version)
+	if result.Error != nil {
+		return version, databaseError("latest_plugin_version", id, result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return version, status_error.PluginNotFound
+	}
+	return version, nil
 }
 
 // InstalledVersionsExcept 用安装子查询限定当前版本，不展开历史或使用 JOIN。
@@ -245,7 +277,7 @@ func (c *pluginController) Install(ctx context.Context, r models.WakerPlugin) er
 	if err != nil {
 		return err
 	}
-	if v.PluginID != r.PluginID {
+	if v.PluginID != r.PluginID || v.Retired {
 		return status_error.PluginVersionConflict
 	}
 	db := controllerDB(ctx, c.db)
@@ -303,7 +335,7 @@ func (c *pluginController) SwitchVersion(ctx context.Context, waker, plugin, exp
 	if err != nil {
 		return err
 	}
-	if v.PluginID != plugin {
+	if v.PluginID != plugin || v.Retired {
 		return status_error.PluginVersionConflict
 	}
 	result := controllerDB(ctx, c.db).Model(&models.WakerPlugin{}).Where("waker_id = ? AND plugin_id = ? AND version_id = ?", waker, plugin, expected).Updates(map[string]any{"version_id": next, "updated_at": nowMillis()})
@@ -318,14 +350,40 @@ func (c *pluginController) SwitchVersion(ctx context.Context, waker, plugin, exp
 	return nil
 }
 
-// Uninstall 只移除指定伙伴关系。
+// SetRollbackVersion 更新插件一次可回滚的固定版本。
+func (c *pluginController) SetRollbackVersion(ctx context.Context, plugin, version string) error {
+	result := controllerDB(ctx, c.db).Model(&models.Plugin{}).Where("id = ?", plugin).UpdateColumn("rollback_version_id", version)
+	if result.Error != nil {
+		return databaseError("set_plugin_rollback_version", plugin, result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return status_error.PluginNotFound
+	}
+	return nil
+}
+
+// Uninstall 移除指定伙伴关系，最后一个安装消失时清除回滚入口。
 func (c *pluginController) Uninstall(ctx context.Context, waker, plugin string) error {
-	err := controllerDB(ctx, c.db).Where("waker_id = ? AND plugin_id = ?", waker, plugin).Delete(&models.WakerPlugin{}).Error
-	if err != nil {
+	db := controllerDB(ctx, c.db)
+	if err := db.Where("waker_id = ? AND plugin_id = ?", waker, plugin).Delete(&models.WakerPlugin{}).Error; err != nil {
 		return databaseError("uninstall_plugin", plugin, err)
 	}
-	publishReferenceChange(ctx, controllerDB(ctx, c.db), eventsResource("waker", waker))
-	publishCommittedChange(ctx, controllerDB(ctx, c.db), constants.PluginEventTopic, eventsResource("plugin", plugin))
+	if err := clearRollbackWithoutInstallations(db, []string{plugin}); err != nil {
+		return err
+	}
+	publishReferenceChange(ctx, db, eventsResource("waker", waker))
+	publishCommittedChange(ctx, db, constants.PluginEventTopic, eventsResource("plugin", plugin))
+	return nil
+}
+
+// clearRollbackWithoutInstallations 在同一个写事务内解除已失去最后安装的版本引用。
+func clearRollbackWithoutInstallations(db *gorm.DB, plugins []string) error {
+	installed := db.Model(&models.WakerPlugin{}).Select("plugin_id").Where("plugin_id IN ?", plugins)
+	err := db.Model(&models.Plugin{}).Where("id IN ? AND rollback_version_id <> ''", plugins).
+		Where("id NOT IN (?)", installed).UpdateColumn("rollback_version_id", "").Error
+	if err != nil {
+		return databaseError("clear_unused_plugin_rollbacks", "", err)
+	}
 	return nil
 }
 
@@ -422,8 +480,15 @@ func (c *pluginController) DeleteByWaker(ctx context.Context, waker string) erro
 	if err := db.Where("waker_id = ?", waker).Delete(&models.WakerPlugin{}).Error; err != nil {
 		return databaseError("delete_waker_plugins", waker, err)
 	}
+	plugins := make([]string, 0, len(relations))
 	for _, relation := range relations {
+		plugins = append(plugins, relation.PluginID)
 		publishCommittedChange(ctx, db, constants.PluginEventTopic, eventsResource("plugin", relation.PluginID))
+	}
+	if len(plugins) > 0 {
+		if err := clearRollbackWithoutInstallations(db, plugins); err != nil {
+			return err
+		}
 	}
 	publishReferenceChange(ctx, db, eventsResource("waker", waker))
 	return nil
@@ -431,6 +496,15 @@ func (c *pluginController) DeleteByWaker(ctx context.Context, waker string) erro
 
 // ReadStates 在一个有界资源窗口批量读取关联事实，避免逐资源查询。
 func (c *pluginController) ReadStates(ctx context.Context, ids []string) (map[string]models.PluginState, error) {
+	return c.readStates(ctx, ids, false)
+}
+
+// ReadInstalledStates 读取伙伴列表所需的实际安装，不展开历史版本包。
+func (c *pluginController) ReadInstalledStates(ctx context.Context, ids []string) (map[string]models.PluginState, error) {
+	return c.readStates(ctx, ids, true)
+}
+
+func (c *pluginController) readStates(ctx context.Context, ids []string, installedOnly bool) (map[string]models.PluginState, error) {
 	result := map[string]models.PluginState{}
 	if len(ids) == 0 {
 		return result, nil
@@ -440,7 +514,12 @@ func (c *pluginController) ReadStates(ctx context.Context, ids []string) (map[st
 	}
 	db := controllerDB(ctx, c.db)
 	var versions []models.PluginVersion
-	if err := db.Where("plugin_id IN ?", ids).Order("created_at DESC, id ASC").Find(&versions).Error; err != nil {
+	query := db.Where("plugin_id IN ? AND retired = ?", ids, false)
+	if installedOnly {
+		installed := db.Model(&models.WakerPlugin{}).Where("plugin_id IN ?", ids).Select("version_id")
+		query = query.Where("id IN (?)", installed).Select("id", "plugin_id", "version", "digest", "package", "created_at")
+	}
+	if err := query.Order("created_at DESC, id ASC").Find(&versions).Error; err != nil {
 		return nil, databaseError("read_plugin_versions", "", err)
 	}
 	for _, id := range ids {
@@ -608,7 +687,7 @@ func (c *pluginController) ExecutionConfiguration(ctx context.Context, id string
 func (c *pluginController) ContentReferences(ctx context.Context) ([]string, error) {
 	db := controllerDB(ctx, c.db)
 	var paths []string
-	if err := db.Model(&models.PluginVersion{}).Pluck("content_path", &paths).Error; err != nil {
+	if err := db.Model(&models.PluginVersion{}).Where("retired = ? AND content_path <> ''", false).Pluck("content_path", &paths).Error; err != nil {
 		return nil, databaseError("plugin_content_references", "", err)
 	}
 	var ids []string
@@ -619,6 +698,34 @@ func (c *pluginController) ContentReferences(ctx context.Context) ([]string, err
 		paths = append(paths, "plugins/data/"+id)
 	}
 	return paths, nil
+}
+
+// RetireUnusedVersions 保留实际安装、上一回滚目标和仍在准备期的包。本地创建的技能包由资源本身持有。
+func (c *pluginController) RetireUnusedVersions(ctx context.Context, active []string) error {
+	db := controllerDB(ctx, c.db)
+	now := nowMillis()
+	installed := db.Model(&models.WakerPlugin{}).Select("version_id")
+	installedPlugins := db.Model(&models.WakerPlugin{}).Select("plugin_id")
+	rollbacks := db.Model(&models.Plugin{}).Select("rollback_version_id").Where("rollback_version_id <> '' AND id IN (?)", installedPlugins)
+	authorized := db.Model(&models.PluginAccount{}).Select("authorized_version_id").Where("authorized_version_id <> ''")
+	// 旧数据没有记录授权入口，每个资源保留最近的一个桥接版本供注销。
+	knownAccounts := db.Model(&models.PluginAccount{}).Select("plugin_id").Where("authorized_version_id IS NOT NULL")
+	legacy := db.Model(&models.Plugin{}).Where("id NOT IN (?)", knownAccounts).
+		Select("(SELECT id FROM plugin_versions pv WHERE pv.plugin_id = plugins.id AND pv.retired = false AND json_type(pv.package, '$.integration.authentication') = 'object' ORDER BY pv.created_at DESC, pv.id ASC LIMIT 1) AS version_id")
+	catalogs := db.Model(&models.Plugin{}).Select("id").Where("source_key LIKE ?", "catalog:%")
+	candidates := db.Model(&models.PluginVersion{}).
+		Where("plugin_id IN (?) AND retired = ?", catalogs, false).
+		Where("id NOT IN (?) AND id NOT IN (?) AND id NOT IN (?)", installed, rollbacks, authorized).
+		Where("NOT EXISTS (?)", db.Table("(?) AS legacy_auth", legacy).Where("legacy_auth.version_id = plugin_versions.id")).
+		Where("(prepared_until BETWEEN 1 AND ?) OR (prepared_until = 0 AND created_at <= ?)", now, now-constants.PluginPreparationLifetime.Milliseconds())
+	if len(active) > 0 {
+		candidates = candidates.Where("content_path NOT IN ?", active)
+	}
+	result := candidates.Updates(map[string]any{"retired": true, "content_path": "", "package": "{}"})
+	if result.Error != nil {
+		return databaseError("retire_plugin_versions", "", result.Error)
+	}
+	return nil
 }
 
 // InstalledReferences 以三次单表窄列查询读取输入引用，不读取包、配置、账号或使用状态。

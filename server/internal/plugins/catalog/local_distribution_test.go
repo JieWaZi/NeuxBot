@@ -67,15 +67,19 @@ func TestStartupPrefetchesPackagesAndInstallationReusesPersistentCache(t *testin
 }
 
 func TestArtifactLockWaitCanBeCancelled(t *testing.T) {
-	state := &artifactLoadState{gate: make(chan struct{}, 1)}
-	if err := state.acquire(context.Background()); err != nil {
+	cache := artifactCache{states: make(map[string]*artifactLoadState)}
+	_, release, err := cache.acquire(t.Context(), "busy")
+	if err != nil {
 		t.Fatal(err)
 	}
-	defer state.release()
+	defer release()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	completed := make(chan error, 1)
-	go func() { completed <- state.acquire(ctx) }()
+	go func() {
+		_, _, err := cache.acquire(ctx, "busy")
+		completed <- err
+	}()
 	select {
 	case err := <-completed:
 		if err == nil {

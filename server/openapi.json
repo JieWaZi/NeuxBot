@@ -33047,6 +33047,19 @@
               "[PluginForbidden][40300006501]"
             ]
           },
+          "404": {
+            "description": ">\n* `[PluginNotFound][40400006501]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[PluginNotFound][40400006501]"
+            ]
+          },
           "408": {
             "description": ">\n* `[OperationCanceled][40800000001]`\n",
             "content": {
@@ -33889,7 +33902,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationSession"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisPluginsStartPluginAuthorizationResponse"
                 }
               }
             }
@@ -34400,7 +34413,7 @@
               "schema": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisPluginsPluginAccountRequest"
+                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisPluginsCancelPluginAuthorizationRequest"
                   },
                   {
                     "description": "请求体",
@@ -34434,6 +34447,19 @@
             },
             "x-status-errors": [
               "[PluginManifestInvalid][40000006501]"
+            ]
+          },
+          "403": {
+            "description": ">\n* `[PluginForbidden][40300006501]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[PluginForbidden][40300006501]"
             ]
           },
           "404": {
@@ -34701,7 +34727,7 @@
             }
           },
           "400": {
-            "description": ">\n* `[BadRequest][40000000001]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginManifestInvalid][40000006501]`\n",
+            "description": ">\n* `[PluginContentInvalid][40000006502]`\n* `[PluginManifestInvalid][40000006501]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -34710,7 +34736,6 @@
               }
             },
             "x-status-errors": [
-              "[BadRequest][40000000001]",
               "[PluginContentInvalid][40000006502]",
               "[PluginManifestInvalid][40000006501]"
             ]
@@ -34726,6 +34751,19 @@
             },
             "x-status-errors": [
               "[PluginForbidden][40300006501]"
+            ]
+          },
+          "404": {
+            "description": ">\n* `[PluginNotFound][40400006501]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[PluginNotFound][40400006501]"
             ]
           },
           "408": {
@@ -34883,7 +34921,7 @@
             }
           },
           "400": {
-            "description": ">\n* `[BadRequest][40000000001]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginManifestInvalid][40000006501]`\n",
+            "description": ">\n* `[PluginContentInvalid][40000006502]`\n* `[PluginManifestInvalid][40000006501]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -34892,7 +34930,6 @@
               }
             },
             "x-status-errors": [
-              "[BadRequest][40000000001]",
               "[PluginContentInvalid][40000006502]",
               "[PluginManifestInvalid][40000006501]"
             ]
@@ -34908,6 +34945,19 @@
             },
             "x-status-errors": [
               "[PluginForbidden][40300006501]"
+            ]
+          },
+          "404": {
+            "description": ">\n* `[PluginNotFound][40400006501]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[PluginNotFound][40400006501]"
             ]
           },
           "408": {
@@ -35564,21 +35614,8 @@
               "[PluginManifestInvalid][40000006501]"
             ]
           },
-          "404": {
-            "description": ">\n* `[PluginNotFound][40400006501]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[PluginNotFound][40400006501]"
-            ]
-          },
           "409": {
-            "description": ">\n* `[PluginConfigurationConflict][40900006502]`\n* `[PluginNotReady][40900006503]`\n",
+            "description": ">\n* `[ChatLogNativeOutcomePending][40900007203]`\n* `[ChatLogVersionConflict][40900007201]`\n* `[PluginAccountConflict][40900006506]`\n* `[PluginBusy][40900006505]`\n* `[PluginConfigurationConflict][40900006502]`\n* `[PluginNotReady][40900006503]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -35587,6 +35624,10 @@
               }
             },
             "x-status-errors": [
+              "[ChatLogNativeOutcomePending][40900007203]",
+              "[ChatLogVersionConflict][40900007201]",
+              "[PluginAccountConflict][40900006506]",
+              "[PluginBusy][40900006505]",
               "[PluginConfigurationConflict][40900006502]",
               "[PluginNotReady][40900006503]"
             ]
@@ -35603,6 +35644,22 @@
             "x-status-errors": [
               "[PluginCapabilityUnsupported][42200006501]",
               "[PluginPackageUnsupported][42200006502]"
+            ]
+          },
+          "500": {
+            "description": ">\n* `[RuntimeEventEncodingFailed][50000000039]`\n* `[RuntimeEventQueueOverflow][50000000050]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeShutdownFailed][50000000041]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[RuntimeEventEncodingFailed][50000000039]",
+              "[RuntimeEventQueueOverflow][50000000050]",
+              "[RuntimeProtocolIncompatible][50000000012]",
+              "[RuntimeShutdownFailed][50000000041]"
             ]
           }
         }
@@ -35863,6 +35920,19 @@
             },
             "x-status-errors": [
               "[PluginForbidden][40300006501]"
+            ]
+          },
+          "404": {
+            "description": ">\n* `[PluginNotFound][40400006501]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[PluginNotFound][40400006501]"
             ]
           },
           "408": {
@@ -47424,6 +47494,19 @@
             },
             "x-status-errors": [
               "[PluginForbidden][40300006501]"
+            ]
+          },
+          "404": {
+            "description": ">\n* `[PluginNotFound][40400006501]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[PluginNotFound][40400006501]"
             ]
           },
           "408": {
@@ -68928,6 +69011,13 @@
                 "description": "补充权限",
                 "x-go-field-name": "AdditionalScopes",
                 "x-tag-validate": "max=100,dive,max=200"
+              },
+              "ownershipNonce": {
+                "type": "string",
+                "description": "发起所有权",
+                "x-go-field-name": "OwnershipNonce",
+                "x-tag-json": "ownershipNonce,omitempty",
+                "x-tag-validate": "omitempty,max=128"
               }
             },
             "description": "AuthorizationScopeRequest 描述用户明确请求的补充权限。",
@@ -68993,6 +69083,28 @@
         "description": "插件浏览响应",
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisPluginsBrowsePluginsResponse",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/plugins.BrowsePluginsResponse"
+      },
+      "GithubComJieWaZiNeuxBotServerApisPluginsCancelPluginAuthorizationRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisPluginsPluginAccountRequest"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "ownershipNonce": {
+                "type": "string",
+                "description": "发起所有权",
+                "x-go-field-name": "OwnershipNonce",
+                "x-tag-json": "ownershipNonce,omitempty",
+                "x-tag-validate": "omitempty,max=128"
+              }
+            },
+            "description": "取消插件授权请求",
+            "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisPluginsCancelPluginAuthorizationRequest",
+            "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/plugins.CancelPluginAuthorizationRequest"
+          }
+        ]
       },
       "GithubComJieWaZiNeuxBotServerApisPluginsCreatePluginFromSkillsRequest": {
         "type": "object",
@@ -69629,6 +69741,19 @@
             "description": "当前解析版本",
             "x-go-field-name": "ResolvedVersionID"
           },
+          "rollback": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisPluginsPluginRollbackResponse"
+              },
+              {
+                "description": "回滚摘要",
+                "x-go-field-name": "Rollback",
+                "x-go-star-level": 1,
+                "x-tag-json": "rollback,omitempty"
+              }
+            ]
+          },
           "update": {
             "allOf": [
               {
@@ -69678,6 +69803,29 @@
         "description": "插件原文响应",
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisPluginsPluginReadmeResponse",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/plugins.PluginReadmeResponse"
+      },
+      "GithubComJieWaZiNeuxBotServerApisPluginsPluginRollbackResponse": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "可以回滚",
+            "x-go-field-name": "Available"
+          },
+          "version": {
+            "type": "string",
+            "description": "目标版本",
+            "x-go-field-name": "Version"
+          },
+          "versionId": {
+            "type": "string",
+            "description": "目标标识",
+            "x-go-field-name": "VersionID"
+          }
+        },
+        "description": "插件回滚摘要",
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisPluginsPluginRollbackResponse",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/plugins.PluginRollbackResponse"
       },
       "GithubComJieWaZiNeuxBotServerApisPluginsPluginSkillResponse": {
         "type": "object",
@@ -69919,6 +70067,26 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisPluginsSecretValue",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/plugins.SecretValue"
       },
+      "GithubComJieWaZiNeuxBotServerApisPluginsStartPluginAuthorizationResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationSession"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "boolean",
+                "description": "本次请求新建授权",
+                "x-go-field-name": "Created"
+              }
+            },
+            "description": "发起插件授权结果",
+            "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisPluginsStartPluginAuthorizationResponse",
+            "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/plugins.StartPluginAuthorizationResponse"
+          }
+        ]
+      },
       "GithubComJieWaZiNeuxBotServerApisPluginsUpdateConfigurationRequest": {
         "type": "object",
         "properties": {
@@ -69969,6 +70137,12 @@
             "description": "配置修订",
             "x-go-field-name": "ExpectedRevision",
             "x-tag-validate": "min=0"
+          },
+          "rollback": {
+            "type": "boolean",
+            "description": "回滚版本",
+            "x-go-field-name": "Rollback",
+            "x-tag-json": "rollback,omitempty"
           },
           "secrets": {
             "type": "array",

@@ -110,7 +110,7 @@ export function PluginInstallDialog({
   const attempt = useRef<{
     pluginId: string;
     versionId: string;
-    context: CheckPluginAccountData["body"];
+    context: CheckPluginAccountData["body"] & { ownershipNonce: string };
     session: StartPluginAuthorizationResponse;
   } | null>(null);
   const cancelled = useRef(new Map<string, Promise<void>>());
@@ -224,15 +224,17 @@ export function PluginInstallDialog({
       const context = pluginAccountContext(state?.data);
       if (!context) throw new Error(t("failed"));
       if (!alive.current) return;
+      const ownershipNonce = crypto.randomUUID();
       const session = await authorization.mutateAsync({
         path: { pluginId: id },
         query: { wakerId, versionId: selectedVersion },
-        body: { ...context, additionalScopes },
+        body: { ...context, additionalScopes, ownershipNonce },
       });
+      if (!session.created) return;
       attempt.current = {
         pluginId: id,
         versionId: selectedVersion,
-        context,
+        context: { ...context, ownershipNonce },
         session,
       };
       if (!alive.current) await cancelAttempt();

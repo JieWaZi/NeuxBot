@@ -2,6 +2,8 @@ package plugins
 
 import (
 	"context"
+	"path/filepath"
+
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
@@ -11,7 +13,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
-	"path/filepath"
 )
 
 // 插件共享账号
@@ -36,7 +37,7 @@ func (o *GetPluginAuthorization) Output(ctx *gin.Context) (interface{}, error) {
 	}
 	return result, nil
 }
-func cachedAccount(ctx *gin.Context, id, waker, versionID string) (PluginAuthorizationResponse, models.PluginVersion, error) {
+func cachedAccount(ctx context.Context, id, waker, versionID string) (PluginAuthorizationResponse, models.PluginVersion, error) {
 	var result PluginAuthorizationResponse
 	var version models.PluginVersion
 	err := global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
@@ -99,16 +100,22 @@ func containsScope(scopes []string, scope string) bool {
 	}
 	return false
 }
-func validateAccountRequest(ctx *gin.Context, id, waker, versionID string, request PluginAccountRequest) (PluginAuthorizationResponse, error) {
-	result, _, err := cachedAccount(ctx, id, waker, versionID)
+func validateAccountRequest(ctx context.Context, id, waker, versionID string, request PluginAccountRequest) (PluginAuthorizationResponse, models.PluginVersion, error) {
+	result, version, err := cachedAccount(ctx, id, waker, versionID)
 	if err != nil {
-		return result, err
+		return result, version, err
 	}
-	if result.ConfigurationRevision != request.ExpectedConfigurationRevision {
-		return result, status_error.PluginConfigurationConflict
+	return result, version, checkOperationContext(commandbridge.OperationContext{
+		ConfigurationRevision: result.ConfigurationRevision, AccountGeneration: result.AccountGeneration,
+	}, request)
+}
+
+func checkOperationContext(operation commandbridge.OperationContext, request PluginAccountRequest) error {
+	if operation.ConfigurationRevision != request.ExpectedConfigurationRevision {
+		return status_error.PluginConfigurationConflict
 	}
-	if result.AccountGeneration != request.ExpectedAccountGeneration {
-		return result, status_error.PluginAccountConflict
+	if operation.AccountGeneration != request.ExpectedAccountGeneration {
+		return status_error.PluginAccountConflict
 	}
-	return result, nil
+	return nil
 }

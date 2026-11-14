@@ -104,6 +104,7 @@ function waiting(id = "session-1"): StartPluginAuthorizationResponse {
   return {
     id,
     state: "waiting",
+    created: true,
     challengeId: `challenge-${id}`,
     expiresAt: Date.now() + 60_000,
     actions:
@@ -287,6 +288,7 @@ it.each(["show-qr", "open-url"])(
     expect(starts()[0]?.body).toEqual({
       ...accountContext,
       additionalScopes: [],
+      ownershipNonce: expect.any(String),
     });
     expect(starts()[0]?.url.searchParams.get("versionId")).toBe("version-1");
     expect(starts()[0]?.url.searchParams.get("wakerId")).toBe("waker-1");
@@ -518,7 +520,11 @@ it("compensates a late start after closing with its original version and account
   expect(cancellations()[0]?.url.searchParams.get("versionId")).toBe(
     "version-1",
   );
-  expect(cancellations()[0]?.body).toEqual(accountContext);
+  expect(cancellations()[0]?.body).toEqual({
+    ...accountContext,
+    ownershipNonce: (starts()[0]?.body as { ownershipNonce: string })
+      .ownershipNonce,
+  });
   available = true;
   await act(async () => resync());
   expect(installs()).toHaveLength(0);

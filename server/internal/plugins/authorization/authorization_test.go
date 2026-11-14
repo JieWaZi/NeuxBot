@@ -193,3 +193,43 @@ func TestNoticeCopiesAndClearsAcrossChallengesAndTerminalStates(t *testing.T) {
 		})
 	}
 }
+
+func TestLoginOwnerCannotCancelAnotherDialogsWaitingSession(t *testing.T) {
+	driver := &noticeDriver{run: func(ctx context.Context, report func(Device) error) error {
+		if err := report(Device{Actions: []Action{{Type: "copy-code", Value: "code"}}, ExpiresAt: time.Now().Add(time.Minute).UnixMilli()}); err != nil {
+			return err
+		}
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	auth := New(Config{Driver: driver})
+	auth.Open(context.Background())
+	defer auth.Close()
+	first, created, err := auth.LoginSelected(t.Context(), driver, nil, "owner-one")
+	if err != nil || !created || first.ID == "" {
+		t.Fatalf("creator did not receive owned session: %+v %t %v", first, created, err)
+	}
+	second, created, err := auth.LoginSelected(t.Context(), driver, nil, "owner-two")
+	if err != nil || created || second.ID != first.ID {
+		t.Fatalf("observer took ownership: %+v %t %v", second, created, err)
+	}
+	if err := auth.CancelOwnedAndWait(t.Context(), first.ID, "owner-two"); err != status_error.PluginForbidden {
+		t.Fatalf("observer could cancel creator's session: %v", err)
+	}
+	if err := auth.CancelOwnedAndWait(t.Context(), first.ID, "owner-one"); err != nil {
+		t.Fatalf("creator failed to cancel: %v", err)
+	}
+}
+
+func TestLoginRejectsReplacedDriver(t *testing.T) {
+	old := &noticeDriver{run: func(context.Context, func(Device) error) error { return nil }}
+	auth := New(Config{Driver: old})
+	auth.Open(context.Background())
+	defer auth.Close()
+	if err := auth.ReplaceDriver(&noticeDriver{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := auth.LoginSelected(t.Context(), old, nil, ""); err != status_error.PluginAccountConflict {
+		t.Fatalf("replaced request was admitted: %v", err)
+	}
+}

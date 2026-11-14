@@ -347,14 +347,12 @@ func loadDB(ctx context.Context, configuration *Configuration) error {
 	ChannelControllerManager = controllers.NewChannelController(DB)
 	ChannelThreadControllerManager = controllers.NewChannelThreadController(DB)
 	ChannelTaskControllerManager = controllers.NewChannelTaskController(DB)
-	PluginControllerManager = controllers.NewPluginController(DB, func() {
-		if PluginContents != nil {
-			if err := PluginContents.Collect(); err != nil {
-				logx.Warnf("collect plugin content after commit failed: %v", err)
-			}
-		}
-	})
+	PluginControllerManager = controllers.NewPluginController(DB, func() { collectPluginContent(ctx) })
 	PluginContents = plugins.NewContentStore(configuration.DataDirectory, func() ([]string, error) { return PluginControllerManager.ContentReferences(context.Background()) })
+	if err := PluginContents.CleanTargetStaging(); err != nil {
+		logx.Warnf("remove abandoned plugin targets failed: %v", err)
+	}
+	closePluginContentCollection = startPluginContentCollection(ctx)
 	PluginBridgeEnvironment = os.Environ()
 	PluginBridges = commandbridge.NewRegistry(ctx, func(id string, usageOnly bool) {
 		if EventHub != nil {
@@ -829,6 +827,10 @@ func Close() error {
 		PluginBridges.Close()
 		PluginBridges = nil
 	}
+	if closePluginContentCollection != nil {
+		closePluginContentCollection()
+		closePluginContentCollection = nil
+	}
 	if ChatService != nil {
 		ChatService.Close()
 		ChatService = nil
@@ -929,6 +931,40 @@ var PluginBridgeEnvironment []string
 
 // PluginContents 保存当前 Core 的短期内容使用计数。
 var PluginContents *plugins.ContentStore
+
+// closePluginContentCollection 停止目录版本到期回收，先于数据库关闭。
+var closePluginContentCollection func()
+
+func collectPluginContent(ctx context.Context) {
+	if err := PluginContents.CollectAfter(func(active []string) error {
+		return PluginControllerManager.RetireUnusedVersions(ctx, active)
+	}); err != nil {
+		logx.Warnf("collect unused plugin content failed: %v", err)
+	}
+}
+
+func startPluginContentCollection(ctx context.Context) func() {
+	collectPluginContent(ctx)
+	work, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(constants.PluginPreparationLifetime)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-work.Done():
+				return
+			case <-ticker.C:
+				collectPluginContent(work)
+			}
+		}
+	}()
+	return func() {
+		cancel()
+		<-done
+	}
+}
 
 // loadKnowledge 打开独立知识数据库，不启动模型或第二套执行宿主。
 func loadKnowledge(ctx context.Context, configuration *Configuration) error {

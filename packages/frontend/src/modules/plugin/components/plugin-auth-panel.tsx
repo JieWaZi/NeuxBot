@@ -56,7 +56,7 @@ export function PluginAuthPanel({
   onAvailabilityChange?: (available: boolean) => void;
   onSessionStarted?: (
     session: StartPluginAuthorizationResponse,
-    context: CheckPluginAccountData["body"],
+    context: CheckPluginAccountData["body"] & { ownershipNonce: string },
   ) => void;
   installation?: boolean;
   starting?: boolean;
@@ -77,7 +77,10 @@ export function PluginAuthPanel({
   });
   const context = pluginAccountContext(status.data);
   const ownedContexts = useRef(
-    new Map<string, CheckPluginAccountData["body"]>(),
+    new Map<
+      string,
+      CheckPluginAccountData["body"] & { ownershipNonce: string }
+    >(),
   );
   const [confirmLogout, setConfirmLogout] = useState(false);
   const alive = useRef(true);
@@ -89,6 +92,7 @@ export function PluginAuthPanel({
     ...withLocalErrorMutation(cancelPluginAuthorizationMutation()),
     onSuccess: async (_value, variables) => {
       selfOwned.current.delete(variables.path.sessionId);
+      ownedContexts.current.delete(variables.path.sessionId);
       await refresh();
     },
   });
@@ -130,21 +134,25 @@ export function PluginAuthPanel({
   });
   const [openError, setOpenError] = useState("");
   const [expiredDevice, setExpiredDevice] = useState("");
-  const previousWaitingSession = useRef("");
   const login = useMutation({
     ...withLocalErrorMutation(startPluginAuthorizationMutation()),
     onError: () => {
       void status.refetch();
     },
     onSuccess: async (session, variables) => {
-      const startedContext = {
-        expectedConfigurationRevision:
-          variables.body.expectedConfigurationRevision,
-        expectedAccountGeneration: variables.body.expectedAccountGeneration,
-      };
-      if (session.id) ownedContexts.current.set(session.id, startedContext);
-      if (session.id && session.id !== previousWaitingSession.current) {
-        if (onSessionStarted) onSessionStarted(session, startedContext);
+      const {
+        expectedConfigurationRevision,
+        expectedAccountGeneration,
+        ownershipNonce,
+      } = variables.body;
+      if (session.created && session.id && ownershipNonce) {
+        const owned = {
+          expectedConfigurationRevision,
+          expectedAccountGeneration,
+          ownershipNonce,
+        };
+        ownedContexts.current.set(session.id, owned);
+        if (onSessionStarted) onSessionStarted(session, owned);
         else selfOwned.current.set(session.id, session);
       }
       if (!alive.current) closeOwned();
@@ -282,8 +290,6 @@ export function PluginAuthPanel({
     onAvailabilityChange?.(false);
     if (session?.state === "waiting") setExpiredDevice(deviceKey);
     try {
-      previousWaitingSession.current =
-        session?.state === "waiting" ? (session.id ?? "") : "";
       if (onRestart) {
         await onRestart(status.data?.missingScopes ?? []);
         return;
@@ -292,7 +298,7 @@ export function PluginAuthPanel({
         await cancel.mutateAsync({
           path: { pluginId, sessionId: session.id },
           query: { wakerId, versionId },
-          body: ownedContexts.current.get(session.id) ?? context,
+          body: context,
         });
       }
       await login.mutateAsync({
@@ -300,6 +306,7 @@ export function PluginAuthPanel({
         query: { wakerId, versionId },
         body: {
           ...context,
+          ownershipNonce: crypto.randomUUID(),
           additionalScopes: status.data?.missingScopes ?? [],
         },
       });

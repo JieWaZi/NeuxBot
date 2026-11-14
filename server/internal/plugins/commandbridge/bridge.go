@@ -69,6 +69,8 @@ type Config struct {
 	Environment []string
 	// PrepareDelivery 在独占授权完成后保存已校验的私有交付材料。
 	PrepareDelivery func(context.Context, *Driver, authorization.Account) error
+	// Retain 固定操作期间的包内容和共享数据。
+	Retain func() (func(), error)
 	// ClearDelivery 在官方退出成功后清除已有私有交付材料。
 	ClearDelivery func(context.Context, *Driver) error
 }
@@ -101,8 +103,6 @@ type Binding struct {
 
 // Driver 用JSON-RPC协议适配既有授权租约与状态机。
 type Driver struct {
-	// contextMu 保护账号提交后的操作代次更新。
-	contextMu sync.RWMutex
 	// config 固定入口、私有身份及受信资产。
 	config Config
 }
@@ -110,19 +110,24 @@ type Driver struct {
 var environmentNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // New 不启动进程；调用沿显式Context管理。
-func New(config Config) *Driver { return &Driver{config: config} }
+func New(config Config) *Driver {
+	config.Args = slices.Clone(config.Args)
+	config.Scopes = slices.Clone(config.Scopes)
+	config.Environment = slices.Clone(config.Environment)
+	return &Driver{config: config}
+}
+
+// Retain 持有驱动路径直到已接纳操作退出。
+func (d *Driver) Retain() (func(), error) {
+	if d.config.Retain == nil {
+		return func() {}, nil
+	}
+	return d.config.Retain()
+}
 
 // OperationContext 返回下一次调用固定的账号和内容事实，不携带凭据。
 func (d *Driver) OperationContext() OperationContext {
-	d.contextMu.RLock()
-	defer d.contextMu.RUnlock()
 	return OperationContext{PluginID: d.config.PluginID, VersionID: d.config.VersionID, Digest: d.config.Digest, ConfigurationRevision: d.config.ConfigurationRevision, AccountGeneration: d.config.AccountGeneration}
-}
-
-func (d *Driver) advanceGeneration() {
-	d.contextMu.Lock()
-	d.config.AccountGeneration++
-	d.contextMu.Unlock()
 }
 
 // Initialize 由同一个auth/start桥接负责多阶段初始化。
@@ -133,9 +138,6 @@ func (d *Driver) Logout(ctx context.Context) error {
 	_, err := d.call(ctx, constants.PluginAuthLogoutMethod, "", nil, nil, nil)
 	if err == nil && d.config.ClearDelivery != nil {
 		err = d.config.ClearDelivery(ctx, d)
-		if err == nil {
-			d.advanceGeneration()
-		}
 	}
 	return err
 }
@@ -171,11 +173,7 @@ func (d *Driver) CompleteLogin(ctx context.Context, account authorization.Accoun
 		return err
 	}
 	if d.config.PrepareDelivery != nil {
-		err := d.config.PrepareDelivery(ctx, d, account)
-		if err == nil {
-			d.advanceGeneration()
-		}
-		return err
+		return d.config.PrepareDelivery(ctx, d, account)
 	}
 	return nil
 }
@@ -261,6 +259,9 @@ type frame struct {
 }
 
 func (d *Driver) call(ctx context.Context, method, id string, scopes []string, components []Component, report func(authorization.Device) error) (json.RawMessage, error) {
+	if ctx.Err() != nil {
+		return nil, status_error.OperationCanceled
+	}
 	operation := d.OperationContext()
 	if operation.PluginID == "" || operation.VersionID == "" || len(operation.Digest) != 64 || operation.ConfigurationRevision < 0 || operation.AccountGeneration < 0 {
 		return nil, status_error.PluginManifestInvalid
@@ -295,20 +296,31 @@ func (d *Driver) call(ctx context.Context, method, id string, scopes []string, c
 	if command.Start() != nil {
 		return nil, status_error.PluginNotReady
 	}
-	// EOF与终止信号先让桥接清理供应商子进程；超时后回收整个进程组。
+	kill, err := manageProcessTree(command)
+	if err != nil {
+		_ = command.Process.Kill()
+		_ = command.Wait()
+		return nil, status_error.PluginNotReady
+	}
+	var workers sync.WaitGroup
+	// 先请求退出，再终止进程树，最后等待全部读写及进程回收。
 	defer func() {
-		_ = stdin.Close()
-		terminateProcessGroup(command)
+		cancel()
+		closed := make(chan struct{})
+		go func() { _ = stdin.Close(); close(closed) }()
 		finished := make(chan struct{})
 		go func() { _ = command.Wait(); close(finished) }()
+		timer := time.NewTimer(500 * time.Millisecond)
+		defer timer.Stop()
 		select {
 		case <-finished:
-		case <-time.After(500 * time.Millisecond):
+		case <-timer.C:
 		}
-		killProcessGroup(command)
-		cancel()
+		kill()
 		_ = stdout.Close()
 		<-finished
+		<-closed
+		workers.Wait()
 	}()
 	if id == "" {
 		id = util.New()
@@ -323,12 +335,8 @@ func (d *Driver) call(ctx context.Context, method, id string, scopes []string, c
 	write := func(requestID int, method string) error {
 		return json.NewEncoder(stdin).Encode(map[string]any{"jsonrpc": "2.0", "id": requestID, "method": method, "params": params})
 	}
-	if write(1, constants.PluginAuthInitializeMethod) != nil {
-		return nil, status_error.PluginAuthorizationFailed
-	}
 	messages := make(chan frame, 8)
 	done := make(chan struct{})
-	var workers sync.WaitGroup
 	workers.Add(1)
 	go func() {
 		defer workers.Done()
@@ -348,33 +356,56 @@ func (d *Driver) call(ctx context.Context, method, id string, scopes []string, c
 			}
 		}
 	}()
-	defer func() {
-		// 子进程可能仍持有stdout，先关闭本端读取再等待扫描器。
-		cancel()
-		_ = stdout.Close()
-		workers.Wait()
-	}()
 	wait := 30 * time.Second
 	if method == constants.PluginAuthStartMethod {
 		wait = constants.PluginAuthPreparationTimeoutSeconds * time.Second
 	}
 	timer := time.NewTimer(wait)
 	defer timer.Stop()
-	initialized := false
-	for {
-		select {
-		case <-ctx.Done():
-			_ = write(3, constants.PluginAuthCancelMethod)
-			// 桥接先有机会取消上游，随后进程组由受管Context回收。
+	// 同一时刻只有一个写入者，阻塞的帧不能延迟请求截止时间或与取消帧争用管道。
+	var pendingWrite <-chan error
+	send := func(requestID int, method string) {
+		result := make(chan error, 1)
+		pendingWrite = result
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			result <- write(requestID, method)
+		}()
+	}
+	cancelRequest := func() (json.RawMessage, error) {
+		if pendingWrite == nil {
+			send(3, constants.PluginAuthCancelMethod)
 			deadline := time.NewTimer(2 * time.Second)
+			defer deadline.Stop()
 			select {
 			case <-done:
 			case <-deadline.C:
 			}
-			deadline.Stop()
-			return nil, status_error.OperationCanceled
+		}
+		return nil, status_error.OperationCanceled
+	}
+	send(1, constants.PluginAuthInitializeMethod)
+	initialized := false
+	var queuedMethod bool
+	for {
+		select {
+		case <-ctx.Done():
+			return cancelRequest()
 		case <-timer.C:
 			return nil, context.DeadlineExceeded
+		case err := <-pendingWrite:
+			pendingWrite = nil
+			if ctx.Err() != nil {
+				return cancelRequest()
+			}
+			if err != nil {
+				return nil, status_error.PluginAuthorizationFailed
+			}
+			if queuedMethod {
+				queuedMethod = false
+				send(2, method)
+			}
 		case message, ok := <-messages:
 			if !ok {
 				return nil, status_error.PluginAuthorizationFailed
@@ -390,8 +421,10 @@ func (d *Driver) call(ctx context.Context, method, id string, scopes []string, c
 					return nil, status_error.PluginAuthorizationFailed
 				}
 				initialized = true
-				if write(2, method) != nil {
-					return nil, status_error.PluginAuthorizationFailed
+				if pendingWrite != nil {
+					queuedMethod = true
+				} else {
+					send(2, method)
 				}
 				continue
 			}

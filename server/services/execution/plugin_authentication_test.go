@@ -157,7 +157,7 @@ func resolveFixtureDelivery(t *testing.T, manager *service, state models.PluginS
 	if err != nil {
 		t.Fatal(err)
 	}
-	materials, err := plugininstallation.ResolveDeliveryMaterials(context.Background(), driver, state.Versions[0], state.Configuration, "oauth-user")
+	materials, err := plugininstallation.ResolveDeliveryMaterials(context.Background(), driver, state.Versions[0], "oauth-user")
 	if err != nil && (len(allowFailure) == 0 || !allowFailure[0]) {
 		t.Fatal("fixture authorization material could not be resolved", err)
 	}
@@ -336,7 +336,7 @@ func TestAuthorizationManagementRejectsUndeclaredSecrets(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := plugininstallation.ResolveDeliveryMaterials(context.Background(), driver, state.Versions[0], state.Configuration, "oauth-user"); err == nil {
+			if _, err := plugininstallation.ResolveDeliveryMaterials(context.Background(), driver, state.Versions[0], "oauth-user"); err == nil {
 				t.Fatal("management accepted incomplete or undeclared secret binding")
 			}
 		})
@@ -432,7 +432,7 @@ func TestPluginIdentityIsLoadedAfterAcquiringFrozenResources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	state.Account.DeliveryMaterials, err = plugininstallation.ResolveDeliveryMaterials(context.Background(), driver, state.Versions[0], state.Configuration, "reauthorized-after-freeze")
+	state.Account.DeliveryMaterials, err = plugininstallation.ResolveDeliveryMaterials(context.Background(), driver, state.Versions[0], "reauthorized-after-freeze")
 	if err != nil {
 		t.Fatal(err)
 	}

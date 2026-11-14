@@ -14,7 +14,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { it, expect, vi, afterEach, beforeEach } from "vitest";
 import "@/shared/i18n";
 import type * as PluginQueries from "../api/plugin-queries";
-import { getPluginOptions } from "../api/plugin-queries";
+import {
+  getPluginOptions,
+  listWakerPluginsQueryKey,
+} from "../api/plugin-queries";
 import { withLocalErrorSurface } from "@/shared/api/local-error-surface";
 import type * as ResourceSdk from "@/shared/api/generated/sdk.gen";
 import {
@@ -363,6 +366,74 @@ it("loads a fresh update target when cached detail predates the catalog sync", a
     ).rejects.toThrow("详情读取失败");
   });
   expect(screen.getByText(/update:existing/)).toBeVisible();
+});
+it("reads the current catalog target even while the same management detail is already loading", async () => {
+  fixture.entries[0] = {
+    ...fixture.entries[0],
+    update: { available: true, version: "0.3.0" },
+  };
+  const client = showCatalog();
+  const options = getPluginOptions(
+    withLocalErrorSurface({
+      path: { pluginId: "existing" },
+      query: { locale: "zh-CN" },
+    }),
+  );
+  let settle!: (value: PluginDetail) => void;
+  const management = client.fetchQuery({
+    ...options,
+    queryFn: () =>
+      new Promise<PluginDetail>((resolve) => {
+        settle = resolve;
+      }),
+  });
+  try {
+    fireEvent.click(await screen.findByRole("button", { name: "更新 飞书" }));
+    expect(await screen.findByText(/update:existing/)).toHaveAttribute(
+      "data-version",
+      "0.3.0",
+    );
+  } finally {
+    settle({ update: { available: true, version: "0.2.0" } });
+    await management;
+  }
+});
+it("renders the same partner plugin once when adjacent pages overlap", async () => {
+  const installed = {
+    plugin: { id: "existing", name: "飞书" },
+    installations: [{ wakerId: "w1", versionId: "v1" }],
+  };
+  fixture.partnerEntries = [installed];
+  const client = showCatalog(false, undefined, "w1");
+  await screen.findByRole("heading", { name: "飞书" });
+  act(() => {
+    client.setQueryData(
+      [
+        ...listWakerPluginsQueryKey(
+          withLocalErrorSurface({
+            path: { wakerId: "w1" },
+            query: { query: "", pageSize: 9 },
+          }),
+        ),
+        "infinite",
+      ],
+      {
+        pages: [
+          { items: [installed], total: 3 },
+          {
+            items: [
+              installed,
+              { plugin: { id: "second", name: "第二页插件" } },
+            ],
+            total: 3,
+          },
+        ],
+        pageParams: [1, 2],
+      },
+    );
+  });
+  await screen.findByRole("heading", { name: "第二页插件" });
+  expect(screen.getAllByRole("heading", { name: "飞书" })).toHaveLength(1);
 });
 it("keeps a failed action read inside the dialog and retries there", async () => {
   fixture.failDetail = true;

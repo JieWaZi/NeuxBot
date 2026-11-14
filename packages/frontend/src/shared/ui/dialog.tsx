@@ -16,6 +16,7 @@ type DialogContentProps = Omit<
   description?: string;
   children: ReactNode;
   closing?: boolean;
+  closeDisabled?: boolean;
   visual?: ReactNode;
   headingLayout?: "default" | "centered";
   container?: HTMLElement;
@@ -39,6 +40,7 @@ export function DialogContent({
   children,
   className,
   closing = false,
+  closeDisabled = false,
   visual,
   headingLayout = "default",
   container,
@@ -87,7 +89,11 @@ export function DialogContent({
             <DialogPrimitive.Description className="sr-only">
               {description ?? title}
             </DialogPrimitive.Description>
-            <DialogPrimitive.Close className="sr-only" aria-label="关闭">
+            <DialogPrimitive.Close
+              className="sr-only"
+              aria-label="关闭"
+              disabled={closeDisabled}
+            >
               关闭
             </DialogPrimitive.Close>
             {children}
@@ -108,10 +114,11 @@ export function DialogContent({
               </DialogPrimitive.Title>
               <DialogPrimitive.Close
                 className={cn(
-                  "text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring size-control-sm grid shrink-0 place-items-center rounded-sm outline-none focus-visible:ring-2",
+                  "text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring size-control-sm grid shrink-0 place-items-center rounded-sm outline-none focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50",
                   headingLayout === "centered" && "absolute top-3 right-3",
                 )}
                 aria-label="关闭"
+                disabled={closeDisabled}
               >
                 <X className="size-icon-md" strokeWidth={1.5} />
               </DialogPrimitive.Close>

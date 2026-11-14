@@ -53,6 +53,7 @@ func detailFromState(ctx context.Context, resource models.Plugin, state models.P
 	result.AccountGeneration = state.Account.Generation
 
 	result.ConfigurationRevision = config.Revision
+	result.Rollback = rollbackSummary(state)
 	if len(result.Versions) == 0 {
 		return result, nil
 	}
@@ -147,7 +148,11 @@ func listPluginResources(ctx context.Context, waker, query string, page, size in
 		for _, resource := range resources {
 			ids = append(ids, resource.ID)
 		}
-		states, err = global.PluginControllerManager.ReadStates(txctx, ids)
+		if waker != "" {
+			states, err = global.PluginControllerManager.ReadInstalledStates(txctx, ids)
+		} else {
+			states, err = global.PluginControllerManager.ReadStates(txctx, ids)
+		}
 		return err
 	})
 	if err != nil {
@@ -182,38 +187,81 @@ func listPluginResources(ctx context.Context, waker, query string, page, size in
 func applyPluginUpdate(detail *PluginDetailResponse, entries []catalog.Entry, source catalog.SourceState) {
 	detail.CatalogSource = source
 	detail.Update = PluginUpdateResponse{WakerIDs: []string{}}
+	byID := make(map[string]string, len(detail.Versions))
+	for _, version := range detail.Versions {
+		byID[version.ID] = version.Version
+	}
 	for _, entry := range entries {
 		if entry.SourceKey != detail.Plugin.SourceKey {
 			continue
 		}
-		target := normalizedPluginVersion(entry.Package.Manifest.Version)
-		if !semver.IsValid(target) {
-			return
-		}
-		versions := map[string]string{}
-		for _, version := range detail.Versions {
-			versions[version.ID] = normalizedPluginVersion(version.Version)
-		}
+		versions := make([]string, 0, len(detail.Installations))
 		for _, relation := range detail.Installations {
-			current := versions[relation.VersionID]
-			// 更新会覆盖全体伙伴，未知版本或目录回退不能让其他伙伴被动降级。
-			if !semver.IsValid(current) || semver.Compare(target, current) < 0 {
-				detail.Update.WakerIDs = []string{}
-				return
-			}
-			if semver.Compare(target, current) > 0 {
-				detail.Update.WakerIDs = append(detail.Update.WakerIDs, relation.WakerID)
-			}
+			versions = append(versions, byID[relation.VersionID])
 		}
-		if len(detail.Update.WakerIDs) > 0 {
+		target := entry.Package.Manifest.Version
+		for _, index := range upgradeIndices(target, versions) {
+			detail.Update.WakerIDs = append(detail.Update.WakerIDs, detail.Installations[index].WakerID)
+		}
+		if len(detail.Update.WakerIDs) != 0 {
 			sort.Strings(detail.Update.WakerIDs)
 			detail.Update.Available = true
 			detail.Update.CatalogKey = entry.Key
-			detail.Update.Version = entry.Package.Manifest.Version
+			detail.Update.Version = target
 			detail.Update.ArchiveSHA256 = entry.ArchiveSHA256
 		}
 		return
 	}
+}
+
+// upgradeIndices 返回统一切换中实际需要升级的安装，任一未知版本或降级都会使整个候选无效。
+func upgradeIndices(target string, installed []string) []int {
+	target = normalizedPluginVersion(target)
+	if !semver.IsValid(target) {
+		return nil
+	}
+	var lower []int
+	for index, version := range installed {
+		current := normalizedPluginVersion(version)
+		if !semver.IsValid(current) || semver.Compare(target, current) < 0 {
+			return nil
+		}
+		if semver.Compare(target, current) > 0 {
+			lower = append(lower, index)
+		}
+	}
+	return lower
+}
+
+// rollbackSummary 只从当前安装与上一次成功切换保存的版本推导，不读取公开目录。
+func rollbackSummary(state models.PluginState) *PluginRollbackResponse {
+	if state.Plugin.RollbackVersionID == "" || len(state.Installations) == 0 {
+		return nil
+	}
+	currentID := state.Installations[0].VersionID
+	for _, relation := range state.Installations {
+		if relation.VersionID != currentID {
+			return nil
+		}
+	}
+	var current models.PluginVersion
+	var previous models.PluginVersion
+	for _, version := range state.Versions {
+		switch version.ID {
+		case currentID:
+			current = version
+		case state.Plugin.RollbackVersionID:
+			previous = version
+		}
+	}
+	if previous.ID == "" || previous.Retired || packageplugin.ValidateContract(previous.Package) != nil {
+		return nil
+	}
+	from, to := normalizedPluginVersion(current.Version), normalizedPluginVersion(previous.Version)
+	if !semver.IsValid(from) || !semver.IsValid(to) || semver.Compare(to, from) >= 0 {
+		return nil
+	}
+	return &PluginRollbackResponse{Available: true, VersionID: previous.ID, Version: previous.Version}
 }
 
 func normalizedPluginVersion(version string) string {

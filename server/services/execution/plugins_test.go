@@ -73,6 +73,11 @@ func (f installedPluginFixture) ExecutionConfiguration(ctx context.Context, id s
 	return f.Configuration(ctx, id)
 }
 
+func (f installedPluginFixture) ConfigurationRevision(ctx context.Context, id string) (int64, error) {
+	config, err := f.Configuration(ctx, id)
+	return config.Revision, err
+}
+
 func (f installedPluginFixture) Configuration(_ context.Context, id string) (models.PluginConfiguration, error) {
 	for _, state := range f.states {
 		if state.Plugin.ID == id {

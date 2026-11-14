@@ -55,7 +55,7 @@ func (c *pluginController) UpdateAccount(ctx context.Context, account models.Plu
 	}
 	account.Generation = expected + 1
 	account.UpdatedAt = nowMillis()
-	result := db.Model(&models.PluginAccount{}).Where("plugin_id = ? AND generation = ?", account.PluginID, expected).Select("Generation", "DeliveryMaterials", "UpdatedAt").Updates(&account)
+	result := db.Model(&models.PluginAccount{}).Where("plugin_id = ? AND generation = ?", account.PluginID, expected).Select("Generation", "AuthorizedVersionID", "DeliveryMaterials", "UpdatedAt").Updates(&account)
 	if result.Error == nil && result.RowsAffected == 0 && expected == 0 {
 		result = db.Clauses(clause.OnConflict{DoNothing: true}).Create(&account)
 	}

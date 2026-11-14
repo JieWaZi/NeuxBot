@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
-	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 )
 
 // 目标次序与格式仅属于生成器协议，不依赖已安装 CLI。
@@ -75,65 +78,53 @@ func PrepareNativeTargetWithDigest(ctx context.Context, parent, id string, pkg P
 	return prepareNativeTarget(ctx, parent, id, pkg, root, cli, verifiedDigest, authentication...)
 }
 
+// PrepareRuntimeTarget 只为当前连接准备已选 CLI 的目标。调用方在消费者关闭后释放私有目录；
+// 可直接交付的标准 Codex 包仍由调用方持有原包租约。
+func PrepareRuntimeTarget(ctx context.Context, parent, id string, pkg Package, root, cli, verifiedDigest string) (NativeTarget, func(), error) {
+	target, direct, err := describeNativeTarget(ctx, id, pkg, root, cli, verifiedDigest, nil)
+	if err != nil {
+		return NativeTarget{}, nil, err
+	}
+	if direct {
+		return target, func() {}, nil
+	}
+	if err := ValidatePreparationBoundary(root, parent); err != nil {
+		return NativeTarget{}, nil, err
+	}
+	container, err := plannedPluginDirectory(filepath.Dir(parent))
+	if err != nil {
+		return NativeTarget{}, nil, err
+	}
+	parent = filepath.Join(container, filepath.Base(parent))
+	if err := codexPrivateDir(parent); err != nil {
+		return NativeTarget{}, nil, err
+	}
+	stage, err := stageNativeTarget(parent)
+	if err != nil {
+		return NativeTarget{}, nil, err
+	}
+	release := sync.OnceFunc(func() {
+		if err := os.RemoveAll(stage); err != nil {
+			logx.Warnf("remove runtime plugin target failed: %v", err)
+		}
+	})
+	target, err = generateNativeTarget(ctx, target, pkg, root, stage, nil)
+	if err != nil {
+		release()
+		return NativeTarget{}, nil, err
+	}
+	return target, release, nil
+}
+
 func prepareNativeTarget(ctx context.Context, parent, id string, pkg Package, root, cli, verifiedDigest string, authentication ...AuthenticationBinding) (NativeTarget, error) {
-	if err := ctx.Err(); err != nil {
-		return NativeTarget{}, err
-	}
-	if err := ValidateContract(pkg); err != nil {
-		return NativeTarget{}, err
-	}
-	if !registeredTarget(cli) {
-		return NativeTarget{}, status_error.PluginCapabilityUnsupported
-	}
-	digest := verifiedDigest
-	if digest == "" {
-		var err error
-		digest, err = ContentDigest(root)
-		if err != nil {
-			return NativeTarget{}, err
-		}
-	}
-	if _, err := hex.DecodeString(digest); err != nil {
-		return NativeTarget{}, status_error.PluginContentInvalid
-	}
-	if len(digest) != 64 {
-		return NativeTarget{}, status_error.PluginContentInvalid
-	}
-	actualRoot, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		return NativeTarget{}, storageFailure(err)
-	}
-	entry, format := targetEntry(cli)
-	target := NativeTarget{ID: id, Name: pkg.Manifest.Name, Version: pkg.Manifest.Version, Root: actualRoot, Digest: digest, Runtime: cli, Format: format, SourceDigest: digest, Profile: cli, ManifestPath: entry, Skills: pkg.Skills, Servers: pkg.Servers}
-	if target.Version == "" {
-		target.Version = digest[:12]
-	}
-	_, err = ClientExtension(pkg)
-	if err != nil {
-		return NativeTarget{}, err
-	}
-	target.Format, err = TargetFormat(pkg, cli)
-	if err != nil {
-		return NativeTarget{}, err
-	}
-	if target.Format == "projection" {
-		target.Format = "projection"
-		target.ManifestPath = ".neuxbot/target.json"
-	}
-	// 标准 Codex 根已经是完整目标；可信调用方可以直接传递已冻结根。
-	if cli == "codex" && len(authentication) == 0 && target.Format != "projection" {
-		dependent, err := hasPositionDependentDeliveryLinks(root)
-		if err != nil {
-			return NativeTarget{}, err
-		}
-		if !dependent {
-			return target, nil
-		}
+	target, direct, err := describeNativeTarget(ctx, id, pkg, root, cli, verifiedDigest, authentication)
+	if err != nil || direct {
+		return target, err
 	}
 	if err := ValidatePreparationBoundary(root, parent); err != nil {
 		return NativeTarget{}, err
 	}
-	prepared, unlock, err := lockTargetPreparation(ctx, parent, id, digest, cli, pkg, authentication)
+	prepared, unlock, err := lockTargetPreparation(ctx, parent, id, target.SourceDigest, cli, pkg, authentication)
 	if err != nil {
 		return NativeTarget{}, err
 	}
@@ -145,38 +136,105 @@ func prepareNativeTarget(ctx context.Context, parent, id string, pkg Package, ro
 			return target, nil
 		}
 	}
+	stage, err := stageNativeTarget(parent)
+	if err != nil {
+		return NativeTarget{}, err
+	}
+	defer os.RemoveAll(stage)
+	target, err = generateNativeTarget(ctx, target, pkg, root, stage, authentication)
+	if err != nil {
+		return NativeTarget{}, err
+	}
+	content, err := publishTarget(ctx, parent, stage, id, target.SourceDigest, cli, target.Digest)
+	if err != nil {
+		return NativeTarget{}, err
+	}
+	target.Root = content
+	prepared.root, prepared.digest = content, target.Digest
+	return target, nil
+}
+
+func describeNativeTarget(ctx context.Context, id string, pkg Package, root, cli, verifiedDigest string, authentication []AuthenticationBinding) (NativeTarget, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return NativeTarget{}, false, err
+	}
+	format, err := TargetFormat(pkg, cli)
+	if err != nil {
+		return NativeTarget{}, false, err
+	}
+	digest := verifiedDigest
+	if digest == "" {
+		digest, err = ContentDigest(root)
+		if err != nil {
+			return NativeTarget{}, false, err
+		}
+	}
+	if _, err := hex.DecodeString(digest); err != nil {
+		return NativeTarget{}, false, status_error.PluginContentInvalid
+	}
+	if len(digest) != 64 {
+		return NativeTarget{}, false, status_error.PluginContentInvalid
+	}
+	actualRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return NativeTarget{}, false, storageFailure(err)
+	}
+	entry, _ := targetEntry(cli)
+	target := NativeTarget{ID: id, Name: pkg.Manifest.Name, Version: pkg.Manifest.Version, Root: actualRoot, Digest: digest, Runtime: cli, Format: format, SourceDigest: digest, Profile: cli, ManifestPath: entry, Skills: pkg.Skills, Servers: pkg.Servers}
+	if target.Version == "" {
+		target.Version = digest[:12]
+	}
+	if target.Format == "projection" {
+		target.ManifestPath = ".neuxbot/target.json"
+	}
+	// 标准 Codex 根已经是完整目标；可信调用方可以直接传递已冻结根。
+	if cli == "codex" && len(authentication) == 0 && target.Format != "projection" {
+		dependent, err := hasPositionDependentDeliveryLinks(root)
+		if err != nil {
+			return NativeTarget{}, false, err
+		}
+		return target, !dependent, ctx.Err()
+	}
+	return target, false, nil
+}
+
+func stageNativeTarget(parent string) (string, error) {
 	if err := os.MkdirAll(parent, 0700); err != nil {
-		return NativeTarget{}, storageFailure(err)
+		return "", storageFailure(err)
 	}
 	stage, err := os.MkdirTemp(parent, "native-")
 	if err != nil {
-		return NativeTarget{}, storageFailure(err)
+		return "", storageFailure(err)
 	}
-	defer os.RemoveAll(stage)
-	if err := CopyDeliveryTreeWithDigest(root, stage, digest); err != nil {
+	return stage, nil
+}
+
+func generateNativeTarget(ctx context.Context, target NativeTarget, pkg Package, root, stage string, authentication []AuthenticationBinding) (NativeTarget, error) {
+	if err := ctx.Err(); err != nil {
+		return NativeTarget{}, err
+	}
+	if err := CopyDeliveryTreeWithDigest(root, stage, target.SourceDigest); err != nil {
 		return NativeTarget{}, err
 	}
 	if err := validateNativeEntries(stage, pkg); err != nil {
 		return NativeTarget{}, err
 	}
 	if target.Format == "projection" {
-		descriptor := map[string]any{"schemaVersion": 1, "format": "projection", "runtime": cli, "sourceDigest": digest, "skills": pkg.Skills, "servers": pkg.Servers}
+		descriptor := map[string]any{"schemaVersion": 1, "format": "projection", "runtime": target.Runtime, "sourceDigest": target.SourceDigest, "skills": pkg.Skills, "servers": pkg.Servers}
 		if err := writeTargetJSON(stage, target.ManifestPath, descriptor); err != nil {
 			return NativeTarget{}, err
 		}
-	} else if err := emitNativeTarget(stage, pkg, cli, authentication, id); err != nil {
+	} else if err := emitNativeTarget(stage, pkg, target.Runtime, authentication, target.ID); err != nil {
 		return NativeTarget{}, err
 	}
 	derived, err := ContentDigest(stage)
 	if err != nil {
 		return NativeTarget{}, err
 	}
-	content, err := publishTarget(ctx, parent, stage, id, digest, cli, derived)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return NativeTarget{}, err
 	}
-	target.Root, target.Digest = content, derived
-	prepared.root, prepared.digest = content, derived
+	target.Root, target.Digest = stage, derived
 	return target, nil
 }
 

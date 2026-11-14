@@ -2,11 +2,11 @@ package plugins
 
 import (
 	"context"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
-	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
@@ -27,168 +27,174 @@ type UpdatePluginInstallations struct {
 // Path 返回共享配置及原子版本变更入口。
 func (*UpdatePluginInstallations) Path() string { return "/:pluginId/updates" }
 
-// Output 在完整安装集合通过校验后原子保存配置，并将全部伙伴切换到同一目标版本。
+// Output 固定已核验的目标，并原子提交全部伙伴、共享配置、账号材料及回滚目标。
 func (o *UpdatePluginInstallations) Output(ctx *gin.Context) (interface{}, error) {
 	resource, err := visiblePlugin(ctx, o.PluginID, o.WakerID)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	store := global.PluginControllerManager
-	preparedAccount, err := store.Account(ctx, o.PluginID)
-	if err != nil {
-		return nil, ginx.WithStack(err)
-	}
-	if preparedAccount.Generation != o.Body.ExpectedAccountGeneration {
-		return nil, ginx.WithStack(status_error.PluginAccountConflict)
-	}
 	if len(o.Body.Switches) == 0 {
 		return nil, ginx.WithStack(status_error.BadRequest)
 	}
-	var targets []models.PluginVersion
+	store := global.PluginControllerManager
+	target, err := store.Version(ctx, o.Body.Switches[0].VersionID)
+	if err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	if err := validatePluginInstallationSource(ctx.Request.Context(), resource, target, o.Body.Rollback); err != nil {
+		return nil, ginx.WithStack(err)
+	}
+
+	config, err := store.Configuration(ctx, resource.ID)
+	if err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	if config.Revision != o.Body.ExpectedRevision {
+		return nil, ginx.WithStack(status_error.PluginConfigurationConflict)
+	}
+	config = configurationChange(config, o.Body.configuration())
+	account, err := store.Account(ctx, resource.ID)
+	if err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	if account.Generation != o.Body.ExpectedAccountGeneration {
+		return nil, ginx.WithStack(status_error.PluginAccountConflict)
+	}
+	if _, err := o.validateSwitch(ctx, target); err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	previousAccount := account
 	commitctx, publish := events.HoldCommitEvents(ctx)
 	defer publish()
-	// 外部内容与认证检查不进入数据库事务；占用保持到版本切换提交完成。
-	if len(o.Body.Switches) > 0 {
-		config, err := store.Configuration(ctx, o.PluginID)
-		if err != nil {
-			return nil, ginx.WithStack(err)
-		}
-		if config.Revision != o.Body.ExpectedRevision {
-			return nil, ginx.WithStack(status_error.PluginConfigurationConflict)
-		}
-		config = configurationChange(config, o.Body.configuration())
-		versions, err := store.Versions(ctx, o.PluginID)
-		if err != nil {
-			return nil, ginx.WithStack(err)
-		}
-		byID := map[string]models.PluginVersion{}
-		for _, v := range versions {
-			byID[v.ID] = v
-		}
-		seen := map[string]bool{}
-		for _, change := range o.Body.Switches {
-			version, exists := byID[change.VersionID]
-			if !exists {
-				return nil, ginx.WithStack(status_error.PluginVersionConflict)
-			}
-			if !seen[version.ID] {
-				if err := validatePluginInstallationSource(ctx.Request.Context(), resource, version); err != nil {
-					return nil, ginx.WithStack(err)
-				}
-				targets = append(targets, version)
-				seen[version.ID] = true
-			}
-		}
-		release, err := prepareInstallationVersions(ctx, targets, &config, &preparedAccount)
-		if err != nil {
-			return nil, ginx.WithStack(err)
-		}
-		defer release()
+	// 先完成可取消的内容、配置和授权检查，再进入短事务。
+	release, err := installationService().PrepareVersion(ctx.Request.Context(), target, config, &account, true)
+	if err != nil {
+		return nil, ginx.WithStack(err)
 	}
+	defer release()
+
+	accountChanged := installationAccountChanged(previousAccount, account)
 	err = global.TransactionControllerManager.Transaction(commitctx, func(txctx context.Context) error {
-		config, err := store.Configuration(txctx, o.PluginID)
+		revision, err := store.ConfigurationRevision(txctx, resource.ID)
 		if err != nil {
 			return err
 		}
-		if config.Revision != o.Body.ExpectedRevision {
+		if revision != o.Body.ExpectedRevision {
 			return status_error.PluginConfigurationConflict
 		}
-		config = configurationChange(config, o.Body.configuration())
-		generation, err := store.AccountGeneration(txctx, o.PluginID)
+		generation, err := store.AccountGeneration(txctx, resource.ID)
 		if err != nil {
 			return err
 		}
 		if generation != o.Body.ExpectedAccountGeneration {
 			return status_error.PluginAccountConflict
 		}
-
-		versions, err := store.Versions(txctx, o.PluginID)
+		previous, err := o.validateSwitch(txctx, target)
 		if err != nil {
 			return err
 		}
-		byID := map[string]models.PluginVersion{}
-		for _, version := range versions {
-			byID[version.ID] = version
-		}
-		installed, err := store.Installations(txctx, o.PluginID, "")
-		if err != nil {
+		if err := store.UpdateConfiguration(txctx, config, revision); err != nil {
 			return err
 		}
-		switches := map[string]VersionSwitch{}
-		targetVersionID := ""
-		for _, item := range o.Body.Switches {
-			if _, exists := switches[item.WakerID]; exists {
-				return status_error.PluginVersionConflict
-			}
-			if targetVersionID != "" && targetVersionID != item.VersionID {
-				return status_error.PluginVersionConflict
-			}
-			targetVersionID = item.VersionID
-			switches[item.WakerID] = item
-		}
-		// 更新固定确认时的全体安装；新增、移除和版本变化均须重新确认。
-		if len(switches) > 0 && len(switches) != len(installed) {
-			return status_error.PluginVersionConflict
-		}
-		checked := map[string]bool{}
-		for _, relation := range installed {
-			target := relation.VersionID
-			if change, exists := switches[relation.WakerID]; exists {
-				if change.ExpectedVersionID != relation.VersionID {
-					return status_error.PluginVersionConflict
-				}
-				if change.VersionID != relation.VersionID {
-					current, hasCurrent := byID[relation.VersionID]
-					next, hasNext := byID[change.VersionID]
-					currentVersion, nextVersion := normalizedPluginVersion(current.Version), normalizedPluginVersion(next.Version)
-					if !hasCurrent || !hasNext || !semver.IsValid(currentVersion) || !semver.IsValid(nextVersion) || semver.Compare(nextVersion, currentVersion) <= 0 {
-						return status_error.PluginVersionConflict
-					}
-				}
-				target = change.VersionID
-				checked[relation.WakerID] = true
-			}
-			version, exists := byID[target]
-			if !exists {
-				return status_error.PluginVersionConflict
-			}
-			if err := packageplugin.ValidateValues(version.Package, config.Values, secretValues(config)); err != nil {
-				return status_error.PluginConfigurationConflict
-			}
-		}
-		if len(installed) == 0 {
-			if len(versions) == 0 {
-				return status_error.PluginNotFound
-			}
-			if err := packageplugin.ValidateValues(versions[0].Package, config.Values, secretValues(config)); err != nil {
-				return err
-			}
-		}
-		if len(checked) != len(switches) {
-			return status_error.PluginVersionConflict
-		}
-		if err := store.UpdateConfiguration(txctx, config, o.Body.ExpectedRevision); err != nil {
-			return err
-		}
-		if len(preparedAccount.DeliveryMaterials) > 0 {
-			if err := store.UpdateAccount(txctx, preparedAccount, o.Body.ExpectedAccountGeneration); err != nil {
+		if accountChanged {
+			if err := store.UpdateAccount(txctx, account, generation); err != nil {
 				return err
 			}
 		}
 		for _, item := range o.Body.Switches {
-			if err := store.SwitchVersion(txctx, item.WakerID, o.PluginID, item.ExpectedVersionID, item.VersionID); err != nil {
+			if err := store.SwitchVersion(txctx, item.WakerID, o.PluginID, item.ExpectedVersionID, target.ID); err != nil {
 				return err
 			}
 		}
-		return nil
+		if o.Body.Rollback {
+			previous = ""
+		}
+		return store.SetRollbackVersion(txctx, resource.ID, previous)
 	})
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	generation := o.Body.ExpectedAccountGeneration
-	if len(preparedAccount.DeliveryMaterials) > 0 {
+	generation := account.Generation
+	if accountChanged {
 		generation++
 	}
-	commitInstallationAccount(targets, o.Body.ExpectedRevision, o.Body.ExpectedAccountGeneration, o.Body.ExpectedRevision+1, generation)
+	commitInstallationAccount(target, config.Revision, account.Generation, config.Revision+1, generation)
 	return ginx.CommonSuccessResponse(), nil
+}
+
+// validateSwitch 检查实际安装集合与用户确认的一致，且只允许升级或明确回到上一个已安装版本。
+func (o *UpdatePluginInstallations) validateSwitch(ctx context.Context, target models.PluginVersion) (string, error) {
+	store := global.PluginControllerManager
+	resource, err := store.Get(ctx, o.PluginID)
+	if err != nil {
+		return "", err
+	}
+	currentTarget, err := store.Version(ctx, target.ID)
+	if err != nil {
+		return "", err
+	}
+	if currentTarget.PluginID != resource.ID || currentTarget.Digest != target.Digest || currentTarget.Retired {
+		return "", status_error.PluginVersionConflict
+	}
+	if o.Body.Rollback && target.ID != resource.RollbackVersionID {
+		return "", status_error.PluginVersionConflict
+	}
+	installed, err := store.Installations(ctx, o.PluginID, "")
+	if err != nil {
+		return "", err
+	}
+	if len(installed) != len(o.Body.Switches) {
+		return "", status_error.PluginVersionConflict
+	}
+	expected := make(map[string]string, len(o.Body.Switches))
+	for _, item := range o.Body.Switches {
+		if _, exists := expected[item.WakerID]; exists || item.VersionID != target.ID || item.ExpectedVersionID == "" {
+			return "", status_error.PluginVersionConflict
+		}
+		expected[item.WakerID] = item.ExpectedVersionID
+	}
+	targetVersion := normalizedPluginVersion(target.Version)
+	if !semver.IsValid(targetVersion) {
+		return "", status_error.PluginVersionConflict
+	}
+	previous := installed[0].VersionID
+	checked := make(map[string]bool, len(installed))
+	changed := false
+	pinned := target.ID == resource.RollbackVersionID
+	for _, relation := range installed {
+		if expected[relation.WakerID] != relation.VersionID {
+			return "", status_error.PluginVersionConflict
+		}
+		if relation.VersionID != previous {
+			previous = ""
+		}
+		if relation.VersionID == target.ID {
+			pinned = true
+			continue
+		}
+		changed = true
+		if checked[relation.VersionID] {
+			continue
+		}
+		current, err := store.Version(ctx, relation.VersionID)
+		if err != nil {
+			return "", err
+		}
+		oldVersion := normalizedPluginVersion(current.Version)
+		if !semver.IsValid(oldVersion) || semver.Compare(targetVersion, oldVersion) != switchDirection(o.Body.Rollback) {
+			return "", status_error.PluginVersionConflict
+		}
+		checked[relation.VersionID] = true
+	}
+	if !changed || o.Body.Rollback && previous == "" || !pinned && currentTarget.PreparedUntil != 0 && currentTarget.PreparedUntil <= time.Now().UnixMilli() {
+		return "", status_error.PluginVersionConflict
+	}
+	return previous, nil
+}
+
+func switchDirection(rollback bool) int {
+	if rollback {
+		return -1
+	}
+	return 1
 }

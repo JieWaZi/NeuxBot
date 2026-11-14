@@ -55,7 +55,8 @@ type InstallIntent = {
   target?: ManageTarget;
 };
 type LoadIntent =
-  InstallIntent | { kind: "update"; pluginId: string; name: string };
+  | InstallIntent
+  | { kind: "update"; pluginId: string; name: string; wakerId: string };
 type Props = {
   wakerId?: string;
   targetPartnerId?: string;
@@ -107,9 +108,12 @@ export function PluginResourceCollection({
     enabled: Boolean(wakerId),
   });
   const query = wakerId ? installed : browse;
-  const details = installed.items.filter((detail) =>
-    Boolean(detail.plugin?.id),
-  );
+  // 并发安装可在分页对账完成前移动条目，保留首见顺序与最新一份状态。
+  const byPlugin = new Map<string, (typeof installed.items)[number]>();
+  for (const detail of installed.items) {
+    if (detail.plugin?.id) byPlugin.set(detail.plugin.id, detail);
+  }
+  const details = [...byPlugin.values()];
   const itemCount = wakerId ? details.length : browse.entries.length;
   const groups = pluginBrowseGroups(browse.entries);
   const openInstall = (entry: PluginBrowseEntry) => {
@@ -133,7 +137,7 @@ export function PluginResourceCollection({
   };
   const openUpdate = (pluginId: string | undefined, name: string) => {
     if (!pluginId) return;
-    setIntent({ kind: "update", pluginId, name });
+    setIntent({ kind: "update", pluginId, name, wakerId });
   };
   return (
     <div className="grid min-w-0 gap-8">
@@ -250,7 +254,7 @@ export function PluginResourceCollection({
         <PluginUpdateDialog
           pluginId={intent.pluginId}
           name={intent.name}
-          wakerId={wakerId}
+          wakerId={intent.wakerId}
           onClose={() => setIntent(null)}
         />
       )}

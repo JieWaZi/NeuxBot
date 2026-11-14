@@ -2,7 +2,6 @@ package plugins
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"slices"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -10,168 +9,163 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
-func pluginAuthorizer(ctx context.Context, id, waker, selectedVersion string, expected PluginAccountRequest) (*authorization.Authorizer, *packageplugin.Authentication, error) {
-	resource, err := visiblePlugin(ctx, id, waker)
-	if err != nil {
-		return nil, nil, err
-	}
-	if selectedVersion == "" {
-		return nil, nil, status_error.BadRequest
-	}
-	version, err := global.PluginControllerManager.Version(ctx, selectedVersion)
-	if err != nil {
-		return nil, nil, err
-	}
-	if version.PluginID != resource.ID {
-		return nil, nil, status_error.PluginVersionConflict
-	}
-	if err := packageplugin.ValidateContract(version.Package); err != nil {
-		return nil, nil, err
-	}
-	if _, err := packageplugin.ClientExtension(version.Package); err != nil {
-		return nil, nil, err
-	}
-	if declaration := version.Package.Integration.Authentication; declaration != nil {
-		auth, bridge, err := installationService().Bridge(ctx, version)
-		if err != nil {
-			return nil, nil, err
-		}
-		operation := bridge.OperationContext()
-		if operation.ConfigurationRevision != expected.ExpectedConfigurationRevision {
-			return nil, nil, status_error.PluginConfigurationConflict
-		}
-		if operation.AccountGeneration != expected.ExpectedAccountGeneration {
-			return nil, nil, status_error.PluginAccountConflict
-		}
-		return auth, declaration, nil
-	}
-	return nil, nil, status_error.PluginNotReady
-}
 func publishProviderChange(provider string) {
 	if global.EventHub != nil {
 		_ = events.Emit(global.EventHub, constants.PluginEventTopic, "plugins.changed", events.Resource{Kind: "global"}, map[string]string{"provider": provider})
 	}
 }
 
-// removePluginReferences 为伙伴卸载和资源删除复用最后身份引用的清理边界。
-// CLI 清理在事务外完成；清理失败保留关系，使同一操作可以安全重试。
+// removePluginReferences 与全量删除共用插件唯一身份边界。
 func removePluginReferences(ctx context.Context, plugin, waker string, versions []models.PluginVersion, validate, remove func(context.Context) error) error {
-	retained, err := global.PluginControllerManager.InstalledVersionsExcept(ctx, plugin, waker)
+	store := global.PluginControllerManager
+	otherInstallations := func(readContext context.Context) (bool, error) {
+		if waker == "" {
+			return false, nil
+		}
+		current, err := store.Installations(readContext, plugin, "")
+		return slices.ContainsFunc(current, func(relation models.WakerPlugin) bool { return relation.WakerID != waker }), err
+	}
+	retained, err := otherInstallations(ctx)
 	if err != nil {
 		return err
 	}
-	if slices.ContainsFunc(retained, func(version models.PluginVersion) bool { return version.PluginID == plugin }) {
-		// 当前插件仍有其他安装时不触碰共享身份，无关插件的安装不参与身份引用判断。
-		return global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
-			if err := validate(txctx); err != nil {
-				return err
-			}
-			current, err := global.PluginControllerManager.InstalledVersionsExcept(txctx, plugin, waker)
-			if err != nil {
-				return err
-			}
-			if !slices.ContainsFunc(current, func(version models.PluginVersion) bool { return version.PluginID == plugin }) {
-				return status_error.PluginVersionConflict
-			}
-			return remove(txctx)
-		})
+	commit := func(txctx context.Context) error {
+		if err := validate(txctx); err != nil {
+			return err
+		}
+		current, err := otherInstallations(txctx)
+		if err != nil {
+			return err
+		}
+		if current != retained {
+			return status_error.PluginVersionConflict
+		}
+		return remove(txctx)
+	}
+	if retained {
+		// 共享账号还有其他真实安装，无需关闭消费者或触碰上游身份。
+		return global.TransactionControllerManager.Transaction(ctx, commit)
 	}
 	if err := closeIdlePlugin(ctx, plugin); err != nil {
 		return err
 	}
-	providers := providerNames(versions)
-	guards := map[string]*authorization.ReferenceGuard{}
-	defer func() {
-		for _, guard := range guards {
-			guard.Close()
-		}
-	}()
-	for _, provider := range providers {
-		var auth *authorization.Authorizer
-		for _, version := range versions {
-			if version.Package.Integration.Authentication == nil {
-				continue
-			}
-			if _, err := packageplugin.ClientExtension(version.Package); err != nil {
-				continue
-			}
-			if "plugin:"+version.PluginID == provider {
-				var bridgeErr error
-				auth, _, bridgeErr = installationService().Bridge(ctx, version)
-				if bridgeErr != nil {
-					return bridgeErr
-				}
-				break
-			}
-		}
-		if auth != nil {
-			guard, err := auth.GuardReferences()
+	account, err := store.Account(ctx, plugin)
+	if err != nil {
+		return err
+	}
+	bridgeVersion, err := removalBridgeVersion(ctx, plugin, account.AuthorizedVersionID, versions)
+	if err != nil {
+		return err
+	}
+	var guard *authorization.ReferenceGuard
+	resetRequired := bridgeVersion != nil
+	if global.PluginBridges != nil {
+		if bridgeVersion != nil {
+			guard, err = installationService().BridgeRemoval(ctx, *bridgeVersion)
 			if err != nil {
 				return err
 			}
-			guards[provider] = guard
+		} else {
+			var driver *commandbridge.Driver
+			driver, guard, err = global.PluginBridges.GuardRemoval(plugin)
+			if err != nil {
+				return err
+			}
+			if driver != nil {
+				resetRequired = true
+				// 等待授权本身固定了包，清理进程也须持有相同内容。
+				release, err := driver.Retain()
+				if err != nil {
+					guard.Close()
+					return err
+				}
+				guard.BindRelease(release)
+			}
 		}
+		defer guard.Close()
 	}
-	remaining := []string{}
 	err = global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
 		if err := validate(txctx); err != nil {
 			return err
 		}
-		if len(guards) == 0 {
-			return nil
-		}
-		retained, err := global.PluginControllerManager.InstalledVersionsExcept(txctx, plugin, waker)
+		retained, err := otherInstallations(txctx)
 		if err != nil {
 			return err
 		}
-		remaining = providerNames(retained)
+		if retained {
+			return status_error.PluginVersionConflict
+		}
+		generation, err := store.AccountGeneration(txctx, plugin)
+		if err != nil {
+			return err
+		}
+		if generation != account.Generation {
+			return status_error.PluginAccountConflict
+		}
 		return nil
 	})
 	if err != nil {
 		return err
 	}
-	// 先核验全部提供者，不能清理一半后才发现另一个身份仍有工作占用。
-	for provider, guard := range guards {
-		if !slices.Contains(remaining, provider) && !guard.CanReset() {
-			return status_error.PluginBusy
-		}
-	}
-	for _, provider := range providers {
-		if guard := guards[provider]; guard != nil && !slices.Contains(remaining, provider) {
-			if err := guard.Reset(ctx); err != nil {
-				return err
-			}
-			publishProviderChange(provider)
-		}
-	}
-	return global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
-		if err := validate(txctx); err != nil {
+	if guard != nil && resetRequired {
+		if err := guard.StopLogin(ctx); err != nil {
 			return err
 		}
-		return remove(txctx)
-	})
+		if err := guard.Logout(ctx); err != nil {
+			return err
+		}
+		publishProviderChange("plugin:" + plugin)
+	}
+	if err := global.TransactionControllerManager.Transaction(ctx, commit); err != nil {
+		return err
+	}
+	if guard != nil && waker == "" {
+		global.PluginBridges.Retire(plugin, guard)
+	}
+	return nil
 }
 
-func providerNames(versions []models.PluginVersion) []string {
-	providers := []string{}
+func removalBridgeVersion(ctx context.Context, plugin string, authorizedVersionID *string, versions []models.PluginVersion) (*models.PluginVersion, error) {
+	usable := func(version models.PluginVersion) bool {
+		if version.Retired || version.Package.Integration.Authentication == nil || packageplugin.ValidateContract(version.Package) != nil {
+			return false
+		}
+		_, err := packageplugin.ClientExtension(version.Package)
+		return err == nil
+	}
+	store := global.PluginControllerManager
+	if authorizedVersionID != nil {
+		if *authorizedVersionID == "" {
+			return nil, nil
+		}
+		version, err := store.Version(ctx, *authorizedVersionID)
+		if err != nil {
+			return nil, err
+		}
+		if version.PluginID != plugin || !usable(version) {
+			return nil, status_error.PluginVersionConflict
+		}
+		return &version, nil
+	}
 	for _, version := range versions {
-		if err := packageplugin.ValidateContract(version.Package); err != nil {
-			continue
-		}
-		// 无效旧声明无法再取得桥接，清理不能重新启动已移除的供应商认证。
-		if _, err := packageplugin.ClientExtension(version.Package); err != nil {
-			continue
-		}
-		if version.Package.Integration.Authentication != nil {
-			identity := "plugin:" + version.PluginID
-			if !slices.Contains(providers, identity) {
-				providers = append(providers, identity)
-			}
+		if usable(version) {
+			return &version, nil
 		}
 	}
-	slices.Sort(providers)
-	return providers
+	// 旧记录可能曾经授权后切换到无需账号的版本，最后卸载仍使用最近保留的合法驱动。
+	retained, err := store.Versions(ctx, plugin)
+	if err != nil {
+		return nil, err
+	}
+	for _, version := range retained {
+		if usable(version) {
+			return &version, nil
+		}
+	}
+	return nil, nil
 }

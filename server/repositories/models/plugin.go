@@ -25,6 +25,8 @@ type Plugin struct {
 	Categories []string `gorm:"column:categories;type:text;not null;default:'[]';serializer:json" json:"categories"`
 	// SourceKey 是明确来源身份；来源未核验时使用内容身份而非展示名称。
 	SourceKey string `gorm:"column:source_key;not null;uniqueIndex:idx_plugin_source" json:"sourceKey"`
+	// RollbackVersionID 记录最近一次成功升级前所有伙伴共用的固定版本。
+	RollbackVersionID string `gorm:"column:rollback_version_id;not null;default:''" json:"-"`
 	// CreatedAt 是创建时间的 Unix 毫秒值。
 	CreatedAt int64 `gorm:"column:created_at;autoCreateTime:milli" json:"createdAt"`
 	// UpdatedAt 是最近修改时间的 Unix 毫秒值。
@@ -52,6 +54,12 @@ type PluginVersion struct {
 	TrustedAt int64 `gorm:"column:trusted_at;not null;default:0" json:"trustedAt"`
 	// Provenance 是分发来源原始记录，不包含凭据。
 	Provenance map[string]any `gorm:"column:provenance;type:text;serializer:json" json:"provenance"`
+	// CatalogBinding 固定 Core 从可信归档核验的来源和内容，仅由目录准备写入。
+	CatalogBinding string `gorm:"column:catalog_binding;not null;default:''" json:"-"`
+	// PreparedUntil 为未安装版本保留短暂的确认窗口，单位为 Unix 毫秒。
+	PreparedUntil int64 `gorm:"column:prepared_until;not null;default:0" json:"-"`
+	// Retired 表示只保留版本身份和摘要，重新准备才能使用其文件和包声明。
+	Retired bool `gorm:"column:retired;not null;default:false" json:"-"`
 	// CreatedAt 是版本登记时间的 Unix 毫秒值。
 	CreatedAt int64 `gorm:"column:created_at;autoCreateTime:milli" json:"createdAt"`
 }
@@ -205,6 +213,8 @@ type PluginAccount struct {
 	PluginID string `gorm:"column:plugin_id;primaryKey" json:"pluginId"`
 	// Generation 是账号或交付材料变化的乐观并发代次。
 	Generation int64 `gorm:"column:generation;not null" json:"generation"`
+	// AuthorizedVersionID 固定退出所需的授权实现，空值表示已清理，nil 表示尚未确认。
+	AuthorizedVersionID *string `gorm:"column:authorized_version_id" json:"-"`
 	// DeliveryMaterials 是按固定版本、组件和端点加密保存的私有材料。
 	DeliveryMaterials []MCPSecretDefinition `gorm:"column:delivery_materials;type:text;serializer:json" json:"-"`
 	// UpdatedAt 是最近一次账号代次变更的 Unix 毫秒时间。

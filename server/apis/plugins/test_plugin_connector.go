@@ -200,7 +200,7 @@ func (o *TestPluginConnector) Output(ctx *gin.Context) (interface{}, error) {
 		}
 		if len(bindings) > 0 {
 			connectors := []models.MCPConnector{connector}
-			if err := plugininstallation.ResolveBoundAuthentication(ctx, bridge, logical, config, bindings, false, connectors, nil); err != nil {
+			if err := plugininstallation.ResolveBoundAuthentication(ctx, bridge, logical, bindings, false, connectors, nil); err != nil {
 				return nil, ginx.WithStack(err)
 			}
 			connector = connectors[0]

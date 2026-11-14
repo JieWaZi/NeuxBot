@@ -1,11 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ApiError } from "@/shared/api/errors";
+import {
+  applicationErrorKey,
+  applicationErrorMessage,
+} from "@/shared/api/error-presentation";
 import type {
   GetPluginAuthorizationResponse,
   StartPluginAuthorizationResponse,
   CheckPluginAccountData,
   GetPluginConfigurationResponse,
+  UpdatePluginInstallationsData,
 } from "@/shared/api/generated/types.gen";
 import {
   localApiErrorMessage,
@@ -30,6 +36,7 @@ import {
   pluginDisplayName,
   pluginHasAuthorization,
   pluginHasUpdate,
+  pluginLocale,
   pluginPreferredAuthAction,
   pluginSummary,
   type PluginDetail,
@@ -46,22 +53,27 @@ import {
 export function PluginUpdateDialog({
   detail: initial,
   wakerId = "",
+  rollback = false,
   onClose,
 }: {
   detail: PluginDetail;
   wakerId?: string;
+  rollback?: boolean;
   onClose: () => void;
 }) {
-  const { t } = useTranslation("plugin");
+  const { t, i18n } = useTranslation("plugin");
   const client = useQueryClient();
+  const dialogId = useId();
+  const locale = pluginLocale(i18n.resolvedLanguage ?? i18n.language);
   const [snapshot, setSnapshot] = useState(initial);
   const [prepared, setPrepared] = useState<PluginDetail>();
   const [reloadError, setReloadError] = useState<unknown>();
   const alive = useRef(true);
+  const committing = useRef(false);
   const ownedSession = useRef<{
     session: StartPluginAuthorizationResponse;
     versionId: string;
-    context: CheckPluginAccountData["body"];
+    context: CheckPluginAccountData["body"] & { ownershipNonce: string };
   } | null>(null);
   const cancelled = useRef(new Set<string>());
   const pluginId = snapshot.plugin?.id ?? "";
@@ -72,8 +84,12 @@ export function PluginUpdateDialog({
       : undefined;
   const catalogKey = update?.catalogKey;
   const archiveSHA256 = update?.archiveSHA256;
+  const rollbackVersionId = snapshot.rollback?.available
+    ? snapshot.rollback.versionId
+    : undefined;
   const canPrepare = Boolean(
-    catalogKey && archiveSHA256 && snapshot.installations?.length,
+    snapshot.installations?.length &&
+    (rollback ? rollbackVersionId : catalogKey && archiveSHA256),
   );
   const versionId = prepared?.resolvedVersionId ?? "";
   const options = getPluginOptions(
@@ -135,42 +151,68 @@ export function PluginUpdateDialog({
       abandon();
     };
   }, []);
+  async function prepareTarget(value: PluginDetail) {
+    if (!alive.current) return;
+    await client.fetchQuery({
+      ...getPluginConfigurationOptions(
+        withLocalErrorSurface({
+          path: { pluginId },
+          query: { wakerId, versionId: value.resolvedVersionId ?? "" },
+        }),
+      ),
+      staleTime: 0,
+    });
+    if (!alive.current) return;
+    // 重新准备同一版本时，用本次权威配置替换旧缓存，避免草稿冻结过期修订。
+    client.setQueryData(
+      getPluginOptions(
+        withLocalErrorSurface({
+          path: { pluginId },
+          query: { wakerId, versionId: value.resolvedVersionId ?? "" },
+        }),
+      ).queryKey,
+      value,
+    );
+    setPrepared(value);
+  }
   const prepare = useMutation({
     ...withLocalErrorMutation(prepareCatalogPluginMutation()),
-    onSuccess: async (value) => {
-      if (!alive.current) return;
-      await client.fetchQuery({
-        ...getPluginConfigurationOptions(
-          withLocalErrorSurface({
-            path: { pluginId },
-            query: { wakerId, versionId: value.resolvedVersionId ?? "" },
-          }),
-        ),
-        staleTime: 0,
-      });
-      if (!alive.current) return;
-      // 重新准备同一版本时，用本次权威配置替换旧缓存，避免草稿冻结过期修订。
-      client.setQueryData(
-        getPluginOptions(
-          withLocalErrorSurface({
-            path: { pluginId },
-            query: { wakerId, versionId: value.resolvedVersionId ?? "" },
-          }),
-        ).queryKey,
-        value,
-      );
-      setPrepared(value);
-    },
+    onSuccess: prepareTarget,
   });
+  function readVersionChangeDetail(versionId?: string) {
+    const options = getPluginOptions(
+      withLocalErrorSurface({
+        path: { pluginId },
+        query: { wakerId, versionId, locale },
+      }),
+    );
+    return client.fetchQuery({
+      ...options,
+      queryKey: [
+        { ...options.queryKey[0], _id: `pluginVersionChange:${dialogId}` },
+      ],
+      staleTime: 0,
+      gcTime: 0,
+    });
+  }
+  const prepareRollback = useMutation({
+    mutationFn: async (versionId: string) => {
+      const detail = await readVersionChangeDetail(versionId);
+      if (
+        !detail.rollback?.available ||
+        detail.rollback.versionId !== versionId ||
+        detail.resolvedVersionId !== versionId
+      )
+        throw new ApiError(t("rollbackUnavailable"));
+      return detail;
+    },
+    onSuccess: prepareTarget,
+  });
+  const preparation = rollback ? prepareRollback : prepare;
   const reload = useMutation({
     mutationFn: async () => {
       await cancelOwnedSession();
-      return client.fetchQuery({
-        ...getPluginOptions(
-          withLocalErrorSurface({ path: { pluginId }, query: { wakerId } }),
-        ),
-        staleTime: 0,
-      });
+      return readVersionChangeDetail();
     },
     onSuccess: (value) => {
       if (!alive.current) return;
@@ -178,6 +220,8 @@ export function PluginUpdateDialog({
       setPrepared(undefined);
       setReloadError(undefined);
       prepare.reset();
+      prepareRollback.reset();
+      save.reset();
     },
     onError: setReloadError,
   });
@@ -192,18 +236,61 @@ export function PluginUpdateDialog({
     void cancelOwnedSession();
     onClose();
   }
+  const save = useMutation({
+    ...withLocalErrorMutation(updatePluginInstallationsMutation()),
+    onSuccess: async () => {
+      await invalidatePluginQueries(client);
+      close();
+    },
+    onError: async (error, request) => {
+      const key =
+        error instanceof ApiError ? applicationErrorKey(error.code) : undefined;
+      if (
+        key === "PluginConfigurationConflict" ||
+        key === "PluginAccountConflict"
+      ) {
+        const configuration = getPluginConfigurationOptions(
+          withLocalErrorSurface({
+            path: { pluginId },
+            query: {
+              wakerId,
+              versionId: request.body.switches?.[0]?.versionId ?? "",
+            },
+          }),
+        );
+        await client.refetchQueries({
+          queryKey: configuration.queryKey,
+          exact: true,
+        });
+      }
+    },
+    onSettled: () => {
+      committing.current = false;
+    },
+  });
+  function submit(body: UpdatePluginInstallationsData["body"]) {
+    if (committing.current) return;
+    committing.current = true;
+    save.mutate({ path: { pluginId }, query: { wakerId }, body });
+  }
+  function dismiss() {
+    if (!committing.current) close();
+  }
   return (
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open) close();
+        if (!open) dismiss();
       }}
     >
       <DialogContent
-        title={t("updateNamed", {
+        title={t(rollback ? "rollbackNamed" : "updateNamed", {
           name: pluginDisplayName(pkg, snapshot.plugin?.name),
         })}
-        description={canPrepare ? t("updateHelp") : undefined}
+        description={
+          canPrepare ? t(rollback ? "rollbackHelp" : "updateHelp") : undefined
+        }
+        closeDisabled={save.isPending}
         size="lg"
       >
         {current && versionId ? (
@@ -211,6 +298,7 @@ export function PluginUpdateDialog({
             key={versionId}
             detail={current}
             snapshot={snapshot}
+            rollback={rollback}
             versionId={versionId}
             wakerId={wakerId}
             queryError={target.error}
@@ -226,19 +314,23 @@ export function PluginUpdateDialog({
             }}
             onReload={() => reload.mutate()}
             reloading={reload.isPending}
-            onClose={close}
+            onClose={dismiss}
+            saving={save.isPending}
+            saveError={save.error}
+            lastSubmitted={save.variables?.body}
+            onSave={submit}
           />
         ) : canPrepare ? (
           <>
             <div className="min-h-0 space-y-4 overflow-y-auto px-6 pb-6">
-              <UpdatePartners detail={snapshot} />
+              <UpdatePartners detail={snapshot} rollback={rollback} />
               <p className="type-body text-content-secondary">
-                {t("prepareUpdateHelp")}
+                {t(rollback ? "prepareRollbackHelp" : "prepareUpdateHelp")}
               </p>
-              {prepare.error && (
+              {preparation.error && (
                 <div className="space-y-3">
                   <p role="alert" className="type-body text-destructive">
-                    {localApiErrorMessage(prepare.error, t("failed"))}
+                    {localApiErrorMessage(preparation.error, t("failed"))}
                   </p>
                   <Button
                     variant="secondary"
@@ -255,24 +347,34 @@ export function PluginUpdateDialog({
                 {t("cancel")}
               </Button>
               <Button
-                disabled={prepare.isPending || reload.isPending}
-                onClick={() =>
-                  prepare.mutate({
-                    path: { key: catalogKey ?? "" },
-                    body: {
-                      expectedArchiveSHA256: archiveSHA256,
-                      trustConfirmed: true,
-                    },
-                  })
-                }
+                disabled={preparation.isPending || reload.isPending}
+                onClick={() => {
+                  if (rollback) {
+                    if (rollbackVersionId)
+                      prepareRollback.mutate(rollbackVersionId);
+                  } else
+                    prepare.mutate({
+                      path: { key: catalogKey ?? "" },
+                      body: {
+                        expectedArchiveSHA256: archiveSHA256,
+                        trustConfirmed: true,
+                      },
+                    });
+                }}
               >
-                {t(prepare.isPending ? "busy" : "prepareUpdate")}
+                {t(
+                  preparation.isPending
+                    ? "busy"
+                    : rollback
+                      ? "prepareRollback"
+                      : "prepareUpdate",
+                )}
               </Button>
             </DialogFooter>
           </>
         ) : (
           <p className="type-body text-content-secondary px-6 pb-6">
-            {t("updateUnavailable")}
+            {t(rollback ? "rollbackUnavailable" : "updateUnavailable")}
           </p>
         )}
         {Boolean(reloadError) && (
@@ -288,6 +390,7 @@ export function PluginUpdateDialog({
 type PreparedUpdateProps = {
   detail: PluginDetail;
   snapshot: PluginDetail;
+  rollback: boolean;
   versionId: string;
   wakerId: string;
   queryError: unknown;
@@ -295,12 +398,16 @@ type PreparedUpdateProps = {
   onRetry: () => void;
   onAuthorizationStarted: (
     session: StartPluginAuthorizationResponse,
-    context: CheckPluginAccountData["body"],
+    context: CheckPluginAccountData["body"] & { ownershipNonce: string },
   ) => void;
   onAuthorizationReady: () => void;
   onReload: () => void;
   reloading: boolean;
   onClose: () => void;
+  saving: boolean;
+  saveError: unknown;
+  lastSubmitted?: UpdatePluginInstallationsData["body"];
+  onSave: (body: UpdatePluginInstallationsData["body"]) => void;
 };
 function PreparedPluginUpdate(props: PreparedUpdateProps) {
   const configuration = usePluginConfiguration(
@@ -333,6 +440,7 @@ function PreparedPluginUpdate(props: PreparedUpdateProps) {
 function PreparedPluginUpdateForm({
   detail,
   snapshot,
+  rollback,
   versionId,
   wakerId,
   queryError,
@@ -343,25 +451,42 @@ function PreparedPluginUpdateForm({
   onReload,
   reloading,
   onClose,
+  saving,
+  saveError,
+  lastSubmitted,
+  onSave,
   configuration,
 }: PreparedUpdateProps & { configuration: GetPluginConfigurationResponse }) {
   const { t } = useTranslation("plugin");
-  const client = useQueryClient();
   const draft = usePluginConfigurationDraft(configuration);
   const pkg = detail.versions?.find(
     (version) => version.id === versionId,
   )?.package;
   const hasAuth = pluginHasAuthorization(pkg);
   const [authenticated, setAuthenticated] = useState(false);
-  const save = useMutation({
-    ...withLocalErrorMutation(updatePluginInstallationsMutation()),
-    onSuccess: async () => {
-      await invalidatePluginQueries(client);
-      onClose();
-    },
-  });
-  const pending = save.isPending || reloading;
+  const pending = saving || reloading;
   const accountContext = pluginAccountContext(configuration);
+  const errorKey =
+    saveError instanceof ApiError
+      ? applicationErrorKey(saveError.code)
+      : undefined;
+  const staleInstallation = errorKey === "PluginVersionConflict";
+  const staleConfiguration =
+    draft.body.expectedRevision !== configuration.configurationRevision;
+  const reconcileAccount =
+    errorKey === "PluginAccountConflict" &&
+    lastSubmitted?.expectedAccountGeneration ===
+      accountContext?.expectedAccountGeneration;
+  const needsReload =
+    staleInstallation || staleConfiguration || reconcileAccount;
+  const unchangedRejectedConfiguration =
+    errorKey === "PluginConfigurationConflict" &&
+    JSON.stringify(draft.body) ===
+      JSON.stringify({
+        expectedRevision: lastSubmitted?.expectedRevision,
+        values: lastSubmitted?.values,
+        secrets: lastSubmitted?.secrets,
+      });
   const hasConfiguration = Boolean(
     configuration.fields?.length ||
     Object.keys(configuration.values ?? {}).length ||
@@ -370,10 +495,10 @@ function PreparedPluginUpdateForm({
   return (
     <>
       <div className="min-h-0 space-y-5 overflow-y-auto px-6 pb-6">
-        <UpdatePartners detail={snapshot} />
+        <UpdatePartners detail={snapshot} rollback={rollback} />
         <p className="type-body text-content-secondary">{pluginSummary(pkg)}</p>
         <p className="type-body text-content-secondary">
-          {t("updateReadyHelp")}
+          {t(rollback ? "rollbackReadyHelp" : "updateReadyHelp")}
         </p>
         {queryError ? (
           <QueryState error={queryError} onRetry={onRetry} />
@@ -397,17 +522,29 @@ function PreparedPluginUpdateForm({
             />
           )}
         </fieldset>
-        {save.error && (
+        {(!!saveError || staleConfiguration) && (
           <div className="space-y-2">
             <p role="alert" className="type-body text-destructive">
-              {localApiErrorMessage(save.error, t("failed"))}
+              {staleConfiguration
+                ? applicationErrorMessage({
+                    code: "PluginConfigurationConflict",
+                  })
+                : localApiErrorMessage(saveError, t("failed"))}
             </p>
-            <p className="type-body text-content-secondary">
-              {t("updateRetryHelp")}
-            </p>
-            <Button variant="secondary" disabled={pending} onClick={onReload}>
-              {t("reloadUpdate")}
-            </Button>
+            {needsReload && (
+              <>
+                <p className="type-body text-content-secondary">
+                  {t(rollback ? "rollbackRetryHelp" : "updateRetryHelp")}
+                </p>
+                <Button
+                  variant="secondary"
+                  disabled={pending}
+                  onClick={onReload}
+                >
+                  {t("reloadUpdate")}
+                </Button>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -420,43 +557,50 @@ function PreparedPluginUpdateForm({
             pending ||
             fetching ||
             Boolean(queryError) ||
+            needsReload ||
+            unchangedRejectedConfiguration ||
             (hasAuth && !authenticated) ||
             !accountContext
           }
           onClick={() =>
-            save.mutate({
-              path: { pluginId: detail.plugin?.id ?? "" },
-              query: { wakerId },
-              body: {
-                ...draft.body,
-                expectedAccountGeneration:
-                  accountContext?.expectedAccountGeneration,
-                switches: (snapshot.installations ?? []).map((relation) => ({
-                  wakerId: relation.wakerId ?? "",
-                  expectedVersionId: relation.versionId ?? "",
-                  versionId,
-                })),
-              },
+            onSave({
+              ...draft.body,
+              expectedAccountGeneration:
+                accountContext?.expectedAccountGeneration,
+              ...(rollback ? { rollback: true } : {}),
+              switches: (snapshot.installations ?? []).map((relation) => ({
+                wakerId: relation.wakerId ?? "",
+                expectedVersionId: relation.versionId ?? "",
+                versionId,
+              })),
             })
           }
         >
-          {t(pending ? "busy" : "update")}
+          {t(pending ? "busy" : rollback ? "rollbackAll" : "update")}
         </Button>
       </DialogFooter>
     </>
   );
 }
 
-function UpdatePartners({ detail }: { detail: PluginDetail }) {
+function UpdatePartners({
+  detail,
+  rollback,
+}: {
+  detail: PluginDetail;
+  rollback: boolean;
+}) {
   const { t } = useTranslation("plugin");
   const versions = new Map(
     detail.versions?.map(({ id, version }) => [id, version]),
   );
-  const target = detail.update?.version;
+  const target = rollback ? detail.rollback?.version : detail.update?.version;
   return (
     <section className="space-y-3">
       <h3 className="type-label font-medium">
-        {t("updatePartners", { count: detail.installations?.length ?? 0 })}
+        {t(rollback ? "rollbackPartners" : "updatePartners", {
+          count: detail.installations?.length ?? 0,
+        })}
       </h3>
       <div className="flex flex-wrap gap-3">
         {(detail.installations ?? []).map((relation) => {
@@ -464,7 +608,7 @@ function UpdatePartners({ detail }: { detail: PluginDetail }) {
           const name = detail.partnerNames?.[id] || t("unknown");
           const current = versions.get(relation.versionId);
           const version =
-            target && detail.update?.wakerIds?.includes(id)
+            target && (rollback || detail.update?.wakerIds?.includes(id))
               ? t("updateVersionChange", {
                   current: current || t("unknown"),
                   target,

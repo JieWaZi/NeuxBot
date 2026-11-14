@@ -33,6 +33,8 @@ type PluginDetailResponse struct {
 	Account authorization.Account `json:"account"`
 	// 更新摘要
 	Update PluginUpdateResponse `json:"update"`
+	// 回滚摘要
+	Rollback *PluginRollbackResponse `json:"rollback,omitempty"`
 	// 目录状态
 	CatalogSource catalog.SourceState `json:"catalogSource"`
 }
@@ -93,6 +95,16 @@ type PluginUpdateResponse struct {
 	ArchiveSHA256 string `json:"archiveSHA256"`
 	// 落后伙伴
 	WakerIDs []string `json:"wakerIds"`
+}
+
+// 插件回滚摘要
+type PluginRollbackResponse struct {
+	// 可以回滚
+	Available bool `json:"available"`
+	// 目标标识
+	VersionID string `json:"versionId"`
+	// 目标版本
+	Version string `json:"version"`
 }
 
 // 插件列表响应
@@ -219,8 +231,26 @@ type PluginEnabledRequest struct {
 type AuthorizationScopeRequest struct {
 	// 账号上下文
 	PluginAccountRequest
+	// 发起所有权
+	OwnershipNonce string `json:"ownershipNonce,omitempty" validate:"omitempty,max=128"`
 	// 补充权限
 	AdditionalScopes []string `json:"additionalScopes" validate:"max=100,dive,max=200"`
+}
+
+// 发起插件授权结果
+type StartPluginAuthorizationResponse struct {
+	// 授权会话
+	authorization.Session
+	// 本次请求新建授权
+	Created bool `json:"created"`
+}
+
+// 取消插件授权请求
+type CancelPluginAuthorizationRequest struct {
+	// 账号上下文
+	PluginAccountRequest
+	// 发起所有权
+	OwnershipNonce string `json:"ownershipNonce,omitempty" validate:"omitempty,max=128"`
 }
 
 // 账号上下文请求
@@ -243,6 +273,8 @@ type UpdatePluginInstallationsRequest struct {
 	Secrets []SecretValue `json:"secrets"`
 	// 版本切换
 	Switches []VersionSwitch `json:"switches" validate:"required,min=1,max=100"`
+	// 回滚版本
+	Rollback bool `json:"rollback,omitempty"`
 }
 
 func (r UpdatePluginInstallationsRequest) configuration() UpdateConfigurationRequest {

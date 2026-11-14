@@ -257,11 +257,36 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			}
 			continue
 		}
+		// 跳过的候选立即释放其临时占用，成功交付的目标转给连接。
+		firstRelease := len(releases)
+		var updateUsage func(...authorization.Usage)
+		discard := func() {
+			for _, release := range slices.Backward(releases[firstRelease:]) {
+				release()
+			}
+			releases = releases[:firstRelease]
+		}
+		if m.pluginInstallations != nil {
+			update, retained, authErr := m.pluginInstallations.IdentityLease(ctx, id, usage...)
+			if authErr != nil {
+				return result, authErr
+			}
+			releases = append(releases, retained)
+			updateUsage = update
+			revision, err := m.pluginController.ConfigurationRevision(ctx, id)
+			if err != nil {
+				return result, err
+			}
+			if revision != declaration.ConfigurationRevision {
+				return result, status_error.PluginConfigurationConflict
+			}
+		}
 		root, pathErr := plugins.ContentPath(m.skillDataDirectory, version.ContentPath)
 		if pathErr != nil {
 			if required {
 				return result, pathErr
 			}
+			discard()
 			continue
 		}
 		data := filepath.Join(m.skillDataDirectory, "plugins", "data", id)
@@ -286,6 +311,7 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			if required {
 				return result, err
 			}
+			discard()
 			continue
 		}
 		logicalVersion := version
@@ -299,6 +325,7 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			if required {
 				return result, selectErr
 			}
+			discard()
 			continue
 		}
 		root = selectedRoot
@@ -322,6 +349,7 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			if required {
 				return result, targetErr
 			}
+			discard()
 			continue
 		}
 		values := map[string]string{}
@@ -343,6 +371,7 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			if required {
 				return result, digestErr
 			}
+			discard()
 			continue
 		}
 		snapshot := plugins.Snapshot{
@@ -358,37 +387,25 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			if required {
 				return result, err
 			}
+			discard()
 			continue
 		}
 		// 授权材料归属已固定的逻辑版本；目标目录只参与组件交付。
 		hasAuthentication := logicalVersion.Package.Integration.Authentication != nil
 		accountState := models.PluginAccount{PluginID: id, Generation: declaration.AccountGeneration}
-		bridgeRelease := func() {}
 		candidateEnvironment := map[string]string{}
 		if hasAuthentication {
-			if m.pluginInstallations != nil {
-				update, retained, authErr := m.pluginInstallations.IdentityLease(id, usage...)
-				if authErr != nil {
-					return result, authErr
-				}
-				releases = append(releases, retained)
-				usageUpdates = append(usageUpdates, update)
-				bridgeRelease = retained
+			current, err := m.pluginController.Account(ctx, id)
+			if err != nil {
+				return result, err
 			}
-			if m.pluginController != nil {
-				current, readErr := m.pluginController.Account(ctx, id)
-				if readErr != nil {
-					return result, readErr
-				}
-				if current.Generation != declaration.AccountGeneration {
-					return result, status_error.PluginAccountConflict
-				}
-				accountState = current
+			if current.Generation != declaration.AccountGeneration {
+				return result, status_error.PluginAccountConflict
 			}
-
+			accountState = current
 		}
 
-		bindings, accountID, bindErr := plugininstallation.DeliveryAuthentication(logicalVersion, configuration, accountState, cli)
+		bindings, accountID, bindErr := plugininstallation.DeliveryAuthentication(logicalVersion, accountState, cli)
 		if bindErr != nil {
 			return result, bindErr
 		}
@@ -510,7 +527,7 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			if required {
 				return result, status_error.PluginNotReady
 			}
-			bridgeRelease()
+			discard()
 			continue
 		}
 
@@ -526,10 +543,11 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			result.environment[key] = value
 		}
 		if native {
-			target, err := plugins.PrepareNativeTargetWithDigest(ctx, filepath.Join(m.skillDataDirectory, "plugins", "targets"), id, version.Package, root, cli, targetDigest)
+			target, closeTarget, err := plugins.PrepareRuntimeTarget(ctx, filepath.Join(m.skillDataDirectory, "plugins", "targets"), id, version.Package, root, cli, targetDigest)
 			if err != nil {
 				return result, err
 			}
+			releases = append(releases, closeTarget)
 			if target.Format == "projection" {
 				return result, status_error.PluginVersionConflict
 			}
@@ -546,6 +564,9 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 		}
 		result.connectors = append(result.connectors, candidateConnectors...)
 		result.snapshots = append(result.snapshots, snapshot)
+		if updateUsage != nil {
+			usageUpdates = append(usageUpdates, updateUsage)
+		}
 		found[id] = true
 		logSlowStage(id, "total", pluginStarted)
 	}

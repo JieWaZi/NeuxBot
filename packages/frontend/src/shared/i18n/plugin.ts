@@ -171,6 +171,17 @@ export const pluginZh = {
   updateAvailable: "可更新",
   updateUnavailable: "当前没有可更新的版本。",
   updateNamed: "更新 {{name}}",
+  rollbackNamed: "回滚 {{name}}",
+  rollbackAction: "回滚到 {{version}}",
+  rollbackUnavailable: "当前没有可回滚的版本。",
+  rollbackAll: "回滚全部伙伴",
+  rollbackPartners: "将回滚全部 {{count}} 个伙伴",
+  rollbackHelp:
+    "将插件切回上一个已安装版本，保留伙伴的启停状态。已接纳的工作继续使用原版本。",
+  prepareRollback: "准备回滚",
+  prepareRollbackHelp: "准备后可核对目标版本的共享设置与账号，确认后才会回滚。",
+  rollbackReadyHelp: "核对共享设置与账号后，确认回滚全部伙伴。",
+  rollbackRetryHelp: "请重新读取当前安装和可回滚版本后再确认。",
   updateHelp:
     "更新此插件的全部已安装伙伴，保留各伙伴当前的启停状态。已接纳的工作继续使用原版本。",
   updatePartners: "将更新全部 {{count}} 个伙伴",
@@ -385,6 +396,20 @@ export const pluginEn: { [K in keyof typeof pluginZh]: string } = {
   updateAvailable: "Update available",
   updateUnavailable: "No update is currently available.",
   updateNamed: "Update {{name}}",
+  rollbackNamed: "Roll back {{name}}",
+  rollbackAction: "Roll back to {{version}}",
+  rollbackUnavailable: "No rollback version is currently available.",
+  rollbackAll: "Roll back all partners",
+  rollbackPartners: "Roll back all {{count}} partners",
+  rollbackHelp:
+    "Restore the previous installed plugin version and preserve each partner’s enabled state. Accepted work continues with its original version.",
+  prepareRollback: "Prepare rollback",
+  prepareRollbackHelp:
+    "Review shared settings and account access for the target version before confirming the rollback.",
+  rollbackReadyHelp:
+    "Review the shared settings and account, then confirm the rollback for every partner.",
+  rollbackRetryHelp:
+    "Reload the current installations and rollback version before confirming again.",
   updateHelp:
     "Update this plugin for every installed partner, preserving each enabled state. Accepted work continues with its original version.",
   updatePartners: "Update all {{count}} partners",

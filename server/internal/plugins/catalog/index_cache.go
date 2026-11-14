@@ -49,6 +49,8 @@ type remoteIndex struct {
 	archivePending bool
 	// archiveWorkers 让 Core 退出等待全部归档工作。
 	archiveWorkers sync.WaitGroup
+	// transfers 限制归档预取与交互下载共享的并发传输。
+	transfers chan struct{}
 	// directory 保存来源目录、公开资料与完整归档。
 	directory string
 	// flight 合并同来源当前在途的条件请求。
@@ -128,7 +130,7 @@ func indexCache(source string) string {
 }
 
 func newRemoteIndex(ctx context.Context, source, filename string, changed func()) *remoteIndex {
-	index := &remoteIndex{directory: filepath.Dir(filepath.Dir(filename)), ctx: ctx, source: source, filename: filename, recoveryGate: make(chan struct{}, 1), done: make(chan struct{}), changed: changed, state: SourceState{State: "unavailable"}}
+	index := &remoteIndex{directory: filepath.Dir(filepath.Dir(filename)), ctx: ctx, source: source, filename: filename, recoveryGate: make(chan struct{}, 1), done: make(chan struct{}), changed: changed, state: SourceState{State: "unavailable"}, transfers: make(chan struct{}, 2)}
 	if data, err := os.ReadFile(filename); err == nil && len(data) <= 5*1024*1024 {
 		// 仅接受当前持久快照结构，不为旧裸目录增加兼容读取。
 		if json.Unmarshal(data, &index.snapshot) != nil || len(index.snapshot.Content) == 0 {
@@ -195,6 +197,7 @@ func Snapshot(source string) ([]Entry, SourceState) {
 	for i := range entries {
 		entries[i].SourceKey = SourceKey(source, entries[i].Key)
 		entries[i].cacheRoot = index.directory
+		entries[i].transfers = index.transfers
 	}
 	return entries, state
 }
@@ -480,6 +483,14 @@ func (index *remoteIndex) runArchivePrefetch(flight *indexRefresh) {
 			// 归档失败不抹去已经发布的目录；安装仍按同一摘要重试真实包。
 			logx.Warnf("plugin archive prefetch failed: error_code=%s", sourceErrorCode(err))
 		}
+		index.mu.RLock()
+		raw := index.snapshot.Content
+		index.mu.RUnlock()
+		if entries, err := parseIndex(raw); err == nil && index.ctx.Err() == nil {
+			if err := pruneArtifacts(index.directory, entries, time.Now()); err != nil {
+				logx.Warnf("prune plugin distribution cache failed: error_code=%s", sourceErrorCode(err))
+			}
+		}
 		index.mu.Lock()
 		if index.archivePending && index.ctx.Err() == nil {
 			index.archivePending = false
@@ -519,7 +530,8 @@ func (index *remoteIndex) prefetchArchives(ctx context.Context) error {
 					continue
 				}
 				entry.cacheRoot = index.directory
-				if _, err := download(ctx, entry); err != nil {
+				entry.transfers = index.transfers
+				if _, err := download(ctx, entry, true); err != nil {
 					mutex.Lock()
 					if failure == nil {
 						failure = err

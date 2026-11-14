@@ -3757,6 +3757,10 @@ export type GithubComJieWaZiNeuxBotServerApisPluginsAuthorizationScopeRequest = 
      * 补充权限
      */
     additionalScopes?: Array<string>;
+    /**
+     * 发起所有权
+     */
+    ownershipNonce?: string;
 };
 
 /**
@@ -3788,6 +3792,13 @@ export type GithubComJieWaZiNeuxBotServerApisPluginsBrowsePluginsResponse = {
      * 完整总数
      */
     totalSize?: number;
+};
+
+export type GithubComJieWaZiNeuxBotServerApisPluginsCancelPluginAuthorizationRequest = GithubComJieWaZiNeuxBotServerApisPluginsPluginAccountRequest & {
+    /**
+     * 发起所有权
+     */
+    ownershipNonce?: string;
 };
 
 /**
@@ -4149,6 +4160,7 @@ export type GithubComJieWaZiNeuxBotServerApisPluginsPluginDetailResponse = {
      * 当前解析版本
      */
     resolvedVersionId?: string;
+    rollback?: GithubComJieWaZiNeuxBotServerApisPluginsPluginRollbackResponse & unknown;
     update?: GithubComJieWaZiNeuxBotServerApisPluginsPluginUpdateResponse & unknown;
     /**
      * 保留版本
@@ -4174,6 +4186,24 @@ export type GithubComJieWaZiNeuxBotServerApisPluginsPluginReadmeResponse = {
      * 完整原文
      */
     content?: string;
+};
+
+/**
+ * 插件回滚摘要
+ */
+export type GithubComJieWaZiNeuxBotServerApisPluginsPluginRollbackResponse = {
+    /**
+     * 可以回滚
+     */
+    available?: boolean;
+    /**
+     * 目标版本
+     */
+    version?: string;
+    /**
+     * 目标标识
+     */
+    versionId?: string;
 };
 
 /**
@@ -4311,6 +4341,13 @@ export type GithubComJieWaZiNeuxBotServerApisPluginsSecretValue = {
     value?: string;
 };
 
+export type GithubComJieWaZiNeuxBotServerApisPluginsStartPluginAuthorizationResponse = GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationSession & {
+    /**
+     * 本次请求新建授权
+     */
+    created?: boolean;
+};
+
 /**
  * 插件配置请求
  */
@@ -4343,6 +4380,10 @@ export type GithubComJieWaZiNeuxBotServerApisPluginsUpdatePluginInstallationsReq
      * 配置修订
      */
     expectedRevision?: number;
+    /**
+     * 回滚版本
+     */
+    rollback?: boolean;
     /**
      * 密钥更新
      */
@@ -33200,6 +33241,12 @@ export type DeletePluginErrors = {
     403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[PluginNotFound][40400006501]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[OperationCanceled][40800000001]`
      *
      */
@@ -34084,13 +34131,13 @@ export type StartPluginAuthorizationErrors = {
 export type StartPluginAuthorizationError = StartPluginAuthorizationErrors[keyof StartPluginAuthorizationErrors];
 
 export type StartPluginAuthorizationResponses = {
-    200: GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationSession;
+    200: GithubComJieWaZiNeuxBotServerApisPluginsStartPluginAuthorizationResponse;
 };
 
 export type StartPluginAuthorizationResponse = StartPluginAuthorizationResponses[keyof StartPluginAuthorizationResponses];
 
 export type CancelPluginAuthorizationData = {
-    body: GithubComJieWaZiNeuxBotServerApisPluginsPluginAccountRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisPluginsCancelPluginAuthorizationRequest & unknown;
     path: {
         /**
          * 插件标识
@@ -34121,6 +34168,12 @@ export type CancelPluginAuthorizationErrors = {
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[PluginForbidden][40300006501]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[PluginNotFound][40400006501]`
@@ -34242,7 +34295,6 @@ export type CheckPluginAccountData = {
 export type CheckPluginAccountErrors = {
     /**
      * >
-     * * `[BadRequest][40000000001]`
      * * `[PluginContentInvalid][40000006502]`
      * * `[PluginManifestInvalid][40000006501]`
      *
@@ -34254,6 +34306,12 @@ export type CheckPluginAccountErrors = {
      *
      */
     403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[PluginNotFound][40400006501]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[OperationCanceled][40800000001]`
@@ -34325,7 +34383,6 @@ export type LogoutPluginAuthorizationData = {
 export type LogoutPluginAuthorizationErrors = {
     /**
      * >
-     * * `[BadRequest][40000000001]`
      * * `[PluginContentInvalid][40000006502]`
      * * `[PluginManifestInvalid][40000006501]`
      *
@@ -34337,6 +34394,12 @@ export type LogoutPluginAuthorizationErrors = {
      *
      */
     403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[PluginNotFound][40400006501]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[OperationCanceled][40800000001]`
@@ -34791,12 +34854,10 @@ export type UpdatePluginConfigurationErrors = {
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
-     * * `[PluginNotFound][40400006501]`
-     *
-     */
-    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
-    /**
-     * >
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
+     * * `[PluginAccountConflict][40900006506]`
+     * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
      * * `[PluginNotReady][40900006503]`
      *
@@ -34809,6 +34870,15 @@ export type UpdatePluginConfigurationErrors = {
      *
      */
     422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdatePluginConfigurationError = UpdatePluginConfigurationErrors[keyof UpdatePluginConfigurationErrors];
@@ -34929,6 +34999,12 @@ export type TestPluginConnectorErrors = {
      *
      */
     403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[PluginNotFound][40400006501]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[OperationCanceled][40800000001]`
@@ -42030,6 +42106,12 @@ export type UninstallWakerPluginErrors = {
      *
      */
     403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[PluginNotFound][40400006501]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[OperationCanceled][40800000001]`

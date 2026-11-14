@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/apis/mcp"
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -15,18 +16,22 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
-	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 const stageOneAPIDriver = `import readline from'node:readline';import{existsSync,appendFileSync,writeFileSync}from'node:fs';import path from'node:path';
 for await(const line of readline.createInterface({input:process.stdin})){
  const r=JSON.parse(line),p=r.params;appendFileSync(path.join(p.dataDirectory,'calls'),r.method+'\n');let result={};
  if(r.method==='auth/initialize')result={protocol:'neuxbot-auth/1',context:p};
- else if(r.method==='auth/status')result={state:'authorized',account:{configured:true,available:true,id:'reader',scopes:[]}};
+ else if(r.method==='auth/status'){
+ if(existsSync(path.join(p.dataDirectory,'block-status')))continue;
+ result={state:'authorized',account:{configured:true,available:true,id:'reader',scopes:[]}};
+ }
  else if(r.method==='auth/resolve')result={bindings:p.components.map(c=>({componentId:c.componentId,headers:{Authorization:'Bearer fixture-private'}}))};
+ else if(r.method==='auth/logout')writeFileSync(path.join(p.dataDirectory,'logout-version'),p.versionId);
  console.log(JSON.stringify({jsonrpc:'2.0',id:r.id,result}));
  if(r.method==='auth/start'){
  const waiting=existsSync(path.join(p.dataDirectory,'wait'));
@@ -36,6 +41,11 @@ for await(const line of readline.createInterface({input:process.stdin})){
 }`
 
 func stageOneAPIFixture(t *testing.T, ctx *gin.Context, name, version string, auth bool, bindings ...packageplugin.AuthenticationBinding) PluginDetailResponse {
+	t.Helper()
+	return stageOnePackageFixture(t, ctx, name, version, auth, nil, bindings)
+}
+
+func stageOnePackageFixture(t *testing.T, ctx *gin.Context, name, version string, auth bool, fields []packageplugin.ConfigurationField, bindings []packageplugin.AuthenticationBinding) PluginDetailResponse {
 	t.Helper()
 	source := t.TempDir()
 	manifest := map[string]any{"$schema": constants.PluginManifestSchema, "name": name, "version": version}
@@ -47,7 +57,11 @@ func stageOneAPIFixture(t *testing.T, ctx *gin.Context, name, version string, au
 				t.Fatal(err)
 			}
 		}
-		manifest["extensions"] = map[string]any{constants.PluginExtensionNamespace: map[string]any{"schemaVersion": constants.PluginExtensionSchemaVersion, "authentication": declaration}}
+		extension := map[string]any{"schemaVersion": constants.PluginExtensionSchemaVersion, "authentication": declaration}
+		if len(fields) > 0 {
+			extension["configuration"] = map[string]any{"fields": fields}
+		}
+		manifest["extensions"] = map[string]any{constants.PluginExtensionNamespace: extension}
 		if err := os.MkdirAll(filepath.Join(source, ".neuxbot"), 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -98,7 +112,7 @@ func TestAuthorizedInstallationKeepsSharedAccountVisible(t *testing.T) {
 	detail := stageOneAPIFixture(t, ctx, "installed-account", "1.0.0", true, packageplugin.AuthenticationBinding{Runtime: "codex", Server: "service", URL: "https://example.invalid/mcp", Header: "Authorization"})
 	id, version := detail.Plugin.ID, detail.ResolvedVersionID
 	value, err := (&StartPluginAuthorization{PluginID: id, VersionID: version}).Output(ctx)
-	if err != nil || value.(authorization.Session).State != constants.PluginAuthorizationStateReady {
+	if err != nil || value.(StartPluginAuthorizationResponse).State != constants.PluginAuthorizationStateReady {
 		t.Fatal("authorization did not complete", err)
 	}
 	before, err := (&GetPluginAuthorization{PluginID: id, VersionID: version}).Output(ctx)
@@ -135,7 +149,7 @@ func TestAuthorizedInstallationKeepsSharedAccountVisible(t *testing.T) {
 		t.Fatal(err)
 	}
 	current := after.(PluginAuthorizationResponse)
-	if !current.Account.Available || current.Account.CheckedAt == 0 || current.Account.ID != "reader" || current.AccountGeneration != account.Generation || current.Session.ID != value.(authorization.Session).ID {
+	if !current.Account.Available || current.Account.CheckedAt == 0 || current.Account.ID != "reader" || current.AccountGeneration != account.Generation || current.Session.ID != value.(StartPluginAuthorizationResponse).ID {
 		t.Fatalf("installation lost verified account or authorization session: %+v", current)
 	}
 	page, err := (&GetPlugin{PluginID: id}).Output(ctx)
@@ -162,7 +176,7 @@ func TestAuthorizedUpdateKeepsSharedAccountVisibleOnlyAfterCommit(t *testing.T) 
 		t.Fatal("update fixture created a different resource")
 	}
 	value, err := (&StartPluginAuthorization{PluginID: id, VersionID: next.ResolvedVersionID}).Output(ctx)
-	if err != nil || value.(authorization.Session).State != constants.PluginAuthorizationStateReady {
+	if err != nil || value.(StartPluginAuthorizationResponse).State != constants.PluginAuthorizationStateReady {
 		t.Fatal("update authorization failed", err)
 	}
 	request := UpdatePluginInstallationsRequest{ExpectedAccountGeneration: 1, Switches: []VersionSwitch{{WakerID: "w1", ExpectedVersionID: "stale-version", VersionID: next.ResolvedVersionID}}}
@@ -185,10 +199,56 @@ func TestAuthorizedUpdateKeepsSharedAccountVisibleOnlyAfterCommit(t *testing.T) 
 	if !current.Account.Available || current.Account.CheckedAt == 0 || current.AccountGeneration != 2 || current.ConfigurationRevision != 1 {
 		t.Fatalf("successful update lost the verified identity: %+v", current)
 	}
+	material, err := global.PluginControllerManager.Account(ctx, id)
+	if err != nil || len(material.DeliveryMaterials) != 1 || material.AuthorizedVersionID == nil || *material.AuthorizedVersionID != next.ResolvedVersionID {
+		t.Fatalf("upgrade retained previous delivery material or lost its logout version: generation=%d count=%d error=%v", material.Generation, len(material.DeliveryMaterials), err)
+	}
 	page, err := (&GetPlugin{PluginID: id}).Output(ctx)
 	if err != nil || !page.(PluginDetailResponse).Account.Available || page.(PluginDetailResponse).ResolvedVersionID != next.ResolvedVersionID {
 		t.Fatal("updated detail did not retain the verified identity", err)
 	}
+}
+
+func TestAuthorizedSwitchAcceptsNewRequiredConfiguration(t *testing.T) {
+	ctx := pluginAPIContext(t)
+	stageOneRegistry(t)
+	store := global.PluginControllerManager
+	bindings := []packageplugin.AuthenticationBinding{{Runtime: "codex", Server: "service", URL: "https://example.invalid/mcp", Header: "Authorization"}}
+	old := stageOnePackageFixture(t, ctx, "configured-switch", "1.0.0", true, []packageplugin.ConfigurationField{{Key: "OLD_MODE", Required: true}}, bindings)
+	id := old.Plugin.ID
+	if err := store.UpdateConfiguration(ctx, models.PluginConfiguration{PluginID: id, Values: map[string]string{"OLD_MODE": "old"}}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Install(ctx, models.WakerPlugin{ID: "installed", PluginID: id, WakerID: "w1", VersionID: old.ResolvedVersionID, Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	next := stageOnePackageFixture(t, ctx, "configured-switch", "2.0.0", true, []packageplugin.ConfigurationField{{Key: "NEW_MODE", Required: true}}, bindings)
+	switchVersion := func(from, to, key string, rollback bool) {
+		t.Helper()
+		revision, err := store.ConfigurationRevision(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		generation, err := store.AccountGeneration(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		login := StartPluginAuthorization{PluginID: id, VersionID: to, Body: AuthorizationScopeRequest{PluginAccountRequest: PluginAccountRequest{ExpectedConfigurationRevision: revision, ExpectedAccountGeneration: generation}}}
+		result, err := login.Output(ctx)
+		if err != nil || result.(StartPluginAuthorizationResponse).State != constants.PluginAuthorizationStateReady {
+			t.Fatalf("target login depended on previously saved configuration: %+v %v", result, err)
+		}
+		body := UpdatePluginInstallationsRequest{ExpectedRevision: revision, ExpectedAccountGeneration: generation + 1, Rollback: rollback, Switches: []VersionSwitch{{WakerID: "w1", ExpectedVersionID: from, VersionID: to}}}
+		if _, err := (&UpdatePluginInstallations{PluginID: id, Body: body}).Output(ctx); !errors.Is(err, status_error.PluginNotReady) {
+			t.Fatalf("target installed without its required settings: %v", err)
+		}
+		body.Values = map[string]string{key: "configured"}
+		if _, err := (&UpdatePluginInstallations{PluginID: id, Body: body}).Output(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	switchVersion(old.ResolvedVersionID, next.ResolvedVersionID, "NEW_MODE", false)
+	switchVersion(next.ResolvedVersionID, old.ResolvedVersionID, "OLD_MODE", true)
 }
 
 func TestStageOneAccountGetIsCachedAndCheckIsExplicit(t *testing.T) {
@@ -213,6 +273,15 @@ func TestStageOneAccountGetIsCachedAndCheckIsExplicit(t *testing.T) {
 	}
 	if !checked.(PluginAuthorizationResponse).Account.Available || checked.(PluginAuthorizationResponse).Account.CheckedAt == 0 {
 		t.Fatal("explicit check did not cache verified identity")
+	}
+	_, release, err := global.PluginBridges.AcquireIdentity(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked, err = (&CheckPluginAccount{PluginID: id, VersionID: version}).Output(ctx)
+	release()
+	if err != nil || !checked.(PluginAuthorizationResponse).Account.Available {
+		t.Fatal("matched read-only account check could not share a retained identity", err)
 	}
 	calls, err := os.ReadFile(private)
 	if err != nil {
@@ -243,12 +312,16 @@ func TestStageOneAccountGetIsCachedAndCheckIsExplicit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if session.(authorization.Session).State != constants.PluginAuthorizationStateReady {
+	if session.(StartPluginAuthorizationResponse).State != constants.PluginAuthorizationStateReady {
 		t.Fatal("authorization did not reach ready")
 	}
 	generation, err := global.PluginControllerManager.AccountGeneration(ctx, id)
 	if err != nil || generation != 1 {
 		t.Fatal("completed authorization did not publish account generation", generation, err)
+	}
+	anchored, err := global.PluginControllerManager.Account(ctx, id)
+	if err != nil || anchored.AuthorizedVersionID == nil || *anchored.AuthorizedVersionID != version || len(anchored.DeliveryMaterials) != 0 {
+		t.Fatalf("login without component bindings lost its cleanup anchor: %+v %v", anchored, err)
 	}
 	value, err = (&GetPluginAuthorization{PluginID: id, VersionID: version}).Output(ctx)
 	if err != nil || !value.(PluginAuthorizationResponse).Account.Available || value.(PluginAuthorizationResponse).AccountGeneration != 1 {
@@ -279,9 +352,21 @@ func TestStageOneOldCancelStopsOnlyTheOriginalWaitingSession(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(private, "wait"), nil, 0600); err != nil {
 		t.Fatal(err)
 	}
-	value, err := (&StartPluginAuthorization{PluginID: id, VersionID: version}).Output(ctx)
+	value, err := (&StartPluginAuthorization{PluginID: id, VersionID: version, Body: AuthorizationScopeRequest{OwnershipNonce: "owner"}}).Output(ctx)
 	if err != nil {
 		t.Fatal(err)
+	}
+	created := value.(StartPluginAuthorizationResponse)
+	if !created.Created {
+		t.Fatal("Core omitted session ownership")
+	}
+	other, err := (&StartPluginAuthorization{PluginID: id, VersionID: version, Body: AuthorizationScopeRequest{OwnershipNonce: "observer"}}).Output(ctx)
+	if err != nil || other.(StartPluginAuthorizationResponse).Created || other.(StartPluginAuthorizationResponse).ID != created.ID {
+		t.Fatalf("observer received ownership of another session: %v", err)
+	}
+	cancel := CancelPluginAuthorization{PluginID: id, VersionID: version, SessionID: created.ID, Body: CancelPluginAuthorizationRequest{OwnershipNonce: "observer"}}
+	if _, err := cancel.Output(ctx); !errors.Is(err, status_error.PluginForbidden) {
+		t.Fatalf("foreign automatically-owned cancellation succeeded: %v", err)
 	}
 	encoded, _ := json.Marshal(value)
 	var session struct {
@@ -294,7 +379,8 @@ func TestStageOneOldCancelStopsOnlyTheOriginalWaitingSession(t *testing.T) {
 	if err := global.PluginControllerManager.UpdateConfiguration(ctx, models.PluginConfiguration{PluginID: id}, 0); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := (&CancelPluginAuthorization{PluginID: id, VersionID: version, SessionID: session.ID}).Output(ctx); err != nil {
+	cancel.Body.OwnershipNonce = "owner"
+	if _, err := cancel.Output(ctx); err != nil {
 		t.Fatal("old exact session could not be cancelled after configuration change", err)
 	}
 	if _, err := os.Stat(filepath.Join(private, "cancelled")); err != nil {
@@ -319,8 +405,70 @@ func TestStageOneOldCancelStopsOnlyTheOriginalWaitingSession(t *testing.T) {
 	if _, err := (&LogoutPluginAuthorization{PluginID: id, VersionID: version, Body: PluginAccountRequest{ExpectedConfigurationRevision: 1}}).Output(ctx); !errors.Is(err, status_error.PluginBusy) {
 		t.Fatal("logout interrupted active authorization", err)
 	}
-	if _, err := (&CancelPluginAuthorization{PluginID: id, VersionID: version, SessionID: nextSession.ID, Body: PluginAccountRequest{ExpectedConfigurationRevision: 1}}).Output(ctx); err != nil {
+	if _, err := (&CancelPluginAuthorization{PluginID: id, VersionID: version, SessionID: nextSession.ID, Body: CancelPluginAuthorizationRequest{PluginAccountRequest: PluginAccountRequest{ExpectedConfigurationRevision: 1}}}).Output(ctx); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPluginAuthorizationInitialRequestCancellationStopsBridge(t *testing.T) {
+	for _, start := range []bool{false, true} {
+		name := "check"
+		if start {
+			name = "start"
+		}
+		t.Run(name, func(t *testing.T) {
+			ctx := pluginAPIContext(t)
+			stageOneRegistry(t)
+			detail := stageOneAPIFixture(t, ctx, "cancel-request", "1.0.0", true)
+			id, version := detail.Plugin.ID, detail.ResolvedVersionID
+			data := filepath.Join(global.Config.DataDirectory, "plugins/data", id)
+			if err := os.MkdirAll(data, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(data, "block-status"), nil, 0600); err != nil {
+				t.Fatal(err)
+			}
+			request, cancel := context.WithCancel(ctx.Request.Context())
+			defer cancel()
+			ctx.Request = ctx.Request.WithContext(request)
+			done := make(chan error, 1)
+			go func() {
+				if start {
+					_, err := (&StartPluginAuthorization{PluginID: id, VersionID: version}).Output(ctx)
+					done <- err
+				} else {
+					_, err := (&CheckPluginAccount{PluginID: id, VersionID: version}).Output(ctx)
+					done <- err
+				}
+			}()
+			deadline := time.After(3 * time.Second)
+			tick := time.NewTicker(10 * time.Millisecond)
+			defer tick.Stop()
+			waiting := false
+			for !waiting {
+				select {
+				case <-tick.C:
+					calls, _ := os.ReadFile(filepath.Join(data, "calls"))
+					waiting = strings.Contains(string(calls), "auth/status")
+				case err := <-done:
+					t.Fatal("bridge stopped before the request was cancelled", err)
+				case <-deadline:
+					t.Fatal("bridge did not start checking the identity")
+				}
+			}
+			cancel()
+			select {
+			case err := <-done:
+				if !errors.Is(err, status_error.OperationCanceled) {
+					t.Fatal("request did not return the cancellation result", err)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("request cancellation did not stop the bridge")
+			}
+			if _, err := os.Stat(filepath.Join(data, "cancelled")); err != nil {
+				t.Fatal("bridge did not receive the cancellation", err)
+			}
+		})
 	}
 }
 
@@ -399,5 +547,116 @@ func TestStageOneConnectorDiagnosticsCannotSurviveAccountGenerationChange(t *tes
 	response = mcp.ConnectorResponse{}
 	if err := pluginConnectorDiagnostics.apply(ctx, version, "component", &response); err != nil || response.Connector.TestedAt != 0 {
 		t.Fatalf("previous account generation diagnostic resurfaced: %+v %v", response, err)
+	}
+}
+
+func TestStageOneLastUninstallUsesAuthorizedVersionOutsideInstallation(t *testing.T) {
+	ctx := pluginAPIContext(t)
+	stageOneRegistry(t)
+	plain := stageOneAPIFixture(t, ctx, "anchored-account", "1.0.0", false)
+	id := plain.Plugin.ID
+	if _, err := (&InstallPlugin{PluginID: id, Body: InstallPluginRequest{VersionID: plain.ResolvedVersionID, WakerIDs: []string{"w1"}}}).Output(ctx); err != nil {
+		t.Fatal(err)
+	}
+	authenticated := stageOneAPIFixture(t, ctx, "anchored-account", "2.0.0", true)
+	if _, err := (&StartPluginAuthorization{PluginID: id, VersionID: authenticated.ResolvedVersionID}).Output(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (&UninstallWakerPlugin{PluginID: id, WakerID: "w1"}).Output(ctx); err != nil {
+		t.Fatal(err)
+	}
+	account, err := global.PluginControllerManager.Account(ctx, id)
+	if err != nil || account.AuthorizedVersionID == nil || *account.AuthorizedVersionID != "" || len(account.DeliveryMaterials) != 0 || account.Generation != 2 {
+		t.Fatalf("last uninstall skipped durable account reset: %+v %v", account, err)
+	}
+	calls, err := os.ReadFile(filepath.Join(global.Config.DataDirectory, "plugins", "data", id, "calls"))
+	if err != nil || !strings.Contains(string(calls), "auth/logout\n") {
+		t.Fatalf("last uninstall did not call anchored driver logout: %s, %v", calls, err)
+	}
+}
+
+func TestStageOneDeleteRetainsExactAuthorizedVersionAcrossCollection(t *testing.T) {
+	ctx := pluginAPIContext(t)
+	stageOneRegistry(t)
+	authorized := stageOneAPIFixture(t, ctx, "cleanup-anchor", "1.0.0", true)
+	id := authorized.Plugin.ID
+	if _, err := (&StartPluginAuthorization{PluginID: id, VersionID: authorized.ResolvedVersionID}).Output(ctx); err != nil {
+		t.Fatal(err)
+	}
+	newest := stageOneAPIFixture(t, ctx, "cleanup-anchor", "2.0.0", true)
+	store := global.PluginControllerManager
+	// 持久化过期时间，模拟两个真实准备版本的确认窗口都已结束。
+	db := ctx.MustGet("plugin-api-test-db").(*gorm.DB)
+	ids := []string{authorized.ResolvedVersionID, newest.ResolvedVersionID}
+	if err := db.Model(&models.PluginVersion{}).Where("id IN ?", ids).UpdateColumn("prepared_until", 1).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RetireUnusedVersions(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	retired, err := store.Version(ctx, newest.ResolvedVersionID)
+	if err != nil || !retired.Retired {
+		t.Fatalf("newest unused package was not retired: %+v %v", retired, err)
+	}
+	older, err := store.Version(ctx, authorized.ResolvedVersionID)
+	if err != nil || older.Retired {
+		t.Fatalf("authorized package was retired: %+v %v", older, err)
+	}
+	if _, err := (&DeletePlugin{PluginID: id, Body: DeletePluginRequest{Confirmed: true}}).Output(ctx); err != nil {
+		t.Fatal(err)
+	}
+	calls, err := os.ReadFile(filepath.Join(global.Config.DataDirectory, "plugins", "data", id, "calls"))
+	if err != nil || !strings.Contains(string(calls), "auth/logout\n") {
+		t.Fatalf("delete skipped logout through retained anchor: %s, %v", calls, err)
+	}
+}
+
+func TestStageOneDeleteCancelsPendingVersionAndUsesAuthorizedLogoutVersion(t *testing.T) {
+	ctx := pluginAPIContext(t)
+	stageOneRegistry(t)
+	old := stageOneAPIFixture(t, ctx, "pending-cleanup", "1.0.0", true)
+	id := old.Plugin.ID
+	if _, err := (&StartPluginAuthorization{PluginID: id, VersionID: old.ResolvedVersionID}).Output(ctx); err != nil {
+		t.Fatal(err)
+	}
+	next := stageOneAPIFixture(t, ctx, "pending-cleanup", "2.0.0", true)
+	data := filepath.Join(global.Config.DataDirectory, "plugins/data", id)
+	if err := os.WriteFile(filepath.Join(data, "wait"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	login := StartPluginAuthorization{PluginID: id, VersionID: next.ResolvedVersionID, Body: AuthorizationScopeRequest{PluginAccountRequest: PluginAccountRequest{ExpectedAccountGeneration: 1}}}
+	response, err := login.Output(ctx)
+	if err != nil || response.(StartPluginAuthorizationResponse).State != constants.PluginAuthorizationStateWaiting {
+		t.Fatalf("new version did not begin waiting: %+v %v", response, err)
+	}
+	if _, err := (&DeletePlugin{PluginID: id, Body: DeletePluginRequest{Confirmed: true}}).Output(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(data, "cancelled")); err != nil {
+		t.Fatal("delete did not wait for the second version to cancel", err)
+	}
+	logout, err := os.ReadFile(filepath.Join(data, "logout-version"))
+	if err != nil || string(logout) != old.ResolvedVersionID {
+		t.Fatal("delete logged out through an unconfirmed version", string(logout), err)
+	}
+}
+
+func TestStageOneDeleteSkipsBridgeAfterConfirmedLogout(t *testing.T) {
+	ctx := pluginAPIContext(t)
+	stageOneRegistry(t)
+	detail := stageOneAPIFixture(t, ctx, "already-logged-out", "1.0.0", true)
+	id, versionID := detail.Plugin.ID, detail.ResolvedVersionID
+	if _, err := (&StartPluginAuthorization{PluginID: id, VersionID: versionID}).Output(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (&LogoutPluginAuthorization{PluginID: id, VersionID: versionID, Body: PluginAccountRequest{ExpectedAccountGeneration: 1}}).Output(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (&DeletePlugin{PluginID: id, Body: DeletePluginRequest{Confirmed: true}}).Output(ctx); err != nil {
+		t.Fatal(err)
+	}
+	calls, err := os.ReadFile(filepath.Join(global.Config.DataDirectory, "plugins", "data", id, "calls"))
+	if err != nil || strings.Count(string(calls), "auth/logout\n") != 1 {
+		t.Fatalf("delete probed a confirmed cleared identity: %s, %v", calls, err)
 	}
 }

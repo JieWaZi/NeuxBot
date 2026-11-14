@@ -2,18 +2,207 @@ package plugins
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/gofrs/flock"
 )
+
+func TestPrepareRuntimeTargetOwnsOnlySelectedTargetUntilRelease(t *testing.T) {
+	root, parent := t.TempDir(), t.TempDir()
+	standardInput(t, root, map[string]any{"name": "runtime-owner"})
+	pkg, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := ContentDigest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	first, releaseFirst, err := PrepareRuntimeTarget(t.Context(), parent, "p", pkg, root, "claude", digest)
+	if err != nil || releaseFirst == nil {
+		t.Fatalf("first runtime preparation = %+v, error = %v", first, err)
+	}
+	t.Cleanup(releaseFirst)
+	second, releaseSecond, err := PrepareRuntimeTarget(t.Context(), parent, "p", pkg, root, "claude", digest)
+	if err != nil || releaseSecond == nil {
+		t.Fatalf("second runtime preparation = %+v, error = %v", second, err)
+	}
+	t.Cleanup(releaseSecond)
+	if first.Root == second.Root || first.Digest != second.Digest || first.SourceDigest != digest {
+		t.Fatalf("independent leases did not produce the same bytes in distinct roots: %+v, %+v", first, second)
+	}
+	canonicalParent, err := filepath.EvalSymlinks(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []NativeTarget{first, second} {
+		if target.Runtime != "claude" || target.ManifestPath != ".claude-plugin/plugin.json" || filepath.Dir(target.Root) != canonicalParent {
+			t.Fatalf("unexpected runtime target: %+v", target)
+		}
+		if err := VerifyContent(target.Root, target.Digest); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if entries, err := os.ReadDir(parent); err != nil || len(entries) != 2 {
+		t.Fatalf("runtime preparation created shared cache or extra targets: %v, %v", entries, err)
+	}
+	input, err := json.Marshal([]any{canonicalParent, "p", digest, "claude", pkg, []AuthenticationBinding(nil)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetPreparationsMu.Lock()
+	_, cached := targetPreparations[sha256.Sum256(input)]
+	targetPreparationsMu.Unlock()
+	if cached {
+		t.Fatal("runtime preparation created a global cache entry")
+	}
+
+	releaseFirst()
+	releaseFirst()
+	if _, err := os.Stat(first.Root); !os.IsNotExist(err) {
+		t.Fatalf("first lease did not dispose its own root: %v", err)
+	}
+	if err := VerifyContent(second.Root, second.Digest); err != nil {
+		t.Fatalf("first lease removed an independent target: %v", err)
+	}
+	releaseSecond()
+	if entries, err := os.ReadDir(parent); err != nil || len(entries) != 0 {
+		t.Fatalf("runtime lease leaked a derived root: %v, %v", entries, err)
+	}
+}
+
+func TestPrepareRuntimeTargetFailureDisposesStaging(t *testing.T) {
+	root, parent := t.TempDir(), t.TempDir()
+	standardInput(t, root, map[string]any{"name": "runtime-failure"})
+	pkg, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := ContentDigest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixtureFile(t, root, "changed.txt", "alternate content")
+	if _, release, err := PrepareRuntimeTarget(t.Context(), parent, "p", pkg, root, "claude", digest); err == nil || release != nil {
+		t.Fatalf("expected a rejected snapshot with its staging already disposed: %v", err)
+	}
+	if entries, err := os.ReadDir(parent); err != nil || len(entries) != 0 {
+		t.Fatalf("failed runtime preparation leaked a derived root: %v, %v", entries, err)
+	}
+}
+
+func TestPrepareRuntimeTargetDirectCodexReleaseKeepsPublishedSource(t *testing.T) {
+	root, parent := t.TempDir(), filepath.Join(t.TempDir(), "targets")
+	standardInput(t, root, map[string]any{"name": "direct-codex"})
+	pkg, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := ContentDigest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, release, err := PrepareRuntimeTarget(t.Context(), parent, "p", pkg, root, "codex", digest)
+	if err != nil || release == nil {
+		t.Fatalf("direct runtime preparation = %+v, error = %v", target, err)
+	}
+	release()
+	if err := VerifyContent(root, digest); err != nil {
+		t.Fatalf("direct target release mutated the published source: %v", err)
+	}
+	if _, err := os.Stat(parent); !os.IsNotExist(err) {
+		t.Fatalf("direct target unnecessarily created a preparation directory: %v", err)
+	}
+}
+
+func TestPrepareRuntimeTargetRejectsLinkedScratchRoot(t *testing.T) {
+	root, temporary, outside := t.TempDir(), t.TempDir(), t.TempDir()
+	standardInput(t, root, map[string]any{"name": "linked-runtime-root"})
+	pkg, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := ContentDigest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := filepath.Join(temporary, "targets")
+	if err := os.Symlink(outside, parent); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("directory symlinks unavailable: %v", err)
+		}
+		t.Fatal(err)
+	}
+	target, release, err := PrepareRuntimeTarget(t.Context(), parent, "p", pkg, root, "claude", digest)
+	if release != nil {
+		release()
+	}
+	if err == nil {
+		t.Fatalf("runtime preparation followed a linked scratch root: %s", target.Root)
+	}
+	if entries, err := os.ReadDir(outside); err != nil || len(entries) != 0 {
+		t.Fatalf("runtime preparation used a directory outside its managed root: %v, %v", entries, err)
+	}
+}
+
+func TestTargetPreparationBoundsIdleEntriesWithoutEvictingActiveKey(t *testing.T) {
+	root, parent := t.TempDir(), t.TempDir()
+	standardInput(t, root, map[string]any{"name": "bounded-cache"})
+	pkg, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := ContentDigest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, release, err := lockTargetPreparation(t.Context(), parent, "held", digest, "claude", pkg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	for i := 0; i < 200; i++ {
+		_, releaseOther, err := lockTargetPreparation(t.Context(), parent, strconv.Itoa(i), digest, "claude", pkg, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		releaseOther()
+	}
+	targetPreparationsMu.Lock()
+	count := len(targetPreparations)
+	targetPreparationsMu.Unlock()
+	if count > 129 {
+		t.Fatalf("idle preparations were retained beyond the cache bound: %d", count)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 25*time.Millisecond)
+	defer cancel()
+	if _, unlock, err := lockTargetPreparation(ctx, parent, "held", digest, "claude", pkg, nil); !errors.Is(err, context.DeadlineExceeded) {
+		if unlock != nil {
+			unlock()
+		}
+		t.Fatalf("cache pressure evicted an active preparation: %v", err)
+	}
+	release()
+	again, unlock, err := lockTargetPreparation(t.Context(), parent, "held", digest, "claude", pkg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+	if again != entry {
+		t.Fatal("recently released preparation was not reused")
+	}
+}
 
 func TestTargetCacheHitDoesNotRequireWritableStaging(t *testing.T) {
 	if runtime.GOOS == "windows" {
