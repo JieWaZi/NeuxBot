@@ -48,7 +48,7 @@ describe("伙伴头像选择", () => {
       within(screen.getByRole("group", { name: "材质" }))
         .getAllByRole("button")
         .map((button) => button.textContent),
-    ).toEqual(["毛绒", "粒子"]);
+    ).toEqual(["毛绒", "粒子", "软胶"]);
     expect(screen.queryByRole("button", { name: /预览/ })).toBeNull();
     expect(onChange).not.toHaveBeenCalled();
   });
@@ -79,6 +79,14 @@ describe("伙伴头像选择", () => {
     expect(
       screen.getByRole("button", { name: "颜色 #ef4444" }),
     ).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: "软胶" }));
+    expect(screen.getByLabelText("已选头像")).toHaveTextContent(
+      "bloub:balloon:triangle:heureux:ef4444",
+    );
+    expect(screen.getByRole("button", { name: "软胶" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     await user.click(screen.getByRole("button", { name: "毛绒" }));
     expect(screen.getByLabelText("已选头像")).toHaveTextContent(
       "bloub:plush:triangle:heureux:ef4444",
@@ -146,6 +154,12 @@ describe("伙伴头像选择", () => {
     await user.keyboard(" ");
     expect(screen.getByLabelText("已选头像")).toHaveTextContent(
       "bloub:particles:nuage:curieux:38bdf8",
+    );
+    await user.tab();
+    expect(screen.getByRole("button", { name: "软胶" })).toHaveFocus();
+    await user.keyboard(" ");
+    expect(screen.getByLabelText("已选头像")).toHaveTextContent(
+      "bloub:balloon:nuage:curieux:38bdf8",
     );
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("button", { name: "粒子" })).toBeNull();

@@ -1,8 +1,14 @@
 import { act, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CompanionAvatar } from "./companion-avatar";
-const mocks = vi.hoisted(() => ({ tinted: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  tinted: vi.fn(),
+  bakeBalloonMaterial: vi.fn(),
+}));
 vi.mock("@neuxbot/bloub/tint", () => mocks);
+vi.mock("@neuxbot/bloub/balloon", () => ({
+  bakeBalloonMaterial: mocks.bakeBalloonMaterial,
+}));
 const decoding: {
   url: string;
   resolve: () => void;
@@ -11,6 +17,7 @@ const decoding: {
 let holdDecode = false;
 beforeEach(() => {
   mocks.tinted.mockReset();
+  mocks.bakeBalloonMaterial.mockReset();
   decoding.length = 0;
   holdDecode = false;
   vi.stubGlobal(
@@ -27,6 +34,85 @@ beforeEach(() => {
   );
 });
 afterEach(() => vi.unstubAllGlobals());
+
+it("软胶用开屏材质烘焙图集，同色不同形状共用结果并在解码后就绪", async () => {
+  holdDecode = true;
+  mocks.bakeBalloonMaterial.mockResolvedValue("data:image/png;base64,balloon");
+  const ready = vi.fn();
+  const view = render(
+    <>
+      <CompanionAvatar
+        avatar="bloub:balloon:nuage:curieux:22c55e"
+        animated={false}
+        onReady={ready}
+      />
+      <CompanionAvatar
+        avatar="bloub:balloon:triangle:heureux:22c55e"
+        animated={false}
+        onReady={ready}
+      />
+    </>,
+  );
+  await waitFor(() => expect(decoding).toHaveLength(1));
+  expect(mocks.bakeBalloonMaterial).toHaveBeenCalledExactlyOnceWith(
+    expect.stringContaining("body-balloon.svg"),
+    "#22c55e",
+  );
+  expect(mocks.tinted).not.toHaveBeenCalled();
+  expect(ready).not.toHaveBeenCalled();
+  await act(async () => decoding[0]?.resolve());
+  await waitFor(() => expect(ready).toHaveBeenCalledTimes(2));
+  const avatars = view.container.querySelectorAll(
+    'svg[data-material="balloon"]',
+  );
+  expect(avatars).toHaveLength(2);
+  for (const avatar of avatars) {
+    expect(avatar).toHaveAttribute("data-texture-state", "ready");
+    expect(avatar.querySelector("[data-texture]")).toHaveAttribute(
+      "href",
+      "data:image/png;base64,balloon",
+    );
+    expect(avatar.querySelectorAll("[data-eye]")).toHaveLength(2);
+  }
+});
+
+it("从软胶切回毛绒等待完整新外观，迟到的烘焙不覆盖后续选择", async () => {
+  let finish!: (value: string) => void;
+  mocks.bakeBalloonMaterial.mockImplementation(
+    () =>
+      new Promise<string>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  mocks.tinted.mockResolvedValue("data:image/png;base64,balloon-switch-plush");
+  const ready = vi.fn();
+  const view = render(
+    <CompanionAvatar
+      avatar="bloub:balloon:cercle:neutre:145321"
+      animated={false}
+      onReady={ready}
+    />,
+  );
+  await waitFor(() => expect(mocks.bakeBalloonMaterial).toHaveBeenCalledOnce());
+  view.rerender(
+    <CompanionAvatar
+      avatar="bloub:plush:hexagone:curieux:145321"
+      animated={false}
+      onReady={ready}
+    />,
+  );
+  await waitFor(() => expect(ready).toHaveBeenCalledOnce());
+  await act(async () => finish("data:image/png;base64,late-balloon"));
+  expect(view.container.querySelector("svg")).toHaveAttribute(
+    "data-material",
+    "plush",
+  );
+  expect(view.container.querySelector("[data-texture]")).toHaveAttribute(
+    "href",
+    "data:image/png;base64,balloon-switch-plush",
+  );
+  expect(ready).toHaveBeenCalledOnce();
+});
 
 it("装饰表情变化复用原头像纹理，不重新换色、解码或通知就绪", async () => {
   mocks.tinted.mockResolvedValue("data:image/png;base64,decorative-expression");

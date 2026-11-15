@@ -116,17 +116,20 @@ describe("头像编辑保存", () => {
     },
   );
 
-  it("修改选项后保存完整配置", async () => {
+  it.each([
+    { label: "粒子", material: "particles" },
+    { label: "软胶", material: "balloon" },
+  ])("修改为 $label 后保存完整配置", async ({ label, material }) => {
     openForm();
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "编辑头像" }));
-    await user.click(screen.getByRole("button", { name: "粒子" }));
+    await user.click(screen.getByRole("button", { name: label }));
     await user.click(screen.getByRole("button", { name: "三角形" }));
     await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "保存修改" }));
     await waitFor(() => expect(save).toHaveBeenCalledOnce());
     expect(save.mock.calls[0]?.[0]).toMatchObject({
-      body: { avatar: "bloub:particles:triangle:curieux:38bdf8" },
+      body: { avatar: `bloub:${material}:triangle:curieux:38bdf8` },
     });
   });
 

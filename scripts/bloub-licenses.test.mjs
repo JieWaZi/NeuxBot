@@ -28,6 +28,7 @@ test("Bloub 许可由实际依赖的公开导出复制，并可替换上次构�
       exports: {
         "./LICENSE": "./legal/engine.txt",
         "./LICENSE.dsh-bloub-mood": "./legal/expressions.txt",
+        "./LICENSE.elastic-mesh": "./legal/balloon.txt",
       },
     }),
   );
@@ -39,7 +40,15 @@ test("Bloub 许可由实际依赖的公开导出复制，并可替换上次构�
     path.join(dependency, "legal/expressions.txt"),
     "Expression source license\n",
   );
-  for (const name of ["LICENSE", "LICENSE.dsh-bloub-mood"]) {
+  await writeFile(
+    path.join(dependency, "legal/balloon.txt"),
+    "Balloon material license\n",
+  );
+  for (const name of [
+    "LICENSE",
+    "LICENSE.dsh-bloub-mood",
+    "LICENSE.elastic-mesh",
+  ]) {
     await writeFile(
       path.join(destination, name),
       "previous dependency version\n",
@@ -56,5 +65,9 @@ test("Bloub 许可由实际依赖的公开导出复制，并可替换上次构�
   assert.equal(
     await readFile(path.join(destination, "LICENSE.dsh-bloub-mood"), "utf8"),
     "Expression source license\n",
+  );
+  assert.equal(
+    await readFile(path.join(destination, "LICENSE.elastic-mesh"), "utf8"),
+    "Balloon material license\n",
   );
 });

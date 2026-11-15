@@ -209,6 +209,7 @@ const resources = {
         materials: {
           plush: "毛绒",
           particles: "粒子",
+          balloon: "软胶",
         },
         shapes: {
           cercle: "圆形",

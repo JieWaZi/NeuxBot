@@ -111,7 +111,8 @@ export function createFrontendViteConfig(options: {
       // 只扫描真实 Renderer 入口，避免构建产物或外部软链接成为依赖入口。
       entries: ["index.html"],
       // 二维码库已提供原生 ESM，直接按需加载，避免授权过程中命中过期预构建。
-      exclude: ["qrcode.react"],
+      // Bloub 的 TypeScript 源码和材质资产直接交付，更新依赖后不沿用旧材质目录。
+      exclude: ["qrcode.react", "@neuxbot/bloub"],
     },
     server: {
       host: "127.0.0.1",

@@ -53,7 +53,7 @@ export function CompanionPicker({
   const materials = (
     <fieldset
       aria-label={t("companion.picker.material")}
-      className={cn("flex gap-1", inline && "justify-center")}
+      className={cn("flex flex-wrap gap-1", inline && "justify-center")}
     >
       {avatarMaterials.map((material) => (
         <Button

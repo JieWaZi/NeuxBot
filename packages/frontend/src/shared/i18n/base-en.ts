@@ -318,6 +318,7 @@ export const baseEn = {
       materials: {
         plush: "Plush",
         particles: "Particles",
+        balloon: "Soft vinyl",
       },
       shapes: {
         cercle: "Circle",

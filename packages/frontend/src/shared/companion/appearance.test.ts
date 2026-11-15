@@ -7,6 +7,18 @@ import {
 } from "./appearance";
 
 describe("Bloub 头像配置", () => {
+  it("软胶材质可以保存、还原和随机换形，保留所选材质", () => {
+    const saved = "bloub:balloon:nuage:curieux:22c55e";
+    expect(companionAppearance(saved)).toEqual({
+      material: "balloon",
+      shape: "nuage",
+      expression: "curieux",
+      color: "#22c55e",
+    });
+    expect(encodeCompanionAppearance(companionAppearance(saved))).toBe(saved);
+    expect(companionAvatar(saved, "新名字")).toBe(saved);
+    expect(randomCompanionAvatar("balloon")).toMatch(/^bloub:balloon:/);
+  });
   it("持久化各属性，改名不改变保存的选择", () => {
     const config = {
       material: "particles",

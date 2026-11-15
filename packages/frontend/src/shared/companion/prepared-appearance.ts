@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
-import { tinted } from "@neuxbot/bloub/tint";
-import { companionAppearance, type CompanionAppearance } from "./appearance";
+import { materialTexture } from "@neuxbot/bloub/material-texture";
+import {
+  companionAppearance,
+  type AvatarMaterial,
+  type CompanionAppearance,
+} from "./appearance";
 import { materialTextures } from "./materials";
 
 type PreparedTexture =
@@ -49,6 +53,7 @@ function decode(url: string): Promise<HTMLImageElement> {
 function prepareTexture(
   source: string,
   color: string,
+  material: AvatarMaterial,
 ): Promise<PreparedTexture> {
   const key = textureKey(source, color);
   const cached = textures.get(key);
@@ -56,8 +61,9 @@ function prepareTexture(
     if (cached.ready) retainReady(key);
     return cached.pending;
   }
+  const prepared = materialTexture(material, color);
   const entry: TextureEntry = {
-    pending: tinted(source, color)
+    pending: prepared
       .then(async (url): Promise<PreparedTexture> => ({
         status: "ready",
         url,
@@ -93,6 +99,7 @@ function completed(
 export function usePreparedAppearance(request: string): PreparedAppearance {
   const requested = companionAppearance(request);
   const source = materialTextures[requested.material];
+  const material = requested.material;
   const color = requested.color;
   const ready = textures.get(textureKey(source, color))?.ready;
   const available = ready ? completed(request, requested, ready) : undefined;
@@ -108,13 +115,13 @@ export function usePreparedAppearance(request: string): PreparedAppearance {
     setShown(available);
   useEffect(() => {
     let live = true;
-    void prepareTexture(source, color).then((texture) => {
+    void prepareTexture(source, color, material).then((texture) => {
       if (!live) return;
       setShown(completed(request, companionAppearance(request), texture));
     });
     return () => {
       live = false;
     };
-  }, [request, source, color]);
+  }, [request, source, color, material]);
   return available ?? shown;
 }

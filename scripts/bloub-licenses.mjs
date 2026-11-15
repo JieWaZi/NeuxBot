@@ -8,7 +8,11 @@ export async function copyBloubLicenses(root, destination) {
     path.join(root, "packages/frontend/package.json"),
   );
   await mkdir(destination, { recursive: true });
-  for (const name of ["LICENSE", "LICENSE.dsh-bloub-mood"]) {
+  for (const name of [
+    "LICENSE",
+    "LICENSE.dsh-bloub-mood",
+    "LICENSE.elastic-mesh",
+  ]) {
     const source = frontendRequire.resolve(`@neuxbot/bloub/${name}`);
     const output = path.join(destination, name);
     await rm(output, { force: true });

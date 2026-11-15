@@ -156,7 +156,8 @@
         "to": "licenses/bloub",
         "filter": [
           "LICENSE",
-          "LICENSE.dsh-bloub-mood"
+          "LICENSE.dsh-bloub-mood",
+          "LICENSE.elastic-mesh"
         ]
       }
     ],

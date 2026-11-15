@@ -34,9 +34,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ## Bloub 头像动画核心
 
-通用形状、径向轮廓插值、眼睛与状态动画源于 [jeremy-prt/bloub](https://github.com/jeremy-prt/bloub)，由 [JieWaZi/bloub](https://github.com/JieWaZi/bloub) 维护，通过 `@neuxbot/bloub` 直接依赖 `main` 分支，由锁文件固定解析提交，版本以 `packages/frontend/package.json` 及根锁文件为准。`@neuxbot/bloub` 中的 `neuxbot/src/bot`、`src/ui/gaze.ts` 与 `src/plush` 采用公开 fork [NorbertBodziony/bloub](https://github.com/NorbertBodziony/bloub/tree/7983de0bb7e868ac84881581eaa8c2e1f459dd30) 的固定源码，复用框架无关几何、换色和状态辅助算法。Copyright (c) 2026 Jérémy Perret，采用 MIT；完整许可见 [MIT 许可](https://github.com/JieWaZi/bloub/blob/84b02098dbd5822ec7c5e7cd0335952e9c8560e2/neuxbot/LICENSE)。固定来源记录于 [upstream.json](https://github.com/JieWaZi/bloub/blob/84b02098dbd5822ec7c5e7cd0335952e9c8560e2/neuxbot/upstream.json)。
+通用形状、径向轮廓插值、眼睛与状态动画源于 [jeremy-prt/bloub](https://github.com/jeremy-prt/bloub)，由 [JieWaZi/bloub](https://github.com/JieWaZi/bloub) 维护，通过 `@neuxbot/bloub` 依赖已发布的完整 Git 提交，由锁文件固定安装结果，版本以 `packages/frontend/package.json` 及根锁文件为准。`@neuxbot/bloub` 中的 `neuxbot/src/bot`、`src/ui/gaze.ts` 与 `src/plush` 采用公开 fork [NorbertBodziony/bloub](https://github.com/NorbertBodziony/bloub/tree/7983de0bb7e868ac84881581eaa8c2e1f459dd30) 的固定源码，复用框架无关几何、换色和状态辅助算法。Copyright (c) 2026 Jérémy Perret，采用 MIT；完整许可见 [MIT 许可](https://github.com/JieWaZi/bloub/blob/84b02098dbd5822ec7c5e7cd0335952e9c8560e2/neuxbot/LICENSE)。固定来源记录于 [upstream.json](https://github.com/JieWaZi/bloub/blob/84b02098dbd5822ec7c5e7cd0335952e9c8560e2/neuxbot/upstream.json)。
 
-毛绒为 NeuxBot 独立生成的完整立体身体素材，粒子为根据通用形状三维体积取样生成的细光尘图集，不包含第三方毛绒图片或角色。材质绘图与 React 集成由本项目维护，素材来源、生成方法和用途见[材质说明](https://github.com/JieWaZi/bloub/blob/84b02098dbd5822ec7c5e7cd0335952e9c8560e2/neuxbot/materials/README.md)。
+毛绒为 NeuxBot 独立生成的完整立体身体素材，粒子为根据通用形状三维体积取样生成的细光尘图集，不包含第三方毛绒图片或角色。材质绘图与 React 集成由本项目维护，素材来源、生成方法和用途见[材质说明](https://github.com/JieWaZi/bloub/blob/27a6ee66b68e16cecce749fe71123e7e3b2c4b59/neuxbot/materials/README.md)。
 
 点击表情全池排除当前项的选择策略参考 [dsh-bloub-mood](https://github.com/Yuuhann1999/dsh-bloub-mood/tree/c626528b3d6c32669c265d7144e85f60f48570d2) 的 `client-template.js`，以类型化纯函数适配于 `shared/companion/interaction-expressions.ts`。Copyright (c) 2026 Yuuhann1999，MIT，完整许可见 [LICENSE.dsh-bloub-mood](https://github.com/JieWaZi/bloub/blob/84b02098dbd5822ec7c5e7cd0335952e9c8560e2/neuxbot/LICENSE.dsh-bloub-mood)。该来源与 Bloub 同为原生 16 种表情；NeuxBot 在同一目录原创增加 8 个姿态至 24 种，未复制其生成素材或另建渲染框架。固定来源见 [expressions-source.json](https://github.com/JieWaZi/bloub/blob/84b02098dbd5822ec7c5e7cd0335952e9c8560e2/neuxbot/expressions-source.json)。
 
@@ -302,7 +302,7 @@ limitations under the License.
 
 ## 欢迎字标渲染器
 
-适用范围：vendor/elastic-mesh。保留文字栅格化、距离场和网格交互，适配主题、渐变、欢迎交接与资源释放。
+适用范围：vendor/elastic-mesh 与 `@neuxbot/bloub` 的 `neuxbot/src/materials/balloon-renderer.js`。开屏保留文字栅格化、距离场和网格交互，适配主题、渐变、欢迎交接与资源释放；Bloub 材质模块移植充气高度场与 balloon 表面烘焙，消费方只调用公开纹理准备入口。该部分原许可随包交付为 `LICENSE.elastic-mesh`，不归为 Bloub 的 MIT 部分。
 
 ```text
 MIT + Commons Clause License Condition v1.0
