@@ -5,7 +5,7 @@ import { avatarExpressionById as EXPRESSION_BY_ID } from "./avatar-expressions";
 import { SHAPE_BY_ID } from "@neuxbot/bloub/skins";
 import { POSES, type StateId } from "@neuxbot/bloub/states";
 import { usePreparedAppearance } from "./prepared-appearance";
-import { alignMaterialDrawing, materialViewBox } from "./materials";
+import { materialViewBox } from "./materials";
 import type { CompanionActivity, CompanionAttention } from "./activity";
 import { companionPlayback, companionPresentation } from "./playback";
 import { nextHoverFace, type HoverFace } from "./interaction-expressions";
@@ -320,32 +320,28 @@ export function CompanionAvatar({
         height="100%"
         overflow="visible"
       >
-        {alignMaterialDrawing(
-          avatarDrawing(
-            // 小头像仍需清晰的眼睛；沿用原生扩眼以保留眨眼和脸部余量。
-            { ...frame, eyes: enlargedEyes(frame.eyes, 1.3) },
-            appearance.material,
-            appearance.color,
-            id,
-            prepared.texture,
-            [],
-            [],
-            undefined,
-            renderedShape,
-            sampleTime,
-            {
-              notificationColor:
-                renderedAttention === "unread"
-                  ? "var(--accent-secondary-hover)"
-                  : renderedAttention
-                    ? appearance.color
-                    : "var(--accent-default)",
-              unreadCount:
-                attention?.kind === "unread" ? attention.count : undefined,
-            },
-          ),
+        {avatarDrawing(
+          // 小头像仍需清晰的眼睛；沿用原生扩眼以保留眨眼和脸部余量。
+          { ...frame, eyes: enlargedEyes(frame.eyes, 1.3) },
           appearance.material,
+          appearance.color,
+          id,
+          prepared.texture,
+          [],
+          [],
+          undefined,
           renderedShape,
+          sampleTime,
+          {
+            notificationColor:
+              renderedAttention === "unread"
+                ? "var(--accent-secondary-hover)"
+                : renderedAttention
+                  ? appearance.color
+                  : "var(--accent-default)",
+            unreadCount:
+              attention?.kind === "unread" ? attention.count : undefined,
+          },
         ).map(renderDrawing)}
       </svg>
     </span>

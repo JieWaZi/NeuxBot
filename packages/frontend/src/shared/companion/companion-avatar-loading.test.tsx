@@ -145,48 +145,79 @@ it("装饰表情变化复用原头像纹理，不重新换色、解码或通知�
   expect(ready).toHaveBeenCalledOnce();
 });
 
-it("同一头像切换材质保持视域和眼睛尺寸位置，不放大整张脸", async () => {
-  mocks.tinted.mockResolvedValue("data:image/png;base64,aligned-material");
-  const view = render(
-    <CompanionAvatar
-      avatar="bloub:plush:carre:complice:121314"
-      animated={false}
-    />,
-  );
-  await waitFor(() =>
+it.each(["particles", "balloon"])(
+  "切换到 %s 保持视域和眼睛尺寸位置，只校准身体",
+  async (material) => {
+    mocks.tinted.mockResolvedValue("data:image/png;base64,aligned-material");
+    mocks.bakeBalloonMaterial.mockResolvedValue(
+      "data:image/png;base64,aligned-balloon",
+    );
+    const view = render(
+      <CompanionAvatar
+        avatar="bloub:plush:carre:complice:121314"
+        animated={false}
+      />,
+    );
+    await waitFor(() =>
+      expect(view.container.querySelector("svg")).toHaveAttribute(
+        "data-texture-state",
+        "ready",
+      ),
+    );
+    const viewport = view.container
+      .querySelector("svg")
+      ?.getAttribute("viewBox");
+    const eyes = () =>
+      Array.from(view.container.querySelectorAll("[data-eye]"), (eye) => [
+        eye.getAttribute("d"),
+        eye.getAttribute("transform"),
+      ]);
+    const before = eyes();
+    view.rerender(
+      <CompanionAvatar
+        avatar={`bloub:${material}:carre:complice:121314`}
+        animated={false}
+      />,
+    );
+    await waitFor(() =>
+      expect(view.container.querySelector("svg")).toHaveAttribute(
+        "data-material",
+        material,
+      ),
+    );
     expect(view.container.querySelector("svg")).toHaveAttribute(
-      "data-texture-state",
-      "ready",
-    ),
-  );
-  const viewport = view.container.querySelector("svg")?.getAttribute("viewBox");
-  const eyes = () =>
-    Array.from(view.container.querySelectorAll("[data-eye]"), (eye) => [
-      eye.getAttribute("d"),
-      eye.getAttribute("transform"),
-    ]);
-  const before = eyes();
-  view.rerender(
-    <CompanionAvatar
-      avatar="bloub:particles:carre:complice:121314"
-      animated={false}
-    />,
-  );
-  await waitFor(() =>
-    expect(view.container.querySelector("svg")).toHaveAttribute(
-      "data-material",
-      "particles",
-    ),
-  );
-  expect(view.container.querySelector("svg")).toHaveAttribute(
-    "viewBox",
-    viewport,
-  );
-  expect(eyes()).toEqual(before);
-  const sprite = view.container.querySelector('[data-body-sprite="carre"]');
-  expect(Number(sprite?.getAttribute("width"))).toBeGreaterThan(316);
-  expect(Number(sprite?.getAttribute("x"))).toBeLessThan(-158);
-});
+      "viewBox",
+      viewport,
+    );
+    expect(eyes()).toEqual(before);
+    const sprite = view.container.querySelector('[data-body-sprite="carre"]');
+    // 正方形图格中的可见主体只补偿一次，避免宿主与库重复放大。
+    const sourceSize = material === "balloon" ? 210 : 212;
+    expect(Number(sprite?.getAttribute("width"))).toBeCloseTo(
+      (316 * 250) / sourceSize,
+    );
+    expect(Number(sprite?.getAttribute("height"))).toBeCloseTo(
+      (316 * 246) / sourceSize,
+    );
+    expect(Number(sprite?.getAttribute("x"))).toBeLessThan(-158);
+    view.rerender(
+      <CompanionAvatar
+        avatar="bloub:plush:carre:complice:121314"
+        animated={false}
+      />,
+    );
+    await waitFor(() =>
+      expect(view.container.querySelector("svg")).toHaveAttribute(
+        "data-material",
+        "plush",
+      ),
+    );
+    expect(eyes()).toEqual(before);
+    expect(
+      view.container.querySelector('[data-body-sprite="carre"]'),
+    ).toHaveAttribute("width", "316");
+  },
+);
 
 it("首个纹理未准备好时隐藏整个头像，不显示平面身体或孤立眼睛", () => {
   mocks.tinted.mockReturnValue(new Promise(() => {}));

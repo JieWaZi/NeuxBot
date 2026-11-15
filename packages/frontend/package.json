@@ -156,7 +156,7 @@
     "zod": "4.4.3"
   },
   "dependencies": {
-    "@neuxbot/bloub": "github:JieWaZi/bloub#27a6ee66b68e16cecce749fe71123e7e3b2c4b59",
+    "@neuxbot/bloub": "github:JieWaZi/bloub#5095a3057d9edee97c1cf9b4aaac431342b8443d",
     "@paper-design/shaders": "0.0.80"
   }
 }
