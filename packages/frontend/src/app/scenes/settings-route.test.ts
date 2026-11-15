@@ -60,10 +60,8 @@ describe("IM 设置路由", () => {
   });
 });
 
-it("通知深链定位独立分类并复用唯一设置 Scene", () => {
-  expect(settingsSectionFromPath("/settings/notifications")).toBe(
-    "notifications",
-  );
+it("旧通知深链定位通用分类并复用唯一设置 Scene", () => {
+  expect(settingsSectionFromPath("/settings/notifications")).toBe("general");
   expect(
     routeSceneForLocation(
       { pathname: "/settings/notifications", search: "" },

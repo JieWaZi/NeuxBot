@@ -28,6 +28,25 @@ const routeSceneForLocation = (location: RouteSceneLocation) =>
 const settingsSceneTab = () => createSettingsSceneTab(labels.settings);
 
 describe("应用 Scene 模型", () => {
+  it.each([
+    ["/resources", "", "suspend"],
+    ["/resources/skills/new", "", "suspend"],
+    ["/wakers/w1/projects", "", "suspend"],
+    ["/wakers/new", "", "suspend"],
+    ["/knowledge/library", "", "suspend"],
+    ["/usage", "", "suspend"],
+    ["/automatic-tasks/task", "", "suspend"],
+    ["/chats/one", "", "preserve"],
+    ["/chat", "?draftId=one", "preserve"],
+    ["/teams/team/threads/thread", "", "preserve"],
+    ["/workflows/workflow/runs/run", "", "preserve"],
+    ["/work-board", "", "preserve"],
+    ["/unknown", "", "preserve"],
+  ])("%s 在注册时声明隐藏生命周期 %s", (pathname, search, background) => {
+    expect(routeSceneForLocation({ pathname, search }).background).toBe(
+      background,
+    );
+  });
   it("旧伙伴目录转到聊天入口时复用同一个 Scene，不留下目录页签", () => {
     let snapshot = initialAppSceneSnapshot(
       routeSceneForLocation({ pathname: "/wakers", search: "" }),

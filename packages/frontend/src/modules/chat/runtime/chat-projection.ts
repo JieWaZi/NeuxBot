@@ -74,7 +74,7 @@ export type ChatPendingElicitation = Omit<
   requestedSchema?: unknown;
 };
 
-export type AllyChatMessage = ChatMessage & {
+export type BotChatMessage = ChatMessage & {
   optimistic?: boolean;
   /** 仅草稿首发等待接纳时展示会话准备，续发不使用此提示。 */
   preparingSession?: boolean;
@@ -96,10 +96,10 @@ export type ChatMessageSource = {
   reconcile: (signal?: AbortSignal) => Promise<number | undefined>;
 };
 
-export type ChatMessageVisibility = (message: AllyChatMessage) => boolean;
+export type ChatMessageVisibility = (message: BotChatMessage) => boolean;
 
 export function latestContextMetrics(
-  messages: readonly AllyChatMessage[],
+  messages: readonly BotChatMessage[],
 ): ChatRunMetrics | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const metrics = messages[index]?.runMetrics;
@@ -158,14 +158,14 @@ function toolActionOf(value?: string): ToolAction {
     : "other";
 }
 
-function messageIDOf(message: AllyChatMessage | ChatMessage) {
+function messageIDOf(message: BotChatMessage | ChatMessage) {
   return message.id ?? "";
 }
 
 function normalizeAuthoritativeMessage(
   message: ChatMessage,
   recordedAt?: number,
-): AllyChatMessage {
+): BotChatMessage {
   return {
     ...message,
     createdAt: message.createdAt ?? recordedAt,
@@ -174,11 +174,11 @@ function normalizeAuthoritativeMessage(
   };
 }
 
-function contentRevision(message: AllyChatMessage): number {
+function contentRevision(message: BotChatMessage): number {
   return message.liveRevision ?? message.revision ?? -1;
 }
 
-function displayPartsOf(message: AllyChatMessage): MessageDisplayPart[] {
+function displayPartsOf(message: BotChatMessage): MessageDisplayPart[] {
   return Array.isArray(message.displayParts) ? message.displayParts : [];
 }
 
@@ -230,7 +230,7 @@ function toolPartOf(part: MessageDisplayPart): ToolCallMessagePart {
 }
 
 function assistantPartsOf(
-  message: AllyChatMessage,
+  message: BotChatMessage,
 ): ThreadAssistantMessagePart[] {
   const displayParts = displayPartsOf(message);
   return displayParts.flatMap((part): ThreadAssistantMessagePart[] => {
@@ -248,7 +248,7 @@ function assistantPartsOf(
 }
 
 function sameSubmittedMessage(
-  first: AllyChatMessage,
+  first: BotChatMessage,
   second: ChatMessage,
 ): boolean {
   return Boolean(
@@ -261,9 +261,9 @@ function sameSubmittedMessage(
 
 /** 权威快照已覆盖的乐观或临时消息退出叠层，未提交的更高修订继续保留。 */
 export function uncommittedChatMessages(
-  current: readonly AllyChatMessage[],
+  current: readonly BotChatMessage[],
   authoritative: readonly ChatMessage[],
-): AllyChatMessage[] {
+): BotChatMessage[] {
   return current.filter(
     (message) =>
       !authoritative.some(
@@ -280,9 +280,9 @@ export function uncommittedChatMessages(
 }
 
 export function mergeAuthoritativeMessages(
-  current: AllyChatMessage[],
+  current: BotChatMessage[],
   authoritative: ChatMessage[],
-): AllyChatMessage[] {
+): BotChatMessage[] {
   const currentByID = new Map(
     current
       .filter((message) => message.id)
@@ -324,10 +324,10 @@ export function mergeAuthoritativeMessages(
 
 /** 持久元数据可以先于正文检查点到达；保留尚未被检查点覆盖的增量正文。 */
 function mergeMessageCoverage(
-  local: AllyChatMessage,
+  local: BotChatMessage,
   authoritative: ChatMessage,
   keepLive: boolean,
-): AllyChatMessage {
+): BotChatMessage {
   if (keepLive && (authoritative.revision ?? -1) <= (local.revision ?? -1))
     return local;
   const next = keepLive
@@ -350,7 +350,7 @@ function mergeMessageCoverage(
 }
 
 function findMessageIndex(
-  messages: AllyChatMessage[],
+  messages: BotChatMessage[],
   messageID?: string,
 ): number {
   if (!messageID) return -1;
@@ -358,10 +358,10 @@ function findMessageIndex(
 }
 
 export function applyChatEvent(
-  messages: AllyChatMessage[],
+  messages: BotChatMessage[],
   event: ChatEvent,
   isMessageVisible: ChatMessageVisibility = () => true,
-): AllyChatMessage[] {
+): BotChatMessage[] {
   if (event.fileChanges) {
     const index = findMessageIndex(messages, event.fileChanges.messageId);
     const current = messages[index];
@@ -453,7 +453,7 @@ export function isLatestAssistantMessage(
 }
 
 export function toThreadMessage(
-  message: AllyChatMessage,
+  message: BotChatMessage,
   incompleteErrorText = "",
 ): ThreadMessageLike {
   const role = message.role === "assistant" ? "assistant" : "user";

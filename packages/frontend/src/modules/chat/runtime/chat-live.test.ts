@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { ChatLiveFrame } from "@/shared/api/events";
 import { isChatLiveFrame } from "@/shared/api/events";
 import { applyChatLiveFrame, ChatLiveTracker } from "./chat-live";
-import type { AllyChatMessage } from "./chat-projection";
+import type { BotChatMessage } from "./chat-projection";
 
-const baseline: AllyChatMessage = {
+const baseline: BotChatMessage = {
   id: "message",
   executionId: "message",
   role: "assistant",

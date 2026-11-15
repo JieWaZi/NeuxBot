@@ -1,3 +1,4 @@
+import { i18n } from "@/shared/i18n";
 import type {
   GithubComJieWaZiNeuxBotServerConstantsExecutionStatus as ExecutionStatus,
   GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage as ChatMessage,
@@ -265,7 +266,7 @@ function subscribeDomain<Event extends SequencedEvent>(
       next !== cursor + 1
     ) {
       options.onGap?.(cursor + 1, next);
-      throw new Error("领域事件游标出现缺口");
+      throw new Error(i18n.t("common:errors.eventGap"));
     }
     cursor = next;
     updateGlobalEventCursor(options.topic, options.resource, cursor);
@@ -318,12 +319,14 @@ function subscribeDomain<Event extends SequencedEvent>(
           if (connected) options.onReconnect?.();
         } catch {
           if (!closed) {
-            logger.warn("全局事件权威对账未完成", { topic: options.topic });
+            logger.warn(i18n.t("common:errors.eventReconcileIncomplete"), {
+              topic: options.topic,
+            });
             options.onState?.("unavailable");
             options.onUnavailable?.();
             // 保留等待语义；下一次连接/推送会重试，不接受越过原游标的事件。
             waiting = true;
-            throw new Error("领域事件权威恢复失败");
+            throw new Error(i18n.t("common:errors.eventRecoveryFailed"));
           }
         } finally {
           clearTimeout(timer);

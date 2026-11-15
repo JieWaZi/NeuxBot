@@ -1,3 +1,4 @@
+import { i18n } from "@/shared/i18n";
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 
 import {
@@ -50,9 +51,7 @@ export function AppSceneWorkspaceContextProvider({
 export function useAppSceneWorkspace() {
   const workspace = useContext(AppSceneWorkspaceContext);
   if (!workspace) {
-    throw new Error(
-      "useAppSceneWorkspace 必须在 AppSceneWorkspaceContextProvider 内使用",
-    );
+    throw new Error(i18n.t("common:errors.sceneProviderMissing"));
   }
   return workspace;
 }
@@ -69,7 +68,7 @@ export function useScenePresentationKey(explicitKey?: string): string {
     (tab) => tab.id === workspace.routeSceneId,
   );
   if (!scene?.mountKey) {
-    throw new Error("聊天呈现需要 Scene 或工作区身份");
+    throw new Error(i18n.t("common:errors.chatSceneMissing"));
   }
   return scene.mountKey;
 }

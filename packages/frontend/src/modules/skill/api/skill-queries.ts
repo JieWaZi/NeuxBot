@@ -1,3 +1,4 @@
+import { i18n } from "@/shared/i18n";
 import type {
   GetWakerSkillResponse,
   GetWakerSkillError,
@@ -77,7 +78,7 @@ export async function invalidateVisibleSkillQueries(
 export function getWakerSkillOptions(
   options: Parameters<typeof partnerGetWakerSkillOptions>[0],
 ): UseQueryOptions<GetWakerSkillResponse, GetWakerSkillError> {
-  if (!options) throw new Error("资源查询参数缺失");
+  if (!options) throw new Error(i18n.t("common:errors.queryMissing"));
   if (options.path.wakerId)
     return partnerGetWakerSkillOptions(options) as UseQueryOptions<
       GetWakerSkillResponse,
@@ -94,7 +95,7 @@ export function getWakerSkillOptions(
 export function getSkillVersionOptions(
   options: Parameters<typeof partnerGetSkillVersionOptions>[0],
 ): UseQueryOptions<GetSkillVersionResponse, GetSkillVersionError> {
-  if (!options) throw new Error("资源查询参数缺失");
+  if (!options) throw new Error(i18n.t("common:errors.queryMissing"));
   if (options.path.wakerId)
     return partnerGetSkillVersionOptions(options) as UseQueryOptions<
       GetSkillVersionResponse,
@@ -114,7 +115,7 @@ export function getSkillVersionOptions(
 export function getSkillVersionFileOptions(
   options: Parameters<typeof partnerGetSkillVersionFileOptions>[0],
 ): UseQueryOptions<GetSkillVersionFileResponse, GetSkillVersionFileError> {
-  if (!options) throw new Error("资源查询参数缺失");
+  if (!options) throw new Error(i18n.t("common:errors.queryMissing"));
   if (options.path.wakerId)
     return partnerGetSkillVersionFileOptions(options) as UseQueryOptions<
       GetSkillVersionFileResponse,
@@ -134,7 +135,7 @@ export function getSkillVersionFileOptions(
 export function listSkillVersionsOptions(
   options: Parameters<typeof partnerListSkillVersionsOptions>[0],
 ): UseQueryOptions<ListSkillVersionsResponse, ListSkillVersionsError> {
-  if (!options) throw new Error("资源查询参数缺失");
+  if (!options) throw new Error(i18n.t("common:errors.queryMissing"));
   if (options.path.wakerId)
     return partnerListSkillVersionsOptions(options) as UseQueryOptions<
       ListSkillVersionsResponse,
@@ -155,7 +156,8 @@ export function createSkillVersionMutation(
   const library = createLibrarySkillVersionMutation();
   const partnerFn = partner.mutationFn;
   const libraryFn = library.mutationFn;
-  if (!partnerFn || !libraryFn) throw new Error("资源操作尚未配置");
+  if (!partnerFn || !libraryFn)
+    throw new Error(i18n.t("common:errors.operationUnavailable"));
   return {
     ...partner,
     mutationFn: ((input, context) => {
@@ -174,7 +176,8 @@ export function pullSkillUpdateMutation(
   const library = pullLibrarySkillUpdateMutation();
   const partnerFn = partner.mutationFn;
   const libraryFn = library.mutationFn;
-  if (!partnerFn || !libraryFn) throw new Error("资源操作尚未配置");
+  if (!partnerFn || !libraryFn)
+    throw new Error(i18n.t("common:errors.operationUnavailable"));
   return {
     ...partner,
     mutationFn: ((input, context) => {
@@ -193,7 +196,8 @@ export function restoreSkillVersionMutation(
   const library = restoreLibrarySkillVersionMutation();
   const partnerFn = partner.mutationFn;
   const libraryFn = library.mutationFn;
-  if (!partnerFn || !libraryFn) throw new Error("资源操作尚未配置");
+  if (!partnerFn || !libraryFn)
+    throw new Error(i18n.t("common:errors.operationUnavailable"));
   return {
     ...partner,
     mutationFn: ((input, context) => {
@@ -215,7 +219,8 @@ export function uninstallSkillMutation(
   const library = deleteLibrarySkillMutation();
   const partnerFn = partner.mutationFn;
   const libraryFn = library.mutationFn;
-  if (!partnerFn || !libraryFn) throw new Error("资源操作尚未配置");
+  if (!partnerFn || !libraryFn)
+    throw new Error(i18n.t("common:errors.operationUnavailable"));
   return {
     ...partner,
     mutationFn: (
@@ -242,7 +247,8 @@ export function updateWakerSkillMutation(
   const library = updateLibrarySkillMutation();
   const partnerFn = partner.mutationFn;
   const libraryFn = library.mutationFn;
-  if (!partnerFn || !libraryFn) throw new Error("资源操作尚未配置");
+  if (!partnerFn || !libraryFn)
+    throw new Error(i18n.t("common:errors.operationUnavailable"));
   return {
     ...partner,
     mutationFn: ((input, context) => {

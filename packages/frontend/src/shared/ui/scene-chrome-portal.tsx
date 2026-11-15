@@ -73,7 +73,12 @@ export function SceneChromePortalProvider({
           ? current?.owner === owner
             ? null
             : current
-          : { owner, width, fullscreen, side },
+          : current?.owner === owner &&
+              current.width === width &&
+              current.fullscreen === fullscreen &&
+              current.side === side
+            ? current
+            : { owner, width, fullscreen, side },
       ),
     [],
   );
@@ -208,6 +213,7 @@ export function SceneChromeLayout({
 }) {
   const inheritedActions = useSceneChromeActions();
   const sceneActions = actions ?? inheritedActions;
+  const hasSceneActions = Boolean(sceneActions);
   const setAccessoryTarget = useSceneChromeAccessoryTargetSetter();
   const setPaneActionsTarget = useSceneChromePaneActionsTargetSetter();
   const accessoryWidth = useSceneChromeAccessoryWidth();
@@ -218,6 +224,7 @@ export function SceneChromeLayout({
   const actionRef = useRef<HTMLDivElement>(null);
   const [measuredActionWidth, setActionWidth] = useState(0);
   const actionWidth = sceneActions ? measuredActionWidth : 0;
+  // JSX 身份随父组件 render 改变；实际尺寸变化由同一观察器处理。
   useLayoutEffect(() => {
     const actionElement = actionRef.current;
     if (!actionElement) return;
@@ -230,7 +237,7 @@ export function SceneChromeLayout({
         : new ResizeObserver(measure);
     observer?.observe(actionElement);
     return () => observer?.disconnect();
-  }, [sceneActions, accessoryAtLeft]);
+  }, [hasSceneActions, accessoryAtLeft]);
   const accessory = (
     <div
       key="accessory"

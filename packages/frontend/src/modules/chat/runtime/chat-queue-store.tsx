@@ -7,7 +7,7 @@ import {
   type PropsWithChildren,
 } from "react";
 
-import type { AllyChatMessage } from "./chat-projection";
+import type { BotChatMessage } from "./chat-projection";
 import type { PermissionLevel } from "@/shared/lib/runtime-permissions";
 
 import type { GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution as MessageResult } from "@/shared/api/generated/types.gen";
@@ -32,6 +32,8 @@ export type ChatSubmissionPreparer = (
 ) => PreparedChatSubmission;
 
 export type ChatSendSelection = {
+  /** 首发时冻结输入框中的档案优化意图，重试不读取后续标签改动。 */
+  optimizeProfile?: boolean;
   steerExecutionId?: string;
   /** 原输入尚未取得执行身份时，出队前沿其提交身份解析。 */
   steerSubmissionId?: string;
@@ -82,10 +84,10 @@ export type QueuedChatEntry = {
 
 type Listener = () => void;
 type QueueState = Record<string, readonly QueuedChatEntry[]>;
-type HandoffState = Record<string, readonly AllyChatMessage[]>;
+type HandoffState = Record<string, readonly BotChatMessage[]>;
 
 const emptyEntries: readonly QueuedChatEntry[] = [];
-const emptyHandoffMessages: readonly AllyChatMessage[] = [];
+const emptyHandoffMessages: readonly BotChatMessage[] = [];
 
 export class ChatQueueStore {
   private state: QueueState = {};
@@ -100,7 +102,7 @@ export class ChatQueueStore {
   getEntries = (queueKey: string): readonly QueuedChatEntry[] =>
     this.state[queueKey] ?? emptyEntries;
 
-  getHandoff = (chatId?: string): readonly AllyChatMessage[] =>
+  getHandoff = (chatId?: string): readonly BotChatMessage[] =>
     chatId
       ? (this.handoffs[chatId] ?? emptyHandoffMessages)
       : emptyHandoffMessages;
@@ -150,7 +152,7 @@ export class ChatQueueStore {
     this.update(queueKey, emptyEntries);
   }
 
-  setHandoff(chatId: string, messages: readonly AllyChatMessage[]) {
+  setHandoff(chatId: string, messages: readonly BotChatMessage[]) {
     this.handoffs = { ...this.handoffs, [chatId]: messages };
     this.emit();
   }

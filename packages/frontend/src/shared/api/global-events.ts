@@ -28,6 +28,29 @@ type Subscription = {
   readyEpoch?: string;
 };
 const subscriptions = new Map<string, Subscription>();
+const desktopDeliveries = new Map<
+  string,
+  (delivery: GlobalEventDelivery) => void
+>();
+let stopDesktopDeliveries: (() => void) | undefined;
+
+/** 所有资源共用一个 IPC 监听，按订阅身份直接分发并在最后退订时释放。 */
+function subscribeDesktopDelivery(
+  subscriptionId: string,
+  listener: (delivery: GlobalEventDelivery) => void,
+): () => void {
+  desktopDeliveries.set(subscriptionId, listener);
+  stopDesktopDeliveries ??= requirePlatformService("events").onCoreEvent(
+    (delivery) => desktopDeliveries.get(delivery.subscriptionId)?.(delivery),
+  );
+  return () => {
+    desktopDeliveries.delete(subscriptionId);
+    if (desktopDeliveries.size) return;
+    stopDesktopDeliveries?.();
+    stopDesktopDeliveries = undefined;
+  };
+}
+
 let browserClient: CoreEventClient | undefined;
 let refreshConnection: Promise<unknown> | undefined;
 const connectionRecoveries = new Set<
@@ -187,13 +210,16 @@ export function subscribeGlobalEvents(
     if (platform().events) {
       const bridge = requirePlatformService("events");
       const subscriptionId = crypto.randomUUID();
-      const stopEvents = bridge.onCoreEvent((delivery: GlobalEventDelivery) => {
-        if (!active || delivery.subscriptionId !== subscriptionId) return;
-        if (delivery.kind === "event") deliver.onEvent(delivery.frame);
-        else if (delivery.kind === "state")
-          deliver.onState?.(delivery.state, delivery.connectionChanged);
-        else deliver.onResync?.(delivery.reason);
-      });
+      const stopEvents = subscribeDesktopDelivery(
+        subscriptionId,
+        (delivery) => {
+          if (!active || delivery.subscriptionId !== subscriptionId) return;
+          if (delivery.kind === "event") deliver.onEvent(delivery.frame);
+          else if (delivery.kind === "state")
+            deliver.onState?.(delivery.state, delivery.connectionChanged);
+          else deliver.onResync?.(delivery.reason);
+        },
+      );
       const registration = bridge.subscribe_core_events({
         subscriptionId,
         topic,

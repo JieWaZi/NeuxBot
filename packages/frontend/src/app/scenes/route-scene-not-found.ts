@@ -1,7 +1,11 @@
-import { useQueryClient, type QueryKey } from "@tanstack/react-query";
-import { useCallback, useSyncExternalStore } from "react";
+import {
+  matchQuery,
+  useQueryClient,
+  type QueryKey,
+} from "@tanstack/react-query";
+import { useMemo } from "react";
 
-import { ApiError } from "@/shared/api/errors";
+import { useMissingQueries } from "@/shared/api/use-missing-queries";
 import {
   getChannelQueryKey,
   getChannelThreadQueryKey,
@@ -73,11 +77,8 @@ function routeSceneQueryKeys(href: string): QueryKey[] {
 /** 标签状态直接读取查询缓存，成功刷新或切换资源后自动恢复，不另存服务端事实。 */
 export function useRouteSceneNotFound(tabs: readonly AppSceneTab[]) {
   const cache = useQueryClient().getQueryCache();
-  const subscribe = useCallback(
-    (listener: () => void) => cache.subscribe(listener),
-    [cache],
-  );
-  const getSnapshot = useCallback(
+  const missingQueries = useMissingQueries();
+  return useMemo(
     () =>
       tabs
         .map((tab) => {
@@ -85,18 +86,14 @@ export function useRouteSceneNotFound(tabs: readonly AppSceneTab[]) {
             tab.kind === "route" &&
             tab.href &&
             routeSceneQueryKeys(tab.href).some((queryKey) =>
-              cache
-                .findAll({ queryKey })
-                .some(
-                  (query) =>
-                    query.state.error instanceof ApiError &&
-                    query.state.error.status === 404,
-                ),
+              [...missingQueries].some((hash) => {
+                const query = cache.get(hash);
+                return query && matchQuery({ queryKey }, query);
+              }),
             );
           return missing ? "1" : "0";
         })
         .join(""),
-    [cache, tabs],
+    [cache, missingQueries, tabs],
   );
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }

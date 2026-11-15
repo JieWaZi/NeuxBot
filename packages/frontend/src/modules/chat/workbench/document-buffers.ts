@@ -1,3 +1,4 @@
+import { i18n } from "@/shared/i18n";
 /** 工作台拥有草稿；文件查看器卸载和 Session 切换不清除未保存内容。 */
 export type DocumentBuffer = {
   text: string;
@@ -23,7 +24,7 @@ class DocumentBuffers {
 
   change(key: string, text: string): DocumentBuffer {
     const previous = this.buffers.get(key);
-    if (!previous) throw new Error("文件草稿尚未建立");
+    if (!previous) throw new Error(i18n.t("common:errors.draftUnavailable"));
     const next = { ...previous, text, revision: previous.revision + 1 };
     this.buffers.set(key, next);
     return next;

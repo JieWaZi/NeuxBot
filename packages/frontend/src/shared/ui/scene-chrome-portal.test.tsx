@@ -1,7 +1,7 @@
-import { StrictMode } from "react";
+import { StrictMode, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
 import { AppSceneWorkspaceContextProvider } from "@/shared/workspace/app-scene-workspace";
@@ -15,6 +15,8 @@ import {
   SceneChromePortal,
   SceneChromePortalProvider,
   useSceneChromeAccessoryTarget,
+  useSceneChromeAccessoryWidth,
+  useSceneChromeAccessoryWidthSetter,
 } from "./scene-chrome-portal";
 
 function WorkbenchHeader() {
@@ -56,6 +58,78 @@ function View({
 }
 
 describe("Scene chrome handoff", () => {
+  it("相同操作区的新 JSX 不重建布局观察器，尺寸变化由既有观察器测量", () => {
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    const callbacks: ResizeObserverCallback[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          callbacks.push(callback);
+        }
+        observe = observe;
+        disconnect = disconnect;
+      },
+    );
+    const rect = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({ width: 80 } as DOMRect);
+    try {
+      const view = render(
+        <SceneChromeLayout actions={<button>操作</button>}>
+          标签
+        </SceneChromeLayout>,
+      );
+      expect(observe).toHaveBeenCalledTimes(1);
+      rect.mockClear();
+      view.rerender(
+        <SceneChromeLayout actions={<button>操作</button>}>
+          标签
+        </SceneChromeLayout>,
+      );
+      expect(observe).toHaveBeenCalledTimes(1);
+      expect(disconnect).not.toHaveBeenCalled();
+      expect(rect).not.toHaveBeenCalled();
+      rect.mockReturnValue({ width: 120 } as DOMRect);
+      act(() => callbacks[0]?.([], {} as ResizeObserver));
+      expect(
+        document.querySelector("[data-scene-chrome-accessory-wrapper]"),
+      ).toHaveStyle({ "--scene-chrome-actions-width": "120px" });
+      expect(observe).toHaveBeenCalledTimes(1);
+      view.unmount();
+      expect(disconnect).toHaveBeenCalledTimes(1);
+    } finally {
+      rect.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("重复登记同一工作台宽度不广播顶栏 Context", () => {
+    const renders = vi.fn();
+    function Probe() {
+      const width = useSceneChromeAccessoryWidth();
+      renders(width);
+      return <output>{width}</output>;
+    }
+    function Writer() {
+      const setWidth = useSceneChromeAccessoryWidthSetter();
+      useEffect(() => {
+        setWidth?.("owner", 320);
+      }, [setWidth]);
+      return <button onClick={() => setWidth?.("owner", 320)}>重复宽度</button>;
+    }
+    render(
+      <SceneChromePortalProvider>
+        <Probe />
+        <Writer />
+      </SceneChromePortalProvider>,
+    );
+    renders.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "重复宽度" }));
+    expect(renders).not.toHaveBeenCalled();
+  });
+
   it.each(["会话摘要", "工作台标签"])(
     "从资源库返回聊天后，%s仍留在共享顶栏",
     (label) => {

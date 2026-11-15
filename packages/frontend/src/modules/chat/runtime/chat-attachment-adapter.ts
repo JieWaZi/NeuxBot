@@ -1,3 +1,4 @@
+import { i18n } from "@/shared/i18n";
 import type {
   AttachmentAdapter,
   CompleteAttachment,
@@ -5,7 +6,7 @@ import type {
 } from "@assistant-ui/react";
 import { stageAttachment, discardAttachment } from "@/shared/platform";
 
-export type AllyPathFile = File & {
+export type BotPathFile = File & {
   botSourcePath: string;
 };
 
@@ -19,7 +20,7 @@ function mediaTypeOf(path: string): string {
   return "application/octet-stream";
 }
 
-export function pathFile(path: string): AllyPathFile {
+export function pathFile(path: string): BotPathFile {
   const name = path.split(/[\\/]/).pop() || "attachment";
   return Object.assign(new File([], name, { type: mediaTypeOf(path) }), {
     botSourcePath: path,
@@ -30,7 +31,7 @@ export const chatAttachmentAdapter = {
   accept: "*",
   async add({ file }): Promise<PendingAttachment> {
     const sourcePath =
-      (file as AllyPathFile).allySourcePath || (await stageAttachment(file));
+      (file as BotPathFile).botSourcePath || (await stageAttachment(file));
     const attachmentFile = Object.assign(file, { botSourcePath: sourcePath });
     return {
       id: crypto.randomUUID(),
@@ -42,8 +43,9 @@ export const chatAttachmentAdapter = {
     };
   },
   async send(attachment: PendingAttachment): Promise<CompleteAttachment> {
-    const sourcePath = (attachment.file as AllyPathFile).allySourcePath;
-    if (!sourcePath) throw new Error("附件路径不可用");
+    const sourcePath = (attachment.file as BotPathFile).botSourcePath;
+    if (!sourcePath)
+      throw new Error(i18n.t("common:errors.attachmentUnavailable"));
     return {
       ...attachment,
       status: { type: "complete" },
@@ -58,7 +60,7 @@ export const chatAttachmentAdapter = {
     };
   },
   async remove(attachment): Promise<void> {
-    const sourcePath = (attachment.file as AllyPathFile | undefined)
+    const sourcePath = (attachment.file as BotPathFile | undefined)
       ?.botSourcePath;
     if (sourcePath) await discardAttachment(sourcePath);
   },

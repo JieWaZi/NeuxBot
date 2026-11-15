@@ -1,7 +1,9 @@
 import { useLayoutEffect } from "react";
 import {
+  act,
   fireEvent,
   render as renderView,
+  renderHook,
   screen,
   within,
 } from "@testing-library/react";
@@ -20,6 +22,50 @@ import { AppSceneWorkspaceProvider } from "./app-scene-workspace-provider";
 vi.mock("./route-scene-not-found", () => ({
   useRouteSceneNotFound: (tabs: unknown[]) => "0".repeat(tabs.length),
 }));
+
+it("关闭再打开同一 Scene 不复用已卸载页面的工作台回调", () => {
+  const navigate = vi.fn();
+  const { result } = renderHook(useAppSceneWorkspace, {
+    wrapper: ({ children }) => (
+      <AppSceneWorkspaceProvider
+        location={{ pathname: "/chats/one", search: "" }}
+        navigate={navigate}
+      >
+        {children}
+      </AppSceneWorkspaceProvider>
+    ),
+  });
+  const onNewChat = vi.fn();
+  const onSelect = vi.fn();
+  act(() =>
+    result.current.syncWorkspace({
+      ownerTabId: "chat:one",
+      primaryWorkspaceTabId: "main",
+      activeWorkspaceTabId: "main",
+      onSelect,
+      onClose: vi.fn(),
+      onNewChat,
+      tabs: [{ id: "main", label: "会话" }],
+    }),
+  );
+  act(() => result.current.dispatch({ type: "close", tabId: "chat:one" }));
+  act(() =>
+    result.current.dispatch({
+      type: "open",
+      tab: {
+        id: "chat:one",
+        kind: "route",
+        href: "/chats/one",
+        label: "会话",
+        closeable: true,
+      },
+    }),
+  );
+  act(() => result.current.dispatch({ type: "select", tabId: "chat:one" }));
+  expect(result.current.openNewChat?.()).toBe(false);
+  expect(onSelect).not.toHaveBeenCalled();
+  expect(onNewChat).not.toHaveBeenCalled();
+});
 
 function Tabs({
   onCloseFile,

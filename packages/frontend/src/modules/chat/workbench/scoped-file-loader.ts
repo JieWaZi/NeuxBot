@@ -1,3 +1,4 @@
+import { i18n } from "@/shared/i18n";
 import {
   openWorkspaceResourceScope,
   readWorkspaceResource,
@@ -28,7 +29,7 @@ export async function readScopedFilePreview(
 ): Promise<WorkspaceFileContent> {
   const scope = await openWorkspaceResourceScope(chatId);
   const info = await statWorkspaceResource(scope.id, relativePath, rootPath);
-  if (!info) throw new Error("文件不存在或已被删除");
+  if (!info) throw new Error(i18n.t("common:errors.fileDeleted"));
   const name = relativePath.split(/[\\/]/).at(-1) ?? relativePath;
   const image = info.mediaType.startsWith("image/");
   const document =

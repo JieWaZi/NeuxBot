@@ -96,6 +96,15 @@ export function AppSceneWorkspaceProvider({
     new Map<string, AppWorkspaceContribution>(),
   );
 
+  useLayoutEffect(() => {
+    const owners = new Set(snapshot.tabs.map((tab) => tab.id));
+    // 关闭或迁移 Scene 后释放回调闭包，不能让 Provider 长期保留已卸载页面。
+    for (const ownerId of workspaceContributionsRef.current.keys()) {
+      if (!owners.has(ownerId))
+        workspaceContributionsRef.current.delete(ownerId);
+    }
+  }, [snapshot.tabs]);
+
   const previousNavigation = useRef({ pathname, search, navigationKey });
   useLayoutEffect(() => {
     const previous = previousNavigation.current;

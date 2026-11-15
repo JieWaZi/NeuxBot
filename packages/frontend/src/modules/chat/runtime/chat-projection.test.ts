@@ -6,20 +6,20 @@ import {
   mergeAuthoritativeMessages,
   toThreadMessage,
   isLatestAssistantMessage,
-  type AllyChatMessage,
+  type BotChatMessage,
 } from "./chat-projection";
 import type { ChatEvent } from "@/shared/api/events";
 
 describe("chat projection", () => {
   it("晚到的提问答案仍位于最初提问的时间位置", () => {
-    const question: AllyChatMessage = {
+    const question: BotChatMessage = {
       id: "question",
       role: "assistant",
       createdSequence: 4,
       revision: 12,
       question: { elicitationId: "question", result: "accepted" },
     };
-    const history: AllyChatMessage[] = [
+    const history: BotChatMessage[] = [
       { id: "first", role: "user", createdSequence: 1 },
       { id: "later", role: "assistant", createdSequence: 8 },
     ];
@@ -130,10 +130,10 @@ describe("chat projection", () => {
   });
 
   it("活跃执行期间也会并入 REST 返回的第二轮消息", () => {
-    const current: AllyChatMessage[] = [
+    const current: BotChatMessage[] = [
       { id: "user-1", role: "user", content: "第一轮", updatedAt: 1 },
     ];
-    const authoritative: AllyChatMessage[] = [
+    const authoritative: BotChatMessage[] = [
       ...current,
       { id: "user-2", role: "user", content: "你好", updatedAt: 2 },
       {
@@ -151,7 +151,7 @@ describe("chat projection", () => {
   });
 
   it("保留尚未被后端权威消息对账的乐观消息", () => {
-    const optimistic: AllyChatMessage = {
+    const optimistic: BotChatMessage = {
       id: "optimistic:user:1",
       role: "user",
       content: "立即显示",
@@ -171,7 +171,7 @@ describe("chat projection", () => {
   });
 
   it("POST 返回稳定 ID 后仍保留尚未进入 REST 投影的消息", () => {
-    const acknowledged: AllyChatMessage = {
+    const acknowledged: BotChatMessage = {
       id: "user-2",
       role: "user",
       content: "立即显示",
@@ -233,7 +233,7 @@ describe("chat projection", () => {
   });
 
   it("接纳回执前按明确submissionId分别接管用户和助手，正文相同的另一输入仍保留", () => {
-    const current: AllyChatMessage[] = [
+    const current: BotChatMessage[] = [
       {
         id: "optimistic:user",
         submissionId: "input-1",
@@ -316,7 +316,7 @@ describe("chat projection", () => {
         updatedAt: 20,
       },
     } as unknown as ChatEvent;
-    const existing: AllyChatMessage[] = [
+    const existing: BotChatMessage[] = [
       {
         id: "user-2",
         role: "user",
@@ -344,8 +344,8 @@ describe("chat projection", () => {
       content: `历史消息 ${index}`,
       status: index % 2 === 0 ? undefined : "completed",
       revision: 1,
-    })) satisfies AllyChatMessage[];
-    const running: AllyChatMessage = {
+    })) satisfies BotChatMessage[];
+    const running: BotChatMessage = {
       id: "assistant-running",
       role: "assistant",
       status: "running",
@@ -372,7 +372,7 @@ describe("chat projection", () => {
   });
 
   it("团队主会话可以丢弃内部系统输入而不影响普通用户消息", () => {
-    const visible = (message: AllyChatMessage) =>
+    const visible = (message: BotChatMessage) =>
       message.role !== "user" || message.actor === "user";
     const systemResult = applyChatEvent(
       [],
@@ -576,7 +576,7 @@ describe("chat projection", () => {
           text,
         })),
       );
-      const message: AllyChatMessage = {
+      const message: BotChatMessage = {
         id: "assistant-whitespace",
         role: "assistant",
         status,
@@ -610,7 +610,7 @@ describe("chat projection", () => {
   });
 
   it("流式片段从纯换行增长为正文时，重新展示完整原文", () => {
-    const message: AllyChatMessage = {
+    const message: BotChatMessage = {
       id: "assistant-growing",
       role: "assistant",
       status: "running",
@@ -619,7 +619,7 @@ describe("chat projection", () => {
     expect(toThreadMessage(message).content).toEqual([]);
 
     const text = "\n\n第一段\n\n第二段\n";
-    const updated: AllyChatMessage = {
+    const updated: BotChatMessage = {
       ...message,
       displayParts: [{ type: "text", text }],
     };
@@ -650,7 +650,7 @@ describe("chat projection", () => {
         },
         { type: "text", text: "完成" },
       ],
-    } as AllyChatMessage);
+    } as BotChatMessage);
 
     expect(projected.content).toEqual([
       {
@@ -694,7 +694,7 @@ describe("chat projection", () => {
             contextWindowTokens: 1_000_000,
           },
         },
-      ] as AllyChatMessage[]),
+      ] as BotChatMessage[]),
     ).toEqual({
       contextUsedTokens: 17_400,
       contextWindowTokens: 1_000_000,
@@ -708,7 +708,7 @@ describe("chat projection", () => {
       content: "完成",
       status: "completed",
       fileChanges: [{ path: "README.md", addedLines: 3, deletedLines: 1 }],
-    } as AllyChatMessage);
+    } as BotChatMessage);
 
     expect(projected.metadata?.custom).toMatchObject({ isTerminal: true });
     expect(projected.metadata?.custom?.fileChanges).toBeUndefined();
@@ -727,7 +727,7 @@ describe("chat projection", () => {
         outputTokens: 1482,
         cacheReadTokens: 40_448,
       },
-    } as AllyChatMessage);
+    } as BotChatMessage);
 
     expect(projected.metadata?.custom).toEqual({
       isTerminal: true,
@@ -759,7 +759,7 @@ describe("chat projection", () => {
           },
         },
       ],
-    } as unknown as AllyChatMessage);
+    } as unknown as BotChatMessage);
 
     const encoded = JSON.stringify(projected.content);
     expect(encoded).toContain("safeSummary");
@@ -792,7 +792,7 @@ describe("chat projection", () => {
         ],
       },
     } as unknown as ChatEvent;
-    const current: AllyChatMessage[] = [
+    const current: BotChatMessage[] = [
       {
         id: "assistant-2",
         role: "assistant",
@@ -830,14 +830,14 @@ describe("chat projection", () => {
   });
 
   it("用消息 revision 保留领先于 REST 的流式快照并忽略乱序事件", () => {
-    const live: AllyChatMessage = {
+    const live: BotChatMessage = {
       id: "assistant-live",
       role: "assistant",
       content: "正在流式输出",
       revision: 12,
       updatedAt: 120,
     };
-    const staleRest: AllyChatMessage = {
+    const staleRest: BotChatMessage = {
       id: "assistant-live",
       role: "assistant",
       content: "正在流式",

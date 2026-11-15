@@ -70,6 +70,43 @@ function snapshot(): GlobalEventFrame {
   };
 }
 describe("Renderer 全局事件边界", () => {
+  it("不同资源共用唯一 IPC 监听并按身份分发，最后释放后可重新订阅", async () => {
+    const callbacks = Array.from({ length: 24 }, () => vi.fn());
+    const stops = callbacks.map((onEvent, index) =>
+      subscribeGlobalEvents(
+        "chat",
+        { kind: "chat", id: `chat-${index}` },
+        { onEvent },
+      ),
+    );
+    try {
+      expect(mocks.listeners.size).toBe(1);
+      const subscriptionId = mocks.subscribe.mock.calls[12]?.[0].subscriptionId;
+      for (const listener of mocks.listeners)
+        listener({ kind: "event", subscriptionId, frame: snapshot() });
+      expect(callbacks[12]).toHaveBeenCalledOnce();
+      expect(
+        callbacks.filter((callback) => callback.mock.calls.length),
+      ).toHaveLength(1);
+      stops[12]?.();
+      expect(mocks.listeners.size).toBe(1);
+      for (const listener of mocks.listeners)
+        listener({ kind: "event", subscriptionId, frame: snapshot() });
+      expect(callbacks[12]).toHaveBeenCalledOnce();
+    } finally {
+      stops.forEach((stop) => stop());
+    }
+    await vi.waitFor(() => expect(mocks.unsubscribe).toHaveBeenCalledTimes(24));
+    expect(mocks.listeners.size).toBe(0);
+    const stop = subscribeGlobalEvents(
+      "work-board",
+      { kind: "global" },
+      { onEvent: vi.fn() },
+    );
+    expect(mocks.listeners.size).toBe(1);
+    stop();
+    expect(mocks.listeners.size).toBe(0);
+  });
   it("主进程已有工作看板订阅时，晚加入收到 ready 并补读而不重置物理流", async () => {
     const read = vi.fn();
     const delivered = vi.fn();

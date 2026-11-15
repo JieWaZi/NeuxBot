@@ -4,7 +4,11 @@ export type ChatSceneOwner = { kind: "waker" | "team"; id: string };
 
 export type AppSceneKind = "route" | "settings" | "workspace";
 
+export type AppSceneBackground = "suspend" | "preserve";
+
 export type AppSceneTab = SceneTab & {
+  /** 隐藏时暂停 Effect 或保留原生工作区生命周期，由路由注册统一声明。 */
+  background?: AppSceneBackground;
   chatOwner?: ChatSceneOwner;
   customLabel?: string;
   href?: string;

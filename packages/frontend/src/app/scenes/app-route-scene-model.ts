@@ -1,5 +1,8 @@
 import { resolveAppNavigation } from "../layout/app-navigation-model";
-import type { AppSceneTab } from "@/shared/workspace/app-scene-model";
+import type {
+  AppSceneBackground,
+  AppSceneTab,
+} from "@/shared/workspace/app-scene-model";
 import {
   integrationSettingsHref,
   legacyIMSettingsHref,
@@ -45,8 +48,10 @@ function routeTab(
   id: string,
   label: string,
   location: RouteSceneLocation,
+  background: AppSceneBackground,
 ): Omit<AppSceneTab, "lastUsed"> {
   return {
+    background,
     closeable: true,
     href: `${location.pathname}${location.search}`,
     id,
@@ -87,7 +92,12 @@ export function routeSceneForLocation(
       knowledge[1] ||
       (params.get("view") !== "library" ? params.get("library") : "");
     if (!id)
-      return routeTab("knowledge", labels.knowledge || labels.page, location);
+      return routeTab(
+        "knowledge",
+        labels.knowledge || labels.page,
+        location,
+        "suspend",
+      );
     const identity = [
       params.get("backend") || "local",
       params.get("connection") || "local",
@@ -99,12 +109,18 @@ export function routeSceneForLocation(
       `knowledge:${identity}`,
       params.get("title") || labels.knowledge || labels.page,
       location,
+      "suspend",
     );
   }
   if (navigation.moduleId === "usage")
-    return routeTab("usage", labels.usage || labels.page, location);
+    return routeTab("usage", labels.usage || labels.page, location, "suspend");
   if (navigation.moduleId === "work-board")
-    return routeTab("work-board", labels.workBoard || labels.page, location);
+    return routeTab(
+      "work-board",
+      labels.workBoard || labels.page,
+      location,
+      "preserve",
+    );
   const workflow = /^\/workflows\/([^/]+)(?:\/runs\/([^/]+))?$/.exec(pathname);
   if (workflow)
     return routeTab(
@@ -113,15 +129,17 @@ export function routeSceneForLocation(
         : `workflow:${workflow[1]}`,
       labels.workflow || labels.page,
       location,
+      "preserve",
     );
   if (navigation.moduleId === "resources")
-    return routeTab("resources", labels.resources, location);
+    return routeTab("resources", labels.resources, location, "suspend");
   const globalAutomatic = /^\/automatic-tasks(?:\/([^/]+))?$/.exec(pathname);
   if (navigation.moduleId === "automatic-tasks" && globalAutomatic)
     return routeTab(
       "automatic-tasks",
       labels.automaticTask || labels.page,
       location,
+      "suspend",
     );
   const automatic = /^\/wakers\/([^/]+)\/automatic-tasks(?:\/([^/]+))?$/.exec(
     pathname,
@@ -131,11 +149,13 @@ export function routeSceneForLocation(
       "automatic-tasks",
       labels.automaticTask || labels.page,
       location,
+      "suspend",
     );
   }
   const params = new URLSearchParams(search);
   const chat = /^\/chats\/([^/]+)$/.exec(pathname);
-  if (chat?.[1]) return routeTab(`chat:${chat[1]}`, labels.chat, location);
+  if (chat?.[1])
+    return routeTab(`chat:${chat[1]}`, labels.chat, location, "preserve");
 
   if (
     pathname === "/" ||
@@ -148,6 +168,7 @@ export function routeSceneForLocation(
       draftId ? `chat-draft:${draftId}` : `chat-entry:${wakerId}`,
       labels.newChat,
       location,
+      "preserve",
     );
   }
 
@@ -157,6 +178,7 @@ export function routeSceneForLocation(
       teamMode ? "management:teams" : "management:wakers",
       teamMode ? labels.team : labels.partner,
       location,
+      "suspend",
     );
   }
 
@@ -165,13 +187,19 @@ export function routeSceneForLocation(
   );
   if (team?.[1]) {
     if (pathname.endsWith("/chats")) {
-      return routeTab(`team:${team[1]}:chats`, labels.teamChat, location);
+      return routeTab(
+        `team:${team[1]}:chats`,
+        labels.teamChat,
+        location,
+        "suspend",
+      );
     }
     if (team[2]) {
       return routeTab(
         `team:${team[1]}:thread:${team[2]}`,
         labels.teamChat,
         location,
+        "preserve",
       );
     }
     // 草稿使用独立身份，首发创建 Thread 后才能像伙伴草稿一样原地替换。
@@ -180,6 +208,7 @@ export function routeSceneForLocation(
       `team-draft:${team[1]}:${draftId}`,
       labels.teamChat,
       location,
+      "preserve",
     );
   }
 
@@ -188,6 +217,7 @@ export function routeSceneForLocation(
       "waker-create",
       labels.newWaker ?? labels.partner,
       location,
+      "suspend",
     );
 
   const waker = /^\/wakers\/([^/]+)(?:\/([^/]+))?/.exec(pathname);
@@ -199,10 +229,11 @@ export function routeSceneForLocation(
       resource ? `waker:${wakerId}:resources` : `waker:${wakerId}:${section}`,
       resource ? labels.detail : labels.partner,
       location,
+      "suspend",
     );
   }
 
-  return routeTab(`route:${pathname}`, labels.page, location);
+  return routeTab(`route:${pathname}`, labels.page, location, "preserve");
 }
 
 export function settingsSceneTab(label: string): Omit<AppSceneTab, "lastUsed"> {

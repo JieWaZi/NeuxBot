@@ -1,4 +1,8 @@
 import {
+  localizedDateTimeFormat,
+  localizedRelativeTimeFormat,
+} from "@/shared/i18n/format";
+import {
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -72,7 +76,7 @@ import {
   type PartnerNavigationPreferences,
 } from "./partner-navigation-preferences";
 
-const relativeTimeFormat = new Intl.RelativeTimeFormat("zh-CN", {
+const relativeTimeFormat = localizedRelativeTimeFormat({
   numeric: "auto",
 });
 
@@ -92,7 +96,7 @@ function formatRelativeTime(value?: number) {
   if (Math.abs(delta) < day * 14) {
     return relativeTimeFormat.format(Math.round(delta / day), "day");
   }
-  return new Intl.DateTimeFormat("zh-CN", {
+  return localizedDateTimeFormat({
     month: "numeric",
     day: "numeric",
   }).format(new Date(value));

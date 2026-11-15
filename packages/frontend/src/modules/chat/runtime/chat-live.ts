@@ -1,5 +1,5 @@
 import type { ChatLiveFrame, ChatMessageIncrement } from "@/shared/api/events";
-import type { AllyChatMessage } from "./chat-projection";
+import type { BotChatMessage } from "./chat-projection";
 
 /** 只保存活动流的顺序元数据，不复制正文和持久历史。 */
 export class ChatLiveTracker {
@@ -10,7 +10,7 @@ export class ChatLiveTracker {
 
   accept(
     frame: ChatLiveFrame,
-    baseline: AllyChatMessage | undefined,
+    baseline: BotChatMessage | undefined,
   ): "accept" | "duplicate" | "recover" {
     if (
       !baseline ||
@@ -49,7 +49,7 @@ export class ChatLiveTracker {
 }
 
 const indexes = new WeakMap<object, ReadonlyMap<string, number>>();
-type Parts = NonNullable<AllyChatMessage["displayParts"]>;
+type Parts = NonNullable<BotChatMessage["displayParts"]>;
 type Operation = NonNullable<ChatMessageIncrement["parts"]>[number];
 const mutations = new WeakMap<
   Parts,
@@ -75,9 +75,9 @@ export function getLivePartMutations(
 
 /** 将已校验的临时增量折叠到当前消息，未变化部件保留引用。 */
 export function applyChatLiveFrame(
-  message: AllyChatMessage,
+  message: BotChatMessage,
   frame: ChatLiveFrame,
-): AllyChatMessage {
+): BotChatMessage {
   let current = message;
   for (const update of frame.updates) {
     if (update.revision <= (current.liveRevision ?? current.revision ?? -1))

@@ -1,3 +1,4 @@
+import { i18n } from "@/shared/i18n";
 import {
   infiniteQueryOptions,
   replaceEqualDeep,
@@ -204,7 +205,7 @@ export function teamWakersInfiniteOptions(query: string) {
           throwOnError: true,
         }),
       );
-      if (!data) throw new Error("伙伴列表返回为空");
+      if (!data) throw new Error(i18n.t("common:errors.partnersEmpty"));
       return data;
     },
     getNextPageParam: (lastPage: ListWakersResponse) => {
@@ -313,7 +314,8 @@ async function readTeamTimelineWindow(
     );
   };
   while (tail.hasMore && tail.nextCursor && !covered()) {
-    if (visited.has(tail.nextCursor)) throw new Error("团队时间线游标未推进");
+    if (visited.has(tail.nextCursor))
+      throw new Error(i18n.t("common:errors.cursorStalled"));
     visited.add(tail.nextCursor);
     tail = await fetchTeamTimelinePage(
       channelId,

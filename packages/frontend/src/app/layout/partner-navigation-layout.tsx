@@ -583,7 +583,7 @@ function PartnerNavigationLayoutContent({
             </div>
           ) : null}
           <section
-            aria-label="场景工作区"
+            aria-label={t("sceneWorkspace")}
             data-content-spans-sidebar={!hasSidebar || undefined}
             className={cn(
               "relative row-start-1 grid min-h-0 min-w-0 grid-rows-[var(--shell-titlebar-height)_minmax(0,1fr)] overflow-hidden",

@@ -1,11 +1,11 @@
-import type { AllyChatMessage } from "./chat-projection";
+import type { BotChatMessage } from "./chat-projection";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { messageCompanionActivity } from "./companion-activity";
 import { companionPlayback } from "@/shared/companion/playback";
 
 afterEach(() => vi.useRealTimers());
 
-type Part = NonNullable<AllyChatMessage["displayParts"]>[number];
+type Part = NonNullable<BotChatMessage["displayParts"]>[number];
 const tool = (action: string, status = "running"): Part => ({
   type: "tool",
   toolCategory: "command",
@@ -14,7 +14,7 @@ const tool = (action: string, status = "running"): Part => ({
 });
 function message(
   displayParts: Part[],
-  status: AllyChatMessage["status"] = "running",
+  status: BotChatMessage["status"] = "running",
   preparingSession = false,
 ) {
   return { displayParts, status, preparingSession, isLast: true };

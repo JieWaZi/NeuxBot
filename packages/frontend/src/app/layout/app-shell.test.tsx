@@ -28,6 +28,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import "@/shared/i18n";
+import glassStyles from "@/shared/styles/window-glass.css?raw";
 import { useAppSceneWorkspace } from "@/shared/workspace/app-scene-workspace";
 import { useSceneWorkspace } from "@/shared/workspace/workspace-context";
 
@@ -39,6 +40,10 @@ const render = (ui: ReactElement) =>
 import { useSettingsDraftGuard } from "@/modules/settings";
 import { AppShell } from "./app-shell";
 import { getChatOptions } from "@/modules/chat";
+import type {
+  GetChatResponse,
+  GetChannelThreadResponse,
+} from "@/shared/api/generated/types.gen";
 import type * as PluginQueries from "@/modules/plugin/api/plugin-queries";
 import type * as WakerModule from "@/modules/waker";
 import type { ExecutorAttention } from "@/modules/workspaceattention";
@@ -71,6 +76,7 @@ function closeContent(label: string) {
 }
 
 const teamHistoryRender = vi.hoisted(() => vi.fn());
+const shellChromeRender = vi.hoisted(() => vi.fn());
 const executorAttentionFixture = vi.hoisted(
   () => new Map<string, ExecutorAttention>(),
 );
@@ -295,9 +301,10 @@ vi.mock("@/modules/chat", () => ({
 }));
 
 vi.mock("@/shared/ui/sonner", () => ({
-  Toaster: ({ position }: { position?: string }) => (
-    <div aria-label="通知容器" data-position={position} />
-  ),
+  Toaster: ({ position }: { position?: string }) => {
+    shellChromeRender();
+    return <div aria-label="通知容器" data-position={position} />;
+  },
 }));
 
 vi.mock("@/shared/theme", () => ({
@@ -848,6 +855,97 @@ describe("AppShell 伙伴导航", () => {
     });
   });
 
+  it("透明开启时真实 Shell 最外层不再用实色 Canvas 挡住原生材质", () => {
+    const previous = document.documentElement.dataset.windowTransparent;
+    const style = document.createElement("style");
+    style.textContent = `.bg-canvas { background: rgb(255, 255, 255); }\n${glassStyles}`;
+    document.head.append(style);
+    try {
+      document.documentElement.dataset.windowTransparent = "false";
+      const view = renderShell();
+      const root = view.container.querySelector<HTMLElement>(
+        "[data-app-shell-root]",
+      );
+      if (!root) throw new Error("App shell root was not mounted");
+      expect(getComputedStyle(root).backgroundColor).toBe("rgb(255, 255, 255)");
+      document.documentElement.dataset.windowTransparent = "true";
+      expect(getComputedStyle(root).backgroundColor).toBe("rgba(0, 0, 0, 0)");
+    } finally {
+      style.remove();
+      if (previous === undefined)
+        delete document.documentElement.dataset.windowTransparent;
+      else document.documentElement.dataset.windowTransparent = previous;
+    }
+  });
+
+  it("聊天执行字段更新不唤醒只消费导航元数据的 Shell，标题更新仍即时生效", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderShell("/chats/chat-a?wakerId=waker-1", false, client);
+    await findContent({ name: "会话 chat-a" });
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    shellChromeRender.mockClear();
+    await act(async () => {
+      client.setQueryData<GetChatResponse>(
+        getChatOptions({ path: { chatId: "chat-a" } }).queryKey,
+        (data) => ({
+          ...data,
+          chat: {
+            ...data?.chat,
+            latestSequence: 123,
+            activeExecutionId: "execution-new",
+          },
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(shellChromeRender).not.toHaveBeenCalled();
+    await act(async () => {
+      client.setQueryData<GetChatResponse>(
+        getChatOptions({ path: { chatId: "chat-a" } }).queryKey,
+        (data) => ({
+          ...data,
+          chat: { ...data?.chat, title: "更新的真实标题" },
+        }),
+      );
+    });
+    expect(await findContent({ name: "更新的真实标题" })).toBeVisible();
+  });
+
+  it("团队 Thread 成员变化不唤醒 Shell，标题变化仍更新标签", async () => {
+    latestChatFixture.threadTitles.set("team-1:thread-1", "团队讨论");
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    const key = ["channel-thread", "team-1", "thread-1"];
+    client.setQueryData<GetChannelThreadResponse>(key, {
+      thread: { id: "thread-1", title: "团队讨论", leadChatId: "lead-chat" },
+    });
+    renderShell("/teams/team-1/threads/thread-1", false, client);
+    await findContent({ name: "团队讨论" });
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    shellChromeRender.mockClear();
+    await act(async () => {
+      client.setQueryData<GetChannelThreadResponse>(key, (data) => ({
+        ...data,
+        members: [{ wakerId: "new-member", chatId: "new-chat" }],
+      }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(shellChromeRender).not.toHaveBeenCalled();
+    await act(async () => {
+      client.setQueryData<GetChannelThreadResponse>(key, (data) => ({
+        ...data,
+        thread: { ...data?.thread, title: "更新的团队标题" },
+      }));
+    });
+    expect(await findContent({ name: "更新的团队标题" })).toBeVisible();
+  });
+
   it.each([
     { requestKinds: ["approval"], nativeState: "waiting-approval" },
     { requestKinds: ["input"], nativeState: "waiting-answer" },
@@ -1165,6 +1263,50 @@ describe("AppShell 伙伴导航", () => {
     );
   });
 
+  it("关注摘要已定位伙伴最近会话时，点击同步切换且不等待重复列表请求", async () => {
+    executorAttentionFixture.set("waker-2", {
+      executorId: "waker-2",
+      latestChatId: "waker-2-live",
+      latestWork: { kind: "chat", id: "waker-2-live" },
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const fetch = vi.spyOn(client, "fetchQuery");
+    renderShell("/wakers/waker-1/projects/project-a", false, client);
+    const partner = await within(
+      screen.getByRole("navigation", { name: "伙伴头像栏" }),
+    ).findByRole("button", { name: "伙伴二" });
+    fetch.mockClear();
+    fireEvent.click(partner);
+    expect(activeRouteScene()).toHaveTextContent(
+      "/chats/waker-2-live?wakerId=waker-2",
+    );
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("关注摘要已定位团队最近会话时，点击同步切换且不重读历史列表", async () => {
+    executorAttentionFixture.set("team-1", {
+      executorId: "team-1",
+      latestChatId: "team-lead",
+      latestWork: { kind: "team_thread", id: "thread-live" },
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const fetch = vi.spyOn(client, "fetchInfiniteQuery");
+    renderShell("/wakers/waker-1/projects/project-a", false, client);
+    const team = await within(
+      screen.getByRole("navigation", { name: "伙伴头像栏" }),
+    ).findByRole("button", { name: "团队一" });
+    fetch.mockClear();
+    fireEvent.click(team);
+    expect(activeRouteScene()).toHaveTextContent(
+      "/teams/team-1/threads/thread-live",
+    );
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("从临时会话点击伙伴时保留草稿并打开最新会话", async () => {
     const user = userEvent.setup();
     renderShell("/chat?draftId=draft-a&wakerId=waker-1");
@@ -1301,7 +1443,7 @@ describe("AppShell 伙伴导航", () => {
     const form = await screen.findByRole("form", { name: "新建伙伴" });
     expect(activeRouteScene()).toContainElement(form);
     expect(within(form).getByRole("textbox", { name: "名称" })).toBeRequired();
-    expect(within(form).getByRole("textbox", { name: "概要" })).toHaveAttribute(
+    expect(within(form).getByRole("textbox", { name: "简介" })).toHaveAttribute(
       "rows",
       "2",
     );

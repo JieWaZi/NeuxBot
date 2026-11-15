@@ -1,10 +1,10 @@
 import type { CompanionActivity } from "@/shared/companion/activity";
-import type { AllyChatMessage } from "./chat-projection";
+import type { BotChatMessage } from "./chat-projection";
 
 /** 最新助手跟随真实工作阶段，失败保留警示，完成保留通知。 */
 export function messageCompanionActivity(
   message: Pick<
-    AllyChatMessage,
+    BotChatMessage,
     "displayParts" | "status" | "preparingSession"
   > & {
     isLast: boolean;

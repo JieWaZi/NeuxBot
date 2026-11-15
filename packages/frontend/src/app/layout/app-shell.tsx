@@ -45,7 +45,11 @@ import {
 } from "@/shared/api/chat-reading";
 import { workspaceAttentionOpenHref } from "../notifications/workspace-attention-navigation";
 import { platform } from "@/shared/platform/provider";
-import { ApiError } from "@/shared/api/errors";
+import { useMissingQueries } from "@/shared/api/use-missing-queries";
+import type {
+  GetChatResponse,
+  GetChannelThreadResponse,
+} from "@/shared/api/generated/types.gen";
 import {
   getWakerQueryKey,
   getChannelQueryKey,
@@ -129,6 +133,7 @@ import {
   type RouteSceneLabels,
 } from "../scenes/app-route-scene-model";
 import { AppSceneWorkspaceProvider } from "../scenes/app-scene-workspace-provider";
+import { AppSceneActivity } from "../scenes/app-scene-activity";
 import {
   legacyIMSettingsHref,
   integrationSettingsHref,
@@ -154,6 +159,25 @@ const IMIntegrationSettingsContent = lazy(() =>
 
 const titlebarActionClass =
   "border-transparent bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground";
+
+// 导航只跟随身份和标题；执行序号、配置及成员详情仍由所属页面消费。
+function selectChatNavigation(data: GetChatResponse) {
+  const chat = data.chat;
+  return {
+    chat: chat && { id: chat.id, title: chat.title, wakerId: chat.wakerId },
+  };
+}
+
+function selectThreadNavigation(data: GetChannelThreadResponse) {
+  const thread = data.thread;
+  return {
+    thread: thread && {
+      id: thread.id,
+      title: thread.title,
+      leadChatId: thread.leadChatId,
+    },
+  };
+}
 
 export function AppShell({
   routeScene: RouteScene = AppRouteScene,
@@ -366,6 +390,7 @@ function AppShellContent({
       },
     }),
     enabled: Boolean(currentChatId),
+    select: selectChatNavigation,
   });
   const resolvedChat = currentChatQuery.data?.chat;
   const currentChat =
@@ -400,6 +425,7 @@ function AppShellContent({
     enabled:
       Boolean(lastActiveChat?.chatId) &&
       lastActiveChat?.chatId !== currentChatId,
+    select: selectChatNavigation,
   });
   const validatedChat = lastActiveValidationQuery.data?.chat;
   const validatedLastActive =
@@ -525,6 +551,14 @@ function AppShellContent({
       const openState = preferredChatId
         ? captureChatOpenIntent(queryClient, preferredChatId)
         : undefined;
+      // 原关注摘要已按活动时间定位最近公开对话，点击不再等待重复的列表读取。
+      if (preferredChatId) {
+        navigate(chatHref(preferredChatId, partnerId), {
+          flushSync: true,
+          state: openState,
+        });
+        return;
+      }
       return queryClient
         .fetchQuery({
           ...listChatsOptions({ query: { wakerId: partnerId, limit: 1 } }),
@@ -569,6 +603,16 @@ function AppShellContent({
       const openState = preferred?.latestChatId
         ? captureChatOpenIntent(queryClient, preferred.latestChatId)
         : undefined;
+      if (
+        preferred?.latestWork?.kind === "team_thread" &&
+        preferred.latestWork.id
+      ) {
+        navigate(`/teams/${channelId}/threads/${preferred.latestWork.id}`, {
+          flushSync: true,
+          state: openState,
+        });
+        return;
+      }
       void import("@/app/pages/team-thread-page");
       return queryClient
         .fetchInfiniteQuery(teamThreadsInfiniteOptions(channelId))
@@ -687,6 +731,7 @@ function AppShellContent({
       },
     }),
     enabled: Boolean(rememberedTeamExists && rememberedTeamThreadId),
+    select: selectThreadNavigation,
   });
   const validatedPartnerHref = rememberedTeamId
     ? rememberedTeamExists &&
@@ -710,7 +755,11 @@ function AppShellContent({
       const href = resolveAppModuleHref(moduleId, {
         partnerHref: validatedPartnerHref ?? chatEntryHref(selectedPartnerId),
       });
-      navigate(href, { flushSync: true });
+      // 路由变化由 Provider 同步打开 Scene，不在同一点击中再提交一遍工作区。
+      if (`${location.pathname}${location.search}` !== href) {
+        navigate(href, { flushSync: true });
+        return;
+      }
       const [pathname = "/", query] = href.split("?");
       appScenes.dispatch({
         type: "open",
@@ -752,6 +801,7 @@ function AppShellContent({
     queries: chatRouteTabs.map(({ chatId }) => ({
       ...getChatOptions({ path: { chatId } }),
       enabled: false,
+      select: selectChatNavigation,
     })),
   });
   const teamThreadTabs = appScenes.snapshot.tabs.flatMap((tab) => {
@@ -767,6 +817,7 @@ function AppShellContent({
     queries: teamThreadTabs.map(({ channelId, threadId }) => ({
       ...getChannelThreadOptions({ path: { channelId, threadId } }),
       enabled: false,
+      select: selectThreadNavigation,
     })),
   });
   const visibleChatAttention = new Map(
@@ -826,21 +877,7 @@ function AppShellContent({
           }
         : undefined;
   const cache = queryClient.getQueryCache();
-  const subscribeCache = useCallback(
-    (listener: () => void) => cache.subscribe(listener),
-    [cache],
-  );
-  const missingQueries = useSyncExternalStore(subscribeCache, () =>
-    cache
-      .getAll()
-      .filter(
-        (query) =>
-          query.state.error instanceof ApiError &&
-          query.state.error.status === 404,
-      )
-      .map((query) => query.queryHash)
-      .join("\n"),
-  );
+  const missingQueries = useMissingQueries();
   const navigationHistory = useAppNavigationHistory({
     owner: isChatSurface ? activeChatOwner : undefined,
     // 历史记录已访问实体；分页缺席或其某个Chat删除不能证明实体失效。
@@ -852,7 +889,7 @@ function AppShellContent({
               ? getWakerQueryKey({ path: { wakerId: owner.id } })
               : getChannelQueryKey({ path: { channelId: owner.id } }),
         })
-        .some((query) => missingQueries.split("\n").includes(query.queryHash)),
+        .some((query) => missingQueries.has(query.queryHash)),
     onSelect: (owner) =>
       owner.kind === "waker" ? selectPartner(owner.id) : selectTeam(owner.id),
     onPageBack: pageBack,
@@ -893,7 +930,10 @@ function AppShellContent({
         onClose={() => setActionChoices(undefined)}
         onOpen={(href) => navigate(href, { flushSync: true })}
       />
-      <div className="bg-canvas relative h-full overflow-hidden">
+      <div
+        data-app-shell-root
+        className="bg-canvas relative h-full overflow-hidden"
+      >
         <PartnerNavigationLayout
           sidebarToolbar={
             <AppNavigationHistoryControls {...navigationHistory} />
@@ -1132,32 +1172,39 @@ function AppShellContent({
                     )}
                     inert={!active}
                   >
-                    <AppSceneRouteScope routeSceneId={tab.id}>
-                      <RouteScene
-                        location={tab.href ?? "/"}
-                        locationState={tab.navigationState}
-                        outletContext={{
-                          chatRightPanel: active ? activeRightPanel : undefined,
-                          onTeamThreadDeleted: (
-                            channelId: string,
-                            threadId: string,
-                          ) =>
-                            setPreferences((current) =>
-                              forgetTeamThread(current, channelId, threadId),
-                            ),
-                          setChatRightPanel,
-                          renderTeamMembers: isTeamChat
-                            ? (onMemberOpened: () => void) => (
-                                <TeamMemberMenu
-                                  channelId={teamChannelId}
-                                  onMemberOpened={onMemberOpened}
-                                  threadId={teamThreadId}
-                                />
-                              )
-                            : undefined,
-                        }}
-                      />
-                    </AppSceneRouteScope>
+                    <AppSceneActivity
+                      background={tab.background}
+                      active={active}
+                    >
+                      <AppSceneRouteScope routeSceneId={tab.id}>
+                        <RouteScene
+                          location={tab.href ?? "/"}
+                          locationState={tab.navigationState}
+                          outletContext={{
+                            chatRightPanel: active
+                              ? activeRightPanel
+                              : undefined,
+                            onTeamThreadDeleted: (
+                              channelId: string,
+                              threadId: string,
+                            ) =>
+                              setPreferences((current) =>
+                                forgetTeamThread(current, channelId, threadId),
+                              ),
+                            setChatRightPanel,
+                            renderTeamMembers: isTeamChat
+                              ? (onMemberOpened: () => void) => (
+                                  <TeamMemberMenu
+                                    channelId={teamChannelId}
+                                    onMemberOpened={onMemberOpened}
+                                    threadId={teamThreadId}
+                                  />
+                                )
+                              : undefined,
+                          }}
+                        />
+                      </AppSceneRouteScope>
+                    </AppSceneActivity>
                   </div>
                 );
               })}

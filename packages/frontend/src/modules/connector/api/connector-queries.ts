@@ -1,3 +1,4 @@
+import { i18n } from "@/shared/i18n";
 import type {
   GetWakerConnectorResponse,
   GetWakerConnectorError,
@@ -50,7 +51,7 @@ export async function invalidateVisibleConnectorQueries(
 export function getWakerConnectorOptions(
   options: Parameters<typeof partnerGetWakerConnectorOptions>[0],
 ): UseQueryOptions<GetWakerConnectorResponse, GetWakerConnectorError> {
-  if (!options) throw new Error("资源查询参数缺失");
+  if (!options) throw new Error(i18n.t("common:errors.queryMissing"));
   if (options.path.wakerId)
     return partnerGetWakerConnectorOptions(options) as UseQueryOptions<
       GetWakerConnectorResponse,
@@ -71,7 +72,8 @@ export function createWakerConnectorMutation(
   const library = createLibraryConnectorMutation();
   const partnerFn = partner.mutationFn;
   const libraryFn = library.mutationFn;
-  if (!partnerFn || !libraryFn) throw new Error("资源操作尚未配置");
+  if (!partnerFn || !libraryFn)
+    throw new Error(i18n.t("common:errors.operationUnavailable"));
   return {
     ...partner,
     mutationFn: ((input, context) => {
@@ -90,7 +92,8 @@ export function updateWakerConnectorMutation(
   const library = updateLibraryConnectorMutation();
   const partnerFn = partner.mutationFn;
   const libraryFn = library.mutationFn;
-  if (!partnerFn || !libraryFn) throw new Error("资源操作尚未配置");
+  if (!partnerFn || !libraryFn)
+    throw new Error(i18n.t("common:errors.operationUnavailable"));
   return {
     ...partner,
     mutationFn: ((input, context) => {
@@ -109,7 +112,8 @@ export function deleteWakerConnectorMutation(
   const library = deleteLibraryConnectorMutation();
   const partnerFn = partner.mutationFn;
   const libraryFn = library.mutationFn;
-  if (!partnerFn || !libraryFn) throw new Error("资源操作尚未配置");
+  if (!partnerFn || !libraryFn)
+    throw new Error(i18n.t("common:errors.operationUnavailable"));
   return {
     ...partner,
     mutationFn: ((input, context) => {
@@ -128,7 +132,8 @@ export function testWakerConnectorMutation(
   const library = testLibraryConnectorMutation();
   const partnerFn = partner.mutationFn;
   const libraryFn = library.mutationFn;
-  if (!partnerFn || !libraryFn) throw new Error("资源操作尚未配置");
+  if (!partnerFn || !libraryFn)
+    throw new Error(i18n.t("common:errors.operationUnavailable"));
   return {
     ...partner,
     mutationFn: ((input, context) => {

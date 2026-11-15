@@ -6,6 +6,7 @@ import {
   workbenchPaneById,
 } from "./workbench-model";
 import { restoreWorkbenchState, WorkbenchStore } from "./workbench-store";
+import { workbenchDocumentBuffers } from "./document-buffers";
 
 function persistedState() {
   let next = 0;
@@ -43,6 +44,65 @@ function persistedState() {
 }
 
 describe("工作台状态恢复", () => {
+  it("未保存文件仍拥有工作区身份，草稿明确丢弃后才释放快照", async () => {
+    const scope = "chat:dirty-retention";
+    const key = `${scope}:file:document`;
+    const store = new WorkbenchStore();
+    const stop = store.subscribe(scope, () => {});
+    const before = store.getSnapshot(scope);
+    workbenchDocumentBuffers.begin(key, "已保存内容");
+    workbenchDocumentBuffers.change(key, "未保存草稿");
+    stop();
+    await Promise.resolve();
+    expect(store.getSnapshot(scope)).toBe(before);
+    expect(workbenchDocumentBuffers.get(key)?.text).toBe("未保存草稿");
+    workbenchDocumentBuffers.discard(key);
+    store.subscribe(scope, () => {})();
+    await Promise.resolve();
+    expect(store.getSnapshot(scope)).not.toBe(before);
+  });
+  it("最后一个消费者退出后释放内存快照，重开从持久布局恢复新的挂载身份", async () => {
+    const scope = "chat:release-last-consumer";
+    const store = new WorkbenchStore();
+    const first = store.subscribe(scope, () => {});
+    const second = store.subscribe(scope, () => {});
+    store.dispatch(scope, {
+      type: "open-browser",
+      title: "浏览器",
+      newTab: true,
+    });
+    const before = store.getSnapshot(scope);
+    first();
+    await Promise.resolve();
+    expect(store.getSnapshot(scope)).toBe(before);
+    second();
+    const restore = store.subscribe(scope, () => {});
+    await Promise.resolve();
+    expect(store.getSnapshot(scope)).toBe(before);
+    restore();
+    await Promise.resolve();
+    const reopened = store.getSnapshot(scope);
+    expect(reopened.tabs[0]?.id).toBe(before.tabs[0]?.id);
+    expect(reopened.tabs[0]?.occurrenceId).not.toBe(
+      before.tabs[0]?.occurrenceId,
+    );
+    localStorage.removeItem(`bot.right-workbench.${scope}`);
+  });
+
+  it("重复退出旧消费者不影响后来加入的消费者", async () => {
+    const scope = "chat:repeat-release";
+    const store = new WorkbenchStore();
+    const first = store.subscribe(scope, () => {});
+    const before = store.getSnapshot(scope);
+    first();
+    const second = store.subscribe(scope, () => {});
+    first();
+    await Promise.resolve();
+    expect(store.getSnapshot(scope)).toBe(before);
+    second();
+    await Promise.resolve();
+    expect(store.getSnapshot(scope)).not.toBe(before);
+  });
   it("首条接纳绑定正式 Chat 时保留工具身份、布局和选择并保存正式范围", () => {
     const store = new WorkbenchStore();
     const draft = "draft:workflow:first";

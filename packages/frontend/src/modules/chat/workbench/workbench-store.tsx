@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useState,
@@ -16,7 +17,10 @@ import {
   type WorkbenchState,
 } from "./workbench-model";
 import { workbenchPanes, type WorkbenchNode } from "./workbench-pane";
-import { preventUnloadWithDirtyDrafts } from "./document-buffers";
+import {
+  preventUnloadWithDirtyDrafts,
+  workbenchDocumentBuffers,
+} from "./document-buffers";
 
 const storagePrefix = "bot.right-workbench.";
 const tabSchema = z.object({
@@ -187,8 +191,16 @@ export class WorkbenchStore {
     listeners.add(listener);
     this.listeners.set(scopeKey, listeners);
     return () => {
-      listeners.delete(listener);
-      if (listeners.size === 0) this.listeners.delete(scopeKey);
+      if (!listeners.delete(listener) || listeners.size > 0) return;
+      this.listeners.delete(scopeKey);
+      // StrictMode 与范围交接可在同一轮重新订阅；真正关闭后只保留持久布局。
+      queueMicrotask(() => {
+        if (
+          !this.listeners.has(scopeKey) &&
+          !workbenchDocumentBuffers.hasDirtyPrefix(`${scopeKey}:`)
+        )
+          this.states.delete(scopeKey);
+      });
     };
   };
 
@@ -257,9 +269,17 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
 export function useWorkbench(scopeKey: string) {
   const store = useContext(WorkbenchContext);
   if (!store) throw new Error("Right workbench provider is missing");
-  const snapshot = useSyncExternalStore(
-    (listener) => store.subscribe(scopeKey, listener),
+  const subscribe = useCallback(
+    (listener: () => void) => store.subscribe(scopeKey, listener),
+    [scopeKey, store],
+  );
+  const getSnapshot = useCallback(
     () => store.getSnapshot(scopeKey),
+    [scopeKey, store],
+  );
+  const snapshot = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
     emptyWorkbenchState,
   );
   return {

@@ -45,11 +45,7 @@ describe("file addresses", () => {
       "neuxbot-resource://file/session/s//etc/hosts",
     ],
     ["/", "/", "neuxbot-resource://file/session/s//"],
-    [
-      "C:\\w\\x.ts",
-      "C:/w/x.ts",
-      "neuxally-resource://file/session/s/C:/w/x.ts",
-    ],
+    ["C:\\w\\x.ts", "C:/w/x.ts", "neuxbot-resource://file/session/s/C:/w/x.ts"],
     [
       "\\\\server\\share\\x.ts",
       "//server/share/x.ts",
@@ -165,9 +161,7 @@ describe("file addresses", () => {
 
   it("keeps a UNC path's identity in an absolute address", () => {
     const address = absoluteFileAddress("\\\\server\\share\\x.ts");
-    expect(address).toBe(
-      "neuxally-resource://file/absolute//server/share/x.ts",
-    );
+    expect(address).toBe("neuxbot-resource://file/absolute//server/share/x.ts");
     expect(parseFileAddress(address)).toEqual({
       scope: "absolute",
       path: "//server/share/x.ts",

@@ -30,7 +30,7 @@ import {
   latestContextMetrics,
   mergeAuthoritativeMessages,
   uncommittedChatMessages,
-  type AllyChatMessage,
+  type BotChatMessage,
   type ChatMessageVisibility,
   type ChatMessageSource,
   type ChatPendingElicitation,
@@ -71,7 +71,7 @@ import {
 function overlayMatchesScope(
   overlayChatId: string | undefined,
   optionsChatId: string | undefined,
-  messages: readonly AllyChatMessage[],
+  messages: readonly BotChatMessage[],
 ): boolean {
   if (overlayChatId === optionsChatId) return true;
   return !optionsChatId && overlayChatId !== undefined && messages.length > 0;
@@ -123,7 +123,7 @@ type ChatRuntimeOptions = {
 };
 
 type ChatRuntimeResult = {
-  messages: readonly AllyChatMessage[];
+  messages: readonly BotChatMessage[];
   runtime: AssistantRuntime;
   streamState: StreamState;
   isRunning: boolean;
@@ -187,9 +187,9 @@ function optimisticAttachmentsOf(message: AppendMessage) {
 }
 
 function mergeLocalMessages(
-  first: readonly AllyChatMessage[],
-  second: readonly AllyChatMessage[],
-): AllyChatMessage[] {
+  first: readonly BotChatMessage[],
+  second: readonly BotChatMessage[],
+): BotChatMessage[] {
   const merged = [...first];
   const indexByID = new Map(
     merged.flatMap((message, index) =>
@@ -225,7 +225,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
   const referenceOnlyText = options.referenceOnlyText;
   const [overlay, setOverlay] = useState<{
     chatId?: string;
-    messages: AllyChatMessage[];
+    messages: BotChatMessage[];
   }>({ chatId: options.chatId, messages: [] });
   const [sending, setSending] = useState<{
     queueKey: string;
@@ -584,7 +584,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           updatedAt: now,
           optimistic: true,
         },
-      ] satisfies AllyChatMessage[];
+      ] satisfies BotChatMessage[];
       const optimisticOverlay = {
         chatId: snapshot.chatId,
         messages: optimisticMessages,
@@ -598,7 +598,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         else prepared.confirmAccepted?.();
         const execution = result.execution;
         const resultChatID = result.chat?.id ?? snapshot.chatId;
-        const committedMessages: AllyChatMessage[] = execution
+        const committedMessages: BotChatMessage[] = execution
           ? optimisticMessages.map((item) => {
               if (item.id === userID) {
                 return {
@@ -1092,7 +1092,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
               (message) => message.id === id,
             ),
           ]
-            .filter((message): message is AllyChatMessage => Boolean(message))
+            .filter((message): message is BotChatMessage => Boolean(message))
             .sort(
               (a, b) =>
                 (b.liveRevision ?? b.revision ?? -1) -
