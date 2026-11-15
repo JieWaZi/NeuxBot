@@ -6,13 +6,16 @@ import { prepareWelcomeAssets } from "@/app/welcome/welcome-brand";
 import { logger } from "@/shared/diagnostics/logger";
 import { observeReactPerformanceMeasures } from "@/shared/diagnostics/react-performance-measures";
 import { initializeApi } from "@/shared/api/runtime";
-import { i18n } from "@/shared/i18n";
+import { i18n, initializeLanguage } from "@/shared/i18n";
 import { initializeTheme, ThemeProvider } from "@/shared/theme";
 
 let activeRoot: Root | undefined;
 let stopPerformanceMeasures: (() => void) | undefined;
+let stopLanguage: (() => void) | undefined;
 
 export function startApplication(): void {
+  stopLanguage?.();
+  stopLanguage = initializeLanguage();
   initializeTheme();
   const startupStarted = performance.now();
   const startupTimings: Record<string, number> = {};
@@ -22,7 +25,7 @@ export function startApplication(): void {
   };
   noteStartup("entry");
   const container = document.getElementById("root");
-  if (!container) throw new Error("缺少应用挂载节点");
+  if (!container) throw new Error(i18n.t("common:errors.rootMissing"));
   stopPerformanceMeasures?.();
   stopPerformanceMeasures = observeReactPerformanceMeasures();
   const root = createRoot(container);
@@ -121,6 +124,7 @@ export function startApplication(): void {
 /** 登录失效或退出时释放界面、请求和事件，保留 Core 已接纳工作。 */
 export async function resetApplicationSession(): Promise<void> {
   activeRoot?.unmount();
+  stopLanguage?.();
   activeRoot = undefined;
   stopPerformanceMeasures?.();
   stopPerformanceMeasures = undefined;

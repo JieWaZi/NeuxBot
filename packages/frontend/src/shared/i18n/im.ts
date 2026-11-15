@@ -275,7 +275,6 @@ export const imEn = {
   dependencyActiveRun: "Active run",
   dependencyBlocksDeletion:
     "Active workflows or pending deliveries use this connection. Wait for completion or stop the related work.",
-
   pendingAuthorization: "Needs approval",
   authorization: "Chat access",
   authorizationReadFailed: "Could not read chat approval status.",
@@ -345,7 +344,6 @@ export const imEn = {
     "Optional. Choose a project or local directory, or leave empty to use the default workspace.",
   workflowHint:
     "Allow workflows to discover this chat as a result destination.",
-
   bindings: "Chat access",
   chatAccess: "Chat access",
   connectPlatform: "Connect {{platform}}",
@@ -520,4 +518,6 @@ export const imEn = {
     IMConfigurationConflict:
       "Configuration changed or the bot identity differs. Reload, or add a new connection to use another bot.",
   },
-};
+  responseConfigurationCount: "{{count}} response configurations",
+  cardTeamMemberCount: "{{count}} members",
+} as const;

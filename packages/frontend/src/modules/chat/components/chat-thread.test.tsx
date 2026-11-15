@@ -21,7 +21,7 @@ import {
 } from "./chat-thread";
 import {
   CHAT_PROCESS_COMMENTARY_PART,
-  type AllyChatMessage,
+  type BotChatMessage,
   type ChatRunMetrics,
 } from "../runtime/chat-projection";
 import {
@@ -57,7 +57,7 @@ const { messageState } = vi.hoisted(() => ({
   },
 }));
 
-type DisplayPart = NonNullable<AllyChatMessage["displayParts"]>[number];
+type DisplayPart = NonNullable<BotChatMessage["displayParts"]>[number];
 function canonicalPart(
   part: ThreadAssistantMessagePart,
   index: number,
@@ -95,7 +95,7 @@ function canonicalPart(
     text: "text" in part ? part.text : "",
   };
 }
-function canonicalMessage(): AllyChatMessage {
+function canonicalMessage(): BotChatMessage {
   const source = messageState.current;
   const meta = source.metadata?.custom;
   return {
@@ -1239,7 +1239,7 @@ describe("execution file changes", () => {
 
 describe("assistant message shell", () => {
   it("续接回复只在最后一段显示头像，历史段不保留静态头像", () => {
-    const messages: AllyChatMessage[] = [
+    const messages: BotChatMessage[] = [
       { id: "previous-segment", role: "assistant", status: "canceled" },
       { id: "latest-segment", role: "assistant", status: "completed" },
     ];
@@ -1276,7 +1276,7 @@ describe("assistant message shell", () => {
     ).not.toBeNull();
   });
   it("正文隔开的多个过程段只展示一次整次执行用时", () => {
-    const message: AllyChatMessage = {
+    const message: BotChatMessage = {
       id: "multiple-processes",
       role: "assistant",
       status: "completed",
@@ -1304,7 +1304,7 @@ describe("assistant message shell", () => {
   it("准备和接纳阶段只由头像反馈状态，不显示空消息卡", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-11-06T03:00:00Z"));
-    const pending: AllyChatMessage & { preparingSession: boolean } = {
+    const pending: BotChatMessage & { preparingSession: boolean } = {
       id: "preparing",
       role: "assistant",
       status: "pending",
@@ -1439,7 +1439,7 @@ describe("assistant message shell", () => {
 
 describe("steer 连续工作展示", () => {
   const projection = new ChatMessageProjection();
-  const message: AllyChatMessage = {
+  const message: BotChatMessage = {
     id: "steered",
     role: "assistant",
     status: "canceled",

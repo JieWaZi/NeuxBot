@@ -3,6 +3,7 @@ import { uploadFileBytesLimit } from "@neuxbot/platform-contracts/upload-byte-li
 import { platform } from "@neuxbot/frontend/platform";
 import { selectCoreDirectory } from "../shell/directory-picker";
 import { webText } from "../i18n";
+import { apiLanguageHeaders } from "@/shared/api/language-headers";
 
 /** 浏览器只处理用户选择与下载，资源授权与执行留给 Core。 */
 export const webHost: HostService = {
@@ -71,8 +72,9 @@ async function stageFile(name: string, bytes: Uint8Array): Promise<string> {
       method: "POST",
       credentials: "same-origin",
       headers: {
+        ...apiLanguageHeaders(),
         "Content-Type": "application/octet-stream",
-        "X-Ally-CSRF": connection.csrfToken ?? "",
+        "X-Bot-CSRF": connection.csrfToken ?? "",
       },
       body: new Uint8Array(bytes),
     },
@@ -99,6 +101,9 @@ export async function discardUpload(sourcePath: string): Promise<void> {
   await fetch(`/api/v1/uploads?${new URLSearchParams({ sourcePath })}`, {
     method: "DELETE",
     credentials: "same-origin",
-    headers: { "X-Ally-CSRF": connection.csrfToken ?? "" },
+    headers: {
+      ...apiLanguageHeaders(),
+      "X-Bot-CSRF": connection.csrfToken ?? "",
+    },
   });
 }

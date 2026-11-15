@@ -1,3 +1,7 @@
+import {
+  localizedDateTimeFormat,
+  localizedNumberFormat,
+} from "@/shared/i18n/format";
 import { messageCompanionActivity } from "../runtime/companion-activity";
 import { chatContinuations, type ChatContinuation } from "./chat-continuation";
 import { ChatMessagePluginReferences } from "./chat-plugin-reference";
@@ -100,12 +104,9 @@ import {
 } from "@/shared/ui/composer";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { selectFiles } from "@/shared/platform";
+import { pathFile, type BotPathFile } from "../runtime/chat-attachment-adapter";
 import {
-  pathFile,
-  type AllyPathFile,
-} from "../runtime/chat-attachment-adapter";
-import {
-  type AllyChatMessage,
+  type BotChatMessage,
   type ChatPendingElicitation,
   type ChatRunMetrics,
   type ChatToolArgs,
@@ -166,7 +167,7 @@ import {
 } from "./chat-message-nodes";
 import { MarkdownVisibility } from "@/shared/markdown/visibility";
 import { useChatViewportScroll } from "./use-chat-viewport-scroll";
-type DisplayPart = NonNullable<AllyChatMessage["displayParts"]>[number];
+type DisplayPart = NonNullable<BotChatMessage["displayParts"]>[number];
 
 const CompanionInteraction = createContext<"waiting" | "stopping" | undefined>(
   undefined,
@@ -184,7 +185,7 @@ type ChatThreadProps = {
   active?: boolean;
   presentationScopeKey?: string;
   runtime: AssistantRuntime;
-  messages: readonly AllyChatMessage[];
+  messages: readonly BotChatMessage[];
   wakerName: string;
   wakerId?: string;
   wakerAvatar?: string;
@@ -898,16 +899,16 @@ function ChatMessageParts({
   );
 }
 
-const durationNumberFormat = new Intl.NumberFormat("zh-CN", {
+const durationNumberFormat = localizedNumberFormat({
   minimumFractionDigits: 1,
   maximumFractionDigits: 1,
 });
-const tokenNumberFormat = new Intl.NumberFormat("zh-CN");
-const messageTimeFormat = new Intl.DateTimeFormat("zh-CN", {
+const tokenNumberFormat = localizedNumberFormat();
+const messageTimeFormat = localizedDateTimeFormat({
   hour: "2-digit",
   minute: "2-digit",
 });
-const messageDateTimeFormat = new Intl.DateTimeFormat("zh-CN", {
+const messageDateTimeFormat = localizedDateTimeFormat({
   hour: "2-digit",
   minute: "2-digit",
 });
@@ -1049,7 +1050,7 @@ export function MessageRunStatus({
   message,
   showUsageDetails = true,
 }: {
-  message: AllyChatMessage;
+  message: BotChatMessage;
   showUsageDetails?: boolean;
 }) {
   const runMetrics = message.runMetrics;
@@ -1081,7 +1082,7 @@ function UserMessage({
   onOpenCodeReference,
   onOpenFile,
 }: {
-  message: AllyChatMessage;
+  message: BotChatMessage;
   availableSkillIds?: ReadonlySet<string>;
   availableConnectorIds?: ReadonlySet<string>;
   availablePluginIds?: ReadonlySet<string>;
@@ -1171,7 +1172,7 @@ function ParticipantMessage({
   messageAuthors,
   name,
 }: {
-  message: AllyChatMessage;
+  message: BotChatMessage;
   latest: boolean;
   avatar?: string;
   messageAuthors?: Readonly<Record<string, ChatMessageAuthor>>;
@@ -1245,7 +1246,7 @@ function MessageCopyAction({
   message,
   hideWhenRunning = false,
 }: {
-  message: AllyChatMessage;
+  message: BotChatMessage;
   hideWhenRunning?: boolean;
 }) {
   const { t } = useTranslation("chat");
@@ -1634,7 +1635,7 @@ const ChatReadingActions = createContext<
   | undefined
 >(undefined);
 
-function MessageReadActions({ message }: { message: AllyChatMessage }) {
+function MessageReadActions({ message }: { message: BotChatMessage }) {
   const reading = useContext(ChatReadingActions);
   const errors = useContext(ChatErrorActions);
   const { t } = useTranslation("chat");
@@ -1896,7 +1897,7 @@ const Composer = memo(function Composer({
   showUsageMetrics: boolean;
   sendFailure: ChatSendFailure;
   errorScopes: readonly string[];
-  failure?: AllyChatMessage;
+  failure?: BotChatMessage;
   codeReferenceRequest?: ChatCodeReference;
   onCodeReferencesChange?: (references: ChatCodeReference[]) => void;
   draft?: string;
@@ -2112,7 +2113,7 @@ const Composer = memo(function Composer({
                   ) {
                     const attachment = attachments[index];
                     const sourcePath = (
-                      attachment?.file as AllyPathFile | undefined
+                      attachment?.file as BotPathFile | undefined
                     )?.botSourcePath;
                     if (!sourcePath || !removedPaths.has(sourcePath)) continue;
                     await aui.composer.attachment({ index }).remove();

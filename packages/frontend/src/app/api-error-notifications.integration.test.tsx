@@ -81,9 +81,9 @@ it("reports one global toast per real background failure and ignores resync snap
   });
   expect(notices.result.current).toHaveLength(1);
   expect(fixture.error).toHaveBeenCalledTimes(2);
-  expect(
-    JSON.parse(localStorage.getItem("ally:error-notices") ?? "[]"),
-  ).toEqual([]);
+  expect(JSON.parse(localStorage.getItem("bot:error-notices") ?? "[]")).toEqual(
+    [],
+  );
   act(() => {
     for (const observer of fixture.observers)
       observer.onEvent({

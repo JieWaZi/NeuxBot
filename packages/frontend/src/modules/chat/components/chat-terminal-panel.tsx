@@ -1,3 +1,4 @@
+import { i18n } from "@/shared/i18n";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal as Xterm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
@@ -246,7 +247,10 @@ export function ChatTerminalPanel({
         void detachTerminal(currentSessionId, currentAttachmentId).catch(
           (error: unknown) => {
             logger.error("分离终端视图失败", {
-              error: terminalErrorMessage(error, "未知错误"),
+              error: terminalErrorMessage(
+                error,
+                i18n.t("common:errors.unknown"),
+              ),
             });
           },
         );

@@ -1,3 +1,4 @@
+import { localizedDateTimeFormat } from "@/shared/i18n/format";
 import type {
   GithubComJieWaZiNeuxBotServerConstantsChannelTaskStatus as ChannelTaskStatus,
   GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelTask as ChannelTask,
@@ -26,7 +27,7 @@ export function teamTaskStatusOf(task: ChannelTask): ChannelTaskStatus {
   return task.status ?? "pending";
 }
 
-const taskTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+const taskTimeFormatter = localizedDateTimeFormat({
   day: "2-digit",
   hour: "2-digit",
   hour12: false,

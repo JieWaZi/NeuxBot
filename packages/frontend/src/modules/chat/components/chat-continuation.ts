@@ -1,14 +1,14 @@
 import type {
-  AllyChatMessage,
+  BotChatMessage,
   ChatRunMetrics,
 } from "../runtime/chat-projection";
 
 export type ChatContinuation = {
   continued: boolean;
   continuation: boolean;
-  footerMessage: AllyChatMessage;
+  footerMessage: BotChatMessage;
   /** 分组活动状态跟随末段；头像是否展示由消息列表的末项决定。 */
-  activityMessage?: AllyChatMessage;
+  activityMessage?: BotChatMessage;
 };
 
 const cumulativeMetrics = [
@@ -142,15 +142,15 @@ function combineUsage(
 
 /** 只连接相邻且身份匹配的 steer；真实执行状态、工具和文件成果仍归原消息。 */
 export function chatContinuations(
-  messages: readonly AllyChatMessage[],
+  messages: readonly BotChatMessage[],
 ): ReadonlyMap<string, ChatContinuation> {
   const result = new Map<string, ChatContinuation>();
-  let previous: AllyChatMessage | undefined;
+  let previous: BotChatMessage | undefined;
   let userCount = 0;
   let leaderID: string | undefined;
   const executions = new Map<string, ChatRunMetrics | undefined>();
   let unidentified = false;
-  const rememberUsage = (message: AllyChatMessage) => {
+  const rememberUsage = (message: BotChatMessage) => {
     const id = message.executionId;
     if (!id) {
       unidentified = true;

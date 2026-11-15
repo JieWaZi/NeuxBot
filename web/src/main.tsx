@@ -1,3 +1,4 @@
+import { i18n, initializeLanguage } from "@/shared/i18n";
 import { createCoreWorkspaceServices } from "@neuxbot/frontend/core-workspace";
 import { createCoreTerminalService } from "@neuxbot/frontend/core-terminal";
 import { createRoot } from "react-dom/client";
@@ -10,12 +11,21 @@ import { requestSession, type WebSession } from "./platform/session";
 import { ConnectionScreen } from "./shell/connection-screen";
 
 initializeTheme();
+const stopLanguage = initializeLanguage();
+configurePlatform({
+  kind: "web",
+  host: webHost,
+  async getConnection() {
+    throw new Error(i18n.t("common:serviceOffline"));
+  },
+});
 window.addEventListener(
   "bot:web-session-expired",
   () => window.location.reload(),
   { once: true },
 );
 function connect(session: WebSession) {
+  stopLanguage();
   const getConnection = async () => ({
     baseUrl: window.location.origin,
     credentials: "same-origin" as const,
@@ -43,7 +53,7 @@ try {
   connect(await requestSession());
 } catch {
   const container = document.getElementById("root");
-  if (!container) throw new Error("缺少应用挂载节点");
+  if (!container) throw new Error(i18n.t("common:errors.rootMissing"));
   const root = createRoot(container);
   root.render(
     <ThemeProvider>

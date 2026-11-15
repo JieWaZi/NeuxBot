@@ -21,6 +21,39 @@ function generatedRequest(input: RequestInfo | URL) {
 beforeAll(async () => {
   await initializeApi();
 });
+
+it("已创建的查询也在发送时携带当前语言头", async () => {
+  const { i18n } = await import("@/shared/i18n");
+  const options = listWorkBoardOptions({
+    headers: { "GinX-Lang-Header": "zh" },
+  });
+  const requests: Request[] = [];
+  client.setConfig({
+    fetch: async (input: RequestInfo | URL) => {
+      requests.push(generatedRequest(input));
+      return new Response('{"resources":[],"totalSize":0}', {
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  });
+  const queries = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  try {
+    for (const [language, header] of [
+      ["en-US", "en"],
+      ["zh-CN", "zh"],
+    ] as const) {
+      await i18n.changeLanguage(language);
+      await queries.fetchQuery({ ...options, staleTime: 0 });
+      const request = requests.at(-1);
+      expect(request?.headers.get("GinX-Lang-Header")).toBe(header);
+      expect(request?.headers.get("Accept-Language")).toBe(language);
+    }
+  } finally {
+    queries.clear();
+  }
+});
 afterEach(async () => {
   const { result, unmount } = renderHook(useErrorNotices);
   act(() => {

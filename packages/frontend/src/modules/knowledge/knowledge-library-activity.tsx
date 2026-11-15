@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { localizedDateTimeFormat } from "@/shared/i18n/format";
 import {
   useInfiniteQuery,
   useQuery,
@@ -298,9 +299,13 @@ export function KnowledgeLibraryActivity({ library }: { library: Library }) {
                 <TableCell className="type-caption text-content-secondary">
                   {date && !Number.isNaN(date.getTime()) ? (
                     <>
-                      <span className="block">{date.toLocaleDateString()}</span>
+                      <span className="block">
+                        {localizedDateTimeFormat().format(date)}
+                      </span>
                       <span className="block tabular-nums">
-                        {date.toLocaleTimeString()}
+                        {localizedDateTimeFormat({
+                          timeStyle: "medium",
+                        }).format(date)}
                       </span>
                     </>
                   ) : (

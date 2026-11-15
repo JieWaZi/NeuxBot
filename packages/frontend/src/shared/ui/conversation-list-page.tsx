@@ -1,3 +1,4 @@
+import { localizedDateTimeFormat } from "@/shared/i18n/format";
 import { MessageCircle } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -88,7 +89,7 @@ type ChatListPageProps = {
   toolbarNote?: ReactNode;
 };
 
-const activityTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+const activityTimeFormatter = localizedDateTimeFormat({
   year: "numeric",
   month: "2-digit",
   day: "2-digit",

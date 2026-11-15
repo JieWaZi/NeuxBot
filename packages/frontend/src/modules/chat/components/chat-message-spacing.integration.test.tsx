@@ -5,7 +5,7 @@ import { expect, it } from "vitest";
 
 import { i18n } from "@/shared/i18n";
 import { TooltipProvider } from "@/shared/ui/tooltip";
-import type { AllyChatMessage } from "../runtime/chat-projection";
+import type { BotChatMessage } from "../runtime/chat-projection";
 import { ChatMessageProjection } from "./chat-message-nodes";
 import { AssistantMessage } from "./chat-thread";
 import { ChatMessageContributionProvider } from "./chat-contributions";
@@ -14,7 +14,7 @@ function MessageHarness({
   message,
   showUsageMetrics = true,
 }: {
-  message: AllyChatMessage;
+  message: BotChatMessage;
   showUsageMetrics?: boolean;
 }) {
   const view = useMemo(
@@ -38,7 +38,7 @@ function MessageHarness({
 }
 
 it("等待输出和纯空白不显示空卡，有实际工具过程或正文后再显示卡片", () => {
-  const message: AllyChatMessage = {
+  const message: BotChatMessage = {
     id: "empty-to-content",
     role: "assistant",
     status: "running",
@@ -105,7 +105,7 @@ it("仅有领域贡献成果时仍展示消息卡", () => {
 
 it("思考后的纯换行不占段落高度，也不把连续网络工具拆成多个活动组", () => {
   // 使用截图对应的实际片段顺序：思考、三个换行、工具、一个换行、工具。
-  const message: AllyChatMessage = {
+  const message: BotChatMessage = {
     id: "assistant-spacing",
     role: "assistant",
     status: "running",
@@ -146,7 +146,7 @@ it("思考后的纯换行不占段落高度，也不把连续网络工具拆成�
 
 function resultMessage(
   status: "running" | "completed" | "failed" = "completed",
-): AllyChatMessage {
+): BotChatMessage {
   return {
     id: "assistant-result",
     role: "assistant",

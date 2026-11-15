@@ -44,7 +44,11 @@ test("Web 与 Native 默认使用同一个 Core 数据目录", () => {
     "C:\\Users\\User\\AppData\\Roaming\\com.neuxbot.desktop",
   );
   assert.equal(
-    defaultCoreDataDirectory({ ALLY_DATA_DIR: "/custom" }, "darwin", "/user"),
+    defaultCoreDataDirectory(
+      { NEUXBOT_DATA_DIR: "/custom" },
+      "darwin",
+      "/user",
+    ),
     "/custom",
   );
 });

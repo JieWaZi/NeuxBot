@@ -249,4 +249,37 @@ export const knowledgeEn = {
     "Creation, upload and organization are currently available for local general libraries.",
   uploadHelp: "Save originals first. Organizing starts only when requested.",
   createLibraryFailed: "Could not create the knowledge base",
-};
+  removeRemoteMount: "Remove remote entry",
+  removeRemoteMountHelp:
+    "Remove the local entry “{{name}}”. Remote content will be kept.",
+  addRemote: "Connect remote library",
+  addRemoteHelp:
+    "Enter the remote API URL, key, and actual library ID. Only the specified library is added after verification.",
+  remoteURL: "Remote URL",
+  remoteURLPlaceholder: "https://example.com/api/v1",
+  remoteURLHelp:
+    "Supports a deployment root URL or an API base URL with a reverse proxy prefix.",
+  remoteAPIKey: "API Key",
+  remoteAPIKeyHelp:
+    "Use a remote key authorized for the target library. It will be encrypted and saved locally.",
+  remoteLibraryID: "Knowledge base ID",
+  remoteLibraryIDHelp:
+    "Enter the actual library ID on the server, not its name or a local connection ID.",
+  remoteLibraryIDPlaceholder: "For example: knowledge-base-id",
+  addingRemote: "Verifying…",
+  uploadSeparateNotice:
+    "Uploading only saves source material. Start organization separately.",
+  uploadAutomaticNotice:
+    "The remote service processes uploads automatically. Uploading sends material immediately and may incur remote processing charges.",
+  uploadUnknownNotice:
+    "Remote upload behavior is unconfirmed. Detect the service again before uploading.",
+  uploadRemoteAccepted: "Accepted remotely",
+  uploadRemoteProcessing: "Processing remotely",
+  uploadModeChanged:
+    "Remote upload behavior or the connection version changed. The queue has stopped. Check the updated notice before submitting again.",
+  remoteRedetect: "Detect again",
+  remoteDetectionUnknown:
+    "The service type or processing mode is unconfirmed. Only reading is currently available.",
+  remoteAutomaticOrganize:
+    "This service processes uploads automatically and does not support separate organization. Existing material will not be uploaded again.",
+} as const;

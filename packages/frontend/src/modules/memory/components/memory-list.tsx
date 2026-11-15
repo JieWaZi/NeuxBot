@@ -1,3 +1,4 @@
+import { localizedDateTimeFormat } from "@/shared/i18n/format";
 import { Pencil, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -151,7 +152,5 @@ function formatMemoryDate(value?: number) {
 
 function formatMemoryWeekday(value?: number) {
   if (!value) return "";
-  return new Intl.DateTimeFormat("zh-CN", { weekday: "short" }).format(
-    new Date(value),
-  );
+  return localizedDateTimeFormat({ weekday: "short" }).format(new Date(value));
 }

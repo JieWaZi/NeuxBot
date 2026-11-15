@@ -101,7 +101,9 @@ it.each([false, true])(
       http.get(
         "http://127.0.0.1:19876/api/v1/knowledge/connections/libraries",
         ({ request }) => {
-          leakedSurfaceHeader ||= request.headers.has(ALLY_LOCAL_ERROR_SURFACE);
+          leakedSurfaceHeader ||= request.headers.has(
+            NEUXBOT_LOCAL_ERROR_SURFACE,
+          );
           return failed
             ? HttpResponse.json(
                 {
@@ -212,7 +214,9 @@ it.each(wikiTargets)(
     let leakedSurfaceHeader = false;
     server.use(
       http.get(`${root}/page-directory`, ({ request }) => {
-        leakedSurfaceHeader ||= request.headers.has(ALLY_LOCAL_ERROR_SURFACE);
+        leakedSurfaceHeader ||= request.headers.has(
+          NEUXBOT_LOCAL_ERROR_SURFACE,
+        );
         return failed
           ? HttpResponse.json(
               {
@@ -265,7 +269,9 @@ it.each(wikiTargets)(
     let leakedSurfaceHeader = false;
     server.use(
       http.get(`${root}/pages/one`, ({ request }) => {
-        leakedSurfaceHeader ||= request.headers.has(ALLY_LOCAL_ERROR_SURFACE);
+        leakedSurfaceHeader ||= request.headers.has(
+          NEUXBOT_LOCAL_ERROR_SURFACE,
+        );
         return HttpResponse.json(
           {
             key: "KnowledgeForbidden",
@@ -428,7 +434,9 @@ it.each(globalOperations)(
     let leakedSurfaceHeader = false;
     server.use(
       http.all("*", ({ request }) => {
-        leakedSurfaceHeader ||= request.headers.has(ALLY_LOCAL_ERROR_SURFACE);
+        leakedSurfaceHeader ||= request.headers.has(
+          NEUXBOT_LOCAL_ERROR_SURFACE,
+        );
         const path = new URL(request.url).pathname;
         if (path === new URL(operationRoot + failurePath).pathname)
           return HttpResponse.json(

@@ -29,5 +29,8 @@ test("把发布版本写入根包和桌面包", async () => {
 });
 
 test("拒绝不合规版本", async () => {
-  await assert.rejects(stampReleaseVersion("/tmp", "v0.1.0"), /ALLY_VERSION/);
+  await assert.rejects(
+    stampReleaseVersion("/tmp", "v0.1.0"),
+    /NEUXBOT_VERSION/,
+  );
 });

@@ -1,4 +1,5 @@
 import { i18n } from "@/shared/i18n";
+import { useSyncExternalStore } from "react";
 
 const messages = {
   directoryTitle: "选择本机工作目录",
@@ -23,7 +24,47 @@ const messages = {
   unsafeLink: "只能打开 HTTP 或 HTTPS 网页。",
 } as const;
 i18n.addResourceBundle("zh-CN", "web", messages, true, true);
+export const englishMessages = {
+  directoryTitle: "Choose a local working directory",
+  directoryDescription:
+    "Enter an absolute path on the computer running Core. The directory will be used for partner work and file operations.",
+  directoryPath: "Absolute directory path",
+  directoryInvalid:
+    "Enter an absolute path starting with / or a Windows drive letter.",
+  cancel: "Cancel",
+  confirm: "Use this directory",
+  uploadTooLarge: "Individual files cannot exceed 64 MiB.",
+  uploadFailed: "Could not upload the file. Please retry.",
+  title: "Connect to your local workspace",
+  description:
+    "Your browser connects directly to partners and work on this computer.",
+  connecting: "Connecting",
+  retry: "Retry connection",
+  expired: "Your local session expired. Reconnecting.",
+  limited:
+    "The local session limit has been reached. Restart the local service and retry.",
+  offline:
+    "Could not connect to the local service. Make sure it is still running in the startup terminal.",
+  denied:
+    "This page's origin is not authorized. Use the URL shown in the startup terminal.",
+  incompatible:
+    "The web app and local service versions do not match. Use the same release for both.",
+  unavailable: "This capability is not available in the web app yet.",
+  unsafeLink: "Only HTTP and HTTPS links can be opened.",
+} satisfies Record<keyof typeof messages, string>;
+i18n.addResourceBundle("en-US", "web", englishMessages, true, true);
 /** Web 专属文案归独立 namespace，业务页面沿用公共翻译。 */
 export function webText(key: keyof typeof messages): string {
   return i18n.t(`web:${key}` as never);
+}
+
+function subscribeLanguage(listener: () => void) {
+  i18n.on("languageChanged", listener);
+  return () => {
+    i18n.off("languageChanged", listener);
+  };
+}
+export function useWebText() {
+  useSyncExternalStore(subscribeLanguage, () => i18n.language);
+  return webText;
 }

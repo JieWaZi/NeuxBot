@@ -100,7 +100,7 @@ async function request(route, auth, body, method) {
     headers: {
       Origin: origin,
       Cookie: auth.cookie,
-      "X-Ally-CSRF": auth.session.csrfToken,
+      "X-Bot-CSRF": auth.session.csrfToken,
       ...(body === undefined ? {} : { "Content-Type": "application/json" }),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -146,7 +146,7 @@ try {
     headers: {
       Origin: origin,
       Cookie: first.cookie,
-      "X-Ally-CSRF": first.session.csrfToken,
+      "X-Bot-CSRF": first.session.csrfToken,
       "Content-Type": "application/octet-stream",
     },
     body: "upload content",

@@ -39,7 +39,7 @@ class EvalTests(unittest.TestCase):
                 if self.path == "/api/web/session":
                     self.reply({"csrfToken": "private-csrf"}, cookie=True)
                     return
-                if self.headers.get("X-Ally-CSRF") != "private-csrf" or "session=private-cookie" not in self.headers.get("Cookie", ""):
+                if self.headers.get("X-Bot-CSRF") != "private-csrf" or "session=private-cookie" not in self.headers.get("Cookie", ""):
                     self.reply({}, status=403)
                     return
                 if self.path == "/api/v1/workflows":

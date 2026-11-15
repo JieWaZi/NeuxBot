@@ -78,7 +78,7 @@ class Client:
                 raise EvalError("本机会话未返回 CSRF；请检查 origin 和本机 Web 服务")
         headers = {"Origin": self.origin, "Accept": "application/json"}
         if self.csrf:
-            headers["X-Ally-CSRF"] = self.csrf
+            headers["X-Bot-CSRF"] = self.csrf
         encoded = None
         if body is not None:
             encoded = json.dumps(body, ensure_ascii=False).encode("utf-8")

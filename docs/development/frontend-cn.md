@@ -109,6 +109,7 @@ app -> modules -> shared
 - 实时事件通过 `shared/api` 的统一适配入口更新 Query Cache，WS 与本地文件/Git 观察按通知契约管理；
 - 局部交互使用 `useState` 或 `useReducer`；
 - 页面范围共享使用状态提升或 Context；
+- 跨会话的工作区 UI 状态由稳定 Context 提供容器，使用 `useSyncExternalStore` 按范围订阅；不得把所有范围的快照放进同一个广播型 Context。默认空快照不进入全局缓存，控制器身份只随所属范围或快照变化；
 - 当前不安装 Zustand；
 - 禁止把 Query 数据复制进第二套全局 Store。
 
@@ -124,6 +125,9 @@ app -> modules -> shared
 - 开发环境保持 React StrictMode；
 - 动态列表使用稳定业务 ID，不使用数组下标；
 - 不为假设的数据量全面增加 Memo、缓存或虚拟化。
+- Shell、导航和标签通过 Query 的 `select` 只订阅实际展示的身份与标题；`enabled: false` 只禁止获取，不能作为隔离详情更新的手段。服务器事实仍保留在原 Query Cache；
+- 布局测量与 ResizeObserver 绑定实际节点的生命周期，不能因同样内容的新 JSX 重建观察器；重复登记相同尺寸、所属范围和布局状态不广播 Context；
+- Scene 的隐藏生命周期由路由注册显式声明，渲染层不按页面名称或 ID 推断。可暂停场景使用 Activity 保留草稿与 DOM，隐藏时释放 Effect 消费并将更新降到后台；需要保留执行或原生视图身份的场景继续沿用原挂载生命周期。Activity 不代表 DOM 缓存已经有界，不能代替草稿持久化与资源回收预算。
 
 ## 6. OpenAPI、Query 和表单
 
@@ -187,6 +191,9 @@ app -> modules -> shared
 - Markdown 中的代码只展示和复制，不自动执行；
 - 使用 `i18next + react-i18next`；
 - 保留 `zh-CN` 和 `en-US` 文案，`zh-CN` 作为 fallback；
+- 通用设置提供跟随系统、简体中文和 English，选择保存在当前宿主的本机偏好中；启动按偏好解析语言，跟随系统模式响应系统语言变化，并同步文档 `lang`。日期、日历和相对时间随当前语言更新，模块级格式器不能冻结启动时语言；
+- Core 请求在发送时写入当前语言的 `GinX-Lang-Header`（`zh`／`en`）及 `Accept-Language`；已创建的 Query 配置不能冻结语言。错误仍按稳定身份和参数在展示时本地化，显式公开的下游原因保留原文；
+- 中英文词典的键、插值参数及英文中的中文残留由 `shared/i18n/translations.test.ts` 定向校验；语言选项使用语言自身名称；
 - namespace 按领域组织；欢迎阶段加载基础文案，`plugin`、`workflow` 与 `automaticTask` 由工作台入口在实际消费者装配前同步注册，不在欢迎入口提前交付；
 - Key 使用语义命名并启用 TypeScript 类型；
 - 日期、数字和相对时间使用 `Intl`；

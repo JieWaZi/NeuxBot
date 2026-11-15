@@ -18,8 +18,8 @@ flowchart TB
     Runtime --> Driver[共享 ACP Driver：指令与技能引用、最终结果]
     Driver --> ACP[独立 acp-go：各 CLI 适配]
     ACP --> CLI[原生 CLI]
-    CLI --> Ally[本次 allycli 连接]
-    Ally --> Grant[原能力服务：逐次校验库与任务授权]
+    CLI --> Bot[本次 botcli 连接]
+    Bot --> Grant[原能力服务：逐次校验库与任务授权]
     Grant --> Job
 ```
 

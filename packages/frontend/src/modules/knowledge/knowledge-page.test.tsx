@@ -206,13 +206,10 @@ it.each(["knowledge", "summaries"])(
           total: sourceTotal,
         }),
       ),
-      http.post(
-        "http://ally.test/api/v1/knowledge/libraries/kb/sources",
-        () => {
-          sourceTotal++;
-          return HttpResponse.json({ resourceId: "source-2", state: "saved" });
-        },
-      ),
+      http.post("http://bot.test/api/v1/knowledge/libraries/kb/sources", () => {
+        sourceTotal++;
+        return HttpResponse.json({ resourceId: "source-2", state: "saved" });
+      }),
     );
     const user = userEvent.setup();
     const initial = `/knowledge/kb?view=wiki&wikiTab=${tab}`;

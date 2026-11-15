@@ -11,8 +11,8 @@ import {
 } from "@assistant-ui/react";
 import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { AllyChatMessage } from "../runtime/chat-projection";
-import type { AllyPathFile } from "../runtime/chat-attachment-adapter";
+import type { BotChatMessage } from "../runtime/chat-projection";
+import type { BotPathFile } from "../runtime/chat-attachment-adapter";
 import {
   chatComposerReferenceChipClass,
   chatMessageReferenceChipClass,
@@ -108,8 +108,8 @@ export function ChatComposerAttachments({
               <ChatComposerAttachmentChip
                 name={attachment.name}
                 sourcePath={
-                  (attachment.file as AllyPathFile | undefined)
-                    ?.allySourcePath ?? ""
+                  (attachment.file as BotPathFile | undefined)?.botSourcePath ??
+                  ""
                 }
                 onOpenFile={onOpenFile}
                 onRemove={onRemove}
@@ -127,7 +127,7 @@ export function ChatMessageAttachments({
   attachments = [],
   onOpenFile,
 }: {
-  attachments?: NonNullable<AllyChatMessage["attachments"]>;
+  attachments?: NonNullable<BotChatMessage["attachments"]>;
   onOpenFile?: (file: ChatFileOpenRequest) => void;
 }) {
   return (

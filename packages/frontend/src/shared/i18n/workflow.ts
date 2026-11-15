@@ -485,7 +485,6 @@ export const workflowEn = {
     generic:
       "The workflow failed. Inspect the failure details or optimize the workflow to diagnose and correct it.",
   },
-
   resultPage: {
     inputLayoutUnavailable:
       "The input layout version is unavailable. Using the default form.",
@@ -554,7 +553,6 @@ export const workflowEn = {
   optimizeWorkflow: "Optimize this workflow run",
   optimizeRunDraft:
     "Improve this workflow based on run {{runId}}. Read every runs.get page for its actual inputs, steps, results, errors and actionCalls, including underlying causes, recovery hints and delivery receipts. Analyze the failure and discuss the changes with me, then update and save the complete flow. Preserve existing node identities and do not repeat external operations that already occurred.",
-
   close: "Close",
   runWorkflow: "Run workflow — {{title}}",
   phaseNodes: "Phase nodes",
@@ -776,7 +774,6 @@ export const workflowEn = {
   retry: "Try again",
   cancel: "Cancel",
   back: "Back to workflow",
-
   copy: "Copy",
   copied: "Copied",
   sourceReadOnly:
@@ -816,7 +813,7 @@ export const workflowEn = {
     worker: "Worker task",
     askUser: "Workflow input / approval",
     action: "Action",
-    functionTask: "本地处理",
+    functionTask: "Local processing",
     workflow: "Child workflow",
     startWorkflow: "Start child workflow",
     joinWorkflow: "Join child workflow",

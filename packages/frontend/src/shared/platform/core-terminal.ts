@@ -1,3 +1,4 @@
+import { i18n } from "@/shared/i18n";
 import { z } from "zod";
 import type {
   CoreConnection,
@@ -70,7 +71,7 @@ export function createCoreTerminalService(
         current.socket?.close();
         if (!settled) {
           settled = true;
-          reject(new Error("终端连接已中断"));
+          reject(new Error(i18n.t("common:errors.terminalDisconnected")));
         }
         if (current.exited || current.timer) return;
         if (++current.failures > 5) {
@@ -89,7 +90,7 @@ export function createCoreTerminalService(
       void connection()
         .then((config) => {
           if (current.stopped) {
-            reject(new Error("终端视图已释放"));
+            reject(new Error(i18n.t("common:errors.terminalReleased")));
             return;
           }
           const url = new URL(
@@ -100,7 +101,7 @@ export function createCoreTerminalService(
             url.protocol !== "http:" ||
             !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)
           )
-            throw new Error("终端服务地址无效");
+            throw new Error(i18n.t("common:errors.terminalURLInvalid"));
           url.protocol = "ws:";
           const socket = new WebSocket(url, [
             "bot.terminal.v1",
@@ -120,7 +121,9 @@ export function createCoreTerminalService(
               return;
             try {
               if (event.data.length > 4 * 1024 * 1024)
-                throw new Error("终端快照过大");
+                throw new Error(
+                  i18n.t("common:errors.terminalSnapshotTooLarge"),
+                );
               const frame = JSON.parse(event.data) as {
                 event: string;
                 payload: unknown;
@@ -128,7 +131,9 @@ export function createCoreTerminalService(
               if (frame.event === "snapshot") {
                 const snapshot = snapshotSchema.parse(frame.payload);
                 if (snapshot.sessionId !== sessionId || settled)
-                  throw new Error("终端身份无效");
+                  throw new Error(
+                    i18n.t("common:errors.terminalIdentityInvalid"),
+                  );
                 current.id = snapshot.attachmentId;
                 current.sequence = snapshot.sequence;
                 current.failures = 0;
@@ -141,7 +146,9 @@ export function createCoreTerminalService(
               } else if (frame.event === "terminal-output") {
                 const output = outputSchema.parse(frame.payload);
                 if (!settled || output.sessionId !== sessionId)
-                  throw new Error("终端输出身份无效");
+                  throw new Error(
+                    i18n.t("common:errors.terminalOutputInvalid"),
+                  );
                 if (output.sequence <= current.sequence) return;
                 if (output.sequence !== current.sequence + 1) {
                   socket.close();
@@ -152,7 +159,7 @@ export function createCoreTerminalService(
               } else if (frame.event === "terminal-exit") {
                 const exit = exitSchema.parse(frame.payload);
                 if (exit.sessionId !== sessionId)
-                  throw new Error("终端退出身份无效");
+                  throw new Error(i18n.t("common:errors.terminalExitInvalid"));
                 current.exited = true;
                 for (const listener of exits) listener(exit);
               }
@@ -171,9 +178,9 @@ export function createCoreTerminalService(
       current.id !== attachmentId ||
       current.socket?.readyState !== WebSocket.OPEN
     )
-      throw new Error("终端正在重新连接，请稍后重试");
+      throw new Error(i18n.t("common:errors.terminalReconnecting"));
     if (current.socket.bufferedAmount > 1024 * 1024)
-      throw new Error("终端输入队列已满");
+      throw new Error(i18n.t("common:errors.terminalQueueFull"));
     current.socket.send(JSON.stringify(value));
   }
   return {
@@ -205,7 +212,7 @@ export function createCoreTerminalService(
     },
     async terminal_write({ sessionId, attachmentId, data }) {
       if (new TextEncoder().encode(data).length > 65536)
-        throw new Error("终端输入过大");
+        throw new Error(i18n.t("common:errors.terminalInputTooLarge"));
       send(sessionId, attachmentId, { type: "write", data });
     },
     async terminal_resize({ sessionId, attachmentId, size }) {

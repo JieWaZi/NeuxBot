@@ -15,7 +15,7 @@ import {
   ExecutionFileChangesAction,
   ExecutionFileChangesCard,
 } from "./execution-file-changes-card";
-import type { AllyChatMessage } from "../runtime/chat-projection";
+import type { BotChatMessage } from "../runtime/chat-projection";
 
 const { readSummary } = vi.hoisted(() => ({ readSummary: vi.fn() }));
 vi.mock("../api/chat-queries", () => ({
@@ -24,7 +24,7 @@ vi.mock("../api/chat-queries", () => ({
     queryFn: () => readSummary(options),
   }),
 }));
-const message: AllyChatMessage = {
+const message: BotChatMessage = {
   id: "reply",
   role: "assistant",
   status: "completed",
@@ -373,7 +373,7 @@ describe("independent workspace outcome", () => {
       ...message,
       fileChangeRecord: undefined,
       fileChanges: [{ path: "invented.txt", addedLines: 10 }],
-    } as AllyChatMessage);
+    } as BotChatMessage);
     expect(screen.queryByRole("region")).toBeNull();
     expect(readSummary).not.toHaveBeenCalled();
   });

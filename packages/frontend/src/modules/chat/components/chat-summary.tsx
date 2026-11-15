@@ -1,3 +1,4 @@
+import { i18n } from "@/shared/i18n";
 import { useWorkspaceQueryEvents } from "@/shared/api/workspace-events";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { FileDiff, FileText, ListTree, Waypoints } from "lucide-react";
@@ -54,7 +55,7 @@ export function ChatSummary({
   const generatedFiles = useQuery({
     queryKey: ["chat-workspace-files", chatId, workspaceDirectory],
     queryFn: () => {
-      if (!chatId) throw new Error("Chat 尚未就绪");
+      if (!chatId) throw new Error(i18n.t("common:errors.chatNotReady"));
       return listChatWorkspaceFiles(chatId, workspaceDirectory);
     },
     enabled: open && Boolean(chatId && workspaceDirectory),

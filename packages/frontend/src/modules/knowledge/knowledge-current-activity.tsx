@@ -4,6 +4,7 @@ import { Card } from "@/shared/ui/card";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { isKnowledgeJobBusy } from "./knowledge-transfer";
 import { useCopy } from "./use-extended-copy";
+import { localizedDateTimeFormat } from "@/shared/i18n/format";
 
 /** 当前任务读取核心快照，与不可变活动历史分别展示，不合成完成记录。 */
 export function KnowledgeCurrentActivity({
@@ -80,7 +81,12 @@ export function KnowledgeCurrentActivity({
                   current.attemptStartedAt
                     ? "activityAcceptedAt"
                     : "activityCreatedAt",
-                  { time: new Date(timestamp).toLocaleString() },
+                  {
+                    time: localizedDateTimeFormat({
+                      dateStyle: "short",
+                      timeStyle: "medium",
+                    }).format(timestamp),
+                  },
                 )}
               </p>
             )}

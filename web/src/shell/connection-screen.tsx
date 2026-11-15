@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Button } from "@/shared/ui/button";
-import { webText } from "../i18n";
+import { useWebText } from "../i18n";
 import {
   requestSession,
   SessionError,
@@ -12,27 +12,28 @@ export function ConnectionScreen({
 }: {
   onConnected: (session: WebSession) => void;
 }) {
+  const webText = useWebText();
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState(webText("offline"));
+  const [error, setError] = useState<
+    "offline" | "limited" | "denied" | "incompatible" | undefined
+  >("offline");
   async function connect(event: FormEvent) {
     event.preventDefault();
     setPending(true);
-    setError("");
+    setError(undefined);
     try {
       onConnected(await requestSession());
     } catch (reason) {
       setError(
         reason instanceof SessionError
-          ? webText(
-              reason.status === 429
-                ? "limited"
-                : reason.status === 403
-                  ? "denied"
-                  : reason.status === 409
-                    ? "incompatible"
-                    : "offline",
-            )
-          : webText("offline"),
+          ? reason.status === 429
+            ? "limited"
+            : reason.status === 403
+              ? "denied"
+              : reason.status === 409
+                ? "incompatible"
+                : "offline"
+          : "offline",
       );
       setPending(false);
     }
@@ -53,7 +54,7 @@ export function ConnectionScreen({
             className="type-body text-destructive"
             role="alert"
           >
-            {error}
+            {webText(error)}
           </p>
         ) : null}
         <Button type="submit" size="lg" disabled={pending}>

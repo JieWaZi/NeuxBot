@@ -1,3 +1,4 @@
+import { localizedNumberFormat } from "@/shared/i18n/format";
 import { useTranslation } from "react-i18next";
 
 import type { ChatRunMetrics } from "../runtime/chat-projection";
@@ -9,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 
-const tokenCountFormat = new Intl.NumberFormat("zh-CN", {
+const tokenCountFormat = localizedNumberFormat({
   maximumFractionDigits: 1,
 });
 

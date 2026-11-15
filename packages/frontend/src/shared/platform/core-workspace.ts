@@ -1,3 +1,4 @@
+import { i18n } from "@/shared/i18n";
 import { z } from "zod";
 import type {
   HostService,
@@ -342,7 +343,7 @@ export function createCoreWorkspaceServices(
   }) {
     const root = args.root ?? known.get(args.scopeId)?.root;
     if (!root || !options.openFile)
-      throw new Error("当前环境不支持用系统应用打开文件，请下载后打开");
+      throw new Error(i18n.t("common:errors.externalFileUnsupported"));
     return options.openFile(root, args.relativePath);
   }
   const workspace: WorkspaceService = {
@@ -373,7 +374,8 @@ export function createCoreWorkspaceServices(
       const expectedVersion =
         args.expectedVersion ??
         (await workspace.stat_workspace_resource(args))?.version;
-      if (!expectedVersion) throw new Error("文件不存在或已变化");
+      if (!expectedVersion)
+        throw new Error(i18n.t("common:errors.fileChanged"));
       const body = { ...args, root: args.root ?? "", expectedVersion };
       await api.deleteFile({ body, throwOnError: true });
       return true;
@@ -398,7 +400,8 @@ export function createCoreWorkspaceServices(
       const failed: { name: string; message: string }[] = [];
       for (const file of files) {
         try {
-          if (file.size > 64 * 1024 * 1024) throw new Error("文件超过64 MiB");
+          if (file.size > 64 * 1024 * 1024)
+            throw new Error(i18n.t("common:errors.fileTooLarge"));
           imported.push(
             await workspace.import_workspace_resource_bytes({
               ...args,
@@ -409,7 +412,10 @@ export function createCoreWorkspaceServices(
         } catch (error) {
           failed.push({
             name: file.name,
-            message: error instanceof Error ? error.message : "导入失败",
+            message:
+              error instanceof Error
+                ? error.message
+                : i18n.t("common:errors.importFailed"),
           });
         }
       }
@@ -550,7 +556,7 @@ export function createCoreWorkspaceServices(
       const current = await draftScope(root);
       const args = { scopeId: current.id, root, relativePath };
       const file = await workspace.stat_workspace_resource(args);
-      if (!file) throw new Error("文件不存在");
+      if (!file) throw new Error(i18n.t("common:errors.fileNotFound"));
       await workspace.write_workspace_resource({
         ...args,
         content,

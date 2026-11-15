@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AllyChatMessage } from "../runtime/chat-projection";
+import type { BotChatMessage } from "../runtime/chat-projection";
 import { applyChatLiveFrame } from "../runtime/chat-live";
 import { ChatMessageProjection } from "./chat-message-nodes";
 
-type Part = NonNullable<AllyChatMessage["displayParts"]>[number];
+type Part = NonNullable<BotChatMessage["displayParts"]>[number];
 const tool = (id: string): Part => ({
   id,
   type: "tool",
@@ -25,12 +25,12 @@ describe("canonical 消息节点投影", () => {
     const tools = Array.from({ length: 100 }, (_, index) =>
       tool(`invocation:tool:${index}`),
     );
-    const history: AllyChatMessage = {
+    const history: BotChatMessage = {
       id: "history",
       role: "user",
       content: "先前消息",
     };
-    let current: AllyChatMessage = {
+    let current: BotChatMessage = {
       id: "assistant",
       role: "assistant",
       status: "running",
@@ -79,7 +79,7 @@ describe("canonical 消息节点投影", () => {
     const inspect = vi.fn(),
       group = vi.fn();
     const projection = new ChatMessageProjection({ inspect, group });
-    let current: AllyChatMessage = {
+    let current: BotChatMessage = {
       id: "m",
       role: "assistant",
       status: "running",
@@ -156,7 +156,7 @@ describe("canonical 消息节点投影", () => {
   });
   it("已接纳消息的提交标识缺失或变化时按权威ID保留身份，新ID及退出窗口不继承", () => {
     const projection = new ChatMessageProjection();
-    const optimistic: AllyChatMessage = {
+    const optimistic: BotChatMessage = {
       id: "local-assistant",
       submissionId: "submission",
       role: "assistant",

@@ -1,7 +1,7 @@
 import { messageCompanionActivity } from "../runtime/companion-activity";
 import type { CompanionActivity } from "@/shared/companion/activity";
 import { getLivePartMutations } from "../runtime/chat-live";
-import type { AllyChatMessage } from "../runtime/chat-projection";
+import type { BotChatMessage } from "../runtime/chat-projection";
 import type { GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageDisplayPart as DisplayPart } from "@/shared/api/generated/types.gen";
 
 /** 节点只索引当前权威窗口的部件；不复制正文、工具参数或持久消息事实。 */
@@ -20,12 +20,12 @@ export type ChatProcessGroup = {
 export type ChatMessageSegment = ChatPartNode | ChatProcessGroup;
 export type ChatMessageView = {
   readonly key: string;
-  readonly message: AllyChatMessage;
+  readonly message: BotChatMessage;
   readonly segments: readonly ChatMessageSegment[];
   readonly activity: CompanionActivity;
 };
 
-export function isTerminalMessage(message: AllyChatMessage): boolean {
+export function isTerminalMessage(message: BotChatMessage): boolean {
   return (
     message.status === "completed" ||
     message.status === "failed" ||
@@ -66,7 +66,7 @@ export class ChatMessageProjection {
     },
     private readonly scope = "",
   ) {}
-  update(messages: readonly AllyChatMessage[]): readonly ChatMessageView[] {
+  update(messages: readonly BotChatMessage[]): readonly ChatMessageView[] {
     // 接纳回执已把临时 ID 换成权威 ID，后续快照未必继续携带 submissionId。
     // 只沿上一帧窗口内的角色与消息 ID 继承展示身份，窗口退出后不保留别名。
     const previousByID = new Map<string, ChatMessageView>();
@@ -100,7 +100,7 @@ export class ChatMessageProjection {
   }
   private message(
     key: string,
-    message: AllyChatMessage,
+    message: BotChatMessage,
     previous?: ChatMessageView,
   ): ChatMessageView {
     if (previous) {
@@ -221,7 +221,7 @@ export class ChatMessageProjection {
   /** 已证明连续的正文增量只查其索引，工具节点、子组与摘要不进入此路径。 */
   private textAppend(
     key: string,
-    message: AllyChatMessage,
+    message: BotChatMessage,
     previous: ChatMessageView,
   ): ChatMessageView | undefined {
     const current = message.displayParts;

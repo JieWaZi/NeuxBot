@@ -1,4 +1,4 @@
-import type { AllyChatMessage } from "../runtime/chat-projection";
+import type { BotChatMessage } from "../runtime/chat-projection";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
@@ -12,17 +12,17 @@ import { cn } from "@/shared/lib/cn";
 const TURN_MARKER_HEIGHT = 12;
 
 type ChatTurn = {
-  assistant?: AllyChatMessage;
+  assistant?: BotChatMessage;
   id: string;
-  user: AllyChatMessage;
+  user: BotChatMessage;
 };
 
-function previewText(message?: AllyChatMessage) {
+function previewText(message?: BotChatMessage) {
   if (!message) return "";
   return (message.content ?? "").replace(/\s+/g, " ").trim();
 }
 
-function chatTurns(messages: readonly AllyChatMessage[]) {
+function chatTurns(messages: readonly BotChatMessage[]) {
   const turns: ChatTurn[] = [];
   for (let index = 0; index < messages.length; index += 1) {
     const message = messages[index];
@@ -49,7 +49,7 @@ function ChatTurnNavigator({
   active = true,
 }: {
   viewportRef: RefObject<HTMLDivElement | null>;
-  messages: readonly AllyChatMessage[];
+  messages: readonly BotChatMessage[];
   active?: boolean;
 }) {
   const { t } = useTranslation("chat");

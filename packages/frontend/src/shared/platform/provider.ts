@@ -1,3 +1,4 @@
+import { i18n } from "@/shared/i18n";
 import type { CoreConnection } from "@neuxbot/platform-contracts/resources";
 import type {
   HostService,
@@ -30,14 +31,14 @@ export function configurePlatform(value: Platform): void {
   current = value;
 }
 export function platform(): Platform {
-  if (!current) throw new Error("应用平台尚未初始化");
+  if (!current) throw new Error(i18n.t("common:errors.platformNotReady"));
   return current;
 }
 export function requirePlatformService<
   K extends "host" | "workspace" | "git" | "browser" | "terminal" | "events",
 >(name: K): NonNullable<Platform[K]> {
   const service = platform()[name];
-  if (!service) throw new Error("当前运行环境不支持此能力");
+  if (!service) throw new Error(i18n.t("common:errors.capabilityUnsupported"));
   return service;
 }
 export function hasPlatformService(

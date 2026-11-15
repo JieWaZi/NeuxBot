@@ -1,4 +1,4 @@
-import { zhCN } from "date-fns/locale";
+import { enUS, zhCN } from "date-fns/locale";
 import { CalendarDays, Clock3 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -98,7 +98,7 @@ export function DatePicker({
   required,
   "aria-label": ariaLabel,
 }: PickerProps) {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
   const [open, setOpen] = useState(false);
   const date = value ? localDateFromInput(value) : undefined;
   return (
@@ -121,7 +121,7 @@ export function DatePicker({
       <PopoverContent align="start" collisionPadding={12}>
         <Calendar
           mode="single"
-          locale={zhCN}
+          locale={i18n.resolvedLanguage?.startsWith("en") ? enUS : zhCN}
           weekStartsOn={1}
           defaultMonth={date}
           selected={date}

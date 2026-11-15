@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { ConnectionScreen } from "./connection-screen";
 import { requestSession } from "../platform/session";
 import type * as SessionModule from "../platform/session";
+import { i18n } from "@/shared/i18n";
 
 vi.mock("../platform/session", async (importOriginal) => ({
   ...(await importOriginal<typeof SessionModule>()),
@@ -58,4 +59,20 @@ it("重试失败保留错误，并允许再次连接", async () => {
     "无法连接本机服务",
   );
   expect(container.querySelector("button")?.disabled).toBe(false);
+});
+
+it("离线提示随当前中英文切换", async () => {
+  await i18n.changeLanguage("en-US");
+  await renderScreen();
+  expect(container.querySelector("button")?.textContent).toBe(
+    "Retry connection",
+  );
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+    "Could not connect to the local service",
+  );
+  await act(() => i18n.changeLanguage("zh-CN"));
+  expect(container.querySelector("button")?.textContent).toBe("重试连接");
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+    "无法连接本机服务",
+  );
 });

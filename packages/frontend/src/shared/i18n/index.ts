@@ -1,3 +1,10 @@
+import { baseEn } from "./base-en";
+import {
+  persistLanguageMode,
+  readLanguageMode,
+  resolveLanguage,
+  type LanguageMode,
+} from "./language";
 import { knowledgeZh, knowledgeEn } from "./knowledge-navigation";
 import i18n from "i18next";
 import { notificationZh, notificationEn } from "./notification";
@@ -15,6 +22,60 @@ const resources = {
     workBoard: workBoardZh,
     usage: usageZh,
     common: {
+      close: "关闭",
+      renderFailed: "当前页面暂时无法显示",
+      reload: "重新载入",
+      sceneWorkspace: "场景工作区",
+      fromDate: "{{date}}起",
+      languages: {
+        chinese: "简体中文",
+        english: "English",
+      },
+      errors: {
+        chatNotReady: "Chat 尚未就绪",
+        attachmentUnavailable: "附件路径不可用",
+        draftUnavailable: "文件草稿尚未建立",
+        fileDeleted: "文件不存在或已被删除",
+        queryMissing: "资源查询参数缺失",
+        operationUnavailable: "资源操作尚未配置",
+        graphReferenceMissing: "图谱布局内部引用缺失",
+        partnersEmpty: "伙伴列表返回为空",
+        cursorStalled: "团队时间线游标未推进",
+        eventGap: "领域事件游标出现缺口",
+        eventReconcileIncomplete: "全局事件权威对账未完成",
+        eventRecoveryFailed: "领域事件权威恢复失败",
+        apiNotReady: "API 尚未初始化",
+        terminalDisconnected: "终端连接已中断",
+        terminalReleased: "终端视图已释放",
+        terminalURLInvalid: "终端服务地址无效",
+        terminalSnapshotTooLarge: "终端快照过大",
+        terminalIdentityInvalid: "终端身份无效",
+        terminalOutputInvalid: "终端输出身份无效",
+        terminalExitInvalid: "终端退出身份无效",
+        terminalReconnecting: "终端正在重新连接，请稍后重试",
+        terminalQueueFull: "终端输入队列已满",
+        terminalInputTooLarge: "终端输入过大",
+        externalFileUnsupported:
+          "当前环境不支持用系统应用打开文件，请下载后打开",
+        fileChanged: "文件不存在或已变化",
+        fileTooLarge: "文件超过64 MiB",
+        importFailed: "导入失败",
+        fileNotFound: "文件不存在",
+        dropTooLarge: "拖入文件超过 64 MiB，请使用导入按钮",
+        tooManyFiles: "一次最多导入 32 个文件",
+        readCanceled: "文件读取已取消",
+        browserDesktopOnly: "内置浏览器仅在桌面应用中可用",
+        browserNativeOnly: "内置浏览器仅在 NeuxBot 桌面应用中可用",
+        terminalUnsupported: "当前服务未提供终端能力",
+        platformNotReady: "应用平台尚未初始化",
+        capabilityUnsupported: "当前运行环境不支持此能力",
+        themeProviderMissing: "useTheme 必须在 ThemeProvider 中使用",
+        sceneProviderMissing:
+          "useAppSceneWorkspace 必须在 AppSceneWorkspaceContextProvider 内使用",
+        chatSceneMissing: "聊天呈现需要 Scene 或工作区身份",
+        rootMissing: "缺少应用挂载节点",
+        unknown: "未知错误",
+      },
       resourceCategory: {
         label: "分类",
         placeholder: "选择或输入分类",
@@ -469,6 +530,28 @@ const resources = {
       },
     },
     waker: {
+      card: {
+        fallbackName: "伙伴",
+        details: "查看 {{name}} 的详情",
+        emptyBio: "还没有填写介绍。",
+        createChat: "创建对话任务",
+        more: "更多操作",
+        edit: "编辑资料",
+      },
+      deletion: {
+        title: "删除伙伴",
+        description: "此操作不可恢复，请确认不再需要这位伙伴。",
+        impact: "将删除伙伴档案、记忆、对话记录及伙伴工作目录中的文件。",
+        confirmName: "输入完整名称“{{name}}”以确认",
+        placeholder: "请输入“{{name}}”",
+        failed: "删除失败，请稍后重试。",
+      },
+      collection: {
+        failed: "暂时无法载入伙伴",
+        noResults: "没有找到匹配的伙伴",
+        empty: "还没有伙伴",
+        createFirst: "新建第一位伙伴",
+      },
       title: "我的伙伴",
       subtitle: "管理本机伙伴，快速发起对话任务。",
       create: "新建伙伴",
@@ -498,9 +581,9 @@ const resources = {
         roleName: "角色名称",
         roleNamePlaceholder: "例如：前端开发工程师",
         roleNameTooLong: "角色名称不能超过 80 字。",
-        bio: "概要",
+        bio: "简介",
         bioPlaceholder: "例如：帮我整理会议记录，跟进项目进度。",
-        bioTooLong: "概要不能超过 1000 字。",
+        bioTooLong: "简介不能超过 1000 字。",
         avatarInvalid: "请重新选择头像。",
         defaultModel: "默认模型",
         inheritModel: "跟随全局默认",
@@ -559,7 +642,7 @@ const resources = {
         activeToday: "今天活跃",
         inactiveToday: "今天未活跃",
         skillsTools: "技能与工具",
-        mySkills: "我的技能 ({{enabled}}/{{total}})",
+        mySkills: "技能 ({{enabled}}/{{total}})",
         skillsLead: "已安装并可调用的技能包",
         connectorsLead: "已接入的外部工具与数据源",
         manage: "管理",
@@ -581,7 +664,7 @@ const resources = {
         importConnector: "导入 JSON",
         skillConnectorCount: "{{connectors}} 个连接器 · {{skills}} 个技能",
         showcaseTitle: "{{name}} 的卡片",
-        showcaseBack: "ALLY",
+        showcaseBack: "NEUXBOT",
         showcaseAgent: "AGENT",
         showcaseCompanion: "你的 AI 伙伴",
         showcaseStyle: "工作风格",
@@ -1422,7 +1505,14 @@ const resources = {
         appearance: {
           title: "外观",
           theme: "主题",
-          description: "选择界面主题。跟随系统会响应 macOS 外观变化。",
+          description: "浅色或深色。跟随系统会使用设备的设置。",
+          transparent: "透明窗口",
+          transparentHelp:
+            "在窗口后显示模糊的桌面；网页和原生菜单随应用主题显示。",
+          transparentUnavailable: "当前系统或浏览器不支持透明窗口。",
+          language: "语言",
+          scale: "界面大小",
+          failed: "未能应用窗口外观，请重新选择后重试。",
         },
       },
       theme: {
@@ -1819,7 +1909,7 @@ const resources = {
       recent: "最近对话",
       manageWakers: "管理伙伴",
       createWakerFirst: "先创建一位伙伴",
-      profileOptimizationHint: "告诉伙伴你想怎样修改档案。",
+      profileOptimization: "档案优化",
       draftDescription: "选择项目目录和智能体，然后发送第一条消息。",
       working: "工作中",
       teamWorking: "团队执行中",
@@ -2563,587 +2653,19 @@ const resources = {
     },
   },
   "en-US": {
+    ...baseEn,
     usage: usageEn,
     knowledge: knowledgeEn,
     notification: notificationEn,
     im: imEn,
     workBoard: workBoardEn,
-    waker: {
-      create: "New partner",
-      form: {
-        avatar: "Avatar",
-        name: "Name",
-        namePlaceholder: "For example, Avery",
-        nameRequired: "Enter a name.",
-        nameTooLong: "Names can be up to 80 characters.",
-        roleName: "Role name",
-        roleNamePlaceholder: "For example, Frontend engineer",
-        roleNameTooLong: "Role names can be up to 80 characters.",
-        bio: "Overview",
-        bioPlaceholder:
-          "For example, organize my meeting notes and track project progress.",
-        bioTooLong: "The overview can be up to 1,000 characters.",
-        avatarInvalid: "Select an avatar again.",
-        defaultModel: "Default model",
-        inheritModel: "Use global default",
-        modelUnavailable:
-          "This partner’s model configuration is unavailable. Choose another agent, account, or model.",
-        create: "Create partner",
-        openPartner: "Open partner",
-        createError: "Could not create the partner. Try again.",
-        edit: "Edit partner",
-        save: "Save changes",
-        saveError: "Could not save the partner. Try again.",
-      },
-      profile: {
-        title: "Partner profile",
-        loading: "Loading profile…",
-        loadError: "Could not load the profile.",
-        retry: "Reload",
-        edit: "Edit partner profile",
-        empty: "No profile content yet.",
-        continue: "Continue setup",
-        openChat: "Open chat",
-        startError: "Could not start partner setup. Try again.",
-        markdown: "Partner profile Markdown",
-        markdownPlaceholder:
-          "Write lasting instructions for this partner in Markdown.",
-        saveError: "Could not save the profile. Try again.",
-        optimize: "Optimize with AI",
-        tokenLimit: "{{count}}-token limit",
-        discardTitle: "Discard unsaved changes?",
-        discardDescription: "Closing discards your changes to the profile.",
-        keepEditing: "Keep editing",
-        discard: "Discard changes",
-      },
-    },
-    skill: {
-      mySkills: "My skills",
-      installedOnPartners_one: "Installed for {{count}} partner",
-      installedOnPartners_other: "Installed for {{count}} partners",
-      detail: {
-        partnerSkill: "{{name}} for {{partner}}",
-      },
-    },
-    common: {
-      partnerNavigation: {
-        createWaker: "New partner",
-        wakerActions: {
-          menu: "Actions for {{name}}",
-          markUnread: "Mark as unread",
-          noReadableMessages: "This partner has no messages to mark as unread.",
-          markUnreadError: "Could not mark the conversation as unread. Try again.",
-          moveTo: "Move to",
-          ungrouped: "Ungrouped",
-          newGroup: "New group",
-          groupName: "Group name",
-          edit: "Edit partner",
-          duplicate: "Duplicate partner",
-          duplicating: "Duplicating…",
-          duplicateError: "Could not duplicate the partner. Try again.",
-          delete: "Delete partner",
-        },
-        working: "Working",
-        recentFailed: "Most recent run failed",
-        unreadMessages: "{{count}} unread messages",
-        needsAction: "Needs action",
-        chooseActionChat: "Select a conversation that needs action",
-        request: {
-          input: "Input required",
-          approval: "Approval required",
-          review: "Review required",
-        },
-      },
-      resourceCategory: {
-        label: "Categories",
-        placeholder: "Select or enter a category",
-        create: "Create “{{name}}”",
-        remove: "Remove category “{{name}}”",
-        empty: "Enter a category name and press Enter to create it",
-        loading: "Loading categories",
-      },
-      markdownImage: {
-        label: "Image",
-        loading: "Loading image",
-        failed: "Image could not be loaded",
-        tooLarge: "Image is too large to preview",
-        unsupported: "Unsupported image format",
-        remoteBlocked: "Remote image was not loaded",
-      },
-      save: "Save",
-      cancel: "Cancel",
-      conversationGroups: {
-        temporaryDirectory: "Default",
-        unnamedProject: "Unnamed project",
-      },
-      executionSelection: {
-        runtime: "Agent",
-        account: "Account",
-        model: "Model",
-        reasoning: "Reasoning",
-        permission: "Permissions",
-        defaultModel: "Default model",
-        inheritModel: "Default model",
-        reasoningUnavailable:
-          "This model has not provided reasoning options. Choose another model to configure reasoning.",
-        defaultReasoning: "Default reasoning",
-        fast: "Fast",
-        fastOn: "On",
-        fastOff: "Off",
-        catalogRetry: "Retry",
-        catalogStale: "Model catalog refresh failed.",
-        catalogUnavailable: "Model catalog unavailable",
-        catalogSignedOut: "Sign in to read the model catalog",
-        catalogEmpty: "No models are available for this account. Retry",
-        catalogModelUnavailable:
-          "The current model is missing from the catalog. Select another model.",
-        system: "Built-in account",
-        empty: "No available options",
-        unavailable: "Unavailable",
-        loading: "Loading model and reasoning options…",
-        loadError: "Could not load configuration options.",
-        invalid: "This configuration is unavailable. Select again.",
-        help: "The account determines available models; the model determines reasoning and permissions.",
-      },
-      fieldRequired: "Required",
-      timeZonePicker: {
-        choose: "Choose timezone",
-        search: "Search timezones…",
-        clear: "Clear search",
-        empty: "No matching timezones",
-      },
-      dateTimePicker: {
-        hour: "Hour",
-        minute: "Minute",
-        chooseDate: "Choose date",
-        chooseTime: "Choose time",
-        done: "Done",
-      },
-
-      serviceConnectionFailed:
-        "Cannot connect to the local service right now. Check the connection.",
-      titlebar: {
-        back: "Back",
-        forward: "Forward",
-      },
-      sceneTabs: {
-        chatList: "Chat list",
-        rename: "Rename",
-        renameTitle: "Rename tab",
-        nameLabel: "Tab name",
-        namePlaceholder: "Enter a tab name",
-        renameHint: "Only changes the display name of this tab.",
-        closeOthers: "Close other tabs",
-        notFound: "The data may have been deleted. Please close this page.",
-      },
-    },
-    chat: {
-      profileOptimizationHint: "Tell your partner how to revise its profile.",
-      approval: {
-        waitingForTurn:
-          "“{{title}}” is queued. Handle the current approval first.",
-        option: {
-          allowSession: "Allow for this session",
-          allowRootSession: "Allow writes to this directory for this session",
-          allowHostSession: "Allow access to this host for this session",
-          allowCommandPrefix:
-            "Always allow commands starting with `{{command}}`",
-          allowCommandPattern: "Allow and remember this command pattern",
-          allowFuture: "Allow {{target}} in the future",
-          blockFuture: "Block {{target}} in the future",
-          allowAlways: "Always allow",
-          rejectAlways: "Always reject",
-        },
-      },
-      toolApproval: {
-        allowedAlways: "Always allowed",
-        rejectedAlways: "Always rejected",
-        allowedSession: "Allowed for this session",
-      },
-      elicitation: {
-        waitingForTurn: "Answer the preceding question first.",
-        multipleChoiceHint: "You can select more than one option.",
-        result: {
-          accepted: "Answered",
-          declined: "Skipped",
-          cancelled: "Cancelled",
-          invalidated: "Expired",
-        },
-      },
-      reading: {
-        actions: "Reading actions",
-        markUnread: "Mark unread from here",
-        failed: "Could not update conversation reading state.",
-        markRead: "Mark as read",
-      },
-      modelPicker: {
-        contextWindow: "Context window",
-        defaultReasoning: "Default",
-      },
-      completedProcess: "View process",
-      completedProcessDuration: "Took {{duration}}",
-      preparingSession: "Preparing session",
-      defaultWorkspace: "Default",
-      terminal: "Terminal",
-      terminalExited: "Terminal exited",
-      terminalStartFailed: "Could not start terminal",
-      terminalScopeRequired:
-        "Terminal is missing the current chat workspace identity",
-      terminalSessionChanged:
-        "The original terminal session changed. Open a new terminal.",
-      terminalWriteFailed: "Could not send input to terminal",
-      terminalResizeFailed: "Could not resize terminal",
-      floatingChat: {
-        open: "Open chat",
-        openStatus: "{{status}}, open chat",
-        window: "Floating chat",
-        move: "Drag to move the chat window",
-        minimize: "Minimize chat window",
-      },
-      workbench: {
-        title: "Workbench",
-        tabs: "Workbench tabs",
-        addTab: "Add a workbench tab",
-        tools: "Tools",
-        newTab: "New tab",
-        closeTab: "Close {{title}}",
-        unsavedTitle: "Unsaved changes",
-        unsavedDescription: "Closing {{title}} will discard your draft.",
-        keepEditing: "Keep editing",
-        discardAndClose: "Discard and close",
-        discardEdit: "Discard changes",
-        discardEditDescription: "Your unsaved edits to this file will be lost.",
-        fullView: "Full view",
-        exitFullView: "Exit full view",
-        resizeSplit: "Resize split view",
-        swapPanes: "Swap workbench panes",
-        swapPanels: "Swap left and right panels",
-        sideChat: "Side chat",
-        sideChatCreating: "Creating side chat…",
-        sideChatCreateFailed: "Could not create the side chat. Try again.",
-        sideChatLoadFailed: "Could not check side chat availability.",
-        sideChatUnavailable:
-          "This chat has no completed turn that can be forked.",
-        zoom: "Zoom",
-        previousSlide: "Previous slide",
-        nextSlide: "Next slide",
-      },
-      summary: {
-        view: "View summary",
-        projectChanges: "Project changes",
-        changes: "Changes",
-        directoryChanges: "Changes in {{directory}}",
-        sources: "Sources",
-        notGit: "Not a Git directory",
-        noProjectDirectory: "No project directory",
-        viewAll: "View all",
-        teamMembers: "Team members",
-      },
-      workspace: {
-        changes: "Changes",
-        searchChanges: "Search changes",
-        searchChangesPlaceholder: "Search changes…",
-        chooseFile: "Open file",
-        gitRepository: "Git repository",
-        noProjectDirectory: "No directory available",
-        retry: "Retry",
-        zoomIn: "Zoom in",
-        zoomOut: "Zoom out",
-        pdfNative: "Native view",
-        pdfFitWidth: "Fit width",
-        pdfScopeRequired: "PDF preview requires chat workspace access",
-        pdfWorkerFailed:
-          "PDF renderer could not start. Retry or use the native view.",
-        officeError: {
-          sourceTooLarge: "Document exceeds the 64 MiB preview limit",
-          expandedTooLarge: "Expanded document exceeds the preview limit",
-          invalidArchivePath: "Document contains an invalid archive path",
-          activeContent: "This document contains unsupported active content",
-          unreadableArchive: "Could not read the document archive",
-          invalidFormat: "File content does not match its document format",
-          scopeRequired: "Document preview requires chat workspace access",
-          fileMissing: "Document is missing or has been deleted",
-          loadFailed:
-            "Could not preview the document. Retry or open it in a system app.",
-        },
-        diffSplit: "Split",
-        diffUnified: "Unified",
-        changesLoading: "Loading Git changes…",
-        changesLoadError: "Could not load Git changes",
-        noGitRepository: "This directory is not a Git repository",
-        noWorkspaceChanges: "No changes in the working tree",
-        noMatchingChanges: "No matching changed files",
-        panel: "Chat workspace",
-        content: "Workspace content",
-        files: "Files",
-        searchFiles: "Search files",
-        searchFilesPlaceholder: "Search files…",
-        fileTree: "File tree",
-        directories: "Directories",
-        spaceDirectory: "Space directory",
-        workingDirectory: "Working directory",
-        showFileTree: "Show file tree",
-        hideFileTree: "Hide file tree",
-        chooseFileDescription: "Select a file from the tree on the right",
-        noMatchingChatFiles: "No matching chat files",
-        fileSource: "File source",
-        chatFiles: "Chat files",
-        fileActions: "File actions for {{name}}",
-        directoryActions: "Folder actions for {{name}}",
-        downloadFile: "Download file",
-        downloadFileError: "Could not download the file. Try again.",
-        importFileError: "Could not import the file. Try again.",
-        importFileErrorCount: "Could not import {{count}} files.",
-        renameFile: "Rename file",
-        newFileName: "New file name",
-        renameFileError: "Could not rename the file. Try again.",
-        renameDirectory: "Rename folder",
-        newDirectoryName: "New folder name",
-        renameDirectoryError: "Could not rename the folder. Try again.",
-        saveBeforeFileOperation: "Save or discard the file's changes first.",
-        deleteFile: "Delete file",
-        deleteFileConfirm:
-          "Delete {{name}}? Chat-owned files will be deleted from disk; original project files will be kept.",
-        deleteFileError: "Could not delete the file. Try again.",
-        deleteFileWarning:
-          "This file will be permanently deleted. This cannot be undone.",
-        deleteDirectoryWarning:
-          "This folder and all its contents will be permanently deleted. This cannot be undone.",
-        confirmDiscard: "Discard changes",
-        discardWarning:
-          "Unstaged changes in this file will be lost. This cannot be undone.",
-        deleteDirectory: "Delete folder",
-        deleteDirectoryError: "Could not delete the folder. Try again.",
-        cancelDelete: "Cancel",
-        projectFiles: "Project files",
-        projectFilesHint: "Browse all folders linked to this project",
-        attachmentsHint:
-          "Message attachments and files created by your partner appear here",
-        noChatFiles: "No chat files yet",
-        noChatFilesDescription:
-          "Attachments and files created by your partner will appear here.",
-        chatFilesLoading: "Loading chat files…",
-        chatFilesLoadError: "Could not load chat files",
-        filesLoading: "Loading files…",
-        filesLoadError: "Could not load files",
-        noMatchingProjectFiles: "No matching files",
-        projectDirectoryEmpty: "Directory is empty",
-        directoryLoadError: "Could not load {{name}}",
-        fileLoading: "Reading file…",
-        fileLoadError: "Could not read the file",
-        fileSaveError: "Could not save the file. Try again.",
-        fileVersionUnavailable:
-          "File version is unavailable. Reopen the file and try again.",
-        fileExternalConflict:
-          "The file changed outside NeuxBot. Your draft is still available; review the differences before saving.",
-        excelScopeRequired:
-          "Spreadsheet preview requires chat workspace access",
-        excelInvalid:
-          "Could not open this spreadsheet. Check its format, content, or password protection.",
-        excelTooLarge: "This spreadsheet exceeds the preview size limit.",
-        excelTimeout: "Opening the spreadsheet timed out. Try a smaller file.",
-        excelEncoding:
-          "Text encoding could not be detected. Save as UTF-8 or UTF-16 with a BOM.",
-        excelUnsupported:
-          "This preview does not support {{features}} in this workbook. Open it in a system app for the complete content.",
-        excelMissingResults:
-          "{{count}} formulas have no saved results; the preview does not recalculate them.",
-        excelFeature: {
-          charts: "charts",
-          images: "images",
-          shapes: "shapes",
-          conditionalFormatting: "conditional formatting",
-        },
-        fileTooLarge: "File is too large to preview in NeuxBot",
-        legacyOfficeUnavailable:
-          "Preview conversion for older Word and PowerPoint files is unavailable. Open the file in a system app using the button above.",
-        binaryFileUnsupported:
-          "Inline preview is unavailable for this binary file",
-        fileTruncated:
-          "This file is large; showing only the first {{count}} characters.",
-        fileEmpty: "File is empty",
-        addSelectionToChat: "Add to chat",
-        resetZoom: "Reset zoom",
-        editMarkdown: "Edit Markdown",
-        fileView: "File view",
-        sourceCode: "Code",
-        renderedPreview: "Preview",
-        previewLoading: "Loading preview",
-        htmlStaticPreview: "Static preview",
-        htmlInteractivePreview: "Interactive preview",
-        htmlInteractiveHint:
-          "Runs the saved HTML file; unsaved edits will not appear",
-        htmlStaticHint:
-          "Sandboxed preview without scripts or external resources",
-        editText: "Edit text",
-        cancelEdit: "Exit editing",
-        saveFile: "Save file",
-        retrySave: "Save failed. Click to retry.",
-        copyFileContent: "Copy file content",
-        openDefaultApp: "Open in default app",
-        showOutline: "Show outline",
-        hideOutline: "Hide outline",
-        outline: "Outline",
-        fileEditor: "File editor",
-        diffLayout: "Diff layout",
-        openInSideSplit: "Open in the side split",
-        openAsTab: "Open as tab",
-        closeContent: "Close content",
-        closePreview: "Close file preview",
-        resizePreview: "Resize content and side preview",
-        resizePanel: "Resize chat and workspace",
-        resizeTaskPanel: "Resize chat and team board",
-        changedFileCount: "{{count}} files",
-        untracked: "Untracked",
-        added: "Added",
-        deleted: "Deleted",
-        modified: "Modified",
-        git: {
-          stagedCount: "Staged {{count}}",
-          changedCount: "Changes {{count}}",
-          history: "History",
-          hideList: "Hide changes list",
-          showList: "Show changes list",
-          tooManyFiles: "Too many Git files; showing the first 2000.",
-          diffPreview: "Git diff preview",
-          historyPreview: "Git history preview",
-          openDiffTab: "Open diff in a tab",
-          diffLoadError: "Could not load diff",
-          stagedDiffEmpty: "No staged diff",
-          textDiffEmpty: "No text diff is available for this file",
-          commitDiffLoadError: "Could not load commit diff",
-          commitDiffEmpty: "This commit has no visible file diff",
-          chooseFile: "Select a file to view its diff",
-          chooseCommit: "Select a commit to view its diff",
-          changedFiles: "Changed files",
-          commitHistory: "Commit history",
-          staged: "Staged",
-          changed: "Changes",
-          commitMessage: "Commit message",
-          commitStaged: "Commit staged files",
-          unstageFile: "Unstage {{path}}",
-          stageFile: "Stage {{path}}",
-          discardFile: "Discard unstaged changes to {{path}}",
-          showMoreFiles: "Show {{count}} more files",
-          unavailableLineCount:
-            "File is too large or unreadable; line count unavailable",
-          refreshDiff: "Refresh diff",
-          diffUnavailable: "Git diff is unavailable",
-          diffEmpty: "No diff to display",
-          scopeUnavailable: "Chat identity is unavailable",
-          repositoryUnavailable: "Git repository is unavailable",
-          fileUnavailable: "Git file is unavailable",
-          commitUnavailable: "Git commit is unavailable",
-        },
-      },
-      sessionTransitionTitle: "Continue in this chat",
-      runMetrics: {
-        latestRequestOutputTokens: "Last request output",
-      },
-      sessionTransitionDescription:
-        "After switching agents or accounts, your next message will continue this chat using your chosen method. Your full chat history stays visible.",
-      sessionRecoveryDescription:
-        "This agent cannot continue from its previous chat. After you confirm, your next message will continue this chat using your chosen method. The full chat will remain available.",
-      sessionTransitionTurns: "Recent turns to include",
-      sessionTransitionMode: "How to continue",
-      fileChanges: { label: "File changes" },
-      sessionTransitionRecent: "Recent turns",
-      sessionTransitionSummary: "Automatic summary",
-      sessionTransitionSummaryHint:
-        "The current agent will prepare a handoff to continue this chat. This work stays out of the chat; if it cannot finish, recent turns will be used.",
-      sessionTransitionSummaryModel: "Summary model",
-      sessionTransitionSummaryReasoning: "Summary reasoning",
-      sessionTransitionNoModel: "No model available",
-      sessionTransitionFallbackTurns: "Recent turns if summary is unavailable",
-      sessionTransitionHint:
-        "Each turn contains your message and the agent's final reply. Default 5, maximum 20. History text is size limited.",
-      sessionTransitionConfirm: "Confirm and continue",
-      sessionTransitionAction: "Continue here",
-      forkHere: "Branch in new chat",
-      forkCurrent: "Branch in new chat",
-      forkHistoryBoundary: "Continued from chat",
-      forkBackToSource: "Return to source chat",
-      forkSourceUnavailable: "Source chat was deleted or is unavailable",
-      forkUnavailableTeam: "Team chats cannot be forked yet",
-      forkUnavailableBusy:
-        "Wait for the current run and interactions to finish",
-      forkUnavailableUnfinished: "This turn has not finished",
-      forkUnavailableSessionMissing:
-        "This turn has no resumable native session",
-      forkUnavailableSessionChanged: "The native session has changed",
-      forkUnavailableLatestOnly:
-        "This agent can branch only from the latest turn",
-      forkUnavailablePositionMissing: "This turn has no reliable fork position",
-      forkFailed:
-        "Fork could not be completed. Retry, or reconcile the native session if its outcome is unconfirmed.",
-      dismissError: "Dismiss error",
-      errorDetails: "Error details",
-      expandFailure: "Expand failure details",
-      collapseFailure: "Collapse failure details",
-      attachmentFailed:
-        "The attachment could not be added. Check that the file is accessible.",
-      checkErrorStatus: "Refresh messages",
-      errorActionFailed:
-        "The operation failed. Check the status and try again.",
-      sendUnknown:
-        "The send outcome is unknown. Your input is saved while chat history resyncs; check it before sending another message.",
-      firstSendUnconfirmed:
-        "The first message is unconfirmed. Retrying uses the original partner, model, and permissions.",
-      retryFirstSend: "Retry original send",
-      runtimeFailure: {
-        thinkingRequired:
-          "This model requires thinking. Adjust the thinking setting and try again.",
-        networkError:
-          "The connection was interrupted. Check the execution status before sending again.",
-        inputTimeout: "Timed out waiting for your answer",
-        approvalTimeout: "Timed out waiting for approval",
-        requestTimeout:
-          "The request timed out. Check the execution status before sending again.",
-        contextTooLarge:
-          "The conversation exceeds the model context limit. Start a new conversation or choose a model with a larger context.",
-        authRequired: "Your login has expired. Sign in again before sending.",
-        modelUnavailable: "This model is unavailable. Switch models and retry.",
-        planUpgradeRequired:
-          "This model is not included in your current plan. Switch models, or check your plan and retry.",
-        quotaExhausted:
-          "Your current quota has been exhausted. Switch models, or retry after your quota resets.",
-        rateLimited: "Too many requests. Please retry later.",
-        sessionNotFound:
-          "This agent cannot continue this chat. Confirm to continue here with recent messages.",
-        upstreamUnavailable:
-          "The model service is temporarily unavailable. Please retry later.",
-        eventDeliveryFailed:
-          "The reply was interrupted. Check the execution result before sending again.",
-        eventBudgetExceeded:
-          "Execution information exceeded the safety limit. Execution stopped; check the result.",
-        frameTooLarge:
-          "The response was too large and execution stopped. Check the execution result.",
-        inactivityTimeout:
-          "Execution stopped after no response. Check the execution result.",
-        policyUnsupported:
-          "The execution environment does not support the selected permissions. Adjust the settings.",
-        processExited:
-          "The execution process exited unexpectedly. Check the execution result and environment.",
-        protocolIncompatible:
-          "This agent version is unsupported. Update it and try again.",
-        runtimeIncompatible:
-          "This agent lacks a required capability. Update it and try again.",
-        runtimeNotFound:
-          "The selected execution environment was not found. Check its configuration.",
-        runtimeUnavailable:
-          "The execution environment could not start. Check its configuration.",
-        unsupportedCapability:
-          "The execution environment does not support this capability.",
-        unknown:
-          "Execution did not complete. Check its result and configuration before sending again.",
-      },
-    },
   },
 } as const;
 
 void i18n.use(initReactI18next).init({
   resources,
-  lng: "zh-CN",
+  lng: resolveLanguage(readLanguageMode()),
+  supportedLngs: ["zh-CN", "en-US"],
   fallbackLng: "zh-CN",
   defaultNS: "common",
   interpolation: {
@@ -3152,3 +2674,40 @@ void i18n.use(initReactI18next).init({
 });
 
 export { i18n };
+
+let languageMode = readLanguageMode();
+const languageModeListeners = new Set<() => void>();
+
+export function getLanguageMode(): LanguageMode {
+  return languageMode;
+}
+
+export function subscribeLanguageMode(listener: () => void): () => void {
+  languageModeListeners.add(listener);
+  return () => languageModeListeners.delete(listener);
+}
+
+export function setLanguageMode(mode: LanguageMode): void {
+  languageMode = mode;
+  persistLanguageMode(mode);
+  void i18n.changeLanguage(resolveLanguage(mode));
+  for (const listener of languageModeListeners) listener();
+}
+
+/** 启动和系统语言变化共用同一语言解析；文档语言跟随实际展示语言。 */
+export function initializeLanguage(): () => void {
+  const applyDocumentLanguage = () => {
+    document.documentElement.lang = i18n.resolvedLanguage ?? "zh-CN";
+  };
+  const onSystemLanguage = () => {
+    if (languageMode === "system")
+      void i18n.changeLanguage(resolveLanguage(languageMode));
+  };
+  i18n.on("languageChanged", applyDocumentLanguage);
+  window.addEventListener("languagechange", onSystemLanguage);
+  applyDocumentLanguage();
+  return () => {
+    i18n.off("languageChanged", applyDocumentLanguage);
+    window.removeEventListener("languagechange", onSystemLanguage);
+  };
+}

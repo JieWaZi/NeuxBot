@@ -1,3 +1,4 @@
+import { localizedDateTimeFormat } from "@/shared/i18n/format";
 import { useTranslation } from "react-i18next";
 
 import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillVersion as ApiSkillVersion } from "@/shared/api/generated/types.gen";
@@ -64,7 +65,7 @@ export function SkillVersionHistory({
             {(!readOnly || Boolean(version.createdAt)) && (
               <span className="text-muted-foreground type-caption shrink-0">
                 {version.createdAt
-                  ? new Intl.DateTimeFormat("zh-CN", {
+                  ? localizedDateTimeFormat({
                       month: "short",
                       day: "numeric",
                     }).format(new Date(version.createdAt))

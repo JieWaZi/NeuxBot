@@ -14,11 +14,11 @@ import {
 } from "@/shared/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { getChatMessageFileChangesOptions } from "../api/chat-queries";
-import type { AllyChatMessage } from "../runtime/chat-projection";
+import type { BotChatMessage } from "../runtime/chat-projection";
 import type { ChatFileChangeOpenRequest } from "./chat-thread";
 
 type ExecutionFileChangesProps = {
-  message: AllyChatMessage;
+  message: BotChatMessage;
   chatId?: string;
   onOpenFile?: (file: ChatFileChangeOpenRequest) => void;
 };

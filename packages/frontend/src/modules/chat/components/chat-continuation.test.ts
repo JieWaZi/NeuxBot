@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { chatContinuations } from "./chat-continuation";
-import type { AllyChatMessage } from "../runtime/chat-projection";
+import type { BotChatMessage } from "../runtime/chat-projection";
 
-const first: AllyChatMessage = {
+const first: BotChatMessage = {
   id: "first",
   executionId: "run-1",
   role: "assistant",
@@ -15,8 +15,8 @@ const first: AllyChatMessage = {
     contextUsedTokens: 100,
   },
 };
-const user: AllyChatMessage = { id: "user", role: "user", content: "追加要求" };
-const next: AllyChatMessage = {
+const user: BotChatMessage = { id: "user", role: "user", content: "追加要求" };
+const next: BotChatMessage = {
   id: "next",
   executionId: "run-2",
   role: "assistant",

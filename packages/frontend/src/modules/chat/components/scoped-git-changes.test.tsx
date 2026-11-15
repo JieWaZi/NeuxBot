@@ -194,10 +194,7 @@ describe("ScopedGitChanges", () => {
     const main = screen.getByRole("main", { name: "Git Diff 预览" });
     expect(within(main).getAllByText("src/main.ts")).toHaveLength(1);
     expect(main.querySelector(".max-h-96")).toBeNull();
-    expect(getScopedGitStatus).toHaveBeenCalledWith(
-      "a".repeat(32),
-      "/tmp/ally",
-    );
+    expect(getScopedGitStatus).toHaveBeenCalledWith("a".repeat(32), "/tmp/bot");
     expect(getScopedGitDiff).toHaveBeenCalledWith(
       "a".repeat(32),
       "/tmp/bot",

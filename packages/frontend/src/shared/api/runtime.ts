@@ -6,6 +6,8 @@ import {
   apiErrorNoticePresentation,
 } from "./error-notices";
 import { getCoreConnection, type CoreConnection } from "@/shared/platform";
+import { i18n } from "@/shared/i18n";
+import { apiLanguageHeaders } from "./language-headers";
 
 import { client } from "./generated/client.gen";
 import { toApiError } from "./errors";
@@ -56,6 +58,8 @@ export async function initializeApi(): Promise<CoreConnection> {
         (original.pathname === "/api/v1" ||
           original.pathname.startsWith("/api/v1/"))
       ) {
+        for (const [name, value] of Object.entries(apiLanguageHeaders()))
+          headers.set(name, value);
         // 生成 QueryKey 会冻结旧 baseUrl/headers；实际 Core 请求必须沿用当前受信连接。
         const target = new URL(connection.baseUrl);
         target.pathname = original.pathname;
@@ -67,8 +71,8 @@ export async function initializeApi(): Promise<CoreConnection> {
           connection.csrfToken &&
           !["GET", "HEAD", "OPTIONS"].includes(request.method)
         )
-          headers.set("X-Ally-CSRF", connection.csrfToken);
-        else headers.delete("X-Ally-CSRF");
+          headers.set("X-Bot-CSRF", connection.csrfToken);
+        else headers.delete("X-Bot-CSRF");
         if (target.toString() !== request.url) {
           // 显式保留 Request 属性；跨运行环境不能把 Request 当普通 init 字典传递。
           const init = {
@@ -95,7 +99,7 @@ export async function initializeApi(): Promise<CoreConnection> {
         original.origin !== new URL(connection.baseUrl).origin
       ) {
         headers.delete("Authorization");
-        headers.delete("X-Ally-CSRF");
+        headers.delete("X-Bot-CSRF");
       }
       return new Request(request, {
         headers,
@@ -191,7 +195,7 @@ export async function initializeApi(): Promise<CoreConnection> {
 
 export function getApiConnection(): CoreConnection {
   if (!connection) {
-    throw new Error("API 尚未初始化");
+    throw new Error(i18n.t("common:errors.apiNotReady"));
   }
   return connection;
 }

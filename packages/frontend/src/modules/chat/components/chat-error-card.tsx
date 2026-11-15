@@ -7,7 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { AllyChatMessage } from "../runtime/chat-projection";
+import type { BotChatMessage } from "../runtime/chat-projection";
 import {
   AlertTriangle,
   ChevronRight,
@@ -223,7 +223,7 @@ export function MessageFailure({
   onDismiss,
   appearance,
 }: {
-  message: AllyChatMessage;
+  message: BotChatMessage;
   last: boolean;
   placement?: "message" | "composer";
   onDismiss?: () => void;
@@ -304,7 +304,7 @@ function dismissExecutionFailure(id: string) {
 type ChatErrorNoticesProps = {
   scopes: readonly string[];
   fallback?: ChatSendFailure;
-  failure?: AllyChatMessage;
+  failure?: BotChatMessage;
   appearance?: "card" | "composer";
 };
 
@@ -355,7 +355,7 @@ export function useChatErrorNotices({
   };
   type Item =
     | { kind: "notice"; notice: ErrorNotice; at: number }
-    | { kind: "execution"; message: AllyChatMessage; at: number };
+    | { kind: "execution"; message: BotChatMessage; at: number };
   const items: Item[] = matchingNotices
     .filter((notice) => !sameFailure(notice))
     .map((notice) => ({ kind: "notice", notice, at: notice.createdAt }));

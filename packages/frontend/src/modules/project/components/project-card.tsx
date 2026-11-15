@@ -1,3 +1,4 @@
+import { localizedDateTimeFormat } from "@/shared/i18n/format";
 import { Card, CardBody, CardFooter } from "@/shared/ui/card";
 import { Checkbox } from "@/shared/ui/checkbox";
 import { Folder, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
@@ -97,7 +98,7 @@ export function ProjectCard({
             <span className="text-muted-foreground type-caption truncate px-4">
               {t("createdAt", {
                 date: project.createdAt
-                  ? new Intl.DateTimeFormat("zh-CN").format(
+                  ? localizedDateTimeFormat().format(
                       new Date(project.createdAt),
                     )
                   : t("today"),

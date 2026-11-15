@@ -1,4 +1,5 @@
 import { Component, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/shared/ui/button";
 import { logger } from "@/shared/diagnostics/logger";
@@ -22,20 +23,21 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (!this.state.error) return this.props.children;
-    return (
-      <main className="grid h-full place-items-center p-8">
-        <section className="border-border-subtle bg-surface-raised max-w-md rounded-xl border p-8 text-center">
-          <h1 className="type-page-title font-semibold">
-            当前页面暂时无法显示
-          </h1>
-          <p className="text-muted-foreground type-body mt-3">
-            {this.state.error.message}
-          </p>
-          <Button className="mt-6" onClick={() => window.location.reload()}>
-            重新载入
-          </Button>
-        </section>
-      </main>
-    );
+    return <ErrorFallback error={this.state.error} />;
   }
+}
+
+function ErrorFallback({ error }: { error: Error }) {
+  const { t } = useTranslation("common");
+  return (
+    <main className="grid h-full place-items-center p-8">
+      <section className="border-border-subtle bg-surface-raised max-w-md rounded-xl border p-8 text-center">
+        <h1 className="type-page-title font-semibold">{t("renderFailed")}</h1>
+        <p className="text-muted-foreground type-body mt-3">{error.message}</p>
+        <Button className="mt-6" onClick={() => window.location.reload()}>
+          {t("reload")}
+        </Button>
+      </section>
+    </main>
+  );
 }

@@ -12,7 +12,7 @@ import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { cn } from "@/shared/lib/cn";
 import type {
-  AllyChatMessage,
+  BotChatMessage,
   ChatPendingElicitation,
 } from "../runtime/chat-projection";
 
@@ -35,7 +35,7 @@ type ParsedSchema = {
   answerGroups: { keys: string[]; exclusive: boolean }[];
 };
 
-type Question = NonNullable<AllyChatMessage["question"]>;
+type Question = NonNullable<BotChatMessage["question"]>;
 
 type ChatElicitationCardProps = {
   elicitation: ChatPendingElicitation;

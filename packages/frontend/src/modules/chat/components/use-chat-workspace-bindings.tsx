@@ -1,3 +1,4 @@
+import { i18n } from "@/shared/i18n";
 import { useWorkspaceQueryEvents } from "@/shared/api/workspace-events";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef } from "react";
@@ -75,7 +76,7 @@ export function useChatWorkspaceBindings({
   const chatFilesQuery = useQuery({
     queryKey: ["chat-workspace-files", activeChatId, workspaceDirectory],
     queryFn: () => {
-      if (!activeChatId) throw new Error("Chat 尚未就绪");
+      if (!activeChatId) throw new Error(i18n.t("common:errors.chatNotReady"));
       return listChatWorkspaceFiles(activeChatId, workspaceDirectory);
     },
     enabled: shouldLoadGeneratedFiles,
@@ -94,7 +95,8 @@ export function useChatWorkspaceBindings({
   const downloadChatFile = useCallback(
     async (file: WorkspaceFile) => {
       try {
-        if (!activeChatId) throw new Error("Chat 尚未就绪");
+        if (!activeChatId)
+          throw new Error(i18n.t("common:errors.chatNotReady"));
         await downloadChatWorkspaceFile(activeChatId, "", file.path);
       } catch {
         toast.error(t("workspace.downloadFileError"));
@@ -105,7 +107,8 @@ export function useChatWorkspaceBindings({
   const deleteChatFile = useCallback(
     async (file: WorkspaceFile) => {
       try {
-        if (!activeChatId) throw new Error("Chat 尚未就绪");
+        if (!activeChatId)
+          throw new Error(i18n.t("common:errors.chatNotReady"));
         await deleteChatWorkspaceFile(activeChatId, "", file.path);
         await chatFilesQuery.refetch();
         return true;

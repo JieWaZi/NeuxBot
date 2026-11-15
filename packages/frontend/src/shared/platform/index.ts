@@ -1,3 +1,4 @@
+import { i18n } from "@/shared/i18n";
 import type {
   CoreConnection,
   FileDropEvent,
@@ -297,7 +298,7 @@ export async function importDroppedWorkspaceFile(
   root?: string,
 ): Promise<string> {
   if (file.size > workspaceSingleFileBytesLimit)
-    throw new Error("拖入文件超过 64 MiB，请使用导入按钮");
+    throw new Error(i18n.t("common:errors.dropTooLarge"));
   const scope = await openWorkspaceResourceScope(chatId);
   const bytes = new Uint8Array(await file.arrayBuffer());
   return requirePlatformService("workspace").import_workspace_resource_bytes({
@@ -315,7 +316,7 @@ export async function importDroppedWorkspaceFiles(
   files: readonly File[],
   root?: string,
 ): Promise<WorkspaceResourceImport> {
-  if (files.length > 32) throw new Error("一次最多导入 32 个文件");
+  if (files.length > 32) throw new Error(i18n.t("common:errors.tooManyFiles"));
   const imported: string[] = [];
   const failed: WorkspaceResourceImport["failed"] = [];
   for (const file of files) {
@@ -326,7 +327,10 @@ export async function importDroppedWorkspaceFiles(
     } catch (cause) {
       failed.push({
         name: file.name,
-        message: cause instanceof Error ? cause.message : "导入失败",
+        message:
+          cause instanceof Error
+            ? cause.message
+            : i18n.t("common:errors.importFailed"),
       });
     }
   }
@@ -380,7 +384,8 @@ export async function readWorkspaceResource(
   signal?: AbortSignal,
   root?: string,
 ): Promise<WorkspaceResourceRead> {
-  if (signal?.aborted) throw new DOMException("文件读取已取消", "AbortError");
+  if (signal?.aborted)
+    throw new DOMException(i18n.t("common:errors.readCanceled"), "AbortError");
   const bridge = requirePlatformService("workspace");
   const requestId = crypto.randomUUID();
   const cancel = () => {
@@ -396,7 +401,11 @@ export async function readWorkspaceResource(
       requestId,
       root,
     });
-    if (signal?.aborted) throw new DOMException("文件读取已取消", "AbortError");
+    if (signal?.aborted)
+      throw new DOMException(
+        i18n.t("common:errors.readCanceled"),
+        "AbortError",
+      );
     return result;
   } finally {
     signal?.removeEventListener("abort", cancel);
@@ -750,7 +759,7 @@ export async function createBrowserView(
   chatId?: string,
 ): Promise<string> {
   if (!hasPlatformService("browser")) {
-    throw new Error("内置浏览器仅在桌面应用中可用");
+    throw new Error(i18n.t("common:errors.browserDesktopOnly"));
   }
   return requirePlatformService("browser").browser_create({
     url,
@@ -766,7 +775,7 @@ export async function prepareBrowserWebview(
   chatId?: string,
 ): Promise<string> {
   if (!hasPlatformService("browser")) {
-    throw new Error("内置浏览器仅在 NeuxBot 桌面应用中可用");
+    throw new Error(i18n.t("common:errors.browserNativeOnly"));
   }
   return requirePlatformService("browser").browser_prepare_webview({
     url,
@@ -841,7 +850,7 @@ export async function startTerminal(
   createWhenMissing: boolean,
 ): Promise<TerminalStarted> {
   if (!hasPlatformService("terminal")) {
-    throw new Error("当前服务未提供终端能力");
+    throw new Error(i18n.t("common:errors.terminalUnsupported"));
   }
   return requirePlatformService("terminal").terminal_start({
     root,

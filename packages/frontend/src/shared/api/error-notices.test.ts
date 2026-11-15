@@ -429,9 +429,9 @@ it("会话提示即时可见但重载后无事件不会恢复", async () => {
     }),
   );
   expect(view.result.current).toHaveLength(1);
-  expect(
-    JSON.parse(localStorage.getItem("ally:error-notices") ?? "[]"),
-  ).toEqual([]);
+  expect(JSON.parse(localStorage.getItem("bot:error-notices") ?? "[]")).toEqual(
+    [],
+  );
   const sessionNotice = view.result.current[0];
   view.unmount();
   // 即使上一版本或宿主恢复错误地保留了会话提示，也不能在新Renderer重放。

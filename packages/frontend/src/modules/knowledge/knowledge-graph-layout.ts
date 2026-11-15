@@ -1,3 +1,4 @@
+import { i18n } from "@/shared/i18n";
 // 来源：Tencent/WeKnora，固定提交 8776a2d92d11ad3e76865d51cf3192e37e2a9976。
 // Copyright (C) 2026 Tencent. All rights reserved. MIT 许可与迁入边界见根目录 THIRD_PARTY_NOTICES.md。
 // Geometry is independent of SVG so dense and disconnected graphs can be
@@ -877,6 +878,6 @@ export function graphClusterOutline(
 /** 上游基于拓扑索引的已知引用在宿主中显式校验，不使用非空断言。 */
 function requiredLayoutValue<T>(value: T | undefined | null): T {
   if (value === undefined || value === null)
-    throw new Error("图谱布局内部引用缺失");
+    throw new Error(i18n.t("common:errors.graphReferenceMissing"));
   return value;
 }

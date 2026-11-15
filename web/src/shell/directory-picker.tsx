@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Dialog, DialogContent } from "@/shared/ui/dialog";
-import { webText } from "../i18n";
+import { useWebText } from "../i18n";
 
 /** 浏览器无法得到本机目录选择器的真实路径，由用户明确指定 Core 目录。 */
 export function selectCoreDirectory(): Promise<string | null> {
@@ -26,6 +26,7 @@ function DirectoryPicker({
 }: {
   onComplete: (value: string | null) => void;
 }) {
+  const webText = useWebText();
   const [path, setPath] = useState("");
   const [invalid, setInvalid] = useState(false);
   return (

@@ -1,4 +1,7 @@
-import { zhCN } from "date-fns/locale";
+import { localizedDateTimeFormat } from "@/shared/i18n/format";
+import { enUS, zhCN } from "date-fns/locale";
+import { useTranslation } from "react-i18next";
+import { i18n } from "@/shared/i18n";
 import { CalendarDays } from "lucide-react";
 import { useState } from "react";
 import type { DateRange } from "react-day-picker";
@@ -25,11 +28,11 @@ type DateRangePickerProps = {
   to: string;
 };
 
-const monthDayFormatter = new Intl.DateTimeFormat("zh-CN", {
+const monthDayFormatter = localizedDateTimeFormat({
   month: "long",
   day: "numeric",
 });
-const fullDateFormatter = new Intl.DateTimeFormat("zh-CN", {
+const fullDateFormatter = localizedDateTimeFormat({
   year: "numeric",
   month: "long",
   day: "numeric",
@@ -37,7 +40,8 @@ const fullDateFormatter = new Intl.DateTimeFormat("zh-CN", {
 
 function rangeLabel(from: Date | undefined, to: Date | undefined) {
   if (!from) return undefined;
-  if (!to) return `${fullDateFormatter.format(from)}起`;
+  if (!to)
+    return i18n.t("common:fromDate", { date: fullDateFormatter.format(from) });
   if (from.getFullYear() === to.getFullYear()) {
     return `${monthDayFormatter.format(from)} – ${monthDayFormatter.format(to)}`;
   }
@@ -51,6 +55,7 @@ export function DateRangePicker({
   onChange,
   to,
 }: DateRangePickerProps) {
+  const { i18n } = useTranslation();
   const [open, setOpen] = useState(false);
   const [draftRange, setDraftRange] = useState<DateRange>();
   const [selectingEnd, setSelectingEnd] = useState(false);
@@ -98,7 +103,7 @@ export function DateRangePicker({
         </div>
         <Calendar
           mode="range"
-          locale={zhCN}
+          locale={i18n.resolvedLanguage?.startsWith("en") ? enUS : zhCN}
           weekStartsOn={1}
           defaultMonth={toDate ?? fromDate ?? new Date()}
           selected={draftRange}

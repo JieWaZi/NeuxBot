@@ -17,6 +17,11 @@ if (typeof Range.prototype.getBoundingClientRect !== "function") {
 if (typeof HTMLElement.prototype.scrollIntoView !== "function") {
   HTMLElement.prototype.scrollIntoView = () => undefined;
 }
+if (typeof HTMLElement.prototype.hasPointerCapture !== "function") {
+  HTMLElement.prototype.hasPointerCapture = () => false;
+  HTMLElement.prototype.setPointerCapture = () => undefined;
+  HTMLElement.prototype.releasePointerCapture = () => undefined;
+}
 if (!Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "value")) {
   Object.defineProperty(HTMLDivElement.prototype, "value", {
     configurable: true,
@@ -35,7 +40,9 @@ afterEach(() => {
 
 // 公共组件测试使用显式浏览器宿主，能力由具体用例注入。
 import { configurePlatform } from "@/shared/platform/provider";
-beforeEach(() => {
+import { i18n } from "@/shared/i18n";
+beforeEach(async () => {
+  await i18n.changeLanguage("zh-CN");
   configurePlatform({
     kind: "web",
     getConnection: async () => ({
