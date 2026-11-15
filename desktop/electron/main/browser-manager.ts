@@ -25,7 +25,7 @@ export function browserURL(value: string, localRoot?: string): string {
   }
   throw new Error("浏览器地址不在允许范围内");
 }
-export function browserBounds(bounds: BrowserBounds): BrowserBounds {
+export function browserBounds(bounds: BrowserBounds, scale = 1): BrowserBounds {
   if (
     !Object.values(bounds).every(Number.isFinite) ||
     bounds.width <= 0 ||
@@ -33,10 +33,10 @@ export function browserBounds(bounds: BrowserBounds): BrowserBounds {
   )
     throw new Error("浏览器视图尺寸无效");
   return {
-    x: Math.round(bounds.x),
-    y: Math.round(bounds.y),
-    width: Math.max(1, Math.round(bounds.width)),
-    height: Math.max(1, Math.round(bounds.height)),
+    x: Math.round(bounds.x * scale),
+    y: Math.round(bounds.y * scale),
+    width: Math.max(1, Math.round(bounds.width * scale)),
+    height: Math.max(1, Math.round(bounds.height * scale)),
   };
 }
 export class BrowserManager {
@@ -67,12 +67,15 @@ export class BrowserManager {
       : undefined;
     const url = browserURL(input.url, localRoot);
     const localPreview = new URL(url).protocol === "file:";
-    const bounds = browserBounds({
-      x: input.x,
-      y: input.y,
-      width: input.width,
-      height: input.height,
-    });
+    const bounds = browserBounds(
+      {
+        x: input.x,
+        y: input.y,
+        width: input.width,
+        height: input.height,
+      },
+      this.window.webContents.getZoomFactor?.() ?? 1,
+    );
     if (this.disposed || this.window.isDestroyed())
       throw new Error("浏览器管理器已关闭");
     const id = randomUUID();
@@ -215,7 +218,9 @@ export class BrowserManager {
       navigation.goForward();
   }
   bounds(id: string, bounds: BrowserBounds) {
-    this.require(id).view.setBounds(browserBounds(bounds));
+    this.require(id).view.setBounds(
+      browserBounds(bounds, this.window.webContents.getZoomFactor?.() ?? 1),
+    );
   }
   visible(id: string, visible: boolean) {
     const { view } = this.require(id);

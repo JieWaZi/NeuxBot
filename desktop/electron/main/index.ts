@@ -12,6 +12,12 @@ import path from "node:path";
 import { appendFile, mkdir } from "node:fs/promises";
 import { CoreSupervisor } from "./core-supervisor";
 import { installDesktopServices } from "./desktop-services";
+import {
+  windowLanguage,
+  initializeWindowAppearance,
+  loadWindowAppearance,
+  windowAppearanceOptions,
+} from "./window-appearance";
 import { configureApplicationIcon } from "./application-icon";
 import { createApplicationLifecycle } from "./application-lifecycle";
 import { rendererResponse } from "./renderer-protocol";
@@ -52,6 +58,8 @@ let disposeIMPowerLifecycle: (() => void) | undefined;
 let disposeWorkspaceAttention: (() => void) | undefined;
 let notificationPreferences:
   Awaited<ReturnType<typeof loadNotificationPreferences>> | undefined;
+let windowAppearance:
+  Awaited<ReturnType<typeof loadWindowAppearance>> | undefined;
 async function log(message: string) {
   if (isDevelopment) {
     process.stderr.write(message.endsWith("\n") ? message : `${message}\n`);
@@ -77,7 +85,11 @@ async function createWindow(): Promise<BrowserWindow> {
   ).href;
   if (development && new URL(rendererURL).origin !== "http://127.0.0.1:1420")
     throw new Error("开发页面地址无效");
+  if (!windowAppearance)
+    throw new Error("Window appearance is not initialized");
+  const transparent = windowAppearance.get().transparent;
   const current = new BrowserWindow({
+    ...windowAppearanceOptions(transparent),
     title: "NeuxBot",
     width: 1280,
     height: 820,
@@ -96,6 +108,7 @@ async function createWindow(): Promise<BrowserWindow> {
       webviewTag: true,
     },
   });
+  initializeWindowAppearance(current, transparent);
   if (!core) throw new Error("Core 尚未装配");
   const dispose = installDesktopServices(
     current,
@@ -103,15 +116,23 @@ async function createWindow(): Promise<BrowserWindow> {
     rendererURL,
     coreEvents,
     notificationPreferences,
+    windowAppearance,
   );
   current.webContents.on("will-prevent-unload", (event) => {
+    const en = windowLanguage(current) === "en-US";
     const answer = dialog.showMessageBoxSync(current, {
       type: "warning",
-      buttons: ["继续编辑", "放弃草稿并关闭"],
+      buttons: en
+        ? ["Keep editing", "Discard draft and close"]
+        : ["继续编辑", "放弃草稿并关闭"],
       defaultId: 0,
       cancelId: 0,
-      message: "右侧工作台有未保存的文件草稿",
-      detail: "关闭窗口或刷新页面会丢失这些修改。",
+      message: en
+        ? "The workbench has unsaved file changes"
+        : "右侧工作台有未保存的文件草稿",
+      detail: en
+        ? "Closing or reloading will discard these changes."
+        : "关闭窗口或刷新页面会丢失这些修改。",
     });
     if (answer === 1) event.preventDefault();
   });
@@ -207,6 +228,9 @@ else {
       coreEvents = createCoreEvents(coreConnection, log);
       const preferencesPath = app.getPath("userData");
       await mkdir(preferencesPath, { recursive: true });
+      windowAppearance = await loadWindowAppearance(
+        path.join(preferencesPath, "window-appearance.json"),
+      );
       const preferences = await loadNotificationPreferences(
         path.join(preferencesPath, "notification-preferences.json"),
       );
@@ -214,6 +238,10 @@ else {
       disposeWorkspaceAttention = installWorkspaceAttention({
         events: coreEvents,
         preferences: preferences.get,
+        language: () => {
+          const window = BrowserWindow.getAllWindows()[0];
+          return (window && windowLanguage(window)) ?? app.getLocale();
+        },
         isFocused: () =>
           BrowserWindow.getAllWindows().some((window) => window.isFocused()),
         resolveTarget: resolveWorkspaceAttentionTarget(coreConnection),

@@ -1,6 +1,7 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 import { cn } from "@/shared/lib/cn";
 import { NativeOverlayPresence } from "@/shared/ui/native-overlay";
@@ -48,6 +49,7 @@ export function DialogContent({
   title,
   ...props
 }: DialogContentProps) {
+  const { t } = useTranslation("common");
   return (
     <DialogPrimitive.Portal container={container}>
       <DialogPrimitive.Overlay
@@ -87,8 +89,8 @@ export function DialogContent({
             <DialogPrimitive.Description className="sr-only">
               {description ?? title}
             </DialogPrimitive.Description>
-            <DialogPrimitive.Close className="sr-only" aria-label="关闭">
-              关闭
+            <DialogPrimitive.Close className="sr-only" aria-label={t("close")}>
+              {t("close")}
             </DialogPrimitive.Close>
             {children}
           </div>
@@ -111,7 +113,7 @@ export function DialogContent({
                   "text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring size-control-sm grid shrink-0 place-items-center rounded-sm outline-none focus-visible:ring-2",
                   headingLayout === "centered" && "absolute top-3 right-3",
                 )}
-                aria-label="关闭"
+                aria-label={t("close")}
               >
                 <X className="size-icon-md" strokeWidth={1.5} />
               </DialogPrimitive.Close>

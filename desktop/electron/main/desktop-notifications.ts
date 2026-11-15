@@ -12,10 +12,10 @@ export function createDesktopNotification(
   return Notification.isSupported() ? new Notification(content) : undefined;
 }
 
-export async function sendTestNotification() {
+export async function sendTestNotification(language = app.getLocale()) {
   const notification = createDesktopNotification({
     title: "NeuxBot",
-    body: app.getLocale().startsWith("zh")
+    body: language.startsWith("zh")
       ? "这是一条测试通知。"
       : "This is a test notification.",
   });

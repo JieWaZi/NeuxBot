@@ -3,6 +3,8 @@ import { writeFile as save } from "node:fs/promises";
 import path from "node:path";
 import type { DesktopCommands, DesktopEvents } from "../shared/contracts";
 import { commandSchemas } from "../shared/validation";
+import { applyWindowAppearance, windowLanguage } from "./window-appearance";
+import type { loadWindowAppearance } from "./window-appearance";
 import type { CoreSupervisor } from "./core-supervisor";
 import { BrowserManager } from "./browser-manager";
 import { BrowserWebviewPolicy } from "./browser-webview-policy";
@@ -24,6 +26,7 @@ export function installDesktopServices(
   notificationPreferences?: Awaited<
     ReturnType<typeof loadNotificationPreferences>
   >,
+  windowAppearance?: Awaited<ReturnType<typeof loadWindowAppearance>>,
 ) {
   // BrowserWindow 的 closed 事件触发时再读取 window.webContents 会抛出
   // “Object has been destroyed”，因此安装阶段固定持有本次窗口的内容对象。
@@ -50,6 +53,17 @@ export function installDesktopServices(
     ) => DesktopCommands[K]["result"] | Promise<DesktopCommands[K]["result"]>;
   } = {
     core_connection: () => core.connection(),
+    get_window_appearance: () => {
+      if (!windowAppearance)
+        throw new Error("Window appearance is not initialized");
+      return windowAppearance.get();
+    },
+    set_window_appearance: async (value) => {
+      if (!windowAppearance)
+        throw new Error("Window appearance is not initialized");
+      await windowAppearance.set(value.transparent);
+      return applyWindowAppearance(window, value);
+    },
     subscribe_core_events: ({ subscriptionId, topic, resource, after }) => {
       if (!events) throw new Error("全局事件服务尚未装配");
       if (eventSubscriptions.has(subscriptionId)) return true;
@@ -150,7 +164,7 @@ export function installDesktopServices(
       if (!notificationPreferences) throw new Error("系统提醒偏好尚未装配");
       return notificationPreferences.set(value);
     },
-    send_test_notification: sendTestNotification,
+    send_test_notification: () => sendTestNotification(windowLanguage(window)),
     open_notification_settings: openNotificationSettings,
   };
   const trusted = (url: string) =>

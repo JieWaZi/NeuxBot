@@ -1,8 +1,9 @@
-import { lazy, Suspense, type ReactNode } from "react";
+import { lazy, Suspense, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
   SettingsContentShell,
+  SettingsCard,
   SettingsGroup,
   SettingsRow,
 } from "../components/settings-section-layout";
@@ -11,6 +12,14 @@ import { SettingsPageFooterHost } from "../components/settings-page-footer";
 import { IntegrationBreadcrumbs } from "../components/integration-breadcrumbs";
 import { type SettingsSection } from "../settings-navigation";
 import { useTheme } from "@/shared/theme";
+import { interfaceScales, isInterfaceScale } from "@/shared/theme/appearance";
+import {
+  getLanguageMode,
+  setLanguageMode,
+  subscribeLanguageMode,
+} from "@/shared/i18n";
+import { isLanguageMode } from "@/shared/i18n/language";
+import { Switch } from "@/shared/ui/switch";
 import { SceneBreadcrumbs } from "@/shared/ui/scene-breadcrumbs";
 import { NativeOverlayPresence } from "@/shared/ui/native-overlay";
 import { Skeleton } from "@/shared/ui/skeleton";
@@ -36,39 +45,123 @@ const IntegrationsSection = lazy(() =>
 
 function GeneralSettings() {
   const { t } = useTranslation("appSettings");
-  const { mode, setMode } = useTheme();
+  const {
+    mode,
+    setMode,
+    scale,
+    setScale,
+    transparent,
+    setTransparent,
+    transparencySupported,
+    appearanceError,
+  } = useTheme();
+  const language = useSyncExternalStore(subscribeLanguageMode, getLanguageMode);
   const modes = ["system", "light", "dark"] as const;
   return (
     <SettingsContentShell title={t("general.title")} showHeader={false}>
       <SettingsGroup title={t("general.appearance.title")}>
-        <SettingsRow
-          title={t("general.appearance.theme")}
-          description={t("general.appearance.description")}
-        >
-          <Select
-            value={mode}
-            onValueChange={(value) => {
-              if (value === "system" || value === "light" || value === "dark")
-                setMode(value);
-            }}
+        <SettingsCard>
+          <SettingsRow
+            grouped
+            title={t("general.appearance.theme")}
+            description={t("general.appearance.description")}
           >
-            <SelectTrigger
-              appearance="settings"
-              size="settings"
-              aria-label={t("theme.pickerAria")}
+            <Select
+              value={mode}
+              onValueChange={(value) => {
+                if (value === "system" || value === "light" || value === "dark")
+                  setMode(value);
+              }}
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {modes.map((value) => (
-                <SelectItem key={value} value={value}>
-                  {t(`theme.${value}`)}
+              <SelectTrigger
+                appearance="settings"
+                size="settings"
+                aria-label={t("theme.pickerAria")}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {modes.map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {t(`theme.${value}`)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </SettingsRow>
+          <SettingsRow
+            grouped
+            title={t("general.appearance.transparent")}
+            description={t(
+              transparencySupported
+                ? "general.appearance.transparentHelp"
+                : "general.appearance.transparentUnavailable",
+            )}
+          >
+            <Switch
+              aria-label={t("general.appearance.transparent")}
+              checked={Boolean(transparent && transparencySupported)}
+              disabled={!transparencySupported}
+              onClick={() => setTransparent(!transparent)}
+            />
+          </SettingsRow>
+          <SettingsRow grouped title={t("general.appearance.language")}>
+            <Select
+              value={language}
+              onValueChange={(value) => {
+                if (isLanguageMode(value)) setLanguageMode(value);
+              }}
+            >
+              <SelectTrigger
+                appearance="settings"
+                size="settings"
+                aria-label={t("general.appearance.language")}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="system">{t("theme.system")}</SelectItem>
+                <SelectItem value="zh-CN">
+                  {t("common:languages.chinese")}
                 </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </SettingsRow>
+                <SelectItem value="en-US">
+                  {t("common:languages.english")}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </SettingsRow>
+          <SettingsRow grouped title={t("general.appearance.scale")}>
+            <Select
+              value={String(scale ?? 1)}
+              onValueChange={(value) => {
+                const next = Number(value);
+                if (isInterfaceScale(next)) setScale(next);
+              }}
+            >
+              <SelectTrigger
+                appearance="settings"
+                size="settings"
+                aria-label={t("general.appearance.scale")}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {interfaceScales.map((value) => (
+                  <SelectItem key={value} value={String(value)}>
+                    {Math.round(value * 100)}%
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </SettingsRow>
+        </SettingsCard>
+        {appearanceError ? (
+          <p role="alert" className="type-body text-danger">
+            {t("general.appearance.failed")}
+          </p>
+        ) : null}
       </SettingsGroup>
+      <DesktopNotificationSettings />
     </SettingsContentShell>
   );
 }
@@ -117,7 +210,6 @@ export function SettingsScene({
   const { t } = useTranslation("appSettings");
   const sectionKey = {
     general: "general",
-    notifications: "notifications",
     agents: "runtimeEnvironments",
     integrations: "integrations",
   }[section];
@@ -163,9 +255,6 @@ export function SettingsScene({
                 }
               >
                 {section === "general" ? <GeneralSettings /> : null}
-                {section === "notifications" ? (
-                  <DesktopNotificationSettings />
-                ) : null}
                 {section === "agents" ? (
                   <RuntimeEnvironmentsSection
                     runtimeId={runtimeId}

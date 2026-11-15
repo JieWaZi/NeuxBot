@@ -19,6 +19,15 @@ const bounds = {
 const file = { root, relativePath: text };
 export const commandSchemas = {
   core_connection: z.undefined(),
+  get_window_appearance: z.undefined(),
+  set_window_appearance: z
+    .object({
+      theme: z.enum(["system", "light", "dark"]),
+      language: z.enum(["zh-CN", "en-US"]),
+      transparent: z.boolean(),
+      scale: z.number().min(0.8).max(1.5).finite(),
+    })
+    .strict(),
   subscribe_core_events: globalEventSubscriptionSchema,
   resync_core_events: z
     .object({

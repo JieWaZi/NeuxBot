@@ -107,11 +107,9 @@ describe("语义主题", () => {
     expect(themeStyles).toContain(
       "--ref-bot-green-light: oklch(84.92% 0.127 150);",
     );
-    expect(themeStyles).toContain(
-      "--ref-ally-green-dark: oklch(72% 0.13 150);",
-    );
+    expect(themeStyles).toContain("--ref-bot-green-dark: oklch(72% 0.13 150);");
     expect(themeStyles).toMatch(
-      /\[data-theme="light"\][\s\S]*--accent-default: var\(--ref-ally-green-light\)/,
+      /\[data-theme="light"\][\s\S]*--accent-default: var\(--ref-bot-green-light\)/,
     );
     expect(themeStyles).toMatch(
       /\[data-theme="dark"\][\s\S]*--accent-default: var\(--ref-bot-green-dark\)/,

@@ -1,6 +1,7 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 import { cn } from "@/shared/lib/cn";
 import { NativeOverlayPresence } from "@/shared/ui/native-overlay";
@@ -22,6 +23,7 @@ export function SheetContent({
   size = "default",
   ...props
 }: SheetContentProps) {
+  const { t } = useTranslation("common");
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay
@@ -51,7 +53,7 @@ export function SheetContent({
           </div>
           <DialogPrimitive.Close
             className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring size-control-sm grid shrink-0 place-items-center rounded-sm outline-none focus-visible:ring-2"
-            aria-label="关闭"
+            aria-label={t("close")}
           >
             <X className="size-icon-md" strokeWidth={1.5} />
           </DialogPrimitive.Close>

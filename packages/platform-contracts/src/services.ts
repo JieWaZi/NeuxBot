@@ -71,6 +71,26 @@ export type HostCommands = {
   open_external_url: { args: { url: string }; result: void };
 };
 
+/** 仅应用界面外观，不授予文件、执行或远端页面权限。 */
+export const interfaceScales = [0.8, 0.9, 1, 1.1, 1.25, 1.5] as const;
+export type InterfaceScale = (typeof interfaceScales)[number];
+
+export type WindowAppearanceCommands = {
+  get_window_appearance: {
+    args: undefined;
+    result: { transparent: boolean; transparencySupported: boolean };
+  };
+  set_window_appearance: {
+    args: {
+      theme: "system" | "light" | "dark";
+      language: "zh-CN" | "en-US";
+      transparent: boolean;
+      scale: number;
+    };
+    result: { transparencySupported: boolean };
+  };
+};
+
 export type WorkspaceCommands = {
   search_workspace_files: {
     args: { root: string; query: string; limit: number; scopePath?: string };
@@ -406,7 +426,9 @@ export type CommandMethods<T> = {
 };
 
 export type HostService = CommandMethods<HostCommands> &
+  Partial<CommandMethods<WindowAppearanceCommands>> &
   Partial<CommandMethods<NotificationPreferenceCommands>> & {
+    onInterfaceScale?(handler: (scale: InterfaceScale) => void): () => void;
     discard_attachment?(args: { sourcePath: string }): Promise<void>;
     onFileDrop(handler: (event: FileDropEvent) => void): () => void;
     onWorkspaceAttentionOpen?(

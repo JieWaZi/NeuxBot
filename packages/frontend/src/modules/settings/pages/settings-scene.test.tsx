@@ -76,7 +76,7 @@ vi.mock("../components/integrations-section", () => ({
 }));
 
 describe("SettingsScene", () => {
-  it("从独立通知栏更改提醒范围和本机设置，并可发送测试", async () => {
+  it("在通用设置更改通知范围和本机设置，并可发送测试", async () => {
     let preferences: NotificationPreferences = {
       mode: "all",
       enabled: true,
@@ -104,8 +104,13 @@ describe("SettingsScene", () => {
       );
     }
     render(<Harness />);
-    expect(screen.queryByRole("switch", { name: "显示消息预览" })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "通知" }));
+    expect(screen.queryByRole("button", { name: "通知" })).toBeNull();
+    expect(screen.getByRole("button", { name: "通用" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("heading", { name: "外观" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "通知" })).toBeVisible();
     const needsMe = await screen.findByRole("radio", { name: "需要我时" });
     await user.click(needsMe);
     await waitFor(() => expect(needsMe).toBeChecked());

@@ -41,6 +41,9 @@ export function createDesktopPlatform(bridge: DesktopBridge): Platform {
       };
     },
     host: {
+      get_window_appearance: bridge.get_window_appearance,
+      set_window_appearance: bridge.set_window_appearance,
+      onInterfaceScale: bridge.onInterfaceScale,
       save_file: bridge.save_file,
       select_directory: bridge.select_directory,
       select_files: bridge.select_files,

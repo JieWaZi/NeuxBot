@@ -15,9 +15,7 @@ test(
   "Electron 正常退出时不会把 Vite 的受控关闭报告为 143 错误",
   { skip: process.platform !== "darwin", timeout: 15_000 },
   async () => {
-    const fixture = await mkdtemp(
-      path.join(tmpdir(), "ally-electron-fixture-"),
-    );
+    const fixture = await mkdtemp(path.join(tmpdir(), "bot-electron-fixture-"));
     const executable = path.join(
       fixture,
       "Electron.app/Contents/MacOS/Electron",

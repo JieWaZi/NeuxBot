@@ -46,6 +46,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 设置侧栏、路径、分组行和智能体详情参考同一提交的 `SettingsDialogShell`、`ProviderSettingsPage`、`SettingsGeneralTab`、`settings-modal.css` 和 `window.css`，适配位于 `modules/settings` 及共享导航和设置表面变体。账号按智能体归属的 Go 持久化与校验沿用本项目领域实现。受管制品来源和布局核对同一提交的 `provider-runtime-manager.ts`、`provider-runtime-descriptors.ts`、`provider-runtime-releases.ts`、`provider-runtime-archive.ts` 及 `native-runtime.lock.json`；安装器以 Go 独立实现下载校验、完整版本发布及取消，不复制这些 TypeScript 实现。默认模型与安装支持范围以本项目真实能力为准。
 
+透明窗口另参考固定提交 [`f48c4bba33cceedd46ede78fa963418b2878fdb4`](https://github.com/nightly-labs/openbot/tree/f48c4bba33cceedd46ede78fa963418b2878fdb4) 的 [`src/main/window-appearance.ts`](https://github.com/nightly-labs/openbot/blob/f48c4bba33cceedd46ede78fa963418b2878fdb4/src/main/window-appearance.ts) 与 [`src/renderer/src/styles/window-glass.css`](https://github.com/nightly-labs/openbot/blob/f48c4bba33cceedd46ede78fa963418b2878fdb4/src/renderer/src/styles/window-glass.css)，适配构造前读取透明偏好、构造时注入 macOS 材质、仅切换开关时重设材质及工作台范围内的表面色调；浮层保留实色。对应实现为 `desktop/electron/main/window-appearance.ts` 与 `packages/frontend/src/shared/styles/window-glass.css`。Windows acrylic 为本项目既有宿主能力，不作为 OpenBot 行为。
+
 该来源采用 [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0)，原始 [LICENSE](https://github.com/nightly-labs/openbot/blob/fcb35746d4919798ff889a8a58449f5d58de5f65/LICENSE) 及以下 Required Notice 适用于对应第三方部分，不将其推定为项目 MIT 许可：
 
 ```text

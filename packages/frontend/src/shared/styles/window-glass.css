@@ -1,0 +1,253 @@
+/* 参考 OpenBot 的材质与表面分层，按窗口／侧栏／正文分别控制色调：根节点保留实色快照，仅在工作台内转换表面。
+ * 原生材质负责桌面模糊；页面、卡片与控件叠加各自的浅暗色调，不降低文字透明度。 */
+:root[data-window-transparent="true"] {
+  background: transparent;
+  --window-solid-shell-surface-frame: var(--shell-surface-frame);
+  --window-glass-shell-surface-frame: color-mix(
+    in srgb,
+    var(--shell-surface-frame) 14%,
+    transparent
+  );
+  --window-solid-shell-surface-canvas: var(--shell-surface-canvas);
+  --window-glass-shell-surface-canvas: color-mix(
+    in srgb,
+    var(--shell-surface-canvas) 76%,
+    transparent
+  );
+  --window-solid-shell-control-hover: var(--shell-control-hover);
+  --window-glass-shell-control-hover: color-mix(
+    in srgb,
+    var(--shell-control-hover) 45%,
+    transparent
+  );
+  --window-solid-shell-control-active: var(--shell-control-active);
+  --window-glass-shell-control-active: color-mix(
+    in srgb,
+    var(--shell-control-active) 55%,
+    transparent
+  );
+  --window-solid-shell-tabs-track: var(--shell-tabs-track);
+  --window-glass-shell-tabs-track: color-mix(
+    in srgb,
+    var(--shell-tabs-track) 35%,
+    transparent
+  );
+  --window-solid-shell-tabs-pill: var(--shell-tabs-pill);
+  --window-glass-shell-tabs-pill: color-mix(
+    in srgb,
+    var(--shell-tabs-pill) 45%,
+    transparent
+  );
+  --window-solid-surface-panel: var(--surface-panel);
+  --window-glass-surface-panel: color-mix(
+    in srgb,
+    var(--surface-panel) 92%,
+    transparent
+  );
+  --window-solid-surface-raised: var(--surface-raised);
+  --window-glass-surface-raised: color-mix(
+    in srgb,
+    var(--surface-raised) 96%,
+    transparent
+  );
+  --window-solid-surface-tertiary: var(--surface-tertiary);
+  --window-glass-surface-tertiary: color-mix(
+    in srgb,
+    var(--surface-tertiary) 88%,
+    transparent
+  );
+  --window-solid-card-surface: var(--card-surface);
+  --window-glass-card-surface: color-mix(
+    in srgb,
+    var(--card-surface) 92%,
+    transparent
+  );
+  --window-solid-card-hover: var(--card-hover);
+  --window-glass-card-hover: color-mix(
+    in srgb,
+    var(--card-hover) 96%,
+    transparent
+  );
+  --window-solid-resource-canvas: var(--resource-canvas);
+  --window-glass-resource-canvas: color-mix(
+    in srgb,
+    var(--resource-canvas) 76%,
+    transparent
+  );
+  --window-solid-resource-surface: var(--resource-surface);
+  --window-glass-resource-surface: color-mix(
+    in srgb,
+    var(--resource-surface) 92%,
+    transparent
+  );
+  --window-solid-resource-control: var(--resource-control);
+  --window-glass-resource-control: color-mix(
+    in srgb,
+    var(--resource-control) 90%,
+    transparent
+  );
+  --window-solid-resource-raised: var(--resource-raised);
+  --window-glass-resource-raised: color-mix(
+    in srgb,
+    var(--resource-raised) 96%,
+    transparent
+  );
+  --window-solid-field-background: var(--field-background);
+  --window-glass-field-background: color-mix(
+    in srgb,
+    var(--field-background) 90%,
+    transparent
+  );
+  --window-solid-field-background-hover: var(--field-background-hover);
+  --window-glass-field-background-hover: color-mix(
+    in srgb,
+    var(--field-background-hover) 96%,
+    transparent
+  );
+  --window-solid-button-fill-background: var(--button-fill-background);
+  --window-glass-button-fill-background: color-mix(
+    in srgb,
+    var(--button-fill-background) 86%,
+    transparent
+  );
+  --window-solid-button-fill-background-hover: var(
+    --button-fill-background-hover
+  );
+  --window-glass-button-fill-background-hover: color-mix(
+    in srgb,
+    var(--button-fill-background-hover) 94%,
+    transparent
+  );
+  --window-solid-button-fill-background-pressed: var(
+    --button-fill-background-pressed
+  );
+  --window-glass-button-fill-background-pressed: color-mix(
+    in srgb,
+    var(--button-fill-background-pressed) 98%,
+    transparent
+  );
+  --window-solid-surface-canvas: var(--surface-canvas);
+  --window-solid-surface-scene: var(--surface-scene);
+  --window-solid-surface-workbench: var(--surface-workbench);
+  --window-solid-surface-chrome: var(--surface-chrome);
+  --window-solid-surface-module-rail: var(--surface-module-rail);
+  --window-glass-sidebar: color-mix(in srgb, var(--shell-surface-canvas) 20%, transparent);
+  --window-glass-card: color-mix(
+    in srgb,
+    var(--shell-surface-canvas) 76%,
+    transparent
+  );
+}
+
+:root[data-window-transparent="true"] body,
+:root[data-window-transparent="true"] [data-app-shell-root] {
+  background: transparent;
+}
+
+:root[data-window-transparent="true"] .app-window-shell {
+  --shell-surface-frame: var(--window-glass-shell-surface-frame);
+  --shell-surface-canvas: var(--window-glass-shell-surface-canvas);
+  --shell-control-hover: var(--window-glass-shell-control-hover);
+  --shell-control-active: var(--window-glass-shell-control-active);
+  --shell-tabs-track: var(--window-glass-shell-tabs-track);
+  --shell-tabs-pill: var(--window-glass-shell-tabs-pill);
+  --surface-panel: var(--window-glass-surface-panel);
+  --surface-raised: var(--window-glass-surface-raised);
+  --surface-tertiary: var(--window-glass-surface-tertiary);
+  --card-surface: var(--window-glass-card-surface);
+  --card-hover: var(--window-glass-card-hover);
+  --resource-canvas: transparent;
+  --resource-surface: var(--window-glass-resource-surface);
+  --resource-control: var(--window-glass-resource-control);
+  --resource-raised: var(--window-glass-resource-raised);
+  --field-background: var(--window-glass-field-background);
+  --field-background-hover: var(--window-glass-field-background-hover);
+  --button-fill-background: var(--window-glass-button-fill-background);
+  --button-fill-background-hover: var(
+    --window-glass-button-fill-background-hover
+  );
+  --button-fill-background-pressed: var(
+    --window-glass-button-fill-background-pressed
+  );
+  --surface-canvas: transparent;
+  --surface-scene: transparent;
+  --surface-workbench: transparent;
+  --surface-chrome: var(--shell-surface-frame);
+  --surface-module-rail: var(--shell-surface-frame);
+  --background: var(--surface-canvas);
+  --canvas: var(--surface-workbench);
+  --surface: var(--surface-panel);
+  --surface-elevated: var(--surface-raised);
+}
+
+/* 框架只涂一次底色，模块栏、标题栏不重复叠加；正文底板提供独立色调。 */
+:root[data-window-transparent="true"] .app-window-shell > .app-module-rail,
+:root[data-window-transparent="true"]
+  .app-window-shell
+  :is(.app-sidebar-topbar, .app-content-header) {
+  background: transparent;
+}
+:root[data-window-transparent="true"] .app-workspace-frame::before {
+  inset-inline-start: calc(var(--shell-sidebar-active-width) + 1px);
+  background: var(--window-glass-card);
+}
+:root[data-window-transparent="true"] .app-workspace-frame[data-sidebar-body-hidden]::before {
+  inset-inline-start: 0;
+}
+
+/* 侧栏和正文各自只铺一次底色，正文底板不再压在侧栏下面。 */
+:root[data-window-transparent="true"] .app-context-sidebar {
+  --surface-chrome: transparent;
+  background: var(--window-glass-sidebar);
+}
+:root[data-window-transparent="true"] .app-window-shell[data-workflow-canvas-shell] .app-scene-body-clip {
+  background: var(--window-glass-card);
+}
+
+/* 浮层和工作流节点遮挡下层内容，必须恢复实色；Portal 到 body 的浮层直接继承根主题。 */
+:root[data-window-transparent="true"]
+  .app-window-shell
+  :is(
+    [data-radix-popper-content-wrapper],
+    [role="dialog"],
+    [role="alertdialog"],
+    [role="menu"],
+    [role="listbox"],
+    [role="tooltip"],
+    [data-sonner-toast],
+    [data-workflow-node]
+  ) {
+  --shell-surface-frame: var(--window-solid-shell-surface-frame);
+  --shell-surface-canvas: var(--window-solid-shell-surface-canvas);
+  --shell-control-hover: var(--window-solid-shell-control-hover);
+  --shell-control-active: var(--window-solid-shell-control-active);
+  --shell-tabs-track: var(--window-solid-shell-tabs-track);
+  --shell-tabs-pill: var(--window-solid-shell-tabs-pill);
+  --surface-panel: var(--window-solid-surface-panel);
+  --surface-raised: var(--window-solid-surface-raised);
+  --surface-tertiary: var(--window-solid-surface-tertiary);
+  --card-surface: var(--window-solid-card-surface);
+  --card-hover: var(--window-solid-card-hover);
+  --resource-canvas: var(--window-solid-resource-canvas);
+  --resource-surface: var(--window-solid-resource-surface);
+  --resource-control: var(--window-solid-resource-control);
+  --resource-raised: var(--window-solid-resource-raised);
+  --field-background: var(--window-solid-field-background);
+  --field-background-hover: var(--window-solid-field-background-hover);
+  --button-fill-background: var(--window-solid-button-fill-background);
+  --button-fill-background-hover: var(
+    --window-solid-button-fill-background-hover
+  );
+  --button-fill-background-pressed: var(
+    --window-solid-button-fill-background-pressed
+  );
+  --surface-canvas: var(--window-solid-surface-canvas);
+  --surface-scene: var(--window-solid-surface-scene);
+  --surface-workbench: var(--window-solid-surface-workbench);
+  --surface-chrome: var(--window-solid-surface-chrome);
+  --surface-module-rail: var(--window-solid-surface-module-rail);
+  --background: var(--surface-canvas);
+  --canvas: var(--surface-workbench);
+  --surface: var(--surface-panel);
+  --surface-elevated: var(--surface-raised);
+}

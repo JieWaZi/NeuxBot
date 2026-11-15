@@ -3,6 +3,7 @@
 @source "../../../../../web/src";
 @source "../../../../../desktop/src";
 @import "./theme.css";
+@import "./window-glass.css";
 @import "./resource-catalog.css";
 @import "../assets/fonts/inter/inter.css";
 @import "./motion.css";

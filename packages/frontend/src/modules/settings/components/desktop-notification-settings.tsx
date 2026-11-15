@@ -11,7 +11,6 @@ import { Skeleton } from "@/shared/ui/skeleton";
 import { Switch } from "@/shared/ui/switch";
 import {
   SettingsCard,
-  SettingsContentShell,
   SettingsGroup,
   SettingsRow,
 } from "./settings-section-layout";
@@ -29,7 +28,7 @@ export function DesktopNotificationSettings() {
   const { t } = useTranslation("notification");
   const host = platform().host;
   return (
-    <SettingsContentShell title={t("preferences.title")} showHeader={false}>
+    <SettingsGroup title={t("preferences.title")}>
       {host.get_notification_preferences &&
       host.set_notification_preferences ? (
         <NotificationSettings
@@ -39,9 +38,11 @@ export function DesktopNotificationSettings() {
           openSystemSettings={host.open_notification_settings}
         />
       ) : (
-        <SettingsRow title={t("preferences.desktopOnly")} />
+        <SettingsCard>
+          <SettingsRow grouped title={t("preferences.desktopOnly")} />
+        </SettingsCard>
       )}
-    </SettingsContentShell>
+    </SettingsGroup>
   );
 }
 
@@ -70,125 +71,123 @@ function NotificationSettings({
 
   return (
     <>
-      <SettingsRow
-        title={t("preferences.mode")}
-        aria-busy={query.isPending || undefined}
-      >
-        {settings ? (
-          <SegmentedControl
-            ariaLabel={t("preferences.mode")}
-            value={settings.mode}
-            disabled={change.isPending}
-            options={modes.map((mode) => ({
-              value: mode,
-              label: t(`preferences.${mode}`),
-            }))}
-            onValueChange={(mode) => {
-              if (mode !== settings.mode) change.mutate({ ...settings, mode });
-            }}
-          />
-        ) : query.isPending ? (
-          <div role="status" aria-label={t("preferences.loading")}>
-            <Skeleton className="h-control-md w-44" />
-          </div>
-        ) : (
-          <Button
-            variant="ghost"
-            size="settings"
-            disabled={query.isFetching}
-            onClick={() => void query.refetch()}
-          >
-            {t("preferences.retry")}
-          </Button>
-        )}
-      </SettingsRow>
-      <SettingsGroup title={t("preferences.device")}>
-        <SettingsCard>
-          <SettingsRow
-            grouped
-            title={t("preferences.desktop")}
-            description={t("preferences.desktopHelp")}
-          >
-            {settings ? (
-              <Switch
-                aria-label={t("preferences.desktop")}
-                hitArea="comfortable"
-                checked={settings.enabled}
-                disabled={change.isPending}
-                onClick={() =>
-                  change.mutate({ ...settings, enabled: !settings.enabled })
-                }
-              />
-            ) : query.isPending ? (
-              <Skeleton className="size-control-md" />
-            ) : null}
-          </SettingsRow>
-          <SettingsRow
-            grouped
-            title={t("preferences.preview")}
-            description={t("preferences.previewHelp")}
-          >
-            {settings ? (
-              <Switch
-                aria-label={t("preferences.preview")}
-                hitArea="comfortable"
-                checked={settings.preview}
-                disabled={
-                  !settings.enabled ||
-                  settings.mode === "off" ||
-                  change.isPending
-                }
-                onClick={() =>
-                  change.mutate({ ...settings, preview: !settings.preview })
-                }
-              />
-            ) : query.isPending ? (
-              <Skeleton className="size-control-md" />
-            ) : null}
-          </SettingsRow>
-          {sendTest ? (
-            <SettingsRow
-              grouped
-              title={t("preferences.test")}
-              description={t("preferences.testHelp")}
-              content={
-                test.isError || systemSettings.isError ? (
-                  <div role="alert" className="text-destructive type-ui mt-2">
-                    {test.isError ? <p>{t("preferences.testFailed")}</p> : null}
-                    {systemSettings.isError ? (
-                      <p>{t("preferences.openSettingsFailed")}</p>
-                    ) : null}
-                  </div>
-                ) : null
-              }
+      <SettingsCard>
+        <SettingsRow
+          grouped
+          title={t("preferences.mode")}
+          aria-busy={query.isPending || undefined}
+        >
+          {settings ? (
+            <SegmentedControl
+              ariaLabel={t("preferences.mode")}
+              value={settings.mode}
+              disabled={change.isPending}
+              options={modes.map((mode) => ({
+                value: mode,
+                label: t(`preferences.${mode}`),
+              }))}
+              onValueChange={(mode) => {
+                if (mode !== settings.mode)
+                  change.mutate({ ...settings, mode });
+              }}
+            />
+          ) : query.isPending ? (
+            <div role="status" aria-label={t("preferences.loading")}>
+              <Skeleton className="h-control-md w-44" />
+            </div>
+          ) : (
+            <Button
+              variant="ghost"
+              size="settings"
+              disabled={query.isFetching}
+              onClick={() => void query.refetch()}
             >
-              {openSystemSettings ? (
-                <Button
-                  variant="ghost"
-                  size="settings"
-                  disabled={systemSettings.isPending}
-                  onClick={() => systemSettings.mutate()}
-                >
-                  {t("preferences.openSystemSettings")}
-                </Button>
-              ) : null}
-              <Button
-                variant="settings-outline"
-                size="settings"
-                disabled={test.isPending}
-                onClick={() => test.mutate()}
-              >
-                {t("preferences.sendTest")}
-              </Button>
-            </SettingsRow>
+              {t("preferences.retry")}
+            </Button>
+          )}
+        </SettingsRow>
+        <SettingsRow
+          grouped
+          title={t("preferences.desktop")}
+          description={t("preferences.desktopHelp")}
+        >
+          {settings ? (
+            <Switch
+              aria-label={t("preferences.desktop")}
+              hitArea="comfortable"
+              checked={settings.enabled}
+              disabled={change.isPending}
+              onClick={() =>
+                change.mutate({ ...settings, enabled: !settings.enabled })
+              }
+            />
+          ) : query.isPending ? (
+            <Skeleton className="size-control-md" />
           ) : null}
-        </SettingsCard>
-        {query.isError || change.isError ? (
-          <p role="alert" className="text-destructive type-ui">
-            {t(query.isError ? "preferences.loadFailed" : "preferences.failed")}
-          </p>
+        </SettingsRow>
+        <SettingsRow
+          grouped
+          title={t("preferences.preview")}
+          description={t("preferences.previewHelp")}
+        >
+          {settings ? (
+            <Switch
+              aria-label={t("preferences.preview")}
+              hitArea="comfortable"
+              checked={settings.preview}
+              disabled={
+                !settings.enabled || settings.mode === "off" || change.isPending
+              }
+              onClick={() =>
+                change.mutate({ ...settings, preview: !settings.preview })
+              }
+            />
+          ) : query.isPending ? (
+            <Skeleton className="size-control-md" />
+          ) : null}
+        </SettingsRow>
+        {sendTest ? (
+          <SettingsRow
+            grouped
+            title={t("preferences.test")}
+            description={t("preferences.testHelp")}
+            content={
+              test.isError || systemSettings.isError ? (
+                <div role="alert" className="text-destructive type-ui mt-2">
+                  {test.isError ? <p>{t("preferences.testFailed")}</p> : null}
+                  {systemSettings.isError ? (
+                    <p>{t("preferences.openSettingsFailed")}</p>
+                  ) : null}
+                </div>
+              ) : null
+            }
+          >
+            {openSystemSettings ? (
+              <Button
+                variant="ghost"
+                size="settings"
+                disabled={systemSettings.isPending}
+                onClick={() => systemSettings.mutate()}
+              >
+                {t("preferences.openSystemSettings")}
+              </Button>
+            ) : null}
+            <Button
+              variant="settings-outline"
+              size="settings"
+              disabled={test.isPending}
+              onClick={() => test.mutate()}
+            >
+              {t("preferences.sendTest")}
+            </Button>
+          </SettingsRow>
         ) : null}
-      </SettingsGroup>
+      </SettingsCard>
+      {query.isError || change.isError ? (
+        <p role="alert" className="text-destructive type-ui">
+          {t(query.isError ? "preferences.loadFailed" : "preferences.failed")}
+        </p>
+      ) : null}
     </>
   );
 }

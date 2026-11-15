@@ -32,6 +32,7 @@ type Reminder = {
 type Options = {
   events: Pick<CoreEventClient, "subscribe">;
   preferences: () => NotificationPreferences;
+  language?: () => string;
   isFocused: () => boolean;
   resolveTarget: (
     target: WorkspaceAttentionLive,
@@ -202,15 +203,22 @@ export function installWorkspaceAttention(options: Options) {
       remember(key);
       const title = options.preferences().preview ? target?.title : undefined;
       const body = options.preferences().preview ? target?.preview : undefined;
+      const en = options.language?.().startsWith("en") ?? false;
       const notification = options.showNotification({
         title: title || "NeuxBot",
         body:
           body ||
           (isRequest(event)
-            ? "有一项请求需要处理"
+            ? en
+              ? "A request needs your attention"
+              : "有一项请求需要处理"
             : event.operation === "failed"
-              ? "有一项工作未能完成"
-              : "有新的工作结果"),
+              ? en
+                ? "A task could not be completed"
+                : "有一项工作未能完成"
+              : en
+                ? "New work results are available"
+                : "有新的工作结果"),
       });
       if (!notification) return;
       reminder.native = notification;

@@ -20,10 +20,10 @@ it("智能体包含账号管理，不保留独立账号分类或旧路由兼容"
   expect(settingsSectionOf("agents")).toBe("agents");
   expect(settingsNavigation.map((item) => item.key)).toEqual([
     "general",
-    "notifications",
     "agents",
     "integrations",
   ]);
   expect(settingsSectionOf("ai-accounts")).toBe("general");
   expect(settingsSectionOf("runtime-environments")).toBe("general");
+  expect(settingsSectionOf("notifications")).toBe("general");
 });

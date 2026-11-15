@@ -56,6 +56,11 @@ for (const [name, type] of [
 }
 const bridge: DesktopBridge = {
   core_connection: (args) => ipcRenderer.invoke("bot:core_connection", args),
+  get_window_appearance: (args) =>
+    ipcRenderer.invoke("bot:get_window_appearance", args),
+  set_window_appearance: (args) =>
+    ipcRenderer.invoke("bot:set_window_appearance", args),
+  onInterfaceScale: (handler) => subscribe("interface-scale", handler),
   subscribe_core_events: (args) =>
     ipcRenderer.invoke("bot:subscribe_core_events", args),
   resync_core_events: (args) =>

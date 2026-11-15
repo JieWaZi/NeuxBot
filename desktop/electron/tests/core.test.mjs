@@ -31,7 +31,10 @@ test("外部 Core 不创建或终止子进程", async () => {
   const core = new CoreSupervisor({
     binary: "/does/not/exist",
     dataDir: "/not/used",
-    env: { ALLY_CORE_URL: "http://127.0.0.1:9000", ALLY_LOCAL_TOKEN: "test" },
+    env: {
+      NEUXBOT_CORE_URL: "http://127.0.0.1:9000",
+      NEUXBOT_LOCAL_TOKEN: "test",
+    },
   });
   assert.deepEqual(await core.connection(), {
     baseUrl: "http://127.0.0.1:9000",

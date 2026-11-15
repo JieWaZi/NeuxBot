@@ -41,6 +41,8 @@ export type CoreConnection = { baseUrl: string; token: string };
 
 import type {
   HostCommands,
+  WindowAppearanceCommands,
+  InterfaceScale,
   NotificationPreferenceCommands,
   WorkspaceAttentionOpen,
   WorkspaceCommands,
@@ -48,6 +50,7 @@ import type {
   EventsCommands,
 } from "@neuxbot/platform-contracts/services";
 export type DesktopCommands = HostCommands &
+  WindowAppearanceCommands &
   NotificationPreferenceCommands &
   Pick<WorkspaceCommands, "open_workspace_file"> &
   BrowserCommands &
@@ -55,6 +58,7 @@ export type DesktopCommands = HostCommands &
     core_connection: { args: undefined; result: CoreConnection };
   };
 export type DesktopEvents = {
+  "interface-scale": InterfaceScale;
   "core-event": GlobalEventDelivery;
   "browser-navigation": BrowserNavigationEvent;
   "workspace-attention-open": WorkspaceAttentionOpen;
@@ -66,6 +70,7 @@ export type DesktopBridge = {
       : [args: DesktopCommands[K]["args"]]
   ) => Promise<DesktopCommands[K]["result"]>;
 } & {
+  onInterfaceScale(handler: (scale: InterfaceScale) => void): () => void;
   onCoreEvent(handler: (event: GlobalEventDelivery) => void): () => void;
   onBrowserNavigation(
     handler: (event: BrowserNavigationEvent) => void,
