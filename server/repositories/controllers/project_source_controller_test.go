@@ -17,7 +17,7 @@ func TestProjectSourceControllerContract(t *testing.T) {
 	source := models.ProjectSource{
 		ID:        "11111111111111111111111111111111",
 		Name:      "desktop",
-		Path:      "/tmp/ally-desktop",
+		Path:      "/tmp/bot-desktop",
 		CreatedAt: 1,
 		UpdatedAt: 1,
 	}

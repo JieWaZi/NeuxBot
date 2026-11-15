@@ -406,7 +406,7 @@ it("never sends SVG data or a marker URL to the browser as an image source", asy
   expect(view.container.querySelector("img")).toBeNull();
   view.rerender(
     <WorkspaceMarkdownImage
-      src="https://ally.invalid/__workbench_markdown_image__?path=.%2Fpicture.png"
+      src="https://bot.invalid/__workbench_markdown_image__?path=.%2Fpicture.png"
       alt="示意图"
     />,
   );
@@ -538,7 +538,7 @@ it("does not render a data URL without alt as its placeholder or fetch an invali
   expect(view.container.textContent).not.toContain(source);
   view.rerender(
     <WorkspaceMarkdownImage
-      src="https://ally.invalid/__workbench_markdown_image__"
+      src="https://bot.invalid/__workbench_markdown_image__"
       allowRemote
     />,
   );

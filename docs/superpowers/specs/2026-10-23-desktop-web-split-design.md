@@ -33,7 +33,7 @@
 | [Git](../../../server/internal/workspacefiles/git.go)                  | Main 绑定 Chat 范围和仓库         | 将实际执行迁入 Core                        |
 | [终端](../../../packages/terminal-runtime/src/manager.ts)              | node-pty、恢复屏幕、附着与背压    | 单独迁移生命周期与流协议                   |
 | [路由](../../../server/apis/root.go)                                   | 管理 API 本地令牌认证             | 增加明确的本机 Web 会话认证分支            |
-| [Core 启动](../../../server/cmd/ally-core/main.go)                     | 独立进程入口，可选桌面父进程监控  | 增加可选静态站点与本机配对入口             |
+| [Core 启动](../../../server/cmd/bot-core/main.go)                     | 独立进程入口，可选桌面父进程监控  | 增加可选静态站点与本机配对入口             |
 
 既有架构约束见[架构总览](../../architecture/overview-cn.md)、[桌面边界](../../architecture/desktop-lifecycle-cn.md)、[存储边界](../../architecture/workspace-and-storage-cn.md)和[通知契约](../../architecture/notifications-and-work-board-cn.md)。
 
@@ -88,7 +88,7 @@ Desktop adapter -> 白名单 preload -> Electron Main
 
 硬边界：
 
-- Desktop 与 Web 不互相导入；公共应用不引用两端目录、Electron、Node 或 window.allyDesktop。
+- Desktop 与 Web 不互相导入；公共应用不引用两端目录、Electron、Node 或 window.botDesktop。
 - platform-contracts 不依赖 React、应用模块、Electron 或 Node；只容纳实际跨端需要的接口与中立协议，不成为工具集合。
 - API SDK 只生成一份，最终位于 packages/frontend/src/shared/api/generated；迁移配置和命令后通过生成器更新。
 - IPC 专用 Schema、来源校验和命令白名单留在 desktop/electron；不把整份 DesktopBridge 变成公共接口。

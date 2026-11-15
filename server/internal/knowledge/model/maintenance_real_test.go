@@ -18,22 +18,22 @@ import (
 
 // TestRealWikiMaintenanceUsesScopedMCP 核验真实原生会话通过专属 MCP 执行只读知识命令，不访问生产知识内容。
 func TestRealWikiMaintenanceUsesScopedMCP(t *testing.T) {
-	if os.Getenv("ALLY_REAL_WIKI_MAINTENANCE") != "1" {
+	if os.Getenv("NEUXBOT_REAL_WIKI_MAINTENANCE") != "1" {
 		t.Skip("requires explicit real-model Wiki maintenance transport check")
 	}
 	binary := os.Getenv(constants.AgentCLIBinaryEnvironment)
 	if binary == "" {
-		t.Fatal("the packaged allycli path is required")
+		t.Fatal("the packaged botcli path is required")
 	}
-	runtimeID := os.Getenv("ALLY_WIKI_RUNTIME")
+	runtimeID := os.Getenv("NEUXBOT_WIKI_RUNTIME")
 	if runtimeID == "" {
 		runtimeID = constants.RuntimeIDClaude
 	}
-	model := os.Getenv("ALLY_WIKI_MODEL")
+	model := os.Getenv("NEUXBOT_WIKI_MODEL")
 	if !agent.SupportsDetachedPolicy(runtimeID) {
 		t.Fatalf("provider cannot enforce scoped maintenance: %s", runtimeID)
 	}
-	reasoning := os.Getenv("ALLY_WIKI_REASONING")
+	reasoning := os.Getenv("NEUXBOT_WIKI_REASONING")
 	sdk, err := agent.NewCatalog(agent.CatalogConfig{})
 	if err != nil {
 		t.Fatal(err)

@@ -1,4 +1,4 @@
-export const workspaceFileDragType = "application/x-ally-workspace-file";
+export const workspaceFileDragType = "application/x-bot-workspace-file";
 
 export type WorkspaceFileDrag = {
   chatId?: string;

@@ -171,9 +171,9 @@ flowchart LR
 
 ### 任务 4：管理 API 与统一监听
 
-**Files:** 新增 `server/apis/integrations/{router,published_router,resource,list_api_keys,create_api_key,update_api_key,set_api_key_enabled,rotate_api_key,revoke_api_key,get_api_service,update_api_service,list_publishable_resources}.go`、`integration_management_test.go`；新增 `server/internal/integration/listener.go`、`listener_test.go`，`server/global/integration_api.go`、`integration_api_test.go`；修改 `server/apis/root.go`、`server/global/config.go`、`server/services/schedule/service.go`、`server/apis/automatic_tasks/global_tasks.go` 和 `server/cmd/ally-core/main.go`。
+**Files:** 新增 `server/apis/integrations/{router,published_router,resource,list_api_keys,create_api_key,update_api_key,set_api_key_enabled,rotate_api_key,revoke_api_key,get_api_service,update_api_service,list_publishable_resources}.go`、`integration_management_test.go`；新增 `server/internal/integration/listener.go`、`listener_test.go`，`server/global/integration_api.go`、`integration_api_test.go`；修改 `server/apis/root.go`、`server/global/config.go`、`server/services/schedule/service.go`、`server/apis/automatic_tasks/global_tasks.go` 和 `server/cmd/bot-core/main.go`。
 
-**Interfaces:** 管理路由仅在本机 `/api/v1/integrations` 注册。Key 创建／轮换返回 `{key, secret, issuanceState}`，重放不含秘密；更新携带 `expectedRevision`。`integrations.NewPublishedHandler(knowledge http.Handler, tasks http.Handler) http.Handler` 在 `published_router.go` 装配，绝不接收 desktopRouter。Listener 的 `Start(ctx)`、`Reconfigure(ctx, config)`、`Close(ctx)` 和状态快照归同一所有者；任务页读取该快照。延续当前 `schedule.LocalHandlerFactory` 注入方向，在 `cmd/ally-core` 注入发布 Handler 工厂，global 只传已装配依赖，不能反向导入 apis 形成循环；任务 5、8 完成前测试工厂可返回明确受限入口。
+**Interfaces:** 管理路由仅在本机 `/api/v1/integrations` 注册。Key 创建／轮换返回 `{key, secret, issuanceState}`，重放不含秘密；更新携带 `expectedRevision`。`integrations.NewPublishedHandler(knowledge http.Handler, tasks http.Handler) http.Handler` 在 `published_router.go` 装配，绝不接收 desktopRouter。Listener 的 `Start(ctx)`、`Reconfigure(ctx, config)`、`Close(ctx)` 和状态快照归同一所有者；任务页读取该快照。延续当前 `schedule.LocalHandlerFactory` 注入方向，在 `cmd/bot-core` 注入发布 Handler 工厂，global 只传已装配依赖，不能反向导入 apis 形成循环；任务 5、8 完成前测试工厂可返回明确受限入口。
 
 - [ ] 写 `TestIntegrationManagementLocalOnly`、`TestIntegrationPublishableResourcesLocalOnly`、`TestIntegrationListenerLifecycle`：断言集成 Key 不能管理 Key；远端挂载不入授权目录；端口冲突不报告可用；切换失败保留原监听；停用 API 不停定时调度；退出可重复关闭。
 - [ ] 运行 `cd server && go test ./apis/integrations ./internal/integration ./global ./apis/automatic_tasks -run 'TestIntegration' -count=1`，确认新管理行为失败。
@@ -185,7 +185,7 @@ flowchart LR
 
 **Files:** 新增 `server/apis/integration_knowledge/{router,types,get_library,list_libraries,list_sources,get_source,get_raw,list_pages,get_page,list_revisions,get_revision,list_themes,get_graph,search,get_capabilities}.go`；扩展任务 1 的 `knowledge_contract_test.go`；修改 `server/global/integration_api.go`。路径注册以 spec 第 10 节及核对后的上游合同为准，不另造 Wiki 复数路径。
 
-**Interfaces:** `integration_knowledge.NewHandler(engine *core.Engine, knowledge *knowledgeservice.Service, auth *integration.Service) http.Handler`，供任务 4 发布装配；各操作直接复用 Engine 公共读取 API。能力响应产生 `service_kind=neuxally`、协议版本、`upload_mode=separate`、操作 `supported/permission/condition`、原子条件写和回执恢复能力，缺失配置明确受限。
+**Interfaces:** `integration_knowledge.NewHandler(engine *core.Engine, knowledge *knowledgeservice.Service, auth *integration.Service) http.Handler`，供任务 4 发布装配；各操作直接复用 Engine 公共读取 API。能力响应产生 `service_kind=neuxbot`、协议版本、`upload_mode=separate`、操作 `supported/permission/condition`、原子条件写和回执恢复能力，缺失配置明确受限。
 
 - [ ] 用 W5 的类型、路由和分页测试加固定 fixtures 写 `TestPublishedKnowledgeReadContract`，断言授权过滤后的列表／总数、Unicode 分层 slug、资料实际所属库、原件下载和无权对象不泄漏；`TestPublishedCapabilities` 断言协议支持不等于主体授权或执行配置可用。
 - [ ] 运行 `cd server && go test ./apis/integration_knowledge -run 'TestPublishedKnowledgeReadContract|TestPublishedCapabilities' -count=1`，确认缺失兼容入口时失败。

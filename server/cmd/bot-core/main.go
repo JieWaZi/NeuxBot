@@ -55,7 +55,7 @@ func main() {
 			panic(err)
 		}
 		defer global.Uploads.Close()
-		if directory, developmentOrigin := os.Getenv("ALLY_WEB_DIR"), os.Getenv("ALLY_WEB_DEV_ORIGIN"); directory != "" || developmentOrigin != "" {
+		if directory, developmentOrigin := os.Getenv("NEUXBOT_WEB_DIR"), os.Getenv("NEUXBOT_WEB_DEV_ORIGIN"); directory != "" || developmentOrigin != "" {
 			if global.Config.Server.Https {
 				panic("本机 Web 模式使用回环 HTTP")
 			}
@@ -73,11 +73,11 @@ func main() {
 		}
 		rootContext, cancel := context.WithCancel(context.Background())
 		var parentWaitGroup sync.WaitGroup
-		if parentPIDValue := os.Getenv("ALLY_DESKTOP_PARENT_PID"); parentPIDValue != "" {
+		if parentPIDValue := os.Getenv("NEUXBOT_DESKTOP_PARENT_PID"); parentPIDValue != "" {
 			parentPID, err := strconv.Atoi(parentPIDValue)
 			if err != nil || parentPID <= 0 {
 				cancel()
-				panic("ALLY_DESKTOP_PARENT_PID 必须是有效进程标识")
+				panic("NEUXBOT_DESKTOP_PARENT_PID 必须是有效进程标识")
 			}
 			parentWaitGroup.Add(1)
 			go func() {
@@ -97,8 +97,8 @@ func main() {
 			panic(err)
 		}
 
-		if worker := os.Getenv("ALLY_TERMINAL_RUNTIME_PATH"); worker != "" {
-			global.TerminalRuntime, err = terminalruntime.New(os.Getenv("ALLY_TERMINAL_NODE_PATH"), worker)
+		if worker := os.Getenv("NEUXBOT_TERMINAL_RUNTIME_PATH"); worker != "" {
+			global.TerminalRuntime, err = terminalruntime.New(os.Getenv("NEUXBOT_TERMINAL_NODE_PATH"), worker)
 			if err != nil {
 				logx.Errorf("terminal runtime unavailable: %v", err)
 			} else {

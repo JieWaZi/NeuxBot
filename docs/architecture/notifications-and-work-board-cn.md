@@ -28,7 +28,7 @@ Electron 主进程在共享连接上消费已提交的 live 事件。原会话�
 
 Electron 主进程持有一条带认证的 Core WebSocket，Renderer 通过受限 Bridge 订阅固定主题和资源。普通 CRUD 继续使用 HTTP；本机文件和 Git 复用共享原生监听。
 
-事件升级默认接受无 Origin 的原生连接、`ally://app` 与开发来源 `http://127.0.0.1:1420`。额外 Web 来源由 Core 进程环境变量 `ALLY_EVENT_TRUSTED_ORIGINS` 显式配置为 JSON 字符串数组，例如 `'["http://127.0.0.1:1422","https://ally.example.com"]'`，设置后重启 Core。只接受完整匹配的 HTTP／HTTPS origin；域名使用 ASCII／punycode，IP 支持 IPv4／IPv6，可省略默认端口或明确指定 1–65535 端口。不接受通配、用户信息、路径（包括末尾 `/`）、查询或片段；配置中任意无效项都会拒绝所有额外来源，既有默认来源不变。来源白名单不替代本机令牌认证，也不授予任何业务资源权限。
+事件升级默认接受无 Origin 的原生连接、`bot://app` 与开发来源 `http://127.0.0.1:1420`。额外 Web 来源由 Core 进程环境变量 `NEUXBOT_EVENT_TRUSTED_ORIGINS` 显式配置为 JSON 字符串数组，例如 `'["http://127.0.0.1:1422","https://bot.example.com"]'`，设置后重启 Core。只接受完整匹配的 HTTP／HTTPS origin；域名使用 ASCII／punycode，IP 支持 IPv4／IPv6，可省略默认端口或明确指定 1–65535 端口。不接受通配、用户信息、路径（包括末尾 `/`）、查询或片段；配置中任意无效项都会拒绝所有额外来源，既有默认来源不变。来源白名单不替代本机令牌认证，也不授予任何业务资源权限。
 
 初始及恢复读取权威快照。连接交付序号与领域持久游标分别检查；缺口、Core 重启和缓冲超限要求快照或历史对账。未知、离线与陈旧状态保持可见，不能表示为正常零值。
 

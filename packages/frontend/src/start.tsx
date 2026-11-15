@@ -18,7 +18,7 @@ export function startApplication(): void {
   const startupTimings: Record<string, number> = {};
   const noteStartup = (phase: string) => {
     startupTimings[phase] = Math.round(performance.now() - startupStarted);
-    performance.mark?.(`ally.startup.${phase}`);
+    performance.mark?.(`bot.startup.${phase}`);
   };
   noteStartup("entry");
   const container = document.getElementById("root");
@@ -92,7 +92,7 @@ export function startApplication(): void {
       if (!result.ok) throw result.error;
       for (const phase of ["characterReady", "logoReady"]) {
         const mark = performance
-          .getEntriesByName?.(`ally.startup.${phase}`, "mark")
+          .getEntriesByName?.(`bot.startup.${phase}`, "mark")
           .at(-1);
         if (mark)
           startupTimings[phase] = Math.round(mark.startTime - startupStarted);

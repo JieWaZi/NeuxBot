@@ -4,7 +4,7 @@
 
 ## 范围和约束
 
-保留 ThreadLifecycle、Turn、ProviderRuntime 和 ConversationStore 的唯一所有权。acp-go 保留原生协议；不增加公共接口或第二份状态。保留真实生产调用的 Catalog 能力与原生账号、插件环境。应用启动器定位打包 allycli 的环境覆盖属于宿主装配，保留；删除向模型执行子进程注入 CLI 路径、上下文与 PATH 的链路，以及 allycli 读取上下文环境变量的回退。
+保留 ThreadLifecycle、Turn、ProviderRuntime 和 ConversationStore 的唯一所有权。acp-go 保留原生协议；不增加公共接口或第二份状态。保留真实生产调用的 Catalog 能力与原生账号、插件环境。应用启动器定位打包 botcli 的环境覆盖属于宿主装配，保留；删除向模型执行子进程注入 CLI 路径、上下文与 PATH 的链路，以及 botcli 读取上下文环境变量的回退。
 
 工作在当前非主分支，保留未提交基线；不提交混合工作区，不运行真实模型或控制桌面。基线副本与验证记录放在 `.superpowers/sdd/agent-acp-cleanup/`。
 
@@ -40,6 +40,6 @@
 
 旧链接没有安装清单。首次准备只认领指向当前授权源或宿主明确给出的应用专有源根（system-skills、skills/versions、plugins/content）的链接，覆盖版本变化、Runtime 切换及停用。目录和无关用户链接不认领；内容源本身不被迁移删除。源根来自既有程序数据目录，不由模型或 HTTP 参数提供。以后只依据安装清单更新和删除，不重复扫描认领。
 
-CLI 授权协议由本项目维护，兼容规则以真实 CLI 为准；真实 CLI 回归证明无 `--context` 的隐式环境回退确实存在，再移除回退和注入。原生进程边界过滤继承的 `ALLYCLI_` 宿主配置，继续保留账号、插件及普通工具环境。
+CLI 授权协议由本项目维护，兼容规则以真实 CLI 为准；真实 CLI 回归证明无 `--context` 的隐式环境回退确实存在，再移除回退和注入。原生进程边界过滤继承的 `BOTCLI_` 宿主配置，继续保留账号、插件及普通工具环境。
 
 未发现需在本工作包改写的 acp-go 生命周期；NeuxBot 通过现有直接 Client 合同消费它。未改独立仓库中的并行工作，发布版本和平台／真实模型验收不属于本次代码清理完成证明。

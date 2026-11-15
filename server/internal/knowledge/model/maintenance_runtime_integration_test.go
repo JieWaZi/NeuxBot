@@ -115,7 +115,7 @@ func TestMaintenanceNativeFixture(t *testing.T) {
 			if json.Unmarshal([]byte(os.Args[i+1]), &cfg) != nil || len(cfg.Servers) != 1 {
 				os.Exit(2)
 			}
-			if args := cfg.Servers["ally_capabilities"].Args; len(args) == 4 {
+			if args := cfg.Servers["bot_capabilities"].Args; len(args) == 4 {
 				path = args[3]
 			}
 		}
@@ -150,7 +150,7 @@ func TestMaintenanceNativeFixture(t *testing.T) {
 			case "get_settings":
 				response["applied"] = map[string]string{"model": "sonnet"}
 			case "mcp_status":
-				response["mcpServers"] = []map[string]string{{"name": "ally_capabilities", "status": "connected"}}
+				response["mcpServers"] = []map[string]string{{"name": "bot_capabilities", "status": "connected"}}
 			}
 			_ = out.Encode(map[string]any{"type": "control_response", "response": map[string]any{
 				"subtype": "success", "request_id": frame["request_id"], "response": response,
@@ -159,10 +159,10 @@ func TestMaintenanceNativeFixture(t *testing.T) {
 			user, _ = frame["uuid"].(string)
 			emit(map[string]any{"type": "assistant", "user_message_uuid": user, "parent_tool_use_id": nil,
 				"message": map[string]any{"id": "wiki-tool-turn", "model": "sonnet",
-					"content": []map[string]any{{"type": "tool_use", "id": "knowledge-tool", "name": "mcp__ally_capabilities__knowledge_audit_get",
+					"content": []map[string]any{{"type": "tool_use", "id": "knowledge-tool", "name": "mcp__bot_capabilities__knowledge_audit_get",
 						"input": map[string]string{"libraryId": "library"}}}}})
 			emit(map[string]any{"type": "control_request", "request_id": "approved-wiki", "request": map[string]any{
-				"subtype": "can_use_tool", "tool_name": "mcp__ally_capabilities__knowledge_audit_get", "tool_use_id": "knowledge-tool",
+				"subtype": "can_use_tool", "tool_name": "mcp__bot_capabilities__knowledge_audit_get", "tool_use_id": "knowledge-tool",
 				"input": map[string]string{"libraryId": "library"},
 			}})
 		case "control_response":

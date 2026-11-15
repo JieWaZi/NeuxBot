@@ -32,7 +32,7 @@ func (f terminalChatFixture) GetChatSummary(context.Context, string) (chat.ChatS
 }
 
 func TestRealWebTerminalHTTPStreamAndLogout(t *testing.T) {
-	worker := os.Getenv("ALLY_TERMINAL_TEST_WORKER")
+	worker := os.Getenv("NEUXBOT_TERMINAL_TEST_WORKER")
 	if worker == "" {
 		t.Skip("requires built terminal worker")
 	}
@@ -98,7 +98,7 @@ func TestRealWebTerminalHTTPStreamAndLogout(t *testing.T) {
 	if err = json.NewDecoder(response.Body).Decode(&started); err != nil {
 		t.Fatal(err)
 	}
-	dialer := websocket.Dialer{Subprotocols: []string{"ally.terminal.v1"}}
+	dialer := websocket.Dialer{Subprotocols: []string{"bot.terminal.v1"}}
 	connection, _, err := dialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/api/v1/terminals/"+started.SessionID+"/stream", http.Header{"Origin": []string{server.URL}, "Cookie": []string{cookie.String()}})
 	if err != nil {
 		t.Fatal(err)

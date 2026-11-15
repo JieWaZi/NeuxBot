@@ -19,7 +19,7 @@ func IsNativeAccountRuntime(runtimeID string) bool {
 	return runtimeID == constants.RuntimeIDOpenCode || runtimeID == constants.RuntimeIDGemini || runtimeID == constants.RuntimeIDGrok
 }
 
-const piManagedProvider = "ally"
+const piManagedProvider = "bot"
 
 // NativeModelID qualifies managed model IDs with the provider namespace.
 func NativeModelID(runtimeID, model string) string {

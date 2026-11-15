@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmod, copyFile, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { allyCoreLdflags } from "./go-ldflags.mjs";
+import { botCoreLdflags } from "./go-ldflags.mjs";
 import { copyACPLicenses } from "./acp-licenses.mjs";
 import { copyBloubLicenses } from "./bloub-licenses.mjs";
 import "./builtin-skills.mjs";
@@ -11,37 +11,37 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const requested = process.argv[2];
 const nativeTarget = `${process.platform}-${process.arch}`;
 const targets = {
-  "darwin-arm64": { goos: "darwin", goarch: "arm64", file: "ally-core" },
-  "darwin-x64": { goos: "darwin", goarch: "amd64", file: "ally-core" },
+  "darwin-arm64": { goos: "darwin", goarch: "arm64", file: "bot-core" },
+  "darwin-x64": { goos: "darwin", goarch: "amd64", file: "bot-core" },
   "win32-arm64": {
     goos: "windows",
     goarch: "arm64",
-    file: "ally-core.exe",
+    file: "bot-core.exe",
   },
   "win32-x64": {
     goos: "windows",
     goarch: "amd64",
-    file: "ally-core.exe",
+    file: "bot-core.exe",
   },
   "aarch64-apple-darwin": {
     goos: "darwin",
     goarch: "arm64",
-    file: "ally-core",
+    file: "bot-core",
   },
   "x86_64-apple-darwin": {
     goos: "darwin",
     goarch: "amd64",
-    file: "ally-core",
+    file: "bot-core",
   },
   "aarch64-pc-windows-msvc": {
     goos: "windows",
     goarch: "arm64",
-    file: "ally-core.exe",
+    file: "bot-core.exe",
   },
   "x86_64-pc-windows-msvc": {
     goos: "windows",
     goarch: "amd64",
-    file: "ally-core.exe",
+    file: "bot-core.exe",
   },
 };
 const targetName = requested ?? nativeTarget;
@@ -54,7 +54,7 @@ await mkdir(outputDirectory, { recursive: true });
 await rm(
   path.join(
     outputDirectory,
-    target.file === "ally-core" ? "ally-core.exe" : "ally-core",
+    target.file === "bot-core" ? "bot-core.exe" : "bot-core",
   ),
   { force: true },
 );
@@ -63,10 +63,10 @@ execFileSync(
   [
     "build",
     "-trimpath",
-    `-ldflags=${allyCoreLdflags()}`,
+    `-ldflags=${botCoreLdflags()}`,
     "-o",
     output,
-    "./cmd/ally-core",
+    "./cmd/bot-core",
   ],
   {
     cwd: path.join(root, "server"),
@@ -82,11 +82,11 @@ execFileSync(
 if (target.goos !== "windows") await chmod(output, 0o755);
 console.log(`已生成 NeuxBot Core sidecar: ${output}`);
 
-const cliName = target.goos === "windows" ? "allycli.exe" : "allycli";
+const cliName = target.goos === "windows" ? "botcli.exe" : "botcli";
 await rm(
   path.join(
     outputDirectory,
-    target.goos === "windows" ? "allycli" : "allycli.exe",
+    target.goos === "windows" ? "botcli" : "botcli.exe",
   ),
   { force: true },
 );
@@ -96,10 +96,10 @@ execFileSync(
   [
     "build",
     "-trimpath",
-    `-ldflags=${allyCoreLdflags()}`,
+    `-ldflags=${botCoreLdflags()}`,
     "-o",
     cliOutput,
-    "./cmd/allycli",
+    "./cmd/botcli",
   ],
   {
     cwd: path.join(root, "server"),

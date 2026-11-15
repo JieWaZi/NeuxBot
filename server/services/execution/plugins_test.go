@@ -140,7 +140,7 @@ func TestPluginAdmissionPinsResourcesAndDoesNotSelectEveryComponent(t *testing.T
 		t.Fatalf("components: %+v", prepared)
 	}
 	connector := prepared.connectors[0]
-	if connector.Command != "/core" || connector.Arguments[0] != constants.PluginStdioMode || connector.RuntimeKey != "ally_plugin_"+connector.ID {
+	if connector.Command != "/core" || connector.Arguments[0] != constants.PluginStdioMode || connector.RuntimeKey != "bot_plugin_"+connector.ID {
 		t.Fatalf("stdio launch: %+v", connector)
 	}
 	if len(prepared.snapshots) != 1 || prepared.snapshots[0].VersionID != "p1-v1" || prepared.snapshots[0].ConfigurationRevision != 3 {

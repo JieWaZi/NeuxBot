@@ -17,7 +17,7 @@ func TestResolveProjectFilesMapsSourceWithoutCopying(t *testing.T) {
 	}
 
 	references, err := ResolveProjectFiles(
-		[]ProjectLink{{EntryName: "ally", SourcePath: project}},
+		[]ProjectLink{{EntryName: "bot", SourcePath: project}},
 		[]string{source},
 	)
 	if err != nil {
@@ -43,7 +43,7 @@ func TestResolveProjectFilesRejectsOutsideSource(t *testing.T) {
 	}
 
 	if _, err := ResolveProjectFiles(
-		[]ProjectLink{{EntryName: "ally", SourcePath: project}},
+		[]ProjectLink{{EntryName: "bot", SourcePath: project}},
 		[]string{outside},
 	); err == nil {
 		t.Fatal("ResolveProjectFiles() error = nil, want outside-source rejection")

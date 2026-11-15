@@ -23,13 +23,13 @@ func TestMain(m *testing.M) {
 func TestIndependentJSFunctionUsesJSONIPCAndFrozenClock(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	request := Request{RequestID: "stable-instance", StartedAt: 1000, DeadlineAt: time.Now().Add(4 * time.Second).UnixMilli(), Input: map[string]any{"text": "ally"}, Code: `function main(input){return {text:(input.text+" "+input.text+"!").toUpperCase(),clock:Date.now(),random:Math.random(),host:typeof require,constructor:typeof (()=>{}).constructor}}`}
+	request := Request{RequestID: "stable-instance", StartedAt: 1000, DeadlineAt: time.Now().Add(4 * time.Second).UnixMilli(), Input: map[string]any{"text": "bot"}, Code: `function main(input){return {text:(input.text+" "+input.text+"!").toUpperCase(),clock:Date.now(),random:Math.random(),host:typeof require,constructor:typeof (()=>{}).constructor}}`}
 	result, process, err := Execute(ctx, request, "javascript", "", t.TempDir(), SafeEnvironment())
 	if err != nil {
 		t.Fatalf("%v %+v", err, process)
 	}
 	data, ok := result.Data.(map[string]any)
-	if !ok || data["text"] != "ALLY ALLY!" || data["clock"] != float64(1000) || data["host"] != "undefined" || data["constructor"] != "undefined" {
+	if !ok || data["text"] != "BOT BOT!" || data["clock"] != float64(1000) || data["host"] != "undefined" || data["constructor"] != "undefined" {
 		t.Fatalf("%+v", result)
 	}
 	again, _, err := Execute(ctx, request, "javascript", "", t.TempDir(), SafeEnvironment())
@@ -101,7 +101,7 @@ func TestJSFunctionMemoryIsReallySupervised(t *testing.T) {
 	}
 }
 func TestPythonPrintIsNotAResultReceipt(t *testing.T) {
-	python := os.Getenv("ALLY_WORKFLOW_TEST_PYTHON")
+	python := os.Getenv("NEUXBOT_WORKFLOW_TEST_PYTHON")
 	if python == "" {
 		var err error
 		python, err = exec.LookPath("python3")
@@ -114,8 +114,8 @@ func TestPythonPrintIsNotAResultReceipt(t *testing.T) {
 	if err := PythonVersion(ctx, python); err != nil {
 		t.Skip("test interpreter is older than Python 3.11")
 	}
-	result, process, err := Execute(ctx, Request{RequestID: "python-ipc", Input: "ally", DeadlineAt: time.Now().Add(4 * time.Second).UnixMilli(), Code: "def main(input):\n print('{\"ok\": true, \"data\": \"forged\"}')\n return (input+' '+input+'!').upper()"}, "python", python, t.TempDir(), SafeEnvironment())
-	if err != nil || result.Data != "ALLY ALLY!" || !strings.Contains(process.Stdout, "forged") {
+	result, process, err := Execute(ctx, Request{RequestID: "python-ipc", Input: "bot", DeadlineAt: time.Now().Add(4 * time.Second).UnixMilli(), Code: "def main(input):\n print('{\"ok\": true, \"data\": \"forged\"}')\n return (input+' '+input+'!').upper()"}, "python", python, t.TempDir(), SafeEnvironment())
+	if err != nil || result.Data != "BOT BOT!" || !strings.Contains(process.Stdout, "forged") {
 		t.Fatalf("%+v %+v %v", result, process, err)
 	}
 }
@@ -135,8 +135,8 @@ func TestPythonFunctionUsesExplicitEnvironmentAndWorkingDirectory(t *testing.T) 
 	if err := os.Mkdir(temporary, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	request := Request{RequestID: "directories", DeadlineAt: time.Now().Add(4 * time.Second).UnixMilli(), Code: "import os,tempfile\ndef main(input):\n return {'cwd':os.getcwd(),'tmp':tempfile.gettempdir(),'root':os.environ.get('ALLY_WORKFLOW_ROOT')}"}
-	result, process, err := Execute(ctx, request, "python", python, directory, append(SafeEnvironment(), "TMPDIR="+temporary, "TEMP="+temporary, "TMP="+temporary, "ALLY_WORKFLOW_ROOT="+directory))
+	request := Request{RequestID: "directories", DeadlineAt: time.Now().Add(4 * time.Second).UnixMilli(), Code: "import os,tempfile\ndef main(input):\n return {'cwd':os.getcwd(),'tmp':tempfile.gettempdir(),'root':os.environ.get('NEUXBOT_WORKFLOW_ROOT')}"}
+	result, process, err := Execute(ctx, request, "python", python, directory, append(SafeEnvironment(), "TMPDIR="+temporary, "TEMP="+temporary, "TMP="+temporary, "NEUXBOT_WORKFLOW_ROOT="+directory))
 	if err != nil {
 		t.Fatalf("%v %+v", err, process)
 	}

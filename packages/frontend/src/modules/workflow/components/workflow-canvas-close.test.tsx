@@ -36,7 +36,7 @@ it.each(["button", "escape"])(
           <WorkflowCanvas
             listMode
             manifest={{
-              sdk: "ally.workflow",
+              sdk: "bot.workflow",
               title: "测试工作流",
               description: "",
               controls: [],

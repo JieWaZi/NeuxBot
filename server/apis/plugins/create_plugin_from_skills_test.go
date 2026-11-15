@@ -56,7 +56,7 @@ func skillBundleAPIContext(t *testing.T) *gin.Context {
 	global.WakerControllerManager = controllers.NewWakerController(database.DB)
 	global.TransactionControllerManager = controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))
 	global.Config.DataDirectory, global.PluginContents, global.Uploads = t.TempDir(), nil, nil
-	t.Setenv("ALLY_PLUGIN_CATALOG_URL", t.TempDir())
+	t.Setenv("NEUXBOT_PLUGIN_CATALOG_URL", t.TempDir())
 	ctx, _ := gin.CreateTestContext(nil)
 	for _, id := range []string{"w1", "w2"} {
 		if err := global.WakerControllerManager.Create(ctx, models.Waker{ID: id, Name: id}); err != nil {

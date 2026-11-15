@@ -35,7 +35,7 @@ import type {
 } from "./workbench-pane";
 import { paneGeometry, type PaneRect } from "./pane-geometry";
 
-const dragMime = "application/x-ally-workbench-tab";
+const dragMime = "application/x-bot-workbench-tab";
 
 function tabIcon(kind: WorkbenchTab["kind"]) {
   switch (kind) {

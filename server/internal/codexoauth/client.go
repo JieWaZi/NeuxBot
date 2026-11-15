@@ -138,7 +138,7 @@ func (c *Client) request(ctx context.Context, path string, body any, form url.Va
 		return 0, requestFailure(path, "create_request", 0, err)
 	}
 	request.Header.Set("Content-Type", contentType)
-	request.Header.Set("User-Agent", "ally-codex-oauth")
+	request.Header.Set("User-Agent", "bot-codex-oauth")
 	response, err := c.HTTP.Do(request)
 	if response != nil {
 		defer response.Body.Close()

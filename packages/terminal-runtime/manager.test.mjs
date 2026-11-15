@@ -8,7 +8,7 @@ import { loadModule } from "./load-manager.mjs";
 
 test("终端按标签身份复用，屏幕快照恢复输出并限制输入控制权", async (t) => {
   const root = await realpath(
-    await mkdtemp(path.join(tmpdir(), "ally-terminal-")),
+    await mkdtemp(path.join(tmpdir(), "bot-terminal-")),
   );
   t.after(() => rm(root, { recursive: true, force: true }));
   const children = [];
@@ -95,7 +95,7 @@ test("终端按标签身份复用，屏幕快照恢复输出并限制输入控�
 
 test("标签关闭与启动并发时不遗留 PTY", async (t) => {
   const root = await realpath(
-    await mkdtemp(path.join(tmpdir(), "ally-terminal-")),
+    await mkdtemp(path.join(tmpdir(), "bot-terminal-")),
   );
   t.after(() => rm(root, { recursive: true, force: true }));
   let allocated = 0;
@@ -116,7 +116,7 @@ test("标签关闭与启动并发时不遗留 PTY", async (t) => {
 
 test("屏幕写入积压时暂停 PTY，排空后恢复且退出后不再恢复", async (t) => {
   const root = await realpath(
-    await mkdtemp(path.join(tmpdir(), "ally-terminal-")),
+    await mkdtemp(path.join(tmpdir(), "bot-terminal-")),
   );
   t.after(() => rm(root, { recursive: true, force: true }));
   const children = [];

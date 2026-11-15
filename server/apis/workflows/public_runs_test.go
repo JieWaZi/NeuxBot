@@ -159,7 +159,7 @@ func publicJSON(t *testing.T, value any) map[string]any {
 
 func TestPublicRunAcceptanceAndRetryKeepIndependentRunEvidence(t *testing.T) {
 	s, store := workflowTestService(t)
-	source := `export const meta={sdk:'ally.workflow',title:'失败证据',description:'独立重试',phases:[{id:'one',title:'阶段',detail:'保留旧结果',canExit:true}]};throw new Error('original failure');`
+	source := `export const meta={sdk:'bot.workflow',title:'失败证据',description:'独立重试',phases:[{id:'one',title:'阶段',detail:'保留旧结果',canExit:true}]};throw new Error('original failure');`
 	definition := savedTestWorkflow(t, s, source)
 	previousStore, previousRuns, previousService := global.WorkflowControllerManager, global.WorkflowRunControllerManager, global.WorkflowService
 	global.WorkflowControllerManager, global.WorkflowRunControllerManager, global.WorkflowService = store, s.Runs, s.Service

@@ -50,7 +50,7 @@ MCP、CLI 和 HTTP 只处理各自传输的解析、输出与错误映射。操�
 
 下列契约保持现有字段、类型和业务语义：
 
-- `ally.workflow`、`meta`、`scripts`、原语与节点选项。
+- `bot.workflow`、`meta`、`scripts`、原语与节点选项。
 - 输入、输出、worker 结果、人工问题、文件引用的 Schema。
 - Manifest、画布投影、源码位置与稳定节点身份。
 - 完整源码保存和精确补丁保存，以及 `expectedRevisionId`、补丁摘要、`requestId`。
@@ -188,7 +188,7 @@ HTTP、MCP、CLI 直接调用同一个 `SaveSource` 用例。它接收既有保�
 
 ### 9.1 工具在提交模型输入前准备
 
-保留 `ally_capabilities` MCP 与 CLI 两种传输，但一轮只由宿主选择一种，二者使用同一契约、业务调用上下文和 requestId。
+保留 `bot_capabilities` MCP 与 CLI 两种传输，但一轮只由宿主选择一种，二者使用同一契约、业务调用上下文和 requestId。
 
 MCP 初始化只读取角色工具定义，不需要执行已激活。宿主在提交业务 Prompt 前确认实际工具加载，不能把“传入配置”当成“可调用”。缺少真实加载观察、连接重建或调用关联能力的 Runtime，初始就选择 CLI；其能力以验收结果为准，不凭声明推断。
 

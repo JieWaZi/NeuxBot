@@ -95,7 +95,7 @@ const nativeDrop = vi.hoisted(() => ({
   onEvent: undefined as ((event: FileDropEvent) => void) | undefined,
 }));
 const attachmentStaging = vi.hoisted(() =>
-  vi.fn(async (file: File) => `/tmp/ally-paste/${file.name}`),
+  vi.fn(async (file: File) => `/tmp/bot-paste/${file.name}`),
 );
 const scopedSearch = vi.hoisted(() =>
   vi.fn(async () => [] as { path: string; relativePath: string }[]),
@@ -104,8 +104,8 @@ const scopedResolve = vi.hoisted(() =>
   vi.fn(async () => ({
     status: "resolved" as const,
     canonicalPath: "/tmp/project/AGENTS.md",
-    baseDirectory: "/tmp/ally",
-    workspaceRoot: "/tmp/ally",
+    baseDirectory: "/tmp/bot",
+    workspaceRoot: "/tmp/bot",
     sourceRoots: ["/tmp/project"],
   })),
 );
@@ -211,7 +211,7 @@ function AttachmentComposerHarness({
   const aui = useAui();
   const [, refreshComposer] = useReducer((revision: number) => revision + 1, 0);
   useEffect(() => {
-    void aui.composer.addAttachment(pathFile("/tmp/ally/readme.md"));
+    void aui.composer.addAttachment(pathFile("/tmp/bot/readme.md"));
   }, [aui]);
   return (
     <ComposerPrimitive.Root>
@@ -266,7 +266,7 @@ function AttachmentSubscriptionGapHarness({
             const sourcePath = (
               attachments[index]?.file as
                 ReturnType<typeof pathFile> | undefined
-            )?.allySourcePath;
+            )?.botSourcePath;
             if (sourcePath && paths.includes(sourcePath)) {
               if (deferRemoval) {
                 window.setTimeout(() => {
@@ -931,7 +931,7 @@ describe("chat composer", () => {
               <ChatComposerInput
                 placeholder="输入消息"
                 ariaLabel="message"
-                fileRoots={["/tmp/ally"]}
+                fileRoots={["/tmp/bot"]}
                 fileScopePath="projects"
                 fileScopeChatId="chat-1"
               />
@@ -968,7 +968,7 @@ describe("chat composer", () => {
               <ChatComposerInput
                 placeholder="输入消息"
                 ariaLabel="message"
-                fileRoots={["/tmp/ally"]}
+                fileRoots={["/tmp/bot"]}
                 fileScopeChatId="chat-1"
               />
             </ComposerPrimitive.Root>
@@ -988,16 +988,16 @@ describe("chat composer", () => {
         getData: () =>
           JSON.stringify({
             chatId: "chat-1",
-            rootPath: "/tmp/ally",
-            path: "projects/ally/AGENTS.md",
+            rootPath: "/tmp/bot",
+            path: "projects/bot/AGENTS.md",
           }),
       };
       fireEvent.dragOver(target, { dataTransfer });
       fireEvent.drop(target, { dataTransfer });
       expect(scopedResolve).toHaveBeenCalledWith(
         "chat-1",
-        "projects/ally/AGENTS.md",
-        "/tmp/ally",
+        "projects/bot/AGENTS.md",
+        "/tmp/bot",
       );
       await waitFor(() =>
         expect(
@@ -1018,7 +1018,7 @@ describe("chat composer", () => {
     scopedSearch.mockImplementation(async () => [
       {
         path: "/tmp/project/AGENTS.md",
-        relativePath: "projects/ally/AGENTS.md",
+        relativePath: "projects/bot/AGENTS.md",
       },
     ]);
     workspaceCapability.available = true;
@@ -1030,7 +1030,7 @@ describe("chat composer", () => {
               <ChatComposerInput
                 placeholder="输入消息"
                 ariaLabel="message"
-                fileRoots={["/tmp/ally"]}
+                fileRoots={["/tmp/bot"]}
                 fileScopePath="projects"
                 fileScopeChatId="chat-1"
               />
@@ -1048,7 +1048,7 @@ describe("chat composer", () => {
           "AGENTS",
           20,
           "projects",
-          "/tmp/ally",
+          "/tmp/bot",
         ),
       );
       expect(
@@ -1056,8 +1056,8 @@ describe("chat composer", () => {
       ).toBeInTheDocument();
       expect(scopedResolve).toHaveBeenCalledWith(
         "chat-1",
-        "projects/ally/AGENTS.md",
-        "/tmp/ally",
+        "projects/bot/AGENTS.md",
+        "/tmp/bot",
       );
     } finally {
       scopedSearch.mockImplementation(async () => []);
@@ -1150,7 +1150,7 @@ describe("chat composer", () => {
     });
     Object.defineProperty(dropEvent, "dataTransfer", {
       value: {
-        files: [pathFile("/tmp/ally/dropped.txt")],
+        files: [pathFile("/tmp/bot/dropped.txt")],
         types: ["Files"],
       },
     });
@@ -1160,7 +1160,7 @@ describe("chat composer", () => {
 
     expect(
       document.querySelector(
-        '[data-chat-composer-attachment="/tmp/ally/dropped.txt"]',
+        '[data-chat-composer-attachment="/tmp/bot/dropped.txt"]',
       ),
     ).toBeNull();
   });
@@ -1190,7 +1190,7 @@ describe("chat composer", () => {
     });
     nativeDrop.onEvent?.({
       type: "drop",
-      paths: ["/tmp/ally/native.png"],
+      paths: ["/tmp/bot/native.png"],
       position: { x: 50, y: 50 },
     });
     const domDrop = new Event("drop", { bubbles: true, cancelable: true });
@@ -1254,7 +1254,7 @@ describe("chat composer", () => {
       ).toHaveAttribute("data-file-dragging", "true");
       nativeDrop.onEvent?.({
         type: "drop",
-        paths: ["/tmp/ally/high-dpi.png"],
+        paths: ["/tmp/bot/high-dpi.png"],
         position: { x: 75, y: 75 },
       });
       await waitFor(() =>
@@ -1307,7 +1307,7 @@ describe("chat composer", () => {
     });
     nativeDrop.onEvent?.({
       type: "drop",
-      paths: ["/tmp/ally/toolbar.txt"],
+      paths: ["/tmp/bot/toolbar.txt"],
       position: { x: 50, y: 85 },
     });
     expect(await screen.findByText("toolbar.txt")).toBeVisible();
@@ -1347,7 +1347,7 @@ describe("chat composer", () => {
     });
     nativeDrop.onEvent?.({
       type: "drop",
-      paths: ["/tmp/ally/native.png"],
+      paths: ["/tmp/bot/native.png"],
       position: { x: 50, y: 50 },
     });
 
@@ -1381,7 +1381,7 @@ describe("chat composer", () => {
     );
 
     await act(async () => {
-      await composer?.addAttachment(pathFile("/tmp/ally/remove.png"));
+      await composer?.addAttachment(pathFile("/tmp/bot/remove.png"));
     });
     await user.type(screen.getByRole("textbox", { name: "message" }), "看图");
     expect(await screen.findByText("remove.png")).toBeVisible();
@@ -1412,7 +1412,7 @@ describe("chat composer", () => {
     );
 
     await act(async () => {
-      await composer?.addAttachment(pathFile("/tmp/ally/remove-once.png"));
+      await composer?.addAttachment(pathFile("/tmp/bot/remove-once.png"));
     });
     await user.type(screen.getByRole("textbox", { name: "message" }), "看图");
     expect(await screen.findByText("remove-once.png")).toBeVisible();
@@ -1438,8 +1438,8 @@ describe("chat composer", () => {
     await userEvent.setup().click(attachment);
     expect(onOpenFile).toHaveBeenCalledWith({
       name: "readme.md",
-      path: "/tmp/ally/readme.md",
-      rootPath: "/tmp/ally",
+      path: "/tmp/bot/readme.md",
+      rootPath: "/tmp/bot",
     });
   });
 
@@ -1489,7 +1489,7 @@ describe("chat composer", () => {
               attachments: [],
               codeReferences: [
                 {
-                  path: "projects/ally/server/service.go",
+                  path: "projects/bot/server/service.go",
                   startLine: 0,
                   endLine: 0,
                   content: "",
@@ -1503,9 +1503,9 @@ describe("chat composer", () => {
 
     await userEvent
       .setup()
-      .click(await screen.findByText("projects/ally/server/service.go"));
+      .click(await screen.findByText("projects/bot/server/service.go"));
     expect(onOpenCodeReference).toHaveBeenCalledWith(
-      expect.objectContaining({ path: "projects/ally/server/service.go" }),
+      expect.objectContaining({ path: "projects/bot/server/service.go" }),
     );
     expect(onOpenFile).not.toHaveBeenCalled();
   });
@@ -1556,7 +1556,7 @@ describe("chat composer", () => {
       expect(sendMessage).toHaveBeenCalledWith(
         "请查看附件。",
         "chat-1",
-        ["/tmp/ally-paste/截图.png", "/tmp/ally-paste/资料.txt"],
+        ["/tmp/bot-paste/截图.png", "/tmp/bot-paste/资料.txt"],
         expect.any(Object),
       ),
     );
@@ -2768,7 +2768,7 @@ describe("chat composer", () => {
       await screen.findByText("回复", {}, { timeout: 5000 }),
     ).toBeInTheDocument();
     expect(screen.queryByText("我")).not.toBeInTheDocument();
-    expect(container.querySelector('img[src="/ally-logo.png"]')).toBeNull();
+    expect(container.querySelector('img[src="/bot-logo.png"]')).toBeNull();
     const userMessage = container.querySelector(
       '[data-message-id="user-layout"]',
     );

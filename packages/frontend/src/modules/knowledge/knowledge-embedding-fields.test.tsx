@@ -13,7 +13,7 @@ import {
 } from "./knowledge-embedding-profile";
 const server = setupServer();
 beforeAll(() => {
-  client.setConfig({ baseUrl: "http://ally.test" });
+  client.setConfig({ baseUrl: "http://bot.test" });
   server.listen({ onUnhandledRequest: "error" });
 });
 afterEach(() => server.resetHandlers());
@@ -43,7 +43,7 @@ it("新建直接测试独立Embedding草稿，不先保存且不调用Memory", a
   const bodies: Record<string, unknown>[] = [];
   server.use(
     http.post(
-      "http://ally.test/api/v1/knowledge/embedding/test",
+      "http://bot.test/api/v1/knowledge/embedding/test",
       async ({ request }) => {
         bodies.push((await request.json()) as Record<string, unknown>);
         return HttpResponse.json({ dimensions: 1536 });
@@ -75,7 +75,7 @@ it("编辑测试空密钥只沿用指定知识库已保存密钥，改字段清�
   const bodies: Record<string, unknown>[] = [];
   server.use(
     http.post(
-      "http://ally.test/api/v1/knowledge/embedding/test",
+      "http://bot.test/api/v1/knowledge/embedding/test",
       async ({ request }) => {
         bodies.push((await request.json()) as Record<string, unknown>);
         return HttpResponse.json({ dimensions: 768 });

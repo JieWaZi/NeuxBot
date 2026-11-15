@@ -802,7 +802,7 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 		}
 		for key, value := range source {
 			// CLI bootstrap configuration belongs to Core, never the native agent process.
-			if strings.HasPrefix(strings.ToUpper(key), "ALLYCLI_") {
+			if strings.HasPrefix(strings.ToUpper(key), "BOTCLI_") {
 				continue
 			}
 			if key == "" || strings.ContainsAny(key, "=\x00") || strings.ContainsRune(value, 0) {

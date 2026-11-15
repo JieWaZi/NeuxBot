@@ -11,7 +11,7 @@ import type { WikiPage } from "./knowledge-wiki-queries";
 const server = setupServer();
 beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });
-  client.setConfig({ baseUrl: "http://ally.test" });
+  client.setConfig({ baseUrl: "http://bot.test" });
 });
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
@@ -23,7 +23,7 @@ it("编辑中收到同版内容更新仍提交打开时的读取时间", async (
   let submitted: Record<string, unknown> | undefined;
   server.use(
     http.put(
-      "http://ally.test/api/v1/knowledge/libraries/kb/pages/page",
+      "http://bot.test/api/v1/knowledge/libraries/kb/pages/page",
       async ({ request }) => {
         submitted = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({ resourceId: "page", state: "saved" });

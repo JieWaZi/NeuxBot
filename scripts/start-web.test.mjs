@@ -8,19 +8,19 @@ import {
 
 test("独立启动不继承桌面所有权或浏览器令牌", () => {
   const environment = webRuntimeEnvironment("/release", {
-    ALLY_DESKTOP_PARENT_PID: "42",
-    ALLY_LOCAL_TOKEN: "secret",
-    ALLY_WEB_DEV_ORIGIN: "http://evil",
-    ALLY_DATA_DIR: "/data",
-    ALLY_WEB_CORE_PORT: "9000",
+    NEUXBOT_DESKTOP_PARENT_PID: "42",
+    NEUXBOT_LOCAL_TOKEN: "secret",
+    NEUXBOT_WEB_DEV_ORIGIN: "http://evil",
+    NEUXBOT_DATA_DIR: "/data",
+    NEUXBOT_WEB_CORE_PORT: "9000",
   });
-  assert.equal(environment.ALLY_DESKTOP_PARENT_PID, undefined);
-  assert.equal(environment.ALLY_LOCAL_TOKEN, undefined);
-  assert.equal(environment.ALLY_WEB_DEV_ORIGIN, undefined);
+  assert.equal(environment.NEUXBOT_DESKTOP_PARENT_PID, undefined);
+  assert.equal(environment.NEUXBOT_LOCAL_TOKEN, undefined);
+  assert.equal(environment.NEUXBOT_WEB_DEV_ORIGIN, undefined);
   assert.equal(environment.SERVER_PORT, "9000");
   assert.equal(environment.SERVER_HOST, "127.0.0.1");
-  assert.equal(environment.ALLY_DATA_DIR, "/data");
-  assert.equal(environment.ALLY_WEB_DIR, path.join("/release", "web"));
+  assert.equal(environment.NEUXBOT_DATA_DIR, "/data");
+  assert.equal(environment.NEUXBOT_WEB_DIR, path.join("/release", "web"));
   assert.equal(
     environment.PI_MCP_MODULE_PATH,
     path.join("/release", "pi-bridge", "bridge.mjs"),
@@ -33,7 +33,7 @@ test("独立启动不继承桌面所有权或浏览器令牌", () => {
 test("Web 与 Native 默认使用同一个 Core 数据目录", () => {
   assert.equal(
     defaultCoreDataDirectory({}, "darwin", "/user"),
-    "/user/Library/Application Support/com.neuxally.desktop",
+    "/user/Library/Application Support/com.neuxbot.desktop",
   );
   assert.equal(
     defaultCoreDataDirectory(
@@ -41,7 +41,7 @@ test("Web 与 Native 默认使用同一个 Core 数据目录", () => {
       "win32",
       "C:\\Users\\User",
     ),
-    "C:\\Users\\User\\AppData\\Roaming\\com.neuxally.desktop",
+    "C:\\Users\\User\\AppData\\Roaming\\com.neuxbot.desktop",
   );
   assert.equal(
     defaultCoreDataDirectory({ ALLY_DATA_DIR: "/custom" }, "darwin", "/user"),

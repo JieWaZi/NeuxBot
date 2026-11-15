@@ -14,12 +14,12 @@ func TestDevelopmentPluginArtifacts(t *testing.T) {
 	if os.Getenv("NEUX_VERIFY_LOCAL_PLUGIN_ARTIFACTS") != "1" {
 		t.Skip("enable NEUX_VERIFY_LOCAL_PLUGIN_ARTIFACTS with the local catalog launcher")
 	}
-	source := os.Getenv("ALLY_PLUGIN_CATALOG_URL")
+	source := os.Getenv("NEUXBOT_PLUGIN_CATALOG_URL")
 	if source == "" {
-		t.Fatal("ALLY_PLUGIN_CATALOG_URL is required")
+		t.Fatal("NEUXBOT_PLUGIN_CATALOG_URL is required")
 	}
 	ctx := pluginAPIContext(t)
-	t.Setenv("ALLY_PLUGIN_CATALOG_URL", source)
+	t.Setenv("NEUXBOT_PLUGIN_CATALOG_URL", source)
 	browsed, err := (&BrowsePlugins{Locale: "zh-CN"}).Output(ctx)
 	if err != nil || len(browsed.(BrowsePluginsResponse).Entries) != 3 {
 		t.Fatal("real catalog browse unavailable", err)

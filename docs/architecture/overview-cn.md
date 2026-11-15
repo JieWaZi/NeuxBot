@@ -31,7 +31,7 @@ flowchart LR
 - 普通聊天、团队、工作流、自动任务和 IM 共用 Execution 的单一 Runtime 端口；领域能力通过既有授权与资源端口注入，Session 不接管业务编排。
 - ThreadLifecycle 拥有公开会话的原生绑定、配置兼容与历史接力；Turn 分开记录输入接纳、原生执行、交付和持久化结果。ProviderRuntime 独占进程与实际租约，关闭失败保留同一所有者供重试。
 - 冷准备取得账号和物化资源，原生会话确认后才允许输入提交。热续聊只发送新增输入；原生替换使用现有最近五轮或总结接力。模型 setter 可热更新，进程权限或账号身份改变重新判断兼容。
-- `agent.Catalog` 保留安装、Profile 与程序定位。模型及 Thinking 查询通过独立 ProviderRuntime 目录连接，不启动模型 Prompt。软件能力与 allycli 继续使用原有共享模块。
+- `agent.Catalog` 保留安装、Profile 与程序定位。模型及 Thinking 查询通过独立 ProviderRuntime 目录连接，不启动模型 Prompt。软件能力与 botcli 继续使用原有共享模块。
 - Channel 管理团队成员、任务与协作；Workflow 管理源码版本、编译产物和运行状态。
 - 自动任务和 IM 管理触发、授权及交付关系，复用已有执行入口。
 - 伙伴、项目、插件、技能、连接器、账号和记忆各自维护其业务事实。
@@ -53,13 +53,13 @@ flowchart LR
 | server/internal/agent             | ThreadLifecycle、Turn、ProviderRuntime、原生 Client 和安装目录 |
 | server/internal/chat/conversation | 规范会话、输入、原生终态与回放                                 |
 | server/internal/agent/capability  | 命令目录、精确授权、有界观察与领域回执                         |
-| server/internal/agent/cli         | allycli 参数解析、发现与客户端调用                             |
+| server/internal/agent/cli         | botcli 参数解析、发现与客户端调用                             |
 | packages/terminal-runtime         | Core 管理的 PTY 与终端屏幕运行时                               |
 | server/apis                       | HTTP Operator、校验及单入口用例                                |
 | server/services                   | 多入口复用业务与后台生命周期                                   |
 | server/repositories               | 持久化模型、查询及事务实现                                     |
 | server/internal                   | Runtime、日志、文件、编译器等内部能力                          |
-| skills/ally                       | 随应用交付的系统任务知识                                       |
+| skills/bot                       | 随应用交付的系统任务知识                                       |
 
 当前交付方式包括原生应用和浏览器访问本机回环 Core。Web 包使用 Node.js 22+ 启动器；Native 使用随 Electron 交付的运行时。产品与主仓库名称为 NeuxBot，内部 workspace 包使用 `@neuxbot/*`，Go 模块使用 `github.com/JieWaZi/NeuxBot/server`；整个 Agent 子系统属于该模块，没有独立 `go.mod`。acp-go 继续在独立仓库维护并固定依赖版本。`allycli`、`ALLY_*`、已有 `NEUXALLY_*` 插件环境变量、`neuxally-resource://` 和知识集成的服务身份继续作为稳定技术契约；插件授权使用 `neuxbot-auth/1`，具体边界见[插件资源](plugin-resources-cn.md)。独立插件源位于 `JieWaZi/neux-plugins`。受管文件根目录与程序数据目录分别管理，具体布局见 [工作区与存储](workspace-and-storage-cn.md)。Agent 的调用、并发和清理边界见 [智能体与账号](runtimes-and-accounts-cn.md)。
 

@@ -13,8 +13,8 @@ function subscribe<K extends keyof DesktopEvents>(
     _event: Electron.IpcRendererEvent,
     payload: DesktopEvents[K],
   ) => handler(payload);
-  ipcRenderer.on(`ally:${name}`, listener);
-  return () => ipcRenderer.removeListener(`ally:${name}`, listener);
+  ipcRenderer.on(`bot:${name}`, listener);
+  return () => ipcRenderer.removeListener(`bot:${name}`, listener);
 }
 type AttentionOpen = DesktopEvents["workspace-attention-open"];
 const attentionHandlers = new Set<(target: AttentionOpen) => void>();
@@ -55,40 +55,40 @@ for (const [name, type] of [
   );
 }
 const bridge: DesktopBridge = {
-  core_connection: (args) => ipcRenderer.invoke("ally:core_connection", args),
+  core_connection: (args) => ipcRenderer.invoke("bot:core_connection", args),
   subscribe_core_events: (args) =>
-    ipcRenderer.invoke("ally:subscribe_core_events", args),
+    ipcRenderer.invoke("bot:subscribe_core_events", args),
   resync_core_events: (args) =>
-    ipcRenderer.invoke("ally:resync_core_events", args),
+    ipcRenderer.invoke("bot:resync_core_events", args),
   unsubscribe_core_events: (args) =>
-    ipcRenderer.invoke("ally:unsubscribe_core_events", args),
+    ipcRenderer.invoke("bot:unsubscribe_core_events", args),
   onCoreEvent: (handler) => subscribe("core-event", handler),
-  save_file: (args) => ipcRenderer.invoke("ally:save_file", args),
-  select_directory: (args) => ipcRenderer.invoke("ally:select_directory", args),
-  select_files: (args) => ipcRenderer.invoke("ally:select_files", args),
-  stage_attachment: (args) => ipcRenderer.invoke("ally:stage_attachment", args),
+  save_file: (args) => ipcRenderer.invoke("bot:save_file", args),
+  select_directory: (args) => ipcRenderer.invoke("bot:select_directory", args),
+  select_files: (args) => ipcRenderer.invoke("bot:select_files", args),
+  stage_attachment: (args) => ipcRenderer.invoke("bot:stage_attachment", args),
   open_workspace_file: (args) =>
-    ipcRenderer.invoke("ally:open_workspace_file", args),
-  browser_create: (args) => ipcRenderer.invoke("ally:browser_create", args),
+    ipcRenderer.invoke("bot:open_workspace_file", args),
+  browser_create: (args) => ipcRenderer.invoke("bot:browser_create", args),
   browser_prepare_webview: (args) =>
-    ipcRenderer.invoke("ally:browser_prepare_webview", args),
-  browser_navigate: (args) => ipcRenderer.invoke("ally:browser_navigate", args),
-  browser_control: (args) => ipcRenderer.invoke("ally:browser_control", args),
+    ipcRenderer.invoke("bot:browser_prepare_webview", args),
+  browser_navigate: (args) => ipcRenderer.invoke("bot:browser_navigate", args),
+  browser_control: (args) => ipcRenderer.invoke("bot:browser_control", args),
   browser_set_bounds: (args) =>
-    ipcRenderer.invoke("ally:browser_set_bounds", args),
+    ipcRenderer.invoke("bot:browser_set_bounds", args),
   browser_set_visible: (args) =>
-    ipcRenderer.invoke("ally:browser_set_visible", args),
-  browser_close: (args) => ipcRenderer.invoke("ally:browser_close", args),
+    ipcRenderer.invoke("bot:browser_set_visible", args),
+  browser_close: (args) => ipcRenderer.invoke("bot:browser_close", args),
   open_external_url: (args) =>
-    ipcRenderer.invoke("ally:open_external_url", args),
+    ipcRenderer.invoke("bot:open_external_url", args),
   get_notification_preferences: (args) =>
-    ipcRenderer.invoke("ally:get_notification_preferences", args),
+    ipcRenderer.invoke("bot:get_notification_preferences", args),
   set_notification_preferences: (args) =>
-    ipcRenderer.invoke("ally:set_notification_preferences", args),
+    ipcRenderer.invoke("bot:set_notification_preferences", args),
   send_test_notification: () =>
-    ipcRenderer.invoke("ally:send_test_notification"),
+    ipcRenderer.invoke("bot:send_test_notification"),
   open_notification_settings: () =>
-    ipcRenderer.invoke("ally:open_notification_settings"),
+    ipcRenderer.invoke("bot:open_notification_settings"),
   onBrowserNavigation: (handler) => subscribe("browser-navigation", handler),
   onWorkspaceAttentionOpen: (handler) => {
     attentionHandlers.add(handler);
@@ -108,4 +108,4 @@ const bridge: DesktopBridge = {
     };
   },
 };
-contextBridge.exposeInMainWorld("allyDesktop", bridge);
+contextBridge.exposeInMainWorld("botDesktop", bridge);

@@ -26,7 +26,7 @@ func (e *ExportProfileTemplate) Output(*gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(status_error.ProfileArchiveGenerationFailed)
 	}
-	attachment := ginx.NewAttachment("ally-waker-profile-template.zip", "application/zip")
+	attachment := ginx.NewAttachment("bot-waker-profile-template.zip", "application/zip")
 	_, _ = attachment.Write(content)
 	return attachment, nil
 }

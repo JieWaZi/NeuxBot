@@ -75,7 +75,7 @@ func TestRunAdmissionFreezesVersionDefaultsAndComputesF0(t *testing.T) {
 	}
 }
 
-const humanSource = `export const meta={sdk:'ally.workflow',title:'人工关卡',description:'恢复测试',phases:[{id:'approval',title:'确认',detail:'显式批准',canExit:true}]};
+const humanSource = `export const meta={sdk:'bot.workflow',title:'人工关卡',description:'恢复测试',phases:[{id:'approval',title:'确认',detail:'显式批准',canExit:true}]};
 const answer=await askUser('是否批准？',{id:'approve',label:'批准结果',phase:'approval',kind:'select',choices:[{value:'approve',label:'批准'},{value:'reject',label:'拒绝'}],defaultValue:'reject',allowSkip:false});
 return {approved:answer.source==='user' && answer.value==='approve',source:answer.source};`
 
@@ -126,7 +126,7 @@ func TestWorkerWithoutNodeDeadlineKeepsRunCancellation(t *testing.T) {
 			s, _ := workflowTestService(t)
 			worker := &controlledWorker{}
 			s.worker = worker
-			source := `export const meta={sdk:'ally.workflow',title:'伙伴期限',description:'无独立期限',phases:[{id:'work',title:'执行',detail:'提交结果',canExit:true}]};return await worker('B',{id:'task',label:'结果',phase:'work',resolve:{kind:'waker',wakerId:'fixture',runtimeId:'fixture-runtime'},schema:{type:'string'}});`
+			source := `export const meta={sdk:'bot.workflow',title:'伙伴期限',description:'无独立期限',phases:[{id:'work',title:'执行',detail:'提交结果',canExit:true}]};return await worker('B',{id:'task',label:'结果',phase:'work',resolve:{kind:'waker',wakerId:'fixture',runtimeId:'fixture-runtime'},schema:{type:'string'}});`
 			if name == "run-deadline" {
 				source = strings.Replace(source, "description:'无独立期限',", "description:'无独立期限',limits:{timeoutMs:2000},", 1)
 			}
@@ -221,7 +221,7 @@ func dispatchPrepared(t *testing.T, s *Service, id string) {
 	}
 }
 func TestPipelineFastItemAdvancesBeforeSlowFirstStageAndCollectsByInput(t *testing.T) {
-	source := `export const meta={sdk:'ally.workflow',title:'逐项管道',description:'快慢失败',phases:[{id:'work',title:'执行',detail:'逐项推进',canExit:true}]};
+	source := `export const meta={sdk:'bot.workflow',title:'逐项管道',description:'快慢失败',phases:[{id:'work',title:'执行',detail:'逐项推进',canExit:true}]};
 const results=await pipeline(['A','B','C'],[
  async (previous,original,index)=> await worker(original,{id:'stage1',label:'检查',phase:'work',resolve:{kind:'waker',wakerId:'fixture',runtimeId:'fixture-runtime'}}),
  async (previous,original,index)=> await worker(original+'-next',{id:'stage2',label:'整理',phase:'work',resolve:{kind:'waker',wakerId:'fixture',runtimeId:'fixture-runtime'}})
@@ -265,7 +265,7 @@ const results=await pipeline(['A','B','C'],[
 }
 
 func TestStructuredCandidateCannotReplaceExecutionSuccessAndCannotBeOverwritten(t *testing.T) {
-	source := `export const meta={sdk:'ally.workflow',title:'结构化',description:'双重成功条件',phases:[{id:'work',title:'执行',detail:'提交结果',canExit:true}]};return await worker('B',{id:'task',label:'结果',phase:'work',resolve:{kind:'waker',wakerId:'fixture',runtimeId:'fixture-runtime'},schema:{type:'object',required:['ok'],properties:{ok:{type:'boolean'}}}});`
+	source := `export const meta={sdk:'bot.workflow',title:'结构化',description:'双重成功条件',phases:[{id:'work',title:'执行',detail:'提交结果',canExit:true}]};return await worker('B',{id:'task',label:'结果',phase:'work',resolve:{kind:'waker',wakerId:'fixture',runtimeId:'fixture-runtime'},schema:{type:'object',required:['ok'],properties:{ok:{type:'boolean'}}}});`
 	s, _ := workflowTestService(t)
 	s.worker = &controlledWorker{}
 	definition := savedTestWorkflow(t, s, source)

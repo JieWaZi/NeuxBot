@@ -78,7 +78,7 @@ async function stageFile(name: string, bytes: Uint8Array): Promise<string> {
     },
   );
   if (response.status === 401) {
-    window.dispatchEvent(new Event("ally:web-session-expired"));
+    window.dispatchEvent(new Event("bot:web-session-expired"));
     throw new Error(webText("expired"));
   }
   if (!response.ok) throw new Error(webText("uploadFailed"));

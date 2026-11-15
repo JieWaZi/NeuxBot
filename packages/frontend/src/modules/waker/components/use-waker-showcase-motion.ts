@@ -27,7 +27,7 @@ export function useWakerShowcaseMotion(
     if (!node || closing) return;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
 
-    const tilter = node.querySelector<HTMLElement>(".ally-holo-card__tilter");
+    const tilter = node.querySelector<HTMLElement>(".bot-holo-card__tilter");
     let frame = 0;
     let showcase = true;
     const startedAt = performance.now();

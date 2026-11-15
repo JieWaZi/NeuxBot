@@ -39,7 +39,7 @@ type ErrorNoticeInput = Omit<ErrorNoticeDraft, "messageSource"> & {
   messageSource: ErrorMessageSource;
 };
 
-const storageKey = "ally:error-notices";
+const storageKey = "bot:error-notices";
 const browserNetworkMessages = new Set([
   "failed to fetch",
   "fetch failed",

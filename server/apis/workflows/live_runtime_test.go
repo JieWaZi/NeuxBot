@@ -61,8 +61,8 @@ func awaitLiveWorkflow(t *testing.T, s *workflowFixture, id string, ready func(c
 
 func openLiveWorkflow(t *testing.T, ctx context.Context, directory string) (*workflowFixture, func(), models.WorkflowExecutionDefaults, models.RuntimeEnvironment) {
 	t.Helper()
-	if os.Getenv("ALLY_WORKFLOW_LIVE_CODEX") != "1" {
-		t.Skip("set ALLY_WORKFLOW_LIVE_CODEX=1 to run an actual billable model in a temporary workspace")
+	if os.Getenv("NEUXBOT_WORKFLOW_LIVE_CODEX") != "1" {
+		t.Skip("set NEUXBOT_WORKFLOW_LIVE_CODEX=1 to run an actual billable model in a temporary workspace")
 	}
 	sdk, err := agentapi.NewCatalog(agentapi.CatalogConfig{})
 	if err != nil {
@@ -115,7 +115,7 @@ func openLiveWorkflow(t *testing.T, ctx context.Context, directory string) (*wor
 			ID: option.ID, Name: option.Name, PermissionLevels: runtimeenvironment.NativePermissionLevels(constants.RuntimeIDCodex, option),
 		})
 	}
-	model := os.Getenv("ALLY_WORKFLOW_LIVE_MODEL")
+	model := os.Getenv("NEUXBOT_WORKFLOW_LIVE_MODEL")
 	if model == "" {
 		model = detection.DetectedDefaultModel
 	}
@@ -129,7 +129,7 @@ func openLiveWorkflow(t *testing.T, ctx context.Context, directory string) (*wor
 
 func recordLiveEvidence(t *testing.T, name string, state controllers.WorkflowRunState, revision models.WorkflowRevision, model string, creationChat string, artifact []byte, verificationFacts ...map[string]any) {
 	t.Helper()
-	directory := os.Getenv("ALLY_WORKFLOW_EVIDENCE_DIR")
+	directory := os.Getenv("NEUXBOT_WORKFLOW_EVIDENCE_DIR")
 	if directory == "" {
 		return
 	}
@@ -161,8 +161,8 @@ func recordLiveEvidence(t *testing.T, name string, state controllers.WorkflowRun
 }
 
 func TestLiveRuntimeCreationSaveAndIndependentWorkersWriteRead(t *testing.T) {
-	if os.Getenv("ALLY_WORKFLOW_LIVE_CODEX") != "1" {
-		t.Skip("set ALLY_WORKFLOW_LIVE_CODEX=1 to run an actual billable model in a temporary workspace")
+	if os.Getenv("NEUXBOT_WORKFLOW_LIVE_CODEX") != "1" {
+		t.Skip("set NEUXBOT_WORKFLOW_LIVE_CODEX=1 to run an actual billable model in a temporary workspace")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
@@ -172,14 +172,14 @@ func TestLiveRuntimeCreationSaveAndIndependentWorkersWriteRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := `export const meta={sdk:'ally.workflow',title:'真实保存与写入回读',description:'只在验收临时目录写入文本',phases:[{id:'approve',title:'审批',detail:'明确批准',next:['write']},{id:'write',title:'写入',detail:'实际工具写文件',next:['verify']},{id:'verify',title:'回读',detail:'独立工具核验',canExit:true}]};
+	source := `export const meta={sdk:'bot.workflow',title:'真实保存与写入回读',description:'只在验收临时目录写入文本',phases:[{id:'approve',title:'审批',detail:'明确批准',next:['write']},{id:'write',title:'写入',detail:'实际工具写文件',next:['verify']},{id:'verify',title:'回读',detail:'独立工具核验',canExit:true}]};
 const answer=await askUser('允许在当前验收工作目录写入 live.txt 吗？',{id:'approve-file',label:'测试审批',phase:'approve',kind:'select',choices:[{value:'approve',label:'允许'},{value:'deny',label:'拒绝'}],defaultValue:'deny',allowSkip:true});
 if(answer.source!=='user'||answer.value!=='approve')return {written:false,verified:false};
 const path=flowContext.scope.workingDirectory+'/live.txt';
-const write=await worker('Use your actual filesystem tool to write exactly ALLY ALLY! to the approved workflow file '+path+'. Do not simulate the write. Submit the actual result through workflow with action result.submit and params.data.',{id:'write-file',label:'写文件',phase:'write',resolve:{kind:'waker',wakerId:'fixture-waker'},schema:{type:'object',properties:{written:{type:'boolean'}},required:['written'],additionalProperties:false}});
-const verify=await worker('Independently use an actual file read tool to read '+path+'. Verify the exact content is ALLY ALLY! and its string length is 10. Submit the actual result through workflow with action result.submit and params.data.',{id:'read-file',label:'回读核验',phase:'verify',resolve:{kind:'waker',wakerId:'fixture-waker'},schema:{type:'object',properties:{verified:{type:'boolean'},content:{type:'string'}},required:['verified','content'],additionalProperties:false}});
+const write=await worker('Use your actual filesystem tool to write exactly BOT BOT! to the approved workflow file '+path+'. Do not simulate the write. Submit the actual result through workflow with action result.submit and params.data.',{id:'write-file',label:'写文件',phase:'write',resolve:{kind:'waker',wakerId:'fixture-waker'},schema:{type:'object',properties:{written:{type:'boolean'}},required:['written'],additionalProperties:false}});
+const verify=await worker('Independently use an actual file read tool to read '+path+'. Verify the exact content is BOT BOT! and its string length is 10. Submit the actual result through workflow with action result.submit and params.data.',{id:'read-file',label:'回读核验',phase:'verify',resolve:{kind:'waker',wakerId:'fixture-waker'},schema:{type:'object',properties:{verified:{type:'boolean'},content:{type:'string'}},required:['verified','content'],additionalProperties:false}});
 return {written:write.written,verified:verify.verified,content:verify.content};`
-	creation, err := sendCreationMessage(ctx, workflowAPIDependencies(service), SendCreationMessageCommand{DefinitionID: definition.ID, RequestID: "creation", Defaults: defaults, Content: "Using allycli, discover capabilities and the needed workflow SDK topics, validate the complete source below, and save it with allycli workflow source save (sdk ally.workflow, --request-id live-source-save). Preserve the entire source exactly. No filesystem tools and no workflow execution. Your final message must be based on the actual save receipt.\n\n" + source})
+	creation, err := sendCreationMessage(ctx, workflowAPIDependencies(service), SendCreationMessageCommand{DefinitionID: definition.ID, RequestID: "creation", Defaults: defaults, Content: "Using botcli, discover capabilities and the needed workflow SDK topics, validate the complete source below, and save it with botcli workflow source save (sdk bot.workflow, --request-id live-source-save). Preserve the entire source exactly. No filesystem tools and no workflow execution. Your final message must be based on the actual save receipt.\n\n" + source})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +221,7 @@ return {written:write.written,verified:verify.verified,content:verify.content};`
 	state = awaitLiveWorkflow(t, service, run.ID, func(state controllers.WorkflowRunState) bool { return workflowstate.TerminalRun(state.Run.Status) })
 	result, _ := state.Run.Result.(map[string]any)
 	data, err := os.ReadFile(filepath.Join(directory, "live.txt"))
-	if err != nil || string(data) != "ALLY ALLY!" || state.Run.Status != constants.WorkflowRunStatusSucceeded || result["verified"] != true || result["written"] != true || result["content"] != "ALLY ALLY!" {
+	if err != nil || string(data) != "BOT BOT!" || state.Run.Status != constants.WorkflowRunStatusSucceeded || result["verified"] != true || result["written"] != true || result["content"] != "BOT BOT!" {
 		t.Fatalf("actual write/read failed: status=%s result=%v file=%q error=%v", state.Run.Status, result, data, err)
 	}
 	if len(state.Effects) != 3 || state.Effects[1].ExecutionID == state.Effects[2].ExecutionID {
@@ -233,7 +233,7 @@ return {written:write.written,verified:verify.verified,content:verify.content};`
 
 func saveLiveSource(t *testing.T, ctx context.Context, s *workflowFixture, definition models.WorkflowDefinition, defaults models.WorkflowExecutionDefaults, source string) (models.WorkflowRevision, string) {
 	t.Helper()
-	creation, err := sendCreationMessage(ctx, workflowAPIDependencies(s), SendCreationMessageCommand{DefinitionID: definition.ID, RequestID: util.New(), Defaults: defaults, Content: "Use allycli capabilities and the needed workflow SDK topics, validate the complete supplied source, and save exactly that source using allycli workflow source save, sdk ally.workflow and a stable requestId. Do not execute the workflow or edit files. Preserve every line. Base your final message on the actual save receipt.\n\n" + source})
+	creation, err := sendCreationMessage(ctx, workflowAPIDependencies(s), SendCreationMessageCommand{DefinitionID: definition.ID, RequestID: util.New(), Defaults: defaults, Content: "Use botcli capabilities and the needed workflow SDK topics, validate the complete supplied source, and save exactly that source using botcli workflow source save, sdk bot.workflow and a stable requestId. Do not execute the workflow or edit files. Preserve every line. Base your final message on the actual save receipt.\n\n" + source})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +256,7 @@ func saveLiveSource(t *testing.T, ctx context.Context, s *workflowFixture, defin
 				t.Fatal(err)
 			}
 			if revision.Source != source && !sameLiveProgram(source, revision.Source) {
-				if directory := os.Getenv("ALLY_WORKFLOW_EVIDENCE_DIR"); directory != "" {
+				if directory := os.Getenv("NEUXBOT_WORKFLOW_EVIDENCE_DIR"); directory != "" {
 					if err := os.MkdirAll(directory, 0700); err != nil {
 						t.Fatal(err)
 					}
@@ -299,7 +299,7 @@ func sameLiveProgram(expected, actual string) bool {
 }
 
 func TestLiveSourceComparisonAllowsFormattingButRejectsBehaviorChanges(t *testing.T) {
-	source := `export const meta={sdk:'ally.workflow',title:'comparison',description:'formatting',phases:[{id:'main',title:'main',detail:'calculate',canExit:true}]}; let value=0; while(value<2){value++;}return value;`
+	source := `export const meta={sdk:'bot.workflow',title:'comparison',description:'formatting',phases:[{id:'main',title:'main',detail:'calculate',canExit:true}]}; let value=0; while(value<2){value++;}return value;`
 	formatted := strings.ReplaceAll(source, ";", ";\n")
 	if !sameLiveProgram(source, formatted) || sameLiveProgram(source, strings.Replace(source, "value<2", "value<3", 1)) {
 		t.Fatal("formatting comparison accepted changed execution behavior")
@@ -330,13 +330,13 @@ func TestLiveF0CreationSaveAndActualGoResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	revision, creationChat := saveLiveSource(t, ctx, s, definition, defaults, string(source))
-	run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "live-run", Defaults: defaults, Args: map[string]any{"text": "ally"}})
+	run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "live-run", Defaults: defaults, Args: map[string]any{"text": "bot"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	state := awaitLiveWorkflow(t, s, run.ID, func(state controllers.WorkflowRunState) bool { return workflowstate.TerminalRun(state.Run.Status) })
 	result, _ := state.Run.Result.(map[string]any)
-	if state.Run.Status != constants.WorkflowRunStatusSucceeded || result["message"] != "ALLY ALLY!" || result["length"] != float64(10) || result["repeat"] != float64(2) || state.Run.RevisionID != revision.ID {
+	if state.Run.Status != constants.WorkflowRunStatusSucceeded || result["message"] != "BOT BOT!" || result["length"] != float64(10) || result["repeat"] != float64(2) || state.Run.RevisionID != revision.ID {
 		t.Fatalf("actual created F0 result mismatch: status=%s result=%v", state.Run.Status, result)
 	}
 	recordLiveEvidence(t, "live-f0-compute", state, revision, defaults.Model, creationChat, nil)

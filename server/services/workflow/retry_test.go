@@ -42,7 +42,7 @@ func TestWorkerRetryKeepsAttemptsAndRevokesOldResultToken(t *testing.T) {
 	s, _ := workflowTestService(t)
 	w := &retryWorker{}
 	s.worker = w
-	source := `export const meta={sdk:'ally.workflow',title:'重试',description:'保留尝试',phases:[{id:'work',title:'工作',detail:'只读',canExit:true}]}; return await worker('read',{id:'read',label:'读取',phase:'work',resolve:{kind:'waker',wakerId:'fixture'},schema:{type:'string'},retry:{maxAttempts:2,safety:'pure'}});`
+	source := `export const meta={sdk:'bot.workflow',title:'重试',description:'保留尝试',phases:[{id:'work',title:'工作',detail:'只读',canExit:true}]}; return await worker('read',{id:'read',label:'读取',phase:'work',resolve:{kind:'waker',wakerId:'fixture'},schema:{type:'string'},retry:{maxAttempts:2,safety:'pure'}});`
 	definition := savedTestWorkflow(t, s, source)
 	ctx := context.Background()
 	if _, err := s.StartRun(ctx, StartRunCommand{DefinitionID: definition.ID, RequestID: "unsafe"}); workflowstate.ErrorKey(err) != "WorkflowRetryRequiresReadOnly" {
@@ -65,7 +65,7 @@ func TestWorkerRetryKeepsAttemptsAndRevokesOldResultToken(t *testing.T) {
 		t.Fatalf("current attempt schema unavailable: %+v %v", result, err)
 	}
 	guidance, _ := result["guidance"].(string)
-	if !strings.Contains(guidance, "workflow_results_submit") || strings.Contains(guidance, "allycli") {
+	if !strings.Contains(guidance, "workflow_results_submit") || strings.Contains(guidance, "botcli") {
 		t.Fatalf("result schema directs MCP workers to CLI: %s", guidance)
 	}
 	if current, _ := s.runs.GetEffect(ctx, first.ID); current.Candidate != nil {
@@ -113,7 +113,7 @@ func TestWorkerRetryKeepsAttemptsAndRevokesOldResultToken(t *testing.T) {
 }
 
 func retryPolicySource(safety string) string {
-	return `export const meta={sdk:'ally.workflow',title:'多源采集',description:'按渠道检索',phases:[{id:'collect',title:'采集',detail:'保留各渠道结果',canExit:true}]};
+	return `export const meta={sdk:'bot.workflow',title:'多源采集',description:'按渠道检索',phases:[{id:'collect',title:'采集',detail:'保留各渠道结果',canExit:true}]};
  const RETRY={maxAttempts:2,safety:'` + safety + `',idempotencyKey:'channel'};
  return await parallel([
  async()=>await worker('查询官方资讯',{id:'vendors',label:'厂商发布',phase:'collect',resolve:{kind:'waker',wakerId:'fixture'},retry:RETRY}),

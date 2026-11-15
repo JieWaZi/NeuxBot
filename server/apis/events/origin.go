@@ -13,7 +13,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/global"
 )
 
-const trustedOriginsEnvironment = "ALLY_EVENT_TRUSTED_ORIGINS"
+const trustedOriginsEnvironment = "NEUXBOT_EVENT_TRUSTED_ORIGINS"
 
 // trustedOrigin 仅追加明确配置的完整Web来源；令牌认证仍由根中间件独立拥有。
 func trustedOrigin(request *http.Request) bool {
@@ -25,7 +25,7 @@ func trustedOrigin(request *http.Request) bool {
 		return false
 	}
 	origin := request.Header.Get("Origin")
-	if origin == "" || origin == "ally://app" || origin == "http://127.0.0.1:1420" {
+	if origin == "" || origin == "bot://app" || origin == "http://127.0.0.1:1420" {
 		return true
 	}
 	allowed, err := configuredWebOrigins(os.Getenv(trustedOriginsEnvironment))

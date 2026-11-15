@@ -54,7 +54,7 @@ vi.mock("@/shared/hooks/use-execution-selection", () => ({
 const server = setupServer();
 let errorInterceptor: number;
 beforeAll(() => {
-  apiClient.setConfig({ baseUrl: "http://ally.test" });
+  apiClient.setConfig({ baseUrl: "http://bot.test" });
   errorInterceptor = apiClient.interceptors.error.use((error, response) =>
     toApiError(error, response?.status),
   );
@@ -77,7 +77,7 @@ const profile = {
 };
 function fixtures(total = 0) {
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/embedding", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/embedding", () =>
       HttpResponse.json({
         libraryId: "kb",
         version: 0,
@@ -88,16 +88,16 @@ function fixtures(total = 0) {
       }),
     ),
     http.get(
-      "http://ally.test/api/v1/knowledge/libraries/kb/execution-defaults",
+      "http://bot.test/api/v1/knowledge/libraries/kb/execution-defaults",
       () => HttpResponse.json(profile),
     ),
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/sources", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/sources", () =>
       HttpResponse.json({ items: [], total }),
     ),
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/activity", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/activity", () =>
       HttpResponse.json({ data: [], nextCursor: 0 }),
     ),
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/jobs", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/jobs", () =>
       HttpResponse.json({ items: [], activeJob: null, total: 0 }),
     ),
   );
@@ -134,7 +134,7 @@ it("数据未返回时先显示侧栏，右侧显示骨架并禁止保存", asyn
   });
   server.use(
     http.get(
-      "http://ally.test/api/v1/knowledge/libraries/kb/execution-defaults",
+      "http://bot.test/api/v1/knowledge/libraries/kb/execution-defaults",
       async () => {
         requested = true;
         await pending;
@@ -183,7 +183,7 @@ it("设置使用真实defaults与activity，跨分区保留草稿并按各自版
   const activity: string[] = [];
   server.use(
     http.put(
-      "http://ally.test/api/v1/knowledge/libraries/kb/execution-defaults",
+      "http://bot.test/api/v1/knowledge/libraries/kb/execution-defaults",
       async ({ request }) => {
         const body = (await request.json()) as Record<string, unknown>;
         defaults.push(body);
@@ -191,14 +191,14 @@ it("设置使用真实defaults与activity，跨分区保留草稿并按各自版
       },
     ),
     http.put(
-      "http://ally.test/api/v1/knowledge/libraries/kb",
+      "http://bot.test/api/v1/knowledge/libraries/kb",
       async ({ request }) => {
         core.push((await request.json()) as Record<string, unknown>);
         return HttpResponse.json({ resourceId: "kb", version: 2 });
       },
     ),
     http.get(
-      "http://ally.test/api/v1/knowledge/libraries/kb/activity",
+      "http://bot.test/api/v1/knowledge/libraries/kb/activity",
       ({ request }) => {
         activity.push(request.url);
         return HttpResponse.json({
@@ -269,7 +269,7 @@ it("core保存未知后关闭重开沿原请求恢复，再保存执行默认", 
   let defaultWrites = 0;
   server.use(
     http.put(
-      "http://ally.test/api/v1/knowledge/libraries/kb/execution-defaults",
+      "http://bot.test/api/v1/knowledge/libraries/kb/execution-defaults",
       async ({ request }) => {
         defaultWrites++;
         return HttpResponse.json({
@@ -280,7 +280,7 @@ it("core保存未知后关闭重开沿原请求恢复，再保存执行默认", 
       },
     ),
     http.put(
-      "http://ally.test/api/v1/knowledge/libraries/kb",
+      "http://bot.test/api/v1/knowledge/libraries/kb",
       async ({ request }) => {
         core.push((await request.json()) as Record<string, unknown>);
         return core.length === 1
@@ -323,7 +323,7 @@ it("事件刷新不覆盖已加载草稿，CAS冲突准确提示且允许保留�
   fixtures(1);
   const user = userEvent.setup();
   server.use(
-    http.put("http://ally.test/api/v1/knowledge/libraries/kb", () =>
+    http.put("http://bot.test/api/v1/knowledge/libraries/kb", () =>
       HttpResponse.json(
         { message: "库版本冲突", code: "VersionConflict" },
         { status: 409 },
@@ -361,7 +361,7 @@ it("活动首次展示最新10条，每次加载更多追加10条，刷新恢复
   }));
   server.use(
     http.get(
-      "http://ally.test/api/v1/knowledge/libraries/kb/activity",
+      "http://bot.test/api/v1/knowledge/libraries/kb/activity",
       ({ request }) => {
         const params = new URL(request.url).searchParams;
         const after = Number(params.get("afterId"));
@@ -404,7 +404,7 @@ it("活动游标加载和刷新读取真实条目，任务与Wiki对象不泄露
   const cursors: string[] = [];
   server.use(
     http.get(
-      "http://ally.test/api/v1/knowledge/libraries/kb/activity",
+      "http://bot.test/api/v1/knowledge/libraries/kb/activity",
       ({ request }) => {
         const after = new URL(request.url).searchParams.get("afterId") || "";
         cursors.push(after);
@@ -459,7 +459,7 @@ it("Wiki维护活动区分任务范围和实际变更，接纳与失败不冒充
   fixtures();
   const user = userEvent.setup();
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/activity", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/activity", () =>
       HttpResponse.json({
         data: [
           {
@@ -521,7 +521,7 @@ it("非空库补独立服务只锁已有模型，空密钥保留且用返回libr
   const writes: Record<string, unknown>[] = [];
   const ownLibrary = { ...library, embeddingModelId: "own-embed" };
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/embedding", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/embedding", () =>
       HttpResponse.json({
         libraryId: "kb",
         version: 2,
@@ -532,7 +532,7 @@ it("非空库补独立服务只锁已有模型，空密钥保留且用返回libr
       }),
     ),
     http.put(
-      "http://ally.test/api/v1/knowledge/libraries/kb/embedding",
+      "http://bot.test/api/v1/knowledge/libraries/kb/embedding",
       async ({ request }) => {
         const body = (await request.json()) as Record<string, unknown>;
         writes.push(body);
@@ -577,12 +577,12 @@ it("独立Embedding已成功而defaults未知时，重开不重发密钥并保�
   let coreWrites = 0;
   const defaults: Record<string, unknown>[] = [];
   server.use(
-    http.put("http://ally.test/api/v1/knowledge/libraries/kb", () => {
+    http.put("http://bot.test/api/v1/knowledge/libraries/kb", () => {
       coreWrites++;
       return HttpResponse.json({ version: 2 });
     }),
     http.put(
-      "http://ally.test/api/v1/knowledge/libraries/kb/embedding",
+      "http://bot.test/api/v1/knowledge/libraries/kb/embedding",
       async ({ request }) => {
         embeddingWrites++;
         const body = (await request.json()) as Record<string, unknown>;
@@ -602,7 +602,7 @@ it("独立Embedding已成功而defaults未知时，重开不重发密钥并保�
       },
     ),
     http.put(
-      "http://ally.test/api/v1/knowledge/libraries/kb/execution-defaults",
+      "http://bot.test/api/v1/knowledge/libraries/kb/execution-defaults",
       async ({ request }) => {
         defaults.push((await request.json()) as Record<string, unknown>);
         return defaults.length === 1
@@ -652,7 +652,7 @@ it("独立Embedding已成功而defaults未知时，重开不重发密钥并保�
 it("自有远端设置只读写远端核心配置，不读取本机模型或Embedding", async () => {
   const user = userEvent.setup();
   const remote =
-    "http://ally.test/api/v1/knowledge/connections/remote/libraries/kb";
+    "http://bot.test/api/v1/knowledge/connections/remote/libraries/kb";
   const writes: unknown[] = [];
   server.use(
     http.get(`${remote}/sources`, () =>

@@ -127,7 +127,7 @@ export function WelcomeBrand({
                       avatar={`bloub:particles:pentagone:neutre:${avatarColor}`}
                       onReady={() => {
                         if (intro)
-                          performance.mark?.("ally.startup.characterReady");
+                          performance.mark?.("bot.startup.characterReady");
                         setCharacterReady(true);
                       }}
                       onError={() => {

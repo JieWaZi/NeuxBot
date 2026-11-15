@@ -24,7 +24,7 @@ test("API generation uses the locked tool version and removes temporary tools", 
       "scripts/patches",
       "locked-source",
       "server/constants/status_error",
-      "server/cmd/ally-core",
+      "server/cmd/bot-core",
     ])
       await mkdir(path.join(root, directory), { recursive: true });
     await copyFile(
@@ -52,21 +52,21 @@ test("API generation uses the locked tool version and removes temporary tools", 
       path.join(root, "bin/go"),
       `#!/bin/sh
 set -eu
-printf '%s|%s|%s\\n' "$*" "${"${GOBIN:-}"}" "${"${GOTOOLCHAIN:-}"}" >> "$ALLY_GENERATOR_TEST_LOG"
+printf '%s|%s|%s\\n' "$*" "${"${GOBIN:-}"}" "${"${GOTOOLCHAIN:-}"}" >> "$NEUXBOT_GENERATOR_TEST_LOG"
 case "$1" in
   list)
-    if [ "$4" = '{{.Dir}}' ]; then printf '%s\\n' "$ALLY_GENERATOR_TEST_SOURCE";
+    if [ "$4" = '{{.Dir}}' ]; then printf '%s\\n' "$NEUXBOT_GENERATOR_TEST_SOURCE";
     else printf 'v1.2.7-locked\\n'; fi
     ;;
   env) printf 'go1.25.8\\n' ;;
   install)
-    if [ "${"${ALLY_GENERATOR_TEST_FAIL:-}"}" = 1 ]; then exit 7; fi
+    if [ "${"${NEUXBOT_GENERATOR_TEST_FAIL:-}"}" = 1 ]; then exit 7; fi
     printf '#!/bin/sh\\nexit 0\\n' > "$GOBIN/toolx"
     chmod +x "$GOBIN/toolx"
     ;;
   generate)
-    command -v toolx >> "$ALLY_GENERATOR_TEST_LOG"
-    if [ "$2" = ./cmd/ally-core ]; then printf '{}' > cmd/ally-core/openapi.json; fi
+    command -v toolx >> "$NEUXBOT_GENERATOR_TEST_LOG"
+    if [ "$2" = ./cmd/bot-core ]; then printf '{}' > cmd/bot-core/openapi.json; fi
     ;;
 esac
 `,
@@ -76,7 +76,7 @@ esac
       path.join(root, "bin/git"),
       `#!/bin/sh
 set -eu
-printf 'git %s|%s\\n' "$*" "$(pwd)" >> "$ALLY_GENERATOR_TEST_LOG"
+printf 'git %s|%s\\n' "$*" "$(pwd)" >> "$NEUXBOT_GENERATOR_TEST_LOG"
 if [ "$2" != --check ]; then printf 'patched source' > fixture.txt; fi
 `,
       { mode: 0o700 },
@@ -88,8 +88,8 @@ if [ "$2" != --check ]; then printf 'patched source' > fixture.txt; fi
     const env = {
       ...process.env,
       PATH: `${path.join(root, "bin")}${path.delimiter}${process.env.PATH}`,
-      ALLY_GENERATOR_TEST_LOG: log,
-      ALLY_GENERATOR_TEST_SOURCE: source,
+      NEUXBOT_GENERATOR_TEST_LOG: log,
+      NEUXBOT_GENERATOR_TEST_SOURCE: source,
     };
     const run = spawnSync("sh", ["scripts/generate-api.sh"], {
       cwd: root,
@@ -134,7 +134,7 @@ if [ "$2" != --check ]; then printf 'patched source' > fixture.txt; fi
     );
     const failed = spawnSync("sh", ["scripts/generate-api.sh"], {
       cwd: root,
-      env: { ...env, ALLY_GENERATOR_TEST_FAIL: "1" },
+      env: { ...env, NEUXBOT_GENERATOR_TEST_FAIL: "1" },
       encoding: "utf8",
     });
     assert.equal(failed.status, 7);

@@ -26,7 +26,7 @@ func TestCatalogRejectsLegacyLocalZIPInputs(t *testing.T) {
 
 func TestCatalogCarriesSanitizedIconAndBilingualPresentationWithoutPackageDownload(t *testing.T) {
 	icon := "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(`<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>`))
-	data := []byte(`{"schemaVersion":1,"entries":[{"key":"office","name":"office","version":"0.1.0","description":"Office tools","format":"agent-plugins","sourceCommit":"` + strings.Repeat("a", 40) + `","archiveSHA256":"` + strings.Repeat("b", 64) + `","archiveURL":"https://example.invalid/office.zip","detailsURL":"https://example.invalid/details.json","detailsSHA256":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","detailsSize":100,"packagePath":"neuxally-plugin/office","icon":"` + icon + `","displayNames":{"en":"Office","zh-CN":"办公"},"localizedDescriptions":{"zh-CN":"处理办公资料"}}]}`)
+	data := []byte(`{"schemaVersion":1,"entries":[{"key":"office","name":"office","version":"0.1.0","description":"Office tools","format":"agent-plugins","sourceCommit":"` + strings.Repeat("a", 40) + `","archiveSHA256":"` + strings.Repeat("b", 64) + `","archiveURL":"https://example.invalid/office.zip","detailsURL":"https://example.invalid/details.json","detailsSHA256":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","detailsSize":100,"packagePath":"neuxbot-plugin/office","icon":"` + icon + `","displayNames":{"en":"Office","zh-CN":"办公"},"localizedDescriptions":{"zh-CN":"处理办公资料"}}]}`)
 	entries, err := parseIndex(data)
 	if err != nil {
 		t.Fatal(err)
@@ -49,7 +49,7 @@ func TestCatalogCarriesSanitizedIconAndBilingualPresentationWithoutPackageDownlo
 }
 
 func TestBuiltPresentationArtifacts(t *testing.T) {
-	directory := os.Getenv("NEUXALLY_PLUGIN_PRESENTATION_ARTIFACT_DIR")
+	directory := os.Getenv("NEUXBOT_PLUGIN_PRESENTATION_ARTIFACT_DIR")
 	if directory == "" {
 		t.Skip("explicit immutable plugin artifact acceptance only")
 	}

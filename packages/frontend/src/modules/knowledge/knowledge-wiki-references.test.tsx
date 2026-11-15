@@ -17,7 +17,7 @@ vi.mock("./knowledge-result-document", () => ({
 }));
 const server = setupServer();
 beforeAll(() => {
-  client.setConfig({ baseUrl: "http://ally.test" });
+  client.setConfig({ baseUrl: "http://bot.test" });
   server.listen({ onUnhandledRequest: "error" });
 });
 afterEach(() => server.resetHandlers());
@@ -50,7 +50,7 @@ function show(page: WikiPage) {
 it("展示权威反向链接并按不可变来源版本读取标题和打开原件", async () => {
   server.use(
     http.get(
-      "http://ally.test/api/v1/knowledge/libraries/kb/sources/version",
+      "http://bot.test/api/v1/knowledge/libraries/kb/sources/version",
       () =>
         HttpResponse.json({
           id: "version",
@@ -89,7 +89,7 @@ it("解析官方远端带标题的来源合同而不把标题作为资源身份"
 it("来源不可用时仍可进入统一预览查看失败，不隐藏已有引用", async () => {
   server.use(
     http.get(
-      "http://ally.test/api/v1/knowledge/libraries/kb/sources/missing",
+      "http://bot.test/api/v1/knowledge/libraries/kb/sources/missing",
       () => new HttpResponse(null, { status: 404 }),
     ),
   );

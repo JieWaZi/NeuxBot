@@ -170,14 +170,14 @@ flowchart TD
   "executionId": "execution-example",
   "currentRevisionId": "revision-example",
   "sourceDigest": "source-digest-example",
-  "sdk": "ally.workflow",
+  "sdk": "bot.workflow",
   "referencedRunIds": ["run-example"]
 }
 ```
 
 - 内容由宿主生成，模型不能用 JSON 覆盖 Grant、Token 或当前对象。工具可接受可选 workflowId 作为对象断言；省略则使用绑定，提供错误 ID 则拒绝。
 - 当前可调用工具列表按 Grant 发布；静态 describe 仅解释契约，不授予调用权限。
-- MCP 优先，`allycli` 兼容兜底，两者共用 Operation 目录、Schema、授权和领域用例。内部 MCP 使用自有 stdio 薄桥转发现有 Core 能力入口；只有经真实换绑与恢复验收的 Runtime 启用，其他 Runtime 使用当轮明确 context 的 CLI。不能让两条通路各维护一份业务规则。
+- MCP 优先，`botcli` 兼容兜底，两者共用 Operation 目录、Schema、授权和领域用例。内部 MCP 使用自有 stdio 薄桥转发现有 Core 能力入口；只有经真实换绑与恢复验收的 Runtime 启用，其他 Runtime 使用当轮明确 context 的 CLI。不能让两条通路各维护一份业务规则。
 - 创作 Agent 取得的是产品工作流SDK，不加载原生 CLI Workflow 的 agent() 指南代替。指南明确 worker/action/askUser 的准确签名和输出语义。
 - 等待问题期间当轮权限有效；结束或被接替后，旧执行不得保存或提交迟到结果。
 - 普通聊天中的工作流调用继续显式绑定所选定义；自然语言中的名称不能代替授权身份。

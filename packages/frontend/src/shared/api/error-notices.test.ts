@@ -131,7 +131,7 @@ describe("持久错误通知", () => {
 
   it("启动时不恢复之前持久化的后端网络断连提示", async () => {
     localStorage.setItem(
-      "ally:error-notices",
+      "bot:error-notices",
       JSON.stringify([
         {
           id: "api:GET:/api/v1/chats/c1:NETWORK",
@@ -172,7 +172,7 @@ describe("持久错误通知", () => {
       createdAt: 1,
     };
     localStorage.setItem(
-      "ally:error-notices",
+      "bot:error-notices",
       JSON.stringify([
         notice,
         {
@@ -204,7 +204,7 @@ describe("持久错误通知", () => {
       "暂时无法连接本地服务，请检查连接状态。",
     );
     expect(
-      JSON.parse(localStorage.getItem("ally:error-notices") ?? "[]"),
+      JSON.parse(localStorage.getItem("bot:error-notices") ?? "[]"),
     ).toEqual([
       expect.objectContaining({
         message: "",
@@ -253,7 +253,7 @@ describe("持久错误通知", () => {
     });
     expect(result.current.map((notice) => notice.id)).toEqual(["one", "two"]);
     expect(
-      JSON.parse(localStorage.getItem("ally:error-notices") ?? "[]"),
+      JSON.parse(localStorage.getItem("bot:error-notices") ?? "[]"),
     ).toHaveLength(2);
     act(() => dismissErrorNotice("one"));
     expect(result.current.map((notice) => notice.id)).toEqual(["two"]);
@@ -374,7 +374,7 @@ it("通知保留应用身份按当前语言重绘，并保留显式公开原因"
 
 it("旧持久通知缺少来源时拒绝正文，已声明的本地提示仍可恢复", async () => {
   localStorage.setItem(
-    "ally:error-notices",
+    "bot:error-notices",
     JSON.stringify([
       {
         id: "api:GET:/api/v1/chats/c1:RuntimeEventQueueOverflow",
@@ -435,7 +435,7 @@ it("会话提示即时可见但重载后无事件不会恢复", async () => {
   const sessionNotice = view.result.current[0];
   view.unmount();
   // 即使上一版本或宿主恢复错误地保留了会话提示，也不能在新Renderer重放。
-  localStorage.setItem("ally:error-notices", JSON.stringify([sessionNotice]));
+  localStorage.setItem("bot:error-notices", JSON.stringify([sessionNotice]));
   vi.resetModules();
   const restored = await import("./error-notices");
   const recovered = renderHook(restored.useErrorNotices);

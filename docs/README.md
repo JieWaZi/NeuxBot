@@ -4,7 +4,7 @@
 
 ## 使用指南
 
-- [allycli 全部系统能力](../server/cmd/allycli/README.md)
+- [botcli 全部系统能力](../server/cmd/botcli/README.md)
 - [智能体与账号](guide/agents-and-accounts-cn.md)
 - [自动任务与 IM](guide/automation-and-im-cn.md)
 - [聊天与工作台](guide/chat-and-workbench-cn.md)

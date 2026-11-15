@@ -61,7 +61,7 @@ describe("theme", () => {
   });
 
   it("uses system mode when storage has no valid preference", () => {
-    window.localStorage.setItem("ally.ui.theme", "unexpected");
+    window.localStorage.setItem("bot.ui.theme", "unexpected");
     expect(readThemeMode()).toBe("system");
   });
 

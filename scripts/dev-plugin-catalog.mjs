@@ -122,7 +122,7 @@ export async function runPluginDevelopment(args) {
   const child = spawn(command[0], command.slice(1), {
     cwd: root,
     stdio: "inherit",
-    env: { ...process.env, ALLY_PLUGIN_CATALOG_URL: directory },
+    env: { ...process.env, NEUXBOT_PLUGIN_CATALOG_URL: directory },
   });
   const interrupt = () => child.kill("SIGINT");
   const terminate = () => child.kill("SIGTERM");

@@ -80,9 +80,9 @@ export class CoreSupervisor {
   }
   private async start(): Promise<CoreConnection> {
     const env = this.options.env ?? process.env;
-    const configured = env.ALLY_CORE_URL;
+    const configured = env.NEUXBOT_CORE_URL;
     const token =
-      env.ALLY_LOCAL_TOKEN ?? `ally_${randomUUID().replaceAll("-", "")}`;
+      env.NEUXBOT_LOCAL_TOKEN ?? `bot_${randomUUID().replaceAll("-", "")}`;
     if (!token.trim()) throw new Error("本地服务访问令牌无效");
     if (configured)
       return { baseUrl: validateCoreURL(configured).origin, token };
@@ -92,9 +92,9 @@ export class CoreSupervisor {
     const child = spawn(this.options.binary, [], {
       env: {
         ...env,
-        ALLY_DATA_DIR: this.options.dataDir,
-        ALLY_LOCAL_TOKEN: token,
-        ALLY_DESKTOP_PARENT_PID: String(process.pid),
+        NEUXBOT_DATA_DIR: this.options.dataDir,
+        NEUXBOT_LOCAL_TOKEN: token,
+        NEUXBOT_DESKTOP_PARENT_PID: String(process.pid),
         SERVER_HOST: "127.0.0.1",
         SERVER_PORT: String(port),
       },

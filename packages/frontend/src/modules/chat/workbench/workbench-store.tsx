@@ -18,7 +18,7 @@ import {
 import { workbenchPanes, type WorkbenchNode } from "./workbench-pane";
 import { preventUnloadWithDirtyDrafts } from "./document-buffers";
 
-const storagePrefix = "ally.right-workbench.";
+const storagePrefix = "bot.right-workbench.";
 const tabSchema = z.object({
   id: z.string().min(1),
   kind: z.enum([

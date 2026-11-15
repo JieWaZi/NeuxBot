@@ -26,8 +26,8 @@ export class BrowserWebviewPolicy {
   prepare(url: string, root?: string): string {
     browserURL(url);
     const partition = root
-      ? `ally-webview-${this.contents.id}-project-${createHash("sha256").update(root).digest("hex")}`
-      : `ally-webview-${this.contents.id}-temporary`;
+      ? `bot-webview-${this.contents.id}-project-${createHash("sha256").update(root).digest("hex")}`
+      : `bot-webview-${this.contents.id}-temporary`;
     if (this.partitions.has(partition)) return partition;
     const isolated = session.fromPartition(partition);
     isolated.setPermissionRequestHandler((_contents, _permission, callback) =>

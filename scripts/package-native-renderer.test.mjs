@@ -18,7 +18,7 @@ const { rendererFile, rendererResponse } = loadModule(
   "main/renderer-protocol.ts",
 );
 async function fixture(t) {
-  const root = await mkdtemp(path.join(tmpdir(), "ally-native-renderer-"));
+  const root = await mkdtemp(path.join(tmpdir(), "bot-native-renderer-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const source = path.join(root, "dist"),
     output = path.join(root, "packed");
@@ -42,7 +42,7 @@ test("原生压缩交付恢复完全相同字节、MIME和HTML脚本CSP", async 
   await assert.rejects(access(path.join(output, "assets/app.js.map")));
   const response = await rendererResponse(
     output,
-    "ally://app/assets/app.js",
+    "bot://app/assets/app.js",
     plainFetch,
   );
   assert.equal(await response.text(), script);
@@ -50,7 +50,7 @@ test("原生压缩交付恢复完全相同字节、MIME和HTML脚本CSP", async 
   assert.equal(response.headers.get("content-encoding"), null);
   const page = await rendererResponse(
     output,
-    "ally://app/index.html",
+    "bot://app/index.html",
     plainFetch,
   );
   assert.equal(await page.text(), html);
@@ -59,7 +59,7 @@ test("原生压缩交付恢复完全相同字节、MIME和HTML脚本CSP", async 
     page.headers.get("content-security-policy"),
     /connect-src[^;]*ws:\/\/127\.0\.0\.1:\*/,
   );
-  await assert.rejects(rendererFile(output, "ally://app/missing.js"));
+  await assert.rejects(rendererFile(output, "bot://app/missing.js"));
 });
 test("压缩回退保留协议、目录和真实路径边界", async (t) => {
   const { root, source, output } = await fixture(t);
@@ -69,9 +69,9 @@ test("压缩回退保留协议、目录和真实路径边界", async (t) => {
   await symlink(secret, path.join(output, "escape.js.br"));
   for (const url of [
     "https://app/escape.js",
-    "ally://other/escape.js",
-    "ally://app/%2F..%2Foutside.js",
-    "ally://app/escape.js",
+    "bot://other/escape.js",
+    "bot://app/%2F..%2Foutside.js",
+    "bot://app/escape.js",
   ]) {
     await assert.rejects(rendererFile(output, url));
   }

@@ -3,7 +3,7 @@ import { expect, it } from "vitest";
 import { useChatAccountSelection } from "./use-chat-account-selection";
 
 it("账号切换在发送失败或页面重挂载后仍按聊天保留", () => {
-  const key = "ally.account.chat:account-persistence";
+  const key = "bot.account.chat:account-persistence";
   window.localStorage.removeItem(key);
   const first = renderHook(() =>
     useChatAccountSelection("chat:account-persistence"),

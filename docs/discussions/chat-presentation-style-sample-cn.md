@@ -73,7 +73,7 @@ flowchart LR
 
 ## 授权本地图片
 
-![应用图标](../../packages/frontend/public/ally-logo.png "来自本仓库的本地图片")
+![应用图标](../../packages/frontend/public/bot-logo.png "来自本仓库的本地图片")
 
 ## 文件链接与脚注
 

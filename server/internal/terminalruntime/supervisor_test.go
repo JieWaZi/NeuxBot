@@ -159,9 +159,9 @@ func TestTerminalLogoutGraceAndBackpressure(t *testing.T) {
 }
 
 func TestRealPTYWorker(t *testing.T) {
-	worker := os.Getenv("ALLY_TERMINAL_TEST_WORKER")
+	worker := os.Getenv("NEUXBOT_TERMINAL_TEST_WORKER")
 	if worker == "" {
-		t.Skip("设置 ALLY_TERMINAL_TEST_WORKER 运行真实 PTY 验收")
+		t.Skip("设置 NEUXBOT_TERMINAL_TEST_WORKER 运行真实 PTY 验收")
 	}
 	t.Setenv("SHELL", "/bin/sh")
 	s, err := New("node", worker)

@@ -1,18 +1,18 @@
-# dsh-superagent 源码分析与 NeuxAlly 原生接入评估
+# dsh-superagent 源码分析与 NeuxBot 原生接入评估
 
-本文以 `deepseek-ai/dsh-superagent-prototype` 的实际实现为基线。原型事实、NeuxAlly 当前事实与迁移判断分别陈述；迁移判断尚未实现，工期是工程估算。本文不把文章里的未来方向、提示词约定或名称相似的模块当成现成能力。
+本文以 `deepseek-ai/dsh-superagent-prototype` 的实际实现为基线。原型事实、NeuxBot 当前事实与迁移判断分别陈述；迁移判断尚未实现，工期是工程估算。本文不把文章里的未来方向、提示词约定或名称相似的模块当成现成能力。
 
 ## 1. 基线与结论
 
 - 原型版本：[`8c32a9dc5d72c033816c6a8110b37f40cf94fba4`](https://github.com/deepseek-ai/dsh-superagent-prototype/tree/8c32a9dc5d72c033816c6a8110b37f40cf94fba4)，当前克隆包含一个提交。
-- NeuxAlly 基线：`71a29a558da6b13364504eb72c649eefb80f6899` 加本次检查时工作区已有修改；执行、IM、团队和通知代码均按工作区内容核对，不能用 HEAD 单独复现全部结论。
-- 用户确定的方向：原生融入 NeuxAlly，按原型已有架构和行为评估，不另行创造一套 Super-agent 产品。
+- NeuxBot 基线：`71a29a558da6b13364504eb72c649eefb80f6899` 加本次检查时工作区已有修改；执行、IM、团队和通知代码均按工作区内容核对，不能用 HEAD 单独复现全部结论。
+- 用户确定的方向：原生融入 NeuxBot，按原型已有架构和行为评估，不另行创造一套 Super-agent 产品。
 - 原型有 216 个受 Git 管理文件、37,068 行；其中 `src` 为 111 文件 / 15,587 行，`tests` 为 65 文件 / 14,960 行（包含 fixtures），锁文件为 3,302 行。行数包括注释和空行，不等于实施量。
 - 原型是 **DeepSeek Harness 的 Cordis bundle**，服务于一个 GitHub 仓库，可接飞书；不是独立模型 SDK。README 明确标为研究原型，且不等同于其内部版本或相关文章。
 
-原生接入的主要工作是：**保留 Source → Trigger/Thread → Policy/Eval → Ticket/Mandate → Assignment/Executor → Report/Channel 的原有业务语义，将 DSH 宿主适配、Node SQLite 和 DSH 前端替换为 NeuxAlly 对应端口。** 单纯复制提示词、增加一个 MCP 或复用团队任务表，均不能承接下文实际存在的状态与恢复行为。[原型入口][entry]、[组合根][runtime]、[核心端口][ports]
+原生接入的主要工作是：**保留 Source → Trigger/Thread → Policy/Eval → Ticket/Mandate → Assignment/Executor → Report/Channel 的原有业务语义，将 DSH 宿主适配、Node SQLite 和 DSH 前端替换为 NeuxBot 对应端口。** 单纯复制提示词、增加一个 MCP 或复用团队任务表，均不能承接下文实际存在的状态与恢复行为。[原型入口][entry]、[组合根][runtime]、[核心端口][ports]
 
-按本文列明的完整范围，初估 **81–127 人日**。最大的未确定项是 DSH 会话 hooks 与 NeuxAlly 多 CLI 原生回执能否等价表达。未经该项验证，不承诺“所有现有 CLI 同时等价支持”。详见第 10 节。
+按本文列明的完整范围，初估 **81–127 人日**。最大的未确定项是 DSH 会话 hooks 与 NeuxBot 多 CLI 原生回执能否等价表达。未经该项验证，不承诺“所有现有 CLI 同时等价支持”。详见第 10 节。
 
 ## 2. 原型实际架构
 
@@ -63,11 +63,11 @@ flowchart TB
 
 ### 2.2 领域概念不能按名称合并
 
-| 原型概念 | 代码里的含义 | 与 NeuxAlly 的区别 |
+| 原型概念 | 代码里的含义 | 与 NeuxBot 的区别 |
 | --- | --- | --- |
 | Source | 来源实现及其启用配置、接收范围、读写适配 | 不是 Runtime，也不是一个 MCP 工具 |
 | Trigger | 来源产生的稳定事件，含 actor、human、addressed、threads、channel、meta | 不是一条已经接纳的 Chat 用户消息 |
-| Thread | 外部讨论身份，保存订阅、待评估队列、当前 Eval 和关联讨论 | 不是 NeuxAlly `ChannelThread` 或原生 Session |
+| Thread | 外部讨论身份，保存订阅、待评估队列、当前 Eval 和关联讨论 | 不是 NeuxBot `ChannelThread` 或原生 Session |
 | Eval / Decision | 一个 Thread 上的一批事件的评估及其结果 | 不是执行结果，也不是独立评审 worker |
 | Mandate | accept 时冻结的 strength、policyVersion、basis、actor、scope | 不等于 CLI 文件权限或工具审批 |
 | Ticket | 一项持续外部工作的聚合，包含 Inputs、Assignments、关注的 PR 等 | 不等于 `ChannelTask`，也不等于单轮 Execution |
@@ -75,7 +75,7 @@ flowchart TB
 | Input | 需要交付给该 Ticket worker 的 Trigger 或内部说明，记录投递与读取 | “已入队”“已投递”“已读取”不同 |
 | Report | worker 的结构化状态与摘要，可含提问、答复、PR 关联 | 模型最后一段正文不自动等于 Report |
 | Subscription | Thread 到 Ticket 的订阅关系，可仅供上下文 | 不是前端 WS 订阅 |
-| ChannelRef / Outbox | 原始外部回复地址与可靠发送记录 | 原型 Channel 不是 NeuxAlly 团队 Channel |
+| ChannelRef / Outbox | 原始外部回复地址与可靠发送记录 | 原型 Channel 不是 NeuxBot 团队 Channel |
 
 以上以 [`core/model.ts`][model]、[`core/ports.ts`][ports] 为准。`TicketStage` 是从这些事实派生的显示阶段，没有另存一份工作看板状态。[阶段派生][stage]
 
@@ -142,7 +142,7 @@ sequenceDiagram
 
 `DshExecutor.prepare` 分配短名和目录字段，launch 才实际创建目录和会话。prepare 命令、来源环境变量、git/gh/lark shims 都在宿主适配层。默认并发 `maxWorkers=3`、可设 1–16；delivery 中属于 fromPerson 的人类跟进或状态 text 唤醒 idle worker 可额外借一个 slot，不适用于新的 pending launch。slots 以正在运行的 worker 活动、后台任务及子代理等因素判断，不能简单按“尚未结束的 Ticket 数”计数，也不对每个子代理单独计一个 slot。[DshExecutor][executor]、[Background][background]
 
-DSH 的 preset、tools hooks、step/turn hooks、session inbox、`session/event`、sessionPersistence 和 subprocess 是实际运行依赖。Worker 可用原生 subagent 工具，但核心没有 NeuxAlly 式团队成员配置、任务 DAG 和依赖调度器。[Sessions][sessions]、[Cordis bundle][bundle]
+DSH 的 preset、tools hooks、step/turn hooks、session inbox、`session/event`、sessionPersistence 和 subprocess 是实际运行依赖。Worker 可用原生 subagent 工具，但核心没有 NeuxBot 式团队成员配置、任务 DAG 和依赖调度器。[Sessions][sessions]、[Cordis bundle][bundle]
 
 入口还显式依赖 workspaceRegistry、permissionPresets、systemPrompt、skills、webServer 和 llm；Session 默认使用 danger-full-access。主通知区分不唤醒的 inject 与可唤醒的 steer；角色模型通过 system-prompt/assemble、agent/request 和 Session 事件装配。飞书图片另外使用模型模态查询和 DSH attachments。两种 preset 配置还引用 DSH compaction 和 tool-result-pruner，长会话压缩不是本仓库 core 自己实现的能力。这些宿主合同都要纳入原生适配核对。[入口][entry]、[Sessions][sessions]、[角色模型][rolemodels]、[Cordis bundle][bundle]
 
@@ -171,7 +171,7 @@ worker 可以 `handback` 超出当前 Ticket 的人类补充；所有 owner 放�
 - 暂时模型/网络错误有有界重试；prepare 命令失败不按该模型重试机制重跑。
 - 重启时，运行中且需继续的 Assignment 被替换，worker 收到先核对目录、Git 和 GitHub 再重复外部动作的恢复说明。已 waiting/ready/blocked/failed 且没有 `deliveredAt >= report.at` 的尝试保留相应状态，并继续处理其未投递队列。
 
-这些是持久领域状态加 DSH 适配共同实现的结果，不能仅用 NeuxAlly 的进程重启与 Chat 恢复替代。[Engine.evaluateDue][engine]、[Assignments][assignments]、[Executor][executor]
+这些是持久领域状态加 DSH 适配共同实现的结果，不能仅用 NeuxBot 的进程重启与 Chat 恢复替代。[Engine.evaluateDue][engine]、[Assignments][assignments]、[Executor][executor]
 
 ## 5. Store、Effects、Outbox 与管理面板
 
@@ -208,7 +208,7 @@ Outbox 在事务内记录发送身份与 reply effect。原型回执状态只有
 
 提示词由内置 runtime 默认片段、团队说明、Source skills 和生成模板变量组合；内置片段本身也允许配置覆盖。保存设置和 prompts 都有历史版本，每次请求组装当前提示并登记 Session 使用过的 revision。executor prepare / directory / blocked commands 与账户设置存在 panel-only 边界；部分“只有人工明确要求才允许”的管理工具约束来自描述文字，不能写成全部具有代码级人工审批。[Settings][settings]、[Prompts][prompts]、[主工具][maintools]
 
-管理面板六个顶层 tab 是 Overview、Source、Trigger、Eval、Execution、Settings；Thread/Ticket 是详情，Prompts/Deployment 属于设置组。它使用 DSH sidebar/layout/session 导航与 provider；不是可直接复制到 NeuxAlly 的独立 React 应用。管理 API 的 loopback / Origin 检查属于 DSH 的本机宿主边界。[HTTP][http]、[client 入口][client]、[构建配置][build]
+管理面板六个顶层 tab 是 Overview、Source、Trigger、Eval、Execution、Settings；Thread/Ticket 是详情，Prompts/Deployment 属于设置组。它使用 DSH sidebar/layout/session 导航与 provider；不是可直接复制到 NeuxBot 的独立 React 应用。管理 API 的 loopback / Origin 检查属于 DSH 的本机宿主边界。[HTTP][http]、[client 入口][client]、[构建配置][build]
 
 ## 6. 哪些只是约定，哪些由宿主执行
 
@@ -226,11 +226,11 @@ Outbox 在事务内记录发送身份与 reply effect。原型回执状态只有
 
 依据：[Cordis preset][bundle]、[环境 shims][environment]、[Sessions][sessions]、[主工具][maintools]、[Settings][settings]、[Policy][policy]、[原型执行文档][executiondoc]。发现的具体实现边界保留在逐文件审阅附录，未运行的异常路径不宣称已复现。
 
-## 7. NeuxAlly 已有代码能承接什么
+## 7. NeuxBot 已有代码能承接什么
 
 这里只列查到的实际接口，不按“看起来类似”计入复用收益。
 
-| 原型需要 | NeuxAlly 代码证据 | 复用边界 |
+| 原型需要 | NeuxBot 代码证据 | 复用边界 |
 | --- | --- | --- |
 | 独立 worker 会话与模型调用 | [WorkIntent / CreateChatSpec / WorkOptions](../../server/services/execution/intent.go)、[Execution Service](../../server/services/execution/service.go) | 可创建独立 Chat、指定受管 cwd、冻结账号模型、复用会话；仍需实现原 Executor 的 start/deliver/stop 适配 |
 | 原生输入身份和消费证据 | [Turn.Steer](../../server/internal/agent/turn_lifecycle.go)、[native outcomes](../../server/internal/agent/native_outcomes.go)、[消费查询](../../server/internal/chat/conversation/query.go) | 有 HostInput 与 InputConsumption；各 CLI 能提供哪些证据必须逐项核实，不能把提交回执当 readAt |
@@ -247,15 +247,15 @@ Outbox 在事务内记录发送身份与 reply effect。原型回执状态只有
 
 ## 8. 按原架构做原生迁移的具体边界
 
-以下是源码端口到 NeuxAlly 的迁移落点，属于评估方案，不是当前已实现能力。保持原型的一个受管 GitHub 仓库、可选飞书、主 Session 与 Ticket workers 的模型，不额外引入多仓库平台、团队 DAG、自动成本计价或新的主动工作来源。
+以下是源码端口到 NeuxBot 的迁移落点，属于评估方案，不是当前已实现能力。保持原型的一个受管 GitHub 仓库、可选飞书、主 Session 与 Ticket workers 的模型，不额外引入多仓库平台、团队 DAG、自动成本计价或新的主动工作来源。
 
 ### 8.1 原型核心和数据模型
 
 将 `core/{model,intake,evals,tickets,assignments,replies,stage}` 和 `policy/admission` 的规则按原结构移植为 Go 内部模块。保留 Trigger disposition、Evaluation.primary、Mandate.basis、context-only subscription、Input.readAt、Assignment.report、Ticket.follows/ended 等事实；不删除看起来可以由文本推断的字段。
 
-Repository 保持 Engine 一次命令一个事务，以及 enqueue effect 同事务的顺序。实现进入 NeuxAlly Repository Controller；JSON 聚合、active 查询和 KV 版本的物理实现需按原测试核对。原型开启 WAL，NeuxAlly 业务 SQLite 明确禁止 WAL，故不能复制初始化 SQL；采用既有 GORM/事务约定，需要真实临时 SQLite 回归，而不是默认两者并发行为相同。[后端约定](../development/backend-cn.md)
+Repository 保持 Engine 一次命令一个事务，以及 enqueue effect 同事务的顺序。实现进入 NeuxBot Repository Controller；JSON 聚合、active 查询和 KV 版本的物理实现需按原测试核对。原型开启 WAL，NeuxBot 业务 SQLite 明确禁止 WAL，故不能复制初始化 SQL；采用既有 GORM/事务约定，需要真实临时 SQLite 回归，而不是默认两者并发行为相同。[后端约定](../development/backend-cn.md)
 
-这部分没有把 Event、Ticket 或 Assignment 合并进 Chat/Execution。原型本来就把领域状态与 DSH 会话日志分开；NeuxAlly 同样由现有日志保存模型执行，Ticket 聚合保存外部工作事实与关联身份。
+这部分没有把 Event、Ticket 或 Assignment 合并进 Chat/Execution。原型本来就把领域状态与 DSH 会话日志分开；NeuxBot 同样由现有日志保存模型执行，Ticket 聚合保存外部工作事实与关联身份。
 
 ### 8.2 原型 Sessions / Assessor / Executor
 
@@ -279,21 +279,21 @@ GitHub 依原型拆分 read / trigger / pull / channel，保留通知拉取、�
 
 飞书保留 SourceScope、Trigger、Thread correlation、admission context 与 Channel 逻辑，但传输接已有 IM 官方 SDK 连接。必须补齐原型所用的 root/thread/reply 身份、未提及的群观察消息、历史与订阅话题补读；当前群聊只接提及的 normalizeFeishu 不能无改动提供完整语义。事件应从现有耐久收件向原型 Engine 交付，不能同时又按普通 IM 路由重复启动一次工作。
 
-原型回写与 NeuxAlly IM Outbox 有不同状态集合：前者 pending/sent/dropped，后者还显式区分发送结果 unknown。接入时需建立两者的映射，并保留平台不确定事实；这属于适配差异，不能宣称字节级照搬。thread reply、review comment fallback、图片上下文和来源原文读取也在同一迁移范围内。
+原型回写与 NeuxBot IM Outbox 有不同状态集合：前者 pending/sent/dropped，后者还显式区分发送结果 unknown。接入时需建立两者的映射，并保留平台不确定事实；这属于适配差异，不能宣称字节级照搬。thread reply、review comment fallback、图片上下文和来源原文读取也在同一迁移范围内。
 
 ### 8.4 配置、工具、UI 和启动
 
-应用工具保持原 14/6 个能力的职责、参数语义与角色读取范围，接现有 Capability/allycli 端口；工具名或传输包装变化要同步原 prompts 与 model-surface 测试，不能只把 prompt 文件复制过去。
+应用工具保持原 14/6 个能力的职责、参数语义与角色读取范围，接现有 Capability/botcli 端口；工具名或传输包装变化要同步原 prompts 与 model-surface 测试，不能只把 prompt 文件复制过去。
 
-保留原 policy/eval/executor/source/pause 配置分块、乐观修订号、配置和 prompt 历史及预览。DSH provider/model 的表示映射到 NeuxAlly 已有 Runtime/account/model/reasoning，不能把 DSH provider ID 直接当 NeuxAlly Runtime ID。
+保留原 policy/eval/executor/source/pause 配置分块、乐观修订号、配置和 prompt 历史及预览。DSH provider/model 的表示映射到 NeuxBot 已有 Runtime/account/model/reasoning，不能把 DSH provider ID 直接当 NeuxBot Runtime ID。
 
-UI 保留原型已有页面的信息与操作；移除 DSH sidebar、layout、session navigation、module loader 依赖，接现有 React 路由、共享控件、API 生成链及 Core WS。原型的页面 GET 轮询在 NeuxAlly 中转换成初始快照与事件失效；GitHub/飞书协议本身的轮询另按 Source 原语义保留。
+UI 保留原型已有页面的信息与操作；移除 DSH sidebar、layout、session navigation、module loader 依赖，接现有 React 路由、共享控件、API 生成链及 Core WS。原型的页面 GET 轮询在 NeuxBot 中转换成初始快照与事件失效；GitHub/飞书协议本身的轮询另按 Source 原语义保留。
 
-Runtime 先注册管理 HTTP，再执行 setup → hooks → main Session → policy sync → resume → passes/effects；此顺序由 Core 生命周期承接。Setup 的 CLI 身份/仓库检查属于设置与来源准备，不加到普通 Chat 发送、steering、恢复或分叉的模型前置探测中。tmux 脚本和 DSH Web profile 不进入原生运行链。[原型 Runtime][runtime]、[原型 Setup][setup]、[NeuxAlly 执行约定](../development/backend-cn.md#82-执行关键路径禁止诊断探测)
+Runtime 先注册管理 HTTP，再执行 setup → hooks → main Session → policy sync → resume → passes/effects；此顺序由 Core 生命周期承接。Setup 的 CLI 身份/仓库检查属于设置与来源准备，不加到普通 Chat 发送、steering、恢复或分叉的模型前置探测中。tmux 脚本和 DSH Web profile 不进入原生运行链。[原型 Runtime][runtime]、[原型 Setup][setup]、[NeuxBot 执行约定](../development/backend-cn.md#82-执行关键路径禁止诊断探测)
 
 ### 8.5 建议的代码归属
 
-| 现有原型边界 | NeuxAlly 落点（拟新增/扩展） |
+| 现有原型边界 | NeuxBot 落点（拟新增/扩展） |
 | --- | --- |
 | core、policy、Source 纯归一化 | `server/internal/superagent/` 下按原职责划分 |
 | Runtime、Assessor、Executor、Effects 的多入口编排 | `server/services/superagent/`，调用现有 Execution、Chat、IM 端口 |
@@ -348,7 +348,7 @@ Runtime 先注册管理 HTTP，再执行 setup → hooks → main Session → po
 
 ### 10.2 运行成本不能从源码直接报人民币
 
-原型没有给出真实流量、平均 token、每日工单数、成功率或长时间资源基准，因此不能据此声称“每天多少元”或“比 NeuxAlly 多几倍”。实际模型调用由主 Session 的路由/评估/报告处理和各 worker 的执行、跟进、子代理共同构成。
+原型没有给出真实流量、平均 token、每日工单数、成功率或长时间资源基准，因此不能据此声称“每天多少元”或“比 NeuxBot 多几倍”。实际模型调用由主 Session 的路由/评估/报告处理和各 worker 的执行、跟进、子代理共同构成。
 
 可以直接从实现确定的影响因素：
 
@@ -365,7 +365,7 @@ Runtime 先注册管理 HTTP，再执行 setup → hooks → main Session → po
 
 ### 10.3 许可与交付
 
-该仓库采用 MIT，移植其源码、提示词或可辨认的实现时保留原版权和许可；NeuxAlly 按现有规则集中登记第三方来源。MIT 允许使用不等于 DSH 宿主全部依赖已被本次审阅；本次 clone 没有包含那些依赖的源码。[LICENSE][license]、[package.json][package]
+该仓库采用 MIT，移植其源码、提示词或可辨认的实现时保留原版权和许可；NeuxBot 按现有规则集中登记第三方来源。MIT 允许使用不等于 DSH 宿主全部依赖已被本次审阅；本次 clone 没有包含那些依赖的源码。[LICENSE][license]、[package.json][package]
 
 原生迁移完成后不需要把 DSH Web profile、Cordis 宿主和 tmux 管理脚本作为运行必需品；这是按本文选择替换宿主后的结果。当前原型实际依赖 DSH Cordis Web host；tmux、Python 和相关 Unix 命令是随附启停脚本的依赖，不能与核心逻辑依赖混为一谈。
 
@@ -373,7 +373,7 @@ Runtime 先注册管理 HTTP，再执行 setup → hooks → main Session → po
 
 ## 11. 本次阅读与验证记录
 
-两名 `gpt-6.1-sol / xhigh` 分别负责领域/执行与来源/前端/部署，主审查 NeuxAlly 拥有对应职责的代码和迁移映射。两份逐文件清单与 `git ls-files` 合并核对：215 个文件登记完整阅读，剩余 `pnpm-lock.yaml` 作结构检查；其中 111 个源码文件、59 个 spec 和 6 个 fixture 全部有完整阅读登记。外部 DSH 包实现不在已读范围内；“覆盖登记完整”不等于证明没有理解遗漏。
+两名 `gpt-6.1-sol / xhigh` 分别负责领域/执行与来源/前端/部署，主审查 NeuxBot 拥有对应职责的代码和迁移映射。两份逐文件清单与 `git ls-files` 合并核对：215 个文件登记完整阅读，剩余 `pnpm-lock.yaml` 作结构检查；其中 111 个源码文件、59 个 spec 和 6 个 fixture 全部有完整阅读登记。外部 DSH 包实现不在已读范围内；“覆盖登记完整”不等于证明没有理解遗漏。
 
 - [执行、领域、权限、恢复与测试详细证据](dsh-superagent-execution-review-cn.md)
 - [来源、部署、工具、管理面板与测试详细证据](dsh-superagent-surface-review-cn.md)

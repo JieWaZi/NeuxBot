@@ -214,7 +214,7 @@ func TestChannelTaskCapabilityRequiresBoardReadAndRejectsLeadAssignee(t *testing
 		"The final summary is the lead's coordination closeout after receiving member results",
 		"Describe exactly one clear deliverable per task",
 		"Build the complete task graph in one pass",
-		"allycli guide team.lead",
+		"botcli guide team.lead",
 		"Team Workspace",
 		"/tmp/workspace",
 	} {
@@ -246,7 +246,7 @@ func TestChannelTaskCapabilityRequiresBoardReadAndRejectsLeadAssignee(t *testing
 	}
 	for _, expected := range []string{
 		"Role: Member",
-		"## allycli team tasks",
+		"## botcli team tasks",
 		"`report`",
 		"complete result in `report.text`",
 		"Never repeat the report",

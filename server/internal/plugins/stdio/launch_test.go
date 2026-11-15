@@ -22,7 +22,7 @@ func TestLauncherPreservesWorkingDirectoryStreamsAndArgumentBoundaries(t *testin
 	data, _ = filepath.EvalSymlinks(data)
 	t.Setenv("PLUGIN_ROOT", root)
 	t.Setenv("PLUGIN_DATA", data)
-	t.Setenv("NEUXALLY_STDIO_FIXTURE", "1")
+	t.Setenv("NEUXBOT_STDIO_FIXTURE", "1")
 	var output bytes.Buffer
 	code := Run(context.Background(), root, []string{binary, "-test.run=TestLauncherChild", "--", "space argument", "literal&value"}, bytes.NewBufferString("input payload"), &output, io.Discard)
 	if code != 0 {
@@ -47,7 +47,7 @@ func TestLauncherCancellationTerminatesChild(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("PLUGIN_ROOT", root)
 	t.Setenv("PLUGIN_DATA", root)
-	t.Setenv("NEUXALLY_STDIO_FIXTURE", "wait")
+	t.Setenv("NEUXBOT_STDIO_FIXTURE", "wait")
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	started := time.Now()
@@ -59,7 +59,7 @@ func TestLauncherCancellationTerminatesChild(t *testing.T) {
 	}
 }
 func TestLauncherChild(t *testing.T) {
-	mode := os.Getenv("NEUXALLY_STDIO_FIXTURE")
+	mode := os.Getenv("NEUXBOT_STDIO_FIXTURE")
 	if mode == "" {
 		return
 	}

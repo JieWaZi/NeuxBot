@@ -17,7 +17,7 @@ import (
 	"github.com/JieWaZi/neux-knowledge/remote"
 )
 
-// PublishedBindings 将 API Key 的明确本地库绑定到与 allycli 相同的知识命令实现。
+// PublishedBindings 将 API Key 的明确本地库绑定到与 botcli 相同的知识命令实现。
 func (s *Service) PublishedBindings(ctx context.Context, authority *integrationservice.Service, identity models.IntegrationIdentity) ([]capability.Binding, error) {
 	readCaps := []constants.IntegrationCapability{constants.IntegrationCapabilityRetrieve}
 	resources := func(ctx context.Context, _ string) ([]bridge.ResourceRef, error) {

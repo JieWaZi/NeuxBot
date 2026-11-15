@@ -13,11 +13,11 @@ Search first; use returned IDs for get/update/forget. These are independent
 examples, not an instruction to run every mutation.
 
 ```sh
-allycli memory entries search --query "report language" --scope all --top-k 5
-allycli memory entries get --memory-id memory-example
-allycli memory entries create --input memory-create.json --request-id memory-create-01
-allycli memory entries update --input memory-update.json --request-id memory-update-01
-allycli memory entries forget --memory-id memory-example --request-id memory-forget-01
+botcli memory entries search --query "report language" --scope all --top-k 5
+botcli memory entries get --memory-id memory-example
+botcli memory entries create --input memory-create.json --request-id memory-create-01
+botcli memory entries update --input memory-update.json --request-id memory-update-01
+botcli memory entries forget --memory-id memory-example --request-id memory-forget-01
 ```
 
 `memory-create.json` chooses ownership (`partner` or a bound `project`):

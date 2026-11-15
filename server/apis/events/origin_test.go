@@ -11,7 +11,7 @@ import (
 )
 
 func TestEventConfiguredExactOriginsStillRequireAuthentication(t *testing.T) {
-	t.Setenv("ALLY_EVENT_TRUSTED_ORIGINS", `["http://127.0.0.1:1422","https://ally.example.com"]`)
+	t.Setenv("NEUXBOT_EVENT_TRUSTED_ORIGINS", `["http://127.0.0.1:1422","https://bot.example.com"]`)
 	hub := eventhub.New()
 	server := testServer(t, hub, func(context.Context, control) (source, error) {
 		t.Fatal("handshake must not create a subscription")
@@ -25,10 +25,10 @@ func TestEventConfiguredExactOriginsStillRequireAuthentication(t *testing.T) {
 		authenticated bool
 		// status 是HTTP升级或认证拒绝的真实结果。
 		status int
-	}{{"http://127.0.0.1:1422", true, 101}, {"https://ally.example.com", true, 101}, {"http://127.0.0.1:1420", true, 101}, {"ally://app", true, 101}, {"", true, 101}, {"http://127.0.0.1:1423", true, 403}, {"https://ally.example.com.evil.invalid", true, 403}, {"https://ally.example.com@evil.invalid", true, 403}, {"http://127.0.0.1:1422", false, 401}} {
+	}{{"http://127.0.0.1:1422", true, 101}, {"https://bot.example.com", true, 101}, {"http://127.0.0.1:1420", true, 101}, {"bot://app", true, 101}, {"", true, 101}, {"http://127.0.0.1:1423", true, 403}, {"https://bot.example.com.evil.invalid", true, 403}, {"https://bot.example.com@evil.invalid", true, 403}, {"http://127.0.0.1:1422", false, 401}} {
 		protocols := []string{eventhub.Protocol}
 		if test.authenticated {
-			protocols = append(protocols, "ally.auth.test-secret")
+			protocols = append(protocols, "bot.auth.test-secret")
 		}
 		dialer := websocket.Dialer{Subprotocols: protocols}
 		connection, response, err := dialer.Dial(endpoint, http.Header{"Origin": []string{test.origin}})
@@ -50,13 +50,13 @@ func TestEventConfiguredExactOriginsStillRequireAuthentication(t *testing.T) {
 func TestInvalidEventOriginConfigurationDoesNotGrantAdditionalOrigins(t *testing.T) {
 	for _, value := range []string{`not-json`, `null`, `"http://127.0.0.1:1422"`, `["*"]`, `["http://127.0.0.1:*"]`, `["http://127.0.0.1:1422/path"]`, `["http://user@127.0.0.1:1422"]`, `["http://127.0.0.1:1422?token=private"]`, `["http://127.0.0.1:1422#fragment"]`, `["http://127.0.0.1:65536"]`, `["http://127.0.0.1:1422","https://bad host"]`, `["file://127.0.0.1:1422"]`, `["https://"]`, `["https://-invalid.example"]`} {
 		t.Run(value, func(t *testing.T) {
-			t.Setenv("ALLY_EVENT_TRUSTED_ORIGINS", value)
+			t.Setenv("NEUXBOT_EVENT_TRUSTED_ORIGINS", value)
 			request, _ := http.NewRequest("GET", "http://127.0.0.1/api/v1/events", nil)
 			request.Header.Set("Origin", "http://127.0.0.1:1422")
 			if trustedOrigin(request) {
 				t.Fatal("invalid configuration granted a new origin")
 			}
-			request.Header.Set("Origin", "ally://app")
+			request.Header.Set("Origin", "bot://app")
 			if !trustedOrigin(request) {
 				t.Fatal("invalid extra origin configuration changed native default")
 			}
@@ -65,7 +65,7 @@ func TestInvalidEventOriginConfigurationDoesNotGrantAdditionalOrigins(t *testing
 }
 
 func TestEventOriginDefaultDoesNotAllowArbitraryLoopbackPorts(t *testing.T) {
-	t.Setenv("ALLY_EVENT_TRUSTED_ORIGINS", "")
+	t.Setenv("NEUXBOT_EVENT_TRUSTED_ORIGINS", "")
 	request, _ := http.NewRequest("GET", "http://127.0.0.1/api/v1/events", nil)
 	request.Header.Set("Origin", "http://127.0.0.1:1422")
 	if trustedOrigin(request) {

@@ -40,7 +40,7 @@ func (op *StreamTerminal) Output(ctx *gin.Context) (interface{}, error) {
 	}
 	supported := false
 	for _, protocol := range websocket.Subprotocols(ctx.Request) {
-		if protocol == "ally.terminal.v1" {
+		if protocol == "bot.terminal.v1" {
 			supported = true
 		}
 	}
@@ -55,7 +55,7 @@ func (op *StreamTerminal) Output(ctx *gin.Context) (interface{}, error) {
 		return nil, nil
 	}
 	defer global.TerminalRuntime.Detach(subject, op.SessionID, attachment)
-	upgrader := websocket.Upgrader{Subprotocols: []string{"ally.terminal.v1"}, CheckOrigin: events.TrustedOrigin}
+	upgrader := websocket.Upgrader{Subprotocols: []string{"bot.terminal.v1"}, CheckOrigin: events.TrustedOrigin}
 	connection, err := upgrader.Upgrade(ctx.Writer, ctx.Request, nil)
 	if err != nil {
 		return nil, nil

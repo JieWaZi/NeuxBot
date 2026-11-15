@@ -25,7 +25,7 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
             title: "整理对话任务页",
             updatedAt: 1_785_892_500_000,
             wakerId: "waker-1",
-            workspaceDirectory: "/tmp/ally",
+            workspaceDirectory: "/tmp/bot",
           },
           {
             activeExecutionId: "execution-1",

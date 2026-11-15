@@ -31,7 +31,7 @@ func TestWorkflowV2SaveReceiptMatchesClosedOutputContract(t *testing.T) {
 }
 
 func TestWorkflowV2ValidationCanReturnPublicManifest(t *testing.T) {
-	compiled, diagnostics, err := workflowdsl.Compile(`export const meta={sdk:'ally.workflow',title:'契约测试',description:'只计算',phases:[{id:'work',title:'计算',detail:'返回输入'}]};return args;`)
+	compiled, diagnostics, err := workflowdsl.Compile(`export const meta={sdk:'bot.workflow',title:'契约测试',description:'只计算',phases:[{id:'work',title:'计算',detail:'返回输入'}]};return args;`)
 	if err != nil {
 		t.Fatalf("%v %+v", err, diagnostics)
 	}

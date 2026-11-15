@@ -64,7 +64,7 @@ pnpm dev:native
 
 </details>
 
-配置与使用见 [使用指南](docs/README.md)，系统命令能力见 [allycli 完整说明](server/cmd/allycli/README.md)，参与开发见 [贡献指南](CONTRIBUTING.md)。这些文档目前提供简体中文版本。
+配置与使用见 [使用指南](docs/README.md)，系统命令能力见 [botcli 完整说明](server/cmd/botcli/README.md)，参与开发见 [贡献指南](CONTRIBUTING.md)。这些文档目前提供简体中文版本。
 
 ---
 

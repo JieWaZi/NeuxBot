@@ -9,7 +9,7 @@ describe("file addresses", () => {
   it("round-trips a session-relative path with encoded segments", () => {
     const address = sessionFileAddress("s 1", "w/a b#c?.txt");
     expect(address).toBe(
-      "neuxally-resource://file/session/s%201/w/a%20b%23c%3F.txt",
+      "neuxbot-resource://file/session/s%201/w/a%20b%23c%3F.txt",
     );
     expect(parseFileAddress(address)).toEqual({
       scope: "session",
@@ -20,18 +20,18 @@ describe("file addresses", () => {
 
   it("drops a leading ./ from a session-relative path and names the root with an empty path", () => {
     expect(sessionFileAddress("s", "./src/a.ts")).toBe(
-      "neuxally-resource://file/session/s/src/a.ts",
+      "neuxbot-resource://file/session/s/src/a.ts",
     );
     expect(sessionFileAddress("s", "././../outside/a.txt")).toBe(
-      "neuxally-resource://file/session/s/../outside/a.txt",
+      "neuxbot-resource://file/session/s/../outside/a.txt",
     );
     expect(sessionFileAddress("s", "src\\a.ts")).toBe(
-      "neuxally-resource://file/session/s/src/a.ts",
+      "neuxbot-resource://file/session/s/src/a.ts",
     );
     expect(sessionFileAddress("s", "")).toBe(
-      "neuxally-resource://file/session/s/",
+      "neuxbot-resource://file/session/s/",
     );
-    expect(parseFileAddress("neuxally-resource://file/session/s/")).toEqual({
+    expect(parseFileAddress("neuxbot-resource://file/session/s/")).toEqual({
       scope: "session",
       sessionId: "s",
       path: "",
@@ -42,9 +42,9 @@ describe("file addresses", () => {
     [
       "/etc/hosts",
       "/etc/hosts",
-      "neuxally-resource://file/session/s//etc/hosts",
+      "neuxbot-resource://file/session/s//etc/hosts",
     ],
-    ["/", "/", "neuxally-resource://file/session/s//"],
+    ["/", "/", "neuxbot-resource://file/session/s//"],
     [
       "C:\\w\\x.ts",
       "C:/w/x.ts",
@@ -53,12 +53,12 @@ describe("file addresses", () => {
     [
       "\\\\server\\share\\x.ts",
       "//server/share/x.ts",
-      "neuxally-resource://file/session/s///server/share/x.ts",
+      "neuxbot-resource://file/session/s///server/share/x.ts",
     ],
     [
       "/a b#c?%.txt",
       "/a b#c?%.txt",
-      "neuxally-resource://file/session/s//a%20b%23c%3F%25.txt",
+      "neuxbot-resource://file/session/s//a%20b%23c%3F%25.txt",
     ],
   ])(
     "round-trips the absolute path %s in a Session address",
@@ -75,10 +75,10 @@ describe("file addresses", () => {
 
   it("gives the same absolute path different addresses in different Sessions", () => {
     expect(sessionFileAddress("s1", "/etc/hosts")).toBe(
-      "neuxally-resource://file/session/s1//etc/hosts",
+      "neuxbot-resource://file/session/s1//etc/hosts",
     );
     expect(sessionFileAddress("s2", "/etc/hosts")).toBe(
-      "neuxally-resource://file/session/s2//etc/hosts",
+      "neuxbot-resource://file/session/s2//etc/hosts",
     );
   });
 
@@ -116,7 +116,7 @@ describe("file addresses", () => {
     ["a%2Fb%5Cc.txt", "a/b\\c.txt"],
   ])("decodes %s once without resolving dot segments", (encoded, path) => {
     expect(
-      parseFileAddress(`neuxally-resource://file/session/s%2F1/${encoded}`),
+      parseFileAddress(`neuxbot-resource://file/session/s%2F1/${encoded}`),
     ).toEqual({ scope: "session", sessionId: "s/1", path });
   });
 
@@ -130,7 +130,7 @@ describe("file addresses", () => {
     (suffix) => {
       expect(
         parseFileAddress(
-          `neuxally-resource://file/session/s/dir/../a%3Fb%23c%25.txt${suffix}`,
+          `neuxbot-resource://file/session/s/dir/../a%3Fb%23c%25.txt${suffix}`,
         ),
       ).toEqual({
         scope: "session",
@@ -139,7 +139,7 @@ describe("file addresses", () => {
       });
       expect(
         parseFileAddress(
-          `neuxally-resource://file/absolute/workspace/../a%3Fb%23c%25.txt${suffix}`,
+          `neuxbot-resource://file/absolute/workspace/../a%3Fb%23c%25.txt${suffix}`,
         ),
       ).toEqual({ scope: "absolute", path: "/workspace/../a?b#c%.txt" });
     },
@@ -147,7 +147,7 @@ describe("file addresses", () => {
 
   it("round-trips an absolute POSIX path with the leading slash dropped", () => {
     const address = absoluteFileAddress("/home/me/notes.md");
-    expect(address).toBe("neuxally-resource://file/absolute/home/me/notes.md");
+    expect(address).toBe("neuxbot-resource://file/absolute/home/me/notes.md");
     expect(parseFileAddress(address)).toEqual({
       scope: "absolute",
       path: "/home/me/notes.md",
@@ -156,7 +156,7 @@ describe("file addresses", () => {
 
   it("round-trips an absolute Windows drive path with backslashes normalized and the colon literal", () => {
     const address = absoluteFileAddress("C:\\w\\x.ts");
-    expect(address).toBe("neuxally-resource://file/absolute/C:/w/x.ts");
+    expect(address).toBe("neuxbot-resource://file/absolute/C:/w/x.ts");
     expect(parseFileAddress(address)).toEqual({
       scope: "absolute",
       path: "C:/w/x.ts",
@@ -176,52 +176,52 @@ describe("file addresses", () => {
 
   it("decodes either spelling of a path segment", () => {
     expect(
-      parseFileAddress("neuxally-resource://file/session/s/w/a+b.txt")?.path,
+      parseFileAddress("neuxbot-resource://file/session/s/w/a+b.txt")?.path,
     ).toBe("w/a+b.txt");
     expect(
-      parseFileAddress("neuxally-resource://file/session/s/w/a%2Bb.txt")?.path,
+      parseFileAddress("neuxbot-resource://file/session/s/w/a%2Bb.txt")?.path,
     ).toBe("w/a+b.txt");
     expect(
-      parseFileAddress("neuxally-resource://file/absolute/w/a%2Bb.txt")?.path,
+      parseFileAddress("neuxbot-resource://file/absolute/w/a%2Bb.txt")?.path,
     ).toBe("/w/a+b.txt");
   });
 
   it.each([
-    ["another resource type", "neuxally-resource://terminal/session/s/1"],
+    ["another resource type", "neuxbot-resource://terminal/session/s/1"],
     [
       "a type spelled with another case",
-      "neuxally-resource://File/session/s/w/x.ts",
+      "neuxbot-resource://File/session/s/w/x.ts",
     ],
     [
       "a scheme spelled with another case",
-      "NEUXALLY-RESOURCE://file/session/s/w/x.ts",
+      "NEUXBOT-RESOURCE://file/session/s/w/x.ts",
     ],
-    ["an unknown scope", "neuxally-resource://file/shared/s/w/x"],
+    ["an unknown scope", "neuxbot-resource://file/shared/s/w/x"],
     ["the retired file:// grammar", "file://sessions/s/w/x.ts"],
     ["a host-less file URL", "file:///w/x.ts"],
-    ["a session address with no path", "neuxally-resource://file/session/s"],
-    ["a session address with no id", "neuxally-resource://file/session"],
+    ["a session address with no path", "neuxbot-resource://file/session/s"],
+    ["a session address with no id", "neuxbot-resource://file/session"],
     [
       "a session address with an empty id",
-      "neuxally-resource://file/session//a.txt",
+      "neuxbot-resource://file/session//a.txt",
     ],
-    ["an absolute address with no path", "neuxally-resource://file/absolute"],
+    ["an absolute address with no path", "neuxbot-resource://file/absolute"],
     [
       "an absolute address with an empty path",
-      "neuxally-resource://file/absolute/",
+      "neuxbot-resource://file/absolute/",
     ],
     [
       "a UNC marker with no host behind it",
-      "neuxally-resource://file/absolute//",
+      "neuxbot-resource://file/absolute//",
     ],
-    ["no scope", "neuxally-resource://file"],
+    ["no scope", "neuxbot-resource://file"],
     ["another scheme", "sidebar://files"],
     ["not a URL", "notes.txt"],
-    ["a malformed escape", "neuxally-resource://file/session/s/%E0%A4%A"],
-    ["a malformed id escape", "neuxally-resource://file/session/%/a.txt"],
+    ["a malformed escape", "neuxbot-resource://file/session/s/%E0%A4%A"],
+    ["a malformed id escape", "neuxbot-resource://file/session/%/a.txt"],
     [
       "a malformed absolute escape",
-      "neuxally-resource://file/absolute/a%ZZ.txt",
+      "neuxbot-resource://file/absolute/a%ZZ.txt",
     ],
   ])("rejects %s", (_, address) => {
     expect(parseFileAddress(address)).toBeUndefined();

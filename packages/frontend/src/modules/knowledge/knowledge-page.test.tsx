@@ -61,7 +61,7 @@ const server = setupServer(
 );
 beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });
-  client.setConfig({ baseUrl: "http://ally.test" });
+  client.setConfig({ baseUrl: "http://bot.test" });
 });
 afterEach(() => {
   server.resetHandlers();
@@ -81,7 +81,7 @@ const library = {
   policyVersion: 1,
 };
 function runtimeModelCatalog(models: GetRuntimeModelCatalogResponse["models"]) {
-  return http.get("http://ally.test/api/v1/runtimes/codex/models", () =>
+  return http.get("http://bot.test/api/v1/runtimes/codex/models", () =>
     HttpResponse.json({
       runtimeId: "codex",
       accountId: "system",
@@ -181,7 +181,7 @@ it.each(["knowledge", "summaries"])(
     };
     server.use(
       http.get(
-        "http://ally.test/api/v1/knowledge/libraries/kb/page-directory",
+        "http://bot.test/api/v1/knowledge/libraries/kb/page-directory",
         () =>
           HttpResponse.json({
             items: organized
@@ -194,10 +194,10 @@ it.each(["knowledge", "summaries"])(
           }),
       ),
       http.get(
-        "http://ally.test/api/v1/knowledge/libraries/kb/pages/new-summary",
+        "http://bot.test/api/v1/knowledge/libraries/kb/pages/new-summary",
         () => HttpResponse.json(summary),
       ),
-      http.get("http://ally.test/api/v1/knowledge/libraries/kb/sources", () =>
+      http.get("http://bot.test/api/v1/knowledge/libraries/kb/sources", () =>
         HttpResponse.json({
           items: Array.from({ length: sourceTotal }, (_, index) => ({
             ...firstSource,
@@ -260,15 +260,15 @@ it.each(["knowledge", "summaries"])(
 );
 function fixtures() {
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/wiki/index", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/wiki/index", () =>
       HttpResponse.json({ intro: "# Wiki Index", version: 1, groups: [] }),
     ),
     http.get(
-      "http://ally.test/api/v1/knowledge/libraries/kb/source-purges",
+      "http://bot.test/api/v1/knowledge/libraries/kb/source-purges",
       () => HttpResponse.json({ items: [], total: 0 }),
     ),
     http.get(
-      "http://ally.test/api/v1/knowledge/libraries/kb/execution-defaults",
+      "http://bot.test/api/v1/knowledge/libraries/kb/execution-defaults",
       () =>
         HttpResponse.json({
           libraryId: "kb",
@@ -281,7 +281,7 @@ function fixtures() {
         }),
     ),
     http.put(
-      "http://ally.test/api/v1/knowledge/libraries/kb/execution-defaults",
+      "http://bot.test/api/v1/knowledge/libraries/kb/execution-defaults",
       async ({ request }) =>
         HttpResponse.json({
           ...((await request.json()) as object),
@@ -289,25 +289,25 @@ function fixtures() {
           version: 1,
         }),
     ),
-    http.get("http://ally.test/api/v1/memory/settings", () =>
+    http.get("http://bot.test/api/v1/memory/settings", () =>
       HttpResponse.json({}),
     ),
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb", () =>
       HttpResponse.json(library),
     ),
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/sources", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/sources", () =>
       HttpResponse.json({ items: [firstSource], total: 1 }),
     ),
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/jobs", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/jobs", () =>
       HttpResponse.json({ items: [], total: 0 }),
     ),
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/jobs/job", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/jobs/job", () =>
       HttpResponse.json({
         job: { id: "job", libraryId: "kb", state: "processing" },
         session: { id: "session", chatId: "" },
       }),
     ),
-    http.get("http://ally.test/api/v1/runtimes", () =>
+    http.get("http://bot.test/api/v1/runtimes", () =>
       HttpResponse.json({
         resources: [
           {
@@ -323,7 +323,7 @@ function fixtures() {
         ],
       }),
     ),
-    http.get("http://ally.test/api/v1/ai-accounts", () =>
+    http.get("http://bot.test/api/v1/ai-accounts", () =>
       HttpResponse.json({ resources: [] }),
     ),
     runtimeModelCatalog([
@@ -345,7 +345,7 @@ it("任务纯进度只刷新任务与来源，内容发布才刷新Wiki树和正
     sources: [],
     links: [],
   };
-  const base = "http://ally.test/api/v1/knowledge/libraries/kb";
+  const base = "http://bot.test/api/v1/knowledge/libraries/kb";
   server.use(
     http.get(`${base}/jobs`, () => {
       reads.jobs++;
@@ -404,14 +404,14 @@ it("整理Wiki接纳后关闭配置弹窗，不打开结果或伙伴聊天", asy
   const requests: Record<string, unknown>[] = [];
   server.use(
     http.post(
-      "http://ally.test/api/v1/knowledge/libraries/kb/maintain",
+      "http://bot.test/api/v1/knowledge/libraries/kb/maintain",
       async ({ request }) => {
         const body = (await request.json()) as Record<string, unknown>;
         requests.push(body);
         return HttpResponse.json({ receipt: acceptedReceipt(body) });
       },
     ),
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/jobs/job", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/jobs/job", () =>
       HttpResponse.json({
         job: { id: "job", libraryId: "kb", state: "completed" },
         report: "已核查来源并归并重复页面。",
@@ -465,7 +465,7 @@ it.each([
     fixtures();
     let reads = 0;
     server.use(
-      http.get("http://ally.test/api/v1/knowledge/libraries/kb/jobs", () => {
+      http.get("http://bot.test/api/v1/knowledge/libraries/kb/jobs", () => {
         reads++;
         return HttpResponse.json({
           items: [{ id: "active", libraryId: "kb", state }],
@@ -492,10 +492,10 @@ it("知识库只保留标题与同行操作，搜索仅在左侧原件目录", a
     sourceVersionIds: ["source-1"],
   };
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/jobs", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/jobs", () =>
       HttpResponse.json({ items: [job], total: 1 }),
     ),
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/jobs/job", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/jobs/job", () =>
       HttpResponse.json({ job }),
     ),
   );
@@ -551,7 +551,7 @@ it("知识库只保留标题与同行操作，搜索仅在左侧原件目录", a
 it("空文档页不以固定最小高度撑开内容", async () => {
   fixtures();
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/sources", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/sources", () =>
       HttpResponse.json({ items: [], total: 0 }),
     ),
   );
@@ -598,7 +598,7 @@ it("顶部图谱保留直链，读取完整分页关系并直接展示正文", a
   const offsets: string[] = [];
   server.use(
     http.get(
-      "http://ally.test/api/v1/knowledge/libraries/kb/pages",
+      "http://bot.test/api/v1/knowledge/libraries/kb/pages",
       ({ request }) => {
         const offset = new URL(request.url).searchParams.get("offset") ?? "0";
         offsets.push(offset);
@@ -627,10 +627,10 @@ it("顶部图谱保留直链，读取完整分页关系并直接展示正文", a
         });
       },
     ),
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/themes", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/themes", () =>
       HttpResponse.json({ items: [] }),
     ),
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/pages/last", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/pages/last", () =>
       HttpResponse.json({
         id: "last",
         slug: "concept/last",
@@ -672,7 +672,7 @@ it("上传后只显示待整理，点击整理才接纳一次冻结来源任务"
   let uploaded = false;
   const organized: Record<string, unknown>[] = [];
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/sources", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/sources", () =>
       HttpResponse.json({
         items: uploaded
           ? [
@@ -684,7 +684,7 @@ it("上传后只显示待整理，点击整理才接纳一次冻结来源任务"
       }),
     ),
     http.post(
-      "http://ally.test/api/v1/knowledge/libraries/kb/sources",
+      "http://bot.test/api/v1/knowledge/libraries/kb/sources",
       async ({ request }) => {
         const body = await request.json();
         expect(body).toMatchObject({ filename: "新资料.md", bytes: "YWI=" });
@@ -696,7 +696,7 @@ it("上传后只显示待整理，点击整理才接纳一次冻结来源任务"
       },
     ),
     http.post(
-      "http://ally.test/api/v1/knowledge/libraries/kb/organize",
+      "http://bot.test/api/v1/knowledge/libraries/kb/organize",
       async ({ request }) => {
         const body = (await request.json()) as Record<string, unknown>;
         organized.push(body);
@@ -744,7 +744,7 @@ it("默认整理全库，不受列表翻页与表格选中范围限制", async (
   const organized: unknown[] = [];
   server.use(
     http.get(
-      "http://ally.test/api/v1/knowledge/libraries/kb/sources",
+      "http://bot.test/api/v1/knowledge/libraries/kb/sources",
       ({ request }) =>
         HttpResponse.json({
           items:
@@ -763,7 +763,7 @@ it("默认整理全库，不受列表翻页与表格选中范围限制", async (
         }),
     ),
     http.post(
-      "http://ally.test/api/v1/knowledge/libraries/kb/organize",
+      "http://bot.test/api/v1/knowledge/libraries/kb/organize",
       async ({ request }) => {
         organized.push(await request.json());
         return HttpResponse.json({ receipt: { jobId: "job" } });
@@ -791,11 +791,11 @@ it.each(["network", "partial500"])(
     fixtures();
     const requests: Record<string, unknown>[] = [];
     server.use(
-      http.get("http://ally.test/api/v1/knowledge/connections/libraries", () =>
+      http.get("http://bot.test/api/v1/knowledge/connections/libraries", () =>
         HttpResponse.json({ items: [], total: 0 }),
       ),
       http.post(
-        "http://ally.test/api/v1/knowledge/libraries",
+        "http://bot.test/api/v1/knowledge/libraries",
         async ({ request }) => {
           requests.push((await request.json()) as Record<string, unknown>);
           return requests.length === 1
@@ -843,14 +843,14 @@ it("后台运行允许上传但禁用新的整理，不请求任务详情", asyn
   fixtures();
   let detailReads = 0;
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/jobs", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/jobs", () =>
       HttpResponse.json({
         items: [{ id: "job", libraryId: "kb", state: "processing" }],
         total: 1,
         activeJob: { id: "job", libraryId: "kb", state: "processing" },
       }),
     ),
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/jobs/job", () => {
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/jobs/job", () => {
       detailReads++;
       return HttpResponse.json({
         job: { id: "job", libraryId: "kb", state: "processing" },
@@ -884,7 +884,7 @@ it("整理默认选中待处理和失败文件，不混入已整理原件", asyn
   fixtures();
   const requests: Array<{ sourceVersionIds: string[] }> = [];
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/sources", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/sources", () =>
       HttpResponse.json({
         items: [
           firstSource,
@@ -905,7 +905,7 @@ it("整理默认选中待处理和失败文件，不混入已整理原件", asyn
       }),
     ),
     http.post(
-      "http://ally.test/api/v1/knowledge/libraries/kb/organize",
+      "http://bot.test/api/v1/knowledge/libraries/kb/organize",
       async ({ request }) => {
         requests.push((await request.json()) as { sourceVersionIds: string[] });
         return HttpResponse.json({
@@ -933,7 +933,7 @@ it.each(["failed", "cancelled"] as const)(
     const requests: Array<{ requestId: string; sourceVersionIds: string[] }> =
       [];
     server.use(
-      http.get("http://ally.test/api/v1/knowledge/libraries/kb/sources", () =>
+      http.get("http://bot.test/api/v1/knowledge/libraries/kb/sources", () =>
         HttpResponse.json({
           items: [
             { ...firstSource, id: "retry-source", state },
@@ -947,7 +947,7 @@ it.each(["failed", "cancelled"] as const)(
           total: 2,
         }),
       ),
-      http.get("http://ally.test/api/v1/knowledge/libraries/kb/jobs", () =>
+      http.get("http://bot.test/api/v1/knowledge/libraries/kb/jobs", () =>
         HttpResponse.json({
           items: [
             {
@@ -962,7 +962,7 @@ it.each(["failed", "cancelled"] as const)(
         }),
       ),
       http.post(
-        "http://ally.test/api/v1/knowledge/libraries/kb/organize",
+        "http://bot.test/api/v1/knowledge/libraries/kb/organize",
         async ({ request }) => {
           requests.push(
             (await request.json()) as {
@@ -996,13 +996,13 @@ it.each(["failed", "cancelled"] as const)(
 it("真实运行中的任务也阻止从其他失败来源发起整理", async () => {
   fixtures();
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/sources", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/sources", () =>
       HttpResponse.json({
         items: [{ ...firstSource, state: "failed" }],
         total: 1,
       }),
     ),
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/jobs", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/jobs", () =>
       HttpResponse.json({
         items: [{ id: "active-job", libraryId: "kb", state: "processing" }],
         activeJob: { id: "active-job", libraryId: "kb", state: "processing" },
@@ -1020,7 +1020,7 @@ it("真实运行中的任务也阻止从其他失败来源发起整理", async (
 it("整理可用性读取失败只走通知并保持操作禁用", async () => {
   fixtures();
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/jobs", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/jobs", () =>
       HttpResponse.error(),
     ),
   );
@@ -1042,7 +1042,7 @@ it("确认整理取得真实任务回执后关闭弹窗，尚无Execution时也�
   const requests: Record<string, unknown>[] = [];
   server.use(
     http.post(
-      "http://ally.test/api/v1/knowledge/libraries/kb/organize",
+      "http://bot.test/api/v1/knowledge/libraries/kb/organize",
       async ({ request }) => {
         const body = (await request.json()) as Record<string, unknown>;
         requests.push(body);
@@ -1092,11 +1092,11 @@ it("离开详情后迟到的接纳不会在列表页弹出聊天", async () => {
   const user = userEvent.setup();
   let finish: (() => void) | undefined;
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/connections/libraries", () =>
+    http.get("http://bot.test/api/v1/knowledge/connections/libraries", () =>
       HttpResponse.json({ items: [], total: 0 }),
     ),
     http.post(
-      "http://ally.test/api/v1/knowledge/libraries/kb/organize",
+      "http://bot.test/api/v1/knowledge/libraries/kb/organize",
       async ({ request }) => {
         const body = (await request.json()) as Record<string, unknown>;
         await new Promise<void>((resolve) => {
@@ -1126,7 +1126,7 @@ it("后台接纳只使用知识任务回执且不挂载聊天", async () => {
   fixtures();
   server.use(
     http.post(
-      "http://ally.test/api/v1/knowledge/libraries/kb/organize",
+      "http://bot.test/api/v1/knowledge/libraries/kb/organize",
       async ({ request }) =>
         HttpResponse.json({
           receipt: acceptedReceipt(
@@ -1155,7 +1155,7 @@ it("关闭重开上传弹窗后用原请求身份核对未知回执", async () =
   const requests: Array<{ requestId?: string }> = [];
   server.use(
     http.post(
-      "http://ally.test/api/v1/knowledge/libraries/kb/sources",
+      "http://bot.test/api/v1/knowledge/libraries/kb/sources",
       async ({ request }) => {
         requests.push((await request.json()) as { requestId?: string });
         return requests.length === 1
@@ -1216,7 +1216,7 @@ it("整理从库配置初始化，临时修改直接执行且不写回库配置"
       { id: "model", name: "Model", permissionLevels: ["default"] },
       { id: "saved-model", name: "已存模型", permissionLevels: ["default"] },
     ]),
-    http.get("http://ally.test/api/v1/runtimes", () =>
+    http.get("http://bot.test/api/v1/runtimes", () =>
       HttpResponse.json({
         resources: [
           {
@@ -1238,11 +1238,11 @@ it("整理从库配置初始化，临时修改直接执行且不写回库配置"
       }),
     ),
     http.get(
-      "http://ally.test/api/v1/knowledge/libraries/kb/execution-defaults",
+      "http://bot.test/api/v1/knowledge/libraries/kb/execution-defaults",
       () => HttpResponse.json(profile),
     ),
     http.put(
-      "http://ally.test/api/v1/knowledge/libraries/kb/execution-defaults",
+      "http://bot.test/api/v1/knowledge/libraries/kb/execution-defaults",
       async ({ request }) => {
         const body = (await request.json()) as Record<string, unknown>;
         profileRequests.push(body);
@@ -1250,7 +1250,7 @@ it("整理从库配置初始化，临时修改直接执行且不写回库配置"
       },
     ),
     http.post(
-      "http://ally.test/api/v1/knowledge/libraries/kb/organize",
+      "http://bot.test/api/v1/knowledge/libraries/kb/organize",
       async ({ request }) => {
         organized.push((await request.json()) as Record<string, unknown>);
         return HttpResponse.json({ noop: true });
@@ -1285,7 +1285,7 @@ it("后台接纳200缺完整任务回执时关闭重开保留原请求，不重�
   const requests: Record<string, unknown>[] = [];
   server.use(
     http.post(
-      "http://ally.test/api/v1/knowledge/libraries/kb/organize",
+      "http://bot.test/api/v1/knowledge/libraries/kb/organize",
       async ({ request }) => {
         const body = (await request.json()) as Record<string, unknown>;
         requests.push(body);
@@ -1338,7 +1338,7 @@ it("文档初次加载显示内容骨架，后台刷新仍保留已有文档与�
   });
   server.use(
     http.get(
-      "http://ally.test/api/v1/knowledge/libraries/kb/sources",
+      "http://bot.test/api/v1/knowledge/libraries/kb/sources",
       async () => {
         await pending;
         return HttpResponse.json({ items: [firstSource], total: 1 });
@@ -1383,7 +1383,7 @@ it("后台接纳中关闭重开配置复用同一个待定请求，不取消任�
   const requests: Record<string, unknown>[] = [];
   server.use(
     http.post(
-      "http://ally.test/api/v1/knowledge/libraries/kb/organize",
+      "http://bot.test/api/v1/knowledge/libraries/kb/organize",
       async ({ request }) => {
         const body = (await request.json()) as Record<string, unknown>;
         requests.push(body);
@@ -1419,7 +1419,7 @@ it("旧任务排队时禁用整理，结束后仅提交其他待处理文件", a
   fixtures();
   let queued = true;
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/jobs", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/jobs", () =>
       HttpResponse.json({
         items: [{ id: "newer-completed", libraryId: "kb", state: "completed" }],
         total: 2,
@@ -1436,7 +1436,7 @@ it("旧任务排队时禁用整理，结束后仅提交其他待处理文件", a
   );
   const requests: Record<string, unknown>[] = [];
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/sources", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/sources", () =>
       HttpResponse.json({
         items: [
           firstSource,
@@ -1464,7 +1464,7 @@ it("旧任务排队时禁用整理，结束后仅提交其他待处理文件", a
       }),
     ),
     http.post(
-      "http://ally.test/api/v1/knowledge/libraries/kb/organize",
+      "http://bot.test/api/v1/knowledge/libraries/kb/organize",
       async ({ request }) => {
         const body = (await request.json()) as Record<string, unknown>;
         requests.push(body);
@@ -1507,7 +1507,7 @@ it("整理全库待处理文件，可搜索取消选择并提交仅本次的提�
   }));
   server.use(
     http.get(
-      "http://ally.test/api/v1/knowledge/libraries/kb/sources",
+      "http://bot.test/api/v1/knowledge/libraries/kb/sources",
       ({ request }) =>
         HttpResponse.json({
           items:
@@ -1525,7 +1525,7 @@ it("整理全库待处理文件，可搜索取消选择并提交仅本次的提�
         }),
     ),
     http.post(
-      "http://ally.test/api/v1/knowledge/libraries/kb/organize",
+      "http://bot.test/api/v1/knowledge/libraries/kb/organize",
       async ({ request }) => {
         const body = (await request.json()) as Record<string, unknown>;
         requests.push(body);
@@ -1582,7 +1582,7 @@ it.each(["unknown", "separate"])(
   "远端模式为 %s 时不再展示检测提示条与重新检测按钮",
   async (mode) => {
     const remote =
-      "http://ally.test/api/v1/knowledge/connections/remote/libraries/kb";
+      "http://bot.test/api/v1/knowledge/connections/remote/libraries/kb";
     server.use(
       http.get(`${remote}/source-purges`, () =>
         HttpResponse.json({ items: [], total: 0 }),
@@ -1669,7 +1669,7 @@ it("当前页全部已整理时仍可选择其他页待整理文件", async () =
   fixtures();
   server.use(
     http.get(
-      "http://ally.test/api/v1/knowledge/libraries/kb/sources",
+      "http://bot.test/api/v1/knowledge/libraries/kb/sources",
       ({ request }) =>
         HttpResponse.json({
           items:
@@ -1707,7 +1707,7 @@ it("普通取消后重新打开会读取新增文件，不复用旧来源草稿"
   fixtures();
   let items = [firstSource];
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/sources", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/sources", () =>
       HttpResponse.json({ items, total: items.length }),
     ),
   );
@@ -1735,7 +1735,7 @@ it("取消后重新挂载页面仍恢复本库的模型和整理要求，清空�
       { id: "model", name: "Model", permissionLevels: ["default"] },
       { id: "other", name: "Other", permissionLevels: ["default"] },
     ]),
-    http.get("http://ally.test/api/v1/runtimes", () =>
+    http.get("http://bot.test/api/v1/runtimes", () =>
       HttpResponse.json({
         resources: [
           {
@@ -1797,7 +1797,7 @@ it("原件向下滚动追加真实分页，不再展示分页控件", async () =
   }));
   server.use(
     http.get(
-      "http://ally.test/api/v1/knowledge/libraries/kb/sources",
+      "http://bot.test/api/v1/knowledge/libraries/kb/sources",
       ({ request }) => {
         const params = new URL(request.url).searchParams;
         const offset = Number(params.get("offset"));
@@ -1839,7 +1839,7 @@ it("侧栏原件搜索使用后端匹配总数并重置累计目录", async () =
   }));
   server.use(
     http.get(
-      "http://ally.test/api/v1/knowledge/libraries/kb/sources",
+      "http://bot.test/api/v1/knowledge/libraries/kb/sources",
       ({ request }) => {
         const params = new URL(request.url).searchParams;
         const offset = Number(params.get("offset"));
@@ -1894,7 +1894,7 @@ it("状态更新减少原件总数时重新核对累计目录", async () => {
   }));
   server.use(
     http.get(
-      "http://ally.test/api/v1/knowledge/libraries/kb/sources",
+      "http://bot.test/api/v1/knowledge/libraries/kb/sources",
       ({ request }) => {
         const query = new URL(request.url).searchParams;
         const offset = Number(query.get("offset"));
@@ -1928,7 +1928,7 @@ it.each([
 ])("远端整理未知接纳后重开不被 %s 阻断原请求核对", async (failure) => {
   const user = userEvent.setup();
   const root =
-    "http://ally.test/api/v1/knowledge/connections/remote/libraries/kb";
+    "http://bot.test/api/v1/knowledge/connections/remote/libraries/kb";
   let denied = false;
   const bodies: Record<string, unknown>[] = [];
   server.use(
@@ -2029,7 +2029,7 @@ it("目录搜索从当前分页归零，URL 与请求共享筛选并展示服务
   const requests: { search: string; offset: number }[] = [];
   server.use(
     http.get(
-      "http://ally.test/api/v1/knowledge/connections/libraries",
+      "http://bot.test/api/v1/knowledge/connections/libraries",
       ({ request }) => {
         const params = new URL(request.url).searchParams;
         const search = params.get("search") ?? "";
@@ -2062,7 +2062,7 @@ it("目录搜索从当前分页归零，URL 与请求共享筛选并展示服务
   await screen.findByRole("heading", { name: "第 61 个知识库" });
   const url = new URL(
     screen.getByLabelText("当前路由").textContent ?? "",
-    "http://ally.test",
+    "http://bot.test",
   );
   expect(url.searchParams.get("search")).toBe("中文描述");
   expect(url.searchParams.get("librariesOffset")).toBe("0");
@@ -2084,7 +2084,7 @@ it("目录搜索直链保留筛选并从服务器分页读取", async () => {
   const requests: URLSearchParams[] = [];
   server.use(
     http.get(
-      "http://ally.test/api/v1/knowledge/connections/libraries",
+      "http://bot.test/api/v1/knowledge/connections/libraries",
       ({ request }) => {
         requests.push(new URL(request.url).searchParams);
         return HttpResponse.json({

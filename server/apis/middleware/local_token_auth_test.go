@@ -29,7 +29,7 @@ func TestSubprotocolTokenOnlyGrantsFixedEventUpgrade(t *testing.T) {
 			endpoint = key[5:]
 		}
 		request := httptest.NewRequest(method, endpoint, nil)
-		request.Header.Set("Sec-WebSocket-Protocol", "ally.events.v1, ally.auth.local-secret")
+		request.Header.Set("Sec-WebSocket-Protocol", "bot.events.v1, bot.auth.local-secret")
 		request.Header.Set("Connection", "Upgrade")
 		request.Header.Set("Upgrade", "websocket")
 		recorder := httptest.NewRecorder()
@@ -40,7 +40,7 @@ func TestSubprotocolTokenOnlyGrantsFixedEventUpgrade(t *testing.T) {
 	}
 	request := httptest.NewRequest("GET", "/api/v1/events", nil)
 	request.Header.Set("Authorization", "Bearer wrong")
-	request.Header.Set("Sec-WebSocket-Protocol", "ally.auth.local-secret")
+	request.Header.Set("Sec-WebSocket-Protocol", "bot.auth.local-secret")
 	recorder := httptest.NewRecorder()
 	engine.ServeHTTP(recorder, request)
 	if recorder.Code != 401 {

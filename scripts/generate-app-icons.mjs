@@ -14,7 +14,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicDir = path.join(root, "packages/frontend/public");
 const resourceDir = path.join(root, "desktop/resources");
 const temporaryDir = mkdtempSync(path.join(tmpdir(), "neuxbot-icons-"));
-const logo = readFileSync(path.join(publicDir, "ally-logo.svg"), "utf8");
+const logo = readFileSync(path.join(publicDir, "bot-logo.svg"), "utf8");
 const darkLogo = logo.replaceAll("#1c1c1c", "#f7f7f7");
 const templateLogo = logo.replaceAll(/#[0-9a-f]{6}/g, "#000000");
 
@@ -69,12 +69,12 @@ function writeWindowsIcon(source, target, sizes) {
 }
 
 try {
-  const lightSource = path.join(publicDir, "ally-logo.svg");
-  const darkSource = path.join(publicDir, "ally-logo-dark.svg");
-  const traySource = path.join(resourceDir, "tray/allyTemplate.svg");
+  const lightSource = path.join(publicDir, "bot-logo.svg");
+  const darkSource = path.join(publicDir, "bot-logo-dark.svg");
+  const traySource = path.join(resourceDir, "tray/botTemplate.svg");
   writeFileSync(darkSource, darkLogo);
   writeFileSync(traySource, templateLogo);
-  rasterize(lightSource, path.join(publicDir, "ally-logo.png"), 1024);
+  rasterize(lightSource, path.join(publicDir, "bot-logo.png"), 1024);
 
   for (const [name, source, background] of [
     ["app-icon-source", logo, "#fafafa"],
@@ -110,14 +110,14 @@ try {
   );
 
   // macOS 模板图由系统着色；Windows 托盘保留彩色标志与浅色底板。
-  rasterize(traySource, path.join(resourceDir, "tray/allyTemplate.png"), 16);
-  rasterize(traySource, path.join(resourceDir, "tray/allyTemplate@2x.png"), 32);
+  rasterize(traySource, path.join(resourceDir, "tray/botTemplate.png"), 16);
+  rasterize(traySource, path.join(resourceDir, "tray/botTemplate@2x.png"), 32);
   writeWindowsIcon(
     appSource,
-    path.join(resourceDir, "tray/ally.ico"),
+    path.join(resourceDir, "tray/bot.ico"),
     [16, 20, 24, 32, 48, 64],
   );
-  process.stdout.write("已从 ally-logo.svg 生成浅暗品牌、应用与托盘图标。\n");
+  process.stdout.write("已从 bot-logo.svg 生成浅暗品牌、应用与托盘图标。\n");
 } finally {
   rmSync(temporaryDir, { recursive: true, force: true });
 }

@@ -110,7 +110,7 @@ func TestMCPConnectorAPIMaintainsSharedConfigurationAndEncryptedCredentials(
 	if err != nil {
 		t.Fatalf("read created connector: %v", err)
 	}
-	if !strings.HasPrefix(createdStored.RuntimeKey, "ally_dai_ma_sou_suo_") {
+	if !strings.HasPrefix(createdStored.RuntimeKey, "bot_dai_ma_sou_suo_") {
 		t.Fatalf("runtime key = %q, want readable pinyin key", createdStored.RuntimeKey)
 	}
 

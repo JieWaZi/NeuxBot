@@ -64,7 +64,7 @@ To review unpublished plugins from an explicit local checkout, install that chec
 
 </details>
 
-See the [user guides](docs/README.md) for setup and usage, the [allycli capability reference](server/cmd/allycli/README.md) for available system operations, or [CONTRIBUTING.md](CONTRIBUTING.md) to help build NeuxBot. These documents are currently in Simplified Chinese.
+See the [user guides](docs/README.md) for setup and usage, the [botcli capability reference](server/cmd/botcli/README.md) for available system operations, or [CONTRIBUTING.md](CONTRIBUTING.md) to help build NeuxBot. These documents are currently in Simplified Chinese.
 
 ---
 

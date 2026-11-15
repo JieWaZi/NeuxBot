@@ -152,7 +152,7 @@ func TestMemoryScopeHelpAndInvalidInputUseTheSharedContract(t *testing.T) {
 
 // TestSkillExamplesParseBeforeConnecting parses skill commands and JSON through the real CLI to prevent example drift from contracts.
 func TestSkillExamplesParseBeforeConnecting(t *testing.T) {
-	paths, err := filepath.Glob("../../../../skills/ally/references/*.md")
+	paths, err := filepath.Glob("../../../../skills/bot/references/*.md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestSkillExamplesParseBeforeConnecting(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, line := range strings.Split(string(content), "\n") {
-			if !strings.HasPrefix(line, "allycli ") {
+			if !strings.HasPrefix(line, "botcli ") {
 				continue
 			}
 			args := []string{}

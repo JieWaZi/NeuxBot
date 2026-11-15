@@ -8,7 +8,7 @@ import { within } from "./workspace-files";
 
 export async function rendererFile(dist: string, url: string): Promise<string> {
   const parsed = new URL(url);
-  if (parsed.protocol !== "ally:" || parsed.hostname !== "app")
+  if (parsed.protocol !== "bot:" || parsed.hostname !== "app")
     throw new Error("界面资源地址无效");
   const root = await realpath(dist);
   const requested = path.join(root, decodeURIComponent(parsed.pathname));

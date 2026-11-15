@@ -1,4 +1,4 @@
-// allycli 是随 NeuxBot 应用交付的受管能力命令入口。
+// botcli 是随 NeuxBot 应用交付的受管能力命令入口。
 package main
 
 import (

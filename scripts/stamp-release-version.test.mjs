@@ -6,16 +6,16 @@ import test from "node:test";
 import { stampReleaseVersion } from "./stamp-release-version.mjs";
 
 test("把发布版本写入根包和桌面包", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "ally-version-"));
+  const root = await mkdtemp(path.join(tmpdir(), "bot-version-"));
   const desktop = path.join(root, "desktop");
   await mkdir(desktop);
   await writeFile(
     path.join(root, "package.json"),
-    `${JSON.stringify({ name: "ally", version: "0.0.0" }, null, 2)}\n`,
+    `${JSON.stringify({ name: "bot", version: "0.0.0" }, null, 2)}\n`,
   );
   await writeFile(
     path.join(desktop, "package.json"),
-    `${JSON.stringify({ name: "@ally/desktop", version: "0.0.0", private: true })}\n`,
+    `${JSON.stringify({ name: "@bot/desktop", version: "0.0.0", private: true })}\n`,
   );
 
   await stampReleaseVersion(root, "0.2.0");

@@ -43,7 +43,7 @@
 
 ## Task 5：集成与验证
 
-- [x] 更新知识架构、系统技能指南与 allycli README 的当前能力，运行对应生成命令。
+- [x] 更新知识架构、系统技能指南与 botcli README 的当前能力，运行对应生成命令。
 - [x] 核心运行 `go test ./...`、`go vet ./...`、`go test -race ./...`；宿主先 gofmt，再 `go vet ./...`、`go test ./...`。
 - [x] 前端运行 `pnpm --dir desktop check` 与 `pnpm api:check`，跨端运行 `NODE_OPTIONS=--no-experimental-webstorage pnpm check`。
 - [x] 复核未知写入、撤权、部分失败、切换页和关闭界面的恢复；真实模型、官方远端与视觉验收单独说明，未经授权不操作运行中的界面。

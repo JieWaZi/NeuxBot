@@ -235,7 +235,7 @@ func connectorFixture(
 	return models.MCPConnector{
 		ID:          id,
 		Name:        name,
-		RuntimeKey:  "ally_fixture_" + id[:8],
+		RuntimeKey:  "bot_fixture_" + id[:8],
 		Scope:       scope,
 		Transport:   constants.MCPTransportStdio,
 		Command:     "connector",

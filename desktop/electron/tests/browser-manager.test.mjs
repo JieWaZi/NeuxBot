@@ -9,7 +9,7 @@ import { pathToFileURL } from "node:url";
 import { loadModule } from "./load-module.mjs";
 
 test("browser guests share a project partition until their final close", async (t) => {
-  const parent = await mkdtemp(path.join(tmpdir(), "ally-browser-"));
+  const parent = await mkdtemp(path.join(tmpdir(), "bot-browser-"));
   t.after(() => rm(parent, { recursive: true, force: true }));
   const firstRoot = path.join(parent, "first");
   const secondRoot = path.join(parent, "second");

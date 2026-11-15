@@ -20,7 +20,7 @@ execFileSync("pnpm", ["terminal:build"], {
   stdio: "inherit",
   shell: process.platform === "win32",
 });
-for (const name of ["ally-core", "allycli"]) {
+for (const name of ["bot-core", "botcli"]) {
   execFileSync(
     "go",
     [
@@ -36,18 +36,18 @@ for (const name of ["ally-core", "allycli"]) {
     { cwd: path.join(root, "server"), stdio: "inherit" },
   );
 }
-const webPort = process.env.ALLY_WEB_PORT || "1422";
+const webPort = process.env.NEUXBOT_WEB_PORT || "1422";
 const core = startWeb(directory, {
-  ALLY_WEB_DIR: "",
-  ALLY_TERMINAL_RUNTIME_PATH: path.join(
+  NEUXBOT_WEB_DIR: "",
+  NEUXBOT_TERMINAL_RUNTIME_PATH: path.join(
     root,
     "resources/terminal-runtime/worker.cjs",
   ),
-  ALLY_WEB_DEV_ORIGIN: `http://127.0.0.1:${webPort}`,
+  NEUXBOT_WEB_DEV_ORIGIN: `http://127.0.0.1:${webPort}`,
   PI_MCP_MODULE_PATH: path.join(root, "resources/pi-bridge/bridge.mjs"),
 });
 // Core 完成加载后再启动开发页面，首屏会话请求不与业务初始化竞争。
-const coreOrigin = `http://127.0.0.1:${process.env.ALLY_WEB_CORE_PORT || "8432"}`;
+const coreOrigin = `http://127.0.0.1:${process.env.NEUXBOT_WEB_CORE_PORT || "8432"}`;
 let coreReady = false;
 for (let attempt = 0; attempt < 300; attempt++) {
   if (core.exitCode !== null || core.signalCode !== null) break;

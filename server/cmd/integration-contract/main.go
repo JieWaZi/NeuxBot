@@ -18,7 +18,7 @@ import (
 
 func main() {
 	routes := append(integration_knowledge.PublishedRoutes(), automatic_tasks.PublishedRoutes()...)
-	pkg, err := packagesx.Load("./cmd/ally-core")
+	pkg, err := packagesx.Load("./cmd/bot-core")
 	if err != nil {
 		panic(err)
 	}

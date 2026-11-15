@@ -1,5 +1,5 @@
-export const chatLastWakerStorageKey = "ally.chat.last-waker-id";
-export const chatLastActiveStorageKey = "ally.chat.last-active";
+export const chatLastWakerStorageKey = "bot.chat.last-waker-id";
+export const chatLastActiveStorageKey = "bot.chat.last-active";
 
 export type ChatLastActive = {
   chatId: string;

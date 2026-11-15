@@ -203,7 +203,7 @@ func fieldSchema(root, property map[string]any) map[string]any {
 	if !containsReference(property) {
 		return result
 	}
-	result["$defs"] = map[string]any{"__ally_input_root": rewriteReferences(root)}
+	result["$defs"] = map[string]any{"__bot_input_root": rewriteReferences(root)}
 	return result
 }
 
@@ -235,7 +235,7 @@ func rewriteReferences(schema map[string]any) map[string]any {
 		switch key {
 		case "$ref":
 			if ref, ok := value.(string); ok && strings.HasPrefix(ref, "#/") {
-				result[key] = "#/$defs/__ally_input_root/" + ref[2:]
+				result[key] = "#/$defs/__bot_input_root/" + ref[2:]
 			} else {
 				result[key] = value
 			}
@@ -384,7 +384,7 @@ func Analyze(schema map[string]any, bindings map[string]Binding, allowAPI bool, 
 	contract.Schema["properties"] = apiProperties
 	contract.Schema["required"] = apiRequired
 	if containsReference(apiProperties) {
-		contract.Schema["$defs"] = map[string]any{"__ally_input_root": rewriteReferences(root)}
+		contract.Schema["$defs"] = map[string]any{"__bot_input_root": rewriteReferences(root)}
 	}
 	if !allowAPI {
 		if _, err := Resolve(schema, bindings, map[string]any{}); err != nil {

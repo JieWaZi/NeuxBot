@@ -39,7 +39,7 @@ export type WorkspaceMarkdownImageProps = ComponentPropsWithoutRef<"img"> & {
 
 type ImageFailure = "failed" | "tooLarge" | "unsupported" | "remoteBlocked";
 const previewMarker =
-  /^https:\/\/ally\.invalid(?::443)?\/__workbench_markdown_image__(?:[?#]|$)/i;
+  /^https:\/\/bot\.invalid(?::443)?\/__workbench_markdown_image__(?:[?#]|$)/i;
 
 function subscribeVisibility(update: () => void) {
   document.addEventListener("visibilitychange", update);
@@ -54,7 +54,7 @@ function imageReference(src: string): FileReferenceCandidate | undefined {
     try {
       const marker = new URL(src);
       if (
-        marker.origin === "https://ally.invalid" &&
+        marker.origin === "https://bot.invalid" &&
         marker.pathname === "/__workbench_markdown_image__"
       )
         path = marker.searchParams.get("path") ?? "";

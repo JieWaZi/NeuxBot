@@ -3,7 +3,7 @@
  * references become inert preview markers; the React image component resolves
  * each marker through NeuxBot's Chat-scoped file bridge before creating a Blob URL.
  */
-const markerBase = "https://ally.invalid/__workbench_markdown_image__";
+const markerBase = "https://bot.invalid/__workbench_markdown_image__";
 
 function localImageMarker(destination: string): string {
   const value = destination.trim();

@@ -12,7 +12,7 @@
 | 本地任务用什么              | **Python 优先**承担查询、文件、下载、转换与校验；纯小计算可用 DSL/JS functionTask |
 | 画布 Schema 谁生成          | **Core 编译器**由源码生成；Agent 不同时维护可写图 JSON                            |
 | 对 Agent 用 CLI 还是 MCP    | **MCP 优先，CLI 兼容兜底**；共用 Operation、授权和回执，不实现两套业务            |
-| Skill 是否每个流程生成一份  | 沿用系统 `ally`，按创作/执行/结果模式提供指南；不为每个工作流新增 Skill           |
+| Skill 是否每个流程生成一份  | 沿用系统 `bot`，按创作/执行/结果模式提供指南；不为每个工作流新增 Skill           |
 | 还需要用户选架构细节吗      | 本文给出默认落地方案；剩余为真实 Runtime 支持和性能验收，不留作用户猜测           |
 
 ### 1.2 参考与边界
@@ -68,7 +68,7 @@ Canvas Manifest 类型归 Workflow Compiler；通过正常生成链路提供前�
 
 ### 3.2 MCP 生命周期
 
-首版内部 MCP 采用应用自有的 stdio 薄桥：拟新增 `allycli mcp serve --context <execution-file>`。它只做 MCP 编解码并转发现有 Core 能力入口，不执行领域逻辑、不绑定新监听端口，不依赖用户开启对外集成 API/MCP 开关。
+首版内部 MCP 采用应用自有的 stdio 薄桥：拟新增 `botcli mcp serve --context <execution-file>`。它只做 MCP 编解码并转发现有 Core 能力入口，不执行领域逻辑、不绑定新监听端口，不依赖用户开启对外集成 API/MCP 开关。
 
 1. Core 为当前 Execution 签发 Grant，同一原生 Session 复用固定连接文件路径，每轮原子更新授权。
 2. stdio 桥启动时固定 Core 入口、epoch 和获准工具目录；每次调用开始只读取一次当前 Grant，并以该凭据完成本次请求，失败不切换凭据或重放。
@@ -90,7 +90,7 @@ CLI 命令在启动时固定本次连接，`--context <session-file>` 与宿主�
 
 ```javascript
 export const meta = {
-  sdk: "ally.workflow",
+  sdk: "bot.workflow",
   title: "选择候选并分析",
   description: "脚本提供选项，用户决定，伙伴分析并校验",
   inputSchema: {
@@ -350,7 +350,7 @@ MCP 工具名采用稳定下划线名，业务身份仍为 Operation ID；这里
 
 回执查询在工作流Operation Catalog 中作为读取元操作统一描述，调用已有回执查询机制，不新增另一套领域回执。MCP 保存参数中的 requestId 与 CLI 的 `--request-id` 都映射为统一请求身份；内容变化换新身份，响应丢失只查询旧回执。CLI 的 `--source` 从本机获准文件读取完整 UTF-8 内容，Core 接到的是 source 文本；MCP 不新增任意本机 sourcePath 读取能力。
 
-业务响应沿用独立于 DSL SDK 的协议版本，不能把 ally.workflow 误当 Agent CLI protocolVersion：
+业务响应沿用独立于 DSL SDK 的协议版本，不能把 bot.workflow 误当 Agent CLI protocolVersion：
 
 ```typescript
 type CommandResponse<T> =
@@ -406,7 +406,7 @@ interface CanvasDocument {
   manifest: CanvasManifest;
 }
 interface CanvasManifest {
-  sdk: "ally.workflow";
+  sdk: "bot.workflow";
   phases: Array<{ id: string; title: string; detail: string }>;
   nodes: CanvasNode[];
   edges: Array<{
@@ -525,7 +525,7 @@ Json、JsonSchema、ToolPolicy 与 SourceRange 使用同源生成类型，不在
   "sourceDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "manifestDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "manifest": {
-    "sdk": "ally.workflow",
+    "sdk": "bot.workflow",
     "phases": [
       {
         "id": "work",
@@ -866,7 +866,7 @@ pendingQuestions 的完整运行快照包含 questionId、owner、nodeId、insta
 
 创作原生 AskUserQuestion/Form Elicitation 经现有交互适配登记为 owner.kind:authoring、executionId/definitionId 绑定；运行 askUser 为 owner.kind:run、runId/instanceId 绑定。前端按 owner 统一呈现在画布侧，不能让原生问题回落左侧聊天。
 
-系统 `ally` 的创作模式指南负责方法；实际签名和允许工具仍来自生成契约。沿用 `workflow-authoring.md`、`workflow-execution.md`、`workflow-results.md` 等模式资源，补充产品工作流内容；不把不同版本指南混装，也不让每个定义产生自己的 Skill 副本。
+系统 `bot` 的创作模式指南负责方法；实际签名和允许工具仍来自生成契约。沿用 `workflow-authoring.md`、`workflow-execution.md`、`workflow-results.md` 等模式资源，补充产品工作流内容；不把不同版本指南混装，也不让每个定义产生自己的 Skill 副本。
 
 ### 6.2 创作模式指南草案
 
@@ -902,7 +902,7 @@ MCP 模式指南给直接工具示例；CLI 模式由同一规则生成对应命
 
 先发布工作流Registry/Schema 和样本，再实现统一工具适配、语言与脚本协议、画布/问答投影、结果和恢复。修改各模块必须通过同一批契约样本，不让前端、Skill、CLI 和 MCP 分别猜测字段。
 
-MCP 不改变全局产品的授权边界，也不替换现有对外集成服务。当前后端约定的软件能力仍由系统 ally 和自有 allycli 交付，内部 MCP 是这套能力的受管适配，不另装任意第三方桥。
+MCP 不改变全局产品的授权边界，也不替换现有对外集成服务。当前后端约定的软件能力仍由系统 bot 和自有 botcli 交付，内部 MCP 是这套能力的受管适配，不另装任意第三方桥。
 
 工作流只使用本文的当前契约，不提供旧 SDK、旧画布结构或历史数据的迁移、回退与兼容路径。
 

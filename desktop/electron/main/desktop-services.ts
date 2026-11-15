@@ -33,7 +33,7 @@ export function installDesktopServices(
     payload: DesktopEvents[K],
   ) => {
     if (!window.isDestroyed() && !contents.isDestroyed())
-      contents.send(`ally:${name}`, payload);
+      contents.send(`bot:${name}`, payload);
   };
   let browser = new BrowserManager(window, (event) =>
     emit("browser-navigation", event),
@@ -156,7 +156,7 @@ export function installDesktopServices(
   const trusted = (url: string) =>
     url.split("#")[0] === trustedURL.split("#")[0];
   function register<K extends keyof DesktopCommands>(name: K) {
-    ipcMain.handle(`ally:${name}`, (event, args: unknown) => {
+    ipcMain.handle(`bot:${name}`, (event, args: unknown) => {
       if (
         event.sender !== contents ||
         event.senderFrame !== contents.mainFrame ||
@@ -205,6 +205,6 @@ export function installDesktopServices(
     releaseViews();
     browserWebviews.dispose();
     for (const name of Object.keys(commandSchemas))
-      ipcMain.removeHandler(`ally:${name}`);
+      ipcMain.removeHandler(`bot:${name}`);
   };
 }

@@ -20,7 +20,7 @@ const nativeView = vi.hoisted(() => ({
   close: vi.fn().mockResolvedValue(undefined),
 }));
 const scoped = vi.hoisted(() => ({
-  open: vi.fn(async () => ({ id: "scope", root: "/tmp/ally" })),
+  open: vi.fn(async () => ({ id: "scope", root: "/tmp/bot" })),
   stat: vi.fn(async () => ({
     relativePath: "guide.md",
     size: 5,
@@ -97,7 +97,7 @@ const { getChatMessageFileChange, readWorkspaceDiff, readWorkspaceFile } =
       relativePath: "src/main.ts",
       kind: "text",
       mediaType: "text/plain; charset=utf-8",
-      content: "export const ally = true;",
+      content: "export const bot = true;",
       size: 25,
     })),
   }));
@@ -460,7 +460,7 @@ describe("WorkspaceFileViewer", () => {
         <TooltipProvider delayDuration={0}>
           <WorkspaceFileViewer
             path="AGENTS.md"
-            rootPath="/tmp/ally"
+            rootPath="/tmp/bot"
             onAddCodeReference={vi.fn()}
           />
         </TooltipProvider>
@@ -505,7 +505,7 @@ describe("WorkspaceFileViewer", () => {
         <TooltipProvider delayDuration={0}>
           <WorkspaceFileViewer
             path="AGENTS.md"
-            rootPath="/tmp/ally"
+            rootPath="/tmp/bot"
             onAddCodeReference={vi.fn()}
           />
         </TooltipProvider>
@@ -544,7 +544,7 @@ describe("WorkspaceFileViewer", () => {
         <TooltipProvider delayDuration={0}>
           <WorkspaceFileViewer
             path="src/main.ts"
-            rootPath="/tmp/ally"
+            rootPath="/tmp/bot"
             onAddCodeReference={onAddCodeReference}
           />
         </TooltipProvider>
@@ -553,7 +553,7 @@ describe("WorkspaceFileViewer", () => {
 
     const textElement = await waitFor(() => {
       const line = document.querySelector<HTMLElement>("[data-code-line]");
-      expect(line).toHaveTextContent("export const ally = true;");
+      expect(line).toHaveTextContent("export const bot = true;");
       return line;
     });
     if (!textElement) throw new Error("代码行缺少 Light DOM 内容");
@@ -589,7 +589,7 @@ describe("WorkspaceFileViewer", () => {
       path: "src/main.ts",
       startLine: 1,
       endLine: 1,
-      content: "export const ally = true;",
+      content: "export const bot = true;",
     });
     expect(window.getSelection()?.isCollapsed).toBe(true);
     expect(
@@ -604,22 +604,22 @@ describe("WorkspaceFileViewer", () => {
     const { container } = render(
       <QueryClientProvider client={queryClient}>
         <TooltipProvider delayDuration={0}>
-          <WorkspaceFileViewer path="src/main.ts" rootPath="/tmp/ally" />
+          <WorkspaceFileViewer path="src/main.ts" rootPath="/tmp/bot" />
         </TooltipProvider>
       </QueryClientProvider>,
     );
 
     await waitFor(() =>
       expect(container.querySelector("[data-code-line]")).toHaveTextContent(
-        "export const ally = true;",
+        "export const bot = true;",
       ),
     );
     const viewer = container.querySelector("[data-selectable-code-viewer]");
-    expect(viewer).toHaveTextContent("export const ally = true;");
+    expect(viewer).toHaveTextContent("export const bot = true;");
     expect(viewer?.shadowRoot).toBeNull();
     expect(viewer).toHaveAttribute("data-wrap", "scroll");
     expect(screen.getByRole("button", { name: "编辑文本" })).toBeEnabled();
-    expect(readWorkspaceFile).toHaveBeenCalledWith("/tmp/ally", "src/main.ts");
+    expect(readWorkspaceFile).toHaveBeenCalledWith("/tmp/bot", "src/main.ts");
 
     expect(container.querySelector("[data-workspace-file-header]")).toHaveClass(
       "h-row-navigation",
@@ -637,7 +637,7 @@ describe("WorkspaceFileViewer", () => {
         <TooltipProvider delayDuration={0}>
           <WorkspaceFileViewer
             path="guide.md"
-            rootPath="/tmp/ally"
+            rootPath="/tmp/bot"
             scopeChatId={"a".repeat(32)}
           />
         </TooltipProvider>
@@ -669,7 +669,7 @@ describe("WorkspaceFileViewer", () => {
       bytes: new TextEncoder().encode("# 外部修改"),
     });
     await queryClient.invalidateQueries({
-      queryKey: ["workspace-file", "a".repeat(32), "/tmp/ally", "guide.md"],
+      queryKey: ["workspace-file", "a".repeat(32), "/tmp/bot", "guide.md"],
     });
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent("文件已在外部修改"),
@@ -683,7 +683,7 @@ describe("WorkspaceFileViewer", () => {
         "# 我的草稿",
         "version-1",
         expect.any(Number),
-        "/tmp/ally",
+        "/tmp/bot",
       ),
     );
     expect(editor).toHaveTextContent("# 我的草稿");
@@ -700,7 +700,7 @@ describe("WorkspaceFileViewer", () => {
         <TooltipProvider delayDuration={0}>
           <WorkspaceFileViewer
             path="guide.md"
-            rootPath="/tmp/ally"
+            rootPath="/tmp/bot"
             scopeChatId={"a".repeat(32)}
           />
         </TooltipProvider>
@@ -711,7 +711,7 @@ describe("WorkspaceFileViewer", () => {
     expect(scoped.saveAs).toHaveBeenCalledWith(
       "a".repeat(32),
       "guide.md",
-      "/tmp/ally",
+      "/tmp/bot",
     );
     await user.click(
       screen.getByRole("button", { name: "使用系统默认应用打开" }),
@@ -719,7 +719,7 @@ describe("WorkspaceFileViewer", () => {
     expect(scoped.openExternal).toHaveBeenCalledWith(
       "a".repeat(32),
       "guide.md",
-      "/tmp/ally",
+      "/tmp/bot",
     );
   });
 });

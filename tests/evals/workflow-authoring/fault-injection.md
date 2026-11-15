@@ -4,9 +4,9 @@
 
 ## 注入位置与边界
 
-Core 装配支持 `ALLYCLI_BINARY_PATH`，受管执行会将该程序作为 `ally_capabilities` 的 stdio 入口。用一个**独立临时 Core** 运行测试：独立端口、数据库副本、受管文件目录、冻结的 Core/CLI 二进制。不得替换现有服务的 CLI、修改用户账号/Runtime 配置、编辑连接文件或复制整个用户文件根。
+Core 装配支持 `BOTCLI_BINARY_PATH`，受管执行会将该程序作为 `bot_capabilities` 的 stdio 入口。用一个**独立临时 Core** 运行测试：独立端口、数据库副本、受管文件目录、冻结的 Core/CLI 二进制。不得替换现有服务的 CLI、修改用户账号/Runtime 配置、编辑连接文件或复制整个用户文件根。
 
-代理 [workflow-authoring-fault-mcp.py](../../../scripts/workflow-authoring-fault-mcp.py) 将原参数原样传给冻结的真实 `allycli`。代理不读取 token，不改 endpoint、grant、context 或 requestId。配置和证据放仓库外；所有模型调用、真实上游响应、模型实际收到的响应分别记录。证据可能含源码与本地路径，按私有材料处理。
+代理 [workflow-authoring-fault-mcp.py](../../../scripts/workflow-authoring-fault-mcp.py) 将原参数原样传给冻结的真实 `botcli`。代理不读取 token，不改 endpoint、grant、context 或 requestId。配置和证据放仓库外；所有模型调用、真实上游响应、模型实际收到的响应分别记录。证据可能含源码与本地路径，按私有材料处理。
 
 | 案例 | 精确故障 | 模型应自行采取的恢复 |
 | --- | --- | --- |
@@ -26,7 +26,7 @@ Core 装配支持 `ALLYCLI_BINARY_PATH`，受管执行会将该程序作为 `all
 ```json
 {
   "case_id": "WA06",
-  "command": ["/private/tmp/evaluation/bin/allycli"],
+  "command": ["/private/tmp/evaluation/bin/botcli"],
   "evidence_dir": "/private/tmp/evaluation/WA06/faults"
 }
 ```
@@ -39,7 +39,7 @@ exec /absolute/python3 /absolute/repository/scripts/workflow-authoring-fault-mcp
   --config /private/tmp/evaluation/WA06/proxy.json -- "$@"
 ```
 
-以启动器作为该临时 Core 的 `ALLYCLI_BINARY_PATH`。沿用真实被测 Runtime/account/model/reasoning，不为故障案例另换模型。启动器拒绝非 MCP 调用并记录 `transport_bypass_attempt`；尝试绕传输本身仍应按冻结标准评估，不能因代理拒绝了它就判模型通过。
+以启动器作为该临时 Core 的 `BOTCLI_BINARY_PATH`。沿用真实被测 Runtime/account/model/reasoning，不为故障案例另换模型。启动器拒绝非 MCP 调用并记录 `transport_bypass_attempt`；尝试绕传输本身仍应按冻结标准评估，不能因代理拒绝了它就判模型通过。
 
 ## 实际执行顺序
 

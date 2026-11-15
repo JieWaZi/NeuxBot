@@ -4,7 +4,7 @@
 
 **Goal:** 保持现有功能，将 Agent 重构为一个产品会话子系统和一个原生连接边界，解决嵌套生命周期、重复模型和文件碎片。
 
-**Architecture:** 根 agent 包实现 Manager、Session、Catalog 及实际产品合同。native 只持有原生连接、协议类型、CLI 工厂和启动认证租约。能力目录、授权和事务回执合入 capability，allycli 合入 cli。
+**Architecture:** 根 agent 包实现 Manager、Session、Catalog 及实际产品合同。native 只持有原生连接、协议类型、CLI 工厂和启动认证租约。能力目录、授权和事务回执合入 capability，botcli 合入 cli。
 
 **Tech Stack:** Go 1.25、现有固定 acp-go、现有测试及受控进程；不新增运行依赖。
 
@@ -85,7 +85,7 @@
 - [x] 删除原 core/host/environment；生成文件不手改，协议值不变。
 - [x] 定向验证 Agent、global、Execution、Knowledge 及相关 API/Repository 消费包的构建和测试。
 
-## Task 5: 能力桥与 allycli
+## Task 5: 能力桥与 botcli
 
 **Files:** 创建 `agent/capability/{capability,catalog,connection_unix,connection_windows}.go`、`agent/cli/cli.go` 及合并测试；替换原三个顶层外围包。
 
@@ -108,7 +108,7 @@
 - [x] AST 架构测试拒绝 native→根 Agent/业务，拒绝根 Agent→业务层；检查无旧目录导入、重复 Session 管理表及孤立辅助函数。
 - [x] 对所有修改的 Go 文件 gofmt；运行 `GOWORK=off go test ./internal/agent/... -count=1` 与对应包 vet。
 - [x] 对根 Agent 和 Native 生命周期执行 `GOWORK=off go test -race ./internal/agent ./internal/agent/native -count=1`。
-- [x] 对 Execution、Knowledge、Channel、Workflow、global、集成 MCP 及相关 Runtime API/Repository 运行实际受影响测试；Core 与 allycli 正式构建。
+- [x] 对 Execution、Knowledge、Channel、Workflow、global、集成 MCP 及相关 Runtime API/Repository 运行实际受影响测试；Core 与 botcli 正式构建。
 - [x] 同步当前文档并运行 `pnpm docs:check`、`git diff --check`。历史讨论保留历史性质，不将旧路径当成当前实现。
 - [x] 记录文件/包变化、真实执行的测试和剩余平台验收边界；最终结论不得声称未经执行的真实模型验收已通过。
 
@@ -122,7 +122,7 @@
 | 根 Session 与 Native 完整 race | 通过；根包47.804s、Native 25.403s |
 | Execution、知识模型、Channel、Workflow、RuntimeEnvironment、global、集成MCP、Agent API八包 | 全部通过；包括接纳、恢复、授权、回执及退出依赖 |
 | 自动任务、工作流编排、插件连接器精确集成入口 | 通过，使用真实Manager→Session与受控原生协议 |
-| Agent及直接调用方vet，正式Core/allycli构建 | 通过；二进制只输出到临时目录 |
+| Agent及直接调用方vet，正式Core/botcli构建 | 通过；二进制只输出到临时目录 |
 | 项目生成契约一致性检查 | 通过；重复生成与当前OpenAPI/客户端无差异 |
 | 生成器测试及生成客户端定向TypeScript检查 | 通过；没有执行前端全量检查 |
 | 文档链接/图片/个人路径检查与文档测试 | 通过 |

@@ -11,7 +11,7 @@ import { useBrowserSurface } from "./use-browser-surface";
 
 declare global {
   interface Window {
-    allyDesktop?: DesktopBridge;
+    botDesktop?: DesktopBridge;
   }
 }
 
@@ -84,8 +84,8 @@ export function createDesktopPlatform(bridge: DesktopBridge): Platform {
 }
 
 export function configureDesktopPlatform(): void {
-  if (!window.allyDesktop) throw new Error("桌面桥接不可用");
-  configurePlatform(createDesktopPlatform(window.allyDesktop));
+  if (!window.botDesktop) throw new Error("桌面桥接不可用");
+  configurePlatform(createDesktopPlatform(window.botDesktop));
   configureEmbeddedBrowserSurface(useEmbeddedBrowserSurface);
   configureBrowserSurface(useBrowserSurface);
 }

@@ -46,7 +46,7 @@ describe("WakerShowcaseDialog", () => {
     );
     await screen.findByText("1 个技能 · 2 个连接器");
     const card = screen.getByRole("article");
-    const flight = card.querySelector(".ally-holo-card__translater");
+    const flight = card.querySelector(".bot-holo-card__translater");
     if (!flight) throw new Error("卡片缺少飞行动画层");
     const finishFlight = () =>
       fireEvent(flight, new Event("webkitAnimationEnd", { bubbles: true }));

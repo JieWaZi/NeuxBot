@@ -464,7 +464,7 @@ describe("API 错误展示入口", () => {
       await expect(
         client.delete({
           url: "/api/v1/wakers/w1/skills/s1/versions/v1",
-          headers: { "X-NeuxAlly-Error-Surface": "local" },
+          headers: { "X-NeuxBot-Error-Surface": "local" },
           throwOnError: true,
         }),
       ).rejects.toMatchObject({ message: "本地服务返回了无法识别的错误" });

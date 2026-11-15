@@ -26,7 +26,7 @@ func systemDefinition() (definition, error) {
 
 // CLIPath 返回系统技能中当前平台的可执行入口。
 func CLIPath(directory string) string {
-	name := "allycli"
+	name := "botcli"
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}

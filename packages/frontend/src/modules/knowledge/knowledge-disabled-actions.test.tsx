@@ -118,7 +118,7 @@ it("Wiki整理与周期整理各自触发入口，远端不支持时保持禁用
   expect(screen.getByRole("button", { name: "定期整理 Wiki" })).toBeDisabled();
 });
 beforeAll(() => {
-  window.localStorage.setItem("ally.ui.theme", "light");
+  window.localStorage.setItem("bot.ui.theme", "light");
   server.listen({ onUnhandledRequest: "error" });
   client.setConfig({ baseUrl: "http://disabled.test" });
 });
@@ -131,7 +131,7 @@ afterEach(() => {
   hook.unmount();
 });
 afterAll(() => {
-  window.localStorage.removeItem("ally.ui.theme");
+  window.localStorage.removeItem("bot.ui.theme");
   server.close();
 });
 

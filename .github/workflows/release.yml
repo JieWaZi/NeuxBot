@@ -53,7 +53,7 @@ jobs:
             echo "tag 必须是 vX.Y.Z，当前为 ${tag}"
             exit 1
           fi
-          echo "ALLY_VERSION=${tag#v}" >> "$GITHUB_ENV"
+          echo "NEUXBOT_VERSION=${tag#v}" >> "$GITHUB_ENV"
 
       - uses: actions/setup-go@v5
         with:
@@ -92,7 +92,7 @@ jobs:
       - run: pnpm build:desktop
         env:
           EXPECTED_ARCH: ${{ matrix.arch }}
-          ALLY_RELEASE_PACKAGE: "1"
+          NEUXBOT_RELEASE_PACKAGE: "1"
 
       - uses: actions/upload-artifact@v4
         with:

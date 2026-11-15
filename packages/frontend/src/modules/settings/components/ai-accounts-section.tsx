@@ -100,7 +100,7 @@ const reasoningLevels = [
 ];
 const defaultResponseReasoningLevels = ["low", "medium", "high"];
 const claudeRoles = ["sonnet", "opus", "haiku", "fable", "subagent"];
-const followChatModelValue = "__ally_follow_chat_model__";
+const followChatModelValue = "__bot_follow_chat_model__";
 
 function AccountForm({
   account,

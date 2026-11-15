@@ -446,7 +446,7 @@ func TestWakerOnboardingRetryReusesPublicChatAndKeepsInternalInputHidden(t *test
 
 func TestWakerOnboardingRejectsNativeProseWithoutStructuredInterview(t *testing.T) {
 	ctx := t.Context()
-	binary := filepath.Join(t.TempDir(), "allycli")
+	binary := filepath.Join(t.TempDir(), "botcli")
 	if err := os.WriteFile(binary, []byte("fixture CLI publication"), 0700); err != nil {
 		t.Fatal(err)
 	}

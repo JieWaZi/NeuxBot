@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { chatAttachmentAdapter, pathFile } from "./chat-attachment-adapter";
 
 const stageAttachment = vi.hoisted(() =>
-  vi.fn(async () => "/tmp/ally-paste/image.png"),
+  vi.fn(async () => "/tmp/bot-paste/image.png"),
 );
 const discardAttachment = vi.hoisted(() => vi.fn(async () => undefined));
 vi.mock("@/shared/platform", () => ({ stageAttachment, discardAttachment }));
@@ -21,14 +21,14 @@ describe("chatAttachmentAdapter", () => {
     expect(pending).toMatchObject({
       type: "image",
       name: "image.png",
-      file: { allySourcePath: "/tmp/ally-paste/image.png" },
+      file: { botSourcePath: "/tmp/bot-paste/image.png" },
     });
     const complete = await chatAttachmentAdapter.send(pending);
     expect(complete.content).toEqual([
       {
         type: "file",
         filename: "image.png",
-        data: "/tmp/ally-paste/image.png",
+        data: "/tmp/bot-paste/image.png",
         mimeType: "image/png",
       },
     ]);

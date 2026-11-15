@@ -53,12 +53,12 @@ describe("chat workspace files", () => {
         [
           {
             name: "report.md",
-            path: "/tmp/ally/attachments/generated/report.md",
+            path: "/tmp/bot/attachments/generated/report.md",
             relativePath: "attachments/generated/report.md",
           },
           {
             name: "summary.txt",
-            path: "/tmp/ally/attachments/generated/nested/summary.txt",
+            path: "/tmp/bot/attachments/generated/nested/summary.txt",
             relativePath: "attachments/generated/nested/summary.txt",
           },
         ],
@@ -86,7 +86,7 @@ describe("chat workspace files", () => {
         [
           {
             name: "report.md",
-            path: "/tmp/ally/attachments/generated/report.md",
+            path: "/tmp/bot/attachments/generated/report.md",
             relativePath: "attachments/generated/report.md",
           },
         ],

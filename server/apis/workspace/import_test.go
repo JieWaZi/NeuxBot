@@ -24,7 +24,7 @@ func TestImportUsesBase64StringContract(t *testing.T) {
 	bytes := []byte{0, 255, 1, 2}
 	body, _ := json.Marshal(map[string]string{"scopeId": scope.ID, "name": "file.bin", "bytesBase64": base64.StdEncoding.EncodeToString(bytes)})
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctx.Set("ally.auth.subject", "desktop")
+	ctx.Set("bot.auth.subject", "desktop")
 	ctx.Request = httptest.NewRequest("POST", "/api/v1/workspace/import", strings.NewReader(string(body)))
 	ctx.Request.Header.Set("Content-Type", "application/json")
 	op := &ImportFile{}

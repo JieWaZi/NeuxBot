@@ -1019,7 +1019,7 @@ describe("AppShell 伙伴导航", () => {
       const firstDraft = new URL(
         within(activeRouteScene()).getByText(new RegExp(`^${pathname}\\?`))
           .firstChild?.textContent ?? "",
-        "https://ally.test",
+        "https://bot.test",
       );
       expect(firstDraft.pathname).toBe(pathname);
       expect(firstDraft.searchParams.get("wakerId")).toBe(wakerId ?? null);
@@ -1030,7 +1030,7 @@ describe("AppShell 伙伴导航", () => {
       const nextDraft = new URL(
         within(activeRouteScene()).getByText(new RegExp(`^${pathname}\\?`))
           .firstChild?.textContent ?? "",
-        "https://ally.test",
+        "https://bot.test",
       );
       expect(nextDraft.searchParams.get("draftId")).toBe(
         firstDraft.searchParams.get("draftId"),
@@ -1213,7 +1213,7 @@ describe("AppShell 伙伴导航", () => {
 
   it("点击团队打开最新会话，快速切换不会被先前团队带回", async () => {
     storage.set(
-      "ally.partner-navigation",
+      "bot.partner-navigation",
       JSON.stringify({
         currentPartnerId: "waker-1",
         currentRailKey: "waker:waker-1",
@@ -1253,7 +1253,7 @@ describe("AppShell 伙伴导航", () => {
     "点击团队解析最新会话后进入历史内容：%s",
     async (threadId) => {
       storage.set(
-        "ally.partner-navigation",
+        "bot.partner-navigation",
         JSON.stringify({ lastTeamThreads: { "team-1": threadId } }),
       );
       renderShell("/chat?wakerId=waker-1", true);
@@ -1449,7 +1449,7 @@ describe("AppShell 伙伴导航", () => {
     async (globalSidebarCollapsed) => {
       const user = userEvent.setup();
       storage.set(
-        "ally.partner-navigation",
+        "bot.partner-navigation",
         JSON.stringify({ currentPartnerId: "waker-1", globalSidebarCollapsed }),
       );
       renderShell();
@@ -1641,7 +1641,7 @@ describe("AppShell 伙伴导航", () => {
 
   it("主内容标题栏不重复展示伙伴及菜单信息", async () => {
     storage.set(
-      "ally.partner-navigation",
+      "bot.partner-navigation",
       JSON.stringify({
         currentPartnerId: "waker-1",
         sidebarCollapsed: true,
@@ -1670,14 +1670,14 @@ describe("AppShell 伙伴导航", () => {
   });
   it("返回伙伴模块保持当前伙伴，不被其他伙伴的旧会话带走", async () => {
     storage.set(
-      "ally.partner-navigation",
+      "bot.partner-navigation",
       JSON.stringify({
         currentPartnerId: "waker-2",
         currentRailKey: "waker:waker-2",
       }),
     );
     storage.set(
-      "ally.chat.last-active",
+      "bot.chat.last-active",
       JSON.stringify({ chatId: "other-chat", wakerId: "waker-1" }),
     );
     const user = userEvent.setup();
@@ -1693,7 +1693,7 @@ describe("AppShell 伙伴导航", () => {
   });
   it("伙伴模块入口恢复已验证且团队仍存在的最近Thread", async () => {
     storage.set(
-      "ally.partner-navigation",
+      "bot.partner-navigation",
       JSON.stringify({
         currentRailKey: "team:team-1",
         lastTeamThreads: { "team-1": "remembered" },
@@ -1718,7 +1718,7 @@ describe("AppShell 伙伴导航", () => {
     "最近团队不在首批列表时仍恢复有效Thread：%s",
     async (entry) => {
       storage.set(
-        "ally.partner-navigation",
+        "bot.partner-navigation",
         JSON.stringify({
           currentRailKey: "team:team-31",
           lastTeamThreads: { "team-31": "recent-thread" },
@@ -1753,7 +1753,7 @@ describe("AppShell 伙伴导航", () => {
   });
   it("直接进入伙伴聊天后最近目标从团队更新到伙伴", async () => {
     storage.set(
-      "ally.partner-navigation",
+      "bot.partner-navigation",
       JSON.stringify({
         currentRailKey: "team:team-1",
         lastTeamThreads: { "team-1": "old-thread" },
@@ -1775,7 +1775,7 @@ describe("AppShell 伙伴导航", () => {
       const teamId = kind === "deleted-team" ? "gone" : "team-1";
       latestChatFixture.missingThread = kind === "deleted-thread";
       storage.set(
-        "ally.partner-navigation",
+        "bot.partner-navigation",
         JSON.stringify({
           currentRailKey: `team:${teamId}`,
           lastTeamThreads: { [teamId]: "gone-thread" },
@@ -1795,7 +1795,7 @@ describe("AppShell 伙伴导航", () => {
     async (missingChat) => {
       latestChatFixture.missingChat = missingChat;
       storage.set(
-        "ally.chat.last-active",
+        "bot.chat.last-active",
         JSON.stringify({ chatId: "remembered-chat", wakerId: "waker-1" }),
       );
       const user = userEvent.setup();

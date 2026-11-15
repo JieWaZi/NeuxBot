@@ -28,7 +28,7 @@ import {
 
 protocol.registerSchemesAsPrivileged([
   {
-    scheme: "ally",
+    scheme: "bot",
     privileges: {
       standard: true,
       secure: true,
@@ -40,11 +40,11 @@ protocol.registerSchemesAsPrivileged([
 app.setName("NeuxBot");
 // 桌面会话存储与 Core 数据分别拥有目录，Core 延续应用标识对应的数据位置。
 const dataDir =
-  process.env.ALLY_DATA_DIR ||
-  path.join(app.getPath("appData"), "com.neuxally.desktop");
+  process.env.NEUXBOT_DATA_DIR ||
+  path.join(app.getPath("appData"), "com.neuxbot.desktop");
 app.setPath("userData", path.join(dataDir, "electron"));
 const isDevelopment =
-  !app.isPackaged && process.env.ALLY_RENDERER_URL !== undefined;
+  !app.isPackaged && process.env.NEUXBOT_RENDERER_URL !== undefined;
 let core: CoreSupervisor | undefined;
 let coreEvents: CoreEventClient | undefined;
 let disposePowerLifecycle: (() => void) | undefined;
@@ -69,11 +69,11 @@ async function log(message: string) {
 }
 async function createWindow(): Promise<BrowserWindow> {
   const development =
-    !app.isPackaged && process.env.ALLY_RENDERER_URL !== undefined;
+    !app.isPackaged && process.env.NEUXBOT_RENDERER_URL !== undefined;
   const rendererURL = new URL(
     development
-      ? (process.env.ALLY_RENDERER_URL ?? "")
-      : "ally://app/index.html",
+      ? (process.env.NEUXBOT_RENDERER_URL ?? "")
+      : "bot://app/index.html",
   ).href;
   if (development && new URL(rendererURL).origin !== "http://127.0.0.1:1420")
     throw new Error("开发页面地址无效");
@@ -145,7 +145,7 @@ else {
     .then(async () => {
       configureApplicationIcon(app);
       const dist = path.join(__dirname, "../dist");
-      protocol.handle("ally", async (request) => {
+      protocol.handle("bot", async (request) => {
         try {
           return await rendererResponse(dist, request.url, (url) =>
             net.fetch(url),
@@ -167,24 +167,24 @@ else {
           ? path.join(
               process.resourcesPath,
               "bin",
-              process.platform === "win32" ? "ally-core.exe" : "ally-core",
+              process.platform === "win32" ? "bot-core.exe" : "bot-core",
             )
           : path.join(
               __dirname,
               "../binaries",
-              process.platform === "win32" ? "ally-core.exe" : "ally-core",
+              process.platform === "win32" ? "bot-core.exe" : "bot-core",
             ),
         dataDir,
         env: {
           ...process.env,
-          ALLY_TERMINAL_RUNTIME_PATH: app.isPackaged
+          NEUXBOT_TERMINAL_RUNTIME_PATH: app.isPackaged
             ? path.join(process.resourcesPath, "terminal-runtime", "worker.cjs")
             : path.join(
                 __dirname,
                 "../../resources/terminal-runtime/worker.cjs",
               ),
-          ALLY_TERMINAL_NODE_PATH: process.execPath,
-          ALLY_TERMINAL_ELECTRON_NODE: "1",
+          NEUXBOT_TERMINAL_NODE_PATH: process.execPath,
+          NEUXBOT_TERMINAL_ELECTRON_NODE: "1",
           PI_MCP_MODULE_PATH: app.isPackaged
             ? path.join(process.resourcesPath, "pi-bridge", "bridge.mjs")
             : path.join(__dirname, "../../resources/pi-bridge/bridge.mjs"),
@@ -228,7 +228,7 @@ else {
           const send = () => {
             const target = takeTarget();
             if (target !== undefined && !contents.isDestroyed())
-              contents.send("ally:workspace-attention-open", target);
+              contents.send("bot:workspace-attention-open", target);
           };
           if (contents.isLoadingMainFrame())
             contents.once("did-finish-load", send);

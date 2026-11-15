@@ -9,7 +9,7 @@ import {
 } from "./knowledge-organize-start";
 const server = setupServer();
 beforeAll(() => {
-  client.setConfig({ baseUrl: "http://ally.test" });
+  client.setConfig({ baseUrl: "http://bot.test" });
   server.listen({ onUnhandledRequest: "error" });
 });
 afterAll(() => server.close());
@@ -19,7 +19,7 @@ it.each(["full-access", "auto", "default"])(
     const requests: Record<string, unknown>[] = [];
     server.use(
       http.post(
-        "http://ally.test/api/v1/knowledge/libraries/kb/organize",
+        "http://bot.test/api/v1/knowledge/libraries/kb/organize",
         async ({ request }) => {
           requests.push((await request.json()) as Record<string, unknown>);
           return HttpResponse.json({
@@ -68,7 +68,7 @@ it("文档重建携带显式标记和当前原件，复用接纳身份而不退�
   const requests: Record<string, unknown>[] = [];
   server.use(
     http.post(
-      "http://ally.test/api/v1/knowledge/libraries/kb/organize",
+      "http://bot.test/api/v1/knowledge/libraries/kb/organize",
       async ({ request }) => {
         requests.push((await request.json()) as Record<string, unknown>);
         return HttpResponse.json({
@@ -107,7 +107,7 @@ it("文档重建携带显式标记和当前原件，复用接纳身份而不退�
 
 it("重建收到无操作回执时不误报接纳成功", async () => {
   server.use(
-    http.post("http://ally.test/api/v1/knowledge/libraries/kb/organize", () =>
+    http.post("http://bot.test/api/v1/knowledge/libraries/kb/organize", () =>
       HttpResponse.json({ noop: true }),
     ),
   );
@@ -170,7 +170,7 @@ it.each([false, true])(
     let posts = 0;
     server.use(
       http.post(
-        "http://ally.test/api/v1/knowledge/libraries/kb/organize",
+        "http://bot.test/api/v1/knowledge/libraries/kb/organize",
         () => {
           posts++;
           return HttpResponse.json({
@@ -207,7 +207,7 @@ it.each([
   { receipt: { ...acceptedJobReceipt, version: 0 } },
 ])("缺失或损坏的任务接纳回执不会报告成功：%j", async (response) => {
   server.use(
-    http.post("http://ally.test/api/v1/knowledge/libraries/kb/organize", () =>
+    http.post("http://bot.test/api/v1/knowledge/libraries/kb/organize", () =>
       HttpResponse.json(response),
     ),
   );
@@ -218,7 +218,7 @@ it.each([
 
 it("普通整理的无新增回执保留成功语义", async () => {
   server.use(
-    http.post("http://ally.test/api/v1/knowledge/libraries/kb/organize", () =>
+    http.post("http://bot.test/api/v1/knowledge/libraries/kb/organize", () =>
       HttpResponse.json({ noop: true }),
     ),
   );
@@ -230,7 +230,7 @@ it("Wiki维护使用独立任务入口，不提交原件范围或伙伴权限", 
   const requests: Record<string, unknown>[] = [];
   server.use(
     http.post(
-      "http://ally.test/api/v1/knowledge/libraries/kb/maintain",
+      "http://bot.test/api/v1/knowledge/libraries/kb/maintain",
       async ({ request }) => {
         requests.push((await request.json()) as Record<string, unknown>);
         return HttpResponse.json({ receipt: acceptedJobReceipt });

@@ -311,7 +311,7 @@ E13 的正文提供的是任务组织方法与原生 Workflow 工具约束。加
 | 按 journal/实际返回恢复 | 凭聊天判断是否成功，重复执行外部效果 | 使用本产品 evidence、持久回执、原版本重试计划，先对账再修复 |
 | 静态业务元信息 | 可执行源码不能形成可读画布 | phase/title/detail 与节点 label/description 表达业务职责，技术身份只用于源码 |
 
-这些方法已重新组织为 [创作指南](../../skills/ally/references/workflow-authoring.md)、按需读取的 [编排模式](../../skills/ally/references/workflow-patterns.md) 和 [可编译示例](../../skills/ally/references/workflow-review-example.workflow.js)。未将第三方 Skill 原文复制进产品，也未将其内部工具契约冒充本产品能力。
+这些方法已重新组织为 [创作指南](../../skills/bot/references/workflow-authoring.md)、按需读取的 [编排模式](../../skills/bot/references/workflow-patterns.md) 和 [可编译示例](../../skills/bot/references/workflow-review-example.workflow.js)。未将第三方 Skill 原文复制进产品，也未将其内部工具契约冒充本产品能力。
 
 ### 9.2 必须重新定义的契约
 

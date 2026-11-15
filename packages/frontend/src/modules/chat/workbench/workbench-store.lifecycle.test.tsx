@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { WorkbenchProvider, useWorkbench } from "./workbench-store";
 
-const storageKey = "ally.right-workbench.chat:one";
+const storageKey = "bot.right-workbench.chat:one";
 
 function Probe() {
   const { snapshot } = useWorkbench("chat:one");

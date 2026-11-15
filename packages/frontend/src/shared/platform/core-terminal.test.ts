@@ -64,7 +64,7 @@ describe("Core 终端视图", () => {
     const attached = terminal.terminal_attach({ sessionId: "s" });
     await Promise.resolve();
     const first = socketAt(0);
-    expect(first.protocols).toEqual(["ally.terminal.v1"]);
+    expect(first.protocols).toEqual(["bot.terminal.v1"]);
     expect(first.url.search).toBe("");
     first.frame("snapshot", snapshot());
     await attached;

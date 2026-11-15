@@ -20,7 +20,7 @@ func TestCodexHomeCopiesCompleteNativePackage(t *testing.T) {
 	if home == account || !strings.HasPrefix(home, parent+string(os.PathSeparator)) {
 		t.Fatalf("home escaped private parent: %q", home)
 	}
-	cache := filepath.Join(home, "plugins", "cache", "neuxally-managed", "acceptance", "1.0.0")
+	cache := filepath.Join(home, "plugins", "cache", "neuxbot-managed", "acceptance", "1.0.0")
 	for _, rel := range []string{".codex-plugin/plugin.json", "bin/run", "hooks/hooks.json"} {
 		got, err := os.ReadFile(filepath.Join(cache, rel))
 		if err != nil {
@@ -43,7 +43,7 @@ func TestCodexHomeCopiesCompleteNativePackage(t *testing.T) {
 	}
 	config := codexHomeConfig(t, home)
 	plugins := config["plugins"].(map[string]any)
-	if len(plugins) != 1 || plugins["acceptance@neuxally-managed"].(map[string]any)["enabled"] != true {
+	if len(plugins) != 1 || plugins["acceptance@neuxbot-managed"].(map[string]any)["enabled"] != true {
 		t.Fatalf("enabled plugins = %#v", plugins)
 	}
 	for _, path := range []string{home, filepath.Join(home, "plugins"), filepath.Join(home, "plugins", "cache")} {
@@ -296,7 +296,7 @@ func TestCodexHomeRejectsMutatedActiveCacheWithoutReplacingFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest := filepath.Join(home, "plugins", "cache", "neuxally-managed", "acceptance", "1.0.0", ".codex-plugin", "plugin.json")
+	manifest := filepath.Join(home, "plugins", "cache", "neuxbot-managed", "acceptance", "1.0.0", ".codex-plugin", "plugin.json")
 	codexHomeWrite(t, manifest, `{"changed":true}`, 0644)
 	if _, err := PrepareCodexHome(parent, account, []NativeTarget{target}); err != status_error.PluginVersionConflict {
 		t.Fatalf("mutated cache error = %v", err)
@@ -316,7 +316,7 @@ func TestCodexHomeReusesNativeCacheWithoutReplacingPackageFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest := filepath.Join(home, "plugins", "cache", "neuxally-managed", "acceptance", "1.0.0", ".codex-plugin", "plugin.json")
+	manifest := filepath.Join(home, "plugins", "cache", "neuxbot-managed", "acceptance", "1.0.0", ".codex-plugin", "plugin.json")
 	before, err := os.Stat(manifest)
 	if err != nil {
 		t.Fatal(err)

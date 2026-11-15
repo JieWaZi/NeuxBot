@@ -10,7 +10,7 @@ const (
 	// WorkflowHumanChoicesLimitBytes 限制冻结候选快照字节数。
 	WorkflowHumanChoicesLimitBytes = 256 * 1024
 	// WorkflowSDKIdentifier 是创作源码与宿主共同使用的 SDK 身份。
-	WorkflowSDKIdentifier = "ally.workflow"
+	WorkflowSDKIdentifier = "bot.workflow"
 	// WorkflowCompilerVersion 是编译产物中固定的编译器版本。
 	WorkflowCompilerVersion = "2.0.0"
 	// WorkflowIRVersion 是可持久化 Go 指令格式的版本。
@@ -94,7 +94,7 @@ const (
 )
 
 // WorkflowMCPRuntimeKey 是内置工作流各场景在 CLI 中共用的稳定服务身份。
-const WorkflowMCPRuntimeKey = "ally_workflow"
+const WorkflowMCPRuntimeKey = "bot_workflow"
 
 // WorkflowFailureStopRequestedField 在外部结果未知期间保留用户已经发出的停止意图。
 const WorkflowFailureStopRequestedField = "stopRequested"

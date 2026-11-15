@@ -64,7 +64,7 @@ func TestWorkflowReviewExampleReportsCoverageAndRejectsMissingItem(t *testing.T)
 	if err != nil {
 		t.Skip(err)
 	}
-	source, err := os.ReadFile("../../../skills/ally/references/workflow-review-example.workflow.js")
+	source, err := os.ReadFile("../../../skills/bot/references/workflow-review-example.workflow.js")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestScriptHumanWorkerBusinessCheckFlow(t *testing.T) {
 	s, _ := workflowTestService(t)
 	s.worker = &textResultWorker{}
 	directory, _ := filepath.EvalSymlinks(t.TempDir())
-	source := `export const meta={sdk:'ally.workflow',title:'工作流闭环',description:'脚本候选',phases:[{id:'work',title:'工作',detail:'执行'}],actions:[{id:'list',type:'script',scriptId:'list',label:'查询',risk:'read'},{id:'verify',type:'script',scriptId:'verify',label:'检查',risk:'read'}]};
+	source := `export const meta={sdk:'bot.workflow',title:'工作流闭环',description:'脚本候选',phases:[{id:'work',title:'工作',detail:'执行'}],actions:[{id:'list',type:'script',scriptId:'list',label:'查询',risk:'read'},{id:'verify',type:'script',scriptId:'verify',label:'检查',risk:'read'}]};
  export const scripts={list:{language:'python',protocol:'json',code:'import json,sys\njson.dump({"items":[{"value":"a","label":"候选甲"}]},sys.stdout)'},verify:{language:'python',protocol:'json',code:'import json,sys\nx=json.load(sys.stdin)\njson.dump({"valid":x["selected"] in x["text"]},sys.stdout)'}};
  const listed=await action('list',{id:'list-node',label:'查询',phase:'work',input:false});
  const selected=await askUser('选择',{id:'choose',label:'选择',phase:'work',kind:'select',choices:listed.data.items});

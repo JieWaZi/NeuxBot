@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 
 function preferenceKey(scopeKey: string) {
-  return scopeKey.startsWith("chat:") ? `ally.account.${scopeKey}` : undefined;
+  return scopeKey.startsWith("chat:") ? `bot.account.${scopeKey}` : undefined;
 }
 
 function savedAccount(scopeKey: string) {

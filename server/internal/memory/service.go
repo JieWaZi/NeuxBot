@@ -715,7 +715,7 @@ func (s *Service) ProbeEmbedding(ctx context.Context) error {
 	if state.embedder == nil {
 		return status_error.MemoryEmbeddingNotConfigured
 	}
-	_, err = state.embedder.Embed(ctx, "ally memory probe", constants.MemoryEmbeddingActionSearch)
+	_, err = state.embedder.Embed(ctx, "bot memory probe", constants.MemoryEmbeddingActionSearch)
 	return err
 }
 

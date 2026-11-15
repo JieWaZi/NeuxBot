@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const contractTestMeta = `export const meta={sdk:'ally.workflow',title:'工作流',description:'契约',phases:[{id:'work',title:'执行',detail:'流程'}]`
+const contractTestMeta = `export const meta={sdk:'bot.workflow',title:'工作流',description:'契约',phases:[{id:'work',title:'执行',detail:'流程'}]`
 
 func TestRejectsDynamicNodeLabelsBeforeCanvasProjection(t *testing.T) {
 	source := contractTestMeta + `};return await pipeline(args.candidates,[async(previous,candidate)=>await worker(candidate.text,{id:'review',label:'审阅 '+candidate.title,phase:'work',resolve:{kind:'waker',wakerId:'fixture'}})],{id:'reviews'});`
@@ -42,7 +42,7 @@ func TestStaticBusinessLabelsRemainReadableInPipelines(t *testing.T) {
 }
 
 func TestWorkflowReviewAuthoringExampleCompilesDynamicSelection(t *testing.T) {
-	data, err := os.ReadFile("../../../../skills/ally/references/workflow-review-example.workflow.js")
+	data, err := os.ReadFile("../../../../skills/bot/references/workflow-review-example.workflow.js")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ return result;`
 	var got map[string]any
 	_ = json.Unmarshal(wire, &got)
 	manifest := got["manifest"].(map[string]any)
-	if manifest["sdk"] != "ally.workflow" {
+	if manifest["sdk"] != "bot.workflow" {
 		t.Fatalf("missing workflow contract identity: %s", wire)
 	}
 	scripts := got["bundle"].(map[string]any)["scripts"].(map[string]any)
@@ -189,7 +189,7 @@ func TestSuccessConditionDistinguishesMissingAndNull(t *testing.T) {
 
 func TestSDKPublishesTypedProtocol(t *testing.T) {
 	declarations := string(SDKOutputs()["workflow.d.ts"])
-	for _, required := range []string{"sdk:'ally.workflow'", "status:'answered'|'skipped'|'timed_out'", "kind:'text'|'select'|'multiselect'|'form'|'confirm'", "choices?:", "successCondition?:", "protocol:'json'|'text'", "runStartedAt:number", "output:Json"} {
+	for _, required := range []string{"sdk:'bot.workflow'", "status:'answered'|'skipped'|'timed_out'", "kind:'text'|'select'|'multiselect'|'form'|'confirm'", "choices?:", "successCondition?:", "protocol:'json'|'text'", "runStartedAt:number", "output:Json"} {
 		if !strings.Contains(declarations, required) {
 			t.Errorf("generated SDK missing %q", required)
 		}
@@ -594,7 +594,7 @@ func TestMultistepFixturePreservesThreeNodesPerPhase(t *testing.T) {
 }
 
 func TestCompilerAcceptsUnversionedSDK(t *testing.T) {
-	source := `export const meta={sdk:'ally.workflow',title:'工作流',phases:[{id:'work',title:'执行',detail:'流程'}]};return true;`
+	source := `export const meta={sdk:'bot.workflow',title:'工作流',phases:[{id:'work',title:'执行',detail:'流程'}]};return true;`
 	if _, diagnostics, err := Compile(source); err != nil {
 		t.Fatalf("SDK identity rejected: %v %+v", err, diagnostics)
 	}
@@ -618,7 +618,7 @@ func TestCanvasUsesSingleUnversionedContract(t *testing.T) {
 			t.Fatalf("version discriminator still published: %s", wire)
 		}
 	}
-	if public["sdk"] != "ally.workflow" {
+	if public["sdk"] != "bot.workflow" {
 		t.Fatalf("missing SDK identity: %s", wire)
 	}
 	if err := ValidateJSON(CanvasManifestSchema(), public); err != nil {

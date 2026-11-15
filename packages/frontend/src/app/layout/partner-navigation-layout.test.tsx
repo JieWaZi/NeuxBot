@@ -709,7 +709,7 @@ describe("PartnerNavigationLayout", () => {
     await user.click(first);
     const firstRoute = new URL(
       screen.getByTestId("current-route").textContent ?? "",
-      "https://ally.local",
+      "https://bot.local",
     );
     expect(firstRoute.pathname).toBe("/chat");
     expect(firstRoute.searchParams.get("wakerId")).toBe("waker-1");
@@ -717,7 +717,7 @@ describe("PartnerNavigationLayout", () => {
     await user.click(first);
     const secondRoute = new URL(
       screen.getByTestId("current-route").textContent ?? "",
-      "https://ally.local",
+      "https://bot.local",
     );
     expect(secondRoute.searchParams.get("wakerId")).toBe("waker-1");
     expect(secondRoute.searchParams.get("draftId")).not.toBe(

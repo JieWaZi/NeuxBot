@@ -4,7 +4,7 @@
 
 ## 1. 目标
 
-内部 Agent 通过 allycli，外部 Agent 通过 Streamable HTTP MCP 调用同一套知识操作。MCP 是传输入口，不建立第二套业务、索引、授权、任务状态或聊天会话。复用现有发布服务和 API Key，提供 allycli 对应的知识读取、编辑、导入和整理能力。不新增外部 CLI、Skill 或 stdio 服务。
+内部 Agent 通过 botcli，外部 Agent 通过 Streamable HTTP MCP 调用同一套知识操作。MCP 是传输入口，不建立第二套业务、索引、授权、任务状态或聊天会话。复用现有发布服务和 API Key，提供 botcli 对应的知识读取、编辑、导入和整理能力。不新增外部 CLI、Skill 或 stdio 服务。
 
 参考 WeKnora 提交 `0d7516ea0`：`internal/mcpserver` 提供 HTTP 服务，`frontend/src/views/integrations/McpServerIntegrationSettings.vue` 提供独立配置页面。参考协议和交互，不复制其知识业务。
 
@@ -24,7 +24,7 @@ WeKnora 的端点本身是另一种授权主体，我们已有 API Key；只借�
 
 唯一发布监听在 `/mcp` 挂载已有 modelcontextprotocol/go-sdk 的 Streamable HTTP handler，优先无状态模式，初始化/通知/版本/方法语义交给 SDK。请求体有界，Origin 沿用服务间发布策略。默认认证 X-API-Key；若兼容 Bearer，必须使用同一 Key 并拒绝歧义双凭据，不增加 OAuth 或另一类 Token。
 
-工具名、Schema、说明和执行效果来自 `server/internal/agentcapability/contract` 的知识命令，稳定映射为下划线名，如 `knowledge_pages_get`。禁止第二份业务 Schema，禁止泛化任意读写工具或暴露非知识管理操作。写操作的 requestId 等同 allycli 幂等身份，不是 JSON-RPC id。结果提供结构化内容和文本兼容，错误使用稳定错误码和 isError，不泄露底层错误及凭据。
+工具名、Schema、说明和执行效果来自 `server/internal/agentcapability/contract` 的知识命令，稳定映射为下划线名，如 `knowledge_pages_get`。禁止第二份业务 Schema，禁止泛化任意读写工具或暴露非知识管理操作。写操作的 requestId 等同 botcli 幂等身份，不是 JSON-RPC id。结果提供结构化内容和文本兼容，错误使用稳定错误码和 isError，不泄露底层错误及凭据。
 
 合同对齐测试覆盖全部知识操作：发现、检索、页面/来源/目录/索引/历史/任务/审计/活动/导出读取，页面写入/替换/重命名/归档、版本恢复、目录维护、来源导入、任务开始与重试。保留 CLI 的 CAS、历史、来源及完成语义。
 
@@ -45,7 +45,7 @@ WeKnora 的端点本身是另一种授权主体，我们已有 API Key；只借�
 ## 5. 验收
 
 1. SDK 客户端 initialize/tools/list/tools/call 通过；无状态 GET/DELETE/通知正确；缺 Key、无效 Origin 拒绝。
-2. 工具逐项覆盖 allycli 知识合同，Schema 同源，无非知识工具泄漏。
+2. 工具逐项覆盖 botcli 知识合同，Schema 同源，无非知识工具泄漏。
 3. 真实临时数据库下验证读、建页、替换、重命名、恢复、归档、目录修改、原件导入；内部入口可读外部结果、历史与引用正确。
 4. 只读 Key 拒绝写；ingest/organize 隔离；跨库 ID、撤销、过期、缩权和远端身份拒绝。
 5. 重放无二次版本、异内容冲突、旧页面/目录/更新时间不能覆盖新内容，回执不能跨主体。

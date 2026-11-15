@@ -52,7 +52,7 @@ func TestOperationApprovalIsIndependentAndFirstAnswerWins(t *testing.T) {
 	}
 	state = waitWorkflow(t, s, run.ID, func(state controllers.WorkflowRunState) bool { return workflowstate.TerminalRun(state.Run.Status) })
 	content, err := os.ReadFile(target)
-	if err != nil || string(content) != "ALLY ALLY!" || state.Run.Status != constants.WorkflowRunStatusSucceeded {
+	if err != nil || string(content) != "BOT BOT!" || state.Run.Status != constants.WorkflowRunStatusSucceeded {
 		t.Fatalf("real authorized write: %s %v %+v", content, err, state.Run)
 	}
 }
@@ -61,21 +61,21 @@ func TestMain(m *testing.M) {
 	if workflowfunction.IsChildMode() {
 		os.Exit(workflowfunction.RunChild(os.Stdin))
 	}
-	if os.Getenv("ALLY_WORKFLOW_PROCESS_TEST") == "1" {
+	if os.Getenv("NEUXBOT_WORKFLOW_PROCESS_TEST") == "1" {
 		os.Exit(m.Run())
 	}
 	os.Exit(runCLITestSuite(m))
 }
 
 func TestWorkflowLocalProcessHelper(t *testing.T) {
-	if os.Getenv("ALLY_WORKFLOW_PROCESS_TEST") != "1" {
+	if os.Getenv("NEUXBOT_WORKFLOW_PROCESS_TEST") != "1" {
 		return
 	}
 	target := os.Args[len(os.Args)-1]
 	if err := os.WriteFile(target+".started", []byte("started"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if os.Getenv("ALLY_WORKFLOW_PROCESS_WRITE_FIRST") == "1" {
+	if os.Getenv("NEUXBOT_WORKFLOW_PROCESS_WRITE_FIRST") == "1" {
 		file, err := os.OpenFile(target+".calls", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 		if err != nil {
 			t.Fatal(err)
@@ -86,24 +86,24 @@ func TestWorkflowLocalProcessHelper(t *testing.T) {
 		if err := file.Close(); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(target, []byte("ALLY ALLY!"), 0600); err != nil {
+		if err := os.WriteFile(target, []byte("BOT BOT!"), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if os.Getenv("ALLY_WORKFLOW_PROCESS_DELAY") == "1" {
+	if os.Getenv("NEUXBOT_WORKFLOW_PROCESS_DELAY") == "1" {
 		time.Sleep(3 * time.Second)
 	}
-	if os.Getenv("ALLY_WORKFLOW_PROCESS_FAIL") == "1" {
+	if os.Getenv("NEUXBOT_WORKFLOW_PROCESS_FAIL") == "1" {
 		t.Error("process produced a real nonzero exit")
 		return
 	}
-	if err := os.WriteFile(target, []byte("ALLY ALLY!"), 0600); err != nil {
+	if err := os.WriteFile(target, []byte("BOT BOT!"), 0600); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func processWorkflowSource(code string) string {
-	return `export const meta={sdk:'ally.workflow',title:'进程验收',description:'真实隔离进程',phases:[{id:'compute',title:'计算',detail:'真实执行',canExit:true}]};phase('compute');` + code
+	return `export const meta={sdk:'bot.workflow',title:'进程验收',description:'真实隔离进程',phases:[{id:'compute',title:'计算',detail:'真实执行',canExit:true}]};phase('compute');` + code
 }
 
 func waitWorkflow(t *testing.T, s *workflowFixture, id string, condition func(controllers.WorkflowRunState) bool) controllers.WorkflowRunState {
@@ -132,9 +132,9 @@ func scriptSource(t *testing.T, target string, delay bool) string {
 	}
 	action, _ := json.Marshal(map[string]any{"id": "write", "label": "真实写入", "description": "写入临时验收目录", "type": "script", "risk": "write", "executable": executable, "workingDirectory": "workflow_scope"})
 	args, _ := json.Marshal([]string{"-test.run=^TestWorkflowLocalProcessHelper$", "--", target})
-	environment := `{ALLY_WORKFLOW_PROCESS_TEST:'1'}`
+	environment := `{NEUXBOT_WORKFLOW_PROCESS_TEST:'1'}`
 	if delay {
-		environment = `{ALLY_WORKFLOW_PROCESS_TEST:'1',ALLY_WORKFLOW_PROCESS_DELAY:'1'}`
+		environment = `{NEUXBOT_WORKFLOW_PROCESS_TEST:'1',NEUXBOT_WORKFLOW_PROCESS_DELAY:'1'}`
 	}
 	return strings.Replace(processWorkflowSource(`const result=await action('write',{id:'write-node',label:'写文件',phase:'compute',args:`+string(args)+`,env:`+environment+`});return result.process.exitCode;`), "phases:", "actions:["+string(action)+"],phases:", 1)
 }

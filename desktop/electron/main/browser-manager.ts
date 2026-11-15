@@ -77,8 +77,8 @@ export class BrowserManager {
       throw new Error("浏览器管理器已关闭");
     const id = randomUUID();
     const partition = localRoot
-      ? `ally-browser-${this.window.webContents.id}-project-${createHash("sha256").update(localRoot).digest("hex")}-${localPreview ? "local" : "web"}`
-      : `ally-browser-${id}`;
+      ? `bot-browser-${this.window.webContents.id}-project-${createHash("sha256").update(localRoot).digest("hex")}-${localPreview ? "local" : "web"}`
+      : `bot-browser-${id}`;
     const isolated = session.fromPartition(partition);
     if (!this.partitions.has(partition)) {
       isolated.setPermissionRequestHandler((_contents, _permission, callback) =>

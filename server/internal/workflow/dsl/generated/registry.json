@@ -1,5 +1,5 @@
 {
-  "sdk": "ally.workflow",
+  "sdk": "bot.workflow",
   "primitives": [
     {
       "name": "phase",

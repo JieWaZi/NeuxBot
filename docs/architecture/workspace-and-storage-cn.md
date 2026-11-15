@@ -10,7 +10,7 @@ Chat 的固定文件索引定位原日志范围；业务 SQLite 中的 `chat_exe
 
 ## 存储目录
 
-产品名为 NeuxBot；应用标识与默认程序数据目录为 `com.neuxally.desktop`，受管业务文件根为 `.neuxally`。两者分别拥有程序状态与业务文件。
+产品名为 NeuxBot；应用标识与默认程序数据目录为 `com.neuxbot.desktop`，受管业务文件根为 `.neuxbot`。两者分别拥有程序状态与业务文件。
 
 程序数据目录沿用桌面平台的应用数据位置，由 `ALLY_DATA_DIR` 指定；数据库 `ally.db`、`memory.db`，技能目录 `skills/`、`system-skills/`，插件不可变原包 `plugins/content/` 与无秘密目标缓存 `plugins/targets/`，独立账号目录 `ai-accounts/`、`account-workspaces/`，受管程序目录 `runtime-installations/`，执行授权描述 `agent-contexts/`，以及 Electron 数据、程序日志和 `automatic-tasks-api.json` 均保留于此。
 
@@ -51,7 +51,7 @@ Chat 的固定文件索引定位原日志范围；业务 SQLite 中的 `chat_exe
 
 `workflow.authoring.prepare` 的 `workflow.workspace` 与 `workflow.source.get` 的 `workspace` 返回同一真实绝对目录；`flowContext.workspace` 再提供本次 `runDirectory`。这些路径来自配置的受管根，智能体不得猜测主目录或临时目录，也不得把脚本、缓存或状态路径作为业务参数让用户填写。创作与 worker 通过本次执行上下文获得目录约束；worker cwd 位于工作流临时根的 `workers/<effect-id>/`，由工作流拥有，固定工作流根作为冻结的额外授权目录。删除技术 Chat 不删除该领域工作区。
 
-脚本与 Python 函数的进程工作目录为 `runs/<run-id>/`；宿主注入 `ALLY_WORKFLOW_ROOT`、`ALLY_WORKFLOW_SCRIPTS_DIR`、`ALLY_WORKFLOW_STATE_DIR`、`ALLY_WORKFLOW_CACHE_DIR`、`ALLY_WORKFLOW_TEMP_DIR`、`ALLY_WORKFLOW_RUN_DIR`，并固定 `TMPDIR`、`TMP`、`TEMP` 与 `XDG_CACHE_HOME`。动作不得通过环境配置覆盖保留目录变量。该机制约束宿主布局并给脚本明确存储契约；受信本地 Python 的任意绝对路径访问仍由实际 Runtime/平台权限管理。
+脚本与 Python 函数的进程工作目录为 `runs/<run-id>/`；宿主注入 `NEUXBOT_WORKFLOW_ROOT`、`NEUXBOT_WORKFLOW_SCRIPTS_DIR`、`NEUXBOT_WORKFLOW_STATE_DIR`、`NEUXBOT_WORKFLOW_CACHE_DIR`、`NEUXBOT_WORKFLOW_TEMP_DIR`、`NEUXBOT_WORKFLOW_RUN_DIR`，并固定 `TMPDIR`、`TMP`、`TEMP` 与 `XDG_CACHE_HOME`。动作不得通过环境配置覆盖保留目录变量。该机制约束宿主布局并给脚本明确存储契约；受信本地 Python 的任意绝对路径访问仍由实际 Runtime/平台权限管理。
 
 业务成果默认放本次 `runDirectory`。运行文件的相对引用只按所属运行的 `runDirectory` 解析，再校验目录授权；缺失时不查找业务目录或工作流根下的同名文件。子流程参数按父运行解析，子流程成果按子运行解析；CLI 文件输入仍按 CLI 的当前目录冻结。用户明确选择的知识同步目录、报告目录等仍属于业务输出范围；这一选择不会移动脚本、缓存和辅助状态。文件结果只允许该工作流内部根或已批准的业务范围，其他目录不能仅凭路径字符串获得权限。此布局直接用于新执行，不增加历史路径回退或迁移。
 

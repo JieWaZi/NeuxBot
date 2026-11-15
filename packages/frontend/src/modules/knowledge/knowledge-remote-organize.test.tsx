@@ -18,11 +18,10 @@ const ref = {
   connectionId: "remote",
   knowledgeBaseId: "kb",
 };
-const root =
-  "http://ally.test/api/v1/knowledge/connections/remote/libraries/kb";
+const root = "http://bot.test/api/v1/knowledge/connections/remote/libraries/kb";
 beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });
-  client.setConfig({ baseUrl: "http://ally.test" });
+  client.setConfig({ baseUrl: "http://bot.test" });
 });
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());

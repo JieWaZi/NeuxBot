@@ -51,7 +51,7 @@ afterEach(() => {
 
 it("loads a local Markdown image through its Chat file scope and revokes the Blob URL", async () => {
   const client = new QueryClient();
-  const createObjectURL = vi.fn(() => "blob:ally-image");
+  const createObjectURL = vi.fn(() => "blob:bot-image");
   const revokeObjectURL = vi.fn();
   vi.stubGlobal(
     "URL",
@@ -75,7 +75,7 @@ it("loads a local Markdown image through its Chat file scope and revokes the Blo
   await waitFor(() =>
     expect(screen.getByRole("img", { name: "本地图" })).toHaveAttribute(
       "src",
-      "blob:ally-image",
+      "blob:bot-image",
     ),
   );
   expect(fileBridge.resolve).toHaveBeenCalledWith(
@@ -90,7 +90,7 @@ it("loads a local Markdown image through its Chat file scope and revokes the Blo
     "/project",
   );
   view.unmount();
-  expect(revokeObjectURL).toHaveBeenCalledWith("blob:ally-image");
+  expect(revokeObjectURL).toHaveBeenCalledWith("blob:bot-image");
   client.clear();
 });
 

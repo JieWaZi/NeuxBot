@@ -121,7 +121,7 @@ func (p knowledgeScheduleChats) GetChatSummary(ctx context.Context, id string) (
 func knowledgeScheduleFixture(t *testing.T) (*Service, *core.Engine, *knowledgeScheduleExecutions, models.AutomaticTask, *core.Library) {
 	t.Helper()
 	ctx := context.Background()
-	db, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "ally.db"), Migrate: true})
+	db, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "bot.db"), Migrate: true})
 	if err != nil {
 		t.Fatal(err)
 	}

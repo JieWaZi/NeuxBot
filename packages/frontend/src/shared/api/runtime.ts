@@ -10,7 +10,7 @@ import { getCoreConnection, type CoreConnection } from "@/shared/platform";
 import { client } from "./generated/client.gen";
 import { toApiError } from "./errors";
 import {
-  ALLY_LOCAL_ERROR_SURFACE,
+  NEUXBOT_LOCAL_ERROR_SURFACE,
   hasLocalErrorSurface,
 } from "./local-error-surface";
 
@@ -48,7 +48,7 @@ export async function initializeApi(): Promise<CoreConnection> {
   if (!interceptorInstalled) {
     client.interceptors.request.use((request) => {
       const headers = new Headers(request.headers);
-      headers.delete(ALLY_LOCAL_ERROR_SURFACE);
+      headers.delete(NEUXBOT_LOCAL_ERROR_SURFACE);
       const original = new URL(request.url);
       if (
         connection &&
@@ -115,7 +115,7 @@ export async function initializeApi(): Promise<CoreConnection> {
         connection?.credentials === "same-origin" &&
         new URL(request.url).origin === new URL(connection.baseUrl).origin
       ) {
-        window.dispatchEvent(new Event("ally:web-session-expired"));
+        window.dispatchEvent(new Event("bot:web-session-expired"));
       }
       const recovery = recoveries.get(request);
       recoveries.delete(request);

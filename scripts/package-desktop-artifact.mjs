@@ -72,7 +72,7 @@ if (entries.some((name) => name !== "NeuxBot.app")) {
   throw new Error("Installer source contains unexpected build artifacts");
 }
 const installer = path.join(release, `NeuxBot-mac-${process.arch}.dmg`);
-const staging = await mkdtemp(path.join(tmpdir(), `ally-dmg-${process.arch}-`));
+const staging = await mkdtemp(path.join(tmpdir(), `bot-dmg-${process.arch}-`));
 try {
   const stagedBundle = path.join(staging, "NeuxBot.app");
   // DMG 专用内容位于仓库外，避免 Applications 链接被 Vite 或其他工具遍历。

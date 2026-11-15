@@ -80,7 +80,7 @@ func TestCurrentCatalogRecoversStaleArchiveWithoutRelaxingPinnedReads(t *testing
 				if err := catalog.Refresh(context.Background(), location); err != nil {
 					t.Fatal(err)
 				}
-				t.Setenv("ALLY_PLUGIN_CATALOG_URL", location)
+				t.Setenv("NEUXBOT_PLUGIN_CATALOG_URL", location)
 				original, err := catalog.Find(location, "recovery")
 				if err != nil {
 					t.Fatal(err)

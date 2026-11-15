@@ -90,7 +90,7 @@ func TestSystemGuidesAndRelativeLinksResolveBundledResources(t *testing.T) {
 
 func TestSystemSkillRejectsModifiedResourcesAndRedirectedDirectory(t *testing.T) {
 	data := t.TempDir()
-	binary := filepath.Join(t.TempDir(), "allycli")
+	binary := filepath.Join(t.TempDir(), "botcli")
 	if err := os.WriteFile(binary, []byte("cli fixture"), 0o700); err != nil {
 		t.Fatal(err)
 	}

@@ -154,9 +154,9 @@ describe("ChatEntryPage", () => {
   );
 
   it("restores the last active chat instead of the server latest", async () => {
-    window.localStorage.setItem("ally.chat.last-waker-id", "waker-1");
+    window.localStorage.setItem("bot.chat.last-waker-id", "waker-1");
     window.localStorage.setItem(
-      "ally.chat.last-active",
+      "bot.chat.last-active",
       JSON.stringify({ wakerId: "waker-1", chatId: "chat-b" }),
     );
     renderEntry();
@@ -177,9 +177,9 @@ describe("ChatEntryPage", () => {
 
   it("ignores a deleted last active chat and falls back to the latest", async () => {
     chatState.current = "missing";
-    window.localStorage.setItem("ally.chat.last-waker-id", "waker-1");
+    window.localStorage.setItem("bot.chat.last-waker-id", "waker-1");
     window.localStorage.setItem(
-      "ally.chat.last-active",
+      "bot.chat.last-active",
       JSON.stringify({ wakerId: "waker-1", chatId: "chat-b" }),
     );
 
@@ -192,11 +192,11 @@ describe("ChatEntryPage", () => {
   });
 
   it("persists the requested waker id when switching partners", async () => {
-    window.localStorage.setItem("ally.chat.last-waker-id", "waker-old");
+    window.localStorage.setItem("bot.chat.last-waker-id", "waker-old");
     renderEntry("/chat?wakerId=waker-1");
 
     expect(await screen.findByTestId("chat-page")).toBeInTheDocument();
-    expect(window.localStorage.getItem("ally.chat.last-waker-id")).toBe(
+    expect(window.localStorage.getItem("bot.chat.last-waker-id")).toBe(
       "waker-1",
     );
   });

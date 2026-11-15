@@ -64,11 +64,11 @@ GOWORK=off go test ./driver/acp/native \
 
 ### 实际交付和生命周期
 
-- macOS arm64 Core、allycli、Pi bridge、终端 worker/node-pty、Renderer 和 Electron main 均完成实际构建。Renderer 类型与生产构建通过。
+- macOS arm64 Core、botcli、Pi bridge、终端 worker/node-pty、Renderer 和 Electron main 均完成实际构建。Renderer 类型与生产构建通过。
 - `desktop/release/mac-arm64/NeuxBot.app` 已生成；335.74 MiB，Resources 95.74 MiB，均满足现有 450/215 MiB 预算。没有产品签名、公证或发布，Electron 二进制原有 adhoc 标记不代表发行签名。
 - 启动预算为 459210/500000 bytes 与 3847741/4500000 bytes；550 个 Brotli 资源均逐字节还原一致。
 - 包内 Electron Node 模式 PTY、Core 认证健康与停止通过。未打包和包内 Core 均验证外部连接者停止不杀所有者、正常及重复停止、父进程正常退出/SIGKILL 后 Core 退出，以及同数据目录重启释放锁。
-- 定向 Node 22/22 通过；`server/internal/parentwatch`、`server/cmd/ally-core` 两个 Go 包通过。
+- 定向 Node 22/22 通过；`server/internal/parentwatch`、`server/cmd/bot-core` 两个 Go 包通过。
 - Windows x64 Core 交叉编译得到实际 PE32+ x86-64 文件；没有运行 Windows 二进制，也没有生成安装器。
 
 现有可重复入口如下；本轮另用临时独立父进程驱动器执行上述异常退出检查，没有给产品增加管理逻辑。构建临时依赖链接已清理。

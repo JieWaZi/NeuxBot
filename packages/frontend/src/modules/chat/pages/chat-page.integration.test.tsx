@@ -211,7 +211,7 @@ const {
       const files = [
         {
           name: "AGENTS.md",
-          path: "/tmp/ally/AGENTS.md",
+          path: "/tmp/bot/AGENTS.md",
           relativePath: "AGENTS.md",
         },
         ...(lower.includes("agents")
@@ -225,19 +225,19 @@ const {
           : []),
         {
           name: "readme.md",
-          path: "/tmp/ally/readme.md",
+          path: "/tmp/bot/readme.md",
           relativePath: "readme.md",
         },
         {
           name: "package.json",
-          path: "/tmp/ally/package.json",
+          path: "/tmp/bot/package.json",
           relativePath: "package.json",
         },
         ...(scopePath === "attachments/generated"
           ? [
               {
                 name: "report.md",
-                path: "/tmp/ally/attachments/generated/report.md",
+                path: "/tmp/bot/attachments/generated/report.md",
                 relativePath: "attachments/generated/report.md",
               },
             ]
@@ -262,7 +262,7 @@ const {
       generated: [
         {
           name: "report.md",
-          path: "/tmp/ally/attachments/generated/report.md",
+          path: "/tmp/bot/attachments/generated/report.md",
           relativePath: "attachments/generated/report.md",
         },
       ],
@@ -617,7 +617,7 @@ vi.mock("@/shared/platform", () => ({
     status: "resolved",
     canonicalPath: path.startsWith("/") ? path : `${baseDirectory}/${path}`,
     baseDirectory,
-    workspaceRoot: "/tmp/ally",
+    workspaceRoot: "/tmp/bot",
     sourceRoots: [],
   }),
   searchWorkspaceFiles: (
@@ -682,7 +682,7 @@ vi.mock("../api/chat-queries", async (importOriginal) => ({
           title: "直接进入的对话",
           hiddenFromWakerHistory: hiddenWorkChatIds.includes(path.chatId),
           forkSourceChatId: forkSourceChatId.current,
-          workspaceDirectory: "/tmp/ally",
+          workspaceDirectory: "/tmp/bot",
           additionalWorkingDirectories: ["/tmp/project"],
           activeExecutionId: chatActiveExecutionID.current,
           latestSequence: chatLatestSequence.current,
@@ -723,7 +723,7 @@ vi.mock("../api/chat-queries", async (importOriginal) => ({
           id: "chat-1",
           wakerId: "waker-1",
           title: "直接进入的对话",
-          workspaceDirectory: "/tmp/ally",
+          workspaceDirectory: "/tmp/bot",
           updatedAt: 1,
         },
       ],
@@ -818,7 +818,7 @@ beforeEach(() => {
     generated: [
       {
         name: "report.md",
-        path: "/tmp/ally/attachments/generated/report.md",
+        path: "/tmp/bot/attachments/generated/report.md",
         relativePath: "attachments/generated/report.md",
       },
     ],
@@ -1609,8 +1609,8 @@ describe("ChatPage", () => {
   it("父工作区中的成员聊天独立保存和发送所选账号", async () => {
     accountCIncludesOldModel.current = true;
     chatLastRuntimeID.current = "codex";
-    window.localStorage.setItem("ally.account.chat:chat-1", "A");
-    window.localStorage.setItem("ally.account.chat:member-chat", "B");
+    window.localStorage.setItem("bot.account.chat:chat-1", "A");
+    window.localStorage.setItem("bot.account.chat:member-chat", "B");
     const user = userEvent.setup();
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -1683,10 +1683,10 @@ describe("ChatPage", () => {
     expect(screen.getByTestId("composer-model-control")).toHaveTextContent(
       "c-model",
     );
-    expect(window.localStorage.getItem("ally.account.chat:member-chat")).toBe(
+    expect(window.localStorage.getItem("bot.account.chat:member-chat")).toBe(
       "C",
     );
-    expect(window.localStorage.getItem("ally.account.chat:chat-1")).toBe("A");
+    expect(window.localStorage.getItem("bot.account.chat:chat-1")).toBe("A");
     await user.type(
       screen.getByRole("textbox", { name: "输入消息" }),
       "成员消息",
@@ -3291,7 +3291,7 @@ describe("ChatPage", () => {
         id: "chat-2",
         wakerId: "waker-1",
         title: "缓存对话",
-        workspaceDirectory: "/tmp/ally",
+        workspaceDirectory: "/tmp/bot",
         activeExecutionId: "",
         pendingApprovals: [],
       },
@@ -4086,7 +4086,7 @@ describe("ChatPage", () => {
     expect(screen.queryByRole("radio", { name: "会话文件" })).toBeNull();
 
     expect(await screen.findByText("report.md")).toBeVisible();
-    expect(listChatWorkspaceFiles).toHaveBeenCalledWith("chat-1", "/tmp/ally");
+    expect(listChatWorkspaceFiles).toHaveBeenCalledWith("chat-1", "/tmp/bot");
     await user.click(
       screen.getByRole("button", { name: "report.md 的文件操作" }),
     );
@@ -4428,7 +4428,7 @@ describe("ChatPage", () => {
     });
     expect(input).toHaveValue("");
     expect(searchWorkspaceFiles).toHaveBeenCalledWith(
-      "/tmp/ally",
+      "/tmp/bot",
       "AGENTS",
       20,
       undefined,
@@ -4479,7 +4479,7 @@ describe("ChatPage", () => {
         document
           .querySelector("[data-chat-composer-code-reference]")
           ?.getAttribute("data-chat-composer-code-reference"),
-      ).toBe("/tmp/ally/package.json"),
+      ).toBe("/tmp/bot/package.json"),
     );
     scrollIntoView.mockRestore();
   });
@@ -4530,7 +4530,7 @@ describe("ChatPage", () => {
     await screen.findByRole("option", { name: /代码审查/ });
     await user.keyboard("{Enter}");
 
-    expect(input.textContent).toBe("/tmp/ally/readme.mdxx 代码审查");
+    expect(input.textContent).toBe("/tmp/bot/readme.mdxx 代码审查");
     await user.click(screen.getByRole("button", { name: "发送消息" }));
     await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
     expect(sendMessage.mock.calls[0]?.[0]).toEqual(
@@ -4540,7 +4540,7 @@ describe("ChatPage", () => {
           attachments: [],
           codeReferences: [
             {
-              path: "/tmp/ally/readme.md",
+              path: "/tmp/bot/readme.md",
               startLine: 0,
               endLine: 0,
               content: "",

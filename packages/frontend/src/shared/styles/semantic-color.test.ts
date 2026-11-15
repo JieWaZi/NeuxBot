@@ -105,7 +105,7 @@ describe("语义主题", () => {
 
   it("使用 NeuxBot 主题绿统一亮暗主题与控件交互强调色", () => {
     expect(themeStyles).toContain(
-      "--ref-ally-green-light: oklch(84.92% 0.127 150);",
+      "--ref-bot-green-light: oklch(84.92% 0.127 150);",
     );
     expect(themeStyles).toContain(
       "--ref-ally-green-dark: oklch(72% 0.13 150);",
@@ -114,7 +114,7 @@ describe("语义主题", () => {
       /\[data-theme="light"\][\s\S]*--accent-default: var\(--ref-ally-green-light\)/,
     );
     expect(themeStyles).toMatch(
-      /\[data-theme="dark"\][\s\S]*--accent-default: var\(--ref-ally-green-dark\)/,
+      /\[data-theme="dark"\][\s\S]*--accent-default: var\(--ref-bot-green-dark\)/,
     );
     expect(
       themeStyles.match(

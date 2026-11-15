@@ -1,5 +1,5 @@
 /**
- * The `neuxally-resource://file/…` address grammar: how a file is named across the
+ * The `neuxbot-resource://file/…` address grammar: how a file is named across the
  * Sidebar and the resource model, built and parsed without touching a
  * filesystem.
  * @module
@@ -8,16 +8,16 @@
 /**
  * A file resource address, in one of two scopes.
  *
- * Every resource address is `neuxally-resource://<type>/…`, the URI host naming the
+ * Every resource address is `neuxbot-resource://<type>/…`, the URI host naming the
  * resource protocol; for `file` the path opens with the scope:
  *
- * - `neuxally-resource://file/session/<sessionId>/<path>` names a file by its path,
+ * - `neuxbot-resource://file/session/<sessionId>/<path>` names a file by its path,
  *   relative to that Session's workspace root or absolute; the
  *   Host resolves it against the root it holds for the Session.
- * - `neuxally-resource://file/absolute/<path>` names a file by its absolute path with
- *   the leading `/` dropped (`neuxally-resource://file/absolute/home/ys/notes.txt`;
- *   Windows `neuxally-resource://file/absolute/C:/x/y.txt`; a UNC path keeps an empty
- *   first segment, `neuxally-resource://file/absolute//server/share/x.txt`). It carries
+ * - `neuxbot-resource://file/absolute/<path>` names a file by its absolute path with
+ *   the leading `/` dropped (`neuxbot-resource://file/absolute/home/ys/notes.txt`;
+ *   Windows `neuxbot-resource://file/absolute/C:/x/y.txt`; a UNC path keeps an empty
+ *   first segment, `neuxbot-resource://file/absolute//server/share/x.txt`). It carries
  *   no Session.
  *
  * Every id and path segment is component-encoded, so a name carrying `#`, `?`,
@@ -39,7 +39,7 @@ export type FileAddress =
     };
 
 /** The scheme and type every file address opens with. */
-const FILE_ADDRESS_PREFIX = "neuxally-resource://file/";
+const FILE_ADDRESS_PREFIX = "neuxbot-resource://file/";
 
 /** Component-encode one id or path segment, keeping `:` literal for drive letters. */
 function encodeSegment(segment: string): string {
@@ -60,7 +60,7 @@ function isDriveSegment(segment: string | undefined): boolean {
  * Build the address of a file read through one Session.
  * @param sessionId - the Session whose Host workspace resolves the path.
  * @param path - absolute or workspace-relative path; backslashes are normalized to `/`, and leading `./` prefixes are dropped.
- * @returns the `neuxally-resource://file/session/<sessionId>/<path>` address.
+ * @returns the `neuxbot-resource://file/session/<sessionId>/<path>` address.
  */
 export function sessionFileAddress(sessionId: string, path: string): string {
   const normalized = path.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "");
@@ -71,7 +71,7 @@ export function sessionFileAddress(sessionId: string, path: string): string {
  * Build the address of a file by its absolute path.
  * @param path - absolute path; backslashes are normalized to `/` and the leading `/` is dropped,
  *   except that a UNC path (`\\server\share`) keeps one empty first segment.
- * @returns the `neuxally-resource://file/absolute/<path>` address.
+ * @returns the `neuxbot-resource://file/absolute/<path>` address.
  */
 export function absoluteFileAddress(path: string): string {
   const normalized = path.replace(/\\/g, "/");
@@ -84,7 +84,7 @@ export function absoluteFileAddress(path: string): string {
  * Read a file address back into its parts without resolving `.` or `..`.
  * Query and fragment suffixes are ignored; encoded path segments are decoded.
  * @param address - a candidate address.
- * @returns the parts, or `undefined` when the string is not a `neuxally-resource://file/` URI in a known scope with a path, or a segment is not validly encoded.
+ * @returns the parts, or `undefined` when the string is not a `neuxbot-resource://file/` URI in a known scope with a path, or a segment is not validly encoded.
  */
 export function parseFileAddress(address: string): FileAddress | undefined {
   try {

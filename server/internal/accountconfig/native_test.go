@@ -44,10 +44,10 @@ func TestNativeManagedProfiles(t *testing.T) {
 				if err := json.Unmarshal(data, &config); err != nil {
 					t.Fatal(err)
 				}
-				if config["model"] != "ally/gemini-2.5-pro" {
+				if config["model"] != "bot/gemini-2.5-pro" {
 					t.Fatalf("model boundary: %v", config)
 				}
-				provider := config["provider"].(map[string]any)["ally"].(map[string]any)
+				provider := config["provider"].(map[string]any)["bot"].(map[string]any)
 				options := provider["options"].(map[string]any)
 				if options["baseURL"] != "https://example.test/proxy/v1beta" || options["apiKey"] != "secret-a" || provider["npm"] != "@ai-sdk/google" {
 					t.Fatalf("Google provider: %v", provider)
@@ -103,8 +103,8 @@ func TestNativeEnvironmentIsolation(t *testing.T) {
 // TestNativeRawModelIdentity 保留带斜杠的服务端模型 ID，受管边界只添加自己的命名空间。
 func TestNativeRawModelIdentity(t *testing.T) {
 	for _, provider := range []string{constants.RuntimeIDOpenCode, constants.RuntimeIDPi} {
-		for _, raw := range []string{"model", "org/model", "ally/model"} {
-			if native := NativeModelID(provider, raw); native != "ally/"+raw || AccountModelID(provider, native) != raw {
+		for _, raw := range []string{"model", "org/model", "bot/model"} {
+			if native := NativeModelID(provider, raw); native != "bot/"+raw || AccountModelID(provider, native) != raw {
 				t.Fatalf("%s lost the model identity %q", provider, raw)
 			}
 		}

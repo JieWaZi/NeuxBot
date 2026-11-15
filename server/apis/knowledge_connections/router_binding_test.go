@@ -52,10 +52,10 @@ func (c bindingConnections) List(ctx context.Context) ([]models.KnowledgeConnect
 }
 
 func TestKnowledgeRouterBindingProcess(t *testing.T) {
-	if os.Getenv("ALLY_KNOWLEDGE_BINDING_TEST") != "1" {
+	if os.Getenv("NEUXBOT_KNOWLEDGE_BINDING_TEST") != "1" {
 		return
 	}
-	port, _ := strconv.Atoi(os.Getenv("ALLY_KNOWLEDGE_BINDING_PORT"))
+	port, _ := strconv.Atoi(os.Getenv("NEUXBOT_KNOWLEDGE_BINDING_PORT"))
 	var receipts sync.Map
 	library := core.Library{ID: "kb", Kind: "general", Name: "Remote fixture", Version: 1, StructureVersion: 1, PolicyVersion: 1}
 	remoteContext(t, "custom", func(w http.ResponseWriter, r *http.Request) {
@@ -151,7 +151,7 @@ func TestRealKnowledgeRouterBindsRemotePathAndPagination(t *testing.T) {
 		t.Fatal(err)
 	}
 	command := exec.Command(binary, "-test.run=^TestKnowledgeRouterBindingProcess$")
-	command.Env = append(os.Environ(), "ALLY_KNOWLEDGE_BINDING_TEST=1", fmt.Sprintf("ALLY_KNOWLEDGE_BINDING_PORT=%d", port), "TMPDIR="+t.TempDir())
+	command.Env = append(os.Environ(), "NEUXBOT_KNOWLEDGE_BINDING_TEST=1", fmt.Sprintf("NEUXBOT_KNOWLEDGE_BINDING_PORT=%d", port), "TMPDIR="+t.TempDir())
 	var output bytes.Buffer
 	command.Stdout = &output
 	command.Stderr = &output

@@ -43,7 +43,7 @@ func TestLoadSystemSkillStaysOutsideEditablePartnerCatalog(t *testing.T) {
 	if err != nil || len(enabled) != 0 {
 		t.Fatalf("system skill leaked into editable partner state: %+v %v", enabled, err)
 	}
-	binary := filepath.Join(t.TempDir(), "allycli")
+	binary := filepath.Join(t.TempDir(), "botcli")
 	if err := os.WriteFile(binary, []byte("cli fixture"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -59,11 +59,11 @@ func TestLoadSystemSkillStaysOutsideEditablePartnerCatalog(t *testing.T) {
 
 func TestPrepareKeepsSQLiteDefaultsAndCreatesToken(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("ALLY_DATA_DIR", dataDir)
+	t.Setenv("NEUXBOT_DATA_DIR", dataDir)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	t.Setenv("ALLY_MANAGED_FILES_DIR", "")
+	t.Setenv("NEUXBOT_MANAGED_FILES_DIR", "")
 	configuration := NewConfiguration()
 	if err := Prepare(configuration); err != nil {
 		t.Fatalf("prepare configuration: %v", err)
@@ -71,7 +71,7 @@ func TestPrepareKeepsSQLiteDefaultsAndCreatesToken(t *testing.T) {
 	if configuration.DB.Type != conf.Sqlite {
 		t.Fatalf("database type = %q, want sqlite", configuration.DB.Type)
 	}
-	if configuration.DB.DBName != filepath.Join(dataDir, "ally.db") {
+	if configuration.DB.DBName != filepath.Join(dataDir, "bot.db") {
 		t.Fatalf("database path = %q", configuration.DB.DBName)
 	}
 	if configuration.DataDirectory != dataDir || configuration.ManagedFilesDirectory != filepath.Join(home, constants.ManagedFilesDirectoryName) {
@@ -95,19 +95,19 @@ func TestPrepareKeepsSQLiteDefaultsAndCreatesToken(t *testing.T) {
 
 func TestPrepareManagedFilesOverrideKeepsDatabaseLocation(t *testing.T) {
 	dataDir, managedDir := t.TempDir(), filepath.Join(t.TempDir(), "work-files")
-	t.Setenv("ALLY_DATA_DIR", dataDir)
-	t.Setenv("ALLY_MANAGED_FILES_DIR", managedDir)
+	t.Setenv("NEUXBOT_DATA_DIR", dataDir)
+	t.Setenv("NEUXBOT_MANAGED_FILES_DIR", managedDir)
 	configuration := NewConfiguration()
 	if err := Prepare(configuration); err != nil {
 		t.Fatal(err)
 	}
-	if configuration.ManagedFilesDirectory != managedDir || configuration.DataDirectory != dataDir || configuration.DB.DBName != filepath.Join(dataDir, "ally.db") {
+	if configuration.ManagedFilesDirectory != managedDir || configuration.DataDirectory != dataDir || configuration.DB.DBName != filepath.Join(dataDir, "bot.db") {
 		t.Fatalf("managed override changed database root: %+v", configuration)
 	}
 	if err := os.WriteFile(filepath.Join(managedDir, "chat"), []byte("occupied"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("ALLY_MANAGED_FILES_DIR", filepath.Join(managedDir, "chat", "nested"))
+	t.Setenv("NEUXBOT_MANAGED_FILES_DIR", filepath.Join(managedDir, "chat", "nested"))
 	if err := Prepare(NewConfiguration()); err == nil {
 		t.Fatal("unusable managed root was accepted")
 	}

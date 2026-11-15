@@ -35,9 +35,9 @@ single-choice decision, write `question.json` using a supported string schema:
 ```
 
 ```sh
-allycli interaction questions create --input question.json --request-id question-01
-allycli interaction questions get --question-id question-example
-allycli interaction questions wait --question-id question-example --timeout 30s
+botcli interaction questions create --input question.json --request-id question-01
+botcli interaction questions get --question-id question-example
+botcli interaction questions wait --question-id question-example --timeout 30s
 ```
 
 Use the create result's question ID. Continue dependent work only with the

@@ -53,7 +53,7 @@ func TestWorkflowMCPUsesCustomRuntimeBase(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 本用例只验证传输装配，不把含竞态检测器的测试程序复制进技能包。
-	binary := filepath.Join(t.TempDir(), "allycli")
+	binary := filepath.Join(t.TempDir(), "botcli")
 	if err := os.WriteFile(binary, []byte("test CLI file fixture"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -69,10 +69,10 @@ func TestWorkflowMCPUsesCustomRuntimeBase(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer release()
-	if len(request.Connectors) != 1 || request.Connectors[0].RuntimeKey != "ally_capabilities" {
+	if len(request.Connectors) != 1 || request.Connectors[0].RuntimeKey != "bot_capabilities" {
 		t.Fatalf("custom runtime lost MCP: %+v", request.Connectors)
 	}
-	if !strings.Contains(agentapi.DeveloperInstructions(request.Instructions), "Use the injected ally_capabilities MCP tools for NeuxBot operations in this execution") || strings.Contains(request.prompt(), "For all NeuxBot CLI calls") {
+	if !strings.Contains(agentapi.DeveloperInstructions(request.Instructions), "Use the injected bot_capabilities MCP tools for NeuxBot operations in this execution") || strings.Contains(request.prompt(), "For all NeuxBot CLI calls") {
 		t.Fatalf("MCP workflow received competing CLI instructions: %+v", request)
 	}
 	for _, instruction := range request.Instructions {
@@ -88,7 +88,7 @@ func TestWorkflowResultSelectsOnlySupportedTransport(t *testing.T) {
 			registry := capability.New(nil)
 			defer registry.Close()
 			// 本用例只验证传输装配，CLI 内容不参与执行。
-			binary := filepath.Join(t.TempDir(), "allycli")
+			binary := filepath.Join(t.TempDir(), "botcli")
 			if err := os.WriteFile(binary, []byte("test CLI file fixture"), 0o700); err != nil {
 				t.Fatal(err)
 			}
@@ -105,7 +105,7 @@ func TestWorkflowResultSelectsOnlySupportedTransport(t *testing.T) {
 			}
 			defer release()
 			if runtimeID == "codex" {
-				if len(request.Connectors) != 1 || !strings.Contains(agentapi.DeveloperInstructions(request.Instructions), "Use the injected ally_capabilities MCP tools") || strings.Contains(request.prompt(), "For all NeuxBot CLI calls") {
+				if len(request.Connectors) != 1 || !strings.Contains(agentapi.DeveloperInstructions(request.Instructions), "Use the injected bot_capabilities MCP tools") || strings.Contains(request.prompt(), "For all NeuxBot CLI calls") {
 					t.Fatalf("result worker did not receive its MCP transport: %+v", request)
 				}
 			} else if len(request.Connectors) != 0 || !strings.Contains(request.prompt(), "For all NeuxBot CLI calls") || preparedContextPath(t, request) == "" {
@@ -124,7 +124,7 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 		t.Fatal(err)
 	}
 	// 本用例只检查打包路径和 HTTP 授权；真实 CLI 命令行为由下方独立回归覆盖。
-	binary := filepath.Join(t.TempDir(), "allycli")
+	binary := filepath.Join(t.TempDir(), "botcli")
 	if err := os.WriteFile(binary, []byte("test CLI file fixture"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 		t.Fatal(err)
 	}
 	activate()
-	cliName := "allycli"
+	cliName := "botcli"
 	if runtime.GOOS == "windows" {
 		cliName += ".exe"
 	}
@@ -213,11 +213,11 @@ func TestKnowledgeCLIPreparationKeepsOnlyTheFrozenGrant(t *testing.T) {
 	defer registry.Close()
 	endpoint := httptest.NewServer(registry)
 	defer endpoint.Close()
-	binary := filepath.Join(t.TempDir(), "allycli")
+	binary := filepath.Join(t.TempDir(), "botcli")
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
 	}
-	build := exec.Command("go", "build", "-o", binary, "../../cmd/allycli")
+	build := exec.Command("go", "build", "-o", binary, "../../cmd/botcli")
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build real CLI: %v\n%s", err, output)
 	}
@@ -255,7 +255,7 @@ func TestKnowledgeCLIPreparationKeepsOnlyTheFrozenGrant(t *testing.T) {
 	command := exec.Command(builtinskills.CLIPath(request.Skills[0].Path), "--context", preparedContextPath(t, request), "capabilities")
 	command.Dir = t.TempDir()
 	command.Env = os.Environ()
-	command.Env = append(command.Env, "ALLYCLI_CONTEXT_FILE="+preparedContextPath(t, request))
+	command.Env = append(command.Env, "BOTCLI_CONTEXT_FILE="+preparedContextPath(t, request))
 	command.Env = append(command.Env, "PATH=")
 	output, err := command.CombinedOutput()
 	if err != nil {
@@ -281,7 +281,7 @@ func agentPreparationFixture(t *testing.T) *service {
 	t.Helper()
 	registry := capability.New(nil)
 	t.Cleanup(registry.Close)
-	binary := filepath.Join(t.TempDir(), "allycli")
+	binary := filepath.Join(t.TempDir(), "botcli")
 	if err := os.WriteFile(binary, []byte("test CLI file fixture"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -399,7 +399,7 @@ func TestWorkflowAuthoringPreparationSuppliesModeAndStableGuideForEveryRuntime(t
 						t.Error("preparation rewrote user input or repeated the stable authoring role in this turn")
 					}
 					if runtimeID != "unsupported" {
-						if len(request.Connectors) != 1 || request.Connectors[0].RuntimeKey != "ally_capabilities" || strings.Contains(request.prompt(), "For all NeuxBot CLI calls") {
+						if len(request.Connectors) != 1 || request.Connectors[0].RuntimeKey != "bot_capabilities" || strings.Contains(request.prompt(), "For all NeuxBot CLI calls") {
 							t.Errorf("base/custom runtime lost its single MCP authoring transport: %+v", request.Connectors)
 						}
 					} else if len(request.Connectors) != 0 || !strings.Contains(request.prompt(), "For all NeuxBot CLI calls") || preparedContextPath(t, request) == "" {
@@ -442,7 +442,7 @@ func TestWorkflowAuthoringPreparationDoesNotOverrideOrdinaryChatOrWorker(t *test
 func preparedContextPath(t *testing.T, request recordedRun) string {
 	t.Helper()
 	for _, connector := range request.Connectors {
-		if connector.RuntimeKey == "ally_capabilities" {
+		if connector.RuntimeKey == "bot_capabilities" {
 			for i, arg := range connector.Arguments {
 				if arg == "--context" && i+1 < len(connector.Arguments) {
 					return connector.Arguments[i+1]

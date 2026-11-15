@@ -448,7 +448,7 @@ THIS SOFTWARE.
 
 ### WeKnora 知识检索与 Wiki 维护指南
 
-`skills/ally/references/wiki-guide.md` 的检索流程参考 WeKnora 的 `progressive_rag_agent` 与 `wiki_researcher`。`skills/ally/references/wiki-maintenance.md` 的维护流程迁自 [Tencent/WeKnora 固定提交](https://github.com/Tencent/WeKnora/tree/2c0d8384398ca756ee414eef01b71caf91e2caa6) 的 `config/prompt_templates/agent_system_prompt.yaml` 中的 `wiki_fixer`。命令、版本和来源证据约束适配 NeuxBot 的 `allycli` 合同。WeKnora 的 MIT 许可与版权见本节下方声明。
+`skills/bot/references/wiki-guide.md` 的检索流程参考 WeKnora 的 `progressive_rag_agent` 与 `wiki_researcher`。`skills/bot/references/wiki-maintenance.md` 的维护流程迁自 [Tencent/WeKnora 固定提交](https://github.com/Tencent/WeKnora/tree/2c0d8384398ca756ee414eef01b71caf91e2caa6) 的 `config/prompt_templates/agent_system_prompt.yaml` 中的 `wiki_fixer`。命令、版本和来源证据约束适配 NeuxBot 的 `botcli` 合同。WeKnora 的 MIT 许可与版权见本节下方声明。
 
 ### WeKnora 集成凭据与授权
 

@@ -115,7 +115,7 @@ func TestLocalOperationDescriptorUsesActualRunDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	options := map[string]any{"args": []any{"-test.run=^TestWorkflowLocalProcessHelper$", "--", "cwd.txt"}, "env": map[string]any{"ALLY_WORKFLOW_PROCESS_TEST": "1"}}
+	options := map[string]any{"args": []any{"-test.run=^TestWorkflowLocalProcessHelper$", "--", "cwd.txt"}, "env": map[string]any{"NEUXBOT_WORKFLOW_PROCESS_TEST": "1"}}
 	effect := models.WorkflowEffect{Boundary: workflowdsl.EffectBoundary{Primitive: "action", Arguments: []workflowdsl.Value{workflowdsl.JSONValue("write"), workflowdsl.JSONValue(options)}}}
 	_, descriptor, required, err := operationDescription(revision.Manifest, run, effect)
 	if err != nil || !required || descriptor["workingDirectory"] != workspace.RunDirectory {
@@ -124,7 +124,7 @@ func TestLocalOperationDescriptorUsesActualRunDirectory(t *testing.T) {
 	if _, err := s.executeScript(context.Background(), run, revision.Manifest.Meta.Actions[0], options); err != nil {
 		t.Fatal(err)
 	}
-	if body, err := os.ReadFile(filepath.Join(descriptor["workingDirectory"].(string), "cwd.txt")); err != nil || string(body) != "ALLY ALLY!" {
+	if body, err := os.ReadFile(filepath.Join(descriptor["workingDirectory"].(string), "cwd.txt")); err != nil || string(body) != "BOT BOT!" {
 		t.Fatalf("actual local process did not use its approved cwd: %q %v", body, err)
 	}
 	if _, err := os.Stat(filepath.Join(business, "cwd.txt")); !os.IsNotExist(err) {

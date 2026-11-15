@@ -91,7 +91,7 @@ func testConnection(ctx context.Context, connector models.MCPConnector, director
 		return failedResult(startedAt, err)
 	}
 	client := mcp.NewClient(&mcp.Implementation{
-		Name:    "ally",
+		Name:    "bot",
 		Title:   "NeuxBot",
 		Version: "1",
 	}, nil)

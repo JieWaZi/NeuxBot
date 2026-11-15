@@ -6,11 +6,11 @@
 
 `pnpm build` 构建 Core、Renderer 与 Electron 代码。`pnpm build:native`（别名 `build:desktop`）调用 scripts/package-desktop.mjs，在当前 macOS 或 Windows 原生环境生成安装包；desktop 的 electron:package 复用同一流程。
 
-发布版本使用 X.Y.Z，并通过 ALLY_VERSION 写入 Core；版本写入符号随 Go module 保持一致。发布工作流位于 .github/workflows/release.yml，仓库及安装包归属为 JieWaZi/NeuxBot。
+发布版本使用 X.Y.Z，并通过 NEUXBOT_VERSION 写入 Core；版本写入符号随 Go module 保持一致。发布工作流位于 .github/workflows/release.yml，仓库及安装包归属为 JieWaZi/NeuxBot。
 
 ## 构建资源
 
-品牌标志的矢量母版为 `packages/frontend/public/ally-logo.svg`。在 macOS 运行 `pnpm icon:generate`，通过系统 `sips` 与 `iconutil` 统一生成浅暗标志、应用 PNG、macOS ICNS、Windows 多分辨率 ICO 和托盘图标；派生资源不手工修改。默认安装图标使用浅色底板，暗色应用图标另存为 `desktop/resources/app-icon-dark.png`。
+品牌标志的矢量母版为 `packages/frontend/public/bot-logo.svg`。在 macOS 运行 `pnpm icon:generate`，通过系统 `sips` 与 `iconutil` 统一生成浅暗标志、应用 PNG、macOS ICNS、Windows 多分辨率 ICO 和托盘图标；派生资源不手工修改。默认安装图标使用浅色底板，暗色应用图标另存为 `desktop/resources/app-icon-dark.png`。
 
 Core 使用 CGO_ENABLED=0、-trimpath 和 -s -w。Renderer 由 Vite 编译，主进程与 preload 由 esbuild 编译，node-pty 保留原生运行依赖。系统技能、Pi Bridge（源在 `packages/pi-bridge`，生成到 `resources/pi-bridge`）、终端 worker（源在 `packages/terminal-runtime`，构建到 `resources/terminal-runtime`）、工作流 SDK 与呈现目录必须和生成源一致。
 
@@ -26,7 +26,7 @@ API 生成器从锁定 ginx 模块的临时源码副本构建，应用 `scripts/
 
 正式目录、公开资料与自有扩展统一固定为 `schemaVersion: 1`，标准清单仍使用 Agent Plugins `1.0.0`，授权仍使用 `neuxbot-auth/1`。发布先审查并提交独立插件仓库，再从真实提交构建目录、公开资料与完整 ZIP；校验来源提交、HTTP 下载地址、摘要和公开资料大小后上传新的 Release，并将其设为最新正式版本。默认目录为 `https://github.com/JieWaZi/neux-plugins/releases/latest/download/catalog.json`。公开 HTTP 200 后仍需由 Core 读取目录、公开资料及完整归档，确认真实三包契约；不能只改 schemaVersion 数字或用本地快照替代正式发布。插件依赖资产的固定旧发布地址保持有效，不覆盖既有 Release 工件。
 
-仅为另一个明确配置的 Core 提供工件时，添加 `--serve-only`，并将启动器打印的目录路径设置为该 Core 的 `ALLY_PLUGIN_CATALOG_URL`。此模式不启动桌面或浏览器。新目录使用独立来源身份，不接管已有正式源资源或旧授权。验证真实三包的跨仓库目录、公开详情、技能、不可变准备与固定版本读取，可运行：
+仅为另一个明确配置的 Core 提供工件时，添加 `--serve-only`，并将启动器打印的目录路径设置为该 Core 的 `NEUXBOT_PLUGIN_CATALOG_URL`。此模式不启动桌面或浏览器。新目录使用独立来源身份，不接管已有正式源资源或旧授权。验证真实三包的跨仓库目录、公开详情、技能、不可变准备与固定版本读取，可运行：
 
 ```sh
 NEUX_VERIFY_LOCAL_PLUGIN_ARTIFACTS=1 pnpm dev:native:plugins --plugins ../neux-plugins -- go -C server test ./apis/plugins -run '^TestDevelopmentPluginArtifacts$' -count=1 -v
@@ -34,7 +34,7 @@ NEUX_VERIFY_LOCAL_PLUGIN_ARTIFACTS=1 pnpm dev:native:plugins --plugins ../neux-p
 
 已由 Vite 或 esbuild 打包的 JavaScript 依赖放在开发依赖中，安装包仅额外携带 node-pty 及其必要依赖。node-pty 只保留当前平台与架构的预编译文件；本机编译目录仅保留 Release 的原生模块、动态库、可执行文件及 ConPTY 运行文件，排除调试符号、静态库、对象目录和构建元数据。node-addon-api 只保留包信息与许可，不携带编译期头文件和工具。electron-builder 固定使用 `--publish never`，产物由独立发布任务统一上传，打包任务无需 GitHub 发布令牌。
 
-原生发布前将 Renderer 资源装配到 `desktop/dist-native`，对超过 1 KiB 的 JS、CSS、JSON、SVG 使用 Brotli 无损压缩。`ally` 协议恢复原字节与 MIME，HTML 保留 CSP 校验；开发模式仍使用原 `dist`。资源冒烟逐项比对压缩发布与原始构建字节。启动预算始终统计未压缩产物。
+原生发布前将 Renderer 资源装配到 `desktop/dist-native`，对超过 1 KiB 的 JS、CSS、JSON、SVG 使用 Brotli 无损压缩。`bot` 协议恢复原字节与 MIME，HTML 保留 CSP 校验；开发模式仍使用原 `dist`。资源冒烟逐项比对压缩发布与原始构建字节。启动预算始终统计未压缩产物。
 
 首屏静态 JS 预算为 500,000 bytes，工作台启动 JS 预算为 4,500,000 bytes；统计包含启动前等待或预热的动态依赖。启动错误面板仅在失败时加载，Mermaid 引擎仅在实际绘图时加载。打包检查安装包 170 MiB、安装文件 450 MiB、Resources 215 MiB 的体积上限，输出机器可读报告。Resources 包含 Core、CLI、前端产物及必要原生模块；插件业务包由启动后台任务独立预取，安装缺包时才联网兜底。各平台体积以当前构建报告为准。Windows 即使超限也输出三项实测体积及最大的 30 个文件，失败构建的报告由发布工作流单独保存。实际文件名与默认平台以打包脚本为准。
 

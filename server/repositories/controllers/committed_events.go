@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const eventPublisherSetting = "ally:committed-event-publisher"
+const eventPublisherSetting = "bot:committed-event-publisher"
 
 func eventsResource(kind, id string) events.Resource { return events.Resource{Kind: kind, ID: id} }
 

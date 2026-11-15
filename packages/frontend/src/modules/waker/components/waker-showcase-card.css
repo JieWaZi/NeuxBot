@@ -1,6 +1,6 @@
 /* 收藏卡保留异形外壳、原布局与指针倾斜，卡面和边缘使用不透明的主题材质。 */
 
-.ally-holo-card {
+.bot-holo-card {
   --from-x: 0px;
   --from-y: 0px;
   --from-scale: 1;
@@ -16,11 +16,11 @@
   perspective: 900px;
 }
 
-.ally-holo-card__translater,
-.ally-holo-card__tilter,
-.ally-holo-card__rotator,
-.ally-holo-card__front,
-.ally-holo-card__back {
+.bot-holo-card__translater,
+.bot-holo-card__tilter,
+.bot-holo-card__rotator,
+.bot-holo-card__front,
+.bot-holo-card__back {
   display: grid;
   width: 100%;
   height: 100%;
@@ -28,30 +28,30 @@
   transform-style: preserve-3d;
 }
 
-.ally-holo-card__translater {
+.bot-holo-card__translater {
   transform: translate3d(0, 0, 0.01px) scale(1);
   will-change: transform, opacity;
 }
 
-.ally-holo-card__tilter {
+.bot-holo-card__tilter {
   transform: rotateY(0deg) rotateX(0deg);
   will-change: transform;
 }
 
-.ally-holo-card[data-phase="opening"] .ally-holo-card__translater {
-  animation: ally-holo-fly-in var(--duration-slow) var(--ease-ui) both;
+.bot-holo-card[data-phase="opening"] .bot-holo-card__translater {
+  animation: bot-holo-fly-in var(--duration-slow) var(--ease-ui) both;
 }
 
-.ally-holo-card[data-phase="closing"] .ally-holo-card__translater,
-.ally-holo-card[data-phase="closed"] .ally-holo-card__translater {
-  animation: ally-holo-fly-out var(--duration-slow) var(--ease-ui-exit) both;
+.bot-holo-card[data-phase="closing"] .bot-holo-card__translater,
+.bot-holo-card[data-phase="closed"] .bot-holo-card__translater {
+  animation: bot-holo-fly-out var(--duration-slow) var(--ease-ui-exit) both;
 }
 
-.ally-holo-card[data-phase="closed"] {
+.bot-holo-card[data-phase="closed"] {
   visibility: hidden;
 }
 
-.ally-holo-card__rotator {
+.bot-holo-card__rotator {
   position: relative;
   transform: rotateY(0deg);
   transform-origin: center;
@@ -59,11 +59,11 @@
   box-shadow: var(--elevation-md);
 }
 
-.ally-holo-card[data-reveal="true"] .ally-holo-card__rotator {
-  animation: ally-holo-flip-in var(--duration-slow) var(--ease-ui) both;
+.bot-holo-card[data-reveal="true"] .bot-holo-card__rotator {
+  animation: bot-holo-flip-in var(--duration-slow) var(--ease-ui) both;
 }
 
-@keyframes ally-holo-fly-in {
+@keyframes bot-holo-fly-in {
   from {
     transform: translate3d(var(--from-x), var(--from-y), 0.01px)
       scale(var(--from-scale));
@@ -73,7 +73,7 @@
   }
 }
 
-@keyframes ally-holo-fly-out {
+@keyframes bot-holo-fly-out {
   from {
     opacity: 1;
     transform: translate3d(0, 0, 0.01px) scale(1);
@@ -85,7 +85,7 @@
   }
 }
 
-@keyframes ally-holo-flip-in {
+@keyframes bot-holo-flip-in {
   from {
     transform: rotateY(180deg) rotateX(0deg);
   }
@@ -94,21 +94,21 @@
   }
 }
 
-.ally-holo-card__front,
-.ally-holo-card__back {
+.bot-holo-card__front,
+.bot-holo-card__back {
   grid-area: 1 / 1;
   overflow: hidden;
   isolation: isolate;
   backface-visibility: hidden;
 }
 
-.ally-holo-card__front {
+.bot-holo-card__front {
   position: relative;
   overflow: visible;
   transform: translateZ(0.01px);
 }
 
-.ally-holo-card__shell {
+.bot-holo-card__shell {
   position: absolute;
   inset: -30px -24px -24px;
   width: calc(100% + 48px);
@@ -116,7 +116,7 @@
   pointer-events: none;
 }
 
-.ally-holo-card__tab {
+.bot-holo-card__tab {
   position: absolute;
   top: -19px;
   left: 12%;
@@ -125,12 +125,12 @@
   letter-spacing: 0.28em;
 }
 
-.ally-holo-card__back {
+.bot-holo-card__back {
   background: var(--companion-card-back);
   transform: rotateY(180deg) translateZ(1px);
 }
 
-.ally-holo-card__back-mark {
+.bot-holo-card__back-mark {
   place-self: center;
   width: 42%;
   aspect-ratio: 1;
@@ -141,7 +141,7 @@
   place-items: center;
 }
 
-.ally-holo-card__frame {
+.bot-holo-card__frame {
   display: grid;
   grid-area: 1 / 1;
   grid-template-rows: minmax(128px, 1fr) auto auto;
@@ -155,13 +155,13 @@
   border-radius: inherit;
 }
 
-.ally-holo-card__art {
+.bot-holo-card__art {
   position: relative;
   min-height: 0;
   isolation: isolate;
 }
 
-.ally-holo-card__art::before {
+.bot-holo-card__art::before {
   content: "";
   position: absolute;
   inset: 10% 0 0;
@@ -178,7 +178,7 @@
   pointer-events: none;
 }
 
-.ally-holo-card__status {
+.bot-holo-card__status {
   position: absolute;
   top: 0;
   right: 0;
@@ -193,20 +193,20 @@
   background: var(--surface-raised);
 }
 
-.ally-holo-card__status[data-status="working"] {
+.bot-holo-card__status[data-status="working"] {
   color: var(--status-info-content);
 }
-.ally-holo-card__status[data-status="waiting"] {
+.bot-holo-card__status[data-status="waiting"] {
   color: var(--status-warning-content);
 }
-.ally-holo-card__status > span {
+.bot-holo-card__status > span {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: currentColor;
 }
 
-.ally-holo-card__serial {
+.bot-holo-card__serial {
   position: absolute;
   top: 34px;
   left: 0;
@@ -216,7 +216,7 @@
   opacity: 0.55;
 }
 
-.ally-holo-card__orbit {
+.bot-holo-card__orbit {
   position: absolute;
   inset: 36% 0 15%;
   border: 1px solid var(--border-subtle);
@@ -225,51 +225,51 @@
   pointer-events: none;
 }
 
-.ally-holo-card__figure {
+.bot-holo-card__figure {
   position: absolute;
   inset: -3% -7% -9%;
   pointer-events: auto;
   transform: translateZ(32px) rotate(-6deg);
 }
 
-.ally-holo-card__plate {
+.bot-holo-card__plate {
   display: grid;
   min-width: 0;
   padding-top: 12px;
   border-top: 1px solid var(--card-highlight);
 }
 
-.ally-holo-card__plate[data-traits="true"] {
+.bot-holo-card__plate[data-traits="true"] {
   grid-template-columns: minmax(0, 1fr) 70px;
   gap: 12px;
 }
-.ally-holo-card__profile {
+.bot-holo-card__profile {
   min-width: 0;
   display: grid;
   gap: 8px;
 }
 
-.ally-holo-card__bio {
+.bot-holo-card__bio {
   padding: 8px 12px;
   border-radius: var(--radius-lg);
   background: var(--muted);
   color: var(--content-secondary);
 }
 
-.ally-holo-card__bio > span {
+.bot-holo-card__bio > span {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
   overflow: hidden;
 }
 
-.ally-holo-card__abilities {
+.bot-holo-card__abilities {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
   margin-top: 2px;
 }
-.ally-holo-card__abilities li {
+.bot-holo-card__abilities li {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -281,18 +281,18 @@
   background: var(--muted);
   color: var(--content-secondary);
 }
-.ally-holo-card__abilities li span {
+.bot-holo-card__abilities li span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ally-holo-card__abilities svg {
+.bot-holo-card__abilities svg {
   width: 13px;
   height: 13px;
   flex: none;
 }
 
-.ally-holo-card__traits {
+.bot-holo-card__traits {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -300,14 +300,14 @@
   border-left: 1px solid var(--card-highlight);
   color: var(--muted-foreground);
 }
-.ally-holo-card__traits span {
+.bot-holo-card__traits span {
   overflow: hidden;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow-wrap: anywhere;
 }
-.ally-holo-card__footer {
+.bot-holo-card__footer {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -316,13 +316,13 @@
   padding-top: 12px;
   border-top: 1px solid var(--card-highlight);
 }
-.ally-holo-card__ready {
+.bot-holo-card__ready {
   display: flex;
   gap: 10px;
   align-items: center;
   min-width: 0;
 }
-.ally-holo-card__voice {
+.bot-holo-card__voice {
   display: grid;
   place-items: center;
   flex: none;
@@ -333,44 +333,44 @@
   color: var(--status-success-content);
   background: var(--status-success-surface);
 }
-.ally-holo-card__voice svg {
+.bot-holo-card__voice svg {
   width: 20px;
   height: 20px;
 }
 
 @media (max-width: 420px) {
-  .ally-holo-card {
+  .bot-holo-card {
     width: calc(100vw - 40px);
   }
-  .ally-holo-card__frame {
+  .bot-holo-card__frame {
     padding: 16px;
     gap: 12px;
   }
-  .ally-holo-card__plate[data-traits="true"] {
+  .bot-holo-card__plate[data-traits="true"] {
     grid-template-columns: minmax(0, 1fr) 60px;
     gap: 10px;
   }
-  .ally-holo-card__footer > button {
+  .bot-holo-card__footer > button {
     flex: 1;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ally-holo-card,
-  .ally-holo-card[data-phase="opening"],
-  .ally-holo-card[data-phase="closing"] {
+  .bot-holo-card,
+  .bot-holo-card[data-phase="opening"],
+  .bot-holo-card[data-phase="closing"] {
     --from-x: 0px;
     --from-y: 0px;
     --from-scale: 1;
   }
 
-  .ally-holo-card__translater,
-  .ally-holo-card__tilter,
-  .ally-holo-card[data-phase="opening"] .ally-holo-card__translater,
-  .ally-holo-card[data-phase="closing"] .ally-holo-card__translater,
-  .ally-holo-card[data-phase="closed"] .ally-holo-card__translater,
-  .ally-holo-card__rotator,
-  .ally-holo-card[data-reveal="true"] .ally-holo-card__rotator {
+  .bot-holo-card__translater,
+  .bot-holo-card__tilter,
+  .bot-holo-card[data-phase="opening"] .bot-holo-card__translater,
+  .bot-holo-card[data-phase="closing"] .bot-holo-card__translater,
+  .bot-holo-card[data-phase="closed"] .bot-holo-card__translater,
+  .bot-holo-card__rotator,
+  .bot-holo-card[data-reveal="true"] .bot-holo-card__rotator {
     animation: none;
     transition: none;
     transform: translate3d(0, 0, 0.01px) scale(1);

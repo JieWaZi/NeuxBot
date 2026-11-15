@@ -104,9 +104,9 @@ func TestNativeAuthenticationAdmissionFencesOnlySelectedSystemProvider(t *testin
 }
 
 func TestNativeAuthenticationEnvironmentKeepsOnlySelectedCredentialScope(t *testing.T) {
-	launch := ProviderLaunch{BaseEnvironment: map[string]string{"GROK_HOME": "/native/grok", "XAI_API_KEY": "fixture-xai", "OPENAI_API_KEY": "unrelated", "ANTHROPIC_API_KEY": "unrelated", "ALLYCLI_AUTH": "private", "PATH": "/bin"}}
+	launch := ProviderLaunch{BaseEnvironment: map[string]string{"GROK_HOME": "/native/grok", "XAI_API_KEY": "fixture-xai", "OPENAI_API_KEY": "unrelated", "ANTHROPIC_API_KEY": "unrelated", "BOTCLI_AUTH": "private", "PATH": "/bin"}}
 	selected := systemAuthenticationEnvironment("grok", launch)
-	if selected["XAI_API_KEY"] != "fixture-xai" || selected["GROK_HOME"] != "/native/grok" || selected["OPENAI_API_KEY"] != "" || selected["ANTHROPIC_API_KEY"] != "" || selected["ALLYCLI_AUTH"] != "" {
+	if selected["XAI_API_KEY"] != "fixture-xai" || selected["GROK_HOME"] != "/native/grok" || selected["OPENAI_API_KEY"] != "" || selected["ANTHROPIC_API_KEY"] != "" || selected["BOTCLI_AUTH"] != "" {
 		t.Fatal("management lease crossed native credential scopes")
 	}
 	if !systemAuthenticationHasCredential("grok", selected) || systemAuthenticationHasCredential("qoder", selected) {

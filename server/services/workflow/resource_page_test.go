@@ -15,7 +15,7 @@ func TestCreationResourcePagesExposeEnforcedPoliciesAndBoundConnectors(t *testin
 	service.wakers = resourceWakerFixture{}
 	service.connectors = fixtureConnectors{connector: models.MCPConnector{ID: "bound", Name: "已绑定工具", URL: "https://private.invalid", Headers: []models.MCPSecretDefinition{{ID: "auth", Name: "Authorization", Value: "private-token"}}}}
 	ctx := context.Background()
-	definition, err := fixtureDefinition(ctx, service.store, definitionFixture{RequestID: "resources", CreationWakerID: "fixture-ally"})
+	definition, err := fixtureDefinition(ctx, service.store, definitionFixture{RequestID: "resources", CreationWakerID: "fixture-bot"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,5 +47,5 @@ type resourceWakerFixture struct {
 }
 
 func (resourceWakerFixture) List(context.Context, string, int, int) ([]models.Waker, error) {
-	return []models.Waker{{ID: "fixture-ally", Name: "NeuxBot"}}, nil
+	return []models.Waker{{ID: "fixture-bot", Name: "NeuxBot"}}, nil
 }

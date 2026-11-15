@@ -653,7 +653,7 @@
         },
         "sdk": {
           "enum": [
-            "ally.workflow"
+            "bot.workflow"
           ]
         },
         "title": {

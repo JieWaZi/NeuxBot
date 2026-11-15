@@ -738,9 +738,9 @@ function AppShellContent({
         setSettingsSection("general");
         navigate("/settings/general", { flushSync: true });
       });
-    window.addEventListener("ally:open-general-settings", openGeneral);
+    window.addEventListener("bot:open-general-settings", openGeneral);
     return () =>
-      window.removeEventListener("ally:open-general-settings", openGeneral);
+      window.removeEventListener("bot:open-general-settings", openGeneral);
   }, [navigate, guardSettingsNavigation]);
   const chatRouteTabs = appScenes.snapshot.tabs.flatMap((tab) => {
     const match =

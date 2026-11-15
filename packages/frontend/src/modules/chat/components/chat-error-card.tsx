@@ -265,7 +265,7 @@ export function MessageFailure({
 }
 
 // 只保存提示的关闭身份，不复制执行状态；聊天重新打开后不恢复已覆盖的旧提示。
-const dismissedFailuresStorageKey = "ally:chat-dismissed-failures";
+const dismissedFailuresStorageKey = "bot:chat-dismissed-failures";
 let dismissedExecutionFailures: ReadonlySet<string> = (() => {
   try {
     const stored: unknown = JSON.parse(

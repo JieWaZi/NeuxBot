@@ -39,7 +39,7 @@ vi.mock("@/shared/ui/text-diff-view", () => ({
 }));
 vi.mock("@/shared/api/use-query-events", () => ({ useQueryEvents: vi.fn() }));
 const server = setupServer();
-const root = "http://ally.test/api/v1/knowledge/libraries/kb";
+const root = "http://bot.test/api/v1/knowledge/libraries/kb";
 const pages = [
   { id: "index", slug: "index", title: "索引", pageType: "index", version: 1 },
   {
@@ -54,9 +54,9 @@ const pages = [
 ];
 beforeAll(() => {
   configure({ asyncUtilTimeout: 5000 });
-  window.localStorage.setItem("ally.ui.theme", "light");
+  window.localStorage.setItem("bot.ui.theme", "light");
   server.listen({ onUnhandledRequest: "error" });
-  client.setConfig({ baseUrl: "http://ally.test" });
+  client.setConfig({ baseUrl: "http://bot.test" });
 });
 afterEach(() => {
   server.resetHandlers();
@@ -787,7 +787,7 @@ it("历史分页失败保留已读版本并禁用追加，重新读取后可恢�
 it("远端历史携带页面地址读取快照，写操作入口保留并检查能力", async () => {
   show("?view=wiki&page=one&backend=weknora&connection=remote");
   const remote =
-    "http://ally.test/api/v1/knowledge/connections/remote/libraries/kb";
+    "http://bot.test/api/v1/knowledge/connections/remote/libraries/kb";
   const slugs: (string | null)[] = [];
   server.use(
     http.get(remote, () =>
@@ -1118,7 +1118,7 @@ it("索引后页失败保留已读条目并禁用追加，重新读取后可导�
 it("远端索引维持原读取边界，不请求同标识本地索引", async () => {
   show("?view=wiki&backend=weknora&connection=remote");
   const remote =
-    "http://ally.test/api/v1/knowledge/connections/remote/libraries/kb";
+    "http://bot.test/api/v1/knowledge/connections/remote/libraries/kb";
   let localIndexReads = 0;
   server.use(
     http.get(`${root}/wiki/index`, () => {
@@ -1312,7 +1312,7 @@ it("目录重命名保留父级、排序和失败草稿，删除空目录使用�
 it("官方远端目录操作入口保留，点击明确提示能力未支持且不写本地", async () => {
   const user = userEvent.setup();
   const remote =
-    "http://ally.test/api/v1/knowledge/connections/remote/libraries/kb";
+    "http://bot.test/api/v1/knowledge/connections/remote/libraries/kb";
   show("?view=wiki&page=one&backend=weknora&connection=remote");
   server.use(
     http.get(remote, () =>

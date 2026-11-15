@@ -123,18 +123,18 @@ func TestFeishuOnlyAcceptsRealUserDMOrBotMentionAndPreservesQuote(t *testing.T) 
 	if err := json.Unmarshal([]byte(payload), &event); err != nil {
 		t.Fatal(err)
 	}
-	if _, accepted, err := normalizeFeishu(&event, "ally-bot"); err != nil || accepted {
+	if _, accepted, err := normalizeFeishu(&event, "bot-bot"); err != nil || accepted {
 		t.Fatal("unmentioned group input accepted")
 	}
-	actualBot := "ally-bot"
+	actualBot := "bot-bot"
 	event.Event.Message.Mentions[0].Id.OpenId = &actualBot
-	message, accepted, err := normalizeFeishu(&event, "ally-bot")
+	message, accepted, err := normalizeFeishu(&event, "bot-bot")
 	if err != nil || !accepted || message.Content != "整理结果" || message.SenderID != "member" || message.QuoteID != "quoted" || message.Kind != constants.IMChatKindGroup {
 		t.Fatalf("group normalization: %+v %v", message, err)
 	}
 	botSender := "app"
 	event.Event.Sender.SenderType = &botSender
-	if _, accepted, err := normalizeFeishu(&event, "ally-bot"); err != nil || accepted {
+	if _, accepted, err := normalizeFeishu(&event, "bot-bot"); err != nil || accepted {
 		t.Fatal("bot echo accepted")
 	}
 }

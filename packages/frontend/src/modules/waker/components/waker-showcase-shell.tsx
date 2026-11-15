@@ -4,7 +4,7 @@ export function WakerShowcaseShell() {
     "M28 55 Q28 29 55 29 H72 Q77 7 97 7 H158 Q178 7 183 29 L426 35 Q453 35 453 63 V109 Q453 120 446 127 V274 Q446 283 453 290 V471 Q453 483 447 490 V522 Q458 534 458 551 V623 Q458 651 431 651 H51 Q22 651 22 623 V553 Q22 544 28 538 Z";
   return (
     <svg
-      className="ally-holo-card__shell"
+      className="bot-holo-card__shell"
       viewBox="0 0 480 680"
       preserveAspectRatio="none"
       aria-hidden="true"

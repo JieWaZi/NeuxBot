@@ -20,10 +20,10 @@ import { remarkWikiLinks } from "./knowledge-wiki-markdown";
 import { KnowledgeWikiView } from "./knowledge-wiki-view";
 
 const server = setupServer();
-const root = "http://ally.test/api/v1/knowledge/libraries";
+const root = "http://bot.test/api/v1/knowledge/libraries";
 beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });
-  client.setConfig({ baseUrl: "http://ally.test" });
+  client.setConfig({ baseUrl: "http://bot.test" });
 });
 afterEach(() => {
   server.resetHandlers();
@@ -281,7 +281,7 @@ it.each(["", "index"])(
   "远端索引使用完整分页目录和唯一导言，入口=%s",
   async (pageId) => {
     const remote =
-      "http://ally.test/api/v1/knowledge/connections/remote/libraries/kb";
+      "http://bot.test/api/v1/knowledge/connections/remote/libraries/kb";
     let pageRequests = 0;
     const rows = [
       {
@@ -380,7 +380,7 @@ it.each(["no-index", "empty", "incomplete"])(
   async (state) => {
     const notices = renderHook(useErrorNotices);
     const remote =
-      "http://ally.test/api/v1/knowledge/connections/remote/libraries/kb";
+      "http://bot.test/api/v1/knowledge/connections/remote/libraries/kb";
     server.use(
       http.get(`${remote}/page-directory`, () =>
         HttpResponse.json({
@@ -445,7 +445,7 @@ it.each(["no-index", "empty", "incomplete"])(
 
 it("远端交错分类按目录与业务顺序分组，后来的A类页面不会落进B类", async () => {
   const remote =
-    "http://ally.test/api/v1/knowledge/connections/remote/libraries/kb";
+    "http://bot.test/api/v1/knowledge/connections/remote/libraries/kb";
   server.use(
     http.get(`${remote}/page-directory`, () =>
       HttpResponse.json({

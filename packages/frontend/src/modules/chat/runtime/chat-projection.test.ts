@@ -117,7 +117,7 @@ describe("chat projection", () => {
           toolCallId: "skill-1",
           toolCategory: "skill",
           toolAction: "use_skill",
-          toolLabel: "使用技能 ally",
+          toolLabel: "使用技能 bot",
           toolStatus: "completed",
         },
       ],
@@ -125,7 +125,7 @@ describe("chat projection", () => {
     expect(projected.content[0]).toMatchObject({
       type: "tool-call",
       toolName: "skill",
-      args: { category: "skill", action: "use_skill", label: "使用技能 ally" },
+      args: { category: "skill", action: "use_skill", label: "使用技能 bot" },
     });
   });
 

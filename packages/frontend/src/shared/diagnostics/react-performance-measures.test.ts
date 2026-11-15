@@ -33,7 +33,7 @@ function componentMeasure(name: string) {
 
 it("持续渲染后释放 React 性能记录，保留业务测量和启动标记", async () => {
   stop = observeReactPerformanceMeasures();
-  nodePerformance.mark("ally.startup.entry");
+  nodePerformance.mark("bot.startup.entry");
   nodePerformance.measure("business.request", { start: 0, end: 1 });
   for (let batch = 0; batch < 3; batch += 1) {
     for (let index = 0; index < 2_000; index += 1) {
@@ -51,7 +51,7 @@ it("持续渲染后释放 React 性能记录，保留业务测量和启动标记
     });
   }
   expect(nodePerformance.getEntriesByType("mark").map((e) => e.name)).toEqual([
-    "ally.startup.entry",
+    "bot.startup.entry",
   ]);
 });
 

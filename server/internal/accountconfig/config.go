@@ -104,7 +104,7 @@ func Environment(base []string) []string {
 			strings.HasPrefix(upper, "CLAUDE_") || strings.HasPrefix(upper, "ANTHROPIC_") ||
 			strings.HasPrefix(upper, "OPENAI_") || strings.HasPrefix(upper, "KIMI_") ||
 			strings.HasPrefix(upper, "CURSOR_") || strings.HasPrefix(upper, "PI_") ||
-			strings.HasPrefix(upper, "ALLY_ACCOUNT_") || strings.HasPrefix(upper, "GEMINI_") ||
+			strings.HasPrefix(upper, "NEUXBOT_ACCOUNT_") || strings.HasPrefix(upper, "GEMINI_") ||
 			strings.HasPrefix(upper, "GOOGLE_") || strings.HasPrefix(upper, "GROK_") ||
 			strings.HasPrefix(upper, "XAI_") || strings.HasPrefix(upper, "OPENCODE_") ||
 			slices.Contains([]string{"XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"}, upper) {
@@ -181,7 +181,7 @@ func PrepareForWorkspace(storage, workspace string, spec Spec) (map[string]strin
 		env["KIMI_MODEL_MAX_COMPLETION_TOKENS"] = strconv.Itoa(constants.AIAccountKimiCompletionTokenCap)
 		filename = "config.toml"
 		var config strings.Builder
-		fmt.Fprintf(&config, "default_model = %s\n[providers.ally]\ntype = %s\nbase_url = %s\napi_key = %s\n",
+		fmt.Fprintf(&config, "default_model = %s\n[providers.bot]\ntype = %s\nbase_url = %s\napi_key = %s\n",
 			strconv.Quote(spec.Model), strconv.Quote(providerType), strconv.Quote(spec.BaseURL), strconv.Quote(spec.APIKey))
 		models := spec.SelectedModels
 		if len(models) == 0 {
@@ -195,7 +195,7 @@ func PrepareForWorkspace(storage, workspace string, spec Spec) (map[string]strin
 			if contextSize < 1 {
 				contextSize = 262144
 			}
-			fmt.Fprintf(&config, "[models.%s]\nprovider = \"ally\"\nmodel = %s\nmax_context_size = %d\n",
+			fmt.Fprintf(&config, "[models.%s]\nprovider = \"bot\"\nmodel = %s\nmax_context_size = %d\n",
 				strconv.Quote(id), strconv.Quote(id), contextSize)
 			modelSpec := spec
 			modelSpec.Model = id

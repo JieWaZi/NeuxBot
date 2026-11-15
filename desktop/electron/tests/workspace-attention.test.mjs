@@ -260,7 +260,7 @@ test("notification preferences preserve the legacy scope and persist across rest
   const { loadNotificationPreferences } = loadModule(
     "main/notification-preferences.ts",
   );
-  const directory = await mkdtemp(path.join(tmpdir(), "ally-attention-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "bot-attention-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const file = path.join(directory, "preferences.json");
   await writeFile(file, JSON.stringify({ mode: "off", preview: true }));

@@ -2,7 +2,7 @@
 
 This directory is the source of truth for skills shipped with NeuxBot, separate from repository development skills in `.agents/skills/`.
 
-The system `ally` skill is the single entry for application capabilities. Its short English `SKILL.md` routes agents to live `allycli capabilities`, `describe`, and the relevant guide. Add future application capabilities to the shared operation catalog and this skill's references instead of creating a separate built-in skill or MCP server.
+The system `bot` skill is the single entry for application capabilities. Its short English `SKILL.md` routes agents to live `botcli capabilities`, `describe`, and the relevant guide. Add future application capabilities to the shared operation catalog and this skill's references instead of creating a separate built-in skill or MCP server.
 
 `catalog.json` marks this package with `system: true`. Core materializes the current bundled resources into a digest-verified system directory for each managed execution. It does not create an editable skill package or partner enablement relation. The reserved name cannot be replaced through ordinary skill editing. Ordinary user skills and third-party MCP connectors retain their independent mechanisms.
 

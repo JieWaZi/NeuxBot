@@ -65,7 +65,7 @@ const WorkflowEventHistoryPageSize = 500
 const WorkflowFileFormat = "file"
 
 // WorkflowFileReferencePrefix 区分受管上传引用与本地路径。
-const WorkflowFileReferencePrefix = "ally-file:"
+const WorkflowFileReferencePrefix = "bot-file:"
 
 // WorkflowFileDirectoryName 保存工作流上传的原始文件和归属信息。
 const WorkflowFileDirectoryName = "workflow-files"
@@ -74,7 +74,7 @@ const WorkflowFileDirectoryName = "workflow-files"
 const WorkflowInputFileDirectoryName = "workflow-inputs"
 
 // ManagedFilesDirectoryName 是用户主目录下受管业务文件的默认根目录名。
-const ManagedFilesDirectoryName = ".neuxally"
+const ManagedFilesDirectoryName = ".neuxbot"
 
 // AgentCLIRequestIDMaximumLength 是软件能力命令与收据查询共同接受的幂等标识长度上限。
 const AgentCLIRequestIDMaximumLength = 128
@@ -142,17 +142,17 @@ const (
 	// WorkflowRunsDirectoryName 隔离每次运行的默认业务文件。
 	WorkflowRunsDirectoryName = "runs"
 	// WorkflowRootEnvironment 向本地脚本提供工作流内部根。
-	WorkflowRootEnvironment = "ALLY_WORKFLOW_ROOT"
+	WorkflowRootEnvironment = "NEUXBOT_WORKFLOW_ROOT"
 	// WorkflowScriptsEnvironment 向本地脚本提供脚本副本目录。
-	WorkflowScriptsEnvironment = "ALLY_WORKFLOW_SCRIPTS_DIR"
+	WorkflowScriptsEnvironment = "NEUXBOT_WORKFLOW_SCRIPTS_DIR"
 	// WorkflowStateEnvironment 向本地脚本提供配置与状态目录。
-	WorkflowStateEnvironment = "ALLY_WORKFLOW_STATE_DIR"
+	WorkflowStateEnvironment = "NEUXBOT_WORKFLOW_STATE_DIR"
 	// WorkflowCacheEnvironment 向本地脚本提供缓存目录。
-	WorkflowCacheEnvironment = "ALLY_WORKFLOW_CACHE_DIR"
+	WorkflowCacheEnvironment = "NEUXBOT_WORKFLOW_CACHE_DIR"
 	// WorkflowTemporaryEnvironment 向本地脚本提供临时目录。
-	WorkflowTemporaryEnvironment = "ALLY_WORKFLOW_TEMP_DIR"
+	WorkflowTemporaryEnvironment = "NEUXBOT_WORKFLOW_TEMP_DIR"
 	// WorkflowRunEnvironment 向本地脚本提供本次运行目录。
-	WorkflowRunEnvironment = "ALLY_WORKFLOW_RUN_DIR"
+	WorkflowRunEnvironment = "NEUXBOT_WORKFLOW_RUN_DIR"
 	// ApplicationName 是 Core 对外报告的产品名称。
 	ApplicationName = "NeuxBot"
 	// CoreDefaultHost 是桌面 Core 默认监听的回环地址。
@@ -182,9 +182,9 @@ const (
 	// BuiltinMemoryRuntimeInstructionName 是注入 Runtime 的记忆指令英文标题。
 	BuiltinMemoryRuntimeInstructionName = "System Memory"
 	// BuiltinMemoryMCPConnectorRuntimeKey 是内置记忆 MCP 连接器的固定 Runtime 注入键。
-	BuiltinMemoryMCPConnectorRuntimeKey = "ally_memory_builtin"
+	BuiltinMemoryMCPConnectorRuntimeKey = "bot_memory_builtin"
 	// BuiltinChannelTasksMCPConnectorRuntimeKey 是内置团队任务 MCP 的固定 Runtime 注入键。
-	BuiltinChannelTasksMCPConnectorRuntimeKey = "ally_channel_tasks_builtin"
+	BuiltinChannelTasksMCPConnectorRuntimeKey = "bot_channel_tasks_builtin"
 	// MemorySearchDefaultTopK 是记忆检索默认返回条数，用于有界返回最相关记忆。
 	MemorySearchDefaultTopK = 20
 	// MemorySearchMaxTopK 是记忆检索允许的最大返回条数。
@@ -370,7 +370,7 @@ const (
 	// AIAccountGoogleURL 是 Google GenerateContent 默认版本化入口。
 	AIAccountGoogleURL = "https://generativelanguage.googleapis.com/v1beta"
 	// AIAccountOpenCodeProvider 是受管 OpenCode 服务商命名空间。
-	AIAccountOpenCodeProvider = "ally"
+	AIAccountOpenCodeProvider = "bot"
 )
 
 const (
@@ -537,7 +537,7 @@ const (
 	// AIAccountKimiCompletionTokenCap 限制第三方账号单次生成量，避免 CLI 将完整上下文窗口作为输出请求上限。
 	AIAccountKimiCompletionTokenCap = 32768
 	// AIAccountIdentityEnvironment 是账号及版本对应的非秘密进程指纹。
-	AIAccountIdentityEnvironment = "ALLY_ACCOUNT_IDENTITY"
+	AIAccountIdentityEnvironment = "NEUXBOT_ACCOUNT_IDENTITY"
 )
 
 const (
@@ -622,7 +622,7 @@ const IMWeixinCDNBaseURL = "https://novac2c.cdn.weixin.qq.com/c2c"
 const IMBuiltinConnectorID = "b17d96aa55314c33ab46c172e8cab012"
 
 // IMBuiltinRuntimeKey 是模型可见且跨执行稳定的服务名。
-const IMBuiltinRuntimeKey = "ally_im"
+const IMBuiltinRuntimeKey = "bot_im"
 
 // IMBuiltinToolName 是统一发现与发送投递的内部工具。
 const IMBuiltinToolName = "im_delivery"
@@ -649,7 +649,7 @@ const (
 )
 
 // IMBuiltinPlaceholderURL 只属于管理目录，不可作为实际发送端点。
-const IMBuiltinPlaceholderURL = "http://127.0.0.1/ally-im-placeholder"
+const IMBuiltinPlaceholderURL = "http://127.0.0.1/bot-im-placeholder"
 const (
 	// BuiltinWorkflowMCPConnectorID 是编排、结果和调用共同使用的内置目录身份。
 	BuiltinWorkflowMCPConnectorID = "99b8c72f56224adebc48c6a7b47e98ef"
@@ -660,7 +660,7 @@ const (
 	// BuiltinWorkflowMCPConnectorDescription 说明工作流工具的按场景挂载和查询方式。
 	BuiltinWorkflowMCPConnectorDescription = "内置的工作流能力：按当前场景提供编排、步骤结果提交或获准工作流调用；说明与参数按需查询，由系统管理启用。"
 	// BuiltinWorkflowMCPConnectorPlaceholderURL 仅用于目录展示，不能直接挂载到智能体。
-	BuiltinWorkflowMCPConnectorPlaceholderURL = "http://127.0.0.1/ally-workflow"
+	BuiltinWorkflowMCPConnectorPlaceholderURL = "http://127.0.0.1/bot-workflow"
 	// BuiltinWorkflowMCPConnectorTimeoutMS 是工作流 MCP 的连接诊断超时。
 	BuiltinWorkflowMCPConnectorTimeoutMS = int64(30_000)
 	// WorkflowMCPToolName 是所有工作流场景共用的模型可见工具名。
@@ -757,11 +757,11 @@ const (
 	// PluginAuthQRPNGMaxDimension 限制二维码原图的单边像素数。
 	PluginAuthQRPNGMaxDimension = 1024
 	// PluginAuthEnvironmentPrefix 隔离原生插件桥接秘密的进程环境键。
-	PluginAuthEnvironmentPrefix = "ALLY_PLUGIN_AUTH_"
+	PluginAuthEnvironmentPrefix = "NEUXBOT_PLUGIN_AUTH_"
 	// AIAccountCodexAPIKeyEnvironment 仅在执行进程中传递所选 Codex API 账号凭据。
-	AIAccountCodexAPIKeyEnvironment = "ALLY_CODEX_MODEL_API_KEY"
+	AIAccountCodexAPIKeyEnvironment = "NEUXBOT_CODEX_MODEL_API_KEY"
 	// PluginNativeMarketplace 是应用私有Codex原生索引身份。
-	PluginNativeMarketplace = "neuxally-managed"
+	PluginNativeMarketplace = "neuxbot-managed"
 	// PluginNativeScopeDirectory 是工作区内原生插件能力摘要的独占目录。
 	PluginNativeScopeDirectory = "native-plugins"
 	// NativeWorktreesDirectory 是原生 CLI 配置根内存放独立 Git 工作区的目录。

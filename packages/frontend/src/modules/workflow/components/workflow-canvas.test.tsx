@@ -17,7 +17,7 @@ import { WorkflowInputNode } from "./workflow-input-node";
 import * as canvasRouting from "../model/canvas-routing";
 
 const manifest: Manifest = {
-  sdk: "ally.workflow",
+  sdk: "bot.workflow",
   title: "测试工作流",
   description: "",
   edges: [],

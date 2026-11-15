@@ -16,7 +16,7 @@ describe("Markdown local images", () => {
     );
     const urls = [
       ...result.matchAll(
-        /https:\/\/ally\.invalid\/__workbench_markdown_image__\?path=[^\s)]+/g,
+        /https:\/\/bot\.invalid\/__workbench_markdown_image__\?path=[^\s)]+/g,
       ),
     ].map(([url]) => localImagePath(url));
     expect(urls).toEqual(["./图 片#1%.png", "../assets/logo.png"]);

@@ -89,7 +89,7 @@ func (s *service) buildTeamMD(
 		builder.WriteString("\n## Workflow\n\n")
 		builder.WriteString("You are the sole lead for this team Chat and are responsible for planning, delegation, coordination, and the final summary. ")
 		builder.WriteString("This Chat is both the lead session and the main team session. ")
-		builder.WriteString("During a normal coordination turn, any file creation or modification, command execution, or formal deliverable must be delegated to a non-lead member by creating a task with `allycli team tasks`. ")
+		builder.WriteString("During a normal coordination turn, any file creation or modification, command execution, or formal deliverable must be delegated to a non-lead member by creating a task with `botcli team tasks`. ")
 		builder.WriteString("When the user mentions the lead through the structured `@` mechanism, the system sends the original input directly to this Chat as a direct-execution turn. In that turn, you may implement the request yourself or delegate independent subtasks to non-lead members, but you must not create a task for yourself. ")
 		builder.WriteString("The final summary is the lead's coordination closeout after receiving member results. Reply to the user directly and do not create a task for it. ")
 		builder.WriteString("You may directly handle explanations, clarifications, or short answers that require no formal execution.\n\n")
@@ -104,21 +104,21 @@ func (s *service) buildTeamMD(
 		builder.WriteString("- Member reports appear directly in this Chat; after the task board settles, the system wakes you only when coordination or synthesis is needed\n")
 		builder.WriteString("- Do not act on a truncated report\n")
 		builder.WriteString("- Do not expose the internal task board, notification queue, or tool protocol directly to the user\n\n")
-		builder.WriteString("## allycli team tasks\n\n")
-		builder.WriteString("Read allycli guide team.lead for the method and discover authorized commands with allycli capabilities.\n")
+		builder.WriteString("## botcli team tasks\n\n")
+		builder.WriteString("Read botcli guide team.lead for the method and discover authorized commands with botcli capabilities.\n")
 		return builder.String(), nil
 	}
 	builder.WriteString("\n## Rules\n\n")
 	builder.WriteString("As an execution member, focus on the task assigned to you.\n\n")
 	builder.WriteString("- Stay within the task scope and do not drift from the assigned objective\n")
-	builder.WriteString("- After completing the work and required verification, call `allycli team reports submit` exactly once before your final response\n")
+	builder.WriteString("- After completing the work and required verification, call `botcli team reports submit` exactly once before your final response\n")
 	builder.WriteString("- Put the complete result in `report.text`: findings or changes, verification, and remaining risks. For a direct-delivery task, set `readyForUser=true` only when this text itself is a complete answer the user can read; otherwise let the lead synthesize it\n")
 	builder.WriteString("- If blocked, still use `report` to state truthfully what information, permission, or decision is missing\n")
 	builder.WriteString("- After the report succeeds, final is one natural acknowledgement sentence. Never repeat the report or write a second complete answer in final\n")
 	builder.WriteString("- If `report` is unavailable or still fails after retrying, the final response must instead contain the complete factual report as a factual final response\n")
 	builder.WriteString("- The system commits task status automatically after the run ends; no additional completion action is needed\n")
-	builder.WriteString("\n## allycli team tasks\n\n")
-	builder.WriteString("Read allycli guide team.member and submit the factual report with allycli team reports submit.\n")
+	builder.WriteString("\n## botcli team tasks\n\n")
+	builder.WriteString("Read botcli guide team.member and submit the factual report with botcli team reports submit.\n")
 	return builder.String(), nil
 }
 

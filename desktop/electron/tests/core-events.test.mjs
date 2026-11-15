@@ -87,7 +87,7 @@ test("多资源共享一条物理连接，同一资源最后一个消费者释�
   assert.equal(sockets.length, 1);
   assert.deepEqual(targets[0], {
     url: "ws://127.0.0.1:8432/api/v1/events",
-    protocols: ["ally.events.v1", "ally.auth.secret"],
+    protocols: ["bot.events.v1", "bot.auth.secret"],
   });
   const socket = sockets[0];
   socket.open();

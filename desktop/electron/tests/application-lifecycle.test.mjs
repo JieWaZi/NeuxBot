@@ -177,7 +177,7 @@ test("托盘菜单提供打开和退出，macOS 使用 Template 图标", async (
   assert.equal(context.images[0].template, true);
   assert.equal(
     context.images[0].iconPath,
-    "/workspace/desktop/resources/tray/allyTemplate.png",
+    "/workspace/desktop/resources/tray/botTemplate.png",
   );
   assert.deepEqual(
     context.trays[0].menu.template.map((item) => item.label ?? item.type),
@@ -193,7 +193,7 @@ test("Windows 使用 ICO，并在系统会话结束时直接收尾而不隐藏�
   await context.lifecycle.start();
   assert.equal(
     context.images[0].iconPath,
-    "/workspace/desktop/resources/tray/ally.ico",
+    "/workspace/desktop/resources/tray/bot.ico",
   );
   assert.equal(context.images[0].template, false);
 
@@ -219,10 +219,10 @@ test("正式包从 Resources/tray 读取平台托盘图标", () => {
   };
   assert.equal(
     context.resolveTrayIconPath(application, "/bundle/Resources", "darwin"),
-    "/bundle/Resources/tray/allyTemplate.png",
+    "/bundle/Resources/tray/botTemplate.png",
   );
   assert.equal(
     context.resolveTrayIconPath(application, "/bundle/Resources", "win32"),
-    "/bundle/Resources/tray/ally.ico",
+    "/bundle/Resources/tray/bot.ico",
   );
 });

@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { loadModule } from "./load-module.mjs";
 test("下载保存允许原文件扩展名，并原样写入文件字节", async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), "ally-download-test-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "bot-download-test-"));
   const registered = new Map();
   let fileName;
   const { installDesktopServices } = loadModule("main/desktop-services.ts", {
@@ -36,7 +36,7 @@ test("下载保存允许原文件扩展名，并原样写入文件字节", async
     "node-pty": {},
   });
   const contents = new EventEmitter();
-  contents.mainFrame = { url: "ally://app/index.html" };
+  contents.mainFrame = { url: "bot://app/index.html" };
   contents.isDestroyed = () => false;
   const dispose = installDesktopServices(
     { webContents: contents, isDestroyed: () => false },
@@ -44,7 +44,7 @@ test("下载保存允许原文件扩展名，并原样写入文件字节", async
     contents.mainFrame.url,
   );
   try {
-    const saveFile = registered.get("ally:save_file");
+    const saveFile = registered.get("bot:save_file");
     for (fileName of [
       "报告.png",
       "报告.html",
@@ -82,7 +82,7 @@ test("预加载只暴露白名单方法，事件注销幂等且不泄露 Electro
         ipcRenderer: ipc,
         contextBridge: {
           exposeInMainWorld(name, value) {
-            assert.equal(name, "allyDesktop");
+            assert.equal(name, "botDesktop");
             bridge = value;
           },
         },
@@ -99,14 +99,14 @@ test("预加载只暴露白名单方法，事件注销幂等且不泄露 Electro
   const received = [];
   const stop = bridge.onBrowserNavigation((event) => received.push(event));
   ipc.emit(
-    "ally:browser-navigation",
+    "bot:browser-navigation",
     { sender: "privileged" },
     { sessionId: "a", data: "hello" },
   );
   assert.deepEqual(received, [{ sessionId: "a", data: "hello" }]);
   stop();
   stop();
-  assert.equal(ipc.listenerCount("ally:browser-navigation"), 0);
+  assert.equal(ipc.listenerCount("bot:browser-navigation"), 0);
 });
 test("桌面提醒点击在 Renderer 挂载前暂存，订阅后只交付一次", () => {
   const ipc = new EventEmitter();
@@ -127,7 +127,7 @@ test("桌面提醒点击在 Renderer 挂载前暂存，订阅后只交付一次"
     { addEventListener() {} },
   );
   const received = [];
-  const channel = "ally:workspace-attention-open";
+  const channel = "bot:workspace-attention-open";
   ipc.emit(channel, { sender: "privileged" }, null);
   const stop = bridge.onWorkspaceAttentionOpen((target) =>
     received.push(target),
@@ -170,7 +170,7 @@ test("测试通知通过受限 IPC 调用原生通知并反馈投递失败", asy
     "node-pty": {},
   });
   const contents = new EventEmitter();
-  contents.mainFrame = { url: "ally://app/index.html" };
+  contents.mainFrame = { url: "bot://app/index.html" };
   contents.isDestroyed = () => false;
   const dispose = installDesktopServices(
     { webContents: contents, isDestroyed: () => false },
@@ -178,7 +178,7 @@ test("测试通知通过受限 IPC 调用原生通知并反馈投递失败", asy
     contents.mainFrame.url,
   );
   try {
-    const send = registered.get("ally:send_test_notification");
+    const send = registered.get("bot:send_test_notification");
     assert.equal(typeof send, "function");
     const sender = { sender: contents, senderFrame: contents.mainFrame };
     assert.throws(() => send(sender, { body: "renderer payload" }));
@@ -249,7 +249,7 @@ test("IPC 拒绝外部网页及子框架，并在执行前校验参数", async (
     "node-pty": {},
   });
   const contents = new EventEmitter();
-  contents.mainFrame = { url: "ally://app/index.html" };
+  contents.mainFrame = { url: "bot://app/index.html" };
   contents.isDestroyed = () => false;
   const window = { webContents: contents, isDestroyed: () => false };
   let calls = 0;
@@ -261,9 +261,9 @@ test("IPC 拒绝外部网页及子框架，并在执行前校验参数", async (
         return { baseUrl: "http://127.0.0.1:8432", token: "secret" };
       },
     },
-    "ally://app/index.html",
+    "bot://app/index.html",
   );
-  const handler = registered.get("ally:core_connection");
+  const handler = registered.get("bot:core_connection");
   assert.throws(
     () => handler({ sender: {}, senderFrame: { url: "https://example.com" } }),
     /来源/,
@@ -272,7 +272,7 @@ test("IPC 拒绝外部网页及子框架，并在执行前校验参数", async (
     () =>
       handler({
         sender: contents,
-        senderFrame: { url: "ally://app/index.html" },
+        senderFrame: { url: "bot://app/index.html" },
       }),
     /来源/,
   );
@@ -282,7 +282,7 @@ test("IPC 拒绝外部网页及子框架，并在执行前校验参数", async (
     "secret",
   );
   assert.equal(calls, 1);
-  const stage = registered.get("ally:stage_attachment");
+  const stage = registered.get("bot:stage_attachment");
   assert.throws(
     () =>
       stage(
@@ -313,7 +313,7 @@ test("IPC 拒绝外部网页及子框架，并在执行前校验参数", async (
     ),
   );
   assert.throws(() =>
-    registered.get("ally:terminal_resize")(
+    registered.get("bot:terminal_resize")(
       { sender: contents, senderFrame: contents.mainFrame },
       { sessionId: "a", size: { rows: -1, cols: 80 } },
     ),
@@ -368,7 +368,7 @@ test("草稿对话可创建隔离网页浏览器，但不能借此打开本地�
   });
   const contents = new EventEmitter();
   contents.id = 1;
-  contents.mainFrame = { url: "ally://app/index.html" };
+  contents.mainFrame = { url: "bot://app/index.html" };
   contents.isDestroyed = () => false;
   contents.send = () => undefined;
   const window = {
@@ -381,10 +381,10 @@ test("草稿对话可创建隔离网页浏览器，但不能借此打开本地�
     {
       connection: () => ({ baseUrl: "http://127.0.0.1:8432", token: "secret" }),
     },
-    "ally://app/index.html",
+    "bot://app/index.html",
   );
   const create = (url) =>
-    registered.get("ally:browser_create")(
+    registered.get("bot:browser_create")(
       { sender: contents, senderFrame: contents.mainFrame },
       {
         url,
@@ -419,7 +419,7 @@ test("事件IPC只接受白名单资源，Renderer重载释放自身订阅并保
     "node-pty": {},
   });
   const contents = new EventEmitter();
-  contents.mainFrame = { url: "ally://app/index.html" };
+  contents.mainFrame = { url: "bot://app/index.html" };
   contents.isDestroyed = () => false;
   const sent = [];
   contents.send = (name, payload) => sent.push({ name, payload });
@@ -445,7 +445,7 @@ test("事件IPC只接受白名单资源，Renderer重载释放自身订阅并保
   );
   try {
     const sender = { sender: contents, senderFrame: contents.mainFrame };
-    const subscribe = registered.get("ally:subscribe_core_events");
+    const subscribe = registered.get("bot:subscribe_core_events");
     const input = {
       subscriptionId: "00000000-0000-4000-8000-000000000001",
       topic: "chat",
@@ -468,7 +468,7 @@ test("事件IPC只接受白名单资源，Renderer重载释放自身订阅并保
     assert.equal(await subscribe(sender, input), true);
     assert.equal(subscriptions, 1);
     assert.deepEqual(sent[0], {
-      name: "ally:core-event",
+      name: "bot:core-event",
       payload: {
         subscriptionId: input.subscriptionId,
         kind: "state",
@@ -476,7 +476,7 @@ test("事件IPC只接受白名单资源，Renderer重载释放自身订阅并保
         connectionChanged: undefined,
       },
     });
-    await registered.get("ally:resync_core_events")(sender, {
+    await registered.get("bot:resync_core_events")(sender, {
       subscriptionId: input.subscriptionId,
       after: 42,
     });
@@ -486,7 +486,7 @@ test("事件IPC只接受白名单资源，Renderer重载释放自身订阅并保
     contents.emit("render-process-gone");
     assert.equal(released, 1);
     assert.equal(socketClosed, false);
-    await registered.get("ally:unsubscribe_core_events")(sender, {
+    await registered.get("bot:unsubscribe_core_events")(sender, {
       subscriptionId: input.subscriptionId,
     });
     assert.equal(released, 1);

@@ -46,7 +46,7 @@ it("新建使用同一侧栏编辑器，分区切换保留基础、模型与分�
 });
 
 const server = setupServer(
-  http.get("http://ally.test/api/v1/runtimes", () =>
+  http.get("http://bot.test/api/v1/runtimes", () =>
     HttpResponse.json({
       resources: [
         {
@@ -62,12 +62,12 @@ const server = setupServer(
       ],
     }),
   ),
-  http.get("http://ally.test/api/v1/ai-accounts", () =>
+  http.get("http://bot.test/api/v1/ai-accounts", () =>
     HttpResponse.json({ resources: [] }),
   ),
 );
 beforeAll(() => {
-  apiClient.setConfig({ baseUrl: "http://ally.test" });
+  apiClient.setConfig({ baseUrl: "http://bot.test" });
   server.listen({ onUnhandledRequest: "error" });
 });
 afterAll(() => server.close());
@@ -282,7 +282,7 @@ it("创建入口仅新建本地知识库，不提供保存位置或读取远端�
   const create = vi.fn();
   const listConnections = vi.fn(() => HttpResponse.json({ items: [] }));
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/connections", listConnections),
+    http.get("http://bot.test/api/v1/knowledge/connections", listConnections),
   );
   render(
     <QueryClientProvider client={client()}>

@@ -1,6 +1,6 @@
 import type { AppModuleId } from "./app-navigation-model";
 
-const partnerNavigationStorageKey = "ally.partner-navigation";
+const partnerNavigationStorageKey = "bot.partner-navigation";
 
 export type WakerNavigationGroup = { name: string; wakerIds: string[] };
 

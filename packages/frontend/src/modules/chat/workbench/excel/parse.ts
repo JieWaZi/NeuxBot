@@ -28,7 +28,7 @@ export function parseExcel(
     try {
       worker = new Worker(new URL("./worker.ts", import.meta.url), {
         type: "module",
-        name: "ally-excel",
+        name: "bot-excel",
       });
     } catch (error) {
       reject(new Error("invalid", { cause: error }));

@@ -51,7 +51,7 @@ func TestReplayMessagesKeepsWholeFileCodeReferencesSeparateFromAttachments(t *te
 			Role:    constants.MessageRoleUser,
 			Content: "检查文件",
 			CodeReferences: []eventlog.CodeReference{{
-				Path: "projects/ally/server/service.go",
+				Path: "projects/bot/server/service.go",
 			}},
 		}),
 	})
@@ -59,7 +59,7 @@ func TestReplayMessagesKeepsWholeFileCodeReferencesSeparateFromAttachments(t *te
 		t.Fatalf("ReplayMessages() error = %v", err)
 	}
 	if len(messages) != 1 || len(messages[0].CodeReferences) != 1 ||
-		messages[0].CodeReferences[0].Path != "projects/ally/server/service.go" ||
+		messages[0].CodeReferences[0].Path != "projects/bot/server/service.go" ||
 		len(messages[0].Attachments) != 0 {
 		t.Fatalf("messages = %+v", messages)
 	}
@@ -782,7 +782,7 @@ func TestBuildToolPhraseUsesBoundedSemanticRules(t *testing.T) {
 			name: "standard ACP builtin memory search",
 			data: map[string]interface{}{
 				"name":      "mcp",
-				"server":    "ally_memory_builtin",
+				"server":    "bot_memory_builtin",
 				"tool":      "memory_search",
 				"arguments": map[string]interface{}{"query": "用户偏好"},
 			},
@@ -791,9 +791,9 @@ func TestBuildToolPhraseUsesBoundedSemanticRules(t *testing.T) {
 		{
 			name: "cursor builtin memory search",
 			data: map[string]interface{}{
-				"name": "ally_memory_builtin: memory_search",
+				"name": "bot_memory_builtin: memory_search",
 				"rawInput": map[string]interface{}{
-					"providerIdentifier": "ally_memory_builtin",
+					"providerIdentifier": "bot_memory_builtin",
 					"toolName":           "memory_search",
 					"args":               map[string]interface{}{"query": "用户偏好"},
 				},
@@ -805,7 +805,7 @@ func TestBuildToolPhraseUsesBoundedSemanticRules(t *testing.T) {
 			data: map[string]interface{}{
 				"name": "mcp",
 				"rawInput": map[string]interface{}{
-					"tool": "ally_memory_builtin_memory_search",
+					"tool": "bot_memory_builtin_memory_search",
 					"args": map[string]interface{}{"query": "用户偏好"},
 				},
 			},
@@ -814,7 +814,7 @@ func TestBuildToolPhraseUsesBoundedSemanticRules(t *testing.T) {
 		{
 			name: "kimi direct builtin memory search",
 			data: map[string]interface{}{
-				"name":  "ally_memory_builtin_memory_search",
+				"name":  "bot_memory_builtin_memory_search",
 				"input": map[string]interface{}{"query": "用户偏好"},
 			},
 			want: "搜索记忆",
@@ -822,7 +822,7 @@ func TestBuildToolPhraseUsesBoundedSemanticRules(t *testing.T) {
 		{
 			name: "builtin memory write",
 			data: map[string]interface{}{
-				"name":  "mcp__ally_memory_builtin__memory_write",
+				"name":  "mcp__bot_memory_builtin__memory_write",
 				"input": map[string]interface{}{"content": "回答先给结论"},
 			},
 			want: "保存记忆",
@@ -831,7 +831,7 @@ func TestBuildToolPhraseUsesBoundedSemanticRules(t *testing.T) {
 			name: "builtin memory update",
 			data: map[string]interface{}{
 				"name":   "mcp",
-				"server": "ally_memory_builtin",
+				"server": "bot_memory_builtin",
 				"tool":   "memory_update",
 			},
 			want: "更新记忆",
@@ -840,39 +840,39 @@ func TestBuildToolPhraseUsesBoundedSemanticRules(t *testing.T) {
 			name: "builtin memory forget",
 			data: map[string]interface{}{
 				"name":   "mcp",
-				"server": "ally_memory_builtin",
+				"server": "bot_memory_builtin",
 				"tool":   "memory_forget",
 			},
 			want: "遗忘记忆",
 		},
 		{
 			name: "workflow source save from Codex",
-			data: map[string]interface{}{"name": "mcp__ally_workflow__workflow", "input": map[string]interface{}{"action": "source.upsert", "params": map[string]interface{}{"source": "private source"}}},
+			data: map[string]interface{}{"name": "mcp__bot_workflow__workflow", "input": map[string]interface{}{"action": "source.upsert", "params": map[string]interface{}{"source": "private source"}}},
 			want: "保存工作流",
 		},
 		{
 			name: "workflow resources from ACP",
-			data: map[string]interface{}{"name": "mcp", "server": "ally_workflow", "tool": "workflow", "arguments": map[string]interface{}{"action": constants.WorkflowActionQuery, "type": constants.WorkflowQueryResources}},
+			data: map[string]interface{}{"name": "mcp", "server": "bot_workflow", "tool": "workflow", "arguments": map[string]interface{}{"action": constants.WorkflowActionQuery, "type": constants.WorkflowQueryResources}},
 			want: "查看可用伙伴与资源",
 		},
 		{
 			name: "workflow validation from Pi",
-			data: map[string]interface{}{"name": "mcp", "rawInput": map[string]interface{}{"tool": "ally_workflow_workflow", "args": map[string]interface{}{"action": "source.validate"}}},
+			data: map[string]interface{}{"name": "mcp", "rawInput": map[string]interface{}{"tool": "bot_workflow_workflow", "args": map[string]interface{}{"action": "source.validate"}}},
 			want: "检查工作流",
 		},
 		{
 			name: "workflow result submission",
-			data: map[string]interface{}{"name": "mcp__ally_workflow__workflow", "input": map[string]interface{}{"action": constants.WorkflowActionResultSubmit, "params": map[string]interface{}{"data": "private output"}}},
+			data: map[string]interface{}{"name": "mcp__bot_workflow__workflow", "input": map[string]interface{}{"action": constants.WorkflowActionResultSubmit, "params": map[string]interface{}{"data": "private output"}}},
 			want: "提交步骤结果",
 		},
 		{
 			name: "workflow authorized directory query",
-			data: map[string]interface{}{"name": "mcp__ally_workflow__workflow", "input": map[string]interface{}{"action": "query", "type": "workflows"}},
+			data: map[string]interface{}{"name": "mcp__bot_workflow__workflow", "input": map[string]interface{}{"action": "query", "type": "workflows"}},
 			want: "查看可用工作流",
 		},
 		{
 			name: "workflow result schema query",
-			data: map[string]interface{}{"name": "mcp__ally_workflow__workflow", "input": map[string]interface{}{"action": "query", "type": "result_schema"}},
+			data: map[string]interface{}{"name": "mcp__bot_workflow__workflow", "input": map[string]interface{}{"action": "query", "type": "result_schema"}},
 			want: "查看步骤结果格式",
 		},
 		{
@@ -890,7 +890,7 @@ func TestBuildToolPhraseUsesBoundedSemanticRules(t *testing.T) {
 		{
 			name: "builtin channel task list from tool name",
 			data: map[string]interface{}{
-				"name": "mcp__ally_channel_tasks_builtin__channel_tasks",
+				"name": "mcp__bot_channel_tasks_builtin__channel_tasks",
 				"input": map[string]interface{}{
 					"action": "list",
 				},
@@ -1065,7 +1065,7 @@ func TestReplayMessagesRecognizesStandardACPMemoryTool(t *testing.T) {
 	t.Parallel()
 
 	rawInput := map[string]any{
-		"server": "ally_memory_builtin",
+		"server": "bot_memory_builtin",
 		"tool":   "memory_search",
 		"arguments": map[string]any{
 			"query": "用户最近保存的记忆条目",
@@ -1082,7 +1082,7 @@ func TestReplayMessagesRecognizesStandardACPMemoryTool(t *testing.T) {
 			"name":       "command",
 			"rawInput":   rawInput,
 			"status":     "in_progress",
-			"title":      "mcp.ally_memory_builtin.memory_search",
+			"title":      "mcp.bot_memory_builtin.memory_search",
 			"toolCallId": "mcp-memory-1",
 		}),
 		runtimeRecord(5, "execution-1", "execution-1", "invocation-1", "tool_result", map[string]any{
@@ -1184,9 +1184,9 @@ func TestReplayMessagesNormalizesBuiltinMemoryAcrossRuntimeShapes(t *testing.T) 
 					"status": "pending", "toolCallId": "memory-1",
 				},
 				{
-					"name": "ally_memory_builtin: memory_search",
+					"name": "bot_memory_builtin: memory_search",
 					"rawInput": map[string]any{
-						"providerIdentifier": "ally_memory_builtin",
+						"providerIdentifier": "bot_memory_builtin",
 						"toolName":           "memory_search",
 						"args":               map[string]any{"query": "用户偏好"},
 					},
@@ -1201,7 +1201,7 @@ func TestReplayMessagesNormalizesBuiltinMemoryAcrossRuntimeShapes(t *testing.T) 
 				{
 					"name": "mcp",
 					"rawInput": map[string]any{
-						"tool": "ally_memory_builtin_memory_search",
+						"tool": "bot_memory_builtin_memory_search",
 						"args": map[string]any{"query": "用户偏好"},
 					},
 					"status": "pending", "toolCallId": "memory-1",
@@ -1214,9 +1214,9 @@ func TestReplayMessagesNormalizesBuiltinMemoryAcrossRuntimeShapes(t *testing.T) 
 			name: "kimi standard ACP tool",
 			updates: []map[string]any{
 				{
-					"name": "mcp__ally_memory_builtin__memory_search",
+					"name": "mcp__bot_memory_builtin__memory_search",
 					"rawInput": map[string]any{
-						"server": "ally_memory_builtin", "tool": "memory_search",
+						"server": "bot_memory_builtin", "tool": "memory_search",
 						"arguments": map[string]any{"query": "用户偏好"},
 					},
 					"status": "in_progress", "toolCallId": "memory-1",
@@ -1285,15 +1285,15 @@ func TestReplayMessagesNormalizesBuiltinIMAcrossRuntimeShapes(t *testing.T) {
 				"content": "private-message", "files": []any{"/workspace/project/private-file.txt"},
 			}
 			shapes := map[string]map[string]any{
-				"standard ACP": {"name": "mcp", "server": "ally_im", "tool": "im_delivery", "arguments": input},
-				"Codex":        {"name": "mcp__ally_im__im_delivery", "input": input},
-				"Cursor": {"name": "ally_im: im_delivery", "rawInput": map[string]any{
-					"providerIdentifier": "ally_im", "toolName": "im_delivery", "args": input,
+				"standard ACP": {"name": "mcp", "server": "bot_im", "tool": "im_delivery", "arguments": input},
+				"Codex":        {"name": "mcp__bot_im__im_delivery", "input": input},
+				"Cursor": {"name": "bot_im: im_delivery", "rawInput": map[string]any{
+					"providerIdentifier": "bot_im", "toolName": "im_delivery", "args": input,
 				}},
 				"Pi": {"name": "mcp", "rawInput": map[string]any{
-					"tool": "ally_im_im_delivery", "args": input,
+					"tool": "bot_im_im_delivery", "args": input,
 				}},
-				"flattened direct": {"name": "ally_im_im_delivery", "input": input},
+				"flattened direct": {"name": "bot_im_im_delivery", "input": input},
 			}
 			for name, data := range shapes {
 				t.Run(name, func(t *testing.T) {
@@ -1331,7 +1331,7 @@ func TestReplayMessagesNormalizesBuiltinIMAcrossRuntimeShapes(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					if strings.Contains(string(encoded), "private-") || strings.Contains(string(encoded), "ally_im") || strings.Contains(string(encoded), "im_delivery") {
+					if strings.Contains(string(encoded), "private-") || strings.Contains(string(encoded), "bot_im") || strings.Contains(string(encoded), "im_delivery") {
 						t.Fatalf("IM display exposes protocol or private input: %s", encoded)
 					}
 				})
@@ -1345,7 +1345,7 @@ func TestReplayMessagesPreservesRichToolLabelOnBareACPUpdate(t *testing.T) {
 	t.Parallel()
 
 	rawInput := map[string]any{
-		"server": "ally_memory_builtin",
+		"server": "bot_memory_builtin",
 		"tool":   "memory_search",
 		"arguments": map[string]any{
 			"query": "用户偏好",
@@ -1360,7 +1360,7 @@ func TestReplayMessagesPreservesRichToolLabelOnBareACPUpdate(t *testing.T) {
 			"name":       "command",
 			"rawInput":   rawInput,
 			"status":     "in_progress",
-			"title":      "mcp.ally_memory_builtin.memory_search",
+			"title":      "mcp.bot_memory_builtin.memory_search",
 			"toolCallId": "mcp-memory-1",
 		}),
 		runtimeRecord(5, "execution-1", "execution-1", "invocation-1", "tool_use", map[string]any{
@@ -1647,7 +1647,7 @@ func TestReplayMessagesPreservesSteerContinuation(t *testing.T) {
 }
 
 func TestWorkflowToolPhraseRejectsRetiredServerIdentities(t *testing.T) {
-	for _, name := range []string{"ally_workflow_result_workflow_result", "mcp__ally_workflow_use__workflow_use"} {
+	for _, name := range []string{"bot_workflow_result_workflow_result", "mcp__bot_workflow_use__workflow_use"} {
 		data := map[string]interface{}{"name": name, "input": map[string]interface{}{"action": "workflows.list"}}
 		if phrase := builtinWorkflowToolPhrase(data, name); phrase != "" {
 			t.Fatalf("retired service %q gained builtin workflow semantics: %q", name, phrase)

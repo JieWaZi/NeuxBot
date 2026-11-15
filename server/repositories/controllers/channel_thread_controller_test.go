@@ -43,7 +43,7 @@ func TestChannelThreadControllerUpdatesOnlyFutureExecutionConfig(t *testing.T) {
 		Title:                        "团队会话",
 		LeadWakerID:                  wakerID,
 		LeadChatID:                   chatID,
-		WorkspaceDirectory:           "/tmp/ally",
+		WorkspaceDirectory:           "/tmp/bot",
 		AdditionalWorkingDirectories: []string{},
 		MaxParallel:                  3,
 		MaxTasks:                     12,

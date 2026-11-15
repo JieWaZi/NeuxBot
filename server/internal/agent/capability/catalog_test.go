@@ -12,15 +12,15 @@ import (
 )
 
 func TestAllyCLIReadmeMatchesRegisteredOperations(t *testing.T) {
-	content, err := os.ReadFile(filepath.Join("..", "..", "..", "cmd", "allycli", "README.md"))
+	content, err := os.ReadFile(filepath.Join("..", "..", "..", "cmd", "botcli", "README.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, section, ok := strings.Cut(string(content), "<!-- allycli-operations:start -->")
+	_, section, ok := strings.Cut(string(content), "<!-- botcli-operations:start -->")
 	if !ok {
 		t.Fatal("README is missing the operation inventory")
 	}
-	section, _, ok = strings.Cut(section, "<!-- allycli-operations:end -->")
+	section, _, ok = strings.Cut(section, "<!-- botcli-operations:end -->")
 	if !ok {
 		t.Fatal("README operation inventory is not closed")
 	}

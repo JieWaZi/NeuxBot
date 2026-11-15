@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """隔离评测 Core 的 MCP stdio 故障代理；不签发、修改或读取执行凭据。
 
-由私有启动器作为 ALLYCLI_BINARY_PATH 注入。--config 指向仓库外 JSON：
-{"case_id":"WA06", "command":["/absolute/real/allycli"],
+由私有启动器作为 BOTCLI_BINARY_PATH 注入。--config 指向仓库外 JSON：
+{"case_id":"WA06", "command":["/absolute/real/botcli"],
  "evidence_dir":"/private/tmp/evaluation/WA06/faults"}
 
 WA06：首个成功 prepare 改为可重试错误；首个成功 save 隐去原响应。

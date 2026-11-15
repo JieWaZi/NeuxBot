@@ -1,5 +1,5 @@
 export const meta = {
-  sdk: 'ally.workflow',
+  sdk: 'bot.workflow',
   title: '虚构候选评估与多步骤验收',
   description: '三个阶段各含三个步骤：生成候选、人工选择与伙伴分析、核验与可控重试。仅使用虚构数据。',
   inputSchema: {type:'object',properties:{

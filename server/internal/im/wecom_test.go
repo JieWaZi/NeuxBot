@@ -33,7 +33,7 @@ func TestWecomQRUsesOfficialGETAndKeepsPrivatePollingCode(t *testing.T) {
 		}
 		switch calls {
 		case 1:
-			if request.URL.Path != "/ai/qc/generate" || request.URL.Query().Get("source") != "neuxally" || request.URL.Query().Get("plat") == "" {
+			if request.URL.Path != "/ai/qc/generate" || request.URL.Query().Get("source") != "neuxbot" || request.URL.Query().Get("plat") == "" {
 				t.Error("missing official QR source/platform")
 			}
 			return responseJSON(`{"data":{"scode":"private/code","auth_url":"https://work.weixin.qq.com/ai/qc/auth?token=qr"}}`), nil

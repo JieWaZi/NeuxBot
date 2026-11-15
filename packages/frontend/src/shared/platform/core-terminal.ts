@@ -103,8 +103,8 @@ export function createCoreTerminalService(
             throw new Error("终端服务地址无效");
           url.protocol = "ws:";
           const socket = new WebSocket(url, [
-            "ally.terminal.v1",
-            ...(config.token ? [`ally.auth.${config.token}`] : []),
+            "bot.terminal.v1",
+            ...(config.token ? [`bot.auth.${config.token}`] : []),
           ]);
           activeSocket = socket;
           current.socket = socket;

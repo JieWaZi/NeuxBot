@@ -6,7 +6,7 @@ import type {
 import { stageAttachment, discardAttachment } from "@/shared/platform";
 
 export type AllyPathFile = File & {
-  allySourcePath: string;
+  botSourcePath: string;
 };
 
 function mediaTypeOf(path: string): string {
@@ -22,7 +22,7 @@ function mediaTypeOf(path: string): string {
 export function pathFile(path: string): AllyPathFile {
   const name = path.split(/[\\/]/).pop() || "attachment";
   return Object.assign(new File([], name, { type: mediaTypeOf(path) }), {
-    allySourcePath: path,
+    botSourcePath: path,
   });
 }
 
@@ -31,7 +31,7 @@ export const chatAttachmentAdapter = {
   async add({ file }): Promise<PendingAttachment> {
     const sourcePath =
       (file as AllyPathFile).allySourcePath || (await stageAttachment(file));
-    const attachmentFile = Object.assign(file, { allySourcePath: sourcePath });
+    const attachmentFile = Object.assign(file, { botSourcePath: sourcePath });
     return {
       id: crypto.randomUUID(),
       type: file.type.startsWith("image/") ? "image" : "file",
@@ -59,7 +59,7 @@ export const chatAttachmentAdapter = {
   },
   async remove(attachment): Promise<void> {
     const sourcePath = (attachment.file as AllyPathFile | undefined)
-      ?.allySourcePath;
+      ?.botSourcePath;
     if (sourcePath) await discardAttachment(sourcePath);
   },
 } satisfies AttachmentAdapter;

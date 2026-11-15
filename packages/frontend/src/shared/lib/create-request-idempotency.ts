@@ -3,7 +3,7 @@ type StoredClientRequest = {
   id: string;
 };
 
-const storageKeyPrefix = "ally:create-request:";
+const storageKeyPrefix = "bot:create-request:";
 const inMemoryRequests = new Map<string, StoredClientRequest>();
 
 function canonicalJSON(value: unknown): string {

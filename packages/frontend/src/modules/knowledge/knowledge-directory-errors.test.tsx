@@ -20,7 +20,7 @@ import {
   reportErrorNotice,
   useErrorNotices,
 } from "@/shared/api/error-notices";
-import { ALLY_LOCAL_ERROR_SURFACE } from "@/shared/api/local-error-surface";
+import { NEUXBOT_LOCAL_ERROR_SURFACE } from "@/shared/api/local-error-surface";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import { LibraryList } from "./knowledge-library";
 import {

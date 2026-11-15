@@ -587,7 +587,7 @@ func TestManagedCodexEnvironmentUsesOnlySelectedCredential(t *testing.T) {
 }
 
 func TestNativeLaunchEnvironmentExcludesHostCLIConfiguration(t *testing.T) {
-	env, err := nativeLaunchEnvironment("codex", ProviderLaunch{BaseEnvironment: map[string]string{"PATH": "/native/tools", "ALLYCLI_BINARY_PATH": "/host/allycli", "ALLYCLI_CONTEXT_FILE": "/old/context.json"}}, AccountLease{}, LaunchAuthLease{}, ResourceLease{Environment: map[string]string{"PLUGIN_RESOURCE": "ready"}})
+	env, err := nativeLaunchEnvironment("codex", ProviderLaunch{BaseEnvironment: map[string]string{"PATH": "/native/tools", "BOTCLI_BINARY_PATH": "/host/botcli", "BOTCLI_CONTEXT_FILE": "/old/context.json"}}, AccountLease{}, LaunchAuthLease{}, ResourceLease{Environment: map[string]string{"PLUGIN_RESOURCE": "ready"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -596,7 +596,7 @@ func TestNativeLaunchEnvironmentExcludesHostCLIConfiguration(t *testing.T) {
 		name, value, _ := strings.Cut(entry, "=")
 		values[name] = value
 	}
-	if values["ALLYCLI_BINARY_PATH"] != "" || values["ALLYCLI_CONTEXT_FILE"] != "" {
+	if values["BOTCLI_BINARY_PATH"] != "" || values["BOTCLI_CONTEXT_FILE"] != "" {
 		t.Fatalf("host CLI configuration leaked into native process: %v", values)
 	}
 	if values["PATH"] != "/native/tools" || values["PLUGIN_RESOURCE"] != "ready" {

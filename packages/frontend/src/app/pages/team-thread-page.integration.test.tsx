@@ -53,7 +53,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-const api = "http://ally.test/api/v1";
+const api = "http://bot.test/api/v1";
 const server = setupServer(
   http.get(`${api}/ai-accounts`, () => HttpResponse.json({ resources: [] })),
 );
@@ -71,7 +71,7 @@ beforeEach(() => {
 });
 beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });
-  client.setConfig({ baseUrl: "http://ally.test" });
+  client.setConfig({ baseUrl: "http://bot.test" });
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -115,7 +115,7 @@ describe("团队首发完整路由交接", () => {
         leadChatId: "lead-chat",
         leadWakerId: "lead",
         title: text,
-        workspaceDirectory: "/tmp/ally",
+        workspaceDirectory: "/tmp/bot",
       };
       const members: CreateChannelThreadResponse["members"] = [
         {
@@ -221,7 +221,7 @@ describe("团队首发完整路由交接", () => {
                 name: "项目",
                 available: true,
                 sources: [
-                  { path: "/tmp/ally", available: true, isDefault: true },
+                  { path: "/tmp/bot", available: true, isDefault: true },
                 ],
               },
             ],
@@ -278,7 +278,7 @@ describe("团队首发完整路由交接", () => {
             chat: {
               id: "lead-chat",
               wakerId: "lead",
-              workspaceDirectory: "/tmp/ally",
+              workspaceDirectory: "/tmp/bot",
               activeExecutionId: withExecution ? execution.id : undefined,
             },
           }),

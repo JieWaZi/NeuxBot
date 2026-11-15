@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { ApiError } from "./errors";
 import {
-  ALLY_LOCAL_ERROR_SURFACE,
+  NEUXBOT_LOCAL_ERROR_SURFACE,
   hasLocalErrorSurface,
   localApiErrorMessage,
   withLocalErrorSurface,
@@ -19,7 +19,7 @@ describe("local error surface", () => {
       path: { id: "1" },
       headers: {
         Authorization: "Bearer x",
-        [ALLY_LOCAL_ERROR_SURFACE]: "local",
+        [NEUXBOT_LOCAL_ERROR_SURFACE]: "local",
       },
     });
   });
@@ -28,7 +28,7 @@ describe("local error surface", () => {
     const options = withLocalErrorSurface({});
     expect(hasLocalErrorSurface(options)).toBe(true);
     const request = new Request("http://localhost/api", {
-      headers: { [ALLY_LOCAL_ERROR_SURFACE]: "local" },
+      headers: { [NEUXBOT_LOCAL_ERROR_SURFACE]: "local" },
     });
     expect(hasLocalErrorSurface(undefined, request)).toBe(true);
     expect(hasLocalErrorSurface({})).toBe(false);

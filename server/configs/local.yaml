@@ -1,5 +1,5 @@
 server:
-  name: ally-core
+  name: bot-core
   host: 127.0.0.1
   port: 8432
   exit_wait_timeout: 5

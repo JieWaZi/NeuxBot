@@ -28,7 +28,7 @@ func maintenanceFixture(t *testing.T, runtime maintenanceRuntimeFunc, released *
 	t.Helper()
 	registry := capability.New(nil)
 	t.Cleanup(registry.Close)
-	binary := filepath.Join(t.TempDir(), "allycli")
+	binary := filepath.Join(t.TempDir(), "botcli")
 	if err := os.WriteFile(binary, []byte("test binary"), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func fixtureConnection(t *testing.T, ctx context.Context, request agent.TaskRequ
 		t.Fatalf("MCP resources = %+v, %v", lease, err)
 	}
 	bridge := lease.MCPServers[0]
-	if bridge.Name != "ally_capabilities" || bridge.Transport != "stdio" || len(bridge.Arguments) != 4 ||
+	if bridge.Name != "bot_capabilities" || bridge.Transport != "stdio" || len(bridge.Arguments) != 4 ||
 		bridge.Arguments[0] != "mcp" || bridge.Arguments[1] != "serve" || bridge.Arguments[2] != "--context" || len(lease.Environment) != 0 {
 		t.Fatalf("unexpected MCP transport: %+v", bridge)
 	}
@@ -144,7 +144,7 @@ func TestMaintenanceUsesSharedHostWithScopedCLIAndCleansUp(t *testing.T) {
 			t.Fatalf("fixer instructions or scope invalid: %+v", request.Input)
 		}
 		options := []agent.AgentApprovalOption{{ID: "once", Kind: "allow_once"}, {ID: "persistent", Kind: "allow_always"}}
-		for name, want := range map[string]string{"mcp__ally_capabilities__knowledge_audit_get": "once", "mcp__ally_capabilities__workflow_source_save": "", "Bash": ""} {
+		for name, want := range map[string]string{"mcp__bot_capabilities__knowledge_audit_get": "once", "mcp__bot_capabilities__workflow_source_save": "", "Bash": ""} {
 			choice, err := request.Ports.Approve(ctx, agent.AgentScope{}, agent.AgentApproval{NativeToolName: name, Options: options})
 			if err != nil || choice != want {
 				t.Fatalf("native approval %s = %q, %v", name, choice, err)

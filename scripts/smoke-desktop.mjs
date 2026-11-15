@@ -40,7 +40,7 @@ await smokeCore({
   binary: path.join(
     resources,
     "bin",
-    process.platform === "win32" ? "ally-core.exe" : "ally-core",
+    process.platform === "win32" ? "bot-core.exe" : "bot-core",
   ),
   resources,
   executable,

@@ -3,7 +3,7 @@ export const themeModes = ["system", "light", "dark"] as const;
 export type ThemeMode = (typeof themeModes)[number];
 export type ResolvedTheme = Exclude<ThemeMode, "system">;
 
-const themeStorageKey = "ally.ui.theme";
+const themeStorageKey = "bot.ui.theme";
 const darkThemeQuery = "(prefers-color-scheme: dark)";
 
 function isThemeMode(value: unknown): value is ThemeMode {

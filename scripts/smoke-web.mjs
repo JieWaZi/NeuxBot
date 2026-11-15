@@ -14,7 +14,7 @@ const directory = path.resolve(
     path.join(root, "web/release", `${process.platform}-${process.arch}`),
 );
 const temporary = await realpath(
-  await mkdtemp(path.join(tmpdir(), "ally-web-smoke-")),
+  await mkdtemp(path.join(tmpdir(), "bot-web-smoke-")),
 );
 const workspace = path.join(temporary, "workspace");
 await mkdir(workspace);
@@ -29,9 +29,9 @@ const child = spawn(process.execPath, [path.join(directory, "start-web.mjs")], {
   cwd: temporary,
   env: {
     ...process.env,
-    ALLY_DATA_DIR: path.join(temporary, "data"),
-    ALLY_MANAGED_FILES_DIR: path.join(temporary, "managed"),
-    ALLY_WEB_CORE_PORT: String(port),
+    NEUXBOT_DATA_DIR: path.join(temporary, "data"),
+    NEUXBOT_MANAGED_FILES_DIR: path.join(temporary, "managed"),
+    NEUXBOT_WEB_CORE_PORT: String(port),
   },
   stdio: ["pipe", "pipe", "pipe"],
 });
@@ -252,9 +252,9 @@ try {
         cwd: temporary,
         env: {
           ...process.env,
-          ALLY_DATA_DIR: path.join(temporary, "data"),
-          ALLY_MANAGED_FILES_DIR: path.join(temporary, "managed"),
-          ALLY_WEB_CORE_PORT: String(port),
+          NEUXBOT_DATA_DIR: path.join(temporary, "data"),
+          NEUXBOT_MANAGED_FILES_DIR: path.join(temporary, "managed"),
+          NEUXBOT_WEB_CORE_PORT: String(port),
         },
         stdio: ["pipe", "pipe", "pipe"],
       },

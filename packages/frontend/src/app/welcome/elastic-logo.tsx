@@ -80,7 +80,7 @@ export default function ElasticLogo({
           onReady: () => {
             if (!disposed) {
               if (initialIntro.current && !completed.current)
-                performance.mark?.("ally.startup.logoReady");
+                performance.mark?.("bot.startup.logoReady");
               setDisplay({ theme: resolvedTheme, ready: true });
             }
           },

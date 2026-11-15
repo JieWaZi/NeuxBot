@@ -41,7 +41,7 @@ exports.spawn = (_shell, _args, options) => {
     onExit(handler) {
       if (process.env.TEST_PTY_NEVER_EXIT === "1") return;
       setImmediate(() => {
-        onData(process.env.TEST_PTY_OUTPUT ?? "ally-pty-ready");
+        onData(process.env.TEST_PTY_OUTPUT ?? "bot-pty-ready");
         handler({ exitCode: Number(process.env.TEST_PTY_EXIT_CODE ?? "0") });
       });
     },

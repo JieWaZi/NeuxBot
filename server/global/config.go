@@ -177,7 +177,7 @@ type Configuration struct {
 // SecurityConfiguration 保存本地进程访问控制配置。
 type SecurityConfiguration struct {
 	// LocalToken 是桌面壳与 Core 进程共享的随机 Bearer Token。
-	LocalToken string `yaml:"local_token" env:"ALLY_LOCAL_TOKEN"`
+	LocalToken string `yaml:"local_token" env:"NEUXBOT_LOCAL_TOKEN"`
 }
 
 // NewConfiguration 创建适用于本地桌面的默认配置。
@@ -207,10 +207,10 @@ func Prepare(configuration *Configuration) error {
 	if configuration.Server.Port == 0 {
 		configuration.Server.Port = constants.CoreDefaultPort
 	}
-	if dataDir := strings.TrimSpace(os.Getenv("ALLY_DATA_DIR")); dataDir != "" {
+	if dataDir := strings.TrimSpace(os.Getenv("NEUXBOT_DATA_DIR")); dataDir != "" {
 		configuration.DB.Type = conf.Sqlite
 		configuration.DB.Dsn = ""
-		configuration.DB.DBName = filepath.Join(dataDir, "ally.db")
+		configuration.DB.DBName = filepath.Join(dataDir, "bot.db")
 	}
 	if configuration.DB.Type == "" {
 		configuration.DB.Type = conf.Sqlite
@@ -233,21 +233,21 @@ func Prepare(configuration *Configuration) error {
 			if err := os.MkdirAll(configuration.DataDirectory, 0o700); err != nil {
 				return mapCoreError("create_data_directory", status_error.CoreDataDirectoryError, err)
 			}
-		} else if dataDir := strings.TrimSpace(os.Getenv("ALLY_DATA_DIR")); dataDir != "" {
+		} else if dataDir := strings.TrimSpace(os.Getenv("NEUXBOT_DATA_DIR")); dataDir != "" {
 			absoluteDataDirectory, err := filepath.Abs(dataDir)
 			if err != nil {
 				return mapCoreError("resolve_data_directory", status_error.CoreDataDirectoryError, err)
 			}
 			configuration.DataDirectory = absoluteDataDirectory
 		} else {
-			temporaryDataDirectory, err := os.MkdirTemp("", "ally-data-")
+			temporaryDataDirectory, err := os.MkdirTemp("", "bot-data-")
 			if err != nil {
 				return mapCoreError("create_temporary_data_directory", status_error.CoreDataDirectoryError, err)
 			}
 			configuration.DataDirectory = temporaryDataDirectory
 		}
 	}
-	managedDirectory := strings.TrimSpace(os.Getenv("ALLY_MANAGED_FILES_DIR"))
+	managedDirectory := strings.TrimSpace(os.Getenv("NEUXBOT_MANAGED_FILES_DIR"))
 	if managedDirectory == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -905,7 +905,7 @@ func agentBinaryPath() string {
 	if err != nil {
 		return ""
 	}
-	filename := "allycli"
+	filename := "botcli"
 	if runtime.GOOS == "windows" {
 		filename += ".exe"
 	}
@@ -959,7 +959,7 @@ var closePluginCatalog func()
 
 // PluginCatalogSource 返回HTTP分发入口；显式本地目录用于镜像与测试。
 func PluginCatalogSource() string {
-	if value := strings.TrimSpace(os.Getenv("ALLY_PLUGIN_CATALOG_URL")); value != "" {
+	if value := strings.TrimSpace(os.Getenv("NEUXBOT_PLUGIN_CATALOG_URL")); value != "" {
 		return value
 	}
 	return constants.PluginCatalogHTTPSource

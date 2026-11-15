@@ -23,14 +23,14 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 func TestWorkflowLocalProcessHelper(t *testing.T) {
-	if os.Getenv("ALLY_WORKFLOW_PROCESS_TEST") != "1" {
+	if os.Getenv("NEUXBOT_WORKFLOW_PROCESS_TEST") != "1" {
 		return
 	}
 	target := os.Args[len(os.Args)-1]
 	if err := os.WriteFile(target+".started", []byte("started"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if os.Getenv("ALLY_WORKFLOW_PROCESS_WRITE_FIRST") == "1" {
+	if os.Getenv("NEUXBOT_WORKFLOW_PROCESS_WRITE_FIRST") == "1" {
 		file, err := os.OpenFile(target+".calls", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 		if err != nil {
 			t.Fatal(err)
@@ -41,23 +41,23 @@ func TestWorkflowLocalProcessHelper(t *testing.T) {
 		if err := file.Close(); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(target, []byte("ALLY ALLY!"), 0600); err != nil {
+		if err := os.WriteFile(target, []byte("BOT BOT!"), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if os.Getenv("ALLY_WORKFLOW_PROCESS_DELAY") == "1" {
+	if os.Getenv("NEUXBOT_WORKFLOW_PROCESS_DELAY") == "1" {
 		time.Sleep(3 * time.Second)
 	}
-	if os.Getenv("ALLY_WORKFLOW_PROCESS_FAIL") == "1" {
+	if os.Getenv("NEUXBOT_WORKFLOW_PROCESS_FAIL") == "1" {
 		t.Error("process produced a real nonzero exit")
 		return
 	}
-	if err := os.WriteFile(target, []byte("ALLY ALLY!"), 0600); err != nil {
+	if err := os.WriteFile(target, []byte("BOT BOT!"), 0600); err != nil {
 		t.Fatal(err)
 	}
 }
 func processWorkflowSource(code string) string {
-	return `export const meta={sdk:'ally.workflow',title:'进程验收',description:'真实隔离进程',phases:[{id:'compute',title:'计算',detail:'真实执行',canExit:true}]};phase('compute');` + code
+	return `export const meta={sdk:'bot.workflow',title:'进程验收',description:'真实隔离进程',phases:[{id:'compute',title:'计算',detail:'真实执行',canExit:true}]};phase('compute');` + code
 }
 func waitWorkflow(t *testing.T, s *Service, id string, condition func(controllers.WorkflowRunState) bool) controllers.WorkflowRunState {
 	t.Helper()
@@ -78,7 +78,7 @@ func waitWorkflow(t *testing.T, s *Service, id string, condition func(controller
 }
 func TestFunctionWorkflowRunsARealChildProcess(t *testing.T) {
 	s, _ := workflowTestService(t)
-	definition := savedTestWorkflow(t, s, processWorkflowSource(`const value=await functionTask({id:'js',label:'JS计算',phase:'compute',language:'javascript',input:{text:'ally'},code:'function main(input){const message=(input.text+" "+input.text+"!").toUpperCase();return {message,length:message.length}}',outputSchema:{type:'object',required:['message','length']}});return value;`))
+	definition := savedTestWorkflow(t, s, processWorkflowSource(`const value=await functionTask({id:'js',label:'JS计算',phase:'compute',language:'javascript',input:{text:'bot'},code:'function main(input){const message=(input.text+" "+input.text+"!").toUpperCase();return {message,length:message.length}}',outputSchema:{type:'object',required:['message','length']}});return value;`))
 	run, err := s.StartRun(context.Background(), StartRunCommand{DefinitionID: definition.ID, RequestID: "start"})
 	if err != nil {
 		t.Fatal(err)
@@ -119,7 +119,7 @@ func TestScriptFailureKeepsActualProcessReceipt(t *testing.T) {
 	s, _ := workflowTestService(t)
 	directory := t.TempDir()
 	target := filepath.Join(directory, "must-not-exist.txt")
-	source := strings.Replace(scriptSource(t, target, false), "ALLY_WORKFLOW_PROCESS_TEST:'1'", "ALLY_WORKFLOW_PROCESS_TEST:'1',ALLY_WORKFLOW_PROCESS_FAIL:'1'", 1)
+	source := strings.Replace(scriptSource(t, target, false), "NEUXBOT_WORKFLOW_PROCESS_TEST:'1'", "NEUXBOT_WORKFLOW_PROCESS_TEST:'1',NEUXBOT_WORKFLOW_PROCESS_FAIL:'1'", 1)
 	source = strings.Replace(source, "const result=await action(", "try { const result=await action(", 1)
 	source = strings.Replace(source, "return result.process.exitCode;", `return result.process.exitCode; } catch(error) { return {code:error.code,exitCode:error.process.exitCode,stdout:error.process.stdout,line:error.sourceRange.start.line}; }`, 1)
 	definition := scopedProcessDefinition(t, s, source, directory)
@@ -148,9 +148,9 @@ func scriptSource(t *testing.T, target string, delay bool) string {
 	}
 	action, _ := json.Marshal(map[string]any{"id": "write", "label": "真实写入", "description": "写入临时验收目录", "type": "script", "risk": "write", "executable": executable, "workingDirectory": "workflow_scope"})
 	args, _ := json.Marshal([]string{"-test.run=^TestWorkflowLocalProcessHelper$", "--", target})
-	environment := `{ALLY_WORKFLOW_PROCESS_TEST:'1'}`
+	environment := `{NEUXBOT_WORKFLOW_PROCESS_TEST:'1'}`
 	if delay {
-		environment = `{ALLY_WORKFLOW_PROCESS_TEST:'1',ALLY_WORKFLOW_PROCESS_DELAY:'1'}`
+		environment = `{NEUXBOT_WORKFLOW_PROCESS_TEST:'1',NEUXBOT_WORKFLOW_PROCESS_DELAY:'1'}`
 	}
 	return strings.Replace(processWorkflowSource(`const result=await action('write',{id:'write-node',label:'写文件',phase:'compute',args:`+string(args)+`,env:`+environment+`});return result.process.exitCode;`), "phases:", "actions:["+string(action)+"],phases:", 1)
 }

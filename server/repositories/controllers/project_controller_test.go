@@ -25,8 +25,8 @@ func TestProjectControllerContract(t *testing.T) {
 		UpdatedAt: now,
 	}
 	sources := []models.ProjectSource{
-		{ID: "source-1", Name: "desktop", Path: "/tmp/ally-desktop", CreatedAt: now, UpdatedAt: now},
-		{ID: "source-2", Name: "server", Path: "/tmp/ally-server", CreatedAt: now, UpdatedAt: now},
+		{ID: "source-1", Name: "desktop", Path: "/tmp/bot-desktop", CreatedAt: now, UpdatedAt: now},
+		{ID: "source-2", Name: "server", Path: "/tmp/bot-server", CreatedAt: now, UpdatedAt: now},
 	}
 	if err := db.Create(&sources).Error; err != nil {
 		t.Fatalf("create project sources: %v", err)

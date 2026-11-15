@@ -437,7 +437,7 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 				}
 				continue
 			}
-			connector := models.MCPConnector{ID: componentID, Name: server.Key, RuntimeKey: "ally_plugin_" + componentID, Transport: constants.MCPTransport(transport), Command: resolved.Server.Command, Arguments: resolved.Server.Args, URL: resolved.Server.URL, TimeoutMS: 30000}
+			connector := models.MCPConnector{ID: componentID, Name: server.Key, RuntimeKey: "bot_plugin_" + componentID, Transport: constants.MCPTransport(transport), Command: resolved.Server.Command, Arguments: resolved.Server.Args, URL: resolved.Server.URL, TimeoutMS: 30000}
 			if transport == constants.RuntimeConnectorTransportStdio {
 				if m.pluginLauncher == "" {
 					if required {

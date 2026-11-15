@@ -111,7 +111,7 @@ func prepareCodexHome(parent, accountHome string, targets []NativeTarget, useAcc
 	}
 	enabled := map[string]any{}
 	for _, target := range targets {
-		enabled[target.Name+"@neuxally-managed"] = map[string]any{"enabled": true}
+		enabled[target.Name+"@neuxbot-managed"] = map[string]any{"enabled": true}
 	}
 	config["plugins"] = enabled
 	config["features"] = map[string]any{"plugins": true}
@@ -170,7 +170,7 @@ func prepareCodexHome(parent, accountHome string, targets []NativeTarget, useAcc
 		} else if !os.IsNotExist(err) {
 			return "", storageFailure(err)
 		}
-		staging, err := os.MkdirTemp(filepath.Dir(destination), ".neuxally-package-")
+		staging, err := os.MkdirTemp(filepath.Dir(destination), ".neuxbot-package-")
 		if err != nil {
 			return "", storageFailure(err)
 		}
@@ -197,7 +197,7 @@ func prepareCodexHome(parent, accountHome string, targets []NativeTarget, useAcc
 	}
 	authHash := sha256.Sum256(auth)
 	fingerprint := []byte(hex.EncodeToString(authHash[:]))
-	previous, err := codexReadPrivate(root, ".neuxally-auth-source")
+	previous, err := codexReadPrivate(root, ".neuxbot-auth-source")
 	if err != nil {
 		return "", err
 	}
@@ -209,7 +209,7 @@ func prepareCodexHome(parent, accountHome string, targets []NativeTarget, useAcc
 		} else if err := codexWritePrivate(root, "auth.json", auth); err != nil {
 			return "", err
 		}
-		if err := codexWritePrivate(root, ".neuxally-auth-source", fingerprint); err != nil {
+		if err := codexWritePrivate(root, ".neuxbot-auth-source", fingerprint); err != nil {
 			return "", err
 		}
 	} else {
@@ -364,7 +364,7 @@ func codexReadPrivate(root *os.Root, path string) ([]byte, error) {
 
 func codexWritePrivate(root *os.Root, path string, data []byte) error {
 	// 私有目录内使用独立临时文件再替换，失败时不留下半份凭据或配置。
-	temporary, err := os.CreateTemp(root.Name(), ".neuxally-write-")
+	temporary, err := os.CreateTemp(root.Name(), ".neuxbot-write-")
 	if err != nil {
 		return storageFailure(err)
 	}

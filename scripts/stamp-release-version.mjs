@@ -6,7 +6,7 @@ const releaseVersionPattern = /^[0-9]+\.[0-9]+\.[0-9]+$/;
 
 export async function stampReleaseVersion(root, version) {
   if (!releaseVersionPattern.test(version)) {
-    throw new Error(`ALLY_VERSION 必须是 X.Y.Z，当前为 ${version || "空"}`);
+    throw new Error(`NEUXBOT_VERSION 必须是 X.Y.Z，当前为 ${version || "空"}`);
   }
   for (const relative of ["package.json", "desktop/package.json"]) {
     const file = path.join(root, relative);
@@ -22,6 +22,6 @@ const isMain =
 
 if (isMain) {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-  await stampReleaseVersion(root, process.env.ALLY_VERSION ?? "");
-  console.log(`已写入发布版本 ${process.env.ALLY_VERSION}`);
+  await stampReleaseVersion(root, process.env.NEUXBOT_VERSION ?? "");
+  console.log(`已写入发布版本 ${process.env.NEUXBOT_VERSION}`);
 }

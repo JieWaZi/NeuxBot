@@ -26,7 +26,7 @@ vi.mock("@/shared/api/use-query-events", () => ({ useQueryEvents: vi.fn() }));
 
 const server = setupServer();
 let errorInterceptor: number;
-const root = "http://ally.test/api/v1/knowledge/libraries/kb";
+const root = "http://bot.test/api/v1/knowledge/libraries/kb";
 const source = {
   id: "version",
   sourceId: "source",
@@ -38,7 +38,7 @@ const source = {
 };
 beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });
-  client.setConfig({ baseUrl: "http://ally.test" });
+  client.setConfig({ baseUrl: "http://bot.test" });
   errorInterceptor = client.interceptors.error.use((error, response) =>
     toApiError(error, response?.status),
   );
@@ -327,7 +327,7 @@ it("已接纳的删除在来源消失及页面重开后仍可继续，恢复请�
 
 it("远端来源行消失后仍可从持久清理入口恢复", async () => {
   const remote =
-    "http://ally.test/api/v1/knowledge/connections/remote/libraries/kb";
+    "http://bot.test/api/v1/knowledge/connections/remote/libraries/kb";
   server.use(
     http.get(`${remote}/source-purges`, () =>
       HttpResponse.json({
@@ -428,7 +428,7 @@ it.each(["processed", "failed"])(
         HttpResponse.json({ bytes: btoa("original"), filename: "远页文档.md" }),
       ),
       http.get(
-        `http://ally.test/api/v1/work-board/results/knowledge_source/${id}`,
+        `http://bot.test/api/v1/work-board/results/knowledge_source/${id}`,
         () =>
           HttpResponse.json({
             result: {
@@ -441,13 +441,13 @@ it.each(["processed", "failed"])(
           }),
       ),
       http.post(
-        `http://ally.test/api/v1/work-board/results/knowledge_source/${id}/view`,
+        `http://bot.test/api/v1/work-board/results/knowledge_source/${id}/view`,
         async ({ request }) => {
           reads.push(await request.json());
           return HttpResponse.json({});
         },
       ),
-      http.get("http://ally.test/api/v1/work-board/summary", () =>
+      http.get("http://bot.test/api/v1/work-board/summary", () =>
         HttpResponse.json({}),
       ),
     );
@@ -507,7 +507,7 @@ it.each([false, true])(
   "统一远端按协议支持读取清理记录，不让可选清理接口遮住正文，supported=%s",
   async (supported) => {
     const remote =
-      "http://ally.test/api/v1/knowledge/connections/remote/libraries/kb";
+      "http://bot.test/api/v1/knowledge/connections/remote/libraries/kb";
     let purgeCalls = 0;
     server.use(
       http.get(`${remote}/capabilities`, () =>
@@ -584,7 +584,7 @@ it.each([
   "远端协议支持但当前无完整操作许可时按钮禁用且不查询清理记录：%j",
   async ({ permission, condition, enabled }) => {
     const remote =
-      "http://ally.test/api/v1/knowledge/connections/remote/libraries/kb";
+      "http://bot.test/api/v1/knowledge/connections/remote/libraries/kb";
     let purgeCalls = 0;
     server.use(
       http.get(`${remote}/capabilities`, () =>

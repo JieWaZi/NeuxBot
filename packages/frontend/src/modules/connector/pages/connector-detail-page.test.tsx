@@ -295,7 +295,7 @@ it("内置连接器保留完整配置、凭据状态与编辑入口", async () =
       name: "凭据服务",
       scope: "built_in",
       transport: "stdio",
-      command: "/internal/ally-managed-command",
+      command: "/internal/bot-managed-command",
       timeoutMs: 12345,
       environment: [{ id: "key", name: "ACCESS_KEY", configured: false }],
     },
@@ -306,7 +306,7 @@ it("内置连接器保留完整配置、凭据状态与编辑入口", async () =
   expect(screen.getByRole("heading", { name: "连接器信息" })).toBeVisible();
   expect(screen.getByText("ACCESS_KEY")).toBeVisible();
   expect(screen.getByText("未配置")).toBeVisible();
-  expect(screen.getByText("/internal/ally-managed-command")).toBeVisible();
+  expect(screen.getByText("/internal/bot-managed-command")).toBeVisible();
   expect(screen.getByText("12.345 秒")).toBeVisible();
   await user.click(screen.getByRole("button", { name: "编辑" }));
   expect(screen.getByRole("dialog", { name: "编辑连接器" })).toHaveTextContent(

@@ -8,7 +8,7 @@ import { loadModule } from "./load-module.mjs";
 const { createAttachmentStaging } = loadModule("main/attachment-staging.ts");
 
 test("剪贴板附件保存原始字节，同名文件独立暂存，释放时清理", async () => {
-  const top = await mkdtemp(path.join(tmpdir(), "ally-staging-test-"));
+  const top = await mkdtemp(path.join(tmpdir(), "bot-staging-test-"));
   const staging = createAttachmentStaging(top);
   try {
     const first = staging.stage("截图.png", new Uint8Array([0, 1, 255]));

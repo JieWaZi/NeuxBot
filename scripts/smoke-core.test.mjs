@@ -14,7 +14,7 @@ test("Core 冷启动使用冒烟预算，超时仍回收进程", async (t) => {
     `
 const server = require("node:http").createServer((req, res) => {
   res.setHeader("content-type", "application/json");
-  if (req.headers.authorization !== "Bearer " + process.env.ALLY_LOCAL_TOKEN) {
+  if (req.headers.authorization !== "Bearer " + process.env.NEUXBOT_LOCAL_TOKEN) {
     res.writeHead(401);
     res.end("{}");
     return;
@@ -47,11 +47,11 @@ test("Core 启动失败保留有界脱敏诊断，并清理隔离数据", async 
   t.after(() => rm(directory, { recursive: true, force: true }));
   const fixture = path.join(directory, "failure.cjs");
   const record = path.join(directory, "data-dir.txt");
-  const token = `ally_${"a".repeat(32)}`;
+  const token = `bot_${"a".repeat(32)}`;
   await writeFile(
     fixture,
     `
-require("node:fs").writeFileSync(${JSON.stringify(record)}, process.env.ALLY_DATA_DIR);
+require("node:fs").writeFileSync(${JSON.stringify(record)}, process.env.NEUXBOT_DATA_DIR);
 console.error("x".repeat(70000));
 console.error("fixture panic: ${token}");
 process.exitCode = 2;

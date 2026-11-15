@@ -43,7 +43,7 @@ const startElectron = () => {
   app = spawn(electron, ["."], {
     cwd: desktop,
     stdio: "inherit",
-    env: { ...process.env, ALLY_RENDERER_URL: "http://127.0.0.1:1420" },
+    env: { ...process.env, NEUXBOT_RENDERER_URL: "http://127.0.0.1:1420" },
   });
   app.on("exit", (code) => {
     if (generation !== appGeneration || stopped) return;

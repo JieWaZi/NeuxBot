@@ -1,24 +1,24 @@
-# allycli 系统能力
+# botcli 系统能力
 
-`allycli` 是 NeuxBot 随应用交付的能力命令入口，供智能体在当前执行的授权范围内调用知识库、IM、工作流、团队、记忆和结构化问答。本文列出当前实现的完整操作；某次聊天实际能调用哪些操作，以该执行的 `capabilities` 返回为准。
+`botcli` 是 NeuxBot 随应用交付的能力命令入口，供智能体在当前执行的授权范围内调用知识库、IM、工作流、团队、记忆和结构化问答。本文列出当前实现的完整操作；某次聊天实际能调用哪些操作，以该执行的 `capabilities` 返回为准。
 
 命令与参数的权威定义是 [contract](../../internal/agent/capability/catalog.go)，命令树直接由该目录建立。本文说明用途和完成语义，完整参数、枚举、限制与输出结构通过 `describe` 获取，避免维护第二套参数表。目录测试检查下列能力是否遗漏、重复，以及影响和完成语义是否与代码一致。
 
 ## 开始使用
 
-应用在执行指令中提供系统 [ally 技能](../../../skills/ally/SKILL.md) 的实际可执行文件路径，在本轮输入中提供明确的连接文件路径。每次业务调用必须传入 `--context`，CLI 不从环境变量取得授权上下文，也不依赖全局安装、PATH 或当前工作目录。工作流在支持 stdio 的 Runtime 中使用 `allycli mcp serve --context <当次路径>`；工具与 CLI 共用目录、授权及回执。
+应用在执行指令中提供系统 [bot 技能](../../../skills/bot/SKILL.md) 的实际可执行文件路径，在本轮输入中提供明确的连接文件路径。每次业务调用必须传入 `--context`，CLI 不从环境变量取得授权上下文，也不依赖全局安装、PATH 或当前工作目录。工作流在支持 stdio 的 Runtime 中使用 `botcli mcp serve --context <当次路径>`；工具与 CLI 共用目录、授权及回执。
 
 以下路径仅为示例，调用时使用本次执行实际提供的绝对路径：
 
 ```sh
-"/app/skills/ally/scripts/allycli" --context "/app/agent-contexts/example/connection.json" capabilities
-"/app/skills/ally/scripts/allycli" --context "/app/agent-contexts/example/connection.json" describe knowledge.pages.search
-"/app/skills/ally/scripts/allycli" --context "/app/agent-contexts/example/connection.json" knowledge pages search --library-id library-example --query "部署流程"
+"/app/skills/bot/scripts/botcli" --context "/app/agent-contexts/example/connection.json" capabilities
+"/app/skills/bot/scripts/botcli" --context "/app/agent-contexts/example/connection.json" describe knowledge.pages.search
+"/app/skills/bot/scripts/botcli" --context "/app/agent-contexts/example/connection.json" knowledge pages search --library-id library-example --query "部署流程"
 ```
 
-Windows 使用应用提供的 `allycli.exe` 绝对路径，同样显式传入 `--context`。普通外部终端没有执行上下文时，不能直接获得应用业务能力。开发时可在仓库根目录运行 `go -C server run ./cmd/allycli --help` 查看命令树，但这不签发业务授权。Core 启动器用于定位打包程序的 `ALLYCLI_BINARY_PATH` 只属于宿主装配，不再注入模型执行子进程。
+Windows 使用应用提供的 `botcli.exe` 绝对路径，同样显式传入 `--context`。普通外部终端没有执行上下文时，不能直接获得应用业务能力。开发时可在仓库根目录运行 `go -C server run ./cmd/botcli --help` 查看命令树，但这不签发业务授权。Core 启动器用于定位打包程序的 `BOTCLI_BINARY_PATH` 只属于宿主装配，不再注入模型执行子进程。
 
-操作标识中的点对应命令路径中的空格，例如 `workflow.runs.get` 对应 `allycli workflow runs get`。短标量可用命令行参数，复杂对象或长正文用 `--input request.json`；`--input -` 从标准输入读取 JSON。同一字段不要同时从文件和命令行提供。
+操作标识中的点对应命令路径中的空格，例如 `workflow.runs.get` 对应 `botcli workflow runs get`。短标量可用命令行参数，复杂对象或长正文用 `--input request.json`；`--input -` 从标准输入读取 JSON。同一字段不要同时从文件和命令行提供。
 
 ## 通用命令
 
@@ -53,7 +53,7 @@ Windows 使用应用提供的 `allycli.exe` 绝对路径，同样显式传入 `-
 
 以下是静态实现目录；每组说明其适用场景。完整参数请调用 `describe <operation-id>`，对象身份应来自实际发现结果。
 
-<!-- allycli-operations:start -->
+<!-- botcli-operations:start -->
 
 ### 知识库
 
@@ -168,28 +168,28 @@ Windows 使用应用提供的 `allycli.exe` 绝对路径，同样显式传入 `-
 | `interaction.questions.get`    | 读取当前执行问题的实际回答状态。               | `read`     | `immediate` |
 | `interaction.questions.wait`   | 在有界时间内等待实际回答，超时不关闭问题。     | `read`     | `immediate` |
 
-<!-- allycli-operations:end -->
+<!-- botcli-operations:end -->
 
 ## 调用和核对示例
 
 先发现目标和操作，再提交用户要求的工作。以下示例中的 `request.json` 是调用者准备的真实 UTF-8 JSON 文件，字段以对应 `describe` 为准：
 
 ```sh
-"/app/skills/ally/scripts/allycli" --context "/app/agent-contexts/example/connection.json" describe im.deliveries.create
-"/app/skills/ally/scripts/allycli" --context "/app/agent-contexts/example/connection.json" im deliveries create --input request.json --request-id delivery-example-01
-"/app/skills/ally/scripts/allycli" --context "/app/agent-contexts/example/connection.json" receipts get --operation im.deliveries.create --request-id delivery-example-01
+"/app/skills/bot/scripts/botcli" --context "/app/agent-contexts/example/connection.json" describe im.deliveries.create
+"/app/skills/bot/scripts/botcli" --context "/app/agent-contexts/example/connection.json" im deliveries create --input request.json --request-id delivery-example-01
+"/app/skills/bot/scripts/botcli" --context "/app/agent-contexts/example/connection.json" receipts get --operation im.deliveries.create --request-id delivery-example-01
 ```
 
 已知交付身份后，可在最长 60 秒的观察窗口内等待：
 
 ```sh
-"/app/skills/ally/scripts/allycli" --context "/app/agent-contexts/example/connection.json" im deliveries wait --delivery-id delivery-example --timeout 30s
+"/app/skills/bot/scripts/botcli" --context "/app/agent-contexts/example/connection.json" im deliveries wait --delivery-id delivery-example --timeout 30s
 ```
 
 已有明确的工作流创作需求时，优先读取所需上下文，避免遍历全部指南：
 
 ```sh
-"/app/skills/ally/scripts/allycli" --context "/app/agent-contexts/example/connection.json" workflow authoring prepare --primitives functionTask
+"/app/skills/bot/scripts/botcli" --context "/app/agent-contexts/example/connection.json" workflow authoring prepare --primitives functionTask
 ```
 
 ## 当前边界
@@ -198,17 +198,17 @@ Windows 使用应用提供的 `allycli.exe` 绝对路径，同样显式传入 `-
 - 页面修订要求当前可写范围及真实版本；整页写入保留人工保护，明确删除内容优先用精确替换。来源字节和原文分块仍由独立核心保存。
 - 知识任务的接纳回执不证明 Wiki 已发布。聊天通过 `knowledge.jobs.wait` 监听本地原任务，每次最多 60 秒；`completed: false` 时继续等待同一任务，终态后再按真实结果总结。`completed: true` 包括失败和取消，须检查 `resource.job.state`；成功的 Wiki 维护同时返回 `resource.report`。`knowledge.jobs.get` 用于核对状态与恢复丢失响应。
 - 本地、自有远端和官方 WeKnora 的实际能力不同。明确返回不支持或权限不足时，不回退同名本地库或更换凭据。
-- `allycli` 不提供任意 HTTP 透传、连接文件编辑、执行上下文自助续期或通过数据库路径扩大范围的入口。
+- `botcli` 不提供任意 HTTP 透传、连接文件编辑、执行上下文自助续期或通过数据库路径扩大范围的入口。
 
 ## 方法指南与实现入口
 
 | 场景                        | 指南                                                                                                                                                                                                                                |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 知识检索、整理与Wiki维护    | [knowledge](../../../skills/ally/references/wiki-guide.md)、[knowledge.maintenance](../../../skills/ally/references/wiki-maintenance.md)                                                                                            |
-| 消息和文件交付              | [im.delivery](../../../skills/ally/references/im-delivery.md)                                                                                                                                                                       |
-| 工作流创作与运行            | [workflow.authoring](../../../skills/ally/references/workflow-authoring.md)、[workflow.execution](../../../skills/ally/references/workflow-execution.md)                                                                            |
-| 工作流结果、交付与 API 查询 | [workflow.results](../../../skills/ally/references/workflow-results.md)、[workflow.output-delivery](../../../skills/ally/references/output-delivery.md)、[workflow.api-retrieval](../../../skills/ally/references/api-retrieval.md) |
-| 团队负责人和成员            | [team.lead](../../../skills/ally/references/team-lead.md)、[team.member](../../../skills/ally/references/team-member.md)                                                                                                            |
-| 记忆与用户问题              | [memory](../../../skills/ally/references/memory.md)、[interaction.questions](../../../skills/ally/references/user-questions.md)                                                                                                     |
+| 知识检索、整理与Wiki维护    | [knowledge](../../../skills/bot/references/wiki-guide.md)、[knowledge.maintenance](../../../skills/bot/references/wiki-maintenance.md)                                                                                            |
+| 消息和文件交付              | [im.delivery](../../../skills/bot/references/im-delivery.md)                                                                                                                                                                       |
+| 工作流创作与运行            | [workflow.authoring](../../../skills/bot/references/workflow-authoring.md)、[workflow.execution](../../../skills/bot/references/workflow-execution.md)                                                                            |
+| 工作流结果、交付与 API 查询 | [workflow.results](../../../skills/bot/references/workflow-results.md)、[workflow.output-delivery](../../../skills/bot/references/output-delivery.md)、[workflow.api-retrieval](../../../skills/bot/references/api-retrieval.md) |
+| 团队负责人和成员            | [team.lead](../../../skills/bot/references/team-lead.md)、[team.member](../../../skills/bot/references/team-member.md)                                                                                                            |
+| 记忆与用户问题              | [memory](../../../skills/bot/references/memory.md)、[interaction.questions](../../../skills/bot/references/user-questions.md)                                                                                                     |
 
 授权、回执和执行生命周期见[系统技能与软件能力](../../../docs/architecture/agent-capabilities-cn.md)。修改命令时同时更新能力目录、真实领域绑定、本 README 及相关指南；运行 `go -C server test ./internal/agent/capability ./internal/agent/cli` 和 `pnpm docs:check` 核对合同与文档。

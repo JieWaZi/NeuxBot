@@ -101,7 +101,7 @@ func TestPluginUpdateReadDoesNotContactColdRemoteCatalog(t *testing.T) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer source.Close()
-	t.Setenv("ALLY_PLUGIN_CATALOG_URL", source.URL+"/catalog.json")
+	t.Setenv("NEUXBOT_PLUGIN_CATALOG_URL", source.URL+"/catalog.json")
 	store := global.PluginControllerManager
 	if err := store.Create(ctx, models.Plugin{ID: "p", Name: "Tools", SourceKey: catalog.SourceKey(global.PluginCatalogSource(), "tools")}); err != nil {
 		t.Fatal(err)
@@ -136,7 +136,7 @@ func TestPrepareUpdateRejectsFinalRecoveredArchiveChange(t *testing.T) {
 		_, _ = w.Write([][]byte{first, second}[current])
 	}))
 	defer source.Close()
-	t.Setenv("ALLY_PLUGIN_CATALOG_URL", source.URL+"/catalog.json")
+	t.Setenv("NEUXBOT_PLUGIN_CATALOG_URL", source.URL+"/catalog.json")
 	entry, err := catalog.Find(global.PluginCatalogSource(), "recovery")
 	if err != nil {
 		t.Fatal(err)
@@ -260,7 +260,7 @@ func TestRefreshCatalogReturnsBeforeUpstreamAndCoreOwnsCancellation(t *testing.T
 	}))
 	defer source.Close()
 	location := source.URL + "/catalog.json"
-	t.Setenv("ALLY_PLUGIN_CATALOG_URL", location)
+	t.Setenv("NEUXBOT_PLUGIN_CATALOG_URL", location)
 	stop := catalog.Start(context.Background(), location, t.TempDir(), nil)
 	defer stop()
 	select {

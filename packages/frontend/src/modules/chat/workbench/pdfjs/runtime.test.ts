@@ -15,7 +15,7 @@ vi.mock("pdfjs-dist", () => ({
 }));
 vi.mock("./assets", () => ({
   workerSource: "export const WorkerMessageHandler = {}",
-  pdfAssetUrl: (kind: string) => `ally://app/pdfjs-assets/${kind}/`,
+  pdfAssetUrl: (kind: string) => `bot://app/pdfjs-assets/${kind}/`,
 }));
 
 import { openPdf } from "./runtime";
@@ -87,9 +87,9 @@ describe("PDF.js worker ownership", () => {
       wasmUrl: string;
     };
     expect(options).toMatchObject({
-      cMapUrl: "ally://app/pdfjs-assets/cmaps/",
-      standardFontDataUrl: "ally://app/pdfjs-assets/standard_fonts/",
-      wasmUrl: "ally://app/pdfjs-assets/wasm/",
+      cMapUrl: "bot://app/pdfjs-assets/cmaps/",
+      standardFontDataUrl: "bot://app/pdfjs-assets/standard_fonts/",
+      wasmUrl: "bot://app/pdfjs-assets/wasm/",
     });
     expect(options.data).not.toBe(source);
     expect(options.data.buffer).not.toBe(source.buffer);

@@ -4,8 +4,8 @@ import { mergeConfig } from "vite";
 import { createFrontendViteConfig } from "@neuxbot/frontend/vite";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const corePort = Number(process.env.ALLY_WEB_CORE_PORT || 8432);
-const webPort = Number(process.env.ALLY_WEB_PORT || 1422);
+const corePort = Number(process.env.NEUXBOT_WEB_CORE_PORT || 8432);
+const webPort = Number(process.env.NEUXBOT_WEB_PORT || 1422);
 if (
   ![corePort, webPort].every(
     (port) => Number.isInteger(port) && port > 0 && port < 65536,

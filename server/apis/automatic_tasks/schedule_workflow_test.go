@@ -42,7 +42,7 @@ func workflowTask(t *testing.T, h *testHarness, source string) (models.WorkflowD
 func TestWorkflowAPIUploadsUseManagedRootSeparateFromProgramData(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
-	source := `export const meta = {sdk:'ally.workflow',title:'输入文件',inputSchema:{type:'object',properties:{document:{type:'string',format:'file'}},required:['document']},phases:[{id:'read',title:'读取文件',detail:'接纳文件输入',canExit:true}]};phase('read');return args.document;`
+	source := `export const meta = {sdk:'bot.workflow',title:'输入文件',inputSchema:{type:'object',properties:{document:{type:'string',format:'file'}},required:['document']},phases:[{id:'read',title:'读取文件',detail:'接纳文件输入',canExit:true}]};phase('read');return args.document;`
 	definition, config := workflowTask(t, h, source)
 	config.WorkflowInputBindings = map[string]workflowinput.Binding{"document": {Source: constants.WorkflowInputSourceAPI}}
 	saved, err := h.service.SaveConfiguration(ctx, h.wakerID, "", 0, config, true)
@@ -137,7 +137,7 @@ func TestWorkflowOccurrenceFreezesVersionAndReconcilesAcceptedReceipt(t *testing
 func TestWorkflowWaitingKeepsSlotAndPinnedPolicyRejectsWrongOwner(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
-	source := `export const meta = {sdk:'ally.workflow',title:'等待输入',inputSchema:{type:'object',properties:{text:{type:'string'}}},phases:[{id:'review',title:'审核',detail:'人工审核',canExit:true}]};phase('review');const answer = await askUser('审核 '+args.text,{id:'approve',phase:'review',label:'确认',kind:'select',choices:[{value:'yes',label:'是'},{value:'no',label:'否'}]});return answer;`
+	source := `export const meta = {sdk:'bot.workflow',title:'等待输入',inputSchema:{type:'object',properties:{text:{type:'string'}}},phases:[{id:'review',title:'审核',detail:'人工审核',canExit:true}]};phase('review');const answer = await askUser('审核 '+args.text,{id:'approve',phase:'review',label:'确认',kind:'select',choices:[{value:'yes',label:'是'},{value:'no',label:'否'}]});return answer;`
 	definition, config := workflowTask(t, h, source)
 	config.WorkflowRevisionPolicy = constants.WorkflowRevisionPolicyPinned
 	config.WorkflowRevisionID = definition.CurrentRevisionID

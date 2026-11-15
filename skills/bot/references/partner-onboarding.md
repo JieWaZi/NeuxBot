@@ -40,8 +40,8 @@ Use the exact execution context supplied by Core. Tailor the interview to the ov
 ```
 
 ```sh
-allycli waker profile interview --input partner-interview.json --request-id interview-01
-allycli interaction questions wait --question-id interview-example --timeout 30s
+botcli waker profile interview --input partner-interview.json --request-id interview-01
+botcli interaction questions wait --question-id interview-example --timeout 30s
 ```
 
 After the user answers, save the UTF-8 profile payload. Use the user's language for the overview fields. This example uses English in both places.
@@ -65,5 +65,5 @@ After the user answers, save the UTF-8 profile payload. Use the user's language 
 ```
 
 ```sh
-allycli waker profile save --input partner-profile.json --request-id save-01
+botcli waker profile save --input partner-profile.json --request-id save-01
 ```

@@ -11,7 +11,7 @@ it("keeps actual item, iteration and repeated instances under the frozen phase o
       { id: "other", phaseId: "build", path: "root/collect/item:1" },
     ],
     {
-      sdk: "ally.workflow",
+      sdk: "bot.workflow",
       title: "测试工作流",
       description: "",
       nodes: [],

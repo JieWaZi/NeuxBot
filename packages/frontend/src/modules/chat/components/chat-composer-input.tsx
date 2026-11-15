@@ -546,7 +546,7 @@ export function ChatComposerInput({
         for (let index = attachments.length - 1; index >= 0; index--) {
           const attachment = attachments[index];
           const sourcePath = (attachment?.file as AllyPathFile | undefined)
-            ?.allySourcePath;
+            ?.botSourcePath;
           if (sourcePath !== path) continue;
           await aui.composer.attachment({ index }).remove();
         }

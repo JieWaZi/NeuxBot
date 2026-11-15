@@ -437,7 +437,7 @@ it("keeps installed summaries after a failed manual catalog check", async () => 
   ).not.toBeInTheDocument();
   expect(screen.getByText("飞书")).toBeVisible();
   expect(fixture.refresh.mock.calls[0]?.[0]).not.toHaveProperty(
-    "headers.X-NeuxAlly-Error-Surface",
+    "headers.X-NeuxBot-Error-Surface",
   );
 });
 it("refreshes directly after search without showing the last check time on hover", async () => {

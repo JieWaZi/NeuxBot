@@ -143,7 +143,7 @@ func New(node, worker string) (*Supervisor, error) {
 	}
 	command := exec.Command(node, worker)
 	command.Stderr = workerDiagnostics{}
-	if os.Getenv("ALLY_TERMINAL_ELECTRON_NODE") == "1" {
+	if os.Getenv("NEUXBOT_TERMINAL_ELECTRON_NODE") == "1" {
 		command.Env = append(os.Environ(), "ELECTRON_RUN_AS_NODE=1")
 	}
 	configureGroup(command)

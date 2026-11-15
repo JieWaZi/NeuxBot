@@ -70,7 +70,7 @@ describe("partner navigation preferences", () => {
 
   it("应用重启后从本地偏好恢复各团队最后会话并丢弃无效值", () => {
     window.localStorage.setItem(
-      "ally.partner-navigation",
+      "bot.partner-navigation",
       JSON.stringify({
         ...preferences,
         lastTeamThreads: {
@@ -88,7 +88,7 @@ describe("partner navigation preferences", () => {
 
   it("恢复双栏偏好时约束上下文宽度并兼容旧折叠字段", () => {
     window.localStorage.setItem(
-      "ally.partner-navigation",
+      "bot.partner-navigation",
       JSON.stringify({
         contextSidebarWidth: 999,
         entityMode: "team",
@@ -106,7 +106,7 @@ describe("partner navigation preferences", () => {
 
 it("旧偏好缺少宽度时使用280且保留伙伴排序、分组和最近团队", () => {
   window.localStorage.setItem(
-    "ally.partner-navigation",
+    "bot.partner-navigation",
     JSON.stringify({
       railOrder: ["waker:b", "waker:a"],
       collapsedGroups: { "waker:a": ["folder:temporary"] },
@@ -126,7 +126,7 @@ it("旧偏好缺少宽度时使用280且保留伙伴排序、分组和最近团�
 
 it("忽略旧收起字段，并把过小旧宽度钳制到216，不丢弃实体顺序", () => {
   window.localStorage.setItem(
-    "ally.partner-navigation",
+    "bot.partner-navigation",
     JSON.stringify({
       contextSidebarWidth: 88,
       globalSidebarCollapsed: true,
@@ -144,7 +144,7 @@ it("忽略旧收起字段，并把过小旧宽度钳制到216，不丢弃实体�
 it("Rail默认顺序与pin选择恢复，未知版本的boolean选择仍保留", () => {
   expect(pinnedAppModules()).toEqual(["usage"]);
   window.localStorage.setItem(
-    "ally.partner-navigation",
+    "bot.partner-navigation",
     JSON.stringify({
       railPins: {
         "work-board": true,

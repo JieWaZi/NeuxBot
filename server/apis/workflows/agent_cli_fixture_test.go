@@ -12,16 +12,16 @@ import (
 var fixtureCLIBinary string
 
 func runCLITestSuite(m *testing.M) int {
-	directory, err := os.MkdirTemp("", "allycli-integration-")
+	directory, err := os.MkdirTemp("", "botcli-integration-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	fixtureCLIBinary = filepath.Join(directory, "allycli")
+	fixtureCLIBinary = filepath.Join(directory, "botcli")
 	if os.PathSeparator == '\\' {
 		fixtureCLIBinary += ".exe"
 	}
-	command := exec.Command("go", "build", "-o", fixtureCLIBinary, "../../cmd/allycli")
+	command := exec.Command("go", "build", "-o", fixtureCLIBinary, "../../cmd/botcli")
 	command.Stdout, command.Stderr = os.Stdout, os.Stderr
 	if err := command.Run(); err != nil {
 		_ = os.RemoveAll(directory)

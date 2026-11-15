@@ -41,7 +41,7 @@ func (w *Wecom) QR(ctx context.Context) (WecomQR, error) {
 	case "linux":
 		platform = "3"
 	}
-	result, err := w.qrRequest(ctx, "/generate?source=neuxally&plat="+platform)
+	result, err := w.qrRequest(ctx, "/generate?source=neuxbot&plat="+platform)
 	if err != nil {
 		return result, err
 	}

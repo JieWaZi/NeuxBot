@@ -14,7 +14,7 @@ test(
   "真实 PTY 输出、分离后屏幕恢复、输入身份与父进程退出清理",
   { timeout: 15000 },
   async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "ally-pty-test-"));
+    const root = await mkdtemp(path.join(tmpdir(), "bot-pty-test-"));
     const worker = spawn(process.execPath, [runtime], {
       env: { ...process.env, SHELL: "/bin/sh" },
       stdio: ["pipe", "pipe", "pipe"],
@@ -77,7 +77,7 @@ test(
         events.some(
           (event) =>
             event.event === "terminal-output" &&
-            event.payload.data.includes("ALLY_PTY_OK"),
+            event.payload.data.includes("NEUXBOT_PTY_OK"),
         ),
       );
       const output = events.filter(
@@ -96,7 +96,7 @@ test(
       const restored = await request("attach", {
         sessionId: started.sessionId,
       });
-      assert.match(restored.screen, /ALLY_PTY_OK/);
+      assert.match(restored.screen, /NEUXBOT_PTY_OK/);
       assert.notEqual(restored.attachmentId, snapshot.attachmentId);
       await assert.rejects(
         request("write", {

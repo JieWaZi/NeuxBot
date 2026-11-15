@@ -38,7 +38,7 @@ afterEach(() => {
 describe("桌面桥接", () => {
   it("剪贴板附件只传输文件名和原始字节", async () => {
     const stage_attachment = vi.fn(
-      async () => "/tmp/ally-attachments/image.png",
+      async () => "/tmp/bot-attachments/image.png",
     );
     installServices({ stage_attachment });
     await expect(
@@ -47,7 +47,7 @@ describe("桌面桥接", () => {
           type: "image/png",
         }),
       ),
-    ).resolves.toBe("/tmp/ally-attachments/image.png");
+    ).resolves.toBe("/tmp/bot-attachments/image.png");
     expect(stage_attachment).toHaveBeenCalledWith({
       name: "image.png",
       bytes: new Uint8Array([0, 255]),

@@ -1094,7 +1094,7 @@ func TestNativeResolvedEmptySelectionSurvivesDefaultsAndContinuation(t *testing.
 
 func TestNativeTwoTurnsUsePublishedSystemSkill(t *testing.T) {
 	root := t.TempDir()
-	binary := filepath.Join(t.TempDir(), "allycli")
+	binary := filepath.Join(t.TempDir(), "botcli")
 	if err := os.WriteFile(binary, []byte("fixture CLI publication"), 0700); err != nil {
 		t.Fatal(err)
 	}

@@ -59,7 +59,7 @@
   },
   "main": "dist-electron/main.cjs",
   "build": {
-    "appId": "com.neuxally.desktop",
+    "appId": "com.neuxbot.desktop",
     "productName": "NeuxBot",
     "directories": {
       "output": "release"
@@ -89,23 +89,23 @@
         "from": "binaries",
         "to": "bin",
         "filter": [
-          "ally-core",
-          "ally-core.exe",
-          "allycli",
-          "allycli.exe"
+          "bot-core",
+          "bot-core.exe",
+          "botcli",
+          "botcli.exe"
         ]
       },
       {
-        "from": "resources/tray/allyTemplate.png",
-        "to": "tray/allyTemplate.png"
+        "from": "resources/tray/botTemplate.png",
+        "to": "tray/botTemplate.png"
       },
       {
-        "from": "resources/tray/allyTemplate@2x.png",
-        "to": "tray/allyTemplate@2x.png"
+        "from": "resources/tray/botTemplate@2x.png",
+        "to": "tray/botTemplate@2x.png"
       },
       {
-        "from": "resources/tray/ally.ico",
-        "to": "tray/ally.ico"
+        "from": "resources/tray/bot.ico",
+        "to": "tray/bot.ico"
       },
       {
         "from": "../THIRD_PARTY_NOTICES.md",

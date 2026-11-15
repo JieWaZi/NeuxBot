@@ -1468,7 +1468,7 @@ const resources = {
       loadError: "技能暂时无法载入",
       toggleFailed: "技能启停失败，请稍后重试。",
       source: {
-        ally: "系统",
+        bot: "系统",
         git: "Git",
         zip: "ZIP",
         zipImport: "ZIP 导入",

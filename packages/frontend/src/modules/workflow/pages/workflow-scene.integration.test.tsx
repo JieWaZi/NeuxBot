@@ -241,7 +241,7 @@ beforeEach(() => {
           id: "version-1",
           ordinal: 1,
           manifest: {
-            sdk: "ally.workflow",
+            sdk: "bot.workflow",
             title: "测试工作流",
             description: "",
             controls: [],
@@ -287,7 +287,7 @@ beforeEach(() => {
       HttpResponse.json({
         revisionId: "version-1",
         source: "export const meta = {};",
-        sdk: "ally.workflow",
+        sdk: "bot.workflow",
       }),
     ),
   );
@@ -546,7 +546,7 @@ it.each(["未保存版本", "空 Manifest"])(
               ? {
                   id: "version-1",
                   manifest: {
-                    sdk: "ally.workflow",
+                    sdk: "bot.workflow",
                     title: "测试工作流",
                     description: "",
                     phases: [],
@@ -681,7 +681,7 @@ it("消息链接打开右侧工作台后保留主容器内的画布和节点浮�
           id: "version-1",
           ordinal: 1,
           manifest: {
-            sdk: "ally.workflow",
+            sdk: "bot.workflow",
             title: "测试工作流",
             description: "",
             controls: [],
@@ -768,12 +768,12 @@ it("节点标题保存后保留业务编辑浮层，不暴露执行模型菜单"
       }),
     ),
     http.get(`${origin}/api/v1/wakers`, () =>
-      HttpResponse.json({ resources: [{ id: "ally", name: "NeuxBot" }] }),
+      HttpResponse.json({ resources: [{ id: "bot", name: "NeuxBot" }] }),
     ),
-    http.get(`${origin}/api/v1/wakers/ally`, () =>
-      HttpResponse.json({ id: "ally", name: "NeuxBot" }),
+    http.get(`${origin}/api/v1/wakers/bot`, () =>
+      HttpResponse.json({ id: "bot", name: "NeuxBot" }),
     ),
-    http.get(`${origin}/api/v1/wakers/ally/connectors`, () =>
+    http.get(`${origin}/api/v1/wakers/bot/connectors`, () =>
       HttpResponse.json([]),
     ),
     http.get(`${origin}/api/v1/workflows/flow`, () =>
@@ -787,7 +787,7 @@ it("节点标题保存后保留业务编辑浮层，不暴露执行模型菜单"
           id: revision,
           ordinal: revision === "version-1" ? 1 : 2,
           manifest: {
-            sdk: "ally.workflow",
+            sdk: "bot.workflow",
             title: "测试工作流",
             description: "",
             controls: [],
@@ -799,7 +799,7 @@ it("节点标题保存后保留业务编辑浮层，不暴露执行模型菜单"
                 execution: {
                   resolve: {
                     kind: "waker",
-                    wakerId: "ally",
+                    wakerId: "bot",
                     runtimeId: "codex",
                     model: "model-a",
                   },
@@ -976,7 +976,7 @@ it.each(["保存版本", "执行结束"])(
             ? {
                 id: "generated-version",
                 manifest: {
-                  sdk: "ally.workflow",
+                  sdk: "bot.workflow",
                   title: "测试工作流",
                   description: "",
                   controls: [],
@@ -1224,7 +1224,7 @@ it("顶部切换工作流与执行过程，Dock 保留操作入口与历史窗�
       HttpResponse.json({
         run: { id: "run-1", status: "succeeded" },
         manifest: {
-          sdk: "ally.workflow",
+          sdk: "bot.workflow",
           title: "测试工作流",
           description: "",
           phases: [],
@@ -1313,7 +1313,7 @@ it("输入节点与 Dock 共用运行表单，关闭后保留草稿并在运行�
           args: { material: "新的会议材料" },
         },
         manifest: {
-          sdk: "ally.workflow",
+          sdk: "bot.workflow",
           title: "测试工作流",
           description: "",
           controls: [],
@@ -1397,7 +1397,7 @@ it("切换执行记录保留画布实例，等待时显示加载轮廓并隔离�
   });
   const requested = vi.fn();
   const manifest = {
-    sdk: "ally.workflow",
+    sdk: "bot.workflow",
     title: "测试工作流",
     description: "",
     controls: [],
@@ -1494,7 +1494,7 @@ it("直接打开执行地址仍可从顶部返回工作流画布", async () => {
       HttpResponse.json({
         run: { id: "run-1", status: "succeeded" },
         manifest: {
-          sdk: "ally.workflow",
+          sdk: "bot.workflow",
           title: "测试工作流",
           description: "",
           phases: [],
@@ -1538,7 +1538,7 @@ it("运行失败事件同步刷新执行记录状态，不继续显示等待处�
       HttpResponse.json({
         run: { id: "run-1", status },
         manifest: {
-          sdk: "ally.workflow",
+          sdk: "bot.workflow",
           title: "测试工作流",
           description: "",
           phases: [],
@@ -1591,7 +1591,7 @@ it.each([false, true])(
             status: params.runId === "run-1" ? "succeeded" : "waiting",
           },
           manifest: {
-            sdk: "ally.workflow",
+            sdk: "bot.workflow",
             title: "测试工作流",
             description: "",
             phases: [],
@@ -1664,7 +1664,7 @@ it("取消删除不提交，删除失败保留执行记录和就地错误", asyn
       HttpResponse.json({
         run: { id: "run-1", status: "failed" },
         manifest: {
-          sdk: "ally.workflow",
+          sdk: "bot.workflow",
           title: "测试工作流",
           description: "",
           phases: [],
@@ -1897,7 +1897,7 @@ it("历史版本的恢复入口绑定所查看版本，确认后按当前版本�
           id: revisionId,
           ordinal: Number(revisionId.split("-")[1]),
           manifest: {
-            sdk: "ally.workflow",
+            sdk: "bot.workflow",
             title: "测试工作流",
             description: "",
             controls: [],
@@ -1973,7 +1973,7 @@ it("删除历史版本先确认，删除所查看版本后返回当前版本并�
           id:
             new URL(request.url).searchParams.get("revisionId") || "version-2",
           manifest: {
-            sdk: "ally.workflow",
+            sdk: "bot.workflow",
             title: "测试工作流",
             description: "",
             controls: [],
@@ -2044,7 +2044,7 @@ it.each([false, true])(
           revision: {
             id: "version-1",
             manifest: {
-              sdk: "ally.workflow",
+              sdk: "bot.workflow",
               title: "测试工作流",
               description: "",
               controls: [],
@@ -2199,7 +2199,7 @@ it("对话历史复用浮层并显示默认目录，关闭时保留对话输入"
         revision: {
           id: "version-1",
           manifest: {
-            sdk: "ally.workflow",
+            sdk: "bot.workflow",
             title: "测试工作流",
             description: "",
             controls: [],
@@ -2264,7 +2264,7 @@ it("工作流主容器与工具 Tab 独立，历史切换保留各自输入并�
           id: "latest",
           ordinal: 2,
           manifest: {
-            sdk: "ally.workflow",
+            sdk: "bot.workflow",
             title: "测试工作流",
             description: "",
             controls: [],
@@ -2514,7 +2514,7 @@ it.each(["failed", "cancelled"])(
             status: params.runId === "retried" ? "succeeded" : "failed",
           },
           manifest: {
-            sdk: "ally.workflow",
+            sdk: "bot.workflow",
             title: "重试",
             description: "",
             phases: [],

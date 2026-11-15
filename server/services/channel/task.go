@@ -361,7 +361,7 @@ func (s *service) dispatchTask(
 		return nil, err
 	}
 	if task.DirectDelivery {
-		teamInstruction.Content += "\nDirect delivery: put the complete checked answer in `allycli team reports submit` with `readyForUser=true` only when it can be shown to the user without lead synthesis. Otherwise report the facts without that flag.\n"
+		teamInstruction.Content += "\nDirect delivery: put the complete checked answer in `botcli team reports submit` with `readyForUser=true` only when it can be shown to the user without lead synthesis. Otherwise report the facts without that flag.\n"
 	}
 	fence := task.CurrentFence + 1
 	now := time.Now().UnixMilli()

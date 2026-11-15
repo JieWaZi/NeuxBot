@@ -32,7 +32,7 @@ func TestLibraryDeleteRejectsStaleVersionAndCleansTaskConfiguration(t *testing.T
 		t.Fatal(err)
 	}
 	defer engine.Close()
-	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "ally.db"), Migrate: true})
+	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "bot.db"), Migrate: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestLibraryDeleteLeavesAllChatsToTheirOriginalLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer engine.Close()
-	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "ally.db"), Migrate: true})
+	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "bot.db"), Migrate: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +206,7 @@ func TestLibraryDeleteStopsActiveAndQueuedOrganize(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer engine.Close()
-			database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "ally.db"), Migrate: true})
+			database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "bot.db"), Migrate: true})
 			if err != nil {
 				t.Fatal(err)
 			}

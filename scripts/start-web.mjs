@@ -4,13 +4,13 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-/** 与 Native 的 appData/com.neuxally.desktop 保持同一 Core 数据身份。 */
+/** 与 Native 的 appData/com.neuxbot.desktop 保持同一 Core 数据身份。 */
 export function defaultCoreDataDirectory(
   inherited = process.env,
   platform = process.platform,
   home = os.homedir(),
 ) {
-  if (inherited.ALLY_DATA_DIR) return inherited.ALLY_DATA_DIR;
+  if (inherited.NEUXBOT_DATA_DIR) return inherited.NEUXBOT_DATA_DIR;
   const paths = platform === "win32" ? path.win32 : path.posix;
   const appData =
     platform === "darwin"
@@ -18,7 +18,7 @@ export function defaultCoreDataDirectory(
       : platform === "win32"
         ? inherited.APPDATA || paths.join(home, "AppData", "Roaming")
         : inherited.XDG_CONFIG_HOME || paths.join(home, ".config");
-  return paths.join(appData, "com.neuxally.desktop");
+  return paths.join(appData, "com.neuxbot.desktop");
 }
 
 /** 发布目录只依赖同目录资源、本机 Node 和用户选择的 Runtime。 */
@@ -27,27 +27,27 @@ export function webRuntimeEnvironment(directory, inherited = process.env) {
     ...inherited,
     SERVER_HOST: "127.0.0.1",
     GIN_MODE: inherited.GIN_MODE || "release",
-    SERVER_PORT: inherited.ALLY_WEB_CORE_PORT || "8432",
+    SERVER_PORT: inherited.NEUXBOT_WEB_CORE_PORT || "8432",
     SERVER_SHOW_PARAMS: "false",
-    ALLY_WEB_DIR: path.join(directory, "web"),
-    ALLY_DATA_DIR: defaultCoreDataDirectory(inherited),
-    ALLYCLI_BINARY_PATH: path.join(
+    NEUXBOT_WEB_DIR: path.join(directory, "web"),
+    NEUXBOT_DATA_DIR: defaultCoreDataDirectory(inherited),
+    BOTCLI_BINARY_PATH: path.join(
       directory,
       "bin",
-      process.platform === "win32" ? "allycli.exe" : "allycli",
+      process.platform === "win32" ? "botcli.exe" : "botcli",
     ),
-    ALLY_TERMINAL_RUNTIME_PATH: path.join(
+    NEUXBOT_TERMINAL_RUNTIME_PATH: path.join(
       directory,
       "terminal-runtime",
       "worker.cjs",
     ),
-    ALLY_TERMINAL_NODE_PATH: process.execPath,
+    NEUXBOT_TERMINAL_NODE_PATH: process.execPath,
     PI_MCP_MODULE_PATH: path.join(directory, "pi-bridge", "bridge.mjs"),
   };
-  delete environment.ALLY_DESKTOP_PARENT_PID;
-  delete environment.ALLY_LOCAL_TOKEN;
-  delete environment.ALLY_WEB_DEV_ORIGIN;
-  delete environment.ALLY_TERMINAL_ELECTRON_NODE;
+  delete environment.NEUXBOT_DESKTOP_PARENT_PID;
+  delete environment.NEUXBOT_LOCAL_TOKEN;
+  delete environment.NEUXBOT_WEB_DEV_ORIGIN;
+  delete environment.NEUXBOT_TERMINAL_ELECTRON_NODE;
   delete environment.ELECTRON_RUN_AS_NODE;
   return environment;
 }
@@ -56,7 +56,7 @@ export function startWeb(directory, overrides = {}) {
   const binary = path.join(
     directory,
     "bin",
-    process.platform === "win32" ? "ally-core.exe" : "ally-core",
+    process.platform === "win32" ? "bot-core.exe" : "bot-core",
   );
   if (!existsSync(binary))
     throw new Error("缺少 Core 二进制，请先运行 pnpm package:web。");

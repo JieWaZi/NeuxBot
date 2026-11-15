@@ -11,7 +11,7 @@ import { ConnectionScreen } from "./shell/connection-screen";
 
 initializeTheme();
 window.addEventListener(
-  "ally:web-session-expired",
+  "bot:web-session-expired",
   () => window.location.reload(),
   { once: true },
 );

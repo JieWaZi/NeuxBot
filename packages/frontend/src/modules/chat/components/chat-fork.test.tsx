@@ -57,7 +57,7 @@ vi.mock("@/shared/api/global-events", () => ({
 }));
 vi.mock("@/shared/ui/sonner", () => ({ toast: { error: vi.fn() } }));
 const server = setupServer();
-const api = "http://ally.test/api/v1/chats/parent";
+const api = "http://bot.test/api/v1/chats/parent";
 const requests = new Map<string, string>();
 beforeAll(() => {
   vi.stubGlobal("localStorage", {
@@ -66,7 +66,7 @@ beforeAll(() => {
     removeItem: (key: string) => requests.delete(key),
   });
   server.listen({ onUnhandledRequest: "error" });
-  client.setConfig({ baseUrl: "http://ally.test" });
+  client.setConfig({ baseUrl: "http://bot.test" });
 });
 afterEach(() => {
   messageState.message.status.type = "complete";

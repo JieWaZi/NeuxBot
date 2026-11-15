@@ -7,7 +7,7 @@ import test from "node:test";
 import { readStartupAssets } from "./check-desktop-entry-budget.mjs";
 
 async function fixture(t, manifest) {
-  const directory = await mkdtemp(path.join(os.tmpdir(), "ally-entry-budget-"));
+  const directory = await mkdtemp(path.join(os.tmpdir(), "bot-entry-budget-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   await mkdir(path.join(directory, ".vite"));
   await mkdir(path.join(directory, "assets"));

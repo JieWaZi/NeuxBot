@@ -168,7 +168,7 @@ func (m *service) prepareAgent(ctx context.Context, environment models.RuntimeEn
 	}
 	// CLI 回退的本轮路径只进入新增输入；MCP 直接绑定本轮连接，不向模型暴露连接文件。
 	if useMCP {
-		*connectors = append(*connectors, agentapi.ConnectorDeclaration{ID: "neuxbot-internal-capabilities", Name: "NeuxBot", RuntimeKey: "ally_capabilities", Transport: agentapi.ConnectorTransportStdio, Command: binary, Arguments: []string{"mcp", "serve", "--context", path}})
+		*connectors = append(*connectors, agentapi.ConnectorDeclaration{ID: "neuxbot-internal-capabilities", Name: "NeuxBot", RuntimeKey: "bot_capabilities", Transport: agentapi.ConnectorTransportStdio, Command: binary, Arguments: []string{"mcp", "serve", "--context", path}})
 	} else {
 		*contextInstructions = append(*contextInstructions, agentapi.Instruction{Name: "NeuxBot execution context", Content: fmt.Sprintf("For all NeuxBot CLI calls in this turn use %q --context %q. This execution-scoped path supersedes prior-turn context; never edit or copy its contents.", binary, path)})
 	}
@@ -186,9 +186,9 @@ func (m *service) prepareAgent(ctx context.Context, environment models.RuntimeEn
 func (m *service) appendAgentInstructions(instructions *[]agentapi.Instruction, useMCP bool, binary, skill string) {
 	discovery := fmt.Sprintf("Its executable is %q; invoke this exact quoted path with capabilities to discover the current authorized commands.", binary)
 	if useMCP {
-		discovery = "Use the injected ally_capabilities MCP tools for NeuxBot operations in this execution. Their schemas define the current inputs; use capabilities or guide only when discovery or relevant guidance is missing. Use requestId for mutations. Recover uncertain outcomes with receipts_get using the original operation and requestId; do not create a replacement request. Preserve actual tool errors and follow their retryAdvice. Do not run CLI discovery or switch to CLI after a tool error."
+		discovery = "Use the injected bot_capabilities MCP tools for NeuxBot operations in this execution. Their schemas define the current inputs; use capabilities or guide only when discovery or relevant guidance is missing. Use requestId for mutations. Recover uncertain outcomes with receipts_get using the original operation and requestId; do not create a replacement request. Preserve actual tool errors and follow their retryAdvice. Do not run CLI discovery or switch to CLI after a tool error."
 	}
-	*instructions = append(*instructions, agentapi.Instruction{Name: "软件能力", Content: fmt.Sprintf("For NeuxBot-provided operations, read the ally skill at %q. %s Resolve all skill-relative paths from the directory containing SKILL.md, never from the working directory. For knowledge tasks, read %q. These paths are supplied directly; do not search the workspace or global installation directories. Read only the relevant guide and live operation contract. A successful workflow.source.save receipt proves saving; a run start receipt is only acceptance.", filepath.Join(skill, "SKILL.md"), discovery, filepath.Join(skill, "references", "wiki-guide.md"))})
+	*instructions = append(*instructions, agentapi.Instruction{Name: "软件能力", Content: fmt.Sprintf("For NeuxBot-provided operations, read the bot skill at %q. %s Resolve all skill-relative paths from the directory containing SKILL.md, never from the working directory. For knowledge tasks, read %q. These paths are supplied directly; do not search the workspace or global installation directories. Read only the relevant guide and live operation contract. A successful workflow.source.save receipt proves saving; a run start receipt is only acceptance.", filepath.Join(skill, "SKILL.md"), discovery, filepath.Join(skill, "references", "wiki-guide.md"))})
 }
 
 // appendCurrentWorkflowReferences 归并本轮引用，由统一上下文投影发送一次。

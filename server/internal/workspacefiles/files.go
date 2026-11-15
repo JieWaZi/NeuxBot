@@ -281,7 +281,7 @@ func (m *Manager) Write(subject, id, root, relative, content, expected string) (
 	}
 	defer handle.Close()
 	rel, _ := filepath.Rel(allowed, target)
-	temporary := filepath.Join(filepath.Dir(rel), ".ally-write-"+strconv.FormatInt(int64(os.Getpid()), 10)+"-"+current.Version[:12])
+	temporary := filepath.Join(filepath.Dir(rel), ".bot-write-"+strconv.FormatInt(int64(os.Getpid()), 10)+"-"+current.Version[:12])
 	file, err := handle.OpenFile(temporary, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return Resource{}, fileError("create-write", err)

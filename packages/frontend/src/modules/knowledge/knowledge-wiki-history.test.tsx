@@ -37,7 +37,7 @@ vi.mock("@/shared/ui/text-diff-view", () => ({
   ),
 }));
 const server = setupServer();
-const root = "http://ally.test/api/v1/knowledge/libraries/kb";
+const root = "http://bot.test/api/v1/knowledge/libraries/kb";
 const resource = {
   backend: "local",
   connectionId: "local",
@@ -74,9 +74,9 @@ beforeAll(() => {
   client.interceptors.error.use((error, response) =>
     toApiError(error, response?.status),
   );
-  window.localStorage.setItem("ally.ui.theme", "light");
+  window.localStorage.setItem("bot.ui.theme", "light");
   server.listen({ onUnhandledRequest: "error" });
-  client.setConfig({ baseUrl: "http://ally.test" });
+  client.setConfig({ baseUrl: "http://bot.test" });
 });
 afterEach(() => {
   server.resetHandlers();
@@ -348,7 +348,7 @@ it("版本冲突保留错误但不当作未知结果，不报告恢复成功", a
 
 it("远端快照未保留时不显示恢复；切换版本后迟到响应不覆盖所选原文", async () => {
   const remote =
-    "http://ally.test/api/v1/knowledge/connections/remote/libraries/kb";
+    "http://bot.test/api/v1/knowledge/connections/remote/libraries/kb";
   let release: () => void = () => undefined;
   const delayed = new Promise<void>((resolve) => {
     release = resolve;
@@ -417,7 +417,7 @@ it.each([
   "$label 快照失败全局报告，恢复后才允许使用快照",
   async ({ missingVersion }) => {
     const remoteRoot =
-      "http://ally.test/api/v1/knowledge/connections/remote/libraries/kb";
+      "http://bot.test/api/v1/knowledge/connections/remote/libraries/kb";
     let failed = true;
     const { queryClient } = show({
       resource: {

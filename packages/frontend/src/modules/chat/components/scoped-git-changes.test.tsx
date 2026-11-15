@@ -21,8 +21,8 @@ const {
   getScopedGitStatus: vi.fn(async () => ({
     isRepo: true,
     branch: "main",
-    root: "/tmp/ally",
-    repositories: ["/tmp/ally"],
+    root: "/tmp/bot",
+    repositories: ["/tmp/bot"],
     entries: [
       ...(gitState.xy
         ? [
@@ -110,7 +110,7 @@ describe("ScopedGitChanges", () => {
       >
         <ScopedGitChanges
           query=""
-          rootPath="/tmp/ally"
+          rootPath="/tmp/bot"
           scopeChatId={"a".repeat(32)}
         />
       </QueryClientProvider>,
@@ -134,7 +134,7 @@ describe("ScopedGitChanges", () => {
       <QueryClientProvider client={queryClient}>
         <ScopedGitChanges
           query=""
-          rootPath="/tmp/ally"
+          rootPath="/tmp/bot"
           scopeChatId={"a".repeat(32)}
         />
       </QueryClientProvider>,
@@ -151,8 +151,8 @@ describe("ScopedGitChanges", () => {
     expect(await screen.findByTestId("git-patch-preview")).toBeInTheDocument();
     expect(getScopedGitDiff).toHaveBeenCalledWith(
       "a".repeat(32),
-      "/tmp/ally",
-      "/tmp/ally",
+      "/tmp/bot",
+      "/tmp/bot",
       "new.txt",
       false,
     );
@@ -166,7 +166,7 @@ describe("ScopedGitChanges", () => {
       <QueryClientProvider client={queryClient}>
         <ScopedGitChanges
           query=""
-          rootPath="/tmp/ally"
+          rootPath="/tmp/bot"
           scopeChatId={"a".repeat(32)}
         />
       </QueryClientProvider>,
@@ -200,8 +200,8 @@ describe("ScopedGitChanges", () => {
     );
     expect(getScopedGitDiff).toHaveBeenCalledWith(
       "a".repeat(32),
-      "/tmp/ally",
-      "/tmp/ally",
+      "/tmp/bot",
+      "/tmp/bot",
       "src/main.ts",
       false,
     );
@@ -216,7 +216,7 @@ describe("ScopedGitChanges", () => {
       <QueryClientProvider client={queryClient}>
         <ScopedGitChanges
           query=""
-          rootPath="/tmp/ally"
+          rootPath="/tmp/bot"
           scopeChatId={"a".repeat(32)}
         />
       </QueryClientProvider>,
@@ -237,8 +237,8 @@ describe("ScopedGitChanges", () => {
     await user.click(commit);
     expect(commitScopedGitFiles).toHaveBeenCalledWith(
       "a".repeat(32),
-      "/tmp/ally",
-      "/tmp/ally",
+      "/tmp/bot",
+      "/tmp/bot",
       "change",
     );
     expect(
@@ -256,7 +256,7 @@ describe("ScopedGitChanges", () => {
       <QueryClientProvider client={queryClient}>
         <ScopedGitChanges
           query=""
-          rootPath="/tmp/ally"
+          rootPath="/tmp/bot"
           scopeChatId={"a".repeat(32)}
         />
       </QueryClientProvider>,
@@ -270,8 +270,8 @@ describe("ScopedGitChanges", () => {
     expect(main.querySelector(".max-h-96")).toBeNull();
     expect(getScopedGitCommitDiff).toHaveBeenCalledWith(
       "a".repeat(32),
-      "/tmp/ally",
-      "/tmp/ally",
+      "/tmp/bot",
+      "/tmp/bot",
       "1234567890abcdef1234567890abcdef12345678",
     );
   });
@@ -285,7 +285,7 @@ describe("ScopedGitChanges", () => {
       <QueryClientProvider client={queryClient}>
         <ScopedGitChanges
           query=""
-          rootPath="/tmp/ally"
+          rootPath="/tmp/bot"
           scopeChatId={"a".repeat(32)}
         />
       </QueryClientProvider>,
@@ -293,7 +293,7 @@ describe("ScopedGitChanges", () => {
 
     await screen.findByText("src/main.ts");
     expect(screen.queryByRole("combobox", { name: "Git 仓库" })).toBeNull();
-    expect(screen.queryByText("/tmp/ally")).toBeNull();
+    expect(screen.queryByText("/tmp/bot")).toBeNull();
     const list = screen.getByRole("complementary", { name: "改动文件" });
     expect(list).not.toHaveClass("absolute");
     expect(
@@ -320,7 +320,7 @@ describe("ScopedGitChanges", () => {
       <QueryClientProvider client={queryClient}>
         <ScopedGitChanges
           query=""
-          rootPath="/tmp/ally"
+          rootPath="/tmp/bot"
           scopeChatId={"a".repeat(32)}
         />
       </QueryClientProvider>,
@@ -348,7 +348,7 @@ describe("ScopedGitChanges", () => {
       >
         <ScopedGitChanges
           query=""
-          rootPath="/tmp/ally"
+          rootPath="/tmp/bot"
           scopeChatId={"a".repeat(32)}
         />
       </QueryClientProvider>,
@@ -366,8 +366,8 @@ describe("ScopedGitChanges", () => {
     await waitFor(() =>
       expect(discardScopedGitFile).toHaveBeenCalledWith(
         "a".repeat(32),
-        "/tmp/ally",
-        "/tmp/ally",
+        "/tmp/bot",
+        "/tmp/bot",
         "src/main.ts",
       ),
     );

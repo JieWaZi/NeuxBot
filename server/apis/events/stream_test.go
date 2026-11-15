@@ -39,7 +39,7 @@ func testServer(t *testing.T, hub *eventhub.Hub, factory sourceFactory) *httptes
 }
 func dial(t *testing.T, server *httptest.Server) *websocket.Conn {
 	t.Helper()
-	dialer := websocket.Dialer{Subprotocols: []string{eventhub.Protocol, "ally.auth.test-secret"}}
+	dialer := websocket.Dialer{Subprotocols: []string{eventhub.Protocol, "bot.auth.test-secret"}}
 	connection, response, err := dialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/api/v1/events", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -143,9 +143,9 @@ func TestWebSocketTokenOriginAndControlValidation(t *testing.T) {
 	var called atomic.Int64
 	server := testServer(t, hub, func(context.Context, control) (source, error) { called.Add(1); return source{}, nil })
 	endpoint := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/v1/events"
-	for _, origin := range []string{"http://evil.example", "http://localhost:1420", "ally://other"} {
+	for _, origin := range []string{"http://evil.example", "http://localhost:1420", "bot://other"} {
 		header := http.Header{"Origin": []string{origin}}
-		dialer := websocket.Dialer{Subprotocols: []string{eventhub.Protocol, "ally.auth.test-secret"}}
+		dialer := websocket.Dialer{Subprotocols: []string{eventhub.Protocol, "bot.auth.test-secret"}}
 		connection, response, err := dialer.Dial(endpoint, header)
 		if connection != nil {
 			connection.Close()
@@ -154,7 +154,7 @@ func TestWebSocketTokenOriginAndControlValidation(t *testing.T) {
 			t.Fatalf("不可信Origin=%q未被拒绝", origin)
 		}
 	}
-	wrong := websocket.Dialer{Subprotocols: []string{eventhub.Protocol, "ally.auth.wrong"}}
+	wrong := websocket.Dialer{Subprotocols: []string{eventhub.Protocol, "bot.auth.wrong"}}
 	_, response, err := wrong.Dial(endpoint, nil)
 	if err == nil || response.StatusCode != http.StatusUnauthorized {
 		t.Fatal("错误令牌未拒绝")

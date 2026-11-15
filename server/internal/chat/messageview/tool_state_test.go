@@ -132,7 +132,7 @@ func TestToolMetadataAfterResultKeepsCoreCommandCaption(t *testing.T) {
 	fact, _ := json.Marshal(eventlog.AgentCommandData{CommandID: "receipt", Operation: "workflow.source.save", Completion: "immediate"})
 	records := []eventlog.Record{chatCreatedRecord(1, "/workspace"), executionCreatedRecord(2, "execution"),
 		{Sequence: 3, ExecutionID: "execution", Type: constants.ChatEventTypeAgentCommandCommitted, Data: fact},
-		runtimeRecord(4, "execution", "execution", "invocation", constants.RuntimeEventTypeToolUse, map[string]any{"id": "call", "name": "bash", "input": map[string]any{"command": "allycli workflow source save --input source.json"}}),
+		runtimeRecord(4, "execution", "execution", "invocation", constants.RuntimeEventTypeToolUse, map[string]any{"id": "call", "name": "bash", "input": map[string]any{"command": "botcli workflow source save --input source.json"}}),
 		runtimeRecord(5, "execution", "execution", "invocation", constants.RuntimeEventTypeToolResult, map[string]any{"tool_use_id": "call", "output": `{"protocolVersion":1,"ok":true,"commandId":"receipt","operation":"workflow.source.save"}`}),
 		runtimeRecord(6, "execution", "execution", "invocation", constants.RuntimeEventTypeToolUpdate, map[string]any{"id": "call", "_meta": map[string]any{"terminal_exit": map[string]any{"exit_code": 0}}}),
 	}

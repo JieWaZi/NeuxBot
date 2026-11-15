@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-const CookieName = "ally_web_session"
+const CookieName = "bot_web_session"
 const CSRFHeader = "X-Ally-CSRF"
 
 // Session 保存仅属于当前 Core 的会话身份及撤销信号。

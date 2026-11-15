@@ -23,7 +23,7 @@ func Call(ctx context.Context, connector models.MCPConnector, tool string, input
 	if err != nil {
 		return nil, err
 	}
-	client := mcp.NewClient(&mcp.Implementation{Name: "ally", Version: "1"}, nil)
+	client := mcp.NewClient(&mcp.Implementation{Name: "bot", Version: "1"}, nil)
 	session, err := client.Connect(child, transport, nil)
 	if err != nil {
 		logx.Errorf("connect action MCP failed: connector_id=%s error=%v", connector.ID, err)

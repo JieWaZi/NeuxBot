@@ -6,7 +6,7 @@
 
 **Architecture:** 在知识模块增加 `knowledge.wiki.maintain` 能力，与已有 `knowledge.jobs.start` 共用聊天授权、冻结输入和回执恢复。两者继承本轮 Execution 的智能体、账号、模型和推理配置，自动保留用户原文并附加伙伴补充。维护继续由现有独立 ACP 任务执行，聊天执行服务不增加领域分支。
 
-**Tech Stack:** Go、SQLite、现有 allycli 能力契约、内置 Markdown skill。
+**Tech Stack:** Go、SQLite、现有 botcli 能力契约、内置 Markdown skill。
 
 **Spec:** 本聊天已确认的需求；原件整理、已有 Wiki 维护分别路由，聊天只负责协调，手动入口继续使用弹窗配置。
 
@@ -40,7 +40,7 @@
 
 ### Task 2: 结果闭环与技能分流
 
-**Files:** `server/internal/knowledge/read_provider.go`、`read_test.go`，`server/internal/agentcapability/contract/output.go`，`skills/ally/{SKILL.md,references/wiki-guide.md,references/wiki-maintenance.md}`，`server/cmd/allycli/README.md`，`docs/architecture/knowledge-cn.md`。
+**Files:** `server/internal/knowledge/read_provider.go`、`read_test.go`，`server/internal/agentcapability/contract/output.go`，`skills/bot/{SKILL.md,references/wiki-guide.md,references/wiki-maintenance.md}`，`server/cmd/botcli/README.md`，`docs/architecture/knowledge-cn.md`。
 
 **Interfaces:** `knowledge.jobs.get` 追加 `report`，仅当前成功维护任务返回持久结果；所有入口共用维护指南。
 

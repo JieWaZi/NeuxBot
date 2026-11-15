@@ -49,7 +49,7 @@ async function checkRendererBytes(source, packaged) {
     );
   }
 
-  const directory = await mkdtemp(path.join(tmpdir(), "ally-smoke-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "bot-smoke-"));
   try {
     await new Promise((resolve, reject) => {
       const shell =
@@ -58,8 +58,8 @@ async function checkRendererBytes(source, packaged) {
           : "/bin/sh";
       const args =
         process.platform === "win32"
-          ? ["/d", "/s", "/c", "echo ally-pty-ready"]
-          : ["-c", "printf ally-pty-ready"];
+          ? ["/d", "/s", "/c", "echo bot-pty-ready"]
+          : ["-c", "printf bot-pty-ready"];
       const child = pty.spawn(shell, args, {
         cwd: directory,
         cols: 80,
@@ -78,7 +78,7 @@ async function checkRendererBytes(source, packaged) {
         clearTimeout(timer);
         try {
           assert.equal(exitCode, 0);
-          assert.match(output, /ally-pty-ready/);
+          assert.match(output, /bot-pty-ready/);
           resolve();
         } catch (error) {
           reject(error);

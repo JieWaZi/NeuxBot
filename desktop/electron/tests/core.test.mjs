@@ -8,7 +8,7 @@ const { CoreSupervisor, validateCoreURL } = loadModule(
   "main/core-supervisor.ts",
 );
 const fixture = async (t, body) => {
-  const root = await mkdtemp(path.join(tmpdir(), "ally-core-test-"));
+  const root = await mkdtemp(path.join(tmpdir(), "bot-core-test-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const binary = path.join(root, "core");
   await writeFile(binary, `#!${process.execPath}\n${body}`, { mode: 0o755 });
@@ -44,7 +44,7 @@ test("外部 Core 不创建或终止子进程", async () => {
 test("并发连接只启动一个 Core 并等待认证健康响应", async (t) => {
   const { root, binary } = await fixture(
     t,
-    `const fs=require('node:fs');fs.appendFileSync(process.env.ALLY_DATA_DIR+'/starts','1');const server=require('node:http').createServer((req,res)=>{res.setHeader('content-type','application/json');if(req.headers.authorization!=='Bearer '+process.env.ALLY_LOCAL_TOKEN){res.writeHead(401);res.end('{}');return;}res.end(JSON.stringify({status:'ok'}));});server.listen(Number(process.env.SERVER_PORT),'127.0.0.1');process.on('SIGTERM',()=>server.close(()=>process.exit(0)));`,
+    `const fs=require('node:fs');fs.appendFileSync(process.env.NEUXBOT_DATA_DIR+'/starts','1');const server=require('node:http').createServer((req,res)=>{res.setHeader('content-type','application/json');if(req.headers.authorization!=='Bearer '+process.env.NEUXBOT_LOCAL_TOKEN){res.writeHead(401);res.end('{}');return;}res.end(JSON.stringify({status:'ok'}));});server.listen(Number(process.env.SERVER_PORT),'127.0.0.1');process.on('SIGTERM',()=>server.close(()=>process.exit(0)));`,
   );
   const core = new CoreSupervisor({
     binary,

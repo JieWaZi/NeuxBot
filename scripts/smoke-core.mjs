@@ -16,20 +16,20 @@ export async function smokeCore({
   // 全新隔离库在共享 Windows runner 上建表较慢，冒烟使用独立且有界的冷启动预算。
   startupTimeout = 120_000,
 }) {
-  const dataDir = await mkdtemp(path.join(tmpdir(), "ally-packaged-core-"));
+  const dataDir = await mkdtemp(path.join(tmpdir(), "bot-packaged-core-"));
   const env = { ...environment };
   // 冒烟测试的业务文件与数据库一起隔离，不写入用户的默认受管目录。
-  env.ALLY_MANAGED_FILES_DIR = path.join(dataDir, "managed-files");
+  env.NEUXBOT_MANAGED_FILES_DIR = path.join(dataDir, "managed-files");
   env.PI_MCP_MODULE_PATH = path.join(resources, "pi-bridge", "bridge.mjs");
-  env.ALLY_TERMINAL_RUNTIME_PATH = path.join(
+  env.NEUXBOT_TERMINAL_RUNTIME_PATH = path.join(
     resources,
     "terminal-runtime",
     "worker.cjs",
   );
-  env.ALLY_TERMINAL_NODE_PATH = executable;
-  env.ALLY_TERMINAL_ELECTRON_NODE = "1";
-  delete env.ALLY_CORE_URL;
-  delete env.ALLY_LOCAL_TOKEN;
+  env.NEUXBOT_TERMINAL_NODE_PATH = executable;
+  env.NEUXBOT_TERMINAL_ELECTRON_NODE = "1";
+  delete env.NEUXBOT_CORE_URL;
+  delete env.NEUXBOT_LOCAL_TOKEN;
   let coreOutput = "";
   const core = new CoreSupervisor({
     log: (chunk) => {
@@ -58,7 +58,7 @@ export async function smokeCore({
   } catch (error) {
     if (coreOutput)
       diagnostic(
-        `${label} diagnostics:\n${coreOutput.replace(/ally_[a-f0-9]{32}/g, "[redacted]")}`,
+        `${label} diagnostics:\n${coreOutput.replace(/bot_[a-f0-9]{32}/g, "[redacted]")}`,
       );
     throw error;
   } finally {
@@ -78,7 +78,7 @@ if (
     binary: path.join(
       root,
       "desktop/binaries",
-      process.platform === "win32" ? "ally-core.exe" : "ally-core",
+      process.platform === "win32" ? "bot-core.exe" : "bot-core",
     ),
     resources: path.join(root, "resources"),
     executable: require("electron"),

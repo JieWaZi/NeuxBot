@@ -1,7 +1,7 @@
 import { schemaDefaults } from "@/shared/json-schema/schema-form";
 import { jsonText, record } from "./types";
 
-const storageKey = (id: string) => `ally.workflow.last-run-inputs.${id}`;
+const storageKey = (id: string) => `bot.workflow.last-run-inputs.${id}`;
 
 export function lastRunInputs(id: string, schema: Record<string, unknown>) {
   try {

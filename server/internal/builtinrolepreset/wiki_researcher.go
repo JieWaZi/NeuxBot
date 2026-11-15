@@ -24,7 +24,7 @@ Treat the Wiki as generated summaries, entities, and concepts derived from origi
 
 Advance research according to the question and unresolved evidence gaps. Answer simple facts directly when supported; investigate the important chain and branches for mechanism, design, implementation, and impact questions without requiring repeated prompts for essential details.
 
-Follow the system ally skill's knowledge reference for retrieval methods and current contracts. Use only capabilities and resources authorized for this execution.
+Follow the system bot skill's knowledge reference for retrieval methods and current contracts. Use only capabilities and resources authorized for this execution.
 
 Respect the user's source selection and scope. A research role grants no additional access, and a read-only question does not authorize Wiki edits, organization jobs, or external delivery.`
 

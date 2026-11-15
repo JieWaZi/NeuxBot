@@ -79,7 +79,7 @@ func TestCoreWorkerDispatchAlignsStructuredPromptWithResultBindings(t *testing.T
 				t.Fatalf("worker needs exactly one model-only result contract: %+v", intent.Input.ContextInstructions)
 			}
 			prompt := resultInstructions[0]
-			for _, required := range []string{"Worker Results", "host-provided ally skill", "workflow.results.schema", "workflow.results.submit", "stable requestId", "When ally_capabilities MCP is injected", "workflow_results_schema", "workflow_results_submit", "Otherwise follow the host-provided CLI transport", "Do not switch transports to bypass an error", "without an invented wrapper or extra JSON encoding", "Final chat text is not a result submission", "An accepted candidate cannot be replaced", "finish this execution so the host can confirm node success separately"} {
+			for _, required := range []string{"Worker Results", "host-provided bot skill", "workflow.results.schema", "workflow.results.submit", "stable requestId", "When bot_capabilities MCP is injected", "workflow_results_schema", "workflow_results_submit", "Otherwise follow the host-provided CLI transport", "Do not switch transports to bypass an error", "without an invented wrapper or extra JSON encoding", "Final chat text is not a result submission", "An accepted candidate cannot be replaced", "finish this execution so the host can confirm node success separately"} {
 				if !strings.Contains(prompt, required) {
 					t.Fatalf("model-only context lost result contract %q: %s", required, prompt)
 				}

@@ -37,7 +37,7 @@ vi.mock("react-force-graph-2d", () => import("./knowledge-force-test-double"));
 const server = setupServer();
 beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });
-  client.setConfig({ baseUrl: "http://ally.test" });
+  client.setConfig({ baseUrl: "http://bot.test" });
 });
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
@@ -108,7 +108,7 @@ it("进入图谱时重新核对已过期的目录缓存", async () => {
     { id: "old", slug: "old", title: "旧缓存知识", pageType: "concept" },
   ]);
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/pages", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/pages", () =>
       HttpResponse.json({
         items: [
           {
@@ -145,7 +145,7 @@ it("空图谱读取失败进入全局通知，内容不伪装空库也不展示�
   let attempt = 0;
   server.use(
     http.get(
-      "http://ally.test/api/v1/knowledge/libraries/kb/pages",
+      "http://bot.test/api/v1/knowledge/libraries/kb/pages",
       async () => {
         attempt++;
         if (attempt === 1) {
@@ -188,7 +188,7 @@ it("空图谱读取失败进入全局通知，内容不伪装空库也不展示�
 it("键盘选择真实孤立节点，刷新失败保留图谱且不显示无关系空态", async () => {
   let fail = false;
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/pages/id", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/pages/id", () =>
       HttpResponse.json({
         id: "id",
         slug: "isolated",
@@ -196,7 +196,7 @@ it("键盘选择真实孤立节点，刷新失败保留图谱且不显示无关�
         content: "# 孤立知识\n\n孤立页面正文",
       }),
     ),
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/pages", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/pages", () =>
       fail
         ? HttpResponse.error()
         : HttpResponse.json({
@@ -251,7 +251,7 @@ it.each(["weknora", "integration"])(
     let reading = false;
     server.use(
       http.get(
-        "http://ally.test/api/v1/knowledge/connections/remote/libraries/kb/graph",
+        "http://bot.test/api/v1/knowledge/connections/remote/libraries/kb/graph",
         ({ request }) => {
           const query = new URL(request.url).searchParams;
           expect(query.get("mode")).toBe("overview");
@@ -276,7 +276,7 @@ it.each(["weknora", "integration"])(
         },
       ),
       http.get(
-        "http://ally.test/api/v1/knowledge/connections/remote/libraries/kb/page-by-slug",
+        "http://bot.test/api/v1/knowledge/connections/remote/libraries/kb/page-by-slug",
         async () => {
           reading = true;
           await new Promise<void>((resolve) => {
@@ -313,7 +313,7 @@ it.each(["weknora", "integration"])(
 
 it("图谱交给 Canvas 引擎并在卸载时暂停动画", async () => {
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/pages", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/pages", () =>
       HttpResponse.json({
         items: [
           { slug: "a", title: "甲", outLinks: ["b"] },
@@ -343,7 +343,7 @@ it("按实际画布尺寸布局后仍保留概览分组名称与聚焦入口", a
     .spyOn(HTMLElement.prototype, "clientHeight", "get")
     .mockReturnValue(700);
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/pages", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/pages", () =>
       HttpResponse.json({
         items: [
           {
@@ -383,7 +383,7 @@ it("远端搜索区分请求中、全局失败通知与真实空结果，重新�
   let attempt = 0;
   server.use(
     http.get(
-      "http://ally.test/api/v1/knowledge/connections/remote/libraries/kb/graph",
+      "http://bot.test/api/v1/knowledge/connections/remote/libraries/kb/graph",
       () =>
         HttpResponse.json({
           nodes: [{ slug: "a", title: "已有页面", link_count: 0 }],
@@ -392,7 +392,7 @@ it("远端搜索区分请求中、全局失败通知与真实空结果，重新�
         }),
     ),
     http.get(
-      "http://ally.test/api/v1/knowledge/connections/remote/libraries/kb/pages",
+      "http://bot.test/api/v1/knowledge/connections/remote/libraries/kb/pages",
       async () => {
         if (++attempt === 1) {
           await new Promise<void>((resolve) => {
@@ -436,7 +436,7 @@ it("远端搜索区分请求中、全局失败通知与真实空结果，重新�
 
 it("图谱接入第三方拖动结束事件并固定真实引擎坐标", async () => {
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/pages", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/pages", () =>
       HttpResponse.json({
         items: [
           { slug: "a", title: "拖动节点", outLinks: ["b"] },
@@ -467,7 +467,7 @@ it("图谱接入第三方拖动结束事件并固定真实引擎坐标", async (
 
 it("单击在右侧读取真实正文，正文链接只切换阅读，展开邻居才改变子图", async () => {
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/pages", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/pages", () =>
       HttpResponse.json({
         items: [
           { id: "a", slug: "a", title: "甲知识", outLinks: ["b"] },
@@ -476,7 +476,7 @@ it("单击在右侧读取真实正文，正文链接只切换阅读，展开邻�
         total: 2,
       }),
     ),
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/pages/a", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/pages/a", () =>
       HttpResponse.json({
         id: "a",
         slug: "a",
@@ -485,7 +485,7 @@ it("单击在右侧读取真实正文，正文链接只切换阅读，展开邻�
         content: "甲的真实正文 [[b|乙知识入口]]",
       }),
     ),
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/pages/b", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/pages/b", () =>
       HttpResponse.json({
         id: "b",
         slug: "b",
@@ -513,7 +513,7 @@ it("单击在右侧读取真实正文，正文链接只切换阅读，展开邻�
 
 it("双击只聚焦一层邻域，Shift 单击和扩张边缘保留当前上下文", async () => {
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/pages", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/pages", () =>
       HttpResponse.json({
         items: [
           { slug: "a", title: "甲", outLinks: ["b"] },
@@ -558,7 +558,7 @@ it("双击只聚焦一层邻域，Shift 单击和扩张边缘保留当前上下�
 
 it("第三方命中检测选择的节点用于读取正文，不再自行扫描全部节点", async () => {
   server.use(
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/pages", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/pages", () =>
       HttpResponse.json({
         items: [
           { id: "a", slug: "a", title: "目标节点", outLinks: ["b"] },
@@ -567,14 +567,14 @@ it("第三方命中检测选择的节点用于读取正文，不再自行扫描�
         total: 2,
       }),
     ),
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/pages/a", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/pages/a", () =>
       HttpResponse.json({
         id: "a",
         title: "目标节点",
         content: "正确选择目标",
       }),
     ),
-    http.get("http://ally.test/api/v1/knowledge/libraries/kb/pages/b", () =>
+    http.get("http://bot.test/api/v1/knowledge/libraries/kb/pages/b", () =>
       HttpResponse.json({
         id: "b",
         title: "遮挡节点",
@@ -600,7 +600,7 @@ it("第三方命中检测选择的节点用于读取正文，不再自行扫描�
 });
 
 it("图谱索引展示结构化目录，目录链接在图谱内读取正文", async () => {
-  const root = "http://ally.test/api/v1/knowledge/libraries/kb";
+  const root = "http://bot.test/api/v1/knowledge/libraries/kb";
   server.use(
     http.get(`${root}/pages`, () =>
       HttpResponse.json({
@@ -674,7 +674,7 @@ it("图谱索引展示结构化目录，目录链接在图谱内读取正文", a
 
 it("自有远端图谱使用远端完整分页与真实链接，不请求本机或官方图谱", async () => {
   const remote =
-    "http://ally.test/api/v1/knowledge/connections/remote/libraries/kb";
+    "http://bot.test/api/v1/knowledge/connections/remote/libraries/kb";
   server.use(
     http.get(`${remote}/pages`, ({ request }) => {
       const offset = Number(new URL(request.url).searchParams.get("offset"));

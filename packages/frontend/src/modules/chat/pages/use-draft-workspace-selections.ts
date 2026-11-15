@@ -6,7 +6,7 @@ type WorkspaceSelection =
   | { type: "project"; projectId: string };
 type WorkspaceSelections = Record<string, WorkspaceSelection>;
 
-export const draftWorkspaceStorageKey = "ally.chat.workspace-selections";
+export const draftWorkspaceStorageKey = "bot.chat.workspace-selections";
 
 function readSelections(): WorkspaceSelections {
   try {

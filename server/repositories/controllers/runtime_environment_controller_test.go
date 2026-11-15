@@ -45,7 +45,7 @@ func TestRuntimeEnvironmentControllerPersistsConfigurationAndDetection(t *testin
 		RuntimeID:              agentapi.RuntimeIDCodex,
 		Enabled:                false,
 		Binary:                 "/opt/tools/codex",
-		PrefixArgs:             []string{"--profile", "ally"},
+		PrefixArgs:             []string{"--profile", "bot"},
 		ConfigHome:             "/tmp/codex-config",
 		DefaultModel:           "gpt-5.6",
 		DefaultReasoning:       "high",

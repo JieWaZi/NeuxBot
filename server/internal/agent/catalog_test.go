@@ -435,13 +435,13 @@ func installationProbeFixture(t *testing.T) (string, []string, []string, []strin
 		}
 	}
 	args := []string{"-test.run=^TestInstallationVersionProbeProcess$", "--"}
-	environment := []string{"PATH=", "ALLY_INSTALLATION_PROBE_ROOT=" + root}
+	environment := []string{"PATH=", "NEUXBOT_INSTALLATION_PROBE_ROOT=" + root}
 	return root, paths, args, environment
 }
 
 // TestInstallationVersionProbeProcess registers each real version process and waits for its peer before printing a version.
 func TestInstallationVersionProbeProcess(t *testing.T) {
-	root := os.Getenv("ALLY_INSTALLATION_PROBE_ROOT")
+	root := os.Getenv("NEUXBOT_INSTALLATION_PROBE_ROOT")
 	if root == "" {
 		return
 	}
@@ -587,7 +587,7 @@ func TestLaunchOverrideArgumentsAllowedRejectsAllyManagedArguments(t *testing.T)
 		// allowed is the expected argument validation result.
 		allowed bool
 	}{
-		{name: "codex safe profile", runtimeID: RuntimeIDCodex, arguments: []string{"--profile", "ally"}, allowed: true},
+		{name: "codex safe profile", runtimeID: RuntimeIDCodex, arguments: []string{"--profile", "bot"}, allowed: true},
 		{name: "codex workspace", runtimeID: RuntimeIDCodex, arguments: []string{"--cd=/tmp/project"}, allowed: false},
 		{name: "codex permission", runtimeID: RuntimeIDCodex, arguments: []string{"--sandbox", "read-only"}, allowed: false},
 		{name: "claude safe setting", runtimeID: RuntimeIDClaude, arguments: []string{"--setting-sources", "user"}, allowed: true},
@@ -607,7 +607,7 @@ func TestLaunchOverrideArgumentsAllowedRejectsAllyManagedArguments(t *testing.T)
 func TestLaunchDetectInputsEqualIgnoresNonLaunchFields(t *testing.T) {
 	previous := LaunchDetectInput{
 		Binary:     "codex",
-		PrefixArgs: []string{"--profile", "ally"},
+		PrefixArgs: []string{"--profile", "bot"},
 		ConfigHome: "/tmp/codex-home",
 	}
 	next := previous

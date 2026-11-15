@@ -481,7 +481,7 @@ describe("ChatWorkspaceSurface right workbench", () => {
     );
     expect(await screen.findByRole("tab", { name: "新标签页" })).toBeVisible();
     const saved = JSON.parse(
-      localStorage.getItem("ally.right-workbench.chat-two") ?? "null",
+      localStorage.getItem("bot.right-workbench.chat-two") ?? "null",
     ) as { state: { tabs: Array<{ kind: string }> } } | null;
     expect(saved?.state.tabs).toHaveLength(1);
   });
@@ -559,7 +559,7 @@ describe("ChatWorkspaceSurface right workbench", () => {
       );
       await act(async () => resolveClose?.(true));
       const saved = JSON.parse(
-        localStorage.getItem("ally.right-workbench.partner:surface") ?? "null",
+        localStorage.getItem("bot.right-workbench.partner:surface") ?? "null",
       ) as { state: { tabs: Array<{ kind: string }> } } | null;
       expect(saved?.state.tabs.some((tab) => tab.kind === "terminal")).toBe(
         false,

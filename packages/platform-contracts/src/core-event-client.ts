@@ -187,8 +187,8 @@ export class CoreEventClient {
         this.options.createSocket ??
         ((target, protocols) => new WebSocket(target, protocols))
       )(url.toString(), [
-        "ally.events.v1",
-        ...(connection.token ? [`ally.auth.${connection.token}`] : []),
+        "bot.events.v1",
+        ...(connection.token ? [`bot.auth.${connection.token}`] : []),
       ]);
       this.socket = socket;
       this.connectionId = undefined;

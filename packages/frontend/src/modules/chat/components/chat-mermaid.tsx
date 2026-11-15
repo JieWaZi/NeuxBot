@@ -249,7 +249,7 @@ export function ChatMermaid({ code }: { code: string }) {
         fontFamily: "var(--font-sans)",
         themeCSS: MERMAID_THEME_CSS,
       })
-      .render(`ally-mermaid-${reactID.replaceAll(":", "")}`, code)
+      .render(`bot-mermaid-${reactID.replaceAll(":", "")}`, code)
       .then((rendered) => {
         if (active) {
           setResult({

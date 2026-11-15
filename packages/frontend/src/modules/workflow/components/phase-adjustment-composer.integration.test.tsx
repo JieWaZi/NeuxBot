@@ -235,7 +235,7 @@ it("阶段账号切换沿用聊天的上下文确认并真实提交，不覆盖�
   const user = userEvent.setup();
   const sends: unknown[] = [];
   const accepted = vi.fn();
-  localStorage.setItem("ally.account.chat:chat-1", "system");
+  localStorage.setItem("bot.account.chat:chat-1", "system");
   server.use(
     http.get(`${origin}/api/v1/ai-accounts`, () =>
       HttpResponse.json({
@@ -356,7 +356,7 @@ it("阶段账号切换沿用聊天的上下文确认并真实提交，不覆盖�
       historyTurns: 5,
     }),
   ]);
-  expect(localStorage.getItem("ally.account.chat:chat-1")).toBe("system");
+  expect(localStorage.getItem("bot.account.chat:chat-1")).toBe("system");
   expect(screen.queryByText("已有创作需求")).not.toBeInTheDocument();
 });
 

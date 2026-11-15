@@ -55,7 +55,7 @@ func TestOpenChatScopeEndpointsKeepPrivateFilesSeparateAndReadActualProjects(t *
 		t.Fatal(err)
 	}
 	ctx, _ := gin.CreateTestContext(nil)
-	ctx.Set("ally.auth.subject", "desktop")
+	ctx.Set("bot.auth.subject", "desktop")
 	scopes := []workspacefiles.Scope{}
 	for _, id := range []string{"first", "second"} {
 		if _, err = service.CreateDormantChats(ctx, []chatservice.DormantChat{{Chat: models.Chat{ID: id, WakerID: "waker", WorkspaceDirectory: cwd, AdditionalWorkingDirectories: []string{project}}}}); err != nil {

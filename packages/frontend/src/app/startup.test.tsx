@@ -85,7 +85,7 @@ it("入口脚本执行前已有加载状态，首帧主题读取当前偏好", (
   expect(parsed.querySelector('[aria-label="NeuxBot"]')).not.toBeNull();
   expect(parsed.querySelector("p")).toBeNull();
   expect(parsed.querySelector('link[rel="stylesheet"]')).not.toBeNull();
-  localStorage.setItem("ally.ui.theme", "dark");
+  localStorage.setItem("bot.ui.theme", "dark");
   const themeScript = parsed.querySelector("script:not([src])")?.textContent;
   if (!themeScript) throw new Error("缺少首帧主题脚本");
   window.eval(themeScript);
@@ -136,7 +136,7 @@ it("等待服务时显示进度，失败显示原因，重试成功后自动进�
         connection.reject.mockImplementation(reject);
       }),
   );
-  localStorage.setItem("ally.ui.theme", "light");
+  localStorage.setItem("bot.ui.theme", "light");
   document.body.innerHTML = '<div id="root"></div>';
   await act(async () => {
     (await import("../start")).startApplication();

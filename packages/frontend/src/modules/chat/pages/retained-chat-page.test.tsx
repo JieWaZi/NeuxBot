@@ -42,7 +42,7 @@ vi.mock("./chat-page", () => ({
 it("首次接纳保留草稿输入实例，普通历史切换创建隔离实例", async () => {
   const entry: ChatWorkspaceEntry = {
     scopeKey: "draft:workflow:first",
-    wakerId: "ally",
+    wakerId: "bot",
     directoryLabel: "默认",
     mainContent: { contentId: "canvas", title: "画布", content: null },
     prepareSubmission: vi.fn(),
@@ -100,7 +100,7 @@ it("会话切换保留输入与工具实例，隐藏会话暂停，删除和关�
     chatId,
     entry: {
       scopeKey: `chat:${chatId}`,
-      wakerId: "ally",
+      wakerId: "bot",
       directoryLabel: "默认",
       mainContent: {
         contentId: "canvas",

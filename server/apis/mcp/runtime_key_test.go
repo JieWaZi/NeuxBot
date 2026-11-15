@@ -10,10 +10,10 @@ import (
 func TestNewRuntimeKeyUsesReadableStableNameAndBoundedSuffix(t *testing.T) {
 	connectorID := "483e09815fd042d48685d6dcce76554a"
 	tests := map[string]string{
-		"Chrome DevTools": "ally_chrome_devtools_",
-		"浏览器自动化":          "ally_liu_lan_qi_zi_dong_hua_",
-		"Chrome 浏览器":      "ally_chrome_liu_lan_qi_",
-		"🧰":               "ally_mcp_",
+		"Chrome DevTools": "bot_chrome_devtools_",
+		"浏览器自动化":          "bot_liu_lan_qi_zi_dong_hua_",
+		"Chrome 浏览器":      "bot_chrome_liu_lan_qi_",
+		"🧰":               "bot_mcp_",
 	}
 	for name, prefix := range tests {
 		actual := newRuntimeKey(name, connectorID)

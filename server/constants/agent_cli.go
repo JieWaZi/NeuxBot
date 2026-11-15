@@ -8,7 +8,7 @@ const (
 	// AgentCLIMCPCatalogPath 只向待接纳或已接纳的授权上下文发布固定工具目录。
 	AgentCLIMCPCatalogPath = "/mcp/catalog"
 	// AgentCLIBinaryEnvironment 允许应用装配明确提供受管 CLI 的实际路径。
-	AgentCLIBinaryEnvironment = "ALLYCLI_BINARY_PATH"
+	AgentCLIBinaryEnvironment = "BOTCLI_BINARY_PATH"
 	// AgentCLIRequestMaximumBytes 限制普通命令载荷与连接响应。
 	AgentCLIRequestMaximumBytes = 4 << 20
 	// AgentCLIContextMaximumBytes 限制本机连接文件，避免读取任意大文件。
@@ -26,5 +26,5 @@ const (
 	// AgentCLIEffectExternal 表示操作接纳外部效果。
 	AgentCLIEffectExternal = "external"
 	// AgentCLISkillName 是软件能力的保留技能名。
-	AgentCLISkillName = "ally"
+	AgentCLISkillName = "bot"
 )

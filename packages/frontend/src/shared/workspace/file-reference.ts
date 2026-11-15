@@ -35,7 +35,7 @@ export type FileReferenceResult =
   | { status: "missing" | "outside_scope" | "ambiguous" | "unavailable" };
 
 // Markdown 管线仅传递不透明引用，不再把工作区相对路径伪装成绝对路径。
-const REFERENCE_HREF_PREFIX = "/.ally/file-reference/";
+const REFERENCE_HREF_PREFIX = "/.bot/file-reference/";
 const emptyContext: FileReferenceContext = {
   baseDirectory: "",
   workspaceRoot: "",

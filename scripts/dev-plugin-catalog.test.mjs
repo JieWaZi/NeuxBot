@@ -37,7 +37,7 @@ test("local catalog serves fixed artifacts and closes with its child", async (t)
     probe,
     `import {readFile,writeFile} from 'node:fs/promises';
      import path from 'node:path';
-     const directory=process.env.ALLY_PLUGIN_CATALOG_URL;
+     const directory=process.env.NEUXBOT_PLUGIN_CATALOG_URL;
      const index=JSON.parse(await readFile(path.join(directory,'catalog.json'),'utf8'));
      const entry=index.entries[0];
      const archive=await (await fetch(entry.archiveURL)).text();

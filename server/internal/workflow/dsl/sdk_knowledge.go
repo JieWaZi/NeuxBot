@@ -70,7 +70,7 @@ func sdkSections() []sdkSection {
 				"chat. Use stable keys for code, never as the only form label. Declare file inputs and " +
 				"final file outputs as {type: 'string', format: 'file', title, description}. Arrays use" +
 				" items with this same file schema. Input forms upload files and run admission replaces" +
-				" uploaded ally-file references with real absolute paths in the managed workflow workspace. " +
+				" uploaded bot-file references with real absolute paths in the managed workflow workspace. " +
 				"Workers must read those paths using actual tools; never treat references as file " +
 				"contents. Final file values must be paths to real files created in " +
 				"flowContext.workspace.runDirectory by default, or the business destination explicitly " +
@@ -108,8 +108,8 @@ func sdkSections() []sdkSection {
 				"runDirectory. Scripts/state/cache/tmp stay under the workflow root; never choose /tmp, " +
 				"a home folder or user-facing storage/cache arguments. Business files default to runDirectory; " +
 				"only a user-selected external destination uses scope.workingDirectory. Python reads " +
-				"ALLY_WORKFLOW_ROOT, ALLY_WORKFLOW_SCRIPTS_DIR, ALLY_WORKFLOW_STATE_DIR, ALLY_WORKFLOW_CACHE_DIR, " +
-				"ALLY_WORKFLOW_TEMP_DIR and ALLY_WORKFLOW_RUN_DIR from os.environ; the host fixes temporary " +
+				"NEUXBOT_WORKFLOW_ROOT, NEUXBOT_WORKFLOW_SCRIPTS_DIR, NEUXBOT_WORKFLOW_STATE_DIR, NEUXBOT_WORKFLOW_CACHE_DIR, " +
+				"NEUXBOT_WORKFLOW_TEMP_DIR and NEUXBOT_WORKFLOW_RUN_DIR from os.environ; the host fixes temporary " +
 				"and cache environment variables. Relative run-file references resolve only against their " +
 				"owner's runDirectory, never a same-named business/root file; CLI file inputs keep their " +
 				"CLI CWD semantics. Build absolute paths from these fields and " +
@@ -136,7 +136,7 @@ func sdkSections() []sdkSection {
 			topics: []string{"worker"},
 			content: "A structured worker must invoke workflow.results.submit through the host-provided " +
 				"capability transport with a stable requestId and a data value matching its schema. " +
-				"When ally_capabilities MCP is injected, use workflow_results_schema and " +
+				"When bot_capabilities MCP is injected, use workflow_results_schema and " +
 				"workflow_results_submit with their advertised schemas. A submission is " +
 				"only a candidate until its Execution succeeds. Do not rely on JSON pasted into a final" +
 				" reply. For a root file schema, data is the actual file path. Add routing or summary " +
@@ -211,7 +211,7 @@ func sdkSections() []sdkSection {
 			content: "workflow.source.save compiles and validates complete source, checks policies and " +
 				"expectedRevisionId, then commits an immutable revision and its receipt together. " +
 				"Use the host-provided capability transport and advertised tool schema. When " +
-				"ally_capabilities MCP is injected, call workflow_source_save with the complete source " +
+				"bot_capabilities MCP is injected, call workflow_source_save with the complete source " +
 				"string or exact patches and a stable requestId; CLI file flags are not MCP inputs. " +
 				"A successful immediate receipt " +
 				"with saved:true, revisionId and sourceDigest proves saving. Explicit saves create a new immutable " +
@@ -237,7 +237,7 @@ func sdkSections() []sdkSection {
 		{id: "business-node-description", topics: []string{"overview", "worker", "human", "action", "function", "workflow"}, content: fmt.Sprintf("Name every node label for its business purpose in the user's language. Labels, descriptions, IDs and phase references are static literals; keep per-item names and identity in node inputs, prompts and results instead of concatenating them into labels. Add an optional static description (at most %d Unicode characters) as one sentence explaining what the step does for the user. Cards and details share this description. Keep implementation terms such as Function, python or trusted_local out of business labels and descriptions. Missing action descriptions may reuse meta.actions description; other nodes have no invented description.", constants.WorkflowNodeDescriptionMaxRunes)},
 		{id: "worker-results", topics: []string{"worker"}, content: "Workers return final text without schema, or matching JSON directly with schema. There is no data/content/analysis wrapper; values can be read by later nodes and the final return."},
 		{id: "scripts", topics: []string{"overview", "action"}, content: "Workflow exports static meta and optional scripts. Each script has language:python, protocol:json or text, and complete code as a string or interpolation-free String.raw template. Code bytes are frozen in the revision. A script action references scriptId. The host executes the Python module directly; it does not call main(input). A file containing only def main(input): is incomplete for a script action. Read stdin and write stdout at module entry. The host writes the complete input JSON value to stdin (missing input is null, false/0/empty string remain values). JSON stdout must contain exactly one value; stderr is logs. Text stdout is returned as a string. No automatic pip install. Script actions return {data,durationMs,process}.\n\nMinimal complete protocol: this module reads and echoes any one JSON value, including false, 0, empty string and null. Replace only the business processing when adapting it:\n\n```python\nimport json, sys\nvalue = json.load(sys.stdin)\njson.dump(value, sys.stdout, ensure_ascii=False)\n```"},
-		{id: "batch-authoring", topics: []string{"overview", "parallel", "pipeline"}, content: "For multi-item review, independent verification or partial-failure reporting, read references/workflow-patterns.md in the supplied ally skill and request workflow_sdk_get with {kind:'example',topic:'review'} before writing source. The review example is fictional and uses a placeholder Waker that must be resolved from prepared resources. Advance each item's dependent stages with pipeline; join all items only for genuine cross-item comparison or synthesis. Preserve original identities and coverage when collecting failures. Copy the protocol and dependency structure, then implement the user's actual data source and work rather than reusing the fictional output."},
+		{id: "batch-authoring", topics: []string{"overview", "parallel", "pipeline"}, content: "For multi-item review, independent verification or partial-failure reporting, read references/workflow-patterns.md in the supplied bot skill and request workflow_sdk_get with {kind:'example',topic:'review'} before writing source. The review example is fictional and uses a placeholder Waker that must be resolved from prepared resources. Advance each item's dependent stages with pipeline; join all items only for genuine cross-item comparison or synthesis. Preserve original identities and coverage when collecting failures. Copy the protocol and dependency structure, then implement the user's actual data source and work rather than reusing the fictional output."},
 		{id: "human", topics: []string{"human"}, content: "Use explicit kind:text/select/multiselect/form/confirm. choices may be a dynamic {value,label} array from a prior node or a candidate fileRef; the host freezes the evaluated snapshot. kind:form requires schema and excludes choices. allowCustom defaults false; allowSkip defaults false. Multiselect defaults minSelections:1 and maxSelections to candidate count; explicit minSelections:0 allows empty selection. HumanAnswer contains questionId,status,source,value?. Defaults only prefill. onTimeout defaults fail; explicit skip returns timed_out without value, default returns timed_out with validated defaultValue. Confirm can never auto-approve via timeout/default. Cancellation throws. Cache replay preserves original status/value and references the original answer."},
 		{id: "business-check", topics: []string{"action", "function", "worker"}, content: "successCondition:{path,equals} checks the validated business value: action.data, direct worker JSON/text, or functionTask result. path is a JSON Pointer; equals is a literal JSON value. Failed checks throw BUSINESS_CHECK_FAILED. Ordinary false and null are data without an explicit check."},
 		{id: "host-budgets", topics: []string{"budgets", "action", "human"}, content: fmt.Sprintf("Host budgets from the shared contract: source %d bytes; node business output %d bytes; inline human choices %d items and %d bytes; script action deadline at most %d ms. Truncated stdout is never accepted as successful JSON. Use managed file references for larger results.", constants.WorkflowSourceLimitBytes, constants.WorkflowOutputLimitBytes, constants.WorkflowHumanMaximumChoices, constants.WorkflowHumanChoicesLimitBytes, constants.WorkflowScriptMaxTimeoutMillis)},
@@ -383,7 +383,7 @@ func sdkDeclarations() []sdkDeclaration {
 		{
 			name:   "WorkflowMeta",
 			topics: []string{"overview"},
-			content: "interface WorkflowMeta {sdk:'ally.workflow';title:string;description:string;" +
+			content: "interface WorkflowMeta {sdk:'bot.workflow';title:string;description:string;" +
 				"whenToUse?:string;inputSchema?:Schema;outputSchema?:Schema;phases:Array<{id:string;" +
 				"title:string;detail:string;next?:string[];canExit?:boolean}>;actions?:ActionDeclaration[];limits?:WorkflowLimits}",
 		},

@@ -62,7 +62,7 @@ func Primitives() []string {
 func ExampleSources() map[string]string {
 	return map[string]string{
 		"f0":     "server/internal/workflow/dsl/testdata/f0.workflow.js",
-		"review": "skills/ally/references/workflow-review-example.workflow.js",
+		"review": "skills/bot/references/workflow-review-example.workflow.js",
 	}
 }
 

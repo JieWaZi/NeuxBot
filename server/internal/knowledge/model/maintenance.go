@@ -27,7 +27,7 @@ type MaintenanceConfig struct {
 	Registry *capability.Registry
 	// Endpoint 是现有软件能力服务的回环地址。
 	Endpoint string
-	// Binary 是应用同包交付的真实 allycli 可执行文件。
+	// Binary 是应用同包交付的真实 botcli 可执行文件。
 	Binary string
 	// Connection 是接纳时固定的程序、账号和模型。
 	Connection agent.ProviderConnectionRequest
@@ -97,9 +97,9 @@ func (runner *MaintenanceRunner) Run(ctx context.Context, input MaintenanceReque
 		}
 		return validate(ctx)
 	}
-	const bridgeName = "ally_capabilities"
+	const bridgeName = "bot_capabilities"
 	const toolPrefix = "mcp__" + bridgeName + "__"
-	instructions := input.Instructions + "\n\nUse the supplied ally_capabilities MCP tools for every knowledge read and change. In the guide, CLI command names refer to their equivalent advertised MCP tools. Use their current schemas and provide requestId for mutations. Recover uncertain outcomes with receipts_get and the original requestId. Follow the frozen library scope and verify actual operation results."
+	instructions := input.Instructions + "\n\nUse the supplied bot_capabilities MCP tools for every knowledge read and change. In the guide, CLI command names refer to their equivalent advertised MCP tools. Use their current schemas and provide requestId for mutations. Recover uncertain outcomes with receipts_get and the original requestId. Follow the frozen library scope and verify actual operation results."
 	var authorized atomic.Bool
 	var successfulCalls atomic.Uint64
 	// 只认服务端真正完成的领域调用，发现命令和模型自述不能证明执行过维护检查。

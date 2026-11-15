@@ -203,7 +203,7 @@ func newTestDB(t testing.TB) *gorm.DB {
 	t.Helper()
 	database, err := dbhelper.NewDB(conf.DB{
 		Type:    conf.Sqlite,
-		DBName:  filepath.Join(t.TempDir(), "ally-test.db"),
+		DBName:  filepath.Join(t.TempDir(), "bot-test.db"),
 		Migrate: true,
 	})
 	if err != nil {

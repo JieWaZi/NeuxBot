@@ -100,8 +100,8 @@ export class TerminalManager {
       TERM: "xterm-256color",
     };
     delete environment.ELECTRON_RUN_AS_NODE;
-    delete environment.ALLY_LOCAL_TOKEN;
-    delete environment.ALLY_TERMINAL_ELECTRON_NODE;
+    delete environment.NEUXBOT_LOCAL_TOKEN;
+    delete environment.NEUXBOT_TERMINAL_ELECTRON_NODE;
     const child = spawn(shell, process.platform === "win32" ? [] : ["-l"], {
       cwd,
       cols: 100,

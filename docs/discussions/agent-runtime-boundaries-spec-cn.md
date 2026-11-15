@@ -128,7 +128,7 @@ Core 不导入 Host、Environment、业务常量、数据库或服务。config �
 - [x] 外部业务 fixture 使用显式 SessionResources 观察真实启动环境，不保留混合旧请求来掩盖模型边界。
 - [x] 实现结束统一 review，重点审查被删除抽象的真实消费者、冷/热恢复、取消释放与三模型边界；发现项只做覆盖回归和限定复核。
 - [x] 更新 Agent README、Core README、架构总览、智能体与账号、聊天执行及后端约定，清除旧入口和已删除路径说明。
-- [x] 定向测试/race、相关 vet、Agent 依赖检查、GOWORK=off 的 Core/allycli 构建及 pnpm docs:check 通过。
+- [x] 定向测试/race、相关 vet、Agent 依赖检查、GOWORK=off 的 Core/botcli 构建及 pnpm docs:check 通过。
 - [x] 对照阶段开始的文件摘要确认独立插件包未改；并行修改纳入统一审查。
 - [x] 用户已自行测试并反馈完成本次实际使用验证；具体 CLI、模型与耗时未另行登记。
 
@@ -136,8 +136,8 @@ Core 不导入 Host、Environment、业务常量、数据库或服务。config �
 
 Core 与产品模型分别完成统一审查，未发现阻断项；文档检查的一处图中文字重复已修正。Core 验证冷恢复句柄直通、热恢复能力、静态配置变化新建、唯一历史输入、权限上界、取消交接及迟到部分资源释放。Host / Execution 验证窄静态类型、当轮授权进入实际资源、稳定连接文件轮换、任务最终启动环境、usage 先于 Chat 释放及绑定失败所有权。
 
-Core 六个相关包测试、Runtime / ACP race、Core vet 通过；Host 三包测试、Execution 定向测试和关键 race、Knowledge Generator 与真实 Core / 公开 ACP 受控维护集成通过。工作流、自动任务的真实 Host 派发、创作/接纳/重启场景、global 退出依赖顺序、相关 vet、Agent 依赖检查及正式 Core / allycli 构建通过。文档链接与 diff 格式检查通过。
+Core 六个相关包测试、Runtime / ACP race、Core vet 通过；Host 三包测试、Execution 定向测试和关键 race、Knowledge Generator 与真实 Core / 公开 ACP 受控维护集成通过。工作流、自动任务的真实 Host 派发、创作/接纳/重启场景、global 退出依赖顺序、相关 vet、Agent 依赖检查及正式 Core / botcli 构建通过。文档链接与 diff 格式检查通过。
 
 阶段前后 Agent 生产 Go 文件由 61 个 / 12,003 行变为 51 个 / 11,742 行；Core 为 25 → 20，Host 为 15 → 13，Environment 为 21 → 18。模型严格分型增加了必要声明，主要逻辑删减来自旧身份预留、自制 Checkpoint、证明摘要和纯转发层，文件合并没有引入替代状态机或兼容包装。
 
-独立插件包与阶段开始的摘要一致；并行修改纳入统一审查。测试使用受控 Driver、协议进程和软件能力 allycli；自动化未启动用户桌面或真实模型 CLI；用户已另行自测并反馈完成。
+独立插件包与阶段开始的摘要一致；并行修改纳入统一审查。测试使用受控 Driver、协议进程和软件能力 botcli；自动化未启动用户桌面或真实模型 CLI；用户已另行自测并反馈完成。

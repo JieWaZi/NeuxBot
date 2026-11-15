@@ -78,7 +78,7 @@ Prepare 不启动进程、不反调业务 Acquire。Bind 不提交 Prompt。首�
 
 `agentcapability`、其 contract 和 `agentcommand` 合并为 `agent/capability`；`agentcli` 合并为 `agent/cli/cli.go`。命令 Schema、精确授权、有界观察、未知结果查询和领域事务内 Commit 保留原行为。
 
-数据库表、命令身份摘要、协议路径、allycli 名称、环境变量及知识 HTTP MCP 契约不变。Unix/Windows 私有连接文件权限实现继续分别编译。
+数据库表、命令身份摘要、协议路径、botcli 名称、环境变量及知识 HTTP MCP 契约不变。Unix/Windows 私有连接文件权限实现继续分别编译。
 
 ## 目标文件职责
 
@@ -99,7 +99,7 @@ server/internal/agent/
     launch.go          启动认证租约
     management.go      无 Prompt 管理连接
   capability/          软件能力目录、授权、回执与平台连接文件
-  cli/                 allycli 解析和客户端
+  cli/                 botcli 解析和客户端
 ```
 
 同一对象的方法按完整职责集中，允许 2000–3000 行文件。测试随对象合并，保留真实 CLI 环境开关及平台边界，不减少既有行为断言，不新增仅供测试的生产包装层。实施中如名字冲突，按语义区分 TextMessage/聊天输入、CatalogConfig/启动配置；不把不同模型机械合成宽类型。

@@ -7,20 +7,20 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cliPath = path.join(
   root,
   "server/bin",
-  process.platform === "win32" ? "allycli.exe" : "allycli",
+  process.platform === "win32" ? "botcli.exe" : "botcli",
 );
-execFileSync("go", ["build", "-o", cliPath, "./cmd/allycli"], {
+execFileSync("go", ["build", "-o", cliPath, "./cmd/botcli"], {
   cwd: path.join(root, "server"),
   stdio: "inherit",
 });
 const core = spawn(
   "go",
-  ["run", "./cmd/ally-core", "-f", "configs/local.yaml"],
+  ["run", "./cmd/bot-core", "-f", "configs/local.yaml"],
   {
     cwd: path.join(root, "server"),
     env: {
       ...process.env,
-      ALLYCLI_BINARY_PATH: cliPath,
+      BOTCLI_BINARY_PATH: cliPath,
       PI_MCP_MODULE_PATH: path.join(root, "resources/pi-bridge/bridge.mjs"),
     },
     stdio: "inherit",

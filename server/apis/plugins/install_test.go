@@ -56,7 +56,7 @@ func pluginAPIContext(t *testing.T, publishers ...events.Publisher) *gin.Context
 	global.WakerControllerManager = controllers.NewWakerController(database.DB)
 	global.TransactionControllerManager = controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))
 	global.Config.DataDirectory = t.TempDir()
-	t.Setenv("ALLY_PLUGIN_CATALOG_URL", t.TempDir())
+	t.Setenv("NEUXBOT_PLUGIN_CATALOG_URL", t.TempDir())
 	t.Cleanup(func() {
 		global.PluginControllerManager = previousPlugins
 		global.WakerControllerManager = previousWakers
@@ -406,7 +406,7 @@ func TestInstallRejectsExistingLocalImportWithoutChangingResource(t *testing.T) 
 }
 
 func TestPluginImportRoutesAreUnavailable(t *testing.T) {
-	if raw := os.Getenv("NEUXALLY_PLUGIN_ROUTE_TEST_PORT"); raw != "" {
+	if raw := os.Getenv("NEUXBOT_PLUGIN_ROUTE_TEST_PORT"); raw != "" {
 		port, err := strconv.Atoi(raw)
 		if err != nil {
 			t.Fatal(err)
@@ -422,7 +422,7 @@ func TestPluginImportRoutesAreUnavailable(t *testing.T) {
 	port := listener.Addr().(*net.TCPAddr).Port
 	_ = listener.Close()
 	command := exec.Command(os.Args[0], "-test.run=^TestPluginImportRoutesAreUnavailable$")
-	command.Env = append(os.Environ(), "NEUXALLY_PLUGIN_ROUTE_TEST_PORT="+strconv.Itoa(port))
+	command.Env = append(os.Environ(), "NEUXBOT_PLUGIN_ROUTE_TEST_PORT="+strconv.Itoa(port))
 	if err := command.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -786,7 +786,7 @@ func TestCatalogInstallRevalidatesCachedArchiveWhenDistributionIsUnavailable(t *
 	if err := catalog.Refresh(context.Background(), location); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("ALLY_PLUGIN_CATALOG_URL", location)
+	t.Setenv("NEUXBOT_PLUGIN_CATALOG_URL", location)
 	value, err := (&PrepareCatalogPlugin{Key: "cached-owned"}).Output(ctx)
 	if err != nil {
 		t.Fatal(err)

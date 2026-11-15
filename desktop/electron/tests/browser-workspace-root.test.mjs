@@ -7,10 +7,10 @@ import { loadModule } from "./load-module.mjs";
 
 test("浏览器每次从Core读取冻结范围，旧授权不会跨请求缓存", async (t) => {
   const root = await realpath(
-    await mkdtemp(path.join(tmpdir(), "ally-browser-root-")),
+    await mkdtemp(path.join(tmpdir(), "bot-browser-root-")),
   );
   const other = await realpath(
-    await mkdtemp(path.join(tmpdir(), "ally-browser-other-")),
+    await mkdtemp(path.join(tmpdir(), "bot-browser-other-")),
   );
   t.after(() =>
     Promise.all([

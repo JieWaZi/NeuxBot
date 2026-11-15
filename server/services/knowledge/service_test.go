@@ -36,7 +36,7 @@ func newServiceFixtureWithDB(t *testing.T) (*Service, *core.Library, string, *go
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { engine.Close() })
-	db, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "ally.db"), Migrate: true})
+	db, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "bot.db"), Migrate: true})
 	if err != nil {
 		t.Fatal(err)
 	}

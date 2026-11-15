@@ -1,14 +1,14 @@
 ---
-name: ally
+name: bot
 description: Use NeuxBot's authorized knowledge, delivery, workflow, team, memory, plugin and question capabilities. Includes factual questions covered by available knowledge bases, document ingestion and Wiki maintenance. Ordinary file editing or shell work alone does not require this skill.
 ---
 
 # NeuxBot
 
 Use the skill directory and execution context supplied by the application.
-The executable is `scripts/allycli` (`scripts/allycli.exe` on Windows), relative
+The executable is `scripts/botcli` (`scripts/botcli.exe` on Windows), relative
 to this `SKILL.md`. Invoke its exact quoted absolute path with the current
-`--context <execution-file>` supplied by the host; every `allycli` example below
+`--context <execution-file>` supplied by the host; every `botcli` example below
 means that executable and explicit context.
 Resolve reference paths from this skill directory, not the working directory.
 
@@ -36,7 +36,7 @@ For other domains, read the relevant guide advertised by the current capability.
 
 When the host selects CLI transport, read the matching reference below before
 the first domain call. These references contain shell examples and complete
-JSON input examples for their tasks. In all shell blocks, replace the leading `allycli` with the exact quoted executable
+JSON input examples for their tasks. In all shell blocks, replace the leading `botcli` with the exact quoted executable
 path described above. Examples use POSIX shell syntax; use the current shell's
 quoting and redirection on Windows. Example IDs, paths, versions and request
 identities are fictional: use discovered resources and values from actual reads.
@@ -62,7 +62,7 @@ reference's spelling. `--library` and `--libraryId` are not `--library-id`.
 
 ## Discover and invoke
 
-- Prefer the injected `ally_capabilities` MCP tools. They use the same operation
+- Prefer the injected `bot_capabilities` MCP tools. They use the same operation
   contracts, authorization and receipts as CLI. When using CLI, include the
   exact `--context <execution-file>` supplied for this turn; do not reuse a
   prior turn's context or edit connection files.
@@ -76,7 +76,7 @@ reference's spelling. `--library` and `--libraryId` are not `--library-id`.
   directly. Authoring starts with `workflow_authoring_prepare`; reuse its
   guides, SDK and save contracts. Do not bootstrap CLI discovery alongside MCP
   or switch transports to bypass a tool error.
-- When the host selects CLI transport, run `allycli capabilities` at first use.
+- When the host selects CLI transport, run `botcli capabilities` at first use.
   Discover only needed operations; `describe <operation-id>` owns their inputs,
   limits and completion semantics. Read `guide <guide-id>` only for relevant
   guidance not already supplied. On `AgentInputInvalid`, read the exact

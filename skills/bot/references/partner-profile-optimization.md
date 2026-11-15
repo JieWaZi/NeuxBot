@@ -12,7 +12,7 @@ Save the requested changes together. Include the revised overview fields when th
 Use the current execution context supplied by Core. Report the update after a successful receipt. Recover an uncertain result with the same request ID. If the profile changed, read it again and apply the request to the latest revision.
 
 ```sh
-allycli waker profile get
+botcli waker profile get
 ```
 
 Use the returned `data.revision` in the payload below. The example updates the body and one overview field.
@@ -27,5 +27,5 @@ Use the returned `data.revision` in the payload below. The example updates the b
 ```
 
 ```sh
-allycli waker profile optimize --input profile-revision.json --request-id update-profile
+botcli waker profile optimize --input profile-revision.json --request-id update-profile
 ```

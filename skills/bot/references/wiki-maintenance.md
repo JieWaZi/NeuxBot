@@ -136,18 +136,18 @@ ordinary chat library maintenance uses the task starter in that guide.
 Inspect first; all IDs and guards below must come from the actual original reads:
 
 ```sh
-allycli knowledge libraries get --library-id library-example --backend local
-allycli knowledge themes list --library-id library-example --backend local
-allycli knowledge pages list --library-id library-example --backend local --limit 10 --offset 0
-allycli knowledge pages get --library-id library-example --backend local --page-id page-example
-allycli knowledge audit get --library-id library-example --backend local
+botcli knowledge libraries get --library-id library-example --backend local
+botcli knowledge themes list --library-id library-example --backend local
+botcli knowledge pages list --library-id library-example --backend local --limit 10 --offset 0
+botcli knowledge pages get --library-id library-example --backend local --page-id page-example
+botcli knowledge audit get --library-id library-example --backend local
 ```
 
 Run the audit/auto-fix only for the requested whole-library scope. An explicitly
 authorized deterministic whole-library fix uses the current structure version:
 
 ```sh
-allycli knowledge wiki auto-fix --library-id library-example --backend local --structure-version 3 --request-id wiki-fix-01
+botcli knowledge wiki auto-fix --library-id library-example --backend local --structure-version 3 --request-id wiki-fix-01
 ```
 
 ### Precise replacement or complete page write
@@ -160,7 +160,7 @@ Copy `oldText` from the current page. `replace.json` replaces all exact matches:
 ```
 
 ```sh
-allycli knowledge pages replace --input replace.json --request-id page-replace-01
+botcli knowledge pages replace --input replace.json --request-id page-replace-01
 ```
 
 For an existing page, `write-page.json` contains its complete revised content,
@@ -173,8 +173,8 @@ complete example, not a template for dropping the rest of an existing page:
 ```
 
 ```sh
-allycli knowledge pages write --input write-page.json --request-id page-write-01
-allycli knowledge pages rename --library-id library-example --backend local --page-id page-example --expected-version 2 --structure-version 3 --new-slug deployment-retries --request-id page-rename-01
+botcli knowledge pages write --input write-page.json --request-id page-write-01
+botcli knowledge pages rename --library-id library-example --backend local --page-id page-example --expected-version 2 --structure-version 3 --new-slug deployment-retries --request-id page-rename-01
 ```
 
 Creating a genuinely missing page uses `expectedVersion: 0`, omits `pageId`
@@ -193,7 +193,7 @@ with the original versions/timestamps of both pages and the current structure:
 ```
 
 ```sh
-allycli knowledge pages delete --input archive-page.json --request-id page-archive-01
+botcli knowledge pages delete --input archive-page.json --request-id page-archive-01
 ```
 
 Read the archived page and current library guards. `purge-page.json` uses those
@@ -205,11 +205,11 @@ new target guards while retaining the content-verified canonical guards:
 ```
 
 ```sh
-allycli knowledge pages purge --input purge-page.json --request-id page-purge-01
-allycli receipts get --operation knowledge.pages.purge --request-id page-purge-01
-allycli knowledge revisions list --library-id library-example --backend local --page-id canonical-example --limit 10 --offset 0
-allycli knowledge revisions get --library-id library-example --backend local --page-id canonical-example --version 2
-allycli knowledge revisions restore --library-id library-example --backend local --page-id canonical-example --expected-version 4 --structure-version 4 --revision-version 2 --request-id page-restore-01
+botcli knowledge pages purge --input purge-page.json --request-id page-purge-01
+botcli receipts get --operation knowledge.pages.purge --request-id page-purge-01
+botcli knowledge revisions list --library-id library-example --backend local --page-id canonical-example --limit 10 --offset 0
+botcli knowledge revisions get --library-id library-example --backend local --page-id canonical-example --version 2
+botcli knowledge revisions restore --library-id library-example --backend local --page-id canonical-example --expected-version 4 --structure-version 4 --revision-version 2 --request-id page-restore-01
 ```
 
 History inspection/restoration is a separate requested action, not a step after
@@ -227,9 +227,9 @@ Directory write can create, update or remove an authorized empty directory.
 ```
 
 ```sh
-allycli knowledge themes write --input theme.json --request-id theme-write-01
-allycli knowledge activity list --library-id library-example --backend local --limit 10
-allycli knowledge export get --library-id library-example --backend local --page-ids canonical-example > wiki-export.json
+botcli knowledge themes write --input theme.json --request-id theme-write-01
+botcli knowledge activity list --library-id library-example --backend local --limit 10
+botcli knowledge export get --library-id library-example --backend local --page-ids canonical-example > wiki-export.json
 ```
 
 Omit `themeId` when creating; deletion additionally sets `delete: true` after
@@ -244,7 +244,7 @@ Source import is only for explicitly provided original bytes, not Wiki repair.
 ```
 
 ```sh
-allycli knowledge sources import --input import.json --request-id source-import-01
+botcli knowledge sources import --input import.json --request-id source-import-01
 ```
 
 Importing bytes does not start organization. Verify each actual mutation's

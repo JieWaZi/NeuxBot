@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 test("空枚举与真实 unknown 同时存在时保留各自的契约", () => {
-  const directory = mkdtempSync(path.join(tmpdir(), "ally-openapi-"));
+  const directory = mkdtempSync(path.join(tmpdir(), "bot-openapi-"));
   try {
     const file = path.join(directory, "spec.json");
     writeFileSync(
@@ -47,7 +47,7 @@ test("空枚举与真实 unknown 同时存在时保留各自的契约", () => {
 });
 
 test("画布节点联合直接来自 DSL 生成契约且无外部引用", () => {
-  const directory = mkdtempSync(path.join(tmpdir(), "ally-canvas-api-"));
+  const directory = mkdtempSync(path.join(tmpdir(), "bot-canvas-api-"));
   try {
     const file = path.join(directory, "spec.json");
     writeFileSync(
@@ -84,7 +84,7 @@ test("画布节点联合直接来自 DSL 生成契约且无外部引用", () => 
 });
 
 test("Codex usage distinguishes explicitly unknown counters from measured zero", () => {
-  const directory = mkdtempSync(path.join(tmpdir(), "ally-usage-api-"));
+  const directory = mkdtempSync(path.join(tmpdir(), "bot-usage-api-"));
   try {
     const file = path.join(directory, "spec.json");
     const prefix = "GithubComJieWaZiNeuxBotServer";

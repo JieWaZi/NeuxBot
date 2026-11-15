@@ -13,7 +13,7 @@
 | `skills.go` | 技能复制、摘要清单、暂存发布与仅清理受管安装 |
 | `detached_task.go`、`history_handoff.go` | 独立文本及受限任务；摘要和有界历史接力 |
 | `conversation_store.go`、`delta_buffer.go`、`native_outcomes.go` | 存储消费合同、实时消息聚合及原生结果持久化 |
-| `capability/`、`cli/` | 软件能力目录、精确授权、领域回执与 allycli/MCP 客户端 |
+| `capability/`、`cli/` | 软件能力目录、精确授权、领域回执与 botcli/MCP 客户端 |
 | `agentfixture/`、`testdata/` | 宿主集成测试替身与协议样本，不参与生产装配 |
 
 独立文本调用和受限 Wiki 维护复用同一个 Turn 与终态存储。工具限制以实际原生能力为准。会话替换可交接现有总结或最近五个完整轮次；热续聊只提交新增输入。

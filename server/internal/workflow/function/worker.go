@@ -54,7 +54,7 @@ type Result struct {
 	DurationMillis int64 `json:"durationMs"`
 }
 
-// RunChild 只用于 ally-core 的独立 worker 启动路径；不初始化数据库或服务器。
+// RunChild 只用于 bot-core 的独立 worker 启动路径；不初始化数据库或服务器。
 func RunChild(input io.Reader) int {
 	var request Request
 	if err := json.NewDecoder(io.LimitReader(input, constants.WorkflowSourceLimitBytes+constants.WorkflowOutputLimitBytes+8192)).Decode(&request); err != nil {

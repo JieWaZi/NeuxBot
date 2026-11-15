@@ -228,7 +228,7 @@ func TestNativeEnvironmentPreservesGlobalPluginDisable(t *testing.T) {
 	if config["plugins"].(map[string]any)["outside@community"].(map[string]any)["enabled"] != false {
 		t.Fatal("global plugin disable was overridden by managed delivery")
 	}
-	if config["plugins"].(map[string]any)["acceptance@neuxally-managed"].(map[string]any)["enabled"] != true {
+	if config["plugins"].(map[string]any)["acceptance@neuxbot-managed"].(map[string]any)["enabled"] != true {
 		t.Fatal("managed plugin was not delivered")
 	}
 }
@@ -255,7 +255,7 @@ func TestCodexAPIAccountKeepsNativeOAuthHomeAndDoesNotPutKeyInArguments(t *testi
 	if provider == `"custom"` {
 		t.Fatal("selected account can merge with unrelated global provider credentials")
 	}
-	if view.Environment["ALLY_CODEX_MODEL_API_KEY"] != "selected-secret" || view.CodexConfiguration["model_providers."+strings.Trim(provider, `"`)+".requires_openai_auth"] != "false" {
+	if view.Environment["NEUXBOT_CODEX_MODEL_API_KEY"] != "selected-secret" || view.CodexConfiguration["model_providers."+strings.Trim(provider, `"`)+".requires_openai_auth"] != "false" {
 		t.Fatal("API account did not use its private process credential")
 	}
 }

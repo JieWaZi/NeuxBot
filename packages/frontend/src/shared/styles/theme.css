@@ -100,8 +100,8 @@
   --ref-purple-600: #7c6b99;
   --ref-purple-700: #655680;
   --ref-pink-600: #db2777;
-  --ref-ally-green-light: oklch(84.92% 0.127 150);
-  --ref-ally-green-dark: oklch(72% 0.13 150);
+  --ref-bot-green-light: oklch(84.92% 0.127 150);
+  --ref-bot-green-dark: oklch(72% 0.13 150);
   --ref-green-550: #1aa73e;
   --ref-amber-550: #ff8c00;
   --ref-red-650: #ec221f;
@@ -229,8 +229,8 @@
   --content-disabled: rgba(0, 0, 0, 0.3);
   --content-inverse: var(--ref-neutral-0);
 
-  --accent-default: var(--ref-ally-green-light);
-  --accent-hover: var(--ref-ally-green-dark);
+  --accent-default: var(--ref-bot-green-light);
+  --accent-hover: var(--ref-bot-green-dark);
   --accent-content: color-mix(
     in srgb,
     var(--accent-default) 40%,
@@ -542,8 +542,8 @@
   --content-disabled: var(--ref-neutral-750);
   --content-inverse: var(--ref-neutral-950);
 
-  --accent-default: var(--ref-ally-green-dark);
-  --accent-hover: var(--ref-ally-green-light);
+  --accent-default: var(--ref-bot-green-dark);
+  --accent-hover: var(--ref-bot-green-light);
   --accent-content: var(--accent-hover);
   --accent-disabled: color-mix(in srgb, var(--accent-default) 30%, transparent);
   --accent-surface-subtle: color-mix(

@@ -419,7 +419,7 @@ describe("useChatRuntime queue", () => {
       action: "check",
     });
     expect(
-      JSON.parse(localStorage.getItem("ally:error-notices") ?? "[]"),
+      JSON.parse(localStorage.getItem("bot:error-notices") ?? "[]"),
     ).not.toContainEqual(expect.objectContaining({ id: notice?.id }));
     await act(async () => {
       if (!notice) throw new Error("发送错误提示缺失");

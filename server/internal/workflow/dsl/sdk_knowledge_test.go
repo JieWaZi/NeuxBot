@@ -17,7 +17,7 @@ func TestSDKReviewExampleUsesTheSkillAuthorityAndRejectsLegacyFixtures(t *testin
 	if err != nil {
 		t.Fatalf("current review example is not available through SDK: %v", err)
 	}
-	authority, err := os.ReadFile("../../../../skills/ally/references/workflow-review-example.workflow.js")
+	authority, err := os.ReadFile("../../../../skills/bot/references/workflow-review-example.workflow.js")
 	if err != nil {
 		t.Fatal(err)
 	}

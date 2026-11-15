@@ -114,14 +114,14 @@ func PrepareNativeEnvironment(parent string, spec NativeEnvironmentSpec) (Native
 				secretAuthStorage = enabled
 			}
 		}
-		configuration["neuxallyExternalPluginsEnabled"] = externalEnabled
-		configuration["neuxallySecretAuthStorage"] = secretAuthStorage
+		configuration["neuxbotExternalPluginsEnabled"] = externalEnabled
+		configuration["neuxbotSecretAuthStorage"] = secretAuthStorage
 		// 注册表和缓存内容变化也会改变能力；不只观察用户启用开关。
 		stamp, err := nativePluginFilesFingerprint(filepath.Join(shared, "plugins"))
 		if err != nil {
 			return result, err
 		}
-		configuration["neuxallyExecutionFilesFingerprint"] = stamp
+		configuration["neuxbotExecutionFilesFingerprint"] = stamp
 	}
 	identity, err := json.Marshal([]any{shared, spec.RuntimeID, spec.PrefixArgs, configuration, spec.AllowExternal})
 	if err != nil {
@@ -129,9 +129,9 @@ func PrepareNativeEnvironment(parent string, spec NativeEnvironmentSpec) (Native
 	}
 	digest := sha256.Sum256(identity)
 	result.Fingerprint = hex.EncodeToString(digest[:])
-	delete(configuration, "neuxallyExecutionFilesFingerprint")
-	delete(configuration, "neuxallyExternalPluginsEnabled")
-	delete(configuration, "neuxallySecretAuthStorage")
+	delete(configuration, "neuxbotExecutionFilesFingerprint")
+	delete(configuration, "neuxbotExternalPluginsEnabled")
+	delete(configuration, "neuxbotSecretAuthStorage")
 	apiConfiguration, apiEnvironment, apiAccount, err := nativeCodexAPIAccount(spec)
 	if err != nil {
 		return result, err
@@ -337,7 +337,7 @@ func PrepareNativeEnvironment(parent string, spec NativeEnvironmentSpec) (Native
 		if err := codexPrivateDir(stateDirectory); err != nil {
 			return result, err
 		}
-		marker := filepath.Join(stateDirectory, ".neuxally-native-plugin-scope-"+spec.RuntimeID)
+		marker := filepath.Join(stateDirectory, ".neuxbot-native-plugin-scope-"+spec.RuntimeID)
 		previous, err := os.ReadFile(marker)
 		if err != nil && !os.IsNotExist(err) {
 			return result, storageFailure(err)
@@ -529,7 +529,7 @@ func nativeCodexAPIAccount(spec NativeEnvironmentSpec) (map[string]string, map[s
 		return nil, nil, false, status_error.AIAccountConfigurationInvalid
 	}
 	accountIdentity := sha256.Sum256([]byte(spec.AccountHome))
-	runtimeProvider := "neuxally-account-" + hex.EncodeToString(accountIdentity[:16])
+	runtimeProvider := "neuxbot-account-" + hex.EncodeToString(accountIdentity[:16])
 	sharedConfig, err := nativeReadConfiguration(spec.SharedPluginHome, "config.toml")
 	if err != nil {
 		return nil, nil, false, err
@@ -612,7 +612,7 @@ func nativeCopyManagedCache(destination, source string) error {
 	if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
 		return storageFailure(err)
 	}
-	stage, err := os.MkdirTemp(filepath.Dir(destination), ".neuxally-cache-")
+	stage, err := os.MkdirTemp(filepath.Dir(destination), ".neuxbot-cache-")
 	if err != nil {
 		return storageFailure(err)
 	}

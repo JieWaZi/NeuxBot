@@ -29,7 +29,7 @@ func TestBusinessCaptionRequiresSameExecutionCoreFactAndDoesNotAddRows(t *testin
 			}
 			output := `{"protocolVersion":1,"ok":true,"commandId":"receipt","operation":"workflow.source.save","data":{"private":"must not appear in caption"}}`
 			for index, tool := range []string{"first", "replay"} {
-				if _, err := builder.Apply(runtimeRecord(int64(4+index*2), "execution", "execution", "invoke", constants.RuntimeEventTypeToolUse, map[string]any{"id": tool, "name": "bash", "input": map[string]any{"command": "allycli workflow source save --input source.json"}})); err != nil {
+				if _, err := builder.Apply(runtimeRecord(int64(4+index*2), "execution", "execution", "invoke", constants.RuntimeEventTypeToolUse, map[string]any{"id": tool, "name": "bash", "input": map[string]any{"command": "botcli workflow source save --input source.json"}})); err != nil {
 					t.Fatal(err)
 				}
 				if _, err := builder.Apply(runtimeRecord(int64(5+index*2), "execution", "execution", "invoke", constants.RuntimeEventTypeToolResult, map[string]any{"tool_use_id": tool, "output": output, "is_error": false})); err != nil {

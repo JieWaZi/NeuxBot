@@ -25,7 +25,7 @@ type corruptedRevisionStore struct {
 
 func TestImpossibleSavedInstanceBudgetBlocksAdmissionBeforeAnyWork(t *testing.T) {
 	service, store := workflowTestService(t)
-	source := `export const meta={sdk:'ally.workflow',title:'预算接纳',description:'接纳前复核预算',limits:{maxInstances:2},phases:[{id:'work',title:'工作',detail:'两步',canExit:true}]};await askUser('第一步',{id:'first',label:'第一步',phase:'work'});await askUser('第二步',{id:'second',label:'第二步',phase:'work'});return true;`
+	source := `export const meta={sdk:'bot.workflow',title:'预算接纳',description:'接纳前复核预算',limits:{maxInstances:2},phases:[{id:'work',title:'工作',detail:'两步',canExit:true}]};await askUser('第一步',{id:'first',label:'第一步',phase:'work'});await askUser('第二步',{id:'second',label:'第二步',phase:'work'});return true;`
 	definition := savedTestWorkflow(t, service, source)
 	ctx := context.Background()
 	revision, err := store.GetRevision(ctx, definition.ID, definition.CurrentRevisionID)

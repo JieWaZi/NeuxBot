@@ -25,7 +25,7 @@ type documentUnit struct {
 }
 
 func readerCoverage(kind string, complete bool, total, read int) json.RawMessage {
-	out, _ := json.Marshal(map[string]any{"reader": "ally-extracted-text-v1", "format": kind, "scope": "all", "complete": complete, "totalUnits": total, "readUnits": read})
+	out, _ := json.Marshal(map[string]any{"reader": "bot-extracted-text-v1", "format": kind, "scope": "all", "complete": complete, "totalUnits": total, "readUnits": read})
 	return out
 }
 

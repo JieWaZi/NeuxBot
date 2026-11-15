@@ -72,7 +72,7 @@ it("上传实际文件字节后提交引用，上传期间阻止运行", async (
       }
       await pending;
       return HttpResponse.json({
-        reference: "ally-file:123/document.csv",
+        reference: "bot-file:123/document.csv",
         name: "document.csv",
         size: 12,
       });
@@ -100,7 +100,7 @@ it("上传实际文件字节后提交引用，上传期间阻止运行", async (
     expect(screen.getByRole("button", { name: "运行" })).toBeEnabled(),
   );
   expect(screen.getByTestId("args")).toHaveTextContent(
-    '"document":"ally-file:123/document.csv"',
+    '"document":"bot-file:123/document.csv"',
   );
 });
 

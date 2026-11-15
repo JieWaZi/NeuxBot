@@ -516,12 +516,12 @@ export function PluginInstallDialog({
           <div className="flex items-center gap-5 pb-2">
             <span className="bg-surface-subtle grid size-14 place-items-center rounded-lg">
               <img
-                src="/ally-logo.svg"
+                src="/bot-logo.svg"
                 alt="NeuxBot"
                 className="size-10 dark:hidden"
               />
               <img
-                src="/ally-logo-dark.svg"
+                src="/bot-logo-dark.svg"
                 alt="NeuxBot"
                 className="hidden size-10 dark:block"
               />

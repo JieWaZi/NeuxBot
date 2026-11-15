@@ -14,7 +14,7 @@ export function createAttachmentStaging(temporaryDirectory = tmpdir()) {
       if (disposed) throw new Error("附件暂存已关闭");
       if (!name || name === "." || name === ".." || /[\\/\0]/.test(name))
         throw new Error("附件名称无效");
-      directory ??= mkdtemp(path.join(temporaryDirectory, "ally-attachments-"));
+      directory ??= mkdtemp(path.join(temporaryDirectory, "bot-attachments-"));
       const rootDirectory = directory;
       const operation = (async () => {
         const root = await rootDirectory;

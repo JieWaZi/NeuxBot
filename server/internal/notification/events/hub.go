@@ -12,7 +12,7 @@ import (
 
 const (
 	// Protocol 表示当前全局事件传输协议。
-	Protocol = "ally.events.v1"
+	Protocol = "bot.events.v1"
 	// MaximumSubscriptions 限制单连接资源订阅数量。
 	MaximumSubscriptions = 128
 	// MaximumFrameBytes 限制单个业务事件的序列化大小。

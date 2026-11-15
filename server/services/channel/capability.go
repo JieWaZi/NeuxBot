@@ -167,7 +167,7 @@ func (s *service) toolChannelTasks(
 		return channeltool.TaskOutput{Task: &task}, nil
 	case constants.ChannelTaskToolActionCreate:
 		if !capability.Listed {
-			return channelToolError(status_error.AgentInputInvalid, "Call allycli team tasks list before create to avoid duplicate work.")
+			return channelToolError(status_error.AgentInputInvalid, "Call botcli team tasks list before create to avoid duplicate work.")
 		}
 		assignee := strings.TrimSpace(input.AssigneeWakerID)
 		if assignee == thread.LeadWakerID {
@@ -192,7 +192,7 @@ func (s *service) toolChannelTasks(
 		return channeltool.TaskOutput{Task: &created.Task}, nil
 	case constants.ChannelTaskToolActionUpdate:
 		if !capability.Listed {
-			return channelToolError(status_error.AgentInputInvalid, "Call allycli team tasks list before update.")
+			return channelToolError(status_error.AgentInputInvalid, "Call botcli team tasks list before update.")
 		}
 		if strings.TrimSpace(input.AssigneeWakerID) == thread.LeadWakerID {
 			return channelToolError(status_error.AgentInputInvalid, leadTaskAssigneeError)
@@ -234,7 +234,7 @@ func (s *service) toolChannelTasks(
 		return channeltool.TaskOutput{Task: &updated}, nil
 	case constants.ChannelTaskToolActionRetry:
 		if !capability.Listed {
-			return channelToolError(status_error.AgentInputInvalid, "Call allycli team tasks list before retry.")
+			return channelToolError(status_error.AgentInputInvalid, "Call botcli team tasks list before retry.")
 		}
 		if strings.TrimSpace(input.AssigneeWakerID) == thread.LeadWakerID {
 			return channelToolError(status_error.AgentInputInvalid, leadTaskAssigneeError)

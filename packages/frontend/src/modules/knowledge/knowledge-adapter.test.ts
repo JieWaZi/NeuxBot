@@ -4,7 +4,7 @@ import { setupServer } from "msw/node";
 import { client } from "@/shared/api/generated/client.gen";
 import { ApiError } from "@/shared/api/errors";
 import {
-  ALLY_LOCAL_ERROR_SURFACE,
+  NEUXBOT_LOCAL_ERROR_SURFACE,
   withLocalErrorSurface,
 } from "@/shared/api/local-error-surface";
 import { scopedKnowledgeOptions } from "@/shared/api/knowledge/knowledge-adapter-types";
@@ -79,7 +79,7 @@ describe("知识库 Adapter 的目标与能力边界", () => {
         path: { connectionId: "other", libraryId: "other" },
       }),
     );
-    expect(new Headers(options.headers).get(ALLY_LOCAL_ERROR_SURFACE)).toBe(
+    expect(new Headers(options.headers).get(NEUXBOT_LOCAL_ERROR_SURFACE)).toBe(
       "local",
     );
     expect(options.path).toEqual({

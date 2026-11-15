@@ -227,7 +227,7 @@ func TestBrowsePluginsUsesStaleSnapshotWithoutMakingNetworkRequests(t *testing.T
 	previous := http.DefaultTransport
 	http.DefaultTransport = transport
 	t.Cleanup(func() { http.DefaultTransport = previous })
-	t.Setenv("ALLY_PLUGIN_CATALOG_URL", fmt.Sprintf("https://browse.invalid/%p/catalog.json", t))
+	t.Setenv("NEUXBOT_PLUGIN_CATALOG_URL", fmt.Sprintf("https://browse.invalid/%p/catalog.json", t))
 	browseFixture(t, ctx, "local", "local", true)
 	result := readBrowse(t, ctx, BrowsePlugins{})
 	if result.TotalSize != nil || len(result.Entries) != 1 || transport.requests.Load() != 0 {

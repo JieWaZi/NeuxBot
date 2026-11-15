@@ -4,7 +4,7 @@
 
 **目标** 新伙伴通过四项表单创建并在首个对话建档，伙伴概览直接显示一份长期指令。
 
-**架构** 共享 React Scene 复用现有选择器和 Chat。Go Core 使用既有 Chat/Execution、档案存储和 allycli 授权，问答完成后保存一份英文档案。
+**架构** 共享 React Scene 复用现有选择器和 Chat。Go Core 使用既有 Chat/Execution、档案存储和 botcli 授权，问答完成后保存一份英文档案。
 
 **技术栈** React、TanStack Query、Go、SQLite、ginx/OpenAPI、Vitest。
 
@@ -28,7 +28,7 @@
 
 ### Task 1 后端创建、引导与档案
 
-**主要文件** `server/apis/wakers/`、`server/services/execution/`、`server/repositories/{models,controllers}/`、`server/internal/{profile,builtinrolepreset,agent/capability}/`、`server/services/channel/team_md.go`、`skills/ally/`。可按现有装配方式新增伙伴服务。负责生成契约及 CLI 资源。
+**主要文件** `server/apis/wakers/`、`server/services/execution/`、`server/repositories/{models,controllers}/`、`server/internal/{profile,builtinrolepreset,agent/capability}/`、`server/services/channel/team_md.go`、`skills/bot/`。可按现有装配方式新增伙伴服务。负责生成契约及 CLI 资源。
 
 **接口** 实现设计中 `createWaker`、`startWakerOnboarding`、伙伴默认模型字段、`agents` 文档类型、CLI 问答与保存、伙伴事件。先提供可生成的 HTTP 类型和操作标识，通知前端接入。
 

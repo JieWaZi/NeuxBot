@@ -21,7 +21,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
-const runtimeTestMeta = `export const meta={sdk:'ally.workflow',title:'工作流',description:'runtime',phases:[{id:'work',title:'执行',detail:'流程'}]};`
+const runtimeTestMeta = `export const meta={sdk:'bot.workflow',title:'工作流',description:'runtime',phases:[{id:'work',title:'执行',detail:'流程'}]};`
 
 func TestRunWorkspaceUsesWorkflowIdentityAndPrivateRunDirectory(t *testing.T) {
 	s, _ := workflowTestService(t)
@@ -431,7 +431,7 @@ func TestPythonScriptUsesManagedSourceCwdAndTemporaryFiles(t *testing.T) {
 	if !strings.HasPrefix(data["source"].(string), filepath.Join(root, "scripts")+string(filepath.Separator)) || data["cwd"] != filepath.Join(root, "runs", run.ID) || data["tmp"] != filepath.Join(root, "tmp") || data["cache"] != filepath.Join(root, "cache") {
 		t.Fatalf("Python used unmanaged paths: %#v", data)
 	}
-	for _, key := range []string{"TMPDIR", "TMP", "TEMP", "XDG_CACHE_HOME", "ALLY_WORKFLOW_ROOT", "ALLY_WORKFLOW_SCRIPTS_DIR", "ALLY_WORKFLOW_STATE_DIR", "ALLY_WORKFLOW_CACHE_DIR", "ALLY_WORKFLOW_TEMP_DIR", "ALLY_WORKFLOW_RUN_DIR"} {
+	for _, key := range []string{"TMPDIR", "TMP", "TEMP", "XDG_CACHE_HOME", "NEUXBOT_WORKFLOW_ROOT", "NEUXBOT_WORKFLOW_SCRIPTS_DIR", "NEUXBOT_WORKFLOW_STATE_DIR", "NEUXBOT_WORKFLOW_CACHE_DIR", "NEUXBOT_WORKFLOW_TEMP_DIR", "NEUXBOT_WORKFLOW_RUN_DIR"} {
 		if _, err := s.executeScript(context.Background(), run, workflowdsl.ActionDeclaration{ScriptID: "paths"}, map[string]any{"env": map[string]any{key: t.TempDir()}}, bundle); err == nil {
 			t.Fatalf("reserved directory %s was overridable", key)
 		}

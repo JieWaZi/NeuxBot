@@ -9,8 +9,8 @@ git clone https://github.com/JieWaZi/NeuxBot.git
 cd NeuxBot
 pnpm install --frozen-lockfile
 go -C server mod download
-ALLY_TOOLX_MODULE_VERSION=$(go -C server list -m -f '{{.Version}}' github.com/shrewx/ginx)
-go install "github.com/shrewx/ginx/pkg/toolx@${ALLY_TOOLX_MODULE_VERSION}"
+NEUXBOT_TOOLX_MODULE_VERSION=$(go -C server list -m -f '{{.Version}}' github.com/shrewx/ginx)
+go install "github.com/shrewx/ginx/pkg/toolx@${NEUXBOT_TOOLX_MODULE_VERSION}"
 export PATH="$(go env GOPATH)/bin:$PATH"
 pnpm dev:native
 ```

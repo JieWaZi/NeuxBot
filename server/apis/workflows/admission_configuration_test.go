@@ -69,7 +69,7 @@ func TestConsumerWorkerAdmissionPreservesOnlyMatchingCallerSelection(t *testing.
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			s, _ := openCoreWorkflowPorts(t, t.TempDir(), &fixtureRuntime{}, consumerAdmissionEnvironment{}, true)
-			source := `export const meta={sdk:'ally.workflow',title:'调用者配置',description:'接纳后保留原生默认',phases:[{id:'work',title:'执行',detail:'验证节点有效身份',canExit:true}]};await askUser('继续？',{id:'wait',label:'等待',phase:'work'});return await worker('冻结节点配置',{id:'task',label:'任务',phase:'work',resolve:` + test.resolve + `});`
+			source := `export const meta={sdk:'bot.workflow',title:'调用者配置',description:'接纳后保留原生默认',phases:[{id:'work',title:'执行',detail:'验证节点有效身份',canExit:true}]};await askUser('继续？',{id:'wait',label:'等待',phase:'work'});return await worker('冻结节点配置',{id:'task',label:'任务',phase:'work',resolve:` + test.resolve + `});`
 			definition := savedTestWorkflow(t, s, source)
 			run, err := s.StartRun(t.Context(), workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "consumer-run", ConsumerLeaseID: "actual-caller", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex", AccountID: test.account, PermissionLevel: constants.PermissionLevelDefault}})
 			if err != nil {
@@ -166,7 +166,7 @@ func testWorkerAdmissionFrozenConfiguration(t *testing.T, reasoning string) {
 	runtime := &admissionConfigurationRuntime{observations: make(chan observedWorkerConfiguration, 2), final: &final}
 	environment := &mutableAdmissionEnvironment{initialReasoning: reasoning}
 	s, _ := openCoreWorkflowPorts(t, t.TempDir(), runtime, environment, true)
-	source := `export const meta={sdk:'ally.workflow',title:'配置冻结',description:'等待后恢复',phases:[{id:'work',title:'执行',detail:'冻结默认配置',canExit:true}]};const answer=await askUser('继续？',{id:'wait',label:'等待',phase:'work'});const first=await worker('第一项',{id:'first',label:'继承默认',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker',runtimeId:'codex'}});const second=await worker('第二项',{id:'second',label:'显式模型',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker',runtimeId:'codex',model:'override',permissionLevel:'full-access'}});if(answer.value==='fail'){throw 'RETRY_TEST';}return [first,second];`
+	source := `export const meta={sdk:'bot.workflow',title:'配置冻结',description:'等待后恢复',phases:[{id:'work',title:'执行',detail:'冻结默认配置',canExit:true}]};const answer=await askUser('继续？',{id:'wait',label:'等待',phase:'work'});const first=await worker('第一项',{id:'first',label:'继承默认',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker',runtimeId:'codex'}});const second=await worker('第二项',{id:'second',label:'显式模型',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker',runtimeId:'codex',model:'override',permissionLevel:'full-access'}});if(answer.value==='fail'){throw 'RETRY_TEST';}return [first,second];`
 	definition := savedTestWorkflow(t, s, source)
 	run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "start", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex"}})
 	if err != nil {
@@ -260,7 +260,7 @@ func TestWorkerNodePermissionCannotEscalateConsumer(t *testing.T) {
 		observations: make(chan observedWorkerConfiguration, 1), final: &final,
 	}
 	s, _ := openCoreWorkflowPorts(t, t.TempDir(), runtime, fixtureEnvironment{})
-	source := `export const meta={sdk:'ally.workflow',title:'节点权限',description:'调用权限边界',phases:[{id:'work',title:'执行',detail:'验证权限',canExit:true}]};return await worker('整理关注项',{id:'task',label:'整理',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker',runtimeId:'codex',permissionLevel:'full-access'}});`
+	source := `export const meta={sdk:'bot.workflow',title:'节点权限',description:'调用权限边界',phases:[{id:'work',title:'执行',detail:'验证权限',canExit:true}]};return await worker('整理关注项',{id:'task',label:'整理',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker',runtimeId:'codex',permissionLevel:'full-access'}});`
 	definition := savedTestWorkflow(t, s, source)
 	_, err := s.StartRun(context.Background(), workflow.StartRunCommand{
 		DefinitionID: definition.ID, RequestID: "consumer", ConsumerLeaseID: "caller",
@@ -289,7 +289,7 @@ func TestPlainWorkerRequiresFinalAndPreservesExplicitEmptyResult(t *testing.T) {
 			}
 			runtime := &admissionConfigurationRuntime{observations: make(chan observedWorkerConfiguration, 1), final: final}
 			s, _ := openCoreWorkflowPorts(t, t.TempDir(), runtime, fixtureEnvironment{}, true)
-			source := `export const meta={sdk:'ally.workflow',title:'最终结果',description:'真实执行结果',phases:[{id:'work',title:'执行',detail:'检查 final',canExit:true}]};return await worker('完成任务',{id:'task',label:'任务',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker',runtimeId:'codex'}});`
+			source := `export const meta={sdk:'bot.workflow',title:'最终结果',description:'真实执行结果',phases:[{id:'work',title:'执行',detail:'检查 final',canExit:true}]};return await worker('完成任务',{id:'task',label:'任务',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker',runtimeId:'codex'}});`
 			definition := savedTestWorkflow(t, s, source)
 			run, err := s.StartRun(context.Background(), workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "start", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex"}})
 			if err != nil {

@@ -172,7 +172,7 @@ Use the common executable, JSON-file and identity rules in [SKILL.md](../SKILL.m
 Choose only the requested scenario below. Discover the real resource once:
 
 ```sh
-allycli knowledge libraries list
+botcli knowledge libraries list
 ```
 
 A returned reference uses `knowledgeBaseId`; pass that value as `--library-id`
@@ -187,7 +187,7 @@ workspace. Check its exit status: on failure inspect the structured stderr and
 correct the call before parsing or drawing a retrieval conclusion.
 
 ```sh
-allycli knowledge pages search --library-id library-example --backend local --query "deployment" > knowledge-search.json
+botcli knowledge pages search --library-id library-example --backend local --query "deployment" > knowledge-search.json
 ```
 
 For a successful response, use a JSON-aware reader. If `jq` is available, this
@@ -219,10 +219,10 @@ hit; the presence of one vector hit alone does not prove hybrid retrieval.
 Read actual pages and original evidence using discovered IDs:
 
 ```sh
-allycli knowledge pages get --library-id library-example --backend local --page-id page-example
-allycli knowledge pages get --library-id library-example --backend local --slug deployment-guide
-allycli knowledge sources get --library-id library-example --backend local --source-version-id source-version-example
-allycli knowledge sources read --library-id library-example --backend local --source-version-id source-version-example --chunk-id chunk-example --offset 0 --limit 5
+botcli knowledge pages get --library-id library-example --backend local --page-id page-example
+botcli knowledge pages get --library-id library-example --backend local --slug deployment-guide
+botcli knowledge sources get --library-id library-example --backend local --source-version-id source-version-example
+botcli knowledge sources read --library-id library-example --backend local --source-version-id source-version-example --chunk-id chunk-example --offset 0 --limit 5
 ```
 
 Use `--page-id` or `--slug`, not both. For `sources read`, copy the persistent
@@ -237,12 +237,12 @@ use the same save-and-project pattern.
 For directory navigation, source discovery and job inspection:
 
 ```sh
-allycli knowledge libraries get --library-id library-example --backend local
-allycli knowledge pages list --library-id library-example --backend local --limit 10 --offset 0
-allycli knowledge sources list --library-id library-example --backend local --query "deployment" --limit 10 --offset 0
-allycli knowledge themes list --library-id library-example --backend local
-allycli knowledge index get --library-id library-example --backend local --limit 5
-allycli knowledge jobs list --library-id library-example --backend local --limit 10 --offset 0
+botcli knowledge libraries get --library-id library-example --backend local
+botcli knowledge pages list --library-id library-example --backend local --limit 10 --offset 0
+botcli knowledge sources list --library-id library-example --backend local --query "deployment" --limit 10 --offset 0
+botcli knowledge themes list --library-id library-example --backend local
+botcli knowledge index get --library-id library-example --backend local --limit 5
+botcli knowledge jobs list --library-id library-example --backend local --limit 10 --offset 0
 ```
 
 ### Ingest only selected attachments or originals
@@ -255,7 +255,7 @@ For only the second attachment of the current message, write `ingest.json`:
 ```
 
 ```sh
-allycli knowledge jobs start --input ingest.json --request-id ingest-01
+botcli knowledge jobs start --input ingest.json --request-id ingest-01
 ```
 
 For explicitly selected existing originals, use `sourceVersionIds` instead of
@@ -267,7 +267,7 @@ attachment indexes, with the verified immutable IDs:
 ```
 
 ```sh
-allycli knowledge jobs start --input ingest-sources.json --request-id ingest-sources-01
+botcli knowledge jobs start --input ingest-sources.json --request-id ingest-sources-01
 ```
 
 ### Submit library maintenance and observe the original job
@@ -280,10 +280,10 @@ In ordinary chat, create `maintenance.json` preserving the user's actual scope:
 ```
 
 ```sh
-allycli knowledge wiki maintain --input maintenance.json --request-id maintenance-01
-allycli knowledge jobs wait --library-id library-example --backend local --job-id job-example --timeout 30s
-allycli knowledge jobs get --library-id library-example --backend local --job-id job-example
-allycli receipts get --operation knowledge.wiki.maintain --request-id maintenance-01
+botcli knowledge wiki maintain --input maintenance.json --request-id maintenance-01
+botcli knowledge jobs wait --library-id library-example --backend local --job-id job-example --timeout 30s
+botcli knowledge jobs get --library-id library-example --backend local --job-id job-example
+botcli receipts get --operation knowledge.wiki.maintain --request-id maintenance-01
 ```
 
 Use the accepted receipt's actual job ID. When `completed` is false, repeat the
@@ -293,5 +293,5 @@ failure/cancellation. Use receipts for an uncertain submission. For an explicitl
 requested retry of a failed ingestion job, use its actual version:
 
 ```sh
-allycli knowledge jobs retry --library-id library-example --backend local --job-id job-example --expected-version 1 --request-id job-retry-01
+botcli knowledge jobs retry --library-id library-example --backend local --job-id job-example --expected-version 1 --request-id job-retry-01
 ```

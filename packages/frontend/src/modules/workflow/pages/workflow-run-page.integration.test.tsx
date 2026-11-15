@@ -97,7 +97,7 @@ beforeEach(() => {
       args: { client: "A" },
     },
     manifest: {
-      sdk: "ally.workflow",
+      sdk: "bot.workflow",
       description: "",
       controls: [],
       edges: [],
@@ -278,7 +278,7 @@ it("执行输入节点使用冻结参数，弹窗只读且不读取保存输入�
   snapshot.humanRequests = [];
   snapshot.operationRequests = [];
   snapshot.manifest = {
-    sdk: "ally.workflow",
+    sdk: "bot.workflow",
     title: "测试工作流",
     description: "",
     phases: [],
@@ -308,7 +308,7 @@ it("执行输入节点使用冻结参数，弹窗只读且不读取保存输入�
     },
   };
   localStorage.setItem(
-    "ally.workflow.last-run-inputs.flow-1",
+    "bot.workflow.last-run-inputs.flow-1",
     JSON.stringify({
       schema: JSON.stringify(snapshot.manifest?.inputSchema, null, 2),
       args: { client: "上次保存的客户" },

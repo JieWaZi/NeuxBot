@@ -64,7 +64,7 @@ func TestCreateChatCanReplayBeforeClaimingUnavailableUpload(t *testing.T) {
 	global.ExecutionService, global.Uploads = core, nil
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/v1/chats", nil)
-	ctx.Set("ally.auth.subject", "web:local")
+	ctx.Set("bot.auth.subject", "web:local")
 	ref := "upload:expired/note.txt"
 	create := CreateChat{Body: CreateChatRequest{
 		ClientRequestID: "same-request",

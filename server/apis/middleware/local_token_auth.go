@@ -34,7 +34,7 @@ func (a *LocalTokenAuth) Output(*gin.Context) (interface{}, error) {
 		// 仅固定事件升级入口接受浏览器可设置的子协议令牌，普通 REST 仍要求 Bearer。
 		if ctx.GetHeader("Authorization") == "" && !found && ctx.Request.Method == http.MethodGet && (ctx.Request.URL.Path == "/api/v1/events" || strings.HasPrefix(ctx.Request.URL.Path, "/api/v1/terminals/") && strings.HasSuffix(ctx.Request.URL.Path, "/stream")) && websocket.IsWebSocketUpgrade(ctx.Request) {
 			for _, protocol := range strings.Split(ctx.GetHeader("Sec-WebSocket-Protocol"), ",") {
-				if token, ok := strings.CutPrefix(strings.TrimSpace(protocol), "ally.auth."); ok {
+				if token, ok := strings.CutPrefix(strings.TrimSpace(protocol), "bot.auth."); ok {
 					provided = token
 					found = true
 					break
@@ -48,8 +48,8 @@ func (a *LocalTokenAuth) Output(*gin.Context) (interface{}, error) {
 				defer stop()
 				defer cancel()
 				ctx.Request = ctx.Request.WithContext(requestContext)
-				ctx.Set("ally.auth.subject", "web:"+session.ID)
-				ctx.Set("ally.auth.lifetime", session.Context)
+				ctx.Set("bot.auth.subject", "web:"+session.ID)
+				ctx.Set("bot.auth.lifetime", session.Context)
 				ctx.Next()
 				return
 			}
@@ -63,17 +63,17 @@ func (a *LocalTokenAuth) Output(*gin.Context) (interface{}, error) {
 			})
 			return
 		}
-		ctx.Set("ally.auth.subject", "desktop")
+		ctx.Set("bot.auth.subject", "desktop")
 		ctx.Next()
 	}), nil
 }
 
 // AuthSubject 返回已认证管理主体，用于资源句柄的跨会话隔离。
-func AuthSubject(ctx *gin.Context) string { return ctx.GetString("ally.auth.subject") }
+func AuthSubject(ctx *gin.Context) string { return ctx.GetString("bot.auth.subject") }
 
 // AuthLifetime 绑定 Web 会话撤销；桌面终端由 Core 总生命周期释放。
 func AuthLifetime(ctx *gin.Context) context.Context {
-	if value, ok := ctx.Get("ally.auth.lifetime"); ok {
+	if value, ok := ctx.Get("bot.auth.lifetime"); ok {
 		if lifetime, ok := value.(context.Context); ok {
 			return lifetime
 		}

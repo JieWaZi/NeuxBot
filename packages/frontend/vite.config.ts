@@ -20,7 +20,7 @@ const pdfAssetKinds = ["cmaps", "standard_fonts", "wasm"] as const;
 /** Keep PDF.js's version-matched CMaps, fonts and WASM local in dev and builds. */
 function pdfAssets(host: "native" | "web"): Plugin {
   return {
-    name: "ally-pdfjs-assets",
+    name: "bot-pdfjs-assets",
     configureServer(server) {
       server.middlewares.use("/pdfjs-assets", (request, response, next) => {
         let parts: string[];

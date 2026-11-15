@@ -41,7 +41,7 @@ NAP 的参考价值在于把产品配置、运行环境和可替换 Agent Core �
 | 入口、Control Plane、Environment、Agent Core 分层 | 入口不直接决定进程和部署细节 | 现在在同进程划清职责，未来再决定是否分进程 |
 | 配置和资源属于 Workspace，而非某个 Core | 换 Agent 引擎不应丢掉产品配置 | 伙伴/项目/插件属于产品域，Runtime 只消费冻结快照 |
 | Agent Core 可替换，运行环境也可扩展 | “用什么 Agent”与“在哪里执行”是两个轴 | Runtime Driver 与 ExecutionHost 分开；不能把 Remote 当一种 Agent Driver |
-| 公共工具和挂载由平台供给 | 每个 Agent 不应重复实现知识、资源和认证 | 复用 ally、能力 Registry、资源与账号服务，Runtime 不拥有业务内容 |
+| 公共工具和挂载由平台供给 | 每个 Agent 不应重复实现知识、资源和认证 | 复用 bot、能力 Registry、资源与账号服务，Runtime 不拥有业务内容 |
 | Workspace、运行实例、Session 分开 | 配置寿命、进程寿命和对话上下文寿命不同 | 继续区分 Waker、执行工作区、Chat、技术 Session 和 Invocation |
 
 NAP 的 “一个 Workspace 对应一个 Agent，多个 Session 共享文件系统”是其产品模型。NeuxBot 已有伙伴、项目、Chat、团队共享项目和工作流工作区，不照搬该对象关系，更不能把共享目录当成写入隔离。[Workspace/Agent/Session 定义](https://github.com/neutree-ai/agent-platform/blob/5f5d4a0d155eb081702d6bd17623ce8ea0e78b12/docs-site/src/content/docs/concepts/agent-and-workspace.md)。
@@ -97,7 +97,7 @@ flowchart TB
 | Agent 执行 | `server/internal/agent/{core,host,environment}`，外部 acp-go | 抽离执行内核，环境装配留宿主，原生协议与进程留 acp-go |
 | 基础支撑 | 各领域存储实现、受管文件、事件交付与组合根 | 技术实现可独立演进，领域事实保持单一所有者 |
 
-依赖通过消费者定义的窄端口连接：Runtime 不导入 Chat、Workflow、Knowledge、产品数据库或 Execution；宿主绑定资源、交互与结果接收实现。业务工具仍由现有 agentcapability/ally 连接所属领域，不能转移到 Runtime 内执行业务 CRUD。
+依赖通过消费者定义的窄端口连接：Runtime 不导入 Chat、Workflow、Knowledge、产品数据库或 Execution；宿主绑定资源、交互与结果接收实现。业务工具仍由现有 agentcapability/bot 连接所属领域，不能转移到 Runtime 内执行业务 CRUD。
 
 内容领域的独立 Invoke 结果返回原 Knowledge 调用方，不为统一入口而强制创建 Chat 或工作流。主图表达模块协作，具体调用合同由 Runtime Spec 定义。
 
@@ -151,7 +151,7 @@ Invoke 与 Run 共享内核。Invoke 使用临时会话、显式工具策略和�
 
 - **新增 Agent 后端**：在 acp-go 中处理原生差异，在 Runtime Driver 中做能力映射，领域逻辑不辨别 CLI 名称。
 - **新增插件/技能/MCP 资源**：资源领域解释安装和授权，Runtime capability 只编译中立贡献。
-- **新增业务工具**：实现所属领域命令，通过现有 agentcapability/ally 暴露；不用 Runtime 模块实现业务 CRUD。
+- **新增业务工具**：实现所属领域命令，通过现有 agentcapability/bot 暴露；不用 Runtime 模块实现业务 CRUD。
 - **新增执行环境**：未来实现受信 Host 的资源物化与生命周期，不更改 Invoke/Run 的领域使用方式。
 - **新增界面入口或触发器**：调用同一领域命令，不再实现一次接纳与权限逻辑。
 

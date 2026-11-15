@@ -28,7 +28,7 @@ vi.mock("../components/workspace-file-viewer", () => ({
 }));
 
 const scopeKey = "chat:right-header";
-const storageKey = `ally.right-workbench.${scopeKey}`;
+const storageKey = `bot.right-workbench.${scopeKey}`;
 const onEmpty = vi.fn();
 const onFileSourceChange = vi.fn();
 

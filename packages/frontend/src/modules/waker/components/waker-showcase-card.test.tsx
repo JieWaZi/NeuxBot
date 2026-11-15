@@ -22,7 +22,7 @@ describe("WakerShowcaseCard", () => {
     const angle = () =>
       Number.parseFloat(
         card
-          .querySelector<HTMLElement>(".ally-holo-card__tilter")
+          .querySelector<HTMLElement>(".bot-holo-card__tilter")
           ?.style.transform.match(/rotateX\(([-.\d]+)/)?.[1] || "0",
       );
 
@@ -53,17 +53,17 @@ describe("WakerShowcaseCard", () => {
     const { rerender } = render(<WakerShowcaseCard {...props} />);
     act(() => vi.advanceTimersByTime(900));
     const card = screen.getByRole("article");
-    const angle = card.querySelector<HTMLElement>(".ally-holo-card__tilter")
+    const angle = card.querySelector<HTMLElement>(".bot-holo-card__tilter")
       ?.style.transform;
     rerender(<WakerShowcaseCard {...props} phase="closing" />);
     fireEvent.pointerLeave(card);
     act(() => vi.advanceTimersByTime(200));
     expect(
-      card.querySelector<HTMLElement>(".ally-holo-card__tilter")?.style
+      card.querySelector<HTMLElement>(".bot-holo-card__tilter")?.style
         .transform,
     ).toBe(angle);
-    const rotator = card.querySelector(".ally-holo-card__rotator");
-    const translater = card.querySelector(".ally-holo-card__translater");
+    const rotator = card.querySelector(".bot-holo-card__rotator");
+    const translater = card.querySelector(".bot-holo-card__translater");
     if (!rotator || !translater) throw new Error("卡片缺少动画层");
     expect(getComputedStyle(rotator).animation).not.toContain("flip-out");
     // jsdom 没有 AnimationEvent，React 在此环境监听带前缀的事件。

@@ -120,7 +120,7 @@ export function WakerShowcaseCard({
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
     if (
       event.target instanceof Element &&
-      event.target.closest(".ally-holo-card__figure")
+      event.target.closest(".bot-holo-card__figure")
     ) {
       motion.current?.();
       return;
@@ -144,13 +144,13 @@ export function WakerShowcaseCard({
   return (
     <article
       ref={cardRef}
-      className="ally-holo-card"
+      className="bot-holo-card"
       data-phase={phase}
       data-reveal={reveal}
       onAnimationEnd={(event) => {
         if (
           event.target instanceof HTMLElement &&
-          event.target.classList.contains("ally-holo-card__translater")
+          event.target.classList.contains("bot-holo-card__translater")
         ) {
           onMotionEnd?.();
         }
@@ -159,34 +159,34 @@ export function WakerShowcaseCard({
       onPointerLeave={leave}
       onPointerMove={move}
     >
-      <div className="ally-holo-card__translater">
-        <div className="ally-holo-card__tilter">
-          <div className="ally-holo-card__rotator">
-            <div className="ally-holo-card__front">
+      <div className="bot-holo-card__translater">
+        <div className="bot-holo-card__tilter">
+          <div className="bot-holo-card__rotator">
+            <div className="bot-holo-card__front">
               <WakerShowcaseShell />
               <span
-                className="ally-holo-card__tab type-caption"
+                className="bot-holo-card__tab type-caption"
                 aria-hidden="true"
               >
                 {t("detail.showcaseAgent")}
               </span>
-              <div className="ally-holo-card__frame">
-                <div className="ally-holo-card__art">
+              <div className="bot-holo-card__frame">
+                <div className="bot-holo-card__art">
                   <span
-                    className="ally-holo-card__status type-caption"
+                    className="bot-holo-card__status type-caption"
                     data-status={status}
                   >
                     <span aria-hidden="true" />
                     {t(`detail.showcaseStatus.${status}`)}
                   </span>
-                  <span className="ally-holo-card__orbit" aria-hidden="true" />
+                  <span className="bot-holo-card__orbit" aria-hidden="true" />
                   <span
-                    className="ally-holo-card__serial type-caption"
+                    className="bot-holo-card__serial type-caption"
                     aria-hidden="true"
                   >
                     {t("detail.showcaseBack")}
                   </span>
-                  <div className="ally-holo-card__figure">
+                  <div className="bot-holo-card__figure">
                     <button
                       type="button"
                       data-avatar-hover
@@ -201,10 +201,10 @@ export function WakerShowcaseCard({
                   </div>
                 </div>
                 <div
-                  className="ally-holo-card__plate"
+                  className="bot-holo-card__plate"
                   data-traits={traits.length > 0}
                 >
-                  <div className="ally-holo-card__profile">
+                  <div className="bot-holo-card__profile">
                     <h2
                       className="type-display truncate font-semibold"
                       title={name}
@@ -218,12 +218,12 @@ export function WakerShowcaseCard({
                       {roleName?.trim() || t("detail.showcaseCompanion")}
                     </p>
                     {bio?.trim() ? (
-                      <p className="ally-holo-card__bio type-body" title={bio}>
+                      <p className="bot-holo-card__bio type-body" title={bio}>
                         <span>{bio}</span>
                       </p>
                     ) : null}
                     <ul
-                      className="ally-holo-card__abilities type-ui"
+                      className="bot-holo-card__abilities type-ui"
                       aria-label={t("detail.showcaseExpertise")}
                     >
                       {titles.slice(0, 6).map((title, index) => (
@@ -245,7 +245,7 @@ export function WakerShowcaseCard({
                   </div>
                   {traits.length > 0 ? (
                     <aside
-                      className="ally-holo-card__traits type-caption"
+                      className="bot-holo-card__traits type-caption"
                       aria-label={t("detail.showcaseStyle")}
                     >
                       {traits.map((trait, index) => (
@@ -256,9 +256,9 @@ export function WakerShowcaseCard({
                     </aside>
                   ) : null}
                 </div>
-                <CardFooter className="ally-holo-card__footer px-0">
-                  <div className="ally-holo-card__ready">
-                    <span className="ally-holo-card__voice" aria-hidden="true">
+                <CardFooter className="bot-holo-card__footer px-0">
+                  <div className="bot-holo-card__ready">
+                    <span className="bot-holo-card__voice" aria-hidden="true">
                       <AudioLines />
                     </span>
                     <div className="min-w-0">
@@ -309,8 +309,8 @@ export function WakerShowcaseCard({
                 </CardFooter>
               </div>
             </div>
-            <div className="ally-holo-card__back" aria-hidden="true">
-              <strong className="ally-holo-card__back-mark type-title font-semibold">
+            <div className="bot-holo-card__back" aria-hidden="true">
+              <strong className="bot-holo-card__back-mark type-title font-semibold">
                 {t("detail.showcaseBack")}
               </strong>
             </div>

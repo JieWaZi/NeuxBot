@@ -109,7 +109,7 @@ func (installer Installer) ensureDefinition(ctx context.Context, item definition
 			return err
 		}
 	}
-	staging, err := os.MkdirTemp("", "ally-builtin-skill-")
+	staging, err := os.MkdirTemp("", "bot-builtin-skill-")
 	if err != nil {
 		logx.Errorf("prepare builtin skill staging failed: skill_id=%s error=%v", item.ID, err)
 		return status_error.SkillStorageError

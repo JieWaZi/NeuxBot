@@ -49,8 +49,8 @@ func TestAllyCLIRejectsRemovedPluginOperationsWithoutInstallation(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	binary := filepath.Join(root, "allycli")
-	build := exec.Command("go", "build", "-o", binary, "../../cmd/allycli")
+	binary := filepath.Join(root, "botcli")
+	build := exec.Command("go", "build", "-o", binary, "../../cmd/botcli")
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build CLI: %s %v", output, err)
 	}

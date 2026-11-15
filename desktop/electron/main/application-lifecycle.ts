@@ -25,13 +25,13 @@ export function resolveTrayIconPath(
     return path.join(
       resourcesPath,
       "tray",
-      platform === "darwin" ? "allyTemplate.png" : "ally.ico",
+      platform === "darwin" ? "botTemplate.png" : "bot.ico",
     );
   }
   return path.join(
     application.getAppPath(),
     "resources",
-    platform === "darwin" ? "tray/allyTemplate.png" : "tray/ally.ico",
+    platform === "darwin" ? "tray/botTemplate.png" : "tray/bot.ico",
   );
 }
 

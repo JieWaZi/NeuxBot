@@ -131,7 +131,7 @@ func TestAuthoringCLICombinesPreparationAndSavesWithDurableReceipt(t *testing.T)
 			t.Fatalf("invalid query lacks legal choices: %+v", response)
 		}
 	}
-	source := `export const meta={sdk:'ally.workflow',title:'Echo',description:'Echo input',inputSchema:{type:'object',properties:{text:{type:'string',title:'Text',description:'Text to echo.'}},required:['text']},outputSchema:{type:'string'},phases:[{id:'echo',title:'Echo',detail:'Echo input',canExit:true}]};phase('echo');return await functionTask({id:'echo_text',label:'Echo text',phase:'echo',language:'javascript',input:args.text,code:'function main(input){return input;}'});`
+	source := `export const meta={sdk:'bot.workflow',title:'Echo',description:'Echo input',inputSchema:{type:'object',properties:{text:{type:'string',title:'Text',description:'Text to echo.'}},required:['text']},outputSchema:{type:'string'},phases:[{id:'echo',title:'Echo',detail:'Echo input',canExit:true}]};phase('echo');return await functionTask({id:'echo_text',label:'Echo text',phase:'echo',language:'javascript',input:args.text,code:'function main(input){return input;}'});`
 	invalid := strings.Replace(source, "language:'javascript'", "outputSchema:meta.outputSchema,language:'javascript'", 1)
 	code, rejected := call([]string{"workflow", "source", "save", "--input", "-", "--request-id", "invalid"}, map[string]any{
 		"source": invalid, "expectedRevisionId": "",

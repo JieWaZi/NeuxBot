@@ -84,7 +84,7 @@ const {
   ),
   openWorkspaceResourceScope: vi.fn(async () => ({
     id: "scope",
-    root: "/tmp/ally",
+    root: "/tmp/bot",
   })),
   statWorkspaceResource: vi.fn(async () => ({
     relativePath: "报告 #1.md",
@@ -157,7 +157,7 @@ describe("WorkspaceFileBrowser", () => {
         <WorkspaceFileBrowser
           onOpenFile={onOpenFile}
           query=""
-          rootPath="/tmp/ally"
+          rootPath="/tmp/bot"
           scopePath=""
         />
       </QueryClientProvider>,
@@ -183,21 +183,21 @@ describe("WorkspaceFileBrowser", () => {
       ),
     ).toHaveAttribute("aria-expanded", "false");
     expect(listWorkspaceDirectory).not.toHaveBeenCalledWith(
-      "/tmp/ally",
+      "/tmp/bot",
       "share/src",
     );
     await user.click(await screen.findByRole("button", { name: "src" }));
     await user.click(await screen.findByRole("treeitem", { name: "main.ts" }));
 
-    expect(listWorkspaceDirectory).toHaveBeenNthCalledWith(1, "/tmp/ally", "");
+    expect(listWorkspaceDirectory).toHaveBeenNthCalledWith(1, "/tmp/bot", "");
     expect(listWorkspaceDirectory).toHaveBeenNthCalledWith(
       2,
-      "/tmp/ally",
+      "/tmp/bot",
       "share",
     );
     expect(listWorkspaceDirectory).toHaveBeenNthCalledWith(
       3,
-      "/tmp/ally",
+      "/tmp/bot",
       "share/src",
     );
     expect(onOpenFile).toHaveBeenCalledWith({
@@ -215,7 +215,7 @@ describe("WorkspaceFileBrowser", () => {
         <WorkspaceFileBrowser
           onOpenFile={vi.fn()}
           query="main"
-          rootPath="/tmp/ally"
+          rootPath="/tmp/bot"
           scopePath=""
         />
       </QueryClientProvider>,
@@ -223,7 +223,7 @@ describe("WorkspaceFileBrowser", () => {
 
     await waitFor(() =>
       expect(searchWorkspaceFiles).toHaveBeenCalledWith(
-        "/tmp/ally",
+        "/tmp/bot",
         "main",
         200,
         "",
@@ -247,7 +247,7 @@ describe("WorkspaceFileBrowser", () => {
         <WorkspaceFileBrowser
           onOpenFile={vi.fn()}
           query="main"
-          rootPath="/tmp/ally"
+          rootPath="/tmp/bot"
           scopeChatId="chat-id"
           scopePath=""
         />
@@ -262,7 +262,7 @@ describe("WorkspaceFileBrowser", () => {
       workspaceFileDragType,
       JSON.stringify({
         chatId: "chat-id",
-        rootPath: "/tmp/ally",
+        rootPath: "/tmp/bot",
         path: "share/src/main.ts",
       }),
     );
@@ -277,7 +277,7 @@ describe("WorkspaceFileBrowser", () => {
         <WorkspaceFileBrowser
           onOpenFile={vi.fn()}
           query=""
-          rootPath="/tmp/ally"
+          rootPath="/tmp/bot"
           scopeChatId="chat-id"
           scopePath=""
         />
@@ -287,7 +287,7 @@ describe("WorkspaceFileBrowser", () => {
       expect(listWorkspaceResourceDirectory).toHaveBeenCalledWith(
         "chat-id",
         "",
-        "/tmp/ally",
+        "/tmp/bot",
       ),
     );
     await waitFor(() =>
@@ -296,7 +296,7 @@ describe("WorkspaceFileBrowser", () => {
         "",
         expect.any(Function),
         expect.any(AbortSignal),
-        "/tmp/ally",
+        "/tmp/bot",
         true,
       ),
     );
@@ -305,7 +305,7 @@ describe("WorkspaceFileBrowser", () => {
         <WorkspaceFileBrowser
           onOpenFile={vi.fn()}
           query="source"
-          rootPath="/tmp/ally"
+          rootPath="/tmp/bot"
           scopeChatId="chat-id"
           scopePath=""
         />
@@ -317,7 +317,7 @@ describe("WorkspaceFileBrowser", () => {
         "source",
         200,
         "",
-        "/tmp/ally",
+        "/tmp/bot",
       ),
     );
   });
@@ -340,7 +340,7 @@ describe("WorkspaceFileBrowser", () => {
           onPathRenamed={onPathRenamed}
           onPathDeleted={onPathDeleted}
           query=""
-          rootPath="/tmp/ally"
+          rootPath="/tmp/bot"
           scopeChatId="chat-id"
           scopePath=""
         />
@@ -364,7 +364,7 @@ describe("WorkspaceFileBrowser", () => {
         "新报告 %.md",
         undefined,
         false,
-        "/tmp/ally",
+        "/tmp/bot",
       ),
     );
     expect(renameWorkspaceResource).toHaveBeenCalledWith(
@@ -372,7 +372,7 @@ describe("WorkspaceFileBrowser", () => {
       "报告 #1.md",
       "新报告 %.md",
       "v1",
-      "/tmp/ally",
+      "/tmp/bot",
     );
   });
 
@@ -392,7 +392,7 @@ describe("WorkspaceFileBrowser", () => {
           onOpenFile={vi.fn()}
           onPathDeleted={onPathDeleted}
           query=""
-          rootPath="/tmp/ally"
+          rootPath="/tmp/bot"
           scopeChatId="chat-id"
           scopePath=""
         />
@@ -409,7 +409,7 @@ describe("WorkspaceFileBrowser", () => {
       expect(deleteWorkspaceResource).toHaveBeenCalledWith(
         "chat-id",
         "报告 #1.md",
-        "/tmp/ally",
+        "/tmp/bot",
         "v1",
       ),
     );
@@ -417,7 +417,7 @@ describe("WorkspaceFileBrowser", () => {
       "报告 #1.md",
       undefined,
       false,
-      "/tmp/ally",
+      "/tmp/bot",
     );
   });
 
@@ -437,7 +437,7 @@ describe("WorkspaceFileBrowser", () => {
           onOpenFile={vi.fn()}
           onPathRenamed={onPathRenamed}
           query=""
-          rootPath="/tmp/ally"
+          rootPath="/tmp/bot"
           scopeChatId="chat-id"
           scopePath=""
         />
@@ -460,14 +460,14 @@ describe("WorkspaceFileBrowser", () => {
         "新资料",
         undefined,
         true,
-        "/tmp/ally",
+        "/tmp/bot",
       ),
     );
     expect(renameWorkspaceDirectory).toHaveBeenCalledWith(
       "chat-id",
       "资料",
       "新资料",
-      "/tmp/ally",
+      "/tmp/bot",
     );
   });
 
@@ -489,7 +489,7 @@ describe("WorkspaceFileBrowser", () => {
           onOpenFile={vi.fn()}
           onPathDeleted={onPathDeleted}
           query=""
-          rootPath="/tmp/ally"
+          rootPath="/tmp/bot"
           scopeChatId="chat-id"
           scopePath=""
         />
@@ -499,7 +499,7 @@ describe("WorkspaceFileBrowser", () => {
       await screen.findByRole("button", { name: "资料 的目录操作" }),
     );
     await user.click(screen.getByRole("menuitem", { name: "删除目录" }));
-    expect(isPathDirty).toHaveBeenCalledWith("资料", undefined, "/tmp/ally");
+    expect(isPathDirty).toHaveBeenCalledWith("资料", undefined, "/tmp/bot");
     expect(deleteWorkspaceDirectory).not.toHaveBeenCalled();
     isPathDirty.mockReturnValue(false);
     await user.click(screen.getByRole("button", { name: "资料 的目录操作" }));
@@ -511,13 +511,13 @@ describe("WorkspaceFileBrowser", () => {
         "资料",
         undefined,
         true,
-        "/tmp/ally",
+        "/tmp/bot",
       ),
     );
     expect(deleteWorkspaceDirectory).toHaveBeenCalledWith(
       "chat-id",
       "资料",
-      "/tmp/ally",
+      "/tmp/bot",
     );
   });
 
@@ -534,7 +534,7 @@ describe("WorkspaceFileBrowser", () => {
         <WorkspaceFileBrowser
           onOpenFile={vi.fn()}
           query=""
-          rootPath="/tmp/ally"
+          rootPath="/tmp/bot"
           scopeChatId="chat-id"
           scopePath=""
         />
@@ -562,7 +562,7 @@ describe("WorkspaceFileBrowser", () => {
         <WorkspaceFileBrowser
           onOpenFile={vi.fn()}
           query=""
-          rootPath="/tmp/ally"
+          rootPath="/tmp/bot"
           scopeChatId="chat-id"
           scopePath=""
         />
@@ -581,7 +581,7 @@ describe("WorkspaceFileBrowser", () => {
         "chat-id",
         "资料 #1",
         [file],
-        "/tmp/ally",
+        "/tmp/bot",
       ),
     );
   });

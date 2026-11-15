@@ -77,7 +77,7 @@ func TestDetailsDistributionFailuresKeepSafeUpstreamDiagnostics(t *testing.T) {
 }
 
 func TestBuiltCatalogDetailsArtifacts(t *testing.T) {
-	directory := os.Getenv("NEUXALLY_PLUGIN_DETAILS_ARTIFACT_DIR")
+	directory := os.Getenv("NEUXBOT_PLUGIN_DETAILS_ARTIFACT_DIR")
 	if directory == "" {
 		t.Skip("显式固定插件分发资料验收")
 	}

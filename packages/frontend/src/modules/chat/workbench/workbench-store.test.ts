@@ -69,8 +69,8 @@ describe("工作台状态恢复", () => {
     expect(reopened.layout).toEqual(before.layout);
     expect(reopened.width).toBe(520);
     expect(reopened.customWidth).toBe(true);
-    expect(localStorage.getItem(`ally.right-workbench.${draft}`)).toBeNull();
-    localStorage.removeItem(`ally.right-workbench.${chat}`);
+    expect(localStorage.getItem(`bot.right-workbench.${draft}`)).toBeNull();
+    localStorage.removeItem(`bot.right-workbench.${chat}`);
   });
   it("恢复固定内容及所选工具时保持不可关闭规则", () => {
     const content = reduceWorkbench(emptyWorkbenchState(), {

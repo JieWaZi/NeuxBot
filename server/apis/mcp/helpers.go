@@ -456,14 +456,14 @@ func newRuntimeKey(name string, connectorID string) string {
 	base := strings.Join(segments, "_")
 	digest := sha256.Sum256([]byte(connectorID))
 	suffix := hex.EncodeToString(digest[:])[:constants.MCPConnectorRuntimeKeySuffixLength]
-	maximumBaseLength := constants.MCPConnectorMaximumRuntimeKeyLength - len("ally__") - len(suffix)
+	maximumBaseLength := constants.MCPConnectorMaximumRuntimeKeyLength - len("bot__") - len(suffix)
 	if len(base) > maximumBaseLength {
 		base = strings.Trim(base[:maximumBaseLength], "_")
 	}
 	if base == "" {
 		base = "mcp"
 	}
-	return "ally_" + base + "_" + suffix
+	return "bot_" + base + "_" + suffix
 }
 
 func runtimeKeySegments(name string) []string {

@@ -80,15 +80,15 @@ func TestInstallPreservesCompleteResourcesAndUserChoices(t *testing.T) {
 		if err != nil || metadata.Name != item.Directory {
 			t.Fatalf("runtime metadata: %+v %v", metadata, err)
 		}
-		if err := EnableForWaker(ctx, installer.Skills, "ally", []string{item.Directory}); err != nil {
+		if err := EnableForWaker(ctx, installer.Skills, "bot", []string{item.Directory}); err != nil {
 			t.Fatal(err)
 		}
-		enabled, err := installer.Skills.ListEnabled(ctx, "ally")
+		enabled, err := installer.Skills.ListEnabled(ctx, "bot")
 		if err != nil || len(enabled) == 0 {
 			t.Fatalf("default relation missing: %+v %v", enabled, err)
 		}
 		if err := installer.Skills.UpsertWakerSkill(ctx, models.WakerSkill{
-			ID: util.New(), WakerID: "ally", SkillPackageID: item.ID, Enabled: false,
+			ID: util.New(), WakerID: "bot", SkillPackageID: item.ID, Enabled: false,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -112,7 +112,7 @@ func TestInstallPreservesCompleteResourcesAndUserChoices(t *testing.T) {
 		if err := installer.EnsureCatalog(ctx); err != nil {
 			t.Fatal(err)
 		}
-		if err := EnableForWaker(ctx, installer.Skills, "ally", []string{item.Directory}); err != nil {
+		if err := EnableForWaker(ctx, installer.Skills, "bot", []string{item.Directory}); err != nil {
 			t.Fatal(err)
 		}
 		updated, err := installer.Skills.GetPackage(ctx, item.ID)
@@ -124,7 +124,7 @@ func TestInstallPreservesCompleteResourcesAndUserChoices(t *testing.T) {
 			t.Fatalf("bootstrap duplicated versions: %+v %v", versions, err)
 		}
 	}
-	for _, wakerID := range []string{"ally", "unrelated-partner"} {
+	for _, wakerID := range []string{"bot", "unrelated-partner"} {
 		enabled, err := installer.Skills.ListEnabled(ctx, wakerID)
 		if err != nil || len(enabled) != 0 {
 			t.Fatalf("unexpected default enabled skills for %s: %+v %v", wakerID, enabled, err)
@@ -172,7 +172,7 @@ func TestPublishedSkillRefreshesChangedResourcesWithoutChangingCatalogVersion(t 
 			before, _ := installer.Skills.GetPackage(ctx, item.ID)
 			old, _ := installer.Skills.GetVersion(ctx, before.CurrentVersionID)
 			if err := installer.Skills.UpsertWakerSkill(ctx, models.WakerSkill{
-				ID: util.New(), WakerID: "ally", SkillPackageID: item.ID, Enabled: false,
+				ID: util.New(), WakerID: "bot", SkillPackageID: item.ID, Enabled: false,
 			}); err != nil {
 				t.Fatal(err)
 			}
@@ -217,7 +217,7 @@ func TestPublishedSkillRefreshesChangedResourcesWithoutChangingCatalogVersion(t 
 					t.Fatalf("executable permission changed: %s %v", file.Path, err)
 				}
 			}
-			enabled, err := installer.Skills.ListEnabled(ctx, "ally")
+			enabled, err := installer.Skills.ListEnabled(ctx, "bot")
 			if err != nil || len(enabled) != 0 {
 				t.Fatalf("refresh changed disabled preference: %+v %v", enabled, err)
 			}

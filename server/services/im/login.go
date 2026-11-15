@@ -261,7 +261,7 @@ func (s *Service) loginFeishu(ctx context.Context, connection *models.IMConnecti
 		preset = &registration.AppPreset{Name: "NeuxBot 助理", Desc: "通过飞书与 NeuxBot 伙伴和团队一起工作"}
 	}
 	result, err := registration.RegisterApp(ctx, &registration.Options{
-		Source:    "ally",
+		Source:    "bot",
 		AppID:     connection.AppID,
 		AppPreset: preset,
 		Addons: &registration.AppAddons{

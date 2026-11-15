@@ -282,7 +282,7 @@ func ErrorResponse(operation string, err error) Response {
 	}
 	if errors.Is(err, status_error.AgentInputInvalid) && details == nil {
 		if op, ok := Find(operation); ok {
-			details = map[string]any{"describeCommand": "allycli describe " + operation, "inputSchema": op.InputSchema}
+			details = map[string]any{"describeCommand": "botcli describe " + operation, "inputSchema": op.InputSchema}
 			if op.Discovery != nil {
 				details["discovery"] = op.Discovery
 			}

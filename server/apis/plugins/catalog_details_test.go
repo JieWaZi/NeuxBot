@@ -98,7 +98,7 @@ func newDetailsFixture(t *testing.T, invalid string) *detailsFixture {
 	if err := catalog.Refresh(context.Background(), location); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("ALLY_PLUGIN_CATALOG_URL", location)
+	t.Setenv("NEUXBOT_PLUGIN_CATALOG_URL", location)
 	return f
 }
 
@@ -232,7 +232,7 @@ func TestCurrentDetailsRecoversMetadataButPinnedReadsStayBound(t *testing.T) {
 			if err := catalog.Refresh(context.Background(), location); err != nil {
 				t.Fatal(err)
 			}
-			t.Setenv("ALLY_PLUGIN_CATALOG_URL", location)
+			t.Setenv("NEUXBOT_PLUGIN_CATALOG_URL", location)
 			if _, err := catalog.Find(location, "recovery"); err != nil {
 				t.Fatal(err)
 			}

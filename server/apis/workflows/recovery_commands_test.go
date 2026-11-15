@@ -48,7 +48,7 @@ func TestRealSideEffectRestartFailsAndPreservesEvidenceWithoutResend(t *testing.
 	databasePath := filepath.Join(directory, "workflow.db")
 	target := filepath.Join(directory, "result.txt")
 	s, closeDB := openRecoveryWorkflow(t, databasePath)
-	source := strings.Replace(scriptSource(t, target, true), "ALLY_WORKFLOW_PROCESS_TEST:'1'", "ALLY_WORKFLOW_PROCESS_TEST:'1',ALLY_WORKFLOW_PROCESS_WRITE_FIRST:'1'", 1)
+	source := strings.Replace(scriptSource(t, target, true), "NEUXBOT_WORKFLOW_PROCESS_TEST:'1'", "NEUXBOT_WORKFLOW_PROCESS_TEST:'1',NEUXBOT_WORKFLOW_PROCESS_WRITE_FIRST:'1'", 1)
 	definition := scopedProcessDefinition(t, s, source, directory)
 	run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "start", Defaults: models.WorkflowExecutionDefaults{PermissionLevel: constants.PermissionLevelFullAccess}})
 	if err != nil {
@@ -80,7 +80,7 @@ func TestRealSideEffectRestartFailsAndPreservesEvidenceWithoutResend(t *testing.
 		t.Fatalf("unknown effect blindly retried: %v", err)
 	}
 	data, err := os.ReadFile(target)
-	if err != nil || string(data) != "ALLY ALLY!" {
+	if err != nil || string(data) != "BOT BOT!" {
 		t.Fatalf("actual file missing: %q %v", data, err)
 	}
 	final := runTicks(t, restored, run.ID, 3)
@@ -96,7 +96,7 @@ func TestRealSideEffectRestartFailsAndPreservesEvidenceWithoutResend(t *testing.
 func TestRetryCreatesNewRunWithOriginalVersionAndEvidence(t *testing.T) {
 	s, _ := workflowTestService(t)
 	ctx := context.Background()
-	source := `export const meta={sdk:'ally.workflow',title:'重跑',description:'冻结原版本',phases:[{id:'one',title:'one',detail:'one',canExit:true}]};throw new Error('original failure');`
+	source := `export const meta={sdk:'bot.workflow',title:'重跑',description:'冻结原版本',phases:[{id:'one',title:'one',detail:'one',canExit:true}]};throw new Error('original failure');`
 	definition := savedTestWorkflow(t, s, source)
 	run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "start", Args: map[string]any{"unchanged": true}})
 	if err != nil {
@@ -130,7 +130,7 @@ func TestRetryCreatesNewRunWithOriginalVersionAndEvidence(t *testing.T) {
 }
 
 func TestRejectsUndeclaredWorkerSkip(t *testing.T) {
-	source := `export const meta={sdk:'ally.workflow',title:'跳过',phases:[{id:'one',title:'one',detail:'one'}]};return await worker('等待',{id:'held',label:'等待',phase:'one',resolve:{kind:'waker',wakerId:'fixture'},skippable:true});`
+	source := `export const meta={sdk:'bot.workflow',title:'跳过',phases:[{id:'one',title:'one',detail:'one'}]};return await worker('等待',{id:'held',label:'等待',phase:'one',resolve:{kind:'waker',wakerId:'fixture'},skippable:true});`
 	if _, _, err := workflowdsl.Compile(source); err == nil {
 		t.Fatal("unsupported skip policy compiled")
 	}

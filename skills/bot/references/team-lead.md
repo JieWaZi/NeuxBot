@@ -14,9 +14,9 @@ Use the common rules in [SKILL.md](../SKILL.md). Discover missing roster data
 and inspect the board before assigning work:
 
 ```sh
-allycli team members list
-allycli team tasks list --page-num 1 --page-size 20
-allycli team tasks get --task-id task-example
+botcli team members list
+botcli team tasks list --page-num 1 --page-size 20
+botcli team tasks get --task-id task-example
 ```
 
 Create `task-create.json` with a real non-lead member and existing dependency
@@ -28,11 +28,11 @@ IDs (use an empty array when no dependencies exist):
 ```
 
 ```sh
-allycli team tasks create --input task-create.json --request-id task-create-01
-allycli team tasks update --input task-update.json --request-id task-update-01
-allycli team tasks follow-up --input task-follow-up.json --request-id task-follow-up-01
-allycli team tasks retry --task-id task-example --request-id task-retry-01
-allycli team tasks cancel --task-id task-example --request-id task-cancel-01
+botcli team tasks create --input task-create.json --request-id task-create-01
+botcli team tasks update --input task-update.json --request-id task-update-01
+botcli team tasks follow-up --input task-follow-up.json --request-id task-follow-up-01
+botcli team tasks retry --task-id task-example --request-id task-retry-01
+botcli team tasks cancel --task-id task-example --request-id task-cancel-01
 ```
 
 These mutations are alternatives governed by the current task state and user

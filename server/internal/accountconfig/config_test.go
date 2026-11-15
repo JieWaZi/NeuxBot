@@ -87,8 +87,8 @@ func TestSameKeyCanConfigureClaudeAndCodex(t *testing.T) {
 }
 
 func TestEnvironmentRemovesInheritedAuthentication(t *testing.T) {
-	actual := Environment([]string{"PATH=/usr/bin", "HOME=/home/user", "HTTPS_PROXY=http://proxy", "PI_MCP_MODULE_PATH=/opt/ally/pi-bridge.mjs", "OPENAI_API_KEY=system", "ANTHROPIC_AUTH_TOKEN=system", "CODEX_HOME=/system", "PI_CODING_AGENT_DIR=/system", "KIMI_API_KEY=system"})
-	if len(actual) != 4 || !strings.Contains(strings.Join(actual, "\n"), "PI_MCP_MODULE_PATH=/opt/ally/pi-bridge.mjs") || strings.Contains(strings.Join(actual, "\n"), "system") {
+	actual := Environment([]string{"PATH=/usr/bin", "HOME=/home/user", "HTTPS_PROXY=http://proxy", "PI_MCP_MODULE_PATH=/opt/bot/pi-bridge.mjs", "OPENAI_API_KEY=system", "ANTHROPIC_AUTH_TOKEN=system", "CODEX_HOME=/system", "PI_CODING_AGENT_DIR=/system", "KIMI_API_KEY=system"})
+	if len(actual) != 4 || !strings.Contains(strings.Join(actual, "\n"), "PI_MCP_MODULE_PATH=/opt/bot/pi-bridge.mjs") || strings.Contains(strings.Join(actual, "\n"), "system") {
 		t.Fatalf("unexpected environment: %#v", actual)
 	}
 }
@@ -370,7 +370,7 @@ func TestPiUsesInternalProviderAliasForRawAccountModel(t *testing.T) {
 	if err := json.Unmarshal(data, &config); err != nil {
 		t.Fatal(err)
 	}
-	if len(config.Providers["ally"].Models) != 1 || config.Providers["ally"].Models[0].ID != "deepseek-flash" {
+	if len(config.Providers["bot"].Models) != 1 || config.Providers["bot"].Models[0].ID != "deepseek-flash" {
 		t.Fatal("Pi 配置未保留服务端原始模型 ID")
 	}
 }

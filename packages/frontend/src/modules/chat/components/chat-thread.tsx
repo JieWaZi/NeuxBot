@@ -2113,7 +2113,7 @@ const Composer = memo(function Composer({
                     const attachment = attachments[index];
                     const sourcePath = (
                       attachment?.file as AllyPathFile | undefined
-                    )?.allySourcePath;
+                    )?.botSourcePath;
                     if (!sourcePath || !removedPaths.has(sourcePath)) continue;
                     await aui.composer.attachment({ index }).remove();
                   }

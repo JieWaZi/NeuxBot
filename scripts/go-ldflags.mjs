@@ -3,9 +3,9 @@ export const applicationVersionSymbol =
 
 const releaseVersionPattern = /^[0-9]+\.[0-9]+\.[0-9]+$/;
 
-export function allyCoreLdflags(version = process.env.ALLY_VERSION ?? "") {
+export function botCoreLdflags(version = process.env.NEUXBOT_VERSION ?? "") {
   if (version !== "" && !releaseVersionPattern.test(version)) {
-    throw new Error(`ALLY_VERSION 必须是 X.Y.Z，当前为 ${version}`);
+    throw new Error(`NEUXBOT_VERSION 必须是 X.Y.Z，当前为 ${version}`);
   }
   const flags = ["-s", "-w"];
   if (version !== "") {
