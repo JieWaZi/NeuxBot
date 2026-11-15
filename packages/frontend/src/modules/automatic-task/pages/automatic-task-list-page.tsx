@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Clock3,
   Plus,
-  Settings,
   ListTodo,
   CircleCheck,
   CalendarClock,
@@ -46,10 +45,7 @@ import {
   refreshAutomaticTasks,
   setAutomaticTaskEnabledMutation,
 } from "../api/task-queries";
-import {
-  AutomaticTaskAPISettingsDialog,
-  TaskFormDialog,
-} from "../components/task-dialogs";
+import { TaskFormDialog } from "../components/task-dialogs";
 import {
   formatTime,
   RunState,
@@ -92,7 +88,6 @@ export function AutomaticTaskListPage() {
         : "all";
   const number = Number(params.get("page") || 1);
   const page = Number.isSafeInteger(number) && number > 0 ? number : 1;
-  const [apiSettingsOpen, setAPISettingsOpen] = useState(false);
   const [creatingLocally, setCreating] = useState(false);
   const creating = creatingLocally || params.get("create") === "1";
   const labels = useTaskPaginationLabels();
@@ -155,14 +150,6 @@ export function AutomaticTaskListPage() {
         description={t("description")}
         actions={
           <>
-            <PageAction
-              variant="plain"
-              hitArea="comfortable"
-              aria-label={t("apiSettings")}
-              onClick={() => setAPISettingsOpen(true)}
-            >
-              <Settings aria-hidden="true" />
-            </PageAction>
             <PageAction
               aria-label={t("create")}
               onClick={() => setCreating(true)}
@@ -450,10 +437,6 @@ export function AutomaticTaskListPage() {
           </PaginatedTable>
         )}
       </div>
-      <AutomaticTaskAPISettingsDialog
-        open={apiSettingsOpen}
-        onOpenChange={setAPISettingsOpen}
-      />
       <TaskFormDialog
         key={wakerId}
         open={creating}

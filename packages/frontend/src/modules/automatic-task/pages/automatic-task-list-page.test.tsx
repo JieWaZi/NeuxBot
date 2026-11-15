@@ -9,12 +9,15 @@ import "@/shared/i18n";
 import { AutomaticTaskListPage } from "./automatic-task-list-page";
 import { AutomaticTaskDetailPage } from "./automatic-task-detail-page";
 
-const { toggle, runError, taskKind, listQueries } = vi.hoisted(() => ({
-  toggle: vi.fn(),
-  listQueries: vi.fn(),
-  runError: { code: "" },
-  taskKind: { value: "workflow" },
-}));
+const { toggle, runError, taskKind, listQueries, apiState } = vi.hoisted(
+  () => ({
+    toggle: vi.fn(),
+    listQueries: vi.fn(),
+    runError: { code: "" },
+    taskKind: { value: "workflow" },
+    apiState: { available: true },
+  }),
+);
 vi.mock("@/shared/api/generated/sdk.gen", async (original) => ({
   ...(await original<typeof SDK>()),
   listGlobalAutomaticTasks: async (
@@ -43,7 +46,7 @@ vi.mock("@/shared/api/generated/sdk.gen", async (original) => ({
     data: {
       ip: "127.0.0.1",
       port: 8431,
-      available: true,
+      available: apiState.available,
       enabled: true,
       publicBaseUrl: "http://127.0.0.1:8431/api/v1",
     },
@@ -78,6 +81,12 @@ vi.mock("@/shared/api/generated/sdk.gen", async (original) => ({
             executorName: "纯计算验收",
             workflowId: "flow-1",
             workflowRevisionPolicy: "current",
+            workflowInputContract: {
+              fields: [],
+              schema: { type: "object", properties: {} },
+              example: {},
+              exampleValid: true,
+            },
             trigger: "api",
             enabled: false,
           },
@@ -126,6 +135,7 @@ beforeEach(() => {
   listQueries.mockReset();
   runError.code = "";
   taskKind.value = "workflow";
+  apiState.available = true;
 });
 
 function renderWorkflowTask() {
@@ -175,6 +185,26 @@ it("触发配置提供应用级集成指引和任务 ID，不再创建单任务�
     screen.queryByRole("button", { name: "重新生成密钥" }),
   ).not.toBeInTheDocument();
   expect(screen.queryByText("任务密钥")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "设置" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByText("API 已启动")).toBeVisible();
+  expect(screen.getByText("调用地址")).toBeVisible();
+});
+
+it("API 不可用时指向统一集成设置，不再提供任务级服务配置", async () => {
+  apiState.available = false;
+  renderWorkflowTask();
+  expect(
+    await screen.findByText(
+      "API 不可用，请前往设置 → 集成 → API 检查服务状态。",
+    ),
+  ).toBeVisible();
+  expect(screen.getByText("任务 ID")).toBeVisible();
+  expect(screen.getByText("调用地址")).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "设置" }),
+  ).not.toBeInTheDocument();
 });
 
 it("定时伙伴任务保留完整工作范围与实际智能体配置", async () => {
@@ -307,17 +337,16 @@ it("启停开关操作留在列表；聚焦行后用 Enter 进入详情", async 
   ).toBeVisible();
 });
 
-it("主页右上角设置打开 API 地址弹窗", async () => {
-  const user = userEvent.setup();
+it("任务列表只提供创建入口，API 服务统一在集成设置中管理", async () => {
   renderList();
-  await user.click(screen.getByRole("button", { name: "设置" }));
+  await screen.findByRole("row", { name: /每日归档/ });
+  expect(screen.getByRole("button", { name: "新建自动任务" })).toBeEnabled();
   expect(
-    await screen.findByRole("dialog", { name: "API 服务设置" }),
-  ).toBeVisible();
-  await waitFor(() =>
-    expect(screen.getByLabelText(/IP 地址/)).toHaveValue("127.0.0.1"),
-  );
-  expect(screen.getByLabelText(/端口/)).toHaveValue(8431);
+    screen.queryByRole("button", { name: "设置" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("dialog", { name: "API 服务设置" }),
+  ).not.toBeInTheDocument();
 });
 
 vi.mock("@/shared/api/global-events", () => ({

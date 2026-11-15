@@ -13,7 +13,7 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
-// wakerInterviewRequest 是伙伴根据概要生成的问题与备选项。
+// wakerInterviewRequest 是伙伴根据简介生成的问题与备选项。
 type wakerInterviewRequest struct {
 	// Message 是卡片引导语。
 	Message string `json:"message"`

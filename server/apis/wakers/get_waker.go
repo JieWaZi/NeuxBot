@@ -27,6 +27,5 @@ func (g *GetWaker) Output(ctx *gin.Context) (interface{}, error) {
 		return nil, ginx.WithStack(err)
 	}
 	_, waker.IsDefault = builtinrolepreset.DefinitionByWakerID(waker.ID)
-	waker.OverviewRevision = waker.ProfileOverview().Revision()
 	return waker, nil
 }

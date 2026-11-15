@@ -25,7 +25,7 @@ type ListenerStatus struct {
 	IP string `json:"ip"`
 	// Port 是真实监听端口。
 	Port int `json:"port"`
-	// Available 在共享设置中表示实际绑定，在 API 状态中还要求 API 已启用。
+	// Available 表示发布服务已启用且实际监听可用。
 	Available bool `json:"available"`
 	// ErrorCode 是端口冲突等安全错误码。
 	ErrorCode string `json:"errorCode,omitempty"`
@@ -166,15 +166,6 @@ func (s *Listener) serveLocked(listener net.Listener) {
 	}()
 }
 
-// GetAPIStatus 返回总开关允许且实际绑定的发布服务状态。
-func (s *Listener) GetAPIStatus() ListenerStatus {
-	s.life.Lock()
-	defer s.life.Unlock()
-	status := s.api
-	status.Available = status.Available && s.enabled
-	return status
-}
-
 // Settings 返回总服务开关、MCP 子功能偏好、实际监听状态及可复制 API 基地址。
 func (s *Listener) Settings() ListenerSettings {
 	s.life.Lock()
@@ -184,16 +175,6 @@ func (s *Listener) Settings() ListenerSettings {
 		base = "http://" + net.JoinHostPort(s.api.IP, strconv.Itoa(s.api.Port)) + "/api/v1"
 	}
 	return ListenerSettings{ListenerStatus: s.api, Enabled: s.enabled, MCPEnabled: s.mcpEnabled, PublicBaseURL: base}
-}
-
-// SetAPIAddress 保持原管理入口的语义，在同一配置锁内保留两个开关。
-func (s *Listener) SetAPIAddress(ctx context.Context, ip string, port int) error {
-	s.portGate.Lock()
-	defer s.portGate.Unlock()
-	s.life.Lock()
-	enabled, mcpEnabled, publicURL := s.enabled, s.mcpEnabled, s.publicBaseURL
-	s.life.Unlock()
-	return s.configureLocked(ctx, ip, port, enabled, mcpEnabled, publicURL)
 }
 
 // Configure 保留 MCP 当前开关，只更新 API 设置；所有字段在同一配置锁内读取与替换。

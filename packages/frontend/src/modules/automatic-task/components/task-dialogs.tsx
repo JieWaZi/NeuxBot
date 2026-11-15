@@ -8,11 +8,6 @@ import type { SavedTask, TaskConfiguration, TaskView } from "../model/types";
 const TaskForm = lazy(() =>
   import("./task-form-dialog").then((module) => ({ default: module.TaskForm })),
 );
-const APISettingsForm = lazy(() =>
-  import("./api-settings-dialog").then((module) => ({
-    default: module.APISettingsForm,
-  })),
-);
 
 function TaskDialogLoading({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation("automaticTask");
@@ -66,29 +61,6 @@ export function TaskFormDialog({
               onSaved={onSaved}
               onCancel={close}
             />
-          </Suspense>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/** 统一服务配置的表单按需加载，关闭状态不拉入设置依赖。 */
-export function AutomaticTaskAPISettingsDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const { t } = useTranslation("automaticTask");
-  const close = () => onOpenChange(false);
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent title={t("portTitle")} description={t("portHint")}>
-        {open && (
-          <Suspense fallback={<TaskDialogLoading onClose={close} />}>
-            <APISettingsForm onClose={close} />
           </Suspense>
         )}
       </DialogContent>

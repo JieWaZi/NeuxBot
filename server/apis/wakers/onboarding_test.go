@@ -149,8 +149,11 @@ func TestCreateWakerOnboardingReplaysAndRecoversInitialFailure(t *testing.T) {
 	if err != nil || waker.DefaultModel == nil || waker.DefaultModel.Model != "chosen-model" {
 		t.Fatalf("an omitted binding cleared the saved choice: %+v, %v", waker.DefaultModel, err)
 	}
-	update.Body.DefaultModel = &models.WakerDefaultModel{}
-	if _, err := update.Output(ctx); err != nil {
+	clearModel := &UpdateWakerDefaultModel{
+		WakerID: waker.ID,
+		Body:    UpdateWakerDefaultModelRequest{DefaultModel: &models.WakerDefaultModel{}},
+	}
+	if _, err := clearModel.Output(ctx); err != nil {
 		t.Fatal(err)
 	}
 	waker, err = global.WakerControllerManager.Get(ctx, waker.ID)

@@ -33,14 +33,12 @@ type Waker struct {
 	OnboardingInterview *WakerOnboardingInterview `gorm:"column:onboarding_interview;type:text;serializer:json" json:"-"`
 	// CreateRequestHash 是创建伙伴时的规范化请求摘要，供重放比对。
 	CreateRequestHash string `gorm:"column:create_request_hash;type:varchar(64);not null;default:''" json:"-"`
-	// Expertise 保存从身份档案解析出的擅长领域展示投影。
+	// Expertise 保存建档或 AI 优化提交的擅长领域展示摘要。
 	Expertise []profile.Expertise `gorm:"column:expertise;type:text;not null;serializer:json" json:"expertise"`
-	// WorkStyle 保存从角色风格档案解析出的工作风格展示投影。
+	// WorkStyle 保存建档或 AI 优化提交的工作风格展示摘要。
 	WorkStyle []string `gorm:"column:work_style;type:text;not null;serializer:json" json:"workStyle"`
-	// WorkMethods 保存从工作方式档案解析出的具名流程展示投影。
+	// WorkMethods 保存建档或 AI 优化提交的具名工作流程展示摘要。
 	WorkMethods []profile.WorkMethod `gorm:"column:work_methods;type:text;not null;serializer:json" json:"workMethods"`
-	// OverviewRevision 是查询返回的概览编辑版本。
-	OverviewRevision string `gorm:"-" json:"overviewRevision,omitempty"`
 	// ActivityState 是列表查询按伙伴普通 Chat 聚合出的只读活动状态。
 	ActivityState constants.WakerActivityState `gorm:"-" json:"activityState,omitempty"`
 	// RunningCount 是列表查询聚合出的运行中普通会话数量。

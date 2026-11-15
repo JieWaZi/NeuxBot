@@ -20,7 +20,7 @@ import (
 type wakerProfileInput struct {
 	// RoleName 是根据建档问答生成的本地化角色名称。
 	RoleName string `json:"roleName"`
-	// Bio 是根据创建概要和建档问答生成的本地化简介。
+	// Bio 是根据创建简介和建档问答生成的本地化简介。
 	Bio string `json:"bio"`
 	// wakerProfileRevisionInput 保存档案和三个概览字段。
 	wakerProfileRevisionInput

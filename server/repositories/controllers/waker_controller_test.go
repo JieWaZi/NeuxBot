@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -185,6 +186,48 @@ func TestWakerControllerMapsDuplicateNameToBusinessError(t *testing.T) {
 	second.ID = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	if err := controller.Create(ctx, second); !errors.Is(err, status_error.WakerNameConflict) {
 		t.Fatalf("duplicate create error = %v, want WakerNameConflict", err)
+	}
+}
+
+func TestWakerControllerDefaultModelUpdatesStayIndependentOfBasicDetails(t *testing.T) {
+	db := newTestDB(t)
+	controller := NewWakerController(db)
+	ctx := t.Context()
+	waker := models.Waker{
+		ID: "model-owner", Name: "Model owner", RoleName: "Reviewer", Avatar: "saved-avatar", Bio: "Saved introduction",
+		DefaultModel: &models.WakerDefaultModel{RuntimeID: "codex", AccountID: "system", Model: "original-model"},
+		Expertise:    []profile.Expertise{{Title: "Review", Description: "Review evidence"}},
+		WorkStyle:    []string{"Concise"},
+		WorkMethods:  []profile.WorkMethod{{Name: "Review", Steps: []string{"Read", "Verify"}}},
+		CreatedAt:    1, UpdatedAt: 1,
+	}
+	if err := controller.Create(ctx, waker); err != nil {
+		t.Fatal(err)
+	}
+	if err := controller.Update(ctx, waker.ID, models.Waker{
+		Name: "Renamed owner", RoleName: waker.RoleName, Avatar: waker.Avatar, Bio: waker.Bio,
+		DefaultModel: &models.WakerDefaultModel{RuntimeID: "claude", AccountID: "system", Model: "must-be-ignored"}, UpdatedAt: 2,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := controller.Get(ctx, waker.ID)
+	if err != nil || !reflect.DeepEqual(before.DefaultModel, waker.DefaultModel) {
+		t.Fatalf("basic details update overwrote the model: %+v, %v", before, err)
+	}
+	for _, selection := range []*models.WakerDefaultModel{
+		{RuntimeID: "claude", AccountID: "system", Model: "chosen-model"}, nil,
+	} {
+		if err := controller.UpdateDefaultModel(ctx, waker.ID, selection, 3); err != nil {
+			t.Fatal(err)
+		}
+		current, err := controller.Get(ctx, waker.ID)
+		if err != nil || !reflect.DeepEqual(current.DefaultModel, selection) {
+			t.Fatalf("default model update = %+v, %v", current, err)
+		}
+		current.DefaultModel, current.UpdatedAt = before.DefaultModel, before.UpdatedAt
+		if !reflect.DeepEqual(current, before) {
+			t.Fatalf("default model update changed partner details: before=%+v after=%+v", before, current)
+		}
 	}
 }
 

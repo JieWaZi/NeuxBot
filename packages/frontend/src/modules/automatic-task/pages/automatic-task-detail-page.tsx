@@ -5,7 +5,7 @@ import { useRunViewing } from "@/shared/api/run-viewing";
 import { useQueryEvents } from "@/shared/api/use-query-events";
 import { listRuntimesOptions } from "@/shared/api/runtime-queries";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Play, Settings2, Trash2 } from "lucide-react";
+import { Pencil, Play, Trash2 } from "lucide-react";
 import { lazy, Suspense, useState, useRef } from "react";
 import { evictDeletedChatsFromCache } from "@/modules/chat";
 import { useTranslation } from "react-i18next";
@@ -68,10 +68,7 @@ import {
 import { schemaRecord } from "../model/workflow-inputs";
 
 import { WorkflowInputSummary } from "../components/workflow-input-summary";
-import {
-  AutomaticTaskAPISettingsDialog,
-  TaskFormDialog,
-} from "../components/task-dialogs";
+import { TaskFormDialog } from "../components/task-dialogs";
 import { CopyValue, apiExamples } from "../components/task-api-examples";
 import {
   formatTime,
@@ -157,7 +154,6 @@ export function AutomaticTaskDetailPage() {
     enabled: Boolean(query.data?.projectId),
   });
   const api = useQuery(integrationServiceOptions());
-  const [apiSettingsOpen, setAPISettingsOpen] = useState(false);
   const [editing, setEditing] = useState<TaskView>();
   const [confirm, setConfirm] = useState<"delete">();
   const request = useRef<{ signature: string; id: string } | undefined>(
@@ -515,24 +511,7 @@ export function AutomaticTaskDetailPage() {
             ) : null}
           </div>
         </DetailSection>
-        <DetailSection
-          title={t("triggerAndExecution")}
-          actions={
-            task.trigger === "api" ? (
-              <>
-                {!api.data?.available ? (
-                  <PageAction
-                    intent="edit"
-                    label={t("apiSettings")}
-                    onClick={() => setAPISettingsOpen(true)}
-                  >
-                    <Settings2 />
-                  </PageAction>
-                ) : null}
-              </>
-            ) : undefined
-          }
-        >
+        <DetailSection title={t("triggerAndExecution")}>
           <div className="grid min-w-0 gap-6">
             <Card asChild variant="section">
               <section aria-label={t("triggerConfig")}>
@@ -911,10 +890,6 @@ export function AutomaticTaskDetailPage() {
           )}
         </DetailSection>
       </main>
-      <AutomaticTaskAPISettingsDialog
-        open={apiSettingsOpen}
-        onOpenChange={setAPISettingsOpen}
-      />
       <TaskFormDialog
         task={editing}
         open={Boolean(editing)}

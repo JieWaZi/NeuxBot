@@ -30,7 +30,9 @@ type WakerController interface {
 	Count(ctx context.Context, query string) (int64, error)
 	// Update 更新伙伴可直接编辑的资料。
 	Update(ctx context.Context, id string, waker models.Waker) error
-	// UpdateProfileProjection 更新从三份档案解析出的展示投影。
+	// UpdateDefaultModel 只更新伙伴用于新对话的默认模型配置。
+	UpdateDefaultModel(ctx context.Context, id string, defaultModel *models.WakerDefaultModel, updatedAt int64) error
+	// UpdateProfileProjection 更新伙伴的结构化档案展示摘要。
 	UpdateProfileProjection(
 		ctx context.Context,
 		id string,
@@ -168,7 +170,7 @@ func (c *wakerController) Update(
 	result := controllerDB(ctx, c.db).
 		Model(&models.Waker{}).
 		Where("id = ?", id).
-		Select("name", "role_name", "avatar", "bio", "default_model", "updated_at").
+		Select("name", "role_name", "avatar", "bio", "updated_at").
 		Updates(&waker)
 	if result.Error != nil {
 		if dbhelper.IsDuplicateError(result.Error) {
@@ -180,7 +182,21 @@ func (c *wakerController) Update(
 	return nil
 }
 
-// UpdateProfileProjection 更新从三份档案解析出的展示投影。
+// UpdateDefaultModel 只更新伙伴用于新对话的默认模型配置。
+func (c *wakerController) UpdateDefaultModel(ctx context.Context, id string, defaultModel *models.WakerDefaultModel, updatedAt int64) error {
+	result := controllerDB(ctx, c.db).
+		Model(&models.Waker{}).
+		Where("id = ?", id).
+		Select("default_model", "updated_at").
+		Updates(&models.Waker{DefaultModel: defaultModel, UpdatedAt: updatedAt})
+	if result.Error != nil {
+		return databaseError("update_waker_default_model", "waker_id="+id, result.Error)
+	}
+	publishCommittedChange(ctx, c.db, "entities", eventsResource("waker", id))
+	return nil
+}
+
+// UpdateProfileProjection 更新伙伴的结构化档案展示摘要。
 func (c *wakerController) UpdateProfileProjection(
 	ctx context.Context,
 	id string,

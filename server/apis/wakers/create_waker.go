@@ -23,7 +23,7 @@ type CreateWakerRequest struct {
 	Name string `json:"name" validate:"required,max=80"`
 	// 头像
 	Avatar string `json:"avatar,omitempty" validate:"max=2800000"`
-	// 概要
+	// 简介
 	Bio string `json:"bio,omitempty" validate:"max=1000"`
 	// 默认模型
 	DefaultModel *models.WakerDefaultModel `json:"defaultModel,omitempty"`

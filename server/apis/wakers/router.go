@@ -16,6 +16,7 @@ func init() {
 	Router.Register(&ListWakerChats{})
 	Router.Register(&GetWakerRecentProject{})
 	Router.Register(&UpdateWaker{})
+	Router.Register(&UpdateWakerDefaultModel{})
 	Router.Register(&DeleteWaker{})
 	Router.Register(&ListWakerDocuments{})
 	Router.Register(&GetWakerDocument{})

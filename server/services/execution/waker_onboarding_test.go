@@ -361,6 +361,51 @@ func TestWakerOnboardingSavesAfterInterviewWithoutConfirmation(t *testing.T) {
 		if err := wakers.Update(ctx, waker.ID, waker); err != nil {
 			t.Fatal(err)
 		}
+		defaultModel := &models.WakerDefaultModel{RuntimeID: "codex", AccountID: "system", Model: "new-default-model"}
+		if err := wakers.UpdateDefaultModel(ctx, waker.ID, defaultModel, nowMillis()); err != nil {
+			t.Fatal(err)
+		}
+		unchanged, err := core.readWakerProfileForEdit(ctx, waker.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		drainChanges := func() {
+			for {
+				select {
+				case <-changes.Events:
+				default:
+					return
+				}
+			}
+		}
+		drainChanges()
+		for _, table := range []string{"waker_documents", "agent_command_receipts"} {
+			t.Run("rollback when "+table+" write fails", func(t *testing.T) {
+				if err := db.DB.Exec("CREATE TRIGGER reject_profile_edit BEFORE INSERT ON " + table + " BEGIN SELECT RAISE(ABORT, 'profile edit denied'); END").Error; err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() {
+					if err := db.DB.Exec("DROP TRIGGER IF EXISTS reject_profile_edit").Error; err != nil {
+						t.Error(err)
+					}
+				})
+				if _, err := bindings[1].Call(ctx, edit); !errors.Is(err, status_error.DatabaseError) {
+					t.Fatalf("failed atomic profile edit = %v", err)
+				}
+				current, err := core.readWakerProfileForEdit(ctx, waker.ID)
+				if err != nil || current.Revision != unchanged.Revision || current.Content != unchanged.Content {
+					t.Fatalf("failed profile edit changed body or overview: %+v, %v", current, err)
+				}
+				if _, err := bindings[1].Receipt(ctx, edit.RequestID); !errors.Is(err, status_error.AgentReceiptNotFound) {
+					t.Fatalf("failed profile edit created a receipt: %v", err)
+				}
+				select {
+				case change := <-changes.Events:
+					t.Fatalf("failed profile edit emitted a change: %+v", change)
+				default:
+				}
+			})
+		}
 		saved, err := bindings[1].Call(ctx, edit)
 		if err != nil || saved.Replayed {
 			t.Fatalf("save profile revision = %+v, %v", saved, err)
@@ -369,8 +414,13 @@ func TestWakerOnboardingSavesAfterInterviewWithoutConfirmation(t *testing.T) {
 		if err != nil || !replayed.Replayed || replayed.CommandID != saved.CommandID {
 			t.Fatalf("replay profile revision = %+v, %v", replayed, err)
 		}
+		receipt, err := bindings[1].Receipt(ctx, edit.RequestID)
+		if err != nil || receipt.CommandID != saved.CommandID || receipt.Data.(map[string]any)["saved"] != true || receipt.Data.(map[string]any)["wakerId"] != waker.ID {
+			t.Fatalf("lookup profile revision receipt = %+v, %v", receipt, err)
+		}
 		updated, err := wakers.Get(ctx, chat.WakerID)
 		if err != nil || updated.Avatar != "new-avatar" || updated.RoleName != waker.RoleName || updated.Bio != waker.Bio ||
+			updated.DefaultModel == nil || *updated.DefaultModel != *defaultModel ||
 			len(updated.Expertise) != 1 || updated.Expertise[0].Description != "对照原文" ||
 			len(updated.WorkStyle) != 1 || updated.WorkStyle[0] != "明确风险" ||
 			len(updated.WorkMethods) != 1 || updated.WorkMethods[0].Name != "查证" {

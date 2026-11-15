@@ -32,7 +32,7 @@ func TestIntegrationListenerLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer listener.Close()
-	old := listener.GetAPIStatus()
+	old := listener.Settings()
 	if !old.Available || old.Port != port {
 		t.Fatal(old)
 	}
@@ -41,26 +41,100 @@ func TestIntegrationListenerLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer blocked.Close()
-	if err := listener.SetAPIAddress(context.Background(), "127.0.0.1", blocked.Addr().(*net.TCPAddr).Port); err == nil {
+	if err := listener.Configure(context.Background(), "127.0.0.1", blocked.Addr().(*net.TCPAddr).Port, old.Enabled, old.PublicBaseURL); err == nil {
 		t.Fatal("port conflict accepted")
 	}
-	if current := listener.GetAPIStatus(); current != old {
+	if current := listener.Settings(); current != old {
 		t.Fatal("failed switch lost working listener", current)
 	}
 	if err := listener.Configure(context.Background(), old.IP, old.Port, false, ""); err != nil {
 		t.Fatal(err)
 	}
-	if listener.GetAPIStatus().Available || listener.Settings().Enabled {
+	if listener.Settings().Available || listener.Settings().Enabled {
 		t.Fatal("disabled API remains available")
 	}
 	if err := listener.Configure(context.Background(), old.IP, old.Port, true, ""); err != nil {
 		t.Fatal(err)
 	}
-	if !listener.GetAPIStatus().Available {
+	if !listener.Settings().Available {
 		t.Fatal("re-enable failed")
 	}
 	listener.Close()
 	listener.Close()
+}
+
+func TestIntegrationAddressPersistsAndKeepsOldOnConflict(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	port := integrationFreePort(t)
+	listener := integrationSavedListener(t, root, port, true)
+	if err := listener.Configure(ctx, "0.0.0.0", port, true, ""); err != nil {
+		t.Fatal(err)
+	}
+	old := listener.Settings()
+	if old.IP != "0.0.0.0" || !old.Available {
+		t.Fatal("address not applied", old)
+	}
+	// 通配监听通过回环访问，验证同端口切换后服务仍可用。
+	response, err := http.Get("http://127.0.0.1:" + strconv.Itoa(port))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusNoContent {
+		t.Fatal("configured listener unavailable", response.StatusCode)
+	}
+	occupied, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer occupied.Close()
+	blockedPort := occupied.Addr().(*net.TCPAddr).Port
+	if err := listener.Configure(ctx, "127.0.0.1", blockedPort, true, ""); err == nil {
+		t.Fatal("port conflict accepted")
+	}
+	if listener.Settings() != old {
+		t.Fatal("port conflict changed settings", listener.Settings())
+	}
+	listener.Close()
+	restarted := NewListener(root, func(string) http.Handler { return http.NotFoundHandler() })
+	if err := restarted.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer restarted.Close()
+	if restarted.Settings() != old {
+		t.Fatal("saved address changed on conflict", restarted.Settings())
+	}
+}
+
+func TestIntegrationAddressPersistenceFailureRollsBack(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	port := integrationFreePort(t)
+	listener := integrationSavedListener(t, root, port, true)
+	old := listener.Settings()
+	settingsPath := filepath.Join(root, "integration-api.json")
+	if err := os.Remove(settingsPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(settingsPath, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := listener.Configure(ctx, "0.0.0.0", port, true, ""); err == nil {
+		t.Fatal("address change ignored persistence failure")
+	}
+	if listener.Settings() != old {
+		t.Fatal("failed save changed address", listener.Settings())
+	}
+	integrationProbeListener(t, listener)
+	for _, ip := range []string{"invalid", "127.0.0.1.evil.test", "224.0.0.1"} {
+		if err := listener.Configure(ctx, ip, port, true, ""); err == nil {
+			t.Fatalf("invalid IP accepted: %s", ip)
+		}
+		if listener.Settings() != old {
+			t.Fatal("invalid IP changed settings", listener.Settings())
+		}
+	}
 }
 
 func TestIntegrationDisableClosesListenerBeforeServeStarts(t *testing.T) {
@@ -84,7 +158,7 @@ func TestIntegrationDisableClosesListenerBeforeServeStarts(t *testing.T) {
 	if err := bound.SetDeadline(time.Now()); !errors.Is(err, net.ErrClosed) {
 		t.Fatalf("disabled listener retained bound socket before Serve: %v", err)
 	}
-	if listener.GetAPIStatus().Available || listener.Settings().Enabled {
+	if listener.Settings().Available || listener.Settings().Enabled {
 		t.Fatal("disabled API remains available")
 	}
 }
@@ -141,7 +215,7 @@ func TestMCPDefaultsPersistenceAndParentListenerLifecycle(t *testing.T) {
 	if err := listener.SetMCPEnabled(ctx, true); err != nil {
 		t.Fatal(err)
 	}
-	if settings := listener.Settings(); !settings.MCPEnabled || settings.Available || settings.Enabled || listener.GetAPIStatus().Available {
+	if settings := listener.Settings(); !settings.MCPEnabled || settings.Available || settings.Enabled {
 		t.Fatal("MCP preference bypassed disabled publishing service", settings)
 	}
 	if listener.listener != nil {
@@ -161,7 +235,7 @@ func TestMCPDefaultsPersistenceAndParentListenerLifecycle(t *testing.T) {
 	if err := listener.SetMCPEnabled(ctx, false); err != nil {
 		t.Fatal(err)
 	}
-	if settings := listener.Settings(); settings.MCPEnabled || !settings.Enabled || !settings.Available || !listener.GetAPIStatus().Available || listener.listener != socket {
+	if settings := listener.Settings(); settings.MCPEnabled || !settings.Enabled || !settings.Available || !listener.Settings().Available || listener.listener != socket {
 		t.Fatal("MCP disable disrupted API", settings)
 	}
 	if err := listener.Configure(ctx, "127.0.0.1", port, false, listener.Settings().PublicBaseURL); err != nil {
@@ -182,14 +256,14 @@ func TestMCPDefaultsPersistenceAndParentListenerLifecycle(t *testing.T) {
 	}
 	defer restarted.Close()
 	settings := restarted.Settings()
-	if !settings.MCPEnabled || settings.Enabled || settings.Available || restarted.GetAPIStatus().Available || settings.PublicBaseURL != "https://proxy.example.test/prefix/api/v1" {
+	if !settings.MCPEnabled || settings.Enabled || settings.Available || settings.PublicBaseURL != "https://proxy.example.test/prefix/api/v1" {
 		t.Fatal("restart lost parent switch or MCP preference", settings)
 	}
 	if restarted.listener != nil {
 		t.Fatal("restart opened disabled parent listener")
 	}
 	nextPort := integrationFreePort(t)
-	if err := restarted.SetAPIAddress(ctx, "127.0.0.1", nextPort); err != nil {
+	if err := restarted.Configure(ctx, "127.0.0.1", nextPort, settings.Enabled, settings.PublicBaseURL); err != nil {
 		t.Fatal(err)
 	}
 	if settings = restarted.Settings(); !settings.MCPEnabled || settings.Enabled || settings.Port != nextPort || settings.PublicBaseURL != "https://proxy.example.test/prefix/api/v1" {
@@ -243,7 +317,7 @@ func TestMCPListenerEnableAndPersistenceFailureRollBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conflict.Close()
-	if err = listener.SetAPIAddress(ctx, "127.0.0.1", conflict.Addr().(*net.TCPAddr).Port); err == nil {
+	if err = listener.Configure(ctx, "127.0.0.1", conflict.Addr().(*net.TCPAddr).Port, before.Enabled, before.PublicBaseURL); err == nil {
 		t.Fatal("enabled publishing address conflict accepted")
 	}
 	if listener.Settings() != before || listener.listener != socket {
@@ -313,7 +387,7 @@ func TestIntegrationDefaultsDisabledWithoutSavedSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer listener.Close()
-	if settings := listener.Settings(); settings.Enabled || settings.MCPEnabled || settings.Available || listener.GetAPIStatus().Available {
+	if settings := listener.Settings(); settings.Enabled || settings.MCPEnabled || settings.Available {
 		t.Fatal("startup enabled integrations without saved settings", settings)
 	}
 }

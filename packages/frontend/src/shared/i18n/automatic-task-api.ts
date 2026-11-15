@@ -25,12 +25,6 @@ export const automaticTaskApiZh = {
     "通过脚本触发运行；API Key 的签发、轮换与任务授权统一在 API 集成中管理。",
   switchWarning:
     "切换到定时后，本任务不再接受 API 触发。已有运行继续使用原配置。",
-  apiIP: "IP 地址",
-  apiIPHint:
-    "127.0.0.1 仅供本机调用；填写设备 IP 可供其他设备调用。端口范围为 1–65535。",
-  port: "端口",
-  apiSaving: "正在应用…",
-  apiConfirm: "确认",
 };
 export const automaticTaskApiEn = {
   apiPrepareInputs:
@@ -62,10 +56,4 @@ export const automaticTaskApiEn = {
     "Trigger runs from a script. Manage API Key issuance, rotation, and task grants in API Integration.",
   switchWarning:
     "Switching to schedule stops API triggers for this task. Accepted runs retain their configuration.",
-  apiIP: "IP address",
-  apiIPHint:
-    "127.0.0.1 allows local calls only. Use the device IP for calls from other devices. Ports range from 1 to 65535.",
-  port: "Port",
-  apiSaving: "Applying…",
-  apiConfirm: "Confirm",
 };

@@ -25,6 +25,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
+	"github.com/shrewx/ginx/pkg/statuserror"
 )
 
 func TestDeleteWakerRejectsDefaultWaker(t *testing.T) {
@@ -118,8 +119,9 @@ func TestLegacyWakerAPIResolvesAndMaintainsIndependentDocuments(t *testing.T) {
 	}
 	waker := models.Waker{
 		ID: util.New(), Name: "Alice", RoleName: "产品设计师", Avatar: constants.CompanionAvatarPrefix + util.New(), Bio: "独立简介",
-		Expertise: []profile.Expertise{{Title: "界面设计", Description: "设计清晰一致的产品界面"}},
-		WorkStyle: []string{"先验证"}, WorkMethods: []profile.WorkMethod{{Name: "设计", Steps: []string{"分析"}}},
+		DefaultModel: &models.WakerDefaultModel{RuntimeID: "codex", AccountID: "system", Model: "saved-model"},
+		Expertise:    []profile.Expertise{{Title: "界面设计", Description: "设计清晰一致的产品界面"}},
+		WorkStyle:    []string{"先验证"}, WorkMethods: []profile.WorkMethod{{Name: "设计", Steps: []string{"分析"}}},
 	}
 	if err := global.WakerControllerManager.Create(ctx, waker); err != nil {
 		t.Fatal(err)
@@ -148,7 +150,7 @@ func TestLegacyWakerAPIResolvesAndMaintainsIndependentDocuments(t *testing.T) {
 	openedDocument := checkAgents(wantMerged)
 	openedOverview, err := (&GetWaker{WakerID: waker.ID}).Output(ctx)
 	initialWaker, ok := openedOverview.(models.Waker)
-	if err != nil || !ok || len(initialWaker.OverviewRevision) != 64 {
+	if err != nil || !ok || !reflect.DeepEqual(initialWaker.ProfileOverview(), waker.ProfileOverview()) {
 		t.Fatalf("opened overview = %+v, err = %v", openedOverview, err)
 	}
 	documents, err := global.ProfileDocumentControllerManager.ListWakerDocuments(
@@ -186,31 +188,30 @@ func TestLegacyWakerAPIResolvesAndMaintainsIndependentDocuments(t *testing.T) {
 	}
 	updateProfile := UpdateWaker{
 		WakerID: waker.ID,
-		Body: UpdateWakerRequest{
-			Name:                     waker.Name,
-			RoleName:                 "用户研究员",
-			Avatar:                   "",
-			Bio:                      "更新后的独立简介",
-			ExpectedOverviewRevision: initialWaker.OverviewRevision,
-			Manual: &profile.ManualInput{
-				Expertise: []profile.Expertise{{
-					Title:       "用户研究",
-					Description: "通过访谈与观察识别真实需求",
-				}},
-				WorkStyle: []string{"先访谈再验证"},
-				WorkMethods: []profile.WorkMethod{
-					{Name: "研究流程", Steps: []string{"准备问题", "整理结论"}},
-				},
+	}
+	legacyPayload, err := json.Marshal(map[string]any{
+		"name":                     " " + waker.Name + " ",
+		"roleName":                 " 用户研究员 ",
+		"avatar":                   "",
+		"bio":                      " 更新后的独立简介 ",
+		"defaultModel":             models.WakerDefaultModel{RuntimeID: " codex ", AccountID: " system ", Model: " review-model ", Reasoning: " high "},
+		"expectedOverviewRevision": "removed-overview-editor-version",
+		"manual": profile.ManualInput{
+			Expertise: []profile.Expertise{{Title: "用户研究", Description: "不得通过资料更新覆盖的摘要"}},
+			WorkStyle: []string{"不得手动覆盖"},
+			WorkMethods: []profile.WorkMethod{
+				{Name: "不得手动覆盖", Steps: []string{"准备问题", "整理结论"}},
 			},
 		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(legacyPayload, &updateProfile.Body); err != nil {
+		t.Fatalf("decode ordinary update with removed fields: %v", err)
 	}
 	if _, err := updateProfile.Output(ctx); err != nil {
 		t.Fatalf("update waker profile output: %v", err)
-	}
-	staleProfile := updateProfile
-	staleProfile.Body.Bio = "old draft"
-	if _, err := staleProfile.Output(ctx); !errors.Is(err, status_error.WakerProfileChanged) {
-		t.Fatalf("stale overview save = %v", err)
 	}
 	manuallyUpdatedWaker, err := global.WakerControllerManager.Get(ctx, waker.ID)
 	if err != nil {
@@ -219,22 +220,13 @@ func TestLegacyWakerAPIResolvesAndMaintainsIndependentDocuments(t *testing.T) {
 	if manuallyUpdatedWaker.Avatar != waker.Avatar {
 		t.Fatal("profile changes must preserve the saved appearance")
 	}
-	if manuallyUpdatedWaker.RoleName != "用户研究员" ||
+	if manuallyUpdatedWaker.Name != waker.Name ||
+		manuallyUpdatedWaker.RoleName != "用户研究员" ||
 		manuallyUpdatedWaker.Bio != "更新后的独立简介" ||
-		!reflect.DeepEqual(manuallyUpdatedWaker.Expertise, []profile.Expertise{{
-			Title:       "用户研究",
-			Description: "通过访谈与观察识别真实需求",
-		}}) ||
-		!reflect.DeepEqual(manuallyUpdatedWaker.WorkStyle, []string{"先访谈再验证"}) ||
-		!reflect.DeepEqual(
-			manuallyUpdatedWaker.WorkMethods,
-			[]profile.WorkMethod{{
-				Name:  "研究流程",
-				Steps: []string{"准备问题", "整理结论"},
-			}},
-		) {
+		!reflect.DeepEqual(manuallyUpdatedWaker.DefaultModel, waker.DefaultModel) ||
+		!reflect.DeepEqual(manuallyUpdatedWaker.ProfileOverview(), waker.ProfileOverview()) {
 		t.Fatalf(
-			"unexpected manually updated projection: %+v",
+			"ordinary update changed the overview or lost basic edits: %+v",
 			manuallyUpdatedWaker,
 		)
 	}
@@ -272,13 +264,61 @@ func TestLegacyWakerAPIResolvesAndMaintainsIndependentDocuments(t *testing.T) {
 		t.Fatalf("get updated waker: %v", err)
 	}
 	if len(updatedWaker.Expertise) != 1 ||
-		updatedWaker.Expertise[0].Title != "用户研究" ||
-		updatedWaker.Expertise[0].Description != "通过访谈与观察识别真实需求" {
+		updatedWaker.Expertise[0].Title != "界面设计" ||
+		updatedWaker.Expertise[0].Description != "设计清晰一致的产品界面" {
 		t.Fatalf(
 			"document edit must not recompute projection: %+v",
 			updatedWaker.Expertise,
 		)
 	}
+	t.Run("default model updates preserve partner details and profile", func(t *testing.T) {
+		before := updatedWaker
+		beforeDocument := checkAgents("  explicit AGENTS\n")
+		setDefault := UpdateWakerDefaultModel{WakerID: waker.ID}
+		for _, payload := range []string{
+			`{"defaultModel":{"runtimeId":" codex ","accountId":" system ","model":" review-model ","reasoning":" high "}}`,
+			`{"defaultModel":{}}`,
+		} {
+			setDefault.Body = UpdateWakerDefaultModelRequest{}
+			if err := json.Unmarshal([]byte(payload), &setDefault.Body); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := setDefault.Output(ctx); err != nil {
+				t.Fatalf("save default model %s: %v", payload, err)
+			}
+			current, err := global.WakerControllerManager.Get(ctx, waker.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if setDefault.Body.DefaultModel.Model == "" {
+				if current.DefaultModel != nil {
+					t.Fatalf("empty default model did not follow the global choice: %+v", current.DefaultModel)
+				}
+			} else if !reflect.DeepEqual(current.DefaultModel, &models.WakerDefaultModel{
+				RuntimeID: "codex", AccountID: "system", Model: "review-model", Reasoning: "high",
+			}) {
+				t.Fatalf("default model was not normalized: %+v", current.DefaultModel)
+			}
+			current.DefaultModel, current.UpdatedAt = before.DefaultModel, before.UpdatedAt
+			if !reflect.DeepEqual(current, before) {
+				t.Fatalf("default model update overwrote other partner fields: before=%+v after=%+v", before, current)
+			}
+			if document := checkAgents(beforeDocument.Content); document.Revision != beforeDocument.Revision {
+				t.Fatalf("default model update changed the profile document: %+v", document)
+			}
+		}
+		setDefault.Body.DefaultModel = &models.WakerDefaultModel{RuntimeID: "codex"}
+		if _, err := setDefault.Output(ctx); !errors.Is(err, status_error.BadRequest) {
+			t.Fatalf("incomplete default model was accepted: %v", err)
+		}
+		setDefault.WakerID = "missing-waker"
+		setDefault.Body.DefaultModel = &models.WakerDefaultModel{}
+		_, err = setDefault.Output(ctx)
+		var missing statuserror.CommonError
+		if !errors.As(err, &missing) || missing.Code() != status_error.WakerNotFound.Code() {
+			t.Fatalf("missing partner default model update = %v", err)
+		}
+	})
 
 	deleteWaker := DeleteWaker{
 		WakerID: waker.ID,
