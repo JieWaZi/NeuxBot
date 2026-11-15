@@ -146,16 +146,7 @@ function WorkFocusRow({
           </div>
         ) : null}
       </div>
-      <Button
-        asChild
-        size="sm"
-        variant={action ? "ghost" : "subtle"}
-        className={
-          action
-            ? undefined
-            : "bg-(--action-neutral-surface) hover:bg-(--action-neutral-hover) active:bg-(--action-neutral-pressed)"
-        }
-      >
+      <Button asChild size="sm" variant="ghost">
         <ChatReadingLink chatId={chatId} to={href}>
           {t(action ? "handle" : "view")}
           <ArrowRight />
@@ -295,7 +286,6 @@ export function WorkBoardOverview({
       : undefined;
   return (
     <section aria-label={t("currentWork")} className="min-w-0">
-      <h2 className="type-title mb-3 font-semibold">{t("currentWork")}</h2>
       {error || summary?.complete === false ? (
         <div
           role="status"

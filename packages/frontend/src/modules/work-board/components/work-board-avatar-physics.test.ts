@@ -4,7 +4,7 @@ import { dropWorkBoardAvatars } from "./work-board-avatar-physics";
 
 afterEach(() => vi.restoreAllMocks());
 
-it("落定后可以局部拨动头像，回稳后停止绘制", () => {
+function animationClock() {
   const frames = new Map<number, FrameRequestCallback>();
   let nextFrame = 0;
   let time = 0;
@@ -24,6 +24,10 @@ it("落定后可以局部拨动头像，回稳后停止绘制", () => {
     }
   }
 
+  return { advance, frames };
+}
+
+function avatarStage() {
   const stage = document.createElement("div");
   Object.defineProperties(stage, {
     clientWidth: { value: 420 },
@@ -32,8 +36,28 @@ it("落定后可以局部拨动头像，回稳后停止绘制", () => {
   const avatar = document.createElement("div");
   avatar.dataset.pileAvatar = "";
   avatar.style.setProperty("--pile-rest-x", "50%");
+  avatar.style.setProperty("--pile-rest-angle", "0deg");
   Object.defineProperty(avatar, "offsetWidth", { value: 80 });
   stage.append(avatar);
+  vi.spyOn(stage, "getBoundingClientRect").mockImplementation(
+    () => new DOMRect(0, 0, 420, 200),
+  );
+  vi.spyOn(avatar, "getBoundingClientRect").mockImplementation(() => {
+    const x =
+      (Number.parseFloat(avatar.style.getPropertyValue("--pile-live-x")) ||
+        50) * 4.2;
+    const lift = avatar.style
+      .getPropertyValue("--pile-live-y")
+      .match(/\* ([\d.-]+)/)?.[1];
+    const y = 188 - (lift ? Number(lift) * 80 : 28.8);
+    return new DOMRect(x - 40, y - 40, 80, 80);
+  });
+  return { stage, avatar };
+}
+
+it("拨动后自然停在新的位置，不再拉回旧落点", () => {
+  const { advance, frames } = animationClock();
+  const { stage, avatar } = avatarStage();
 
   const dispose = dropWorkBoardAvatars(stage);
   try {
@@ -66,9 +90,40 @@ it("落定后可以局部拨动头像，回稳后停止绘制", () => {
     expect(frames.size).toBe(0);
     expect(
       Number.parseFloat(avatar.style.getPropertyValue("--pile-live-x")),
-    ).toBeCloseTo(restX, 0);
+    ).toBeGreaterThan(restX + 1);
+    const settled = avatar.style.cssText;
+    advance(120);
+    expect(avatar.style.cssText).toBe(settled);
   } finally {
     dispose?.();
+  }
+  expect(frames.size).toBe(0);
+});
+
+it("落下途中暂停保留当前位置，恢复后继续落稳", () => {
+  const { advance, frames } = animationClock();
+  const { stage, avatar } = avatarStage();
+  const pause = dropWorkBoardAvatars(stage);
+  advance(12);
+  const paused = avatar.style.cssText;
+  pause?.();
+  expect(avatar.style.cssText).toBe(paused);
+  expect(avatar).toHaveAttribute("data-falling");
+  expect(frames.size).toBe(0);
+
+  const resume = dropWorkBoardAvatars(stage, false);
+  try {
+    const position = avatar.getBoundingClientRect();
+    advance(1);
+    const resumed = avatar.getBoundingClientRect();
+    expect(Math.abs(resumed.y - position.y)).toBeLessThan(1);
+    advance(360);
+    expect(avatar.getBoundingClientRect().y).toBeGreaterThan(position.y + 20);
+    expect(frames.size).toBe(0);
+  } finally {
+    const lastFrame = avatar.style.cssText;
+    resume?.();
+    expect(avatar.style.cssText).toBe(lastFrame);
   }
   expect(frames.size).toBe(0);
 });

@@ -189,6 +189,117 @@ function mount(initial = "/work-board", controls?: ReactNode) {
   return queryClient;
 }
 
+it("两个视图用共享页签切换，保留列表筛选、页码与游标并暂停隐藏列表读取", async () => {
+  const summaries = vi.fn();
+  const lists = vi.fn();
+  let results = 0;
+  server.use(
+    http.get(`${origin}/api/v1/work-board/summary`, () => {
+      summaries();
+      return boardResponse({
+        attentionCount: 0,
+        resultCount: results,
+        attention: [],
+        results: [],
+      });
+    }),
+    http.get(`${origin}/api/v1/work-board`, ({ request }) => {
+      lists(Object.fromEntries(new URL(request.url).searchParams));
+      return boardResponse({
+        resources: [entry],
+        totalSize: 60,
+        hasMore: true,
+        nextCursor: "next-page",
+      });
+    }),
+  );
+  function CurrentRoute() {
+    return <output aria-label="页签路由">{useLocation().search}</output>;
+  }
+  mount(
+    "/work-board?tab=all&source=automatic&query=归档&states=completed&page=2&cursor=kept&pageSize=20&from=2026-10-01&to=2026-10-12",
+    <CurrentRoute />,
+  );
+  const user = userEvent.setup();
+  const table = await screen.findByRole("table", { name: "工作记录" });
+  await within(table).findByText("整理资料");
+  const intro = screen.getByRole("region", { name: /^和\s*伙伴\s*一起创造$/ });
+  const views = screen.getByRole("radiogroup", { name: "任务看板" });
+  expect(views).toHaveClass("segmented-control-shell");
+  const all = within(views).getByRole("radio", {
+    name: "全部任务",
+    checked: true,
+  });
+  expect(
+    screen.queryByRole("heading", { name: "全部任务" }),
+  ).not.toBeInTheDocument();
+  const before = lists.mock.calls.length;
+  all.focus();
+  await user.keyboard("{ArrowLeft}");
+  expect(
+    within(views).getByRole("radio", { name: "当前任务", checked: true }),
+  ).toHaveFocus();
+  expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  const route = new URLSearchParams(
+    screen.getByLabelText("页签路由").textContent ?? "",
+  );
+  expect(Object.fromEntries(route)).toMatchObject({
+    tab: "current",
+    source: "automatic",
+    query: "归档",
+    states: "completed",
+    page: "2",
+    cursor: "kept",
+    pageSize: "20",
+    from: "2026-10-01",
+    to: "2026-10-12",
+  });
+  const previousSummaries = summaries.mock.calls.length;
+  results = 4;
+  publishWorkBoardChange();
+  await waitFor(
+    () =>
+      expect(summaries.mock.calls.length).toBeGreaterThan(previousSummaries),
+    { timeout: 7000 },
+  );
+  await waitFor(() =>
+    expect(
+      within(screen.getByRole("region", { name: "待我查看" })).getByRole(
+        "heading",
+      ),
+    ).toHaveTextContent("4"),
+  );
+  expect(lists).toHaveBeenCalledTimes(before);
+  await user.keyboard("{ArrowRight}");
+  expect(screen.getByRole("table", { name: "工作记录" })).toBe(table);
+  expect(screen.getByRole("region", { name: /^和\s*伙伴\s*一起创造$/ })).toBe(
+    intro,
+  );
+  await waitFor(() => expect(lists.mock.calls.length).toBeGreaterThan(before), {
+    timeout: 7000,
+  });
+  expect(lists.mock.lastCall?.[0]).toMatchObject({
+    source: "automatic",
+    query: "归档",
+    states: "completed",
+    cursor: "kept",
+    limit: "20",
+  });
+  expect(screen.getByRole("button", { name: "第 2 页" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  expect(screen.getByRole("combobox", { name: "来源" })).toHaveTextContent(
+    "自动任务",
+  );
+  expect(screen.getByRole("searchbox", { name: "搜索任务标题" })).toHaveValue(
+    "归档",
+  );
+  expect(
+    screen.queryByRole("region", { name: "需要处理" }),
+  ).not.toBeInTheDocument();
+});
+
 it("关注区保留准确统计，列表标题过滤不改变关注区；查看结果链接不提前提交已读", async () => {
   const summaries = vi.fn();
   const lists = vi.fn();
@@ -231,9 +342,10 @@ it("关注区保留准确统计，列表标题过滤不改变关注区；查看�
   );
   mount();
   const user = userEvent.setup();
-  expect(await screen.findByText("最近已完成")).toBeInTheDocument();
   const action = screen.getByRole("region", { name: "需要处理" });
-  expect(within(action).getByRole("heading")).toHaveTextContent("7");
+  await waitFor(() =>
+    expect(within(action).getByRole("heading")).toHaveTextContent("7"),
+  );
   const results = screen.getByRole("region", { name: "待我查看" });
   const result = await within(results).findByRole("link", { name: "查看结果" });
   expect(within(results).getByRole("heading")).toHaveTextContent("9");
@@ -241,6 +353,16 @@ it("关注区保留准确统计，列表标题过滤不改变关注区；查看�
     "href",
     `/chats/${entry.chatId}?wakerId=${entry.wakerId}&message=${entry.firstUnreadMessageID}`,
   );
+  expect(
+    screen.getByRole("radio", { name: "当前任务", checked: true }),
+  ).toBeVisible();
+  expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  expect(lists).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("radio", { name: "全部任务" }));
+  await screen.findByRole("table");
+  expect(
+    screen.queryByRole("region", { name: "需要处理" }),
+  ).not.toBeInTheDocument();
   await user.type(
     screen.getByRole("searchbox", { name: "搜索任务标题" }),
     "归档",
@@ -253,6 +375,12 @@ it("关注区保留准确统计，列表标题过滤不改变关注区；查看�
   publishWorkBoardChange();
   await waitFor(() => expect(summaries).toHaveBeenCalledTimes(2));
   expect(focusReads).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("radio", { name: "当前任务" }));
+  expect(
+    within(screen.getByRole("region", { name: "需要处理" })).getByRole(
+      "heading",
+    ),
+  ).toHaveTextContent("7");
 });
 
 it("并排关注区复用执行者头像和精确链接，省去重复名称及审批标签", async () => {
@@ -360,7 +488,8 @@ it("来源筛选只约束工作记录，上方全局待办与统计保持不变"
   );
   mount();
   const user = userEvent.setup();
-  await screen.findByText("最近已完成");
+  await screen.findByText("全局待补充信息");
+  await user.click(screen.getByRole("radio", { name: "全部任务" }));
   fireEvent.keyDown(screen.getByRole("combobox", { name: "来源" }), {
     key: "ArrowDown",
   });
@@ -370,12 +499,14 @@ it("来源筛选只约束工作记录，上方全局待办与统计保持不变"
   );
   expect(scopes).toHaveBeenCalledTimes(1);
   expect(scopes).toHaveBeenLastCalledWith(null);
+  await user.click(screen.getByRole("radio", { name: "当前任务" }));
   expect(screen.getByText("全局待补充信息")).toBeInTheDocument();
   expect(
     within(screen.getByRole("region", { name: "需要处理" })).getByRole(
       "heading",
     ),
   ).toHaveTextContent("1");
+  await user.click(screen.getByRole("radio", { name: "全部任务" }));
   await waitFor(() =>
     expect(screen.getByRole("button", { name: "下一页" })).toBeEnabled(),
   );
@@ -440,6 +571,9 @@ it("需要操作使用统一任务状态下拉框，按待审核类型筛选并�
   );
   mount("/work-board?mode=action&source=automatic");
   const user = userEvent.setup();
+  expect(
+    screen.getByRole("radio", { name: "全部任务", checked: true }),
+  ).toBeVisible();
   const records = screen.getByRole("region", { name: "工作记录" });
   await within(records).findByText("待办-approval");
   expect(
@@ -512,7 +646,12 @@ it("旧交付链接打开全部任务，保留来源、日期和标题筛选并�
   const user = userEvent.setup();
   await screen.findByText("最近已完成");
   expect(summaryQueries).toHaveBeenLastCalledWith({});
-  expect(screen.getByRole("heading", { name: "全部任务" })).toBeVisible();
+  expect(
+    screen.getByRole("radio", { name: "全部任务", checked: true }),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("heading", { name: "全部任务" }),
+  ).not.toBeInTheDocument();
   expect(screen.queryByRole("radio", { name: "最近交付" })).toBeNull();
   expect(queries.mock.lastCall?.[0]).toMatchObject({
     source: "automatic",
@@ -562,6 +701,7 @@ it("零数据概览展示0，关注区和筛选无匹配使用不同空状态，
   mount("/work-board?query=missing");
   const user = userEvent.setup();
   await screen.findByText("没有匹配的工作");
+  await user.click(screen.getByRole("radio", { name: "当前任务" }));
   expect(await screen.findByText("没有待处理事项")).toBeInTheDocument();
   expect(
     within(screen.getByRole("region", { name: "需要处理" })).getByRole(
@@ -574,6 +714,7 @@ it("零数据概览展示0，关注区和筛选无匹配使用不同空状态，
     ),
   ).toHaveTextContent("0");
   expect(screen.getByText("没有待查看结果")).toBeInTheDocument();
+  await user.click(screen.getByRole("radio", { name: "全部任务" }));
   await user.click(
     within(screen.getByRole("region", { name: "工作记录" })).getByRole(
       "button",
@@ -606,6 +747,9 @@ it.each(["/work-board", "/work-board?mode=awaiting_view"])(
       ),
     );
     mount(route);
+    await userEvent
+      .setup()
+      .click(screen.getByRole("radio", { name: "当前任务" }));
     expect(await screen.findByText("没有待处理事项")).toBeInTheDocument();
     const region = screen.getByRole("region", { name: "待我查看" });
     expect(within(region).getByText("最近失败")).toBeInTheDocument();
@@ -685,7 +829,7 @@ it("总数字段缺失时显示读取失败，不能把已有记录误报为共0
       }),
     ),
   );
-  mount();
+  mount("/work-board?tab=all");
   await screen.findAllByText("读取失败");
   expect(screen.queryByText("共 0 项")).not.toBeInTheDocument();
 });
@@ -755,6 +899,9 @@ it("切换待查看模式后仍能清除保留的日期筛选", async () => {
     ),
   );
   mount("/work-board?mode=awaiting_view&from=2026-10-01&to=2026-10-12");
+  expect(
+    screen.getByRole("radio", { name: "全部任务", checked: true }),
+  ).toBeVisible();
   const records = screen.getByRole("region", { name: "工作记录" });
   await userEvent
     .setup()
@@ -789,7 +936,7 @@ it("执行者仅筛选工作记录，清除后恢复全部执行者", async () =
       }),
     ),
   );
-  mount();
+  mount("/work-board?tab=all");
   const user = userEvent.setup();
   const records = screen.getByRole("region", { name: "工作记录" });
   expect(
@@ -929,15 +1076,18 @@ it("另一窗口确认阅读后，成果事件同步看板统计和当前列表"
     ),
   );
   mount();
-  await within(screen.getByRole("table")).findByText("整理资料");
+  const user = userEvent.setup();
   const results = within(screen.getByRole("region", { name: "待我查看" }));
-  expect(results.getByRole("heading")).toHaveTextContent("1");
+  await waitFor(() =>
+    expect(results.getByRole("heading")).toHaveTextContent("1"),
+  );
+  await user.click(screen.getByRole("radio", { name: "全部任务" }));
+  await within(screen.getByRole("table")).findByText("整理资料");
   viewed = true;
   publishWorkBoardChange();
-  await waitFor(() =>
-    expect(results.getByText("没有待查看结果")).toBeInTheDocument(),
-  );
   expect(await screen.findByText("已阅读的工作")).toBeInTheDocument();
+  await user.click(screen.getByRole("radio", { name: "当前任务" }));
+  expect(await screen.findByText("没有待查看结果")).toBeInTheDocument();
 });
 
 it("关注列表等待在途深页，再用一次有界头部读取对账并沿新游标继续", async () => {
@@ -1292,7 +1442,6 @@ it("批量确认冻结当前筛选和阅读边界，部分失败后重试相同�
   );
   mount("/work-board?source=automatic");
   const user = userEvent.setup();
-  expect(await screen.findByText("仍需审批")).toBeInTheDocument();
   await user.click(
     await screen.findByRole("button", { name: "全部标为已查看" }),
   );
@@ -1312,6 +1461,7 @@ it("批量确认冻结当前筛选和阅读边界，部分失败后重试相同�
   expect(filters).toEqual(["automatic"]);
   expect(dialog).toHaveTextContent("状态变化 2 项");
   await user.click(within(dialog).getByText("关闭"));
+  await user.click(screen.getByRole("radio", { name: "当前任务" }));
   expect(screen.getByText("仍需审批")).toBeInTheDocument();
 });
 

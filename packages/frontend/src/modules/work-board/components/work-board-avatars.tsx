@@ -6,13 +6,16 @@ import {
   type CSSProperties,
 } from "react";
 import {
+  companionAppearance,
+  companionAvatar,
   defaultCompanionAvatar,
   encodeCompanionAppearance,
   type CompanionAppearance,
 } from "@/shared/companion/appearance";
 import { cn } from "@/shared/lib/cn";
-import { StaticAvatar } from "@/shared/ui/avatar";
+import { Avatar } from "@/shared/ui/avatar";
 import type { dropWorkBoardAvatars } from "./work-board-avatar-physics";
+import { useWorkBoardAvatarExpression } from "./work-board-avatar-expressions";
 
 type Partner = { id: string; name: string; avatar?: string };
 
@@ -23,7 +26,7 @@ const sizes = {
   small: "[--pile-size:clamp(1.5rem,12cqi,3.5rem)]",
 } as const;
 
-// 两侧分别落定，大小与位置错开，给中间的输入框留出空间。
+// 头像大小与落点错开，物理动画未加载时也保留完整构图。
 const slotsBySide = {
   left: [
     { size: "wide", x: 25, lift: 0, angle: -8 },
@@ -230,9 +233,17 @@ function WorkBoardAvatarPile({
         const accent =
           accents[(index + (side === "left" ? 0 : 5)) % accents.length];
         return (
-          <div
+          <WorkBoardAvatarPiece
             key={partner?.id ?? index}
-            data-pile-avatar
+            name={partner?.name ?? ""}
+            avatar={companionAvatar(
+              partner
+                ? partner.avatar
+                : accent
+                  ? encodeCompanionAppearance(accent)
+                  : defaultCompanionAvatar,
+              partner?.name ?? "",
+            )}
             className={cn("work-board-avatar-piece absolute", sizes[size])}
             style={
               {
@@ -241,20 +252,37 @@ function WorkBoardAvatarPile({
                 "--pile-rest-angle": `${angle}deg`,
               } as CSSProperties
             }
-          >
-            <StaticAvatar
-              name={partner?.name ?? ""}
-              src={
-                partner
-                  ? partner.avatar
-                  : accent
-                    ? encodeCompanionAppearance(accent)
-                    : defaultCompanionAvatar
-              }
-            />
-          </div>
+          />
         );
       })}
+    </div>
+  );
+}
+
+function WorkBoardAvatarPiece({
+  name,
+  avatar,
+  className,
+  style,
+}: {
+  name: string;
+  avatar: string;
+  className: string;
+  style: CSSProperties;
+}) {
+  const host = useRef<HTMLDivElement>(null);
+  const expression = useWorkBoardAvatarExpression(
+    host,
+    companionAppearance(avatar).expression,
+  );
+  return (
+    <div ref={host} data-pile-avatar className={className} style={style}>
+      <Avatar
+        interactive={false}
+        name={name}
+        src={avatar}
+        expression={expression}
+      />
     </div>
   );
 }

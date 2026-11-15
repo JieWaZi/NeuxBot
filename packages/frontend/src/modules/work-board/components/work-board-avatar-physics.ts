@@ -3,8 +3,6 @@ import { Bodies, Body, Composite, Engine, Sleeping } from "matter-js";
 const step = 1000 / 60;
 const maxDuration = 3600;
 const dropInterval = 52;
-const settleDelay = 360;
-const returnDuration = 480;
 
 // 使用轮廓内的碰撞半径，头像画布的透明留白不参与碰撞。
 const radiusRatio = 0.36;
@@ -61,8 +59,6 @@ export function dropWorkBoardAvatars(stage: HTMLElement, enter = true) {
       node,
       body,
       diameter,
-      rest: { x: 0, y: 0, angle: 0 },
-      returnFrom: { x: 0, y: 0, angle: 0 },
     };
   });
   let frame = 0;
@@ -71,14 +67,12 @@ export function dropWorkBoardAvatars(stage: HTMLElement, enter = true) {
   let accumulator = 0;
   let released = 0;
   let entered = !enter;
-  let lastNudge = 0;
-  let returnStarted = 0;
   let pointer: { x: number; y: number } | undefined;
 
-  function draw(atRest = false) {
-    for (const { node, body, diameter, rest } of pieces) {
-      const { x, y } = atRest ? rest : body.position;
-      const angle = atRest ? rest.angle : body.angle;
+  function draw() {
+    for (const { node, body, diameter } of pieces) {
+      const { x, y } = body.position;
+      const angle = body.angle;
       node.style.setProperty("--pile-live-x", `${(x / width) * 100}%`);
       node.style.setProperty(
         "--pile-live-y",
@@ -145,8 +139,6 @@ export function dropWorkBoardAvatars(stage: HTMLElement, enter = true) {
       nudged = true;
     }
     if (nudged) {
-      returnStarted = 0;
-      lastNudge = time;
       queueFrame();
     }
   }
@@ -166,7 +158,7 @@ export function dropWorkBoardAvatars(stage: HTMLElement, enter = true) {
         Body.setAngularVelocity(next.body, (released % 2 ? -1 : 1) * 0.023);
         released++;
       }
-      if (!returnStarted) Engine.update(engine, step);
+      Engine.update(engine, step);
       time += step;
       accumulator -= step;
     }
@@ -178,72 +170,37 @@ export function dropWorkBoardAvatars(stage: HTMLElement, enter = true) {
     ) {
       entered = true;
       for (const piece of pieces) {
-        piece.rest = { ...piece.body.position, angle: piece.body.angle };
         Sleeping.set(piece.body, true);
       }
-      draw();
+    }
+
+    draw();
+    // 拨动和落定始终沿用同一物理过程，停在新的平衡位置，不定时拉回旧坐标。
+    if (entered && pieces.every(({ body }) => body.isSleeping)) {
       last = 0;
       return;
     }
-
-    if (entered && time - lastNudge >= settleDelay) {
-      if (!returnStarted) {
-        returnStarted = time;
-        for (const piece of pieces) {
-          piece.returnFrom = {
-            ...piece.body.position,
-            angle: piece.body.angle,
-          };
-          Sleeping.set(piece.body, true);
-        }
-      }
-      const progress = Math.min(1, (time - returnStarted) / returnDuration);
-      const ease = 1 - (1 - progress) ** 3;
-      for (const { body, rest, returnFrom } of pieces) {
-        Body.setPosition(body, {
-          x: returnFrom.x + (rest.x - returnFrom.x) * ease,
-          y: returnFrom.y + (rest.y - returnFrom.y) * ease,
-        });
-        Body.setAngle(
-          body,
-          returnFrom.angle + (rest.angle - returnFrom.angle) * ease,
-        );
-      }
-      if (progress === 1) {
-        draw();
-        last = 0;
-        return;
-      }
-    }
-    draw();
     queueFrame();
   }
 
   stage.addEventListener("pointermove", brush, { passive: true });
   stage.addEventListener("pointerleave", clearPointer);
-  if (enter) {
-    queueFrame();
-  } else {
+  if (!enter) {
     released = pieces.length;
     Composite.add(
       engine.world,
       pieces.map(({ body }) => body),
     );
-    for (const piece of pieces) {
-      piece.rest = { ...piece.body.position, angle: piece.body.angle };
-      Sleeping.set(piece.body, true);
-    }
   }
+  // 恢复可见或调整尺寸后，也让当前布局自然落稳，避免把半空中的头像冻结。
+  queueFrame();
   return () => {
     stage.removeEventListener("pointermove", brush);
     stage.removeEventListener("pointerleave", clearPointer);
     cancelAnimationFrame(frame);
     Composite.clear(engine.world, false);
     Engine.clear(engine);
-    if (entered) {
-      draw(true);
-    } else {
-      for (const { node } of pieces) delete node.dataset.falling;
-    }
+    // 保留最后一帧，恢复时由可见位置继续模拟，不切回初始静态构图。
+    draw();
   };
 }

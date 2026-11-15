@@ -1,7 +1,7 @@
 import { useWorkBoardDateBoundary } from "../model/use-work-board-date-boundary";
 import { useQuery } from "@tanstack/react-query";
 import { FolderSearch, ListTodo } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Activity, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useSearchParams } from "react-router-dom";
 import { localApiErrorMessage } from "@/shared/api/local-error-surface";
@@ -30,6 +30,7 @@ import {
   ResourcePageToolbar,
 } from "@/shared/ui/resource-page";
 import { SearchableMultiSelect } from "@/shared/ui/searchable-multi-select";
+import { SegmentedControl } from "@/shared/ui/segmented-control";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { ExecutorFilter } from "../components/executor-filter";
 import {
@@ -40,12 +41,32 @@ import {
 import { WorkBoardIntro } from "../components/work-board-intro";
 
 const requestStates: readonly string[] = ["approval", "input", "review"];
+const listParameters = [
+  "mode",
+  "source",
+  "query",
+  "executorId",
+  "states",
+  "from",
+  "to",
+  "page",
+  "pageSize",
+  "cursor",
+  "view",
+];
 
 export function WorkBoardPage() {
   const { t } = useTranslation("workBoard");
   const { state: navigationState } = useLocation();
   const [params, setParams] = useSearchParams();
   const active = useVisibleScene();
+  const tab =
+    params.get("tab") === "all" ||
+    (params.get("tab") !== "current" &&
+      listParameters.some((key) => params.has(key)))
+      ? "all"
+      : "current";
+  const showRecords = tab === "all";
   const mode: WorkBoardMode =
     params.get("mode") === "action"
       ? "action"
@@ -108,12 +129,13 @@ export function WorkBoardPage() {
   });
   const list = useQuery({
     ...listOptions,
-    enabled: active && (mode !== "all" || dates.valid),
+    enabled: active && showRecords && (mode !== "all" || dates.valid),
   });
   useEffect(() => {
     const total = list.data?.totalSize;
     if (
       !active ||
+      !showRecords ||
       !list.isSuccess ||
       list.data?.complete === false ||
       list.isFetching ||
@@ -147,6 +169,7 @@ export function WorkBoardPage() {
     page,
     pageSize,
     setParams,
+    showRecords,
   ]);
   const summary = useQuery({ ...workBoardSummaryOptions, enabled: active });
   useWorkBoardDateBoundary(active, [
@@ -156,16 +179,25 @@ export function WorkBoardPage() {
   useQueryEvents({
     topic: "work-board",
     resource: workspaceAttentionResource,
-    queryKeys: [workBoardKeys.list, workBoardKeys.summary],
+    queryKeys: [workBoardKeys.summary],
     eventTypes: ["work-board.changed"],
     authority: true,
     active,
+  });
+  useQueryEvents({
+    topic: "work-board",
+    resource: workspaceAttentionResource,
+    queryKeys: [workBoardKeys.list],
+    eventTypes: ["work-board.changed"],
+    authority: true,
+    active: active && showRecords,
   });
   const change = (values: Record<string, string>) => {
     pageCursors.current.clear();
     setParams(
       (old) => {
         const next = new URLSearchParams(old);
+        next.set("tab", "all");
         next.delete("view");
         next.delete("cursor");
         next.delete("page");
@@ -188,6 +220,7 @@ export function WorkBoardPage() {
     setParams(
       (old) => {
         const next = new URLSearchParams(old);
+        next.set("tab", "all");
         next.delete("view");
         if (target > 1) next.set("page", String(target));
         else next.delete("page");
@@ -309,190 +342,214 @@ export function WorkBoardPage() {
   return (
     <ResourcePageSurface>
       <WorkBoardIntro active={active} />
-      <WorkBoardOverview
-        summary={summary.data}
-        pending={summary.isPending}
-        active={active}
-        error={
-          summary.isError
-            ? localApiErrorMessage(summary.error, t("loadFailed"))
-            : undefined
-        }
-        onRetry={() => void summary.refetch()}
-      />
-      <section className="mt-8 min-w-0 scroll-mt-4" aria-label={t("records")}>
-        <ResourcePageToolbar
-          filters={
-            <>
-              <ResourceFilterSelect
-                ariaLabel={t("source")}
-                value={source || "all"}
-                onValueChange={(value) =>
-                  change({ source: value === "all" ? "" : value })
-                }
-                options={[
-                  { value: "all", label: t("allSources") },
-                  ...["chat", "team", "workflow", "automatic", "im"].map(
-                    (value) => ({ value, label: t(value) }),
-                  ),
-                ]}
-              />
-              <div className="w-field-filter min-w-0">
-                <SearchableMultiSelect
-                  value={selectedStates}
-                  onValueChange={(values) => {
-                    const added = values.find(
-                      (value) => !selectedStates.includes(value),
-                    );
-                    if (added === "awaiting_view") {
-                      change({ mode: "awaiting_view", states: "" });
-                    } else if (
-                      (added && requestStates.includes(added)) ||
-                      (mode === "action" && !added)
-                    ) {
-                      const pending = values.filter((value) =>
-                        requestStates.includes(value),
-                      );
-                      change({
-                        mode: pending.length ? "action" : "all",
-                        states: pending.join(","),
-                      });
-                    } else {
-                      change({
-                        mode: "all",
-                        states: values
-                          .filter(
-                            (value) =>
-                              !requestStates.includes(value) &&
-                              value !== "awaiting_view",
-                          )
-                          .join(","),
-                      });
-                    }
-                  }}
-                  triggerLabel={
-                    selectedStates.length
-                      ? t("selectedStates", { count: selectedStates.length })
-                      : t("taskState")
+      <div className="mb-4 min-w-0">
+        <SegmentedControl
+          appearance="shell"
+          ariaLabel={t("title")}
+          value={tab}
+          options={[
+            { value: "current", label: t("currentWork") },
+            { value: "all", label: t("allTasks") },
+          ]}
+          onValueChange={(value) =>
+            setParams(
+              (old) => {
+                const next = new URLSearchParams(old);
+                next.set("tab", value);
+                return next;
+              },
+              { replace: true, state: navigationState },
+            )
+          }
+        />
+      </div>
+      {!showRecords ? (
+        <WorkBoardOverview
+          summary={summary.data}
+          pending={summary.isPending}
+          active={active && !showRecords}
+          error={
+            summary.isError
+              ? localApiErrorMessage(summary.error, t("loadFailed"))
+              : undefined
+          }
+          onRetry={() => void summary.refetch()}
+        />
+      ) : null}
+      <Activity mode={showRecords ? "visible" : "hidden"}>
+        <section className="min-w-0 scroll-mt-4" aria-label={t("records")}>
+          <ResourcePageToolbar
+            filters={
+              <>
+                <ResourceFilterSelect
+                  ariaLabel={t("source")}
+                  value={source || "all"}
+                  onValueChange={(value) =>
+                    change({ source: value === "all" ? "" : value })
                   }
-                  searchLabel={t("searchState")}
-                  emptyLabel={t("noStates")}
-                  clearSearchLabel={t("clearSearch")}
-                  clearSelectionLabel={t("allStates")}
                   options={[
-                    ...[
-                      "running",
-                      "waiting",
-                      "completed",
-                      "failed",
-                      "canceled",
-                      "idle",
-                    ].map((value) => ({ value, label: t(value) })),
-                    { value: "approval", label: t("pendingApproval") },
-                    { value: "input", label: t("pendingInput") },
-                    { value: "review", label: t("pendingReview") },
-                    { value: "awaiting_view", label: t("results") },
+                    { value: "all", label: t("allSources") },
+                    ...["chat", "team", "workflow", "automatic", "im"].map(
+                      (value) => ({ value, label: t(value) }),
+                    ),
                   ]}
                 />
-              </div>
-              <ExecutorFilter
-                value={executorId}
-                label={params.get("executorName") ?? ""}
-                kind={executorKind}
-                onChange={(id, name, kind) =>
-                  change({
-                    executorId: id,
-                    executorName: name,
-                    executorKind: kind,
-                  })
-                }
-              />
-              {mode === "all" && (
-                <DateRangePicker
-                  from={from}
-                  to={to}
-                  onChange={(start, end) => change({ from: start, to: end })}
-                  labels={{
-                    clear: t("clear"),
-                    empty: t("recent"),
-                    title: t("range"),
-                    help: t("rangeHelp"),
-                    trigger: t("chooseRange"),
+                <div className="w-field-filter min-w-0">
+                  <SearchableMultiSelect
+                    value={selectedStates}
+                    onValueChange={(values) => {
+                      const added = values.find(
+                        (value) => !selectedStates.includes(value),
+                      );
+                      if (added === "awaiting_view") {
+                        change({ mode: "awaiting_view", states: "" });
+                      } else if (
+                        (added && requestStates.includes(added)) ||
+                        (mode === "action" && !added)
+                      ) {
+                        const pending = values.filter((value) =>
+                          requestStates.includes(value),
+                        );
+                        change({
+                          mode: pending.length ? "action" : "all",
+                          states: pending.join(","),
+                        });
+                      } else {
+                        change({
+                          mode: "all",
+                          states: values
+                            .filter(
+                              (value) =>
+                                !requestStates.includes(value) &&
+                                value !== "awaiting_view",
+                            )
+                            .join(","),
+                        });
+                      }
+                    }}
+                    triggerLabel={
+                      selectedStates.length
+                        ? t("selectedStates", { count: selectedStates.length })
+                        : t("taskState")
+                    }
+                    searchLabel={t("searchState")}
+                    emptyLabel={t("noStates")}
+                    clearSearchLabel={t("clearSearch")}
+                    clearSelectionLabel={t("allStates")}
+                    options={[
+                      ...[
+                        "running",
+                        "waiting",
+                        "completed",
+                        "failed",
+                        "canceled",
+                        "idle",
+                      ].map((value) => ({ value, label: t(value) })),
+                      { value: "approval", label: t("pendingApproval") },
+                      { value: "input", label: t("pendingInput") },
+                      { value: "review", label: t("pendingReview") },
+                      { value: "awaiting_view", label: t("results") },
+                    ]}
+                  />
+                </div>
+                <ExecutorFilter
+                  value={executorId}
+                  label={params.get("executorName") ?? ""}
+                  kind={executorKind}
+                  onChange={(id, name, kind) =>
+                    change({
+                      executorId: id,
+                      executorName: name,
+                      executorKind: kind,
+                    })
+                  }
+                />
+                {mode === "all" && (
+                  <DateRangePicker
+                    from={from}
+                    to={to}
+                    onChange={(start, end) => change({ from: start, to: end })}
+                    labels={{
+                      clear: t("clear"),
+                      empty: t("recent"),
+                      title: t("range"),
+                      help: t("rangeHelp"),
+                      trigger: t("chooseRange"),
+                    }}
+                  />
+                )}
+                <ResourcePageSearchField
+                  aria-label={t("search")}
+                  placeholder={t("search")}
+                  value={text}
+                  onChange={(event) => change({ query: event.target.value })}
+                />
+                <MarkViewedDialog
+                  active={active && showRecords}
+                  visible={(summary.data?.awaitingViewWorkCount ?? 0) > 0}
+                  filters={{
+                    ...filters,
+                    query: text,
+                    states:
+                      mode === "all"
+                        ? states.join(",") || undefined
+                        : undefined,
                   }}
                 />
-              )}
-              <ResourcePageSearchField
-                aria-label={t("search")}
-                placeholder={t("search")}
-                value={text}
-                onChange={(event) => change({ query: event.target.value })}
-              />
-              <MarkViewedDialog
-                active={active}
-                visible={(summary.data?.awaitingViewWorkCount ?? 0) > 0}
-                filters={{
-                  ...filters,
-                  query: text,
-                  states:
-                    mode === "all" ? states.join(",") || undefined : undefined,
-                }}
-              />
-            </>
-          }
-        >
-          <div className="flex items-center gap-2">
-            <h2 className="type-title font-semibold">{t("allTasks")}</h2>
+              </>
+            }
+          >
             {canClearFilters ? (
               <Button variant="ghost" size="sm" onClick={clearFilters}>
                 {t("clearFilters")}
               </Button>
             ) : null}
+          </ResourcePageToolbar>
+          <div className="min-h-64 min-w-0 pt-3" aria-busy={list.isFetching}>
+            {incomplete && !list.isError ? (
+              <div
+                role="status"
+                className="text-content-secondary type-ui mb-3 flex items-center gap-2"
+              >
+                {t("attentionIncomplete")}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => void list.refetch()}
+                >
+                  {t("retry")}
+                </Button>
+              </div>
+            ) : null}
+            {list.isError && list.data ? (
+              <div
+                role="alert"
+                className="text-destructive type-ui mb-3 flex flex-wrap items-center justify-between gap-2"
+              >
+                {localApiErrorMessage(list.error, t("loadFailed"))}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => void list.refetch()}
+                >
+                  {t("retry")}
+                </Button>
+              </div>
+            ) : null}
+            <WorkBoardTable
+              mode={mode}
+              entries={
+                mode === "awaiting_view"
+                  ? list.data?.awaitingView
+                  : list.data?.resources
+              }
+              attention={list.data?.attention}
+              pagination={pagination}
+              empty={empty}
+            />
           </div>
-        </ResourcePageToolbar>
-        <div className="min-h-64 min-w-0 pt-3" aria-busy={list.isFetching}>
-          {incomplete && !list.isError ? (
-            <div
-              role="status"
-              className="text-content-secondary type-ui mb-3 flex items-center gap-2"
-            >
-              {t("attentionIncomplete")}
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => void list.refetch()}
-              >
-                {t("retry")}
-              </Button>
-            </div>
-          ) : null}
-          {list.isError && list.data ? (
-            <div
-              role="alert"
-              className="text-destructive type-ui mb-3 flex flex-wrap items-center justify-between gap-2"
-            >
-              {localApiErrorMessage(list.error, t("loadFailed"))}
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => void list.refetch()}
-              >
-                {t("retry")}
-              </Button>
-            </div>
-          ) : null}
-          <WorkBoardTable
-            mode={mode}
-            entries={
-              mode === "awaiting_view"
-                ? list.data?.awaitingView
-                : list.data?.resources
-            }
-            attention={list.data?.attention}
-            pagination={pagination}
-            empty={empty}
-          />
-        </div>
-      </section>
+        </section>
+      </Activity>
     </ResourcePageSurface>
   );
 }

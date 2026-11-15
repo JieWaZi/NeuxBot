@@ -1,4 +1,5 @@
 import type { StateId } from "@neuxbot/bloub/states";
+import type { ExpressionId } from "@neuxbot/bloub/expressions";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/shared/lib/cn";
 import { companionAvatar } from "@/shared/companion/appearance";
@@ -21,6 +22,8 @@ type AvatarProps = {
   animated?: boolean;
   preview?: boolean;
   animation?: StateId;
+  /** 仅覆盖装饰空闲场景的表情，保留已保存的外观资产和业务状态。 */
+  expression?: ExpressionId;
   onDoubleInteract?: (trigger: HTMLElement) => void;
 };
 const sizeClass = {
@@ -44,6 +47,7 @@ export function Avatar({
   animated = true,
   preview = false,
   animation,
+  expression,
   onDoubleInteract,
 }: AvatarProps) {
   const { t } = useTranslation("common");
@@ -57,6 +61,7 @@ export function Avatar({
       interactive={canInteract}
       preview={preview}
       animation={animation}
+      expression={expression}
     />
   );
   return (

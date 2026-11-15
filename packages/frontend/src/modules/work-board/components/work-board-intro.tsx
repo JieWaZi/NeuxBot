@@ -92,15 +92,12 @@ export function WorkBoardIntro({ active }: { active: boolean }) {
     !removed && detail.isError ? detail : wakers.isError ? wakers : undefined;
 
   return (
-    <header className="mb-8 grid min-w-0 grid-cols-[minmax(0,44rem)] items-end justify-center gap-4 @[52rem]/resource-page:grid-cols-[minmax(0,1fr)_minmax(0,min(60%,44rem))_minmax(0,1fr)]">
-      {partners.length ? (
-        <WorkBoardAvatars partners={partners} active={active} side="left" />
-      ) : null}
+    <header className="mb-8 grid min-w-0 grid-cols-1 items-stretch gap-6 @[52rem]/resource-page:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <section
         aria-labelledby={labelId}
-        className="grid min-w-0 content-start gap-3 @[52rem]/resource-page:col-start-2"
+        className="grid min-w-0 content-start gap-3"
       >
-        <h1 id={labelId} className="type-display text-center font-semibold">
+        <h1 id={labelId} className="type-display font-semibold">
           <Trans
             t={t}
             i18nKey="startChat"

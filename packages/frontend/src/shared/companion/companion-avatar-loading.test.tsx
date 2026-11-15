@@ -28,6 +28,37 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
+it("装饰表情变化复用原头像纹理，不重新换色、解码或通知就绪", async () => {
+  mocks.tinted.mockResolvedValue("data:image/png;base64,decorative-expression");
+  const ready = vi.fn();
+  const avatar = "bloub:plush:cercle:neutre:73c9d1";
+  const view = render(
+    <CompanionAvatar
+      avatar={avatar}
+      expression="heureux"
+      animated={false}
+      onReady={ready}
+    />,
+  );
+  await waitFor(() => expect(ready).toHaveBeenCalledOnce());
+  const svg = view.container.querySelector("svg");
+  const texture = view.container.querySelector("[data-texture]");
+  view.rerender(
+    <CompanionAvatar
+      avatar={avatar}
+      expression="curieux"
+      animated={false}
+      onReady={ready}
+    />,
+  );
+  expect(view.container.querySelector("svg")).toBe(svg);
+  expect(view.container.querySelector("[data-texture]")).toBe(texture);
+  expect(svg).toHaveAttribute("data-expression", "curieux");
+  expect(mocks.tinted).toHaveBeenCalledOnce();
+  expect(decoding).toHaveLength(1);
+  expect(ready).toHaveBeenCalledOnce();
+});
+
 it("同一头像切换材质保持视域和眼睛尺寸位置，不放大整张脸", async () => {
   mocks.tinted.mockResolvedValue("data:image/png;base64,aligned-material");
   const view = render(

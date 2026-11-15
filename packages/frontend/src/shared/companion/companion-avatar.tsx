@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { BotEngine } from "@neuxbot/bloub/engine";
+import type { ExpressionId } from "@neuxbot/bloub/expressions";
 import { avatarExpressionById as EXPRESSION_BY_ID } from "./avatar-expressions";
 import { SHAPE_BY_ID } from "@neuxbot/bloub/skins";
 import { POSES, type StateId } from "@neuxbot/bloub/states";
@@ -23,6 +24,7 @@ export function CompanionAvatar({
   onReady,
   onError,
   animation: requestedAnimation,
+  expression: requestedExpression,
 }: {
   avatar: string;
   activity?: CompanionActivity;
@@ -31,6 +33,7 @@ export function CompanionAvatar({
   interactive?: boolean;
   preview?: boolean;
   animation?: StateId;
+  expression?: ExpressionId;
   onReady?: () => void;
   onError?: () => void;
 }) {
@@ -61,10 +64,14 @@ export function CompanionAvatar({
   );
   const playing = animated && visible && foreground && !reduced;
   const fixedPose = !animated || reduced;
+  const decorativeExpression =
+    shown === "idle" && !attentionState ? requestedExpression : undefined;
   const baseExpression =
     animation || preview
       ? appearance.expression
-      : (presentation.expression ?? appearance.expression);
+      : (presentation.expression ??
+        decorativeExpression ??
+        appearance.expression);
   const hoverEnabled = interactive && animated && !preview && !animation;
   const interaction =
     hoverEnabled &&

@@ -23,6 +23,82 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+it("装饰表情沿用原生morph，保持头像与纹理节点且不重启动作", () => {
+  const reset = vi.spyOn(BotEngine.prototype, "reset");
+  let next: FrameRequestCallback | undefined;
+  let now = 0;
+  vi.spyOn(performance, "now").mockImplementation(() => now);
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+    next = callback;
+    return 1;
+  });
+  vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+  const view = render(
+    <CompanionAvatar
+      avatar={defaultCompanionAvatar}
+      expression="heureux"
+      interactive={false}
+    />,
+  );
+  const advance = () => {
+    now += 100;
+    act(() => next?.(now));
+  };
+  for (let index = 0; index < 9; index++) advance();
+  const svg = view.container.querySelector("svg");
+  const texture = view.container.querySelector("[data-body-sprite]");
+  const eyes = () =>
+    [...view.container.querySelectorAll("[data-eye]")].map((eye) =>
+      eye.getAttribute("transform"),
+    );
+  const previousEyes = eyes();
+  const resets = reset.mock.calls.length;
+  view.rerender(
+    <CompanionAvatar
+      avatar={defaultCompanionAvatar}
+      expression="curieux"
+      interactive={false}
+    />,
+  );
+  expect(view.container.querySelector("svg")).toBe(svg);
+  expect(view.container.querySelector("[data-body-sprite]")).toBe(texture);
+  expect(svg).toHaveAttribute("data-expression", "curieux");
+  expect(reset).toHaveBeenCalledTimes(resets);
+  expect(eyes()).toEqual(previousEyes);
+  advance();
+  expect(eyes()).not.toEqual(previousEyes);
+});
+
+it("装饰表情覆盖不进入业务动作、关注提示或显式预览", () => {
+  const avatar = "bloub:plush:cercle:neutre:8b5cf6";
+  const view = render(
+    <CompanionAvatar avatar={avatar} animated={false} expression="heureux" />,
+  );
+  expect(view.container.querySelector("svg")).toHaveAttribute(
+    "data-expression",
+    "heureux",
+  );
+  for (const props of [
+    { activity: "working" as const },
+    { attention: { kind: "waiting-answer" as const } },
+    { preview: true },
+    { animation: "wink" as const },
+  ]) {
+    view.rerender(
+      <CompanionAvatar
+        avatar={avatar}
+        animated={false}
+        expression="heureux"
+        {...props}
+      />,
+    );
+    expect(view.container.querySelector("svg")).toHaveAttribute(
+      "data-expression",
+      "neutre",
+    );
+  }
+});
+
 describe("通用头像渲染", () => {
   it("外观预览持续播放轻微动态，但不轮换眼睛或响应悬停点击换表情", () => {
     vi.useFakeTimers();
