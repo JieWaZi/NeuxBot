@@ -12,6 +12,7 @@ import { useState } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import type { GetUsageSummaryResponse } from "@/shared/api/generated/types.gen";
+import { ApiError } from "@/shared/api/errors";
 import { UsagePage } from "./usage-page";
 
 const fixture = vi.hoisted(() => ({
@@ -57,8 +58,11 @@ vi.mock("../api/usage-queries", () => ({
             },
       },
   }),
-  usageGroupsOptions: ({ groupBy }: { groupBy: string }, snapshot: string) => ({
-    queryKey: ["usage-groups", snapshot, groupBy],
+  usageGroupsOptions: (
+    { groupBy, provider }: { groupBy: string; provider?: string },
+    snapshot: string,
+  ) => ({
+    queryKey: ["usage-groups", snapshot, groupBy, provider],
     queryFn: ({
       signal,
       pageParam,
@@ -153,6 +157,8 @@ it("switches usage details with the shared shell segmented control", async () =>
   expect(
     await screen.findByRole("rowheader", { name: "2026-11-01" }),
   ).toBeInTheDocument();
+  const table = screen.getByRole("table");
+  const trend = screen.getByRole("group", { name: "用量趋势" });
 
   date.focus();
   await user.keyboard("{ArrowRight}");
@@ -163,6 +169,8 @@ it("switches usage details with the shared shell segmented control", async () =>
     await screen.findByRole("rowheader", { name: "test-model" }),
   ).toBeInTheDocument();
   expect(navigate.mock.lastCall?.[0].get("groupBy")).toBe("model");
+  expect(screen.getByRole("table")).toBe(table);
+  expect(screen.getByRole("group", { name: "用量趋势" })).toBe(trend);
 
   await user.click(options.getByRole("radio", { name: "伙伴" }));
   expect(
@@ -173,6 +181,8 @@ it("switches usage details with the shared shell segmented control", async () =>
   ).toBeInTheDocument();
   expect(navigate.mock.lastCall?.[0].get("groupBy")).toBe("waker");
   expect(navigate.mock.lastCall?.[0].get("source")).toBe("workflow");
+  expect(screen.getByRole("table")).toBe(table);
+  expect(screen.getByRole("group", { name: "用量趋势" })).toBe(trend);
 });
 
 it("shows zero counters and a zero trend when the selected range has no invocations", async () => {
@@ -434,7 +444,7 @@ it("keeps the overview and chart visible when switching dimensions during a refr
   expect(screen.getByText("22 次调用")).toBeInTheDocument();
 });
 
-it("keeps the chart and breakdown regions while loading another agent's usage", async () => {
+it("updates the same overview, chart and table when switching agents", async () => {
   const user = userEvent.setup();
   const codexSummary = deferred<GetUsageSummaryResponse>();
   const codexGroups = deferred();
@@ -448,22 +458,339 @@ it("keeps the chart and breakdown regions while loading another agent's usage", 
   expect(
     await screen.findByRole("rowheader", { name: "2026-11-01" }),
   ).toBeInTheDocument();
+  const overview = screen.getByText("11 次调用").parentElement?.parentElement;
+  const chart = screen.getByRole("group", { name: "用量趋势" });
+  const svg = chart.querySelector("svg");
+  const table = screen.getByRole("table");
+  const header = table.querySelector("thead");
+  const body = table.querySelector("tbody");
 
   const filters = screen.getByRole("radiogroup", { name: "筛选智能体" });
   await user.click(within(filters).getByRole("radio", { name: "Codex" }));
-  const chart = screen.getByRole("status", { name: "用量趋势" });
+  expect(screen.getByRole("status", { name: "用量统计" })).toBe(overview);
+  const chartStatus = screen.getByRole("status", { name: "用量趋势" });
   const breakdown = screen.getByRole("status", { name: "用量明细" });
+  expect(screen.getByRole("group", { name: "用量趋势" })).toBe(chart);
+  expect(chart.querySelector("svg")).toBe(svg);
+  expect(screen.getByRole("table")).toBe(table);
+  expect(table.querySelector("thead")).toBe(header);
+  expect(table.querySelector("tbody")).toBe(body);
   expect(screen.queryByText("11 次调用")).toBeNull();
+  expect(screen.queryByRole("rowheader", { name: "2026-11-01" })).toBeNull();
 
   await act(async () => {
     codexSummary.resolve({ snapshot: "new", metrics: { invocations: 22 } });
   });
   expect(await screen.findByText("22 次调用")).toBeInTheDocument();
-  expect(screen.getByRole("status", { name: "用量趋势" })).toBe(chart);
+  expect(screen.getByRole("status", { name: "用量趋势" })).toBe(chartStatus);
   expect(screen.getByRole("status", { name: "用量明细" })).toBe(breakdown);
 
   codexGroups.resolve(page("new", "2026-11-02"));
   expect(
     await screen.findByRole("rowheader", { name: "2026-11-02" }),
   ).toBeInTheDocument();
+  expect(overview).toContainElement(screen.getByText("总 Token"));
+  expect(screen.getByRole("group", { name: "用量趋势" })).toBe(chart);
+  expect(chart.querySelector("svg")).toBe(svg);
+  expect(screen.getByRole("table")).toBe(table);
+  expect(table.querySelector("thead")).toBe(header);
+  expect(table.querySelector("tbody")).toBe(body);
+
+  await user.click(within(filters).getByRole("radio", { name: "Claude" }));
+  expect(
+    await screen.findByRole("rowheader", { name: "2026-11-01" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText("11 次调用")).toBeInTheDocument();
+  expect(screen.getByRole("group", { name: "用量趋势" })).toBe(chart);
+  expect(chart.querySelector("svg")).toBe(svg);
+  expect(screen.getByRole("table")).toBe(table);
 });
+
+it("keeps the selected agent's data when an earlier agent finishes loading late", async () => {
+  const user = userEvent.setup();
+  const codexSummary = deferred<GetUsageSummaryResponse>();
+  fixture.summary.mockImplementation((provider) => {
+    if (provider === "codex") return codexSummary.promise;
+    if (provider === "cursor")
+      return Promise.resolve({
+        snapshot: "cursor",
+        metrics: { invocations: 0 },
+      });
+  });
+  fixture.groups.mockImplementation(async (snapshot) =>
+    snapshot === "cursor"
+      ? { ...page(snapshot, ""), groups: [] }
+      : page(snapshot, "2026-11-01"),
+  );
+  openPage(`${novemberRange}&provider=claude`);
+  expect(
+    await screen.findByRole("rowheader", { name: "2026-11-01" }),
+  ).toBeInTheDocument();
+  const chart = screen.getByRole("group", { name: "用量趋势" });
+  const table = screen.getByRole("table");
+  const filters = screen.getByRole("radiogroup", { name: "筛选智能体" });
+
+  await user.click(within(filters).getByRole("radio", { name: "Codex" }));
+  await user.click(within(filters).getByRole("radio", { name: "Cursor" }));
+  expect(await screen.findByText("0 次调用")).toBeInTheDocument();
+  expect(
+    await screen.findByText("这个范围没有已记录的调用。"),
+  ).toBeInTheDocument();
+
+  await act(async () => {
+    codexSummary.resolve({ snapshot: "codex", metrics: { invocations: 99 } });
+  });
+  expect(
+    within(filters).getByRole("radio", { name: "Cursor", checked: true }),
+  ).toBeInTheDocument();
+  expect(screen.getByText("0 次调用")).toBeInTheDocument();
+  expect(screen.queryByText("99 次调用")).not.toBeInTheDocument();
+  expect(screen.queryByRole("rowheader", { name: "2026-11-01" })).toBeNull();
+  expect(screen.getByRole("group", { name: "用量趋势" })).toBe(chart);
+  expect(screen.getByRole("table")).toBe(table);
+});
+
+it("loads replacement groups together and publishes only after the visible chart and shares can update", async () => {
+  const newDays = deferred();
+  const newProviders = deferred();
+  fixture.groups.mockImplementation(async (snapshot, _, __, groupBy) => {
+    if (groupBy === "provider")
+      return snapshot === "old"
+        ? {
+            ...page(snapshot, ""),
+            groups: [
+              { key: "codex", metrics: { knownTotalWithCacheRead: 150 } },
+            ],
+          }
+        : newProviders.promise;
+    if (groupBy === "day")
+      return snapshot === "old"
+        ? {
+            ...page(snapshot, ""),
+            groups: [
+              { key: "2026-11-01", metrics: { totalWithCacheRead: 123 } },
+            ],
+          }
+        : newDays.promise;
+    return page(snapshot, `${snapshot}-model`);
+  });
+  const refresh = openPage(`${novemberRange}&groupBy=model`);
+  expect(
+    await screen.findByRole("rowheader", { name: "old-model" }),
+  ).toBeInTheDocument();
+  expect(
+    await screen.findByRole("button", { name: "11月1日 · 123 Token" }),
+  ).toBeInTheDocument();
+  expect(await screen.findByText("占已记录 Token 的 75%")).toBeInTheDocument();
+
+  const refreshButton = screen.getByRole("button", { name: "刷新用量" });
+  const refreshIcon = refreshButton.querySelector("svg");
+
+  await refresh();
+  await waitFor(() =>
+    expect(refreshButton).toHaveAttribute("aria-busy", "true"),
+  );
+  expect(refreshButton.querySelector("svg")).toBe(refreshIcon);
+  await waitFor(() =>
+    expect(fixture.groups).toHaveBeenCalledWith(
+      "new",
+      "",
+      expect.any(AbortSignal),
+      "provider",
+    ),
+  );
+  expect(fixture.groups).toHaveBeenCalledWith(
+    "new",
+    "",
+    expect.any(AbortSignal),
+    "day",
+  );
+  expect(
+    screen.getByRole("rowheader", { name: "old-model" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText("11 次调用")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("status", { name: "用量趋势" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("status", { name: "智能体用量" }),
+  ).not.toBeInTheDocument();
+
+  await act(async () =>
+    newDays.resolve({
+      ...page("new", ""),
+      groups: [{ key: "2026-11-01", metrics: { totalWithCacheRead: 456 } }],
+    }),
+  );
+  expect(
+    screen.getByRole("button", { name: "11月1日 · 123 Token" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("rowheader", { name: "old-model" }),
+  ).toBeInTheDocument();
+  await act(async () =>
+    newProviders.resolve({
+      ...page("new", ""),
+      groups: [{ key: "codex", metrics: { knownTotalWithCacheRead: 50 } }],
+    }),
+  );
+  expect(
+    await screen.findByRole("rowheader", { name: "new-model" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "11月1日 · 456 Token" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText("占已记录 Token 的 25%")).toBeInTheDocument();
+  expect(screen.getByText("22 次调用")).toBeInTheDocument();
+  expect(refreshButton).not.toHaveAttribute("aria-busy");
+  expect(refreshButton.querySelector("svg")).toBe(refreshIcon);
+});
+
+it("retains the first visible snapshot when a refresh races its still-pending provider list", async () => {
+  const oldProviders = deferred();
+  const newProviders = deferred();
+  fixture.groups.mockImplementation(async (snapshot, _, __, groupBy) => {
+    if (groupBy === "provider")
+      return snapshot === "old" ? oldProviders.promise : newProviders.promise;
+    if (groupBy === "day")
+      return {
+        ...page(snapshot, ""),
+        groups: [
+          {
+            key: "2026-11-01",
+            metrics: { totalWithCacheRead: snapshot === "old" ? 123 : 456 },
+          },
+        ],
+      };
+    return page(snapshot, `${snapshot}-model`);
+  });
+  const refresh = openPage(`${novemberRange}&groupBy=model`);
+  expect(
+    await screen.findByRole("rowheader", { name: "old-model" }),
+  ).toBeInTheDocument();
+  expect(
+    await screen.findByRole("button", { name: "11月1日 · 123 Token" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("status", { name: "智能体用量" }),
+  ).toBeInTheDocument();
+  await refresh();
+  await waitFor(() =>
+    expect(fixture.groups).toHaveBeenCalledWith(
+      "new",
+      "",
+      expect.any(AbortSignal),
+      "provider",
+    ),
+  );
+  expect(
+    screen.getByRole("rowheader", { name: "old-model" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "11月1日 · 123 Token" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText("11 次调用")).toBeInTheDocument();
+  await act(async () =>
+    newProviders.resolve({
+      ...page("new", ""),
+      groups: [{ key: "codex", metrics: { knownTotalWithCacheRead: 50 } }],
+    }),
+  );
+  expect(
+    await screen.findByRole("rowheader", { name: "new-model" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "11月1日 · 456 Token" }),
+  ).toBeInTheDocument();
+  await act(async () =>
+    oldProviders.resolve({
+      ...page("old", ""),
+      groups: [{ key: "codex", metrics: { knownTotalWithCacheRead: 150 } }],
+    }),
+  );
+  expect(screen.getByText("占已记录 Token 的 25%")).toBeInTheDocument();
+  expect(screen.queryByText("占已记录 Token 的 75%")).not.toBeInTheDocument();
+});
+
+it("keeps the all-agent provider section through zero data and hides it only for an explicit single-agent filter", async () => {
+  const user = userEvent.setup();
+  const emptySummary = deferred<GetUsageSummaryResponse>();
+  fixture.summary.mockImplementation((provider) =>
+    provider === "claude" ? emptySummary.promise : undefined,
+  );
+  fixture.groups.mockImplementation(async (snapshot, _, __, groupBy) =>
+    snapshot !== "old"
+      ? { ...page(snapshot, ""), groups: [] }
+      : groupBy === "provider"
+        ? {
+            ...page(snapshot, ""),
+            groups: [
+              { key: "codex", metrics: { knownTotalWithCacheRead: 150 } },
+            ],
+          }
+        : page(snapshot, "2026-11-01"),
+  );
+  const refresh = openPage();
+  expect(await screen.findByText("占已记录 Token 的 75%")).toBeInTheDocument();
+  const list = screen.getByRole("list", { name: "智能体用量" });
+  const section = list.closest("section");
+  const report = screen
+    .getByRole("heading", { name: "用量明细" })
+    .closest("section");
+  fixture.empty = true;
+  await refresh();
+  expect(await screen.findByText("0 次调用")).toBeInTheDocument();
+  expect(screen.getByRole("list", { name: "智能体用量" })).toBe(list);
+  expect(list).toHaveTextContent("没有调用记录");
+  expect(section).not.toHaveAttribute("hidden");
+  expect(section?.nextElementSibling).toBe(report);
+
+  await user.click(
+    within(screen.getByRole("radiogroup", { name: "筛选智能体" })).getByRole(
+      "radio",
+      { name: "Claude" },
+    ),
+  );
+  expect(section).toBeInTheDocument();
+  expect(section).toHaveAttribute("hidden");
+  expect(
+    screen.queryByRole("list", { name: "智能体用量" }),
+  ).not.toBeInTheDocument();
+  await act(async () =>
+    emptySummary.resolve({ snapshot: "empty", metrics: { invocations: 0 } }),
+  );
+  expect(await screen.findByText("0 次调用")).toBeInTheDocument();
+  expect(section).toContainElement(list);
+  expect(section).toHaveAttribute("hidden");
+  expect(section?.nextElementSibling).toBe(report);
+  expect(fixture.groups).not.toHaveBeenCalledWith(
+    "empty",
+    "",
+    expect.any(AbortSignal),
+    "provider",
+  );
+});
+
+it.each(["day", "provider"])(
+  "renews a snapshot when the %s query expires, without treating the error as zero usage",
+  async (expiredGroup) => {
+    fixture.groups.mockImplementation(async (snapshot, _, __, groupBy) => {
+      if (snapshot === "old" && groupBy === expiredGroup) {
+        fixture.snapshot = "new";
+        throw new ApiError("snapshot expired", "UsageSnapshotExpired", 409);
+      }
+      return groupBy === "provider"
+        ? { ...page(snapshot, ""), groups: [] }
+        : page(
+            snapshot,
+            `${snapshot === "new" ? "replacement" : "initial"}-${groupBy}`,
+          );
+    });
+    openPage(`${novemberRange}&groupBy=model`);
+    expect(
+      await screen.findByRole("rowheader", { name: "replacement-model" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("22 次调用")).toBeInTheDocument();
+    expect(screen.queryByText("0 次调用")).not.toBeInTheDocument();
+  },
+);

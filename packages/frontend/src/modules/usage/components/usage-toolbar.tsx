@@ -152,10 +152,16 @@ export function UsageRefresh({
             variant="ghost"
             size="icon"
             aria-label={t("refresh")}
-            loading={pending}
+            disabled={pending}
+            aria-busy={pending || undefined}
             onClick={onRefresh}
           >
-            <RefreshCw aria-hidden="true" />
+            <RefreshCw
+              aria-hidden="true"
+              className={
+                pending ? "animate-spin motion-reduce:animate-none" : undefined
+              }
+            />
           </Button>
         </TooltipTrigger>
         <TooltipContent>{t("refresh")}</TooltipContent>

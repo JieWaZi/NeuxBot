@@ -124,4 +124,8 @@ export const usageEn = {
   reasoning: "Reasoning output",
   recordedReasoning: "Recorded reasoning output",
   retry: "Retry",
+  rangeDays: "{{count}} days",
+  invocationCount: "{{count, number}} calls",
+  tokenMissing: "{{count}} calls have no token data",
+  tokenIncomplete: "{{count}} calls have incomplete token data",
 } as const;

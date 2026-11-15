@@ -1,5 +1,6 @@
-const integer = new Intl.NumberFormat("zh-CN");
-const decimal = new Intl.NumberFormat("zh-CN", {
+import { localizedNumberFormat } from "@/shared/i18n/format";
+const integer = localizedNumberFormat();
+const decimal = localizedNumberFormat({
   minimumFractionDigits: 1,
   maximumFractionDigits: 1,
 });

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import type { ListUsageGroupsResponse } from "@/shared/api/generated/types.gen";
 import { cn } from "@/shared/lib/cn";
+import { Skeleton } from "@/shared/ui/skeleton";
 import {
   Tooltip,
   TooltipContent,
@@ -87,17 +88,16 @@ export function UsageTrend({
   to,
   hasMore,
   projectionPartial = false,
-  earliestRetainedDay,
+  pending = false,
 }: {
   groups: readonly Group[];
   from: string;
   to: string;
   hasMore: boolean;
   projectionPartial?: boolean;
-  earliestRetainedDay?: string;
+  pending?: boolean;
 }) {
   const { t, i18n } = useTranslation("usage");
-  const empty = groups.length === 0 && !projectionPartial;
   const gradient = useId();
   const [focusedDay, setFocusedDay] = useState<string>();
   const locale = i18n.resolvedLanguage;
@@ -122,8 +122,15 @@ export function UsageTrend({
     (_, index) => {
       const date = new Date(start + index * dayMilliseconds);
       const key = date.toISOString().slice(0, 10);
-      const metrics = empty ? zeroMetrics : metricsByDate.get(key);
-      return { key, date, observed: empty || metricsByDate.has(key), metrics };
+      const recorded = metricsByDate.has(key);
+      // 完整日期查询省略的是无调用日；已记录调用中缺失的计数仍然未知。
+      const idle = !pending && !projectionPartial && !recorded;
+      const metrics = pending
+        ? undefined
+        : idle
+          ? zeroMetrics
+          : metricsByDate.get(key);
+      return { key, date, observed: !pending && (recorded || idle), metrics };
     },
   );
   const series = usageSeries.flatMap((item) => {
@@ -131,22 +138,16 @@ export function UsageTrend({
       ({ metrics }) => metrics?.knownTokens?.[item.key] != null,
     );
     if (!hasData) return [];
-    const values = days.map(({ key, observed, metrics }) => {
-      if (observed) return metrics?.knownTokens?.[item.key] ?? null;
-      return !projectionPartial &&
-        earliestRetainedDay &&
-        key >= earliestRetainedDay
-        ? 0
-        : null;
-    });
+    const values = days.map(
+      ({ metrics }) => metrics?.knownTokens?.[item.key] ?? null,
+    );
     return [{ ...item, values }];
   });
-  const ceiling = plotCeiling(
-    Math.max(
-      0,
-      ...series.flatMap(({ values }) => values.map((value) => value ?? 0)),
-    ),
+  const maximum = Math.max(
+    0,
+    ...series.flatMap(({ values }) => values.map((value) => value ?? 0)),
   );
+  const ceiling = plotCeiling(maximum);
   const title = t("dailyTokens");
   const tabStop =
     days.find(({ key, observed }) => observed && key === focusedDay)?.key ??
@@ -165,7 +166,12 @@ export function UsageTrend({
   });
 
   return (
-    <figure className="min-w-0 space-y-4">
+    <figure
+      className="min-w-0 space-y-4"
+      role={pending ? "status" : undefined}
+      aria-busy={pending || undefined}
+      aria-label={pending ? title : undefined}
+    >
       <figcaption className="flex flex-wrap items-baseline justify-between gap-2">
         <span className="type-title font-semibold">{title}</span>
         <span className="text-content-secondary type-ui">
@@ -175,13 +181,15 @@ export function UsageTrend({
       <div
         role="group"
         aria-label={title}
-        className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2"
+        className="grid min-w-0 grid-cols-[3rem_minmax(0,1fr)] gap-x-3 gap-y-2"
       >
         <div
           aria-hidden="true"
           className="text-content-secondary type-caption flex flex-col items-end justify-between tabular-nums"
         >
-          {empty ? (
+          {pending ? (
+            <Skeleton className="mt-auto h-4 w-6" />
+          ) : series.length && maximum === 0 ? (
             <span className="mt-auto">0</span>
           ) : series.length ? (
             Array.from({ length: gridSteps + 1 }, (_, index) => {
@@ -192,7 +200,7 @@ export function UsageTrend({
             })
           ) : null}
         </div>
-        <div className="relative h-56 min-w-0 @[42.5rem]/resource-page:h-72">
+        <div className="relative h-[clamp(8rem,18cqi,14rem)] min-w-0">
           <div
             aria-hidden="true"
             className="pointer-events-none absolute inset-0 flex flex-col justify-between"
@@ -333,7 +341,11 @@ export function UsageTrend({
               })}
             </TooltipProvider>
           </div>
-          {series.length === 0 ? (
+          {pending ? (
+            <div className="pointer-events-none absolute inset-0 grid place-items-center">
+              <Skeleton className="h-3 w-32" />
+            </div>
+          ) : series.length === 0 ? (
             <p className="text-content-secondary type-body pointer-events-none absolute inset-0 grid place-items-center">
               {t("noTrendTokens")}
             </p>

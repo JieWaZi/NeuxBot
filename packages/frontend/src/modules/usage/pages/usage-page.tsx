@@ -10,11 +10,10 @@ import { useQueryEvents } from "@/shared/api/use-query-events";
 import { Button } from "@/shared/ui/button";
 import { DateRangePicker } from "@/shared/ui/date-range-picker";
 import { PageHeader } from "@/shared/ui/page-header";
-import { QueryRefreshError, QueryState } from "@/shared/ui/query-state";
+import { QueryRefreshError } from "@/shared/ui/query-state";
 import { ResourcePageSurface } from "@/shared/ui/resource-page";
 import { SearchableMultiSelect } from "@/shared/ui/searchable-multi-select";
 import { SegmentedControl } from "@/shared/ui/segmented-control";
-import { Skeleton } from "@/shared/ui/skeleton";
 import { usageGroupsOptions, usageSummaryOptions } from "../api/usage-queries";
 import { UsageProviderBreakdown } from "../components/usage-provider-breakdown";
 import { UsageOverview, UsageReport } from "../components/usage-report";
@@ -45,6 +44,41 @@ const groupPagination = {
   getNextPageParam: nextCursor,
   retry: retryGroups,
 };
+
+function expiredSnapshot(error: unknown) {
+  return error instanceof ApiError && error.status === 409;
+}
+
+type GroupQuery = {
+  data?: { pages: ListUsageGroupsResponse[] };
+  isError: boolean;
+  isFetching: boolean;
+  hasNextPage: boolean;
+  fetchNextPage: () => Promise<unknown>;
+};
+
+/** 替换快照沿自己的游标补齐已经可见的深度，不复用旧快照游标。 */
+function useSnapshotDepth(
+  query: GroupQuery,
+  depth: number,
+  replacing: boolean,
+) {
+  const { fetchNextPage } = query;
+  const loaded = query.data?.pages.length ?? 0;
+  const needsMore =
+    replacing &&
+    loaded > 0 &&
+    loaded < depth &&
+    query.hasNextPage &&
+    !query.isFetching &&
+    !query.isError;
+  useEffect(() => {
+    if (needsMore) void fetchNextPage();
+  }, [needsMore, loaded, fetchNextPage]);
+  return (
+    loaded > 0 && !query.isError && (loaded >= depth || !query.hasNextPage)
+  );
+}
 
 export function UsagePage({
   search,
@@ -81,6 +115,10 @@ export function UsagePage({
   }>();
   const previous = published?.scope === scope ? published : undefined;
   const sameGroup = previous?.groupBy === filters.groupBy;
+  const dayInReport = filters.groupBy === "day";
+  const nextHasUsage = Boolean(
+    summary.data && summary.data.metrics?.invocations !== 0,
+  );
   const groups = useInfiniteQuery({
     ...usageGroupsOptions(filters, snapshot),
     enabled: active && Boolean(snapshot),
@@ -94,20 +132,64 @@ export function UsagePage({
     enabled: false,
     ...groupPagination,
   });
+  // 候选快照的各区并行读取，不能等明细发布后才让图表和占比重新加载。
+  const trend = useInfiniteQuery({
+    ...usageGroupsOptions({ ...filters, groupBy: "day" }, snapshot),
+    ...groupPagination,
+    enabled: active && !dayInReport && Boolean(snapshot) && nextHasUsage,
+  });
+  const retainedDays = useInfiniteQuery({
+    ...usageGroupsOptions(
+      { ...filters, groupBy: "day" },
+      previous?.snapshot ?? "",
+    ),
+    ...groupPagination,
+    enabled: false,
+  });
+  const providers = useInfiniteQuery({
+    ...usageGroupsOptions({ ...filters, groupBy: "provider" }, snapshot),
+    ...groupPagination,
+    enabled: active && !filters.provider && Boolean(snapshot) && nextHasUsage,
+  });
+  const retainedProviders = useInfiniteQuery({
+    ...usageGroupsOptions(
+      { ...filters, groupBy: "provider" },
+      previous?.snapshot ?? "",
+    ),
+    ...groupPagination,
+    enabled: false,
+  });
   const replacing = Boolean(
     previous && previous.snapshot !== snapshot && retained.data,
   );
-  const targetPages =
-    replacing && sameGroup ? (retained.data?.pages.length ?? 1) : 1;
-  const loadedPages = groups.data?.pages.length ?? 0;
+  const groupsReady = useSnapshotDepth(
+    groups,
+    replacing && sameGroup ? (retained.data?.pages.length ?? 1) : 1,
+    active && replacing,
+  );
+  const daysReady = useSnapshotDepth(
+    trend,
+    replacing ? (retainedDays.data?.pages.length ?? 1) : 1,
+    active && replacing && !dayInReport && nextHasUsage,
+  );
+  const providersReady = useSnapshotDepth(
+    providers,
+    replacing ? (retainedProviders.data?.pages.length ?? 1) : 1,
+    active && replacing && !filters.provider && nextHasUsage,
+  );
   const ready =
-    loadedPages > 0 &&
-    !groups.isError &&
-    (loadedPages >= targetPages || !groups.hasNextPage);
+    groupsReady &&
+    (!nextHasUsage || dayInReport || daysReady) &&
+    (!nextHasUsage || Boolean(filters.provider) || providersReady);
 
-  // Changing the grouping keeps the published overview for the same filters.
-  // A replacement for the same grouping replays its own cursors to the visible depth.
-  if (snapshot && ready && (previous?.snapshot !== snapshot || !sameGroup)) {
+  // 首屏已显示的明细先固定身份；后续替换要等可见分组一起就绪。
+  // 这里只保存 Query 身份，数据继续由各快照的 Query Cache 拥有。
+  if (
+    snapshot &&
+    groupsReady &&
+    (!replacing || ready) &&
+    (previous?.snapshot !== snapshot || !sameGroup)
+  ) {
     setPublished({ scope, snapshot, groupBy: filters.groupBy });
   }
   const showRetained = replacing && !ready;
@@ -115,41 +197,18 @@ export function UsagePage({
   const displayGroupsData =
     showRetained && !sameGroup ? undefined : displayGroups.data;
   const displaySummary = showRetained ? retained.data?.pages[0] : summary.data;
-  const dailyInBreakdown =
-    filters.groupBy === "day" && (!showRetained || sameGroup);
-  const displayedSnapshot = displaySummary?.snapshot ?? "";
-  const earliestRetainedAt = displaySummary?.coverage?.earliestRetainedAt;
-  const hasUsage = displaySummary?.metrics?.invocations !== 0;
-  const providers = useInfiniteQuery({
-    ...usageGroupsOptions(
-      { ...filters, groupBy: "provider" },
-      displayedSnapshot,
-    ),
-    ...groupPagination,
-    enabled:
-      active && !filters.provider && Boolean(displayedSnapshot) && hasUsage,
-  });
-  const trend = useInfiniteQuery({
-    ...usageGroupsOptions({ ...filters, groupBy: "day" }, displayedSnapshot),
-    ...groupPagination,
-    enabled:
-      active && !dailyInBreakdown && Boolean(displayedSnapshot) && hasUsage,
-  });
-  const daily = dailyInBreakdown ? displayGroups : trend;
-  const { fetchNextPage: extendReplacement } = groups;
-  const needsMore =
-    active &&
-    replacing &&
-    loadedPages > 0 &&
-    loadedPages < targetPages &&
-    groups.hasNextPage &&
-    !groups.isFetching &&
-    !groups.isError;
-  useEffect(() => {
-    if (needsMore) void extendReplacement();
-  }, [needsMore, loadedPages, extendReplacement]);
+  const daily = showRetained ? retainedDays : dayInReport ? groups : trend;
+  const displayProviders = showRetained ? retainedProviders : providers;
+  const hasUsage = Boolean(
+    displaySummary && displaySummary.metrics?.invocations !== 0,
+  );
+  const replacementFailed =
+    groups.isError ||
+    (!dayInReport && trend.isError) ||
+    (!filters.provider && providers.isError);
+  const refreshing =
+    summary.isFetching || (active && replacing && !ready && !replacementFailed);
 
-  // Refresh the summary so its new snapshot replaces every grouped query key.
   useQueryEvents({
     topic: "usage",
     resource: { kind: "global" },
@@ -158,14 +217,18 @@ export function UsagePage({
     active,
   });
   const retried = useRef("");
-  const snapshotExpired =
-    groups.error instanceof ApiError && groups.error.status === 409;
+  const snapshotExpired = [
+    groups.error,
+    !dayInReport && trend.error,
+    !filters.provider && providers.error,
+  ].some(expiredSnapshot);
   useEffect(() => {
-    if (active && snapshotExpired && snapshot && retried.current !== snapshot) {
-      retried.current = snapshot;
+    const identity = JSON.stringify([scope, snapshot]);
+    if (active && snapshotExpired && snapshot && retried.current !== identity) {
+      retried.current = identity;
       void refreshSummary();
     }
-  }, [active, snapshotExpired, snapshot, refreshSummary]);
+  }, [active, snapshotExpired, scope, snapshot, refreshSummary]);
 
   const fromDate = usageDate(filters.from, filters.timezone);
   const toDate = usageDate(filters.to - 1, filters.timezone);
@@ -183,26 +246,33 @@ export function UsagePage({
     if (range) update(range);
   };
   const names = new Map(wakerOptions.map(({ value, label }) => [value, label]));
+  const confirmedEmpty =
+    displaySummary?.metrics?.invocations === 0 &&
+    !displaySummary.coverage?.reasons?.includes("native_projection_incomplete");
   const providerRows =
-    providers.data?.pages.flatMap((page) => page.groups ?? []) ?? [];
+    displayProviders.data?.pages.flatMap((page) => page.groups ?? []) ?? [];
   const providerIds = [
     ...(runtimes.data?.resources?.flatMap(({ id }) => (id ? [id] : [])) ?? []),
     ...providerRows.flatMap(({ key }) => (key ? [key] : [])),
   ];
   const rows =
     displayGroupsData?.pages.flatMap((page) => page.groups ?? []) ?? [];
-  const dailyRows = dailyInBreakdown
-    ? rows
-    : (daily.data?.pages.flatMap((page) => page.groups ?? []) ?? []);
+  const dailyRows =
+    daily.data?.pages.flatMap((page) => page.groups ?? []) ?? [];
   const breakdownPending =
-    displayGroups.isPending ||
-    (!displayGroupsData && snapshotExpired && summary.isFetching);
-  const trendExpired =
-    trend.error instanceof ApiError && trend.error.status === 409;
+    !displayGroupsData &&
+    (displayGroups.isPending ||
+      (showRetained && !sameGroup) ||
+      (snapshotExpired && summary.isFetching));
+  const providerPending =
+    summary.isPending ||
+    (!filters.provider && hasUsage && displayProviders.isPending);
+  const trendError = trend.error ?? daily.error;
+  const providerError = providers.error ?? displayProviders.error;
 
   return (
     <ResourcePageSurface>
-      <div className="h-full min-w-0 space-y-6">
+      <div className="min-w-0 space-y-6">
         <PageHeader
           title={t("title")}
           layout="form"
@@ -253,163 +323,111 @@ export function UsagePage({
                 </div>
               ) : null}
               <UsageRefresh
-                pending={summary.isFetching}
+                pending={refreshing}
                 onRefresh={() => void refreshSummary()}
               />
             </>
           }
         />
-        {summary.isPending ? (
-          <div role="status" aria-busy="true" aria-label={t("title")}>
-            <div
-              className="bg-surface-raised space-y-4 rounded-xl p-4 @[42.5rem]/resource-page:p-6"
-              aria-hidden="true"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <Skeleton className="h-control-lg w-52 max-w-full" />
-                <Skeleton className="h-control-md w-24" />
-              </div>
-              <div className="grid grid-cols-2 gap-2 @[38rem]/resource-page:grid-cols-3 @[52rem]/resource-page:grid-cols-5">
-                {[
-                  "input",
-                  "output",
-                  "cacheWrite",
-                  "cacheRead",
-                  "reasoning",
-                ].map((key) => (
-                  <Skeleton key={key} className="h-16" />
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : displaySummary ? (
-          <UsageOverview summary={displaySummary} provider={filters.provider} />
-        ) : (
-          <QueryState
+        <UsageOverview
+          summary={displaySummary}
+          provider={filters.provider}
+          pending={summary.isPending}
+        />
+        {!displaySummary && summary.isError ? (
+          <QueryRefreshError
             error={summary.error}
+            pending={summary.isFetching}
             onRetry={() => void refreshSummary()}
           />
-        )}
-        {summary.isPending || displaySummary ? (
-          <div className="bg-surface-raised min-w-0 space-y-3 rounded-xl p-4 @[42.5rem]/resource-page:p-6">
-            {displaySummary && (!hasUsage || dailyRows.length) ? (
-              <UsageTrend
-                groups={hasUsage ? dailyRows : []}
-                from={fromDate}
-                to={toDate}
-                hasMore={hasUsage && daily.hasNextPage}
-                projectionPartial={displaySummary.coverage?.reasons?.includes(
-                  "native_projection_incomplete",
-                )}
-                earliestRetainedDay={
-                  earliestRetainedAt == null
-                    ? undefined
-                    : usageDate(earliestRetainedAt, filters.timezone)
-                }
-              />
-            ) : summary.isPending || daily.isPending ? (
-              <div
-                className="space-y-4"
-                role="status"
-                aria-busy="true"
-                aria-label={t("dailyTokens")}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <Skeleton className="h-6 w-20" />
-                  <Skeleton className="h-4 w-12" />
-                </div>
-                <div className="space-y-2">
-                  <Skeleton className="h-56 @[42.5rem]/resource-page:h-72" />
-                  <Skeleton className="h-4" />
-                </div>
-                <Skeleton className="mx-auto h-4 w-48 max-w-full" />
-              </div>
-            ) : !daily.isError ? (
-              <p className="text-content-secondary type-body">
-                {t("noDailyUsage")}
-              </p>
-            ) : null}
-
-            {hasUsage && daily.hasNextPage ? (
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-content-secondary type-caption">
-                  {t("partialTrend")}
-                </p>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={daily.isFetchingNextPage}
-                  onClick={() => void daily.fetchNextPage()}
-                >
-                  {t("loadMoreDays")}
-                </Button>
-              </div>
-            ) : null}
-            {hasUsage && !dailyInBreakdown && trend.isError ? (
-              <QueryRefreshError
-                error={trend.error}
-                pending={trend.isFetching || summary.isFetching}
-                onRetry={() =>
-                  void (trendExpired ? refreshSummary() : trend.refetch())
-                }
-              />
-            ) : null}
-          </div>
         ) : null}
-        {!filters.provider &&
-        (summary.isPending ||
-          (displaySummary &&
-            hasUsage &&
-            (providerRows.length > 0 ||
-              providers.isPending ||
-              providers.isError))) ? (
-          <section className="bg-surface-raised min-w-0 space-y-4 rounded-xl p-4 @[42.5rem]/resource-page:p-6">
-            <h2 className="type-title font-semibold">{t("providers")}</h2>
-            {providerRows.length ? (
-              <UsageProviderBreakdown
-                groups={providerRows}
-                total={
-                  displaySummary?.metrics?.totalWithCacheRead ??
-                  displaySummary?.metrics?.knownTotalWithCacheRead
-                }
-              />
-            ) : providers.isPending ? (
-              <div
-                className="space-y-3"
-                role="status"
-                aria-busy="true"
-                aria-label={t("providers")}
-              >
-                <Skeleton className="h-6" aria-hidden="true" />
-                <Skeleton className="h-6" aria-hidden="true" />
-              </div>
-            ) : null}
-            {providers.hasNextPage ? (
+        <div className="min-w-0 space-y-3">
+          <UsageTrend
+            groups={hasUsage ? dailyRows : []}
+            from={fromDate}
+            to={toDate}
+            hasMore={hasUsage && daily.hasNextPage}
+            pending={summary.isPending || (hasUsage && daily.isPending)}
+            projectionPartial={
+              !displaySummary ||
+              (hasUsage && !dailyRows.length) ||
+              displaySummary.coverage?.reasons?.includes(
+                "native_projection_incomplete",
+              )
+            }
+          />
+          {hasUsage && daily.hasNextPage ? (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-content-secondary type-caption">
+                {t("partialTrend")}
+              </p>
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                disabled={providers.isFetchingNextPage}
-                onClick={() => void providers.fetchNextPage()}
+                disabled={daily.isFetchingNextPage}
+                onClick={() => void daily.fetchNextPage()}
               >
-                {t("loadMoreProviders")}
+                {t("loadMoreDays")}
               </Button>
-            ) : null}
-            {providers.isError ? (
-              <QueryRefreshError
-                error={providers.error}
-                pending={providers.isFetching || summary.isFetching}
-                onRetry={() =>
-                  void (providers.error instanceof ApiError &&
-                  providers.error.status === 409
-                    ? refreshSummary()
-                    : providers.refetch())
-                }
-              />
-            ) : null}
-          </section>
-        ) : null}
+            </div>
+          ) : null}
+          {hasUsage && !dayInReport && (trend.isError || daily.isError) ? (
+            <QueryRefreshError
+              error={trendError}
+              pending={trend.isFetching || summary.isFetching}
+              onRetry={() =>
+                void (expiredSnapshot(trendError)
+                  ? refreshSummary()
+                  : trend.refetch())
+              }
+            />
+          ) : null}
+        </div>
+        <section
+          hidden={Boolean(filters.provider)}
+          className="min-w-0 space-y-4"
+        >
+          <h2 className="type-title font-semibold">{t("providers")}</h2>
+          <UsageProviderBreakdown
+            groups={providerRows}
+            pending={Boolean(filters.provider) || providerPending}
+            emptyLabel={
+              displaySummary && !providerPending && !providerError
+                ? t("noDailyUsage")
+                : undefined
+            }
+            total={
+              confirmedEmpty
+                ? 0
+                : (displaySummary?.metrics?.totalWithCacheRead ??
+                  displaySummary?.metrics?.knownTotalWithCacheRead)
+            }
+          />
+          {!filters.provider && displayProviders.hasNextPage ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={displayProviders.isFetchingNextPage}
+              onClick={() => void displayProviders.fetchNextPage()}
+            >
+              {t("loadMoreProviders")}
+            </Button>
+          ) : null}
+          {!filters.provider &&
+          (providers.isError || displayProviders.isError) ? (
+            <QueryRefreshError
+              error={providerError}
+              pending={providers.isFetching || summary.isFetching}
+              onRetry={() =>
+                void (expiredSnapshot(providerError)
+                  ? refreshSummary()
+                  : providers.refetch())
+              }
+            />
+          ) : null}
+        </section>
         {summary.data && summary.isError ? (
           <QueryRefreshError
             error={summary.error}
@@ -417,8 +435,7 @@ export function UsagePage({
             onRetry={() => void summary.refetch()}
           />
         ) : null}
-        {/* Keep enough scroll range below the tabs when the report gets shorter. */}
-        <section className="min-h-full min-w-0 space-y-3">
+        <section className="min-w-0 space-y-3">
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
             <h2 className="type-title font-semibold">{t("breakdown")}</h2>
             <SegmentedControl
@@ -434,37 +451,27 @@ export function UsagePage({
               onValueChange={(groupBy) => update({ groupBy })}
             />
           </div>
-          {displaySummary && rows.length ? (
-            <UsageReport
-              groupBy={filters.groupBy}
-              groups={rows}
-              names={names}
-              runtimes={runtimes.data?.resources}
-              more={displayGroups.hasNextPage}
-              loading={displayGroups.isFetchingNextPage}
-              onLoadMore={() => void displayGroups.fetchNextPage()}
-            />
-          ) : summary.isPending || (displaySummary && breakdownPending) ? (
-            <div
-              className="space-y-2"
-              role="status"
-              aria-busy="true"
-              aria-label={t("breakdown")}
-            >
-              <Skeleton className="h-row-default" aria-hidden="true" />
-              <Skeleton className="h-row-default" aria-hidden="true" />
-              <Skeleton className="h-row-default" aria-hidden="true" />
-            </div>
-          ) : displaySummary ? (
-            <QueryState
-              error={displayGroupsData ? null : groups.error}
-              emptyLabel={t("empty")}
-              onRetry={() =>
-                void (snapshotExpired ? summary.refetch() : groups.refetch())
-              }
-            />
-          ) : null}
-          {displayGroupsData && (groups.isError || displayGroups.isError) ? (
+          <UsageReport
+            groupBy={filters.groupBy}
+            groups={rows}
+            names={names}
+            runtimes={runtimes.data?.resources}
+            more={displayGroups.hasNextPage}
+            loading={displayGroups.isFetchingNextPage}
+            pending={
+              summary.isPending || Boolean(displaySummary && breakdownPending)
+            }
+            emptyLabel={
+              displaySummary &&
+              !breakdownPending &&
+              !groups.isError &&
+              !displayGroups.isError
+                ? t("empty")
+                : undefined
+            }
+            onLoadMore={() => void displayGroups.fetchNextPage()}
+          />
+          {groups.isError || displayGroups.isError ? (
             <QueryRefreshError
               error={groups.error ?? displayGroups.error}
               pending={groups.isFetching || displayGroups.isFetching}
