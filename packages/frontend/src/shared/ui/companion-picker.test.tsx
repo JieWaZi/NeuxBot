@@ -10,7 +10,13 @@ vi.mock("./avatar", () => ({ Avatar: () => null }));
 
 const savedAvatar = "bloub:plush:nuage:curieux:38bdf8";
 
-function Picker({ initialValue = savedAvatar }: { initialValue?: string }) {
+function Picker({
+  initialValue = savedAvatar,
+  inline = false,
+}: {
+  initialValue?: string;
+  inline?: boolean;
+}) {
   const [value, setValue] = useState(initialValue);
   return (
     <>
@@ -19,6 +25,7 @@ function Picker({ initialValue = savedAvatar }: { initialValue?: string }) {
         name="NeuxBot"
         value={value}
         onChange={setValue}
+        inline={inline}
       />
       <output aria-label="已选头像">{value}</output>
     </>
@@ -28,6 +35,31 @@ function Picker({ initialValue = savedAvatar }: { initialValue?: string }) {
 afterEach(() => vi.restoreAllMocks());
 
 describe("伙伴头像选择", () => {
+  it("内嵌布局提供已有的24种眼睛，选择后随其他外观配置保留", async () => {
+    render(<Picker inline />);
+    const user = userEvent.setup();
+    const eyes = within(screen.getByRole("group", { name: "眼睛" }));
+    expect(eyes.getAllByRole("button")).toHaveLength(24);
+    expect(eyes.getByRole("button", { name: "好奇" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await user.click(eyes.getByRole("button", { name: "开心" }));
+    expect(screen.getByLabelText("已选头像")).toHaveTextContent(
+      "bloub:plush:nuage:heureux:38bdf8",
+    );
+    await user.click(screen.getByRole("button", { name: "三角形" }));
+    await user.click(screen.getByRole("button", { name: "软胶" }));
+    await user.click(screen.getByRole("button", { name: "颜色 #ef4444" }));
+    expect(screen.getByLabelText("已选头像")).toHaveTextContent(
+      "bloub:balloon:triangle:heureux:ef4444",
+    );
+    expect(eyes.getByRole("button", { name: "开心" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
   it("只提供外观配置，不把业务动画暴露为选择项", async () => {
     const onChange = vi.fn();
     render(

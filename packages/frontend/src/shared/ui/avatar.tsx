@@ -13,7 +13,7 @@ type AvatarProps = {
   name: string;
   src?: string;
   shape?: "circle" | "square";
-  size?: "xs" | "sm" | "md" | "lg" | "xl" | "hero" | "docked";
+  size?: "xs" | "sm" | "md" | "navigation" | "lg" | "xl" | "hero" | "docked";
   className?: string;
   activity?: CompanionActivity;
   attention?: CompanionAttention;
@@ -30,6 +30,7 @@ const sizeClass = {
   xs: "size-avatar-xs",
   sm: "size-avatar-sm",
   md: "size-avatar-md",
+  navigation: "size-avatar-navigation",
   lg: "size-avatar-lg",
   xl: "size-avatar-xl",
   hero: "size-avatar-hero",

@@ -188,6 +188,7 @@
   --spacing-avatar-xs: 1.5rem;
   --spacing-avatar-sm: 2rem;
   --spacing-avatar-md: 2.5rem;
+  --spacing-avatar-navigation: 3.25rem;
   --spacing-avatar-lg: 3.5rem;
   --spacing-avatar-xl: 5rem;
   --spacing-avatar-hero: 8rem;
@@ -199,6 +200,7 @@
   --container-settings-content: 49rem;
   --container-chat-question: 33.75rem;
   --spacing-row-navigation: 2.75rem;
+  --spacing-row-entity: 3.25rem;
   --spacing-row-rich: 3.5rem;
   --spacing-work-board-focus-min: calc(3 * var(--spacing-row-rich) + 4rem);
   --spacing-work-board-focus-list: calc(5 * var(--spacing-row-rich) + 3.5rem);

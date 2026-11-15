@@ -124,7 +124,7 @@ export function WelcomeBrand({
                 >
                   {avatarColor ? (
                     <CompanionAvatar
-                      avatar={`bloub:particles:pentagone:neutre:${avatarColor}`}
+                      avatar={`bloub:balloon:pentagone:neutre:${avatarColor}`}
                       onReady={() => {
                         if (intro)
                           performance.mark?.("bot.startup.characterReady");

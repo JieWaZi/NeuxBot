@@ -150,9 +150,38 @@ export function SceneChromeHost({
   );
 }
 
+function SceneChromePortalAttachment({
+  container,
+  target,
+}: {
+  container: HTMLDivElement;
+  target: HTMLDivElement;
+}) {
+  useLayoutEffect(() => {
+    // Activity 会暂停旧 Scene 的渲染；顶栏位于其 DOM 外，必须随 Effect 同步退出宿主。
+    target.appendChild(container);
+    return () => container.remove();
+  }, [container, target]);
+  return null;
+}
+
 export function SceneChromePortal({ children }: { children: ReactNode }) {
   const target = useContext(SceneChromePortalContext)?.target;
-  return target ? createPortal(children, target) : children;
+  const [container] = useState(() => {
+    const element = document.createElement("div");
+    element.className = "contents";
+    return element;
+  });
+  return target
+    ? createPortal(
+        <>
+          {/* 先接入文档，再运行后续内容的聚焦与布局 Effect；恢复时沿用同一容器。 */}
+          <SceneChromePortalAttachment container={container} target={target} />
+          {children}
+        </>,
+        container,
+      )
+    : children;
 }
 
 /** 当前 Scene 的内容将操作挂到主 pane 顶栏右端，随分屏排列移动。 */

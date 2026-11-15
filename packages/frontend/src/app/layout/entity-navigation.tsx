@@ -179,11 +179,13 @@ const avatarAttentionPosition =
 function EntityAvatar({
   item,
   interactive = false,
+  size = "md",
   onDoubleInteract,
   onOpenAction,
 }: {
   item: NavigationEntity;
   interactive?: boolean;
+  size?: "md" | "navigation";
   onDoubleInteract?: (trigger: HTMLElement) => void;
   onOpenAction?: () => void;
 }) {
@@ -218,7 +220,7 @@ function EntityAvatar({
           onDoubleInteract={onDoubleInteract}
           shape="square"
           src={item.waker.avatar}
-          size="md"
+          size={size}
         />
       ) : (
         <TeamEntityAvatar team={item.team} />
@@ -233,7 +235,10 @@ function EntityAvatar({
               className={cn(
                 avatarAttentionPosition,
                 "focus-visible:ring-ring rounded-full outline-none before:absolute before:-inset-1.5 focus-visible:ring-2",
-                attention && "size-icon-sm top-2",
+                attention &&
+                  (size === "navigation"
+                    ? "size-icon-sm top-2.5"
+                    : "size-icon-sm top-2"),
               )}
               data-avatar-attention
             >
@@ -359,15 +364,18 @@ function EntityRow({
           transition,
         }}
         className={cn(
-          "group/entity hover:bg-surface-subtle min-h-row-navigation relative grid w-full min-w-0 items-center rounded-md",
+          "group/entity min-h-row-entity relative grid w-full min-w-0 items-center rounded-md",
           "grid-cols-[auto_minmax(0,1fr)_auto]",
-          selected && "bg-selection-surface text-content-primary",
+          selected
+            ? "bg-surface-panel text-content-primary"
+            : "hover:bg-surface-subtle",
           isDragging && "z-10 opacity-35",
         )}
       >
         <span className="flex shrink-0 items-center pl-2">
           <EntityAvatar
             item={item}
+            size="navigation"
             interactive={item.kind === "waker"}
             onOpenAction={handleRowClick}
             onDoubleInteract={
@@ -383,7 +391,7 @@ function EntityRow({
           aria-current={selected ? "page" : undefined}
           aria-label={accessibleLabel}
           onClick={handleRowClick}
-          className="focus-visible:ring-ring min-h-row-navigation relative grid min-w-0 items-center rounded-md px-2 py-1 text-left outline-none focus-visible:ring-2"
+          className="focus-visible:ring-ring min-h-row-entity relative grid min-w-0 items-center rounded-md px-2 py-1 text-left outline-none focus-visible:ring-2"
           {...attributes}
           {...listeners}
         >
@@ -960,7 +968,7 @@ export function EntityNavigation({
               <DragOverlay>
                 {activeItem ? (
                   <div className="bg-surface flex min-w-40 items-center gap-2 rounded-md p-2 shadow-sm">
-                    <EntityAvatar item={activeItem} />
+                    <EntityAvatar item={activeItem} size="navigation" />
                     <span className="type-body truncate">
                       {entityLabel(activeItem, t("partnerNavigation.partner"))}
                     </span>

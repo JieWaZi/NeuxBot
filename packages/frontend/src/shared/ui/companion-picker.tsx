@@ -196,41 +196,54 @@ export function CompanionPicker({
       </div>
     </fieldset>
   );
+  const expressions = (
+    <fieldset className="grid min-w-0 gap-1">
+      <legend
+        className={
+          inline ? "sr-only" : "type-ui text-content-secondary mb-1 font-medium"
+        }
+      >
+        {t("companion.picker.expression")}
+      </legend>
+      <div
+        className={
+          inline
+            ? "flex flex-wrap justify-center gap-1"
+            : "grid grid-cols-4 gap-1"
+        }
+      >
+        {avatarExpressions.map(({ id }) => (
+          <Button
+            key={id}
+            type="button"
+            size={inline ? "icon-sm" : "icon"}
+            variant="choice"
+            className={inline ? undefined : "relative w-full"}
+            aria-label={t(`companion.expressions.${id}`)}
+            title={t(`companion.expressions.${id}`)}
+            aria-pressed={appearance.expression === id}
+            onClick={() => change({ expression: id })}
+          >
+            <Avatar
+              name={name}
+              src={encodeCompanionAppearance({
+                ...appearance,
+                expression: id,
+              })}
+              size={inline ? "xs" : "sm"}
+              animated={!inline}
+              preview
+              interactive={false}
+            />
+          </Button>
+        ))}
+      </div>
+    </fieldset>
+  );
   const controls = (
     <div className="grid gap-3">
       {shapes}
-
-      <fieldset className="grid min-w-0 gap-1">
-        <legend className="type-ui text-content-secondary mb-1 font-medium">
-          {t("companion.picker.expression")}
-        </legend>
-        <div className="grid grid-cols-4 gap-1">
-          {avatarExpressions.map(({ id }) => (
-            <Button
-              key={id}
-              type="button"
-              size="icon"
-              variant="choice"
-              className="relative w-full"
-              aria-label={t(`companion.expressions.${id}`)}
-              title={t(`companion.expressions.${id}`)}
-              aria-pressed={appearance.expression === id}
-              onClick={() => change({ expression: id })}
-            >
-              <Avatar
-                name={name}
-                src={encodeCompanionAppearance({
-                  ...appearance,
-                  expression: id,
-                })}
-                size="sm"
-                preview
-                interactive={false}
-              />
-            </Button>
-          ))}
-        </div>
-      </fieldset>
+      {expressions}
 
       {colors}
     </div>
@@ -243,6 +256,7 @@ export function CompanionPicker({
         <div className="justify-self-center">{preview}</div>
         {colors}
         {shapes}
+        {expressions}
         {materials}
       </fieldset>
     );

@@ -130,6 +130,11 @@ it("选择默认模型后携带原请求标识重试，进入已接纳的建档�
   );
   expect(screen.getByTestId("hero")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "粒子" }));
+  await user.click(
+    within(screen.getByRole("group", { name: "眼睛" })).getByRole("button", {
+      name: "开心",
+    }),
+  );
   await user.click(screen.getByRole("button", { name: "默认模型" }));
   const picker = screen.getByRole("dialog", { name: "选择模型" });
   await within(picker).findByRole("radio", { name: "Partner Model" });
@@ -161,7 +166,7 @@ it("选择默认模型后携带原请求标识重试，进入已接纳的建档�
     requestId: expect.any(String),
     name: "协作伙伴",
     bio: "整理协作记录",
-    avatar: expect.stringMatching(/^bloub:particles:/),
+    avatar: expect.stringMatching(/^bloub:particles:[^:]+:heureux:/),
     defaultModel: {
       runtimeId: "fixture-runtime",
       accountId: "system",
