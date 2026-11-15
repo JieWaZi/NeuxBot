@@ -45,7 +45,7 @@ func TestTaskFileUploadRunResultAndDownload(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer "+saved.Token)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	recorder := httptest.NewRecorder()
-	h.api.localHandler(h.service.GetAPIStatus().IP).ServeHTTP(recorder, request)
+	h.api.localHandler(constants.AutomaticTaskDefaultAPIIP).ServeHTTP(recorder, request)
 	var upload workflowfiles.Upload
 	if recorder.Code != http.StatusCreated || json.Unmarshal(recorder.Body.Bytes(), &upload) != nil || upload.Reference == "" {
 		t.Fatalf("upload: %d %s", recorder.Code, recorder.Body.String())

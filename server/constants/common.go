@@ -68,13 +68,22 @@ const WorkflowFileFormat = "file"
 const WorkflowFileReferencePrefix = "bot-file:"
 
 // WorkflowFileDirectoryName 保存工作流上传的原始文件和归属信息。
-const WorkflowFileDirectoryName = "workflow-files"
+const WorkflowFileDirectoryName = "WorkflowFiles"
 
 // WorkflowInputFileDirectoryName 隔离每次运行已冻结的输入副本。
 const WorkflowInputFileDirectoryName = "workflow-inputs"
 
 // ManagedFilesDirectoryName 是用户主目录下受管业务文件的默认根目录名。
 const ManagedFilesDirectoryName = ".neuxbot"
+
+// NativeConversationDirectoryName 保存跨聊天共享分片的规范原生输出与终态。
+const NativeConversationDirectoryName = "NativeConversation"
+
+// KnowledgeFilesDirectoryName 保存知识库上传原件。
+const KnowledgeFilesDirectoryName = "Knowledge"
+
+// IMFilesDirectoryName 保存外部消息附件与交付快照。
+const IMFilesDirectoryName = "IM"
 
 // AgentCLIRequestIDMaximumLength 是软件能力命令与收据查询共同接受的幂等标识长度上限。
 const AgentCLIRequestIDMaximumLength = 128
@@ -83,7 +92,7 @@ const AgentCLIRequestIDMaximumLength = 128
 const RuntimeStateDirectoryName = "runtime"
 
 // ChatForkDirectoryName 保存聊天分叉操作记录和暂存聚合目录。
-const ChatForkDirectoryName = "forks"
+const ChatForkDirectoryName = "Forks"
 
 // WorkflowFileMaximumBytes 限制单次上传或下载的文件字节数。
 const WorkflowFileMaximumBytes int64 = 100 << 20
@@ -124,7 +133,7 @@ const (
 
 const (
 	// WorkflowWorkspaceDirectoryName 是工作流稳定身份对应的受管文件父目录。
-	WorkflowWorkspaceDirectoryName = "workflow-workspaces"
+	WorkflowWorkspaceDirectoryName = "WorkflowWorkspaces"
 	// WorkflowWorkspaceInstructionFileName 是创作与节点共用的目录约束指令名。
 	WorkflowWorkspaceInstructionFileName = "WORKFLOW_WORKSPACE.md"
 	// WorkflowResultsInstructionFileName 是节点结果提交协议的智能体上下文名。
@@ -499,7 +508,7 @@ const (
 	// ChatLogFailureCode 是执行无法继续提交权威对话事实时保存的稳定错误码。
 	ChatLogFailureCode = "CHAT_LOG_ERROR"
 	// LocalCORSAllowedHeaders 是桌面 Renderer 跨源访问 Core 时允许携带的请求头。
-	LocalCORSAllowedHeaders = "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Accept, Origin, Cache-Control, X-Requested-With, Last-Event-ID"
+	LocalCORSAllowedHeaders = "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Accept, Origin, Cache-Control, X-Requested-With, Last-Event-ID, GinX-Lang-Header"
 	// LocalCORSAllowedMethods 是桌面 Renderer 跨源访问 Core 时允许使用的 HTTP 方法。
 	LocalCORSAllowedMethods = "POST, OPTIONS, GET, PUT, DELETE"
 	// MessageToolSafeSummaryMaxRunes 是工具安全摘要单个文本字段的最大字符数。

@@ -20,7 +20,7 @@ import (
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
-func TestAllyCLIRejectsRemovedPluginOperationsWithoutInstallation(t *testing.T) {
+func TestBotCLIRejectsRemovedPluginOperationsWithoutInstallation(t *testing.T) {
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

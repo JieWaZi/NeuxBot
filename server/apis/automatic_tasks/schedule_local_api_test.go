@@ -4,10 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net"
-	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -15,7 +12,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
-	"github.com/JieWaZi/NeuxBot/server/services/schedule"
 )
 
 func callLocal(s *taskAPI, method, url, token, key, body string) *httptest.ResponseRecorder {
@@ -24,7 +20,7 @@ func callLocal(s *taskAPI, method, url, token, key, body string) *httptest.Respo
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Idempotency-Key", key)
 	w := httptest.NewRecorder()
-	s.localHandler(s.service.GetAPIStatus().IP).ServeHTTP(w, r)
+	s.localHandler(constants.AutomaticTaskDefaultAPIIP).ServeHTTP(w, r)
 	return w
 }
 
@@ -48,7 +44,7 @@ func TestAutomaticLocalAPIContractAndSecurity(t *testing.T) {
 		r.Host = host
 		r.Header.Set("Authorization", "Bearer "+saved.Token)
 		w := httptest.NewRecorder()
-		h.api.localHandler(h.service.GetAPIStatus().IP).ServeHTTP(w, r)
+		h.api.localHandler(constants.AutomaticTaskDefaultAPIIP).ServeHTTP(w, r)
 		if w.Code != 401 {
 			t.Fatal("untrusted host accepted")
 		}
@@ -56,7 +52,7 @@ func TestAutomaticLocalAPIContractAndSecurity(t *testing.T) {
 	r := httptest.NewRequest("POST", "http://127.0.0.1:8431"+url, strings.NewReader(`{}`))
 	r.Header.Set("Origin", "http://127.0.0.1:1420")
 	w := httptest.NewRecorder()
-	h.api.localHandler(h.service.GetAPIStatus().IP).ServeHTTP(w, r)
+	h.api.localHandler(constants.AutomaticTaskDefaultAPIIP).ServeHTTP(w, r)
 	if w.Code != 401 || w.Header().Get("Access-Control-Allow-Origin") != "" {
 		t.Fatal("browser cross-origin request accepted")
 	}
@@ -119,95 +115,6 @@ func availableAPIPort(t *testing.T) int {
 	port := listener.Addr().(*net.TCPAddr).Port
 	_ = listener.Close()
 	return port
-}
-
-func assertAPIListening(t *testing.T, port int) {
-	t.Helper()
-	response, err := http.Get("http://127.0.0.1:" + strconv.Itoa(port) + "/v1/automatic-tasks/unknown/runs/unknown")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = response.Body.Close()
-	if response.StatusCode != 401 {
-		t.Fatal("listener bypassed token authentication")
-	}
-}
-
-func TestAutomaticAPIAddressAppliesPersistsAndKeepsOldOnConflict(t *testing.T) {
-	h := newHarness(t)
-	port := availableAPIPort(t)
-	if err := h.service.SetAPIAddress(context.Background(), "127.0.0.1", port); err != nil {
-		t.Fatal(err)
-	}
-	assertAPIListening(t, port)
-	// 同端口由回环切换到通配地址，验证旧监听互斥时仍可完成切换。
-	if err := h.service.SetAPIAddress(context.Background(), "0.0.0.0", port); err != nil {
-		t.Fatal(err)
-	}
-	assertAPIListening(t, port)
-	old := h.service.GetAPIStatus()
-	if old.IP != "0.0.0.0" || !old.Available {
-		t.Fatalf("address not applied: %+v", old)
-	}
-	occupied, err := net.Listen("tcp4", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = occupied.Close() })
-	blockedPort := occupied.Addr().(*net.TCPAddr).Port
-	if err := h.service.SetAPIAddress(context.Background(), "127.0.0.1", blockedPort); util.ErrorCode(err, status_error.AutomaticTaskServiceInvalid.Key()) != "AutomaticTaskAPIUnavailable" {
-		t.Fatalf("conflict accepted: %v", err)
-	}
-	if status := h.service.GetAPIStatus(); status != old {
-		t.Fatalf("conflict changed settings: %+v", status)
-	}
-	assertAPIListening(t, port)
-	reloaded := schedule.New(h.api.config)
-	if err := reloaded.Start(context.Background()); err != nil || reloaded.GetAPIStatus().IP != old.IP || reloaded.GetAPIStatus().Port != old.Port {
-		t.Fatalf("saved address changed on conflict: %+v %v", reloaded.GetAPIStatus(), err)
-	}
-	reloaded.Close()
-	_ = occupied.Close()
-	if err := h.service.SetAPIAddress(context.Background(), "127.0.0.1", blockedPort); err != nil {
-		t.Fatal(err)
-	}
-	assertAPIListening(t, blockedPort)
-	reloaded = schedule.New(h.api.config)
-	t.Cleanup(reloaded.Close)
-	if err := reloaded.Start(context.Background()); err != nil || reloaded.GetAPIStatus().IP != "127.0.0.1" || reloaded.GetAPIStatus().Port != blockedPort {
-		t.Fatal("updated address did not persist")
-	}
-}
-
-func TestAutomaticAPIAddressRollbackAfterPersistenceFailure(t *testing.T) {
-	h := newHarness(t)
-	port := availableAPIPort(t)
-	if err := h.service.SetAPIAddress(context.Background(), "127.0.0.1", port); err != nil {
-		t.Fatal(err)
-	}
-	old := h.service.GetAPIStatus()
-	invalidDirectory := filepath.Join(t.TempDir(), "file")
-	if err := os.WriteFile(invalidDirectory, []byte("occupied"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.RemoveAll(h.api.config.DataDirectory); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(h.api.config.DataDirectory, []byte("occupied"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.service.SetAPIAddress(context.Background(), "0.0.0.0", port); util.ErrorCode(err, status_error.AutomaticTaskServiceInvalid.Key()) != "AutomaticTaskAPIUnavailable" {
-		t.Fatalf("persistence failure accepted: %v", err)
-	}
-	if status := h.service.GetAPIStatus(); status != old {
-		t.Fatalf("rollback changed settings: %+v", status)
-	}
-	assertAPIListening(t, port)
-	for _, ip := range []string{"invalid", "127.0.0.1.evil.test", "224.0.0.1"} {
-		if err := h.service.SetAPIAddress(context.Background(), ip, port); util.ErrorCode(err, status_error.AutomaticTaskServiceInvalid.Key()) != "BadRequest" {
-			t.Fatalf("invalid IP accepted: %s %v", ip, err)
-		}
-	}
 }
 
 func TestAutomaticAPIHostMatchesConfiguredAddress(t *testing.T) {

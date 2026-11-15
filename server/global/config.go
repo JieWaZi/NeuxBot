@@ -191,7 +191,7 @@ func NewConfiguration() *Configuration {
 		Server: *server,
 		DB: conf.DB{
 			Type:   conf.Sqlite,
-			DBName: filepath.Join(".ally", "ally.db"),
+			DBName: filepath.Join(constants.ManagedFilesDirectoryName, "bot.db"),
 		},
 	}
 }
@@ -218,7 +218,7 @@ func Prepare(configuration *Configuration) error {
 	if configuration.DB.Type == conf.Sqlite {
 		if strings.TrimSpace(configuration.DB.DBName) == "" &&
 			strings.TrimSpace(configuration.DB.Dsn) == "" {
-			configuration.DB.DBName = filepath.Join(".ally", "ally.db")
+			configuration.DB.DBName = filepath.Join(constants.ManagedFilesDirectoryName, "bot.db")
 		}
 		databasePath := configuration.DB.DBName
 		if strings.TrimSpace(configuration.DB.Dsn) != "" {

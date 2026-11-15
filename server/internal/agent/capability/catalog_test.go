@@ -11,7 +11,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
-func TestAllyCLIReadmeMatchesRegisteredOperations(t *testing.T) {
+func TestBotCLIReadmeMatchesRegisteredOperations(t *testing.T) {
 	content, err := os.ReadFile(filepath.Join("..", "..", "..", "cmd", "botcli", "README.md"))
 	if err != nil {
 		t.Fatal(err)

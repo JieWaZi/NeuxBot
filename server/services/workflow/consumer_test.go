@@ -161,7 +161,7 @@ func TestConsumerCLIScopesReplayActualDefaultsAndRevocation(t *testing.T) {
 	if len(items) != 1 || items[0].(map[string]any)["id"] != definition.ID {
 		t.Fatalf("directory leaked unselected definition: %+v", items)
 	}
-	start := map[string]any{"action": "run.start", "workflowId": definition.ID, "requestId": "run", "args": map[string]any{"text": "ALLY"}}
+	start := map[string]any{"action": "run.start", "workflowId": definition.ID, "requestId": "run", "args": map[string]any{"text": "NEUXBOT"}}
 	first := call(start, false)["data"].(map[string]any)
 	second := call(start, false)["data"].(map[string]any)
 	runID, _ := first["runId"].(string)

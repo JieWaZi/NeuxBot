@@ -173,7 +173,7 @@ func TestPublishedMCPRequiresEnabledParentService(t *testing.T) {
 	if _, err = (&UpdateAPIService{Body: APIServiceInput{Enabled: false, IP: "127.0.0.1", Port: port, PublicBaseURL: "https://proxy.example.test/prefix"}}).Output(manage); err != nil {
 		t.Fatal(err)
 	}
-	if settings := listener.Settings(); !settings.MCPEnabled || settings.Available || settings.Enabled || listener.GetAPIStatus().Available {
+	if settings := listener.Settings(); !settings.MCPEnabled || settings.Available || settings.Enabled {
 		t.Fatal("MCP preference bypassed disabled parent", settings)
 	}
 	handler := NewPublishedHandler(nil, schedule.Config{}, "127.0.0.1")

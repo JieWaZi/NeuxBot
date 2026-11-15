@@ -58,7 +58,7 @@ func (s *Service) CreateDelivery(ctx context.Context, request DeliveryRequest) (
 	keepSnapshot := false
 	defer func() {
 		if snapshotID != "" && !keepSnapshot {
-			_ = os.RemoveAll(filepath.Join(s.config.DataDirectory, "im", "deliveries", snapshotID))
+			_ = os.RemoveAll(filepath.Join(s.config.DataDirectory, constants.IMFilesDirectoryName, "deliveries", snapshotID))
 		}
 	}()
 	digests := []string{}

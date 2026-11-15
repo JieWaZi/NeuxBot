@@ -261,7 +261,7 @@ func TestDeleteChatRemovesAuthorityIndexesAndManagedDirectories(t *testing.T) {
 	if _, err := os.Stat(workspaceFile); err != nil {
 		t.Fatalf("shared workspace file: %v", err)
 	}
-	nativeLogs, err := filepath.Glob(filepath.Join(chatService.storage.Root(), "native-conversations", "*.jsonl"))
+	nativeLogs, err := filepath.Glob(filepath.Join(chatService.storage.Root(), "NativeConversation", "*.jsonl"))
 	if err != nil || len(nativeLogs) != 1 {
 		t.Fatalf("native logs: %v %v", nativeLogs, err)
 	}

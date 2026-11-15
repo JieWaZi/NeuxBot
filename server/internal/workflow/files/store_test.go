@@ -17,7 +17,7 @@ import (
 
 func TestParseWorkspaceValidatesFrozenRunWithoutCreatingDirectories(t *testing.T) {
 	workflowID, runID := util.New(), util.New()
-	root := filepath.Join(t.TempDir(), "workflow-workspaces", workflowID)
+	root := filepath.Join(t.TempDir(), "WorkflowWorkspaces", workflowID)
 	value := map[string]any{"rootDirectory": root, "scriptsDirectory": filepath.Join(root, "scripts"), "stateDirectory": filepath.Join(root, "state"), "cacheDirectory": filepath.Join(root, "cache"), "temporaryDirectory": filepath.Join(root, "tmp"), "runsDirectory": filepath.Join(root, "runs"), "runDirectory": filepath.Join(root, "runs", runID)}
 	workspace, err := ParseWorkspace(value, workflowID, runID)
 	if err != nil || workspace.RootDirectory != root || workspace.RunDirectory != filepath.Join(root, "runs", runID) {
@@ -111,7 +111,7 @@ func TestUploadOwnershipAndIndependentRunFiles(t *testing.T) {
 		}
 	}
 	id, _, _ := referenceParts(upload.Reference)
-	if err := os.WriteFile(filepath.Join(data, "workflow-files", definition, id, "content"), bytes.Repeat([]byte{2}, len(content)), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(data, "WorkflowFiles", definition, id, "content"), bytes.Repeat([]byte{2}, len(content)), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Materialize(ctx, data, definition, task, util.New(), scope, upload.Reference); err == nil {
@@ -168,7 +168,7 @@ func TestManagedWorkspaceCreatesOwnedSubdirectories(t *testing.T) {
 }
 
 func TestManagedWorkspaceRejectsDirectorySymlinks(t *testing.T) {
-	for _, link := range []string{"workflow-workspaces", "workflow-workspaces/WORKFLOW", "workflow-workspaces/WORKFLOW/cache"} {
+	for _, link := range []string{"WorkflowWorkspaces", "WorkflowWorkspaces/WORKFLOW", "WorkflowWorkspaces/WORKFLOW/cache"} {
 		t.Run(link, func(t *testing.T) {
 			managed, outside, workflowID := t.TempDir(), t.TempDir(), util.New()
 			link = strings.ReplaceAll(link, "WORKFLOW", workflowID)

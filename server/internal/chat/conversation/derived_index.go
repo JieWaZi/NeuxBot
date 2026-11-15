@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	indexFilename          = "conversation-index.sqlite"
+	indexFilename          = "conversation-index.db"
 	indexWriteBatch        = 128
 	indexReadBatch         = 256
 	executionTerminalIndex = "conversation_execution_terminals"

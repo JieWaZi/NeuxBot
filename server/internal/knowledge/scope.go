@@ -1,4 +1,4 @@
-// Package knowledge 适配独立知识 SDK 与 Ally 执行协议，不拥有第二套知识状态。
+// Package knowledge 适配独立知识 SDK 与 Bot 执行协议，不拥有第二套知识状态。
 package knowledge
 
 import (

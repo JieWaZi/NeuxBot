@@ -782,7 +782,7 @@ func TestThreadTurnReaderCommitsAutonomousOutcomeWithoutWaiter(t *testing.T) {
 	}
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		paths, err := filepath.Glob(filepath.Join(filepath.Dir(indexPath), "native-conversations", "*.jsonl"))
+		paths, err := filepath.Glob(filepath.Join(filepath.Dir(indexPath), "NativeConversation", "*.jsonl"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1451,7 +1451,7 @@ func TestThreadTurnAutonomousProcessFragmentUsesKnownNativeScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	paths, err := filepath.Glob(filepath.Join(filepath.Dir(indexPath), "native-conversations", "*.jsonl"))
+	paths, err := filepath.Glob(filepath.Join(filepath.Dir(indexPath), "NativeConversation", "*.jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,7 +9,7 @@ server:
 
 db:
   type: sqlite
-  dbname: .ally/ally.db
+  dbname: .neuxbot/bot.db
   showlog: false
 
 security:

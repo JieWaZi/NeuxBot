@@ -400,7 +400,7 @@ func (s *Service) downloadInput(ctx context.Context, input *models.IMInbox) erro
 	if platform == nil {
 		return status_error.IMConfigurationInvalid
 	}
-	directory := filepath.Join(s.config.DataDirectory, "im", "inbox", input.ID)
+	directory := filepath.Join(s.config.DataDirectory, constants.IMFilesDirectoryName, "inbox", input.ID)
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return status_error.IMFileInvalid
 	}

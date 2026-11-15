@@ -3,6 +3,7 @@ package knowledge
 import (
 	"context"
 	"errors"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/neux-knowledge/core"
@@ -12,11 +13,11 @@ import (
 
 // Open 使用专属 SQLite 和 raw 目录；损坏或迁移失败不回退空库。
 func Open(ctx context.Context, dataDirectory, managedDirectory string) (*core.Engine, error) {
-	engine, err := core.Open(ctx, core.Options{DBPath: filepath.Join(dataDirectory, "knowledge", "knowledge.db"), RawDir: filepath.Join(managedDirectory, "knowledge", "raw")})
+	engine, err := core.Open(ctx, core.Options{DBPath: filepath.Join(dataDirectory, "knowledge", "knowledge.db"), RawDir: filepath.Join(managedDirectory, constants.KnowledgeFilesDirectoryName, "raw")})
 	return engine, MapError(err)
 }
 
-// MapError 在独立 SDK 首次进入 Ally 时翻译稳定错误并保留原始诊断日志。
+// MapError 在独立 SDK 首次进入 Bot 时翻译稳定错误并保留原始诊断日志。
 func MapError(err error) error {
 	if err == nil {
 		return nil

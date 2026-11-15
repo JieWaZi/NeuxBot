@@ -69,10 +69,10 @@ func TestWorkflowAPIUploadsUseManagedRootSeparateFromProgramData(t *testing.T) {
 	if err != nil || string(content) != "input content" {
 		t.Fatalf("frozen input is unavailable: %q %v", content, err)
 	}
-	if _, err := os.Stat(filepath.Join(h.api.config.ManagedFilesDirectory, "workflow-files", definition.ID)); err != nil {
+	if _, err := os.Stat(filepath.Join(h.api.config.ManagedFilesDirectory, "WorkflowFiles", definition.ID)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(h.api.config.DataDirectory, "workflow-files")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(h.api.config.DataDirectory, "WorkflowFiles")); !os.IsNotExist(err) {
 		t.Fatalf("workflow uploads leaked into program data root: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(h.api.config.DataDirectory, "integration-api.json")); err != nil {

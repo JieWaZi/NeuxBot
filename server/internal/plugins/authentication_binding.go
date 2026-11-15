@@ -143,7 +143,7 @@ func validateSkillAuthenticationBindings(pkg Package) error {
 }
 
 func forbiddenSkillEnvironment(key string) bool {
-	for _, prefix := range []string{"LD_", "DYLD_", "PYTHON", "NEUXALLY_", "NEUXBOT_", "ALLY", "CODEX", "CLAUDE", "NODE_"} {
+	for _, prefix := range []string{"LD_", "DYLD_", "PYTHON", "NEUXALLY_", "ALLY", "BOTCLI", "NEUXBOT", "CODEX", "CLAUDE", "NODE_"} {
 		if strings.HasPrefix(key, prefix) {
 			return true
 		}

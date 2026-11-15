@@ -576,7 +576,7 @@ func TestDiscoverInstallationsStillFindsPATHAfterExplicitSelection(t *testing.T)
 	}
 }
 
-func TestLaunchOverrideArgumentsAllowedRejectsAllyManagedArguments(t *testing.T) {
+func TestLaunchOverrideArgumentsAllowedRejectsBotManagedArguments(t *testing.T) {
 	tests := []struct {
 		// name identifies the test scenario.
 		name string

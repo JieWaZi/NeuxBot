@@ -2,9 +2,11 @@
 
 ## 权威数据
 
-业务 SQLite 保存伙伴、项目、账号、资源、团队和工作流等配置及状态；Chat JSONL 保存完整消息事实；memory.db 保存长期记忆与向量、关键词索引。生成视图、文件索引与查询投影不作为第二份权威内容。
+业务 SQLite 保存伙伴、项目、账号、资源、团队和工作流等配置及状态；Chat JSONL 与规范原生 JSONL 共同保存聊天事实；memory.db 保存长期记忆与向量、关键词索引。生成视图、文件索引与查询投影不作为第二份权威内容。
 
-Chat 的固定文件索引定位原日志范围；业务 SQLite 中的 `chat_execution_locations` 和覆盖游标只建立原 Chat/执行/提交身份到日志序号的查询关系，不保存执行状态、正文、配置或结果。精确状态查询回到这些位置读取原事实，正常缺失身份不遍历完整日志或固定索引。定位覆盖落后只追平原日志尾部；缺失、截短或损坏按原日志恢复，删除 Chat 时一起清理定位投影。
+受管根目录中的 `conversation-index.db` 是 Chat 与规范原生日志共用的派生 SQLite 索引，只保存日志覆盖、字节位置、消息／执行／输入身份、原生引用与分页关系，不保存完整消息正文。读取正文回到 JSONL，索引缺失或损坏时按日志重建；它不是聊天备份。业务配置库与该索引分别管理。
+
+业务 SQLite 中的 `chat_execution_locations` 和覆盖游标只建立原 Chat/执行/提交身份到日志序号的查询关系，不保存执行状态、正文、配置或结果。精确状态查询回到这些位置读取原事实，正常缺失身份不遍历完整日志。定位覆盖落后只追平原日志尾部；缺失、截短或损坏按原日志恢复，删除 Chat 时一起清理定位投影。
 
 `internal/chatstorage` 按所有者派生聊天私有目录、伙伴工作目录与团队目录。普通聊天共享伙伴固定 cwd，日志、附件原件和成果仍按 Chat 隔离。Chat 保存首次批准的规范授权根；每轮只采用仍可用且解析身份不变的子集，供原生目录、项目入口、指令及能力共同使用。附加项目离线不阻止无关追问，明确引用离线文件时准确报错；受管 cwd 必须存在且归属正确，符号链接改指向不产生新授权。
 
@@ -12,22 +14,30 @@ Chat 的固定文件索引定位原日志范围；业务 SQLite 中的 `chat_exe
 
 产品名为 NeuxBot；应用标识与默认程序数据目录为 `com.neuxbot.desktop`，受管业务文件根为 `.neuxbot`。两者分别拥有程序状态与业务文件。
 
-程序数据目录沿用桌面平台的应用数据位置，由 `ALLY_DATA_DIR` 指定；数据库 `ally.db`、`memory.db`，技能目录 `skills/`、`system-skills/`，插件不可变原包 `plugins/content/` 与无秘密目标缓存 `plugins/targets/`，独立账号目录 `ai-accounts/`、`account-workspaces/`，受管程序目录 `runtime-installations/`，执行授权描述 `agent-contexts/`，以及 Electron 数据、程序日志和 `automatic-tasks-api.json` 均保留于此。
+程序数据目录沿用桌面平台的应用数据位置，由 `NEUXBOT_DATA_DIR` 指定；数据库 `bot.db`、`memory.db`，技能目录 `skills/`、`system-skills/`，插件不可变原包 `plugins/content/` 与无秘密目标缓存 `plugins/targets/`，独立账号目录 `ai-accounts/`、`account-workspaces/`，受管程序目录 `runtime-installations/`，执行授权描述 `agent-contexts/`，以及 Electron 数据、程序日志和 `integration-api.json` 均保留于此。
 
-受管业务文件默认位于用户主目录的 `~/.neuxally/`，可以通过 `ALLY_MANAGED_FILES_DIR` 独立指定，不改变数据库和程序数据位置：
+受管业务文件默认位于用户主目录的 `~/.neuxbot/`，可以通过 `NEUXBOT_MANAGED_FILES_DIR` 独立指定，不改变数据库和程序数据位置。一级受管目录统一使用 PascalCase，当前共 12 类，按实际使用创建；下面的文件和内部子目录不参与一级目录计数：
 
-| 路径                                                      | 职责                                                |
-| --------------------------------------------------------- | --------------------------------------------------- |
-| `Plugins/{catalog,details,archives}/`                     | 插件目录、公开资料及完整包的持久分发缓存            |
-| `Agents/<waker-id>/`                                      | 伙伴固定 cwd 与空间目录，普通聊天共享并自由组织成果 |
-| `<cwd>/.neuxbot/plugin-views/<集合摘要>/<CLI>/<插件ID>/`  | 当前资源租约持有的无秘密原生插件视图                |
-| `<cwd>/projects/<chat-id>/`                               | 仅不支持原生附加目录时使用的受管项目链接入口        |
-| `Conversations/<chat-id>/{log,attachments,file-results}/` | 普通与团队聊天各自的日志、附件原件及不可变文件成果  |
-| `Workspaces/<thread-id>/{leader,members,shared}/`         | 团队负责人、成员 cwd 与真实共享文件目录             |
-| `workflow-workspaces/<workflow-id>/`                      | 工作流脚本、状态、缓存和运行文件的固定根目录        |
-| `workflow-files/`                                         | 上传原件与 `metadata.json` 归属信息                 |
-| `im/{inbox,deliveries,workspaces}/`                       | IM 接收附件、交付快照和默认工作区                   |
-| `forks/`、`deletions/`、`provisioning/`                   | 分叉、删除和团队创建操作的持久记录与暂存文件        |
+| 路径 | 职责 |
+| --- | --- |
+| `Agents/<waker-id>/` | 伙伴固定 cwd 与空间目录，普通聊天共享并自由组织成果 |
+| `Conversations/<chat-id>/{log,attachments,file-results}/` | 普通与团队聊天各自的日志、附件原件及不可变文件成果 |
+| `NativeConversation/<00..3f>.jsonl` | 规范原生输出、工具过程、终态与用量，按原生会话散列到最多 64 个共享分片 |
+| `Plugins/{catalog,details,archives}/` | 插件目录、公开资料及完整包的持久分发缓存 |
+| `Knowledge/raw/` | 知识库上传原件；知识数据库位于程序数据目录 |
+| `Workspaces/<thread-id>/{leader,members,shared}/` | 团队负责人、成员 cwd 与真实共享文件目录 |
+| `WorkflowWorkspaces/<workflow-id>/` | 工作流脚本、状态、缓存和运行文件的固定根目录 |
+| `WorkflowFiles/` | 上传原件与 `metadata.json` 归属信息 |
+| `IM/{inbox,deliveries}/` | IM 接收附件与交付快照 |
+| `Forks/` | 聊天分叉操作记录与暂存文件 |
+| `Deletions/` | 删除操作记录与暂存文件 |
+| `Provisioning/` | 团队创建过程的暂存文件 |
+
+伙伴或执行 cwd 下的 `.neuxbot/plugin-views/<集合摘要>/<CLI>/<插件ID>/` 是当前资源租约持有的无秘密插件视图；`projects/<chat-id>/` 只在 CLI 不支持原生附加目录时提供受管项目链接入口。这两类目录属于 cwd 内部布局。
+
+公开日志 `Conversations/<chat-id>/log/<chat-id>.jsonl` 保存用户消息、业务生命周期、原生绑定、输入接纳及原生消息／终态引用；智能体输出正文和工具过程在 `NativeConversation` 中保存，公开日志不重复复制正文。相同正文的终态继续引用已保存的原生正文。独立文本生成、交接总结等没有公开 Chat 的调用也使用该规范原生存储。分片属于受管根，不是一聊一文件。
+
+CLI 还可能在自己的原生目录保存厂商历史。因此一次聊天可能涉及公开日志、规范原生日志、厂商历史三层持久记录，但应用内前两层按职责拆分，不是三份完整聊天 JSONL。厂商历史由对应 CLI 管理；删除聊天按原生会话引用清理本应用分片中的独占记录，保留仍被其他 Chat 引用的内容。
 
 工作区使用 `workspace-owner.json` 标记实际所有者。Agent 在固定空间内按任务组织成果，宿主无需为普通执行预建 `outputs`、`tmp` 或每轮子目录。临时处理使用原生客户端支持的系统临时目录，成果采集覆盖业务文件。原生输入携带当前 Chat 明确引用的附件原件路径，聊天私有目录不加入原生授权根。全权限执行中的实际文件访问由所选 CLI 决定。账号配置与授权描述保留在程序数据目录，文件服务排除这些私有内容。智能体约定的 `.agents/`、`.claude/` 等技能发现目录保持原名，不作为空间业务成果。
 
@@ -37,7 +47,7 @@ Chat 的固定文件索引定位原日志范围；业务 SQLite 中的 `chat_exe
 
 项目入口只指向已冻结的真实目录，按 Chat 隔离，不替换或扫描删除其他聊天的入口；文件授权和成果身份仍以真实路径为准。Chat 删除通过既有删除记录清理自己拥有的入口，团队或伙伴聚合删除时由所属父目录一次清理。链接入口不等于额外的原生沙箱能力。
 
-目录按当前布局直接读写，不执行旧目录迁移或旧名称回退。用户选择的真实项目目录与智能体自行管理的原生目录保留原位置。
+目录按当前布局直接读写，不执行旧目录迁移或旧名称回退；旧安装的目录和数据库不会被自动移动或删除。当前代码不创建旧的 `chat/` 或 `conversation-index-v3.sqlite`。用户选择的真实项目目录与智能体自行管理的原生目录保留原位置。
 
 `Conversations/<chat-id>/file-results/` 保存该 Chat 独有的文件成果记录、私有 Git 对象与有界差异计划，不写用户仓库的 index、refs 或对象目录。分叉复制所需附件与不可变成果，父 Chat 删除后仍可读取；删除 Chat 只清理其私有内容，不删除共享伙伴 cwd。默认采集空间业务文件和本轮重新核验的授权工作目录中的净变更。采集排除内部技能、原生配置、归属文件和带有效归属标记的受管项目入口，空间里自行创建的 `projects/` 文件仍可采集。授权根外本轮显式引用的旧成果保留原路径，精确到文件参与采集与交付，父目录和同级文件不因此获得授权；只有用户要求另存时才复制。共享空间或项目上的差异不证明某个执行独占修改。
 
@@ -47,7 +57,7 @@ Chat 的固定文件索引定位原日志范围；业务 SQLite 中的 `chat_exe
 
 ## 工作流目录
 
-工作流内部文件只使用 `workflow-workspaces/<workflow-id>/`。`scripts/` 保存草稿与从不可变版本物化的脚本，`state/` 保存跨运行配置和状态，`cache/` 保存缓存，`tmp/` 保存验证、进程和接纳前输入的临时文件，`runs/<run-id>/` 隔离每次运行的默认业务文件。冻结输入位于该工作流根内的 `workflow-inputs/<run-id>/`。目录由宿主创建并限制私有权限，内部软链接不能把这些目录改绑到根外。源码和版本 Bundle 仍是权威，磁盘脚本副本不能覆盖版本内容。
+工作流内部文件只使用 `WorkflowWorkspaces/<workflow-id>/`。`scripts/` 保存草稿与从不可变版本物化的脚本，`state/` 保存跨运行配置和状态，`cache/` 保存缓存，`tmp/` 保存验证、进程和接纳前输入的临时文件，`runs/<run-id>/` 隔离每次运行的默认业务文件。冻结输入位于该工作流根内的 `workflow-inputs/<run-id>/`。目录由宿主创建并限制私有权限，内部软链接不能把这些目录改绑到根外。源码和版本 Bundle 仍是权威，磁盘脚本副本不能覆盖版本内容。
 
 `workflow.authoring.prepare` 的 `workflow.workspace` 与 `workflow.source.get` 的 `workspace` 返回同一真实绝对目录；`flowContext.workspace` 再提供本次 `runDirectory`。这些路径来自配置的受管根，智能体不得猜测主目录或临时目录，也不得把脚本、缓存或状态路径作为业务参数让用户填写。创作与 worker 通过本次执行上下文获得目录约束；worker cwd 位于工作流临时根的 `workers/<effect-id>/`，由工作流拥有，固定工作流根作为冻结的额外授权目录。删除技术 Chat 不删除该领域工作区。
 

@@ -8,12 +8,13 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"gorm.io/gorm"
 )
 
-const nativeDirectory = "native-conversations"
+const nativeDirectory = constants.NativeConversationDirectoryName
 
 func adapterRowID(session agent.NativeSessionKey, adapterID string) []byte {
 	return nativeRowID(agent.NativeResultKey{Session: session, InvocationID: adapterID})

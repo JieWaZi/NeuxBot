@@ -39,7 +39,7 @@ type Expertise struct {
 	Description string `json:"description"`
 }
 
-// Projection 是从三份权威档案解析出的展示摘要。
+// Projection 保存伙伴或角色模板的结构化展示摘要。
 type Projection struct {
 	// Expertise 是按原始顺序展示的擅长领域。
 	Expertise []Expertise `json:"expertise"`
@@ -49,7 +49,7 @@ type Projection struct {
 	WorkMethods []WorkMethod `json:"workMethods"`
 }
 
-// Revision 标识当前概览内容，供编辑器提交时检测其他来源的修改。
+// Revision 标识当前概览内容，供档案修订检测其他来源的修改。
 func (p Projection) Revision() string {
 	// 概览只含字符串和列表，可以完整编码为 JSON。
 	data, _ := json.Marshal(p)
@@ -72,13 +72,13 @@ type DocumentsInput struct {
 	Playbook *string `json:"playbook,omitempty"`
 }
 
-// ManualInput 保存手动填写模式下的结构化摘要输入。
+// ManualInput 保存角色模板或 AI 建档、优化提交的结构化摘要输入。
 type ManualInput struct {
-	// Expertise 是需要写入身份档案固定区域的擅长领域。
+	// Expertise 是需要保存的擅长领域及其说明。
 	Expertise []Expertise `json:"expertise"`
-	// WorkStyle 是需要写入角色风格档案固定区域的工作风格。
+	// WorkStyle 是需要保存的工作风格。
 	WorkStyle []string `json:"workStyle"`
-	// WorkMethods 是需要写入工作方式档案固定区域的具名过程。
+	// WorkMethods 是需要保存的具名工作过程及其步骤。
 	WorkMethods []WorkMethod `json:"workMethods"`
 }
 
@@ -147,8 +147,7 @@ func ParseDocuments(documents map[constants.ProfileDocumentKind]string) Projecti
 	}
 }
 
-// ProjectionFromManual 直接把手动结构化输入规整为展示投影，供伙伴独立编辑
-// 关于我时使用；它按与 ParseDocuments 相同的规则去除空白与空项，但不改写 MD 档案。
+// ProjectionFromManual 将结构化摘要输入规整为展示投影，去除空白与空项，不改写档案正文。
 func ProjectionFromManual(manual ManualInput) Projection {
 	projection := Projection{
 		Expertise:   make([]Expertise, 0, len(manual.Expertise)),

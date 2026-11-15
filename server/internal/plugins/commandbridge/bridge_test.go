@@ -65,11 +65,11 @@ func testDriver(t *testing.T, mode string) *Driver {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(Config{Command: binary, Args: []string{"-test.run=^TestBridgeProcess$"}, Directory: t.TempDir(), DataDirectory: t.TempDir(), PluginID: "plugin-one", VersionID: "version-one", Digest: strings.Repeat("a", 64), ConfigurationRevision: 3, AccountGeneration: 2, Environment: append(os.Environ(), "NEUXALLY_BRIDGE_TEST="+mode)})
+	return New(Config{Command: binary, Args: []string{"-test.run=^TestBridgeProcess$"}, Directory: t.TempDir(), DataDirectory: t.TempDir(), PluginID: "plugin-one", VersionID: "version-one", Digest: strings.Repeat("a", 64), ConfigurationRevision: 3, AccountGeneration: 2, Environment: append(os.Environ(), "PLUGIN_BRIDGE_FIXTURE="+mode)})
 }
 
 func TestBridgeProcess(t *testing.T) {
-	mode := os.Getenv("NEUXALLY_BRIDGE_TEST")
+	mode := os.Getenv("PLUGIN_BRIDGE_FIXTURE")
 	if mode == "" {
 		return
 	}
@@ -143,12 +143,12 @@ func TestBridgeProcess(t *testing.T) {
 				params["deadlineAt"] = time.Now().Add(200 * time.Millisecond).UnixMilli()
 			}
 			if mode == "qr" {
-				params["actions"] = []any{map[string]any{"type": "show-qr", "value": os.Getenv("NEUXALLY_QR_VALUE")}}
+				params["actions"] = []any{map[string]any{"type": "show-qr", "value": os.Getenv("PLUGIN_QR_FIXTURE")}}
 			}
 			if mode == "notice" {
 				encoded, _ := json.Marshal(params)
 				// 直接写原始 JSON，确保非法 UTF-8 不会被测试编码器替换。
-				fmt.Fprintf(os.Stdout, `{"jsonrpc":"2.0","method":"auth/challenge","params":%s,"notice":%s}}`+"\n", encoded[:len(encoded)-1], os.Getenv("NEUXALLY_NOTICE_JSON"))
+				fmt.Fprintf(os.Stdout, `{"jsonrpc":"2.0","method":"auth/challenge","params":%s,"notice":%s}}`+"\n", encoded[:len(encoded)-1], os.Getenv("PLUGIN_NOTICE_FIXTURE"))
 			} else {
 				_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"jsonrpc": "2.0", "method": "auth/challenge", "params": params})
 			}
@@ -247,7 +247,7 @@ func TestBridgeCancellationStopsProcessAndRejectsSecretScopeEscape(t *testing.T)
 }
 
 func TestBridgeChallengeNoticeIsPluginDeclared(t *testing.T) {
-	t.Setenv("NEUXALLY_NOTICE_JSON", `{"messages":{"en":"Scan again to authorize permissions","zh-CN":"首次扫码完成后，还需再次扫码授权权限"}}`)
+	t.Setenv("PLUGIN_NOTICE_FIXTURE", `{"messages":{"en":"Scan again to authorize permissions","zh-CN":"首次扫码完成后，还需再次扫码授权权限"}}`)
 	var messages map[string]string
 	err := testDriver(t, "notice").LoginSession(context.Background(), "session-one", nil, func(device authorization.Device) error {
 		raw, _ := json.Marshal(device)
@@ -282,7 +282,7 @@ func TestBridgeRejectsInvalidChallengeNotices(t *testing.T) {
 		"wrong-type":       `{"messages":{"en":2}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			t.Setenv("NEUXALLY_NOTICE_JSON", raw)
+			t.Setenv("PLUGIN_NOTICE_FIXTURE", raw)
 			reported := false
 			err := testDriver(t, "notice").LoginSession(context.Background(), "session-one", nil, func(authorization.Device) error { reported = true; return nil })
 			if err == nil || reported {
@@ -295,7 +295,7 @@ func TestBridgeRejectsInvalidChallengeNotices(t *testing.T) {
 func TestBridgePreservesQRPayloadAndRejectsInvalidImages(t *testing.T) {
 	pngData := testQRPNG(t, 192, 192)
 	for _, value := range []string{"custom://official?token=a%2Fb", constants.PluginAuthQRPNGPrefix + base64.StdEncoding.EncodeToString(pngData)} {
-		t.Setenv("NEUXALLY_QR_VALUE", value)
+		t.Setenv("PLUGIN_QR_FIXTURE", value)
 		var actual string
 		err := testDriver(t, "qr").LoginSession(context.Background(), "session-one", nil, func(device authorization.Device) error {
 			actual = device.Actions[0].Value
@@ -306,7 +306,7 @@ func TestBridgePreservesQRPayloadAndRejectsInvalidImages(t *testing.T) {
 		}
 	}
 	for _, value := range []string{"data:image/svg+xml;base64,PHN2Zy8+", constants.PluginAuthQRPNGPrefix + base64.StdEncoding.EncodeToString(pngData[:len(pngData)-1])} {
-		t.Setenv("NEUXALLY_QR_VALUE", value)
+		t.Setenv("PLUGIN_QR_FIXTURE", value)
 		reported := false
 		err := testDriver(t, "qr").LoginSession(context.Background(), "session-one", nil, func(authorization.Device) error { reported = true; return nil })
 		if err == nil || reported {

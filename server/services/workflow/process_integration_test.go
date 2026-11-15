@@ -89,7 +89,7 @@ func TestFunctionWorkflowRunsARealChildProcess(t *testing.T) {
 	t.Cleanup(s.Close)
 	state := waitWorkflow(t, s, run.ID, func(state controllers.WorkflowRunState) bool { return workflowstate.TerminalRun(state.Run.Status) })
 	data, ok := state.Run.Result.(map[string]any)
-	if state.Run.Status != constants.WorkflowRunStatusSucceeded || !ok || data["message"] != "ALLY ALLY!" || data["length"] != float64(10) {
+	if state.Run.Status != constants.WorkflowRunStatusSucceeded || !ok || data["message"] != "BOT BOT!" || data["length"] != float64(8) {
 		t.Fatalf("real function: %+v %+v", state.Run, state.Instances)
 	}
 }

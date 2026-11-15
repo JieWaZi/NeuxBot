@@ -84,7 +84,7 @@ func TestRealWebTerminalHTTPStreamAndLogout(t *testing.T) {
 	request, _ := http.NewRequest("POST", server.URL+"/api/v1/terminals", strings.NewReader(string(body)))
 	request.AddCookie(cookie)
 	request.Header.Set("Origin", server.URL)
-	request.Header.Set("X-Ally-CSRF", session.CSRF)
+	request.Header.Set("X-Bot-CSRF", session.CSRF)
 	request.Header.Set("Content-Type", "application/json")
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {

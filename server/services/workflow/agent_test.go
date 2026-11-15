@@ -148,7 +148,7 @@ func testAgentRunFileScope(t *testing.T, exact bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	internal := filepath.Join(managed, "workflow-workspaces", definition.ID)
+	internal := filepath.Join(managed, "WorkflowWorkspaces", definition.ID)
 	if !strings.HasPrefix(frozen, internal+string(filepath.Separator)) {
 		t.Fatalf("input snapshot escaped workflow storage: %s", frozen)
 	}

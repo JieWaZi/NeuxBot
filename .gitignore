@@ -40,7 +40,7 @@ packages/*/dist/
 coverage/
 
 # Core 本机运行与测试产物
-server/.ally/
+server/.neuxbot/
 server/bin/
 server/coverage.out
 server/coverage.html

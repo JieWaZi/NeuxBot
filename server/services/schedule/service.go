@@ -151,9 +151,6 @@ func New(config Config) *Service {
 	return s
 }
 
-// APIStatus 继续使用原任务状态合同，实际状态归集成监听所有者。
-type APIStatus = integrationapi.ListenerStatus
-
 // LocalHandlerFactory 把 API 层的真实 HTTP 入口注入后台监听器。
 type LocalHandlerFactory func(*Service, Config, string) http.Handler
 
@@ -412,14 +409,6 @@ func (s *Service) begin(ctx context.Context) (context.Context, func(), error) {
 	stop := context.AfterFunc(s.ctx, cancel)
 	s.workers.Add(1)
 	return linked, func() { stop(); cancel(); s.workers.Done() }, nil
-}
-
-// GetAPIStatus 从唯一发布服务读取实际监听事实。
-func (s *Service) GetAPIStatus() APIStatus { return s.apiOwner.GetAPIStatus() }
-
-// SetAPIAddress 由旧入口修改同一个集成服务，不再保存第二份配置。
-func (s *Service) SetAPIAddress(ctx context.Context, ip string, port int) error {
-	return s.apiOwner.SetAPIAddress(ctx, ip, port)
 }
 
 // SealWaker 为伙伴聚合删除持有接纳边界，返回必须释放的恢复函数。

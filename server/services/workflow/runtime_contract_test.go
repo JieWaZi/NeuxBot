@@ -36,7 +36,7 @@ func TestRunWorkspaceUsesWorkflowIdentityAndPrivateRunDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	root, _ := filepath.EvalSymlinks(s.dataDirectory)
-	want := filepath.Join(root, "workflow-workspaces", definition.ID)
+	want := filepath.Join(root, "WorkflowWorkspaces", definition.ID)
 	if first.ScopeBinding.WorkingDirectory != want || second.ScopeBinding.WorkingDirectory != want {
 		t.Fatalf("runs did not share workflow directory: %s %s", first.ScopeBinding.WorkingDirectory, second.ScopeBinding.WorkingDirectory)
 	}
@@ -427,7 +427,7 @@ func TestPythonScriptUsesManagedSourceCwdAndTemporaryFiles(t *testing.T) {
 	}
 	data := value.(map[string]any)["data"].(map[string]any)
 	root, _ := filepath.EvalSymlinks(s.dataDirectory)
-	root = filepath.Join(root, "workflow-workspaces", definition.ID)
+	root = filepath.Join(root, "WorkflowWorkspaces", definition.ID)
 	if !strings.HasPrefix(data["source"].(string), filepath.Join(root, "scripts")+string(filepath.Separator)) || data["cwd"] != filepath.Join(root, "runs", run.ID) || data["tmp"] != filepath.Join(root, "tmp") || data["cache"] != filepath.Join(root, "cache") {
 		t.Fatalf("Python used unmanaged paths: %#v", data)
 	}

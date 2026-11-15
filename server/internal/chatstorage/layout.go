@@ -20,7 +20,7 @@ const (
 	teamLeaderDirectoryName   = "leader"
 	teamMembersDirectory      = "members"
 	teamSharedDirectoryName   = "shared"
-	provisioningDirectoryName = "provisioning"
+	provisioningDirectoryName = "Provisioning"
 )
 
 // Layout 封装受管文件根目录中 Chat/Team 聚合路径的全部拼接规则。

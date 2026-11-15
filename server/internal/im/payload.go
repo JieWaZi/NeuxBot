@@ -143,7 +143,7 @@ func FreezeFile(dataDirectory, id string, index int, path string, roots, files [
 	if err != nil || !info.Mode().IsRegular() || info.Size() > constants.IMFileMaximumBytes {
 		return result, status_error.IMFileInvalid
 	}
-	folder := filepath.Join(dataDirectory, "im", "deliveries", id)
+	folder := filepath.Join(dataDirectory, constants.IMFilesDirectoryName, "deliveries", id)
 	if err := os.MkdirAll(folder, 0700); err != nil {
 		return result, status_error.IMFileInvalid
 	}

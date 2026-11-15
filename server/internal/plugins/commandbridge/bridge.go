@@ -226,7 +226,7 @@ func (d *Driver) Resolve(ctx context.Context, components []Component) ([]Binding
 				return nil, status_error.PluginForbidden
 			}
 			upper := strings.ToUpper(key)
-			if len(accountconfig.Environment([]string{key + "=probe"})) == 0 || !environmentNamePattern.MatchString(key) || upper == "USERPROFILE" || upper == "APPDATA" || upper == "LOCALAPPDATA" || upper == "PWD" || upper == "OLDPWD" || upper == "SHELL" || upper == "ENV" || upper == "BASH_ENV" || upper == "ZDOTDIR" || strings.HasPrefix(upper, "LD_") || strings.HasPrefix(upper, "DYLD_") || strings.HasPrefix(upper, "PYTHON") || strings.HasPrefix(upper, "NEUXALLY_") || upper == "HOME" || strings.HasPrefix(upper, "ALLY") || strings.HasPrefix(upper, "CODEX") || strings.HasPrefix(upper, "CLAUDE") || strings.HasPrefix(upper, "NODE_") {
+			if len(accountconfig.Environment([]string{key + "=probe"})) == 0 || !environmentNamePattern.MatchString(key) || upper == "USERPROFILE" || upper == "APPDATA" || upper == "LOCALAPPDATA" || upper == "PWD" || upper == "OLDPWD" || upper == "SHELL" || upper == "ENV" || upper == "BASH_ENV" || upper == "ZDOTDIR" || strings.HasPrefix(upper, "LD_") || strings.HasPrefix(upper, "DYLD_") || strings.HasPrefix(upper, "PYTHON") || strings.HasPrefix(upper, "NEUXALLY_") || strings.HasPrefix(upper, "ALLY") || strings.HasPrefix(upper, "BOTCLI") || upper == "HOME" || strings.HasPrefix(upper, "NEUXBOT") || strings.HasPrefix(upper, "CODEX") || strings.HasPrefix(upper, "CLAUDE") || strings.HasPrefix(upper, "NODE_") {
 				return nil, status_error.PluginForbidden
 			}
 			if (strings.HasSuffix(upper, "_DIR") || strings.HasSuffix(upper, "_DIRECTORY") || strings.HasSuffix(upper, "_FILE")) && value != "" {
@@ -279,7 +279,7 @@ func (d *Driver) call(ctx context.Context, method, id string, scopes []string, c
 	for index := len(command.Env) - 1; index >= 0; index-- {
 		key, _, _ := strings.Cut(command.Env[index], "=")
 		upper := strings.ToUpper(key)
-		if strings.HasPrefix(upper, "GH_") || strings.HasPrefix(upper, "GITHUB_") || strings.HasPrefix(upper, "LARKSUITE_CLI_") || strings.HasPrefix(upper, "ALLY") {
+		if strings.HasPrefix(upper, "GH_") || strings.HasPrefix(upper, "GITHUB_") || strings.HasPrefix(upper, "LARKSUITE_CLI_") || strings.HasPrefix(upper, "NEUXBOT") {
 			command.Env = append(command.Env[:index], command.Env[index+1:]...)
 		}
 	}

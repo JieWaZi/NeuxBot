@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	deletionDirectoryName        = "deletions"
+	deletionDirectoryName        = "Deletions"
 	deletionIntentDirectoryName  = "intents"
 	deletionStagingDirectoryName = "staging"
 	deletionIntentVersion        = 1

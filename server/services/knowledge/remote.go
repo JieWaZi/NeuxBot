@@ -182,7 +182,7 @@ func (a *RemoteAdapter) Maintain(ctx context.Context, in httpapi.MaintenanceRequ
 
 var _ httpapi.ExecutionPort = (*RemoteAdapter)(nil)
 
-// remoteBoundaryError 在专用服务器外部边界翻译Ally稳定错误，不泄露本机诊断。
+// remoteBoundaryError 在专用服务器外部边界翻译Bot稳定错误，不泄露本机诊断。
 func remoteBoundaryError(err error) error {
 	if err == nil {
 		return nil

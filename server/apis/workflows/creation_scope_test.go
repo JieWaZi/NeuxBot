@@ -294,7 +294,7 @@ func TestWorkflowConsumerValidationPreservesResolvedNativeDefaults(t *testing.T)
 	}
 }
 
-func TestWorkflowCreationReusesExistingAlly(t *testing.T) {
+func TestWorkflowCreationReusesExistingBot(t *testing.T) {
 	directory := t.TempDir()
 	runtime := &fixtureRuntime{}
 	s, _ := openCoreWorkflowPorts(t, directory, runtime, fixtureEnvironment{})
@@ -361,7 +361,7 @@ func TestCreationScopeManagedAndExplicitDirectory(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			internalRoot, err := filepath.EvalSymlinks(filepath.Join(directory, "workflow-workspaces", definition.ID))
+			internalRoot, err := filepath.EvalSymlinks(filepath.Join(directory, "WorkflowWorkspaces", definition.ID))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -456,7 +456,7 @@ func TestCreationProjectKeepsBusinessIdentityAndAddsInternalWorkspace(t *testing
 	if _, err := sendCreationMessage(ctx, workflowAPIDependencies(s), SendCreationMessageCommand{DefinitionID: definition.ID, RequestID: "project-message", Content: "创作项目流程", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex", AccountID: "system", Model: "fixture"}}); err != nil {
 		t.Fatal(err)
 	}
-	internal := filepath.Join(directory, "workflow-workspaces", definition.ID)
+	internal := filepath.Join(directory, "WorkflowWorkspaces", definition.ID)
 	internal, err = filepath.EvalSymlinks(internal)
 	if err != nil {
 		t.Fatal(err)
