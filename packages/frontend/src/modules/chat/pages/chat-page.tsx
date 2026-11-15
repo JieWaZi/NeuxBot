@@ -215,7 +215,7 @@ function ChatView({
   const routeActive = useRouteSceneActive();
   const sceneActive =
     routeActive && (boardDraft?.active ?? entry?.active ?? true);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const optimizeProfile =
     !entry &&
     !boardDraft &&
@@ -223,6 +223,18 @@ function ChatView({
     searchParams.get(wakerProfileOptimizationParam) === "1";
   const navigate = useNavigate();
   const location = useLocation();
+  const selectProfileOptimization = (selected: boolean) => {
+    if (selected === optimizeProfile) return;
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (selected) next.set(wakerProfileOptimizationParam, "1");
+        else next.delete(wakerProfileOptimizationParam);
+        return next;
+      },
+      { replace: true, state: location.state },
+    );
+  };
   const promptDraft =
     !entry && !boardDraft && !chatId
       ? readChatDraftIntent(
@@ -891,7 +903,7 @@ function ChatView({
     conversationKey: currentChatKey,
     queueKey: runtimeQueueKey,
     queueActive: sceneActive,
-    singleSubmission: Boolean(boardDraft),
+    singleSubmission: Boolean(boardDraft || (optimizeProfile && !activeChatId)),
     chatId: activeChatId,
     messageSource,
     activeExecutionId: detailQuery.data?.chat?.activeExecutionId,
@@ -924,6 +936,7 @@ function ChatView({
     referenceOnlyText: t("codeReferenceOnlyMessage"),
     incompleteErrorText: t("executionIncomplete"),
     selection: {
+      optimizeProfile: optimizeProfile && !activeChatId,
       accountId: selectedAccountId,
       runtimeId: selectedRuntime?.id ?? "",
       model: selectedModel,
@@ -943,6 +956,8 @@ function ChatView({
       clearComposer();
     },
     onMessageRejected: (selection) => {
+      if (selection.optimizeProfile && !activeChatId)
+        selectProfileOptimization(true);
       setComposerRestoreRevision((revision) => revision + 1);
       if (!selectedWakerID) return;
       setSelectedSkillIDsByWaker((current) => ({
@@ -1048,7 +1063,7 @@ function ChatView({
       }
       const createInput = {
         ...message,
-        ...(optimizeProfile ? { optimizeProfile: true } : {}),
+        ...(selection?.optimizeProfile ? { optimizeProfile: true } : {}),
         wakerId: selectedWaker?.id ?? "",
         projectId: selectedDraftProject?.id ?? "",
         workingDirectory: selectedDraftProject ? "" : workspaceDirectory,
@@ -1062,7 +1077,7 @@ function ChatView({
           workspaceScopeKey,
           createRequest.clientRequestId,
         );
-      if (boardDraft) {
+      if (boardDraft || selection?.optimizeProfile) {
         setBoardModelPickerOpen(false);
         return prepareFirstChatSubmission(
           createRequest,
@@ -1235,12 +1250,11 @@ function ChatView({
         ? t("permissionDowngraded")
         : "";
 
-  const emptyState =
-    selectedWaker && !optimizeProfile ? null : (
-      <div className="text-content-secondary type-body grid h-full place-items-center px-6 text-center">
-        {t(selectedWaker ? "profileOptimizationHint" : "createWakerFirst")}
-      </div>
-    );
+  const emptyState = selectedWaker ? null : (
+    <div className="text-content-secondary type-body grid h-full place-items-center px-6 text-center">
+      {t("createWakerFirst")}
+    </div>
+  );
   const contributedEmptyState =
     typeof entry?.emptyState === "function"
       ? entry.emptyState({
@@ -1455,8 +1469,24 @@ function ChatView({
             ? { kind: "connector", id: promptDraft.connectorId }
             : undefined,
       renderComposerContextStrip,
-      composerReferences: entry?.composerReferences,
-      onComposerReferencesChange: entry?.onComposerReferencesChange,
+      composerReferences: entry
+        ? entry.composerReferences
+        : optimizeProfile && !activeChatId && !chatRuntime.isRunning
+          ? [
+              {
+                id: wakerProfileOptimizationParam,
+                label: t("profileOptimization"),
+              },
+            ]
+          : undefined,
+      onComposerReferencesChange: entry
+        ? entry.onComposerReferencesChange
+        : !boardDraft && !activeChatId && !chatRuntime.isRunning
+          ? (ids) =>
+              selectProfileOptimization(
+                ids.includes(wakerProfileOptimizationParam),
+              )
+          : undefined,
       composerSkills: enabledSkills,
       composerSkillsError: skillsQuery.isError,
       composerPlugins: enabledPlugins,

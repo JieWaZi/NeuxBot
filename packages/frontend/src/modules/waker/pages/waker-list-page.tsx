@@ -116,14 +116,14 @@ export function WakerListPage({
             <EmptyState
               className="mt-6"
               density="compact"
-              title="暂时无法载入伙伴"
+              title={t("collection.failed")}
               actions={
                 <Button
                   variant="secondary"
                   size="sm"
                   onClick={() => void query.refetch()}
                 >
-                  重新载入
+                  {t("common:reload")}
                 </Button>
               }
             />
@@ -138,7 +138,7 @@ export function WakerListPage({
               className="mt-6"
               density="compact"
               icon={UsersRound}
-              title={keyword ? "没有找到匹配的伙伴" : "还没有伙伴"}
+              title={t(keyword ? "collection.noResults" : "collection.empty")}
               actions={
                 !keyword ? (
                   <Button
@@ -146,7 +146,7 @@ export function WakerListPage({
                     variant="secondary"
                     onClick={() => navigate("/wakers/new")}
                   >
-                    新建第一位伙伴
+                    {t("collection.createFirst")}
                   </Button>
                 ) : undefined
               }

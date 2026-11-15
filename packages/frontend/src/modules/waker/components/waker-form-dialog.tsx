@@ -1,12 +1,11 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { LoaderCircle } from "lucide-react";
-import { useId, useState } from "react";
+import { useId } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
 
-import { ApiError } from "@/shared/api/errors";
 import {
   localApiErrorMessage,
   withLocalErrorMutation,
@@ -26,12 +25,7 @@ import {
   listWakersQueryKey,
   updateWakerMutation,
 } from "../api/waker-queries";
-import type { Waker, WakerDefaultModel } from "../model/types";
-import {
-  cleanManualProfile,
-  ProfileManualEditor,
-} from "./profile-manual-editor";
-import { WakerDefaultModelField } from "./waker-default-model-field";
+import type { Waker } from "../model/types";
 
 type Props = {
   open: boolean;
@@ -47,19 +41,6 @@ function OpenWakerFormDialog({ onOpenChange, waker }: Props) {
   const { t } = useTranslation(["waker", "common"]);
   const id = useId();
   const queryClient = useQueryClient();
-  const [initial] = useState(() => ({
-    expertise: waker.expertise ?? [],
-    workStyle: waker.workStyle ?? [],
-    workMethods: waker.workMethods ?? [],
-    overviewRevision: waker.overviewRevision,
-    defaultModel: waker.defaultModel,
-  }));
-  const [expertise, setExpertise] = useState(initial.expertise);
-  const [workStyle, setWorkStyle] = useState(initial.workStyle);
-  const [workMethods, setWorkMethods] = useState(initial.workMethods);
-  const [defaultModel, setDefaultModel] = useState<
-    WakerDefaultModel | undefined
-  >(initial.defaultModel);
   const schema = z.object({
     name: z
       .string()
@@ -91,36 +72,18 @@ function OpenWakerFormDialog({ onOpenChange, waker }: Props) {
   const submit = form.handleSubmit(async (values) => {
     if (!waker.id) return;
     const wakerQuery = getWakerQueryKey({ path: { wakerId: waker.id } });
-    const overviewChanged =
-      expertise !== initial.expertise ||
-      workStyle !== initial.workStyle ||
-      workMethods !== initial.workMethods;
-    const refresh = () =>
-      Promise.all([
-        queryClient.invalidateQueries({ queryKey: wakerQuery }),
-        queryClient.invalidateQueries({ queryKey: listWakersQueryKey() }),
-      ]);
     try {
       await update.mutateAsync({
         path: { wakerId: waker.id },
-        body: {
-          ...values,
-          ...(defaultModel === initial.defaultModel
-            ? {}
-            : { defaultModel: defaultModel ?? {} }),
-          ...(overviewChanged
-            ? {
-                manual: cleanManualProfile(expertise, workStyle, workMethods),
-                expectedOverviewRevision: initial.overviewRevision,
-              }
-            : {}),
-        },
+        body: values,
       });
-      await refresh();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: wakerQuery }),
+        queryClient.invalidateQueries({ queryKey: listWakersQueryKey() }),
+      ]);
       onOpenChange(false);
-    } catch (error) {
-      if (error instanceof ApiError && error.code === "WakerProfileChanged")
-        void refresh();
+    } catch {
+      // Mutation 在当前表单展示保存错误。
     }
   });
 
@@ -131,7 +94,7 @@ function OpenWakerFormDialog({ onOpenChange, waker }: Props) {
         if (!pending) onOpenChange(open);
       }}
     >
-      <DialogContent layout="form" size="xl" title={t("form.edit")}>
+      <DialogContent layout="content" size="md" title={t("form.edit")}>
         <form
           onSubmit={submit}
           className="flex min-h-0 flex-1 flex-col overflow-hidden"
@@ -198,19 +161,6 @@ function OpenWakerFormDialog({ onOpenChange, waker }: Props) {
                   </p>
                 ) : null}
               </div>
-              <WakerDefaultModelField
-                value={defaultModel}
-                onChange={setDefaultModel}
-                disabled={pending}
-              />
-              <ProfileManualEditor
-                expertise={expertise}
-                onExpertiseChange={setExpertise}
-                workStyle={workStyle}
-                onWorkStyleChange={setWorkStyle}
-                workMethods={workMethods}
-                onWorkMethodsChange={setWorkMethods}
-              />
             </fieldset>
             {update.error ? (
               <p role="alert" className="text-destructive type-body mt-3">

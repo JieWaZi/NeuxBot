@@ -28,6 +28,7 @@ import {
 
 export function WakerCard({ waker }: { waker: Waker }) {
   const { t } = useTranslation("automaticTask");
+  const { t: w } = useTranslation("waker");
   const id = waker.id ?? "";
   const appScenes = useOptionalAppSceneWorkspace();
   const [editing, setEditing] = useState(false);
@@ -40,14 +41,14 @@ export function WakerCard({ waker }: { waker: Waker }) {
         <article>
           <CardBody className="grid min-h-32 grid-cols-[auto_minmax(0,1fr)] gap-4 p-5 text-left">
             <Avatar
-              name={waker.name ?? "伙伴"}
+              name={waker.name ?? w("card.fallbackName")}
               src={waker.avatar}
               activity={wakerCompanionActivity(waker.activityState)}
               size="lg"
             />
             <Link
               to={`/wakers/${id}`}
-              aria-label={`查看 ${waker.name} 的详情`}
+              aria-label={w("card.details", { name: waker.name })}
               className="focus-visible:ring-ring min-w-0 rounded-sm outline-none focus-visible:ring-2"
             >
               <span className="flex items-center gap-2">
@@ -59,7 +60,7 @@ export function WakerCard({ waker }: { waker: Waker }) {
                 </span>
               </span>
               <span className="text-muted-foreground type-body mt-2 line-clamp-3 break-words">
-                {waker.bio || "还没有填写介绍。"}
+                {waker.bio || w("card.emptyBio")}
               </span>
             </Link>
           </CardBody>
@@ -80,7 +81,7 @@ export function WakerCard({ waker }: { waker: Waker }) {
               className="hover:bg-muted h-row-navigation type-ui flex items-center justify-center gap-1.5 transition-colors"
             >
               <MessageCircle className="size-icon-sm" strokeWidth={1.5} />
-              创建对话任务
+              {w("card.createChat")}
             </Link>
             <Link
               to={`/automatic-tasks?create=1&wakerId=${id}`}
@@ -93,7 +94,7 @@ export function WakerCard({ waker }: { waker: Waker }) {
               <DropdownMenuTrigger asChild>
                 <Button
                   type="button"
-                  aria-label="更多操作"
+                  aria-label={w("card.more")}
                   className="mx-auto"
                   size="icon"
                   variant="ghost"
@@ -104,7 +105,7 @@ export function WakerCard({ waker }: { waker: Waker }) {
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onSelect={() => setEditing(true)}>
                   <Pencil />
-                  编辑资料
+                  {w("card.edit")}
                 </DropdownMenuItem>
                 {!builtin ? (
                   <DropdownMenuItem
@@ -112,7 +113,7 @@ export function WakerCard({ waker }: { waker: Waker }) {
                     onSelect={() => setDeleting(true)}
                   >
                     <Trash2 />
-                    删除伙伴
+                    {w("deletion.title")}
                   </DropdownMenuItem>
                 ) : null}
               </DropdownMenuContent>

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { localizedDateTimeFormat } from "@/shared/i18n/format";
 
 import type { GithubComJieWaZiNeuxBotServerApisWakersDailyChatCount } from "@/shared/api/generated/types.gen";
 import { cn } from "@/shared/lib/cn";
@@ -119,7 +120,9 @@ export function buildHeatmapMonthLabels(grid: HeatmapCell[][]) {
     }
     labels.push({
       column,
-      label: `${Number(month)}月`,
+      label: localizedDateTimeFormat({ month: "short" }).format(
+        new Date(2000, Number(month) - 1, 1),
+      ),
     });
     previousMonth = month;
   }
@@ -141,7 +144,7 @@ export function WakerActivityHeatmap({ daily }: WakerActivityHeatmapProps) {
   const { t } = useTranslation("waker");
   const weekColumns = useMemo(() => heatmapWeekColumns(daily), [daily]);
   const grid = useMemo(() => layoutHeatmapGrid(daily), [daily]);
-  const monthLabels = useMemo(() => buildHeatmapMonthLabels(grid), [grid]);
+  const monthLabels = buildHeatmapMonthLabels(grid);
   const maxCount = useMemo(
     () =>
       daily.reduce(

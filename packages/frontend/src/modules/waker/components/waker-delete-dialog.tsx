@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { withLocalErrorMutation } from "@/shared/api/local-error-surface";
 import { LoaderCircle, TriangleAlert } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { deleteWakerMutation, listWakersQueryKey } from "../api/waker-queries";
 import { isBuiltinWaker } from "../model/builtin-waker";
@@ -24,6 +25,7 @@ export function WakerDeleteDialog({
   open,
   waker,
 }: Props) {
+  const { t } = useTranslation("waker");
   const queryClient = useQueryClient();
   const remove = useMutation(withLocalErrorMutation(deleteWakerMutation()));
   const [confirmationName, setConfirmationName] = useState("");
@@ -63,19 +65,19 @@ export function WakerDeleteDialog({
     >
       <DialogContent
         size="sm"
-        title="删除伙伴"
-        description="此操作不可恢复，请确认不再需要这位伙伴。"
+        title={t("deletion.title")}
+        description={t("deletion.description")}
       >
         <div className="px-6 pb-5">
           <div className="bg-destructive/8 text-destructive type-body flex gap-2 rounded-md p-3">
             <TriangleAlert className="size-icon-md mt-0.5 shrink-0" />
-            <p>将删除伙伴档案、记忆、对话记录及伙伴工作目录中的文件。</p>
+            <p>{t("deletion.impact")}</p>
           </div>
           <label className="type-label mt-4 grid gap-2 font-medium">
-            输入完整名称“{expectedName}”以确认
+            {t("deletion.confirmName", { name: expectedName })}
             <Input
               autoFocus
-              placeholder={`请输入“${expectedName}”`}
+              placeholder={t("deletion.placeholder", { name: expectedName })}
               value={confirmationName}
               onChange={(event) => setConfirmationName(event.target.value)}
             />
@@ -84,13 +86,13 @@ export function WakerDeleteDialog({
             <p role="alert" className="text-destructive type-body mt-3">
               {remove.error instanceof ApiError
                 ? remove.error.message
-                : "删除失败，请稍后重试。"}
+                : t("deletion.failed")}
             </p>
           ) : null}
         </div>
         <DialogFooter>
           <Button type="button" variant="secondary" onClick={closeDialog}>
-            取消
+            {t("common:cancel")}
           </Button>
           <Button
             type="button"
@@ -103,7 +105,7 @@ export function WakerDeleteDialog({
             {remove.isPending ? (
               <LoaderCircle className="animate-spin" />
             ) : null}
-            删除伙伴
+            {t("deletion.title")}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -13,7 +13,7 @@ it.each([false, true])(
   "只有一个强度时隐藏选择框与强度摘要，允许默认值为 %s",
   async (allowDefaultReasoning) => {
     const user = userEvent.setup();
-    const runtime = { id: "qoder", enabled: true };
+    const runtime = { id: "qoder", enabled: true, installed: true };
     render(
       <ExecutionPicker
         runtimes={[runtime]}

@@ -193,6 +193,7 @@ const {
         id: "codex",
         name: "Codex",
         enabled: true,
+        installed: true,
         state: "ready",
         defaultModel: "gpt-5",
         models: [
@@ -778,6 +779,7 @@ beforeEach(() => {
       id: "codex",
       name: "Codex",
       enabled: true,
+      installed: true,
       state: "ready",
       defaultModel: "gpt-5",
       defaultPermissionLevel: "full-access",
@@ -899,43 +901,56 @@ function renderConnectorPromptDraft({
   return { client, view };
 }
 
+function renderProfileOptimizationDraft(optimizeProfile = true) {
+  function Location() {
+    const { pathname, search } = useLocation();
+    return <output aria-label="对话路由">{pathname + search}</output>;
+  }
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const view = render(
+    <QueryClientProvider client={client}>
+      <ChatQueueProvider>
+        <TooltipProvider>
+          <MemoryRouter
+            initialEntries={[
+              `/chat?draftId=profile&wakerId=waker-1${optimizeProfile ? "&optimizeProfile=1" : ""}`,
+            ]}
+          >
+            <Routes>
+              <Route
+                element={
+                  <ChatLayout>
+                    <Location />
+                  </ChatLayout>
+                }
+              >
+                <Route path="/chat" element={<ChatPage />} />
+                <Route path="/chats/:chatId" element={<ChatPage />} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </TooltipProvider>
+      </ChatQueueProvider>
+    </QueryClientProvider>,
+  );
+  return { client, view };
+}
+
 describe("ChatPage", () => {
-  it("伙伴档案优化只向首发提交修改意图，接纳后进入普通对话", async () => {
-    function Location() {
-      const { pathname, search } = useLocation();
-      return <output aria-label="对话路由">{pathname + search}</output>;
-    }
-    const client = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
+  it("伙伴档案优化在输入框显示标签并只向首发提交修改意图，接纳后进入普通对话", async () => {
+    const { client, view } = renderProfileOptimizationDraft();
     const user = userEvent.setup();
-    const view = render(
-      <QueryClientProvider client={client}>
-        <ChatQueueProvider>
-          <TooltipProvider>
-            <MemoryRouter
-              initialEntries={[
-                "/chat?draftId=profile&wakerId=waker-1&optimizeProfile=1",
-              ]}
-            >
-              <Routes>
-                <Route
-                  element={
-                    <ChatLayout>
-                      <Location />
-                    </ChatLayout>
-                  }
-                >
-                  <Route path="/chat" element={<ChatPage />} />
-                  <Route path="/chats/:chatId" element={<ChatPage />} />
-                </Route>
-              </Routes>
-            </MemoryRouter>
-          </TooltipProvider>
-        </ChatQueueProvider>
-      </QueryClientProvider>,
+    const input = await screen.findByRole("textbox", { name: "输入消息" });
+    await waitFor(() =>
+      expect(
+        input.querySelector('[data-chat-composer-reference="optimizeProfile"]'),
+      ).toHaveTextContent("档案优化"),
     );
-    await screen.findByText("告诉伙伴你想怎样修改档案。");
+    expect(
+      screen.queryByText("告诉伙伴你想怎样修改档案。"),
+    ).not.toBeInTheDocument();
     expect(createChat).not.toHaveBeenCalled();
     await user.type(
       screen.getByRole("textbox", { name: "输入消息" }),
@@ -950,6 +965,150 @@ describe("ChatPage", () => {
         optimizeProfile: true,
       },
     });
+    await waitFor(() =>
+      expect(screen.getByLabelText("对话路由")).toHaveTextContent(
+        /^\/chats\/chat-1\?wakerId=waker-1$/,
+      ),
+    );
+    expect(
+      document.querySelector(
+        '[data-chat-composer-reference="optimizeProfile"]',
+      ),
+    ).not.toBeInTheDocument();
+    view.unmount();
+    client.clear();
+  });
+
+  it("伙伴档案优化标签可以删除，删除后按普通首发发送", async () => {
+    const { client, view } = renderProfileOptimizationDraft();
+    const user = userEvent.setup();
+    const input = await screen.findByRole("textbox", { name: "输入消息" });
+    await waitFor(() => expect(input).toHaveTextContent("档案优化"));
+    await user.clear(input);
+    await waitFor(() => expect(input).not.toHaveTextContent("档案优化"));
+    expect(screen.getByLabelText("对话路由")).not.toHaveTextContent(
+      "optimizeProfile",
+    );
+    await user.type(input, "继续普通任务");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+    await waitFor(() => expect(createChat).toHaveBeenCalledOnce());
+    expect(createChat.mock.calls[0]?.[0]).toMatchObject({
+      body: { text: "继续普通任务" },
+    });
+    expect(createChat.mock.calls[0]?.[0]).not.toMatchObject({
+      body: { optimizeProfile: true },
+    });
+    view.unmount();
+    client.clear();
+  });
+
+  it("普通新对话没有伙伴档案优化标签或页面说明", async () => {
+    const { client, view } = renderProfileOptimizationDraft(false);
+    const input = await screen.findByRole("textbox", { name: "输入消息" });
+    expect(
+      input.querySelector('[data-chat-composer-reference="optimizeProfile"]'),
+    ).toBeNull();
+    expect(
+      screen.queryByText("告诉伙伴你想怎样修改档案。"),
+    ).not.toBeInTheDocument();
+    expect(createChat).not.toHaveBeenCalled();
+    view.unmount();
+    client.clear();
+  });
+
+  it("伙伴档案优化首发明确拒绝后恢复标签和正文，允许移除标签后重新发送", async () => {
+    createChat.mockRejectedValueOnce(
+      new ApiError("模型拒绝", "RuntimeModelSelectionFailed", 500),
+    );
+    const { client, view } = renderProfileOptimizationDraft();
+    const user = userEvent.setup();
+    const input = await screen.findByRole("textbox", { name: "输入消息" });
+    await waitFor(() => expect(input).toHaveTextContent("档案优化"));
+    await user.type(input, "只保留代码审查职责");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+    await waitFor(() => expect(createChat).toHaveBeenCalledOnce());
+    await waitFor(() => {
+      expect(input).toHaveTextContent("档案优化");
+      expect(input).toHaveValue("只保留代码审查职责");
+    });
+    expect(
+      screen.queryByRole("button", { name: "重试原发送" }),
+    ).not.toBeInTheDocument();
+    await user.clear(input);
+    await user.type(input, "普通任务");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+    await waitFor(() => expect(createChat).toHaveBeenCalledTimes(2));
+    expect(createChat.mock.calls[1]?.[0]).not.toMatchObject({
+      body: { optimizeProfile: true },
+    });
+    view.unmount();
+    client.clear();
+  });
+
+  it("伙伴档案优化首发回执未知时恢复标签并仅重试原冻结请求", async () => {
+    createChat.mockRejectedValueOnce(new TypeError("network interrupted"));
+    const { client, view } = renderProfileOptimizationDraft();
+    const user = userEvent.setup();
+    const input = await screen.findByRole("textbox", { name: "输入消息" });
+    await waitFor(() => expect(input).toHaveTextContent("档案优化"));
+    await user.type(input, "只保留代码审查职责");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+    const retry = await screen.findByRole("button", { name: "重试原发送" });
+    await waitFor(() => {
+      expect(input).toHaveTextContent("档案优化");
+      expect(input).toHaveValue("只保留代码审查职责");
+    });
+    expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
+    const original = createChat.mock.calls[0]?.[0];
+    expect(original).toMatchObject({ body: { optimizeProfile: true } });
+    await user.click(retry);
+    await waitFor(() => expect(createChat).toHaveBeenCalledTimes(2));
+    expect(createChat.mock.calls[1]?.[0]).toEqual(original);
+    await waitFor(() =>
+      expect(screen.getByLabelText("对话路由")).toHaveTextContent(
+        /^\/chats\/chat-1\?wakerId=waker-1$/,
+      ),
+    );
+    view.unmount();
+    client.clear();
+  });
+
+  it("伙伴档案优化发送中暂时清空标签仍保留原意图并阻止第二次首发", async () => {
+    let finish: (value: AcceptedExecution) => void = () => {};
+    createChat.mockImplementationOnce(
+      () =>
+        new Promise<AcceptedExecution>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const { client, view } = renderProfileOptimizationDraft();
+    const user = userEvent.setup();
+    const input = await screen.findByRole("textbox", { name: "输入消息" });
+    await waitFor(() => expect(input).toHaveTextContent("档案优化"));
+    await user.type(input, "只保留代码审查职责");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+    await waitFor(() => expect(createChat).toHaveBeenCalledOnce());
+    expect(screen.getByLabelText("对话路由")).toHaveTextContent(
+      "optimizeProfile=1",
+    );
+    expect(
+      input.querySelector('[data-chat-composer-reference="optimizeProfile"]'),
+    ).toBeNull();
+    await user.type(input, "不要重复创建");
+    await user.keyboard("{Enter}");
+    expect(screen.getByLabelText("对话路由")).toHaveTextContent(
+      "optimizeProfile=1",
+    );
+    expect(createChat).toHaveBeenCalledOnce();
+    expect(createChat.mock.calls[0]?.[0]).toMatchObject({
+      body: { text: "只保留代码审查职责", optimizeProfile: true },
+    });
+    await act(async () =>
+      finish({
+        chat: { id: "chat-1", wakerId: "waker-1" },
+        execution: { id: "execution-2", status: "running" },
+      }),
+    );
     await waitFor(() =>
       expect(screen.getByLabelText("对话路由")).toHaveTextContent(
         /^\/chats\/chat-1\?wakerId=waker-1$/,
@@ -990,6 +1149,7 @@ describe("ChatPage", () => {
           id: "codex",
           name: "Codex",
           enabled: true,
+          installed: true,
           state: "ready",
           defaultModel: "gpt-5",
           models: [
@@ -1060,6 +1220,7 @@ describe("ChatPage", () => {
         id: "fixture-runtime",
         name: "Fixture Agent",
         enabled: true,
+        installed: true,
         state: "ready",
         defaultModel: "new-model",
         models: [{ id: "new-model", name: "Available Model" }],
@@ -2393,6 +2554,7 @@ describe("ChatPage", () => {
         id: "codex",
         name: "Codex",
         enabled: true,
+        installed: true,
         state: "ready",
         defaultModel: "gpt-5",
         defaultReasoning: "medium",
@@ -2409,6 +2571,7 @@ describe("ChatPage", () => {
         id: "claude",
         name: "Claude",
         enabled: true,
+        installed: true,
         state: "ready",
         defaultModel: "sonnet",
         defaultReasoning: "high",
@@ -3564,6 +3727,7 @@ describe("ChatPage", () => {
         id: "codex",
         name: "Codex",
         enabled: true,
+        installed: true,
         state: "ready",
         defaultModel: "gpt-5",
         defaultPermissionLevel: "full-access",
@@ -3622,6 +3786,7 @@ describe("ChatPage", () => {
         id: "codex",
         name: "Codex",
         enabled: true,
+        installed: true,
         state: "ready",
         defaultModel: "gpt-5",
         models: [
@@ -3676,6 +3841,7 @@ describe("ChatPage", () => {
         id: "codex",
         name: "Codex",
         enabled: true,
+        installed: true,
         state: "unavailable",
         defaultModel: "gpt-5",
         defaultPermissionLevel: "full-access",
@@ -3729,6 +3895,7 @@ describe("ChatPage", () => {
         id: "codex",
         name: "Codex",
         enabled: true,
+        installed: true,
         state: "ready",
         defaultModel: "gpt-fixture",
         defaultReasoning: "medium",
@@ -3851,6 +4018,7 @@ describe("ChatPage", () => {
         id: "cursor",
         name: "Cursor",
         enabled: true,
+        installed: true,
         state: "ready",
         defaultModel: "gpt-5.6-sol",
         models: [
@@ -3937,6 +4105,7 @@ describe("ChatPage", () => {
         id: "codex",
         name: "Codex",
         enabled: false,
+        installed: true,
         state: "ready",
         defaultModel: "gpt-5",
         models: [
@@ -3952,6 +4121,7 @@ describe("ChatPage", () => {
         name: "Claude",
         enabled: true,
         isDefault: true,
+        installed: true,
         state: "ready",
         defaultModel: "sonnet",
         models: [

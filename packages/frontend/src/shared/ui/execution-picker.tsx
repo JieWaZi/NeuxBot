@@ -1,5 +1,5 @@
 import { ChevronDown, CircleAlert, RotateCw, Zap } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useState, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 
 import type {
@@ -108,6 +108,7 @@ function modelGroups(models: Model[], provider: string, search: string) {
 
 type Props = {
   onOpenChange?: (open: boolean) => void;
+  trigger?: ReactElement;
   runtimes: Runtime[];
   accounts: Account[];
   runtime?: Runtime;
@@ -158,11 +159,14 @@ export function ExecutionPicker(props: Props) {
   }>();
   const [search, setSearch] = useState("");
   const fieldValueId = useId();
-  const runtimes = props.runtimes.filter((runtime) => runtime.id);
+  const runtimes = props.runtimes.filter(
+    (runtime) => runtime.id && runtime.installed === true,
+  );
   const runtime =
     runtimes.find((item) => item.id === preview?.runtimeId) ??
-    props.runtime ??
-    runtimes.find((item) => item.enabled);
+    runtimes.find((item) => item.id === props.runtime?.id) ??
+    runtimes.find((item) => item.enabled) ??
+    runtimes[0];
   const provider = runtime?.baseRuntimeId || runtime?.id || "";
   const compatible = props.accounts.filter(
     (account) =>
@@ -170,7 +174,12 @@ export function ExecutionPicker(props: Props) {
       account.runtimeId === runtime?.id &&
       accountSupportsRuntime(account, provider),
   );
-  const accountId = preview?.accountId || props.accountId || "system";
+  const accountId =
+    (runtime?.id && runtime.id === preview?.runtimeId
+      ? preview.accountId
+      : runtime?.id && runtime.id === props.runtime?.id
+        ? props.accountId
+        : runtime?.defaultAccountId) || "system";
   const account = compatible.find((item) => item.id === accountId);
   const accountMissing = accountId !== "system" && !account;
   const browsing = Boolean(
@@ -183,13 +192,13 @@ export function ExecutionPicker(props: Props) {
     value: { runtimeId: runtime?.id, accountId },
     enabled: visible && browsing,
   });
-  const models = browsing ? directory.models : props.models;
+  const models = !runtime ? [] : browsing ? directory.models : props.models;
   const defaultModel =
     (browsing ? directory.defaultModel : props.defaultModel) ||
     (accountId === (runtime?.defaultAccountId || "system")
       ? runtime?.defaultModel
       : account?.defaultModel);
-  const modelId = browsing ? "" : props.modelId;
+  const modelId = !runtime || browsing ? "" : props.modelId;
   const selected = models.find((model) => model.id === modelId);
   const reasoningOptions = browsing
     ? []
@@ -197,16 +206,26 @@ export function ExecutionPicker(props: Props) {
         id ? [{ id, name }] : [],
       );
   const native = usesNativeModelCatalog(provider);
-  const catalogState = browsing ? directory.catalogState : props.catalogState;
-  const catalogIssue = browsing ? directory.catalogIssue : props.catalogIssue;
+  const catalogState = !runtime
+    ? undefined
+    : browsing
+      ? directory.catalogState
+      : props.catalogState;
+  const catalogIssue = !runtime
+    ? undefined
+    : browsing
+      ? directory.catalogIssue
+      : props.catalogIssue;
   const catalogRefreshFailed = catalogState === "stale";
   const inlineCatalogIssue =
     catalogIssue === "catalogStale" ? undefined : catalogIssue;
-  const pending = browsing
-    ? native
-      ? directory.catalogPending
-      : directory.loading
-    : props.pending;
+  const pending = !runtime
+    ? !props.runtimes.length && props.pending
+    : browsing
+      ? native
+        ? directory.catalogPending
+        : directory.loading
+      : props.pending;
   const refreshing = browsing ? directory.catalogRefreshing : props.refreshing;
   const refresh = native
     ? browsing
@@ -228,7 +247,8 @@ export function ExecutionPicker(props: Props) {
   const hasEffort =
     reasoningOptions.length > 1 ||
     (Boolean(props.field) && canInheritEffort && reasoningOptions.length === 1);
-  const showReasoning = !browsing && (hasEffort || Boolean(fixed?.effort));
+  const showReasoning =
+    Boolean(runtime) && !browsing && (hasEffort || Boolean(fixed?.effort));
   const showContextWindow =
     Boolean(props.onContextWindow) && contextWindows.length > 1;
   const fallbackEffort =
@@ -299,47 +319,50 @@ export function ExecutionPicker(props: Props) {
         setSearch("");
       }}
     >
-      <PopoverTrigger asChild>
-        {props.field ? (
-          <FieldControlTrigger
-            aria-label={props.field.label}
-            aria-describedby={fieldValueId}
-            aria-invalid={props.field.invalid || undefined}
-            disabled={props.disabled}
-          >
-            {!props.field.stacked ? (
-              <span className="shrink-0 font-medium">{props.field.label}</span>
-            ) : null}
-            <span
-              id={fieldValueId}
-              className={cn(
-                "flex min-w-0 flex-1 items-center gap-1.5",
-                !props.field.stacked && "justify-end",
-              )}
+      <PopoverTrigger asChild disabled={props.disabled}>
+        {props.trigger ??
+          (props.field ? (
+            <FieldControlTrigger
+              aria-label={props.field.label}
+              aria-describedby={fieldValueId}
+              aria-invalid={props.field.invalid || undefined}
+              disabled={props.disabled}
+            >
+              {!props.field.stacked ? (
+                <span className="shrink-0 font-medium">
+                  {props.field.label}
+                </span>
+              ) : null}
+              <span
+                id={fieldValueId}
+                className={cn(
+                  "flex min-w-0 flex-1 items-center gap-1.5",
+                  !props.field.stacked && "justify-end",
+                )}
+              >
+                {selection}
+              </span>
+            </FieldControlTrigger>
+          ) : (
+            <Button
+              type="button"
+              data-testid="composer-model-control"
+              disabled={props.disabled}
+              size="sm"
+              variant="ghost"
+              shape="capsule"
+              className="max-w-65"
             >
               {selection}
-            </span>
-          </FieldControlTrigger>
-        ) : (
-          <Button
-            type="button"
-            data-testid="composer-model-control"
-            disabled={props.disabled}
-            size="sm"
-            variant="ghost"
-            shape="capsule"
-            className="max-w-65"
-          >
-            {selection}
-            {props.fast ? (
-              <Zap aria-hidden className="text-accent fill-current" />
-            ) : null}
-            <ChevronDown
-              aria-hidden
-              className="text-content-secondary shrink-0"
-            />
-          </Button>
-        )}
+              {props.fast ? (
+                <Zap aria-hidden className="text-accent fill-current" />
+              ) : null}
+              <ChevronDown
+                aria-hidden
+                className="text-content-secondary shrink-0"
+              />
+            </Button>
+          ))}
       </PopoverTrigger>
       <PopoverContent
         side="top"
@@ -405,7 +428,7 @@ export function ExecutionPicker(props: Props) {
                     </div>
                   ) : null}
                 </div>
-                {props.onFast && props.fastSupported && !browsing ? (
+                {runtime && props.onFast && props.fastSupported && !browsing ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -636,11 +659,13 @@ export function ExecutionPicker(props: Props) {
                 >
                   {pending
                     ? t("common:executionSelection.loading")
-                    : inlineCatalogIssue
-                      ? t(`common:executionSelection.${inlineCatalogIssue}`)
-                      : models.length
-                        ? t("aiAccounts:noMatchingModels")
-                        : t("aiAccounts:noModelsSelected")}
+                    : !runtime
+                      ? t("chat:runtimeUnavailable")
+                      : inlineCatalogIssue
+                        ? t(`common:executionSelection.${inlineCatalogIssue}`)
+                        : models.length
+                          ? t("aiAccounts:noMatchingModels")
+                          : t("aiAccounts:noModelsSelected")}
                 </div>
               ) : null}
             </div>

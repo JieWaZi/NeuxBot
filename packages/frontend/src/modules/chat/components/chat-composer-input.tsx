@@ -33,7 +33,7 @@ import {
 } from "./chat-attachment";
 import type { ChatSkillOption } from "./chat-skill-reference";
 import type { ChatConnectorOption } from "./chat-connector-reference";
-import type { AllyPathFile } from "../runtime/chat-attachment-adapter";
+import type { BotPathFile } from "../runtime/chat-attachment-adapter";
 import type { ChatCodeReference } from "../runtime/chat-queue-store";
 import {
   readWorkspaceFileDrag,
@@ -545,7 +545,7 @@ export function ChatComposerInput({
         const attachments = aui.composer.getState().attachments;
         for (let index = attachments.length - 1; index >= 0; index--) {
           const attachment = attachments[index];
-          const sourcePath = (attachment?.file as AllyPathFile | undefined)
+          const sourcePath = (attachment?.file as BotPathFile | undefined)
             ?.botSourcePath;
           if (sourcePath !== path) continue;
           await aui.composer.attachment({ index }).remove();

@@ -14,5 +14,6 @@ export {
   listWakersOptions,
   listWakersQueryKey,
   updateWakerMutation,
+  updateWakerDefaultModelMutation,
   updateWakerDocumentMutation,
 } from "@/shared/api/generated/@tanstack/react-query.gen";

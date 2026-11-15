@@ -1,3 +1,4 @@
+import { localizedDateTimeFormat } from "@/shared/i18n/format";
 import { useQueryEvents } from "@/shared/api/use-query-events";
 import {
   useOptionalAppSceneWorkspace,
@@ -20,6 +21,7 @@ import {
 } from "../api/waker-queries";
 import { WakerAboutSection } from "../components/waker-about-section";
 import { WakerDetailLayout } from "../components/waker-detail-layout";
+import { WakerDefaultModelAction } from "../components/waker-default-model-action";
 import { WakerOverviewColumns } from "../components/waker-overview-columns";
 import { WakerFormDialog } from "../components/waker-form-dialog";
 import { WakerProfileSection } from "../components/waker-profile-section";
@@ -109,7 +111,7 @@ export function WakerDetailPage() {
   }
 
   const joined = waker.createdAt
-    ? new Intl.DateTimeFormat("zh-CN", {
+    ? localizedDateTimeFormat({
         year: "numeric",
         month: "long",
         day: "numeric",
@@ -135,7 +137,7 @@ export function WakerDetailPage() {
                 layout="detail"
                 visual={
                   <Avatar
-                    name={waker.name ?? "伙伴"}
+                    name={waker.name ?? t("card.fallbackName")}
                     src={waker.avatar}
                     activity={wakerCompanionActivity(waker.activityState)}
                     size="xl"
@@ -163,6 +165,10 @@ export function WakerDetailPage() {
                     >
                       <Pencil />
                     </PageAction>
+                    <WakerDefaultModelAction
+                      wakerId={wakerId}
+                      value={waker.defaultModel}
+                    />
                     <PageAction
                       asChild
                       intent="primary"

@@ -136,6 +136,7 @@ const runtimes = ["kimi", "cursor", "pi", "claude", "codex", "workbuddy"].map(
     id,
     name: id === "cursor" ? "Cursor CLI" : id,
     enabled: true,
+    installed: true,
     state: "ready",
     defaultModel: `${id}-default`,
     defaultReasoning: "medium",
@@ -243,7 +244,13 @@ it("目录刷新失败时用感叹号提示并允许选择已有模型", async (
     { id: "cursor-first", name: "Cursor First" },
     { id: "cursor-second", name: "Cursor Second" },
   ];
-  const runtime = { id: "cursor", enabled: true, state: "ready", models };
+  const runtime = {
+    id: "cursor",
+    enabled: true,
+    installed: true,
+    state: "ready",
+    models,
+  };
   render(
     <ExecutionPicker
       runtimes={[runtime]}
@@ -309,7 +316,7 @@ it("已有对话时锁定工作区选择并提示开启新对话", async () => {
   expect(control).toHaveAttribute("title", "如需修改目录请开启新对话");
 });
 
-it("目录保留探测失败的智能体并只展示兼容账号", async () => {
+it("目录隐藏未安装的智能体并只展示兼容账号", async () => {
   const user = userEvent.setup();
   const availableRuntimes = [
     ...runtimes,
@@ -317,6 +324,7 @@ it("目录保留探测失败的智能体并只展示兼容账号", async () => {
       id: "missing",
       name: "Missing",
       enabled: true,
+      installed: false,
       state: "unavailable",
       defaultModel: "",
       defaultReasoning: "",
@@ -326,7 +334,9 @@ it("目录保留探测失败的智能体并只展示兼容账号", async () => {
   const changed = vi.fn();
   renderControls(changed, availableRuntimes);
   await user.click(screen.getByTestId("composer-model-control"));
-  expect(screen.getByRole("button", { name: "Missing" })).toBeEnabled();
+  expect(
+    screen.queryByRole("button", { name: "Missing" }),
+  ).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: /^claude$/i }));
   await user.click(screen.getByRole("combobox", { name: "账号" }));
   expect(
@@ -350,6 +360,7 @@ it("聊天切换同协议 Profile 时只展示目标账号，并采用目标默�
   const root = {
     id: "codex",
     enabled: true,
+    installed: true,
     state: "ready",
     defaultModel: "root-default",
     models: [{ id: "root-default", name: "Root Default" }],
@@ -359,6 +370,7 @@ it("聊天切换同协议 Profile 时只展示目标账号，并采用目标默�
     baseRuntimeId: "codex",
     name: "Work Codex",
     enabled: true,
+    installed: true,
     state: "ready",
     defaultAccountId: "profile-account",
     defaultModel: "profile-default",
@@ -447,6 +459,7 @@ it("模型行展示已知的上下文档位，并将 OpenCode 免费模型放到
       id: "opencode",
       name: "OpenCode",
       enabled: true,
+      installed: true,
       state: "ready",
       defaultModel: "openai/paid",
       defaultReasoning: "",
@@ -479,6 +492,7 @@ it("Qoder 直接展示原生模型，不隐藏默认档位或添加新模型分�
       id: "qoder",
       name: "Qoder",
       enabled: true,
+      installed: true,
       state: "ready",
       defaultModel: "qfmodel",
       defaultReasoning: "",
@@ -530,7 +544,13 @@ it("有效目录后台刷新只占用刷新按钮，不锁模型与推理选择"
     { id: "first", name: "First" },
     { id: "second", name: "Second" },
   ];
-  const runtime = { id: "codex", enabled: true, state: "ready", models };
+  const runtime = {
+    id: "codex",
+    enabled: true,
+    installed: true,
+    state: "ready",
+    models,
+  };
   const refresh = vi.fn();
   const select = vi.fn();
   render(

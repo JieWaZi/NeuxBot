@@ -34,6 +34,7 @@ vi.mock(
               id: "fixture-runtime",
               name: "Fixture Agent",
               enabled: true,
+              installed: true,
               isDefault: true,
               state: "ready",
               defaultModel: "global-model",
@@ -124,7 +125,7 @@ it("选择默认模型后携带原请求标识重试，进入已接纳的建档�
   const user = userEvent.setup();
   await user.type(screen.getByRole("textbox", { name: "名称" }), "协作伙伴");
   await user.type(
-    screen.getByRole("textbox", { name: "概要" }),
+    screen.getByRole("textbox", { name: "简介" }),
     "整理协作记录",
   );
   expect(screen.getByTestId("hero")).toBeInTheDocument();
