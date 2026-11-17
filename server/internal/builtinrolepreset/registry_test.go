@@ -45,8 +45,8 @@ func TestRegistryValidatesCatalog(t *testing.T) {
 
 func TestDefinitionsWithDefaultWakerIncludesPersonalAssistant(t *testing.T) {
 	items := DefinitionsWithDefaultWaker()
-	if len(items) != 2 {
-		t.Fatalf("default waker count = %d, want 2", len(items))
+	if len(items) != 1 {
+		t.Fatalf("default waker count = %d, want 1", len(items))
 	}
 	if items[0].ID != PersonalAssistantRolePresetID {
 		t.Fatalf("default waker role preset id = %q", items[0].ID)
@@ -60,5 +60,11 @@ func TestDefinitionByWakerIDFindsPersonalAssistant(t *testing.T) {
 	}
 	if definition.ID != PersonalAssistantRolePresetID {
 		t.Fatalf("role preset id = %q", definition.ID)
+	}
+}
+
+func TestDefinitionByWakerIDDoesNotProtectRemovedNova(t *testing.T) {
+	if _, exists := DefinitionByWakerID("854de954b7bd4e2cb9582fd0930dcd6d"); exists {
+		t.Fatal("removed Nova must be deletable through the ordinary waker lifecycle")
 	}
 }

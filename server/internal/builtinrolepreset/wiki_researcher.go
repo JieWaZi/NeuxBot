@@ -8,8 +8,6 @@ import (
 const (
 	// WikiResearcherRolePresetID 是内置维基研究员角色预设的固定标识。
 	WikiResearcherRolePresetID = "a97d1ed144d948608d86ef3f1ab0876e"
-	// WikiResearcherWakerID 是内置维基研究员伙伴的固定标识。
-	WikiResearcherWakerID = "854de954b7bd4e2cb9582fd0930dcd6d"
 )
 
 // 研究员指令定义证据核对与研究方式，工具和授权统一复用系统 skill。
@@ -98,6 +96,5 @@ func wikiResearcherDefinition() Definition {
 			constants.ProfileDocumentKindPersona:  wikiResearcherPersona,
 			constants.ProfileDocumentKindPlaybook: wikiResearcherPlaybook,
 		},
-		DefaultWaker: &WakerSeed{ID: WikiResearcherWakerID, Name: "nova"},
 	}
 }

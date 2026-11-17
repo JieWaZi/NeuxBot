@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
 	"github.com/JieWaZi/NeuxBot/server/internal/profile"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -101,35 +100,12 @@ func TestEnsureDefaultsSeedsBuiltinWakerWithoutPersistingDocuments(t *testing.T)
 		t.Fatalf("waker count = %d, want all registered built-ins", count)
 	}
 
-	researcher, err := wakers.Get(ctx, builtinrolepreset.WikiResearcherWakerID)
-	if err != nil || researcher.Name != "nova" || researcher.RoleName != "维基研究员" {
-		t.Fatalf("unexpected builtin researcher: %+v, %v", researcher, err)
+	if count != 1 {
+		t.Fatalf("startup created optional partners: got %d, want only lumi", count)
 	}
-	researcher.Name = "我的研究伙伴"
-	if err := wakers.Update(ctx, researcher.ID, researcher); err != nil {
-		t.Fatal(err)
-	}
-	if err := documents.CreateWakerDocuments(ctx, []models.WakerDocument{{
-		ID: "d72204129e3e4eff8036af4a317b5c93", WakerID: researcher.ID,
-		Kind: constants.ProfileDocumentKindPersona, Content: "按用户指定的研究风格表达",
-	}}); err != nil {
-		t.Fatal(err)
-	}
-	if err := EnsureDefaults(ctx, wakerCatalog); err != nil {
-		t.Fatal(err)
-	}
-	researcher, err = wakers.Get(ctx, researcher.ID)
-	if err != nil || researcher.Name != "我的研究伙伴" {
-		t.Fatalf("startup overwrote customized researcher: %+v, %v", researcher, err)
-	}
-	stored, err := documents.ListWakerDocuments(ctx, researcher.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resolved, err = builtinrolepreset.ResolveWakerContents(researcher.ID, stored)
-	if err != nil || resolved[constants.ProfileDocumentKindPersona] != "按用户指定的研究风格表达" ||
-		resolved[constants.ProfileDocumentKindPlaybook] == "" {
-		t.Fatalf("startup lost researcher profile override or fallback: %v", err)
+	preset, err := rolePresets.Get(ctx, builtinrolepreset.WikiResearcherRolePresetID)
+	if err != nil || preset.RoleName != "维基研究员" {
+		t.Fatalf("optional researcher role is unavailable: %+v, %v", preset, err)
 	}
 }
 
