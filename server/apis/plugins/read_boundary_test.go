@@ -117,9 +117,9 @@ func TestUnsupportedPluginPackagesRemainManageableWithoutReparsingOrReadingConte
 		// expected 是严格包读取应返回的稳定业务错误。
 		expected error
 	}{
-		{name: "legacy-provider", extension: `"com.bot":{"provider":"feishu"}`, expected: status_error.PluginPackageUnsupported},
+		{name: "legacy-provider", extension: `"com.ally":{"provider":"feishu"}`, expected: status_error.PluginPackageUnsupported},
 		{name: "unmarked-standard", expected: status_error.PluginPackageUnsupported},
-		{name: "invalid-current", contract: constants.PluginTargetContractVersion, extension: `"com.bot":{"provider":"feishu"}`, expected: status_error.PluginManifestInvalid},
+		{name: "invalid-current", contract: constants.PluginTargetContractVersion, extension: `"com.ally":{"provider":"feishu"}`, expected: status_error.PluginManifestInvalid},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			ctx := pluginAPIContext(t)
@@ -143,7 +143,7 @@ func TestUnsupportedPluginPackagesRemainManageableWithoutReparsingOrReadingConte
 			}
 			pkg := packageplugin.Package{ContractVersion: scenario.contract, Format: constants.PluginFormatPortable, Manifest: packageplugin.Manifest{Schema: constants.PluginManifestSchema, Name: "retained", Version: "1.0.0"}, Skills: []packageplugin.Skill{{Key: "skills/reports", Path: "skills/reports", Name: "reports"}}}
 			if scenario.extension != "" {
-				pkg.Manifest.Extensions = map[string]json.RawMessage{"com.bot": json.RawMessage(`{"provider":"feishu"}`)}
+				pkg.Manifest.Extensions = map[string]json.RawMessage{"com.ally": json.RawMessage(`{"provider":"feishu"}`)}
 			}
 			store := global.PluginControllerManager
 			if err := store.Create(ctx, models.Plugin{ID: "retained", Name: "Retained", SourceKey: "catalog:retained"}); err != nil {

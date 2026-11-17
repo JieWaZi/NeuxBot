@@ -88,6 +88,7 @@ beforeEach(() => {
           {
             id: "codex",
             name: "Codex",
+            installed: true,
             enabled: true,
             state: "ready",
             isDefault: true,

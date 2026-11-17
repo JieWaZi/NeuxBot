@@ -68,16 +68,23 @@ test(
         sessionId: started.sessionId,
       });
       assert.equal(snapshot.state, "running");
+      const outputMarker = "NEUXBOT_PTY_OK";
+      // 编码完整标记，避免终端回显命令时被误当作已执行输出。
+      const encodedMarker = Array.from(
+        outputMarker,
+        (character) =>
+          `\\${character.charCodeAt(0).toString(8).padStart(3, "0")}`,
+      ).join("");
       await request("write", {
         sessionId: started.sessionId,
         attachmentId: snapshot.attachmentId,
-        data: "printf '\\101\\114\\114\\131_PTY_OK\\n'\r",
+        data: `printf '${encodedMarker}\\n'\r`,
       });
       await waitFor(() =>
         events.some(
           (event) =>
             event.event === "terminal-output" &&
-            event.payload.data.includes("NEUXBOT_PTY_OK"),
+            event.payload.data.includes(outputMarker),
         ),
       );
       const output = events.filter(
@@ -96,7 +103,7 @@ test(
       const restored = await request("attach", {
         sessionId: started.sessionId,
       });
-      assert.match(restored.screen, /NEUXBOT_PTY_OK/);
+      assert.ok(restored.screen.includes(outputMarker));
       assert.notEqual(restored.attachmentId, snapshot.attachmentId);
       await assert.rejects(
         request("write", {

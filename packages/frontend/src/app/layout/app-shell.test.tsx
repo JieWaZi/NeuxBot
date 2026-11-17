@@ -1450,7 +1450,7 @@ describe("AppShell 伙伴导航", () => {
     expect(
       within(form).getByRole("button", { name: "创建伙伴" }),
     ).toBeVisible();
-    expect(within(form).getByRole("group", { name: "形状" })).toBeVisible();
+    expect(within(form).getByRole("group", { name: "头像样式" })).toBeVisible();
     expect(within(form).getByRole("group", { name: "颜色" })).toBeVisible();
     expect(
       within(form).getByRole("button", { name: "默认模型" }),

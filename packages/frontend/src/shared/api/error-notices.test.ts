@@ -153,6 +153,8 @@ describe("持久错误通知", () => {
     );
     vi.resetModules();
     const restored = await import("./error-notices");
+    const { i18n: restoredI18n } = await import("@/shared/i18n");
+    await restoredI18n.changeLanguage("zh-CN");
     const { result, unmount } = renderHook(restored.useErrorNotices);
     expect(result.current.map((notice) => notice.message)).toEqual([
       "本地服务返回了无法识别的错误",
@@ -405,6 +407,8 @@ it("旧持久通知缺少来源时拒绝正文，已声明的本地提示仍可�
   );
   vi.resetModules();
   const restored = await import("./error-notices");
+  const { i18n: restoredI18n } = await import("@/shared/i18n");
+  await restoredI18n.changeLanguage("zh-CN");
   const { result, unmount } = renderHook(restored.useErrorNotices);
   expect(result.current.map((notice) => notice.message)).toEqual([
     "本地服务返回了无法识别的错误",

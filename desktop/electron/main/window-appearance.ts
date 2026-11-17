@@ -41,10 +41,13 @@ export function windowAppearanceOptions(
   "vibrancy" | "visualEffectState" | "backgroundColor" | "backgroundMaterial"
 > {
   // 保持系统材质在失焦后继续模糊；开关关闭时页面与窗口背景仍完全不透明。
-  if (process.platform === "darwin") return {
-    visualEffectState: "active",
-    ...(transparent ? { vibrancy: "under-window" as const } : { backgroundColor: backgroundColor("system") }),
-  };
+  if (process.platform === "darwin")
+    return {
+      visualEffectState: "active",
+      ...(transparent
+        ? { vibrancy: "under-window" as const }
+        : { backgroundColor: backgroundColor("system") }),
+    };
   if (transparent && supportsWindowTransparency()) {
     return { backgroundMaterial: "acrylic", backgroundColor: "#00000000" };
   }

@@ -67,7 +67,7 @@ func TestRunAdmissionFreezesVersionDefaultsAndComputesF0(t *testing.T) {
 		t.Fatalf("run: %+v", result)
 	}
 	object, ok := result.Result.(map[string]any)
-	if !ok || object["message"] != "BOT BOT!" || object["length"] != float64(16) {
+	if !ok || object["message"] != "NEUXBOT NEUXBOT!" || object["length"] != float64(16) {
 		t.Fatalf("actual result: %#v", result.Result)
 	}
 	if result.RevisionID == saved.RevisionID {

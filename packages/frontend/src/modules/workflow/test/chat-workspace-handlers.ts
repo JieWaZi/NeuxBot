@@ -48,6 +48,7 @@ export function chatWorkspaceHandlers(origin: string) {
           {
             id: "codex",
             name: "Codex",
+            installed: true,
             enabled: true,
             state: "ready",
             isDefault: true,
