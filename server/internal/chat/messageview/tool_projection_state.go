@@ -41,21 +41,27 @@ func (s *toolProjectionState) apply(data map[string]interface{}, scope workspace
 }
 
 // projectionData 移除 ACP 从 rawInput 复制的展示别名，让最新输入替换事实拥有唯一来源。
-func (s *toolProjectionState) projectionData() map[string]interface{} {
+func (s *toolProjectionState) projectionData(scope workspacePathScope) map[string]interface{} {
 	data := make(map[string]interface{}, len(s.fields))
 	for key, value := range s.fields {
 		data[key] = value
 	}
 	if _, present := data["rawInput"]; present {
-		for _, key := range []string{"input", "server", "tool", "arguments", "command", "cwd", "path", "query", "action"} {
+		for _, key := range []string{"input", "server", "tool", "arguments", "command", "cmd", "displayCommandAction", "cwd", "path", "query", "action"} {
 			delete(data, key)
 		}
 	}
-	if firstNestedDisplayString(data, "file_path", "filePath", "path") == "" {
+	// execute 的 locations 可以是 cwd；只有文件工具才允许用它补目标。
+	category := displayToolCategory(displayToolName(data))
+	fileTarget := category == constants.MessageToolCategoryFileRead || category == constants.MessageToolCategoryFileModify || category == constants.MessageToolCategoryFileSearch
+	if fileTarget && firstNestedDisplayString(data, "file_path", "filePath", "path") == "" {
 		locations, _ := data["locations"].([]interface{})
 		if len(locations) > 0 {
 			location, _ := locations[0].(map[string]interface{})
-			data["path"] = firstDisplayString(location, "path")
+			path := firstDisplayString(location, "path")
+			if path != scope.workspaceDirectory {
+				data["path"] = path
+			}
 		}
 	}
 	return data
@@ -147,7 +153,7 @@ func projectToolFacts(data map[string]interface{}, depth int, allowFallback bool
 				}
 			}
 			projected[key] = safe
-		case "command":
+		case "command", "cmd":
 			if text, ok := value.(string); ok {
 				projected[key] = truncateToolPhrase(text, 80)
 				projected["displayCommandAction"] = string(displayCommandAction(text))
@@ -155,7 +161,14 @@ func projectToolFacts(data map[string]interface{}, depth int, allowFallback bool
 				projected[key] = nil
 				projected["displayCommandAction"] = nil
 			}
-		case "toolCallId", "name", "toolName", "tool_name", "type", "kind", "title", "server", "tool", "providerIdentifier", "skill", "taskId", "task_id":
+		case "title":
+			if text, ok := value.(string); ok {
+				projected[key] = truncateToolPhrase(text, constants.MessageToolSafeSummaryMaxRunes)
+				projected["displayTitleCommandAction"] = string(displayCommandAction(text))
+			} else {
+				projected[key], projected["displayTitleCommandAction"] = nil, nil
+			}
+		case "toolCallId", "name", "toolName", "tool_name", "type", "kind", "server", "tool", "providerIdentifier", "skill", "taskId", "task_id":
 			if text, ok := value.(string); ok {
 				projected[key] = truncateToolPhrase(text, constants.MessageToolSafeSummaryMaxRunes)
 			} else {

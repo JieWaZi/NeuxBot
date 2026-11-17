@@ -19,6 +19,9 @@ func buildToolPhrase(data map[string]interface{}, scope workspacePathScope) (str
 	if label := userInputToolPhrase(data, rawToolName); label != "" {
 		return completedAndLoadingPhrase(label)
 	}
+	if action == constants.MessageToolActionViewImage {
+		return completedAndLoadingPhrase(toolPhraseWithTarget("查看图片", "查看图片", pathName))
+	}
 
 	switch toolName {
 	case "read", "readfile", "read_file", "view", "open_file":
@@ -33,11 +36,14 @@ func buildToolPhrase(data map[string]interface{}, scope workspacePathScope) (str
 				}
 			}
 		}
+		if pathName == "" {
+			label = nativeToolFallbackLabel(data, label)
+		}
 		return completedAndLoadingPhrase(label)
 	case "write":
-		return completedAndLoadingPhrase(toolPhraseWithTarget("写入文件", "写入", pathName))
+		return completedAndLoadingPhrase(toolPhraseWithTarget(nativeToolFallbackLabel(data, "写入文件"), "写入", pathName))
 	case "edit", "multiedit", "notebookedit", "file_change", "file_modify", "apply_patch":
-		return completedAndLoadingPhrase(toolPhraseWithTarget("修改文件", "修改", pathName))
+		return completedAndLoadingPhrase(toolPhraseWithTarget(nativeToolFallbackLabel(data, "修改文件"), "修改", pathName))
 	case "glob", "list", "list_files":
 		pattern := firstNestedDisplayString(data, "pattern")
 		if pattern != "" {
@@ -47,7 +53,7 @@ func buildToolPhrase(data map[string]interface{}, scope workspacePathScope) (str
 			}
 			return completedAndLoadingPhrase(label)
 		}
-		return completedAndLoadingPhrase(toolPhraseWithTarget("浏览文件", "浏览", pathName))
+		return completedAndLoadingPhrase(toolPhraseWithTarget(nativeToolFallbackLabel(data, "浏览文件"), "浏览", pathName))
 	case "grep", "search", "find", "file_search":
 		query := firstNestedDisplayString(data, "pattern", "query")
 		if query != "" {
@@ -57,13 +63,13 @@ func buildToolPhrase(data map[string]interface{}, scope workspacePathScope) (str
 			}
 			return completedAndLoadingPhrase(label)
 		}
-		return completedAndLoadingPhrase("搜索内容")
+		return completedAndLoadingPhrase(nativeToolFallbackLabel(data, "搜索内容"))
 	case "webfetch", "web_fetch":
 		rawURL := firstNestedDisplayString(data, "url")
 		if rawURL != "" {
 			return completedAndLoadingPhrase("抓取 " + truncateToolPhrase(rawURL, 60))
 		}
-		return completedAndLoadingPhrase("抓取网页")
+		return completedAndLoadingPhrase(nativeToolFallbackLabel(data, "抓取网页"))
 	case "websearch", "web_search", "network":
 		if query := webSearchPhraseQuery(data); query != "" {
 			return completedAndLoadingPhrase("搜索网页 \"" + truncateToolPhrase(query, 60) + "\"")
@@ -71,7 +77,7 @@ func buildToolPhrase(data map[string]interface{}, scope workspacePathScope) (str
 		if label := webSearchPhraseAction(data); label != "" {
 			return completedAndLoadingPhrase(label)
 		}
-		return completedAndLoadingPhrase("搜索网页")
+		return completedAndLoadingPhrase(nativeToolFallbackLabel(data, "搜索网页"))
 	case "skill":
 		return completedAndLoadingPhrase(toolPhraseWithTarget("使用技能", "使用技能", firstNestedDisplayString(data, "skill")))
 	case "task":
@@ -146,6 +152,9 @@ func buildToolPhrase(data map[string]interface{}, scope workspacePathScope) (str
 	isCommand := toolName == "bash" || toolName == "shell" || toolName == "command" || toolName == "command_execution" || toolName == "exec"
 	if isCommand || action == constants.MessageToolActionExecuteCommand {
 		if description := descriptionOfCommand(data); description != "" {
+			if command := displayToolCommand(data); command != "" {
+				description += " · " + truncateToolPhrase(command, 80)
+			}
 			return completedAndLoadingPhrase(description)
 		}
 	}
@@ -153,13 +162,13 @@ func buildToolPhrase(data map[string]interface{}, scope workspacePathScope) (str
 		label := toolActionLabel(action)
 		if pathName != "" {
 			label += " " + pathName
-		} else if command := firstNestedDisplayString(data, "command"); command != "" {
+		} else if command := displayToolCommand(data); command != "" {
 			label += " · " + truncateToolPhrase(command, 80)
 		}
 		return completedAndLoadingPhrase(label)
 	}
 	if action == constants.MessageToolActionExecuteCommand || isCommand {
-		if command := firstNestedDisplayString(data, "command"); command != "" {
+		if command := displayToolCommand(data); command != "" {
 			return completedAndLoadingPhrase("执行 " + truncateToolPhrase(command, 80))
 		}
 	}
@@ -170,6 +179,8 @@ func buildToolPhrase(data map[string]interface{}, scope workspacePathScope) (str
 		if summary := firstMeaningfulToolValue(data); summary != "" {
 			label += " " + truncateToolPhrase(summary, 60)
 		}
+	} else if action == constants.MessageToolActionOther {
+		label = nativeToolFallbackLabel(data, label)
 	}
 	if pathName != "" && action != constants.MessageToolActionExecuteCommand {
 		label += " " + pathName
@@ -301,7 +312,19 @@ func flattenedBuiltinMCPIdentity(name string) (string, string) {
 	return "", ""
 }
 
-// descriptionOfCommand 返回命令工具携带的意图描述，用于替代裸命令展示。
+// nativeToolFallbackLabel 在缺少具体参数时保留 ACP 可读标题，已知工具名仍使用业务短语。
+func nativeToolFallbackLabel(data map[string]interface{}, fallback string) string {
+	if firstDisplayString(data, "name", "toolName", "tool_name", "type") != "" {
+		return fallback
+	}
+	title := firstDisplayString(data, "title")
+	if title != "" && toolNameFromTitle(title) == "" {
+		return truncateToolPhrase(title, constants.MessageToolSafeSummaryMaxRunes)
+	}
+	return fallback
+}
+
+// descriptionOfCommand 返回与实际命令一起展示的有界意图描述。
 func descriptionOfCommand(data map[string]interface{}) string {
 	description := firstNestedDisplayString(data, "description")
 	if description == "" {
@@ -406,6 +429,11 @@ func firstMeaningfulToolValue(data map[string]interface{}) string {
 		}
 		sort.Strings(keys)
 		for _, key := range keys {
+			// 工具身份和传输元数据不是操作参数，不能作为摘要回退值。
+			switch key {
+			case "id", "toolCallId", "tool_call_id", "tool_use_id", "call_id", "name", "toolName", "tool_name", "type", "kind", "title", "status", "server", "tool", "providerIdentifier", "displayCommandAction", "displayTitleCommandAction", "displayTodoCount":
+				continue
+			}
 			value, ok := candidate[key].(string)
 			if !strings.HasPrefix(key, "_") && ok && value != "" && len([]rune(value)) < 200 {
 				return value

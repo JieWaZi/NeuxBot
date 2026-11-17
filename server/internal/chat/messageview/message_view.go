@@ -626,7 +626,7 @@ func (p *MessageViewBuilder) toolPart(message *Message, event MessageRuntimeEven
 
 // projectToolPart 仅使用当前的有界展示事实，省略字段由状态保留，显式空值由新事实清除。
 func (p *MessageViewBuilder) projectToolPart(executionID string, part *MessageDisplayPart, state *toolProjectionState) {
-	data := state.projectionData()
+	data := state.projectionData(p.workspacePathScope())
 	part.ToolCategory = displayToolCategoryForData(data)
 	part.ToolAction = displayToolAction(data)
 	part.ToolLabel, part.ToolLoadingLabel = buildToolPhrase(data, p.workspacePathScope())

@@ -763,12 +763,12 @@ func TestBuildToolPhraseUsesBoundedSemanticRules(t *testing.T) {
 		{
 			name: "external question tool retains external identity",
 			data: map[string]interface{}{"name": "mcp__external__AskUserQuestion"},
-			want: "EXTERNAL / AskUserQuestion mcp__external__AskUserQuestion",
+			want: "EXTERNAL / AskUserQuestion",
 		},
 		{
 			name: "other managed tool retains its identity",
 			data: map[string]interface{}{"name": "mcp__acp_go_user_input__different_tool"},
-			want: "ACP_GO_USER_INPUT / different_tool mcp__acp_go_user_input__different_tool",
+			want: "ACP_GO_USER_INPUT / different_tool",
 		},
 		{
 			name: "mcp tool and meaningful argument",
@@ -915,7 +915,7 @@ func TestBuildToolPhraseUsesBoundedSemanticRules(t *testing.T) {
 					"description": "运行前端完整检查",
 				},
 			},
-			want: "运行前端完整检查",
+			want: "运行前端完整检查 · pnpm --dir desktop check",
 		},
 		{
 			name: "claude bash nested command",
@@ -1043,7 +1043,7 @@ func TestReplayMessagesUsesClaudeNestedToolInputAndLateResultQuery(t *testing.T)
 	bash := parts[0]
 	if bash.ToolAction != constants.MessageToolActionCheckProject ||
 		bash.ToolCategory != constants.MessageToolCategoryCommand ||
-		bash.ToolLabel != "运行前端完整检查" ||
+		bash.ToolLabel != "运行前端完整检查 · pnpm check" ||
 		bash.ToolStatus != constants.MessageToolStatusCompleted {
 		t.Fatalf("claude bash view = %#v", bash)
 	}

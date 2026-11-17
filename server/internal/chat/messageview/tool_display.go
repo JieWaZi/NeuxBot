@@ -38,12 +38,74 @@ func displayToolName(data map[string]interface{}) string {
 		return "skill"
 	}
 	if name != "" {
-		return name
+		return canonicalToolName(name)
 	}
 	if eventType := firstDisplayString(data, "type"); eventType != "" {
-		return eventType
+		return canonicalToolName(eventType)
+	}
+	// ACP 没有 name 字段。Claude、Pi 等把工具名放在 title 中，其他
+	// CLI 可以使用可读标题；先识别已知工具名，再用标准 kind 补充语义。
+	title := firstDisplayString(data, "title")
+	if name := toolNameFromTitle(title); name != "" {
+		return name
+	}
+	switch strings.ToLower(firstDisplayString(data, "kind")) {
+	case "execute":
+		return "command"
+	case "read":
+		return "read"
+	case "edit":
+		return "edit"
+	case "search":
+		return "search"
+	case "fetch":
+		return "web_fetch"
 	}
 	return "unknown"
+}
+
+// canonicalToolName 统一 CLI 常见工具名，未知扩展名称保持原样。
+func canonicalToolName(name string) string {
+	switch strings.ToLower(name) {
+	case "exec_command", "run_shell_command", "shell_command":
+		return "command"
+	default:
+		return name
+	}
+}
+
+// toolNameFromTitle 只把确知的工具标识当作名称，不把人类标题或命令当名称。
+func toolNameFromTitle(title string) string {
+	name := canonicalToolName(title)
+	if strings.HasPrefix(strings.ToLower(name), "mcp__") && !strings.ContainsAny(name, " \t\r\n") {
+		return name
+	}
+	if server, _ := flattenedBuiltinMCPIdentity(name); server != "" {
+		return name
+	}
+	switch strings.ToLower(name) {
+	case "read", "readfile", "read_file", "view", "open_file", "glob", "grep", "search", "find", "file_search",
+		"write", "edit", "multiedit", "notebookedit", "file_change", "file_modify", "apply_patch",
+		"bash", "shell", "command", "command_execution", "exec", "webfetch", "websearch", "web_fetch", "web_search", "network",
+		"mcp", "external_service", "list", "list_files", "skill", "task", "agent", "taskcreate", "taskget", "tasklist",
+		"todowrite", "todoread", "enterplanmode", "exitplanmode", "generate_image", "askuserquestion":
+		return name
+	}
+	return ""
+}
+
+// displayToolCommand 优先读取结构化命令；Codex 的 execute 事件把命令放在 title。
+func displayToolCommand(data map[string]interface{}) string {
+	if command := firstNestedDisplayString(data, "command", "cmd"); command != "" {
+		return command
+	}
+	if firstDisplayString(data, "kind") == "execute" {
+		title := firstDisplayString(data, "title")
+		if toolNameFromTitle(title) == "" {
+			return title
+		}
+	}
+	return ""
 }
 
 func displayToolCategory(toolName string) constants.MessageToolCategory {
@@ -55,7 +117,7 @@ func displayToolCategory(toolName string) constants.MessageToolCategory {
 	switch normalized {
 	case "read", "readfile", "read_file", "view", "open_file":
 		return constants.MessageToolCategoryFileRead
-	case "glob", "grep", "search", "find", "file_search":
+	case "glob", "grep", "search", "find", "file_search", "list", "list_files":
 		return constants.MessageToolCategoryFileSearch
 	case "write", "edit", "multiedit", "notebookedit", "file_change",
 		"file_modify", "apply_patch":
@@ -148,7 +210,10 @@ func displayToolAction(data map[string]interface{}) constants.MessageToolAction 
 		if action := firstNestedDisplayString(data, "displayCommandAction"); action != "" {
 			return constants.MessageToolAction(action)
 		}
-		return displayCommandAction(firstNestedDisplayString(data, "command"))
+		if action := firstDisplayString(data, "displayTitleCommandAction"); action != "" {
+			return constants.MessageToolAction(action)
+		}
+		return displayCommandAction(displayToolCommand(data))
 	default:
 		if strings.HasPrefix(normalized, "mcp__") || strings.Contains(normalized, "mcp") {
 			return constants.MessageToolActionCallService
