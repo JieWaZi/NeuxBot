@@ -247,6 +247,11 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  /* 物理模块异步加载期间不提前展示静态落点。 */
+  :not([data-pile-static]) > .work-board-avatar-piece:not([data-falling]) {
+    visibility: hidden;
+  }
+
   .work-board-avatar-piece[data-falling] {
     bottom: var(--pile-live-y);
     left: var(--pile-live-x);

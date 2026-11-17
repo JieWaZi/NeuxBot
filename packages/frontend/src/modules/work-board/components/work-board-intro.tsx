@@ -10,8 +10,11 @@ import {
   withLocalErrorSurface,
 } from "@/shared/api/local-error-surface";
 import { useQueryEvents } from "@/shared/api/use-query-events";
-import { defaultCompanionAvatar } from "@/shared/companion/appearance";
-import { StaticAvatar } from "@/shared/ui/avatar";
+import {
+  companionAppearance,
+  defaultCompanionAvatar,
+} from "@/shared/companion/appearance";
+import { CompanionAvatar } from "@/shared/companion/companion-avatar";
 import { Button } from "@/shared/ui/button";
 import { WorkBoardAvatars } from "./work-board-avatars";
 import {
@@ -21,10 +24,31 @@ import {
 } from "./work-board-partner-picker";
 
 function TitlePartner({ children }: { children?: ReactNode }) {
+  const [ready, setReady] = useState(false);
   return (
     <>
       <span className="sr-only">{children}</span>
-      <StaticAvatar name="" src={defaultCompanionAvatar} size="sm" />
+      <span
+        aria-hidden="true"
+        className="size-avatar-sm relative inline-flex shrink-0 align-middle"
+      >
+        {!ready ? (
+          <span
+            className="absolute inset-1.5 rounded-full"
+            style={{
+              backgroundColor: companionAppearance(defaultCompanionAvatar)
+                .color,
+            }}
+          />
+        ) : null}
+        <CompanionAvatar
+          avatar={defaultCompanionAvatar}
+          animated={false}
+          interactive={false}
+          onReady={() => setReady(true)}
+          onError={() => setReady(true)}
+        />
+      </span>
     </>
   );
 }
@@ -92,7 +116,7 @@ export function WorkBoardIntro({ active }: { active: boolean }) {
     !removed && detail.isError ? detail : wakers.isError ? wakers : undefined;
 
   return (
-    <header className="mb-8 grid min-w-0 grid-cols-1 items-stretch gap-6 @[52rem]/resource-page:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+    <header className="mb-8 grid min-w-0 grid-cols-1 items-stretch gap-6 @[52rem]/resource-page:grid-cols-2">
       <section
         aria-labelledby={labelId}
         className="grid min-w-0 content-start gap-3"

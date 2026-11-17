@@ -127,3 +127,15 @@ it("落下途中暂停保留当前位置，恢复后继续落稳", () => {
   }
   expect(frames.size).toBe(0);
 });
+
+it("首个动画帧之前已定位到舞台上方", () => {
+  animationClock();
+  const { stage, avatar } = avatarStage();
+  const dispose = dropWorkBoardAvatars(stage);
+  try {
+    expect(avatar).toHaveAttribute("data-falling");
+    expect(avatar.getBoundingClientRect().bottom).toBeLessThanOrEqual(0);
+  } finally {
+    dispose?.();
+  }
+});

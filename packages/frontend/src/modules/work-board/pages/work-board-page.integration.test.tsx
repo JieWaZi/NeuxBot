@@ -1645,3 +1645,42 @@ it("看板发送伙伴首条消息失败后保留草稿，以同一请求重试�
   expect(bodies[2]).toEqual(bodies[0]);
   expect(read).not.toHaveBeenCalled();
 });
+
+it("快速返回的首次摘要不闪现骨架，慢请求才展示占位且不提前显示空状态", async () => {
+  let finish!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  server.use(
+    http.get(`${origin}/api/v1/work-board/summary`, async () => {
+      await pending;
+      return boardResponse({
+        attentionCount: 0,
+        resultCount: 0,
+        attention: [],
+        results: [],
+      });
+    }),
+  );
+  mount();
+  const panels = [
+    screen.getByRole("region", { name: "需要处理" }),
+    screen.getByRole("region", { name: "待我查看" }),
+  ];
+  for (const panel of panels) {
+    expect(panel).toHaveAttribute("aria-busy", "true");
+    expect(
+      within(panel).getByRole("status").firstElementChild,
+    ).not.toBeVisible();
+  }
+  expect(screen.queryByText("没有待处理事项")).toBeNull();
+  await waitFor(() => {
+    for (const panel of panels)
+      expect(within(panel).getByRole("status").firstElementChild).toBeVisible();
+  });
+  await act(async () => finish());
+  await screen.findByText("没有待处理事项");
+  expect(screen.getByText("没有待查看结果")).toBeVisible();
+  for (const panel of panels)
+    expect(panel).toHaveAttribute("aria-busy", "false");
+});

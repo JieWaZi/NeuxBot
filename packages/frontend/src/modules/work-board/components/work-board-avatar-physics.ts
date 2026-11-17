@@ -192,6 +192,8 @@ export function dropWorkBoardAvatars(stage: HTMLElement, enter = true) {
       pieces.map(({ body }) => body),
     );
   }
+  // 首帧提交前先将头像置于上方，避免短暂显示落地构图。
+  draw();
   // 恢复可见或调整尺寸后，也让当前布局自然落稳，避免把半空中的头像冻结。
   queueFrame();
   return () => {

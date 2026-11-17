@@ -26,7 +26,7 @@ const sizes = {
   small: "[--pile-size:clamp(1.5rem,12cqi,3.5rem)]",
 } as const;
 
-// 头像大小与落点错开，物理动画未加载时也保留完整构图。
+// 静态落点用于减少动态效果偏好与加载失败时的完整构图。
 const slotsBySide = {
   left: [
     { size: "wide", x: 25, lift: 0, angle: -8 },
@@ -36,6 +36,11 @@ const slotsBySide = {
     { size: "small", x: 44, lift: 0, angle: -14 },
     { size: "small", x: 30, lift: 42, angle: 15 },
     { size: "small", x: 72, lift: 28, angle: -8 },
+    { size: "medium", x: 14, lift: 50, angle: 12 },
+    { size: "small", x: 49, lift: 60, angle: -6 },
+    { size: "small", x: 89, lift: 48, angle: 14 },
+    { size: "small", x: 36, lift: 85, angle: -10 },
+    { size: "small", x: 66, lift: 80, angle: 8 },
   ],
   right: [
     { size: "hero", x: 36, lift: 0, angle: -5 },
@@ -45,6 +50,11 @@ const slotsBySide = {
     { size: "small", x: 91, lift: 0, angle: -9 },
     { size: "small", x: 24, lift: 32, angle: 13 },
     { size: "small", x: 82, lift: 40, angle: 8 },
+    { size: "medium", x: 58, lift: 55, angle: -12 },
+    { size: "small", x: 8, lift: 60, angle: 8 },
+    { size: "small", x: 35, lift: 70, angle: -6 },
+    { size: "small", x: 72, lift: 85, angle: 10 },
+    { size: "small", x: 92, lift: 75, angle: -8 },
   ],
 } as const;
 
@@ -70,7 +80,7 @@ const accents = [
     color: "91abe7",
   },
   {
-    material: "plush",
+    material: "balloon",
     shape: "capsule",
     expression: "somnolent",
     color: "e68ba7",
@@ -82,7 +92,7 @@ const accents = [
     color: "f5c870",
   },
   {
-    material: "plush",
+    material: "balloon",
     shape: "galet",
     expression: "espiegle",
     color: "80c5b7",
@@ -187,7 +197,8 @@ function WorkBoardAvatarPile({
           sync();
         })
         .catch(() => {
-          // 动态资源加载失败时仍使用静态构图。
+          // 动态资源加载失败时恢复静态构图。
+          if (!disposed) element.dataset.pileStatic = "";
         });
     }
     const observer =

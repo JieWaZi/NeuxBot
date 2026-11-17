@@ -122,7 +122,7 @@ it("窄栏不挂载头像，宽度恢复时显示并在收窄后释放", () => {
 
   width = 160;
   act(() => observers.forEach((update) => update()));
-  expect(avatars()).toHaveLength(7);
+  expect(avatars()).toHaveLength(12);
   expect(CompanionAvatar).toHaveBeenCalledWith(
     expect.objectContaining({ animated: true, interactive: false }),
     undefined,
@@ -132,4 +132,21 @@ it("窄栏不挂载头像，宽度恢复时显示并在收窄后释放", () => {
   width = 0;
   act(() => observers.forEach((update) => update()));
   expect(avatars()).toHaveLength(0);
+});
+
+it("装饰构图包含十二个头像及三种材质", () => {
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(420);
+  vi.stubGlobal("matchMedia", () => ({
+    matches: true,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  const { container } = render(
+    <WorkBoardAvatars active partners={[]} side="right" />,
+  );
+  const sources = [...container.querySelectorAll("[data-avatar-source]")].map(
+    (node) => node.getAttribute("data-avatar-source")?.split(":")[1],
+  );
+  expect(sources).toHaveLength(12);
+  expect(new Set(sources)).toEqual(new Set(["plush", "particles", "balloon"]));
 });

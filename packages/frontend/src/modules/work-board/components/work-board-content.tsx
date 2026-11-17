@@ -229,6 +229,31 @@ function WorkAttentionRow({ entry }: { entry: Attention }) {
 const focusVisibleRows = 5;
 type WorkBoardFocus = "attention" | "results";
 
+function WorkBoardFocusLoading() {
+  const { t } = useTranslation("workBoard");
+  const [revealed, setRevealed] = useState(false);
+  useEffect(() => {
+    // 快速读取只保留布局，避免骨架刚出现就被结果替换；慢读取仍展示加载状态。
+    const timer = window.setTimeout(() => setRevealed(true), 140);
+    return () => window.clearTimeout(timer);
+  }, []);
+  return (
+    <div
+      role="status"
+      aria-busy="true"
+      aria-label={t("loadingRecords")}
+      className="grid min-h-24 flex-1 content-center px-3 py-2"
+    >
+      <div hidden={!revealed}>
+        <div className="grid gap-3">
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-4 w-1/2" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function useWorkBoardFocusEvents(
   mode: Exclude<WorkBoardMode, "all">,
   expanded: boolean,
@@ -482,7 +507,7 @@ function WorkBoardFocusPanel({
                 {count}
               </span>
             ) : pending ? (
-              <Skeleton className="h-4 w-6" />
+              <span className="inline-block h-4 w-6" />
             ) : null}
           </h3>
           {canExpand && !paged ? (
@@ -540,15 +565,7 @@ function WorkBoardFocusPanel({
             ))}
           </ul>
         ) : loading ? (
-          <div
-            role="status"
-            aria-busy="true"
-            aria-label={t("loadingRecords")}
-            className="grid min-h-24 flex-1 content-center gap-3 px-3 py-2"
-          >
-            <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="h-4 w-1/2" />
-          </div>
+          <WorkBoardFocusLoading />
         ) : !focusIncomplete && summary?.complete && (!paged || count === 0) ? (
           <EmptyState
             className="min-h-24 flex-1"
