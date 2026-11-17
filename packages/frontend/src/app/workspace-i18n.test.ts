@@ -4,14 +4,35 @@ it("欢迎阶段只加载基础文案，工作台入口在首次使用前注册�
   // 公共 setup 已加载工作台文案；重建生产入口，避免它掩盖加载顺序。
   vi.resetModules();
   const { i18n } = await import("@/shared/i18n");
-  expect(i18n.t("common:startup.status.connection")).toBe("正在连接本地服务");
-  for (const namespace of ["workflow", "automaticTask"]) {
+  expect(i18n.getFixedT("zh-CN", "common")("startup.status.connection")).toBe(
+    "正在连接本地服务",
+  );
+  expect(i18n.getFixedT("en-US", "common")("startup.status.connection")).toBe(
+    "Connecting to local service",
+  );
+  const workspaceNamespaces = [
+    "waker",
+    "team",
+    "chat",
+    "knowledge",
+    "notification",
+    "im",
+    "workBoard",
+    "usage",
+    "workflow",
+    "automaticTask",
+  ];
+  for (const namespace of workspaceNamespaces) {
     expect(i18n.hasResourceBundle("zh-CN", namespace)).toBe(false);
     expect(i18n.hasResourceBundle("en-US", namespace)).toBe(false);
   }
 
   // 导入真实工作台入口，包含路由与 Provider，不能由测试预注册代替。
   await import("./workspace");
+  for (const namespace of workspaceNamespaces) {
+    expect(i18n.hasResourceBundle("zh-CN", namespace)).toBe(true);
+    expect(i18n.hasResourceBundle("en-US", namespace)).toBe(true);
+  }
   const [{ workflowZh, workflowEn }, { automaticTaskZh, automaticTaskEn }] =
     await Promise.all([
       import("@/shared/i18n/workflow"),

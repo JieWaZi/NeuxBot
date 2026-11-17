@@ -5,7 +5,7 @@
 // append-only rerenders must show, at every step, exactly the DOM a fresh
 // mount of the same prefix shows, while reusing the frozen blocks' DOM nodes
 // instead of remounting them.
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Root, RootContent } from "mdast";
 import { MarkdownText } from "./MarkdownText";
@@ -171,9 +171,12 @@ describe("incremental streaming rendering", () => {
     settled.unmount();
   });
 
-  it("keeps a highlighted fence mounted across the final full-document parse", () => {
+  it("keeps a highlighted fence mounted across the final full-document parse", async () => {
     const doc = "before.\n\n```ts\nconst answer = 42\n```\n\nafter.";
     const live = render(<MarkdownText text={doc} streaming />);
+    await waitFor(() =>
+      expect(live.container.querySelector("pre.shiki .line")).not.toBeNull(),
+    );
     const line = live.container.querySelector("pre.shiki .line");
     expect(line).not.toBeNull();
     live.rerender(<MarkdownText text={doc} />);

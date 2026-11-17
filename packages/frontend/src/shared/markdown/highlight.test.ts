@@ -1,15 +1,33 @@
 // Adapted behavior cases from DeepSeek Harness ce7073d51254c26cd63b22a60835b8f948deb447.
 // Copyright (c) 2026 DeepSeek. MIT License; see THIRD_PARTY_NOTICES.md.
-import { describe, expect, it } from "vitest";
+import { waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import {
   StreamingHighlightSession,
   grammarForHint,
   highlightLines,
   patchGoGrammar,
   highlightToHtml,
+  subscribeGrammarLoaded,
 } from "./highlight";
 
 describe("流式代码高亮", () => {
+  it("JS/TS 语法在首次代码请求时加载，并通知原文回退刷新为高亮", async () => {
+    const changed = vi.fn();
+    const unsubscribe = subscribeGrammarLoaded(changed);
+    try {
+      const code = "const answer: number = 42";
+      expect(highlightToHtml(code, "ts")).toBeUndefined();
+      await waitFor(() => expect(changed).toHaveBeenCalledOnce());
+      expect(highlightToHtml(code, "typescript")).toContain('class="shiki');
+      expect(highlightToHtml("const answer = 42", "js")).toContain(
+        'class="shiki',
+      );
+      expect(changed).toHaveBeenCalledOnce();
+    } finally {
+      unsubscribe();
+    }
+  });
   it("Go struct 规则保留上游回溯修复且不修改原语法", async () => {
     const { default: grammars } = await import("shiki/langs/go.mjs");
     const original = JSON.stringify(grammars);

@@ -7,8 +7,7 @@
  * theme package's token sheets as `--shiki-*` custom properties (light and
  * dark blocks), never here — the repo's tokens-only styling rule.
  *
- * Only the three markdown-fence and `run_code` grammars (TypeScript, shell,
- * JSON) load into the singleton at boot — the set every session renders. Every
+ * Only shell and JSON load into the singleton at boot. TypeScript and every
  * other language in the shared extension table
  * (`@deepseek-ai/dsh-util-code-language`: python, rust, yaml, markup, …) is
  * imported lazily and registered the first time such a language is requested,
@@ -25,7 +24,7 @@ import {
   createJavaScriptRegexEngine,
   defaultJavaScriptRegexConstructor,
 } from "shiki/engine/javascript";
-import langTs from "shiki/langs/typescript.mjs";
+import type langTs from "shiki/langs/typescript.mjs";
 import langBash from "shiki/langs/shellscript.mjs";
 import langJson from "shiki/langs/json.mjs";
 import type { GrammarState, HighlighterCore, ThemedToken } from "shiki/core";
@@ -37,14 +36,11 @@ type LangModule = { default: typeof langTs };
 
 /**
  * Grammars the singleton loads at boot; each entry's own `name` is the id
- * `codeToTokens`/`codeToHtml` resolve. The JS-family aliases (js/jsx/ts/tsx)
- * resolve to the TypeScript grammar rather than a separate one: it tokenizes
- * plain TS/JS exactly, and JSX/TSX approximately (shiki's TS grammar is not the
- * dedicated TSX grammar, so JSX elements tokenize imperfectly) — an accepted
- * trade to keep the boot set to one JS-family grammar. Every other language in
- * the shared extension table loads lazily through {@link LAZY_GRAMMARS}.
+ * `codeToTokens`/`codeToHtml` resolve. JS-family aliases (js/jsx/ts/tsx) share
+ * the lazy TypeScript grammar: it tokenizes plain TS/JS exactly and JSX/TSX
+ * approximately, without a second JSX grammar in the bundle.
  */
-const LANGS = [langTs, langBash, langJson];
+const LANGS = [langBash, langJson];
 
 /**
  * 保留 Harness 对 Go 单行 struct 字段规则的回溯修复。
@@ -85,10 +81,11 @@ export function patchGoGrammar(
  * Keyed by the grammar id (`LanguageRegistration.name`) the aliases resolve to.
  * `@shikijs/langs`' default export is a `LanguageRegistration[]`; the loader
  * hands the whole array to `loadLanguageSync`, which registers each entry
- * (including embedded sub-grammars). The three boot grammars are absent —
+ * (including embedded sub-grammars). The two boot grammars are absent —
  * already loaded, so no alias value ever points at a missing entry here.
  */
 const LAZY_GRAMMARS = new Map<string, () => Promise<LangModule>>([
+  ["typescript", () => import("shiki/langs/typescript.mjs")],
   ["python", () => import("shiki/langs/python.mjs")],
   ["ruby", () => import("shiki/langs/ruby.mjs")],
   [
@@ -347,7 +344,6 @@ let singleton: HighlighterCore | undefined;
 
 /** Representative paths through every boot grammar, compiled before user content is timed. */
 const BOOT_GRAMMAR_WARMUPS = [
-  { lang: "typescript", code: "const answer: number = 42" },
   { lang: "shellscript", code: "printf '%s\\n' \"$HOME\"" },
   { lang: "json", code: '{"ready":true}' },
 ] as const;
@@ -427,6 +423,14 @@ function ensureGrammar(resolved: string): boolean {
     void load()
       .then((mod) => {
         highlighter().loadLanguageSync(mod.default);
+        // JS/TS 首次扫描沿用原来的预热，避免编译耗时占用用户代码的扫描预算。
+        if (resolved === "typescript") {
+          highlighter().codeToTokens("const answer: number = 42", {
+            lang: resolved,
+            theme: "css-variables",
+            tokenizeTimeLimit: 0,
+          });
+        }
         loadCount += 1;
         for (const listener of listeners) listener();
       })
