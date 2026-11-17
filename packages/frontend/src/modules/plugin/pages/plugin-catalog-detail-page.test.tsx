@@ -47,6 +47,7 @@ vi.mock("../api/plugin-queries", () => {
   const pkg = {
     manifest: {
       name: "github",
+      version: "0.1.2",
       repository: "https://github.com/github/github-mcp-server",
       description: "旧简介",
       author: { name: "开发者署名" },
@@ -175,6 +176,7 @@ it("catalog details use the selected source summary and README and edit the actu
     </QueryClientProvider>,
   );
   await screen.findByRole("heading", { name: "GitHub" });
+  expect(screen.getByText("0.1.2")).toBeVisible();
   const summary = screen.getByText("旧简介");
   expect(summary).toHaveClass("truncate");
   expect(summary).toHaveAttribute("title", summary.textContent);

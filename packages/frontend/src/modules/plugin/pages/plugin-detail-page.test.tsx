@@ -73,11 +73,11 @@ vi.mock("../api/plugin-queries", () => ({
         versions: [
           {
             id: "v1",
-            version: "1.0",
+            version: "0.1.2",
             package: {
               manifest: {
                 name: "office",
-                version: "1.0",
+                version: "0.1.2",
                 author: { name: "作者" },
                 license: "MIT",
               },
@@ -205,6 +205,7 @@ it("keeps partner enable controls in the header and uninstall in the final secti
     .closest("header");
   expect(header).not.toBeNull();
   if (!header) throw new Error("Plugin header is missing");
+  expect(within(header).getByText("0.1.2")).toBeVisible();
   const toggle = within(header).getByRole("switch", { name: "关闭插件" });
   expect(toggle).toBeChecked();
   fireEvent.click(toggle);

@@ -1,6 +1,7 @@
 import type { ComponentProps } from "react";
 import { useTranslation } from "react-i18next";
 import { PageHeader } from "@/shared/ui/page-header";
+import { Badge } from "@/shared/ui/badge";
 import { PluginIcon } from "./plugin-icon";
 import {
   pluginDisplayName,
@@ -14,6 +15,7 @@ export function PluginDetailHeader({
   name,
   description,
   sourceKey,
+  status,
   ...props
 }: Pick<
   ComponentProps<typeof PageHeader>,
@@ -33,6 +35,14 @@ export function PluginDetailHeader({
       appearance="compact"
       visual={<PluginIcon pkg={pkg} size="detail" />}
       title={pluginDisplayName(pkg, name) || t("plugins")}
+      status={
+        <>
+          {pkg?.manifest?.version && (
+            <Badge variant="secondary">{pkg.manifest.version}</Badge>
+          )}
+          {status}
+        </>
+      }
       description={
         summary && (
           <p className="truncate" title={summary}>

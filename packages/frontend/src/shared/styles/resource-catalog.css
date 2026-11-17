@@ -21,6 +21,10 @@
   border-radius: inherit;
   clip-path: inset(0 round 20px);
 }
+/* 异步就绪的动态背景从静态底图淡入，避免色块直接切换；正文不参与过渡。 */
+.catalog-try-gradient canvas {
+  animation: fade-in var(--duration-slow) var(--ease-ui) both;
+}
 .catalog-try-card > :not(.catalog-try-gradient) {
   position: relative;
 }
