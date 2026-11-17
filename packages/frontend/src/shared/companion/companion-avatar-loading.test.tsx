@@ -173,6 +173,13 @@ it.each(["particles", "balloon"])(
         eye.getAttribute("transform"),
       ]);
     const before = eyes();
+    const spriteGeometry = () => {
+      const sprite = view.container.querySelector('[data-body-sprite="carre"]');
+      return ["x", "y", "width", "height"].map((attribute) =>
+        sprite?.getAttribute(attribute),
+      );
+    };
+    const beforeGeometry = spriteGeometry();
     view.rerender(
       <CompanionAvatar
         avatar={`bloub:${material}:carre:complice:121314`}
@@ -213,9 +220,7 @@ it.each(["particles", "balloon"])(
       ),
     );
     expect(eyes()).toEqual(before);
-    expect(
-      view.container.querySelector('[data-body-sprite="carre"]'),
-    ).toHaveAttribute("width", "316");
+    expect(spriteGeometry()).toEqual(beforeGeometry);
   },
 );
 

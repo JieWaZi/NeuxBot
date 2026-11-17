@@ -122,8 +122,8 @@ importers:
   packages/frontend:
     dependencies:
       '@neuxbot/bloub':
-        specifier: github:JieWaZi/bloub#5095a3057d9edee97c1cf9b4aaac431342b8443d
-        version: https://codeload.github.com/JieWaZi/bloub/tar.gz/5095a3057d9edee97c1cf9b4aaac431342b8443d
+        specifier: github:JieWaZi/bloub#581e8577ecf9830836e3da242c70c6b518e50710
+        version: https://codeload.github.com/JieWaZi/bloub/tar.gz/581e8577ecf9830836e3da242c70c6b518e50710
       '@paper-design/shaders':
         specifier: 0.0.80
         version: 0.0.80
@@ -2236,8 +2236,8 @@ packages:
     peerDependencies:
       react: ^16.8 || ^17.0 || ^18.0 || ^19.0.0 || ^19.0.0-rc
 
-  '@neuxbot/bloub@https://codeload.github.com/JieWaZi/bloub/tar.gz/5095a3057d9edee97c1cf9b4aaac431342b8443d':
-    resolution: {gitHosted: true, integrity: sha512-fgRgZMleljLnENAA+/MLhd1aVJMjQwNZK4VzaQCNdTpP0SD3HWGo2/iFcNzkbw/MaI4YYCULT5wOu0/ls+fWQg==, tarball: https://codeload.github.com/JieWaZi/bloub/tar.gz/5095a3057d9edee97c1cf9b4aaac431342b8443d}
+  '@neuxbot/bloub@https://codeload.github.com/JieWaZi/bloub/tar.gz/581e8577ecf9830836e3da242c70c6b518e50710':
+    resolution: {gitHosted: true, integrity: sha512-H0sC0eKXh5D4IrXoDaL/6gc68FG8qPHtyNl2sPUH7NlZUuJs2x/pOWliAJVZbt6ksf5uDjqSU9F+UHcWvaN6+Q==, tarball: https://codeload.github.com/JieWaZi/bloub/tar.gz/581e8577ecf9830836e3da242c70c6b518e50710}
     version: 0.2.1
 
   '@noble/hashes@1.4.0':
@@ -10526,7 +10526,7 @@ snapshots:
     dependencies:
       react: 19.2.8
 
-  '@neuxbot/bloub@https://codeload.github.com/JieWaZi/bloub/tar.gz/5095a3057d9edee97c1cf9b4aaac431342b8443d': {}
+  '@neuxbot/bloub@https://codeload.github.com/JieWaZi/bloub/tar.gz/581e8577ecf9830836e3da242c70c6b518e50710': {}
 
   '@noble/hashes@1.4.0': {}
 
