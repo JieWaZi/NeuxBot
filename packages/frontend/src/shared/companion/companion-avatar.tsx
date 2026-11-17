@@ -11,6 +11,7 @@ import { companionPlayback, companionPresentation } from "./playback";
 import { nextHoverFace, type HoverFace } from "./interaction-expressions";
 import { avatarDrawing } from "@neuxbot/bloub/drawing";
 import { enlargedEyes } from "@neuxbot/bloub/eyes";
+import { REST_LOOK } from "@neuxbot/bloub/motion";
 import { renderDrawing } from "./render-drawing";
 
 /** React 只拥有可见性和播放时钟，几何、眨眼、形变与状态过渡由 Bloub 计算。 */
@@ -78,7 +79,7 @@ export function CompanionAvatar({
     shown === "idle" &&
     !attentionState &&
     (hover.pointer || hover.focus) &&
-    playing;
+    !reduced;
   const expression =
     (interaction ? hover.face?.expression : undefined) ?? baseExpression;
   const interactiveState = interaction ? hover.face?.state : undefined;
@@ -139,13 +140,16 @@ export function CompanionAvatar({
       ),
   );
   const clock = useRef(0);
+  const displayedAt = useRef(0);
+  const wakePlayback = useRef<(() => void) | undefined>(undefined);
   const enteredAt = useRef(0);
   const motion = useRef<{
     shown: CompanionActivity;
     animation: StateId | undefined;
     interactiveState: StateId | undefined;
     attentionState: CompanionAttention["kind"] | undefined;
-  }>({ shown, animation, interactiveState, attentionState });
+    continuous: boolean;
+  }>({ shown, animation, interactiveState, attentionState, continuous: false });
   const configured = useRef("");
   const wasFixed = useRef(false);
   const timeline = useRef("");
@@ -192,19 +196,33 @@ export function CompanionAvatar({
   }, [animated]);
 
   useLayoutEffect(() => {
-    const now = clock.current;
     const timelineKey = `${animation ?? presentation.state}:${animation ? "preview" : "business"}`;
+    const key = `${timelineKey}:${appearance.shape}:${expression}:${presentation.motion}:${interactiveState}`;
+    const configurationChanged = configured.current !== key;
+    // 输入接续屏幕上最后一帧，不能从尚未绘制的采样时刻跳到下一段过渡。
+    if (
+      configured.current &&
+      (configurationChanged || (!playing && !fixedPose))
+    )
+      clock.current = displayedAt.current;
+    const now = clock.current;
     if (timeline.current !== timelineKey) {
       timeline.current = timelineKey;
       enteredAt.current = now;
       block.current = "";
     }
-    const key = `${timelineKey}:${appearance.shape}:${expression}:${presentation.motion}:${interactiveState}`;
     motion.current = {
       shown,
       animation,
       interactiveState,
       attentionState,
+      continuous: Boolean(
+        animation ||
+        preview ||
+        interaction ||
+        attentionState ||
+        presentation.state !== "idle",
+      ),
     };
     let target = companionPlayback(
       shown,
@@ -213,15 +231,14 @@ export function CompanionAvatar({
       attentionState,
     );
     const state = interactiveState ?? target.state;
-    const configurationChanged = configured.current !== key;
     if (configurationChanged) {
       configured.current = key;
       const base =
         EXPRESSION_BY_ID.get(expression) ?? EXPRESSION_BY_ID.get("neutre");
       engine.setShape(SHAPE_BY_ID.get(renderedShape)?.radii ?? null, now);
-      // 业务只选择原生动作与固定表情，不叠加辅助视线或形变。
+      // 普通头像沿用毛绒的小幅自然游移；显式原生预览保留原生视线。
       engine.setExpression(base ?? null, now);
-      engine.setLook(null, now);
+      engine.setLook(animation ? null : REST_LOOK, now);
     }
     if (
       !playing &&
@@ -247,11 +264,14 @@ export function CompanionAvatar({
       if (playing) engine.setState(state, now, target.local, true);
       block.current = blockKey;
     }
+    displayedAt.current = clock.current;
     setSample({
       frame: engine.sample(clock.current),
       time: clock.current,
       nativeState: state,
     });
+    if (playing && (configurationChanged || motion.current.continuous))
+      wakePlayback.current?.();
   }, [
     engine,
     appearance.shape,
@@ -261,6 +281,8 @@ export function CompanionAvatar({
     expression,
     presentation,
     interactiveState,
+    interaction,
+    preview,
     playing,
     fixedPose,
     animation,
@@ -271,10 +293,15 @@ export function CompanionAvatar({
     let raf = 0;
     let previous = performance.now();
     let painted = previous;
+    const interval = 1000 / 30;
+    const tolerance = 0.0001;
     const tick = (time: number) => {
+      raf = 0;
       clock.current += Math.min(Math.max((time - previous) / 1000, 0), 0.1);
       previous = time;
-      if (time - painted >= 1000 / 30) {
+      const settled = !motion.current.continuous && engine.quiet(clock.current);
+      const elapsed = time - painted;
+      if (elapsed + tolerance >= interval || settled) {
         const current = motion.current;
         const local = clock.current - enteredAt.current;
         const target = companionPlayback(
@@ -289,17 +316,30 @@ export function CompanionAvatar({
           engine.setState(state, clock.current, target.local, true);
           block.current = blockKey;
         }
+        displayedAt.current = clock.current;
         setSample({
           frame: engine.sample(clock.current),
           time: clock.current,
           nativeState: state,
         });
-        painted = time;
+        // 保留不足一帧的余量，避免30fps被刷新率量化为20或25fps。
+        painted += Math.floor((elapsed + tolerance) / interval) * interval;
       }
+      // 完成 morph 与眨眼后才停稳，保留当前姿态和可暂停时钟。
+      if (!settled) raf = requestAnimationFrame(tick);
+    };
+    const wake = () => {
+      if (raf) return;
+      previous = performance.now();
+      painted = previous;
       raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    wakePlayback.current = wake;
+    wake();
+    return () => {
+      wakePlayback.current = undefined;
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, [engine, playing]);
 
   const renderedAttention = frame.notif?.attention?.kind ?? attentionState;

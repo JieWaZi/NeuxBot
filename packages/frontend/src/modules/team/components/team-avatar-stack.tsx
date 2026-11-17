@@ -1,303 +1,33 @@
-import { type CSSProperties, type ReactNode } from "react";
+import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { GithubComJieWaZiNeuxBotServerApisChannelsChannelMemberDetail as ChannelMember } from "@/shared/api/generated/types.gen";
 import { cn } from "@/shared/lib/cn";
-import { Avatar } from "@/shared/ui/avatar";
-import {
-  wakerCompanionActivity,
-  type CompanionActivity,
-} from "@/shared/companion/activity";
+import { companionAvatar } from "@/shared/companion/appearance";
+import { CompanionAvatar } from "@/shared/companion/companion-avatar";
 
-const DEFAULT_MAX_VISIBLE = 3;
-const FRAME_SIZE_PX = 32;
-
-const frameSizeClass = {
-  sm: "size-avatar-sm",
-  xs: "size-avatar-xs",
+const frames = {
+  xs: { className: "size-avatar-xs", size: "var(--spacing-avatar-xs)" },
+  sm: { className: "size-avatar-sm", size: "var(--spacing-avatar-sm)" },
+  md: { className: "size-avatar-md", size: "var(--spacing-avatar-md)" },
+  navigation: {
+    className: "size-avatar-navigation",
+    size: "var(--spacing-avatar-navigation)",
+  },
 } as const;
 
-type TeamAvatarStackSize = keyof typeof frameSizeClass;
+// 轮廓只沿透明身体绘制，用所在行的底色遮住后方头像，不给整个方框加边。
+const contour = [
+  "drop-shadow(var(--team-avatar-edge) 0 0 var(--team-avatar-outline,var(--canvas)))",
+  "drop-shadow(calc(var(--team-avatar-edge) * -1) 0 0 var(--team-avatar-outline,var(--canvas)))",
+  "drop-shadow(0 var(--team-avatar-edge) 0 var(--team-avatar-outline,var(--canvas)))",
+  "drop-shadow(0 calc(var(--team-avatar-edge) * -1) 0 var(--team-avatar-outline,var(--canvas)))",
+].join(" ");
 
-type TeamAvatarPerson = {
-  activity: CompanionActivity;
-  avatar?: string;
-  id: string;
-  name: string;
-};
-
-type MiniAvatarSlot = {
-  sizePx: number;
-  x: number;
-  y: number;
-  zIndex: number;
-};
-
-function placeMiniAvatar(
-  sizePx: number,
-  x: number,
-  y: number,
-  zIndex: number,
-): MiniAvatarSlot {
-  return { sizePx, x, y, zIndex };
-}
-
-function cornerSlot(
-  frameSizePx: number,
-  sizePx: number,
-  corner: "top-left" | "top-right" | "bottom-left" | "bottom-right",
-  zIndex: number,
-): MiniAvatarSlot {
-  const offset = frameSizePx - sizePx;
-  switch (corner) {
-    case "top-left":
-      return placeMiniAvatar(sizePx, 0, 0, zIndex);
-    case "top-right":
-      return placeMiniAvatar(sizePx, offset, 0, zIndex);
-    case "bottom-left":
-      return placeMiniAvatar(sizePx, 0, offset, zIndex);
-    case "bottom-right":
-      return placeMiniAvatar(sizePx, offset, offset, zIndex);
-  }
-}
-
-function scalePx(frameSizePx: number, value: number) {
-  return Math.round((value * frameSizePx) / FRAME_SIZE_PX);
-}
-
-function createStackLayouts(frameSizePx: number) {
-  return {
-    pair: [
-      placeMiniAvatar(scalePx(frameSizePx, 25), 0, 0, 10),
-      placeMiniAvatar(
-        scalePx(frameSizePx, 19),
-        frameSizePx - scalePx(frameSizePx, 19),
-        frameSizePx - scalePx(frameSizePx, 19),
-        20,
-      ),
-    ],
-    triangle: [
-      placeMiniAvatar(
-        scalePx(frameSizePx, 16),
-        (frameSizePx - scalePx(frameSizePx, 16)) / 2,
-        0,
-        10,
-      ),
-      cornerSlot(frameSizePx, scalePx(frameSizePx, 16), "bottom-left", 20),
-      cornerSlot(frameSizePx, scalePx(frameSizePx, 16), "bottom-right", 30),
-    ],
-    grid: [
-      cornerSlot(frameSizePx, scalePx(frameSizePx, 14), "top-left", 10),
-      cornerSlot(frameSizePx, scalePx(frameSizePx, 14), "top-right", 20),
-      cornerSlot(frameSizePx, scalePx(frameSizePx, 14), "bottom-left", 30),
-    ],
-    overflowBadge: placeMiniAvatar(
-      scalePx(frameSizePx, 20),
-      frameSizePx - scalePx(frameSizePx, 20),
-      frameSizePx - scalePx(frameSizePx, 20),
-      50,
-    ),
-  } as const;
-}
-
-const stackLayouts = createStackLayouts(FRAME_SIZE_PX);
-
-function miniAvatarFrameStyle(slot: MiniAvatarSlot): CSSProperties {
-  return {
-    height: slot.sizePx,
-    left: slot.x,
-    position: "absolute",
-    top: slot.y,
-    width: slot.sizePx,
-    zIndex: slot.zIndex,
-  };
-}
-
-function projectTeamAvatarMembers(
-  members: ChannelMember[],
-): TeamAvatarPerson[] {
-  return members.flatMap((member) =>
-    member.waker?.id
-      ? [
-          {
-            avatar: member.waker.avatar,
-            activity: wakerCompanionActivity(member.waker.activityState),
-            id: member.waker.id,
-            name: member.waker.name ?? "",
-          },
-        ]
-      : [],
-  );
-}
-
-function TeamAvatarFrame({
-  ariaLabel,
-  children,
-  className,
-}: {
-  ariaLabel?: string;
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <span
-      aria-label={ariaLabel}
-      className={cn(
-        "relative inline-flex shrink-0 rounded-sm align-middle",
-        className,
-      )}
-      role={ariaLabel ? "img" : undefined}
-    >
-      {children}
-    </span>
-  );
-}
-
-function MiniTeamAvatar({
-  member,
-  nameFallback,
-  slot,
-  animated,
-}: {
-  member: TeamAvatarPerson;
-  nameFallback: string;
-  slot: MiniAvatarSlot;
-  animated: boolean;
-}) {
-  return (
-    <span
-      aria-hidden="true"
-      className="flex"
-      style={miniAvatarFrameStyle(slot)}
-    >
-      <Avatar
-        interactive={false}
-        animated={animated}
-        className="size-full min-h-0 min-w-0 rounded-full border-0"
-        name={member.name || nameFallback}
-        shape="circle"
-        size="xs"
-        src={member.avatar}
-        activity={member.activity}
-      />
-    </span>
-  );
-}
-
-function TeamAvatarStackContent({
-  ariaLabel,
-  className,
-  fallbackName,
-  frameClassName,
-  layouts,
-  maxVisible,
-  members,
-  singleAvatarSize,
-  animated,
-}: {
-  ariaLabel: string;
-  className?: string;
-  fallbackName: string;
-  frameClassName: string;
-  layouts: ReturnType<typeof createStackLayouts>;
-  maxVisible: number;
-  members: TeamAvatarPerson[];
-  singleAvatarSize: "sm" | "xs";
-  animated: boolean;
-}) {
-  const overflowCount = Math.max(0, members.length - maxVisible);
-  const visibleMembers = members.slice(0, maxVisible);
-
-  if (members.length === 1) {
-    const member = members[0];
-    if (!member) return null;
-    return (
-      <TeamAvatarFrame
-        ariaLabel={ariaLabel}
-        className={cn(frameClassName, className)}
-      >
-        <Avatar
-          interactive={false}
-          animated={animated}
-          className="size-full min-h-0 min-w-0 rounded-none"
-          name={member.name || fallbackName}
-          shape="square"
-          size={singleAvatarSize}
-          src={member.avatar}
-          activity={member.activity}
-        />
-      </TeamAvatarFrame>
-    );
-  }
-
-  return (
-    <TeamAvatarFrame
-      ariaLabel={ariaLabel}
-      className={cn(frameClassName, className)}
-    >
-      {members.length === 2 ? (
-        visibleMembers.map((member, index) => {
-          const slot = layouts.pair[index];
-          if (!slot) return null;
-          return (
-            <MiniTeamAvatar
-              key={member.id}
-              member={member}
-              nameFallback={fallbackName}
-              slot={slot}
-              animated={animated}
-            />
-          );
-        })
-      ) : overflowCount > 0 ? (
-        <>
-          {visibleMembers.slice(0, 3).map((member, index) => {
-            const slot = layouts.grid[index];
-            if (!slot) return null;
-            return (
-              <MiniTeamAvatar
-                key={member.id}
-                member={member}
-                nameFallback={fallbackName}
-                slot={slot}
-                animated={animated}
-              />
-            );
-          })}
-          <span
-            className="text-primary type-caption grid place-items-center rounded-sm font-semibold"
-            style={miniAvatarFrameStyle(layouts.overflowBadge)}
-          >
-            +{overflowCount}
-          </span>
-        </>
-      ) : (
-        visibleMembers.map((member, index) => {
-          const slot = layouts.triangle[index];
-          if (!slot) return null;
-          return (
-            <MiniTeamAvatar
-              key={member.id}
-              member={member}
-              nameFallback={fallbackName}
-              slot={slot}
-              animated={animated}
-            />
-          );
-        })
-      )}
-    </TeamAvatarFrame>
-  );
-}
-
-const frameSizePxByToken = {
-  sm: FRAME_SIZE_PX,
-  xs: 24,
-} as const;
-
+/** 等大成员按两列聚合；导航槽与绘图区域分开，给身体轮廓保留透明边缘。 */
 export function TeamAvatarStack({
   className,
-  maxVisible = DEFAULT_MAX_VISIBLE,
+  maxVisible = 4,
   members,
   size = "sm",
   animated = true,
@@ -305,29 +35,91 @@ export function TeamAvatarStack({
   className?: string;
   maxVisible?: number;
   members: ChannelMember[];
-  size?: TeamAvatarStackSize;
+  size?: keyof typeof frames;
   animated?: boolean;
 }) {
   const { t } = useTranslation("team");
-  const resolvedMembers = projectTeamAvatarMembers(members);
-  const fallbackName = t("member");
-  const frameSizePx = frameSizePxByToken[size];
-
-  if (!resolvedMembers.length) return null;
-
+  const people = members.flatMap((member) =>
+    member.waker?.id ? [member.waker] : [],
+  );
+  if (!people.length) return null;
+  const capacity = Math.max(1, Math.min(4, Math.floor(maxVisible)));
+  const overflowing = people.length > capacity;
+  const availableFaces = overflowing ? capacity - 1 : capacity;
+  // 宽数量与极小头像把数量放在底行，保留字号和真实成员数量。
+  const visibleFaces =
+    overflowing && (size === "xs" || people.length - availableFaces >= 10)
+      ? Math.min(2, availableFaces)
+      : availableFaces;
+  const visible = people.slice(0, visibleFaces);
+  const hidden = people.length - visible.length;
+  const cells = visible.length + (hidden > 0 ? 1 : 0);
+  const frame = frames[size];
+  // OpenBot 的 46px 组合位于 62px 行内；本产品 52px 槽占满行高，需在槽内留出同样的绘图余量。
+  const drawingSize =
+    "calc(" + frame.size + (size === "navigation" ? " - 1rem)" : " - 0.5rem)");
+  const cellClass = (index: number) =>
+    cn(
+      "relative inline-flex size-(--team-avatar-face) shrink-0",
+      cells > 1 &&
+        "[&>span>svg]:absolute [&>span>svg]:top-1/2 [&>span>svg]:left-1/2 [&>span>svg]:size-(--team-avatar-graphic-size) [&>span>svg]:-translate-1/2 [&>span>svg]:scale-115 [&>span>svg]:[filter:var(--team-avatar-contour)]",
+      cells === 1 && "col-span-2 row-span-2",
+      cells === 2 && "row-span-2",
+      cells === 3 && index === 2 && "col-span-2",
+    );
   return (
-    <TeamAvatarStackContent
-      ariaLabel={t("membersAria")}
-      className={className}
-      fallbackName={fallbackName}
-      frameClassName={frameSizeClass[size]}
-      layouts={createStackLayouts(frameSizePx)}
-      maxVisible={maxVisible}
-      members={resolvedMembers}
-      singleAvatarSize={size}
-      animated={animated}
-    />
+    <span
+      role="img"
+      data-avatar-hover
+      aria-label={t("membersAria")}
+      className={cn(
+        "relative isolate inline-grid shrink-0 grid-cols-[repeat(2,var(--team-avatar-pitch))] grid-rows-[repeat(2,var(--team-avatar-pitch))] place-content-center place-items-center align-middle",
+        frame.className,
+        className,
+      )}
+      style={
+        {
+          "--team-avatar-pitch": "calc(" + drawingSize + " * 0.38)",
+          "--team-avatar-face":
+            cells === 1 ? frame.size : "calc(" + drawingSize + " * 0.54)",
+          "--team-avatar-graphic-size": "128%",
+          "--team-avatar-count-size":
+            "max(var(--spacing-icon-md), calc(" + drawingSize + " * 0.46))",
+          "--team-avatar-edge": size === "navigation" ? "3.5px" : "2px",
+          "--team-avatar-contour": contour,
+        } as CSSProperties
+      }
+    >
+      {visible.map((person, index) => (
+        <span
+          key={person.id}
+          aria-hidden="true"
+          className={cellClass(index)}
+          style={{ zIndex: index + 1 }}
+        >
+          <CompanionAvatar
+            interactive={animated}
+            animated={animated}
+            avatar={companionAvatar(person.avatar, person.name || t("member"))}
+          />
+        </span>
+      ))}
+      {hidden > 0 ? (
+        <span
+          aria-hidden="true"
+          style={{
+            zIndex: visible.length + 1,
+            filter: size === "xs" ? undefined : "var(--team-avatar-contour)",
+          }}
+          className={cn(
+            cellClass(visible.length),
+            "bg-accent-surface text-accent-content type-caption h-(--team-avatar-count-size) w-max min-w-(--team-avatar-count-size) items-center justify-center rounded-full px-0.5 font-semibold whitespace-nowrap tabular-nums",
+            size === "xs" && "px-0",
+          )}
+        >
+          +{hidden}
+        </span>
+      ) : null}
+    </span>
   );
 }
-
-export { FRAME_SIZE_PX, stackLayouts as teamAvatarStackLayoutsForTest };
