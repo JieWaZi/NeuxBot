@@ -5,7 +5,7 @@
 <h1>NeuxBot</h1>
 
 <p><strong>Your AI partners, working together.</strong><br />
-A local-first desktop workspace for you and your AI team.</p>
+A local-first workspace for AI teamwork, knowledge, and automation.</p>
 
 [![MIT License](https://img.shields.io/badge/License-MIT-56b986?style=flat-square)](LICENSE)
 ![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon%20%7C%20Intel-222822?style=flat-square&logo=apple)
@@ -13,33 +13,44 @@ A local-first desktop workspace for you and your AI team.</p>
 
 [Releases](https://github.com/JieWaZi/NeuxBot/releases) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
 
-<img src="docs/assets/readme/hero.png" alt="NeuxBot's companion character alongside an illustrated desktop work board." width="100%" />
+<img src="docs/assets/readme/hero.png" alt="NeuxBot's current Bloub partners work together on a release, turning knowledge into a brief, a project into changes, and results into a review." width="100%" />
 
-<sub>Product illustration · sample data · Chinese interface</sub>
+<sub>Product concept illustration</sub>
 
 </div>
 
-NeuxBot brings your AI tools, project context, and collaborators into one local desktop workspace. Build a team of partners around the way you work, and follow their work through to files, code changes, and reports.
+Give a goal to a partner or a team, work through it together, and review the files, code changes, and reports in the same workspace. NeuxBot brings persistent AI partners, local CLI agents, knowledge, and repeatable workflows together in a desktop app or your local browser.
 
 ## Why NeuxBot?
 
-- **Partners you can keep working with.** Give each partner a role, profile, project knowledge, and the skills and resources it needs. Reuse that setup across tasks, team assignments, and workflows.
-- **Your choice of tools and accounts.** Choose a CLI, account, and model for the work at hand while managing your partners in one place. Use existing CLI logins or separately managed AI accounts.
-- **From delegation to repeatable work.** Let a team leader coordinate specialists and collect their results. Turn recurring work into workflows through conversation, with execution progress, approvals, and outputs available for review.
+- **A team that can divide the work.** A leader delegates to specialist partners, coordinates task dependencies, and collects their reports. Follow the shared conversation, open a member's work, and review the delivered result.
+- **Partners with lasting context.** Give each partner a role, profile, appearance, projects, memory, and installed resources. Keep using that identity across conversations and team assignments; choose the CLI, account, and model for each job.
+- **Work you can inspect and continue.** Read the execution process, answer questions and approvals, and inspect files, Git changes, browser pages, and terminals alongside the conversation. Use the work board to find active work, pending actions, and results to read.
+
+## Bring your own agents
+
+Use existing CLI logins or separately managed AI accounts. Partners and their resources live in NeuxBot; the selected local CLI handles model and tool execution.
 
 **Supported CLIs:** Codex · Claude Code · Cursor · Kimi · Pi · OpenCode · Gemini CLI · Grok Build · WorkBuddy · Qoder
 
-<img src="docs/assets/readme/multi-cli.png" alt="NeuxBot's existing jelly companion connects Codex, Claude Code, Cursor, Kimi, Pi, OpenCode, Gemini CLI, Grok Build, WorkBuddy and Qoder, plus a More card, in one workspace." width="100%" />
+<img src="docs/assets/readme/multi-cli.png" alt="One partner workspace with a choice of ten local CLIs: Codex, Claude Code, Cursor, Kimi, Pi, OpenCode, Gemini CLI, Grok Build, WorkBuddy and Qoder." width="100%" />
 
-<sub>CLI support overview · illustration</sub>
+Models, permissions, MCP support, and live input depend on the installed CLI and account. See [agents and accounts](docs/guide/agents-and-accounts-cn.md) for setup and capability boundaries.
 
-Partners and work records are stored locally. AI requests use your chosen providers; available models and tools depend on the CLI and account.
+## Make the work reusable
+
+- **Knowledge libraries and memory.** Upload source material, organize it into Wiki pages, search it, and explore its graph. Use local libraries or connect a remote library, including WeKnora. Maintain reusable knowledge in partner or project memory with explicit remember, update, and forget actions.
+- **Plugins, skills, and MCP.** Install plugins from the catalog, import independent skills from GitHub or ZIP, and connect external tools through MCP. Choose resources for each partner; invoke plugins and skills with `/`, or connectors with `#`. [Resources and memory →](docs/guide/resources-cn.md)
+- **Workflows built through conversation.** Describe inputs, stages, and deliverables to create a reusable workflow. Run a selected version, follow its steps on the canvas, handle human questions, and inspect outputs and run history. [Teams and workflows →](docs/guide/teams-and-workflows-cn.md)
+- **Scheduled work, API triggers, and IM.** Schedule a partner, team, or workflow, or trigger an automatic task through the local API. Authorize an IM chat to work with a partner or team and receive results. Knowledge can also be exposed to external agents through scoped API and MCP access. [Automation and IM →](docs/guide/automation-and-im-cn.md)
+
+Partners, configuration, and work records are stored locally. AI requests and connected services use the providers you choose. Scheduled tasks and IM reception depend on the app running and the device being awake and connected.
 
 ## What can you put to work?
 
-- **Build and review a project.** Have partners implement a change, review it, and verify it; inspect their code and reports alongside the conversation.
-- **Research a topic together.** Assign different angles to research partners, then bring their findings and sources into a shared report.
-- **Make routine work repeatable.** Create a project-update workflow through conversation and schedule it. Use an authorized IM chat to ask your partners for work and receive results.
+- **Take a change through review.** Ask a team to implement a feature, review the code, and run checks. Follow each partner's work, inspect the diff, and handle acceptance from the task.
+- **Turn research into reusable knowledge.** Collect source documents in a library, have partners investigate different angles, and bring their findings into a report you can inspect alongside the Wiki and original material.
+- **Keep routine work moving.** Create a project-update workflow through conversation, schedule it, and use an authorized IM chat to ask for follow-up work and receive results.
 
 ## Get started
 
