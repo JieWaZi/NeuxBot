@@ -221,6 +221,7 @@
   --companion-card-bloom: 76%;
 
   --content-caption: var(--ref-neutral-650);
+  --message-card-background: var(--surface-raised);
   --user-message-background: var(--ref-neutral-950);
   --user-message-content: var(--ref-neutral-0);
   --content-primary: rgba(0, 0, 0, 0.8);
@@ -534,6 +535,7 @@
   --companion-card-bloom: 40%;
 
   --content-caption: var(--ref-neutral-450);
+  --message-card-background: var(--ref-neutral-850);
   --user-message-background: var(--ref-neutral-100);
   --user-message-content: var(--ref-neutral-950);
   --content-primary: var(--ref-neutral-200);

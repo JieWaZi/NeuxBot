@@ -326,6 +326,40 @@ export type GithubComJieWaZiNeuxBotServerApisAutomaticTasksUpdateAutomaticTaskRe
 };
 
 /**
+ * 团队委派记录
+ */
+export type GithubComJieWaZiNeuxBotServerApisChannelsChannelDelegation = {
+    /**
+     * 执行伙伴
+     */
+    assigneeWakerId?: string;
+    /**
+     * 交付时间
+     */
+    createdAt?: number;
+    /**
+     * 接收执行
+     */
+    executionId?: string;
+    /**
+     * 派发标识
+     */
+    id?: string;
+    /**
+     * 派发时间
+     */
+    queuedAt?: number;
+    /**
+     * 发起伙伴
+     */
+    senderWakerId?: string;
+    /**
+     * 发起时间
+     */
+    sentAt?: number;
+};
+
+/**
  * 团队详情
  */
 export type GithubComJieWaZiNeuxBotServerApisChannelsChannelDetail = {
@@ -434,6 +468,10 @@ export type GithubComJieWaZiNeuxBotServerApisChannelsChannelMemberInput = {
  * 团队对话详情
  */
 export type GithubComJieWaZiNeuxBotServerApisChannelsChannelThreadDetail = {
+    /**
+     * 已交付委派
+     */
+    delegations?: Array<GithubComJieWaZiNeuxBotServerApisChannelsChannelDelegation>;
     /**
      * 最新团队事件游标
      */

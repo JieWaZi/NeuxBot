@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { BotChatMessage } from "../runtime/chat-projection";
 import { applyChatLiveFrame } from "../runtime/chat-live";
-import { ChatMessageProjection } from "./chat-message-nodes";
+import {
+  ChatMessageProjection,
+  timelineEventsInMessageWindow,
+} from "./chat-message-nodes";
 
 type Part = NonNullable<BotChatMessage["displayParts"]>[number];
 const tool = (id: string): Part => ({
@@ -17,6 +20,39 @@ function required<T>(value: T | null | undefined): T {
 }
 
 describe("canonical 消息节点投影", () => {
+  it("委派事件跟随已加载消息窗口，读到历史起点才补齐更早事件", () => {
+    const events = [{ createdAt: 100 }, { createdAt: 250 }, { createdAt: 500 }];
+    const recent = [{ createdAt: 200 }, { createdAt: 400 }];
+    expect(timelineEventsInMessageWindow(events, recent, true)).toEqual(
+      events.slice(1),
+    );
+    expect(
+      timelineEventsInMessageWindow(
+        events,
+        [{ createdAt: 50 }, ...recent],
+        true,
+      ),
+    ).toEqual(events);
+    expect(timelineEventsInMessageWindow(events, recent, false)).toBe(events);
+    expect(timelineEventsInMessageWindow(events, [], true)).toEqual([]);
+  });
+  it("消息锚定的委派不受接纳时间影响，也不泄露到另一页", () => {
+    const events = [{ createdAt: 100, beforeMessageId: "input" }];
+    expect(
+      timelineEventsInMessageWindow(
+        events,
+        [{ id: "input", createdAt: 200 }],
+        true,
+      ),
+    ).toEqual(events);
+    expect(
+      timelineEventsInMessageWindow(
+        events,
+        [{ id: "other", createdAt: 50 }],
+        false,
+      ),
+    ).toEqual([]);
+  });
   it("100个完成工具之后100次追加正文，不重建工具节点或无关组", () => {
     const node = vi.fn(),
       group = vi.fn(),

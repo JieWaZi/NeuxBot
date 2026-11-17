@@ -2757,7 +2757,13 @@ export const baseEn = {
       member: "Team members",
       lead: "Team lead",
       leadSuffix: "(lead)",
+      delegatedTo: "Delegated to",
+      delegatedFrom: "Delegation from",
+      openDelegationChat: "Open {{name}}'s chat",
       memberReport: "Member report",
+      receivedMessages: "Messages received from <partners/>.",
+      expandMessages: "Expand messages from {{name}}",
+      collapseMessages: "Collapse messages from {{name}}",
       memberReportTruncated:
         "Content is truncated and cannot be treated as complete evidence",
       conversationTab: "Team chat",

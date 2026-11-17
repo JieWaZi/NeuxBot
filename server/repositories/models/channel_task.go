@@ -23,6 +23,8 @@ type ChannelTask struct {
 	DirectInput *workinput.Input `gorm:"column:direct_input;type:text;serializer:json" json:"-"`
 	// DeferUntilLeadIdle 表示负责人规划回合尚未结束，调度器不得提前启动该任务。
 	DeferUntilLeadIdle bool `gorm:"column:defer_until_lead_idle;not null;default:false;index" json:"-"`
+	// DelegationSentAt 是本次首次派发、重试或改派意图持久化时的 Unix 毫秒时间，不随等待接纳更新。
+	DelegationSentAt int64 `gorm:"column:delegation_sent_at;not null;default:0" json:"-"`
 	// Status 是任务当前持久化生命周期状态。
 	Status constants.ChannelTaskStatus `gorm:"column:status;type:varchar(24);not null;index" json:"status"`
 	// Priority 是负责人设置的排序优先级，数值越大越先派发。
@@ -72,9 +74,9 @@ func (ChannelTaskDependency) TableName() string { return "channel_task_dependenc
 // ChannelTaskAttempt 把一次任务尝试与成员 Chat Execution 及提交围栏关联起来。
 type ChannelTaskAttempt struct {
 	// ID 是 32 位无连字符 UUID。
-	ID string `gorm:"column:id;type:varchar(32);primaryKey" json:"id"`
+	ID string `gorm:"column:id;type:varchar(32);primaryKey;index:idx_channel_task_delegations,priority:4" json:"id"`
 	// TaskID 是尝试所属团队任务标识，并与 Fence 唯一确定一次领取。
-	TaskID string `gorm:"column:task_id;type:varchar(32);not null;index;uniqueIndex:idx_channel_task_attempt_fence,priority:1" json:"taskId"`
+	TaskID string `gorm:"column:task_id;type:varchar(32);not null;index;uniqueIndex:idx_channel_task_attempt_fence,priority:1;index:idx_channel_task_delegations,priority:1" json:"taskId"`
 	// ChatID 是本次尝试复用的执行伙伴 Chat 标识。
 	ChatID string `gorm:"column:chat_id;type:varchar(32);not null;index" json:"chatId"`
 	// ExecutionID 是执行接纳后关联的 Chat Execution 标识。
@@ -83,8 +85,10 @@ type ChannelTaskAttempt struct {
 	AssigneeWakerID string `gorm:"column:assignee_waker_id;type:varchar(32);not null" json:"assigneeWakerId"`
 	// Fence 是本次尝试提交最终结果必须匹配的围栏值。
 	Fence int `gorm:"column:fence;not null;uniqueIndex:idx_channel_task_attempt_fence,priority:2" json:"fence"`
-	// Reason 说明本次尝试由首次派发、用户补充还是负责人重试触发。
-	Reason constants.ChannelAttemptReason `gorm:"column:reason;type:varchar(24);not null" json:"reason"`
+	// Reason 说明本次尝试由首次派发、补充、成员改派还是负责人重试触发。
+	Reason constants.ChannelAttemptReason `gorm:"column:reason;type:varchar(24);not null;index:idx_channel_task_delegations,priority:2" json:"reason"`
+	// DelegationSentAt 固定本次尝试对应委派意图的发起时间，不使用 reservation 或接纳时间替代。
+	DelegationSentAt int64 `gorm:"column:delegation_sent_at;not null;default:0" json:"-"`
 	// Status 是 reservation、运行中或终态对应的 Execution 生命周期状态。
 	Status constants.ExecutionStatus `gorm:"column:status;type:varchar(24);not null;default:'';index" json:"status,omitempty"`
 	// Result 是该尝试执行成功时提交的阶段结果。
@@ -94,7 +98,7 @@ type ChannelTaskAttempt struct {
 	// ErrorMessage 是该尝试执行失败时的安全展示摘要。
 	ErrorMessage string `gorm:"column:error_message;type:text;not null;default:''" json:"errorMessage,omitempty"`
 	// StartedAt 是对应 Execution 被接纳时的 Unix 毫秒时间。
-	StartedAt *int64 `gorm:"column:started_at" json:"startedAt,omitempty"`
+	StartedAt *int64 `gorm:"column:started_at;index:idx_channel_task_delegations,priority:3" json:"startedAt,omitempty"`
 	// FinishedAt 是对应 Execution 结束时的 Unix 毫秒时间。
 	FinishedAt *int64 `gorm:"column:finished_at" json:"finishedAt,omitempty"`
 	// CreatedAt 是尝试记录进入持久化队列时的 Unix 毫秒时间。

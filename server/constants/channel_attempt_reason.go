@@ -14,4 +14,6 @@ const (
 	ChannelAttemptReasonLeadFollowUp ChannelAttemptReason = "lead_follow_up"
 	// ChannelAttemptReasonRetry 表示团队负责人显式重试失败任务。
 	ChannelAttemptReasonRetry ChannelAttemptReason = "retry"
+	// ChannelAttemptReasonReassigned 表示排队中的补充任务改派给另一成员。
+	ChannelAttemptReasonReassigned ChannelAttemptReason = "reassigned"
 )

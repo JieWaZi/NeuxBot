@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type {
   ReasoningMessagePartProps,
   ThreadAssistantMessagePart,
@@ -12,6 +12,7 @@ import "@/shared/i18n";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import {
   AssistantMessage as PureAssistantMessage,
+  ChatMessageList,
   ComposerContextUsage,
   MessageRunStatus as PureMessageRunStatus,
   ReasoningPart,
@@ -1233,7 +1234,77 @@ describe("execution file changes", () => {
     expect(
       screen.getByRole("button", { name: "与 项目经理 互动" }),
     ).toBeVisible();
+    expect(screen.getByText("项目经理")).toBeVisible();
     expect(screen.queryByText("负责人")).not.toBeInTheDocument();
+  });
+  it.each(["completed", "failed"] as const)(
+    "最新 %s 团队回复悬停也能切换表情，移开恢复原状态",
+    (status) => {
+      const random = vi.spyOn(Math, "random").mockReturnValue(0.6);
+      onTestFinished(() => random.mockRestore());
+      const view = new ChatMessageProjection().update([
+        {
+          id: "latest-team-reply",
+          role: "assistant",
+          status,
+          displayParts: [{ type: "text", text: "团队结果" }],
+        },
+      ])[0];
+      if (!view) throw new Error("missing team fixture");
+      render(
+        <PureAssistantMessage
+          view={view}
+          name="团队负责人"
+          avatar="bloub:plush:cercle:neutre:ef69bc"
+          latest
+          last
+          messageAuthors={{}}
+        />,
+      );
+      const button = screen.getByRole("button", { name: "与 团队负责人 互动" });
+      const avatar = button.querySelector("svg[data-companion-avatar]");
+      const resting = avatar?.getAttribute("data-expression");
+      fireEvent.pointerEnter(button);
+      expect(avatar?.getAttribute("data-expression")).not.toBe(resting);
+      expect(avatar).toHaveAttribute("data-activity", status);
+      fireEvent.pointerLeave(button);
+      expect(avatar).toHaveAttribute("data-expression", resting);
+      expect(avatar).toHaveAttribute("data-activity", status);
+    },
+  );
+  it("团队历史回复保留头像与名称，不随最新回复切换而消失", () => {
+    const random = vi.spyOn(Math, "random").mockReturnValue(0.6);
+    onTestFinished(() => random.mockRestore());
+    const view = new ChatMessageProjection().update([
+      {
+        id: "older-team-reply",
+        role: "assistant",
+        status: "completed",
+        displayParts: [{ type: "text", text: "较早的团队回复" }],
+      },
+    ])[0];
+    if (!view) throw new Error("missing team fixture");
+    const { container } = render(
+      <PureAssistantMessage
+        view={view}
+        name="团队负责人"
+        messageAuthors={{}}
+      />,
+    );
+    expect(screen.getByText("团队负责人")).toBeVisible();
+    expect(
+      container.querySelector("svg[data-companion-avatar]"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("较早的团队回复")).toBeVisible();
+    const avatarButton = screen.getByRole("button", {
+      name: "与 团队负责人 互动",
+    });
+    const avatar = avatarButton.querySelector("svg[data-companion-avatar]");
+    const resting = avatar?.getAttribute("data-expression");
+    fireEvent.pointerEnter(avatarButton);
+    expect(avatar?.getAttribute("data-expression")).not.toBe(resting);
+    fireEvent.pointerLeave(avatarButton);
+    expect(avatar).toHaveAttribute("data-expression", resting);
   });
 });
 
@@ -1480,5 +1551,339 @@ describe("steer 连续工作展示", () => {
     );
     expect(screen.getByText("执行已取消")).toBeVisible();
     expect(screen.getByRole("button", { name: "复制" })).toBeVisible();
+  });
+});
+
+describe("团队成员消息折叠", () => {
+  const authors = {
+    "report-a": {
+      name: "A",
+      sourceChatId: "chat-a",
+      displayAsParticipant: true,
+      kind: "member-report" as const,
+    },
+    "report-a2": {
+      name: "A",
+      sourceChatId: "chat-a",
+      displayAsParticipant: true,
+      kind: "member-report" as const,
+    },
+    "report-b": {
+      name: "B",
+      sourceChatId: "chat-b",
+      displayAsParticipant: true,
+      kind: "member-report" as const,
+    },
+  };
+  const projection = new ChatMessageProjection();
+  const report = (id: string, content: string): BotChatMessage => ({
+    id,
+    role: "user",
+    actor: "team_member",
+    content,
+  });
+  const leader = (id = "leader"): BotChatMessage => ({
+    id,
+    role: "assistant",
+    status: "completed",
+    displayParts: [{ type: "text", text: `负责人结果 ${id}` }],
+  });
+
+  it("展开报告与普通伙伴回复共用悬停底栏并保留后续消息的间距", () => {
+    const { container } = render(
+      <ChatMessageList
+        views={projection.update([
+          { ...report("report-a", "展开的报告"), createdAt: 1000 },
+          { ...leader(), createdAt: 2000 },
+          { id: "next-input", role: "user", content: "继续" },
+        ])}
+        name="伙伴"
+        messageAuthors={authors}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "展开 A 的消息" }));
+    const reportRow = container.querySelector('[data-message-id="report-a"]');
+    const ordinaryRow = container.querySelector('[data-message-id="leader"]');
+    const reportFooter = reportRow?.querySelector("footer");
+    const ordinaryFooter = ordinaryRow?.querySelector("footer");
+    expect(reportFooter).toHaveClass(
+      "opacity-0",
+      "pointer-events-none",
+      "group-hover/reply:opacity-100",
+      "group-focus-within/reply:opacity-100",
+      "[@media(hover:none)]:opacity-100",
+    );
+    expect(reportFooter?.className).toBe(ordinaryFooter?.className);
+    for (const row of [reportRow, ordinaryRow]) {
+      expect(row).toHaveClass("pb-4");
+      expect(row?.querySelector("footer")?.parentElement).toHaveClass(
+        "group/reply",
+      );
+      expect(row?.querySelector("time")?.closest("footer")).not.toBeNull();
+      expect(row?.querySelectorAll("footer")).toHaveLength(1);
+    }
+    expect(
+      reportRow?.querySelector("[data-chat-message-card]")?.className,
+    ).toBe(ordinaryRow?.querySelector("[data-chat-message-card]")?.className);
+  });
+
+  it("默认只显示负责人结果，按伙伴独立展开并复用普通消息卡片", () => {
+    const views = projection.update([
+      report("report-a", "A 的消息"),
+      report("report-b", "B 的消息"),
+      report("report-a2", "A 的补充"),
+      leader(),
+    ]);
+    const { container, rerender } = render(
+      <ChatMessageList views={views} name="负责人" messageAuthors={authors} />,
+    );
+    expect(screen.getByText("负责人结果 leader")).toBeVisible();
+    expect(screen.queryByText("A 的消息")).not.toBeInTheDocument();
+    expect(screen.queryByText("B 的消息")).not.toBeInTheDocument();
+    expect(screen.queryByText("成员报告")).not.toBeInTheDocument();
+    expect(screen.getByText(/收到来自.*的消息/)).toBeVisible();
+    const toggleA = screen.getByRole("button", { name: "展开 A 的消息" });
+    expect(toggleA).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(toggleA);
+    expect(screen.getByText("A 的消息")).toBeVisible();
+    expect(screen.getByText("A 的补充")).toBeVisible();
+    expect(screen.queryByText("B 的消息")).not.toBeInTheDocument();
+    const card = screen
+      .getByText("A 的消息")
+      .closest("[data-chat-message-card]");
+    expect(card).toHaveClass("bg-message-card-background");
+    expect(card).not.toHaveClass("border-l-2");
+    fireEvent.click(screen.getByRole("button", { name: "展开 B 的消息" }));
+    expect(screen.getByText("A 的消息")).toBeVisible();
+    expect(screen.getByText("B 的消息")).toBeVisible();
+    rerender(
+      <ChatMessageList
+        views={[...views]}
+        name="负责人"
+        messageAuthors={{ ...authors }}
+      />,
+    );
+    expect(screen.getByText("A 的消息")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "收起 A 的消息" }));
+    expect(screen.queryByText("A 的消息")).not.toBeInTheDocument();
+    expect(screen.getByText("B 的消息")).toBeVisible();
+    const marker = screen.getByText(/收到来自.*的消息/);
+    const leadCard = container.querySelector('[data-message-id="leader"]');
+    if (!leadCard) throw new Error("missing leader message");
+    expect(
+      marker.compareDocumentPosition(leadCard) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("按回复轮次分别折叠，同名伙伴按原身份区分，直接交付不折叠", () => {
+    const views = projection.update([
+      report("report-a", "第一轮报告"),
+      leader("one"),
+      { id: "input", role: "user", content: "下一轮" },
+      report("report-b", "第二轮报告"),
+      leader("two"),
+      report("direct", "直接交付结果"),
+    ]);
+    render(
+      <ChatMessageList
+        views={views}
+        name="负责人"
+        messageAuthors={{
+          ...authors,
+          "report-b": { ...authors["report-b"], name: "A" },
+          direct: { name: "C", displayAsParticipant: true },
+        }}
+      />,
+    );
+    const toggles = screen.getAllByRole("button", { name: "展开 A 的消息" });
+    expect(toggles).toHaveLength(2);
+    const secondToggle = toggles[1];
+    if (!secondToggle) throw new Error("missing second round toggle");
+    fireEvent.click(secondToggle);
+    expect(screen.queryByText("第一轮报告")).not.toBeInTheDocument();
+    expect(screen.getByText("第二轮报告")).toBeVisible();
+    expect(screen.getByText("直接交付结果")).toBeVisible();
+  });
+
+  it("消息深链展开对应伙伴，保留截断提示与原委派定位", () => {
+    const views = projection.update([
+      { ...report("report-a", "定位到 A 的报告"), createdAt: 100 },
+      { ...report("report-b", "B 的报告"), createdAt: 110 },
+      { ...leader(), createdAt: 200 },
+    ]);
+    const { rerender } = render(
+      <ChatMessageList
+        views={views}
+        name="负责人"
+        messageAuthors={{
+          ...authors,
+          "report-a": { ...authors["report-a"], truncated: true },
+        }}
+        timelineEvents={[
+          {
+            id: "before-report",
+            createdAt: 90,
+            beforeMessageId: "report-a",
+            content: <span>原委派</span>,
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByText("原委派")).toBeVisible();
+    rerender(
+      <ChatMessageList
+        views={views}
+        name="负责人"
+        messageAuthors={{
+          ...authors,
+          "report-a": { ...authors["report-a"], truncated: true },
+        }}
+        requestedMessageId="report-a"
+      />,
+    );
+    expect(screen.getByText("定位到 A 的报告")).toBeVisible();
+    expect(screen.getByText("内容已截断，不可作为完整依据")).toBeVisible();
+    expect(screen.queryByText("B 的报告")).not.toBeInTheDocument();
+  });
+
+  it("前插同轮历史后保留已展开伙伴，并区分同名伙伴的真实身份", () => {
+    const metadata = {
+      ...authors,
+      "report-a": {
+        ...authors["report-a"],
+        name: "同名",
+        wakerId: "a",
+        sourceChatId: "shared",
+      },
+      "report-b": {
+        ...authors["report-b"],
+        name: "同名",
+        wakerId: "b",
+        sourceChatId: "shared",
+      },
+    };
+    const { rerender } = render(
+      <ChatMessageList
+        views={projection.update([report("report-b", "B 原报告"), leader()])}
+        name="负责人"
+        messageAuthors={metadata}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "展开 同名 的消息" }));
+    rerender(
+      <ChatMessageList
+        views={projection.update([
+          report("report-a", "A 更早报告"),
+          report("report-b", "B 原报告"),
+          leader(),
+        ])}
+        name="负责人"
+        messageAuthors={metadata}
+      />,
+    );
+    expect(screen.getByText("B 原报告")).toBeVisible();
+    expect(screen.queryByText("A 更早报告")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "展开 同名 的消息" }));
+    expect(screen.getByText("A 更早报告")).toBeVisible();
+    expect(screen.getByText("B 原报告")).toBeVisible();
+  });
+
+  it("手动收起后再次导航相同消息仍能定位，点击展开后保持焦点", () => {
+    const views = projection.update([
+      report("report-a", "再次定位的报告"),
+      leader(),
+    ]);
+    const { rerender } = render(
+      <ChatMessageList
+        views={views}
+        name="负责人"
+        messageAuthors={authors}
+        requestedMessageId="report-a"
+        requestedMessageKey="first"
+      />,
+    );
+    expect(screen.getByText("再次定位的报告")).toBeVisible();
+    const toggle = screen.getByRole("button", { name: "收起 A 的消息" });
+    toggle.focus();
+    fireEvent.click(toggle);
+    expect(screen.queryByText("再次定位的报告")).not.toBeInTheDocument();
+    expect(toggle).toHaveFocus();
+    rerender(
+      <ChatMessageList
+        views={views}
+        name="负责人"
+        messageAuthors={authors}
+        requestedMessageId="report-a"
+        requestedMessageKey="second"
+      />,
+    );
+    expect(screen.getByText("再次定位的报告")).toBeVisible();
+    expect(toggle).toHaveFocus();
+    rerender(
+      <ChatMessageList views={views} name="负责人" messageAuthors={authors} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "收起 A 的消息" }));
+    rerender(
+      <ChatMessageList
+        views={views}
+        name="负责人"
+        messageAuthors={authors}
+        requestedMessageId="report-a"
+        requestedMessageKey="second"
+      />,
+    );
+    expect(screen.getByText("再次定位的报告")).toBeVisible();
+  });
+
+  it("伙伴名字沿用委派的头像色 hover 和临时表情，点击仍展开消息", () => {
+    const random = vi.spyOn(Math, "random").mockReturnValue(0.6);
+    onTestFinished(() => random.mockRestore());
+    render(
+      <ChatMessageList
+        views={projection.update([report("report-a", "伙伴消息"), leader()])}
+        name="负责人"
+        messageAuthors={{
+          ...authors,
+          "report-a": {
+            ...authors["report-a"],
+            avatar: "bloub:plush:cercle:neutre:ef69bc",
+          },
+        }}
+      />,
+    );
+    const button = screen.getByRole("button", { name: "展开 A 的消息" });
+    const avatar = button.querySelector("svg[data-companion-avatar]");
+    expect(avatar).toHaveAttribute("data-expression", "neutre");
+    expect(
+      button.style.getPropertyValue("--companion-hover-surface"),
+    ).toContain("#ef69bc");
+    fireEvent.pointerEnter(button);
+    expect(avatar?.getAttribute("data-expression")).not.toBe("neutre");
+    fireEvent.pointerLeave(button);
+    expect(avatar).toHaveAttribute("data-expression", "neutre");
+    fireEvent.click(button);
+    expect(screen.getByText("伙伴消息")).toBeVisible();
+    expect(button.querySelector("button")).toBeNull();
+  });
+
+  it("负责人尚未回复时可以查看报告，回复到达后保留展开状态", () => {
+    const views = projection.update([report("report-a", "已收到的报告")]);
+    const { rerender } = render(
+      <ChatMessageList views={views} name="负责人" messageAuthors={authors} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "展开 A 的消息" }));
+    rerender(
+      <ChatMessageList
+        views={projection.update([
+          report("report-a", "已收到的报告"),
+          leader(),
+        ])}
+        name="负责人"
+        messageAuthors={authors}
+      />,
+    );
+    expect(screen.getByText("已收到的报告")).toBeVisible();
+    expect(screen.getByText("负责人结果 leader")).toBeVisible();
   });
 });

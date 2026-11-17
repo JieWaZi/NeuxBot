@@ -15,6 +15,7 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @theme inline {
+  --color-message-card-background: var(--message-card-background);
   --color-user-message-background: var(--user-message-background);
   --color-user-message-content: var(--user-message-content);
   /* 保留画布点阵的轮廓，避免磨砂层把聊天区重新抹成纯色。 */

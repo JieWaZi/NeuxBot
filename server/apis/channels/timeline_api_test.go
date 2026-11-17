@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -70,6 +71,17 @@ func TestTeamMetadataAndTimelineHaveOneMessageSnapshotOwner(t *testing.T) {
 	if err := database.DB.Create(&models.ChannelThread{ID: "thread", ChannelID: "channel", LeadChatID: "lead-chat", ReadyAt: &ready}).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := global.ChannelTaskControllerManager.Create(context.Background(), models.ChannelTask{
+		ID: "task", ThreadID: "thread", SenderWakerID: "lead", AssigneeWakerID: "replacement",
+		Status: constants.ChannelTaskStatusPending, ChangedPaths: []string{},
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := global.ChannelTaskControllerManager.CreateAttempt(context.Background(), models.ChannelTaskAttempt{
+		ID: "attempt", TaskID: "task", AssigneeWakerID: "original", Reason: constants.ChannelAttemptReasonInitial, StartedAt: &ready,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	ctx, _ := gin.CreateTestContext(nil)
 	metadata, err := (&GetChannelThread{ChannelID: "channel", ThreadID: "thread"}).Output(ctx)
 	if err != nil {
@@ -78,7 +90,14 @@ func TestTeamMetadataAndTimelineHaveOneMessageSnapshotOwner(t *testing.T) {
 	if teams.reads != 0 {
 		t.Fatalf("metadata request secretly read %d full timeline pages", teams.reads)
 	}
-	encoded, _ := json.Marshal(metadata)
+	delegations := metadata.(ChannelThreadDetail).Delegations
+	if len(delegations) != 1 || delegations[0].AssigneeWakerID != "original" || delegations[0].CreatedAt != ready {
+		t.Fatalf("metadata lost accepted delegation history: %+v", delegations)
+	}
+	encoded, err := json.Marshal(metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var fields map[string]any
 	if err := json.Unmarshal(encoded, &fields); err != nil {
 		t.Fatal(err)

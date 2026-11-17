@@ -213,17 +213,18 @@ func (s *service) createThread(
 		// 完整附件和能力引用，不在聚合时间线生成第二个用户气泡。
 		memberInput.Actor = string(constants.ChannelMessageActorLead)
 		initialTask = &models.ChannelTask{
-			ID:              util.New(),
-			ThreadID:        threadID,
-			AssigneeWakerID: input.MentionWakerID,
-			Subject:         thread.Title,
-			Description:     input.Input.Content,
-			DirectInput:     &memberInput,
-			DirectDelivery:  true,
-			Status:          constants.ChannelTaskStatusPending,
-			ChangedPaths:    []string{},
-			CreatedAt:       now,
-			UpdatedAt:       now,
+			ID:               util.New(),
+			ThreadID:         threadID,
+			AssigneeWakerID:  input.MentionWakerID,
+			Subject:          thread.Title,
+			Description:      input.Input.Content,
+			DirectInput:      &memberInput,
+			DirectDelivery:   true,
+			DelegationSentAt: now,
+			Status:           constants.ChannelTaskStatusPending,
+			ChangedPaths:     []string{},
+			CreatedAt:        now,
+			UpdatedAt:        now,
 		}
 		thread.TaskCount = 1
 	}

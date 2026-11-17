@@ -984,6 +984,238 @@ func TestLeadCreatedTasksDispatchAfterLeadTerminalAndStartupRecovery(t *testing.
 	}
 }
 
+func TestPendingFollowUpReassignmentKeepsDelegationReason(t *testing.T) {
+	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "reassigned-follow-up.db"), Migrate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := database.DB.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	ctx := context.Background()
+	tasks := controllers.NewChannelTaskController(database.DB)
+	if err := tasks.CreateAttempt(ctx, models.ChannelTaskAttempt{
+		ID: "original-attempt", TaskID: "task", AssigneeWakerID: "original", Fence: 1,
+		Reason: constants.ChannelAttemptReasonInitial, StartedAt: testTimestamp(100),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sut := &service{tasks: tasks}
+	for _, actor := range []constants.ChannelMessageActor{constants.ChannelMessageActorLead, constants.ChannelMessageActorUser} {
+		followUps := []models.ChannelTaskFollowUp{{Actor: actor}}
+		reason, err := sut.taskAttemptReason(ctx, models.ChannelTask{ID: "task", CurrentFence: 1, AssigneeWakerID: "replacement"}, followUps)
+		if err != nil || reason != constants.ChannelAttemptReasonReassigned {
+			t.Fatalf("reassigned %s continuation reason = %s, error = %v", actor, reason, err)
+		}
+		reason, err = sut.taskAttemptReason(ctx, models.ChannelTask{ID: "task", CurrentFence: 1, AssigneeWakerID: "original"}, followUps)
+		if err != nil || reason == constants.ChannelAttemptReasonReassigned {
+			t.Fatalf("same-member %s continuation reason = %s, error = %v", actor, reason, err)
+		}
+	}
+}
+
+func TestUnstartedAttemptKeepsDelegationReasonAfterRelease(t *testing.T) {
+	for _, reason := range []constants.ChannelAttemptReason{
+		constants.ChannelAttemptReasonInitial,
+		constants.ChannelAttemptReasonRetry,
+		constants.ChannelAttemptReasonReassigned,
+		constants.ChannelAttemptReasonLeadFollowUp,
+		constants.ChannelAttemptReasonUserFollowUp,
+	} {
+		t.Run(string(reason), func(t *testing.T) {
+			database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "unstarted.db"), Migrate: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			sqlDB, err := database.DB.DB()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = sqlDB.Close() })
+			ctx := context.Background()
+			tasks := controllers.NewChannelTaskController(database.DB)
+			sut := &service{tasks: tasks, transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))}
+			task := models.ChannelTask{ID: "task", ThreadID: "thread", AssigneeWakerID: "replacement", CurrentFence: 2,
+				Status: constants.ChannelTaskStatusInProgress, ChangedPaths: []string{}}
+			if err := tasks.Create(ctx, task, nil); err != nil {
+				t.Fatal(err)
+			}
+			attempt := models.ChannelTaskAttempt{ID: "reservation", TaskID: task.ID, AssigneeWakerID: task.AssigneeWakerID,
+				Fence: task.CurrentFence, Reason: reason, Status: constants.ExecutionStatusPending}
+			if err := tasks.CreateAttempt(ctx, attempt); err != nil {
+				t.Fatal(err)
+			}
+			if err := tasks.CreateFollowUp(ctx, models.ChannelTaskFollowUp{
+				ID: "supplement", TaskID: task.ID, Actor: constants.ChannelMessageActorLead,
+				DeliveredAt: testTimestamp(100), DeliveredAttemptID: attempt.ID,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := sut.releaseUnstartedAttempt(ctx, attempt); err != nil {
+				t.Fatal(err)
+			}
+			task, err = tasks.Get(ctx, task.ID)
+			if err != nil || task.Status != constants.ChannelTaskStatusPending {
+				t.Fatalf("released task = %+v, error = %v", task, err)
+			}
+			followUps, err := tasks.ListPendingFollowUps(ctx, task.ID)
+			if err != nil || len(followUps) != 1 {
+				t.Fatalf("released follow-ups = %+v, error = %v", followUps, err)
+			}
+			// 新实例只读取持久事实，覆盖释放后重启再派发。
+			recovered := &service{tasks: controllers.NewChannelTaskController(database.DB)}
+			got, err := recovered.taskAttemptReason(ctx, task, followUps)
+			if err != nil || got != reason {
+				t.Fatalf("next accepted reason = %s, want %s, error = %v", got, reason, err)
+			}
+			got, err = recovered.taskAttemptReason(ctx, task, nil)
+			if err != nil || got != reason {
+				t.Fatalf("next accepted reason without supplement = %s, want %s, error = %v", got, reason, err)
+			}
+		})
+	}
+}
+
+// newDelegationDispatchService 使用真实仓储与执行边界替身构造委派调度测试。
+func newDelegationDispatchService(t *testing.T) (*service, models.ChannelThread, *postTurnChatFake, *postTurnExecutionFake) {
+	t.Helper()
+	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "delegation-dispatch.db"), Migrate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := database.DB.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	ctx, cancel := context.WithCancel(context.Background())
+	wakers := controllers.NewWakerController(database.DB)
+	createChannelTestWakers(t, ctx, wakers, "lead", "member")
+	channels := controllers.NewChannelController(database.DB)
+	if err := channels.Create(ctx, models.Channel{ID: "channel", Name: "委派调度", LeadWakerID: "lead"}, []models.ChannelMember{
+		{ChannelID: "channel", WakerID: "lead", RuntimeID: "codex", PermissionLevel: constants.PermissionLevelAuto},
+		{ChannelID: "channel", WakerID: "member", RuntimeID: "codex", PermissionLevel: constants.PermissionLevelAuto, Position: 1},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	thread := models.ChannelThread{ID: "thread", ChannelID: "channel", LeadWakerID: "lead", LeadChatID: "lead-chat",
+		WorkspaceDirectory: t.TempDir(), MaxParallel: 3, MaxTasks: 12, MaxFailureAttempts: 2, ReadyAt: testTimestamp(1)}
+	threads := controllers.NewChannelThreadController(database.DB)
+	if err := threads.Create(ctx, thread, []models.ChannelThreadMember{
+		{ThreadID: thread.ID, WakerID: "lead", ChatID: "lead-chat", IsLead: true, RuntimeID: "codex", PermissionLevel: constants.PermissionLevelAuto},
+		{ThreadID: thread.ID, WakerID: "member", ChatID: "member-chat", RuntimeID: "codex", PermissionLevel: constants.PermissionLevelAuto, Position: 1},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	chats := &postTurnChatFake{summaries: map[string]chatservice.ChatSummary{
+		"lead-chat": {Chat: models.Chat{ID: "lead-chat"}}, "member-chat": {Chat: models.Chat{ID: "member-chat"}},
+	}}
+	executions := &postTurnExecutionFake{}
+	sut := &service{channels: channels, threads: threads, tasks: controllers.NewChannelTaskController(database.DB),
+		transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB)),
+		wakers:       wakers, chats: chats, executions: executions, lifecycleContext: ctx, lifecycleCancel: cancel,
+		watchers: make(map[string]struct{}), capabilities: channeltool.NewRegistry()}
+	t.Cleanup(sut.Close)
+	return sut, thread, chats, executions
+}
+
+func TestRetryDelegationKeepsRequestTimeAcrossBusyAndFailedAdmission(t *testing.T) {
+	sut, thread, chats, executions := newDelegationDispatchService(t)
+	ctx := context.Background()
+	created, err := sut.CreateTask(ctx, CreateTaskInput{ThreadID: thread.ID, SenderWakerID: "lead", AssigneeWakerID: "member",
+		Subject: "验证委派时间", Description: "忙碌和接纳失败均不能改变发起身份。", DeferDispatch: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Task.DelegationSentAt != created.Task.CreatedAt {
+		t.Fatalf("initial request time = %d, want %d", created.Task.DelegationSentAt, created.Task.CreatedAt)
+	}
+	if err := sut.tasks.UpdateFields(ctx, created.Task.ID, map[string]interface{}{
+		"status": constants.ChannelTaskStatusFailed, "current_fence": 1, "delegation_sent_at": int64(50),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sut.tasks.CreateAttempt(ctx, models.ChannelTaskAttempt{ID: "original", TaskID: created.Task.ID, Fence: 1,
+		AssigneeWakerID: "member", Reason: constants.ChannelAttemptReasonInitial, Status: constants.ExecutionStatusFailed,
+		StartedAt: testTimestamp(100)}); err != nil {
+		t.Fatal(err)
+	}
+	chats.summaries["member-chat"] = chatservice.ChatSummary{Chat: models.Chat{ID: "member-chat", ActiveExecutionID: "busy"}}
+	before := time.Now().UnixMilli()
+	if err := sut.retryTask(ctx, created.Task.ID, "member"); err != nil {
+		t.Fatal(err)
+	}
+	after := time.Now().UnixMilli()
+	queued, err := sut.tasks.Get(ctx, created.Task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queued.DelegationSentAt < before || queued.DelegationSentAt > after || executions.startCount() != 0 {
+		t.Fatalf("busy retry request = %+v, starts = %d", queued, executions.startCount())
+	}
+	if _, err := sut.updatePendingTask(ctx, UpdateTaskInput{ThreadID: thread.ID, TaskID: queued.ID, Subject: "只修订说明"}); err != nil {
+		t.Fatal(err)
+	}
+	// 模拟排队后的其他变化，不允许 UpdatedAt 充当委派发起时间。
+	if err := sut.tasks.UpdateFields(ctx, queued.ID, map[string]interface{}{"updated_at": after + 1000}); err != nil {
+		t.Fatal(err)
+	}
+	chats.summaries["member-chat"] = chatservice.ChatSummary{Chat: models.Chat{ID: "member-chat"}}
+	executions.setStartError(status_error.ChatHasActiveExecution)
+	if _, err := sut.schedule(ctx, thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	executions.setStartError(nil)
+	if _, err := sut.schedule(ctx, thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	delegations, err := sut.tasks.ListDelegationAttempts(ctx, []string{queued.ID})
+	if err != nil || len(delegations) != 2 {
+		t.Fatalf("accepted delegation attempts = %+v, error = %v", delegations, err)
+	}
+	if got := delegations[1]; got.Reason != constants.ChannelAttemptReasonRetry || got.DelegationSentAt != queued.DelegationSentAt {
+		t.Fatalf("accepted retry lost queued identity: %+v, want sentAt %d", got, queued.DelegationSentAt)
+	}
+}
+
+func TestPendingReassignmentCapturesNewRequestTime(t *testing.T) {
+	sut, thread, _, executions := newDelegationDispatchService(t)
+	ctx := context.Background()
+	task := models.ChannelTask{ID: "task", ThreadID: thread.ID, SenderWakerID: "lead", AssigneeWakerID: "original",
+		Status: constants.ChannelTaskStatusPending, CurrentFence: 1, ChangedPaths: []string{}, DelegationSentAt: 50}
+	if err := sut.tasks.Create(ctx, task, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := sut.tasks.CreateAttempt(ctx, models.ChannelTaskAttempt{ID: "original", TaskID: task.ID, Fence: 1,
+		AssigneeWakerID: "original", Reason: constants.ChannelAttemptReasonInitial, StartedAt: testTimestamp(100), DelegationSentAt: 50}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sut.tasks.CreateFollowUp(ctx, models.ChannelTaskFollowUp{ID: "follow-up", TaskID: task.ID,
+		Actor: constants.ChannelMessageActorLead, Text: "继续执行", Payload: workinput.Input{Content: "继续执行"}}); err != nil {
+		t.Fatal(err)
+	}
+	before := time.Now().UnixMilli()
+	updated, err := sut.updatePendingTask(ctx, UpdateTaskInput{ThreadID: thread.ID, TaskID: task.ID, AssigneeWakerID: "member"})
+	if err != nil || updated.DelegationSentAt < before {
+		t.Fatalf("reassignment request = %+v, error = %v", updated, err)
+	}
+	executions.setStartError(status_error.ChatHasActiveExecution)
+	if _, err := sut.schedule(ctx, thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	executions.setStartError(nil)
+	if _, err := sut.schedule(ctx, thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	delegations, err := sut.tasks.ListDelegationAttempts(ctx, []string{task.ID})
+	if err != nil || len(delegations) != 2 || delegations[0].DelegationSentAt != 50 ||
+		delegations[1].Reason != constants.ChannelAttemptReasonReassigned || delegations[1].DelegationSentAt != updated.DelegationSentAt {
+		t.Fatalf("reassignment rewrote request history: %+v, error = %v", delegations, err)
+	}
+}
+
 func TestDirectMentionOnlySupplementsInProgressAndReviewRequiresExplicitDecision(t *testing.T) {
 	database, err := dbhelper.NewDB(conf.DB{
 		Type:    conf.Sqlite,

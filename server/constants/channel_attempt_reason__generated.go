@@ -18,6 +18,8 @@ func (v ChannelAttemptReason) String() string {
 		return "initial"
 	case ChannelAttemptReasonLeadFollowUp:
 		return "lead_follow_up"
+	case ChannelAttemptReasonReassigned:
+		return "reassigned"
 	case ChannelAttemptReasonRetry:
 		return "retry"
 	case ChannelAttemptReasonUserFollowUp:
@@ -32,6 +34,8 @@ func (v ChannelAttemptReason) Label() string {
 		return "ChannelAttemptReasonInitial 表示任务首次派发。"
 	case ChannelAttemptReasonLeadFollowUp:
 		return "ChannelAttemptReasonLeadFollowUp 表示团队负责人跨成员补充触发续跑。"
+	case ChannelAttemptReasonReassigned:
+		return "ChannelAttemptReasonReassigned 表示排队中的补充任务改派给另一成员。"
 	case ChannelAttemptReasonRetry:
 		return "ChannelAttemptReasonRetry 表示团队负责人显式重试失败任务。"
 	case ChannelAttemptReasonUserFollowUp:
@@ -41,7 +45,7 @@ func (v ChannelAttemptReason) Label() string {
 }
 
 func (v ChannelAttemptReason) Values() []enum.Enum {
-	return []enum.Enum{ChannelAttemptReasonInitial, ChannelAttemptReasonLeadFollowUp, ChannelAttemptReasonRetry, ChannelAttemptReasonUserFollowUp}
+	return []enum.Enum{ChannelAttemptReasonInitial, ChannelAttemptReasonLeadFollowUp, ChannelAttemptReasonReassigned, ChannelAttemptReasonRetry, ChannelAttemptReasonUserFollowUp}
 }
 
 func (v ChannelAttemptReason) Type() string {
@@ -50,7 +54,7 @@ func (v ChannelAttemptReason) Type() string {
 
 func (v ChannelAttemptReason) MarshalText() ([]byte, error) {
 	switch v {
-	case ChannelAttemptReasonInitial, ChannelAttemptReasonLeadFollowUp, ChannelAttemptReasonRetry, ChannelAttemptReasonUserFollowUp:
+	case ChannelAttemptReasonInitial, ChannelAttemptReasonLeadFollowUp, ChannelAttemptReasonReassigned, ChannelAttemptReasonRetry, ChannelAttemptReasonUserFollowUp:
 		return []byte(v.String()), nil
 	default:
 		return nil, enum.InvalidTypeError
@@ -63,6 +67,8 @@ func (v *ChannelAttemptReason) UnmarshalText(text []byte) error {
 		*v = ChannelAttemptReasonInitial
 	case ChannelAttemptReasonLeadFollowUp.String():
 		*v = ChannelAttemptReasonLeadFollowUp
+	case ChannelAttemptReasonReassigned.String():
+		*v = ChannelAttemptReasonReassigned
 	case ChannelAttemptReasonRetry.String():
 		*v = ChannelAttemptReasonRetry
 	case ChannelAttemptReasonUserFollowUp.String():

@@ -18,6 +18,8 @@ type AvatarProps = {
   activity?: CompanionActivity;
   attention?: CompanionAttention;
   interactive?: boolean;
+  /** 团队消息的终态头像允许悬停反馈，离开后恢复业务状态。 */
+  terminalHover?: boolean;
   /** 静态头像保留形状、材质和默认表情，不启动帧循环。 */
   animated?: boolean;
   preview?: boolean;
@@ -45,6 +47,7 @@ export function Avatar({
   activity,
   attention,
   interactive = true,
+  terminalHover = false,
   animated = true,
   preview = false,
   animation,
@@ -60,6 +63,7 @@ export function Avatar({
       attention={attention}
       animated={animated}
       interactive={canInteract}
+      terminalHover={terminalHover}
       preview={preview}
       animation={animation}
       expression={expression}

@@ -454,6 +454,7 @@ export function TeamThreadPage({
     members: teamMembers,
     name: resolvedChannel.name ?? t("title"),
     timeline,
+    delegations: projectedThreadDetail?.delegations,
     messageSource: {
       snapshot: {
         messages: timeline.flatMap((item) =>

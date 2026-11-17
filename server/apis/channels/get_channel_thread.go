@@ -1,12 +1,31 @@
 package channels
 
 import (
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	channelservice "github.com/JieWaZi/NeuxBot/server/services/channel"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
+
+// 团队委派记录
+type ChannelDelegation struct {
+	// 派发标识
+	ID string `json:"id"`
+	// 发起伙伴
+	SenderWakerID string `json:"senderWakerId"`
+	// 执行伙伴
+	AssigneeWakerID string `json:"assigneeWakerId"`
+	// 交付时间
+	CreatedAt int64 `json:"createdAt"`
+	// 接收执行
+	ExecutionID string `json:"executionId,omitempty"`
+	// 派发时间
+	QueuedAt int64 `json:"queuedAt,omitempty"`
+	// 发起时间
+	SentAt int64 `json:"sentAt,omitempty"`
+}
 
 // 团队对话详情
 type ChannelThreadDetail struct {
@@ -16,6 +35,8 @@ type ChannelThreadDetail struct {
 	Members []models.ChannelThreadMember `json:"members"`
 	// 任务板
 	Tasks []models.ChannelTask `json:"tasks"`
+	// 已交付委派
+	Delegations []ChannelDelegation `json:"delegations"`
 	// 负责人执行
 	LeadActiveExecutionID string `json:"leadActiveExecutionId,omitempty"`
 	// 负责人汇总中
@@ -56,6 +77,14 @@ func (g *GetChannelThread) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
+	taskIDs := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		taskIDs = append(taskIDs, task.ID)
+	}
+	delegationAttempts, err := global.ChannelTaskControllerManager.ListDelegationAttempts(ctx, taskIDs)
+	if err != nil {
+		return nil, ginx.WithStack(err)
+	}
 	leadSummary, err := global.ChatService.GetChatSummary(ctx, thread.LeadChatID)
 	if err != nil {
 		return nil, ginx.WithStack(err)
@@ -83,10 +112,38 @@ func (g *GetChannelThread) Output(ctx *gin.Context) (interface{}, error) {
 		Thread:                thread,
 		Members:               members,
 		Tasks:                 tasks,
+		Delegations:           threadDelegations(thread, tasks, delegationAttempts),
 		LeadActiveExecutionID: leadSummary.Chat.ActiveExecutionID,
 		LeadProcessing:        leadProcessing,
 		PendingInteractions:   interactions,
 		MemberActivities:      activities,
 		EventCursor:           eventCursor,
 	}, nil
+}
+
+// threadDelegations 使用尝试的实际执行成员与接纳时间，任务重分配不重写历史。
+func threadDelegations(thread models.ChannelThread, tasks []models.ChannelTask, attempts []models.ChannelTaskAttempt) []ChannelDelegation {
+	tasksByID := make(map[string]models.ChannelTask, len(tasks))
+	for _, task := range tasks {
+		tasksByID[task.ID] = task
+	}
+	delegations := make([]ChannelDelegation, 0, len(attempts))
+	for _, attempt := range attempts {
+		task, exists := tasksByID[attempt.TaskID]
+		if !exists || attempt.StartedAt == nil {
+			continue
+		}
+		sender := task.SenderWakerID
+		if attempt.Reason == constants.ChannelAttemptReasonRetry || attempt.Reason == constants.ChannelAttemptReasonReassigned {
+			sender = thread.LeadWakerID
+		}
+		if sender == "" || sender == attempt.AssigneeWakerID {
+			continue
+		}
+		delegations = append(delegations, ChannelDelegation{
+			ID: attempt.ID, SenderWakerID: sender, AssigneeWakerID: attempt.AssigneeWakerID, CreatedAt: *attempt.StartedAt,
+			ExecutionID: attempt.ExecutionID, QueuedAt: attempt.CreatedAt, SentAt: attempt.DelegationSentAt,
+		})
+	}
+	return delegations
 }

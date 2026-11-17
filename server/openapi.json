@@ -62401,6 +62401,55 @@
           }
         ]
       },
+      "GithubComJieWaZiNeuxBotServerApisChannelsChannelDelegation": {
+        "type": "object",
+        "properties": {
+          "assigneeWakerId": {
+            "type": "string",
+            "description": "执行伙伴",
+            "x-go-field-name": "AssigneeWakerID"
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "交付时间",
+            "x-go-field-name": "CreatedAt"
+          },
+          "executionId": {
+            "type": "string",
+            "description": "接收执行",
+            "x-go-field-name": "ExecutionID",
+            "x-tag-json": "executionId,omitempty"
+          },
+          "id": {
+            "type": "string",
+            "description": "派发标识",
+            "x-go-field-name": "ID"
+          },
+          "queuedAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "派发时间",
+            "x-go-field-name": "QueuedAt",
+            "x-tag-json": "queuedAt,omitempty"
+          },
+          "senderWakerId": {
+            "type": "string",
+            "description": "发起伙伴",
+            "x-go-field-name": "SenderWakerID"
+          },
+          "sentAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "发起时间",
+            "x-go-field-name": "SentAt",
+            "x-tag-json": "sentAt,omitempty"
+          }
+        },
+        "description": "团队委派记录",
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisChannelsChannelDelegation",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/channels.ChannelDelegation"
+      },
       "GithubComJieWaZiNeuxBotServerApisChannelsChannelDetail": {
         "type": "object",
         "properties": {
@@ -62619,6 +62668,14 @@
       "GithubComJieWaZiNeuxBotServerApisChannelsChannelThreadDetail": {
         "type": "object",
         "properties": {
+          "delegations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisChannelsChannelDelegation"
+            },
+            "description": "已交付委派",
+            "x-go-field-name": "Delegations"
+          },
           "eventCursor": {
             "type": "string",
             "description": "最新团队事件游标",

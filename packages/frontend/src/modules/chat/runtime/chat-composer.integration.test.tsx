@@ -874,6 +874,38 @@ describe("chat composer", () => {
     expect(screen.getByRole("textbox", { name: "输入消息" })).toBe(editor);
     expect(editor).toHaveTextContent("保留这段草稿");
   });
+  it("错误优先于团队状态，关闭后恢复状态，工作结束恢复目录权限且保留草稿", async () => {
+    const user = userEvent.setup();
+    const scene = (working: boolean) => (
+      <ChatQueueProvider>
+        <ChatThreadLayoutHarness
+          activityStatus={
+            working ? <div role="status">团队仍在执行</div> : undefined
+          }
+          sendFailure={{ kind: "rejected", message: "测试发送失败" }}
+        />
+      </ChatQueueProvider>
+    );
+    const { rerender } = render(scene(true));
+    const editor = screen.getByRole("textbox", { name: "输入消息" });
+    await user.type(editor, "保留团队草稿");
+    expect(screen.getByRole("alert")).toHaveTextContent("测试发送失败");
+    expect(screen.queryByText("团队仍在执行")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "关闭错误提示" }));
+    expect(screen.getByRole("status")).toHaveTextContent("团队仍在执行");
+    expect(screen.queryByTestId("composer-workspace-control")).toBeNull();
+    expect(screen.queryByTestId("composer-permission-control")).toBeNull();
+    rerender(scene(false));
+    expect(screen.queryByText("团队仍在执行")).toBeNull();
+    expect(
+      screen.getByTestId("composer-workspace-control"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("composer-permission-control"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "输入消息" })).toBe(editor);
+    expect(editor).toHaveTextContent("保留团队草稿");
+  });
   it("最新执行失败只在输入框上方显示一次并可关闭", () => {
     const { container } = render(
       <ChatQueueProvider>
@@ -1661,7 +1693,7 @@ describe("chat composer", () => {
     expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
   });
 
-  it("待发送消息和团队状态复用工作范围顶栏，在同一个 Composer 中向上扩展", async () => {
+  it("待发送消息向上扩展，团队状态替换目录权限顶栏", async () => {
     const user = userEvent.setup();
     const cancel = vi.fn(async () => undefined);
     const send = vi.fn<SendMessage>().mockResolvedValue({
@@ -1745,15 +1777,17 @@ describe("chat composer", () => {
     expect(frame).toContainElement(queueList as HTMLElement);
     expect(layers).not.toHaveClass("bg-surface-raised", "mx-2", "border");
     expect(layers).toContainElement(queueList as HTMLElement);
-    expect(layers).toContainElement(
+    expect(layers).not.toContainElement(
       container.querySelector("[data-chat-work-status]"),
     );
     for (const row of queuedMessages) {
       expect(row.className).toBe(workspaceRow.className);
     }
-    expect(container.querySelector("[data-chat-work-status]")?.className).toBe(
-      workspaceRow.className,
-    );
+    expect(
+      screen.getByRole("status").closest("[data-chat-composer-context-bar]"),
+    ).toBe(workspaceRow);
+    expect(screen.queryByTestId("composer-workspace-control")).toBeNull();
+    expect(screen.queryByTestId("composer-permission-control")).toBeNull();
     expect(container.querySelector("[data-chat-queue-panel]")).toBeNull();
     expect(
       Array.from(
@@ -1761,7 +1795,6 @@ describe("chat composer", () => {
       ),
     ).toEqual([
       ...queuedMessages,
-      container.querySelector("[data-chat-work-status]"),
       container.querySelector(
         "[data-chat-composer-frame] > [data-chat-composer-context-bar]",
       ),

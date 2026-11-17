@@ -25,6 +25,28 @@ export type ChatMessageView = {
   readonly activity: CompanionActivity;
 };
 
+/** 领域事件随消息历史窗口呈现，避免把未加载的旧委派挤到最新一页。 */
+export function timelineEventsInMessageWindow<
+  T extends { createdAt: number; beforeMessageId?: string },
+>(
+  events: readonly T[],
+  messages: readonly Pick<BotChatMessage, "id" | "createdAt">[],
+  hasEarlierMessages: boolean,
+): readonly T[] {
+  if (!hasEarlierMessages && events.every((event) => !event.beforeMessageId))
+    return events;
+  const messageIds = new Set(messages.map((message) => message.id));
+  const earliest = messages.reduce(
+    (oldest, message) => Math.min(oldest, message.createdAt ?? Infinity),
+    Infinity,
+  );
+  return events.filter((event) =>
+    event.beforeMessageId
+      ? messageIds.has(event.beforeMessageId)
+      : !hasEarlierMessages || event.createdAt >= earliest,
+  );
+}
+
 export function isTerminalMessage(message: BotChatMessage): boolean {
   return (
     message.status === "completed" ||

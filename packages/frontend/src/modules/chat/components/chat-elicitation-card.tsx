@@ -283,7 +283,7 @@ export function ChatElicitationCard({
     "data-message-id": elicitationId,
     "aria-busy": isSubmitting || undefined,
     className:
-      "bg-surface-raised w-full max-w-chat-question space-y-3 rounded-2xl px-4 py-3",
+      "bg-message-card-background w-full max-w-chat-question space-y-3 rounded-2xl px-4 py-3",
   };
   const submitOnEnter = (event: KeyboardEvent<HTMLInputElement>) => {
     if (

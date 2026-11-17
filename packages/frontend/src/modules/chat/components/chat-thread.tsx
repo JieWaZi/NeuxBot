@@ -4,6 +4,11 @@ import {
 } from "@/shared/i18n/format";
 import { messageCompanionActivity } from "../runtime/companion-activity";
 import { chatContinuations, type ChatContinuation } from "./chat-continuation";
+import {
+  groupTeamReports,
+  TeamReportGroup,
+  type TeamReportGroupRow,
+} from "./team-report-group";
 import { ChatMessagePluginReferences } from "./chat-plugin-reference";
 import { useChatHistoryScroll } from "./use-chat-history-scroll";
 import { useChatMessageLocator } from "./chat-message-locator";
@@ -158,6 +163,7 @@ import { Fragment } from "react";
 import { ExecutionFileChangesAction } from "./execution-file-changes-card";
 import {
   ChatMessageProjection,
+  timelineEventsInMessageWindow,
   viewCompanionActivity,
   isTerminalMessage,
   type ChatMessageView,
@@ -189,7 +195,9 @@ type ChatThreadProps = {
   wakerName: string;
   wakerId?: string;
   wakerAvatar?: string;
+  /** 团队作者索引；空索引沿用当前成员身份，并保留历史回复的身份展示。 */
   messageAuthors?: Readonly<Record<string, ChatMessageAuthor>>;
+  timelineEvents?: readonly ChatTimelineEvent[];
   activityStatus?: ReactNode;
   isRunning?: boolean;
   isWorkRunning?: boolean;
@@ -275,7 +283,15 @@ type ChatThreadProps = {
   ) => void;
 };
 
+export type ChatTimelineEvent = {
+  id: string;
+  createdAt: number;
+  beforeMessageId?: string;
+  content: ReactNode;
+};
+
 export type ChatMessageAuthor = {
+  wakerId?: string;
   name: string;
   avatar?: string;
   displayAsParticipant?: boolean;
@@ -1167,13 +1183,11 @@ function UserMessage({
 
 function ParticipantMessage({
   message,
-  latest,
   avatar,
   messageAuthors,
   name,
 }: {
   message: BotChatMessage;
-  latest: boolean;
   avatar?: string;
   messageAuthors?: Readonly<Record<string, ChatMessageAuthor>>;
   name: string;
@@ -1183,62 +1197,32 @@ function ParticipantMessage({
   const author = messageAuthors?.[messageID];
   const displayName = author?.name ?? name;
   const displayAvatar = author?.avatar ?? avatar;
-  const memberReport = author?.kind === "member-report";
 
   return (
-    <div
-      data-message-id={message.id}
-      data-chat-readable-sequence={
-        message.readable && !message.optimistic
-          ? message.createdSequence
-          : undefined
-      }
-      data-role="user"
-      className="group mt-4 grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6"
-    >
-      {latest ? (
-        <Avatar name={displayName} src={displayAvatar} size="sm" />
-      ) : (
-        <div aria-hidden="true" />
-      )}
-      <div className="min-w-0">
-        <div className="grid justify-items-start">
-          <span className="type-body font-medium">{displayName}</span>
-          <MessageTimestamp timestamp={message.createdAt} />
-        </div>
-        <div
-          className={cn(
-            "mt-2 min-w-0",
-            memberReport &&
-              "border-border bg-muted/25 border-l-primary/55 overflow-hidden rounded-lg border border-l-2",
-          )}
-        >
-          {memberReport ? (
-            <div className="border-border/70 bg-muted/45 flex items-center justify-between gap-3 border-b px-4 py-2">
-              <span className="text-muted-foreground type-label font-medium">
-                {t("team.memberReport")}
-              </span>
-              {author?.truncated ? (
-                <span className="text-warning type-caption inline-flex items-center gap-1 font-medium">
-                  <AlertTriangle className="size-icon-xs" aria-hidden="true" />
-                  {t("team.memberReportTruncated")}
-                </span>
-              ) : null}
-            </div>
-          ) : null}
-          <div
-            data-chat-readable-body
-            className={memberReport ? "px-4 py-3" : undefined}
-          >
-            <UserMarkdown text={message.content ?? ""} />
-          </div>
-        </div>
-        <div className="mt-2 flex items-center gap-1">
+    <ChatReplyMessage
+      message={message}
+      name={displayName}
+      identity={<Avatar name={displayName} src={displayAvatar} size="sm" />}
+      footer={
+        <>
           <MessageCopyAction message={message} />
           <MessageReadActions message={message} />
-        </div>
+          <span className="ml-auto shrink-0">
+            <MessageTimestamp timestamp={message.createdAt} />
+          </span>
+        </>
+      }
+    >
+      <div data-chat-readable-body>
+        <UserMarkdown text={message.content ?? ""} />
       </div>
-    </div>
+      {author?.truncated ? (
+        <p className="text-warning type-caption mt-2 inline-flex items-center gap-1">
+          <AlertTriangle className="size-icon-xs" aria-hidden="true" />
+          {t("team.memberReportTruncated")}
+        </p>
+      ) : null}
+    </ChatReplyMessage>
   );
 }
 
@@ -1330,6 +1314,56 @@ function AddAttachmentButton({
 const assistantMessageRowClassName =
   "grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6";
 
+/** 普通回复与团队成员交付共用卡片、悬停底栏和消息间距。 */
+function ChatReplyMessage({
+  message,
+  identity,
+  name,
+  children,
+  footer,
+}: {
+  message: BotChatMessage;
+  identity: ReactNode;
+  name?: string;
+  children: ReactNode;
+  footer?: ReactNode;
+}) {
+  return (
+    <div
+      data-message-id={message.id}
+      data-chat-readable-sequence={
+        message.readable && !message.optimistic
+          ? message.createdSequence
+          : undefined
+      }
+      data-role={message.role}
+      className={cn(
+        "group mt-1",
+        (children || footer) && "pb-4",
+        assistantMessageRowClassName,
+      )}
+    >
+      {identity}
+      <div className="group/reply w-fit max-w-full min-w-0">
+        {name ? <div className="type-body mb-2 font-medium">{name}</div> : null}
+        {children ? (
+          <div
+            data-chat-message-card
+            className="bg-message-card-background w-fit max-w-full min-w-0 rounded-xl px-4 py-1.5"
+          >
+            {children}
+          </div>
+        ) : null}
+        {footer ? (
+          <footer className="duration-quick pointer-events-none mt-1 flex items-center gap-1 opacity-0 transition-opacity group-focus-within/reply:pointer-events-auto group-focus-within/reply:opacity-100 group-hover/reply:pointer-events-auto group-hover/reply:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
+            {footer}
+          </footer>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function ChatQuestionRow({
   children,
   compact = false,
@@ -1398,57 +1432,34 @@ export function AssistantMessage({
   const author = messageAuthors?.[messageID];
   const displayName = author?.name ?? name;
   const displayAvatar = author?.avatar ?? avatar;
+  const showIdentity = Boolean(messageAuthors);
   const openFileChange = author?.sourceChatId
     ? (file: ChatFileChangeOpenRequest) =>
         onOpenFileChange?.({ ...file, sourceChatId: author.sourceChatId })
     : onOpenFileChange;
 
   return (
-    <div
-      data-message-id={message.id}
-      data-chat-readable-sequence={
-        message.readable && !message.optimistic
-          ? message.createdSequence
-          : undefined
+    <ChatReplyMessage
+      message={message}
+      name={showIdentity ? displayName : undefined}
+      identity={
+        isLatestAssistant || showIdentity ? (
+          <Avatar
+            name={displayName}
+            src={displayAvatar}
+            size="sm"
+            activity={companionActivity}
+            animated={isLatestAssistant || showIdentity}
+            interactive={isLatestAssistant || showIdentity}
+            terminalHover={showIdentity}
+          />
+        ) : (
+          <div aria-hidden="true" />
+        )
       }
-      data-role="assistant"
-      className={cn("group mt-1", assistantMessageRowClassName)}
-    >
-      {isLatestAssistant ? (
-        <Avatar
-          name={displayName}
-          src={displayAvatar}
-          size="sm"
-          activity={companionActivity}
-        />
-      ) : (
-        <div aria-hidden="true" />
-      )}
-      <div className="group/reply w-fit max-w-full min-w-0">
-        {hasContent && (
-          <div
-            data-chat-message-card
-            className="bg-surface-panel w-fit max-w-full min-w-0 rounded-xl px-4 py-1.5 dark:bg-transparent dark:p-0"
-          >
-            <div className="min-w-0">
-              <ChatMessageParts
-                view={view}
-                metrics={continuation?.footerMessage.runMetrics}
-                showUsageMetrics={showUsageMetrics}
-              />
-              {contribution}
-            </div>
-            {message.status === "canceled" && !continuation?.continued ? (
-              <p className="text-muted-foreground type-body mt-2">
-                {t("canceled")}
-              </p>
-            ) : null}
-            <MessageFailure message={message} last={last} />
-          </div>
-        )}
-
-        {showFooterActions || hasFileChanges ? (
-          <footer className="duration-quick pointer-events-none mt-1 flex items-center gap-1 opacity-0 transition-opacity group-focus-within/reply:pointer-events-auto group-focus-within/reply:opacity-100 group-hover/reply:pointer-events-auto group-hover/reply:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
+      footer={
+        showFooterActions || hasFileChanges ? (
+          <>
             {hasFileChanges ? (
               <ExecutionFileChangesAction
                 message={message}
@@ -1486,10 +1497,29 @@ export function AssistantMessage({
                 </span>
               </>
             ) : null}
-          </footer>
-        ) : null}
-      </div>
-    </div>
+          </>
+        ) : null
+      }
+    >
+      {hasContent ? (
+        <>
+          <div className="min-w-0">
+            <ChatMessageParts
+              view={view}
+              metrics={continuation?.footerMessage.runMetrics}
+              showUsageMetrics={showUsageMetrics}
+            />
+            {contribution}
+          </div>
+          {message.status === "canceled" && !continuation?.continued ? (
+            <p className="text-muted-foreground type-body mt-2">
+              {t("canceled")}
+            </p>
+          ) : null}
+          <MessageFailure message={message} last={last} />
+        </>
+      ) : null}
+    </ChatReplyMessage>
   );
 }
 
@@ -1543,7 +1573,6 @@ const ChatMessage = memo(function ChatMessage({
     return messageAuthors?.[message.id ?? ""]?.displayAsParticipant ? (
       <ParticipantMessage
         message={message}
-        latest={latest}
         name={name}
         avatar={avatar}
         messageAuthors={messageAuthors}
@@ -1717,8 +1746,11 @@ function orderChatQuestionViews(views: readonly ChatMessageView[]) {
   return ordered;
 }
 
-const ChatMessageList = memo(function ChatMessageList({
+export const ChatMessageList = memo(function ChatMessageList({
   views,
+  timelineEvents = [],
+  requestedMessageId,
+  requestedMessageKey,
   forkBoundaryMessageId,
   forkSourceChatId,
   onOpenForkSource,
@@ -1729,63 +1761,165 @@ const ChatMessageList = memo(function ChatMessageList({
   "view" | "latest" | "last" | "continuation"
 > & {
   views: readonly ChatMessageView[];
+  requestedMessageId?: string;
+  requestedMessageKey?: string;
+  timelineEvents?: readonly ChatTimelineEvent[];
   forkBoundaryMessageId?: string;
   forkSourceChatId?: string;
   onOpenForkSource?: (chatId: string) => Promise<boolean>;
 }) {
   const { t } = useTranslation("chat");
   const [unavailableSourceId, setUnavailableSourceId] = useState<string>();
+  const [expandedReports, setExpandedReports] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+  const sceneVisible = useVisibleScene();
+  const revealKey =
+    sceneVisible && requestedMessageId
+      ? JSON.stringify([requestedMessageKey, requestedMessageId])
+      : undefined;
+  const [revealedTarget, setRevealedTarget] = useState<string>();
+  const requestedReport = views.find(
+    (view) =>
+      view.message.id === requestedMessageId &&
+      props.messageAuthors?.[view.message.id ?? ""]?.kind === "member-report",
+  );
+  // 定位身份随导航和 Scene 恢复更新；只展开已加载的真实目标报告。
+  if (revealedTarget !== revealKey && (!revealKey || requestedReport)) {
+    setRevealedTarget(revealKey);
+    if (revealKey && requestedReport)
+      setExpandedReports((current) =>
+        new Set(current).add(requestedReport.key),
+      );
+  }
+
   const continuations = chatContinuations(views.map((view) => view.message));
   const latest = views.findLast((view) => !view.message.question);
+  const events = timelineEvents
+    .filter((event) => !event.beforeMessageId)
+    .sort(
+      (left, right) =>
+        left.createdAt - right.createdAt || left.id.localeCompare(right.id),
+    );
+  const rows: Array<ChatMessageView | ChatTimelineEvent | TeamReportGroupRow> =
+    [];
+  let cursor = 0;
+  for (const view of groupTeamReports(
+    orderChatQuestionViews(views),
+    props.messageAuthors,
+  )) {
+    const createdAt =
+      "kind" in view
+        ? Math.min(
+            ...view.members.flatMap((member) =>
+              member.views.map((report) => report.message.createdAt ?? 0),
+            ),
+          )
+        : (view.message.createdAt ?? 0);
+    while (
+      cursor < events.length &&
+      (events[cursor]?.createdAt ?? Infinity) <= createdAt
+    ) {
+      const event = events[cursor++];
+      if (event) rows.push(event);
+    }
+    if ("kind" in view) {
+      const reportIds = new Set(
+        view.members.flatMap((member) =>
+          member.views.map((report) => report.message.id),
+        ),
+      );
+      rows.push(
+        ...timelineEvents.filter(
+          (event) =>
+            event.beforeMessageId && reportIds.has(event.beforeMessageId),
+        ),
+        view,
+      );
+      continue;
+    }
+    rows.push(
+      ...timelineEvents.filter(
+        (event) =>
+          event.beforeMessageId && event.beforeMessageId === view.message.id,
+      ),
+    );
+    rows.push(view);
+  }
+  rows.push(...events.slice(cursor));
   return (
     <>
-      {orderChatQuestionViews(views).map((view) => (
-        <Fragment key={view.key}>
-          <ChatMessage
-            {...props}
-            wakerId={wakerId}
-            view={view}
-            continuation={continuations.get(view.message.id ?? "")}
-            latest={view.key === latest?.key}
-            last={view.key === latest?.key}
-          />
-          {view.message.id === forkBoundaryMessageId && forkSourceChatId ? (
-            <div
-              data-fork-history-boundary
-              className="text-muted-foreground type-caption mt-8 flex items-center gap-3 px-6"
-            >
-              <span aria-hidden="true" className="bg-border h-px flex-1" />
-              {unavailableSourceId === forkSourceChatId ? (
-                <span className="flex shrink-0 items-center gap-1.5">
-                  <Shuffle aria-hidden="true" className="size-icon-sm" />
-                  {t("forkSourceUnavailable")}
-                </span>
-              ) : (
-                <Link
-                  aria-label={t("forkBackToSource")}
-                  title={t("forkBackToSource")}
-                  to={chatHref(forkSourceChatId, wakerId ?? "")}
-                  onClick={(event) => {
-                    if (!onOpenForkSource) return;
-                    event.preventDefault();
-                    void onOpenForkSource(forkSourceChatId).then(
-                      (available) => {
-                        if (!available)
-                          setUnavailableSourceId(forkSourceChatId);
-                      },
-                    );
-                  }}
-                  className="text-accent hover:text-accent-hover focus-visible:ring-ring flex shrink-0 items-center gap-1.5 rounded-sm underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:outline-none"
-                >
-                  <Shuffle aria-hidden="true" className="size-icon-sm" />
-                  {t("forkHistoryBoundary")}
-                </Link>
+      {rows.map((row) => {
+        if ("kind" in row)
+          return (
+            <TeamReportGroup
+              key={row.key}
+              group={row}
+              expanded={expandedReports}
+              setExpanded={setExpandedReports}
+              renderMessage={(view) => (
+                <ChatMessage
+                  key={view.key}
+                  {...props}
+                  wakerId={wakerId}
+                  view={view}
+                  latest={false}
+                  last={false}
+                />
               )}
-              <span aria-hidden="true" className="bg-border h-px flex-1" />
-            </div>
-          ) : null}
-        </Fragment>
-      ))}
+            />
+          );
+        if ("content" in row)
+          return <Fragment key={`event:${row.id}`}>{row.content}</Fragment>;
+        const view = row;
+        return (
+          <Fragment key={view.key}>
+            <ChatMessage
+              {...props}
+              wakerId={wakerId}
+              view={view}
+              continuation={continuations.get(view.message.id ?? "")}
+              latest={view.key === latest?.key}
+              last={view.key === latest?.key}
+            />
+            {view.message.id === forkBoundaryMessageId && forkSourceChatId ? (
+              <div
+                data-fork-history-boundary
+                className="text-muted-foreground type-caption mt-8 flex items-center gap-3 px-6"
+              >
+                <span aria-hidden="true" className="bg-border h-px flex-1" />
+                {unavailableSourceId === forkSourceChatId ? (
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    <Shuffle aria-hidden="true" className="size-icon-sm" />
+                    {t("forkSourceUnavailable")}
+                  </span>
+                ) : (
+                  <Link
+                    aria-label={t("forkBackToSource")}
+                    title={t("forkBackToSource")}
+                    to={chatHref(forkSourceChatId, wakerId ?? "")}
+                    onClick={(event) => {
+                      if (!onOpenForkSource) return;
+                      event.preventDefault();
+                      void onOpenForkSource(forkSourceChatId).then(
+                        (available) => {
+                          if (!available)
+                            setUnavailableSourceId(forkSourceChatId);
+                        },
+                      );
+                    }}
+                    className="text-accent hover:text-accent-hover focus-visible:ring-ring flex shrink-0 items-center gap-1.5 rounded-sm underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:outline-none"
+                  >
+                    <Shuffle aria-hidden="true" className="size-icon-sm" />
+                    {t("forkHistoryBoundary")}
+                  </Link>
+                )}
+                <span aria-hidden="true" className="bg-border h-px flex-1" />
+              </div>
+            ) : null}
+          </Fragment>
+        );
+      })}
     </>
   );
 });
@@ -1978,7 +2112,15 @@ const Composer = memo(function Composer({
     failure,
     appearance: "composer",
   });
-  const composerContext = errorNotices ?? renderContextStrip?.();
+  const composerContext =
+    errorNotices ??
+    (activityStatus ? (
+      <div data-chat-work-status className="flex min-w-0 flex-1 items-center">
+        {activityStatus}
+      </div>
+    ) : (
+      renderContextStrip?.()
+    ));
 
   return (
     <div className="w-full">
@@ -1991,19 +2133,12 @@ const Composer = memo(function Composer({
           contextTone={errorNotices ? "danger" : "neutral"}
           expanded={!composerIsEmpty}
           contextLayers={
-            queuedMessageCount > 0 || activityStatus ? (
+            queuedMessageCount > 0 ? (
               <ComposerLayerStack
                 count={queuedMessageCount}
                 label={t("queuedMessages", { count: queuedMessageCount })}
                 expandLabel={t("expandQueuedMessages")}
                 collapseLabel={t("collapseQueuedMessages")}
-                footer={
-                  activityStatus ? (
-                    <ComposerContext data-chat-work-status>
-                      {activityStatus}
-                    </ComposerContext>
-                  ) : undefined
-                }
               >
                 <ComposerPrimitive.Queue>
                   {() => (
@@ -2250,6 +2385,7 @@ function ChatThreadContent({
   wakerId,
   wakerAvatar,
   messageAuthors,
+  timelineEvents = [],
   activityStatus,
   isRunning = false,
   isWorkRunning = false,
@@ -2403,7 +2539,15 @@ function ChatThreadContent({
       />
     </ChatQuestionRow>
   ));
-  const emptyThread = messages.length === 0 && liveQuestions.length === 0;
+  const visibleTimelineEvents = timelineEventsInMessageWindow(
+    timelineEvents,
+    messages,
+    hasEarlierMessages,
+  );
+  const emptyThread =
+    messages.length === 0 &&
+    liveQuestions.length === 0 &&
+    visibleTimelineEvents.length === 0;
   const centerEmptyState =
     emptyStatePosition === "center" && !isHistoryLoading && emptyThread;
   const showDirectEmptyState =
@@ -2557,6 +2701,11 @@ function ChatThreadContent({
                               >
                                 <ChatMessageList
                                   views={views}
+                                  requestedMessageId={
+                                    active ? messageId : undefined
+                                  }
+                                  requestedMessageKey={routeKey}
+                                  timelineEvents={visibleTimelineEvents}
                                   forkBoundaryMessageId={forkBoundaryMessageId}
                                   forkSourceChatId={forkSourceChatId}
                                   onOpenForkSource={onOpenForkSource}

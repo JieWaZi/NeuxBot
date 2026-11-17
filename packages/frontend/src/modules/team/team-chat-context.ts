@@ -3,6 +3,7 @@ import type { ChatMessageSource } from "@/modules/chat";
 
 import type {
   CreateChannelThreadResponse,
+  GithubComJieWaZiNeuxBotServerApisChannelsChannelDelegation as ChannelDelegation,
   GithubComJieWaZiNeuxBotServerApisChannelsSendChannelMessageRequest as SendChannelMessageRequest,
   GithubComJieWaZiNeuxBotServerApisChannelsCreateChannelThreadRequest as CreateChannelThreadRequest,
   GithubComJieWaZiNeuxBotServerConstantsChannelTaskStatus as ChannelTaskStatus,
@@ -38,6 +39,8 @@ export type TeamChatContext = {
     waitingElicitation?: boolean;
   }>;
   name: string;
+  /** 已实际交付的派发快照，重试不改变原执行成员。 */
+  delegations?: readonly ChannelDelegation[];
   timeline: Array<{
     chatId?: string;
     coordinator: boolean;

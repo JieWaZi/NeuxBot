@@ -127,6 +127,7 @@ function TeamChatPageContent(
 const {
   historyMessageContent,
   historyMessages,
+  memberHistoryMessages,
   forkSourceChatId,
   sourceChatAvailable,
   historyMessageSkills,
@@ -169,6 +170,9 @@ const {
 } = vi.hoisted(() => ({
   historyMessageContent: { current: "直接进入也应显示的历史消息" },
   historyMessages: {
+    current: undefined as Array<Record<string, unknown>> | undefined,
+  },
+  memberHistoryMessages: {
     current: undefined as Array<Record<string, unknown>> | undefined,
   },
   forkSourceChatId: { current: "" },
@@ -431,32 +435,35 @@ vi.mock("@/shared/api/generated/sdk.gen", async (importOriginal) => ({
             ? []
             : chatId === "chat-1" && historyMessages.current
               ? historyMessages.current
-              : [
-                  {
-                    id: chatId === "chat-1" ? "message-1" : `message:${chatId}`,
-                    role: assistant ? "assistant" : "user",
-                    ...(hiddenWorkChat
-                      ? { readable: true, createdSequence: 5 }
-                      : {}),
-                    content:
-                      chatId === "chat-1"
-                        ? historyMessageContent.current
-                        : `历史消息：${chatId}`,
-                    displayParts: assistant
-                      ? [
-                          {
-                            id: "member-text",
-                            text: `历史消息：${chatId}`,
-                            type: "text",
-                          },
-                        ]
-                      : undefined,
-                    skills: historyMessageSkills.current,
-                    connectors: historyMessageConnectors.current,
-                    status: "completed",
-                    sequence: 1,
-                  },
-                ],
+              : chatId === "member-chat" && memberHistoryMessages.current
+                ? memberHistoryMessages.current
+                : [
+                    {
+                      id:
+                        chatId === "chat-1" ? "message-1" : `message:${chatId}`,
+                      role: assistant ? "assistant" : "user",
+                      ...(hiddenWorkChat
+                        ? { readable: true, createdSequence: 5 }
+                        : {}),
+                      content:
+                        chatId === "chat-1"
+                          ? historyMessageContent.current
+                          : `历史消息：${chatId}`,
+                      displayParts: assistant
+                        ? [
+                            {
+                              id: "member-text",
+                              text: `历史消息：${chatId}`,
+                              type: "text",
+                            },
+                          ]
+                        : undefined,
+                      skills: historyMessageSkills.current,
+                      connectors: historyMessageConnectors.current,
+                      status: "completed",
+                      sequence: 1,
+                    },
+                  ],
         hasMore: false,
         latestSequence: chatLatestSequence.current,
       },
@@ -764,6 +771,7 @@ beforeEach(() => {
   wakerPlugins.current = [];
   historyMessageContent.current = "直接进入也应显示的历史消息";
   historyMessages.current = undefined;
+  memberHistoryMessages.current = undefined;
   forkSourceChatId.current = "";
   sourceChatAvailable.current = true;
   historyMessageSkills.current = [];
@@ -2038,6 +2046,26 @@ describe("ChatPage", () => {
   });
   it("团队聚合消息隐藏空态，点击工作成员头像载入该成员完整 Chat 历史", async () => {
     const user = userEvent.setup();
+    memberHistoryMessages.current = [
+      {
+        id: "member-input",
+        role: "user",
+        actor: "team_lead",
+        content: "请联网收集今日新闻",
+        createdAt: 900,
+      },
+      {
+        id: "message:member-chat",
+        role: "assistant",
+        executionId: "member-run",
+        createdAt: 950,
+        updatedAt: 2000,
+        status: "completed",
+        displayParts: [
+          { id: "member-text", type: "text", text: "历史消息：member-chat" },
+        ],
+      },
+    ];
     wakerResources.current = [
       { id: "waker-1", name: "团队负责人" },
       { id: "waker-2", name: "执行成员" },
@@ -2117,6 +2145,33 @@ describe("ChatPage", () => {
                                 },
                               ],
                               name: "研发团队",
+                              delegations: [
+                                {
+                                  id: "delegate-task",
+                                  senderWakerId: "waker-1",
+                                  assigneeWakerId: "waker-2",
+                                  createdAt: 1000,
+                                  executionId: "member-run",
+                                  queuedAt: 800,
+                                  sentAt: 150,
+                                },
+                                {
+                                  id: "delegate-task-again",
+                                  senderWakerId: "waker-1",
+                                  assigneeWakerId: "waker-2",
+                                  createdAt: 1100,
+                                  executionId: "member-run",
+                                  queuedAt: 850,
+                                  sentAt: 160,
+                                },
+                                {
+                                  id: "delegate-other-partner",
+                                  senderWakerId: "waker-1",
+                                  assigneeWakerId: "waker-3",
+                                  createdAt: 1200,
+                                  sentAt: 170,
+                                },
+                              ],
                               timeline: [
                                 {
                                   chatId: "team-lead-chat",
@@ -2188,6 +2243,8 @@ describe("ChatPage", () => {
                                       },
                                     ],
                                     id: "coordinator-summary",
+                                    createdAt: 100,
+                                    updatedAt: 2000,
                                     role: "assistant",
                                     status: "completed",
                                   },
@@ -2321,10 +2378,52 @@ describe("ChatPage", () => {
       screen.queryByText("执行成员正在处理“汇总科技动态”"),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "停止执行" })).toBeVisible();
+    expect(screen.queryByText("成员结构化报告")).not.toBeInTheDocument();
+    expect(screen.getByText(/收到来自.*的消息/)).toBeVisible();
+    await user.click(
+      screen.getByRole("button", { name: "展开 执行成员 的消息" }),
+    );
     expect(screen.getByText("成员结构化报告")).toBeVisible();
     expect(screen.getByText("成员直接答复")).toBeVisible();
-    expect(screen.getByText("成员报告")).toBeVisible();
-    expect(screen.getAllByText("成员报告")).toHaveLength(1);
+    for (const [content, author] of [
+      ["负责人最终汇总", "团队负责人"],
+      ["成员直接答复", "执行成员"],
+    ] as const) {
+      const row = screen
+        .getByText(content)
+        .closest<HTMLElement>("[data-message-id]");
+      expect(
+        row?.querySelector("svg[data-companion-avatar]"),
+      ).toBeInTheDocument();
+      expect(row).toHaveTextContent(author);
+      expect(row?.querySelectorAll("time")).toHaveLength(1);
+      expect(row?.querySelector("time")?.closest("footer")).not.toBeNull();
+      if (!row) throw new Error("missing team message row");
+      expect(
+        within(row).getByRole("button", { name: `与 ${author} 互动` }),
+      ).toBeVisible();
+    }
+    expect(
+      screen.getByText("成员直接答复").closest("[data-chat-message-card]"),
+    ).not.toBeNull();
+    expect(screen.getAllByText("委派给")).toHaveLength(1);
+    const delegationRow = screen.getByText("委派给").parentElement;
+    if (!delegationRow) throw new Error("missing delegation row");
+    expect(within(delegationRow).getAllByRole("button")).toHaveLength(2);
+    expect(
+      within(delegationRow).getByRole("button", { name: "打开执行成员的会话" }),
+    ).toBeVisible();
+    expect(
+      within(delegationRow).getByRole("button", { name: "打开空闲成员的会话" }),
+    ).toBeVisible();
+    expect(delegationRow.querySelectorAll("time")).toHaveLength(0);
+    expect(
+      screen
+        .getByText("委派给")
+        .compareDocumentPosition(screen.getByText("负责人最终汇总")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.queryByText("成员报告")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "全部成员" }),
     ).not.toBeInTheDocument();
@@ -2378,6 +2477,21 @@ describe("ChatPage", () => {
     ).toBeNull();
     expect(screen.queryByText("完整成员结果")).not.toBeInTheDocument();
     await user.click(screen.getByRole("link", { name: "测试查看团队结果" }));
+    expect(await screen.findByText("负责人最终汇总")).toBeVisible();
+    await user.click(
+      screen.getByRole("button", { name: "打开执行成员的会话" }),
+    );
+    expect(await screen.findByText("收到委派，来自")).toBeVisible();
+    expect(
+      screen
+        .getByText("收到委派，来自")
+        .compareDocumentPosition(screen.getByText("请联网收集今日新闻")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByText("历史消息：member-chat")).toBeVisible();
+    await user.click(
+      screen.getByRole("button", { name: "打开团队负责人的会话" }),
+    );
     expect(await screen.findByText("负责人最终汇总")).toBeVisible();
   });
 
@@ -2528,251 +2642,260 @@ describe("ChatPage", () => {
     },
   );
 
-  it("新团队对话在成员草稿 Tab 调整执行配置后于首次发送冻结", async () => {
-    window.localStorage.setItem(
-      draftWorkspaceStorageKey,
-      JSON.stringify({
-        "team:team-1": { type: "folder", path: "/tmp/team-remembered" },
-        "waker-1": { type: "folder", path: "/tmp/partner-only" },
-      }),
-    );
-    wakerResources.current = [
-      { id: "waker-1", name: "团队负责人" },
-      { id: "waker-2", name: "执行成员" },
-    ];
-    projectResources.current = [
-      {
-        id: "project-1",
-        name: "测试项目",
-        available: true,
-        sources: [{ path: "/tmp/project", available: true }],
-      },
-    ];
-    recentProjectID.current = "project-1";
-    runtimeOptions.current = [
-      {
-        id: "codex",
-        name: "Codex",
-        enabled: true,
-        installed: true,
-        state: "ready",
-        defaultModel: "gpt-5",
-        defaultReasoning: "medium",
-        models: [
-          {
-            id: "gpt-5",
-            name: "GPT-5",
-            permissionLevels: ["default", "auto", "full-access"],
-            reasoningOptions: [{ id: "medium", name: "Medium" }],
-          },
-        ],
-      },
-      {
-        id: "claude",
-        name: "Claude",
-        enabled: true,
-        installed: true,
-        state: "ready",
-        defaultModel: "sonnet",
-        defaultReasoning: "high",
-        models: [
-          {
-            id: "sonnet",
-            name: "Sonnet",
-            permissionLevels: ["default", "auto", "full-access"],
-            reasoningOptions: [{ id: "high", name: "High" }],
-          },
-          {
-            id: "native-sonnet",
-            name: "Native Sonnet",
-            permissionLevels: ["default", "auto", "full-access"],
-            reasoningOptions: [
-              { id: "low", name: "Low" },
-              { id: "high", name: "High" },
-            ],
-          },
-        ],
-      },
-    ];
-    let resolveCreateThread:
-      | ((
-          value: Awaited<ReturnType<TeamChatContext["onCreateThread"]>>,
-        ) => void)
-      | undefined;
-    const onCreateThread = vi.fn<TeamChatContext["onCreateThread"]>(
-      () =>
-        new Promise((resolve) => {
-          resolveCreateThread = resolve;
+  it.each(["managed", "folder"] as const)(
+    "新团队对话在 %s 工作范围内首次发送冻结成员配置",
+    async (workspaceType) => {
+      window.localStorage.setItem(
+        draftWorkspaceStorageKey,
+        JSON.stringify({
+          "team:team-1":
+            workspaceType === "managed"
+              ? { type: "managed" }
+              : { type: "folder", path: "/tmp/team-remembered" },
+          "waker-1": { type: "folder", path: "/tmp/partner-only" },
         }),
-    );
-    const createdThread = {
-      leadExecution: {
-        id: "lead-execution",
-        status: "running",
-        userMessageId: "user-message",
-      },
-      members: [
+      );
+      wakerResources.current = [
+        { id: "waker-1", name: "团队负责人" },
+        { id: "waker-2", name: "执行成员" },
+      ];
+      projectResources.current = [
         {
-          chatId: "lead-chat",
-          isLead: true,
-          model: "gpt-5",
-          permissionLevel: "auto",
-          reasoning: "medium",
-          runtimeId: "codex",
-          wakerId: "waker-1",
+          id: "project-1",
+          name: "测试项目",
+          available: true,
+          sources: [{ path: "/tmp/project", available: true }],
         },
-      ],
-      thread: {
-        id: "thread-1",
-        leadChatId: "lead-chat",
-        leadWakerId: "waker-1",
-        title: "新的团队对话",
-      },
-    } satisfies Awaited<ReturnType<TeamChatContext["onCreateThread"]>>;
-    const user = userEvent.setup();
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    render(
-      <QueryClientProvider client={queryClient}>
-        <WorkspaceProvider>
-          <ChatQueueProvider>
-            <TooltipProvider delayDuration={0}>
-              <MemoryRouter initialEntries={["/team?draftId=draft-1"]}>
-                <Routes>
-                  <Route element={<ChatLayout rightPanel="workspace" />}>
-                    <Route
-                      path="/team"
-                      element={
-                        <>
-                          <TeamMemberTabControls
-                            scopeKey="team:team-1:draft:draft-1"
-                            members={[
-                              {
-                                name: "执行成员",
-                                wakerId: "waker-2",
-                              },
-                            ]}
-                          />
-                          <TeamChatPageContent
-                            teamContext={{
-                              channelId: "team-1",
-                              leadProcessing: false,
-                              leadWakerId: "waker-1",
-                              members: [
-                                {
-                                  id: "waker-1",
-                                  isLead: true,
-                                  model: "gpt-5",
-                                  name: "团队负责人",
-                                  permissionLevel: "auto",
-                                  reasoning: "medium",
-                                  runtimeId: "codex",
-                                },
-                                {
-                                  id: "waker-2",
-                                  isLead: false,
-                                  model: "gpt-5",
-                                  name: "执行成员",
-                                  permissionLevel: "auto",
-                                  reasoning: "medium",
-                                  runtimeId: "codex",
-                                },
-                              ],
-                              name: "研发团队",
-                              timeline: [],
-                              threadDetailLoading: true,
-                              hasEarlierTimelineMessages: false,
-                              isLoadingEarlierTimelineMessages: false,
-                              onLoadEarlierTimelineMessages: vi.fn(),
-                              onCreateThread,
-                              onSendMessage: vi.fn(),
-                              onStopWork: vi.fn(),
-                              onThreadCreated: vi.fn(),
-                              onUpdateMemberConfigs: vi.fn(),
-                              renderTaskBoard: () => <div>任务板详情</div>,
-                              workState: "idle",
-                              workProgress: {
-                                phase: "idle",
-                                review: 0,
-                                terminal: 0,
-                                total: 0,
-                              },
-                            }}
-                          />
-                        </>
-                      }
-                    />
-                  </Route>
-                </Routes>
-              </MemoryRouter>
-            </TooltipProvider>
-          </ChatQueueProvider>
-        </WorkspaceProvider>
-      </QueryClientProvider>,
-    );
-
-    await user.click(
-      await screen.findByRole("button", {
-        name: "测试打开执行成员会话",
-      }),
-    );
-    const runtimeButton = await screen.findByTestId("composer-model-control");
-    await user.click(runtimeButton);
-    await user.click(screen.getByRole("button", { name: "Claude" }));
-    await user.click(
-      await screen.findByRole("radio", { name: "Native Sonnet" }),
-    );
-    expect(screen.getByRole("combobox", { name: "选择强度" })).toBeVisible();
-    await user.click(screen.getByRole("combobox", { name: "选择强度" }));
-    await user.click(screen.getByRole("option", { name: "低" }));
-    await user.keyboard("{Escape}");
-    await user.click(
-      screen.getByRole("button", { name: "执行权限：自动审批" }),
-    );
-    await user.click(screen.getByRole("menuitemradio", { name: /完全访问/ }));
-    await user.click(screen.getByRole("tab", { name: "团队负责人" }));
-    await user.type(
-      screen.getByRole("textbox", { name: "输入消息" }),
-      "开始工作",
-    );
-    await user.click(screen.getByRole("button", { name: "发送消息" }));
-
-    await waitFor(() => expect(onCreateThread).toHaveBeenCalledTimes(1));
-    expect(screen.getByText("开始工作")).toBeVisible();
-    expect(
-      document.querySelector(
-        '[data-chat-scroll-viewport] [data-role="assistant"] svg[data-companion-avatar]',
-      ),
-    ).toHaveAttribute("data-activity", "thinking");
-    expect(
-      document.querySelector('[data-chat-primary-action="stop"]'),
-    ).toBeVisible();
-    expect(screen.getByRole("tab", { name: "团队负责人" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    expect(screen.queryByText("把目标交给团队负责人")).not.toBeInTheDocument();
-    expect(
-      document.querySelector('[role="status"][aria-busy="true"]'),
-    ).not.toBeInTheDocument();
-    expect(onCreateThread.mock.calls[0]?.[0]).toEqual(
-      expect.objectContaining({
-        workingDirectory: "/tmp/team-remembered",
-        projectId: undefined,
-        memberConfigs: expect.arrayContaining([
-          expect.objectContaining({
-            model: "native-sonnet",
-            permissionLevel: "full-access",
-            reasoning: "low",
-            runtimeId: "claude",
-            wakerId: "waker-2",
+      ];
+      recentProjectID.current = "project-1";
+      runtimeOptions.current = [
+        {
+          id: "codex",
+          name: "Codex",
+          enabled: true,
+          installed: true,
+          state: "ready",
+          defaultModel: "gpt-5",
+          defaultReasoning: "medium",
+          models: [
+            {
+              id: "gpt-5",
+              name: "GPT-5",
+              permissionLevels: ["default", "auto", "full-access"],
+              reasoningOptions: [{ id: "medium", name: "Medium" }],
+            },
+          ],
+        },
+        {
+          id: "claude",
+          name: "Claude",
+          enabled: true,
+          installed: true,
+          state: "ready",
+          defaultModel: "sonnet",
+          defaultReasoning: "high",
+          models: [
+            {
+              id: "sonnet",
+              name: "Sonnet",
+              permissionLevels: ["default", "auto", "full-access"],
+              reasoningOptions: [{ id: "high", name: "High" }],
+            },
+            {
+              id: "native-sonnet",
+              name: "Native Sonnet",
+              permissionLevels: ["default", "auto", "full-access"],
+              reasoningOptions: [
+                { id: "low", name: "Low" },
+                { id: "high", name: "High" },
+              ],
+            },
+          ],
+        },
+      ];
+      let resolveCreateThread:
+        | ((
+            value: Awaited<ReturnType<TeamChatContext["onCreateThread"]>>,
+          ) => void)
+        | undefined;
+      const onCreateThread = vi.fn<TeamChatContext["onCreateThread"]>(
+        () =>
+          new Promise((resolve) => {
+            resolveCreateThread = resolve;
           }),
-        ]),
-      }),
-    );
-    await act(async () => resolveCreateThread?.(createdThread));
-  });
+      );
+      const createdThread = {
+        leadExecution: {
+          id: "lead-execution",
+          status: "running",
+          userMessageId: "user-message",
+        },
+        members: [
+          {
+            chatId: "lead-chat",
+            isLead: true,
+            model: "gpt-5",
+            permissionLevel: "auto",
+            reasoning: "medium",
+            runtimeId: "codex",
+            wakerId: "waker-1",
+          },
+        ],
+        thread: {
+          id: "thread-1",
+          leadChatId: "lead-chat",
+          leadWakerId: "waker-1",
+          title: "新的团队对话",
+        },
+      } satisfies Awaited<ReturnType<TeamChatContext["onCreateThread"]>>;
+      const user = userEvent.setup();
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={queryClient}>
+          <WorkspaceProvider>
+            <ChatQueueProvider>
+              <TooltipProvider delayDuration={0}>
+                <MemoryRouter initialEntries={["/team?draftId=draft-1"]}>
+                  <Routes>
+                    <Route element={<ChatLayout rightPanel="workspace" />}>
+                      <Route
+                        path="/team"
+                        element={
+                          <>
+                            <TeamMemberTabControls
+                              scopeKey="team:team-1:draft:draft-1"
+                              members={[
+                                {
+                                  name: "执行成员",
+                                  wakerId: "waker-2",
+                                },
+                              ]}
+                            />
+                            <TeamChatPageContent
+                              teamContext={{
+                                channelId: "team-1",
+                                leadProcessing: false,
+                                leadWakerId: "waker-1",
+                                members: [
+                                  {
+                                    id: "waker-1",
+                                    isLead: true,
+                                    model: "gpt-5",
+                                    name: "团队负责人",
+                                    permissionLevel: "auto",
+                                    reasoning: "medium",
+                                    runtimeId: "codex",
+                                  },
+                                  {
+                                    id: "waker-2",
+                                    isLead: false,
+                                    model: "gpt-5",
+                                    name: "执行成员",
+                                    permissionLevel: "auto",
+                                    reasoning: "medium",
+                                    runtimeId: "codex",
+                                  },
+                                ],
+                                name: "研发团队",
+                                timeline: [],
+                                threadDetailLoading: true,
+                                hasEarlierTimelineMessages: false,
+                                isLoadingEarlierTimelineMessages: false,
+                                onLoadEarlierTimelineMessages: vi.fn(),
+                                onCreateThread,
+                                onSendMessage: vi.fn(),
+                                onStopWork: vi.fn(),
+                                onThreadCreated: vi.fn(),
+                                onUpdateMemberConfigs: vi.fn(),
+                                renderTaskBoard: () => <div>任务板详情</div>,
+                                workState: "idle",
+                                workProgress: {
+                                  phase: "idle",
+                                  review: 0,
+                                  terminal: 0,
+                                  total: 0,
+                                },
+                              }}
+                            />
+                          </>
+                        }
+                      />
+                    </Route>
+                  </Routes>
+                </MemoryRouter>
+              </TooltipProvider>
+            </ChatQueueProvider>
+          </WorkspaceProvider>
+        </QueryClientProvider>,
+      );
+
+      await user.click(
+        await screen.findByRole("button", {
+          name: "测试打开执行成员会话",
+        }),
+      );
+      const runtimeButton = await screen.findByTestId("composer-model-control");
+      await user.click(runtimeButton);
+      await user.click(screen.getByRole("button", { name: "Claude" }));
+      await user.click(
+        await screen.findByRole("radio", { name: "Native Sonnet" }),
+      );
+      expect(screen.getByRole("combobox", { name: "选择强度" })).toBeVisible();
+      await user.click(screen.getByRole("combobox", { name: "选择强度" }));
+      await user.click(screen.getByRole("option", { name: "低" }));
+      await user.keyboard("{Escape}");
+      await user.click(
+        screen.getByRole("button", { name: "执行权限：自动审批" }),
+      );
+      await user.click(screen.getByRole("menuitemradio", { name: /完全访问/ }));
+      await user.click(screen.getByRole("tab", { name: "团队负责人" }));
+      await user.type(
+        screen.getByRole("textbox", { name: "输入消息" }),
+        "开始工作",
+      );
+      await user.click(screen.getByRole("button", { name: "发送消息" }));
+
+      await waitFor(() => expect(onCreateThread).toHaveBeenCalledTimes(1));
+      expect(screen.getByText("开始工作")).toBeVisible();
+      expect(
+        document.querySelector(
+          '[data-chat-scroll-viewport] [data-role="assistant"] svg[data-companion-avatar]',
+        ),
+      ).toHaveAttribute("data-activity", "thinking");
+      expect(
+        document.querySelector('[data-chat-primary-action="stop"]'),
+      ).toBeVisible();
+      expect(screen.getByRole("tab", { name: "团队负责人" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      expect(
+        screen.queryByText("把目标交给团队负责人"),
+      ).not.toBeInTheDocument();
+      expect(
+        document.querySelector('[role="status"][aria-busy="true"]'),
+      ).not.toBeInTheDocument();
+      expect(onCreateThread.mock.calls[0]?.[0]).toEqual(
+        expect.objectContaining({
+          workingDirectory:
+            workspaceType === "managed" ? "" : "/tmp/team-remembered",
+          projectId: undefined,
+          memberConfigs: expect.arrayContaining([
+            expect.objectContaining({
+              model: "native-sonnet",
+              permissionLevel: "full-access",
+              reasoning: "low",
+              runtimeId: "claude",
+              wakerId: "waker-2",
+            }),
+          ]),
+        }),
+      );
+      await act(async () => resolveCreateThread?.(createdThread));
+    },
+  );
 
   it.each([
     {

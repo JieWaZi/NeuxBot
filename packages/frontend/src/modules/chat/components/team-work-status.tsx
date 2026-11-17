@@ -106,8 +106,9 @@ export function TeamWorkStatus({
                   <TooltipTrigger asChild>
                     <Button
                       type="button"
-                      size="icon"
+                      size="sm"
                       variant="ghost"
+                      className="max-w-full min-w-0"
                       aria-label={label}
                       disabled={!onOpenMember}
                       onClick={() => onOpenMember?.(member.id)}
@@ -119,6 +120,7 @@ export function TeamWorkStatus({
                         animated={false}
                         interactive={false}
                       />
+                      <span className="truncate">{member.name}</span>
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>{description}</TooltipContent>

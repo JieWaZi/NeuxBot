@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 	"strings"
 	"sync"
 	"testing"
@@ -13,6 +14,89 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
+
+func TestChannelTaskDelegationAttemptsPreserveAcceptedAssignments(t *testing.T) {
+	database := newTestDB(t)
+	controller := NewChannelTaskController(database)
+	ctx := context.Background()
+	for index, reason := range []constants.ChannelAttemptReason{
+		constants.ChannelAttemptReasonInitial,
+		constants.ChannelAttemptReasonRetry,
+		constants.ChannelAttemptReasonUserFollowUp,
+		constants.ChannelAttemptReasonLeadFollowUp,
+		constants.ChannelAttemptReasonRetry,
+		constants.ChannelAttemptReasonReassigned,
+	} {
+		startedAt := int64(100 + index)
+		attempt := models.ChannelTaskAttempt{
+			ID: fmt.Sprintf("%032d", index+1), TaskID: "task", ChatID: fmt.Sprintf("chat-%d", index),
+			AssigneeWakerID: fmt.Sprintf("member-%d", index), Fence: index + 1,
+			Reason: reason, StartedAt: &startedAt,
+		}
+		if index == 4 {
+			attempt.StartedAt = nil
+		}
+		if err := controller.CreateAttempt(ctx, attempt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := controller.CreateAttempt(ctx, models.ChannelTaskAttempt{
+		ID: "other", TaskID: "other-task", Fence: 1, Reason: constants.ChannelAttemptReasonInitial,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	followUps := make([]models.ChannelTaskAttempt, 1000)
+	for index := range followUps {
+		startedAt := int64(1000 + index)
+		followUps[index] = models.ChannelTaskAttempt{
+			ID: fmt.Sprintf("%032d", 1000+index), TaskID: "task", Fence: 1000 + index,
+			Reason: constants.ChannelAttemptReasonUserFollowUp, StartedAt: &startedAt,
+		}
+	}
+	if err := database.CreateInBatches(followUps, 100).Error; err != nil {
+		t.Fatal(err)
+	}
+	log := &repositoryQueryLog{Interface: logger.Discard}
+	observed := database.Session(&gorm.Session{Logger: log})
+	controller = NewChannelTaskController(observed)
+	transaction := NewTransactionController(dbhelper.NewGormTransactionManager(observed))
+	var attempts []models.ChannelTaskAttempt
+	err := transaction.Transaction(ctx, func(readCtx context.Context) error {
+		var readErr error
+		attempts, readErr = controller.ListDelegationAttempts(readCtx, []string{"task"})
+		return readErr
+	})
+	if err != nil || len(attempts) != 3 {
+		t.Fatalf("delegations = %+v, error = %v", attempts, err)
+	}
+	if attempts[0].AssigneeWakerID != "member-0" || attempts[1].AssigneeWakerID != "member-1" ||
+		*attempts[0].StartedAt != 100 || *attempts[1].StartedAt != 101 || attempts[2].Reason != constants.ChannelAttemptReasonReassigned {
+		t.Fatalf("accepted assignment history changed: %+v", attempts)
+	}
+	if len(log.Statements) != 1 {
+		t.Fatalf("delegation queries = %d, want one batch", len(log.Statements))
+	}
+	var plan []struct {
+		// Detail 是 SQLite 对当前查询的索引选择说明。
+		Detail string
+	}
+	if err := database.Raw("EXPLAIN QUERY PLAN " + log.Statements[0]).Scan(&plan).Error; err != nil {
+		t.Fatal(err)
+	}
+	indexed := false
+	for _, step := range plan {
+		if strings.Contains(step.Detail, "idx_channel_task_delegations") && strings.Contains(step.Detail, "reason=?") {
+			indexed = true
+		}
+	}
+	if !indexed {
+		t.Fatalf("delegation lookup scanned unrelated follow-ups: %+v", plan)
+	}
+	empty, err := controller.ListDelegationAttempts(ctx, nil)
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("empty task window = %+v, error = %v", empty, err)
+	}
+}
 
 func TestChannelTaskDispatchClaimIsAtomicAndQuotaBound(t *testing.T) {
 	database := newTestDB(t)

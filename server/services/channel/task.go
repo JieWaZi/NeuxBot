@@ -96,6 +96,7 @@ func (s *service) CreateTask(
 		Description:         input.Description,
 		DirectInput:         directInput,
 		DeferUntilLeadIdle:  input.DeferDispatch,
+		DelegationSentAt:    now,
 		Status:              constants.ChannelTaskStatusPending,
 		Priority:            input.Priority,
 		RequiresHumanReview: input.RequiresHumanReview,
@@ -171,15 +172,19 @@ func (s *service) updatePendingTask(
 	if len([]rune(input.Subject)) > constants.ChannelMaximumTaskSubjectRunes {
 		return models.ChannelTask{}, status_error.BadRequest
 	}
+	now := time.Now().UnixMilli()
 	fields := map[string]interface{}{
 		"defer_until_lead_idle": true,
-		"updated_at":            time.Now().UnixMilli(),
+		"updated_at":            now,
 	}
 	if input.AssigneeWakerID != "" {
 		if _, memberErr := s.threads.GetMember(ctx, task.ThreadID, input.AssigneeWakerID); memberErr != nil {
 			return models.ChannelTask{}, memberErr
 		}
 		fields["assignee_waker_id"] = input.AssigneeWakerID
+		if input.AssigneeWakerID != task.AssigneeWakerID {
+			fields["delegation_sent_at"] = now
+		}
 	}
 	if input.Subject != "" {
 		fields["subject"] = input.Subject
@@ -342,15 +347,9 @@ func (s *service) dispatchTask(
 		return nil, err
 	}
 	followUps = nextFollowUpBatch(followUps)
-	reason := constants.ChannelAttemptReasonInitial
-	if len(followUps) > 0 {
-		if followUps[0].Actor == constants.ChannelMessageActorLead {
-			reason = constants.ChannelAttemptReasonLeadFollowUp
-		} else {
-			reason = constants.ChannelAttemptReasonUserFollowUp
-		}
-	} else if task.CurrentFence > 0 {
-		reason = constants.ChannelAttemptReasonRetry
+	reason, err := s.taskAttemptReason(ctx, task, followUps)
+	if err != nil {
+		return nil, err
 	}
 	workInput, err := taskWorkInput(task, dependencies, followUps)
 	if err != nil {
@@ -366,16 +365,17 @@ func (s *service) dispatchTask(
 	fence := task.CurrentFence + 1
 	now := time.Now().UnixMilli()
 	attempt := models.ChannelTaskAttempt{
-		ID:              util.New(),
-		TaskID:          task.ID,
-		ChatID:          member.ChatID,
-		ExecutionID:     util.New(),
-		AssigneeWakerID: task.AssigneeWakerID,
-		Fence:           fence,
-		Reason:          reason,
-		Status:          constants.ExecutionStatusPending,
-		CreatedAt:       now,
-		UpdatedAt:       now,
+		ID:               util.New(),
+		TaskID:           task.ID,
+		ChatID:           member.ChatID,
+		ExecutionID:      util.New(),
+		AssigneeWakerID:  task.AssigneeWakerID,
+		Fence:            fence,
+		Reason:           reason,
+		DelegationSentAt: task.DelegationSentAt,
+		Status:           constants.ExecutionStatusPending,
+		CreatedAt:        now,
+		UpdatedAt:        now,
 	}
 	claimed := false
 	if err := s.transaction(ctx, func(transactionContext context.Context) error {
@@ -532,6 +532,31 @@ func (s *service) dispatchTask(
 	}
 	s.watchAttempt(attempt, task.ThreadID, capabilityToken)
 	return &accepted.Execution, nil
+}
+
+// taskAttemptReason 区分同成员补充与真实改派，后续委派投影无需扫描全部补充历史。
+func (s *service) taskAttemptReason(ctx context.Context, task models.ChannelTask, followUps []models.ChannelTaskFollowUp) (constants.ChannelAttemptReason, error) {
+	if task.CurrentFence == 0 {
+		return constants.ChannelAttemptReasonInitial, nil
+	}
+	previous, err := s.tasks.GetCurrentAttempt(ctx, task.ID, task.CurrentFence)
+	if err != nil {
+		return "", err
+	}
+	// 未接纳的 reservation 只消耗围栏；重试接纳沿用同一派发意图。
+	if previous.StartedAt == nil && previous.AssigneeWakerID == task.AssigneeWakerID {
+		return previous.Reason, nil
+	}
+	if len(followUps) == 0 {
+		return constants.ChannelAttemptReasonRetry, nil
+	}
+	if previous.AssigneeWakerID != task.AssigneeWakerID {
+		return constants.ChannelAttemptReasonReassigned, nil
+	}
+	if followUps[0].Actor == constants.ChannelMessageActorLead {
+		return constants.ChannelAttemptReasonLeadFollowUp, nil
+	}
+	return constants.ChannelAttemptReasonUserFollowUp, nil
 }
 
 func (s *service) releaseUnstartedAttempt(

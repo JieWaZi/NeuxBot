@@ -46,6 +46,7 @@ import {
 } from "../api/chat-queries";
 import { ChatHistoryLoadingState } from "../components/chat-history-loading-state";
 import { TeamWorkStatus } from "../components/team-work-status";
+import { TeamDelegationMarker } from "../components/team-delegation-marker";
 import {
   ChatWorkspaceSurface,
   type ChatWorkspaceAdapter,
@@ -104,6 +105,7 @@ import type { ChatOutletContext } from "./chat-page-shared";
 import {
   teamChatPresentation,
   teamMainChatMessageVisible,
+  groupTeamDelegations,
 } from "./team-chat-presentation";
 
 type TeamChatPageContentProps = {
@@ -513,7 +515,7 @@ function TeamChatView({
     [isTeamMainChat, messages, teamContext],
   );
   const teamMessageAuthors = useMemo(() => {
-    if (!isTeamMainChat) return undefined;
+    if (!isTeamMainChat) return {};
     const memberByID = new Map(
       teamContext.members.map((member) => [member.id, member] as const),
     );
@@ -526,6 +528,7 @@ function TeamChatView({
           [
             messageID,
             {
+              wakerId: item.wakerId,
               name: member?.name ?? t("wakerFallback"),
               avatar: member?.avatar,
               sourceChatId: item.message.sourceChatId ?? item.chatId,
@@ -779,7 +782,9 @@ function TeamChatView({
       !effectiveRuntimeID ||
       invalidNativeMemberIndex !== -1 ||
       (executionSelection.usesNativeCatalog && !executionSelection.valid) ||
-      (!activeChatId && !workspaceDirectory && !selectedDraftProject),
+      (!activeChatId &&
+        explicitDraftSelection?.type === "project" &&
+        !selectedDraftProject),
     ),
     serverManagedQueue: isTeamMainChat,
     messageVisibility: isTeamMainChat ? teamMainChatMessageVisible : undefined,
@@ -1198,8 +1203,8 @@ function TeamChatView({
         (member.isLead &&
           (teamContext.leadActiveExecutionId || teamContext.leadProcessing))),
   );
-  const openWorkingMember = (memberId: string) => {
-    const member = workingMembers.find((item) => item.id === memberId);
+  const openTeamMember = (memberId: string) => {
+    const member = teamContext.members.find((item) => item.id === memberId);
     if (!member?.chatId) return;
     if (member.isLead) {
       const mainTab = workspace.snapshot.tabs.find(
@@ -1214,6 +1219,31 @@ function TeamChatView({
       member: { chatId: member.chatId, label: member.name, wakerId: member.id },
     });
   };
+  const viewingMemberId = activeMemberWakerId ?? teamContext.leadWakerId;
+  const delegationEvents = groupTeamDelegations(
+    teamContext.delegations ?? [],
+    viewingMemberId,
+    chatRuntime.messages,
+  ).map(({ id, beforeMessageId, createdAt, partnerIds, direction }) => ({
+    id,
+    beforeMessageId,
+    createdAt,
+    content: (
+      <TeamDelegationMarker
+        direction={direction}
+        partners={partnerIds.map((id) => {
+          const member = teamContext.members.find((item) => item.id === id);
+          return {
+            id,
+            name: member?.name ?? t("wakerFallback"),
+            avatar: member?.avatar,
+            available: Boolean(member?.chatId),
+            onOpen: () => openTeamMember(id),
+          };
+        })}
+      />
+    ),
+  }));
   const stopTeamWork = () => {
     if (!teamContext.threadId || teamContext.isStopping) return;
     const operation = `team-stop:${teamContext.threadId}`;
@@ -1288,11 +1318,12 @@ function TeamChatView({
       wakerId: conversationWakerId,
       wakerAvatar: conversationAvatar,
       messageAuthors: teamMessageAuthors,
+      timelineEvents: delegationEvents,
       activityStatus:
         teamMainChat && teamContext.workProgress.phase !== "idle" ? (
           <TeamWorkStatus
             activeMembers={workingMembers}
-            onOpenMember={openWorkingMember}
+            onOpenMember={openTeamMember}
             progress={teamContext.workProgress}
           />
         ) : undefined,

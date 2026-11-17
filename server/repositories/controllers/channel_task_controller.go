@@ -47,6 +47,8 @@ type ChannelTaskController interface {
 	FailRunningAttempt(ctx context.Context, taskID string, attemptID string, fence int, errorMessage string, updatedAt int64) (bool, error)
 	// GetCurrentAttempt 返回与任务当前围栏匹配的尝试。
 	GetCurrentAttempt(ctx context.Context, taskID string, fence int) (models.ChannelTaskAttempt, error)
+	// ListDelegationAttempts 批量返回已接纳的派发与改派，保留当时执行成员。
+	ListDelegationAttempts(ctx context.Context, taskIDs []string) ([]models.ChannelTaskAttempt, error)
 	// CountFailureAttempts 返回任务已经失败的尝试累计数量。
 	CountFailureAttempts(ctx context.Context, taskID string) (int64, error)
 	// CreateFollowUp 持久化一条等待续跑的用户补充。
@@ -573,6 +575,24 @@ func (c *channelTaskController) GetCurrentAttempt(
 		"task_id="+taskID,
 		err,
 	)
+}
+
+// ListDelegationAttempts 索引读取派发与改派的不可变接纳身份，不扫描同成员补充历史。
+func (c *channelTaskController) ListDelegationAttempts(ctx context.Context, taskIDs []string) ([]models.ChannelTaskAttempt, error) {
+	attempts := []models.ChannelTaskAttempt{}
+	if len(taskIDs) == 0 {
+		return attempts, nil
+	}
+	err := controllerDB(ctx, c.db).
+		Select("id", "task_id", "execution_id", "assignee_waker_id", "reason", "delegation_sent_at", "created_at", "started_at").
+		Where("task_id IN ? AND started_at IS NOT NULL AND reason IN ?", taskIDs, []constants.ChannelAttemptReason{
+			constants.ChannelAttemptReasonInitial, constants.ChannelAttemptReasonRetry, constants.ChannelAttemptReasonReassigned,
+		}).
+		Order("started_at ASC, id ASC").Find(&attempts).Error
+	if err != nil {
+		return nil, databaseError("list_channel_delegation_attempts", "channel_task", err)
+	}
+	return attempts, nil
 }
 
 // CountFailureAttempts 返回任务已经失败的尝试累计数量。

@@ -21,6 +21,7 @@ export function CompanionAvatar({
   attention,
   animated = true,
   interactive = true,
+  terminalHover = false,
   preview = false,
   onReady,
   onError,
@@ -32,6 +33,7 @@ export function CompanionAvatar({
   attention?: CompanionAttention;
   animated?: boolean;
   interactive?: boolean;
+  terminalHover?: boolean;
   preview?: boolean;
   animation?: StateId;
   expression?: ExpressionId;
@@ -76,7 +78,11 @@ export function CompanionAvatar({
   const hoverEnabled = interactive && animated && !preview && !animation;
   const interaction =
     hoverEnabled &&
-    shown === "idle" &&
+    (shown === "idle" ||
+      (terminalHover &&
+        (shown === "completed" ||
+          shown === "failed" ||
+          shown === "stopped"))) &&
     !attentionState &&
     (hover.pointer || hover.focus) &&
     !reduced;

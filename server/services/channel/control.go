@@ -150,11 +150,12 @@ func (s *service) retryTask(
 			return writableErr
 		}
 		if err := s.tasks.UpdateFields(transactionContext, task.ID, map[string]interface{}{
-			"assignee_waker_id": assigneeWakerID,
-			"status":            constants.ChannelTaskStatusPending,
-			"error_message":     "",
-			"finished_at":       nil,
-			"updated_at":        now,
+			"assignee_waker_id":  assigneeWakerID,
+			"delegation_sent_at": now,
+			"status":             constants.ChannelTaskStatusPending,
+			"error_message":      "",
+			"finished_at":        nil,
+			"updated_at":         now,
 		}); err != nil {
 			return err
 		}
