@@ -129,7 +129,7 @@ describe("头像编辑保存", () => {
     await user.click(screen.getByRole("button", { name: "保存修改" }));
     await waitFor(() => expect(save).toHaveBeenCalledOnce());
     expect(save.mock.calls[0]?.[0]).toMatchObject({
-      body: { avatar: `bloub:${material}:triangle:curieux:38bdf8` },
+      body: { avatar: `bloub:${material}:triangle:timide:38bdf8` },
     });
   });
 

@@ -307,6 +307,9 @@ export const baseEn = {
       showcase: "View {{name}}'s profile",
       picker: {
         edit: "Edit {{label}}",
+        avatar: "Avatar",
+        tryDoubleClick: "Try double-clicking",
+        changeExpression: "Double-click to change expression (Shift+Enter)",
         material: "Material",
         shape: "shapes",
         expression: "Eyes",

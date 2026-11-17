@@ -6,7 +6,8 @@ import {
 
 export const avatarShapes = SHAPES.filter(({ id }) => id !== "goutte");
 export { avatarExpressions } from "./avatar-expressions";
-import { avatarExpressions } from "./avatar-expressions";
+import { avatarPresets } from "./avatar-presets";
+export { avatarPresets } from "./avatar-presets";
 export {
   MATERIALS as avatarMaterials,
   PALETTE as avatarColors,
@@ -68,12 +69,11 @@ export function companionAppearance(avatar: string): CompanionAppearance {
   for (const character of avatar.slice(0, 256))
     hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
   const sample = hash >>> 0;
+  const preset =
+    avatarPresets[sample % avatarPresets.length] ?? avatarPresets[0];
   return {
     material: "plush",
-    shape: avatarShapes[sample % avatarShapes.length]?.id ?? "cercle",
-    expression:
-      avatarExpressions[(sample >>> 8) % avatarExpressions.length]?.id ??
-      "neutre",
+    ...preset,
     color: avatarColors[(sample >>> 16) % avatarColors.length] ?? DEFAULT_COLOR,
   };
 }
@@ -95,13 +95,12 @@ export function companionAvatar(
 export function randomCompanionAvatar(
   material: AvatarMaterial = "plush",
 ): string {
-  const bytes = crypto.getRandomValues(new Uint32Array(4));
+  const bytes = crypto.getRandomValues(new Uint32Array(2));
+  const preset =
+    avatarPresets[(bytes[0] ?? 0) % avatarPresets.length] ?? avatarPresets[0];
   return encodeCompanionAppearance({
     material,
-    shape: avatarShapes[(bytes[1] ?? 0) % avatarShapes.length]?.id ?? "cercle",
-    expression:
-      avatarExpressions[(bytes[2] ?? 0) % avatarExpressions.length]?.id ??
-      "neutre",
-    color: avatarColors[(bytes[3] ?? 0) % avatarColors.length] ?? DEFAULT_COLOR,
+    ...preset,
+    color: avatarColors[(bytes[1] ?? 0) % avatarColors.length] ?? DEFAULT_COLOR,
   });
 }

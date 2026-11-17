@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   companionAppearance,
   companionAvatar,
@@ -53,4 +53,17 @@ describe("Bloub 头像配置", () => {
     expect(encodeCompanionAppearance(companionAppearance(saved))).toBe(saved);
     expect(companionAppearance(saved).material).toBe("plush");
   });
+});
+
+it("随机头像采用形状绑定的默认表情，保留材质与颜色", () => {
+  const random = vi
+    .spyOn(crypto, "getRandomValues")
+    .mockReturnValue(new Uint32Array([4, 0]));
+  try {
+    expect(randomCompanionAvatar("particles")).toBe(
+      "bloub:particles:triangle:timide:ef4444",
+    );
+  } finally {
+    random.mockRestore();
+  }
 });

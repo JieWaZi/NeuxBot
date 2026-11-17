@@ -198,6 +198,9 @@ const resources = {
         showcase: "查看 {{name}} 的资料",
         picker: {
           edit: "编辑{{label}}",
+          avatar: "头像样式",
+          tryDoubleClick: "试试双击",
+          changeExpression: "双击切换表情（Shift+Enter）",
           material: "材质",
           shape: "形状",
           expression: "眼睛",

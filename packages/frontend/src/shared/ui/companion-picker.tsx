@@ -2,9 +2,8 @@ import { RotateCcw, Shuffle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   avatarColors,
-  avatarExpressions,
   avatarMaterials,
-  avatarShapes,
+  avatarPresets,
   companionAppearance,
   defaultCompanionAvatar,
   encodeCompanionAppearance,
@@ -41,6 +40,16 @@ export function CompanionPicker({
   const change = (patch: Partial<CompanionAppearance>) =>
     onChange(encodeCompanionAppearance({ ...appearance, ...patch }));
 
+  const nextExpression = () => {
+    const index = avatarPresets.findIndex(
+      ({ expression }) => expression === appearance.expression,
+    );
+    return (
+      avatarPresets[(index + 1) % avatarPresets.length]?.expression ??
+      appearance.expression
+    );
+  };
+
   const preview = (
     <Avatar
       name={name}
@@ -53,7 +62,7 @@ export function CompanionPicker({
   const materials = (
     <fieldset
       aria-label={t("companion.picker.material")}
-      className={cn("flex flex-wrap gap-1", inline && "justify-center")}
+      className="flex flex-wrap gap-1"
     >
       {avatarMaterials.map((material) => (
         <Button
@@ -69,86 +78,103 @@ export function CompanionPicker({
       ))}
     </fieldset>
   );
-  const shapes = (
-    <fieldset className="grid min-w-0 gap-1">
-      <legend className="sr-only">{t("companion.picker.shape")}</legend>
-      {!inline && (
-        <div className="flex flex-wrap items-center justify-between gap-1">
-          <span
-            aria-hidden="true"
-            className="type-ui text-content-secondary font-medium"
-          >
-            {t("companion.picker.shape")}
-          </span>
-          {materials}
-          <TooltipProvider>
-            <div className="flex items-center">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    aria-label={t("companion.picker.reset")}
-                    onClick={() => onChange(defaultCompanionAvatar)}
-                  >
-                    <RotateCcw />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{t("companion.picker.reset")}</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    aria-label={t("companion.picker.random")}
-                    onClick={() =>
-                      onChange(randomCompanionAvatar(appearance.material))
-                    }
-                  >
-                    <Shuffle />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{t("companion.picker.random")}</TooltipContent>
-              </Tooltip>
-            </div>
-          </TooltipProvider>
-        </div>
+  const actions = (
+    <TooltipProvider>
+      <div className="flex items-center">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              aria-label={t("companion.picker.reset")}
+              onClick={() => onChange(defaultCompanionAvatar)}
+            >
+              <RotateCcw />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{t("companion.picker.reset")}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              aria-label={t("companion.picker.random")}
+              onClick={() =>
+                onChange(randomCompanionAvatar(appearance.material))
+              }
+            >
+              <Shuffle />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{t("companion.picker.random")}</TooltipContent>
+        </Tooltip>
+      </div>
+    </TooltipProvider>
+  );
+  const toolbar = (
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-1",
+        inline ? "justify-center" : "justify-between",
       )}
-      <div
-        className={
-          inline
-            ? "flex flex-wrap justify-center gap-1"
-            : "grid grid-cols-5 gap-1"
-        }
-      >
-        {avatarShapes.map(({ id }) => (
-          <Button
-            key={id}
-            type="button"
-            size={inline ? "icon-sm" : "icon"}
-            variant="choice"
-            className={inline ? undefined : "relative w-full"}
-            aria-label={t(`companion.shapes.${id}`)}
-            title={t(`companion.shapes.${id}`)}
-            aria-pressed={appearance.shape === id}
-            onClick={() => change({ shape: id })}
-          >
-            <Avatar
-              name={name}
-              src={encodeCompanionAppearance({
-                ...appearance,
-                shape: id,
-              })}
-              size={inline ? "xs" : "sm"}
-              animated={!inline}
-              preview
-              interactive={false}
-            />
-          </Button>
-        ))}
+    >
+      {materials}
+      {actions}
+    </div>
+  );
+  const avatars = (
+    <fieldset
+      className={cn("grid min-w-0 gap-1", inline && "justify-self-center")}
+    >
+      <legend className="sr-only">{t("companion.picker.avatar")}</legend>
+      <div className="grid grid-cols-5 gap-1">
+        {avatarPresets.map((preset) => {
+          const optionLabel = t(`companion.shapes.${preset.shape}`);
+          const changeExpression = () =>
+            change({ shape: preset.shape, expression: nextExpression() });
+          return (
+            <Button
+              key={preset.shape}
+              type="button"
+              size="icon-lg"
+              variant="choice"
+              className={inline ? undefined : "relative w-full"}
+              aria-label={optionLabel}
+              title={t("companion.picker.changeExpression")}
+              aria-pressed={appearance.shape === preset.shape}
+              onClick={(event) => {
+                if (event.detail < 2 && appearance.shape !== preset.shape)
+                  change(preset);
+              }}
+              onDoubleClick={changeExpression}
+              onKeyDown={(event) => {
+                if (event.shiftKey && event.key === "Enter") {
+                  event.preventDefault();
+                  changeExpression();
+                }
+              }}
+            >
+              <Avatar
+                name={name}
+                src={encodeCompanionAppearance({
+                  ...appearance,
+                  ...preset,
+                  expression:
+                    appearance.shape === preset.shape
+                      ? appearance.expression
+                      : preset.expression,
+                })}
+                size="md"
+                animated={false}
+                preview
+                interactive={false}
+              />
+            </Button>
+          );
+        })}
       </div>
     </fieldset>
   );
@@ -196,68 +222,28 @@ export function CompanionPicker({
       </div>
     </fieldset>
   );
-  const expressions = (
-    <fieldset className="grid min-w-0 gap-1">
-      <legend
-        className={
-          inline ? "sr-only" : "type-ui text-content-secondary mb-1 font-medium"
-        }
-      >
-        {t("companion.picker.expression")}
-      </legend>
-      <div
-        className={
-          inline
-            ? "flex flex-wrap justify-center gap-1"
-            : "grid grid-cols-4 gap-1"
-        }
-      >
-        {avatarExpressions.map(({ id }) => (
-          <Button
-            key={id}
-            type="button"
-            size={inline ? "icon-sm" : "icon"}
-            variant="choice"
-            className={inline ? undefined : "relative w-full"}
-            aria-label={t(`companion.expressions.${id}`)}
-            title={t(`companion.expressions.${id}`)}
-            aria-pressed={appearance.expression === id}
-            onClick={() => change({ expression: id })}
-          >
-            <Avatar
-              name={name}
-              src={encodeCompanionAppearance({
-                ...appearance,
-                expression: id,
-              })}
-              size={inline ? "xs" : "sm"}
-              animated={!inline}
-              preview
-              interactive={false}
-            />
-          </Button>
-        ))}
-      </div>
-    </fieldset>
-  );
-  const controls = (
-    <div className="grid gap-3">
-      {shapes}
-      {expressions}
-
-      {colors}
-    </div>
-  );
 
   if (inline)
     return (
       <fieldset className="grid min-w-0 gap-3">
         <legend className="sr-only">{label}</legend>
-        <div className="justify-self-center">{preview}</div>
+        <button
+          type="button"
+          aria-label={t("companion.picker.changeExpression")}
+          className="focus-visible:ring-ring group/preview grid cursor-pointer justify-items-center gap-1 justify-self-center rounded-md outline-none focus-visible:ring-2"
+          onDoubleClick={() => change({ expression: nextExpression() })}
+          onClick={(event) => {
+            if (event.detail === 0) change({ expression: nextExpression() });
+          }}
+        >
+          <span className="type-caption text-content-secondary pointer-events-none font-sans font-medium tracking-wide opacity-0 group-hover/preview:opacity-100 group-focus-visible/preview:opacity-100">
+            {t("companion.picker.tryDoubleClick")}
+          </span>
+          {preview}
+        </button>
         {colors}
-        {shapes}
-        {expressions}
-        {materials}
+        {avatars}
+        {toolbar}
       </fieldset>
     );
 
@@ -278,7 +264,11 @@ export function CompanionPicker({
           variant="selection"
           aria-label={t("companion.picker.edit", { label })}
         >
-          {controls}
+          <div className="grid gap-3">
+            {toolbar}
+            {avatars}
+            {colors}
+          </div>
         </PopoverContent>
       </Popover>
     </div>
