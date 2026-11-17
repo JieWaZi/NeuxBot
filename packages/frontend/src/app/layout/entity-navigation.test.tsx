@@ -152,6 +152,56 @@ describe("EntityNavigation", () => {
       ).toBeInTheDocument();
     },
   );
+  it.each([false, true])(
+    "团队组合头像以独立状态点表达工作中，并保留待处理提示 (%s)",
+    (collapsed) => {
+      const renderTeam = (waiting: boolean) => (
+        <EntityNavigation
+          collapsed={collapsed}
+          items={[
+            {
+              id: "team-1",
+              key: "team:team-1",
+              kind: "team",
+              team: {
+                channel: { id: "team-1", name: "团队一" },
+                members: [
+                  { waker: { id: "waker-1", name: "伙伴一" } },
+                  { waker: { id: "waker-2", name: "伙伴二" } },
+                ],
+              },
+              attention: {
+                executorId: "team-1",
+                waitingWorkCount: waiting ? 1 : 0,
+                runningChatCount: 1,
+                chats: waiting ? [{ requestKinds: ["input"] }] : [],
+              },
+            },
+          ]}
+          mode="team"
+          onManageEntities={() => undefined}
+          onModeChange={() => undefined}
+          onNewChat={() => undefined}
+          onReorder={() => undefined}
+          onSelectPartner={() => undefined}
+          onSelectTeam={() => undefined}
+          selectedKey="team:team-1"
+        />
+      );
+      const view = render(renderTeam(false));
+      const mark = view.container.querySelector(
+        "[data-avatar-attention] [data-conversation-attention='working']",
+      );
+      expect(mark).toHaveAccessibleName("工作中");
+      expect(mark?.querySelectorAll("i")).toHaveLength(0);
+      view.rerender(renderTeam(true));
+      expect(
+        view.container.querySelector(
+          "[data-avatar-attention] [data-conversation-attention='action']",
+        ),
+      ).toHaveAccessibleName("待输入");
+    },
+  );
   it.each([true, false])(
     "伙伴上下文不再提供全局模块入口（折叠=%s）",
     (collapsed) => {
@@ -371,10 +421,10 @@ describe("EntityNavigation", () => {
     );
 
     const row = screen.getByRole("button", { name: "测试" }).closest("div");
-    const avatarSlot = row?.querySelector(".size-avatar-sm");
+    const avatarSlot = row?.querySelector(".size-avatar-navigation");
     expect(row).toHaveClass("grid-cols-[auto_minmax(0,1fr)_auto]");
     expect(avatarSlot?.parentElement).toHaveClass("inline-flex", "shrink-0");
-    expect(avatarSlot).toHaveClass("inline-flex", "size-avatar-sm");
+    expect(avatarSlot).toHaveClass("inline-grid", "size-avatar-navigation");
   });
 
   it.each(["waker", "team"] as const)(

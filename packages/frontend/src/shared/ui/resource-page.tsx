@@ -144,18 +144,25 @@ export function ResourcePageHeader({
 export function ResourcePageToolbar({
   children,
   filters,
+  appearance = "default",
 }: {
   children?: ReactNode;
   filters?: ReactNode;
+  appearance?: "default" | "catalog";
 }) {
   return (
     <Toolbar
       size="md"
-      className="pb-2"
+      divided={appearance !== "catalog"}
+      className={appearance === "catalog" ? "pb-0" : "pb-2"}
       leading={children}
       trailing={filters}
       leadingClassName="max-w-full min-w-0"
-      trailingClassName="basis-full @[36rem]/resource-page:basis-0"
+      trailingClassName={
+        appearance === "catalog"
+          ? "basis-field-search-min"
+          : "basis-full @[36rem]/resource-page:basis-0"
+      }
     />
   );
 }
@@ -166,6 +173,13 @@ export function ResourcePageSearchField(
     "containerClassName" | "size" | "width"
   >,
 ) {
+  if (props.appearance === "catalog") {
+    return (
+      <div className="basis-field-search-min min-w-0 grow">
+        <SearchField {...props} width="full" />
+      </div>
+    );
+  }
   return <SearchField {...props} size="sm" width="toolbar" />;
 }
 
@@ -179,11 +193,13 @@ export function ResourcePageSurface({
   contentClassName,
   contentLayout = "scroll",
   appearance = "default",
+  contentWidth = appearance === "catalog" ? "reading" : "full",
   ...props
 }: ComponentProps<"div"> & {
   contentClassName?: string;
   contentLayout?: "scroll" | "pane" | "form";
   appearance?: "default" | "catalog";
+  contentWidth?: "full" | "reading";
 }) {
   const [footerHost, setFooterHost] = useState<HTMLDivElement | null>(null);
   return (
@@ -220,7 +236,7 @@ export function ResourcePageSurface({
             contentClassName,
           )}
         >
-          {appearance === "catalog" ? (
+          {contentWidth === "reading" ? (
             <div
               data-slot="resource-page-content"
               className={cn(

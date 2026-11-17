@@ -9,7 +9,6 @@ import {
 } from "@/shared/ui/resource-batch-delete-dialog";
 import {
   PageAction,
-  PageActionLabel,
   ResourceCardGrid,
   ResourcePageHeader,
   ResourcePageSearchField,
@@ -63,35 +62,40 @@ export function ProjectListPage() {
 
   return (
     <WakerDetailLayout active="projects">
-      <ResourcePageSurface>
+      <ResourcePageSurface appearance="catalog">
         <ResourcePageHeader
+          appearance="catalog"
           title={t("title")}
           description={t("description")}
-          actions={
+        />
+        <ResourcePageToolbar
+          appearance="catalog"
+          filters={
             <>
+              <ResourcePageSearchField
+                appearance="catalog"
+                aria-label={t("search")}
+                placeholder={t("search")}
+                value={search}
+                onChange={(event) => {
+                  const next = new URLSearchParams(searchParams);
+                  if (event.target.value)
+                    next.set("search", event.target.value);
+                  else next.delete("search");
+                  setSearchParams(next, { replace: true });
+                }}
+              />
               <PageAction
+                appearance="catalog"
+                intent="primary"
+                className="shrink-0 whitespace-nowrap"
                 aria-label={t("newProject")}
                 onClick={() => setCreating(true)}
               >
                 <Plus />
-                <PageActionLabel>{t("newProject")}</PageActionLabel>
+                {t("newProject")}
               </PageAction>
             </>
-          }
-        />
-        <ResourcePageToolbar
-          filters={
-            <ResourcePageSearchField
-              aria-label={t("search")}
-              placeholder={t("search")}
-              value={search}
-              onChange={(event) => {
-                const next = new URLSearchParams(searchParams);
-                if (event.target.value) next.set("search", event.target.value);
-                else next.delete("search");
-                setSearchParams(next, { replace: true });
-              }}
-            />
           }
         >
           <h2 className="type-body font-medium">{t("allProjects")}</h2>
@@ -116,7 +120,7 @@ export function ProjectListPage() {
             )
           }
         />
-        <div className="mt-6">
+        <div className="mt-5">
           {query.isPending ? (
             <ResourceCardGrid>
               <Skeleton className="h-44 rounded-lg" />

@@ -71,6 +71,7 @@ export function WakerDetailPage() {
     return (
       <WakerDetailLayout active="overview">
         <ResourcePageSurface
+          contentWidth="reading"
           aria-busy="true"
           aria-label={t("detail.loading")}
           role="status"
@@ -126,7 +127,7 @@ export function WakerDetailPage() {
   return (
     <>
       <WakerDetailLayout active="overview">
-        <ResourcePageSurface>
+        <ResourcePageSurface contentWidth="reading">
           <div className="w-full">
             <WakerPatternPanel
               className="overflow-visible rounded-xl px-4 pt-4 pb-3"
@@ -256,7 +257,7 @@ export function WakerDetailPage() {
                       }
                     />
                     {waker.onboardingStatus !== "pending" ? (
-                      <WakerProfileSection waker={waker} />
+                      <WakerProfileSection waker={waker} fillAvailableHeight />
                     ) : null}
                   </>
                 }

@@ -30,11 +30,12 @@ export function WakerOverviewColumns({
         {about}
       </WakerPatternPanel>
       <WakerPatternPanel
-        className="h-full min-w-0 rounded-xl p-5"
+        className="h-full min-h-0 min-w-0 rounded-xl p-5"
+        contentClassName="flex h-full min-h-0 flex-col"
         pattern="wash-mirror"
         surface="scene"
       >
-        <div className="grid gap-8">{aside}</div>
+        <div className="flex min-h-0 flex-1 flex-col gap-8">{aside}</div>
       </WakerPatternPanel>
     </div>
   );

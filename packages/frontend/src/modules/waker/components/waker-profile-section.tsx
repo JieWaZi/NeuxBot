@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LoaderCircle, Pencil } from "lucide-react";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
@@ -14,7 +14,7 @@ import {
   chatHref,
   wakerProfileOptimizationHref,
 } from "@/shared/lib/chat-navigation";
-import { parseGfm } from "@/shared/markdown/parse";
+import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import { PageAction } from "@/shared/ui/resource-page";
 import { Skeleton } from "@/shared/ui/skeleton";
@@ -28,21 +28,13 @@ import {
 import type { Waker } from "../model/types";
 import { ProfileDocumentEditorDialog } from "./profile-document-editor-dialog";
 
-function profileExcerpt(content: string): string {
-  const markdown = content.trim();
-  if (!markdown) return "";
-  const { children } = parseGfm(markdown);
-  const firstBodyIndex = children.findIndex(
-    (block) => block.type !== "heading",
-  );
-  const lastBlock =
-    children[firstBodyIndex < 0 ? 1 : Math.min(firstBodyIndex, 2)];
-  const opening = markdown.slice(0, lastBlock?.position?.end.offset);
-  const prefix = opening.match(/^.{0,300}/su)?.[0] ?? opening;
-  return prefix.length < opening.length ? `${prefix.trimEnd()}…` : opening;
-}
-
-export function WakerProfileSection({ waker }: { waker: Waker }) {
+export function WakerProfileSection({
+  waker,
+  fillAvailableHeight = false,
+}: {
+  waker: Waker;
+  fillAvailableHeight?: boolean;
+}) {
   const { t } = useTranslation("waker");
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -61,7 +53,6 @@ export function WakerProfileSection({ waker }: { waker: Waker }) {
   );
   const query = useQuery({ ...options, enabled: Boolean(wakerId) });
   const content = query.data?.content ?? "";
-  const preview = useMemo(() => profileExcerpt(content), [content]);
   const start = useMutation(
     withLocalErrorMutation(startWakerOnboardingMutation()),
   );
@@ -107,8 +98,8 @@ export function WakerProfileSection({ waker }: { waker: Waker }) {
   };
 
   return (
-    <section className="min-w-0">
-      <header className="mb-3 flex flex-wrap items-center justify-between gap-3">
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <header className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-3">
         <h2 className="type-label font-semibold">{t("profile.title")}</h2>
         <div className="flex flex-wrap items-center gap-2">
           {!pending && query.data?.editable ? (
@@ -174,8 +165,16 @@ export function WakerProfileSection({ waker }: { waker: Waker }) {
           </Button>
         </div>
       ) : null}
-      {preview ? (
-        <StaticMarkdown source={preview} />
+      {content.trim() ? (
+        <div
+          className={cn(
+            "max-h-96 min-h-0 min-w-0 overflow-hidden",
+            fillAvailableHeight &&
+              "flex-1 @[60rem]/resource-page:max-h-none @[60rem]/resource-page:[contain:size]",
+          )}
+        >
+          <StaticMarkdown source={content} />
+        </div>
       ) : query.isSuccess && !pending ? (
         <p className="text-muted-foreground type-body">{t("profile.empty")}</p>
       ) : null}

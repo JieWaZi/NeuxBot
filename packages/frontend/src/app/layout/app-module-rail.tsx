@@ -111,11 +111,6 @@ export function AppModuleRail({
             label: t("partnerNavigation.partner"),
             icon: Bot,
           })}
-          {moduleButton({
-            id: "resources",
-            label: t("plugin:title"),
-            icon: LayoutGrid,
-          })}
           {pages
             .filter(({ id }) => pinnedModules.includes(id))
             .map(moduleButton)}
@@ -182,6 +177,11 @@ export function AppModuleRail({
           className="mt-auto flex shrink-0 flex-col items-center gap-1.5 pt-4"
           data-desktop-no-drag-region
         >
+          {moduleButton({
+            id: "resources",
+            label: t("plugin:title"),
+            icon: LayoutGrid,
+          })}
           {moduleButton({
             id: "settings",
             label: t("partnerNavigation.settings"),

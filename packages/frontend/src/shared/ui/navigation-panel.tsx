@@ -1,4 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
+import { Slot, Slottable } from "@radix-ui/react-slot";
 
 import { cn } from "@/shared/lib/cn";
 
@@ -73,6 +74,7 @@ export function NavigationSection({
 }
 
 type NavigationItemProps = ComponentProps<"button"> & {
+  asChild?: boolean;
   active?: boolean;
   density?: "default" | "navigation" | "catalog" | "settings";
   icon?: ReactNode;
@@ -83,6 +85,8 @@ type NavigationItemProps = ComponentProps<"button"> & {
 
 export function NavigationItem({
   active = false,
+  asChild = false,
+  children,
   className,
   density = "default",
   description,
@@ -91,9 +95,10 @@ export function NavigationItem({
   trailing,
   ...props
 }: NavigationItemProps) {
+  const Component = asChild ? Slot : "button";
   return (
-    <button
-      type="button"
+    <Component
+      type={asChild ? undefined : "button"}
       aria-current={active ? "page" : undefined}
       className={cn(
         "duration-quick ease-ui focus-visible:ring-ring grid w-full grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-2 rounded-md text-left transition-[background-color,color] outline-none focus-visible:ring-2",
@@ -115,6 +120,7 @@ export function NavigationItem({
       )}
       {...props}
     >
+      {asChild ? <Slottable>{children}</Slottable> : null}
       <span className="grid place-items-center">{icon}</span>
       <span className="min-w-0">
         <span
@@ -139,6 +145,6 @@ export function NavigationItem({
         ) : null}
       </span>
       {trailing ? <span className="shrink-0">{trailing}</span> : null}
-    </button>
+    </Component>
   );
 }

@@ -1,6 +1,5 @@
 import {
   PageAction,
-  PageActionLabel,
   ResourcePageHeader,
   ResourcePageSearchField,
   ResourcePageSurface,
@@ -172,14 +171,41 @@ export function WakerMemoryPage() {
 
   return (
     <WakerDetailLayout active="memory">
-      <ResourcePageSurface>
+      <ResourcePageSurface appearance="catalog">
         <ResourcePageHeader
+          appearance="catalog"
           title={t("title")}
           description={t("description")}
-          actions={
+        />
+
+        <ResourcePageToolbar
+          appearance="catalog"
+          filters={
             <>
+              <DateRangePicker
+                from={from}
+                labels={{
+                  clear: t("range.clear"),
+                  empty: t("range.allTime"),
+                  help: t("range.help"),
+                  title: t("range.title"),
+                  trigger: t("range.trigger"),
+                }}
+                to={to}
+                onChange={(nextFrom, nextTo) =>
+                  updateFilters({ from: nextFrom, to: nextTo })
+                }
+              />
+              <ResourcePageSearchField
+                appearance="catalog"
+                aria-label={t("search")}
+                placeholder={t("search")}
+                {...searchDraft}
+              />
               <PageAction
-                variant="plain"
+                appearance="catalog"
+                intent="edit"
+                className="shrink-0"
                 hitArea="comfortable"
                 aria-label={t("settingsAction")}
                 onClick={() => setSettingsOpen(true)}
@@ -188,9 +214,14 @@ export function WakerMemoryPage() {
               </PageAction>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <PageAction aria-label={t("addAction")}>
+                  <PageAction
+                    appearance="catalog"
+                    intent="primary"
+                    className="shrink-0 whitespace-nowrap"
+                    aria-label={t("addAction")}
+                  >
                     <Plus />
-                    <PageActionLabel>{t("addAction")}</PageActionLabel>
+                    {t("addAction")}
                   </PageAction>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -228,32 +259,6 @@ export function WakerMemoryPage() {
               </DropdownMenu>
             </>
           }
-        />
-
-        <ResourcePageToolbar
-          filters={
-            <>
-              <DateRangePicker
-                from={from}
-                labels={{
-                  clear: t("range.clear"),
-                  empty: t("range.allTime"),
-                  help: t("range.help"),
-                  title: t("range.title"),
-                  trigger: t("range.trigger"),
-                }}
-                to={to}
-                onChange={(nextFrom, nextTo) =>
-                  updateFilters({ from: nextFrom, to: nextTo })
-                }
-              />
-              <ResourcePageSearchField
-                aria-label={t("search")}
-                placeholder={t("search")}
-                {...searchDraft}
-              />
-            </>
-          }
         >
           <h2 className="type-body font-medium">{t("tabs.memories")}</h2>
           <span className="text-muted-foreground type-caption">
@@ -261,7 +266,7 @@ export function WakerMemoryPage() {
           </span>
         </ResourcePageToolbar>
 
-        <div className="mt-6">
+        <div className="mt-5">
           {memories.isPending ? (
             <div className="grid gap-4 py-4">
               {Array.from({ length: 5 }, (_, index) => (

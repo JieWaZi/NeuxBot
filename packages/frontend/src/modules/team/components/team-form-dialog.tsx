@@ -4,8 +4,8 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Check, CircleAlert, Crown, Trash2 } from "lucide-react";
-import { useDeferredValue, useMemo, useState } from "react";
+import { CircleAlert, Crown, Trash2 } from "lucide-react";
+import { useDeferredValue, useId, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
@@ -24,6 +24,7 @@ import { Button } from "@/shared/ui/button";
 import { Checkbox } from "@/shared/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
+import { FieldLabel } from "@/shared/ui/field-label";
 import { SearchField } from "@/shared/ui/search-field";
 import { useExecutionSelection } from "@/shared/hooks/use-execution-selection";
 import { ExecutionConfigurationFields } from "@/shared/ui/execution-configuration-fields";
@@ -109,6 +110,7 @@ export function TeamFormDialog({
   open,
 }: TeamFormDialogProps) {
   const { t } = useTranslation("team");
+  const id = useId();
   const queryClient = useQueryClient();
   const channel = detail?.channel;
   const editing = Boolean(channel?.id);
@@ -186,6 +188,7 @@ export function TeamFormDialog({
       setSelectedWakers((selected) => new Map(selected).set(wakerId, waker));
     }
     setMembers([...members, { wakerId, ...defaultExecution.selection }]);
+    if (!members.length && !leadWakerId) setLeadWakerId(wakerId);
   };
   const updateMember = (wakerId: string, patch: Partial<TeamMemberValues>) => {
     setMembers(
@@ -246,11 +249,16 @@ export function TeamFormDialog({
           onSubmit={submit}
         >
           <div className="flex min-h-0 flex-1 flex-col px-6 pb-5">
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="type-label grid gap-2">
-                {t("form.name")}
+            <div className="grid items-start gap-4 md:grid-cols-2">
+              <div className="grid gap-2">
+                <FieldLabel htmlFor={`${id}-name`} required>
+                  {t("form.name")}
+                </FieldLabel>
                 <Input
                   {...form.register("name")}
+                  id={`${id}-name`}
+                  required
+                  size="md"
                   placeholder={t("form.namePlaceholder")}
                   autoFocus
                 />
@@ -259,16 +267,19 @@ export function TeamFormDialog({
                     {t("form.nameRequired")}
                   </span>
                 ) : null}
-              </label>
-              <label className="type-label grid gap-2">
-                {t("form.teamDescription")}
+              </div>
+              <div className="grid gap-2">
+                <FieldLabel htmlFor={`${id}-description`}>
+                  {t("form.teamDescription")}
+                </FieldLabel>
                 <Textarea
                   {...form.register("description")}
+                  id={`${id}-description`}
                   size="sm"
                   placeholder={t("form.descriptionPlaceholder")}
                   maxLength={1000}
                 />
-              </label>
+              </div>
             </div>
 
             <div className="mt-5 grid min-h-0 flex-1 gap-4 md:grid-cols-2">
@@ -344,9 +355,6 @@ export function TeamFormDialog({
                               {waker.roleName || t("member")}
                             </span>
                           </span>
-                          {checked ? (
-                            <Check className="text-accent-content size-icon-sm" />
-                          ) : null}
                         </label>
                       );
                     })

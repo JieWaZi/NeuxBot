@@ -13,6 +13,8 @@ export type SurfacePattern =
 
 type SurfacePatternPanelProps = ComponentProps<"div"> & {
   children: ReactNode;
+  /** 控制前景内容布局，不影响装饰纹理层。 */
+  contentClassName?: string;
   /** scene = 白底分组；card = 灰底内容块（落在白底上） */
   surface?: "scene" | "card";
   pattern?: SurfacePattern;
@@ -84,6 +86,7 @@ function patternLayerOpacity(
 export function SurfacePatternPanel({
   children,
   className,
+  contentClassName,
   pattern = "dots",
   patternEmphasis = false,
   surface = "card",
@@ -110,7 +113,7 @@ export function SurfacePatternPanel({
           )}
         />
       ) : null}
-      <div className="relative min-w-0">{children}</div>
+      <div className={cn("relative min-w-0", contentClassName)}>{children}</div>
     </div>
   );
 }

@@ -177,7 +177,7 @@ export function TeamThreadListPage() {
         items={[
           {
             label: t("common:partnerNavigation.teams"),
-            href: "/wakers?tab=teams",
+            href: "/chat",
           },
           {
             label:

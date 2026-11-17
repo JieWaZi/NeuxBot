@@ -75,15 +75,10 @@ export function resolveAppNavigation({
   if (team?.[1])
     return route("partners", "partners", `/teams/${team[1]}/chats`);
   if (
-    pathname === "/teams" ||
-    (pathname === "/wakers" && params.get("tab") === "teams")
-  ) {
-    return route("partners", "partners", "/wakers?tab=teams");
-  }
-  if (
     pathname === "/" ||
     pathname === "/chat" ||
     pathname === "/wakers" ||
+    pathname === "/teams" ||
     /^\/chats\/[^/]+$/.test(pathname)
   ) {
     return route("partners", "partners");

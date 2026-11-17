@@ -140,17 +140,18 @@ it("AI 优化打开当前伙伴的独立聊天草稿", async () => {
   );
 });
 
-it("伙伴档案预览开头，在弹窗编辑完整 Markdown 并仅保存正文", async () => {
-  fixture.content += "\n\n## 交付规范\n\n检查来源并列出后续行动。";
+it("伙伴档案按可用高度预览完整正文，在弹窗编辑并仅保存正文", async () => {
+  fixture.content +=
+    "\n\n" +
+    "详细职责与边界。".repeat(60) +
+    "\n\n## 交付规范\n\n检查来源并列出后续行动。";
   renderProfile();
   const user = userEvent.setup();
   expect(
     await screen.findByRole("heading", { name: "协作说明" }),
   ).toBeVisible();
   expect(screen.getByText("交付目标")).toBeVisible();
-  expect(
-    screen.queryByRole("heading", { name: "交付规范" }),
-  ).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "交付规范" })).toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: /IDENTITY.md|下载伙伴档案/ }),
   ).not.toBeInTheDocument();

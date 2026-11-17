@@ -2,9 +2,11 @@ import { BarChart3, Package, Folder, History } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router-dom";
 
-import { cn } from "@/shared/lib/cn";
-import { Button } from "@/shared/ui/button";
-import { NavigationPanel } from "@/shared/ui/navigation-panel";
+import {
+  NavigationItem,
+  NavigationPanel,
+  NavigationSection,
+} from "@/shared/ui/navigation-panel";
 
 const sections = [
   { key: "overview", icon: BarChart3 },
@@ -20,42 +22,39 @@ export function PartnerContextSidebar({ partnerId }: { partnerId: string }) {
   const root = `/wakers/${partnerId}`;
   return (
     <NavigationPanel
+      appearance="catalog"
+      title={t("partnerNavigation.partner")}
       aria-label={t("partnerNavigation.partnerMenu")}
-      className="gap-0.5 bg-transparent p-3"
     >
-      {sections.map(({ icon: Icon, key }) => {
-        const href = key === "overview" ? root : `${root}/${key}`;
-        const active =
-          (key === "resources" &&
-            /^\/wakers\/[^/]+\/(resources|plugins|skills|connectors)(?:\/|$)/.test(
-              pathname,
-            )) ||
-          pathname === href ||
-          (pathname.startsWith(`${href}/`) && key !== "overview");
-        const label = t(`partnerNavigation.sections.${key}`);
-        return (
-          <Button
-            key={key}
-            asChild
-            size="lg"
-            variant="ghost"
-            className={cn(
-              "w-full justify-start",
-              active &&
-                "bg-shell-control-active text-content-primary hover:bg-shell-control-active",
-            )}
-          >
-            <Link
-              to={href}
-              aria-label={label}
-              aria-current={active ? "page" : undefined}
+      <NavigationSection appearance="catalog">
+        {sections.map(({ icon: Icon, key }) => {
+          const href = key === "overview" ? root : `${root}/${key}`;
+          const active =
+            (key === "resources" &&
+              /^\/wakers\/[^/]+\/(resources|plugins|skills|connectors)(?:\/|$)/.test(
+                pathname,
+              )) ||
+            pathname === href ||
+            (pathname.startsWith(`${href}/`) && key !== "overview");
+          const label = t(`partnerNavigation.sections.${key}`);
+          return (
+            <NavigationItem
+              key={key}
+              asChild
+              density="catalog"
+              active={active}
+              icon={<Icon aria-hidden="true" strokeWidth={1.5} />}
+              label={label}
             >
-              <Icon aria-hidden="true" strokeWidth={1.5} />
-              <span className="truncate">{label}</span>
-            </Link>
-          </Button>
-        );
-      })}
+              <Link
+                to={href}
+                aria-label={label}
+                aria-current={active ? "page" : undefined}
+              />
+            </NavigationItem>
+          );
+        })}
+      </NavigationSection>
     </NavigationPanel>
   );
 }

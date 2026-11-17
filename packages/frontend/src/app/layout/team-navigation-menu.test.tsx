@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,24 +11,15 @@ import {
   useSceneWorkspace,
   WorkspaceProvider,
 } from "@/shared/workspace/workspace-context";
-import { TeamCard } from "./team-card";
+import { TeamNavigationMenu } from "./team-navigation-menu";
 
 const fixture = vi.hoisted(() => ({
   remove: vi.fn(),
 }));
 
-vi.mock("../api/channel-queries", () => ({
+vi.mock("@/modules/team/api/channel-queries", () => ({
   deleteChannelMutation: () => ({ mutationFn: fixture.remove }),
   teamQueryKeys: { channels: () => ["channels"] },
-}));
-
-vi.mock("./team-form-dialog", () => ({
-  TeamFormDialog: ({ open }: { open: boolean }) =>
-    open ? (
-      <div role="dialog" aria-label="编辑团队">
-        编辑团队
-      </div>
-    ) : null,
 }));
 
 function WorkspaceProbe() {
@@ -53,7 +44,7 @@ function WorkspaceProbe() {
   );
 }
 
-function renderCard() {
+function renderMenu() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -69,7 +60,9 @@ function renderCard() {
     <QueryClientProvider client={queryClient}>
       <WorkspaceProvider>
         <MemoryRouter>
-          <TeamCard detail={detail} />
+          <TeamNavigationMenu detail={detail} onDeleted={() => {}}>
+            <button data-team-nav-row>研发团队</button>
+          </TeamNavigationMenu>
           <WorkspaceProbe />
         </MemoryRouter>
       </WorkspaceProvider>
@@ -77,28 +70,17 @@ function renderCard() {
   );
 }
 
-describe("TeamCard", () => {
+describe("TeamNavigationMenu", () => {
   beforeEach(() => {
     fixture.remove.mockReset();
   });
 
-  it("点击卡片主体打开编辑弹窗，而不是跳转聊天", async () => {
-    renderCard();
-    const user = userEvent.setup();
-
-    await user.click(screen.getByRole("button", { name: "编辑 研发团队" }));
-
-    expect(
-      await screen.findByRole("dialog", { name: "编辑团队" }),
-    ).toBeInTheDocument();
-  });
-
   it("删除失败时在确认对话框展示错误", async () => {
     fixture.remove.mockRejectedValue(new Error("failed"));
-    renderCard();
+    renderMenu();
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("button", { name: "研发团队更多操作" }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: "研发团队" }));
     await user.click(await screen.findByRole("menuitem", { name: "删除团队" }));
     await user.click(screen.getByRole("button", { name: "确认删除" }));
 
@@ -109,10 +91,10 @@ describe("TeamCard", () => {
 
   it("确认删除时调用团队永久删除接口", async () => {
     fixture.remove.mockResolvedValue({});
-    renderCard();
+    renderMenu();
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("button", { name: "研发团队更多操作" }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: "研发团队" }));
     await user.click(await screen.findByRole("menuitem", { name: "删除团队" }));
     await user.click(screen.getByRole("button", { name: "确认删除" }));
 
@@ -130,12 +112,12 @@ describe("TeamCard", () => {
 
   it("删除团队时按 Channel 前缀清理全部会话工作区", async () => {
     fixture.remove.mockResolvedValue({});
-    renderCard();
+    renderMenu();
     const user = userEvent.setup();
 
     await user.click(screen.getByRole("button", { name: "打开团队成员标签" }));
     expect(screen.getByLabelText("团队工作区状态")).toHaveTextContent("成员甲");
-    await user.click(screen.getByRole("button", { name: "研发团队更多操作" }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: "研发团队" }));
     await user.click(await screen.findByRole("menuitem", { name: "删除团队" }));
     await user.click(screen.getByRole("button", { name: "确认删除" }));
 

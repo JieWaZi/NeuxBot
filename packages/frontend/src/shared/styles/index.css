@@ -372,7 +372,7 @@
   --shell-titlebar-height: 38px;
   --shell-titlebar-history-width: calc(2 * var(--spacing-control-md));
   --shell-rail-width: 52px;
-  --shell-context-width: 280px;
+  --shell-context-width: 248px;
   --shell-sidebar-header-height: var(--shell-titlebar-height);
   --shell-context-min-width: 216px;
   --shell-context-max-width: 400px;

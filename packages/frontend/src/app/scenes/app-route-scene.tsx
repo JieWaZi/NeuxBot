@@ -46,7 +46,7 @@ import {
 } from "./waker-partner-routes";
 
 import { ChatEntryPage } from "@/modules/chat/pages/chat-entry-page";
-import { PartnerManagementPage as WakerListPage } from "@/app/pages/partner-management-page";
+import { PartnerManagementPage } from "@/app/pages/partner-management-page";
 import { TeamThreadPage } from "@/app/pages/team-thread-page";
 import { TeamThreadListPage } from "@/modules/team/pages/team-thread-list-page";
 
@@ -178,7 +178,7 @@ export function AppRouteScene({
         />
         <Route path="usage" element={<UsageScene />} />
         <Route path="work-board" element={<WorkBoardPage />} />
-        <Route path="wakers" element={<WakerListPage />} />
+        <Route path="wakers" element={<PartnerManagementPage />} />
         <Route path="wakers/new" element={<WakerCreatePage />} />
         <Route path="wakers/:wakerId" element={<WakerDetailPage />} />
         <Route path="workflows" element={<WorkflowListPage />} />
@@ -219,10 +219,7 @@ export function AppRouteScene({
           path="wakers/:wakerId/connectors/:connectorId"
           element={<ConnectorDetailPage />}
         />
-        <Route
-          path="teams"
-          element={<Navigate to="/wakers?tab=teams" replace />}
-        />
+        <Route path="teams" element={<PartnerManagementPage />} />
         <Route path="teams/:channelId" element={<TeamThreadPage />}>
           <Route index element={<></>} />
           <Route path="threads/:threadId" element={<></>} />

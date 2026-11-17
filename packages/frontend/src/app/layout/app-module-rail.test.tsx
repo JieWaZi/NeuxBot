@@ -11,7 +11,7 @@ import "@/shared/i18n";
 import { AppModuleRail } from "./app-module-rail";
 
 describe("AppModuleRail", () => {
-  it("资源库紧随伙伴，不重复提供工作看板入口", async () => {
+  it("自动任务默认展示，资源库在底部设置上方，不重复提供工作看板入口", async () => {
     const user = userEvent.setup();
     const onNavigate = vi.fn();
     render(<AppModuleRail activeModule="resources" onNavigate={onNavigate} />);
@@ -19,6 +19,7 @@ describe("AppModuleRail", () => {
     for (const [label, id] of [
       ["伙伴", "partners"],
       ["用量统计", "usage"],
+      ["自动任务", "automatic-tasks"],
       ["资源库", "resources"],
       ["设置", "settings"],
     ] as const) {
@@ -35,9 +36,11 @@ describe("AppModuleRail", () => {
     expect(
       within(rail)
         .getAllByRole("button")
-        .slice(0, 2)
         .map((button) => button.getAttribute("aria-label")),
-    ).toEqual(["伙伴", "资源库"]);
+    ).toEqual(["伙伴", "用量统计", "自动任务", "更多模块", "资源库", "设置"]);
+    expect(
+      within(rail).getByRole("button", { name: "资源库" }).parentElement,
+    ).toBe(within(rail).getByRole("button", { name: "设置" }).parentElement);
     expect(within(rail).queryByRole("button", { name: "任务看板" })).toBeNull();
     await user.click(within(rail).getByRole("button", { name: "更多模块" }));
     expect(screen.queryByRole("menuitem", { name: "任务看板" })).toBeNull();
@@ -68,6 +71,24 @@ describe("AppModuleRail", () => {
     );
     await user.keyboard("{Escape}");
     expect(more).toHaveFocus();
+  });
+
+  it("自动任务取消固定后仍能从更多模块进入", async () => {
+    const user = userEvent.setup();
+    const onNavigate = vi.fn();
+    render(
+      <AppModuleRail
+        activeModule="automatic-tasks"
+        pinnedModules={pinnedAppModules({ "automatic-tasks": false })}
+        onNavigate={onNavigate}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "自动任务" })).toBeNull();
+    const more = screen.getByRole("button", { name: "更多模块" });
+    expect(more).toHaveAttribute("aria-current", "page");
+    await user.click(more);
+    await user.click(screen.getByRole("menuitem", { name: "自动任务" }));
+    expect(onNavigate).toHaveBeenCalledWith("automatic-tasks");
   });
 });
 

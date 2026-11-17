@@ -160,7 +160,8 @@ export function routeSceneForLocation(
   if (
     pathname === "/" ||
     pathname === "/chat" ||
-    (pathname === "/wakers" && params.get("tab") !== "teams")
+    pathname === "/wakers" ||
+    pathname === "/teams"
   ) {
     const draftId = params.get("draftId");
     const wakerId = params.get("wakerId") || "default";
@@ -169,16 +170,6 @@ export function routeSceneForLocation(
       labels.newChat,
       location,
       "preserve",
-    );
-  }
-
-  if (pathname === "/wakers") {
-    const teamMode = params.get("tab") === "teams";
-    return routeTab(
-      teamMode ? "management:teams" : "management:wakers",
-      teamMode ? labels.team : labels.partner,
-      location,
-      "suspend",
     );
   }
 

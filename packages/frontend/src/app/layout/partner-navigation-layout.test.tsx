@@ -122,6 +122,7 @@ vi.mock("@/modules/chat", async (importOriginal) => ({
 }));
 
 vi.mock("@/modules/team/api/channel-queries", () => ({
+  deleteChannelMutation: () => ({ mutationFn: vi.fn() }),
   deleteChannelThreadMutation: () => ({ mutationFn: vi.fn() }),
   getChannelOptions: ({ path }: { path: { channelId: string } }) => ({
     queryFn: async () => ({
@@ -184,6 +185,7 @@ vi.mock("@/modules/team/api/channel-queries", () => ({
     getNextPageParam: () => undefined,
   }),
   teamQueryKeys: {
+    channels: () => ["channels"],
     threads: (channelId: string) => ["channel-threads", channelId],
     timelinePages: (channelId: string, threadId: string) => [
       "channel-timeline",
@@ -242,6 +244,7 @@ function TestLayout({
   sidebarToolbar,
   notificationBell,
   teamContext,
+  channels,
 }: {
   activeChatId?: string;
   contextSidebarHidden?: boolean;
@@ -255,6 +258,7 @@ function TestLayout({
   sidebarToolbar?: ReactNode;
   notificationBell?: ReactNode;
   teamContext?: { channelId: string; threadId?: string };
+  channels?: Parameters<typeof PartnerNavigationLayout>[0]["channels"];
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -271,7 +275,7 @@ function TestLayout({
       sidebarToolbar={sidebarToolbar}
       notificationBell={notificationBell}
       activeChatId={activeChatId}
-      channels={[]}
+      channels={channels ?? []}
       contextSidebarHidden={
         contextSidebarHidden ?? !location.pathname.startsWith("/wakers/")
       }
@@ -363,6 +367,7 @@ function renderLayout({
   sidebarToolbar,
   notificationBell,
   teamContext,
+  channels,
 }: {
   activeChatId?: string;
   contextSidebarHidden?: boolean;
@@ -377,6 +382,7 @@ function renderLayout({
   sidebarToolbar?: ReactNode;
   notificationBell?: ReactNode;
   teamContext?: { channelId: string; threadId?: string };
+  channels?: Parameters<typeof PartnerNavigationLayout>[0]["channels"];
 } = {}) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -398,6 +404,7 @@ function renderLayout({
             sidebarToolbar={sidebarToolbar}
             notificationBell={notificationBell}
             teamContext={teamContext}
+            channels={channels}
           />
         </WorkspaceProvider>
       </MemoryRouter>
@@ -630,7 +637,7 @@ describe("PartnerNavigationLayout", () => {
     fireEvent.keyDown(handle, { key: "Home" });
     expect(handle).toHaveAttribute("aria-valuenow", "216");
     fireEvent.doubleClick(handle);
-    expect(handle).toHaveAttribute("aria-valuenow", "280");
+    expect(handle).toHaveAttribute("aria-valuenow", "248");
     expect(
       screen.queryByRole("button", { name: /展开全局侧栏|收起全局侧栏/ }),
     ).toBeNull();
@@ -953,28 +960,31 @@ describe("PartnerNavigationLayout", () => {
   });
 
   it.each([
-    ["zh-CN", "默认"],
-    ["en-US", "Default"],
-  ])("%s 将不同临时路径合并为一个可折叠分组", async (language, label) => {
-    await i18n.changeLanguage(language);
-    try {
-      const user = userEvent.setup();
-      renderLayout();
-      await user.click(screen.getByRole("button", { name: "查看历史会话" }));
-      const group = await screen.findByRole("button", { name: label });
-      expect(screen.getAllByRole("button", { name: label })).toHaveLength(1);
-      expect(screen.getByText("临时会话甲")).toBeVisible();
-      expect(screen.getByText("临时会话乙")).toBeVisible();
-      expect(screen.getByText("临时会话")).toBeVisible();
-      await user.click(group);
-      expect(screen.queryByText("临时会话甲")).toBeNull();
-      expect(screen.queryByText("临时会话乙")).toBeNull();
-      expect(screen.queryByText("临时会话")).toBeNull();
-      expect(screen.getByText("项目会话")).toBeVisible();
-    } finally {
-      await i18n.changeLanguage("zh-CN");
-    }
-  });
+    ["zh-CN", "默认", "查看历史会话"],
+    ["en-US", "Default", "View chat history"],
+  ])(
+    "%s 将不同临时路径合并为一个可折叠分组",
+    async (language, label, historyLabel) => {
+      await i18n.changeLanguage(language);
+      try {
+        const user = userEvent.setup();
+        renderLayout();
+        await user.click(screen.getByRole("button", { name: historyLabel }));
+        const group = await screen.findByRole("button", { name: label });
+        expect(screen.getAllByRole("button", { name: label })).toHaveLength(1);
+        expect(screen.getByText("临时会话甲")).toBeVisible();
+        expect(screen.getByText("临时会话乙")).toBeVisible();
+        expect(screen.getByText("临时会话")).toBeVisible();
+        await user.click(group);
+        expect(screen.queryByText("临时会话甲")).toBeNull();
+        expect(screen.queryByText("临时会话乙")).toBeNull();
+        expect(screen.queryByText("临时会话")).toBeNull();
+        expect(screen.getByText("项目会话")).toBeVisible();
+      } finally {
+        await i18n.changeLanguage("zh-CN");
+      }
+    },
+  );
 
   it("伙伴菜单不包含会话，并从右下角浮层按来源查看会话", async () => {
     const user = userEvent.setup();
@@ -1156,4 +1166,18 @@ it.each([
     view.unmount();
     history.executionId = undefined;
   }
+});
+
+it("团队身份行通过侧栏菜单保留编辑和删除入口", async () => {
+  renderLayout({
+    channels: [{ channel: { id: "team-1", name: "研发团队" } }],
+    navigationPreferences: { entityMode: "team" },
+  });
+  fireEvent.contextMenu(
+    await screen.findByRole("button", { name: /^研发团队/ }),
+  );
+  expect(
+    await screen.findByRole("menuitem", { name: "编辑团队" }),
+  ).toBeVisible();
+  expect(screen.getByRole("menuitem", { name: "删除团队" })).toBeVisible();
 });

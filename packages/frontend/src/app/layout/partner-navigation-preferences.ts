@@ -1,6 +1,7 @@
 import type { AppModuleId } from "./app-navigation-model";
 
 const partnerNavigationStorageKey = "bot.partner-navigation";
+export const defaultContextSidebarWidth = 248;
 
 export type WakerNavigationGroup = { name: string; wakerIds: string[] };
 
@@ -21,7 +22,7 @@ export type PartnerNavigationPreferences = {
 
 const defaultPreferences: PartnerNavigationPreferences = {
   collapsedGroups: {},
-  contextSidebarWidth: 280,
+  contextSidebarWidth: defaultContextSidebarWidth,
   currentPartnerId: "",
   currentRailKey: "",
   entityMode: "waker",
@@ -57,7 +58,9 @@ export const appPinnableModules = [
 export function pinnedAppModules(
   choices: Readonly<Record<string, boolean>> = {},
 ): readonly AppPinnableModuleId[] {
-  return appPinnableModules.filter((id) => choices[id] ?? id === "usage");
+  return appPinnableModules.filter(
+    (id) => choices[id] ?? (id === "usage" || id === "automatic-tasks"),
+  );
 }
 function booleanRecord(value: unknown): Record<string, boolean> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};

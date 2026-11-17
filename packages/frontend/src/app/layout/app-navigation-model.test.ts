@@ -28,8 +28,8 @@ describe("应用模块归属", () => {
     ],
     ["/wakers/w1/automatic-tasks/task1", "partners", "partners", "/wakers/w1"],
     ["/teams/t1/threads/c1", "partners", "partners", "/teams/t1/chats"],
-    ["/teams", "partners", "partners", "/wakers?tab=teams"],
-    ["/wakers?tab=teams", "partners", "partners", "/wakers?tab=teams"],
+    ["/teams", "partners", "partners", "/chat"],
+    ["/wakers?tab=teams", "partners", "partners", "/chat"],
     ["/chats/c1?wakerId=w1", "partners", "partners", "/chat"],
     ["/resources/plugins/p1/skills/s1", "resources", "resources", "/resources"],
     [

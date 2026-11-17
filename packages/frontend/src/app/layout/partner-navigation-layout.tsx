@@ -56,6 +56,7 @@ import { chatDraftHref, chatHref } from "@/shared/lib/chat-navigation";
 import { Button } from "@/shared/ui/button";
 import {
   clampContextSidebarWidth,
+  defaultContextSidebarWidth,
   pinnedAppModules,
   contextSidebarWidthRange,
   moveItem,
@@ -65,6 +66,7 @@ import {
   type PartnerNavigationPreferences,
 } from "./partner-navigation-preferences";
 import { WakerNavigationMenu } from "./waker-navigation-menu";
+import { TeamNavigationMenu } from "./team-navigation-menu";
 import { VerticalResizeHandle } from "@/shared/ui/vertical-resize-handle";
 import {
   SceneChromeHost,
@@ -498,6 +500,26 @@ function PartnerNavigationLayoutContent({
                 selectedKey={selectedRailKey}
                 items={visibleRailItems}
                 wakerGroups={preferences.wakerGroups}
+                renderTeamRow={(item, row) => (
+                  <TeamNavigationMenu
+                    key={item.key}
+                    detail={item.team}
+                    onDeleted={() => {
+                      onPreferencesChange((current) =>
+                        current.currentRailKey === item.key
+                          ? { ...current, currentRailKey: "" }
+                          : current,
+                      );
+                      if (
+                        location.pathname === `/teams/${item.id}` ||
+                        location.pathname.startsWith(`/teams/${item.id}/`)
+                      )
+                        navigate("/chat", { replace: true });
+                    }}
+                  >
+                    {row}
+                  </TeamNavigationMenu>
+                )}
                 renderWakerRow={(item, row) => (
                   <WakerNavigationMenu
                     key={item.key}
@@ -553,7 +575,9 @@ function PartnerNavigationLayoutContent({
           {hasSidebar ? (
             <div
               className="relative col-start-2 row-start-1 mt-(--shell-titlebar-height) min-h-0"
-              onDoubleClick={() => resizeSidebar(280, true)}
+              onDoubleClick={() =>
+                resizeSidebar(defaultContextSidebarWidth, true)
+              }
             >
               <VerticalResizeHandle
                 appearance="hover"

@@ -47,29 +47,36 @@ describe("应用 Scene 模型", () => {
       background,
     );
   });
-  it("旧伙伴目录转到聊天入口时复用同一个 Scene，不留下目录页签", () => {
-    let snapshot = initialAppSceneSnapshot(
-      routeSceneForLocation({ pathname: "/wakers", search: "" }),
-      1,
-    );
-    snapshot = appSceneReducer(snapshot, {
-      type: "open",
-      tab: routeSceneForLocation({ pathname: "/chat", search: "" }),
-    });
-    expect(snapshot.tabs).toHaveLength(1);
-    expect(snapshot.tabs[0]?.id).toBe("chat-entry:default");
-    expect(snapshot.tabs[0]?.href).toBe("/chat");
-    snapshot = appSceneReducer(snapshot, {
-      type: "open",
-      replaceTemporary: true,
-      tab: routeSceneForLocation({
-        pathname: "/chats/latest",
-        search: "?wakerId=w1",
-      }),
-    });
-    expect(snapshot.tabs).toHaveLength(1);
-    expect(snapshot.tabs[0]?.id).toBe("chat:latest");
-  });
+  it.each([
+    ["/wakers", ""],
+    ["/wakers", "?tab=teams"],
+    ["/teams", ""],
+  ])(
+    "旧目录 %s%s 转到聊天入口时复用同一个 Scene，不留下目录页签",
+    (pathname, search) => {
+      let snapshot = initialAppSceneSnapshot(
+        routeSceneForLocation({ pathname, search }),
+        1,
+      );
+      snapshot = appSceneReducer(snapshot, {
+        type: "open",
+        tab: routeSceneForLocation({ pathname: "/chat", search: "" }),
+      });
+      expect(snapshot.tabs).toHaveLength(1);
+      expect(snapshot.tabs[0]?.id).toBe("chat-entry:default");
+      expect(snapshot.tabs[0]?.href).toBe("/chat");
+      snapshot = appSceneReducer(snapshot, {
+        type: "open",
+        replaceTemporary: true,
+        tab: routeSceneForLocation({
+          pathname: "/chats/latest",
+          search: "?wakerId=w1",
+        }),
+      });
+      expect(snapshot.tabs).toHaveLength(1);
+      expect(snapshot.tabs[0]?.id).toBe("chat:latest");
+    },
+  );
   it("旧 MCP 设置保留 Scene 身份并归一到服务详情 URL", () => {
     const scene = routeSceneForLocation({
       pathname: "/settings/integration-mcp",

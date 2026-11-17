@@ -175,27 +175,24 @@ beforeEach(() => {
 });
 
 describe("TeamFormDialog", () => {
-  it("添加成员后仍要求用户显式选择唯一负责人", async () => {
+  it("第一个选中的伙伴默认成为负责人，之后仍可手动切换", async () => {
     renderDialog();
 
     await screen.findByText("伙伴一");
-    selectMember("伙伴一");
     selectMember("伙伴二");
-
-    expect(screen.getByText("请选择团队负责人。")).toBeVisible();
     expect(
-      screen.getAllByRole("button", { name: "设为团队负责人" }),
-    ).toHaveLength(2);
-    expect(screen.getByRole("button", { name: "创建团队" })).toBeDisabled();
-
-    const firstLeadButton = screen.getAllByRole("button", {
-      name: "设为团队负责人",
-    })[0];
-    expect(firstLeadButton).toBeDefined();
-    if (!firstLeadButton) throw new Error("缺少负责人选择按钮");
-    fireEvent.click(firstLeadButton);
-    expect(screen.getByRole("button", { name: "团队负责人" })).toBeVisible();
+      screen.getByRole("button", { name: "团队负责人" }).parentElement,
+    ).toHaveTextContent("伙伴二");
+    selectMember("伙伴一");
+    expect(
+      screen.getByRole("button", { name: "团队负责人" }).parentElement,
+    ).toHaveTextContent("伙伴二");
     expect(screen.queryByText("请选择团队负责人。")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "设为团队负责人" }));
+    selectMember("伙伴三");
+    expect(
+      screen.getByRole("button", { name: "团队负责人" }).parentElement,
+    ).toHaveTextContent("伙伴一");
   });
 
   it("移除当前负责人后保持负责人为空，不按成员顺序递补", async () => {
@@ -205,12 +202,6 @@ describe("TeamFormDialog", () => {
     selectMember("伙伴一");
     selectMember("伙伴二");
     selectMember("伙伴三");
-    const firstLeadButton = screen.getAllByRole("button", {
-      name: "设为团队负责人",
-    })[0];
-    expect(firstLeadButton).toBeDefined();
-    if (!firstLeadButton) throw new Error("缺少负责人选择按钮");
-    fireEvent.click(firstLeadButton);
     fireEvent.click(screen.getByRole("button", { name: "移除伙伴一" }));
 
     expect(screen.getByText("请选择团队负责人。")).toBeVisible();
@@ -333,4 +324,12 @@ it.each(
       (member: { fast?: boolean }) => member.fast,
     ),
   ).toEqual([undefined, fast]);
+});
+
+it("团队名称使用必填标签和表单控件语义", async () => {
+  renderDialog();
+  const name = await screen.findByRole("textbox", { name: /团队名称/ });
+  expect(name).toBeRequired();
+  expect(screen.getByText("团队名称").closest("label")).toHaveTextContent("*");
+  expect(screen.getByRole("textbox", { name: "团队说明" })).not.toBeRequired();
 });

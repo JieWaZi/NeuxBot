@@ -104,7 +104,7 @@ describe("partner navigation preferences", () => {
   });
 });
 
-it("旧偏好缺少宽度时使用280且保留伙伴排序、分组和最近团队", () => {
+it("旧偏好缺少宽度时使用248且保留伙伴排序、分组和最近团队", () => {
   window.localStorage.setItem(
     "bot.partner-navigation",
     JSON.stringify({
@@ -115,13 +115,26 @@ it("旧偏好缺少宽度时使用280且保留伙伴排序、分组和最近团�
     }),
   );
   expect(readPartnerNavigationPreferences()).toMatchObject({
-    contextSidebarWidth: 280,
+    contextSidebarWidth: 248,
     globalSidebarCollapsed: false,
     railOrder: ["waker:b", "waker:a"],
     collapsedGroups: { "waker:a": ["folder:temporary"] },
     lastTeamThreads: { t: "thread" },
   });
-  expect(clampContextSidebarWidth(Number.NaN)).toBe(280);
+  expect(clampContextSidebarWidth(Number.NaN)).toBe(248);
+});
+
+it("保留手动侧栏宽度与自动任务取消固定偏好", () => {
+  window.localStorage.setItem(
+    "bot.partner-navigation",
+    JSON.stringify({
+      contextSidebarWidth: 320,
+      railPins: { "automatic-tasks": false },
+    }),
+  );
+  const saved = readPartnerNavigationPreferences();
+  expect(saved.contextSidebarWidth).toBe(320);
+  expect(pinnedAppModules(saved.railPins)).toEqual(["usage"]);
 });
 
 it("忽略旧收起字段，并把过小旧宽度钳制到216，不丢弃实体顺序", () => {
@@ -142,13 +155,14 @@ it("忽略旧收起字段，并把过小旧宽度钳制到216，不丢弃实体�
 });
 
 it("Rail默认顺序与pin选择恢复，未知版本的boolean选择仍保留", () => {
-  expect(pinnedAppModules()).toEqual(["usage"]);
+  expect(pinnedAppModules()).toEqual(["usage", "automatic-tasks"]);
   window.localStorage.setItem(
     "bot.partner-navigation",
     JSON.stringify({
       railPins: {
         "work-board": true,
         knowledge: true,
+        "automatic-tasks": false,
         workflows: false,
         future: true,
         broken: "true",
@@ -159,6 +173,7 @@ it("Rail默认顺序与pin选择恢复，未知版本的boolean选择仍保留",
   expect(saved.railPins).toEqual({
     "work-board": true,
     knowledge: true,
+    "automatic-tasks": false,
     workflows: false,
     future: true,
   });

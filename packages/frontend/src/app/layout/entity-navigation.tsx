@@ -102,6 +102,10 @@ type EntityNavigationProps = {
   history?: ReactNode;
   wakerGroups?: readonly WakerNavigationGroup[];
   renderWakerRow?: (item: NavigationWaker, row: ReactElement) => ReactElement;
+  renderTeamRow?: (
+    item: Extract<NavigationEntity, { kind: "team" }>,
+    row: ReactElement,
+  ) => ReactElement;
 };
 
 const modeSwitchDurationMs = 220;
@@ -157,22 +161,31 @@ function EntityFeedback({
   );
 }
 
-function TeamEntityAvatar({ team }: { team: ChannelDetail }) {
+function TeamEntityAvatar({
+  team,
+  size,
+}: {
+  team: ChannelDetail;
+  size: "md" | "navigation";
+}) {
   const members = team.members ?? [];
   if (!members.some((member) => member.waker?.id)) {
     return (
       <span
-        className="bg-muted text-muted-foreground size-avatar-sm grid place-items-center overflow-hidden rounded-sm"
+        className={cn(
+          "bg-muted text-muted-foreground grid place-items-center overflow-hidden rounded-sm",
+          size === "navigation" ? "size-avatar-navigation" : "size-avatar-md",
+        )}
         aria-hidden="true"
       >
         <UsersRound className="size-icon-md" strokeWidth={1.5} />
       </span>
     );
   }
-  return <TeamAvatarStack members={members} />;
+  return <TeamAvatarStack members={members} size={size} />;
 }
 
-// 头像素材四周有透明留白，角标以主体右上部为中心，确保小点也压住主体。
+// 单人与组合头像都在槽内保留绘图余量，角标以主体右上部为中心。
 const avatarAttentionPosition =
   "absolute right-2 top-3 inline-flex translate-x-1/2 -translate-y-1/2";
 
@@ -223,7 +236,7 @@ function EntityAvatar({
           size={size}
         />
       ) : (
-        <TeamEntityAvatar team={item.team} />
+        <TeamEntityAvatar team={item.team} size={size} />
       )}
       {mark?.kind === "action" && onOpenAction ? (
         <Tooltip>
@@ -254,7 +267,17 @@ function EntityAvatar({
           className={cn(avatarAttentionPosition, "pointer-events-none")}
           data-avatar-attention
         >
-          <ConversationAttentionMark mark={mark} variant="avatar" />
+          {item.kind === "team" && mark.kind === "working" ? (
+            <span
+              role="img"
+              aria-label={t("partnerNavigation.working")}
+              title={t("partnerNavigation.working")}
+              data-conversation-attention="working"
+              className="bg-accent-secondary ring-surface-panel size-1.5 rounded-full ring-2 motion-safe:animate-pulse"
+            />
+          ) : (
+            <ConversationAttentionMark mark={mark} variant="avatar" />
+          )}
         </span>
       ) : null}
     </span>
@@ -367,8 +390,8 @@ function EntityRow({
           "group/entity min-h-row-entity relative grid w-full min-w-0 items-center rounded-md",
           "grid-cols-[auto_minmax(0,1fr)_auto]",
           selected
-            ? "bg-surface-panel text-content-primary"
-            : "hover:bg-surface-subtle",
+            ? "bg-surface-panel text-content-primary [--team-avatar-outline:var(--surface-panel)]"
+            : "hover:bg-surface-subtle [--team-avatar-outline:var(--canvas)] hover:[--team-avatar-outline:color(from_color-mix(in_srgb,var(--canvas),var(--surface-subtle))_srgb_r_g_b_/_1)]",
           isDragging && "z-10 opacity-35",
         )}
       >
@@ -388,6 +411,7 @@ function EntityRow({
         <button
           type="button"
           data-waker-nav-row={item.kind === "waker" ? "" : undefined}
+          data-team-nav-row={item.kind === "team" ? "" : undefined}
           aria-current={selected ? "page" : undefined}
           aria-label={accessibleLabel}
           onClick={handleRowClick}
@@ -491,6 +515,7 @@ export function EntityNavigation({
   history,
   wakerGroups = [],
   renderWakerRow,
+  renderTeamRow,
 }: EntityNavigationProps) {
   const { t } = useTranslation("common");
   const [activeKey, setActiveKey] = useState("");
@@ -946,9 +971,11 @@ export function EntityNavigation({
                           selected={item.key === selectedKey}
                         />
                       );
-                      return item.kind === "waker" && renderWakerRow
-                        ? renderWakerRow(item, row)
-                        : row;
+                      if (item.kind === "waker" && renderWakerRow)
+                        return renderWakerRow(item, row);
+                      if (item.kind === "team" && renderTeamRow)
+                        return renderTeamRow(item, row);
+                      return row;
                     });
                     if (!rows.length || !wakerGroups.length || mode !== "waker")
                       return rows;
