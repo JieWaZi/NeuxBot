@@ -7,6 +7,7 @@ import { AssistantMarkdown, UserMarkdown } from "./chat-message-content";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { FileReferenceProvider } from "@/shared/workspace/file-reference-link";
 import { emptyFileReferenceContext } from "@/shared/workspace/file-reference";
+import { contrast, themeTokens } from "@/test/theme-colors";
 
 const styles = document.createElement("style");
 const originalRootFontSize = document.documentElement.style.fontSize;
@@ -63,6 +64,39 @@ afterAll(() => {
   styles.remove();
   document.documentElement.style.fontSize = originalRootFontSize;
 });
+
+it.each(["light", "dark"] as const)(
+  "%s 主题下用户气泡与助手正文的行内代码均保持可读对比度",
+  (theme) => {
+    const { container } = render(
+      <div data-theme={theme}>
+        <div className="bg-user-message-background text-user-message-content">
+          <UserMarkdown text="配置 `recursive-clients 5000;`" />
+        </div>
+        <div className="text-foreground">
+          <AssistantMarkdown text="默认值 `recursive-clients 10000;`" />
+        </div>
+      </div>,
+    );
+    const codes = container.querySelectorAll("code");
+    expect(codes).toHaveLength(2);
+    for (const code of codes) {
+      let element: Element | null = code;
+      let color = "";
+      while (element && (!color || color === "inherit")) {
+        color = getComputedStyle(element).color;
+        element = element.parentElement;
+      }
+      expect(
+        contrast("--code-content", "--code-surface", {
+          ...themeTokens(theme),
+          "--code-content": color,
+          "--code-surface": getComputedStyle(code).backgroundColor,
+        }),
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  },
+);
 
 it("生产 CSS 在用户正文和表格内保留文件类型色，外链仍继承气泡文字色", () => {
   const client = new QueryClient();

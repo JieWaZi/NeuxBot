@@ -5455,7 +5455,7 @@ describe("ChatPage", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    const { container } = render(
+    render(
       <QueryClientProvider client={queryClient}>
         <ChatQueueProvider>
           <TooltipProvider delayDuration={0}>
@@ -5489,11 +5489,16 @@ describe("ChatPage", () => {
     expect(
       screen.queryByText("直接进入也应显示的历史消息"),
     ).not.toBeInTheDocument();
+    const loading = screen.getByRole("status", { name: "正在加载对话消息" });
+    expect(loading).toBeVisible();
+    expect(loading).toHaveAttribute("aria-busy", "true");
+    expect(loading.querySelector(".agent-grid-spinner")).toBeNull();
     expect(
-      container.querySelector('[role="status"][aria-busy="true"]'),
-    ).toBeVisible();
+      loading.querySelectorAll('div[aria-hidden="true"]').length,
+    ).toBeGreaterThan(1);
     expect(screen.getByRole("textbox", { name: "输入消息" })).toBeVisible();
     expect(await screen.findByText("历史消息：chat-2")).toBeInTheDocument();
+    expect(loading).not.toBeInTheDocument();
     const targetInput = screen.getByRole("textbox", { name: "输入消息" });
     expect(targetInput).not.toBe(input);
     expect(targetInput).toHaveTextContent("");

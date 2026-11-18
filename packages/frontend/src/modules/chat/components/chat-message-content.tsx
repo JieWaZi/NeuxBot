@@ -29,7 +29,8 @@ function ChatInlineCode({
     <code
       className={cn(
         "font-mono",
-        !inLink && "border-border/60 bg-muted rounded-xs border px-1 py-0.5",
+        !inLink &&
+          "border-border/60 bg-muted text-foreground rounded-xs border px-1 py-0.5",
       )}
     >
       {children}
@@ -139,7 +140,7 @@ function MarkdownBody({
       className={cn(
         markdownClassName,
         role === "user" &&
-          "[&_[data-streamdown=code-block]]:bg-surface-tertiary [&_[data-streamdown=code-block]]:text-foreground [&_[data-streamdown=table-wrapper]]:bg-surface-panel [&_[data-streamdown=table-wrapper]]:text-foreground [&_a]:decoration-current [&_a[data-chat-link=web]]:text-inherit [&_code]:text-inherit [&_pre]:max-w-full [&_pre]:overflow-x-auto",
+          "[&_[data-streamdown=code-block]]:bg-surface-tertiary [&_[data-streamdown=code-block]]:text-foreground [&_[data-streamdown=table-wrapper]]:bg-surface-panel [&_[data-streamdown=table-wrapper]]:text-foreground [&_a]:decoration-current [&_a[data-chat-link=web]]:text-inherit [&_pre]:max-w-full [&_pre]:overflow-x-auto",
       )}
       components={components}
       data-chat-markdown={role}

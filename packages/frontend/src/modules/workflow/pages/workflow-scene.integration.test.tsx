@@ -479,7 +479,7 @@ it("工作流详情拒绝外部返回地址并回到资源库", () => {
   ).toHaveAttribute("href", "/resources?category=workflows");
 });
 
-it("工作流冷加载保留输入框，消息区与画布分别显示局部 Spinner", async () => {
+it("工作流冷加载保留输入框，消息区显示骨架，画布独立加载", async () => {
   let releaseDefinition = () => {};
   let releaseMessages = () => {};
   const messagesRequested = vi.fn();
@@ -519,11 +519,14 @@ it("工作流冷加载保留输入框，消息区与画布分别显示局部 Spi
   renderScene("/workflows/flow");
   fireEvent.click(screen.getByRole("button", { name: "展开对话" }));
   expect(screen.getByRole("textbox", { name: /输入消息/ })).toBeInTheDocument();
-  expect(screen.getByLabelText("正在加载对话消息")).toBeInTheDocument();
+  const messagesLoading = screen.getByRole("status", {
+    name: "正在加载对话消息",
+  });
+  const canvasLoading = screen.getByRole("status", { name: "正在读取工作流…" });
+  expect(messagesLoading.querySelector(".animate-pulse")).toBeInTheDocument();
   expect(
-    screen.getByRole("status", { name: "正在读取工作流…" }),
+    canvasLoading.querySelector(".agent-grid-spinner"),
   ).toBeInTheDocument();
-  expect(document.querySelector(".animate-pulse")).toBeNull();
   await act(async () => releaseDefinition());
   await waitFor(() => expect(messagesRequested).toHaveBeenCalled());
   expect(screen.getByRole("textbox", { name: /输入消息/ })).toBeInTheDocument();
