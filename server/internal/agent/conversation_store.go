@@ -361,6 +361,8 @@ type NativeResult struct {
 	Key NativeResultKey `json:"key"`
 	// Turn carries terminal status, exact adapter inputs, primary usage and overlapping observations.
 	Turn acpmeta.NativeTurn `json:"turn"`
+	// Context holds the native session's context snapshot at the end of this turn.
+	Context *ContextUsageData `json:"context,omitempty"`
 	// FinalMessage is the optional native-proven final body.
 	FinalMessage *NativeFinalMessage `json:"finalMessage,omitempty"`
 	// StopReason is the native terminal classification when known.

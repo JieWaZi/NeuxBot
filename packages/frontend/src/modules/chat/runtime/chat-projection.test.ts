@@ -701,6 +701,63 @@ describe("chat projection", () => {
     });
   });
 
+  it.each(["completed", "failed", "canceled"] as const)(
+    "结束状态为 %s 的新执行没有快照时清除旧上下文",
+    (status) => {
+      expect(
+        latestContextMetrics([
+          {
+            id: "previous",
+            role: "assistant",
+            status: "completed",
+            runMetrics: { contextUsedTokens: 300, contextWindowTokens: 1_000 },
+          },
+          {
+            id: "latest",
+            role: "assistant",
+            status,
+            runMetrics: { durationMs: 100 },
+          },
+        ]),
+      ).toBeUndefined();
+    },
+  );
+
+  it("执行进行中和提问作答后仍展示最近已确认的上下文", () => {
+    expect(
+      latestContextMetrics([
+        {
+          id: "previous",
+          role: "assistant",
+          status: "completed",
+          runMetrics: { contextUsedTokens: 300, contextWindowTokens: 1_000 },
+        },
+        { id: "current", role: "assistant", status: "running" },
+        {
+          id: "question",
+          role: "assistant",
+          status: "completed",
+          question: { elicitationId: "question", result: "accepted" },
+        },
+      ]),
+    ).toEqual({ contextUsedTokens: 300, contextWindowTokens: 1_000 });
+  });
+
+  it("分叉会话首轮执行中不展示原会话的上下文", () => {
+    expect(
+      latestContextMetrics([
+        {
+          id: "inherited",
+          role: "assistant",
+          status: "completed",
+          inherited: true,
+          runMetrics: { contextUsedTokens: 300, contextWindowTokens: 1_000 },
+        },
+        { id: "first-turn", role: "assistant", status: "pending" },
+      ]),
+    ).toBeUndefined();
+  });
+
   it("旧工具累计摘要不再进入输入适配器的消息元数据", () => {
     const projected = toThreadMessage({
       id: "assistant-file-changes",

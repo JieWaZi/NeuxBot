@@ -98,14 +98,22 @@ export type ChatMessageSource = {
 
 export type ChatMessageVisibility = (message: BotChatMessage) => boolean;
 
+function isTerminalMessageStatus(status: ChatMessage["status"]): boolean {
+  return status === "completed" || status === "failed" || status === "canceled";
+}
+
 export function latestContextMetrics(
   messages: readonly BotChatMessage[],
 ): ChatRunMetrics | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const metrics = messages[index]?.runMetrics;
+    const message = messages[index];
+    if (message?.role !== "assistant" || message.inherited || message.question)
+      continue;
+    const metrics = message.runMetrics;
     if (metrics?.contextWindowTokens && metrics.contextWindowTokens > 0) {
       return metrics;
     }
+    if (isTerminalMessageStatus(message.status)) return undefined;
   }
   return undefined;
 }
@@ -271,9 +279,7 @@ export function uncommittedChatMessages(
           (snapshot.id === message.id ||
             sameSubmittedMessage(message, snapshot)) &&
           (message.optimistic ||
-            ["completed", "failed", "canceled"].includes(
-              snapshot.status ?? "",
-            ) ||
+            isTerminalMessageStatus(snapshot.status) ||
             contentRevision(snapshot) >= contentRevision(message)),
       ),
   );
@@ -294,10 +300,7 @@ export function mergeAuthoritativeMessages(
       current.find((item) => sameSubmittedMessage(item, message));
     currentByID.delete(local?.id ?? message.id);
     if (!local) return message;
-    if (
-      local.optimistic ||
-      ["completed", "failed", "canceled"].includes(message.status ?? "")
-    )
+    if (local.optimistic || isTerminalMessageStatus(message.status))
       return message;
     const localRevision = contentRevision(local);
     const authoritativeRevision = contentRevision(message);
@@ -468,9 +471,7 @@ export function toThreadMessage(
       : undefined;
   const errorMessage =
     failure?.message || message.errorMessage?.trim() || incompleteErrorText;
-  const isTerminal = ["completed", "failed", "canceled"].includes(
-    message.status ?? "",
-  );
+  const isTerminal = isTerminalMessageStatus(message.status);
   const content =
     role === "assistant"
       ? assistantPartsOf(message)

@@ -203,6 +203,16 @@ func TestNativeProductWorkBuddyQoderContinueCancelAndRecover(t *testing.T) {
 				history.Resources[3].Content != acpFixtureResponse {
 				t.Fatalf("public history: %+v %v", history, err)
 			}
+			for _, index := range []int{1, 3} {
+				metrics := history.Resources[index].RunMetrics
+				if provider == constants.RuntimeIDWorkBuddy {
+					if metrics == nil || metrics.ContextUsedTokens != 17 || metrics.ContextWindowTokens != 100 {
+						t.Fatalf("WorkBuddy context-only update = %+v", metrics)
+					}
+				} else if metrics != nil && metrics.ContextWindowTokens != 0 {
+					t.Fatalf("Qoder received a context window without native evidence: %+v", metrics)
+				}
+			}
 
 			fast := true
 			unsupported := options
@@ -477,6 +487,11 @@ func serveNativeExecutionACP(in *bufio.Scanner, out *json.Encoder, trace *os.Fil
 		}
 		if workBuddy {
 			result["_meta"] = map[string]any{"codebuddy.ai/conversationRequestId": fmt.Sprintf("019abbbbbbbb700080000000%08x", serial)}
+			if reason == "end_turn" {
+				_ = out.Encode(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{
+					"sessionId": session, "update": map[string]any{"sessionUpdate": "usage_update", "used": 17, "size": 100},
+				}})
+			}
 		} else if tokens > 0 {
 			result["usage"] = map[string]any{"inputTokens": tokens * 2, "outputTokens": tokens, "totalTokens": tokens * 3}
 			result["_meta"] = map[string]any{"quota": map[string]any{"token_count": map[string]any{"input_tokens": tokens * 2, "output_tokens": tokens}}}

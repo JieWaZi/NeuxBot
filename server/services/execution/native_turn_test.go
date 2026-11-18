@@ -305,6 +305,11 @@ func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
 	if first.Execution.Status != constants.ExecutionStatusRunning || first.Execution.Fast == nil || !*first.Execution.Fast {
 		t.Fatalf("start = %+v", first.Execution)
 	}
+	subscription, err := chats.SubscribeEvents(ctx, first.Chat.ID, first.Chat.LatestSequence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer subscription.Close()
 	waitNativeProductStatus(t, ctx, store, first, constants.ExecutionStatusCompleted)
 	if err := core.CancelExecutionAndWait(ctx, first.Chat.ID, first.Execution.ID); err != nil {
 		t.Fatal(err)
@@ -333,6 +338,36 @@ func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
 	if err != nil || len(history.Resources) != 2 || history.Resources[1].Content != "fixture reply" ||
 		history.Resources[1].RunMetrics == nil || history.Resources[1].RunMetrics.StartedAt == 0 || history.Resources[1].RunMetrics.InputTokens != 0 {
 		t.Fatalf("Chat history: %+v %v", history, err)
+	}
+	assertContext := func(metrics *messageview.MessageRunMetrics) {
+		t.Helper()
+		if metrics == nil || metrics.ContextUsedTokens != 26 || metrics.ContextWindowTokens != 100 {
+			t.Fatalf("Codex context snapshot = %+v", metrics)
+		}
+	}
+	assertContext(history.Resources[1].RunMetrics)
+	checkTerminal := func(event chatservice.PublicEvent) bool {
+		if event.Type != constants.ChatEventTypeExecutionCompleted || event.ExecutionID != first.Execution.ID {
+			return false
+		}
+		if event.Message == nil {
+			t.Fatal("terminal event lost the Codex message")
+		}
+		assertContext(event.Message.RunMetrics)
+		return true
+	}
+	terminalReceived := slices.ContainsFunc(subscription.Backlog, checkTerminal)
+	if !terminalReceived {
+		for event := range subscription.Events {
+			if checkTerminal(event) {
+				terminalReceived = true
+				break
+			}
+		}
+	}
+	subscription.Close()
+	if !terminalReceived {
+		t.Fatal("no terminal message reached the Chat subscription")
 	}
 
 	options.Model, options.Reasoning, options.Fast = "fixture-other", "medium", &fastOff
@@ -375,6 +410,17 @@ func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
 	t.Setenv("PWD", filepath.Join(root, "second-host-directory"))
 	t.Setenv("NEUX_EXECUTION_FIXTURE_BASE_VALUE", "inherited-second")
 	core, chats, store, closeRuntime = open()
+	reopenedHistory, err := chats.ReadMessageHistory(ctx, first.Chat.ID, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstReply := slices.IndexFunc(reopenedHistory.Resources, func(message messageview.Message) bool {
+		return message.ID == first.Execution.ID
+	})
+	if firstReply < 0 {
+		t.Fatal("first Codex reply missing after restart")
+	}
+	assertContext(reopenedHistory.Resources[firstReply].RunMetrics)
 	reloaded, err := chats.LoadExecutionChat(ctx, first.Chat.ID)
 	if err != nil || reloaded.LastFast == nil || *reloaded.LastFast {
 		t.Fatalf("Chat restart lost explicit Fast=false: %+v %v", reloaded.LastFast, err)

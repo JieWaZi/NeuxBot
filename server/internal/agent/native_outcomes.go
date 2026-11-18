@@ -29,6 +29,10 @@ func (l *ThreadLifecycle) commitAndAcknowledge(ctx context.Context, client Agent
 	result := NativeResult{Key: key, Turn: outcome.Turn, StopReason: outcome.StopReason,
 		ForkMode: client.Capabilities().ForkMode, ForkPosition: outcome.ForkPosition, Unavailable: outcome.Unavailable,
 	}
+	used, window := outcome.ContextUsedTokens, outcome.ContextWindowTokens
+	if used != nil && window != nil && *used >= 0 && *window > 0 {
+		result.Context = &ContextUsageData{UsedTokens: *used, WindowTokens: *window}
+	}
 	if outcome.FinalMessage != nil {
 		result.FinalMessage = &NativeFinalMessage{ID: outcome.FinalMessage.ID, Text: outcome.FinalMessage.Text}
 	}

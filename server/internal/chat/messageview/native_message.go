@@ -100,7 +100,7 @@ func (p *MessageViewBuilder) applyNativePart(message *Message, part agent.Messag
 	return nil
 }
 
-// SetNativeResult 投影原生调用用量，并将末次请求样本与调用用量分开。
+// SetNativeResult 投影原生上下文快照、调用用量与末次请求样本。
 func (p *MessageViewBuilder) SetNativeResult(messageID string, result *agent.NativeResult) {
 	if result == nil {
 		return
@@ -112,6 +112,13 @@ func (p *MessageViewBuilder) SetNativeResult(messageID string, result *agent.Nat
 	}
 	message := &p.messages[index]
 	p.setForkBoundary(message, agent.NativeForkBoundary{Session: result.Key.Session, Mode: result.ForkMode, Position: result.ForkPosition})
+	if snapshot := result.Context; snapshot != nil {
+		if message.RunMetrics == nil {
+			message.RunMetrics = &MessageRunMetrics{}
+		}
+		message.RunMetrics.ContextUsedTokens = snapshot.UsedTokens
+		message.RunMetrics.ContextWindowTokens = snapshot.WindowTokens
+	}
 	if message.RunMetrics != nil {
 		message.RunMetrics.TokenUsage = nil
 		message.RunMetrics.LatestRequestOutputTokens = nil

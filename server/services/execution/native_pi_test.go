@@ -109,6 +109,12 @@ func TestNativeProductPiContinueCancelAndRecover(t *testing.T) {
 		for _, message := range history.Resources {
 			if message.Content == text {
 				count++
+				if strings.HasPrefix(text, "reply to ") {
+					metrics := message.RunMetrics
+					if metrics == nil || metrics.ContextUsedTokens != 20 || metrics.ContextWindowTokens != 200 {
+						t.Fatalf("Pi context snapshot for %q = %+v", text, metrics)
+					}
+				}
 			}
 		}
 		if count != 1 {
