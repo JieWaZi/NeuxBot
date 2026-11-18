@@ -1,5 +1,9 @@
 import { expect, it } from "vitest";
-import { workflowCanvasLayout, workflowInputNodeWidth } from "./canvas-layout";
+import {
+  workflowCanvasLayout,
+  workflowInputNodeWidth,
+  workflowPhaseEdges,
+} from "./canvas-layout";
 import type { Manifest } from "./types";
 
 type Hint = NonNullable<Manifest["controls"]>[number];
@@ -35,6 +39,44 @@ const manifest = (
     label: id,
   })),
   controls: children,
+});
+
+it("阶段关系保留执行与数据语义，同阶段重复关系以执行主线呈现", () => {
+  const source = manifest([], ["first", "second", "third"]);
+  source.phases = [
+    { id: "work", title: "工作", detail: "" },
+    { id: "result", title: "结果", detail: "" },
+    { id: "finish", title: "结束", detail: "" },
+  ];
+  const [, second, third] = source.nodes;
+  if (!second || !third) throw new Error("缺少阶段节点");
+  second.phaseId = "result";
+  third.phaseId = "finish";
+  source.edges = [
+    { id: "data-next", from: "first", to: "second", kind: "data" },
+    { id: "control-next", from: "first", to: "second", kind: "control" },
+    { id: "reference", from: "first", to: "third", kind: "data" },
+    { id: "reference-again", from: "first", to: "third", kind: "data" },
+    { id: "local", from: "first", to: "first", kind: "control" },
+  ];
+  expect(workflowPhaseEdges(source)).toEqual([
+    {
+      from: "work",
+      to: "result",
+      kind: "control",
+      nodeIds: ["first", "second"],
+    },
+    {
+      from: "work",
+      to: "finish",
+      kind: "data",
+      nodeIds: ["first", "third"],
+    },
+  ]);
+  source.edges.reverse();
+  expect(
+    workflowPhaseEdges(source).find((edge) => edge.to === "result"),
+  ).toMatchObject({ kind: "control" });
 });
 
 it("输入入口占据最左侧独立位置，不改变阶段顺序、节点身份或执行结构", () => {

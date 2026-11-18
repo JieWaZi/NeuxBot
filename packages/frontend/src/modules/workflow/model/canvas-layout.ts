@@ -112,16 +112,34 @@ export function workflowCanvasLayout(
   });
 }
 
-/** 将编译器节点依赖投影到阶段连线；阶段内部路径由 controls 表达。 */
+/** 保留阶段关系的执行语义及原始节点归属，供画布按选择展示数据引用。 */
 export function workflowPhaseEdges(manifest: Manifest) {
   const nodes = new Map(
     (manifest.nodes ?? []).map((node) => [node.id, node.phaseId]),
   );
-  const unique = new Map<string, { from: string; to: string }>();
+  const unique = new Map<
+    string,
+    { from: string; to: string; kind: "control" | "data"; nodeIds: string[] }
+  >();
   for (const edge of manifest.edges ?? []) {
     const from = nodes.get(edge.from);
     const to = nodes.get(edge.to);
-    if (from && to && from !== to) unique.set(`${from}:${to}`, { from, to });
+    if (!from || !to || from === to) continue;
+    const key = `${from}:${to}`;
+    const existing = unique.get(key);
+    if (existing) {
+      // 同一对阶段的执行依赖已经表达方向，不再叠画一条数据线。
+      if (edge.kind === "control") existing.kind = "control";
+      for (const id of [edge.from, edge.to])
+        if (!existing.nodeIds.includes(id)) existing.nodeIds.push(id);
+    } else {
+      unique.set(key, {
+        from,
+        to,
+        kind: edge.kind,
+        nodeIds: [edge.from, edge.to],
+      });
+    }
   }
   return [...unique.values()];
 }

@@ -89,6 +89,7 @@ export function WorkflowCanvas({
   onSelect,
   phaseEditor,
   nodeContent,
+  nodeScrollable = true,
   nodeHeading,
   onDismiss,
   listMode = false,
@@ -113,6 +114,7 @@ export function WorkflowCanvas({
   onSelect: (node: WorkflowNode) => void;
   phaseEditor?: (phase: WorkflowPhase, close: () => void) => ReactNode;
   nodeContent?: (node: WorkflowNode) => ReactNode;
+  nodeScrollable?: boolean;
   nodeHeading?: (node: WorkflowNode) => { title?: string; status?: string };
   onDismiss?: () => void;
   listMode?: boolean;
@@ -122,6 +124,8 @@ export function WorkflowCanvas({
   const { t } = useTranslation("workflow");
   const active = useRouteSceneActive() && contentActive;
   const interactionHintId = useId();
+  const controlArrowId = `${interactionHintId}-control-arrow`;
+  const dataArrowId = `${interactionHintId}-data-arrow`;
   const [visible, setVisible] = useState(
     () => document.visibilityState !== "hidden",
   );
@@ -174,6 +178,10 @@ export function WorkflowCanvas({
           ? [{ ...edge, path: workflowConnectionPath(source, target, bounds) }]
           : [];
       });
+      // 数据引用置于主线下层；选择变化只切换显示，不重新执行寻路。
+      connections.sort((a, b) =>
+        a.kind === b.kind ? 0 : a.kind === "data" ? -1 : 1,
+      );
       return {
         phaseLayouts,
         width,
@@ -185,6 +193,18 @@ export function WorkflowCanvas({
         connections,
       };
     }, [manifest, hasInput, viewportWidth, phaseHeights, inputHeight]);
+  const visibleConnections = connections.filter(
+    (edge) =>
+      edge.kind === "control" ||
+      (selected && edge.nodeIds.includes(selected)) ||
+      adjustingPhase === edge.from ||
+      adjustingPhase === edge.to ||
+      selectedTargets.some((target) =>
+        target.kind === "phase"
+          ? target.id === edge.from || target.id === edge.to
+          : edge.nodeIds.includes(target.id),
+      ),
+  );
   const initialFit = useRef(false);
   const userMoved = useRef(false);
   useEffect(() => {
@@ -600,6 +620,7 @@ export function WorkflowCanvas({
             container={detailsContainer}
             title={title}
             status={heading?.status}
+            scrollable={nodeScrollable}
             data-motion={active && selected === node.id ? "popup" : "none"}
             onFocusOutside={(event) => event.preventDefault()}
             onInteractOutside={(event) => {
@@ -774,17 +795,18 @@ export function WorkflowCanvas({
           {renderItems(items)}
         </section>
       );
-      return phaseEditor ? (
+      // 编辑入口随场景切换，阶段容器保持身份，尺寸观察器才能持续测量当前卡片。
+      return (
         <Dialog
           modal={false}
           key={phase.id}
-          open={active && adjustingPhase === phase.id}
+          open={active && Boolean(phaseEditor) && adjustingPhase === phase.id}
           onOpenChange={(open) =>
             setAdjustingPhase(open ? phase.id : undefined)
           }
         >
           {card}
-          {detailsContainer ? (
+          {phaseEditor && detailsContainer ? (
             <CanvasDetail
               container={detailsContainer}
               title={phase.title || t("phaseAdjustment")}
@@ -797,8 +819,6 @@ export function WorkflowCanvas({
             </CanvasDetail>
           ) : null}
         </Dialog>
-      ) : (
-        card
       );
     },
   );
@@ -955,11 +975,43 @@ export function WorkflowCanvas({
           height={height}
           aria-hidden="true"
         >
+          <defs>
+            <marker
+              id={controlArrowId}
+              viewBox="0 0 8 8"
+              refX="7"
+              refY="4"
+              markerWidth="8"
+              markerHeight="8"
+              markerUnits="userSpaceOnUse"
+              orient="auto"
+            >
+              <path d="M1 1L7 4L1 7Z" className="fill-accent-content" />
+            </marker>
+            <marker
+              id={dataArrowId}
+              viewBox="0 0 8 8"
+              refX="7"
+              refY="4"
+              markerWidth="8"
+              markerHeight="8"
+              markerUnits="userSpaceOnUse"
+              orient="auto"
+            >
+              <path
+                d="M1 1L7 4L1 7"
+                className="stroke-content-secondary"
+                strokeWidth="1.5"
+                fill="none"
+              />
+            </marker>
+          </defs>
           {inputPath ? (
             <g data-workflow-connector="input">
               <path
                 d={inputPath}
-                className="workflow-connection-base"
+                className="workflow-connection-base workflow-connection-control stroke-accent-content"
+                markerEnd={`url(#${controlArrowId})`}
                 stroke="currentColor"
                 strokeWidth="1.5"
                 fill="none"
@@ -973,22 +1025,36 @@ export function WorkflowCanvas({
               />
             </g>
           ) : null}
-          {connections.map(({ from, to, path }) => (
-            <g key={`${from}:${to}`}>
+          {visibleConnections.map(({ from, to, path, kind }) => (
+            <g
+              key={`${from}:${to}`}
+              data-workflow-connection={kind}
+              data-from={from}
+              data-to={to}
+              className={kind === "data" ? "text-content-secondary" : undefined}
+            >
               <path
                 d={path}
-                className="workflow-connection-base"
+                className={cn(
+                  "workflow-connection-base",
+                  kind === "control"
+                    ? "workflow-connection-control stroke-accent-content"
+                    : "workflow-connection-data",
+                )}
+                markerEnd={`url(#${kind === "control" ? controlArrowId : dataArrowId})`}
                 stroke="currentColor"
                 strokeWidth="1.5"
                 fill="none"
               />
-              <path
-                d={path}
-                className="workflow-connection-flow stroke-accent"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                fill="none"
-              />
+              {kind === "control" ? (
+                <path
+                  d={path}
+                  className="workflow-connection-flow stroke-accent"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  fill="none"
+                />
+              ) : null}
             </g>
           ))}
         </svg>

@@ -139,6 +139,121 @@ it("容器缩窄后阶段换行，跨行依赖与输入连线跟随新位置", a
   }
 });
 
+it("默认只显示有方向的执行主线，选中节点或阶段时展示相关数据引用", async () => {
+  const restore = installCanvasDOM(() => 1200);
+  const [left, right] = manifest.nodes;
+  if (!left || !right) throw new Error("缺少阶段节点");
+  const source: Manifest = {
+    ...manifest,
+    controls: [],
+    phases: [
+      { id: "first", title: "第一阶段", detail: "" },
+      { id: "second", title: "第二阶段", detail: "" },
+      { id: "last", title: "第三阶段", detail: "" },
+    ],
+    nodes: [
+      { ...left, phaseId: "first" },
+      { ...right, phaseId: "second" },
+      { ...right, id: "last", phaseId: "last" },
+    ],
+    edges: [
+      { id: "next", kind: "control", from: "left", to: "right" },
+      { id: "finish", kind: "control", from: "right", to: "last" },
+      { id: "reference", kind: "data", from: "left", to: "last" },
+    ],
+  };
+  const props = { manifest: source, onSelect: vi.fn() };
+  const view = render(<WorkflowCanvas {...props} />);
+  const connections = (kind: string) =>
+    view.container.querySelectorAll(`[data-workflow-connection="${kind}"]`);
+  try {
+    expect(connections("control")).toHaveLength(2);
+    expect(connections("data")).toHaveLength(0);
+    for (const connection of connections("control")) {
+      const path = connection.querySelector(".workflow-connection-base");
+      expect(path).toHaveClass("workflow-connection-control");
+      const marker = path
+        ?.getAttribute("marker-end")
+        ?.match(/^url\(#(.+)\)$/)?.[1];
+      expect(marker).toBeTruthy();
+      expect(
+        view.container.querySelector(`[id="${marker}"]`),
+      ).toBeInTheDocument();
+    }
+    view.rerender(<WorkflowCanvas {...props} selected="left" />);
+    expect(connections("data")).toHaveLength(1);
+    expect(connections("data")[0]?.querySelector("path")).toHaveClass(
+      "workflow-connection-data",
+    );
+    view.rerender(<WorkflowCanvas {...props} selected="right" />);
+    expect(connections("data")).toHaveLength(0);
+    view.rerender(
+      <WorkflowCanvas
+        {...props}
+        selectedTargets={[{ kind: "phase", id: "last" }]}
+      />,
+    );
+    expect(connections("data")).toHaveLength(1);
+    view.rerender(<WorkflowCanvas {...props} />);
+    expect(connections("data")).toHaveLength(0);
+  } finally {
+    view.unmount();
+    restore();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("阶段编辑入口切换后继续测量当前卡片，内容增高时下一行保持间隔", async () => {
+  const restore = installCanvasDOM(() => 400);
+  const source: Manifest = {
+    ...manifest,
+    controls: [],
+    phases: [
+      { id: "first", title: "第一阶段", detail: "" },
+      { id: "second", title: "第二阶段", detail: "" },
+    ],
+    nodes: manifest.nodes.map((node, index) => ({
+      ...node,
+      phaseId: index === 0 ? "first" : "second",
+    })),
+  };
+  const props = { manifest: source, onSelect: vi.fn() };
+  const view = render(<WorkflowCanvas {...props} />);
+  const phase = (id: string) => {
+    const element = view.container.querySelector<HTMLElement>(
+      `[data-workflow-phase="${id}"]`,
+    );
+    if (!element) throw new Error("阶段未挂载");
+    return element;
+  };
+  const measure = (element: HTMLElement, height: number) =>
+    Object.defineProperty(element, "offsetHeight", {
+      configurable: true,
+      get: () => (element.isConnected ? height : 0),
+    });
+  try {
+    measure(phase("first"), 600);
+    await waitFor(() => expect(phase("second").style.top).toBe("720px"));
+
+    view.rerender(
+      <WorkflowCanvas {...props} phaseEditor={() => <div>调整阶段</div>} />,
+    );
+    measure(phase("first"), 800);
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => expect(phase("second").style.top).toBe("920px"));
+
+    measure(phase("first"), 600);
+    view.rerender(<WorkflowCanvas {...props} />);
+    measure(phase("first"), 720);
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => expect(phase("second").style.top).toBe("840px"));
+  } finally {
+    view.unmount();
+    restore();
+    vi.unstubAllGlobals();
+  }
+});
+
 it("平移缩放与选择复用连线路径，容器布局变化才重新计算", async () => {
   let width = 400;
   const restore = installCanvasDOM(() => width);
