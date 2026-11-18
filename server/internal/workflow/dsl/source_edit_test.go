@@ -32,6 +32,76 @@ return result; // 不触及结果逻辑`
 	}
 }
 
+func TestEditSourceUpdatesOnlySelectedWorkerResolveFields(t *testing.T) {
+	source := `export const meta={sdk:'bot.workflow',title:'检查',description:'检查',phases:[{id:'check',title:'检查',detail:'说明',canExit:true}]};
+const MODEL = 'review-model';
+return await worker('检查',{id:'review',phase:'check',label:'原节点',
+  resolve:{kind:'waker',wakerId:'shadowed'},
+  resolve:{
+  kind:'waker',
+  wakerId:'one', // 保留伙伴注释
+  model: MODEL, // 保留模型引用
+}});`
+	edited, err := EditSource(source, SourceEdit{Target: "node", ID: "review", Fields: map[string]any{
+		"label": "复核", "resolve.wakerId": "two", "resolve.permissionLevel": "auto",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, diagnostics, err := Compile(edited)
+	if err != nil {
+		t.Fatalf("%v %+v", err, diagnostics)
+	}
+	node := compiled.Manifest.Nodes[0]
+	resolve := node.Options["resolve"].(map[string]any)
+	if node.LabelTemplate != "复核" || resolve["wakerId"] != "two" || resolve["model"] != "review-model" || resolve["permissionLevel"] != "auto" {
+		t.Fatalf("edited worker: %+v", node)
+	}
+	if !strings.Contains(edited, `wakerId:"two", // 保留伙伴注释`+"\n  model: MODEL, // 保留模型引用") ||
+		!strings.Contains(edited, `resolve:{kind:'waker',wakerId:'shadowed'},`) {
+		t.Fatal("editing replaced untouched resolve expressions or comments")
+	}
+}
+
+func TestEditSourceKeepsSharedWorkerResolveBinding(t *testing.T) {
+	source := `export const meta={sdk:'bot.workflow',title:'检查',description:'检查',phases:[{id:'check',title:'检查',detail:'说明',canExit:true}]};
+const MODEL = 'review-model';
+const SHARED = {kind:'waker',wakerId:'one',model:MODEL}; // 共享执行选择
+const ALIAS = SHARED;
+await worker('初审',{id:'first',phase:'check',label:'初审',resolve:ALIAS});
+return await worker('复核',{id:'second',phase:'check',label:'复核',resolve:ALIAS});`
+	edited, err := EditSource(source, SourceEdit{Target: "node", ID: "second", Fields: map[string]any{"resolve.wakerId": "two"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, diagnostics, err := Compile(edited)
+	if err != nil {
+		t.Fatalf("%v %+v", err, diagnostics)
+	}
+	first := compiled.Manifest.Nodes[0].Options["resolve"].(map[string]any)
+	second := compiled.Manifest.Nodes[1].Options["resolve"].(map[string]any)
+	if first["wakerId"] != "one" || second["wakerId"] != "two" || second["model"] != "review-model" {
+		t.Fatalf("shared worker configuration changed: first=%v second=%v", first, second)
+	}
+	if !strings.Contains(edited, "const SHARED = {kind:'waker',wakerId:'one',model:MODEL}; // 共享执行选择\nconst ALIAS = SHARED;") {
+		t.Fatal("editing replaced the shared resolve binding")
+	}
+}
+
+func TestEditSourceRejectsInvalidWorkerResolveFields(t *testing.T) {
+	source := `export const meta={sdk:'bot.workflow',title:'检查',description:'检查',phases:[{id:'check',title:'检查',detail:'说明',canExit:true}]};
+return await worker('检查',{id:'review',phase:'check',label:'复核',resolve:{kind:'waker',wakerId:'one'}});`
+	for _, fields := range []map[string]any{
+		{"resolve.kind": "waker"},
+		{"resolve.wakerId.name": "two"},
+		{"resolve": map[string]any{"kind": "waker", "wakerId": "one"}, "resolve.wakerId": "two"},
+	} {
+		if _, err := EditSource(source, SourceEdit{Target: "node", ID: "review", Fields: fields}); err == nil {
+			t.Fatalf("accepted invalid resolve edit %+v", fields)
+		}
+	}
+}
+
 func TestEditConcatenatedPromptRetainsInputAndLiteralEscapes(t *testing.T) {
 	source := `export const meta={sdk:'bot.workflow',title:'复核',description:'复核',phases:[{id:'check',title:'检查',detail:'检查',canExit:true}]};
 phase('check');

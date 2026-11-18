@@ -2,6 +2,7 @@ package dsl
 
 import (
 	"encoding/json"
+	"maps"
 	"reflect"
 	"sort"
 	"strings"
@@ -44,6 +45,7 @@ func EditSource(source string, edit SourceEdit) (string, error) {
 	}
 	var object *ast.ObjectLiteral
 	var call *ast.CallExpression
+	var workerResolve map[string]any
 	allowed := map[string]bool{}
 	switch edit.Target {
 	case "meta", "phase":
@@ -111,6 +113,7 @@ func EditSource(source string, edit SourceEdit) (string, error) {
 		}
 		switch selected.Kind {
 		case "worker":
+			workerResolve, _ = selected.Options["resolve"].(map[string]any)
 			for _, key := range []string{"resolve", "toolPolicy", "schema", "retry"} {
 				allowed[key] = true
 			}
@@ -132,20 +135,70 @@ func EditSource(source string, edit SourceEdit) (string, error) {
 	if object == nil || (edit.Prompt != nil && call == nil) {
 		return "", status_error.BadRequest
 	}
-	replacements := []sourceReplacement{}
-	keys := make([]string, 0, len(edit.Fields))
-	for key := range edit.Fields {
+	fields, resolveFields := make(map[string]any), make(map[string]any)
+	var resolveObject *ast.ObjectLiteral
+	for key, value := range edit.Fields {
+		if allowed[key] {
+			fields[key] = value
+			continue
+		}
+		if workerResolve != nil {
+			switch key {
+			case "resolve.wakerId", "resolve.runtimeId", "resolve.accountId", "resolve.model", "resolve.reasoning", "resolve.permissionLevel":
+				resolveFields[strings.TrimPrefix(key, "resolve.")] = value
+				continue
+			}
+		}
+		return "", status_error.BadRequest
+	}
+	if len(resolveFields) > 0 {
+		if _, replaceAll := fields["resolve"]; replaceAll {
+			return "", status_error.BadRequest
+		}
+		resolveObject, _ = editProperty(object, "resolve").(*ast.ObjectLiteral)
+		if resolveObject == nil {
+			// 共有常量保持原样，用编译器解析出的值为当前节点建立独立配置。
+			resolve := maps.Clone(workerResolve)
+			maps.Copy(resolve, resolveFields)
+			fields["resolve"] = resolve
+		}
+	}
+	replacements, err := editObjectProperties(parsed, object, fields)
+	if err != nil {
+		return "", err
+	}
+	if resolveObject != nil {
+		nested, err := editObjectProperties(parsed, resolveObject, resolveFields)
+		if err != nil {
+			return "", err
+		}
+		replacements = append(replacements, nested...)
+	}
+	if edit.Prompt != nil {
+		r := parsed.sourceRange(call.ArgumentList[0])
+		// 表单统一提交可编辑模板，原表达式是否使用拼接不影响输入插值。
+		text := "`" + escapeTemplateBackticks(*edit.Prompt) + "`"
+		replacements = append(replacements, sourceReplacement{start: r.Start.Offset, end: r.End.Offset, text: text})
+	}
+	sort.Slice(replacements, func(i, j int) bool { return replacements[i].start > replacements[j].start })
+	for _, item := range replacements {
+		source = source[:item.start] + item.text + source[item.end:]
+	}
+	return source, nil
+}
+
+func editObjectProperties(parsed *parsedSource, object *ast.ObjectLiteral, fields map[string]any) ([]sourceReplacement, error) {
+	var replacements []sourceReplacement
+	var missing []string
+	keys := make([]string, 0, len(fields))
+	for key := range fields {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
-	missing := []string{}
 	for _, key := range keys {
-		if !allowed[key] {
-			return "", status_error.BadRequest
-		}
-		encoded, err := json.Marshal(edit.Fields[key])
+		encoded, err := json.Marshal(fields[key])
 		if err != nil {
-			return "", status_error.BadRequest
+			return nil, status_error.BadRequest
 		}
 		if value := editProperty(object, key); value != nil {
 			r := parsed.sourceRange(value)
@@ -163,17 +216,7 @@ func EditSource(source string, edit SourceEdit) (string, error) {
 		}
 		replacements = append(replacements, sourceReplacement{start: r.Start.Offset + 1, end: r.Start.Offset + 1, text: text})
 	}
-	if edit.Prompt != nil {
-		r := parsed.sourceRange(call.ArgumentList[0])
-		// 表单统一提交可编辑模板，原表达式是否使用拼接不影响输入插值。
-		text := "`" + escapeTemplateBackticks(*edit.Prompt) + "`"
-		replacements = append(replacements, sourceReplacement{start: r.Start.Offset, end: r.End.Offset, text: text})
-	}
-	sort.Slice(replacements, func(i, j int) bool { return replacements[i].start > replacements[j].start })
-	for _, item := range replacements {
-		source = source[:item.start] + item.text + source[item.end:]
-	}
-	return source, nil
+	return replacements, nil
 }
 
 func escapeTemplateBackticks(value string) string {
@@ -197,8 +240,9 @@ func editProperty(object *ast.ObjectLiteral, name string) ast.Expression {
 	if object == nil {
 		return nil
 	}
-	for _, property := range object.Value {
-		if item, ok := property.(*ast.PropertyKeyed); ok {
+	// SDK 选项按源码顺序覆盖，以最后一个同名字段为准。
+	for i := len(object.Value) - 1; i >= 0; i-- {
+		if item, ok := object.Value[i].(*ast.PropertyKeyed); ok {
 			key, _ := propertyName(item.Key)
 			if key == name {
 				return item.Value

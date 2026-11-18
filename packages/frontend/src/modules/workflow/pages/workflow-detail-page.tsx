@@ -525,6 +525,7 @@ export function WorkflowDetailPage() {
                     )
                   : undefined
               }
+              nodeScrollable={false}
               nodeContent={(node) => (
                 <NodeInspector
                   key={node.id}
@@ -532,6 +533,7 @@ export function WorkflowDetailPage() {
                   revisionId={revision.id ?? ""}
                   node={node}
                   manifest={revision.manifest}
+                  defaults={phaseDefaults}
                   readOnly={Boolean(revisionId)}
                 />
               )}

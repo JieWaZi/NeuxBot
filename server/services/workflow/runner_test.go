@@ -91,8 +91,8 @@ type controlledWorker struct {
 	inspections int
 }
 
-func (*controlledWorker) ResolveAdmission(_ context.Context, options map[string]any, defaults models.WorkflowExecutionDefaults, _ bool) (models.WorkflowExecutionDefaults, error) {
-	return workerConfiguration(options, defaults), nil
+func (*controlledWorker) ResolveAdmission(_ context.Context, _ map[string]any, defaults models.WorkflowExecutionDefaults, _ bool) (models.WorkflowExecutionDefaults, error) {
+	return defaults, nil
 }
 
 func (w *controlledWorker) Dispatch(ctx context.Context, input WorkerDispatch) (WorkerReceipt, error) {

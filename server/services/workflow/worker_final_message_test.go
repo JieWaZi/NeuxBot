@@ -44,6 +44,46 @@ func (e *workerDispatchExecution) Start(_ context.Context, intent execution.Work
 	return execution.AcceptedExecution{Chat: models.Chat{ID: "worker-chat"}, Execution: models.Execution{ID: intent.ExecutionID, Status: status}}, nil
 }
 
+func TestWorkerConfigurationInheritsOnlyWithinTheSameSelection(t *testing.T) {
+	fast := true
+	defaults := models.WorkflowExecutionDefaults{
+		RuntimeID: "codex", AccountID: "work", Model: "original-model", Reasoning: "high",
+		Fast: &fast, PermissionLevel: constants.PermissionLevelAuto, WorkspaceReadOnly: true,
+	}
+	for _, test := range []struct {
+		// name 标识节点覆盖的层级。
+		name string
+		// resolve 是当前节点的字段，缺省时继承兼容的运行配置。
+		resolve map[string]any
+		// runtime、account、model、reasoning、fast 是期望生效的选择。
+		runtime   string
+		account   string
+		model     string
+		reasoning string
+		fast      *bool
+	}{
+		{name: "inherit", runtime: "codex", account: "work", model: "original-model", reasoning: "high", fast: &fast},
+		{name: "runtime", resolve: map[string]any{"runtimeId": "claude"}, runtime: "claude"},
+		{name: "account", resolve: map[string]any{"accountId": "system"}, runtime: "codex", account: "system"},
+		{name: "model", resolve: map[string]any{"model": "other-model"}, runtime: "codex", account: "work", model: "other-model"},
+		{name: "default-model", resolve: map[string]any{"model": ""}, runtime: "codex", account: "work"},
+		{name: "default-reasoning", resolve: map[string]any{"reasoning": ""}, runtime: "codex", account: "work", model: "original-model", fast: &fast},
+		{name: "explicit", resolve: map[string]any{"runtimeId": "claude", "accountId": "other", "model": "target-model", "reasoning": "low"},
+			runtime: "claude", account: "other", model: "target-model", reasoning: "low"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := workerConfiguration(map[string]any{"resolve": test.resolve}, defaults)
+			want := models.WorkflowExecutionDefaults{
+				RuntimeID: test.runtime, AccountID: test.account, Model: test.model, Reasoning: test.reasoning,
+				Fast: test.fast, PermissionLevel: defaults.PermissionLevel, WorkspaceReadOnly: defaults.WorkspaceReadOnly,
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("节点配置 = %+v，期望 %+v", got, want)
+			}
+		})
+	}
+}
+
 func TestCoreWorkerDispatchAlignsStructuredPromptWithResultBindings(t *testing.T) {
 	for _, runtimeID := range []string{"codex", "unsupported"} {
 		t.Run(runtimeID, func(t *testing.T) {

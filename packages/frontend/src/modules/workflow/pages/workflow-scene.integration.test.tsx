@@ -749,10 +749,24 @@ it("消息链接打开右侧工作台后保留主容器内的画布和节点浮�
   ).toBeInTheDocument();
 });
 
-it("节点标题保存后保留业务编辑浮层，不暴露执行模型菜单", async () => {
+it("节点标题与模型一起保存后刷新版本，重新打开仍展示已保存配置", async () => {
   let revision = "version-1";
   let label = "生成议程";
+  let model = "model-a";
+  const edits: unknown[] = [];
   server.use(
+    http.get(`${origin}/api/v1/runtimes/codex/models`, ({ request }) =>
+      HttpResponse.json({
+        runtimeId: "codex",
+        accountId: new URL(request.url).searchParams.get("accountId"),
+        state: "fresh",
+        defaultModel: "model-a",
+        models: [
+          { id: "model-a", name: "模型 A" },
+          { id: "model-b", name: "模型 B" },
+        ],
+      }),
+    ),
     http.get(`${origin}/api/v1/runtimes`, () =>
       HttpResponse.json({
         resources: [
@@ -804,7 +818,7 @@ it("节点标题保存后保留业务编辑浮层，不暴露执行模型菜单"
                     kind: "waker",
                     wakerId: "bot",
                     runtimeId: "codex",
-                    model: "model-a",
+                    model,
                   },
                   promptTemplate: "生成议程",
                 },
@@ -823,10 +837,12 @@ it("节点标题保存后保留业务编辑浮层，不暴露执行模型菜单"
       `${origin}/api/v1/workflows/flow/configuration`,
       async ({ request }) => {
         const body = (await request.json()) as {
-          edit: { fields: { label: string } };
+          edit: { fields: { label?: string; "resolve.model"?: string } };
         };
+        edits.push(body);
         await delay(100);
-        label = body.edit.fields.label;
+        label = body.edit.fields.label ?? label;
+        model = body.edit.fields["resolve.model"] ?? model;
         revision = "version-2";
         emitWorkflowEvent("definition", { type: "workflow.revision.saved" });
         return HttpResponse.json({ revisionId: revision });
@@ -849,9 +865,17 @@ it("节点标题保存后保留业务编辑浮层，不暴露执行模型菜单"
   expect(
     within(editor).queryByRole("heading", { name: "连接器" }),
   ).not.toBeInTheDocument();
+  const modelControl = within(editor).getByTestId("composer-model-control");
+  await waitFor(() => expect(modelControl).toBeEnabled());
+  await user.click(modelControl);
+  await user.click(await screen.findByRole("radio", { name: "模型 B" }));
+  await user.keyboard("{Escape}");
+  expect(editor).toBeInTheDocument();
   await user.clear(title);
   await user.type(title, "周会议程");
   await user.tab();
+  expect(revision).toBe("version-1");
+  await user.click(within(editor).getByRole("button", { name: "保存" }));
   await waitFor(() => expect(revision).toBe("version-2"));
   await waitFor(() => expect(editor).toHaveAttribute("aria-label", "周会议程"));
   expect(
@@ -859,6 +883,22 @@ it("节点标题保存后保留业务编辑浮层，不暴露执行模型菜单"
   ).not.toBeInTheDocument();
   expect(title).toBeInTheDocument();
   expect(title).toHaveValue("周会议程");
+  expect(edits).toHaveLength(1);
+  expect(edits[0]).toMatchObject({
+    expectedRevisionId: "version-1",
+    edit: { fields: { label: "周会议程", "resolve.model": "model-b" } },
+  });
+  await user.click(within(editor).getByRole("button", { name: "关闭" }));
+  await user.click(
+    await within(canvas).findByRole("button", { name: "选择 周会议程" }),
+  );
+  const reopened = await screen.findByRole("dialog", { name: "周会议程" });
+  expect(
+    within(reopened).getByRole("textbox", { name: "节点标题" }),
+  ).toHaveValue("周会议程");
+  expect(
+    within(reopened).getByTestId("composer-model-control"),
+  ).toHaveTextContent("模型 B");
 });
 
 it("资源页重新激活后读取创作在另一场景保存的版本", async () => {

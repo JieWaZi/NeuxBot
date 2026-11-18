@@ -60,7 +60,7 @@ type WorkerReceipt struct {
 
 // WorkerPort 复用真实 Execution 的接纳、查询和停止，测试可在此窄边界控制时间。
 type WorkerPort interface {
-	// ResolveAdmission 在接纳时解析有效执行配置，派发不得重新选择默认账号或模型。
+	// ResolveAdmission 在接纳时将节点有效选择交给 Execution 解析并冻结。
 	ResolveAdmission(context.Context, map[string]any, models.WorkflowExecutionDefaults, bool) (models.WorkflowExecutionDefaults, error)
 	// Dispatch 使用效果身份幂等建立独立 Chat。
 	Dispatch(context.Context, WorkerDispatch) (WorkerReceipt, error)
@@ -226,13 +226,12 @@ func (a CoreWorkerAdapter) Cancel(ctx context.Context, effect models.WorkflowEff
 
 // ValidateAdmission 在接纳事务之外检查真实运行配置与严格工具策略。
 func (a CoreWorkerAdapter) ValidateAdmission(ctx context.Context, options map[string]any, defaults models.WorkflowExecutionDefaults) error {
-	_, err := a.ResolveAdmission(ctx, options, defaults, false)
+	_, err := a.ResolveAdmission(ctx, options, workerConfiguration(options, defaults), false)
 	return err
 }
 
-// ResolveAdmission 通过 Execution 共用解析边界冻结节点覆盖及有效默认选择。
+// ResolveAdmission 通过 Execution 共用解析边界冻结节点选择，已冻结的选择仅校验。
 func (a CoreWorkerAdapter) ResolveAdmission(ctx context.Context, options map[string]any, defaults models.WorkflowExecutionDefaults, resolved bool) (models.WorkflowExecutionDefaults, error) {
-	defaults = workerConfiguration(options, defaults)
 	if !constants.SelectablePermissionLevel(defaults.PermissionLevel) {
 		return defaults, status_error.BadRequest
 	}
@@ -252,17 +251,38 @@ func (a CoreWorkerAdapter) ResolveAdmission(ctx context.Context, options map[str
 
 func workerConfiguration(options map[string]any, defaults models.WorkflowExecutionDefaults) models.WorkflowExecutionDefaults {
 	resolve, _ := options["resolve"].(map[string]any)
-	take := func(key, fallback string) string {
-		if value, ok := resolve[key].(string); ok && value != "" {
-			return value
-		}
-		return fallback
+	defaults.RuntimeID = strings.TrimSpace(defaults.RuntimeID)
+	defaults.AccountID = strings.TrimSpace(defaults.AccountID)
+	defaults.Model = strings.TrimSpace(defaults.Model)
+	runtimeID, _ := resolve["runtimeId"].(string)
+	runtimeID = strings.TrimSpace(runtimeID)
+	if runtimeID == "" {
+		runtimeID = defaults.RuntimeID
 	}
-	defaults.RuntimeID = take("runtimeId", defaults.RuntimeID)
-	defaults.AccountID = take("accountId", defaults.AccountID)
-	defaults.Model = take("model", defaults.Model)
-	defaults.Reasoning = take("reasoning", defaults.Reasoning)
-	defaults.PermissionLevel = constants.PermissionLevel(take("permissionLevel", string(defaults.PermissionLevel)))
+	sameRuntime := runtimeID == defaults.RuntimeID
+	accountID, explicitAccount := resolve["accountId"].(string)
+	accountID = strings.TrimSpace(accountID)
+	if !explicitAccount && sameRuntime {
+		accountID = defaults.AccountID
+	}
+	sameAccount := sameRuntime && accountID == defaults.AccountID
+	model, explicitModel := resolve["model"].(string)
+	model = strings.TrimSpace(model)
+	if !explicitModel && sameAccount {
+		model = defaults.Model
+	}
+	sameModel := sameAccount && model == defaults.Model
+	reasoning, explicitReasoning := resolve["reasoning"].(string)
+	if !explicitReasoning && sameModel {
+		reasoning = defaults.Reasoning
+	}
+	if !sameModel {
+		defaults.Fast = nil
+	}
+	defaults.RuntimeID, defaults.AccountID, defaults.Model, defaults.Reasoning = runtimeID, accountID, model, reasoning
+	if permission, ok := resolve["permissionLevel"].(string); ok && permission != "" {
+		defaults.PermissionLevel = constants.PermissionLevel(permission)
+	}
 	return defaults
 }
 

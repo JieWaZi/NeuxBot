@@ -21,8 +21,8 @@ type retryWorker struct {
 	attempts []WorkerDispatch
 }
 
-func (*retryWorker) ResolveAdmission(_ context.Context, options map[string]any, defaults models.WorkflowExecutionDefaults, _ bool) (models.WorkflowExecutionDefaults, error) {
-	return workerConfiguration(options, defaults), nil
+func (*retryWorker) ResolveAdmission(_ context.Context, _ map[string]any, defaults models.WorkflowExecutionDefaults, _ bool) (models.WorkflowExecutionDefaults, error) {
+	return defaults, nil
 }
 
 func (w *retryWorker) Dispatch(_ context.Context, input WorkerDispatch) (WorkerReceipt, error) {
@@ -257,6 +257,29 @@ func TestRetryAdmissionChecksFrozenNodeConfiguration(t *testing.T) {
 	}})
 	if workflowstate.ErrorKey(err) != "WorkflowRetryRequiresReadOnly" {
 		t.Fatalf("global readonly hid writable node configuration: %v", err)
+	}
+}
+
+func TestRunAdmissionKeepsCallerSelectionWhenNodeNamesSystemAccount(t *testing.T) {
+	s, _ := workflowTestService(t)
+	s.worker = &controlledWorker{}
+	source := strings.Replace(retryPolicySource("pure"), "wakerId:'fixture'", "wakerId:'fixture',accountId:'system'", 1)
+	definition := savedTestWorkflow(t, s, source)
+	fast := true
+	run, err := s.StartRun(t.Context(), StartRunCommand{
+		DefinitionID: definition.ID, RequestID: "caller-system-account", ConsumerLeaseID: "fixture-lease",
+		Defaults: models.WorkflowExecutionDefaults{
+			WorkspaceReadOnly: true, RuntimeID: "codex", Model: "caller-model", Reasoning: "high",
+			Fast: &fast, PermissionLevel: constants.PermissionLevelDefault,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker := run.WorkerConfigurations["vendors"]
+	if worker.AccountID != constants.AiAccountSystemID || worker.Model != "caller-model" ||
+		worker.Reasoning != "high" || worker.Fast == nil || !*worker.Fast {
+		t.Fatalf("系统账号的节点配置未保留调用者选择：%+v", worker)
 	}
 }
 

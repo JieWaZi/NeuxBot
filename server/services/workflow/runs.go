@@ -402,6 +402,14 @@ func (s *Service) prepareAdmission(ctx context.Context, definition models.Workfl
 	if defaults.PermissionLevel == "" {
 		defaults.PermissionLevel = constants.PermissionLevelDefault
 	}
+	if command.ConsumerLeaseID != "" {
+		// 已接纳的调用者使用系统身份；保留其冻结选择供同一身份的节点继承。
+		defaults.RuntimeID = strings.TrimSpace(defaults.RuntimeID)
+		defaults.AccountID = strings.TrimSpace(defaults.AccountID)
+		if defaults.AccountID == "" {
+			defaults.AccountID = constants.AiAccountSystemID
+		}
+	}
 	for _, node := range revision.Manifest.Nodes {
 		if node.Kind == "worker" {
 			resolve, _ := node.Options["resolve"].(map[string]any)
@@ -414,26 +422,20 @@ func (s *Service) prepareAdmission(ctx context.Context, definition models.Workfl
 			if s.worker == nil {
 				return scope, status_error.WorkflowCapabilityUnsupported
 			}
-			nodeDefaults := defaults
-			if command.WorkerConfigurations != nil {
+			var nodeDefaults models.WorkflowExecutionDefaults
+			selectionResolved := command.WorkerConfigurations != nil
+			if selectionResolved {
 				var found bool
 				nodeDefaults, found = command.WorkerConfigurations[node.ID]
 				if !found {
 					return scope, status_error.WorkflowStateInvalid
 				}
+			} else {
+				nodeDefaults = workerConfiguration(node.Options, defaults)
 			}
-			selectionResolved := command.WorkerConfigurations != nil
 			if !selectionResolved && command.ConsumerLeaseID != "" {
-				selected := workerConfiguration(node.Options, nodeDefaults)
-				callerAccount, selectedAccount := strings.TrimSpace(defaults.AccountID), strings.TrimSpace(selected.AccountID)
-				if callerAccount == "" {
-					callerAccount = constants.AiAccountSystemID
-				}
-				if selectedAccount == "" {
-					selectedAccount = constants.AiAccountSystemID
-				}
 				// 同身份节点继承实际调用者的原生空值；显式换 Runtime 或账号仍解析新默认。
-				selectionResolved = strings.TrimSpace(selected.RuntimeID) == strings.TrimSpace(defaults.RuntimeID) && selectedAccount == callerAccount
+				selectionResolved = nodeDefaults.RuntimeID == defaults.RuntimeID && nodeDefaults.AccountID == defaults.AccountID
 			}
 			resolved, err := s.worker.ResolveAdmission(ctx, node.Options, nodeDefaults, selectionResolved)
 			if err != nil {
