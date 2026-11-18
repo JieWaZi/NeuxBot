@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -295,6 +296,11 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 		run.ExecutionID = accepted.Execution.ID
 		run.Admission = constants.AutomaticRunAdmissionAccepted
 		run.UpdatedAt = now.UnixMilli()
+		release, err := chatstorage.AcquireReferences(s.config.ManagedFilesDirectory, run.ChatID)
+		if err != nil {
+			return RunView{}, err
+		}
+		defer release()
 		if err := s.config.Tasks.AcceptRunAdmission(context.WithoutCancel(ctx), run); err != nil {
 			return RunView{}, err
 		}
@@ -347,6 +353,11 @@ func (s *Service) ReconcileRun(ctx context.Context, run *models.AutomaticRun) er
 	run.ChatID = state.Chat.ID
 	run.Admission = constants.AutomaticRunAdmissionAccepted
 	run.UpdatedAt = s.config.Now().UnixMilli()
+	release, err := chatstorage.AcquireReferences(s.config.ManagedFilesDirectory, run.ChatID)
+	if err != nil {
+		return err
+	}
+	defer release()
 	return s.config.Tasks.UpdateRunAdmission(ctx, *run)
 }
 
@@ -438,6 +449,11 @@ func (s *Service) reconcileTeam(ctx context.Context, run *models.AutomaticRun) e
 	run.WakerID = state.Chat.WakerID
 	run.Admission = constants.AutomaticRunAdmissionAccepted
 	run.UpdatedAt = s.config.Now().UnixMilli()
+	release, err := chatstorage.AcquireReferences(s.config.ManagedFilesDirectory, run.ChatID)
+	if err != nil {
+		return err
+	}
+	defer release()
 	return s.config.Tasks.UpdateRunAdmission(ctx, *run)
 }
 

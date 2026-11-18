@@ -198,3 +198,45 @@ func TestDataDirectoryExclusive(t *testing.T) {
 	}
 	release()
 }
+
+func TestStorageRootsShareManagedLockAndReleaseOnConflict(t *testing.T) {
+	data, other, managed := t.TempDir(), t.TempDir(), t.TempDir()
+	release, err := LockStorageRoots(data, managed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = release() })
+	if second, err := LockStorageRoots(other, managed); err == nil {
+		t.Cleanup(func() { _ = second() })
+		t.Fatal("a second Core acquired the same managed root")
+	}
+	independent := t.TempDir()
+	releaseOther, err := LockStorageRoots(other, independent)
+	if err != nil {
+		t.Fatalf("failed attempt leaked its other lock: %v", err)
+	}
+	t.Cleanup(func() { _ = releaseOther() })
+}
+
+func TestStorageRootsDeduplicateAliases(t *testing.T) {
+	directory := t.TempDir()
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(directory, alias); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	release, err := LockStorageRoots(directory, alias)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := release(); err != nil {
+		t.Fatal(err)
+	}
+	if err := release(); err != nil {
+		t.Fatal(err)
+	}
+	reacquire, err := LockStorageRoots(alias, directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reacquire() })
+}

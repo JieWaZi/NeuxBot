@@ -3,6 +3,7 @@ package builtin
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 
@@ -62,8 +63,16 @@ func SystemDirectory(dataDirectory, binaryPath string) (string, error) {
 		return "", status_error.SkillStorageError
 	}
 	defer os.RemoveAll(staging)
+	marker := filepath.Join(staging, systemStagingOwner)
+	if err := os.WriteFile(marker, []byte(filepath.Base(staging)), 0600); err != nil {
+		return "", status_error.SkillStorageError
+	}
 	if err := materialize(item, staging); err != nil {
 		return "", err
+	}
+	// 发布目录的摘要只覆盖产品交付内容。
+	if err := os.Remove(marker); err != nil {
+		return "", status_error.SkillStorageError
 	}
 	digest, err := managedskills.Digest(staging)
 	if err != nil {
@@ -110,3 +119,63 @@ func Guide(id string) (string, error) {
 	}
 	return "", status_error.SkillContentInvalid
 }
+
+// CleanupObsoleteSystemDirectories 回收本次发布以前已结束生命周期的系统技能版本。
+// 调用者已独占程序数据根，且新 Core 尚未接受执行。
+func CleanupObsoleteSystemDirectories(current string) error {
+	parent := filepath.Dir(current)
+	root, err := os.OpenRoot(parent)
+	if err != nil {
+		return status_error.SkillStorageError
+	}
+	defer root.Close()
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		return status_error.SkillStorageError
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == filepath.Base(current) || !entry.IsDir() {
+			continue
+		}
+		if knownSystemStaging.MatchString(name) {
+			marker := filepath.Join(name, systemStagingOwner)
+			info, err := root.Lstat(marker)
+			if err != nil || !info.Mode().IsRegular() || info.Size() != int64(len(name)) {
+				continue
+			}
+			owner, err := root.ReadFile(marker)
+			if err != nil || string(owner) != name {
+				continue
+			}
+		} else {
+			if len(name) != 64 {
+				continue
+			}
+			path := filepath.Join(parent, name)
+			digest, err := managedskills.Digest(path)
+			if err != nil || digest != name {
+				continue
+			}
+			if info, err := os.Lstat(CLIPath(path)); err != nil || !info.Mode().IsRegular() {
+				continue
+			}
+			info, err := os.Lstat(filepath.Join(path, "SKILL.md"))
+			if err != nil || !info.Mode().IsRegular() || info.Size() > 1<<20 {
+				continue
+			}
+			document, err := os.ReadFile(filepath.Join(path, "SKILL.md"))
+			if err != nil || !strings.Contains(string(document), "\nname: "+constants.AgentCLISkillName+"\n") {
+				continue
+			}
+		}
+		if err := root.RemoveAll(name); err != nil {
+			return status_error.SkillStorageError
+		}
+	}
+	return nil
+}
+
+const systemStagingOwner = ".system-skill-owner"
+
+var knownSystemStaging = regexp.MustCompile(`^system-skill-staging-[0-9]+$`)

@@ -636,3 +636,22 @@ func TestDetectionRetainsSelectedOlderManagedVersion(t *testing.T) {
 		t.Fatalf("selected version replaced: %s", got)
 	}
 }
+
+func TestStorageReclaimRetainsManagedScriptLaunchedThroughSystemNode(t *testing.T) {
+	service, _, catalog := installationLifecycleFixture(t)
+	summary := catalog.Runtimes()[1]
+	script := "/managed/runtime-installations/codex/version-123/payload/main.js"
+	summary.PrefixArgs = []string{script}
+	if err := service.environments.UpdateDetection(t.Context(), constants.RuntimeIDCodex, agent.DetectionResult{Runtime: summary, ResolvedBinary: "/system/node", Version: "1.0.0"}, 42); err != nil {
+		t.Fatal(err)
+	}
+	_, err := service.reclaimProgram(t.Context(), constants.RuntimeIDCodex, true, func(_ context.Context, _ string, paths []string, remove bool) (int64, error) {
+		if !remove || !slices.Contains(paths, script) {
+			t.Fatalf("managed entry not protected: %v", paths)
+		}
+		return 0, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

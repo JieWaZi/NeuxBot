@@ -28,7 +28,7 @@ func prepareInstallationVersions(ctx context.Context, versions []models.PluginVe
 			root, err = packageplugin.PackageRoot(root, version.Package)
 		}
 		if err == nil {
-			_, err = packageplugin.PrepareTargets(ctx, filepath.Join(global.Config.DataDirectory, "plugins", "targets"), version.PluginID, version.Package, root)
+			err = prepareManagedTargets(ctx, version.PluginID, version.Package, root)
 		}
 		if err != nil {
 			release()
@@ -73,4 +73,12 @@ func configurationChange(config models.PluginConfiguration, input UpdateConfigur
 		}
 	}
 	return config
+}
+
+func prepareManagedTargets(ctx context.Context, id string, pkg packageplugin.Package, root string) error {
+	if global.PluginContents != nil {
+		return global.PluginContents.PrepareAllTargets(ctx, packageplugin.TargetRequest{PluginID: id, SourceRoot: root, Package: pkg})
+	}
+	_, err := packageplugin.PrepareTargets(ctx, filepath.Join(global.Config.DataDirectory, "plugins", "targets"), id, pkg, root)
+	return err
 }

@@ -1,12 +1,13 @@
-import { Bot, Settings2, Plug } from "lucide-react";
+import { Bot, HardDrive, Settings2, Plug } from "lucide-react";
 
-export type SettingsSection = "general" | "agents" | "integrations";
+export type SettingsSection = "general" | "agents" | "integrations" | "storage";
 export type IntegrationTab = "im" | "api" | "mcp";
 
 export const settingsNavigation = [
   { key: "general", labelKey: "sections.general", icon: Settings2 },
   { key: "agents", labelKey: "sections.runtimeEnvironments", icon: Bot },
   { key: "integrations", labelKey: "sections.integrations", icon: Plug },
+  { key: "storage", labelKey: "sections.storage", icon: HardDrive },
 ] as const satisfies ReadonlyArray<{
   key: SettingsSection;
   labelKey: string;
@@ -23,7 +24,7 @@ export function settingsSectionOf(value?: string): SettingsSection {
     ].includes(value ?? "")
   )
     return "integrations";
-  return value === "agents" ? value : "general";
+  return value === "agents" || value === "storage" ? value : "general";
 }
 
 /** 旧入口仍可定位所属详情类型；显式类型优先，参数由原 URL 持有。 */

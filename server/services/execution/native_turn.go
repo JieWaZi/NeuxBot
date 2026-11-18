@@ -384,17 +384,28 @@ func (m *service) acquireNativeResources(
 ) (agent.ResourceLease, error) {
 	materialized, err := m.acquirePluginResources(ctx, frozen)
 	projection := &nativeResourceProjection{}
+	var closeViews func(context.Context) error
 	lease := agent.ResourceLease{Close: func(context.Context) error {
 		m.nativeResources.CompareAndDelete(chatID, projection)
 		if materialized.release != nil {
 			materialized.release()
 		}
 		return nil
+	}, CloseFiles: func(ctx context.Context) error {
+		if closeViews != nil {
+			if err := closeViews(ctx); err != nil {
+				return err
+			}
+		}
+		if materialized.releaseTargets != nil {
+			materialized.releaseTargets()
+		}
+		return nil
 	}}
 	if err != nil {
 		return lease, err
 	}
-	lease.NativePlugins, lease.CloseFiles, err = agent.AcquirePluginViews(ctx, workspace, materialized.targets)
+	lease.NativePlugins, closeViews, err = agent.AcquirePluginViews(ctx, workspace, materialized.targets)
 	if err != nil {
 		return lease, err
 	}

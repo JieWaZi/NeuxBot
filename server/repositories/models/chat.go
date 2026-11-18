@@ -96,6 +96,10 @@ type PendingElicitation struct {
 
 // Chat 保存可由权威 JSONL 重建的对话查询索引。
 type Chat struct {
+	// LastActivityAt 是已从权威工作事件核验的最近活动时间（Unix 毫秒），零表示尚未核验。
+	LastActivityAt int64 `gorm:"not null;default:0;index:idx_chat_retention,priority:2" json:"lastActivityAt"`
+	// RetentionProtected 表示用户明确将会话排除在过期清理之外。
+	RetentionProtected bool `gorm:"not null;default:false;index:idx_chat_retention,priority:1" json:"retentionProtected"`
 	// LastEndedExecutionID 是最近真实结束回合的身份，可从 JSONL 重建。
 	LastEndedExecutionID string `gorm:"size:32;not null;default:''" json:"lastEndedExecutionId,omitempty"`
 	// LastEndedExecutionStatus 是最近结束回合的结果，不代表对话永久完成。
@@ -109,7 +113,7 @@ type Chat struct {
 	// LastAccountID 是最近一次发送固定使用的账号，重开聊天时恢复该选择。
 	LastAccountID string `gorm:"type:varchar(32);not null;default:''" json:"lastAccountId"`
 	// ID 是 32 位无连字符 UUID。
-	ID string `gorm:"index:idx_chat_pending_id,where:active_execution_id <> '' AND (waiting_approval = 1 OR waiting_elicitation = 1);index:idx_chat_pending_waker,priority:2,where:active_execution_id <> '' AND (waiting_approval = 1 OR waiting_elicitation = 1);index:idx_chat_board_count,priority:2;index:idx_chat_board_executor_count,priority:3;index:idx_chat_board_terminal_count,priority:4,where:active_execution_id = '';column:id;type:varchar(32);primaryKey;index:idx_chat_board_identity,priority:1;index:idx_chat_board_activity,priority:2,sort:desc;index:idx_chat_board_executor,priority:3,sort:desc;index:idx_chat_board_title,priority:2" json:"id"`
+	ID string `gorm:"index:idx_chat_retention,priority:3;index:idx_chat_pending_id,where:active_execution_id <> '' AND (waiting_approval = 1 OR waiting_elicitation = 1);index:idx_chat_pending_waker,priority:2,where:active_execution_id <> '' AND (waiting_approval = 1 OR waiting_elicitation = 1);index:idx_chat_board_count,priority:2;index:idx_chat_board_executor_count,priority:3;index:idx_chat_board_terminal_count,priority:4,where:active_execution_id = '';column:id;type:varchar(32);primaryKey;index:idx_chat_board_identity,priority:1;index:idx_chat_board_activity,priority:2,sort:desc;index:idx_chat_board_executor,priority:3,sort:desc;index:idx_chat_board_title,priority:2" json:"id"`
 	// WakerID 是对话永久绑定的伙伴标识。
 	WakerID string `gorm:"index:idx_chat_pending_waker,priority:1;index:idx_chat_board_count,priority:3;index:idx_chat_board_executor_count,priority:1;index:idx_chat_board_terminal_count,priority:2,where:active_execution_id = '';index:idx_chat_board_identity,priority:2;column:waker_id;type:varchar(32);not null;index;index:idx_chat_board_executor,priority:1" json:"wakerId"`
 	// ProjectID 是首次发送时选择的项目标识，临时文件夹对话为空。

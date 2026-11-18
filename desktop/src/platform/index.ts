@@ -1,4 +1,5 @@
 import { configurePlatform, type Platform } from "@neuxbot/frontend/platform";
+import { createCoreUploads } from "@neuxbot/frontend/core-uploads";
 import {
   configureEmbeddedBrowserSurface,
   configureBrowserSurface,
@@ -41,13 +42,15 @@ export function createDesktopPlatform(bridge: DesktopBridge): Platform {
       };
     },
     host: {
+      preview_desktop_storage: bridge.preview_desktop_storage,
+      clear_desktop_storage: bridge.clear_desktop_storage,
       get_window_appearance: bridge.get_window_appearance,
       set_window_appearance: bridge.set_window_appearance,
       onInterfaceScale: bridge.onInterfaceScale,
       save_file: bridge.save_file,
       select_directory: bridge.select_directory,
       select_files: bridge.select_files,
-      stage_attachment: bridge.stage_attachment,
+      ...createCoreUploads(() => adapter.getConnection()),
       open_external_url: bridge.open_external_url,
       get_notification_preferences: bridge.get_notification_preferences,
       set_notification_preferences: bridge.set_notification_preferences,

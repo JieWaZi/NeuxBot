@@ -9,7 +9,7 @@ import {
   powerSaveBlocker,
 } from "electron";
 import path from "node:path";
-import { appendFile, mkdir } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { CoreSupervisor } from "./core-supervisor";
 import { installDesktopServices } from "./desktop-services";
 import {
@@ -26,6 +26,7 @@ import { createCoreEvents } from "./core-events";
 import type { CoreEventClient } from "../shared/core-event-client";
 import { installAutomaticTaskPowerLifecycle } from "./automatic-task-power-lifecycle";
 import { loadNotificationPreferences } from "./notification-preferences";
+import { createDesktopLogs } from "./storage-maintenance";
 import { createDesktopNotification } from "./desktop-notifications";
 import {
   installWorkspaceAttention,
@@ -49,6 +50,7 @@ const dataDir =
   process.env.NEUXBOT_DATA_DIR ||
   path.join(app.getPath("appData"), "com.neuxbot.desktop");
 app.setPath("userData", path.join(dataDir, "electron"));
+const desktopLogs = createDesktopLogs(path.join(dataDir, "logs"));
 const isDevelopment =
   !app.isPackaged && process.env.NEUXBOT_RENDERER_URL !== undefined;
 let core: CoreSupervisor | undefined;
@@ -66,11 +68,7 @@ async function log(message: string) {
   }
   const line = message.endsWith("\n") ? message : `${message}\n`;
   try {
-    await mkdir(path.join(dataDir, "logs"), { recursive: true });
-    await appendFile(
-      path.join(dataDir, "logs", "desktop.log"),
-      `${new Date().toISOString()} ${line}`,
-    );
+    await desktopLogs.append(`${new Date().toISOString()} ${line}`);
   } catch {
     // 日志失败不能阻止桌面生命周期继续收尾。
   }
@@ -117,6 +115,7 @@ async function createWindow(): Promise<BrowserWindow> {
     coreEvents,
     notificationPreferences,
     windowAppearance,
+    desktopLogs,
   );
   current.webContents.on("will-prevent-unload", (event) => {
     const en = windowLanguage(current) === "en-US";

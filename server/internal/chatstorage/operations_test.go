@@ -80,3 +80,31 @@ func TestConcurrentChatAdmissionsRetainOneWakerDeletionGate(t *testing.T) {
 	}
 	release()
 }
+
+func TestSharedReferencesFenceExpiry(t *testing.T) {
+	root := t.TempDir()
+	id := "chat"
+	release, err := AcquireReferences(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := AcquireReferences(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	if finish, err := AcquireOperation(root, id); err == nil {
+		finish()
+		t.Fatal("removed a referenced chat")
+	}
+	second()
+	finish, err := AcquireOperation(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer finish()
+	if release, err := AcquireReferences(root, id); err == nil {
+		release()
+		t.Fatal("added a reference during deletion")
+	}
+}

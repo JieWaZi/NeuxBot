@@ -111,3 +111,13 @@ it("集成详情 Scene 保存平台和服务身份，移除临时授权定位", 
     ).href,
   ).toBe("/settings/integrations?tab=mcp&detail=service");
 });
+
+it("存储深链在同一设置 Scene 打开", () => {
+  expect(settingsSectionFromPath("/settings/storage")).toBe("storage");
+  expect(
+    routeSceneForLocation(
+      { pathname: "/settings/storage", search: "" },
+      labels,
+    ),
+  ).toMatchObject({ id: "settings", href: "/settings/storage" });
+});

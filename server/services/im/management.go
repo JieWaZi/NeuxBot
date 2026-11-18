@@ -2,6 +2,7 @@ package im
 
 import (
 	"context"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -171,6 +172,11 @@ func (s *Service) selectConversation(ctx context.Context, binding models.IMBindi
 		if err != nil {
 			return err
 		}
+		release, err := chatstorage.AcquireReferences(s.config.ManagedFilesDirectory, link.ChatID)
+		if err != nil {
+			return err
+		}
+		defer release()
 		if link.BindingID != binding.ID || link.ChatID == "" {
 			return status_error.IMResourceNotFound
 		}

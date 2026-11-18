@@ -1082,6 +1082,15 @@ function ChatNavigationRow({
     <ChatHistoryNavigationRow
       active={active}
       title={chat.title || t("partnerNavigation.untitledChat")}
+      protection={
+        typeof chat.retentionProtected === "boolean" && chatId
+          ? {
+              chatId,
+              wakerId: chat.wakerId ?? "",
+              protected: chat.retentionProtected,
+            }
+          : undefined
+      }
       status={status}
       requestKinds={requestKinds}
       unreadCount={attention?.unreadMessageCount}

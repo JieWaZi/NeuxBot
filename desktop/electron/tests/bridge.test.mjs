@@ -93,7 +93,8 @@ test("预加载只暴露白名单方法，事件注销幂等且不泄露 Electro
   );
   assert.equal(bridge.invoke, undefined);
   assert.equal(bridge.send, undefined);
-  assert.equal(typeof bridge.stage_attachment, "function");
+  assert.equal(bridge.stage_attachment, undefined);
+  assert.equal(typeof bridge.preview_desktop_storage, "function");
   assert.equal(bridge.terminal_start, undefined);
   assert.equal(bridge.open_workspace_scope, undefined);
   const received = [];
@@ -282,34 +283,20 @@ test("IPC 拒绝外部网页及子框架，并在执行前校验参数", async (
     "secret",
   );
   assert.equal(calls, 1);
-  const stage = registered.get("bot:stage_attachment");
+  const clear = registered.get("bot:clear_desktop_storage");
+  assert.equal(registered.has("bot:stage_attachment"), false);
   assert.throws(
     () =>
-      stage(
+      clear(
         { sender: {}, senderFrame: contents.mainFrame },
-        {
-          name: "image.png",
-          bytes: new Uint8Array([1]),
-        },
+        { category: "desktop-cache" },
       ),
     /来源/,
   );
   assert.throws(() =>
-    stage(
+    clear(
       { sender: contents, senderFrame: contents.mainFrame },
-      {
-        name: "../image.png",
-        bytes: new Uint8Array([1]),
-      },
-    ),
-  );
-  assert.throws(() =>
-    stage(
-      { sender: contents, senderFrame: contents.mainFrame },
-      {
-        name: "image.png",
-        bytes: "not bytes",
-      },
+      { category: "desktop-cache", path: "/tmp" },
     ),
   );
   assert.throws(() =>

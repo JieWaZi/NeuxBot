@@ -315,6 +315,7 @@ func (p *queryIndexStore) indexStartedMessage(
 		return
 	}
 	p.updateChatIndex(ctx, chat.ID, afterSequence, map[string]any{
+		"last_activity_at":      chat.LastActivityAt,
 		"latest_sequence":       chat.LatestSequence,
 		"active_execution_id":   execution.ID,
 		"last_runtime_id":       execution.RuntimeID,
@@ -342,13 +343,20 @@ func (p *queryIndexStore) indexExecutionStarted(
 // indexChatCursor 只推进不改变查询业务字段的权威事件游标。
 func (p *queryIndexStore) indexChatCursor(
 	chatID string,
-	afterSequence int64,
-	record eventlog.Record,
+	records []eventlog.Record,
 ) {
-	p.updateChatIndex(context.Background(), chatID, afterSequence, map[string]any{
-		"latest_sequence": record.Sequence,
-		"updated_at":      record.RecordedAt,
-	})
+	last := records[len(records)-1]
+	fields := map[string]any{"latest_sequence": last.Sequence, "updated_at": last.RecordedAt}
+	var activity int64
+	for _, record := range records {
+		if contributesWorkActivity(record) {
+			activity = max(activity, record.RecordedAt)
+		}
+	}
+	if activity > 0 {
+		fields["last_activity_at"] = activity
+	}
+	p.updateChatIndex(context.Background(), chatID, records[0].Sequence-1, fields)
 }
 
 // renameChat 保存标题查询字段和对应权威游标。

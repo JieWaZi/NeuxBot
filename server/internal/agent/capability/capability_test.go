@@ -392,3 +392,33 @@ func TestReceiptRequiresExplicitDomainCommit(t *testing.T) {
 		t.Fatalf("ordinary entry created command receipt: err=%v receipts=%v", err, store)
 	}
 }
+
+func TestReleasedConnectionCannotRemoveReplacementGrant(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory := filepath.Join(root, "context")
+	first := Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: "http://127.0.0.1:8080" + constants.AgentCLIPath, CoreEpoch: "epoch", GrantID: "one", Token: "stable-test-token"}
+	filename, err := WriteConnection(directory, "connection.json", first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := first
+	second.GrantID = "two"
+	if _, err := WriteConnection(directory, "connection.json", second); err != nil {
+		t.Fatal(err)
+	}
+	if err := RemoveConnection(filename, first.CoreEpoch, first.GrantID); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ReadConnection(filename); err != nil || got.GrantID != second.GrantID {
+		t.Fatalf("new owner = %+v, %v", got, err)
+	}
+	if err := RemoveConnection(filename, second.CoreEpoch, second.GrantID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(directory); !os.IsNotExist(err) {
+		t.Fatal("empty context directory remained", err)
+	}
+}

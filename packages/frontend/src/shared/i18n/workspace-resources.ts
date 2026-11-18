@@ -1,3 +1,4 @@
+import { storageZh, storageEn } from "./storage";
 import { baseEn } from "./base-en";
 import { knowledgeZh, knowledgeEn } from "./knowledge-navigation";
 import { notificationZh, notificationEn } from "./notification";
@@ -13,6 +14,7 @@ export const workspaceResources = {
     im: imZh,
     workBoard: workBoardZh,
     usage: usageZh,
+    storage: storageZh,
     waker: {
       card: {
         fallbackName: "伙伴",
@@ -980,6 +982,7 @@ export const workspaceResources = {
       },
       sections: {
         general: "通用",
+        storage: "存储",
         notifications: "通知",
         runtimeEnvironments: "智能体",
         integrations: "集成",
@@ -2148,6 +2151,7 @@ export const workspaceResources = {
   "en-US": {
     ...baseEn,
     usage: usageEn,
+    storage: storageEn,
     knowledge: knowledgeEn,
     notification: notificationEn,
     im: imEn,

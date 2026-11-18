@@ -115,3 +115,51 @@ func TestSystemSkillRejectsModifiedResourcesAndRedirectedDirectory(t *testing.T)
 		t.Fatalf("redirected system skill directory accepted: %v", err)
 	}
 }
+
+func TestSystemSkillCleanupKeepsPublishedAndUnknownDirectories(t *testing.T) {
+	data := t.TempDir()
+	binary := filepath.Join(data, "botcli")
+	if err := os.WriteFile(binary, []byte("release one"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	older, err := SystemDirectory(data, binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(binary, []byte("release two"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	current, err := SystemDirectory(data, binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unknown := filepath.Join(filepath.Dir(current), strings.Repeat("a", 64))
+	if err := os.Mkdir(unknown, 0700); err != nil {
+		t.Fatal(err)
+	}
+	unknownStage := filepath.Join(filepath.Dir(current), "system-skill-staging-100")
+	if err := os.Mkdir(unknownStage, 0700); err != nil {
+		t.Fatal(err)
+	}
+	ownedStage := filepath.Join(filepath.Dir(current), "system-skill-staging-101")
+	if err := os.Mkdir(ownedStage, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ownedStage, systemStagingOwner), []byte("system-skill-staging-101"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := CleanupObsoleteSystemDirectories(current); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(older); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("valid old version remained", err)
+	}
+	if _, err := os.Stat(ownedStage); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("verified stage remained", err)
+	}
+	for _, path := range []string{current, unknown, unknownStage} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatal("protected path disappeared", err)
+		}
+	}
+}

@@ -232,3 +232,123 @@ func TestTargetCacheRepairWorker(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestTargetCleanupPreservesLeasedAndUnverifiedDirectories(t *testing.T) {
+	data, source := t.TempDir(), t.TempDir()
+	standardInput(t, source, map[string]any{"name": "managed-target"})
+	pkg, err := Load(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewContentStore(data, nil)
+	parent := filepath.Join(data, "plugins", "targets")
+	unowned, err := PrepareNativeTarget(t.Context(), parent, "legacy", pkg, source, "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, release, err := store.PrepareTarget(t.Context(), TargetRequest{PluginID: "leased", SourceRoot: source, Package: pkg, Runtime: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+
+	first, err := store.ClearCachedTargets(t.Context())
+	if err != nil || first.Files != 0 || first.Skipped != 2 {
+		t.Fatalf("leased target cleanup=%+v error=%v", first, err)
+	}
+	if _, err := os.Stat(target.Root); err != nil {
+		t.Fatalf("leased target gone: %v", err)
+	}
+	release()
+	release()
+	restarted := NewContentStore(data, nil)
+	preview, err := restarted.PreviewCachedTargets(t.Context())
+	if err != nil || preview.Files == 0 || preview.Bytes == 0 || preview.Skipped != 1 {
+		t.Fatalf("released target preview=%+v error=%v", preview, err)
+	}
+	second, err := restarted.ClearCachedTargets(t.Context())
+	if err != nil || second != preview {
+		t.Fatalf("released target cleanup=%+v preview=%+v error=%v", second, preview, err)
+	}
+	if _, err := os.Stat(target.Root); !os.IsNotExist(err) {
+		t.Fatalf("verified target still present: %v", err)
+	}
+	if _, err := os.Stat(unowned.Root); err != nil {
+		t.Fatalf("unverified legacy target lost: %v", err)
+	}
+	if locks, err := os.ReadDir(filepath.Join(parent, ".locks")); err != nil || len(locks) == 0 {
+		t.Fatalf("publication locks lost: %v %v", locks, err)
+	}
+}
+
+func TestTargetCleanupKeepsCorruptedTargetAndClearsRepair(t *testing.T) {
+	data, source := t.TempDir(), t.TempDir()
+	standardInput(t, source, map[string]any{"name": "managed-repair"})
+	pkg, err := Load(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewContentStore(data, nil)
+	request := TargetRequest{PluginID: "managed", SourceRoot: source, Package: pkg, Runtime: "claude"}
+	original, release, err := store.PrepareTarget(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	fixtureFile(t, original.Root, "added-by-user", "retain")
+	repaired, release, err := store.PrepareTarget(t.Context(), request)
+	if err != nil || repaired.Root == original.Root {
+		t.Fatalf("corruption did not get a repair target: %+v %v", repaired, err)
+	}
+	release()
+	result, err := store.ClearCachedTargets(t.Context())
+	if err != nil || result.Files == 0 || result.Skipped != 1 {
+		t.Fatalf("repair cleanup=%+v error=%v", result, err)
+	}
+	if _, err := os.Stat(repaired.Root); !os.IsNotExist(err) {
+		t.Fatalf("repair target still present: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(original.Root, "added-by-user")); err != nil {
+		t.Fatalf("modified target deleted: %v", err)
+	}
+}
+
+func TestTargetCleanupVerifiesAbandonedStagingIdentity(t *testing.T) {
+	store := NewContentStore(t.TempDir(), nil)
+	owner, err := store.openTargetCache(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.close()
+	owned, err := os.MkdirTemp(owner.root.Name(), "native-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := owner.beginStage(owned); err != nil {
+		t.Fatal(err)
+	}
+	fixtureFile(t, owned, "package/abandoned", "recoverable")
+
+	replaced, err := os.MkdirTemp(owner.root.Name(), "native-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := owner.beginStage(replaced); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(replaced, replaced+"-old"); err != nil {
+		t.Fatal(err)
+	}
+	fixtureFile(t, replaced, "unrelated", "preserve")
+
+	result, err := store.ClearCachedTargets(t.Context())
+	if err != nil || result.Files != 2 || result.Skipped != 1 {
+		t.Fatalf("staging cleanup=%+v error=%v", result, err)
+	}
+	if _, err := os.Stat(owned); !os.IsNotExist(err) {
+		t.Fatalf("owned abandoned staging remains: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(replaced, "unrelated")); err != nil {
+		t.Fatalf("unowned staging replacement lost: %v", err)
+	}
+}

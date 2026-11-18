@@ -194,5 +194,8 @@ func (d *DeleteWaker) Output(ctx *gin.Context) (interface{}, error) {
 			logx.Errorf("delete waker memories failed: waker_id=%s error=%v", d.WakerID, err)
 		}
 	}
+	if global.StorageService != nil {
+		global.StorageService.Invalidate()
+	}
 	return ginx.CommonSuccessResponse(), nil
 }

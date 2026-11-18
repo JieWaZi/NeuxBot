@@ -20,6 +20,10 @@ const file = { root, relativePath: text };
 export const commandSchemas = {
   core_connection: z.undefined(),
   get_window_appearance: z.undefined(),
+  preview_desktop_storage: z.undefined(),
+  clear_desktop_storage: z
+    .object({ category: z.enum(["desktop-cache", "desktop-logs"]) })
+    .strict(),
   set_window_appearance: z
     .object({
       theme: z.enum(["system", "light", "dark"]),
@@ -42,12 +46,6 @@ export const commandSchemas = {
     .strict(),
   select_directory: z.undefined(),
   select_files: z.undefined(),
-  stage_attachment: z.object({
-    name: text
-      .min(1)
-      .refine((name) => name !== "." && name !== ".." && !/[\\/\0]/.test(name)),
-    bytes: z.instanceof(Uint8Array),
-  }),
   save_file: z.object({
     bytes: z.array(z.number().int().min(0).max(255)),
     fileName: text,

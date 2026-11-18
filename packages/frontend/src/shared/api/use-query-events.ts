@@ -427,6 +427,7 @@ export function useQueryEvents({
   eventTypes,
   eventFilter,
   authority = false,
+  observeConnection = authority,
   read,
 }: {
   topic: GlobalEventTopic;
@@ -437,6 +438,8 @@ export function useQueryEvents({
   eventTypes?: readonly string[];
   eventFilter?: (frame: GlobalEventFrame) => boolean;
   authority?: boolean;
+  /** 只订阅连接状态时可保留部分测量结果，不启动完整快照恢复重试。 */
+  observeConnection?: boolean;
   /** 权威查询可提供自身的有界读取；它仍由原 owner 调度与核对。 */
   read?: () => Promise<unknown>;
 }) {
@@ -499,7 +502,8 @@ export function useQueryEvents({
     const close = subscribeGlobalEvents(topic, resourceRef.current, {
       onEvent: (frame: GlobalEventFrame) => {
         if (frame.type === `${topic}.ready`) {
-          if (authority) setConnection({ state: "open", epoch: frame.epoch });
+          if (observeConnection)
+            setConnection({ state: "open", epoch: frame.epoch });
           refresh(true);
           return;
         }
@@ -528,10 +532,10 @@ export function useQueryEvents({
         refresh();
       },
       onState: (state) => {
-        if (authority && state !== "open") setConnection({ state });
+        if (observeConnection && state !== "open") setConnection({ state });
       },
       onResync: () => {
-        if (authority) {
+        if (observeConnection) {
           const epoch = getReadyEventEpoch(topic, resourceRef.current);
           setConnection(
             epoch ? { state: "open", epoch } : { state: "connecting" },
@@ -547,7 +551,7 @@ export function useQueryEvents({
       close();
       releaseConsumer(client, owner, consumer);
     };
-  }, [authority, client, enabled, read, resourceKey, topic]);
+  }, [authority, observeConnection, client, enabled, read, resourceKey, topic]);
   useEffect(() => {
     restore.current?.();
   }, [active, client]);

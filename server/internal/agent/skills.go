@@ -1,11 +1,9 @@
 package agent
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -17,8 +15,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	managedskills "github.com/JieWaZi/NeuxBot/server/internal/skills"
 )
-
-const skillManifestName = ".neuxbot-skills.json"
 
 // SkillSelection freezes one native discovery target without acquiring resources.
 // Its private fields prevent callers from changing the reserved identity.
@@ -42,13 +38,6 @@ type skillEntry struct {
 	path string
 	// digest is the exact complete content hash frozen before admission.
 	digest string
-}
-
-type skillManifest struct {
-	// Version rejects manifests from any other storage contract.
-	Version int `json:"version"`
-	// Targets records independent physical discovery roots and their managed names.
-	Targets map[string]map[string]string `json:"targets"`
 }
 
 // FreezeSkills reserves the published content identity without reading source trees.
@@ -129,8 +118,11 @@ func prepareSkills(selection *SkillSelection) error {
 		return status_error.SkillContentInvalid
 	}
 
-	manifest := filepath.Join(root, skillManifestName)
-	installed := skillManifest{Version: 1, Targets: map[string]map[string]string{}}
+	manifest := filepath.Join(root, managedskills.MaterializationManifestName)
+	installed := managedskills.MaterializationManifest{
+		Version: managedskills.MaterializationManifestVersion,
+		Targets: map[string]map[string]string{},
+	}
 	if info, err := os.Lstat(manifest); err == nil {
 		if !info.Mode().IsRegular() {
 			return status_error.SkillContentInvalid
@@ -139,25 +131,12 @@ func prepareSkills(selection *SkillSelection) error {
 		if err != nil {
 			return skillStorageError(err)
 		}
-		decoder := json.NewDecoder(bytes.NewReader(data))
-		decoder.DisallowUnknownFields()
-		if len(data) > 1<<20 || decoder.Decode(&installed) != nil || decoder.Decode(new(any)) != io.EOF || installed.Version != 1 || installed.Targets == nil {
-			return status_error.SkillContentInvalid
+		installed, err = managedskills.ParseMaterializationManifest(data)
+		if err != nil {
+			return err
 		}
 	} else if !os.IsNotExist(err) {
 		return skillStorageError(err)
-	}
-	for target, entries := range installed.Targets {
-		parts := strings.Split(target, "/")
-		if len(parts) != 2 || !safeSkillEntryName(parts[0]) || parts[1] != "skills" || entries == nil {
-			return status_error.SkillContentInvalid
-		}
-		for name, digest := range entries {
-			decoded, err := hex.DecodeString(digest)
-			if !safeSkillEntryName(name) || err != nil || len(decoded) != 32 {
-				return status_error.SkillContentInvalid
-			}
-		}
 	}
 	targetKey := directory + "/skills"
 	previous := map[string]string{}

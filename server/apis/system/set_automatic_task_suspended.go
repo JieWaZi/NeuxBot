@@ -25,6 +25,9 @@ func (*SetAutomaticTaskSuspended) Path() string { return "/automatic-tasks-suspe
 
 // Output 恢复时先推进错过机会，再开放后续计划。
 func (o *SetAutomaticTaskSuspended) Output(ctx *gin.Context) (interface{}, error) {
+	if !o.Body.Suspended && global.StorageService != nil {
+		global.StorageService.Wake()
+	}
 	if global.IMService != nil {
 		global.IMService.SetSuspended(o.Body.Suspended)
 	}

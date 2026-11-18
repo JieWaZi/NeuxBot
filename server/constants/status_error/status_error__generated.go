@@ -381,6 +381,14 @@ func (v StatusError) Key() string {
 		return "KnowledgeFolderHasPages"
 	case IntegrationConflict:
 		return "IntegrationConflict"
+	case CoreStorageInUse:
+		return "CoreStorageInUse"
+	case StoragePreviewExpired:
+		return "StoragePreviewExpired"
+	case StoragePolicyConflict:
+		return "StoragePolicyConflict"
+	case StorageSnapshotExpired:
+		return "StorageSnapshotExpired"
 	case WorkspaceResourceTooLarge:
 		return "WorkspaceResourceTooLarge"
 	case WakerProfileTooLong:
@@ -549,6 +557,16 @@ func (v StatusError) Key() string {
 		return "KnowledgeStorageError"
 	case IntegrationCredentialError:
 		return "IntegrationCredentialError"
+	case StoragePolicyInvalid:
+		return "StoragePolicyInvalid"
+	case StorageRootInvalid:
+		return "StorageRootInvalid"
+	case StorageScanIncomplete:
+		return "StorageScanIncomplete"
+	case StorageVolumeUnavailable:
+		return "StorageVolumeUnavailable"
+	case StorageCleanupFailed:
+		return "StorageCleanupFailed"
 	case MemoryEmbeddingUnavailable:
 		return "MemoryEmbeddingUnavailable"
 	case MCPConnectorProtocolInvalid:
@@ -794,6 +812,10 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			KnowledgeFolderHasChildren:           "folder contains subfolders; delete them first",
 			KnowledgeFolderHasPages:              "folder contains pages; move them out first",
 			IntegrationConflict:                  "integration revision or request identity conflicts",
+			CoreStorageInUse:                     "another Core is using the storage directory",
+			StoragePreviewExpired:                "the cleanup preview expired; preview again",
+			StoragePolicyConflict:                "the storage policy changed; refresh before retrying",
+			StorageSnapshotExpired:               "storage measurements changed; return to the first page",
 			WorkspaceResourceTooLarge:            "workspace resource exceeds the size limit",
 			WakerProfileTooLong:                  "partner profile is too long; shorten it to {{.MaxTokens}} tokens or fewer",
 			ReadingTargetLimitExceeded:           "too many awaiting-view targets; narrow the filter",
@@ -878,6 +900,11 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WakerProfileTokenizationFailed:       "the partner profile token count could not be calculated",
 			KnowledgeStorageError:                "knowledge storage failed",
 			IntegrationCredentialError:           "integration credential generation failed",
+			StoragePolicyInvalid:                 "the storage policy is unavailable",
+			StorageRootInvalid:                   "could not read the storage root",
+			StorageScanIncomplete:                "the storage measurement is incomplete",
+			StorageVolumeUnavailable:             "disk capacity is unavailable",
+			StorageCleanupFailed:                 "storage cleanup failed",
 			MemoryEmbeddingUnavailable:           "embedding service is unavailable",
 			MCPConnectorProtocolInvalid:          "mcp connector returned an invalid protocol response",
 			AIAccountModelsUnavailable:           "model catalog service is unavailable",
@@ -1072,6 +1099,10 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			KnowledgeFolderHasChildren:           "目录下还有子目录，请先删除子目录",
 			KnowledgeFolderHasPages:              "目录下还有页面，请先移出页面",
 			IntegrationConflict:                  "API 集成配置已变化，请刷新后重试",
+			CoreStorageInUse:                     "存储目录已由其他 Core 使用",
+			StoragePreviewExpired:                "清理预览已失效，请重新预览",
+			StoragePolicyConflict:                "存储策略已变化，请刷新后重试",
+			StorageSnapshotExpired:               "存储统计已更新，请返回第一页",
 			WorkspaceResourceTooLarge:            "工作区资源超过大小限制",
 			WakerProfileTooLong:                  "伙伴档案超过长度上限，请精简到 {{.MaxTokens}} token 以内",
 			ReadingTargetLimitExceeded:           "待查看工作过多，请缩小筛选范围",
@@ -1156,6 +1187,11 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WakerProfileTokenizationFailed:       "暂时无法计算伙伴档案的 token 数",
 			KnowledgeStorageError:                "知识存储访问失败",
 			IntegrationCredentialError:           "无法生成 API Key，请稍后重试",
+			StoragePolicyInvalid:                 "存储策略不可用",
+			StorageRootInvalid:                   "无法读取存储目录",
+			StorageScanIncomplete:                "存储统计不完整",
+			StorageVolumeUnavailable:             "无法读取磁盘容量",
+			StorageCleanupFailed:                 "存储清理失败",
 			MemoryEmbeddingUnavailable:           "Embedding 服务当前不可用",
 			MCPConnectorProtocolInvalid:          "MCP 连接器返回了不合法的协议响应",
 			AIAccountModelsUnavailable:           "模型目录服务暂时不可用",

@@ -351,6 +351,7 @@ func replayChatState(records []eventlog.Record) (chatState, error) {
 			HiddenFromWakerHistory: data.HiddenFromWakerHistory,
 			LatestSequence:         last.Sequence,
 			CreatedAt:              records[0].RecordedAt,
+			LastActivityAt:         records[0].RecordedAt,
 			UpdatedAt:              last.RecordedAt,
 		},
 		createRequestID:   strings.TrimSpace(data.ClientRequestID),
@@ -371,6 +372,9 @@ func replayChatState(records []eventlog.Record) (chatState, error) {
 
 	// 所有核心状态共享这一次有序扫描，新增事件时只需要维护一套状态转换规则。
 	for _, record := range records[1:] {
+		if err := applyRetentionRecord(&state.chat, record); err != nil {
+			return chatState{}, err
+		}
 		switch record.Type {
 		case constants.ChatEventTypeUserMessageCreated:
 			if record.MessageID == "" {
@@ -614,6 +618,11 @@ func (m *service) RenameChat(
 	if title == "" || len([]rune(title)) > 120 {
 		return status_error.BadRequest
 	}
+	release, err := chatstorage.AcquireOperation(m.storage.Root(), chatID)
+	if err != nil {
+		return err
+	}
+	defer release()
 	if _, _, err := m.loadChatState(chatID); err != nil {
 		return err
 	}
@@ -662,11 +671,11 @@ func (m *service) DeleteChatsAtomically(
 	chatIDs []string,
 	finalize func(context.Context) error,
 ) error {
-	return m.deleteChatsAtomically(ctx, chatIDs, nil, finalize)
+	return m.deleteChatsAtomically(ctx, chatIDs, nil, finalize, nil)
 }
 
 // deleteChatsAtomically 在同一组 Chat 排他边界内先执行一次文件准备，再进入可重试的数据库事务。
-func (m *service) deleteChatsAtomically(ctx context.Context, chatIDs []string, prepare func() error, finalize func(context.Context) error) error {
+func (m *service) deleteChatsAtomically(ctx context.Context, chatIDs []string, prepare func() error, finalize func(context.Context) error, retention *retentionDeletion) error {
 	releaseOperation, operationErr := chatstorage.AcquireOperation(m.storage.Root(), chatIDs...)
 	if operationErr != nil {
 		return operationErr
@@ -687,6 +696,14 @@ func (m *service) deleteChatsAtomically(ctx context.Context, chatIDs []string, p
 		seen[chatID] = struct{}{}
 		// 删除前从权威日志恢复冻结工作目录，不能信任可能落后的 SQLite。
 		_, state, err := m.loadChatState(chatID)
+		if retention != nil {
+			if err != nil {
+				return err
+			}
+			if err := m.checkRetention(ctx, retention.candidate, retention.cutoff, state); err != nil {
+				return err
+			}
+		}
 		if hasStatusErrorCode(err, status_error.ChatNotFound.Code()) {
 			// 私有文件由稳定 Chat 身份定位；日志缺失不留下附件和派生文件孤儿。
 			private, pathErr := m.storage.ChatRoot(chatID)
@@ -799,9 +816,17 @@ func (m *service) deleteChatsAtomically(ctx context.Context, chatIDs []string, p
 		}
 	}
 	canonicalChatIDs := uniqueChatIDs(chatIDs)
-	if m.closeNativeThread != nil {
+	closeThread := m.closeNativeThread
+	if retention != nil {
+		closeThread = m.closeIdleNativeThread
+		// 已装配原生端口时缺少闲置核验能力，不能退回会取消活动回合的强制关闭。
+		if closeThread == nil && m.closeNativeThread != nil {
+			return status_error.ChatHasActiveExecution
+		}
+	}
+	if closeThread != nil {
 		for _, chatID := range canonicalChatIDs {
-			if err := m.closeNativeThread(ctx, chatID); err != nil {
+			if err := closeThread(ctx, chatID); err != nil {
 				return err
 			}
 		}
@@ -874,7 +899,7 @@ func (m *service) deleteChatsAtomically(ctx context.Context, chatIDs []string, p
 		}
 		aggregates = append(aggregates, chatstorage.DeletionTarget{Kind: chatstorage.AggregateKindChatProjectEntries, AggregateID: target.chatID, WakerID: target.wakerID, WorkspaceDirectory: canonicalWorkspace})
 	}
-	if err := m.deleteAggregatesAtomically(ctx, aggregates, canonicalChatIDs, finalize); err != nil {
+	if err := m.deleteAggregatesAtomically(ctx, aggregates, canonicalChatIDs, finalize, retention); err != nil {
 		return err
 	}
 	return m.cancelForksFromDeletedChats(seen)
@@ -968,7 +993,7 @@ func (m *service) DeleteProvisionalTeam(
 		m.logStore.Forget(expected)
 		return nil
 	}
-	return m.deleteAggregatesAtomically(ctx, targets, expected, nil)
+	return m.deleteAggregatesAtomically(ctx, targets, expected, nil, nil)
 }
 
 // validateProvisionalTeamLogs 拒绝删除计划成员集合以外的任何 Team 日志文件。
@@ -995,9 +1020,30 @@ func (m *service) deleteAggregatesAtomically(
 	aggregates []chatstorage.DeletionTarget,
 	canonicalChatIDs []string,
 	finalize func(context.Context) error,
+	retention *retentionDeletion,
 ) error {
 	m.deletionMu.Lock()
 	defer m.deletionMu.Unlock()
+	if retention != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		// 释放空闲连接可能提交最后一批原生结果，暂存前核验日志版本。
+		latest, err := m.logStore.ReadLatestSequence(retention.candidate.ChatID)
+		if err != nil {
+			return err
+		}
+		if latest != retention.candidate.Sequence {
+			return status_error.ChatLogVersionConflict
+		}
+		allowed, err := retention.allow(ctx, retention.candidate.ChatID)
+		if err != nil {
+			return err
+		}
+		if !allowed {
+			return status_error.ChatLogVersionConflict
+		}
+	}
 	intentID := util.New()
 	if err := m.deletionIntents.CreatePrepared(ctx, models.ChatDeletionIntent{
 		ID: intentID, State: "prepared", ChatIDs: canonicalChatIDs,
@@ -1035,6 +1081,9 @@ func (m *service) deleteAggregatesAtomically(
 			logx.Errorf("cleanup rolled back chat deletion intent failed: intent_id=%s error=%v", intentID, cleanupErr)
 		}
 		return err
+	}
+	if retention != nil {
+		retention.committed = true
 	}
 	m.logStore.Forget(canonicalChatIDs)
 	if err := staged.Commit(); err != nil {
@@ -1110,7 +1159,7 @@ func (m *service) DeleteWakerChats(ctx context.Context, wakerID string, prepare 
 		var err error
 		settle, err = prepare(append([]string(nil), targetIDs...))
 		return err
-	}, finalize)
+	}, finalize, nil)
 	var settleErr error
 	if settle != nil {
 		settleErr = settle()

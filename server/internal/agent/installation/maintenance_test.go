@@ -459,3 +459,43 @@ func TestProvenNativeUpdatesInPlaceWithoutPublishingAPrivateCopy(t *testing.T) {
 		t.Fatal("native uninstall removed an unrelated private copy")
 	}
 }
+
+func TestManagedVersionReclamationPreservesCurrentAndConfiguredVersions(t *testing.T) {
+	i, install := managedFixture(t)
+	first := install("1.2.3")
+	old := install("1.2.4")
+	newest := install("1.2.5")
+	staged, err := os.MkdirTemp(filepath.Join(i.root, "codex"), ".staging-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, filepath.Join(staged, "artifact.tgz"), []byte("retired"))
+	writeFixture(t, filepath.Join(staged, retiredStageMarker), []byte(stageReceipt("codex", filepath.Base(staged))))
+	unknown, err := os.MkdirTemp(filepath.Join(i.root, "codex"), ".staging-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, filepath.Join(unknown, "artifact.tgz"), []byte("unknown live process"))
+	protected := []string{first.Binary}
+	preview, err := i.ReclaimVersions(t.Context(), "codex", protected, false)
+	if err != nil || preview == 0 {
+		t.Fatalf("preview: %d, %v", preview, err)
+	}
+	if _, err := os.Stat(old.Binary); err != nil {
+		t.Fatalf("preview deleted old program: %v", err)
+	}
+	removed, err := i.ReclaimVersions(t.Context(), "codex", protected, true)
+	if err != nil || removed != preview {
+		t.Fatalf("removed %d, preview %d, error %v", removed, preview, err)
+	}
+	for _, path := range []string{first.Binary, newest.Binary, unknown} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("protected %s: %v", path, err)
+		}
+	}
+	for _, path := range []string{old.Binary, staged} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("retained %s: %v", path, err)
+		}
+	}
+}

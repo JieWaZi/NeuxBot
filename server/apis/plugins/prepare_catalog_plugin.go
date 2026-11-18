@@ -39,15 +39,17 @@ func (*PrepareCatalogPlugin) Path() string { return "/catalog/:key/prepare" }
 
 // Output 核验目录固定归档后登记资源与版本，不建立伙伴安装关系。
 func (o *PrepareCatalogPlugin) Output(ctx *gin.Context) (interface{}, error) {
-	entry, directory, err := catalog.ResolveCurrent(ctx.Request.Context(), global.PluginCatalogSource(), o.Key)
+	entry, directory, release, err := catalog.AcquireCurrent(ctx.Request.Context(), global.PluginCatalogSource(), o.Key)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
+	defer release()
 	// 分发恢复可能重新解析目录；必须核验最终归档，不能静默替换用户确认的目标。
 	if o.Body.ExpectedArchiveSHA256 != "" && o.Body.ExpectedArchiveSHA256 != entry.ArchiveSHA256 {
 		return nil, ginx.WithStack(status_error.PluginVersionConflict)
 	}
 	stage, err := packageplugin.StageSource(stagedRoot(), directory, entry.PackagePath)
+	release()
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
@@ -120,7 +122,7 @@ func persistPreparedResource(ctx context.Context, stage packageplugin.StagedPack
 		if err := ctx.Err(); err != nil {
 			return models.Plugin{}, "", err
 		}
-		if _, err := packageplugin.PrepareTargets(ctx, filepath.Join(global.Config.DataDirectory, "plugins", "targets"), resource.ID, stage.Package, root); err != nil {
+		if err := prepareManagedTargets(ctx, resource.ID, stage.Package, root); err != nil {
 			return models.Plugin{}, "", err
 		}
 		release = guard()

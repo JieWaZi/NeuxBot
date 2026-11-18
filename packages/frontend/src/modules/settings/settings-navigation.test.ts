@@ -22,8 +22,13 @@ it("智能体包含账号管理，不保留独立账号分类或旧路由兼容"
     "general",
     "agents",
     "integrations",
+    "storage",
   ]);
   expect(settingsSectionOf("ai-accounts")).toBe("general");
   expect(settingsSectionOf("runtime-environments")).toBe("general");
   expect(settingsSectionOf("notifications")).toBe("general");
+});
+
+it("可通过存储入口定位对应分类", () => {
+  expect(settingsSectionOf("storage")).toBe("storage");
 });

@@ -137,3 +137,39 @@ func TestAcceptedUploadRetainsOnlySameRequestReplayPath(t *testing.T) {
 		t.Fatal("replay crosses subject")
 	}
 }
+
+func TestDiscardUploadRetriesFailureAndPreservesSourcePaths(t *testing.T) {
+	s, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(s.Close)
+	ref, err := s.Stage(t.Context(), "desktop", "source.txt", strings.NewReader("test"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, release, err := s.Claim("desktop", []string{ref})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Discard("desktop", ref); err == nil {
+		t.Fatal("discard accepted an active claim")
+	}
+	release(false)
+	s.removeAll = func(string) error { return os.ErrPermission }
+	if err := s.Discard("desktop", ref); err == nil {
+		t.Fatal("discard reported success despite failure")
+	}
+	if _, err := os.Stat(paths[0]); err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	s.removeAll = os.RemoveAll
+	s.mu.Unlock()
+	if err := s.Discard("desktop", ref); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(paths[0]); !os.IsNotExist(err) {
+		t.Fatalf("retry did not clear bytes: %v", err)
+	}
+}

@@ -533,3 +533,76 @@ func (s *service) publishInstallation(base string) {
 		}
 	}
 }
+
+// ReclaimPrograms 清理经过当前设置及使用者核验的旧版本和安装暂存。
+func (s *service) ReclaimPrograms(ctx context.Context, remove bool) (int64, error) {
+	store, ok := s.installer.(interface {
+		ReclaimVersions(context.Context, string, []string, bool) (int64, error)
+	})
+	if !ok {
+		return 0, status_error.RuntimeEnvironmentServiceUnavailable
+	}
+	environments, err := s.environments.List(ctx)
+	if err != nil {
+		return 0, err
+	}
+	providers := make(map[string]struct{})
+	for _, environment := range environments {
+		providers[environment.BaseRuntimeID] = struct{}{}
+	}
+	var total int64
+	var failed error
+	for provider := range providers {
+		if ctx.Err() != nil {
+			return total, errors.Join(failed, status_error.OperationCanceled)
+		}
+		if !s.installer.Supported(provider) {
+			continue
+		}
+		bytes, err := s.reclaimProgram(ctx, provider, remove, store.ReclaimVersions)
+		total += bytes
+		failed = errors.Join(failed, err)
+	}
+	return total, failed
+}
+
+func (s *service) reclaimProgram(ctx context.Context, provider string, remove bool, reclaim func(context.Context, string, []string, bool) (int64, error)) (int64, error) {
+	if remove {
+		s.installationMutex.Lock()
+		job := s.installationJobs[provider]
+		authenticationBusy := s.authentication != nil && s.authentication.HasNativeOwner(provider)
+		busy := s.installationClosing || s.restarting[provider] || authenticationBusy || job != nil && (job.cancel != nil || job.snapshot.CheckState == constants.RuntimeUpdateCheckStateChecking)
+		if busy || s.beforeRuntimeMaintenance == nil {
+			s.installationMutex.Unlock()
+			return 0, status_error.RuntimeInstallationBusy
+		}
+		if s.restarting == nil {
+			s.restarting = make(map[string]bool)
+		}
+		s.restarting[provider] = true
+		s.installationMutex.Unlock()
+		defer func() {
+			s.installationMutex.Lock()
+			delete(s.restarting, provider)
+			s.installationMutex.Unlock()
+		}()
+		release, err := s.beforeRuntimeMaintenance(ctx, provider)
+		if err != nil {
+			return 0, err
+		}
+		if release != nil {
+			defer release()
+		}
+	}
+	environments, err := s.environments.List(ctx)
+	if err != nil {
+		return 0, err
+	}
+	protected := make([]string, 0, len(environments))
+	for _, environment := range environments {
+		protected = append(protected, environment.Detection.ResolvedBinary, environment.Binary)
+		protected = append(protected, environment.Detection.Runtime.PrefixArgs...)
+		protected = append(protected, environment.PrefixArgs...)
+	}
+	return reclaim(ctx, provider, protected, remove)
+}

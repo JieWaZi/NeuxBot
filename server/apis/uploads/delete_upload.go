@@ -1,6 +1,9 @@
 package uploads
 
 import (
+	"github.com/JieWaZi/NeuxBot/server/apis/middleware"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -15,10 +18,11 @@ type DeleteUpload struct {
 
 func (*DeleteUpload) Path() string { return "" }
 func (op *DeleteUpload) Output(ctx *gin.Context) (interface{}, error) {
-	_, release, err := Claim(ctx, []string{op.SourcePath})
-	if err != nil {
-		return nil, err
+	if global.Uploads == nil {
+		return nil, ginx.WithStack(status_error.BadRequest)
 	}
-	release(true)
+	if err := global.Uploads.Discard(middleware.AuthSubject(ctx), op.SourcePath); err != nil {
+		return nil, ginx.WithStack(err)
+	}
 	return ginx.CommonSuccessResponse(), nil
 }

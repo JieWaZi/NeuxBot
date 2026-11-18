@@ -9,6 +9,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	protocol "github.com/JieWaZi/NeuxBot/server/internal/im"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
@@ -372,6 +373,16 @@ func (s *Service) accept(ctx context.Context, input *models.IMInbox) error {
 	for _, file := range input.Files {
 		workInput.Attachments = append(workInput.Attachments, execution.AttachmentInput{SourcePath: file.Path})
 	}
+	// 新建伙伴对话在进入 Core 前已有稳定身份；从接纳前一直保护到关联和 inbox 一起提交。
+	targetChatID := link.ChatID
+	if targetChatID == "" && link.Configuration.ChannelID == "" {
+		targetChatID = (requestidempotency.Identity{ID: link.ID}).ResourceID("chat", link.Configuration.WakerID)
+	}
+	release, err := chatstorage.AcquireReferences(s.config.ManagedFilesDirectory, targetChatID)
+	if err != nil {
+		return err
+	}
+	defer release()
 	if link.Configuration.ChannelID != "" {
 		submission := channel.SubmitMessageInput{}
 		if link.ThreadID == "" {

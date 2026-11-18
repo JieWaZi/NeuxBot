@@ -150,11 +150,12 @@ func validatePluginInstallationSource(ctx context.Context, resource models.Plugi
 	if err != nil {
 		return err
 	}
-	location, err := catalog.ResolveEntry(ctx, entry)
+	location, release, err := catalog.AcquireEntry(ctx, entry)
 	if err != nil {
 		return err
 	}
 	stage, err := packageplugin.StageSource(stagedRoot(), location, entry.PackagePath)
+	release()
 	if err != nil {
 		return err
 	}

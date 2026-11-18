@@ -15,6 +15,8 @@ const (
 	ChatEventTypeUnspecified ChatEventType = ""
 	// ChatEventTypeCreated 表示 Chat 已经建立并锁定工作目录。
 	ChatEventTypeCreated ChatEventType = "chat.created"
+	// ChatEventTypeRetentionProtectionUpdated 表示用户已更新会话保留例外。
+	ChatEventTypeRetentionProtectionUpdated ChatEventType = "chat.retention_protection_updated"
 	// ChatEventTypeTitleUpdated 表示 Chat 标题已经更新。
 	ChatEventTypeTitleUpdated ChatEventType = "chat.title_updated"
 	// ChatEventTypeUserMessageCreated 表示一条用户消息已经持久化。

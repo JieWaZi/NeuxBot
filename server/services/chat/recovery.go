@@ -180,6 +180,10 @@ func (c *recoveryCoordinator) reconcileChat(
 		}
 		return c.rebuildProjection(ctx, chatID, diagnostic, true, false)
 	}
+	if indexed.LastActivityAt <= 0 {
+		diagnostic.Issues = appendIssue(diagnostic.Issues, constants.ChatRecoveryIssueChatProjectionContentMismatch)
+		return c.rebuildProjection(ctx, chatID, diagnostic, true, false)
+	}
 	if valid, validateErr := c.staticProjectionMatches(chatID, indexed); validateErr != nil {
 		return diagnostic, validateErr
 	} else if !valid {
@@ -313,6 +317,9 @@ func applyProjectionTail(projection *currentProjection, records []eventlog.Recor
 	for _, record := range records {
 		if record.Sequence <= projection.chat.LatestSequence {
 			return status_error.ChatLogError
+		}
+		if err := applyRetentionRecord(&projection.chat, record); err != nil {
+			return err
 		}
 		switch record.Type {
 		case constants.ChatEventTypeTitleUpdated:

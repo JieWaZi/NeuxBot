@@ -1,3 +1,8 @@
+import {
+  clearDesktopCache,
+  desktopCacheSize,
+  type DesktopLogs,
+} from "./storage-maintenance";
 import { dialog, ipcMain, shell, type BrowserWindow } from "electron";
 import { writeFile as save } from "node:fs/promises";
 import path from "node:path";
@@ -10,7 +15,6 @@ import { BrowserManager } from "./browser-manager";
 import { BrowserWebviewPolicy } from "./browser-webview-policy";
 import { authorizeBrowserRoot } from "./browser-workspace-root";
 import * as files from "./workspace-files";
-import { createAttachmentStaging } from "./attachment-staging";
 import type { CoreEventClient } from "../shared/core-event-client";
 import type { loadNotificationPreferences } from "./notification-preferences";
 import {
@@ -27,6 +31,7 @@ export function installDesktopServices(
     ReturnType<typeof loadNotificationPreferences>
   >,
   windowAppearance?: Awaited<ReturnType<typeof loadWindowAppearance>>,
+  desktopLogs?: DesktopLogs,
 ) {
   // BrowserWindow 的 closed 事件触发时再读取 window.webContents 会抛出
   // “Object has been destroyed”，因此安装阶段固定持有本次窗口的内容对象。
@@ -46,13 +51,32 @@ export function installDesktopServices(
     string,
     { stop: () => void; resync: (after?: number | string) => void }
   >();
-  let attachments = createAttachmentStaging();
   const handlers: {
     [K in keyof DesktopCommands]: (
       args: DesktopCommands[K]["args"],
     ) => DesktopCommands[K]["result"] | Promise<DesktopCommands[K]["result"]>;
   } = {
     core_connection: () => core.connection(),
+    preview_desktop_storage: async () => {
+      if (process.env.NEUXBOT_CORE_URL || !desktopLogs) return { items: [] };
+      return {
+        items: [
+          {
+            category: "desktop-cache",
+            bytes: await desktopCacheSize(contents.session),
+          },
+          { category: "desktop-logs", bytes: await desktopLogs.preview() },
+        ],
+      };
+    },
+    clear_desktop_storage: async ({ category }) => {
+      if (process.env.NEUXBOT_CORE_URL || !desktopLogs)
+        throw new Error("Desktop storage is not available");
+      const removedBytes = await (category === "desktop-cache"
+        ? clearDesktopCache(contents.session)
+        : desktopLogs.clear());
+      return { removedBytes };
+    },
     get_window_appearance: () => {
       if (!windowAppearance)
         throw new Error("Window appearance is not initialized");
@@ -118,7 +142,6 @@ export function installDesktopServices(
       });
       return result.canceled ? [] : result.filePaths;
     },
-    stage_attachment: ({ name, bytes }) => attachments.stage(name, bytes),
     open_workspace_file: async ({ root, relativePath }) => {
       const error = await shell.openPath(
         await files.workspacePath(root, relativePath),
@@ -187,7 +210,6 @@ export function installDesktopServices(
   const releaseViews = () => {
     for (const subscription of eventSubscriptions.values()) subscription.stop();
     eventSubscriptions.clear();
-    void attachments.dispose();
     browser.dispose();
     browserWebviews.reset();
   };
@@ -200,7 +222,6 @@ export function installDesktopServices(
   ) => {
     if (isMainFrame && !isInPlace) {
       releaseViews();
-      attachments = createAttachmentStaging();
       browser = new BrowserManager(window, (event) =>
         emit("browser-navigation", event),
       );

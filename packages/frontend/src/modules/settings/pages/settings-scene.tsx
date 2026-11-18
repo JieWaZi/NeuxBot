@@ -43,6 +43,12 @@ const IntegrationsSection = lazy(() =>
   })),
 );
 
+const StorageSettings = lazy(() =>
+  import("../components/storage-settings").then((module) => ({
+    default: module.StorageSettings,
+  })),
+);
+
 function GeneralSettings() {
   const { t } = useTranslation("appSettings");
   const {
@@ -210,6 +216,7 @@ export function SettingsScene({
   const { t } = useTranslation("appSettings");
   const sectionKey = {
     general: "general",
+    storage: "storage",
     agents: "runtimeEnvironments",
     integrations: "integrations",
   }[section];
@@ -254,6 +261,7 @@ export function SettingsScene({
                   </>
                 }
               >
+                {section === "storage" ? <StorageSettings /> : null}
                 {section === "general" ? <GeneralSettings /> : null}
                 {section === "agents" ? (
                   <RuntimeEnvironmentsSection

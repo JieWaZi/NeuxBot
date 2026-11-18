@@ -47,6 +47,12 @@ type remoteIndex struct {
 	archiveFlight *indexRefresh
 	// archivePending 记录预取期间发布的新索引，当前批次结束后补齐。
 	archivePending bool
+	// archiveEpoch 使清理前已接纳的索引更新不能重新提交归档预取。
+	archiveEpoch uint64
+	// archivePaused 阻止手动清理期间创建新的归档预取。
+	archivePaused bool
+	// archiveCancel 取消预取拥有的下载，不影响安装持有的读取。
+	archiveCancel context.CancelFunc
 	// archiveWorkers 让 Core 退出等待全部归档工作。
 	archiveWorkers sync.WaitGroup
 	// directory 保存来源目录、公开资料与完整归档。
@@ -65,6 +71,8 @@ type remoteIndex struct {
 	recoveryDocumentation bool
 	// 快照与状态读写保护
 	mu sync.RWMutex
+	// snapshotRevision 让历史缓存回收复核原目录引用仍是当前版本。
+	snapshotRevision uint64
 	// 当前已核验的持久快照
 	snapshot storedIndex
 	// 对外同步状态
@@ -89,6 +97,10 @@ type remoteIndex struct {
 type indexRefresh struct {
 	// done 在结果发布后关闭。
 	done chan struct{}
+	// epoch 是接纳本次刷新时的归档清理代次。
+	epoch uint64
+	// prefetch 表示本次刷新来自启动或显式目录刷新，允许预取。
+	prefetch bool
 	// err 是本次核验错误，不被下一次核验覆盖。
 	err error
 }
@@ -209,13 +221,13 @@ func sourceErrorCode(err error) string {
 // Refresh 显式核验当前目录；并发请求共享同一次同步，失败继续保留旧快照。
 func Refresh(ctx context.Context, source string) error {
 	if value, ok := remoteIndexes.Load(source); ok {
-		return value.(*remoteIndex).refreshCurrent(ctx)
+		return value.(*remoteIndex).refreshCurrent(ctx, true)
 	}
 	if !httpAddress(source) {
 		_, err := List(source)
 		return err
 	}
-	return remoteSource(source).refreshCurrent(ctx)
+	return remoteSource(source).refreshCurrent(ctx, true)
 }
 
 // RefreshInBackground 接纳 Core 持有的轻索引更新，归档预取使用独立完成边界。
@@ -230,30 +242,34 @@ func RefreshInBackground(source string) error {
 }
 
 // beginRefresh 在返回前预约唯一在途身份，避免后台协程尚未运行时重复接纳。
-func (index *remoteIndex) beginRefresh() (*indexRefresh, bool, error) {
+func (index *remoteIndex) beginRefresh(prefetch bool) (*indexRefresh, bool, error) {
 	index.mu.Lock()
 	defer index.mu.Unlock()
 	if index.ctx.Err() != nil {
 		return nil, false, status_error.PluginDistributionUnavailable
 	}
 	if index.flight != nil {
+		if prefetch && !index.archivePaused {
+			index.flight.prefetch = true
+			index.flight.epoch = index.archiveEpoch
+		}
 		return index.flight, false, nil
 	}
-	flight := &indexRefresh{done: make(chan struct{})}
+	flight := &indexRefresh{done: make(chan struct{}), epoch: index.archiveEpoch, prefetch: prefetch && !index.archivePaused}
 	index.flight = flight
 	return flight, true, nil
 }
 
 func (index *remoteIndex) refreshInBackground() (*indexRefresh, error) {
-	flight, started, err := index.beginRefresh()
+	flight, started, err := index.beginRefresh(true)
 	if started {
 		go index.runRefresh(index.ctx, flight)
 	}
 	return flight, err
 }
 
-func (index *remoteIndex) refreshCurrent(ctx context.Context) error {
-	flight, started, err := index.beginRefresh()
+func (index *remoteIndex) refreshCurrent(ctx context.Context, prefetch bool) error {
+	flight, started, err := index.beginRefresh(prefetch)
 	if err != nil {
 		return err
 	}
@@ -273,11 +289,14 @@ func (index *remoteIndex) runRefresh(ctx context.Context, flight *indexRefresh) 
 	fetchCtx, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(index.ctx, cancel)
 	flight.err = index.fetch(fetchCtx)
-	if index.assets && fetchCtx.Err() == nil {
-		index.startArchivePrefetch()
-	}
+	completed := fetchCtx.Err() == nil
 	stop()
 	cancel()
+	index.mu.Lock()
+	if index.assets && completed && len(index.snapshot.Content) != 0 && flight.prefetch && !index.archivePaused && flight.epoch == index.archiveEpoch {
+		index.startArchivePrefetch()
+	}
+	index.mu.Unlock()
 	if index.changed != nil && index.ctx.Err() == nil {
 		index.changed()
 	}
@@ -423,6 +442,7 @@ func (index *remoteIndex) fetch(ctx context.Context) error {
 	index.mu.Lock()
 	defer index.mu.Unlock()
 	index.snapshot = next
+	index.snapshotRevision++
 	index.err = nil
 	index.state = SourceState{State: "available", FetchedAt: next.FetchedAt}
 	if !httpAddress(index.source) {
@@ -457,9 +477,8 @@ func (index *remoteIndex) save(next storedIndex) error {
 }
 
 // startArchivePrefetch 将可重建的归档缓存工作交给 Core，不延长索引请求。
+// 调用方持有 index.mu。
 func (index *remoteIndex) startArchivePrefetch() {
-	index.mu.Lock()
-	defer index.mu.Unlock()
 	if index.ctx.Err() != nil {
 		return
 	}
@@ -469,25 +488,37 @@ func (index *remoteIndex) startArchivePrefetch() {
 	}
 	flight := &indexRefresh{done: make(chan struct{})}
 	index.archiveFlight = flight
+	ctx, cancel := context.WithCancel(index.ctx)
+	index.archiveCancel = cancel
 	index.archiveWorkers.Add(1)
-	go index.runArchivePrefetch(flight)
+	go index.runArchivePrefetch(ctx, flight)
 }
 
-func (index *remoteIndex) runArchivePrefetch(flight *indexRefresh) {
+func (index *remoteIndex) runArchivePrefetch(ctx context.Context, flight *indexRefresh) {
 	defer index.archiveWorkers.Done()
 	for {
-		if err := index.prefetchArchives(index.ctx); err != nil && index.ctx.Err() == nil {
+		index.mu.RLock()
+		current := index.state.State == "available" || index.state.State == "local"
+		index.mu.RUnlock()
+		if current {
+			if err := pruneUnreferencedArtifacts(ctx, index); err != nil && ctx.Err() == nil {
+				logx.Warnf("plugin archive prune failed: error_code=%s", sourceErrorCode(err))
+			}
+		}
+		if err := index.prefetchArchives(ctx); err != nil && ctx.Err() == nil {
 			// 归档失败不抹去已经发布的目录；安装仍按同一摘要重试真实包。
 			logx.Warnf("plugin archive prefetch failed: error_code=%s", sourceErrorCode(err))
 		}
 		index.mu.Lock()
-		if index.archivePending && index.ctx.Err() == nil {
+		if index.archivePending && ctx.Err() == nil {
 			index.archivePending = false
 			index.mu.Unlock()
 			continue
 		}
 		index.archivePending = false
 		index.archiveFlight = nil
+		index.archiveCancel()
+		index.archiveCancel = nil
 		close(flight.done)
 		index.mu.Unlock()
 		return

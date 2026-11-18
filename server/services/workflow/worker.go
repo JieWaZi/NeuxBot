@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"path/filepath"
 	"strings"
 	"time"
@@ -500,7 +501,13 @@ func (s *Service) workerCancellationUnknown(ctx context.Context, effect models.W
 }
 
 func (s *Service) finishEffect(ctx context.Context, effect models.WorkflowEffect, receipt WorkerReceipt, failure error) {
-	err := s.state.MutateEffect(ctx, effect.RunID, effect.ID, func(ctx context.Context, state *controllers.WorkflowRunState, current *models.WorkflowEffect) error {
+	release, err := chatstorage.AcquireReferences(s.dataDirectory, receipt.ChatID)
+	if err != nil {
+		logx.Errorf("defer workflow worker receipt while chat is busy: effect_id=%s error=%v", effect.ID, err)
+		return
+	}
+	defer release()
+	err = s.state.MutateEffect(ctx, effect.RunID, effect.ID, func(ctx context.Context, state *controllers.WorkflowRunState, current *models.WorkflowEffect) error {
 		if workflowstate.StepTerminal(current.Status) || current.Status == constants.WorkflowStepStatusUnknown {
 			return nil
 		}

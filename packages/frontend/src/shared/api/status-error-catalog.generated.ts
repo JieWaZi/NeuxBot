@@ -1121,6 +1121,19 @@ export const statusErrorCatalog = {
       },
     ],
   },
+  CoreStorageInUse: {
+    code: 40900009701,
+    en: [
+      {
+        text: "another Core is using the storage directory",
+      },
+    ],
+    zh: [
+      {
+        text: "存储目录已由其他 Core 使用",
+      },
+    ],
+  },
   CoreTokenGenerationFailed: {
     code: 50000000030,
     en: [
@@ -3078,6 +3091,110 @@ export const statusErrorCatalog = {
       },
       {
         field: "VersionID",
+      },
+    ],
+  },
+  StorageCleanupFailed: {
+    code: 50000009705,
+    en: [
+      {
+        text: "storage cleanup failed",
+      },
+    ],
+    zh: [
+      {
+        text: "存储清理失败",
+      },
+    ],
+  },
+  StoragePolicyConflict: {
+    code: 40900009703,
+    en: [
+      {
+        text: "the storage policy changed; refresh before retrying",
+      },
+    ],
+    zh: [
+      {
+        text: "存储策略已变化，请刷新后重试",
+      },
+    ],
+  },
+  StoragePolicyInvalid: {
+    code: 50000009701,
+    en: [
+      {
+        text: "the storage policy is unavailable",
+      },
+    ],
+    zh: [
+      {
+        text: "存储策略不可用",
+      },
+    ],
+  },
+  StoragePreviewExpired: {
+    code: 40900009702,
+    en: [
+      {
+        text: "the cleanup preview expired; preview again",
+      },
+    ],
+    zh: [
+      {
+        text: "清理预览已失效，请重新预览",
+      },
+    ],
+  },
+  StorageRootInvalid: {
+    code: 50000009702,
+    en: [
+      {
+        text: "could not read the storage root",
+      },
+    ],
+    zh: [
+      {
+        text: "无法读取存储目录",
+      },
+    ],
+  },
+  StorageScanIncomplete: {
+    code: 50000009703,
+    en: [
+      {
+        text: "the storage measurement is incomplete",
+      },
+    ],
+    zh: [
+      {
+        text: "存储统计不完整",
+      },
+    ],
+  },
+  StorageSnapshotExpired: {
+    code: 40900009704,
+    en: [
+      {
+        text: "storage measurements changed; return to the first page",
+      },
+    ],
+    zh: [
+      {
+        text: "存储统计已更新，请返回第一页",
+      },
+    ],
+  },
+  StorageVolumeUnavailable: {
+    code: 50000009704,
+    en: [
+      {
+        text: "disk capacity is unavailable",
+      },
+    ],
+    zh: [
+      {
+        text: "无法读取磁盘容量",
       },
     ],
   },

@@ -878,3 +878,33 @@ const (
 	// @errEN the partner profile token count could not be calculated
 	WakerProfileTokenizationFailed StatusError = http.StatusInternalServerError*1e8 + 9100
 )
+
+const (
+	// @errZH 存储目录已由其他 Core 使用
+	// @errEN another Core is using the storage directory
+	CoreStorageInUse StatusError = http.StatusConflict*1e8 + 9701
+	// @errZH 清理预览已失效，请重新预览
+	// @errEN the cleanup preview expired; preview again
+	StoragePreviewExpired StatusError = http.StatusConflict*1e8 + 9702
+	// @errZH 存储策略已变化，请刷新后重试
+	// @errEN the storage policy changed; refresh before retrying
+	StoragePolicyConflict StatusError = http.StatusConflict*1e8 + 9703
+	// @errZH 存储统计已更新，请返回第一页
+	// @errEN storage measurements changed; return to the first page
+	StorageSnapshotExpired StatusError = http.StatusConflict*1e8 + 9704
+	// @errZH 存储策略不可用
+	// @errEN the storage policy is unavailable
+	StoragePolicyInvalid StatusError = http.StatusInternalServerError*1e8 + 9701
+	// @errZH 无法读取存储目录
+	// @errEN could not read the storage root
+	StorageRootInvalid StatusError = http.StatusInternalServerError*1e8 + 9702
+	// @errZH 存储统计不完整
+	// @errEN the storage measurement is incomplete
+	StorageScanIncomplete StatusError = http.StatusInternalServerError*1e8 + 9703
+	// @errZH 无法读取磁盘容量
+	// @errEN disk capacity is unavailable
+	StorageVolumeUnavailable StatusError = http.StatusInternalServerError*1e8 + 9704
+	// @errZH 存储清理失败
+	// @errEN storage cleanup failed
+	StorageCleanupFailed StatusError = http.StatusInternalServerError*1e8 + 9705
+)

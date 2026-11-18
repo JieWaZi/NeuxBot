@@ -56,8 +56,8 @@ type MessageCursor = {
   beforeSequence: number;
 };
 
-export const chatListKey = (wakerId: string) =>
-  ["chats", "list", wakerId] as const;
+import { chatListKey } from "@/shared/api/chat-list-key";
+export { chatListKey };
 
 export const chatMessagesKey = (chatId: string) =>
   ["chats", "messages", chatId] as const;

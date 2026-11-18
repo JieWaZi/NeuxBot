@@ -1,15 +1,15 @@
 import type { HostService } from "@neuxbot/platform-contracts/services";
 import { uploadFileBytesLimit } from "@neuxbot/platform-contracts/upload-byte-limits";
 import { platform } from "@neuxbot/frontend/platform";
+import { createCoreUploads } from "@neuxbot/frontend/core-uploads";
 import { selectCoreDirectory } from "../shell/directory-picker";
 import { webText } from "../i18n";
-import { apiLanguageHeaders } from "@/shared/api/language-headers";
+
+const uploads = createCoreUploads(() => platform().getConnection());
 
 /** 浏览器只处理用户选择与下载，资源授权与执行留给 Core。 */
 export const webHost: HostService = {
-  async discard_attachment({ sourcePath }) {
-    await discardUpload(sourcePath);
-  },
+  ...uploads,
   async save_file({ bytes, fileName }) {
     const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)]));
     const anchor = document.createElement("a");
@@ -41,17 +41,19 @@ export const webHost: HostService = {
         if (file.size > uploadFileBytesLimit)
           throw new Error(webText("uploadTooLarge"));
         refs.push(
-          await stageFile(file.name, new Uint8Array(await file.arrayBuffer())),
+          await uploads.stage_attachment({
+            name: file.name,
+            bytes: new Uint8Array(await file.arrayBuffer()),
+          }),
         );
       }
       return refs;
     } catch (error) {
-      await Promise.allSettled(refs.map(discardUpload));
+      await Promise.allSettled(
+        refs.map((sourcePath) => uploads.discard_attachment({ sourcePath })),
+      );
       throw error;
     }
-  },
-  async stage_attachment({ name, bytes }) {
-    return stageFile(name, bytes);
   },
   async open_external_url({ url }) {
     const target = new URL(url);
@@ -63,47 +65,3 @@ export const webHost: HostService = {
     return () => undefined;
   },
 };
-
-async function stageFile(name: string, bytes: Uint8Array): Promise<string> {
-  const connection = await platform().getConnection();
-  const response = await fetch(
-    `/api/v1/uploads?${new URLSearchParams({ name })}`,
-    {
-      method: "POST",
-      credentials: "same-origin",
-      headers: {
-        ...apiLanguageHeaders(),
-        "Content-Type": "application/octet-stream",
-        "X-Bot-CSRF": connection.csrfToken ?? "",
-      },
-      body: new Uint8Array(bytes),
-    },
-  );
-  if (response.status === 401) {
-    window.dispatchEvent(new Event("bot:web-session-expired"));
-    throw new Error(webText("expired"));
-  }
-  if (!response.ok) throw new Error(webText("uploadFailed"));
-  const result: unknown = await response.json();
-  if (
-    !result ||
-    typeof result !== "object" ||
-    !("sourcePath" in result) ||
-    typeof result.sourcePath !== "string"
-  )
-    throw new Error(webText("uploadFailed"));
-  return result.sourcePath;
-}
-
-export async function discardUpload(sourcePath: string): Promise<void> {
-  if (!sourcePath.startsWith("upload:")) return;
-  const connection = await platform().getConnection();
-  await fetch(`/api/v1/uploads?${new URLSearchParams({ sourcePath })}`, {
-    method: "DELETE",
-    credentials: "same-origin",
-    headers: {
-      ...apiLanguageHeaders(),
-      "X-Bot-CSRF": connection.csrfToken ?? "",
-    },
-  });
-}

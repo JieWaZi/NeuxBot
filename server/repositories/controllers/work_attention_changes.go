@@ -39,7 +39,7 @@ func (c *chatController) chatAttentionChanges(ctx context.Context, id string, fi
 	if _, enabled := c.db.Get(eventPublisherSetting); !enabled {
 		return nothing, nil
 	}
-	keys := []string{"title", "active_execution_id", "waiting_approval", "pending_approvals", "waiting_elicitation", "pending_elicitations", "last_ended_execution_status", "last_ended_execution_id", "hidden_from_waker_history"}
+	keys := []string{"retention_protected", "title", "active_execution_id", "waiting_approval", "pending_approvals", "waiting_elicitation", "pending_elicitations", "last_ended_execution_status", "last_ended_execution_id", "hidden_from_waker_history"}
 	needed := false
 	for _, key := range keys {
 		if _, exists := fields[key]; exists {
@@ -54,11 +54,16 @@ func (c *chatController) chatAttentionChanges(ctx context.Context, id string, fi
 		publishCommittedChange(ctx, c.db, "work-board", eventsResource("chat", id))
 	}
 	var old models.Chat
-	if err := controllerDB(ctx, c.db).Select("id", "waker_id", "title", "active_execution_id", "waiting_approval", "pending_approvals", "waiting_elicitation", "pending_elicitations", "last_ended_execution_status", "last_ended_execution_id", "hidden_from_waker_history").Where("id = ?", id).First(&old).Error; err != nil {
+	if err := controllerDB(ctx, c.db).Select("id", "retention_protected", "waker_id", "title", "active_execution_id", "waiting_approval", "pending_approvals", "waiting_elicitation", "pending_elicitations", "last_ended_execution_status", "last_ended_execution_id", "hidden_from_waker_history").Where("id = ?", id).First(&old).Error; err != nil {
 		_ = databaseError("capture_chat_notification_changes", id, err)
 		return changed, nil
 	}
 	current := old
+	if protected, ok := fields["retention_protected"].(bool); ok && protected != old.RetentionProtected {
+		return func() {
+			publishCommittedChange(ctx, c.db, "work-board", eventsResource("chat", id), eventsResource("waker", old.WakerID))
+		}, nil
+	}
 	if value, ok := fields["title"].(string); ok {
 		current.Title = value
 	}
