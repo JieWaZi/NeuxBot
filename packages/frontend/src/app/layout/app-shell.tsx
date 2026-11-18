@@ -160,6 +160,8 @@ const IMIntegrationSettingsContent = lazy(() =>
 const titlebarActionClass =
   "border-transparent bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground";
 
+const showConversationTabAttention = false;
+
 // 导航只跟随身份和标题；执行序号、配置及成员详情仍由所属页面消费。
 function selectChatNavigation(data: GetChatResponse) {
   const chat = data.chat;
@@ -951,6 +953,13 @@ function AppShellContent({
                       : []),
                   ...memberTabs,
                 ].map((tab) => {
+                  const presentedTab = {
+                    ...tab,
+                    separatorBefore: tab.id === memberTabs[0]?.id,
+                    label: tab.customLabel ?? tab.label,
+                  };
+                  if (!showConversationTabAttention) return presentedTab;
+
                   const direct = chatRouteTabs.find(
                     (entry) => entry.tab.id === tab.id,
                   );
@@ -969,9 +978,7 @@ function AppShellContent({
                     unread: reading?.unreadMessageCount,
                   });
                   return {
-                    ...tab,
-                    separatorBefore: tab.id === memberTabs[0]?.id,
-                    label: tab.customLabel ?? tab.label,
+                    ...presentedTab,
                     indicator: mark ? (
                       <ConversationAttentionMark mark={mark} variant="tab" />
                     ) : undefined,

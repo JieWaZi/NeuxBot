@@ -947,27 +947,30 @@ describe("AppShell 伙伴导航", () => {
   });
 
   it.each([
-    { requestKinds: ["approval"], nativeState: "waiting-approval" },
-    { requestKinds: ["input"], nativeState: "waiting-answer" },
-    { requestKinds: [], nativeState: "working" },
+    { status: "待审批", requestKinds: ["approval"], unread: 2 },
+    { status: "待回答", requestKinds: ["input"] },
+    { status: "运行中", running: true },
+    { status: "失败", failed: true },
+    { status: "未读", unread: 2 },
   ])(
-    "会话标签使用 Bloub 的 $nativeState 图形",
-    async ({ requestKinds, nativeState }) => {
+    "会话标签隐藏$status状态效果",
+    async ({ requestKinds, running, failed, unread }) => {
       executorAttentionFixture.set("waker-1", {
         chats: [
           {
             work: { kind: "chat", id: "chat-a" },
-            activity: "running",
+            activity: running ? "running" : "idle",
+            lastStatus: failed ? "failed" : undefined,
             requestKinds,
+            unreadMessageCount: unread,
           },
         ],
       });
       renderShell();
 
       const tab = await screen.findByRole("tab", { name: /会话 chat-a/ });
-      expect(
-        tab.querySelector(`[data-native-attention="${nativeState}"]`),
-      ).toBeInTheDocument();
+      expect(tab.querySelector("[data-conversation-attention]")).toBeNull();
+      expect(tab).not.toHaveAttribute("aria-description");
     },
   );
 
