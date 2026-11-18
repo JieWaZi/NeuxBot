@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useRef, useState, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -28,12 +28,15 @@ export function TeamNavigationMenu({
   children,
   detail,
   onDeleted,
+  onNewChat,
 }: {
   children: ReactElement;
   detail: ChannelDetail;
   onDeleted: () => void;
+  onNewChat: () => void;
 }) {
   const { t } = useTranslation("team");
+  const { t: common } = useTranslation("common");
   const client = useQueryClient();
   const workspace = useSceneWorkspace("team-management");
   const [dialog, setDialog] = useState<"edit" | "delete">();
@@ -68,6 +71,10 @@ export function TeamNavigationMenu({
             if (!dialog) origin.current?.focus();
           }}
         >
+          <ContextMenuItem onSelect={onNewChat}>
+            <Plus />
+            {common("partnerNavigation.newChat")}
+          </ContextMenuItem>
           <ContextMenuItem onSelect={() => setDialog("edit")}>
             <Pencil />
             {t("edit")}

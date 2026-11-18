@@ -55,7 +55,6 @@ function NavigationHarness({
       mode={mode}
       onManageEntities={() => undefined}
       onModeChange={setMode}
-      onNewChat={() => undefined}
       onReorder={() => undefined}
       onSelectPartner={onSelectPartner}
       onSelectTeam={onSelectTeam}
@@ -65,6 +64,49 @@ function NavigationHarness({
 }
 
 describe("EntityNavigation", () => {
+  it("悬停伙伴名称和行内操作时保持同一头像表情，离开整行后恢复", async () => {
+    const random = vi.spyOn(Math, "random").mockReturnValue(0.6);
+    onTestFinished(() => random.mockRestore());
+    const user = userEvent.setup();
+    const { container } = render(
+      <EntityNavigation
+        collapsed={false}
+        items={[
+          {
+            id: "waker-1",
+            key: "waker:waker-1",
+            kind: "waker",
+            waker: {
+              id: "waker-1",
+              name: "伙伴一",
+              avatar: "bloub:plush:nuage:curieux:38bdf8",
+            } as Waker,
+          },
+        ]}
+        mode="waker"
+        onManageEntities={() => undefined}
+        onModeChange={() => undefined}
+        onReorder={() => undefined}
+        onSelectPartner={() => undefined}
+        onSelectTeam={() => undefined}
+        selectedKey="waker:waker-1"
+      />,
+    );
+    const avatar = container.querySelector("svg[data-companion-avatar]");
+    expect(avatar).toHaveAttribute("data-expression", "curieux");
+
+    await user.hover(screen.getByRole("button", { name: "伙伴一" }));
+    const expression = avatar?.getAttribute("data-expression");
+    expect(expression).not.toBe("curieux");
+
+    const profile = screen.getByRole("button", { name: "查看 伙伴一 的资料" });
+    await user.hover(profile);
+    expect(avatar).toHaveAttribute("data-expression", expression);
+
+    await user.unhover(profile);
+    expect(avatar).toHaveAttribute("data-expression", "curieux");
+  });
+
   it.each([false, true])(
     "伙伴头像在展开和紧凑导航共用等待、工作和未读状态 (%s)",
     (collapsed) => {
@@ -105,7 +147,6 @@ describe("EntityNavigation", () => {
           mode="waker"
           onManageEntities={() => undefined}
           onModeChange={() => undefined}
-          onNewChat={() => undefined}
           onReorder={() => undefined}
           onSelectPartner={onSelectPartner}
           onSelectTeam={() => undefined}
@@ -181,7 +222,6 @@ describe("EntityNavigation", () => {
           mode="team"
           onManageEntities={() => undefined}
           onModeChange={() => undefined}
-          onNewChat={() => undefined}
           onReorder={() => undefined}
           onSelectPartner={() => undefined}
           onSelectTeam={() => undefined}
@@ -226,7 +266,6 @@ describe("EntityNavigation", () => {
         mode="waker"
         onManageEntities={() => undefined}
         onModeChange={() => undefined}
-        onNewChat={() => undefined}
         onReorder={() => undefined}
         onSelectPartner={onSelectPartner}
         onSelectTeam={() => undefined}
@@ -326,7 +365,6 @@ describe("EntityNavigation", () => {
       mode: "team" as const,
       onManageEntities: () => undefined,
       onModeChange: () => undefined,
-      onNewChat: () => undefined,
       onReorder: () => undefined,
       onSelectPartner: () => undefined,
       onSelectTeam: () => undefined,
@@ -374,7 +412,6 @@ describe("EntityNavigation", () => {
         mode="waker"
         onManageEntities={() => undefined}
         onModeChange={() => undefined}
-        onNewChat={() => undefined}
         onReorder={() => undefined}
         onSelectPartner={() => undefined}
         onSelectTeam={() => undefined}
@@ -390,7 +427,10 @@ describe("EntityNavigation", () => {
     );
   });
 
-  it("展开态团队行把组合头像约束在导航头像槽内", () => {
+  it("展开态团队行保留头像槽，并在悬停整行时触发头像表情", async () => {
+    const random = vi.spyOn(Math, "random").mockReturnValue(0.6);
+    onTestFinished(() => random.mockRestore());
+    const user = userEvent.setup();
     render(
       <EntityNavigation
         collapsed={false}
@@ -412,7 +452,6 @@ describe("EntityNavigation", () => {
         mode="team"
         onManageEntities={() => undefined}
         onModeChange={() => undefined}
-        onNewChat={() => undefined}
         onReorder={() => undefined}
         onSelectPartner={() => undefined}
         onSelectTeam={() => undefined}
@@ -422,44 +461,23 @@ describe("EntityNavigation", () => {
 
     const row = screen.getByRole("button", { name: "测试" }).closest("div");
     const avatarSlot = row?.querySelector(".size-avatar-navigation");
-    expect(row).toHaveClass("grid-cols-[auto_minmax(0,1fr)_auto]");
+    expect(row).toHaveClass("grid-cols-[auto_minmax(0,1fr)]");
     expect(avatarSlot?.parentElement).toHaveClass("inline-flex", "shrink-0");
     expect(avatarSlot).toHaveClass("inline-grid", "size-avatar-navigation");
+
+    const avatar = avatarSlot?.querySelector("svg[data-companion-avatar]");
+    const resting = avatar?.getAttribute("data-expression");
+    await user.hover(screen.getByRole("button", { name: "测试" }));
+    const expression = avatar?.getAttribute("data-expression");
+    expect(expression).not.toBe(resting);
+
+    const teamAvatar = screen.getByRole("img");
+    await user.hover(teamAvatar);
+    expect(avatar).toHaveAttribute("data-expression", expression);
+
+    await user.unhover(teamAvatar);
+    expect(avatar).toHaveAttribute("data-expression", resting);
   });
-
-  it.each(["waker", "team"] as const)(
-    "%s 行加号打开新会话，且不触发行选择",
-    async (mode) => {
-      const user = userEvent.setup();
-      const onNewChat = vi.fn();
-      const onSelectPartner = vi.fn();
-      const onSelectTeam = vi.fn();
-      const entityItems = items.filter((item) => item.kind === mode);
-      render(
-        <EntityNavigation
-          collapsed={false}
-          items={entityItems}
-          mode={mode}
-          onManageEntities={() => undefined}
-          onModeChange={() => undefined}
-          onNewChat={onNewChat}
-          onReorder={() => undefined}
-          onSelectPartner={onSelectPartner}
-          onSelectTeam={onSelectTeam}
-          selectedKey="waker:waker-1"
-        />,
-      );
-
-      const firstButton = screen.getAllByRole("button", {
-        name: "新建会话",
-      })[0];
-      if (!firstButton) throw new Error("缺少新建会话按钮");
-      await user.click(firstButton);
-      expect(onNewChat).toHaveBeenCalledExactlyOnceWith(entityItems[0]);
-      expect(onSelectPartner).not.toHaveBeenCalled();
-      expect(onSelectTeam).not.toHaveBeenCalled();
-    },
-  );
 
   it("悬浮身份选择后进入会话层并支持返回或关闭", async () => {
     const user = userEvent.setup();
@@ -470,7 +488,6 @@ describe("EntityNavigation", () => {
         mode="waker"
         onManageEntities={() => undefined}
         onModeChange={() => undefined}
-        onNewChat={() => undefined}
         onReorder={() => undefined}
         onSelectPartner={onSelectPartner}
         onSelectTeam={() => undefined}
@@ -545,7 +562,6 @@ describe("EntityNavigation", () => {
         mode="waker"
         onManageEntities={() => undefined}
         onModeChange={() => undefined}
-        onNewChat={() => undefined}
         onReorder={() => undefined}
         onSelectPartner={() => undefined}
         onSelectTeam={() => undefined}

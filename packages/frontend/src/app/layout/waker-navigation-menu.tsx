@@ -7,6 +7,7 @@ import {
   FolderInput,
   FolderPlus,
   Pencil,
+  Plus,
   Trash2,
 } from "lucide-react";
 import { useId, useRef, useState, type ReactElement } from "react";
@@ -51,6 +52,7 @@ export function WakerNavigationMenu({
   onCopied,
   onDeleted,
   onMove,
+  onNewChat,
   waker,
   wakerId,
 }: {
@@ -59,6 +61,7 @@ export function WakerNavigationMenu({
   onCopied: (newId: string) => void;
   onDeleted: () => void;
   onMove: (groupName: string) => void;
+  onNewChat: () => void;
   waker: Waker;
   wakerId: string;
 }) {
@@ -137,6 +140,10 @@ export function WakerNavigationMenu({
             if (!dialog) origin.current?.focus();
           }}
         >
+          <ContextMenuItem onSelect={onNewChat}>
+            <Plus />
+            {common("partnerNavigation.newChat")}
+          </ContextMenuItem>
           <ContextMenuItem
             disabled={markingUnread}
             onSelect={() => void markUnread()}

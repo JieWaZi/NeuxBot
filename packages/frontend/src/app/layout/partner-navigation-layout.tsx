@@ -238,11 +238,6 @@ function PartnerNavigationLayoutContent({
       { flushSync: true },
     );
   };
-  const openNewEntityChat = (item: NavigationEntity) =>
-    openNewOwnerChat({
-      kind: item.kind === "waker" ? "waker" : "team",
-      id: item.id,
-    });
   const location = useLocation();
   const workflowChatOpen = /^\/workflows\/[^/]+(?:\/runs\/[^/]+)?$/.test(
     location.pathname,
@@ -484,7 +479,6 @@ function PartnerNavigationLayoutContent({
                 entityStatus={entityStatus}
                 mode={preferences.entityMode}
                 onManageEntities={onManageEntities}
-                onNewChat={openNewEntityChat}
                 onModeChange={(entityMode) =>
                   onPreferencesChange((current) => ({
                     ...current,
@@ -504,6 +498,9 @@ function PartnerNavigationLayoutContent({
                   <TeamNavigationMenu
                     key={item.key}
                     detail={item.team}
+                    onNewChat={() =>
+                      openNewOwnerChat({ kind: "team", id: item.id })
+                    }
                     onDeleted={() => {
                       onPreferencesChange((current) =>
                         current.currentRailKey === item.key
@@ -526,6 +523,9 @@ function PartnerNavigationLayoutContent({
                     waker={item.waker}
                     wakerId={item.id}
                     groups={preferences.wakerGroups ?? []}
+                    onNewChat={() =>
+                      openNewOwnerChat({ kind: "waker", id: item.id })
+                    }
                     onMove={(groupName) => moveWaker(item.id, groupName)}
                     onCopied={(newId) => {
                       onPreferencesChange((current) => {

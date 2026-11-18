@@ -89,7 +89,6 @@ type EntityNavigationProps = {
   mode: PartnerNavigationPreferences["entityMode"];
   onManageEntities: (mode: PartnerNavigationPreferences["entityMode"]) => void;
   onModeChange: (mode: PartnerNavigationPreferences["entityMode"]) => void;
-  onNewChat: (item: NavigationEntity) => void;
   onReorder: (
     sourceId: string,
     targetId: string,
@@ -317,7 +316,6 @@ function EntityRow({
   item,
   onHoverEnd,
   onHoverStart,
-  onNewChat,
   onSelectPartner,
   onSelectTeam,
   onShowcaseWaker,
@@ -328,7 +326,6 @@ function EntityRow({
   item: NavigationEntity;
   onHoverEnd?: () => void;
   onHoverStart?: () => void;
-  onNewChat: (item: NavigationEntity) => void;
   onSelectPartner: (partnerId: string) => void;
   onSelectTeam: (channelId: string) => void;
   onShowcaseWaker?: (waker: Waker, origin: HTMLElement) => void;
@@ -382,13 +379,13 @@ function EntityRow({
     return (
       <div
         ref={setNodeRef}
+        data-avatar-hover-scope=""
         style={{
           transform: CSS.Transform.toString(transform),
           transition,
         }}
         className={cn(
-          "group/entity min-h-row-entity relative grid w-full min-w-0 items-center rounded-md",
-          "grid-cols-[auto_minmax(0,1fr)_auto]",
+          "min-h-row-entity relative grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center rounded-md",
           selected
             ? "bg-surface-panel text-content-primary [--team-avatar-outline:var(--surface-panel)]"
             : "hover:bg-surface-subtle [--team-avatar-outline:var(--canvas)] hover:[--team-avatar-outline:color(from_color-mix(in_srgb,var(--canvas),var(--surface-subtle))_srgb_r_g_b_/_1)]",
@@ -430,27 +427,6 @@ function EntityRow({
             ) : null}
           </span>
         </button>
-        <div className="flex items-center gap-0.5 pr-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                aria-label={t("partnerNavigation.newChat")}
-                className="opacity-0 group-focus-within/entity:opacity-100 group-hover/entity:opacity-100 hover:bg-transparent"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onNewChat(item);
-                }}
-                onPointerDown={(event) => event.stopPropagation()}
-              >
-                <Plus className="size-icon-sm" strokeWidth={1.5} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t("partnerNavigation.newChat")}</TooltipContent>
-          </Tooltip>
-        </div>
       </div>
     );
   }
@@ -506,7 +482,6 @@ export function EntityNavigation({
   mode,
   onManageEntities,
   onModeChange,
-  onNewChat,
   onReorder,
   onSelectPartner,
   onSelectTeam,
@@ -889,7 +864,6 @@ export function EntityNavigation({
                           setHoveredRailKey(item.key);
                           syncIndicator(item.key);
                         }}
-                        onNewChat={onNewChat}
                         onSelectPartner={onSelectPartner}
                         onSelectTeam={onSelectTeam}
                         onShowcaseWaker={onShowcaseWaker}
@@ -964,7 +938,6 @@ export function EntityNavigation({
                           key={item.key}
                           collapsed={false}
                           item={item}
-                          onNewChat={onNewChat}
                           onSelectPartner={onSelectPartner}
                           onSelectTeam={onSelectTeam}
                           onShowcaseWaker={onShowcaseWaker}
@@ -1028,7 +1001,6 @@ export function FloatingEntityNavigation({
   items,
   mode,
   onManageEntities,
-  onNewChat,
   renderEntityChats,
   onSelectPartner,
   onSelectTeam,
@@ -1132,10 +1104,6 @@ export function FloatingEntityNavigation({
             onManageEntities={(currentMode) => {
               setOpen(false);
               onManageEntities(currentMode);
-            }}
-            onNewChat={(item) => {
-              closePopover();
-              onNewChat(item);
             }}
             onSelectPartner={(partnerId) => {
               const item = items.find(

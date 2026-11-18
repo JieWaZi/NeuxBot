@@ -93,7 +93,9 @@ export function CompanionAvatar({
   useEffect(() => {
     if (!hoverEnabled) return;
     const target =
-      host.current?.closest<HTMLElement>("[data-avatar-hover]") ?? host.current;
+      host.current?.closest<HTMLElement>("[data-avatar-hover-scope]") ??
+      host.current?.closest<HTMLElement>("[data-avatar-hover]") ??
+      host.current;
     if (!target) return;
     const change = (source: "pointer" | "focus", active: boolean) => {
       const seed = active ? Math.random() : undefined;

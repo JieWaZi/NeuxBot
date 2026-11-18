@@ -60,7 +60,11 @@ function renderMenu() {
     <QueryClientProvider client={queryClient}>
       <WorkspaceProvider>
         <MemoryRouter>
-          <TeamNavigationMenu detail={detail} onDeleted={() => {}}>
+          <TeamNavigationMenu
+            detail={detail}
+            onDeleted={() => {}}
+            onNewChat={() => {}}
+          >
             <button data-team-nav-row>研发团队</button>
           </TeamNavigationMenu>
           <WorkspaceProbe />

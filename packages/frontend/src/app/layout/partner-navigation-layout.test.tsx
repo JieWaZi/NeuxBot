@@ -708,29 +708,49 @@ describe("PartnerNavigationLayout", () => {
     ).toBeNull();
   });
 
-  it("侧栏加号每次打开所选伙伴的独立新会话草稿", async () => {
-    const user = userEvent.setup();
-    renderLayout();
-    const first = screen.getAllByRole("button", { name: "新建会话" })[0];
-    if (!first) throw new Error("缺少新建会话按钮");
-    await user.click(first);
-    const firstRoute = new URL(
-      screen.getByTestId("current-route").textContent ?? "",
-      "https://bot.local",
-    );
-    expect(firstRoute.pathname).toBe("/chat");
-    expect(firstRoute.searchParams.get("wakerId")).toBe("waker-1");
-    expect(firstRoute.searchParams.get("draftId")).toBeTruthy();
-    await user.click(first);
-    const secondRoute = new URL(
-      screen.getByTestId("current-route").textContent ?? "",
-      "https://bot.local",
-    );
-    expect(secondRoute.searchParams.get("wakerId")).toBe("waker-1");
-    expect(secondRoute.searchParams.get("draftId")).not.toBe(
-      firstRoute.searchParams.get("draftId"),
-    );
-  });
+  it.each([
+    { mode: "waker", name: "伙伴 1", path: "/chat", wakerId: "waker-1" },
+    { mode: "team", name: "研发团队", path: "/teams/team-1", wakerId: null },
+  ] as const)(
+    "$name 通过侧栏右键或键盘菜单打开该身份的新会话",
+    async ({ mode, name, path, wakerId }) => {
+      const user = userEvent.setup();
+      renderLayout({
+        channels: [{ channel: { id: "team-1", name: "研发团队" } }],
+        navigationPreferences: { entityMode: mode },
+      });
+      const rail = screen.getByRole("navigation", { name: "伙伴" });
+      const row = within(rail).getByRole("button", { name });
+      const route = screen.getByTestId("current-route");
+      expect(
+        within(rail).queryAllByRole("button", { name: "新建会话" }),
+      ).toHaveLength(0);
+
+      fireEvent.contextMenu(row);
+      expect(route).toHaveTextContent("/chat?wakerId=waker-6");
+      await user.click(
+        await screen.findByRole("menuitem", { name: "新建会话" }),
+      );
+      const firstRoute = new URL(route.textContent ?? "", "https://bot.local");
+      expect(firstRoute.pathname).toBe(path);
+      expect(firstRoute.searchParams.get("wakerId")).toBe(wakerId);
+      expect(firstRoute.searchParams.get("draftId")).toBeTruthy();
+
+      row.focus();
+      await user.keyboard("{Shift>}{F10}{/Shift}");
+      expect(
+        await screen.findByRole("menuitem", { name: "新建会话" }),
+      ).toBeVisible();
+      await user.keyboard("{Home}{Enter}");
+      const secondRoute = new URL(route.textContent ?? "", "https://bot.local");
+      expect(secondRoute.pathname).toBe(path);
+      expect(secondRoute.searchParams.get("wakerId")).toBe(wakerId);
+      expect(secondRoute.searchParams.get("draftId")).toBeTruthy();
+      expect(secondRoute.searchParams.get("draftId")).not.toBe(
+        firstRoute.searchParams.get("draftId"),
+      );
+    },
+  );
 
   it("完整视图沿用右下角唯一入口，不叠加伙伴history按钮", async () => {
     const user = userEvent.setup();
