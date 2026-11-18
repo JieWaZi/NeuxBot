@@ -43,6 +43,8 @@ type ModelCatalogSnapshot struct {
 	QoderLoginVerified bool `json:"-"`
 	// KimiLoginVerified is a successful native credential check, independent of model discovery.
 	KimiLoginVerified bool `json:"-"`
+	// WorkBuddyLoginVerified records a successful catalog session behind CodeBuddy's native authentication gate.
+	WorkBuddyLoginVerified bool `json:"-"`
 }
 
 // ModelCatalog owns model discovery and short-lived snapshots. ProviderRuntime
@@ -138,6 +140,7 @@ func (c *ModelCatalog) ReadForRuntime(ctx context.Context, runtimeID string, req
 		previous.State, previous.ErrorCode = CatalogStale, result.ErrorCode
 		previous.QoderLoginVerified = result.QoderLoginVerified
 		previous.KimiLoginVerified = result.KimiLoginVerified
+		previous.WorkBuddyLoginVerified = result.WorkBuddyLoginVerified
 		result = previous
 	}
 	entry.result = result
@@ -242,11 +245,12 @@ func (c *ModelCatalog) readNative(ctx context.Context, request ProviderConnectio
 	if models.Models == nil {
 		return fail(status_error.AIAccountModelsUnavailable)
 	}
-	// Kimi 2.x discovery is an isolated session/new behind its native auth gate.
+	// Kimi and CodeBuddy discovery use an isolated session/new behind their native auth gates.
 	// This positive receipt differs from providers that publish models while signed out.
 	kimiLoginVerified = request.Account.Provider == constants.RuntimeIDKimi
 	return ModelCatalogSnapshot{AgentModelCatalog: models, Capabilities: client.Capabilities(), State: CatalogFresh,
-		DetectedAt: time.Now().UnixMilli(), QoderLoginVerified: qoderLoginVerified, KimiLoginVerified: kimiLoginVerified}
+		DetectedAt: time.Now().UnixMilli(), QoderLoginVerified: qoderLoginVerified, KimiLoginVerified: kimiLoginVerified,
+		WorkBuddyLoginVerified: request.Account.Provider == constants.RuntimeIDWorkBuddy}
 }
 
 func modelCatalogFailure(err error) ModelCatalogSnapshot {

@@ -73,6 +73,7 @@ export function RuntimeSystemAccountActions({
   const active = useRouteSceneActive();
   const client = useQueryClient();
   const runtimeId = runtime.id ?? "";
+  const provider = runtime.baseRuntimeId || runtimeId;
   const options = useMemo(
     () => runtimeAuthenticationOptions(runtimeId),
     [runtimeId],
@@ -193,6 +194,14 @@ export function RuntimeSystemAccountActions({
     : reconnect
       ? "agents.authentication.reconnect"
       : "login";
+  const workBuddyMethodLabel = (id?: string) =>
+    provider === "workbuddy" && id === "internal"
+      ? t("agents.authentication.wechat")
+      : provider === "workbuddy" && id === "external"
+        ? t("agents.authentication.googleGithub")
+        : undefined;
+  const singleMethodLabel =
+    methods.length === 1 ? workBuddyMethodLabel(methods[0]?.id) : undefined;
   const resultTitle =
     data?.result === "existing_login_verified" ||
     data?.result === "connection_verified"
@@ -233,7 +242,9 @@ export function RuntimeSystemAccountActions({
             else if (methods.length === 1) begin(methods[0]?.id);
           }}
         >
-          {t(inProgress ? "agents.authentication.continue" : operationTitle)}
+          {inProgress
+            ? t("agents.authentication.continue")
+            : (singleMethodLabel ?? t(operationTitle))}
         </Button>
       ) : !runtime.defaultAccountId &&
         runtime.auth === "missing" &&
@@ -348,9 +359,12 @@ export function RuntimeSystemAccountActions({
                     disabled={pending}
                     onClick={() => begin(method.id)}
                   >
-                    {methods.length === 1
-                      ? t(failed || error ? "common:retry" : operationTitle)
-                      : method.name}
+                    {methods.length === 1 && (failed || error)
+                      ? t("common:retry")
+                      : (workBuddyMethodLabel(method.id) ??
+                        (methods.length === 1
+                          ? t(operationTitle)
+                          : method.name))}
                   </Button>
                 ))
               : null}

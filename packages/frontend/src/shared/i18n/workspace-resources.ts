@@ -750,6 +750,8 @@ export const workspaceResources = {
         restarting: "正在重启",
         modelsRequireLogin: "登录后可读取模型目录。",
         authentication: {
+          wechat: "微信登录",
+          googleGithub: "Google/GitHub 登录",
           complete: "登录完成",
           preparing: "正在准备登录",
           loading: "正在读取登录方式",

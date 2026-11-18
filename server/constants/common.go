@@ -350,6 +350,10 @@ const (
 	RuntimeIDGrok = "grok"
 	// RuntimeIDWorkBuddy 通过 CodeBuddy Code 标准 ACP 提供 WorkBuddy 执行能力。
 	RuntimeIDWorkBuddy = "workbuddy"
+	// WorkBuddyWeChatAuthMethod 是原生微信登录方法。
+	WorkBuddyWeChatAuthMethod = "internal"
+	// WorkBuddyExternalAuthMethod 是原生 Google/GitHub 登录方法。
+	WorkBuddyExternalAuthMethod = "external"
 	// RuntimeIDQoder 是官方 Qoder CLI ACP 运行时。
 	RuntimeIDQoder = "qoder"
 	// RuntimeQoderCNProtocolID 仅用于按所选程序适配原生协议，不注册独立智能体。

@@ -775,6 +775,8 @@ export const baseEn = {
       restarting: "Restarting",
       modelsRequireLogin: "Sign in to read the model catalog.",
       authentication: {
+        wechat: "Sign in with WeChat",
+        googleGithub: "Sign in with Google/GitHub",
         complete: "Signed in",
         preparing: "Preparing sign-in",
         loading: "Loading sign-in methods",

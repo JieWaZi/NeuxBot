@@ -259,7 +259,10 @@ func TestRuntimeAuthenticationCapabilityMatrix(t *testing.T) {
 		// terminal 表示需要终端或现有 API 配置入口。
 		terminal bool
 	}{
-		{"codex", "chat-gpt", "agent", true, false}, {"codex", "api-key", "agent", false, false}, {"claude", "claudeai", "agent", true, false}, {"cursor", "cursor_login", "agent", true, false}, {"workbuddy", "login", "agent", true, false}, {"qoder", "login", "agent", true, false}, {"gemini", "oauth-personal", "agent", true, false}, {"gemini", "gemini-api-key", "agent", false, false}, {"grok", "grok.com/oidc", "agent", true, false}, {"kimi", "login", "agent", true, false}, {"opencode", "login", "agent", false, true}, {"pi", "pi_terminal_login", "terminal", false, true},
+		{"codex", "chat-gpt", "agent", true, false}, {"codex", "api-key", "agent", false, false}, {"claude", "claudeai", "agent", true, false}, {"cursor", "cursor_login", "agent", true, false},
+		{"workbuddy", "internal", "agent", true, false}, {"workbuddy", "external", "agent", true, false},
+		{"workbuddy", "iOA", "agent", false, false}, {"workbuddy", "selfhosted", "agent", false, false}, {"workbuddy", "unrecognized", "agent", false, false},
+		{"qoder", "login", "agent", true, false}, {"gemini", "oauth-personal", "agent", true, false}, {"gemini", "gemini-api-key", "agent", false, false}, {"grok", "grok.com/oidc", "agent", true, false}, {"kimi", "login", "agent", true, false}, {"opencode", "login", "agent", false, true}, {"pi", "pi_terminal_login", "terminal", false, true},
 	} {
 		t.Run(tc.provider+tc.id, func(t *testing.T) {
 			methods, terminal := actionableNativeMethods(tc.provider, agent.NativeAuthenticationCapabilities{Methods: []agent.NativeAuthenticationMethod{{ID: tc.id, Kind: tc.kind}}})
@@ -483,7 +486,7 @@ func TestWorkBuddyLoginReceiptIsBoundToCurrentAccount(t *testing.T) {
 
 // TestWorkBuddyAuthenticationUpdatesDetection 验证真实登录任务成功后的重检使用成功回执。
 func TestWorkBuddyAuthenticationUpdatesDetection(t *testing.T) {
-	fake := &authenticationBoundary{capabilities: agent.NativeAuthenticationCapabilities{Methods: []agent.NativeAuthenticationMethod{{ID: "browser", Kind: "agent"}}}}
+	fake := &authenticationBoundary{capabilities: agent.NativeAuthenticationCapabilities{Methods: []agent.NativeAuthenticationMethod{{ID: "internal", Kind: "agent"}}}}
 	svc := authenticationFixture(t, fake, constants.RuntimeIDWorkBuddy)
 	svc.authentication.factory = func(context.Context, agent.AccountRequest, agent.ProviderLaunch) (agent.NativeAuthenticationClient, error) {
 		return fake, nil
@@ -494,7 +497,7 @@ func TestWorkBuddyAuthenticationUpdatesDetection(t *testing.T) {
 		return request, nil
 	}
 	svc.probeProvider = svc.detectNative
-	if _, err := svc.AuthenticateRuntime(t.Context(), constants.RuntimeIDWorkBuddy, "browser"); err != nil {
+	if _, err := svc.AuthenticateRuntime(t.Context(), constants.RuntimeIDWorkBuddy, "internal"); err != nil {
 		t.Fatal(err)
 	}
 	waitAuthenticationState(t, svc, constants.RuntimeAuthenticationStateSucceeded, constants.RuntimeIDWorkBuddy)

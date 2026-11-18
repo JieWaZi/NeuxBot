@@ -155,6 +155,7 @@ func (s *service) refreshModelCatalog(ctx context.Context, environment models.Ru
 		previous.State, previous.ErrorCode = agent.CatalogStale, probed.ErrorCode
 		previous.QoderLoginVerified = probed.QoderLoginVerified
 		previous.KimiLoginVerified = probed.KimiLoginVerified
+		previous.WorkBuddyLoginVerified = probed.WorkBuddyLoginVerified
 		probed.ModelCatalogSnapshot = previous
 	}
 	if s.modelCatalogs != nil {
@@ -339,7 +340,7 @@ func (s *service) detectNative(ctx context.Context, summary agent.RuntimeSummary
 	if err != nil {
 		logx.Warnf("refresh runtime model catalog: runtime_id=%s error=%v", environment.RuntimeID, err)
 	}
-	workBuddyVerified := environment.BaseRuntimeID == constants.RuntimeIDWorkBuddy && s.workBuddyLoginVerified(ctx, environment)
+	workBuddyVerified := environment.BaseRuntimeID == constants.RuntimeIDWorkBuddy && (snapshot.WorkBuddyLoginVerified || s.workBuddyLoginVerified(ctx, environment))
 	result.Version = snapshot.Capabilities.Version
 	if snapshot.Capabilities.Version != "" {
 		result.State = agent.DetectionStateReady

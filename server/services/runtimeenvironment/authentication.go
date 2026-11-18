@@ -474,6 +474,9 @@ func actionableNativeMethods(provider string, capabilities agent.NativeAuthentic
 		if method.Kind != "agent" || capabilities.APIKeyMode || capabilities.EnvironmentCredential || provider == constants.RuntimeIDOpenCode || provider == constants.RuntimeIDPi {
 			continue
 		}
+		if provider == constants.RuntimeIDWorkBuddy && method.ID != constants.WorkBuddyWeChatAuthMethod && method.ID != constants.WorkBuddyExternalAuthMethod {
+			continue
+		}
 		// 这些广告是凭据配置或缓存恢复，不能作为用户主动网页登录执行。
 		switch method.ID {
 		case "api-key", "xai.api_key", "cached_token", "gemini-api-key", "vertex-ai":

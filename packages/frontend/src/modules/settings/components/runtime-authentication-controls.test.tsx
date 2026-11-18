@@ -12,7 +12,7 @@ import {
   RuntimeSystemAccountActions,
   runtimeAuthenticationOptions,
 } from "./runtime-authentication-controls";
-import "@/shared/i18n";
+import { i18n } from "@/shared/i18n";
 
 const { read, start, cancel, observers, recoveries, current } = vi.hoisted(
   () => ({
@@ -110,6 +110,58 @@ function changed(runtimeId = "grok") {
   };
   observers.forEach((observer) => observer.onEvent(frame));
 }
+
+it.each([
+  ["zh-CN", "微信登录", "Google/GitHub 登录"],
+  ["en-US", "Sign in with WeChat", "Sign in with Google/GitHub"],
+])(
+  "WorkBuddy 按 %s 显示登录方式并提交原生方法标识",
+  async (language, wechat, external) => {
+    await i18n.changeLanguage(language);
+    current.snapshot.methods = [
+      { id: "internal", name: "Login with WeChat", kind: "agent" },
+      { id: "external", name: "Login with Google/Github", kind: "agent" },
+    ];
+    try {
+      show("missing", "workbuddy");
+      await userEvent.click(
+        await screen.findByRole("button", {
+          name: language === "zh-CN" ? "登录" : "Sign in",
+        }),
+      );
+      expect(screen.getByRole("button", { name: wechat })).toBeVisible();
+      await userEvent.click(screen.getByRole("button", { name: external }));
+      await waitFor(() =>
+        expect(start).toHaveBeenCalledWith(
+          expect.objectContaining({
+            path: { runtimeId: "workbuddy" },
+            body: { methodId: "external" },
+          }),
+        ),
+      );
+    } finally {
+      await i18n.changeLanguage("zh-CN");
+    }
+  },
+);
+
+it("WorkBuddy 只提供一种登录方式时显示具体入口", async () => {
+  current.snapshot.methods = [
+    { id: "internal", name: "Login with WeChat", kind: "agent" },
+  ];
+  show("missing", "workbuddy");
+  await userEvent.click(
+    await screen.findByRole("button", { name: "微信登录" }),
+  );
+  await waitFor(() =>
+    expect(start).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { runtimeId: "workbuddy" },
+        body: { methodId: "internal" },
+      }),
+    ),
+  );
+});
 
 it("需要登录时直接启动系统原生认证，完成后由事件读取安全快照", async () => {
   show();

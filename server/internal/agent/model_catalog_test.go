@@ -58,6 +58,29 @@ func TestGeminiCatalogUsesNativeDataLeaseWithoutAccountEndpoint(t *testing.T) {
 	}
 }
 
+func TestWorkBuddyCatalogConfirmsNativeLoginWithoutAuthenticationJob(t *testing.T) {
+	for _, mode := range []string{"available", "signed-out"} {
+		t.Run(mode, func(t *testing.T) {
+			request := providerTestRequest(t, "workbuddy")
+			request.Launch.Environment["FIXTURE_WORKBUDDY_MODELS"] = mode
+			runtime := NewProviderRuntime(ProviderRuntimeOptions{AcquireAccount: providerTestAccount})
+			t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+			result := NewModelCatalog(runtime).ReadForRuntime(t.Context(), "workbuddy", request, "", "", true)
+			if mode == "signed-out" {
+				if result.State != CatalogSignedOut || result.WorkBuddyLoginVerified || len(result.Models) != 0 {
+					t.Fatalf("signed-out native session confirmed login: %+v", result)
+				}
+			} else if result.State != CatalogFresh || !result.WorkBuddyLoginVerified || result.DefaultID != "fixture-workbuddy-model" {
+				t.Fatalf("authenticated catalog session remained unconfirmed: %+v", result)
+			}
+			trace, err := os.ReadFile(filepath.Join(request.Account.CWD, "trace"))
+			if err != nil || !strings.Contains(string(trace), "session/new") || strings.Contains(string(trace), "session/prompt") || strings.Contains(string(trace), "\"authenticate\"") {
+				t.Fatalf("catalog must reuse the native auth gate without prompting or signing in: %s (%v)", trace, err)
+			}
+		})
+	}
+}
+
 func TestCodexCatalogKeepsOnlySameIdentityStaleAndClearsOnSignOut(t *testing.T) {
 	request := providerTestRequest(t, "codex")
 	var failure error

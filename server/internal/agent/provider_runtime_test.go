@@ -742,6 +742,13 @@ func TestProviderRuntimeChild(t *testing.T) {
 				reply["result"] = result
 			case "session/new":
 				result := map[string]any{"sessionId": "fixture-native"}
+				if provider == "workbuddy" && os.Getenv("FIXTURE_WORKBUDDY_MODELS") != "" {
+					if os.Getenv("FIXTURE_WORKBUDDY_MODELS") == "signed-out" {
+						reply["error"] = map[string]any{"code": -32000, "message": "Authentication required"}
+						break
+					}
+					result["configOptions"] = []map[string]any{{"type": "select", "id": "model", "category": "model", "name": "Model", "currentValue": "fixture-workbuddy-model", "options": []map[string]string{{"value": "fixture-workbuddy-model", "name": "Fixture"}}}}
+				}
 				if provider == "kimi" {
 					if os.Getenv("FIXTURE_KIMI_SIGNED_OUT") != "" {
 						reply["error"] = map[string]any{"code": -32000, "message": "Authentication required"}
