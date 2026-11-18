@@ -214,14 +214,15 @@ export function RightWorkbench({
       rootPath: workspaceDirectory,
       paneId,
     });
-  const openTerminal = () => {
-    if (!terminalWorkingDirectory) return;
-    dispatch({
-      type: "open-terminal",
-      title: t("terminal"),
-      rootPath: terminalWorkingDirectory,
-    });
-  };
+  const openTerminal =
+    parentChatId && terminalWorkingDirectory
+      ? () =>
+          dispatch({
+            type: "open-terminal",
+            title: t("terminal"),
+            rootPath: terminalWorkingDirectory,
+          })
+      : undefined;
   const openSideChat = () =>
     dispatch({
       type: "open-sidechat",
@@ -290,7 +291,7 @@ export function RightWorkbench({
               <Globe />
               {t("browser")}
             </DropdownMenuItem>
-            {terminalWorkingDirectory ? (
+            {openTerminal ? (
               <DropdownMenuItem onSelect={openTerminal}>
                 <TerminalSquare />
                 {t("terminal")}
@@ -455,9 +456,9 @@ export function RightWorkbench({
         <ChatBrowserView
           active={active && visible}
           chatId={parentChatId}
+          onOpenTerminal={openTerminal}
           onOpenTool={(kind) => {
             if (kind === "files" || kind === "changes") openPage(kind);
-            else if (kind === "terminal") openTerminal();
             else if (kind === "sidechat") openSideChat();
             else
               openTaskBoard(workbenchPaneWithTab(snapshot.layout, tab.id)?.id);
@@ -474,7 +475,12 @@ export function RightWorkbench({
         />
       );
     if (tab.kind === "task-board") return taskBoard;
-    if (tab.kind === "terminal" && tab.rootPath)
+    if (
+      tab.kind === "terminal" &&
+      terminalWorkingDirectory !== undefined &&
+      parentChatId &&
+      tab.rootPath
+    )
       return (
         <Suspense
           fallback={

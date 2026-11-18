@@ -39,7 +39,6 @@ type ChatWorkspaceBindingsOptions = {
   draftWorkingDirectories?: readonly string[];
   fileSource: ChatViewState["fileSource"];
   query: string;
-  terminalWorkingDirectory?: string;
   updateViewState: (patch: Partial<ChatViewState>) => void;
   workspaceDirectory: string;
   workspaceFiles: WorkspaceFile[];
@@ -48,14 +47,13 @@ type ChatWorkspaceBindingsOptions = {
   onOpenWorkbench?: () => void;
 };
 
-/** 普通与 Team 会话共用文件、链接、代码引用和终端的 workspace adapter。 */
+/** 普通与 Team 会话共用文件、链接与代码引用的 workspace adapter。 */
 export function useChatWorkspaceBindings({
   activeChatId,
   additionalWorkingDirectories,
   draftWorkingDirectories,
   fileSource,
   query,
-  terminalWorkingDirectory,
   updateViewState,
   workspaceDirectory,
   workspaceFiles,
@@ -232,16 +230,6 @@ export function useChatWorkspaceBindings({
     },
     [dispatchWorkbench, onOpenWorkbench, t, workspaceDirectory],
   );
-  const openChatTerminal = useCallback(() => {
-    if (!terminalWorkingDirectory) return;
-    openRequest.current += 1;
-    dispatchWorkbench({
-      type: "open-terminal",
-      rootPath: terminalWorkingDirectory,
-      title: t("terminal"),
-    });
-    onOpenWorkbench?.();
-  }, [dispatchWorkbench, onOpenWorkbench, t, terminalWorkingDirectory]);
   const addCodeReference = useCallback(
     (reference: ChatCodeReference) => {
       updateViewState({ codeReferenceRequest: reference });
@@ -351,7 +339,6 @@ export function useChatWorkspaceBindings({
     addCodeReference,
     openAttachmentFile,
     openBrowserLink,
-    openChatTerminal,
     openCodeReference,
     openExecutionFileChange,
     fileWorkspaceProps,

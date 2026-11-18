@@ -2295,6 +2295,35 @@ it("对话历史复用浮层并显示默认目录，关闭时保留对话输入"
 
 it("工作流主容器与工具 Tab 独立，历史切换保留各自输入并显示最新画布，新会话目录只读", async () => {
   readyCreationRuntime();
+  localStorage.setItem(
+    "bot.right-workbench.chat:chat-a",
+    JSON.stringify({
+      state: {
+        tabs: [
+          {
+            id: "old-terminal",
+            kind: "terminal",
+            title: "终端",
+            contentId: "terminal:old-terminal",
+            occurrenceId: "old-terminal",
+            navigationRevision: 1,
+            rootPath: "/tmp/workflow",
+            terminalSessionId: "existing-shell",
+          },
+        ],
+        layout: {
+          kind: "pane",
+          id: "pane:root",
+          tabIds: ["old-terminal"],
+          activeTabId: "old-terminal",
+        },
+        focusedPaneId: "pane:root",
+        fullscreen: false,
+        width: 320,
+        customWidth: false,
+      },
+    }),
+  );
   server.use(
     http.get(`${origin}/api/v1/workflows/flow`, () =>
       HttpResponse.json({
@@ -2346,8 +2375,27 @@ it("工作流主容器与工具 Tab 独立，历史切换保留各自输入并�
         },
       }),
     ),
-    http.get(`${origin}/api/v1/chats/:chatId/messages`, () =>
-      HttpResponse.json({ resources: [], latestSequence: 0 }),
+    http.get(`${origin}/api/v1/chats/:chatId/messages`, ({ params }) =>
+      HttpResponse.json({
+        resources:
+          params.chatId === "chat-a"
+            ? [
+                {
+                  id: "answer",
+                  role: "assistant",
+                  status: "completed",
+                  displayParts: [
+                    {
+                      id: "link",
+                      type: "text",
+                      text: "[示例页面](https://example.com)",
+                    },
+                  ],
+                },
+              ]
+            : [],
+        latestSequence: params.chatId === "chat-a" ? 1 : 0,
+      }),
     ),
   );
   const user = userEvent.setup();
@@ -2357,8 +2405,13 @@ it("工作流主容器与工具 Tab 独立，历史切换保留各自输入并�
   const inputA = screen.getByRole("textbox", { name: "输入消息" });
   await user.type(inputA, "甲未发送");
   expect(screen.queryByRole("tab", { name: "工作流" })).not.toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "打开终端" }));
-  expect(await screen.findByText("测试终端内容")).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "打开终端" }),
+  ).not.toBeInTheDocument();
+  await user.click(await screen.findByRole("link", { name: "示例页面" }));
+  await screen.findByDisplayValue(/^https:\/\/example\.com\/?$/);
+  expect(screen.queryByRole("tab", { name: "终端" })).not.toBeInTheDocument();
+  expect(screen.queryByText("测试终端内容")).not.toBeInTheDocument();
   expect(
     document.querySelector("[data-chat-composer-context-row]"),
   ).not.toBeInTheDocument();
@@ -2366,9 +2419,14 @@ it("工作流主容器与工具 Tab 独立，历史切换保留各自输入并�
     screen.queryByRole("button", { name: "关闭“工作流”" }),
   ).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "添加工作台标签" }));
+  expect(
+    screen.queryByRole("menuitem", { name: "终端" }),
+  ).not.toBeInTheDocument();
   await user.click(screen.getByRole("menuitem", { name: "浏览器" }));
   await screen.findByRole("tab", { name: "新标签页" });
-  expect(screen.getByRole("button", { name: "终端" })).toBeEnabled();
+  expect(
+    screen.queryByRole("button", { name: "终端" }),
+  ).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "查看历史会话" }));
   await user.click(await screen.findByRole("button", { name: "会话乙" }));
   const inputB = screen.getByRole("textbox", { name: "输入消息" });

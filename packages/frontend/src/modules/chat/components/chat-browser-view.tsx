@@ -27,9 +27,8 @@ type ChatBrowserViewProps = {
   active: boolean;
   chatId?: string;
   onClose?: () => void;
-  onOpenTool?: (
-    kind: "files" | "terminal" | "changes" | "sidechat" | "board",
-  ) => void;
+  onOpenTerminal?: () => void;
+  onOpenTool?: (kind: "files" | "changes" | "sidechat" | "board") => void;
   onTitleChange?: (title: string) => void;
   onURLChange: (url: string) => void;
   url: string;
@@ -49,6 +48,7 @@ export function ChatBrowserView({
   active,
   chatId,
   onClose,
+  onOpenTerminal,
   onOpenTool,
   onTitleChange,
   onURLChange,
@@ -235,7 +235,9 @@ export function ChatBrowserView({
               {(
                 [
                   ["changes", FileDiff, t("workspace.changes")],
-                  ["terminal", TerminalSquare, t("terminal")],
+                  ...(onOpenTerminal
+                    ? ([["terminal", TerminalSquare, t("terminal")]] as const)
+                    : []),
                   ["sidechat", MessagesSquare, t("workbench.sideChat")],
                   ["files", Files, t("workspace.files")],
                   ...(showBoardTool
@@ -245,8 +247,11 @@ export function ChatBrowserView({
                     : []),
                 ] as const
               ).map(([kind, Icon, label]) => {
-                const disabled =
-                  !onOpenTool || (kind === "sidechat" && !chatId);
+                const open =
+                  kind === "terminal"
+                    ? onOpenTerminal
+                    : onOpenTool && (() => onOpenTool(kind));
+                const disabled = !open || (kind === "sidechat" && !chatId);
                 return (
                   <button
                     key={kind}
@@ -260,7 +265,7 @@ export function ChatBrowserView({
                       "[&_svg]:size-icon-md",
                     )}
                     disabled={disabled}
-                    onClick={() => onOpenTool?.(kind)}
+                    onClick={open}
                   >
                     <Icon strokeWidth={1.5} />
                     <span className="font-medium">{label}</span>

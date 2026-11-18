@@ -14,7 +14,7 @@ vi.mock("@/shared/platform", () => ({
   controlBrowserView: vi.fn(),
   createBrowserView: vi.fn(),
   isDesktopRuntime: () => false,
- hasPlatformService: () => false,
+  hasPlatformService: () => false,
   navigateBrowserView: vi.fn(),
   normalizeBrowserURL: (value: string) =>
     value
@@ -42,10 +42,12 @@ describe("ChatBrowserView", () => {
 
   it("新标签页直接提供文件、终端和变更入口", async () => {
     const onOpenTool = vi.fn();
+    const onOpenTerminal = vi.fn();
     render(
       <ChatBrowserView
         active
         chatId="chat-1"
+        onOpenTerminal={onOpenTerminal}
         onOpenTool={onOpenTool}
         onURLChange={vi.fn()}
         url=""
@@ -54,7 +56,7 @@ describe("ChatBrowserView", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "文件" }));
     expect(onOpenTool).toHaveBeenCalledWith("files");
     await userEvent.setup().click(screen.getByRole("button", { name: "终端" }));
-    expect(onOpenTool).toHaveBeenCalledWith("terminal");
+    expect(onOpenTerminal).toHaveBeenCalledOnce();
     expect(screen.queryByRole("button", { name: "看板" })).toBeNull();
   });
 
@@ -72,6 +74,21 @@ describe("ChatBrowserView", () => {
 
     await userEvent.setup().click(screen.getByRole("button", { name: "看板" }));
     expect(onOpenTool).toHaveBeenCalledWith("board");
+  });
+
+  it("宿主未提供终端时，已接纳对话仍可打开文件和改动", () => {
+    render(
+      <ChatBrowserView
+        active
+        chatId="chat-1"
+        onOpenTool={vi.fn()}
+        onURLChange={vi.fn()}
+        url=""
+      />,
+    );
+    expect(screen.getByRole("button", { name: "文件" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "改动" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "终端" })).toBeNull();
   });
 
   it("尚未开始对话时也能输入地址打开网页", async () => {

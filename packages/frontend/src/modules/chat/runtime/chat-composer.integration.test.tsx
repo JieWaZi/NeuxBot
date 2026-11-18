@@ -498,8 +498,6 @@ function ChatThreadLayoutHarness({
   readingChatId,
   send = vi.fn(),
   sendFailure = { kind: "none" },
-  terminalEnabled = false,
-  onOpenTerminal,
 }: {
   active?: boolean;
   activeExecutionId?: string;
@@ -524,8 +522,6 @@ function ChatThreadLayoutHarness({
   readingChatId?: string;
   send?: SendMessage;
   sendFailure?: ComponentProps<typeof ChatThread>["sendFailure"];
-  terminalEnabled?: boolean;
-  onOpenTerminal?: () => void;
 }) {
   const [clearRevision, clearComposer] = useReducer(
     (revision: number) => revision + 1,
@@ -584,8 +580,6 @@ function ChatThreadLayoutHarness({
       presentation={presentation}
       onResolveApproval={onResolveApproval}
       onResolveElicitation={onResolveElicitation}
-      terminalEnabled={terminalEnabled}
-      onOpenTerminal={onOpenTerminal}
       activityStatus={activityStatus}
       isRunning={isRunning}
       isWorkRunning={isWorkRunning}
@@ -2740,7 +2734,7 @@ describe("chat composer", () => {
   it("输入框不再显示终端入口或预留底部工具行", () => {
     const { container } = render(
       <ChatQueueProvider>
-        <ChatThreadLayoutHarness terminalEnabled onOpenTerminal={vi.fn()} />
+        <ChatThreadLayoutHarness />
       </ChatQueueProvider>,
     );
 

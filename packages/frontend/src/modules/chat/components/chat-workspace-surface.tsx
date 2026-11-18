@@ -54,6 +54,7 @@ export type ChatWorkspaceAdapter = {
     messageContributions?: boolean;
     key: ChatScopeKey;
     scopeKey: string;
+    /** 仅伙伴与团队会话提供；空字符串表示等待工作目录。 */
     terminalWorkingDirectory?: string;
     workspaceDirectory: string;
   };
@@ -176,11 +177,19 @@ export function ChatWorkspaceSurface({
   const [selectedChangesRoot, setSelectedChangesRoot] = useState<string>();
   useEffect(() => () => dragCleanup.current?.(), []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const staleTerminalTabs =
+      identity.terminalWorkingDirectory === undefined
+        ? workbench.tabs.filter((tab) => tab.kind === "terminal")
+        : [];
+    for (const tab of staleTerminalTabs) {
+      // 仅更新保存的布局，底层终端仍由原连接的生命周期回收。
+      dispatch({ type: "close", tabId: tab.id });
+    }
     if (
       workbenchVisible &&
       lastVisibleWorkbenchScope.current !== identity.scopeKey &&
-      workbench.tabs.length === 0
+      workbench.tabs.length === staleTerminalTabs.length
     ) {
       dispatch({
         type: "open-browser",
@@ -195,9 +204,10 @@ export function ChatWorkspaceSurface({
   }, [
     dispatch,
     identity.scopeKey,
+    identity.terminalWorkingDirectory,
     identity.workspaceDirectory,
     t,
-    workbench.tabs.length,
+    workbench.tabs,
     workbenchVisible,
   ]);
 

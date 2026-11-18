@@ -250,8 +250,6 @@ type ChatThreadProps = {
   composerSingleSubmission?: boolean;
   composerClearRevision?: number;
   composerRestoreRevision?: number;
-  terminalEnabled?: boolean;
-  onOpenTerminal?: () => void;
   onOpenLink?: (url: string) => boolean;
   linkWorkspaceRoot?: string;
   fileScopeChatId?: string;

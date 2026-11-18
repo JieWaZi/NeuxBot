@@ -29,9 +29,7 @@ import type { ChatWorkspaceMainContent } from "../components/chat-workspace-surf
 import { useWorkbench } from "../workbench/workbench-store";
 import type { ChatSendSelection } from "../runtime/chat-queue-store";
 import { useTranslation } from "react-i18next";
-import { Terminal } from "lucide-react";
 import { Button } from "@/shared/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import {
   useNavigate,
   useLocation,
@@ -127,8 +125,6 @@ export type ChatWorkspaceEntry = {
   /** 首条输入在完整画布内居中，发送后在主容器内展开会话与业务内容。 */
   canvasInput?: boolean;
   showSummary?: boolean;
-  /** 没有 Shell 工作台入口的宿主可显式保留终端操作。 */
-  showTerminalAction?: boolean;
   showFileChanges?: boolean;
   active?: boolean;
   defaults?: ExecutionSelection;
@@ -804,8 +800,10 @@ function ChatView({
     managed: Boolean(activeChatId && !detailQuery.data?.chat?.projectName),
   });
   const terminalWorkingDirectory =
-    detailQuery.data?.chat?.additionalWorkingDirectories?.[0] ??
-    workspaceDirectory;
+    !entry && !boardDraft && presentation === "workspace"
+      ? (detailQuery.data?.chat?.additionalWorkingDirectories?.[0] ??
+        workspaceDirectory)
+      : undefined;
   const fileRoots = (() => {
     if (activeChatId && workspaceDirectory)
       return chatFileRoots(
@@ -1339,7 +1337,6 @@ function ChatView({
     addCodeReference,
     openAttachmentFile,
     openBrowserLink,
-    openChatTerminal,
     openCodeReference,
     openExecutionFileChange,
     fileWorkspaceProps,
@@ -1350,7 +1347,6 @@ function ChatView({
     activeChatId,
     fileSource,
     query: workspaceQuery,
-    terminalWorkingDirectory,
     updateViewState: updateChatViewState,
     workspaceDirectory,
     workspaceFiles,
@@ -1442,23 +1438,6 @@ function ChatView({
       ) : (
         composerSettings
       ),
-      composerActions:
-        entry?.showTerminalAction && activeChatId && workspaceDirectory ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t("openTerminal")}
-                onClick={openChatTerminal}
-              >
-                <Terminal />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t("openTerminal")}</TooltipContent>
-          </Tooltip>
-        ) : undefined,
       composerEffects,
       composerDraft: entry?.draft ?? promptDraft?.text,
       composerDraftReference: promptDraft?.skillId
@@ -1508,10 +1487,8 @@ function ChatView({
       codeReferenceRequest,
       composerClearRevision,
       composerRestoreRevision,
-      terminalEnabled: Boolean(activeChatId && workspaceDirectory),
       linkWorkspaceRoot: workspaceDirectory,
       linkAdditionalWorkingDirectories,
-      onOpenTerminal: openChatTerminal,
       onOpenLink: openBrowserLink,
       onCodeReferencesChange: (references) =>
         updateChatViewState({ selectedCodeReferences: references }),

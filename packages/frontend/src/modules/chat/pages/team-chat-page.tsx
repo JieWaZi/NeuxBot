@@ -1174,7 +1174,6 @@ function TeamChatView({
     addCodeReference,
     openAttachmentFile,
     openBrowserLink,
-    openChatTerminal,
     openCodeReference,
     openExecutionFileChange,
     fileWorkspaceProps,
@@ -1185,7 +1184,6 @@ function TeamChatView({
     activeChatId,
     fileSource,
     query: workspaceQuery,
-    terminalWorkingDirectory,
     updateViewState: updateChatViewState,
     workspaceDirectory,
     workspaceFiles,
@@ -1378,10 +1376,8 @@ function TeamChatView({
       codeReferenceRequest,
       composerClearRevision,
       composerRestoreRevision,
-      terminalEnabled: Boolean(activeChatId && workspaceDirectory),
       linkWorkspaceRoot: workspaceDirectory,
       linkAdditionalWorkingDirectories,
-      onOpenTerminal: openChatTerminal,
       onOpenLink: openBrowserLink,
       onCodeReferencesChange: (references) =>
         updateChatViewState({

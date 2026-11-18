@@ -111,12 +111,14 @@ function Harness({
   scopeKey: requestedScopeKey,
   chatFiles = [],
   onOpenFile,
+  allowTerminal = true,
 }: {
   variant?: "partner" | "team";
   isRunning?: boolean;
   scopeKey?: string;
   chatFiles?: WorkspaceFile[];
   onOpenFile?: ChatWorkspaceAdapter["thread"]["onOpenFile"];
+  allowTerminal?: boolean;
 }) {
   const scopeKey = requestedScopeKey ?? `${variant}:surface`;
   const workspace = useSceneWorkspace(scopeKey);
@@ -127,7 +129,7 @@ function Harness({
       chatId: `${variant}-chat`,
       key: conversationKeyOf(scopeKey, `${variant}-chat`),
       scopeKey,
-      terminalWorkingDirectory: "/workspace",
+      terminalWorkingDirectory: allowTerminal ? "/workspace" : undefined,
       workspaceDirectory: "/workspace",
     },
     snapshot: {
@@ -564,6 +566,30 @@ describe("ChatWorkspaceSurface right workbench", () => {
       expect(saved?.state.tabs.some((tab) => tab.kind === "terminal")).toBe(
         false,
       );
+    } finally {
+      close.mockRestore();
+    }
+  });
+
+  it("无终端入口的宿主恢复旧布局时移除终端标签但不关闭原进程", async () => {
+    const close = vi.spyOn(desktop, "closeTerminal");
+    try {
+      const user = userEvent.setup();
+      const previous = renderHarness();
+      await user.click(screen.getByRole("button", { name: "打开浏览器" }));
+      await user.click(screen.getByRole("button", { name: "打开终端" }));
+      expect(await screen.findByText("终端实例")).toBeInTheDocument();
+      previous.unmount();
+
+      renderHarness({ allowTerminal: false });
+
+      expect(screen.queryByRole("tab", { name: "终端" })).toBeNull();
+      expect(screen.getByRole("tab", { name: "浏览器" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      expect(lifecycle.terminalMounts).toBe(1);
+      expect(close).not.toHaveBeenCalled();
     } finally {
       close.mockRestore();
     }
