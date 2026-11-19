@@ -41,6 +41,7 @@ export type CoreConnection = { baseUrl: string; token: string };
 
 import type {
   HostCommands,
+  DesktopStorageCommands,
   WindowAppearanceCommands,
   InterfaceScale,
   NotificationPreferenceCommands,
@@ -49,7 +50,8 @@ import type {
   BrowserCommands,
   EventsCommands,
 } from "@neuxbot/platform-contracts/services";
-export type DesktopCommands = HostCommands &
+export type DesktopCommands = Omit<HostCommands, "stage_attachment"> &
+  DesktopStorageCommands &
   WindowAppearanceCommands &
   NotificationPreferenceCommands &
   Pick<WorkspaceCommands, "open_workspace_file"> &

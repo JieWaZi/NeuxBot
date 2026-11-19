@@ -25,6 +25,10 @@ import (
 
 // Service 提供运行时环境条目的初始化和探测生命周期能力。
 type Service interface {
+	// ReclaimPrograms 核验并按需回收受管旧版本。
+	ReclaimPrograms(context.Context, bool) (int64, error)
+	// CommitInstallationSelection 在程序维护边界内核验并提交明确的版本选择。
+	CommitInstallationSelection(context.Context, string, string, func(models.RuntimeEnvironment, agent.CLIInstallation) error) error
 	// CheckRuntimeUpdates 显式检查官方版本，不下载程序。
 	CheckRuntimeUpdates(context.Context, string) error
 	// RestartRuntime 排空闲置原生进程并重新探测，活动工作明确拒绝。

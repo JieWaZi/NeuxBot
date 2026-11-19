@@ -8,6 +8,7 @@ export const globalEventTopics = [
   "im",
   "runtimes",
   "usage",
+  "storage",
   "system",
   "chat",
   "team",

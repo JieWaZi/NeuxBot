@@ -12,6 +12,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 )
 
 const MaximumBytes = 64 << 20
@@ -32,6 +35,8 @@ type entry struct {
 	removed bool
 	// timer 管理三十分钟上传有效期。
 	timer *time.Timer
+	// retry 安排失败清理的下一次回收。
+	retry *time.Timer
 	// stopLifetime 释放主体退出监听。
 	stopLifetime func() bool
 }
@@ -44,6 +49,8 @@ type Store struct {
 	root string
 	// entries 以不透明引用索引上传。
 	entries map[string]*entry
+	// removeAll 删除本 Store 已分配并核验的目录。
+	removeAll func(string) error
 }
 
 // New 在已锁定的数据根中建立本次 Core 的暂存目录。
@@ -61,7 +68,7 @@ func New(dataDirectory string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Store{root: root, entries: make(map[string]*entry)}, nil
+	return &Store{root: root, entries: make(map[string]*entry), removeAll: os.RemoveAll}, nil
 }
 
 // Stage 只接收文件名和有界字节，不接受客户端指定目录。
@@ -94,9 +101,11 @@ func (s *Store) Stage(lifetime context.Context, subject, name string, reader io.
 	var total int64
 	count := 0
 	for _, item := range s.entries {
-		if item.subject == subject && item.acceptedKey == "" {
+		if item.subject == subject {
 			total += item.size
-			count++
+			if item.acceptedKey == "" {
+				count++
+			}
 		}
 	}
 	if total+size > 256<<20 || count >= 64 || len(s.entries) >= 2048 {
@@ -113,22 +122,76 @@ func (s *Store) Stage(lifetime context.Context, subject, name string, reader io.
 	return ref, nil
 }
 
-func (s *Store) remove(ref string) { s.mu.Lock(); defer s.mu.Unlock(); s.removeLocked(ref) }
-func (s *Store) removeLocked(ref string) {
+// Discard 释放已认证主体的上传，保留活动接纳与幂等回执。
+func (s *Store) Discard(subject, ref string) error {
+	if !strings.HasPrefix(ref, "upload:") {
+		return status_error.BadRequest
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	item := s.entries[ref]
 	if item == nil {
-		return
+		return nil
+	}
+	if item.subject != subject || item.busy {
+		return status_error.BadRequest
+	}
+	if item.acceptedKey != "" && !item.removed {
+		return s.clearBytesLocked(ref, item)
+	}
+	return s.removeLocked(ref)
+}
+
+func (s *Store) remove(ref string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_ = s.removeLocked(ref)
+}
+
+func (s *Store) removeLocked(ref string) error {
+	item := s.entries[ref]
+	if item == nil {
+		return nil
 	}
 	item.removed = true
 	if item.busy {
-		return
+		return nil
+	}
+	if err := s.clearBytesLocked(ref, item); err != nil {
+		return err
 	}
 	delete(s.entries, ref)
 	item.timer.Stop()
 	if item.stopLifetime != nil {
 		item.stopLifetime()
 	}
-	_ = os.RemoveAll(filepath.Dir(item.path))
+	return nil
+}
+
+func (s *Store) clearBytesLocked(ref string, item *entry) error {
+	if item.retry != nil {
+		item.retry.Stop()
+		item.retry = nil
+	}
+	if err := s.removeAll(filepath.Dir(item.path)); err != nil {
+		logx.Warnf("remove staged upload: %v", err)
+		item.retry = time.AfterFunc(time.Minute, func() {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			current := s.entries[ref]
+			if current != item {
+				return
+			}
+			if current.removed {
+				_ = s.removeLocked(ref)
+			} else {
+				_ = s.clearBytesLocked(ref, current)
+			}
+		})
+		return status_error.StorageCleanupFailed
+	}
+	item.size = 0
+	return nil
 }
 
 // Claim 原子校验一批引用；同一上传不能并行绑定两个接纳操作。
@@ -176,8 +239,7 @@ func (s *Store) Claim(subject string, refs []string, requestKeys ...string) ([]s
 				if success && requestKey != "" && !item.removed {
 					// 字节立即清理；仅保留原路径供业务层校验幂等回执，不允许新请求复用。
 					item.acceptedKey = requestKey
-					item.size = 0
-					_ = os.RemoveAll(filepath.Dir(item.path))
+					_ = s.clearBytesLocked(ref, item)
 				} else if success || item.removed {
 					s.removeLocked(ref)
 				}
@@ -193,6 +255,9 @@ func (s *Store) Close() {
 	defer s.mu.Unlock()
 	for _, item := range s.entries {
 		item.timer.Stop()
+		if item.retry != nil {
+			item.retry.Stop()
+		}
 		if item.stopLifetime != nil {
 			item.stopLifetime()
 		}

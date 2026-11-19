@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -35,6 +36,11 @@ func (m *service) AppendParticipantMessages(
 	if chatID == "" || len(messages) == 0 {
 		return status_error.BadRequest
 	}
+	release, err := chatstorage.AcquireOperation(m.storage.Root(), chatID)
+	if err != nil {
+		return err
+	}
+	defer release()
 	records, state, err := m.loadChatState(chatID)
 	if err != nil {
 		return err
@@ -87,8 +93,7 @@ func (m *service) AppendParticipantMessages(
 	if err != nil {
 		return err
 	}
-	last := committed[len(committed)-1]
-	m.queryIndexes.indexChatCursor(chatID, committed[0].Sequence-1, last)
+	m.queryIndexes.indexChatCursor(chatID, committed)
 	m.eventCommitter.publishCommitted(committed)
 	return nil
 }

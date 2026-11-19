@@ -1,6 +1,7 @@
 import { spawn, execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { defaultCoreDataDirectory } from "./start-web.mjs";
 import "./builtin-skills.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -20,6 +21,7 @@ const core = spawn(
     cwd: path.join(root, "server"),
     env: {
       ...process.env,
+      NEUXBOT_DATA_DIR: defaultCoreDataDirectory(),
       BOTCLI_BINARY_PATH: cliPath,
       PI_MCP_MODULE_PATH: path.join(root, "resources/pi-bridge/bridge.mjs"),
     },

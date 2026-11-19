@@ -81,6 +81,7 @@ func chatProjectionFields(current models.Chat) map[string]any {
 		"last_context_window": current.LastContextWindow, "last_permission_level": current.LastPermissionLevel,
 		"waiting_approval": current.WaitingApproval, "pending_approvals": string(marshalData(current.PendingApprovals)),
 		"waiting_elicitation": current.WaitingElicitation, "pending_elicitations": string(marshalData(current.PendingElicitations)),
+		"retention_protected": current.RetentionProtected, "last_activity_at": current.LastActivityAt,
 		"latest_sequence": current.LatestSequence, "updated_at": current.UpdatedAt,
 		"last_ended_execution_id":     current.LastEndedExecutionID,
 		"last_ended_execution_status": current.LastEndedExecutionStatus,

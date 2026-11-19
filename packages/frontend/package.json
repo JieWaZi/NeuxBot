@@ -10,6 +10,7 @@
     "./vite": "./vite.config.ts",
     "./browser-surface": "./src/shared/platform/browser-surface.ts",
     "./core-terminal": "./src/shared/platform/deferred-core-terminal.ts",
+    "./core-uploads": "./src/shared/platform/core-uploads.ts",
     "./core-workspace": "./src/shared/platform/deferred-core-workspace.ts"
   },
   "scripts": {

@@ -23,6 +23,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/apis/run_viewing"
 	"github.com/JieWaZi/NeuxBot/server/apis/runtime_options"
 	"github.com/JieWaZi/NeuxBot/server/apis/skills"
+	storageapi "github.com/JieWaZi/NeuxBot/server/apis/storage"
 	"github.com/JieWaZi/NeuxBot/server/apis/system"
 	"github.com/JieWaZi/NeuxBot/server/apis/terminals"
 	"github.com/JieWaZi/NeuxBot/server/apis/uploads"
@@ -62,6 +63,7 @@ func init() {
 	desktopRouter.Register(runtime_options.Router)
 	desktopRouter.Register(ai_accounts.Router)
 	desktopRouter.Register(usage.Router)
+	desktopRouter.Register(storageapi.Router)
 	desktopRouter.Register(resource_categories.Router)
 	desktopRouter.Register(skills.Router)
 	desktopRouter.Register(skills.LibraryRouter)

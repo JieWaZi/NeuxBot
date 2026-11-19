@@ -18,6 +18,7 @@ import (
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/projectsource"
@@ -93,6 +94,8 @@ type ChatGroupPreparer interface {
 type Core interface {
 	Service
 	ChatGroupPreparer
+	// OccupiedChatIDs 返回仍有执行或文件收尾所有者的聊天。
+	OccupiedChatIDs() []string
 }
 
 // service 是 Execution Core 的唯一实现。
@@ -281,6 +284,13 @@ func New(config Config) (Core, error) {
 		systemSkillDirectory, err = filepath.EvalSymlinks(systemSkillDirectory)
 		if err != nil {
 			return nil, status_error.AgentContextStorageError
+		}
+		if err := builtinskills.CleanupObsoleteSystemDirectories(systemSkillDirectory); err != nil {
+			logx.Warnf("clean obsolete system skills: %v", err)
+		}
+		contextRoot := filepath.Join(filepath.Dir(filepath.Dir(systemSkillDirectory)), constants.AgentCLIContextDirectory)
+		if err := config.Agent.CleanupRetiredConnections(contextRoot); err != nil {
+			logx.Warnf("clean retired execution contexts: %v", err)
 		}
 	}
 	return &service{

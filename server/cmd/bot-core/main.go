@@ -45,7 +45,7 @@ func main() {
 			panic(err)
 		}
 
-		unlock, err := localweb.LockDataDirectory(global.Config.DataDirectory)
+		unlock, err := localweb.LockStorageRoots(global.Config.DataDirectory, global.Config.ManagedFilesDirectory)
 		if err != nil {
 			panic(err)
 		}

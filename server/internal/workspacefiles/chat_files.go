@@ -3,12 +3,15 @@ package workspacefiles
 import (
 	"context"
 	"encoding/json"
-	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/google/uuid"
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	filesystem "github.com/JieWaZi/NeuxBot/server/internal/storage"
+	"github.com/google/uuid"
 )
 
 const removedManifest = "removed-chat-files.json"
@@ -151,20 +154,74 @@ func (m *Manager) DeleteChatFile(subject, id, root, relative string) error {
 			return status_error.WorkspacePathInvalid
 		}
 	}
+	if err := rememberRemovedChatFile(h, relative); err != nil {
+		return err
+	}
+	if owned {
+		if err = h.Remove(relative); err != nil {
+			return fileError("delete-chat-attachment", err)
+		}
+	}
+	return nil
+}
+
+// RemoveMeasuredStorageFile 与工作区改动共用排他门和附件隐藏记录。
+func (m *Manager) RemoveMeasuredStorageFile(entry filesystem.FileEntry, managed string, inherited map[string]string) error {
+	m.mutations.Lock()
+	defer m.mutations.Unlock()
+	return entry.RemoveUserFile(managed, inherited, rememberMeasuredRemoval)
+}
+
+// CopyRemovedAttachmentReference 保留已删除附件的隐藏事实，让分叉继续读取历史。
+func CopyRemovedAttachmentReference(source, target, relative string) (bool, error) {
+	path := filepath.FromSlash(relative)
+	if !filepath.IsLocal(path) || !strings.HasPrefix(relative, "attachments/") {
+		return false, status_error.WorkspacePathInvalid
+	}
+	root, err := os.OpenRoot(source)
+	if err != nil {
+		return false, fileError("open-fork-chat-root", err)
+	}
+	defer root.Close()
+	if _, err := root.Lstat(path); !os.IsNotExist(err) {
+		return false, nil
+	}
+	removed, err := removedPaths(root)
+	if err != nil || !slices.Contains(removed, relative) {
+		return false, err
+	}
+	fork, err := os.OpenRoot(target)
+	if err != nil {
+		return false, fileError("open-fork-chat-root", err)
+	}
+	defer fork.Close()
+	return true, rememberRemovedChatFile(fork, relative)
+}
+
+func rememberRemovedChatFile(h *os.Root, relative string) error {
 	removed, err := removedPaths(h)
 	if err != nil {
 		return err
 	}
-	found := false
-	for _, p := range removed {
-		if p == relative {
-			found = true
-		}
-	}
-	if !found {
+	if !slices.Contains(removed, relative) {
 		removed = append(removed, relative)
 	}
-	if err = h.MkdirAll("attachments", 0700); err != nil {
+	return writeRemovedPaths(h, removed)
+}
+
+func rememberMeasuredRemoval(h *os.Root, relative string) (func() error, error) {
+	previous, err := removedPaths(h)
+	if err != nil || slices.Contains(previous, relative) {
+		return nil, err
+	}
+	if err := writeRemovedPaths(h, append(slices.Clone(previous), relative)); err != nil {
+		return nil, err
+	}
+	return func() error { return writeRemovedPaths(h, previous) }, nil
+}
+
+func writeRemovedPaths(h *os.Root, removed []string) error {
+	if err := h.MkdirAll("attachments", 0700); err != nil {
 		return fileError("create-chat-attachments", err)
 	}
 	bytes, err := json.Marshal(removed)
@@ -193,11 +250,6 @@ func (m *Manager) DeleteChatFile(subject, id, root, relative string) error {
 	}
 	if err = h.Rename(temporary, removedManifest); err != nil {
 		return fileError("replace-chat-manifest", err)
-	}
-	if owned {
-		if err = h.Remove(relative); err != nil {
-			return fileError("delete-chat-attachment", err)
-		}
 	}
 	return nil
 }

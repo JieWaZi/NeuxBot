@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"slices"
 	"time"
 
@@ -532,4 +533,146 @@ func (s *service) publishInstallation(base string) {
 			s.eventPublisher.Publish(events.Event{Topic: constants.RuntimeEventTopic, Type: constants.RuntimeInstallationChangedEventType, Resource: events.Resource{Kind: "runtime", ID: runtimeID}})
 		}
 	}
+}
+
+// CommitInstallationSelection 在保存前复核路径，并与同一智能体的安装和回收互斥。
+func (s *service) CommitInstallationSelection(ctx context.Context, runtimeID, path string, commit func(models.RuntimeEnvironment, agent.CLIInstallation) error) error {
+	refresh := s.runtimeRefreshLock(runtimeID)
+	refresh.Lock()
+	defer refresh.Unlock()
+	s.installationMutex.Lock()
+	defer s.installationMutex.Unlock()
+	environment, err := s.environments.Get(ctx, runtimeID)
+	if err != nil {
+		return err
+	}
+	base := environment.BaseRuntimeID
+	if job := s.installationJobs[base]; s.installationClosing || s.restarting[base] || (job != nil && job.cancel != nil) {
+		return status_error.RuntimeInstallationBusy
+	}
+	if !s.installationPathAvailable(runtimeID, path) {
+		return status_error.RuntimeConfigurationInvalid
+	}
+	if path == environment.Detection.ResolvedBinary {
+		return commit(environment, agent.CLIInstallation{})
+	}
+	for _, selected := range environment.Detection.Installations {
+		if selected.Path == path && selected.Available {
+			return commit(environment, selected)
+		}
+	}
+	return status_error.RuntimeConfigurationInvalid
+}
+
+func (s *service) installationPathAvailable(runtimeID, path string) bool {
+	if !filepath.IsAbs(path) {
+		return false
+	}
+	resolved, err := s.runtimeCatalog.ResolveExecutable(agent.DetectRequest{
+		RuntimeID: runtimeID, LaunchOverride: agent.LaunchOverride{Binary: path},
+	})
+	return err == nil && resolved == filepath.Clean(path)
+}
+
+// refreshInstallationPaths 核对历史下拉项对应的文件，不启动 CLI 或读取账号状态。
+func (s *service) refreshInstallationPaths(ctx context.Context, runtimeID string) error {
+	refresh := s.runtimeRefreshLock(runtimeID)
+	refresh.Lock()
+	defer refresh.Unlock()
+	environment, err := s.environments.Get(ctx, runtimeID)
+	if err != nil {
+		return err
+	}
+	changed := false
+	for i, item := range environment.Detection.Installations {
+		if item.Available && !s.installationPathAvailable(runtimeID, item.Path) {
+			environment.Detection.Installations[i].Available = false
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	return s.environments.UpdateDetection(ctx, runtimeID, environment.Detection, environment.DetectedAt)
+}
+
+// ReclaimPrograms 清理经过当前设置及使用者核验的旧版本和安装暂存。
+func (s *service) ReclaimPrograms(ctx context.Context, remove bool) (int64, error) {
+	store, ok := s.installer.(interface {
+		ReclaimVersions(context.Context, string, []string, bool) (int64, error)
+	})
+	if !ok {
+		return 0, status_error.RuntimeEnvironmentServiceUnavailable
+	}
+	environments, err := s.environments.List(ctx)
+	if err != nil {
+		return 0, err
+	}
+	providers := make(map[string]struct{})
+	for _, environment := range environments {
+		providers[environment.BaseRuntimeID] = struct{}{}
+	}
+	var total int64
+	var failed error
+	for provider := range providers {
+		if ctx.Err() != nil {
+			return total, errors.Join(failed, status_error.OperationCanceled)
+		}
+		if !s.installer.Supported(provider) {
+			continue
+		}
+		bytes, err := s.reclaimProgram(ctx, provider, remove, store.ReclaimVersions)
+		total += bytes
+		failed = errors.Join(failed, err)
+	}
+	return total, failed
+}
+
+func (s *service) reclaimProgram(ctx context.Context, provider string, remove bool, reclaim func(context.Context, string, []string, bool) (int64, error)) (int64, error) {
+	if remove {
+		s.installationMutex.Lock()
+		job := s.installationJobs[provider]
+		authenticationBusy := s.authentication != nil && s.authentication.HasNativeOwner(provider)
+		busy := s.installationClosing || s.restarting[provider] || authenticationBusy || job != nil && (job.cancel != nil || job.snapshot.CheckState == constants.RuntimeUpdateCheckStateChecking)
+		if busy || s.beforeRuntimeMaintenance == nil {
+			s.installationMutex.Unlock()
+			return 0, status_error.RuntimeInstallationBusy
+		}
+		if s.restarting == nil {
+			s.restarting = make(map[string]bool)
+		}
+		s.restarting[provider] = true
+		s.installationMutex.Unlock()
+		defer func() {
+			s.installationMutex.Lock()
+			delete(s.restarting, provider)
+			s.installationMutex.Unlock()
+		}()
+		release, err := s.beforeRuntimeMaintenance(ctx, provider)
+		if err != nil {
+			return 0, err
+		}
+		if release != nil {
+			defer release()
+		}
+	}
+	environments, err := s.environments.List(ctx)
+	if err != nil {
+		return 0, err
+	}
+	protected := make([]string, 0, len(environments))
+	for _, environment := range environments {
+		protected = append(protected, environment.Detection.ResolvedBinary, environment.Binary)
+		protected = append(protected, environment.Detection.Runtime.PrefixArgs...)
+		protected = append(protected, environment.PrefixArgs...)
+	}
+	bytes, reclaimErr := reclaim(ctx, provider, protected, remove)
+	if remove {
+		for _, environment := range environments {
+			if environment.BaseRuntimeID == provider {
+				reclaimErr = errors.Join(reclaimErr, s.refreshInstallationPaths(ctx, environment.RuntimeID))
+			}
+		}
+	}
+	return bytes, reclaimErr
 }

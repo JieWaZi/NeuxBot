@@ -15,6 +15,18 @@ import (
 
 // ChatController 定义 Chat 查询投影的持久化操作。
 type ChatController interface {
+	// ChatRetentionReader 提供使用相同归属条件的候选分页、选中项与计数。
+	ChatRetentionReader
+	// ExcludingRetentionChats 在同一查法中排除本次快照内未完成的活动或恢复操作。
+	ExcludingRetentionChats(ids []string) ChatRetentionReader
+	// IsRetentionCandidate 在删除围栏内复核当前投影及领域归属。
+	IsRetentionCandidate(ctx context.Context, candidate ChatRetentionCandidate, cutoff int64) (bool, error)
+	// ListRetentionBackfill 读取尚未核验活动时间的有界历史会话页。
+	ListRetentionBackfill(context.Context, string, int) ([]ChatRetentionCandidate, error)
+	// BackfillRetentionProjection 只更新仍处于原日志游标且未核验的保留字段。
+	BackfillRetentionProjection(context.Context, string, int64, int64, bool) error
+	// ListStorageChats 根据已计量的私有目录身份分批读取会话归属及展示字段。
+	ListStorageChats(ctx context.Context, ids []string) ([]models.Chat, error)
 	// ReadExecutionLocation 按原身份定位权威执行入口。
 	ReadExecutionLocation(context.Context, string, string, string) (*models.ChatExecutionLocation, error)
 	// ReadExecutionLocationCursor 返回执行定位已覆盖的持久游标。
@@ -41,6 +53,8 @@ type ChatController interface {
 	CountByWakerUpdatedRange(ctx context.Context, wakerID string, titleQuery string, updatedAtStart int64, updatedAtEnd int64) (int64, error)
 	// CountActiveByWaker 返回伙伴普通对话中 active_execution_id 非空的数量。
 	CountActiveByWaker(ctx context.Context, wakerID string) (int64, error)
+	// HasActiveWakerWork 核对伙伴是否存在执行中会话，包括隐藏任务。
+	HasActiveWakerWork(ctx context.Context, wakerID string) (bool, error)
 	// ListActivitySummariesByWaker 批量返回伙伴普通 Chat 的聚合活动计数。
 	ListActivitySummariesByWaker(
 		ctx context.Context,
@@ -64,6 +78,8 @@ type ChatController interface {
 
 // chatController 使用 GORM 实现 Chat 查询投影。
 type chatController struct {
+	// retentionExcluded 是本次候选查询共享的短时活动与隔离身份快照。
+	retentionExcluded []string
 	// db 是未进入事务时使用的默认数据库连接。
 	db *gorm.DB
 }
@@ -382,6 +398,17 @@ func (c *chatController) CountActiveByWaker(
 	return count, nil
 }
 
+func (c *chatController) HasActiveWakerWork(ctx context.Context, wakerID string) (bool, error) {
+	var ids []string
+	err := controllerDB(ctx, c.db).Model(&models.Chat{}).
+		Where("waker_id = ? AND active_execution_id <> ''", wakerID).
+		Limit(1).Pluck("id", &ids).Error
+	if err != nil {
+		return false, databaseError("find_active_waker_work", "waker_id="+wakerID, err)
+	}
+	return len(ids) > 0, nil
+}
+
 // CountCreatedByWakerGroupedByDay 返回时间窗内按自然日分组的 created_at 计数。
 func (c *chatController) CountCreatedByWakerGroupedByDay(
 	ctx context.Context,
@@ -459,6 +486,10 @@ func (c *chatController) AdvanceProjection(
 	publish, err := c.chatAttentionChanges(ctx, id, fields)
 	if err != nil {
 		return err
+	}
+	if activity, ok := fields["last_activity_at"].(int64); ok {
+		// 系统时钟回拨不能使已核验的工作活动倒退。
+		fields["last_activity_at"] = gorm.Expr("MAX(last_activity_at, ?)", activity)
 	}
 	result := controllerDB(ctx, c.db).
 		Model(&models.Chat{}).

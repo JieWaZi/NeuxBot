@@ -62,6 +62,8 @@ type Service interface {
 
 // Config 声明团队服务需要的稳定依赖。
 type Config struct {
+	// ManagedFilesDirectory 是 Chat 引用写入和聚合删除共用操作门的受管文件根。
+	ManagedFilesDirectory string
 	// Commands 保存与任务事务一起提交的 CLI 回执。
 	Commands capability.Store
 	// AutomaticRun 读取原自动运行的封闭事实，区分自动内部接力与用户新工作。
@@ -90,6 +92,8 @@ type Config struct {
 
 // service 是团队业务用例的唯一实现。
 type service struct {
+	// managedFilesDirectory 标识成员会话引用与删除共用的操作门。
+	managedFilesDirectory string
 	// commands 持久化任务命令接纳事实。
 	commands capability.Store
 	// automaticRun 读取原运行的权威封闭事实，不另存工作来源状态。
@@ -158,6 +162,7 @@ func New(config Config) (Service, error) {
 		return nil, status_error.CoreChannelInitializationFailed
 	}
 	return &service{
+		managedFilesDirectory:    config.ManagedFilesDirectory,
 		commands:                 config.Commands,
 		channels:                 config.Channels,
 		beforeUserInput:          config.BeforeUserInput,

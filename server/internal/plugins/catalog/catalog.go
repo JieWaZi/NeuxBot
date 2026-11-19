@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -220,7 +221,7 @@ func download(ctx context.Context, entry Entry) (string, error) {
 	if os.MkdirAll(parent, 0700) != nil {
 		return "", status_error.PluginStorageError
 	}
-	location := filepath.Join(parent, entry.ArchiveSHA256+".zip")
+	location := archiveLocation(entry)
 	state := artifactState(&archiveLocks, location)
 	if err := state.acquire(ctx); err != nil {
 		return "", err
@@ -264,12 +265,12 @@ func download(ctx context.Context, entry Entry) (string, error) {
 	defer os.Remove(temporary.Name())
 	defer temporary.Close()
 	hash := sha256.New()
-	size, err := io.Copy(io.MultiWriter(temporary, hash), io.LimitReader(response.Body, 100*1024*1024+1))
+	size, err := io.Copy(io.MultiWriter(temporary, hash), io.LimitReader(response.Body, maximumArchiveBytes+1))
 	if err != nil {
 		logDistributionFailure("archive_body", entry.Key, entry.ArchiveURL, response, started, err)
 		return "", state.fail(entry.ArchiveURL, status_error.PluginDistributionUnavailable)
 	}
-	if size > 100*1024*1024 {
+	if size > maximumArchiveBytes {
 		return "", status_error.PluginContentLimitExceeded
 	}
 	if hex.EncodeToString(hash.Sum(nil)) != entry.ArchiveSHA256 {
@@ -284,6 +285,8 @@ func download(ctx context.Context, entry Entry) (string, error) {
 
 // artifactLoadState 在同一路径合并下载，并允许关闭时取消锁等待。
 type artifactLoadState struct {
+	// readers 保护验证前预约及完成验证后仍在读取的调用方。
+	readers atomic.Int32
 	// gate 串行化文件核验和原子发布。
 	gate chan struct{}
 	// failedURL 绑定短暂失败缓存的具体分发地址。
@@ -311,6 +314,15 @@ func (state *artifactLoadState) acquire(ctx context.Context) error {
 	}
 }
 func (state *artifactLoadState) release() { <-state.gate }
+
+func (state *artifactLoadState) retainReader() func() {
+	state.readers.Add(1)
+	return sync.OnceFunc(func() { state.readers.Add(-1) })
+}
+
+func archiveLocation(entry Entry) string {
+	return filepath.Join(entryStorageRoot(entry), "archives", entry.ArchiveSHA256+".zip")
+}
 func (state *artifactLoadState) fail(address string, err error) error {
 	state.failedURL, state.failedAt, state.failure = address, time.Now(), err
 	return err
@@ -369,9 +381,28 @@ func Find(root, key string) (Entry, error) {
 
 // ResolveEntry 下载已经选定的目录版本，不在下载前重新查询latest。
 func ResolveEntry(ctx context.Context, entry Entry) (string, error) {
-	if !httpAddress(entry.ArchiveURL) {
-		return "", status_error.PluginContentInvalid
+	location, release, err := AcquireEntry(ctx, entry)
+	if err == nil {
+		release()
 	}
+	return location, err
+}
+
+// AcquireEntry 核验固定归档并保护路径直到实际读取者释放。
+func AcquireEntry(ctx context.Context, entry Entry) (string, func(), error) {
+	if !httpAddress(entry.ArchiveURL) || !validArtifactDigest(entry.ArchiveSHA256) {
+		return "", nil, status_error.PluginContentInvalid
+	}
+	release := artifactState(&archiveLocks, archiveLocation(entry)).retainReader()
+	location, err := resolveEntry(ctx, entry)
+	if err != nil {
+		release()
+		return "", nil, err
+	}
+	return location, release, nil
+}
+
+func resolveEntry(ctx context.Context, entry Entry) (string, error) {
 	location, err := download(ctx, entry)
 	if err != nil {
 		return "", err
@@ -380,7 +411,7 @@ func ResolveEntry(ctx context.Context, entry Entry) (string, error) {
 	if err != nil {
 		return "", status_error.PluginStorageError
 	}
-	if len(bytes) > 100*1024*1024 {
+	if len(bytes) > maximumArchiveBytes {
 		return "", status_error.PluginContentLimitExceeded
 	}
 	sum := sha256.Sum256(bytes)
@@ -392,24 +423,29 @@ func ResolveEntry(ctx context.Context, entry Entry) (string, error) {
 
 // ResolveCurrent 仅为未固定版本的当前详情和准备操作恢复已失效的目录分发；固定读取仍使用 ResolveEntry。
 func ResolveCurrent(ctx context.Context, root, key string) (Entry, string, error) {
-	return resolveCurrent(ctx, root, key, false)
+	return resolveCurrent(ctx, root, key, false, func(_ string, entry Entry) (string, error) { return ResolveEntry(ctx, entry) })
 }
 
 // ResolveDocumentation 仅解析固定公开资料，缺失或失败不能回退安装归档。
 func ResolveDocumentation(ctx context.Context, root, key string) (Entry, string, error) {
-	return resolveCurrent(ctx, root, key, true)
+	return resolveCurrent(ctx, root, key, true, func(_ string, entry Entry) (string, error) { return detailsLocation(ctx, entry) })
 }
 
-func resolveCurrent(ctx context.Context, root, key string, documentation bool) (Entry, string, error) {
-	resolve := func(_ string, entry Entry) (string, error) { return ResolveEntry(ctx, entry) }
+// AcquireCurrent 恢复当前目录分发并保护最后实际解析的固定归档。
+func AcquireCurrent(ctx context.Context, root, key string) (Entry, string, func(), error) {
+	var release func()
+	entry, location, err := resolveCurrent(ctx, root, key, false, func(_ string, entry Entry) (string, error) {
+		var location string
+		var err error
+		location, release, err = AcquireEntry(ctx, entry)
+		return location, err
+	})
+	return entry, location, release, err
+}
+
+func resolveCurrent(ctx context.Context, root, key string, documentation bool, resolve func(string, Entry) (string, error)) (Entry, string, error) {
 	same := sameArchive
 	if documentation {
-		resolve = func(root string, entry Entry) (string, error) {
-			if entry.DetailsURL == "" {
-				return "", status_error.PluginContentInvalid
-			}
-			return detailsLocation(ctx, entry)
-		}
 		same = func(first, second Entry) bool {
 			return sameArchive(first, second) && first.DetailsURL == second.DetailsURL && first.DetailsSHA256 == second.DetailsSHA256 && first.DetailsSize == second.DetailsSize
 		}
@@ -423,7 +459,7 @@ func resolveCurrent(ctx context.Context, root, key string, documentation bool) (
 		cold := len(index.snapshot.Content) == 0
 		index.mu.RUnlock()
 		if cold {
-			if err := index.refreshCurrent(ctx); err != nil {
+			if err := index.refreshCurrent(ctx, false); err != nil {
 				return Entry{}, "", err
 			}
 		}
@@ -468,7 +504,7 @@ func resolveCurrent(ctx context.Context, root, key string, documentation bool) (
 		if time.Since(index.recoveryAt) < 5*time.Second {
 			return rememberFailure(entry, firstErr)
 		}
-		if err := index.refreshCurrent(ctx); err != nil {
+		if err := index.refreshCurrent(ctx, false); err != nil {
 			return rememberFailure(entry, err)
 		}
 		current, err = Find(root, key)

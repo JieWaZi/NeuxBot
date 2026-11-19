@@ -38,7 +38,7 @@
 | L01  | 系统技能旧摘要累积：本机观察和源码确认                                                  | [SystemDirectory](../../../server/internal/skills/builtin/system.go) 发布不可变目录；[技能回收](../../../server/internal/skills/storage_cleanup.go)仅覆盖普通技能。补充系统技能当前版本保护与旧摘要回收。                               |
 | L02  | 插件派生目标和修复副本缺少回收覆盖：源码确认                                            | [目标发布](../../../server/internal/plugins/target_cache.go)保留已返回目录；[ContentStore](../../../server/internal/plugins/content_store.go)只覆盖 content/data。增加目标生成、引用和清理共用的保护机制，不能直接扩展 RemoveAll 范围。 |
 | L03  | 执行授权上下文留下空父目录，异常退出可留旧描述：源码确认                                | [执行授权](../../../server/services/execution/agent.go)撤销时只删除 connection.json，路径还包含每次 Core 的 epoch。补充精确父目录释放及旧 epoch 启动清理。                                                                              |
-| L04  | 桌面字节附件缺少移除与接纳后的及时释放：源码确认                                        | [桌面暂存](../../../desktop/electron/main/attachment-staging.ts)只在窗口释放时删除；[桌面适配器](../../../desktop/src/platform/index.ts)未实现 discard_attachment。桌面字节附件复用 Core 上传租约，消除第二套长期暂存。                 |
+| L04  | 桌面字节附件缺少移除与接纳后的及时释放：源码确认                                        | 变更前桌面字节附件只在窗口释放时删除，未接入 discard_attachment。桌面字节附件复用 Core 上传租约，消除第二套长期暂存。                                                                                                                   |
 | L05  | 桌面日志持续追加，无大小或保留上限：源码确认                                            | [日志入口](../../../desktop/electron/main/index.ts)直接 appendFile。补充串行写入、轮转和按保留周期回收，清理与写入使用同一所有者。                                                                                                      |
 | L06  | 受管 CLI 多次更新保留历史 version-*；异常退出可留安装 staging：源码缺口，崩溃路径需验证 | [安装器](../../../server/internal/agent/installation/installer.go)发布新目录，正常退出使用 defer 清理；当前卸载有恢复日志，但不等于历史版本 GC。增加维护围栏内的旧版本回收和已失去操作所有者的暂存恢复。                                |
 | P01  | 开发 Core 与桌面默认程序数据根可能分叉：条件性源码风险                                  | [开发配置](../../../server/configs/local.yaml)使用相对数据库路径，[dev-server](../../../scripts/dev-server.mjs)未指定默认数据根。对齐默认根解析，保留显式覆盖；不搬迁已有数据。                                                         |
@@ -55,17 +55,17 @@
 - [成果快照回收](../../../server/internal/chat/changes/retention.go)：保留耐久记录引用，清理无引用私有对象。
 - [账号租约](../../../server/services/aiaccount/service.go)：关闭失败仍保留原所有者。账号旧代次可能包含历史与凭据，不作为通用缓存；本次不按年龄删除。
 
-## 3. 参考 OpenBot 的范围
+## 3. 存储页的数据与操作设计
 
-截图提供总量、分类、伙伴和大对话的页面层次。代码核对使用本地 OpenBot 工作副本 `7183ebd6b0ab6f3fd9c735816fdd952836eae8f2`，另只读核对本机 OpenBot 0.67.1 的磁盘元数据。两项证据各自成立，页面版本与字节数按实际扫描时点理解。
+存储总览按占用总量、分类、伙伴和会话组织。总量回答本机用掉多少空间，伙伴和会话入口帮助定位具体文件和记录。统计有缺口时展示已知小计。列表仅展示部分条目时仍使用同一快照的总量。
 
-| 核对项   | 本地源码与磁盘证据                                                                                                                                                                                                        | NeuxBot 设计                                                                                     |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| 占用     | 概览按宿主分组，数据库及 WAL、SHM 一起计量。伙伴与聊天明细结合工作区、附件归属及消息查询。按需扫描，缓存 60 秒，同范围共享在途请求，修改后使快照失效。本机可见 `openbot.db` 及伴随文件、`provider-runtimes/` 和 `logs/`。 | 延用按需统计与页面层次，使用自己的受管根、私有目录和共享原生分片。扫描不完整与列表截断分别标记。 |
-| 手动清理 | 存储页逐类确认缓存和日志，存储文件按业务身份删除，旧程序及下载由程序所有者处理。删除对话历史另走会话用例，会复查活跃工作并处理关联附件。                                                                                  | 存储页提供可确认的资源清理与会话清理，复用各所有者的生命周期和删除恢复机制。                     |
-| 自动回收 | 程序所有者在启动、更新检查时回收超出保留窗且无人使用的旧版本，并在删除前复查使用戳。远端附件缓存只回收缓存副本。此次在存储 UI、IPC、服务端存储路由、聊天服务中未找到可配置闲置天数的会话定时删除入口。                    | 会话保留策略由 NeuxBot Core 管理，按持久化活动与所有权判断，复用已有排他删除。                   |
+| 用例 | 职责 |
+| --- | --- |
+| 统计 | Go Core 按需测量实际程序数据根与受管文件根，按归属汇总工作文件、会话和应用数据。总览、排行和文件明细共享同一代统计。 |
+| 手动清理 | 缓存、诊断日志和旧程序由各自的所有者回收。逐文件删除复核归属、版本和运行状态。删除会话复用会话的排他删除与恢复流程。 |
+| 自动保留 | Core 按已保存的保留期限判断会话的最近活动，复核保护和运行状态后清理会话专属数据。 |
 
-源码入口见 [统计与清理服务](https://github.com/nightly-labs/openbot/blob/7183ebd6b0ab6f3fd9c735816fdd952836eae8f2/src/backend/storage-usage.ts)、[存储页](https://github.com/nightly-labs/openbot/blob/7183ebd6b0ab6f3fd9c735816fdd952836eae8f2/packages/ui/src/features/files/StorageOverview.tsx)、[IPC](https://github.com/nightly-labs/openbot/blob/7183ebd6b0ab6f3fd9c735816fdd952836eae8f2/src/main/ipc/storage-handlers.ts)、[宿主目录装配](https://github.com/nightly-labs/openbot/blob/7183ebd6b0ab6f3fd9c735816fdd952836eae8f2/src/main/application-services.ts)、[程序回收](https://github.com/nightly-labs/openbot/blob/7183ebd6b0ab6f3fd9c735816fdd952836eae8f2/src/main/provider-runtime-manager.ts)、[附件缓存](https://github.com/nightly-labs/openbot/blob/7183ebd6b0ab6f3fd9c735816fdd952836eae8f2/src/main/remote-attachment-cache.ts)和[会话历史删除](https://github.com/nightly-labs/openbot/blob/7183ebd6b0ab6f3fd9c735816fdd952836eae8f2/src/backend/agent-service.ts)。
+模块入口为 [存储统计服务](../../../server/services/storage/usage.go)、[设置存储页](../../../packages/frontend/src/modules/settings/components/storage-settings.tsx)和[资源清理服务](../../../server/services/storage/maintenance.go)。
 
 ## 4. 目录清单与计量归属
 

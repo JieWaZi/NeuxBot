@@ -218,6 +218,12 @@ func (i *Installer) prepareProgram(ctx context.Context, runtimeID string, notify
 	defer func() {
 		if err := os.RemoveAll(staging); err != nil {
 			logx.Errorf("clean CLI installation staging: runtime=%s error=%v", runtimeID, err)
+			// A future Core may reclaim a failed final cleanup only with this terminal receipt.
+			if info, statErr := os.Lstat(staging); statErr == nil && info.IsDir() {
+				if markErr := markRetiredStage(staging, runtimeID); markErr != nil {
+					logx.Warnf("record retired CLI installation staging: runtime=%s error=%v", runtimeID, markErr)
+				}
+			}
 		}
 	}()
 	payload := filepath.Join(staging, "payload")

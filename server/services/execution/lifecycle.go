@@ -194,6 +194,18 @@ func (m *service) IsExecutionActive(chatID, executionID string) bool {
 	return exists && active.executionID == executionID
 }
 
+// OccupiedChatIDs 读取现有占用与文件收尾登记，不影响正在执行的工作。
+func (m *service) OccupiedChatIDs() []string {
+	r := m.executions
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	ids := make([]string, 0, len(r.settling))
+	for id := range r.settling {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // complete 在同一临界区内释放执行占用并发布终态，避免订阅者先于下一轮入口观察到完成。
 func (r *executionRegistry) complete(
 	chatID string,

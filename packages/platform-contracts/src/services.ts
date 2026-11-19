@@ -60,6 +60,19 @@ export type NotificationPreferenceCommands = {
   open_notification_settings: { args: undefined; result: void };
 };
 
+export type DesktopStorageCategory = "desktop-cache" | "desktop-logs";
+
+export type DesktopStorageCommands = {
+  preview_desktop_storage: {
+    args: { category: DesktopStorageCategory };
+    result: { available: boolean; bytes: number };
+  };
+  clear_desktop_storage: {
+    args: { category: DesktopStorageCategory };
+    result: { removedBytes: number };
+  };
+};
+
 export type HostCommands = {
   save_file: { args: { bytes: number[]; fileName: string }; result: boolean };
   select_directory: { args: undefined; result: string | null };
@@ -427,6 +440,7 @@ export type CommandMethods<T> = {
 
 export type HostService = CommandMethods<HostCommands> &
   Partial<CommandMethods<WindowAppearanceCommands>> &
+  Partial<CommandMethods<DesktopStorageCommands>> &
   Partial<CommandMethods<NotificationPreferenceCommands>> & {
     onInterfaceScale?(handler: (scale: InterfaceScale) => void): () => void;
     discard_attachment?(args: { sourcePath: string }): Promise<void>;

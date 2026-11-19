@@ -60,8 +60,7 @@ func publishTarget(ctx context.Context, parent, stage, id, source, cli, digest s
 	} else if actual != digest {
 		return "", status_error.PluginVersionConflict
 	}
-	keyHash := sha256.Sum256([]byte(id + "\x00" + source + "\x00" + cli + "\x00" + digest))
-	key := hex.EncodeToString(keyHash[:])
+	key := targetCacheKey(id, source, cli, digest)
 	locks := filepath.Join(parent, ".locks")
 	if err := os.MkdirAll(locks, 0700); err != nil {
 		return "", storageFailure(err)
@@ -124,4 +123,17 @@ func publishTarget(ctx context.Context, parent, stage, id, source, cli, digest s
 		return "", storageFailure(err)
 	}
 	return path, nil
+}
+
+func targetCacheKey(id, source, runtime, digest string) string {
+	key := sha256.Sum256([]byte(id + "\x00" + source + "\x00" + runtime + "\x00" + digest))
+	return hex.EncodeToString(key[:])
+}
+
+func validTargetDigest(value string) bool {
+	if len(value) != 2*sha256.Size || strings.ToLower(value) != value {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
 }

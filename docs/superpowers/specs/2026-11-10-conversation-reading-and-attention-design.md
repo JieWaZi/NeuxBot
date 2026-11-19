@@ -1,12 +1,12 @@
 # 会话阅读、待处理与桌面提醒重建设计
 
-> 本文是本次改造的设计依据，源码对照和验收记录见[实施计划](../plans/2026-11-10-conversation-reading-and-attention.md)。
+> 本文是本次改造的设计依据，实现位置和验收记录见[实施计划](../plans/2026-11-10-conversation-reading-and-attention.md)。
 
 ## 1. 范围与收敛结论
 
-已确认：废弃旧通知业务、无兼容；铃铛只有小点；保留任务看板的“需要操作”“待我查看”和工作记录；参考 OpenBot，由 Go 后端准确处理多个会话。
+废弃旧通知业务。铃铛用小点提示关注事项，看板保留“需要操作”“待我查看”和工作记录。Go Core 聚合多个会话的阅读与待处理状态。
 
-采用 OpenBot 的职责分法：**消息及原请求是事实、阅读位置是用户事实、侧栏/看板是派生查询、系统通知是实时呈现。**不另建全局关注状态机。保留本仓库的 ConversationStore、业务 SQLite 和既有认证 WS，不移植 OpenBot 整套数据库事件溯源。
+**消息与请求各由原业务记录保存，阅读位置由用户操作更新，侧栏与看板读取聚合结果，系统通知负责即时呈现。** 各入口共用 ConversationStore、业务 SQLite 和既有认证 WS。
 
 本方案收敛为三个功能数据表和一个一次性初始化标记：可读消息索引、Chat 阅读位置、运行查看记录、初始化标记。复用 Chat.LatestSequence 做唯一消息投影覆盖；不保存 Bot 聚合计数、铃铛状态、请求副本或系统通知历史。
 
@@ -16,33 +16,27 @@
 | -------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | ChatReadingProjection.AppliedSequence                          | 与原 Chat.LatestSequence 和现有投影 CAS 重复                         | 删除整张表；索引加入原投影事务                                            |
 | workspace_state、workspace_changes、全域 Revision 和耐久派发器 | 迫使所有业务接入新的全局写入顺序；恢复又不补弹，缺乏所需业务保证     | 删除；使用原资源提交后失效事件与完整重读                                  |
-| view_snapshots、view_snapshot_targets 及跨重启批量任务         | 把一次阅读操作做成持久任务系统；重启后还可能继续改变用户阅读意图     | 删除；按 OpenBot 捕获具体目标边界，再分批调用幂等阅读命令                 |
+| view_snapshots、view_snapshot_targets 及跨重启批量任务         | 把一次阅读操作做成持久任务系统；重启后还可能继续改变用户阅读意图     | 删除。捕获具体目标边界，再分批调用幂等阅读命令                 |
 | WorkflowRun/AutomaticRun.ReviewVersion、ReviewAvailableAt      | 错按同 Run 重试建模；实际工作流重试创建新 RunID                      | 删除原模型新增字段；按独立原 RunID 保存已查看                             |
 | 动态分配阅读者与运行期 initializing/ready 状态                 | 本机阶段不提供多用户；查询完整性不应成为第二套业务生命周期           | 固定本机阅读者身份；初始化只在首次切换执行                                |
 | 全局移动 internal/notification/events                          | 文件夹名字不决定业务归属；为此次阅读功能重排所有领域事件调用扩大范围 | 保留纯 Hub 基础设施及既有导入；删其中旧通知专属调用，日后目录归位单独处理 |
 
 关键漏洞同时修正：显式打开不是永久 true 的资格。一次打开命令冲突后不得取得新代次重放，否则仍会清掉另一窗口刚标记的未读。
 
-## 2. OpenBot 实现依据与适配边界
+## 2. 阅读、聚合与提醒的设计
 
-参考源码固定为 OpenBot 0.66.0 / `22cd028e7c99c41e49bbab434dbda63ff9e56304`；本机安装版为 0.65.0。本次为源码审查，没有将静态结论冒充安装版实时验收。
+| 机制 | 设计 |
+| --- | --- |
+| 阅读位置 | 使用固定本机阅读者和 Chat 的公开消息展示顺序。普通阅读只推进游标，手动标未读由独立命令回退。 |
+| 未读资格 | 按公开正文和原作者判断未读，同一稳定消息只计一次。明确的公开失败说明参与计数，侧栏优先显示最近失败。 |
+| 多会话聚合 | Go Core 按完整会话范围求和，覆盖尚未在前端打开的会话。 |
+| 读取后更新 | 原事务提交后发布资源失效，由共享查询重读权威结果。 |
+| 手动未读 | 以一次打开动作解除保留状态，持久化 `UnreadGeneration` 和 `HoldUnread` 以隔离多窗口的旧操作。 |
+| 请求恢复 | 从原请求所有者获取有效集合，只有完整快照可以移除缺席项。 |
+| 系统提醒 | Electron 主进程消费实时事件，按原业务身份在内存中去重和撤回。 |
+| 批量已查看 | 服务端给出过滤范围内的准确目标，前端冻结边界并分批提交。 |
 
-| 机制         | OpenBot 原实现                                                                                                                                                                                                                                                                                                                                                        | NeuxBot 采用方式                                                                                     |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| 阅读事实     | [ConversationReadStore](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/backend/conversation-read-store.ts#L129) 保存 member/thread 的消息边界，普通 read 只前进；mark-unread 独立后退                                                                                                                                      | 固定本机 reader + Chat 边界；使用原公开消息展示顺序，不用终态到达顺序代替                            |
-| 未读资格     | [共享规则](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/packages/contracts/src/conversation-read.ts#L28) 排除用户本人、commentary、plan、Agent exchange 等                                                                                                                                                                   | 按本仓库公开 messageview 的正文/actor 分类，一条稳定消息只计一次                                     |
-| 多线程聚合   | [主会话加子线程](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/renderer/src/features/conversation/conversation-context.tsx#L171)、[未归档线程求和](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/renderer/src/features/agent-tasks/agent-tasks-state.ts#L443)                 | 聚合公式保留，但放在 Go 完整查询，不依赖前端曾访问过的子线程缓存                                     |
-| 读取之后刷新 | [ConversationReader](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/backend/agent/conversation-reader.ts#L144) 更新游标后发 conversation-invalidated，其他消费者重读                                                                                                                                                       | 原事务 AfterCommit 发窄失效事件；复用 use-query-events 对账                                          |
-| 手动未读     | [前端持有 hold、串行阅读命令](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/renderer/src/features/conversation/conversation-context.tsx#L991)，[显式重开解除](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/renderer/src/features/conversation/conversation-context.tsx#L367) | 采用一次打开动作；为本机多个窗口共享阅读补充一个持久 UnreadGeneration/HoldUnread，防跨窗口旧意图覆盖 |
-| 请求恢复     | [完整/部分 Runtime 快照对账](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/renderer/src/features/agents/agent-runtime-snapshot.ts#L82)                                                                                                                                                                                    | 原请求所有者提供有效集合；完整快照才能删除缺席请求                                                   |
-| 系统提醒     | [主进程实时消费及内存请求 Map](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/main/renderer-forwarders.ts#L324)                                                                                                                                                                                                            | 同样只消费 live 事件，内存去重/撤回，不建立通知数据表                                                |
-| 全部已读     | [逐线程捕获边界再调用](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/renderer/src/features/conversation/conversation-context.tsx#L1128)                                                                                                                                                                                   | 服务端提供过滤范围内的准确目标，前端保留操作快照并分批提交；不跨重启继续                             |
-
-OpenBot 的 `ConversationReadStore.#saveCursor` 确实通过其现有 [DatabaseCore.dispatch](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/backend/database/database-core.ts#L108) 保存领域事件与投影，并非“完全无持久事件”。但那是整个产品共用的数据库架构，不能据此为 NeuxBot 的铃铛另造一套 WorkspaceChange。这里采用它的阅读/请求/提醒边界，沿用 NeuxBot 已有日志、事务和 Hub。
-
-公开正文资格和“最近失败”优先于未读是 NeuxBot 的产品选择。OpenBot 的未读过滤按作者和 itemType，普通失败也没有单独插入侧栏状态优先级。沿用它的约束是消息页、未读计数、读到某条和从某条标未读必须使用同一排序。
-
-实施计划逐项列出了固定提交的源码入口、对照行为和验收记录。 [按任务查看 OpenBot 源码](../plans/2026-11-10-conversation-reading-and-attention.md#openbot-源码对照与验收)
+消息列表、未读计数、读到某条和从某条标未读共用同一排序。验收场景见[实施计划](../plans/2026-11-10-conversation-reading-and-attention.md#实施核对与验收)。
 
 本仓库依据：[Chat 投影 CAS](../../../server/services/chat/live_projection.go)、[Chat.LatestSequence](../../../server/repositories/models/chat.go)、[提交后事件缓冲](../../../server/internal/notification/events/hub.go)、[事务边界](../../../server/repositories/controllers/transaction_controller.go)、[工作流重试新 Run](../../../server/apis/workflows/retry_workflow_run.go)、[新 Run 回归用例](../../../server/apis/workflows/recovery_commands_test.go)、[自动机会恢复](../../../server/services/schedule/runs.go)。
 
@@ -101,7 +95,7 @@ flowchart TD
 | Kind          | 枚举 answer/failure/member_report | 安全可读类型，零值非法                                               |
 | CreatedAt     | int64，必填                       | 原消息创建时间，非阅读时间                                           |
 
-只要原持久公开消息已具有合格正文即可计入，不必须等待整轮结束；执行完成事件只用于完成提醒，不再制造第二条未读。这与 OpenBot 的“消息身份＋过滤规则”一致。明确的公开失败说明可计入；空占位、用户本人、commentary、工具过程和内部 Agent 交换不计。正式成员报告按 actor 判断，即使底层事件类型为 user-message 也不漏算。
+只要原持久公开消息已具有合格正文即可计入，不必须等待整轮结束；执行完成事件只用于完成提醒，不再制造第二条未读。明确的公开失败说明可计入；空占位、用户本人、commentary、工具过程和内部 Agent 交换不计。正式成员报告按 actor 判断，即使底层事件类型为 user-message 也不漏算。
 
 团队目前以时间、角色和 ID 重新排序。同毫秒先提交 Z 报告，再提交 A 报告，会显示 A → Z，但 Chat 序号为 Z → A。实施时统一采用主 Chat 的 CreatedSequence 排列已持久化公开消息。团队历史分页、实时合并、定位和阅读边界使用同一顺序。未投递输入作为临时行排在已持久消息之后，按原入队顺序展示，持久化时用稳定消息身份替换，从未确认的临时行不作阅读边界。既有工作记录排序不受此约束。
 
@@ -188,7 +182,7 @@ SQLite 短事务提供当次列表/计数一致性，不需要全局持久 Revis
 
 看板 GET、预览、铃铛点击均不阅读。只有打开准确 Chat/Run 且内容呈现时提交；文件预览没有独立未读，也不代替整份运行结果呈现。
 
-“全部标为已查看”参考 OpenBot 的边界捕获。服务端在短读事务返回过滤范围内全部准确目标及其边界与代次。投影不完整时返回恢复错误。前端在确认前冻结这份操作数组，之后每批至多 128 项提交同一批量阅读 API。单次最多准备 10000 个 WorkRef，超限明确要求缩小范围。
+“全部标为已查看”提交本次操作确认的阅读边界。服务端在短读事务返回过滤范围内全部准确目标及其边界与代次。投影不完整时返回恢复错误。前端在确认前冻结这份操作数组，之后每批至多 128 项提交同一批量阅读 API。单次最多准备 10000 个 WorkRef，超限明确要求缩小范围。
 
 Chat 目标为 WorkRef、ChatID、ThroughMessageID、ObservedUnreadGeneration；Run 目标为原 OwnerKind/OwnerID。服务器逐项重新校验权限/归属/边界，客户端提供目标不代表授权。每批原子提交，有删除/代次冲突的目标跳过并返回结果；不批准任何请求。不为一条冲突回滚其他合法目标。
 
@@ -218,7 +212,7 @@ Chat 目标为 WorkRef、ChatID、ThroughMessageID、ObservedUnreadGeneration；
 
 ### 6.2 一次打开动作，不能自动重放的意图
 
-前端每个 Chat 的读/未读写操作串行，参考 OpenBot.conversationReadOperations。服务器只负责目标验证、代次与边界，不保存打开会话身份。
+前端按 Chat 串行提交读和未读写入，保证同一会话内的操作顺序。服务器只负责目标验证、代次与边界，不保存打开会话身份。
 
 | 操作                            | 前端与服务器规则                                                                                                              |
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
@@ -256,7 +250,7 @@ sequenceDiagram
 
 数据库成功才发 AfterCommit；原事务 busy 重试不提前发，失败事务的回调丢弃。回调同步、无网络等待，不受请求已经取消影响。发布 fixed-size 资源引用，超过资源数量限制折叠 global，不让 Hub 的超大帧静默丢弃路径承载此消息。
 
-聊天索引写入失败时原日志已成功，不回滚答复；后续读取或现有恢复机制从原 LatestSequence 追平。不能先推进原游标后补写阅读索引。活进程内投影失败发布范围失效，原 Chat 投影所有者登记最多 256 个不同 Chat 并用一个可取消计时器按 1/2/4 秒至最多 30 秒定向重试。成功后只发查询失效。第 257 个失败触发一次全局 incomplete 与原日志目录的分批核对，复用同一所有者，先登记溢出再开始核对。核对期间再发生溢出则标记需要下一轮，直到没有新溢出且已登记失败均已修复或进入既有隔离。该例外扫描只由溢出触发，按原日志身份续批，常规查询不扫描。启动恢复用原日志与 LatestSequence 重新发现未投影事实。这是本仓库 JSONL/SQLite 跨存储所需的修复，不能从 OpenBot 同库事务直接推导无需修复。阅读 SQL 成功但事件尚未发时进程崩溃，重启后读持久 Cursor 即可；短暂系统提示允许未显示，不影响找回待办/未读。
+聊天索引写入失败时原日志已成功，不回滚答复；后续读取或现有恢复机制从原 LatestSequence 追平。不能先推进原游标后补写阅读索引。活进程内投影失败发布范围失效，原 Chat 投影所有者登记最多 256 个不同 Chat 并用一个可取消计时器按 1/2/4 秒至最多 30 秒定向重试。成功后只发查询失效。第 257 个失败触发一次全局 incomplete 与原日志目录的分批核对，复用同一所有者，先登记溢出再开始核对。核对期间再发生溢出则标记需要下一轮，直到没有新溢出且已登记失败均已修复或进入既有隔离。该例外扫描只由溢出触发，按原日志身份续批，常规查询不扫描。启动恢复用原日志与 LatestSequence 重新发现未投影事实。这套恢复流程用于处理 JSONL 已提交而 SQLite 投影尚未追上的情况。阅读 SQL 成功但事件尚未发时进程崩溃，重启后读持久 Cursor 即可；短暂系统提示允许未显示，不影响找回待办/未读。
 
 业务提交后、回调前的普通返回不绕过回调；发布器缺失属于装配错误，启动不进入正常服务。回调异常不能被 HTTP recover 吞掉后留下永远不同步的连接：立即关闭受影响订阅要求 resync，无法隔离时使 Core 进入失败恢复。原 Hub 慢消费者关闭队列同样要求重新查询。
 
@@ -278,7 +272,7 @@ epoch 使用既有 Hub.Epoch；新握手确立新进程身份后取消旧请求�
 
 Runtime/请求快照完整时才移除缺席项，部分快照只合并；用户提交中应由原请求所有者提供幂等/冲突保护。原生调用等待不能持有 SQL 事务。进程退出后不可恢复的原生请求由原恢复流程结束，可持久工作流等待保留。
 
-桌面参考 OpenBot：主进程仅消费 work-board/global 的 live 完成/失败、请求建立/结束帧；启动快照、补读、投影重建均不发送系统通知。内存 Map 按真实消息/请求身份去重并撤回；断线时关闭当前请求提醒并清空待构造句柄，重连先恢复原有效集合，不重新弹历史请求，后续关闭事件仍可按身份处理。系统关闭、权限拒绝、发送失败不改变阅读或请求。
+桌面主进程仅消费 work-board/global 的 live 完成/失败、请求建立/结束帧；启动快照、补读、投影重建均不发送系统通知。内存 Map 按真实消息/请求身份去重并撤回；断线时关闭当前请求提醒并清空待构造句柄，重连先恢复原有效集合，不重新弹历史请求，后续关闭事件仍可按身份处理。系统关闭、权限拒绝、发送失败不改变阅读或请求。
 
 ### 7.4 故障与并发矩阵
 

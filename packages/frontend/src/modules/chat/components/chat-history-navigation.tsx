@@ -10,10 +10,13 @@ import {
   Pencil,
   Plus,
   Trash2,
+  ShieldCheck,
 } from "lucide-react";
 import { useState, type MouseEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
+import { useChatProtection } from "@/shared/api/chat-protection";
+import { localApiErrorMessage } from "@/shared/api/local-error-surface";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import { CornerLauncherButton } from "@/shared/ui/corner-launcher-button";
@@ -132,6 +135,41 @@ export function ChatHistoryRowStatus({
   );
 }
 
+type ProtectionChoice = { chatId: string; wakerId: string; protected: boolean };
+
+function ChatProtectionMenuItem({
+  choice,
+  onDone,
+}: {
+  choice: ProtectionChoice;
+  onDone: () => void;
+}) {
+  const { t } = useTranslation("storage");
+  const mutation = useChatProtection();
+  return (
+    <>
+      <DropdownMenuItem
+        disabled={mutation.isPending}
+        onSelect={(event) => {
+          event.preventDefault();
+          mutation.mutate(
+            { ...choice, protected: !choice.protected },
+            { onSuccess: onDone },
+          );
+        }}
+      >
+        <ShieldCheck />
+        {t(choice.protected ? "unprotect" : "protect")}
+      </DropdownMenuItem>
+      {mutation.isError ? (
+        <p role="alert" className="type-ui text-danger px-2 py-1">
+          {localApiErrorMessage(mutation.error, t("actionFailed"))}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
 export function ChatHistoryNavigationRow({
   active,
   title,
@@ -143,6 +181,7 @@ export function ChatHistoryNavigationRow({
   onPrefetch,
   onAction,
   extraMenu,
+  protection,
 }: {
   active: boolean;
   title: string;
@@ -153,6 +192,7 @@ export function ChatHistoryNavigationRow({
   onOpen: (event: MouseEvent<HTMLElement>) => void;
   onPrefetch?: () => void;
   onAction: (mode: "rename" | "delete") => void;
+  protection?: ProtectionChoice;
   extraMenu?: (open: boolean) => ReactNode;
 }) {
   const { t } = useTranslation("common");
@@ -216,6 +256,12 @@ export function ChatHistoryNavigationRow({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {extraMenu?.(menuOpen)}
+          {protection && menuOpen ? (
+            <ChatProtectionMenuItem
+              choice={protection}
+              onDone={() => setMenuOpen(false)}
+            />
+          ) : null}
           <DropdownMenuItem onSelect={() => onAction("rename")}>
             <Pencil />
             {t("partnerNavigation.renameChat")}

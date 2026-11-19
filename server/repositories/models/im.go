@@ -224,7 +224,7 @@ type IMDelivery struct {
 	// LinkID 是原始 IM 工作的对话关系，主动投递可为空。
 	LinkID string `json:"linkId"`
 	// ChatID 是产生内容的 Chat，管理端可打开完整过程。
-	ChatID string `json:"chatId"`
+	ChatID string `gorm:"index" json:"chatId"`
 	// ExecutionID 是产生结果的真实执行身份。
 	ExecutionID string `json:"executionId"`
 	// WorkflowRunID 是工作流主动发送的来源运行。

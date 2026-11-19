@@ -454,3 +454,14 @@ func TestReadingProtocolRejectsRetiredTopicsAndValidatesKinds(t *testing.T) {
 		}
 	}
 }
+
+func TestStorageControlRequiresGlobalResource(t *testing.T) {
+	valid := []byte(`{"type":"subscribe","requestId":"storage-1","topic":"storage","resource":{"kind":"global"}}`)
+	if _, err := decodeControl(valid); err != nil {
+		t.Fatalf("storage subscription rejected: %v", err)
+	}
+	invalid := []byte(`{"type":"subscribe","requestId":"storage-2","topic":"storage","resource":{"kind":"chat","id":"foreign"}}`)
+	if _, err := decodeControl(invalid); err == nil {
+		t.Fatal("storage accepted a scoped resource")
+	}
+}

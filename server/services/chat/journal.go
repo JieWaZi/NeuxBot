@@ -169,6 +169,8 @@ func (m *service) CreateDormantChats(
 		}
 		chat.LatestSequence = records[len(records)-1].Sequence
 		chat.CreatedAt = records[0].RecordedAt
+		chat.RetentionProtected = false
+		chat.LastActivityAt = chat.CreatedAt
 		chat.UpdatedAt = records[len(records)-1].RecordedAt
 		createdChats = append(createdChats, chat)
 		createdRecords = append(createdRecords, records)
@@ -194,6 +196,11 @@ func (m *service) CommitAcceptedTurn(
 	}
 	last := records[len(records)-1]
 	chat := turn.Chat
+	for _, r := range records {
+		if contributesWorkActivity(r) {
+			chat.LastActivityAt = max(chat.LastActivityAt, r.RecordedAt)
+		}
+	}
 	chat.LatestSequence = last.Sequence
 	chat.ActiveExecutionID = turn.Execution.ID
 	chat.LastAccountID = turn.Execution.AccountID
@@ -353,9 +360,7 @@ func (m *service) AppendExecutionFacts(
 	if err != nil {
 		return nil, err
 	}
-	last := records[len(records)-1]
-	afterSequence := records[0].Sequence - 1
-	m.queryIndexes.indexChatCursor(chatID, afterSequence, last)
+	m.queryIndexes.indexChatCursor(chatID, records)
 	m.eventCommitter.publishCommitted(records)
 	return records, nil
 }

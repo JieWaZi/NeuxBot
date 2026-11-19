@@ -40,6 +40,8 @@ type preparedPlugins struct {
 	snapshots []plugins.Snapshot
 	// updateUsage 随每轮开始和结束更新真实执行引用，不改变消费者租约。
 	updateUsage func(...authorization.Usage)
+	// releaseTargets 在原生连接的物理插件视图释放后解除派生目标占用。
+	releaseTargets func()
 	// release 在真实原生消费者关闭后释放共享身份租约。
 	release func()
 }
@@ -194,6 +196,12 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 	}
 	found := map[string]bool{}
 	releases := []func(){}
+	targetReleases := []func(){}
+	result.releaseTargets = sync.OnceFunc(func() {
+		for _, release := range slices.Backward(targetReleases) {
+			release()
+		}
+	})
 	usageUpdates := []func(...authorization.Usage){}
 	result.updateUsage = func(uses ...authorization.Usage) {
 		for _, update := range usageUpdates {
@@ -526,7 +534,18 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			result.environment[key] = value
 		}
 		if native {
-			target, err := plugins.PrepareNativeTargetWithDigest(ctx, filepath.Join(m.skillDataDirectory, "plugins", "targets"), id, version.Package, root, cli, targetDigest)
+			var target plugins.NativeTarget
+			if m.pluginContents != nil {
+				var release func()
+				target, release, err = m.pluginContents.PrepareTarget(ctx, plugins.TargetRequest{
+					PluginID: id, SourceRoot: root, SourceDigest: targetDigest, Package: version.Package, Runtime: cli,
+				})
+				if err == nil {
+					targetReleases = append(targetReleases, release)
+				}
+			} else {
+				target, err = plugins.PrepareNativeTargetWithDigest(ctx, filepath.Join(m.skillDataDirectory, "plugins", "targets"), id, version.Package, root, cli, targetDigest)
+			}
 			if err != nil {
 				return result, err
 			}

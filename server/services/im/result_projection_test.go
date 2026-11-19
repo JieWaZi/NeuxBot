@@ -479,6 +479,16 @@ func (c *scheduledProjectionChats) ListEvents(_ context.Context, chatID string, 
 	return page, nil
 }
 
+func (c *scheduledProjectionChats) CountUserMessages(_ context.Context, chatID string) (int64, error) {
+	var count int64
+	for _, event := range c.events[chatID] {
+		if event.Type == constants.ChatEventTypeUserMessageCreated {
+			count++
+		}
+	}
+	return count, nil
+}
+
 func (c *scheduledProjectionChats) ReadExecution(_ context.Context, chatID, executionID string) (models.Execution, error) {
 	return models.Execution{ID: executionID, ChatID: chatID, IMReplyLinkID: c.origins[executionID]}, nil
 }
@@ -576,6 +586,10 @@ type replyProjectionChats struct {
 
 func (replyProjectionChats) ListEvents(context.Context, string, int64, int) ([]chat.PublicEvent, error) {
 	return []chat.PublicEvent{{Sequence: 21, Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: "completed"}}, nil
+}
+
+func (replyProjectionChats) CountUserMessages(context.Context, string) (int64, error) {
+	return 1, nil
 }
 
 func (c replyProjectionChats) ReadExecution(_ context.Context, chatID, id string) (models.Execution, error) {

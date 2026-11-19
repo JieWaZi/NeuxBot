@@ -6,6 +6,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
@@ -171,6 +172,11 @@ func (s *Service) selectConversation(ctx context.Context, binding models.IMBindi
 		if err != nil {
 			return err
 		}
+		release, err := chatstorage.AcquireReferences(s.config.DataDirectory, link.ChatID)
+		if err != nil {
+			return err
+		}
+		defer release()
 		if link.BindingID != binding.ID || link.ChatID == "" {
 			return status_error.IMResourceNotFound
 		}

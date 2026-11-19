@@ -46,6 +46,11 @@ var detailsLocks sync.Map
 
 // ReadDetails 核验公开资料内容摘要和来源绑定，不读取或执行安装包。
 func ReadDetails(ctx context.Context, entry Entry) (Details, error) {
+	if !validArtifactDigest(entry.DetailsSHA256) {
+		return Details{}, status_error.PluginContentInvalid
+	}
+	release := artifactState(&detailsLocks, detailsArtifactLocation(entry)).retainReader()
+	defer release()
 	location, err := detailsLocation(ctx, entry)
 	if err != nil {
 		return Details{}, err
@@ -62,14 +67,11 @@ func detailsLocation(ctx context.Context, entry Entry) (string, error) {
 }
 
 func loadDetails(ctx context.Context, entry Entry) (string, error) {
-	if !httpAddress(entry.DetailsURL) || len(entry.DetailsSHA256) != 64 || entry.DetailsSize <= 0 || entry.DetailsSize > maxDetailsBytes {
+	if !httpAddress(entry.DetailsURL) || !validArtifactDigest(entry.DetailsSHA256) || entry.DetailsSize <= 0 || entry.DetailsSize > maxDetailsBytes {
 		return "", status_error.PluginContentInvalid
 	}
-	if _, err := hex.DecodeString(entry.DetailsSHA256); err != nil {
-		return "", status_error.PluginContentInvalid
-	}
-	directory := filepath.Join(entryStorageRoot(entry), "details")
-	location := filepath.Join(directory, entry.DetailsSHA256+".json")
+	location := detailsArtifactLocation(entry)
+	directory := filepath.Dir(location)
 	state := artifactState(&detailsLocks, location)
 	if err := state.acquire(ctx); err != nil {
 		return "", err
@@ -122,6 +124,10 @@ func loadDetails(ctx context.Context, entry Entry) (string, error) {
 	}
 	state.failure = nil
 	return publishDetails(directory, location, raw, entry)
+}
+
+func detailsArtifactLocation(entry Entry) string {
+	return filepath.Join(entryStorageRoot(entry), "details", entry.DetailsSHA256+".json")
 }
 
 func publishDetails(directory, location string, raw []byte, entry Entry) (string, error) {

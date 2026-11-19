@@ -3,6 +3,7 @@ package workflows
 import (
 	"context"
 	"encoding/json"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -311,6 +312,11 @@ func sendCreationMessage(ctx context.Context, d *workflowDependencies, command S
 	}
 	if actual, readErr := d.Chats.ReadExecution(ctx, chatID, session.ActiveExecutionID); readErr == nil {
 		if session.AcceptedExecutionID != actual.ID {
+			release, err := chatstorage.AcquireReferences(d.DataDirectory, chatID)
+			if err != nil {
+				return SendWorkflowCreationMessageResponse{WorkflowCreationSession: session}, err
+			}
+			defer release()
 			session.ChatID, session.AcceptedExecutionID = chatID, actual.ID
 			if err := d.Transactions.Transaction(ctx, func(ctx context.Context) error {
 				if err := d.CreationSessions.UpdateCreationSession(ctx, session); err != nil {
@@ -380,6 +386,11 @@ func sendCreationMessage(ctx context.Context, d *workflowDependencies, command S
 	if err != nil {
 		return SendWorkflowCreationMessageResponse{WorkflowCreationSession: session}, err
 	}
+	release, err := chatstorage.AcquireReferences(d.DataDirectory, accepted.Chat.ID)
+	if err != nil {
+		return SendWorkflowCreationMessageResponse{WorkflowCreationSession: session}, err
+	}
+	defer release()
 	d.State.Commands.Lock()
 	defer d.State.Commands.Unlock()
 	err = d.Transactions.Transaction(ctx, func(ctx context.Context) error {

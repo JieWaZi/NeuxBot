@@ -1221,6 +1221,11 @@ function AppShellContent({
                 <SettingsScene
                   section={settingsSection}
                   runtimeId={searchParams.get("agent") || undefined}
+                  storageOwnerId={
+                    searchParams.get("files") === "wakers"
+                      ? searchParams.get("owner") || undefined
+                      : undefined
+                  }
                   onOpenRuntime={(runtimeId) =>
                     navigate(
                       `/settings/agents?${new URLSearchParams({ agent: runtimeId })}`,

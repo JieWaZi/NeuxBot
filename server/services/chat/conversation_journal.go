@@ -83,6 +83,10 @@ func factRecord(chatID string, row agent.ConversationRecord) eventlog.Record {
 			fact.Type, fact.MessageID, fact.ExecutionID, fact.InvocationID, fact.Data
 	} else if message := row.Change.Message; message != nil {
 		record.MessageID, record.ExecutionID = message.MessageID, message.ExecutionID
+	} else if input := row.Change.Input; input != nil {
+		record.InvocationID = input.HostInvocationID
+	} else if consumption := row.Change.Consumption; consumption != nil {
+		record.InvocationID = consumption.HostInvocationID
 	}
 	return record
 }
@@ -356,6 +360,7 @@ func (m *service) ProjectTurnAdmission(ctx context.Context, turn StartedTurn, re
 	}
 	chat, execution := turn.Chat, turn.Execution
 	chat.LatestSequence, chat.UpdatedAt = receipt.Version, receipt.RecordedAt
+	chat.LastActivityAt = max(chat.LastActivityAt, receipt.RecordedAt)
 	if turn.NewChat {
 		chat.CreatedAt = receipt.RecordedAt
 	}

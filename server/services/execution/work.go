@@ -333,6 +333,12 @@ func (m *service) startMessage(
 		request.clientRequestID = createRequestIdentity.ID
 		request.clientRequestHash = createRequestIdentity.Hash
 		request.createChatID = createRequestIdentity.ResourceID("chat", request.create.wakerID)
+		// 首发重试也可能命中已存在的闲置会话，从权威重放前起保护稳定身份。
+		releaseReference, err := chatstorage.AcquireReferences(m.storage.Root(), request.createChatID)
+		if err != nil {
+			return AcceptedExecution{}, err
+		}
+		defer releaseReference()
 		if replayed, exists, err := m.replayCreateRequest(
 			ctx,
 			request.createChatID,

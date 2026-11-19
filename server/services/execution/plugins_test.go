@@ -1042,3 +1042,43 @@ func TestPluginNativeEligibilityHonorsDeclaredProjectionFormat(t *testing.T) {
 		t.Fatal("selected a native route for a projection-only package name")
 	}
 }
+
+func TestNativePluginTargetLeaseSurvivesUntilViewsClose(t *testing.T) {
+	data := t.TempDir()
+	state := executionPlugin(t, data, "office", "native target lease", false)
+	contents := plugins.NewContentStore(data, func() ([]string, error) {
+		return []string{state.Versions[0].ContentPath, filepath.Join("plugins", "data", "office")}, nil
+	})
+	core := &service{
+		skillDataDirectory: data,
+		pluginController:   installedPluginFixture{states: []models.PluginState{state}},
+		pluginContents:     contents,
+	}
+	detection := authenticatedPluginDetection("cursor", "2026.11.05-86047df")
+	request := pendingMessage{message: userMessage{PluginIDs: []string{"office"}}}
+	frozen, err := core.freezePluginResources(t.Context(), "w1", request, detection)
+	if err != nil || !frozen.native["office"] {
+		t.Fatalf("fixture did not select native delivery: %v", err)
+	}
+	workspace := agentapi.Workspace{Path: t.TempDir(), Managed: true}
+	lease, err := core.acquireNativeResources(t.Context(), "chat", "w1", workspace, detection, nil, nil, nil, frozen, agentapi.ResourceSelection{})
+	if err != nil || len(lease.NativePlugins) != 1 || lease.CloseFiles == nil {
+		t.Fatalf("view was not acquired: %+v %v", lease.NativePlugins, err)
+	}
+	defer lease.CloseFiles(t.Context())
+	defer lease.Close(t.Context())
+	if err := lease.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	held, err := contents.ClearCachedTargets(t.Context())
+	if err != nil || held.Files != 0 || held.Skipped != 1 {
+		t.Fatalf("derived target lost before the view closed: %+v %v", held, err)
+	}
+	if err := lease.CloseFiles(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	cleared, err := contents.ClearCachedTargets(t.Context())
+	if err != nil || cleared.Files == 0 || cleared.Skipped != 0 {
+		t.Fatalf("closed target remained protected: %+v %v", cleared, err)
+	}
+}

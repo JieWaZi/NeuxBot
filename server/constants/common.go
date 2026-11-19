@@ -910,3 +910,21 @@ const (
 	// WakerProfileContentMaximumTokens 是伙伴长期指令的 cl100k_base 分词上限。
 	WakerProfileContentMaximumTokens = 1300
 )
+
+const (
+	// StorageScanMaximumEntries 限制一次存储统计检查的目录项总数。
+	StorageScanMaximumEntries = 100000
+	// StorageScanMaximumDepth 限制存储统计从配置根递归的深度。
+	StorageScanMaximumDepth = 64
+	// StorageScanMaximumSeconds 限制一次存储统计的秒数。
+	StorageScanMaximumSeconds = 30
+	// StorageDefaultRetentionDays 是闲置会话初次启用使用的默认天数。
+	StorageDefaultRetentionDays = 15
+	// StorageMaximumRetentionDays 是闲置会话可配置的最大天数。
+	StorageMaximumRetentionDays = 3650
+	// StorageCleanupBatchSize 是一次确认或一页后台查询的上限。
+	StorageCleanupBatchSize = 256
+)
+
+// StoragePolicyFileName 是程序数据根中保留策略和最近维护结果的文件名。
+const StoragePolicyFileName = "storage-policy.json"

@@ -59,6 +59,8 @@ func (u *UpdateRuntimeEnvironment) Validate(*gin.Context) error {
 }
 
 // Output 保存配置并只重新探测当前 Runtime。
+// [RuntimeInstallationBusy][40900007301][智能体程序正在维护]
+// [RuntimeConfigurationInvalid][50000000040][所选智能体版本不可用]
 func (u *UpdateRuntimeEnvironment) Output(ctx *gin.Context) (interface{}, error) {
 	current, err := global.RuntimeEnvironmentControllerManager.Get(ctx, u.RuntimeID)
 	if err != nil {
@@ -96,41 +98,38 @@ func (u *UpdateRuntimeEnvironment) Output(ctx *gin.Context) (interface{}, error)
 		DefaultFast:            u.Body.DefaultFast,
 		DefaultPermissionLevel: u.Body.DefaultPermissionLevel,
 	}
-	selectionChanged := u.Body.InstallationPath != "" && u.Body.InstallationPath != current.Detection.ResolvedBinary
-	var selected agent.CLIInstallation
-	if selectionChanged {
-		for _, installation := range current.Detection.Installations {
-			if installation.Path == u.Body.InstallationPath && installation.Available {
-				selected = installation
-				break
+	refresh := false
+	commit := func(observed models.RuntimeEnvironment, selected agent.CLIInstallation) error {
+		refresh = selected.Path != "" || observed.DefaultAccountID != environment.DefaultAccountID
+		return global.TransactionControllerManager.Transaction(ctx, func(tx context.Context) error {
+			if err := updateRuntimeEnvironment(tx, environment, u.Body.IsDefault); err != nil {
+				return err
 			}
-		}
-		if selected.Path == "" {
-			return nil, ginx.WithStack(status_error.RuntimeConfigurationInvalid)
-		}
-	}
-	if err := global.TransactionControllerManager.Transaction(ctx, func(tx context.Context) error {
-		if err := updateRuntimeEnvironment(tx, environment, u.Body.IsDefault); err != nil {
-			return err
-		}
-		if selectionChanged {
-			summary := current.Detection.Runtime
-			if global.RuntimeCatalog != nil {
-				for _, candidate := range global.RuntimeCatalog.Runtimes() {
-					if candidate.ID == u.RuntimeID {
-						summary = candidate
-						break
+			if selected.Path != "" {
+				summary := observed.Detection.Runtime
+				if global.RuntimeCatalog != nil {
+					for _, candidate := range global.RuntimeCatalog.Runtimes() {
+						if candidate.ID == u.RuntimeID {
+							summary = candidate
+							break
+						}
 					}
 				}
+				detection := agent.DetectionResult{Runtime: summary, Installations: observed.Detection.Installations, ResolvedBinary: selected.Path, Version: selected.Version, State: agent.DetectionStateReady, Auth: agent.AuthStatusUnknown}
+				return global.RuntimeEnvironmentControllerManager.UpdateDetection(tx, u.RuntimeID, detection, observed.DetectedAt)
 			}
-			detection := agent.DetectionResult{Runtime: summary, Installations: current.Detection.Installations, ResolvedBinary: selected.Path, Version: selected.Version, State: agent.DetectionStateReady, Auth: agent.AuthStatusUnknown}
-			return global.RuntimeEnvironmentControllerManager.UpdateDetection(tx, u.RuntimeID, detection, current.DetectedAt)
-		}
-		return nil
-	}); err != nil {
+			return nil
+		})
+	}
+	if u.Body.InstallationPath != "" {
+		err = global.RuntimeEnvironmentService.CommitInstallationSelection(ctx, u.RuntimeID, u.Body.InstallationPath, commit)
+	} else {
+		err = commit(current, agent.CLIInstallation{})
+	}
+	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	if selectionChanged || current.DefaultAccountID != environment.DefaultAccountID {
+	if refresh {
 		if err := global.RuntimeEnvironmentService.RefreshOne(ctx, u.RuntimeID); err != nil {
 			return nil, ginx.WithStack(err)
 		}

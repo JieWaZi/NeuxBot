@@ -67,15 +67,15 @@ func PrepareTargets(ctx context.Context, parent, id string, pkg Package, root st
 
 // PrepareNativeTarget 根据唯一组件清单生成并验证当前 CLI 的自包含目标。
 func PrepareNativeTarget(ctx context.Context, parent, id string, pkg Package, root, cli string, authentication ...AuthenticationBinding) (NativeTarget, error) {
-	return prepareNativeTarget(ctx, parent, id, pkg, root, cli, "", authentication...)
+	return prepareNativeTarget(ctx, parent, id, pkg, root, cli, "", nil, authentication...)
 }
 
 // PrepareNativeTargetWithDigest 使用调用方已核验的源摘要，避免重复扫描原包。
 func PrepareNativeTargetWithDigest(ctx context.Context, parent, id string, pkg Package, root, cli, verifiedDigest string, authentication ...AuthenticationBinding) (NativeTarget, error) {
-	return prepareNativeTarget(ctx, parent, id, pkg, root, cli, verifiedDigest, authentication...)
+	return prepareNativeTarget(ctx, parent, id, pkg, root, cli, verifiedDigest, nil, authentication...)
 }
 
-func prepareNativeTarget(ctx context.Context, parent, id string, pkg Package, root, cli, verifiedDigest string, authentication ...AuthenticationBinding) (NativeTarget, error) {
+func prepareNativeTarget(ctx context.Context, parent, id string, pkg Package, root, cli, verifiedDigest string, owner *targetCacheOwner, authentication ...AuthenticationBinding) (NativeTarget, error) {
 	if err := ctx.Err(); err != nil {
 		return NativeTarget{}, err
 	}
@@ -148,11 +148,26 @@ func prepareNativeTarget(ctx context.Context, parent, id string, pkg Package, ro
 	if err := os.MkdirAll(parent, 0700); err != nil {
 		return NativeTarget{}, storageFailure(err)
 	}
-	stage, err := os.MkdirTemp(parent, "native-")
+	work, err := os.MkdirTemp(parent, "native-")
 	if err != nil {
 		return NativeTarget{}, storageFailure(err)
 	}
-	defer os.RemoveAll(stage)
+	defer func() {
+		if err := os.RemoveAll(work); err == nil && owner != nil {
+			_ = owner.receipts.Remove(filepath.Base(work) + ".json")
+		}
+	}()
+	stage := work
+	if owner != nil {
+		if err := owner.beginStage(work); err != nil {
+			return NativeTarget{}, err
+		}
+		// 归属标记只留在暂存外层，原生载荷继续遵守原包完整摘要。
+		stage = filepath.Join(work, "package")
+		if err := os.Mkdir(stage, 0o700); err != nil {
+			return NativeTarget{}, storageFailure(err)
+		}
+	}
 	if err := CopyDeliveryTreeWithDigest(root, stage, digest); err != nil {
 		return NativeTarget{}, err
 	}

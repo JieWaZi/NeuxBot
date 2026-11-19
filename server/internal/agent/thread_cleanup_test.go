@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"testing"
+
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 func TestThreadCleanupCannotCancelSuccessorOwner(t *testing.T) {
@@ -34,5 +36,23 @@ func TestThreadCleanupCannotCancelSuccessorOwner(t *testing.T) {
 	}
 	if lifecycle.threads[successor.id] != successor || successor.active != turn || successor.closing {
 		t.Fatal("a delayed cleanup changed the successor's owner or admission")
+	}
+}
+
+func TestRetentionCloseIdleChatPreservesBusySeat(t *testing.T) {
+	lifecycle := NewThreadLifecycle(nil, nil)
+	lifecycle.threads["chat"] = &threadState{id: "chat", chatID: "chat", active: &Turn{}}
+	if err := lifecycle.CloseIdleChat(t.Context(), "chat"); err != status_error.ChatHasActiveExecution {
+		t.Fatalf("busy seat: %v", err)
+	}
+	if lifecycle.threads["chat"].closing {
+		t.Fatal("active chat was withdrawn")
+	}
+	lifecycle.threads["chat"].active = nil
+	if err := lifecycle.CloseIdleChat(t.Context(), "chat"); err != nil {
+		t.Fatal(err)
+	}
+	if lifecycle.threads["chat"] != nil {
+		t.Fatal("idle seat remains")
 	}
 }

@@ -100,3 +100,52 @@ func TestCodexShellConnectionMaintainsNativeOwnership(t *testing.T) {
 		t.Fatalf("Core close did not remove its native lookup: %v", err)
 	}
 }
+
+func TestCleanupRetiredConnectionsKeepsCurrentAndUnknownFiles(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := New(nil)
+	identity := strings.Repeat("a", 64)
+	retiredEpoch := strings.Repeat("b", 32)
+	otherEpoch := strings.Repeat("c", 32)
+	threadID := "01900000-0000-7000-8000-000000000001"
+	descriptor := Connection{
+		ProtocolVersion: constants.AgentCLIProtocolVersion,
+		Endpoint:        "http://127.0.0.1:18080" + constants.AgentCLIPath,
+		GrantID:         "test-grant",
+		Token:           "test-token",
+	}
+	fixtures := []struct {
+		directory string // Relative managed descriptor directory.
+		epoch     string // Core epoch recorded in the descriptor.
+		remove    bool   // Whether the descriptor belongs to a retired Core.
+	}{
+		{identity, retiredEpoch, true},
+		{filepath.Join(retiredEpoch, identity), retiredEpoch, true},
+		{filepath.Join(codexShellDirectory, threadID), retiredEpoch, true},
+		{filepath.Join(registry.epoch, identity), registry.epoch, false},
+		{filepath.Join(otherEpoch, identity), retiredEpoch, false},
+		{filepath.Join(otherEpoch, "unmanaged"), otherEpoch, false},
+	}
+	for _, fixture := range fixtures {
+		descriptor.CoreEpoch = fixture.epoch
+		if _, err := WriteConnection(filepath.Join(root, fixture.directory), residentConnectionFilename, descriptor); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := registry.CleanupRetiredConnections(root); err != nil {
+		t.Fatal(err)
+	}
+	for _, fixture := range fixtures {
+		directory := filepath.Join(root, fixture.directory)
+		if fixture.remove {
+			if _, err := os.Stat(directory); !os.IsNotExist(err) {
+				t.Errorf("retired connection directory %s remains: %v", fixture.directory, err)
+			}
+		} else if _, err := ReadConnection(filepath.Join(directory, residentConnectionFilename)); err != nil {
+			t.Errorf("connection outside retirement scope %s changed: %v", fixture.directory, err)
+		}
+	}
+}

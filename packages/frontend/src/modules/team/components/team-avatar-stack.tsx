@@ -55,7 +55,7 @@ export function TeamAvatarStack({
   const hidden = people.length - visible.length;
   const cells = visible.length + (hidden > 0 ? 1 : 0);
   const frame = frames[size];
-  // OpenBot 的 46px 组合位于 62px 行内；本产品 52px 槽占满行高，需在槽内留出同样的绘图余量。
+  // 导航头像槽与行高一致，在槽内给重叠的身体和轮廓留出绘图余量。
   const drawingSize =
     "calc(" + frame.size + (size === "navigation" ? " - 1rem)" : " - 0.5rem)");
   const cellClass = (index: number) =>

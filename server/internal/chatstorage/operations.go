@@ -2,6 +2,7 @@ package chatstorage
 
 import (
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -13,7 +14,7 @@ var operations = struct {
 	sync.Mutex
 	// busy 按数据根目录和资源身份保存排他操作。
 	busy map[string]bool
-	// admissions 只统计准备阶段的伙伴共享接纳，不表示原生执行状态。
+	// admissions 统计短期伙伴接纳与会话引用提交，不表示原生执行状态。
 	admissions map[string]int
 }{busy: map[string]bool{}, admissions: map[string]int{}}
 
@@ -94,4 +95,60 @@ func AcquireAdmission(root, wakerID string, chatIDs ...string) (func(), error) {
 			}
 		})
 	}, nil
+}
+
+// AcquireReferences 在同一操作门内登记领域引用写入。并行引用可共享目标，排他删除须等所有登记者释放。
+func AcquireReferences(root string, chatIDs ...string) (func(), error) {
+	operations.Lock()
+	defer operations.Unlock()
+	keys := make(map[string]bool, len(chatIDs))
+	for _, id := range chatIDs {
+		if id == "" {
+			continue
+		}
+		if !safeSegment(id) {
+			return nil, status_error.BadRequest
+		}
+		key := filepath.Clean(root) + "\x00" + id
+		if operations.busy[key] {
+			return nil, status_error.ChatHasActiveExecution
+		}
+		keys[key] = true
+	}
+	for key := range keys {
+		operations.admissions[key]++
+	}
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			operations.Lock()
+			defer operations.Unlock()
+			for key := range keys {
+				operations.admissions[key]--
+				if operations.admissions[key] == 0 {
+					delete(operations.admissions, key)
+				}
+			}
+		})
+	}, nil
+}
+
+// BusyChatIDs 返回当前根中不能获取排他删除门的会话身份快照。
+func BusyChatIDs(root string) []string {
+	operations.Lock()
+	defer operations.Unlock()
+	var ids []string
+	prefix := filepath.Clean(root) + "\x00"
+	add := func(key string) {
+		if id, ok := strings.CutPrefix(key, prefix); ok && !strings.HasPrefix(id, "waker:") {
+			ids = append(ids, id)
+		}
+	}
+	for key := range operations.busy {
+		add(key)
+	}
+	for key := range operations.admissions {
+		add(key)
+	}
+	return ids
 }

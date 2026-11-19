@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -39,6 +40,7 @@ import (
 	managedskills "github.com/JieWaZi/NeuxBot/server/internal/skills"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/internal/sqlite"
+	storagefs "github.com/JieWaZi/NeuxBot/server/internal/storage"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -50,6 +52,7 @@ import (
 	knowledgeservice "github.com/JieWaZi/NeuxBot/server/services/knowledge"
 	"github.com/JieWaZi/NeuxBot/server/services/runtimeenvironment"
 	"github.com/JieWaZi/NeuxBot/server/services/schedule"
+	storageservice "github.com/JieWaZi/NeuxBot/server/services/storage"
 	"github.com/JieWaZi/NeuxBot/server/services/usage"
 	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 	"github.com/JieWaZi/NeuxBot/server/services/workspaceattention"
@@ -472,6 +475,12 @@ func loadRuntime(ctx context.Context) error {
 	}
 	RuntimeCatalog = sdk
 	AgentProviders = agent.NewProviderRuntime(agent.ProviderRuntimeOptions{AcquireAccount: AIAccountService.AcquireAccount})
+	installer := installation.New(filepath.Join(Config.DataDirectory, "runtime-installations"))
+	recoveryContext, cancelRecovery := context.WithTimeout(ctx, 2*time.Second)
+	if err := installer.RecoverRetiredStages(recoveryContext); err != nil {
+		logx.Warnf("recover retired runtime installation staging: %v", err)
+	}
+	cancelRecovery()
 	RuntimeEnvironmentService, err = runtimeenvironment.New(runtimeenvironment.Config{
 		BeforeRuntimeMaintenance: func(ctx context.Context, provider string) (func(), error) {
 			if AgentThreads == nil {
@@ -512,7 +521,7 @@ func loadRuntime(ctx context.Context) error {
 			}
 			return release, nil
 		},
-		Installer:                 installation.New(filepath.Join(Config.DataDirectory, "runtime-installations")),
+		Installer:                 installer,
 		Accounts:                  AIAccountService,
 		ProviderRuntime:           AgentProviders,
 		ResolveAccount:            AIAccountService.ResolveAccount,
@@ -570,11 +579,12 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		hub.Publish(events.Event{Topic: "usage", Type: "usage.changed", Resource: events.Resource{Kind: "global"}})
 	}
 	chatModule, err := chat.New(chat.Config{
-		StorageDirectory:     configuration.ManagedFilesDirectory,
-		Conversations:        conversations,
-		Projects:             ProjectControllerManager,
-		CloseNativeThread:    threads.CloseThread,
-		PreserveIMAdmissions: IMControllerManager.PreserveInboxAdmissions,
+		StorageDirectory:      configuration.ManagedFilesDirectory,
+		Conversations:         conversations,
+		Projects:              ProjectControllerManager,
+		CloseNativeThread:     threads.CloseThread,
+		PreserveIMAdmissions:  IMControllerManager.PreserveInboxAdmissions,
+		CloseIdleNativeThread: threads.CloseIdleChat,
 		ResetUsageProjection: func(ctx context.Context) error {
 			if err := usageProjection.ResetProjection(ctx); err != nil {
 				return err
@@ -683,8 +693,9 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 	}
 	var imModule *imservice.Service
 	channelModule, err := channelservice.New(channelservice.Config{
-		AutomaticRun: AutomaticTaskControllerManager.GetRun,
-		Commands:     controllers.NewAgentCommandController(DB),
+		ManagedFilesDirectory: configuration.ManagedFilesDirectory,
+		AutomaticRun:          AutomaticTaskControllerManager.GetRun,
+		Commands:              controllers.NewAgentCommandController(DB),
 		RecordIMLeadInputFailure: func(ctx context.Context, thread models.ChannelThread, input models.ChannelLeadInput, code string) error {
 			return imModule.RecordTeamLeadInputFailure(ctx, thread, input, code)
 		},
@@ -766,11 +777,65 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 	if err := IMService.Start(ctx); err != nil {
 		return err
 	}
+	databasePath := configuration.DB.DBName
+	if configuration.DB.Dsn != "" {
+		databasePath = configuration.DB.Dsn
+	}
+	if databasePath == ":memory:" {
+		databasePath = ""
+	}
+	StorageService = storageservice.New(ctx, storageservice.Config{
+		Roots:                storagefs.Roots{Data: configuration.DataDirectory, Managed: configuration.ManagedFilesDirectory, Database: databasePath},
+		Candidates:           chatModule,
+		LookupChats:          ChatControllerManager.ListStorageChats,
+		DeleteExpired:        chatModule.DeleteChatIfExpired,
+		InheritedAttachments: chatModule.InheritedAttachmentPaths,
+		Events:               EventHub,
+		CheckFileIdle: func(ctx context.Context, wakerID, chatID string) error {
+			occupied := executionCore.OccupiedChatIDs()
+			if chatID != "" {
+				if slices.Contains(occupied, chatID) {
+					return status_error.ChatHasActiveExecution
+				}
+				return nil
+			}
+			return chatModule.CheckOccupiedWorkspace(ctx, wakerID, occupied)
+		},
+		Cleanup: map[constants.StorageCleanupKind]storageservice.CleanupOwner{
+			constants.StorageCleanupKindCaches: {
+				Preview: func(ctx context.Context) (int64, error) {
+					distribution, err := catalog.PreviewCachedArtifacts(ctx, PluginCatalogSource())
+					targets, targetErr := PluginContents.PreviewCachedTargets(ctx)
+					return distribution.Bytes + targets.Bytes, errors.Join(err, targetErr)
+				},
+				Remove: func(ctx context.Context) (storageservice.ResourceCleanup, error) {
+					distribution, err := catalog.ClearCachedArtifacts(ctx, PluginCatalogSource())
+					targets, targetErr := PluginContents.ClearCachedTargets(ctx)
+					return storageservice.ResourceCleanup{Bytes: distribution.Bytes + targets.Bytes, Skipped: distribution.Skipped + targets.Skipped}, errors.Join(err, targetErr)
+				},
+			},
+			constants.StorageCleanupKindRuntimes: {
+				Preview: func(ctx context.Context) (int64, error) { return RuntimeEnvironmentService.ReclaimPrograms(ctx, false) },
+				Remove: func(ctx context.Context) (storageservice.ResourceCleanup, error) {
+					bytes, err := RuntimeEnvironmentService.ReclaimPrograms(ctx, true)
+					return storageservice.ResourceCleanup{Bytes: bytes}, err
+				},
+			},
+		},
+	})
+	StorageService.Start()
 	return nil
 }
 
+// StorageService 拥有本机存储统计及退役维护调度。
+var StorageService *storageservice.Service
+
 // Close 按依赖逆序停止后台流程并关闭数据库连接。
 func Close() error {
+	if StorageService != nil {
+		StorageService.Close()
+		StorageService = nil
+	}
 	closeIntegrationAPI()
 	var result error
 	KnowledgeConnectionControllerManager = nil

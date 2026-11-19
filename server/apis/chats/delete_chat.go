@@ -34,5 +34,8 @@ func (d *DeleteChat) Output(ctx *gin.Context) (interface{}, error) {
 	}); err != nil {
 		return nil, ginx.WithStack(err)
 	}
+	if global.StorageService != nil {
+		global.StorageService.Invalidate()
+	}
 	return ginx.CommonSuccessResponse(), nil
 }

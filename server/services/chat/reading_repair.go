@@ -54,8 +54,14 @@ func (m *service) startReadingRepair(ctx context.Context) {
 	}
 	ctx, r.cancel = context.WithCancel(ctx)
 	r.done = make(chan struct{})
+	select {
+	case r.wake <- struct{}{}:
+	default:
+	}
 	go func() {
 		defer close(r.done)
+		var retentionCursor string
+		retentionDone := false
 		for {
 			select {
 			case <-ctx.Done():
@@ -72,7 +78,12 @@ func (m *service) startReadingRepair(ctx context.Context) {
 				case <-timer.C:
 				}
 				pending, failed := m.repairReadingPass(ctx)
-				if !pending {
+				if !retentionDone {
+					next, done, err := m.backfillRetentionPage(ctx, retentionCursor)
+					retentionCursor, retentionDone = next, done
+					failed = failed || err != nil
+				}
+				if !pending && retentionDone {
 					break
 				}
 				if failed {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	protocol "github.com/JieWaZi/NeuxBot/server/internal/im"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
@@ -113,6 +114,20 @@ func (s *Service) createDelivery(ctx context.Context, request DeliveryRequest, a
 		}
 	}
 
+	release, err := chatstorage.AcquireReferences(s.config.DataDirectory, delivery.ChatID)
+	if err != nil {
+		return models.IMDelivery{}, err
+	}
+	defer release()
+	if delivery.ChatID != "" && s.config.Chats != nil {
+		exists, err := s.conversationExists(ctx, models.IMConversationLink{ChatID: delivery.ChatID})
+		if err != nil {
+			return models.IMDelivery{}, err
+		}
+		if !exists {
+			return models.IMDelivery{}, status_error.IMResourceNotFound
+		}
+	}
 	if err := s.config.Store.CreateDelivery(ctx, delivery); err != nil {
 		if hasCode(err, status_error.IMConfigurationConflict) {
 			previous, exists, lookupErr := s.config.Store.FindDelivery(ctx, request.RequestID)

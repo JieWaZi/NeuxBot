@@ -5304,6 +5304,393 @@ export type GithubComJieWaZiNeuxBotServerApisSkillsWakerSkillResponse = {
 };
 
 /**
+ * CategoryUsage 测量分类。
+ */
+export type GithubComJieWaZiNeuxBotServerApisStorageCategoryUsage = {
+    /**
+     * Bytes 已知大小
+     */
+    bytes?: number;
+    category?: GithubComJieWaZiNeuxBotServerConstantsStorageCategory & unknown;
+    /**
+     * Paths 目录位置
+     */
+    paths?: Array<string>;
+};
+
+/**
+ * ChatProtectionInput 更新会话保留请求。
+ */
+export type GithubComJieWaZiNeuxBotServerApisStorageChatProtectionInput = {
+    /**
+     * Protected 保留会话
+     */
+    protected: boolean;
+};
+
+/**
+ * DeleteStorageFileInput 存储文件删除请求。
+ */
+export type GithubComJieWaZiNeuxBotServerApisStorageDeleteStorageFileInput = {
+    /**
+     * 文件标识
+     */
+    fileId: string;
+    /**
+     * 对象标识
+     */
+    id: string;
+    /**
+     * 对象类型
+     */
+    kind: string;
+    /**
+     * 文件版本
+     */
+    version: string;
+};
+
+/**
+ * DiskUsage 单卷容量。
+ */
+export type GithubComJieWaZiNeuxBotServerApisStorageDiskUsage = {
+    /**
+     * FreeBytes 可用容量
+     */
+    freeBytes?: number;
+    /**
+     * Path 显示位置
+     */
+    path?: string;
+    /**
+     * Paths 所在目录
+     */
+    paths?: Array<string>;
+    /**
+     * TotalBytes 磁盘容量
+     */
+    totalBytes?: number;
+};
+
+/**
+ * EntityPage 是占用排序页。
+ */
+export type GithubComJieWaZiNeuxBotServerApisStorageEntityPage = {
+    /**
+     * Items 排名列表
+     */
+    items?: Array<GithubComJieWaZiNeuxBotServerApisStorageEntityUsage>;
+    /**
+     * NextCursor 下一页标识
+     */
+    nextCursor?: string;
+    /**
+     * Total 实体数量
+     */
+    total?: number;
+};
+
+/**
+ * EntityUsage 是实体行大小。
+ */
+export type GithubComJieWaZiNeuxBotServerApisStorageEntityUsage = {
+    /**
+     * Avatar 伙伴头像
+     */
+    avatar?: string;
+    /**
+     * Bytes 占用大小
+     */
+    bytes?: number;
+    /**
+     * ChatBytes 私有占用
+     */
+    chatBytes?: number;
+    /**
+     * ChatCount 会话数量
+     */
+    chatCount?: number;
+    /**
+     * FileCount 文件数量
+     */
+    fileCount?: number;
+    /**
+     * ID 资源标识
+     */
+    id?: string;
+    /**
+     * InternalBytes 资源占用
+     */
+    internalBytes?: number;
+    /**
+     * Title 显示名称
+     */
+    title?: string;
+    /**
+     * WakerID 伙伴标识
+     */
+    wakerId?: string;
+    /**
+     * WakerName 伙伴名称
+     */
+    wakerName?: string;
+    /**
+     * WorkspaceBytes 空间占用
+     */
+    workspaceBytes?: number;
+};
+
+/**
+ * ExpirationPreviewInput 预览过期会话请求。
+ */
+export type GithubComJieWaZiNeuxBotServerApisStorageExpirationPreviewInput = {
+    /**
+     * ChatIDs 会话标识
+     */
+    chatIds?: Array<string>;
+    /**
+     * RetentionDays 保留天数
+     */
+    retentionDays: number;
+};
+
+/**
+ * ExpiredChat 表示一个过期会话。
+ */
+export type GithubComJieWaZiNeuxBotServerApisStorageExpiredChat = {
+    /**
+     * Bytes 私有大小
+     */
+    bytes?: number;
+    /**
+     * ChatID 会话标识
+     */
+    chatId?: string;
+    /**
+     * Files 私有目录
+     */
+    files?: Array<GithubComJieWaZiNeuxBotServerApisStoragePrivateFolder>;
+    /**
+     * LastActivityAt 最后活动
+     */
+    lastActivityAt?: number;
+    /**
+     * SizeKnown 大小已知
+     */
+    sizeKnown?: boolean;
+    /**
+     * Title 会话名称
+     */
+    title?: string;
+    /**
+     * WakerID 伙伴标识
+     */
+    wakerId?: string;
+    /**
+     * WakerName 伙伴名称
+     */
+    wakerName?: string;
+};
+
+/**
+ * ExpiredChatsPage 是过期会话候选和当前已知私有占用。
+ */
+export type GithubComJieWaZiNeuxBotServerApisStorageExpiredChatsPage = {
+    /**
+     * Complete 大小完整
+     */
+    complete?: boolean;
+    /**
+     * Items 会话列表
+     */
+    items?: Array<GithubComJieWaZiNeuxBotServerApisStorageExpiredChat>;
+    /**
+     * KnownBytes 已知大小
+     */
+    knownBytes?: number;
+    /**
+     * NextCursor 下一页标识
+     */
+    nextCursor?: string;
+    /**
+     * Total 候选总数
+     */
+    total?: number;
+};
+
+/**
+ * PreviewStorageCleanupInput 预览资源清理请求。
+ */
+export type GithubComJieWaZiNeuxBotServerApisStoragePreviewStorageCleanupInput = {
+    /**
+     * Categories 清理类别
+     */
+    categories: Array<GithubComJieWaZiNeuxBotServerConstantsStorageCleanupKind>;
+};
+
+/**
+ * PrivateFolder 是一种测得的会话私有目录。
+ */
+export type GithubComJieWaZiNeuxBotServerApisStoragePrivateFolder = {
+    /**
+     * Bytes 已知大小
+     */
+    bytes?: number;
+    /**
+     * Category 目录类别
+     */
+    category?: string;
+    /**
+     * Path 存储位置
+     */
+    path?: string;
+};
+
+/**
+ * StorageConfirmation 清理存储资源请求。
+ */
+export type GithubComJieWaZiNeuxBotServerApisStorageStorageConfirmation = {
+    /**
+     * PreviewID 确认标识
+     */
+    previewId: string;
+};
+
+/**
+ * StorageFile 文件明细行。
+ */
+export type GithubComJieWaZiNeuxBotServerApisStorageStorageFile = {
+    /**
+     * 文件大小
+     */
+    bytes?: number;
+    /**
+     * 会话标题
+     */
+    chatTitle?: string;
+    /**
+     * 文件标识
+     */
+    id?: string;
+    /**
+     * MessageID 上传消息标识
+     */
+    messageId?: string;
+    /**
+     * 修改时间
+     */
+    modifiedAt?: number;
+    /**
+     * 文件路径
+     */
+    relativePath?: string;
+    /**
+     * 文件来源
+     */
+    source?: string;
+    /**
+     * 文件版本
+     */
+    version?: string;
+};
+
+/**
+ * StorageFilePage 存储文件列表。
+ */
+export type GithubComJieWaZiNeuxBotServerApisStorageStorageFilePage = {
+    /**
+     * 扫描完整
+     */
+    complete?: boolean;
+    /**
+     * 文件列表
+     */
+    items?: Array<GithubComJieWaZiNeuxBotServerApisStorageStorageFile>;
+    /**
+     * 后续游标
+     */
+    nextCursor?: string;
+    /**
+     * 对象名称
+     */
+    title?: string;
+    /**
+     * 文件总数
+     */
+    total?: number;
+    /**
+     * 文件总量
+     */
+    totalBytes?: number;
+};
+
+/**
+ * StoragePolicyInput 保存存储策略请求。
+ */
+export type GithubComJieWaZiNeuxBotServerApisStorageStoragePolicyInput = {
+    /**
+     * Enabled 自动清理
+     */
+    enabled?: boolean;
+    /**
+     * ExpectedRevision 期望版本
+     */
+    expectedRevision?: number;
+    /**
+     * PreviewID 确认标识
+     */
+    previewId?: string;
+    /**
+     * RetentionDays 保留天数
+     */
+    retentionDays: number;
+};
+
+/**
+ * StorageRunReceipt 返回供客户端对账的维护身份。
+ */
+export type GithubComJieWaZiNeuxBotServerApisStorageStorageRunReceipt = {
+    /**
+     * RunID 运行标识
+     */
+    runId?: string;
+};
+
+/**
+ * UsageResponse 是本机存储概览。
+ */
+export type GithubComJieWaZiNeuxBotServerApisStorageUsageResponse = {
+    /**
+     * Categories 分类用量
+     */
+    categories?: Array<GithubComJieWaZiNeuxBotServerApisStorageCategoryUsage>;
+    /**
+     * Complete 统计完整
+     */
+    complete?: boolean;
+    /**
+     * DataRoot 程序目录
+     */
+    dataRoot?: string;
+    /**
+     * Disks 磁盘容量
+     */
+    disks?: Array<GithubComJieWaZiNeuxBotServerApisStorageDiskUsage>;
+    /**
+     * ManagedRoot 受管目录
+     */
+    managedRoot?: string;
+    /**
+     * ScannedAt 统计时间
+     */
+    scannedAt?: number;
+    /**
+     * TotalBytes 已知总量
+     */
+    totalBytes?: number;
+};
+
+/**
  * 健康检查响应
  */
 export type GithubComJieWaZiNeuxBotServerApisSystemHealthResponse = {
@@ -7150,6 +7537,7 @@ export type GithubComJieWaZiNeuxBotServerConstantsChannelTaskStatus = 'cancelled
  * * `approval.resolved` - ChatEventTypeApprovalResolved 表示一次审批已经选择、拒绝或因执行结束失效。
  * * `assistant.message` - ChatEventTypeAssistantMessage 表示 Runtime 已完整形成一条 Assistant 执行消息。
  * * `chat.created` - ChatEventTypeCreated 表示 Chat 已经建立并锁定工作目录。
+ * * `chat.retention_protection_updated` - ChatEventTypeRetentionProtectionUpdated 表示用户已更新会话保留例外。
  * * `chat.title_updated` - ChatEventTypeTitleUpdated 表示 Chat 标题已经更新。
  * * `elicitation.requested` - ChatEventTypeElicitationRequested 表示 Runtime 正在等待用户提交结构化输入。
  * * `elicitation.resolved` - ChatEventTypeElicitationResolved 表示一次结构化输入已经提交、拒绝或因执行结束失效。
@@ -7165,7 +7553,7 @@ export type GithubComJieWaZiNeuxBotServerConstantsChannelTaskStatus = 'cancelled
  * * `workspace.changes` - ChatEventTypeFileChanges 表示独立工作区采集结果及其不可变内容已经提交。
  *
  */
-export type GithubComJieWaZiNeuxBotServerConstantsChatEventType = '' | 'agent.command_committed' | 'approval.requested' | 'approval.resolved' | 'assistant.message' | 'chat.created' | 'chat.title_updated' | 'elicitation.requested' | 'elicitation.resolved' | 'execution.canceled' | 'execution.completed' | 'execution.created' | 'execution.failed' | 'execution.started' | 'message.inherited' | 'message.user_created' | 'runtime.event' | 'tool.message' | 'workspace.changes';
+export type GithubComJieWaZiNeuxBotServerConstantsChatEventType = '' | 'agent.command_committed' | 'approval.requested' | 'approval.resolved' | 'assistant.message' | 'chat.created' | 'chat.retention_protection_updated' | 'chat.title_updated' | 'elicitation.requested' | 'elicitation.resolved' | 'execution.canceled' | 'execution.completed' | 'execution.created' | 'execution.failed' | 'execution.started' | 'message.inherited' | 'message.user_created' | 'runtime.event' | 'tool.message' | 'workspace.changes';
 
 /**
  * >
@@ -7624,6 +8012,33 @@ export type GithubComJieWaZiNeuxBotServerConstantsSkillResourceAction = 'delete'
  *
  */
 export type GithubComJieWaZiNeuxBotServerConstantsSkillSource = '' | 'builtin' | 'git' | 'zip';
+
+/**
+ * >
+ * * `accounts` - StorageCategoryAccounts 包含账号配置和原生历史数据。
+ * * `app_data` - StorageCategoryAppData 包含程序数据库、配置与受保护的桌面数据。
+ * * `cache` - StorageCategoryCache 包含已识别的桌面缓存及派生资源。
+ * * `conversations` - StorageCategoryConversations 包含会话私有数据和 IM 交付文件。
+ * * `knowledge` - StorageCategoryKnowledge 包含知识原件、知识库和记忆数据。
+ * * `logs` - StorageCategoryLogs 包含程序日志。
+ * * `other` - StorageCategoryOther 包含根内未核验归属的文件。
+ * * `programs` - StorageCategoryPrograms 包含受管程序、技能和安装的插件资源。
+ * * `recovery` - StorageCategoryRecovery 包含跨存储操作的暂存和恢复记录。
+ * * `shared_native` - StorageCategorySharedNative 包含跨会话共享的规范原生分片。
+ * * `temporary` - StorageCategoryTemporary 包含已识别的临时租约数据。
+ * * `work_files` - StorageCategoryWorkFiles 包含伙伴、团队与工作流的受管业务文件。
+ *
+ */
+export type GithubComJieWaZiNeuxBotServerConstantsStorageCategory = 'accounts' | 'app_data' | 'cache' | 'conversations' | 'knowledge' | 'logs' | 'other' | 'programs' | 'recovery' | 'shared_native' | 'temporary' | 'work_files';
+
+/**
+ * >
+ * * `caches` - StorageCleanupKindCaches 清理可重建的缓存。
+ * * `logs` - StorageCleanupKindLogs 清理不再写入的诊断日志。
+ * * `runtimes` - StorageCleanupKindRuntimes 回收无引用的受管程序版本。
+ *
+ */
+export type GithubComJieWaZiNeuxBotServerConstantsStorageCleanupKind = 'caches' | 'logs' | 'runtimes';
 
 /**
  * >
@@ -10914,6 +11329,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsChat = {
      */
     lastAccountId?: string;
     /**
+     * LastActivityAt 是已从权威工作事件核验的最近活动时间（Unix 毫秒），零表示尚未核验。
+     */
+    lastActivityAt?: number;
+    /**
      * LastContextWindow 是最近一次执行冻结的上下文档位。
      */
     lastContextWindow?: string;
@@ -10963,6 +11382,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsChat = {
      * ProjectName 是首次发送时冻结的项目展示名称或临时文件夹名称。
      */
     projectName?: string;
+    /**
+     * RetentionProtected 表示用户明确将会话排除在过期清理之外。
+     */
+    retentionProtected?: boolean;
     /**
      * Title 是任务列表和标题栏使用的当前标题投影。
      */
@@ -13599,6 +14022,164 @@ export type GithubComJieWaZiNeuxBotServerServicesScheduleTaskView = GithubComJie
 };
 
 /**
+ * CleanupItem 是一个所属资源的预览和可操作性。
+ */
+export type GithubComJieWaZiNeuxBotServerServicesStorageCleanupItem = {
+    /**
+     * Available 可以清理
+     */
+    available?: boolean;
+    /**
+     * Bytes 已知大小
+     */
+    bytes?: number;
+    category?: GithubComJieWaZiNeuxBotServerConstantsStorageCleanupKind & unknown;
+    /**
+     * Complete 大小完整
+     */
+    complete?: boolean;
+};
+
+/**
+ * CleanupPreview 是固定类型的清理确认。
+ */
+export type GithubComJieWaZiNeuxBotServerServicesStorageCleanupPreview = {
+    /**
+     * ExpiresAt 失效时间
+     */
+    expiresAt?: number;
+    /**
+     * ID 预览标识
+     */
+    id?: string;
+    /**
+     * Items 清理项目
+     */
+    items?: Array<GithubComJieWaZiNeuxBotServerServicesStorageCleanupItem>;
+};
+
+/**
+ * CleanupResult 返回一种受管资源的实际清理结果。
+ */
+export type GithubComJieWaZiNeuxBotServerServicesStorageCleanupResult = {
+    category?: GithubComJieWaZiNeuxBotServerConstantsStorageCleanupKind & unknown;
+    /**
+     * Failed 执行失败
+     */
+    failed?: boolean;
+    /**
+     * RemovedBytes 移除大小
+     */
+    removedBytes?: number;
+};
+
+/**
+ * ExpirationPreview 是一次策略或手动清理的影响确认。
+ */
+export type GithubComJieWaZiNeuxBotServerServicesStorageExpirationPreview = {
+    /**
+     * Complete 大小完整
+     */
+    complete?: boolean;
+    /**
+     * ExpiresAt 失效时间
+     */
+    expiresAt?: number;
+    /**
+     * ID 预览标识
+     */
+    id?: string;
+    /**
+     * KnownBytes 已知大小
+     */
+    knownBytes?: number;
+    /**
+     * Total 候选总数
+     */
+    total?: number;
+};
+
+/**
+ * MaintenanceState 返回当前和上次维护。
+ */
+export type GithubComJieWaZiNeuxBotServerServicesStorageMaintenanceState = {
+    current?: GithubComJieWaZiNeuxBotServerServicesStorageRun & unknown;
+    last?: GithubComJieWaZiNeuxBotServerServicesStorageRun & unknown;
+};
+
+/**
+ * Policy 是当前闲置会话保留策略。
+ */
+export type GithubComJieWaZiNeuxBotServerServicesStoragePolicy = {
+    /**
+     * Enabled 自动清理
+     */
+    enabled?: boolean;
+    /**
+     * NextCheckAt 下次检查
+     */
+    nextCheckAt?: number;
+    /**
+     * RetentionDays 保留天数
+     */
+    retentionDays?: number;
+    /**
+     * Revision 策略版本
+     */
+    revision?: number;
+    /**
+     * Valid 策略可用
+     */
+    valid?: boolean;
+};
+
+/**
+ * Run 保存一次维护的用户可见结果。
+ */
+export type GithubComJieWaZiNeuxBotServerServicesStorageRun = {
+    /**
+     * Deleted 已删会话
+     */
+    deleted?: number;
+    /**
+     * Failed 失败数量
+     */
+    failed?: number;
+    /**
+     * FinishedAt 结束时间
+     */
+    finishedAt?: number;
+    /**
+     * ID 运行标识
+     */
+    id?: string;
+    /**
+     * Items 分项结果
+     */
+    items?: Array<GithubComJieWaZiNeuxBotServerServicesStorageCleanupResult>;
+    /**
+     * Kind 维护类型
+     */
+    kind?: string;
+    /**
+     * Pending 待回收数
+     */
+    pending?: number;
+    /**
+     * RemovedBytes 移除大小
+     */
+    removedBytes?: number;
+    /**
+     * Skipped 跳过数量
+     */
+    skipped?: number;
+    /**
+     * StartedAt 开始时间
+     */
+    startedAt?: number;
+};
+
+/**
  * Coverage describes which canonical evidence was available.
  */
 export type GithubComJieWaZiNeuxBotServerServicesUsageCoverage = {
@@ -15148,6 +15729,7 @@ export type ReadErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -15181,6 +15763,10 @@ export type ReadErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -15291,6 +15877,11 @@ export type ReadErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -15508,6 +16099,7 @@ export type CommandErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -15541,6 +16133,10 @@ export type CommandErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -15651,6 +16247,11 @@ export type CommandErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -16138,6 +16739,7 @@ export type StartAiAccountLoginErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -16171,6 +16773,10 @@ export type StartAiAccountLoginErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -16281,6 +16887,11 @@ export type StartAiAccountLoginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -16507,6 +17118,7 @@ export type CancelAiAccountLoginErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -16540,6 +17152,10 @@ export type CancelAiAccountLoginErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -16650,6 +17266,11 @@ export type CancelAiAccountLoginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -16971,6 +17592,7 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -17004,6 +17626,10 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -17114,6 +17740,11 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -17422,6 +18053,7 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -17455,6 +18087,10 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -17565,6 +18201,11 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -17787,6 +18428,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -17820,6 +18462,10 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -17930,6 +18576,11 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -18248,6 +18899,12 @@ export type CreateChannelThreadErrors = {
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[StorageCleanupFailed][50000009705]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateChannelThreadError = CreateChannelThreadErrors[keyof CreateChannelThreadErrors];
@@ -18293,6 +18950,7 @@ export type DeleteChannelThreadErrors = {
      * >
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
      * * `[ChatLogError][50000000004]`
+     * * `[InternalServerError][50000000001]`
      *
      */
     500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -18462,6 +19120,12 @@ export type SendChannelMessageErrors = {
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[StorageCleanupFailed][50000009705]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type SendChannelMessageError = SendChannelMessageErrors[keyof SendChannelMessageErrors];
@@ -18770,6 +19434,12 @@ export type CreateChatErrors = {
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[StorageCleanupFailed][50000009705]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type CreateChatError = CreateChatErrors[keyof CreateChatErrors];
@@ -18809,6 +19479,7 @@ export type DeleteChatErrors = {
      * >
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
      * * `[ChatLogError][50000000004]`
+     * * `[InternalServerError][50000000001]`
      *
      */
     500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -19058,6 +19729,12 @@ export type SendMessageErrors = {
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[StorageCleanupFailed][50000009705]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type SendMessageError = SendMessageErrors[keyof SendMessageErrors];
@@ -19707,6 +20384,7 @@ export type StreamEventsErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -19740,6 +20418,10 @@ export type StreamEventsErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -19850,6 +20532,11 @@ export type StreamEventsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -19976,6 +20663,12 @@ export type SelectImConversationData = {
 export type SelectImConversationErrors = {
     /**
      * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[IMChatNotAuthorized][40300004001]`
      *
      */
@@ -19986,6 +20679,12 @@ export type SelectImConversationErrors = {
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatHasActiveExecution][40900000006]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type SelectImConversationError = SelectImConversationErrors[keyof SelectImConversationErrors];
@@ -20779,6 +21478,7 @@ export type UpdateMcpServiceErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -20812,6 +21512,10 @@ export type UpdateMcpServiceErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -20922,6 +21626,11 @@ export type UpdateMcpServiceErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -21238,6 +21947,7 @@ export type UpdateApiServiceErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -21271,6 +21981,10 @@ export type UpdateApiServiceErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -21381,6 +22095,11 @@ export type UpdateApiServiceErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -21688,6 +22407,7 @@ export type OrganizeRemoteChatErrors = {
      * * `[KnowledgeStorageError][50000009501]`
      * * `[ManagedWorkspaceError][50000000033]`
      * * `[MessageAttachmentStorageError][50000000032]`
+     * * `[StorageCleanupFailed][50000009705]`
      *
      */
     500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -30018,6 +30738,7 @@ export type ListPluginsErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -30051,6 +30772,10 @@ export type ListPluginsErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -30161,6 +30886,11 @@ export type ListPluginsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -30399,6 +31129,7 @@ export type BrowsePluginsErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -30432,6 +31163,10 @@ export type BrowsePluginsErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -30542,6 +31277,11 @@ export type BrowsePluginsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -30759,6 +31499,7 @@ export type RefreshPluginCatalogErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -30792,6 +31533,10 @@ export type RefreshPluginCatalogErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -30902,6 +31647,11 @@ export type RefreshPluginCatalogErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -31129,6 +31879,7 @@ export type GetCatalogPluginErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -31162,6 +31913,10 @@ export type GetCatalogPluginErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -31272,6 +32027,11 @@ export type GetCatalogPluginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -31507,6 +32267,7 @@ export type GetCatalogPluginConnectorErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -31540,6 +32301,10 @@ export type GetCatalogPluginConnectorErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -31650,6 +32415,11 @@ export type GetCatalogPluginConnectorErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -31872,6 +32642,7 @@ export type PrepareCatalogPluginErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -31905,6 +32676,10 @@ export type PrepareCatalogPluginErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -32015,6 +32790,11 @@ export type PrepareCatalogPluginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -32250,6 +33030,7 @@ export type GetCatalogPluginReadmeErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -32283,6 +33064,10 @@ export type GetCatalogPluginReadmeErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -32393,6 +33178,11 @@ export type GetCatalogPluginReadmeErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -32632,6 +33422,7 @@ export type GetCatalogPluginSkillErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -32665,6 +33456,10 @@ export type GetCatalogPluginSkillErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -32775,6 +33570,11 @@ export type GetCatalogPluginSkillErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -32992,6 +33792,7 @@ export type CreatePluginFromSkillsErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -33025,6 +33826,10 @@ export type CreatePluginFromSkillsErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -33135,6 +33940,11 @@ export type CreatePluginFromSkillsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -33456,6 +34266,7 @@ export type GetPluginErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -33489,6 +34300,10 @@ export type GetPluginErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -33599,6 +34414,11 @@ export type GetPluginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -33915,6 +34735,7 @@ export type StartPluginAuthorizationErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -33948,6 +34769,10 @@ export type StartPluginAuthorizationErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -34058,6 +34883,11 @@ export type StartPluginAuthorizationErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -34591,6 +35421,7 @@ export type GetPluginConfigurationErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -34624,6 +35455,10 @@ export type GetPluginConfigurationErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -34734,6 +35569,11 @@ export type GetPluginConfigurationErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -35175,6 +36015,7 @@ export type InstallPluginErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -35208,6 +36049,10 @@ export type InstallPluginErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -35318,6 +36163,11 @@ export type InstallPluginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -35683,6 +36533,7 @@ export type UpdatePluginInstallationsErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -35716,6 +36567,10 @@ export type UpdatePluginInstallationsErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -35826,6 +36681,11 @@ export type UpdatePluginInstallationsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -36258,6 +37118,12 @@ export type UpdateRuntimeEnvironmentErrors = {
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[RuntimeInstallationBusy][40900007301]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
      * * `[RuntimeConfigurationInvalid][50000000040]`
      *
      */
@@ -36579,6 +37445,7 @@ export type ScanLibrarySkillImportErrors = {
      * >
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
      *
      */
     500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -37031,6 +37898,526 @@ export type RestoreLibrarySkillVersionResponses = {
 
 export type RestoreLibrarySkillVersionResponse = RestoreLibrarySkillVersionResponses[keyof RestoreLibrarySkillVersionResponses];
 
+export type UpdateChatProtectionData = {
+    body: GithubComJieWaZiNeuxBotServerApisStorageChatProtectionInput & unknown;
+    path: {
+        /**
+         * ChatID 会话标识
+         */
+        chatId: string;
+    };
+    query?: never;
+    url: '/api/v1/storage/chats/{chatId}/protection';
+};
+
+export type UpdateChatProtectionErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type UpdateChatProtectionError = UpdateChatProtectionErrors[keyof UpdateChatProtectionErrors];
+
+export type UpdateChatProtectionResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type UpdateChatProtectionResponse = UpdateChatProtectionResponses[keyof UpdateChatProtectionResponses];
+
+export type CleanupStorageData = {
+    body: GithubComJieWaZiNeuxBotServerApisStorageStorageConfirmation & unknown;
+    path?: never;
+    query?: never;
+    url: '/api/v1/storage/cleanup';
+};
+
+export type CleanupStorageErrors = {
+    /**
+     * >
+     * * `[OperationCanceled][40800000001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePreviewExpired][40900009702]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type CleanupStorageError = CleanupStorageErrors[keyof CleanupStorageErrors];
+
+export type CleanupStorageResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisStorageStorageRunReceipt;
+};
+
+export type CleanupStorageResponse = CleanupStorageResponses[keyof CleanupStorageResponses];
+
+export type PreviewStorageCleanupData = {
+    body: GithubComJieWaZiNeuxBotServerApisStoragePreviewStorageCleanupInput & unknown;
+    path?: never;
+    query?: never;
+    url: '/api/v1/storage/cleanup-preview';
+};
+
+export type PreviewStorageCleanupErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[OperationCanceled][40800000001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type PreviewStorageCleanupError = PreviewStorageCleanupErrors[keyof PreviewStorageCleanupErrors];
+
+export type PreviewStorageCleanupResponses = {
+    200: GithubComJieWaZiNeuxBotServerServicesStorageCleanupPreview;
+};
+
+export type PreviewStorageCleanupResponse = PreviewStorageCleanupResponses[keyof PreviewStorageCleanupResponses];
+
+export type ListStorageEntitiesData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * 分页游标
+         */
+        cursor?: string;
+        /**
+         * 列表类型
+         */
+        kind: string;
+        /**
+         * 分页大小
+         */
+        limit?: number;
+        /**
+         * 伙伴标识
+         */
+        wakerId?: string;
+    };
+    url: '/api/v1/storage/entities';
+};
+
+export type ListStorageEntitiesErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[OperationCanceled][40800000001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[StorageSnapshotExpired][40900009704]`
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type ListStorageEntitiesError = ListStorageEntitiesErrors[keyof ListStorageEntitiesErrors];
+
+export type ListStorageEntitiesResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisStorageEntityPage;
+};
+
+export type ListStorageEntitiesResponse = ListStorageEntitiesResponses[keyof ListStorageEntitiesResponses];
+
+export type ListExpiredChatsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Cursor 分页游标
+         */
+        cursor?: string;
+        /**
+         * Limit 分页大小
+         */
+        limit?: number;
+        /**
+         * RetentionDays 保留天数
+         */
+        retentionDays?: number;
+    };
+    url: '/api/v1/storage/expired-chats';
+};
+
+export type ListExpiredChatsErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type ListExpiredChatsError = ListExpiredChatsErrors[keyof ListExpiredChatsErrors];
+
+export type ListExpiredChatsResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisStorageExpiredChatsPage;
+};
+
+export type ListExpiredChatsResponse = ListExpiredChatsResponses[keyof ListExpiredChatsResponses];
+
+export type CleanupExpiredChatsData = {
+    body: GithubComJieWaZiNeuxBotServerApisStorageStorageConfirmation & unknown;
+    path?: never;
+    query?: never;
+    url: '/api/v1/storage/expired-chats/cleanup';
+};
+
+export type CleanupExpiredChatsErrors = {
+    /**
+     * >
+     * * `[OperationCanceled][40800000001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePreviewExpired][40900009702]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type CleanupExpiredChatsError = CleanupExpiredChatsErrors[keyof CleanupExpiredChatsErrors];
+
+export type CleanupExpiredChatsResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisStorageStorageRunReceipt;
+};
+
+export type CleanupExpiredChatsResponse = CleanupExpiredChatsResponses[keyof CleanupExpiredChatsResponses];
+
+export type PreviewExpiredChatsData = {
+    body: GithubComJieWaZiNeuxBotServerApisStorageExpirationPreviewInput & unknown;
+    path?: never;
+    query?: never;
+    url: '/api/v1/storage/expired-chats/preview';
+};
+
+export type PreviewExpiredChatsErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[OperationCanceled][40800000001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[StoragePolicyInvalid][50000009701]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type PreviewExpiredChatsError = PreviewExpiredChatsErrors[keyof PreviewExpiredChatsErrors];
+
+export type PreviewExpiredChatsResponses = {
+    200: GithubComJieWaZiNeuxBotServerServicesStorageExpirationPreview;
+};
+
+export type PreviewExpiredChatsResponse = PreviewExpiredChatsResponses[keyof PreviewExpiredChatsResponses];
+
+export type ListStorageFilesData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * 分页游标
+         */
+        cursor?: string;
+        /**
+         * 对象标识
+         */
+        id: string;
+        /**
+         * 对象类型
+         */
+        kind: string;
+        /**
+         * 搜索词
+         */
+        search?: string;
+        /**
+         * 排序方式
+         */
+        sort?: string;
+    };
+    url: '/api/v1/storage/files';
+};
+
+export type ListStorageFilesErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatNotFound][40400000005]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[OperationCanceled][40800000001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[StorageSnapshotExpired][40900009704]`
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type ListStorageFilesError = ListStorageFilesErrors[keyof ListStorageFilesErrors];
+
+export type ListStorageFilesResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisStorageStorageFilePage;
+};
+
+export type ListStorageFilesResponse = ListStorageFilesResponses[keyof ListStorageFilesResponses];
+
+export type DeleteStorageFileData = {
+    body: GithubComJieWaZiNeuxBotServerApisStorageDeleteStorageFileInput & unknown;
+    path?: never;
+    query?: never;
+    url: '/api/v1/storage/files/delete';
+};
+
+export type DeleteStorageFileErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     * * `[WorkspacePathInvalid][40000007102]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[WorkspaceResourceNotFound][40400007103]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[OperationCanceled][40800000001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[InternalServerError][50000000001]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[WorkspaceStorageFailed][50000007106]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type DeleteStorageFileError = DeleteStorageFileErrors[keyof DeleteStorageFileErrors];
+
+export type DeleteStorageFileResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type DeleteStorageFileResponse = DeleteStorageFileResponses[keyof DeleteStorageFileResponses];
+
+export type GetStorageMaintenanceData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/storage/maintenance';
+};
+
+export type GetStorageMaintenanceResponses = {
+    200: GithubComJieWaZiNeuxBotServerServicesStorageMaintenanceState;
+};
+
+export type GetStorageMaintenanceResponse = GetStorageMaintenanceResponses[keyof GetStorageMaintenanceResponses];
+
+export type GetStoragePolicyData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/storage/policy';
+};
+
+export type GetStoragePolicyResponses = {
+    200: GithubComJieWaZiNeuxBotServerServicesStoragePolicy;
+};
+
+export type GetStoragePolicyResponse = GetStoragePolicyResponses[keyof GetStoragePolicyResponses];
+
+export type UpdateStoragePolicyData = {
+    body: GithubComJieWaZiNeuxBotServerApisStorageStoragePolicyInput & unknown;
+    path?: never;
+    query?: never;
+    url: '/api/v1/storage/policy';
+};
+
+export type UpdateStoragePolicyErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[OperationCanceled][40800000001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type UpdateStoragePolicyError = UpdateStoragePolicyErrors[keyof UpdateStoragePolicyErrors];
+
+export type UpdateStoragePolicyResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type UpdateStoragePolicyResponse = UpdateStoragePolicyResponses[keyof UpdateStoragePolicyResponses];
+
+export type GetStorageUsageData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Force 重新统计
+         */
+        force?: boolean;
+    };
+    url: '/api/v1/storage/usage';
+};
+
+export type GetStorageUsageErrors = {
+    /**
+     * >
+     * * `[OperationCanceled][40800000001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[StorageRootInvalid][50000009702]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type GetStorageUsageError = GetStorageUsageErrors[keyof GetStorageUsageErrors];
+
+export type GetStorageUsageResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisStorageUsageResponse;
+};
+
+export type GetStorageUsageResponse = GetStorageUsageResponses[keyof GetStorageUsageResponses];
+
 export type SetAutomaticTaskSuspendedData = {
     body: GithubComJieWaZiNeuxBotServerApisSystemSetAutomaticTaskSuspendedRequest & unknown;
     path?: never;
@@ -37194,6 +38581,12 @@ export type DeleteUploadErrors = {
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[StorageCleanupFailed][50000009705]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteUploadError = DeleteUploadErrors[keyof DeleteUploadErrors];
@@ -37223,6 +38616,12 @@ export type StageUploadErrors = {
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[StorageCleanupFailed][50000009705]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type StageUploadError = StageUploadErrors[keyof StageUploadErrors];
@@ -37608,6 +39007,7 @@ export type CreateWakerErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -37641,6 +39041,10 @@ export type CreateWakerErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -37751,6 +39155,11 @@ export type CreateWakerErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -37858,6 +39267,7 @@ export type DeleteWakerErrors = {
      * >
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
      * * `[DatabaseError][50000000002]`
+     * * `[InternalServerError][50000000001]`
      * * `[ManagedWorkspaceError][50000000033]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
      * * `[RuntimeEventQueueOverflow][50000000050]`
@@ -38103,6 +39513,7 @@ export type ListAutomaticTasksErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -38136,6 +39547,10 @@ export type ListAutomaticTasksErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -38246,6 +39661,11 @@ export type ListAutomaticTasksErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -38535,6 +39955,7 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -38568,6 +39989,10 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -38678,6 +40103,11 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -38933,6 +40363,7 @@ export type DeleteAutomaticTaskErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -38966,6 +40397,10 @@ export type DeleteAutomaticTaskErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -39076,6 +40511,11 @@ export type DeleteAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -39302,6 +40742,7 @@ export type GetAutomaticTaskErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -39335,6 +40776,10 @@ export type GetAutomaticTaskErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -39445,6 +40890,11 @@ export type GetAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -39822,6 +41272,7 @@ export type ListAutomaticRunsErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -39855,6 +41306,10 @@ export type ListAutomaticRunsErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -39965,6 +41420,11 @@ export type ListAutomaticRunsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -40191,6 +41651,7 @@ export type TriggerAutomaticTaskErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -40224,6 +41685,10 @@ export type TriggerAutomaticTaskErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -40334,6 +41799,11 @@ export type TriggerAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -41079,6 +42549,7 @@ export type StartWakerOnboardingErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -41112,6 +42583,10 @@ export type StartWakerOnboardingErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -41222,6 +42697,11 @@ export type StartWakerOnboardingErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -41475,6 +42955,7 @@ export type ListWakerPluginsErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -41508,6 +42989,10 @@ export type ListWakerPluginsErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -41618,6 +43103,11 @@ export type ListWakerPluginsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -43045,6 +44535,7 @@ export type CreateWorkflowErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -43078,6 +44569,10 @@ export type CreateWorkflowErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -43188,6 +44683,11 @@ export type CreateWorkflowErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -43423,6 +44923,7 @@ export type DeleteWorkflowErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -43456,6 +44957,10 @@ export type DeleteWorkflowErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -43566,6 +45071,11 @@ export type DeleteWorkflowErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -43811,6 +45321,7 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -43844,6 +45355,10 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -43954,6 +45469,11 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -44205,6 +45725,7 @@ export type EditWorkflowConfigurationErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -44238,6 +45759,10 @@ export type EditWorkflowConfigurationErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -44348,6 +45873,11 @@ export type EditWorkflowConfigurationErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -44570,6 +46100,7 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -44603,6 +46134,10 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -44713,6 +46248,11 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -45023,6 +46563,7 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -45056,6 +46597,10 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -45166,6 +46711,11 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -45419,6 +46969,7 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -45452,6 +47003,10 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -45562,6 +47117,11 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -45815,6 +47375,7 @@ export type StartWorkflowRunErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -45848,6 +47409,10 @@ export type StartWorkflowRunErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -45958,6 +47523,11 @@ export type StartWorkflowRunErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -46184,6 +47754,7 @@ export type DeleteWorkflowRunErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -46217,6 +47788,10 @@ export type DeleteWorkflowRunErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -46327,6 +47902,11 @@ export type DeleteWorkflowRunErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -46663,6 +48243,7 @@ export type AnswerWorkflowHumanErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -46696,6 +48277,10 @@ export type AnswerWorkflowHumanErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -46806,6 +48391,11 @@ export type AnswerWorkflowHumanErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -47036,6 +48626,7 @@ export type GetWorkflowInstanceErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -47069,6 +48660,10 @@ export type GetWorkflowInstanceErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -47179,6 +48774,11 @@ export type GetWorkflowInstanceErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -47409,6 +49009,7 @@ export type SkipWorkflowWorkerErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -47442,6 +49043,10 @@ export type SkipWorkflowWorkerErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -47552,6 +49157,11 @@ export type SkipWorkflowWorkerErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -47782,6 +49392,7 @@ export type AnswerWorkflowOperationErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -47815,6 +49426,10 @@ export type AnswerWorkflowOperationErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -47925,6 +49540,11 @@ export type AnswerWorkflowOperationErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -48151,6 +49771,7 @@ export type RetryWorkflowRunErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -48184,6 +49805,10 @@ export type RetryWorkflowRunErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -48294,6 +49919,11 @@ export type RetryWorkflowRunErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
@@ -48590,6 +50220,7 @@ export type SaveWorkflowSourceErrors = {
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -48623,6 +50254,10 @@ export type SaveWorkflowSourceErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
      * * `[SystemRolePresetReadOnly][40900000004]`
      * * `[WakerHasRunningWork][40900000005]`
      * * `[WakerNameConflict][40900000002]`
@@ -48733,6 +50368,11 @@ export type SaveWorkflowSourceErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
      * * `[WakerProfileTokenizationFailed][50000009100]`
      * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`

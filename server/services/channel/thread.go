@@ -10,6 +10,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/internal/teamwork"
@@ -233,7 +234,11 @@ func (s *service) createThread(
 		thread.TaskCount = 1
 	}
 	// 先持久化成员和 Chat 标识计划，启动恢复据此定位首轮回执或回收未接纳的工作区。
-	if err := s.transaction(ctx, func(transactionContext context.Context) error {
+	releaseReferences, err := chatstorage.AcquireReferences(s.managedFilesDirectory, plannedChatIDs...)
+	if err != nil {
+		return ThreadResult{}, err
+	}
+	err = s.transaction(ctx, func(transactionContext context.Context) error {
 		if err := s.threads.Create(transactionContext, thread, members); err != nil {
 			return err
 		}
@@ -241,7 +246,9 @@ func (s *service) createThread(
 			return s.tasks.Create(transactionContext, *initialTask, nil)
 		}
 		return nil
-	}); err != nil {
+	})
+	releaseReferences()
+	if err != nil {
 		existing, exists, lookupErr := s.threads.GetByClientRequestID(
 			ctx,
 			input.ChannelID,

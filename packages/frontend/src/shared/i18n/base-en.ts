@@ -1023,6 +1023,7 @@ export const baseEn = {
     },
     sections: {
       general: "General",
+      storage: "Storage",
       notifications: "Notifications",
       runtimeEnvironments: "Agent",
       integrations: "Integrations",

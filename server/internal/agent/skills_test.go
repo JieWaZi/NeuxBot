@@ -452,11 +452,11 @@ func TestSharedSkillsConcurrentIndependentTargetsPreserveManifest(t *testing.T) 
 	wg.Wait()
 	skillTestBytes(t, cwd, ".agents", ".agents")
 	skillTestBytes(t, cwd, ".claude", ".claude")
-	data, err := os.ReadFile(filepath.Join(cwd, skillManifestName))
+	data, err := os.ReadFile(filepath.Join(cwd, managedskills.MaterializationManifestName))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var manifest skillManifest
+	var manifest managedskills.MaterializationManifest
 	if err := json.Unmarshal(data, &manifest); err != nil || len(manifest.Targets) != 2 {
 		t.Fatalf("independent manifest lost: %s %v", data, err)
 	}

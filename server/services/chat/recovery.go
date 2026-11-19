@@ -180,6 +180,11 @@ func (c *recoveryCoordinator) reconcileChat(
 		}
 		return c.rebuildProjection(ctx, chatID, diagnostic, true, false)
 	}
+	if indexed.LastActivityAt <= 0 && (indexed.LatestSequence < latest || indexed.ActiveExecutionID != "") {
+		// 存量会话没有已核验的活动前缀时，不能用迟到的尾部或中断终态代替完整历史。
+		diagnostic.Issues = appendIssue(diagnostic.Issues, constants.ChatRecoveryIssueChatProjectionContentMismatch)
+		return c.rebuildProjection(ctx, chatID, diagnostic, true, false)
+	}
 	if valid, validateErr := c.staticProjectionMatches(chatID, indexed); validateErr != nil {
 		return diagnostic, validateErr
 	} else if !valid {
@@ -313,6 +318,9 @@ func applyProjectionTail(projection *currentProjection, records []eventlog.Recor
 	for _, record := range records {
 		if record.Sequence <= projection.chat.LatestSequence {
 			return status_error.ChatLogError
+		}
+		if err := applyRetentionRecord(&projection.chat, record); err != nil {
+			return err
 		}
 		switch record.Type {
 		case constants.ChatEventTypeTitleUpdated:

@@ -29,5 +29,8 @@ func (d *DeleteChannelThread) Output(ctx *gin.Context) (interface{}, error) {
 	if err := global.ChannelService.DeleteThread(ctx, d.ChannelID, d.ThreadID); err != nil {
 		return nil, ginx.WithStack(err)
 	}
+	if global.StorageService != nil {
+		global.StorageService.Invalidate()
+	}
 	return ginx.CommonSuccessResponse(), nil
 }

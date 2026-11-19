@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -228,6 +229,8 @@ type ExecutionWorkspaceOwner struct {
 	ThreadID string
 	// WakerID 是成员工作区所属伙伴标识。
 	WakerID string
+	// MessageID 是附件目录所归属的消息。
+	MessageID string
 }
 
 // ReadExecutionWorkspaceOwner 读取并解析受管执行工作区归属标记。
@@ -242,26 +245,51 @@ func ReadExecutionWorkspaceOwner(root string) (ExecutionWorkspaceOwner, error) {
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return ExecutionWorkspaceOwner{}, status_error.ChatDirectoryOwnershipInvalid
 	}
-	markerPath := filepath.Join(root, constants.ChatContextOwnerFileName)
-	content, err := os.ReadFile(markerPath)
+	opened, err := os.OpenRoot(root)
 	if err != nil {
-		if os.IsNotExist(err) {
-			if _, statErr := os.Stat(root); os.IsNotExist(statErr) {
-				return ExecutionWorkspaceOwner{}, nil
-			}
-			return ExecutionWorkspaceOwner{}, status_error.ChatDirectoryOwnershipInvalid
-		}
 		return ExecutionWorkspaceOwner{}, status_error.ManagedWorkspaceError
+	}
+	defer opened.Close()
+	actual, err := opened.Stat(".")
+	if err != nil || !os.SameFile(info, actual) {
+		return ExecutionWorkspaceOwner{}, status_error.ChatDirectoryOwnershipInvalid
+	}
+	return ReadWorkspaceOwnerAt(opened)
+}
+
+// ReadWorkspaceOwnerAt 从已锚定目录读取有限大小的常规归属文件。
+func ReadWorkspaceOwnerAt(root *os.Root) (ExecutionWorkspaceOwner, error) {
+	name := constants.ChatContextOwnerFileName
+	info, err := root.Lstat(name)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > 4096 {
+		return ExecutionWorkspaceOwner{}, status_error.ChatDirectoryOwnershipInvalid
+	}
+	file, err := root.Open(name)
+	if err != nil {
+		return ExecutionWorkspaceOwner{}, status_error.ManagedWorkspaceError
+	}
+	defer file.Close()
+	actual, err := file.Stat()
+	if err != nil || !os.SameFile(info, actual) {
+		return ExecutionWorkspaceOwner{}, status_error.ChatDirectoryOwnershipInvalid
+	}
+	content, err := io.ReadAll(io.LimitReader(file, 4097))
+	if err != nil {
+		return ExecutionWorkspaceOwner{}, status_error.ManagedWorkspaceError
+	}
+	if len(content) > 4096 {
+		return ExecutionWorkspaceOwner{}, status_error.ChatDirectoryOwnershipInvalid
 	}
 	var marker ownerMarker
 	if err := json.Unmarshal(content, &marker); err != nil {
 		return ExecutionWorkspaceOwner{}, status_error.ChatDirectoryOwnershipInvalid
 	}
 	return ExecutionWorkspaceOwner{
-		Kind:     marker.Kind,
-		ChatID:   marker.ChatID,
-		ThreadID: marker.ThreadID,
-		WakerID:  marker.WakerID,
+		Kind:      marker.Kind,
+		ChatID:    marker.ChatID,
+		ThreadID:  marker.ThreadID,
+		WakerID:   marker.WakerID,
+		MessageID: marker.MessageID,
 	}, nil
 }
 

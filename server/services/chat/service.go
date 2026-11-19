@@ -23,6 +23,13 @@ import (
 // 调用方只依赖这些稳定用例和公开结果，不需要理解 JSONL、SQLite 查询索引、
 // Runtime 重试、Session 恢复或事件适配实现。
 type Service interface {
+	// ChatRetentionReader 排除活跃接纳、投影隔离及恢复记录后查询过期候选。
+	controllers.ChatRetentionReader
+	// SetRetentionProtection 将用户选择追加到权威会话日志。
+	SetRetentionProtection(ctx context.Context, chatID string, protected bool) error
+	// DeleteChatIfExpired 在会话排他门内复核候选；allow 在已有删除协调器开始暂存之前确认本项策略授权。
+	// 返回 true 表示数据库删除已经提交，此时错误表示仍有待回收文件。
+	DeleteChatIfExpired(ctx context.Context, candidate controllers.ChatRetentionCandidate, cutoff int64, allow func(context.Context, string) (bool, error)) (bool, error)
 	// CatchUpReading 追平单个会话的原查询投影。
 	CatchUpReading(context.Context, string) error
 	// ReadingIncompleteReason 返回指定 Chat 的当前投影健康原因。
@@ -95,6 +102,10 @@ type Service interface {
 
 // Module 是组合根同时交给查询入口和 Execution Core 的完整 Chat 模块。
 type Module interface {
+	// CheckOccupiedWorkspace 拒绝修改仍有执行或文件收尾所有者的伙伴空间。
+	CheckOccupiedWorkspace(ctx context.Context, wakerID string, occupied []string) error
+	// InheritedAttachmentPaths 返回旧分叉已由权威继承事实确认的受管附件路径。
+	InheritedAttachmentPaths(ctx context.Context, chatID string) (map[string]string, error)
 	// InitializeReadingBaseline 建立历史索引，期间不产生新的运行结果。
 	InitializeReadingBaseline(context.Context) error
 	// Service 提供 Chat 查询、恢复与元数据用例。
@@ -113,6 +124,10 @@ type service struct {
 	deletionIntents controllers.ChatDeletionIntentController
 	// deletionMu 保证分片清理期间其他删除不会隐藏仍可能回滚的 Chat。
 	deletionMu sync.Mutex
+	// pendingForks 是从权威操作文件重建的未完成分叉查询索引。
+	pendingForks pendingForkIndex
+	// closeIdleNativeThread 仅释放没有接纳、回合或分叉的会话原生资源。
+	closeIdleNativeThread func(context.Context, string) error
 	// closeNativeThread 在删除围栏内释放会话拥有的原生连接及租约。
 	closeNativeThread func(context.Context, string) error
 	// preserveIMAdmissions 在清理权威日志前保留已接纳的外部收件事实。
@@ -142,6 +157,8 @@ var _ Module = (*service)(nil)
 type Config struct {
 	// BeforeRecovery 在处理原中断工作之前建立历史阅读事实。
 	BeforeRecovery func(context.Context, Module) error
+	// CloseIdleNativeThread 在过期清理中核对原生占用并仅关闭闲置连接。
+	CloseIdleNativeThread func(context.Context, string) error
 	// CloseNativeThread 在文件暂存前关闭目标会话的原生连接。
 	CloseNativeThread func(context.Context, string) error
 	// PreserveIMAdmissions 以权威回执补齐尚未挂接的 IM 收件。
@@ -225,14 +242,15 @@ func newService(config Config) (*service, error) {
 	queryIndexes.reading = config.QueryIndexes.Reading
 	queryIndexes.logStore = logStore
 	implementation := &service{
-		storage:              storage,
-		deletions:            deletions,
-		deletionIntents:      config.QueryIndexes.DeletionIntents,
-		closeNativeThread:    config.CloseNativeThread,
-		preserveIMAdmissions: config.PreserveIMAdmissions,
-		logStore:             logStore,
-		projectController:    config.Projects,
-		queryIndexes:         queryIndexes,
+		storage:               storage,
+		deletions:             deletions,
+		deletionIntents:       config.QueryIndexes.DeletionIntents,
+		closeNativeThread:     config.CloseNativeThread,
+		preserveIMAdmissions:  config.PreserveIMAdmissions,
+		logStore:              logStore,
+		projectController:     config.Projects,
+		queryIndexes:          queryIndexes,
+		closeIdleNativeThread: config.CloseIdleNativeThread,
 		eventCommitter: newEventCommitter(
 			logStore,
 			subscriptions,

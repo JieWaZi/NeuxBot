@@ -863,6 +863,11 @@ func (l *ThreadLifecycle) closeIdleConsumers(ctx context.Context, busy error, us
 	return result
 }
 
+// CloseIdleChat releases only idle native resources when a Chat expires.
+func (l *ThreadLifecycle) CloseIdleChat(ctx context.Context, id string) error {
+	return l.closeIdleConsumers(ctx, status_error.ChatHasActiveExecution, func(state *threadState) bool { return state.id == id })
+}
+
 // CloseThread withdraws admission, waits for the captured Turn and retries its process release.
 func (l *ThreadLifecycle) CloseThread(ctx context.Context, id string) error {
 	l.mu.Lock()
