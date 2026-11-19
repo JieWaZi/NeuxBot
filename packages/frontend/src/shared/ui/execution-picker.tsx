@@ -109,6 +109,7 @@ function modelGroups(models: Model[], provider: string, search: string) {
 type Props = {
   onOpenChange?: (open: boolean) => void;
   trigger?: ReactElement;
+  iconOnly?: boolean;
   runtimes: Runtime[];
   accounts: Account[];
   runtime?: Runtime;
@@ -281,6 +282,10 @@ export function ExecutionPicker(props: Props) {
     )?.[1];
     return label ? t(`chat:modelPicker.efforts.${label}`) : name || value;
   };
+  const triggerEffort =
+    selectedEffort?.id && showReasoning
+      ? effortName(selectedEffort.id, selectedEffort.name)
+      : undefined;
 
   const icon = (
     <RuntimeCliIcon
@@ -297,9 +302,9 @@ export function ExecutionPicker(props: Props) {
           {triggerAccount.name}
         </span>
       ) : null}
-      {selectedEffort?.id && showReasoning ? (
+      {triggerEffort ? (
         <span className="text-content-secondary shrink-0 truncate">
-          {effortName(selectedEffort.id, selectedEffort.name)}
+          {triggerEffort}
         </span>
       ) : null}
     </>
@@ -348,25 +353,44 @@ export function ExecutionPicker(props: Props) {
               type="button"
               data-testid="composer-model-control"
               disabled={props.disabled}
-              size="sm"
+              aria-label={
+                props.iconOnly
+                  ? [
+                      chooseModel,
+                      triggerName,
+                      triggerAccount?.name,
+                      triggerEffort,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
+                  : undefined
+              }
+              title={props.iconOnly ? chooseModel : undefined}
+              size={props.iconOnly ? "icon-sm" : "sm"}
               variant="ghost"
-              shape="capsule"
-              className="max-w-65"
+              shape={props.iconOnly ? undefined : "capsule"}
+              className={props.iconOnly ? "shrink-0" : "max-w-65"}
             >
-              {selection}
-              {props.fast ? (
-                <Zap aria-hidden className="text-accent fill-current" />
-              ) : null}
-              <ChevronDown
-                aria-hidden
-                className="text-content-secondary shrink-0"
-              />
+              {props.iconOnly ? (
+                icon
+              ) : (
+                <>
+                  {selection}
+                  {props.fast ? (
+                    <Zap aria-hidden className="text-accent fill-current" />
+                  ) : null}
+                  <ChevronDown
+                    aria-hidden
+                    className="text-content-secondary shrink-0"
+                  />
+                </>
+              )}
             </Button>
           ))}
       </PopoverTrigger>
       <PopoverContent
         side="top"
-        align="start"
+        align={props.iconOnly ? "end" : "start"}
         width="wide"
         variant="selection"
         aria-label={chooseModel}

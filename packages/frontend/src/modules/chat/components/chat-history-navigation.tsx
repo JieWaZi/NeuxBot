@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
+import { CornerLauncherButton } from "@/shared/ui/corner-launcher-button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import {
   DropdownMenu,
@@ -35,24 +36,10 @@ export function ChatHistoryPopover({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
-          aria-label={t("partnerNavigation.viewChatHistory")}
-          className="group/launcher hover:w-control-launcher focus-visible:w-control-launcher transition-[width,background-color,color,box-shadow,opacity]"
-          shape="corner"
-          size="icon-lg"
-          type="button"
-          variant="launcher"
-        >
-          <span className="size-control-lg grid shrink-0 place-items-center">
-            <MessageSquareText className="size-icon-lg" strokeWidth={1.5} />
-          </span>
-          <span
-            aria-hidden="true"
-            className="type-ui -translate-x-1 pr-4 whitespace-nowrap opacity-0 transition-[opacity,transform] group-hover/launcher:translate-x-0 group-hover/launcher:opacity-100 group-focus-visible/launcher:translate-x-0 group-focus-visible/launcher:opacity-100"
-          >
-            {t("partnerNavigation.viewChatHistory")}
-          </span>
-        </Button>
+        <CornerLauncherButton
+          icon={<MessageSquareText strokeWidth={1.5} />}
+          label={t("partnerNavigation.viewChatHistory")}
+        />
       </PopoverTrigger>
       <PopoverContent
         align="end"

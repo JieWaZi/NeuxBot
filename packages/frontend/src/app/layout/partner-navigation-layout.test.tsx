@@ -760,6 +760,8 @@ describe("PartnerNavigationLayout", () => {
       name: "工作中，打开对话",
     });
     expect(launcher).toHaveAttribute("data-floating-chat-shell-launcher");
+    expect(launcher).toHaveClass("size-control-hit-target");
+    expect(launcher.firstElementChild).toHaveClass("h-control-corner-launcher");
     expect(
       screen.queryByRole("button", { name: "打开身份切换器，当前：伙伴 6" }),
     ).toBeNull();
@@ -803,6 +805,8 @@ describe("PartnerNavigationLayout", () => {
     renderLayout();
     const history = screen.getByRole("button", { name: "查看历史会话" });
     expect(history.parentElement).toHaveClass("right-0", "bottom-0");
+    expect(history).toHaveClass("size-control-hit-target");
+    expect(history.firstElementChild).toHaveClass("h-control-corner-launcher");
     await user.click(history);
     expect(await screen.findByText("项目会话")).toBeVisible();
     expect(screen.queryByRole("button", { name: "返回身份列表" })).toBeNull();

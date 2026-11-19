@@ -114,6 +114,7 @@ function renderControls(
   availableRuntimes = runtimes,
   activeChatId?: string,
   gitWorkspaceDirectories?: string[],
+  simplified = false,
 ) {
   return render(
     <MemoryRouter>
@@ -124,6 +125,7 @@ function renderControls(
             gitWorkspaceDirectories={gitWorkspaceDirectories}
             onChange={onChange}
             availableRuntimes={availableRuntimes}
+            simplified={simplified}
           />
         </TooltipProvider>
       </QueryClientProvider>
@@ -152,11 +154,13 @@ function Controls({
   gitWorkspaceDirectories,
   onChange,
   availableRuntimes = runtimes,
+  simplified,
 }: {
   activeChatId?: string;
   gitWorkspaceDirectories?: string[];
   onChange: (patch: ChatExecutionSelectionPatch) => void;
   availableRuntimes?: typeof runtimes;
+  simplified: boolean;
 }) {
   const [selection, setSelection] = useState({
     accountId: "system",
@@ -197,11 +201,32 @@ function Controls({
   });
   return (
     <>
-      {controls.renderContextStrip()}
-      {controls.composerSettings}
+      {simplified ? null : controls.renderContextStrip()}
+      {controls.renderComposerSettings(simplified)}
     </>
   );
 }
+
+it("将带可访问名称的权限和模型图标依次放在同一工具栏", async () => {
+  const user = userEvent.setup();
+  renderControls(vi.fn(), runtimes, undefined, undefined, true);
+
+  const permission = screen.getByRole("button", { name: "执行权限：默认权限" });
+  const model = screen.getByTestId("composer-model-control");
+  expect(permission.nextElementSibling).toBe(model);
+  expect(permission).toHaveTextContent(/^$/);
+  expect(model.childNodes).toHaveLength(1);
+  expect(model.firstElementChild?.matches("svg, img")).toBe(true);
+  expect(model).toHaveAccessibleName(/选择模型/);
+
+  await user.click(permission);
+  expect(
+    screen.getByRole("menuitemradio", { name: /^默认权限/ }),
+  ).toBeChecked();
+  await user.keyboard("{Escape}");
+  await user.click(model);
+  expect(screen.getByRole("dialog", { name: "选择模型" })).toBeVisible();
+});
 
 it.each(["codex", "claude", "cursor", "pi", "workbuddy"])(
   "预览 %s 目录后一次提交智能体、账号与模型",
@@ -229,8 +254,8 @@ it.each(["codex", "claude", "cursor", "pi", "workbuddy"])(
         model: `${id}/model`,
       }),
     );
-    expect(screen.getByTestId("composer-model-control")).toHaveTextContent(
-      `${id} Model`,
+    expect(screen.getByTestId("composer-model-control")).toHaveAccessibleName(
+      new RegExp(`${id} Model`),
     );
     expect(screen.getByRole("dialog", { name: "选择模型" })).toBeVisible();
     expect(screen.getByRole("radio", { name: `${id} Model` })).toBeChecked();
@@ -588,39 +613,49 @@ it("有效目录后台刷新只占用刷新按钮，不锁模型与推理选择"
   expect(refresh).not.toHaveBeenCalled();
 });
 
-it("同名分支只在打开菜单后展示目标仓库路径", async () => {
-  const user = userEvent.setup();
-  listWorkspaceGitRepositories.mockResolvedValueOnce({
-    repositories: [
-      {
-        directory: "/tmp/one-multiple",
-        gitRoot: "/tmp/one-multiple",
-        label: "repo",
-        branch: "main",
-      },
-      {
-        directory: "/tmp/two-multiple",
-        gitRoot: "/tmp/two-multiple",
-        label: "repo",
-        branch: "main",
-      },
-    ],
-  });
-  renderControls(vi.fn(), runtimes, "chat-branches", [
-    "/tmp/one-multiple",
-    "/tmp/two-multiple",
-  ]);
-  await waitFor(() =>
-    expect(screen.getAllByTestId("composer-branch-control")).toHaveLength(2),
-  );
-  const controls = screen.getAllByTestId("composer-branch-control");
-  for (const control of controls) {
-    expect(control).toHaveTextContent(/^main$/);
-    expect(control).toHaveAttribute("title", "main");
-  }
-  expect(screen.queryByText("/tmp/two-multiple")).not.toBeInTheDocument();
-  await user.click(
-    screen.getByRole("button", { name: "main (/tmp/two-multiple)" }),
-  );
-  expect(screen.getByText("/tmp/two-multiple")).toBeVisible();
-});
+it.each([false, true])(
+  "紧凑模式为 %s 时，同名分支只在打开菜单后展示目标仓库路径",
+  async (simplified) => {
+    const user = userEvent.setup();
+    listWorkspaceGitRepositories.mockResolvedValueOnce({
+      repositories: [
+        {
+          directory: "/tmp/one-multiple",
+          gitRoot: "/tmp/one-multiple",
+          label: "repo",
+          branch: "main",
+        },
+        {
+          directory: "/tmp/two-multiple",
+          gitRoot: "/tmp/two-multiple",
+          label: "repo",
+          branch: "main",
+        },
+      ],
+    });
+    renderControls(
+      vi.fn(),
+      runtimes,
+      "chat-branches",
+      ["/tmp/one-multiple", "/tmp/two-multiple"],
+      simplified,
+    );
+    await waitFor(() =>
+      expect(screen.getAllByTestId("composer-branch-control")).toHaveLength(2),
+    );
+    const controls = screen.getAllByTestId("composer-branch-control");
+    for (const control of controls) {
+      expect(control).toHaveTextContent(/^main$/);
+      expect(control).toHaveAttribute("title", "main");
+    }
+    if (simplified)
+      expect(
+        screen.queryByTestId("composer-workspace-control"),
+      ).not.toBeInTheDocument();
+    expect(screen.queryByText("/tmp/two-multiple")).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "main (/tmp/two-multiple)" }),
+    );
+    expect(screen.getByText("/tmp/two-multiple")).toBeVisible();
+  },
+);

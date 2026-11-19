@@ -169,6 +169,23 @@ export function useChatComposerControls({
     staleTime: 3000,
   });
   const gitRepositories = gitRepositoriesQuery.data?.repositories ?? [];
+  const branchRepositories = gitRepositories.flatMap((repository) =>
+    repository.branch ? [{ ...repository, branch: repository.branch }] : [],
+  );
+  const renderBranchControls = (simplified: boolean) =>
+    branchRepositories.map((repository) => (
+      <ChatComposerBranchSelector
+        key={repository.gitRoot}
+        className={
+          simplified
+            ? "max-w-28 min-w-0"
+            : cn(stripControlClassName, "max-w-36 px-1.5")
+        }
+        currentBranch={repository.branch}
+        gitRoot={repository.directory}
+        showRepositoryPath={gitRepositories.length > 1}
+      />
+    ));
 
   const workspaceLocked = workspaceReadOnly || Boolean(activeChatId);
   const workspaceControl = workspaceLocked ? (
@@ -211,20 +228,28 @@ export function useChatComposerControls({
     />
   );
 
-  const permissionControl = (
+  const renderPermissionControl = (simplified: boolean) => (
     <ExecutionPermissionControl
       disabled={executionControlsDisabled}
       selectedPermissionLevel={selectedPermissionLevel}
       supportedPermissions={supportedPermissions}
-      triggerClassName={stripControlClassName}
+      iconOnly={simplified}
+      triggerClassName={simplified ? undefined : stripControlClassName}
       onChange={(permissionLevel) =>
         updateExecutionSelection({ permissionLevel })
       }
     />
   );
-  const composerSettings = (
+  const renderComposerSettings = (simplified: boolean) => (
     <>
+      {simplified && branchRepositories.length ? (
+        <div className="flex min-w-0 flex-wrap justify-end gap-1">
+          {renderBranchControls(true)}
+        </div>
+      ) : null}
+      {simplified ? renderPermissionControl(true) : null}
       <ExecutionPicker
+        iconOnly={simplified}
         disabled={executionControlsDisabled}
         onOpenChange={onModelPickerOpenChange}
         runtimes={runtimes}
@@ -300,27 +325,10 @@ export function useChatComposerControls({
     </>
   );
 
-  const branchControl =
-    gitRepositories.length > 0 ? (
-      <>
-        {gitRepositories.map((repository) =>
-          repository.branch ? (
-            <ChatComposerBranchSelector
-              key={repository.gitRoot}
-              className={cn(stripControlClassName, "max-w-36 px-1.5")}
-              currentBranch={repository.branch}
-              gitRoot={repository.directory}
-              showRepositoryPath={gitRepositories.length > 1}
-            />
-          ) : null,
-        )}
-      </>
-    ) : null;
-
   const renderContextStrip = () => (
     <ChatComposerWorkspaceStrip
-      branchControl={branchControl}
-      permissionControl={permissionControl}
+      branchControl={renderBranchControls(false)}
+      permissionControl={renderPermissionControl(false)}
       workspaceControl={workspaceControl}
       workspaceDirectory={workspaceDirectory}
       workspaceLabel={workspaceLabel}
@@ -341,7 +349,7 @@ export function useChatComposerControls({
         }
       />
     ),
-    composerSettings,
+    renderComposerSettings,
     renderContextStrip,
   };
 }

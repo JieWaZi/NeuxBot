@@ -53,13 +53,31 @@ export function ComposerContext({
   );
 }
 
-/** 普通聊天与独立指令输入共用正文留白及最小编辑高度。 */
+const composerInputBodySizeClasses = {
+  default: "min-h-16",
+  compact:
+    "[--composer-input-max-height:5lh] [--composer-input-min-height:1lh]",
+  tall: "min-h-24 [--composer-input-min-height:4.5rem]",
+};
+
+/** 普通聊天与独立指令输入共用正文留白及编辑高度。 */
 export function ComposerInputBody({
   className,
+  size = "default",
   ...props
-}: ComponentProps<"div">) {
+}: ComponentProps<"div"> & {
+  size?: keyof typeof composerInputBodySizeClasses;
+}) {
   return (
-    <div className={cn("min-h-16 px-3 pt-3 pb-1", className)} {...props} />
+    <div
+      data-composer-compact={size === "compact" || undefined}
+      className={cn(
+        "px-3 pt-3 pb-1",
+        composerInputBodySizeClasses[size],
+        className,
+      )}
+      {...props}
+    />
   );
 }
 
@@ -182,17 +200,18 @@ export function ComposerSurface({
     </div>
   );
 
-  if (!context && !contextLayers) return surface;
-
+  // 保持输入表面挂载，顶栏消失时不重建编辑器。
+  const hasContext = Boolean(context || contextLayers);
   return (
     <ComposerStack
-      data-has-context="true"
-      data-chat-composer-frame
+      data-has-context={hasContext || undefined}
+      data-chat-composer-frame={hasContext || undefined}
       className={cn(
-        "rounded-2xl",
-        contextTone === "danger"
-          ? "bg-status-danger-surface"
-          : "bg-composer-context",
+        hasContext && "rounded-2xl",
+        hasContext &&
+          (contextTone === "danger"
+            ? "bg-status-danger-surface"
+            : "bg-composer-context"),
       )}
     >
       {contextLayers}

@@ -570,7 +570,14 @@ function ChatThreadLayoutHarness({
           <span data-testid="composer-permission-control" />
         </div>
       )}
-      composerSettings={<span data-testid="composer-runtime-control" />}
+      renderComposerSettings={(simplified) => (
+        <>
+          {simplified ? (
+            <span data-testid="composer-permission-control" />
+          ) : null}
+          <span data-testid="composer-runtime-control" />
+        </>
+      )}
       composerClearRevision={clearRevision}
       composerDraft={composerDraft}
       pendingApprovals={pendingApprovals}
@@ -852,9 +859,7 @@ describe("chat composer", () => {
     expect(
       screen.queryByTestId("composer-workspace-control"),
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByTestId("composer-permission-control"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("composer-permission-control")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "关闭错误提示" }));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(
@@ -2159,6 +2164,54 @@ describe("chat composer", () => {
     expect(
       screen.queryByRole("button", { name: "滚动到底部" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("首条消息接纳后才隐藏目录栏并切换权限位置，保留编辑器", async () => {
+    const user = userEvent.setup();
+    let acceptFirstMessage = () => {};
+    const acceptance = new Promise<void>((resolve) => {
+      acceptFirstMessage = resolve;
+    });
+    const send = vi.fn<SendMessage>(async () => {
+      await acceptance;
+      return {
+        execution: { id: "first-execution", userMessageId: "first-message" },
+      };
+    });
+    const { container } = render(
+      <ChatQueueProvider>
+        <ChatThreadLayoutHarness send={send} />
+      </ChatQueueProvider>,
+    );
+    const input = screen.getByRole("textbox", { name: "输入消息" });
+    const attachment = screen.getByRole("button", { name: "添加附件" });
+    const permission = screen.getByTestId("composer-permission-control");
+    const model = screen.getByTestId("composer-runtime-control");
+    const strip = container.querySelector("[data-chat-composer-context-strip]");
+    const inputBody = input.closest("[data-chat-composer-input-body]");
+    expect(strip).toContainElement(permission);
+    expect(inputBody).not.toHaveAttribute("data-composer-compact");
+
+    await user.type(input, "第一条消息");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+    expect(send).toHaveBeenCalledOnce();
+    expect(strip).toBeVisible();
+    expect(inputBody).not.toHaveAttribute("data-composer-compact");
+
+    await act(async () => acceptFirstMessage());
+
+    await waitFor(() =>
+      expect(screen.queryByTestId("composer-workspace-control")).toBeNull(),
+    );
+    expect(
+      container.querySelector("[data-chat-composer-context-strip]"),
+    ).toBeNull();
+    expect(screen.getByRole("textbox", { name: "输入消息" })).toBe(input);
+    expect(screen.getByRole("button", { name: "添加附件" })).toBe(attachment);
+    expect(inputBody).toHaveAttribute("data-composer-compact");
+    expect(
+      screen.getByTestId("composer-permission-control").nextElementSibling,
+    ).toBe(model);
   });
 
   it("旧待办链接直接恢复正常输入和发送，不显示失效提示", async () => {

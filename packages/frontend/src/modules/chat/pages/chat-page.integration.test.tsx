@@ -1198,15 +1198,15 @@ describe("ChatPage", () => {
       );
       const control = await screen.findByTestId("composer-model-control");
       await waitFor(() =>
-        expect(control).toHaveTextContent(
-          selected === "bound-model" ? "Bound Model" : "Historical Model",
+        expect(control).toHaveAccessibleName(
+          selected === "bound-model" ? /Bound Model/ : /Historical Model/,
         ),
       );
       if (reasoning) {
-        await waitFor(() => expect(control).toHaveTextContent("高"));
+        await waitFor(() => expect(control).toHaveAccessibleName(/高/));
         await user.click(control);
         await user.click(screen.getByRole("radio", { name: "GPT-5" }));
-        expect(control).toHaveTextContent("GPT-5");
+        expect(control).toHaveAccessibleName(/GPT-5/);
       }
     },
   );
@@ -1260,7 +1260,7 @@ describe("ChatPage", () => {
     await user.click(
       await screen.findByRole("radio", { name: "Available Model" }),
     );
-    expect(control).toHaveTextContent("Available Model");
+    expect(control).toHaveAccessibleName(/Available Model/);
     expect(
       screen.queryByText(/伙伴绑定的模型配置不可用/),
     ).not.toBeInTheDocument();
@@ -1819,19 +1819,19 @@ describe("ChatPage", () => {
       </QueryClientProvider>,
     );
     await waitFor(() =>
-      expect(screen.getByTestId("composer-model-control")).toHaveTextContent(
-        "账号 A",
+      expect(screen.getByTestId("composer-model-control")).toHaveAccessibleName(
+        /账号 A/,
       ),
     );
     await user.click(screen.getByRole("button", { name: "测试打开成员会话" }));
     await screen.findByText("历史消息：member-chat");
     await waitFor(() =>
-      expect(screen.getByTestId("composer-model-control")).toHaveTextContent(
-        "账号 B",
+      expect(screen.getByTestId("composer-model-control")).toHaveAccessibleName(
+        /账号 B/,
       ),
     );
-    expect(screen.getByTestId("composer-model-control")).toHaveTextContent(
-      "b-model",
+    expect(screen.getByTestId("composer-model-control")).toHaveAccessibleName(
+      /b-model/,
     );
     await user.click(screen.getByTestId("composer-model-control"));
     await user.click(screen.getByRole("combobox", { name: "账号" }));
@@ -1849,8 +1849,8 @@ describe("ChatPage", () => {
     await user.type(screen.getByLabelText("总结不可用时携带的最近轮数"), "3");
     await user.click(screen.getByRole("button", { name: "确认切换并继续" }));
     expect(screen.getByRole("radio", { name: "c-model" })).toBeChecked();
-    expect(screen.getByTestId("composer-model-control")).toHaveTextContent(
-      "c-model",
+    expect(screen.getByTestId("composer-model-control")).toHaveAccessibleName(
+      /c-model/,
     );
     expect(window.localStorage.getItem("bot.account.chat:member-chat")).toBe(
       "C",
@@ -1917,7 +1917,7 @@ describe("ChatPage", () => {
       workState: "idle",
       workProgress: { phase: "idle", review: 0, terminal: 0, total: 0 },
     };
-    const view = (teamContext: TeamChatFixtureContext) => (
+    const view = (teamContext: TeamChatFixtureContext, chatId?: string) => (
       <StrictMode>
         <QueryClientProvider client={queryClient}>
           <WorkspaceProvider>
@@ -1930,7 +1930,7 @@ describe("ChatPage", () => {
                         path="/team"
                         element={
                           <TeamChatPageContent
-                            chatId="team-lead-chat"
+                            chatId={chatId}
                             teamContext={teamContext}
                           />
                         }
@@ -1944,9 +1944,42 @@ describe("ChatPage", () => {
         </QueryClientProvider>
       </StrictMode>
     );
-    const { rerender } = render(view(context));
-    expect(screen.getByRole("textbox", { name: "输入消息" })).toBeVisible();
+    const { rerender } = render(
+      view({ ...context, members: [], threadDetailLoading: true }),
+    );
+    const input = screen.getByRole("textbox", { name: "输入消息" });
+    expect(input).toBeVisible();
     expect(screen.getByLabelText("正在加载对话消息")).toBeVisible();
+    expect(input.closest("[data-chat-composer-input-body]")).toHaveAttribute(
+      "data-composer-compact",
+    );
+    const permission = screen.getByTestId("composer-permission-control");
+    rerender(view(context, "team-lead-chat"));
+    expect(screen.getByRole("textbox", { name: "输入消息" })).toBe(input);
+    expect(screen.getByTestId("composer-permission-control")).toBe(permission);
+    const onRetry = vi.fn();
+    rerender(
+      view(
+        {
+          ...context,
+          timelineLoading: false,
+          loadError: { message: "团队历史读取失败", onRetry },
+        },
+        "team-lead-chat",
+      ),
+    );
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("团队历史读取失败");
+    expect(within(alert).getByRole("button", { name: "重试" })).toBeEnabled();
+    await waitFor(() => expect(permission).toBeEnabled());
+    expect(permission.nextElementSibling).toBe(
+      screen.getByTestId("composer-model-control"),
+    );
+    fireEvent.click(
+      within(alert).getByRole("button", { name: "关闭错误提示" }),
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByTestId("composer-permission-control")).toBe(permission);
     const loaded: TeamChatFixtureContext = {
       ...context,
       timelineLoading: false,
@@ -1962,28 +1995,31 @@ describe("ChatPage", () => {
         },
       ],
     };
-    rerender(view(loaded));
+    rerender(view(loaded, "team-lead-chat"));
     expect(await screen.findByText("连接之前的历史")).toBeVisible();
     expect(
       queryClient.getQueryState(["chats", "messages", "team-lead-chat"])
         ?.status,
     ).toBe("pending");
     rerender(
-      view({
-        ...loaded,
-        timeline: [
-          {
-            coordinator: true,
-            chatId: "team-lead-chat",
-            message: {
-              id: "timeline-user",
-              role: "user",
-              content: "无需重新连接的更新",
-              revision: 2,
+      view(
+        {
+          ...loaded,
+          timeline: [
+            {
+              coordinator: true,
+              chatId: "team-lead-chat",
+              message: {
+                id: "timeline-user",
+                role: "user",
+                content: "无需重新连接的更新",
+                revision: 2,
+              },
             },
-          },
-        ],
-      }),
+          ],
+        },
+        "team-lead-chat",
+      ),
     );
     expect(await screen.findByText("无需重新连接的更新")).toBeVisible();
     expect(screen.queryByLabelText("正在加载对话消息")).not.toBeInTheDocument();
@@ -3357,6 +3393,16 @@ describe("ChatPage", () => {
         await screen.findByRole("textbox", { name: "输入消息" }),
       ).toBeVisible();
       const input = screen.getByRole("textbox", { name: "输入消息" });
+      const initialPermission = await screen.findByTestId(
+        "composer-permission-control",
+      );
+      expect(
+        container.querySelector("[data-chat-composer-context-strip]"),
+      ).toContainElement(initialPermission);
+      expect(initialPermission).toHaveTextContent(/\S/);
+      expect(
+        screen.getByTestId("composer-model-control").querySelector("span"),
+      ).toHaveTextContent(/\S/);
       await user.type(input, "修复首条消息闪屏");
       const states = observeRenderedState(container, () => ({
         composerPreserved:
@@ -3395,6 +3441,17 @@ describe("ChatPage", () => {
       await waitFor(() =>
         expect(queryClient.getQueryData(["chat", "chat-1"])).toBeTruthy(),
       );
+      const compactPermission = screen.getByTestId(
+        "composer-permission-control",
+      );
+      const compactModel = screen.getByTestId("composer-model-control");
+      expect(
+        container.querySelector("[data-chat-composer-context-strip]"),
+      ).toBeNull();
+      expect(compactPermission.nextElementSibling).toBe(compactModel);
+      expect(compactPermission).toHaveTextContent(/^$/);
+      expect(compactModel.childNodes).toHaveLength(1);
+      expect(compactModel.firstElementChild?.matches("svg, img")).toBe(true);
       expect(createChat.mock.calls[0]?.[0]).toEqual(
         expect.objectContaining({
           body: expect.objectContaining({
@@ -3890,7 +3947,7 @@ describe("ChatPage", () => {
       await screen.findByText("模型目录未列出已选权限，运行时将由智能体确认。"),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "执行权限：完全访问" }),
+      await screen.findByRole("button", { name: "执行权限：完全访问" }),
     ).toBeEnabled();
     await user.type(screen.getByRole("textbox", { name: "输入消息" }), "继续");
     await user.click(screen.getByRole("button", { name: "发送消息" }));
@@ -3948,7 +4005,7 @@ describe("ChatPage", () => {
       await screen.findByText("模型目录未列出已选权限，运行时将由智能体确认。"),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "执行权限：完全访问" }),
+      await screen.findByRole("button", { name: "执行权限：完全访问" }),
     ).toBeEnabled();
     await user.type(screen.getByRole("textbox", { name: "输入消息" }), "继续");
     await user.click(screen.getByRole("button", { name: "发送消息" }));
@@ -4104,8 +4161,8 @@ describe("ChatPage", () => {
       screen.queryByRole("option", { name: "低" }),
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole("option", { name: "高" }));
-    expect(screen.getByTestId("composer-model-control")).toHaveTextContent(
-      "高",
+    expect(screen.getByTestId("composer-model-control")).toHaveAccessibleName(
+      /高/,
     );
     expect(document.querySelector(".composer-effort-effect")).toHaveAttribute(
       "data-active",
@@ -4293,8 +4350,8 @@ describe("ChatPage", () => {
       ).not.toBeInTheDocument(),
     );
     await user.keyboard("{Escape}");
-    expect(screen.getByTestId("composer-model-control")).toHaveTextContent(
-      "Sonnet",
+    expect(screen.getByTestId("composer-model-control")).toHaveAccessibleName(
+      /Sonnet/,
     );
   });
 
@@ -5497,8 +5554,14 @@ describe("ChatPage", () => {
       loading.querySelectorAll('div[aria-hidden="true"]').length,
     ).toBeGreaterThan(1);
     expect(screen.getByRole("textbox", { name: "输入消息" })).toBeVisible();
+    const permission = screen.getByTestId("composer-permission-control");
+    expect(permission).toBeEnabled();
+    expect(permission.nextElementSibling).toBe(
+      screen.getByTestId("composer-model-control"),
+    );
     expect(await screen.findByText("历史消息：chat-2")).toBeInTheDocument();
     expect(loading).not.toBeInTheDocument();
+    expect(screen.getByTestId("composer-permission-control")).toBe(permission);
     const targetInput = screen.getByRole("textbox", { name: "输入消息" });
     expect(targetInput).not.toBe(input);
     expect(targetInput).toHaveTextContent("");

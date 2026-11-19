@@ -54,6 +54,7 @@ import { useOptionalAppSceneWorkspace } from "@/shared/workspace/app-scene-works
 import type { ChatSceneOwner } from "@/shared/workspace/app-scene-model";
 import { chatDraftHref, chatHref } from "@/shared/lib/chat-navigation";
 import { Button } from "@/shared/ui/button";
+import { CornerLauncherButton } from "@/shared/ui/corner-launcher-button";
 import {
   clampContextSidebarWidth,
   defaultContextSidebarWidth,
@@ -364,6 +365,8 @@ function PartnerNavigationLayoutContent({
   };
   const settingsLayout = settingsOpen ? settingsSidebar : undefined;
   const partnerContext = !settingsOpen && navigation.sidebarKind === "partners";
+  const cornerLauncherItem =
+    partnerContext && !workflowChatOpen ? selectedRailItem : undefined;
   const sidebar = settingsLayout ?? moduleSidebar;
   const pageSidebar = Boolean(sidebar);
   const hasSidebar = pageSidebar || partnerContext;
@@ -608,6 +611,7 @@ function PartnerNavigationLayoutContent({
           ) : null}
           <section
             aria-label={t("sceneWorkspace")}
+            data-chat-corner-launcher={Boolean(cornerLauncherItem) || undefined}
             data-content-spans-sidebar={!hasSidebar || undefined}
             className={cn(
               "relative row-start-1 grid min-h-0 min-w-0 grid-rows-[var(--shell-titlebar-height)_minmax(0,1fr)] overflow-hidden",
@@ -636,12 +640,12 @@ function PartnerNavigationLayoutContent({
                 {children}
               </div>
             </div>
-            {partnerContext && !workflowChatOpen && selectedRailItem ? (
+            {cornerLauncherItem ? (
               <div className="absolute right-0 bottom-0 z-40">
                 <CornerLauncher>
                   <ChatHistoryLauncher
                     activeChatId={activeChatId}
-                    item={selectedRailItem}
+                    item={cornerLauncherItem}
                     onPreferencesChange={onPreferencesChange}
                     preferences={preferences}
                     teamContext={teamContext}
@@ -674,41 +678,30 @@ function CornerLauncher({ children }: { children: ReactNode }) {
   if (!floatingChat) return children;
 
   return (
-    <Button
+    <CornerLauncherButton
       aria-label={floatingChat.ariaLabel}
-      className="group/launcher relative transition-[width,background-color,color,box-shadow,opacity] hover:w-40 focus-visible:w-40"
       data-activity-state={floatingChat.state}
       data-floating-chat-shell-launcher
-      onClick={floatingChat.onActivate}
-      shape="corner"
-      size="icon-lg"
-      title={floatingChat.ariaLabel}
-      type="button"
-      variant="launcher"
-    >
-      <span className="size-control-lg grid shrink-0 place-items-center">
-        {floatingChat.state === "running" ? (
+      icon={
+        floatingChat.state === "running" ? (
           <LoaderCircle
-            className="size-icon-lg motion-safe:animate-spin"
+            className="motion-safe:animate-spin"
             strokeWidth={1.5}
           />
         ) : (
-          <MessageSquareText className="size-icon-lg" strokeWidth={1.5} />
-        )}
-      </span>
-      <span
-        aria-hidden="true"
-        className="type-ui min-w-0 -translate-x-1 truncate pr-4 opacity-0 transition-[opacity,transform] group-hover/launcher:translate-x-0 group-hover/launcher:opacity-100 group-focus-visible/launcher:translate-x-0 group-focus-visible/launcher:opacity-100"
-      >
-        {floatingChat.label}
-      </span>
-      {floatingChat.state === "waiting" ? (
-        <span
-          className="bg-warning absolute top-1 right-1 size-2 rounded-full"
-          aria-hidden="true"
-        />
-      ) : null}
-    </Button>
+          <MessageSquareText strokeWidth={1.5} />
+        )
+      }
+      indicator={
+        floatingChat.state === "waiting" ? (
+          <span className="bg-warning absolute top-0.5 right-0.5 size-1 rounded-full" />
+        ) : null
+      }
+      label={floatingChat.label}
+      onClick={floatingChat.onActivate}
+      title={floatingChat.ariaLabel}
+      wide
+    />
   );
 }
 

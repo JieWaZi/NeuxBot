@@ -162,6 +162,7 @@
   --spacing-control-sm: 1.75rem;
   --spacing-control-md: 2.25rem;
   --spacing-control-lg: 2.75rem;
+  --spacing-control-corner-launcher: 1.375rem;
   --spacing-control-launcher: 7rem;
   /* Dock 使用 58px 表面和 48px 图标入口。 */
   --spacing-dock: 3.625rem;
@@ -941,7 +942,7 @@ button:disabled {
 
 [data-chat-composer-input] {
   display: block;
-  max-height: 10rem;
+  max-height: var(--composer-input-max-height, 10rem);
   min-height: var(--composer-input-min-height, 2.5rem);
   overflow-x: hidden;
   overflow-y: auto;
@@ -959,6 +960,23 @@ button:disabled {
   float: left;
   height: 0;
   pointer-events: none;
+}
+
+[data-composer-compact]
+  [data-chat-composer-input]
+  p.is-editor-empty:first-child {
+  position: relative;
+}
+
+[data-composer-compact]
+  [data-chat-composer-input]
+  p.is-editor-empty:first-child::before {
+  position: absolute;
+  inset-inline: 0;
+  height: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 伙伴概览等分组面使用的低密度装饰纹理，仅作背景层次，不承载信息。 */

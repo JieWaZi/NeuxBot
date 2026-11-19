@@ -1274,7 +1274,7 @@ export function ChatComposerInput({
         event.stopPropagation();
       }}
     >
-      <div className="flex flex-wrap gap-1 pb-2">
+      <div className="flex flex-wrap gap-1 pb-2 in-data-[composer-compact]:empty:hidden">
         <ChatComposerAttachments
           onOpenFile={onOpenFile}
           onRemove={async (path) => {

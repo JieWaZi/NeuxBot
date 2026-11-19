@@ -1125,8 +1125,8 @@ function TeamChatView({
   );
 
   const {
-    composerSettings,
     composerEffects,
+    renderComposerSettings,
     renderContextStrip: renderComposerContextStrip,
   } = useChatComposerControls({
     activeChatId,
@@ -1330,11 +1330,12 @@ function TeamChatView({
       onStopWork: stopTeamWork,
       emptyState: messageEmptyState,
       pinEmptyState: pinTeamEmptyState,
+      hasExistingConversation: teamMainChat && Boolean(teamContext.threadId),
       isHistoryLoading: historyIsLoading,
       historyError: teamContext.loadError,
-      composerSettings: (
+      renderComposerSettings: (simplified) => (
         <>
-          {composerSettings}
+          {renderComposerSettings(simplified)}
           {invalidNativeMember &&
           !nativeMembers[invalidNativeMemberIndex]?.pending ? (
             <span role="status" className="text-content-secondary type-caption">

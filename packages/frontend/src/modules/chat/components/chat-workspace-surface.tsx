@@ -357,6 +357,7 @@ export function ChatWorkspaceSurface({
     />
   ) : undefined;
 
+  const showHistoryLauncher = Boolean(history && sceneActive && !fullView);
   return (
     <WorkbenchOpeningProvider
       value={{ scopeKey: identity.scopeKey, onOpen: onOpenRightPanel }}
@@ -382,6 +383,7 @@ export function ChatWorkspaceSurface({
         data-chat-canvas-layout={canvasInput !== undefined || undefined}
         data-chat-canvas-input={canvasInput || undefined}
         data-chat-full-view={fullView || undefined}
+        data-chat-corner-launcher={showHistoryLauncher || undefined}
         data-workbench-side={workbench.side}
         data-testid="chat-page-layout"
       >
@@ -615,7 +617,7 @@ export function ChatWorkspaceSurface({
             />
           }
         />
-        {history && sceneActive && !fullView ? (
+        {showHistoryLauncher ? (
           <div className="absolute right-0 bottom-0 z-30">{history}</div>
         ) : null}
       </div>

@@ -210,10 +210,12 @@ type ChatThreadProps = {
   /** 画布首发时同步输入框的位置与宽度，保留同一编辑器实例。 */
   animateComposerSize?: boolean;
   pinEmptyState?: boolean;
+  /** 已有对话的路由身份可先于所属 Chat ID 就绪。 */
+  hasExistingConversation?: boolean;
   isHistoryLoading?: boolean;
   historyError?: { message: string; onRetry: () => void; error?: unknown };
-  composerSettings?: ReactNode;
-  composerInputSize?: "default" | "tall";
+  renderComposerSettings?: (simplified: boolean) => ReactNode;
+  composerInputSize?: "compact" | "tall";
   composerActions?: ReactNode;
   composerEffects?: ReactNode;
   composerReferences?: ChatComposerContextReference[];
@@ -1303,6 +1305,7 @@ function AddAttachmentButton({
       aria-label={t("addAttachment")}
       size="icon-sm"
       variant="ghost"
+      className="shrink-0"
     >
       {selecting ? <LoaderCircle className="animate-spin" /> : <Plus />}
     </Button>
@@ -1950,7 +1953,7 @@ const Composer = memo(function Composer({
   autoFocus,
   disabled = false,
   singleSubmission = false,
-  inputSize = "default",
+  inputSize,
   activityStatus,
   settings,
   actions,
@@ -2196,14 +2199,7 @@ const Composer = memo(function Composer({
           ) : null}
           {/* 审批期间保留输入草稿和发送恢复状态。 */}
           <div hidden={Boolean(currentApproval)}>
-            <ComposerInputBody
-              data-chat-composer-input-body
-              className={
-                inputSize === "tall"
-                  ? "min-h-24 [--composer-input-min-height:4.5rem]"
-                  : undefined
-              }
-            >
+            <ComposerInputBody data-chat-composer-input-body size={inputSize}>
               <ChatComposerInput
                 contextReferences={contextReferences}
                 onContextReferencesChange={onContextReferencesChange}
@@ -2265,7 +2261,8 @@ const Composer = memo(function Composer({
                 className="placeholder:text-muted-foreground type-label resize-none bg-transparent outline-none disabled:opacity-55"
               />
             </ComposerInputBody>
-            <div className="min-h-control-lg flex items-center justify-between gap-2 px-2 pb-2">
+            {/* 角落入口的命中区延伸至 36px，发送操作在其左侧留出空间。 */}
+            <div className="min-h-control-lg flex items-center justify-between gap-2 px-2 pb-2 in-data-[chat-corner-launcher]:pr-3">
               <div className="flex min-w-0 items-center gap-1">
                 <AddAttachmentButton
                   disabled={isWorkStopping || disabled}
@@ -2393,9 +2390,10 @@ function ChatThreadContent({
   emptyStatePosition = "fill",
   animateComposerSize = false,
   pinEmptyState = false,
+  hasExistingConversation = false,
   isHistoryLoading = false,
   historyError,
-  composerSettings,
+  renderComposerSettings,
   composerInputSize,
   composerActions,
   composerEffects,
@@ -2571,6 +2569,12 @@ function ChatThreadContent({
     followInitially: !messageId,
   });
   const latestMessage = messages.findLast((message) => !message.question);
+  const compactComposer =
+    presentation === "thread" &&
+    (((hasExistingConversation || Boolean(fileScopeChatId)) &&
+      (isHistoryLoading || Boolean(historyError))) ||
+      hasEarlierMessages ||
+      messages.some((message) => !message.optimistic));
   const companionInteraction = isWorkStopping
     ? "stopping"
     : pendingApprovals.length || openQuestions.length
@@ -2782,14 +2786,19 @@ function ChatThreadContent({
                     autoFocus={composerAutoFocus}
                     disabled={composerDisabled}
                     singleSubmission={composerSingleSubmission}
-                    inputSize={composerInputSize}
+                    inputSize={
+                      composerInputSize ??
+                      (compactComposer ? "compact" : undefined)
+                    }
                     activityStatus={activityStatus}
-                    settings={composerSettings}
+                    settings={renderComposerSettings?.(compactComposer)}
                     actions={composerActions}
                     effects={composerEffects}
                     contextReferences={composerReferences}
                     onContextReferencesChange={onComposerReferencesChange}
-                    renderContextStrip={renderComposerContextStrip}
+                    renderContextStrip={
+                      compactComposer ? undefined : renderComposerContextStrip
+                    }
                     skills={composerSkills}
                     skillsError={composerSkillsError}
                     plugins={composerPlugins}

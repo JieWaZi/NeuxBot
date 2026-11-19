@@ -1273,8 +1273,8 @@ function ChatView({
   const retryFirstSubmission = chatRuntime.retryFirstSubmission;
   const boardInputLocked = Boolean(boardDraft && retryFirstSubmission);
   const {
-    composerSettings,
     composerEffects,
+    renderComposerSettings,
     renderContextStrip: renderComposerContextStrip,
   } = useChatComposerControls({
     preservePermissionOnModelChange: !boardDraft,
@@ -1428,16 +1428,16 @@ function ChatView({
       wakerAvatar: conversationAvatar,
       emptyState: messageEmptyState,
       isHistoryLoading: historyIsLoading,
-      composerSettings: boardDraft ? (
-        <>
-          {boardDraft.renderPartnerPicker(
-            chatRuntime.isRunning || boardInputLocked || !sceneActive,
-          )}
-          {composerSettings}
-        </>
-      ) : (
-        composerSettings
-      ),
+      renderComposerSettings: boardDraft
+        ? (simplified) => (
+            <>
+              {boardDraft.renderPartnerPicker(
+                chatRuntime.isRunning || boardInputLocked || !sceneActive,
+              )}
+              {renderComposerSettings(simplified)}
+            </>
+          )
+        : renderComposerSettings,
       composerEffects,
       composerDraft: entry?.draft ?? promptDraft?.text,
       composerDraftReference: promptDraft?.skillId

@@ -72,6 +72,8 @@ export const buttonVariants = cva(
         dock: "size-dock-button rounded-full p-0 [&_svg:not([data-companion-avatar])]:size-icon-md",
         "icon-lg":
           "size-control-lg rounded-sm p-0 [&_svg:not([data-companion-avatar])]:size-icon-lg",
+        "corner-launcher":
+          "size-control-hit-target shrink-0 p-0 [&_svg:not([data-companion-avatar])]:size-icon-xs",
       },
       shape: {
         default: null,

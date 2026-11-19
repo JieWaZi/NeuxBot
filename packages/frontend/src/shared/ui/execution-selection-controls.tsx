@@ -47,6 +47,7 @@ export function ExecutionRuntimeControl({
   selectedRuntime,
   historicalRuntime,
   selectedAccountId,
+  placeholder,
   onSelect,
   disabled = false,
 }: {
@@ -55,6 +56,7 @@ export function ExecutionRuntimeControl({
   selectedRuntime?: RuntimeOption;
   historicalRuntime?: RuntimeOption;
   selectedAccountId?: string;
+  placeholder?: string;
   onSelect: (runtime: RuntimeOption, accountId: string) => void;
   disabled?: boolean;
 }) {
@@ -100,6 +102,7 @@ export function ExecutionRuntimeControl({
             />
             <span className="truncate">
               {runtimeDisplayName(selectedRuntime ?? historicalRuntime) ||
+                placeholder ||
                 t("chat:runtimeUnavailable")}
               {selectedAccountId !== undefined && selectedAccount ? (
                 <> · {selectedAccount.name}</>
@@ -210,23 +213,36 @@ export function ExecutionRuntimeControl({
 /** 权限菜单共用语义色、图标和能力校验；紧凑上下文条可传入已有触发器样式。 */
 export function ExecutionPermissionControl({
   selectedPermissionLevel,
+  placeholder,
   supportedPermissions,
   onChange,
   disabled = false,
+  iconOnly = false,
   triggerClassName,
 }: {
-  selectedPermissionLevel: PermissionLevel;
+  selectedPermissionLevel?: PermissionLevel;
+  placeholder?: string;
   supportedPermissions: ReadonlySet<PermissionLevel>;
   onChange: (level: PermissionLevel) => void;
   disabled?: boolean;
+  iconOnly?: boolean;
   triggerClassName?: string;
 }) {
   const { t } = useTranslation("common");
-  const permissionDetail =
-    permissionLevelTranslationKeys[selectedPermissionLevel];
-  const permissionTone = permissionLevelToneClasses[selectedPermissionLevel];
-  const PermissionIcon = permissionLevelIcons[selectedPermissionLevel];
-  const permissionLabel = t(`common:${permissionDetail.label}`);
+  const permissionTone = selectedPermissionLevel
+    ? permissionLevelToneClasses[selectedPermissionLevel]
+    : undefined;
+  const PermissionIcon = selectedPermissionLevel
+    ? permissionLevelIcons[selectedPermissionLevel]
+    : ShieldKeyhole;
+  const permissionLabel = selectedPermissionLevel
+    ? t(
+        `common:${permissionLevelTranslationKeys[selectedPermissionLevel].label}`,
+      )
+    : (placeholder ?? t("common:executionSelection.permission"));
+  const pickerLabel = t("common:permission.pickerAria", {
+    name: permissionLabel,
+  });
   const permissionControl = (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -235,24 +251,25 @@ export function ExecutionPermissionControl({
           disabled={disabled || supportedPermissions.size === 0}
           data-testid="composer-permission-control"
           data-overflow-trigger
-          aria-label={t("common:permission.pickerAria", {
-            name: permissionLabel,
-          })}
+          aria-label={pickerLabel}
+          title={iconOnly ? pickerLabel : undefined}
           variant="ghost"
-          size="sm"
+          size={iconOnly ? "icon-sm" : "sm"}
           className={cn(
             triggerClassName,
-            "max-w-28 font-medium",
-            permissionTone.trigger,
+            iconOnly ? "shrink-0" : "max-w-28 font-medium",
+            permissionTone?.trigger,
           )}
         >
-          <PermissionIcon className={permissionTone.icon} aria-hidden />
-          <OverflowText className="min-w-0">{permissionLabel}</OverflowText>
+          <PermissionIcon className={permissionTone?.icon} aria-hidden />
+          {iconOnly ? null : (
+            <OverflowText className="min-w-0">{permissionLabel}</OverflowText>
+          )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80">
         <DropdownMenuRadioGroup
-          value={selectedPermissionLevel}
+          value={selectedPermissionLevel ?? ""}
           onValueChange={(permissionLevel) => {
             const nextLevel = permissionLevelOf(permissionLevel);
             if (!nextLevel || !supportedPermissions.has(nextLevel)) return;
