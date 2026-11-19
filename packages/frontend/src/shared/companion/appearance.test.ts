@@ -37,6 +37,15 @@ describe("Bloub 头像配置", () => {
     expect(companionAppearance(seed)).toHaveProperty("shape");
     expect(companionAppearance(seed)).not.toHaveProperty("style");
   });
+  it("内置 lumi 保留粉色毛绒，使用圆形与向右上看的表情", () => {
+    const seed = "companion:fe9a9eb52f5e4d7dac1959fe4f9559f2";
+    expect(companionAppearance(seed)).toEqual({
+      material: "plush",
+      shape: "cercle",
+      expression: "neutre",
+      color: "#f472b6",
+    });
+  });
   it("未知配置不执行外部地址，回退可重复的合法配置", () => {
     const value = companionAvatar(
       "https://example.invalid/avatar.svg",

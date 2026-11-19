@@ -27,6 +27,8 @@ export type CompanionAppearance = {
 };
 export const defaultCompanionAvatar = "bloub:plush:cercle:neutre:8b5cf6";
 const seeded = /^companion:[0-9a-f]{32}$/;
+// 内置 Lumi 的头像种子与后端 PersonalAssistantAvatar 一致。
+const personalAssistantAvatar = "companion:fe9a9eb52f5e4d7dac1959fe4f9559f2";
 
 function parse(value: string): CompanionAppearance | undefined {
   const [kind, material, shape, expression, color, extra] = value.split(":");
@@ -61,7 +63,7 @@ export function encodeCompanionAppearance(config: CompanionAppearance): string {
   return parse(result) ? result : defaultCompanionAvatar;
 }
 
-/** 随机种子按身份稳定生成组合；明确保存的外观直接还原。 */
+/** 稳定还原内置及随机头像种子；明确保存的外观直接还原。 */
 export function companionAppearance(avatar: string): CompanionAppearance {
   const saved = parse(avatar);
   if (saved) return saved;
@@ -70,7 +72,9 @@ export function companionAppearance(avatar: string): CompanionAppearance {
     hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
   const sample = hash >>> 0;
   const preset =
-    avatarPresets[sample % avatarPresets.length] ?? avatarPresets[0];
+    avatar === personalAssistantAvatar
+      ? ({ shape: "cercle", expression: "neutre" } as const)
+      : (avatarPresets[sample % avatarPresets.length] ?? avatarPresets[0]);
   return {
     material: "plush",
     ...preset,
