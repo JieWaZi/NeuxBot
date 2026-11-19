@@ -288,7 +288,7 @@ func New(config Config) (Core, error) {
 		if err := builtinskills.CleanupObsoleteSystemDirectories(systemSkillDirectory); err != nil {
 			logx.Warnf("clean obsolete system skills: %v", err)
 		}
-		contextRoot := filepath.Join(filepath.Dir(filepath.Dir(systemSkillDirectory)), "agent-contexts")
+		contextRoot := filepath.Join(filepath.Dir(filepath.Dir(systemSkillDirectory)), constants.AgentCLIContextDirectory)
 		if err := config.Agent.CleanupRetiredConnections(contextRoot); err != nil {
 			logx.Warnf("clean retired execution contexts: %v", err)
 		}

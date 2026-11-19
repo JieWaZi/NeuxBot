@@ -378,7 +378,7 @@ func (s *Service) accept(ctx context.Context, input *models.IMInbox) error {
 	if targetChatID == "" && link.Configuration.ChannelID == "" {
 		targetChatID = (requestidempotency.Identity{ID: link.ID}).ResourceID("chat", link.Configuration.WakerID)
 	}
-	release, err := chatstorage.AcquireReferences(s.config.ManagedFilesDirectory, targetChatID)
+	release, err := chatstorage.AcquireReferences(s.config.DataDirectory, targetChatID)
 	if err != nil {
 		return err
 	}

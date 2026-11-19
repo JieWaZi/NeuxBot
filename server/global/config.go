@@ -723,7 +723,7 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		)
 	}
 	ChannelService = channelModule
-	imModule = imservice.New(imservice.Config{ManagedFilesDirectory: configuration.ManagedFilesDirectory, Events: EventHub, Store: IMControllerManager, Transactions: TransactionControllerManager, Executions: ExecutionService, Chats: ChatService, Teams: ChannelService, Channels: ChannelControllerManager, Threads: ChannelThreadControllerManager, TeamTasks: ChannelTaskControllerManager, DataDirectory: configuration.ManagedFilesDirectory})
+	imModule = imservice.New(imservice.Config{Events: EventHub, Store: IMControllerManager, Transactions: TransactionControllerManager, Executions: ExecutionService, Chats: ChatService, Teams: ChannelService, Channels: ChannelControllerManager, Threads: ChannelThreadControllerManager, TeamTasks: ChannelTaskControllerManager, DataDirectory: configuration.ManagedFilesDirectory})
 	IMService = imModule
 	if err := ChannelService.Start(ctx); err != nil {
 		return mapCoreError("start_channel_service", status_error.CoreChannelInitializationFailed, err)

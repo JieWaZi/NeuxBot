@@ -2,13 +2,13 @@ package im
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	protocol "github.com/JieWaZi/NeuxBot/server/internal/im"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
@@ -114,7 +114,7 @@ func (s *Service) createDelivery(ctx context.Context, request DeliveryRequest, a
 		}
 	}
 
-	release, err := chatstorage.AcquireReferences(s.config.ManagedFilesDirectory, delivery.ChatID)
+	release, err := chatstorage.AcquireReferences(s.config.DataDirectory, delivery.ChatID)
 	if err != nil {
 		return models.IMDelivery{}, err
 	}

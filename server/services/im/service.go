@@ -23,8 +23,6 @@ import (
 
 // Config 提供 IM 的稳定依赖，实际执行仍由现有内核拥有。
 type Config struct {
-	// ManagedFilesDirectory 是 Chat 引用写入和聚合删除共用操作门的受管文件根。
-	ManagedFilesDirectory string
 	// Store 持久保存连接、授权、输入及投递。
 	Store controllers.IMController
 	// Transactions 提供平台批次和路由提交的原子边界。

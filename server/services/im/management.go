@@ -2,11 +2,11 @@ package im
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
@@ -172,7 +172,7 @@ func (s *Service) selectConversation(ctx context.Context, binding models.IMBindi
 		if err != nil {
 			return err
 		}
-		release, err := chatstorage.AcquireReferences(s.config.ManagedFilesDirectory, link.ChatID)
+		release, err := chatstorage.AcquireReferences(s.config.DataDirectory, link.ChatID)
 		if err != nil {
 			return err
 		}

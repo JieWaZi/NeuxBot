@@ -3,9 +3,12 @@ package capability
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -140,4 +143,115 @@ func ReadCodexShellConnection(executable, threadID string) (Connection, error) {
 		return Connection{}, status_error.AgentContextStorageError
 	}
 	return ReadConnection(alias)
+}
+
+// CleanupRetiredConnections reclaims verified descriptors from earlier Core epochs.
+func (r *Registry) CleanupRetiredConnections(directory string) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	absolute, err := filepath.EvalSymlinks(directory)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil || absolute != filepath.Clean(directory) {
+		return status_error.AgentContextStorageError
+	}
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		return status_error.AgentContextStorageError
+	}
+	defer root.Close()
+	entries, err := fs.ReadDir(root.FS(), ".")
+	if err != nil {
+		return status_error.AgentContextStorageError
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if !entry.IsDir() || name == r.epoch {
+			continue
+		}
+		switch {
+		case isHexConnectionName(name, sha256.Size):
+			// Older Core versions stored descriptors directly under the connection identity.
+			err = r.retireConnectionDirectory(root, name, "")
+		case name == codexShellDirectory, isHexConnectionName(name, 16):
+			err = r.retireConnectionGroup(root, name)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func isHexConnectionName(name string, bytes int) bool {
+	if len(name) != hex.EncodedLen(bytes) {
+		return false
+	}
+	_, err := hex.DecodeString(name)
+	return err == nil
+}
+
+func (r *Registry) retireConnectionGroup(root *os.Root, group string) error {
+	children, err := fs.ReadDir(root.FS(), group)
+	if err != nil {
+		return status_error.AgentContextStorageError
+	}
+	epoch := group
+	if group == codexShellDirectory {
+		epoch = ""
+	}
+	for _, child := range children {
+		if !child.IsDir() {
+			continue
+		}
+		name := child.Name()
+		if epoch == "" {
+			if _, err := codexShellConnectionPath(root.Name(), name); err != nil {
+				continue
+			}
+		} else if !isHexConnectionName(name, sha256.Size) {
+			continue
+		}
+		if err := r.retireConnectionDirectory(root, path.Join(group, name), epoch); err != nil {
+			return err
+		}
+	}
+	return removeEmptyConnectionDirectory(root, group)
+}
+
+func (r *Registry) retireConnectionDirectory(root *os.Root, directory, epoch string) error {
+	entries, err := fs.ReadDir(root.FS(), directory)
+	if err != nil {
+		return status_error.AgentContextStorageError
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if name != residentConnectionFilename && !strings.HasPrefix(name, "connection-staging-") {
+			continue
+		}
+		relative := filepath.FromSlash(path.Join(directory, name))
+		descriptor, err := ReadConnection(filepath.Join(root.Name(), relative))
+		if err != nil || descriptor.CoreEpoch == r.epoch || (epoch != "" && descriptor.CoreEpoch != epoch) {
+			continue
+		}
+		if err := root.Remove(relative); err != nil && !os.IsNotExist(err) {
+			logx.Errorf("remove retired agent context file failed: error=%v", err)
+			return status_error.AgentContextStorageError
+		}
+	}
+	return removeEmptyConnectionDirectory(root, directory)
+}
+
+func removeEmptyConnectionDirectory(root *os.Root, directory string) error {
+	entries, err := fs.ReadDir(root.FS(), directory)
+	if err == nil && len(entries) == 0 {
+		err = root.Remove(filepath.FromSlash(directory))
+	}
+	if err != nil && !os.IsNotExist(err) {
+		logx.Errorf("remove empty agent context directory failed: error=%v", err)
+		return status_error.AgentContextStorageError
+	}
+	return nil
 }
