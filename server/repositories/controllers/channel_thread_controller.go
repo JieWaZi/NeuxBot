@@ -52,7 +52,7 @@ type ChannelThreadController interface {
 	FinishCanceling(ctx context.Context, threadID string, cancelingAt int64, updatedAt int64) (bool, error)
 	// ListCanceling 返回服务启动时必须继续收敛的停止意图。
 	ListCanceling(ctx context.Context) ([]models.ChannelThread, error)
-	// ListInitializing 返回服务启动时必须回滚的未就绪首发锚点。
+	// ListInitializing 返回服务启动时需要核对接纳回执的未就绪首发锚点。
 	ListInitializing(ctx context.Context) ([]models.ChannelThread, error)
 	// Touch 更新团队对话最近活动时间。
 	Touch(ctx context.Context, threadID string, updatedAt int64) error
@@ -76,6 +76,8 @@ type ChannelThreadController interface {
 	CreateLeadInput(ctx context.Context, input models.ChannelLeadInput) error
 	// ListLeadInputs 返回指定状态的负责人输入队列，按创建顺序排列。
 	ListLeadInputs(ctx context.Context, threadID string, statuses []constants.ChannelInputStatus, limit int) ([]models.ChannelLeadInput, error)
+	// FailLeadInput 只结算仍未进入负责人 Chat 的输入。
+	FailLeadInput(ctx context.Context, id string, errorCode string, updatedAt int64) (bool, error)
 	// UpdateLeadInputs 推进一批负责人输入的投递状态和 Execution 映射。
 	UpdateLeadInputs(ctx context.Context, ids []string, status constants.ChannelInputStatus, leadExecutionID string, updatedAt int64) error
 	// CancelOpenLeadInputs 取消团队对话尚未消费的负责人用户输入。
@@ -604,7 +606,7 @@ func (c *channelThreadController) ListCanceling(
 	return threads, nil
 }
 
-// ListInitializing 返回服务启动时必须回滚的未就绪首发锚点。
+// ListInitializing 返回服务启动时需要核对接纳回执的未就绪首发锚点。
 func (c *channelThreadController) ListInitializing(
 	ctx context.Context,
 ) ([]models.ChannelThread, error) {
@@ -901,6 +903,19 @@ func (c *channelThreadController) ListLeadInputs(
 	return inputs, nil
 }
 
+// FailLeadInput 以队列状态为围栏，避免覆盖已绑定执行或已取消的输入。
+func (c *channelThreadController) FailLeadInput(ctx context.Context, id string, errorCode string, updatedAt int64) (bool, error) {
+	result := controllerDB(ctx, c.db).Model(&models.ChannelLeadInput{}).
+		Where("id = ? AND status = ?", id, constants.ChannelInputStatusPending).
+		Updates(map[string]any{
+			"status": constants.ChannelInputStatusFailed, "error_code": errorCode, "updated_at": updatedAt,
+		})
+	if result.Error != nil {
+		return false, databaseError("fail_channel_lead_input", "input_id="+id, result.Error)
+	}
+	return result.RowsAffected == 1, nil
+}
+
 // UpdateLeadInputs 推进一批负责人输入的投递状态和 Execution 映射。
 func (c *channelThreadController) UpdateLeadInputs(
 	ctx context.Context,
@@ -912,12 +927,20 @@ func (c *channelThreadController) UpdateLeadInputs(
 	if len(ids) == 0 {
 		return nil
 	}
+	if leadExecutionID == "" {
+		return status_error.BadRequest
+	}
 	db := controllerDB(ctx, c.db).Model(&models.ChannelLeadInput{}).
 		Where("id IN ?", ids)
-	if status == constants.ChannelInputStatusDelivering {
-		db = db.Where("status = ?", constants.ChannelInputStatusPending)
-	} else {
-		db = db.Where("status = ?", constants.ChannelInputStatusDelivering)
+	switch status {
+	case constants.ChannelInputStatusDelivering:
+		db = db.Where("status = ? AND lead_execution_id = ''", constants.ChannelInputStatusPending)
+	case constants.ChannelInputStatusConsumed:
+		// 终态监听持有 Chat 接纳收据，初次关联失败时可直接补齐消费。
+		db = db.Where("(status = ? AND lead_execution_id = ?) OR (status = ? AND lead_execution_id = '')",
+			constants.ChannelInputStatusDelivering, leadExecutionID, constants.ChannelInputStatusPending)
+	default:
+		return status_error.BadRequest
 	}
 	if err := db.
 		Updates(map[string]interface{}{

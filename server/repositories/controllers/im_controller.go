@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"sort"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -21,6 +23,8 @@ import (
 type IMController interface {
 	// Connections 枚举平台连接，不返回解密凭据。
 	Connections(context.Context) ([]models.IMConnection, error)
+	// ConnectionConfigurations 枚举平台运行及目标发现需要的连接字段。
+	ConnectionConfigurations(context.Context) ([]models.IMConnection, error)
 	// Connection 读取后台适配器需要的进程内凭据。
 	Connection(context.Context, string) (models.IMConnection, error)
 	// SaveConnection 按版本保存配置并加密新的凭据。
@@ -39,18 +43,30 @@ type IMController interface {
 	Binding(context.Context, string) (models.IMBinding, error)
 	// DiscoverBinding 幂等发现聊天并刷新加密发送上下文，不改变授权。
 	DiscoverBinding(context.Context, models.IMBinding) error
-	// SaveBinding 按版本保存管理员配置和当前对话指针。
-	SaveBinding(context.Context, models.IMBinding, int64) error
+	// SaveBinding 保存管理员配置及对应的活动对话指针。
+	SaveBinding(context.Context, models.IMBinding) error
+	// SetBindingState 更新已保存配置的授权状态。
+	SetBindingState(context.Context, string, constants.IMBindingState) error
+	// SetBindingActiveLink 更新当前对话指针。
+	SetBindingActiveLink(context.Context, string, string) error
 	// SaveInbox 以平台消息身份去重提交输入。
 	SaveInbox(context.Context, models.IMInbox) error
 	// Inbox 枚举耐久输入，限量返回避免后台无界扫描。
 	Inbox(context.Context, constants.IMInboxState, int) ([]models.IMInbox, error)
+	// InboxIsRouted 核对所选收件是否仍等待接纳。
+	InboxIsRouted(ctx context.Context, inboxID, linkID string) (bool, error)
+	// PreserveInboxAdmissions 在删除 Chat 权威日志前补记仍待挂接的收件。
+	PreserveInboxAdmissions(context.Context, []models.Execution) error
 	// QuoteLink 只在同一授权聊天内定位被引用的输入或已发送消息。
 	QuoteLink(context.Context, string, string) (string, error)
 	// UpdateInbox 更新已冻结的路由和接纳事实。
 	UpdateInbox(context.Context, models.IMInbox) error
-	// Links 枚举一个授权聊天内的历史会话，空绑定仅供后台恢复。
+	// Links 枚举一个授权聊天内的历史会话。
 	Links(context.Context, string) ([]models.IMConversationLink, error)
+	// ProjectionLinks 按已提交的来源变化或启动对账分页读取可投递的会话关联。
+	ProjectionLinks(context.Context, events.Resource, string, int) ([]models.IMConversationLink, error)
+	// ConversationConnections 定位聊天变化影响的 IM 会话列表。
+	ConversationConnections(context.Context, []string) ([]string, error)
 	// Link 读取冻结的会话配置。
 	Link(context.Context, string) (models.IMConversationLink, error)
 	// SaveLink 建立预分配会话，不创建内部空 Chat。
@@ -65,8 +81,10 @@ type IMController interface {
 	Delivery(context.Context, string) (models.IMDelivery, error)
 	// FindDelivery 对账调用者稳定请求身份。
 	FindDelivery(context.Context, string) (models.IMDelivery, bool, error)
-	// Deliveries 分页列出发送事实或后台待发记录。
+	// Deliveries 分页列出发送事实。
 	Deliveries(context.Context, constants.IMDeliveryState, int, int) ([]models.IMDelivery, int64, error)
+	// PendingDeliveryHeads 读取当前可处理的各目标队首，等待认证的目标不占批次。
+	PendingDeliveryHeads(context.Context, []string, int) ([]models.IMDelivery, error)
 	// ClaimDelivery 只允许一次发送者领取仍等待的记录。
 	ClaimDelivery(context.Context, string) (bool, error)
 	// UpdateDelivery 保存片段收据和最终发送状态。
@@ -96,6 +114,17 @@ func (c *imController) Connections(ctx context.Context) ([]models.IMConnection, 
 		Order("created_at ASC").Find(&result).Error
 	if err != nil {
 		return nil, databaseError("list_im_connections", "", err)
+	}
+	return result, nil
+}
+
+// ConnectionConfigurations 读取平台维护和目标发现所需的连接字段。
+func (c *imController) ConnectionConfigurations(ctx context.Context) ([]models.IMConnection, error) {
+	result := []models.IMConnection{}
+	err := controllerDB(ctx, c.db).Select("id", "platform", "enabled", "keep_awake", "revision", "state", "error_code").
+		Order("created_at ASC").Find(&result).Error
+	if err != nil {
+		return nil, databaseError("list_im_connection_configurations", "", err)
 	}
 	return result, nil
 }
@@ -132,7 +161,7 @@ func (c *imController) SaveConnection(ctx context.Context, value models.IMConnec
 		if err := db.Create(&value).Error; err != nil {
 			return databaseError("create_im_connection", value.ID, err)
 		}
-		publishCommittedChange(ctx, c.db, "im", eventsResource("connection", value.ID))
+		publishCommittedEvent(ctx, c.db, "im", eventsResource("connection", value.ID), eventsResource(constants.IMConnectionConfigurationResourceKind, value.ID))
 		return nil
 	}
 	result := db.Model(&models.IMConnection{}).Where("id = ? AND revision = ? AND (app_id = '' OR app_id = ?) AND (owner_id = '' OR owner_id = ?)", value.ID, revision, value.AppID, value.OwnerID).Updates(map[string]any{"name": value.Name, "enabled": value.Enabled, "keep_awake": value.KeepAwake, "app_id": value.AppID, "owner_id": value.OwnerID, "base_url": value.BaseURL, "credential_ciphertext": value.CredentialCiphertext, "revision": value.Revision})
@@ -142,7 +171,7 @@ func (c *imController) SaveConnection(ctx context.Context, value models.IMConnec
 	if result.RowsAffected != 1 {
 		return status_error.IMConfigurationConflict
 	}
-	publishCommittedChange(ctx, c.db, "im", eventsResource("connection", value.ID))
+	publishCommittedEvent(ctx, c.db, "im", eventsResource("connection", value.ID), eventsResource(constants.IMConnectionConfigurationResourceKind, value.ID))
 	return nil
 }
 
@@ -454,27 +483,44 @@ func (c *imController) DiscoverBinding(ctx context.Context, value models.IMBindi
 		}
 		value.ContextCiphertext = cipher
 	}
-	if err := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&value).Error; err != nil {
-		return databaseError("discover_im_binding", value.ID, err)
+	insert := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&value)
+	if insert.Error != nil {
+		return databaseError("discover_im_binding", value.ID, insert.Error)
+	}
+	if insert.RowsAffected == 1 {
+		publishCommittedEvent(ctx, c.db, "im", eventsResource("connection", value.ConnectionID), eventsResource("binding", value.ID))
+		return nil
 	}
 	if value.ContextCiphertext != "" {
 		if err := db.Model(&models.IMBinding{}).Where("id = ?", value.ID).Update("context_ciphertext", value.ContextCiphertext).Error; err != nil {
 			return databaseError("refresh_im_context", value.ID, err)
 		}
 	}
-	publishCommittedChange(ctx, c.db, "im", eventsResource("global", ""))
 	return nil
 }
 
-// SaveBinding 按版本保存管理员配置和当前对话指针。
-func (c *imController) SaveBinding(ctx context.Context, value models.IMBinding, revision int64) error {
-	value.Revision = revision + 1
-	result := controllerDB(ctx, c.db).Model(&models.IMBinding{}).Where("id = ? AND revision = ?", value.ID, revision).Select("name", "state", "waker_id", "channel_id", "project_id", "working_directory", "options", "active_link_id", "controller_ids", "allow_workflow_delivery", "revision", "updated_at").Updates(&value)
-	if result.Error != nil {
-		return databaseError("save_im_binding", value.ID, result.Error)
+// SaveBinding 保存管理员配置及对应的活动对话指针。
+func (c *imController) SaveBinding(ctx context.Context, value models.IMBinding) error {
+	if err := controllerDB(ctx, c.db).Model(&models.IMBinding{}).Where("id = ?", value.ID).Select("name", "state", "waker_id", "channel_id", "project_id", "working_directory", "options", "active_link_id", "controller_ids", "allow_workflow_delivery", "updated_at").Updates(&value).Error; err != nil {
+		return databaseError("save_im_binding", value.ID, err)
 	}
-	if result.RowsAffected != 1 {
-		return status_error.IMConfigurationConflict
+	publishCommittedEvent(ctx, c.db, "im", eventsResource("global", ""), eventsResource("binding", value.ID))
+	return nil
+}
+
+// SetBindingState 更新已保存配置的授权状态。
+func (c *imController) SetBindingState(ctx context.Context, bindingID string, state constants.IMBindingState) error {
+	if err := controllerDB(ctx, c.db).Model(&models.IMBinding{}).Where("id = ?", bindingID).Update("state", state).Error; err != nil {
+		return databaseError("set_im_binding_state", bindingID, err)
+	}
+	publishCommittedEvent(ctx, c.db, "im", eventsResource("global", ""), eventsResource("binding", bindingID))
+	return nil
+}
+
+// SetBindingActiveLink 更新当前对话指针。
+func (c *imController) SetBindingActiveLink(ctx context.Context, bindingID, linkID string) error {
+	if err := controllerDB(ctx, c.db).Model(&models.IMBinding{}).Where("id = ?", bindingID).Update("active_link_id", linkID).Error; err != nil {
+		return databaseError("set_im_active_link", bindingID, err)
 	}
 	publishCommittedChange(ctx, c.db, "im", eventsResource("global", ""))
 	return nil
@@ -519,29 +565,126 @@ func (c *imController) Inbox(ctx context.Context, state constants.IMInboxState, 
 	return result, nil
 }
 
-// UpdateInbox 更新已冻结的路由和接纳事实。
+// InboxIsRouted 核对所选收件是否仍等待接纳。
+func (c *imController) InboxIsRouted(ctx context.Context, inboxID, linkID string) (bool, error) {
+	var input models.IMInbox
+	result := controllerDB(ctx, c.db).Select("id").Where("id = ? AND link_id = ? AND state = ?", inboxID, linkID, constants.IMInboxStateRouted).Find(&input)
+	if result.Error != nil {
+		return false, databaseError("get_im_routed_inbox", inboxID, result.Error)
+	}
+	return result.RowsAffected == 1, nil
+}
+
+// PreserveInboxAdmissions 只补记回执身份完全匹配且仍在队列中的收件。
+func (c *imController) PreserveInboxAdmissions(ctx context.Context, receipts []models.Execution) error {
+	ids := make([]string, 0, len(receipts))
+	byID := make(map[string]models.Execution, len(receipts))
+	for _, receipt := range receipts {
+		ids = append(ids, receipt.SubmissionID)
+		byID[receipt.SubmissionID] = receipt
+	}
+	db := controllerDB(ctx, c.db)
+	for batch := range slices.Chunk(ids, constants.IMPageSize) {
+		var inputs []models.IMInbox
+		if err := db.Select("id", "link_id").Where("id IN ? AND state = ?", batch, constants.IMInboxStateRouted).Find(&inputs).Error; err != nil {
+			return databaseError("find_im_unlinked_admissions", "", err)
+		}
+		for _, input := range inputs {
+			receipt := byID[input.ID]
+			if input.LinkID != receipt.IMReplyLinkID {
+				continue
+			}
+			result := db.Model(&models.IMInbox{}).Where("id = ? AND link_id = ? AND state = ?", input.ID, input.LinkID, constants.IMInboxStateRouted).
+				Updates(map[string]any{"state": constants.IMInboxStateAccepted, "execution_id": receipt.ID, "error_code": ""})
+			if result.Error != nil {
+				return databaseError("preserve_im_admission", input.ID, result.Error)
+			}
+			if result.RowsAffected == 0 {
+				continue
+			}
+			link := db.Model(&models.IMConversationLink{}).Where("id = ? AND chat_id = ''", input.LinkID).Update("chat_id", receipt.ChatID)
+			if link.Error != nil {
+				return databaseError("preserve_im_admission_link", input.LinkID, link.Error)
+			}
+			if link.RowsAffected == 1 {
+				publishCommittedEvent(ctx, c.db, "im", eventsResource("global", ""), eventsResource("conversation", input.LinkID))
+			}
+		}
+	}
+	return nil
+}
+
+// UpdateInbox 更新等待处理的收件，已接纳或结束的状态不再被旧队列快照覆盖。
 func (c *imController) UpdateInbox(ctx context.Context, value models.IMInbox) error {
 	if err := c.encryptFiles(ctx, &value); err != nil {
 		return err
 	}
-	result := controllerDB(ctx, c.db).Model(&models.IMInbox{}).Where("id = ?", value.ID).Select("state", "link_id", "execution_id", "error_code", "files_ciphertext").Updates(&value)
+	db := controllerDB(ctx, c.db).Model(&models.IMInbox{}).Where("id = ?", value.ID)
+	openStates := []constants.IMInboxState{constants.IMInboxStatePending, constants.IMInboxStateRouted}
+	if value.State == constants.IMInboxStateAccepted && value.ExecutionID != "" {
+		db = db.Where("(state IN ? OR (state = ? AND link_id = ? AND execution_id = ''))", openStates, constants.IMInboxStateAccepted, value.LinkID)
+	} else {
+		db = db.Where("state IN ?", openStates)
+	}
+	result := db.Select("state", "link_id", "execution_id", "error_code", "files_ciphertext").Updates(&value)
 	if result.Error != nil {
 		return databaseError("update_im_inbox", value.ID, result.Error)
 	}
 	return nil
 }
 
-// Links 枚举一个授权聊天内的历史会话，空绑定仅供后台恢复。
+// Links 枚举一个授权聊天内的历史会话。
 func (c *imController) Links(ctx context.Context, bindingID string) ([]models.IMConversationLink, error) {
 	result := []models.IMConversationLink{}
-	db := controllerDB(ctx, c.db)
-	if bindingID != "" {
-		db = db.Where("binding_id = ?", bindingID)
-	}
-	if err := db.Order("created_at DESC, id ASC").Find(&result).Error; err != nil {
+	if err := controllerDB(ctx, c.db).Where("binding_id = ?", bindingID).Order("created_at DESC, id ASC").Find(&result).Error; err != nil {
 		return nil, databaseError("list_im_links", bindingID, err)
 	}
 	return result, nil
+}
+
+// ProjectionLinks 按会话关联的稳定身份补读一个页面，只选择已批准且启用的目标。
+func (c *imController) ProjectionLinks(ctx context.Context, source events.Resource, afterID string, limit int) ([]models.IMConversationLink, error) {
+	db := controllerDB(ctx, c.db)
+	enabled := db.Model(&models.IMConnection{}).Select("1").Where("id = im_bindings.connection_id AND enabled = ?", true)
+	approved := db.Model(&models.IMBinding{}).Select("1").Where("id = im_conversation_links.binding_id AND state = ? AND EXISTS (?)", constants.IMBindingStateApproved, enabled)
+	query := db.Model(&models.IMConversationLink{})
+	switch source.Kind {
+	case "global":
+	case constants.IMConnectionConfigurationResourceKind:
+		bindings := db.Model(&models.IMBinding{}).Select("id").Where("connection_id = ?", source.ID)
+		query = query.Where("binding_id IN (?)", bindings)
+	case "binding":
+		query = query.Where("binding_id = ?", source.ID)
+	case "conversation":
+		query = query.Where("id = ?", source.ID)
+	case "chat":
+		query = imLinksForChats(db, []string{source.ID})
+	case "thread", "team_thread":
+		query = query.Where("thread_id = ?", source.ID)
+	default:
+		return nil, status_error.BadRequest
+	}
+	var links []models.IMConversationLink
+	if err := query.Where("chat_id <> '' AND id > ?", afterID).Where("EXISTS (?)", approved).Order("id ASC").Limit(limit).Find(&links).Error; err != nil {
+		return nil, databaseError("list_im_projection_links", source.ID, err)
+	}
+	return links, nil
+}
+
+// ConversationConnections 返回伙伴或团队成员聊天归属的 IM 连接。
+func (c *imController) ConversationConnections(ctx context.Context, chatIDs []string) ([]string, error) {
+	db := controllerDB(ctx, c.db)
+	bindings := imLinksForChats(db, chatIDs).Select("binding_id")
+	var connections []string
+	if err := db.Model(&models.IMBinding{}).Where("id IN (?)", bindings).Distinct().Pluck("connection_id", &connections).Error; err != nil {
+		return nil, databaseError("list_im_conversation_connections", "", err)
+	}
+	return connections, nil
+}
+
+func imLinksForChats(db *gorm.DB, chatIDs []string) *gorm.DB {
+	threads := db.Model(&models.ChannelThreadMember{}).Select("thread_id").Where("chat_id IN ?", chatIDs)
+	return db.Model(&models.IMConversationLink{}).Where("(chat_id IN ? OR thread_id IN (?))", chatIDs, threads)
 }
 
 // Link 读取冻结的会话配置。
@@ -562,12 +705,12 @@ func (c *imController) SaveLink(ctx context.Context, value models.IMConversation
 	return nil
 }
 
-// UpdateLink 提交内部关系或安全事件投影游标。
+// UpdateLink 提交实际内部关系，并唤醒可能先于关系提交完成的 Chat 投影。
 func (c *imController) UpdateLink(ctx context.Context, value models.IMConversationLink) error {
 	if err := controllerDB(ctx, c.db).Model(&models.IMConversationLink{}).Where("id = ?", value.ID).Select("chat_id", "thread_id").Updates(&value).Error; err != nil {
 		return databaseError("update_im_link", value.ID, err)
 	}
-	publishCommittedChange(ctx, c.db, "im", eventsResource("global", ""))
+	publishCommittedEvent(ctx, c.db, "im", eventsResource("global", ""), eventsResource("conversation", value.ID))
 	return nil
 }
 
@@ -604,15 +747,13 @@ func (c *imController) FindDelivery(ctx context.Context, requestID string) (mode
 	return value, true, nil
 }
 
-// Deliveries 分页列出发送事实或后台待发记录。
+// Deliveries 分页列出发送事实。
 func (c *imController) Deliveries(ctx context.Context, state constants.IMDeliveryState, limit, offset int) ([]models.IMDelivery, int64, error) {
 	db := controllerDB(ctx, c.db).Model(&models.IMDelivery{})
-	if state != "" {
-		db = db.Where("state = ?", state)
-	}
 	if state == constants.IMDeliveryStatePending {
-		// 停用连接不占发送窗口；每个目标只选择最早一项，积压不会阻塞其他聊天。
-		db = db.Where("EXISTS (SELECT 1 FROM im_connections c WHERE c.id=im_deliveries.connection_id AND c.enabled=1)").Where("NOT EXISTS (SELECT 1 FROM im_deliveries older WHERE older.binding_id=im_deliveries.binding_id AND older.state IN ? AND older.rowid<im_deliveries.rowid)", []constants.IMDeliveryState{constants.IMDeliveryStatePending, constants.IMDeliveryStateSending})
+		db = pendingDeliveryHeads(db)
+	} else if state != "" {
+		db = db.Where("state = ?", state)
 	}
 	var count int64
 	if err := db.Count(&count).Error; err != nil {
@@ -630,6 +771,29 @@ func (c *imController) Deliveries(ctx context.Context, state constants.IMDeliver
 		return nil, 0, databaseError("list_im_deliveries", "", err)
 	}
 	return result, count, nil
+}
+
+// PendingDeliveryHeads 只选本轮可继续处理的队首，发送授权仍由投递入口核验。
+func (c *imController) PendingDeliveryHeads(ctx context.Context, waitingConnections []string, limit int) ([]models.IMDelivery, error) {
+	db := controllerDB(ctx, c.db)
+	query := db.Model(&models.IMDelivery{})
+	if len(waitingConnections) > 0 {
+		// 已撤销的投递在断线时仍可结束，无需等待平台重新认证。
+		rejected := db.Model(&models.IMBinding{}).Select("1").Where("id = im_deliveries.binding_id").
+			Where("state IS NOT ? OR (im_deliveries.workflow_run_id <> '' AND allow_workflow_delivery IS NOT ?)", constants.IMBindingStateApproved, true)
+		query = query.Where("connection_id NOT IN ? OR EXISTS (?)", waitingConnections, rejected)
+	}
+	var result []models.IMDelivery
+	if err := pendingDeliveryHeads(query).Order("rowid ASC").Limit(limit).Find(&result).Error; err != nil {
+		return nil, databaseError("list_im_pending_delivery_heads", "", err)
+	}
+	return result, nil
+}
+
+func pendingDeliveryHeads(db *gorm.DB) *gorm.DB {
+	return db.Where("state = ?", constants.IMDeliveryStatePending).
+		Where("EXISTS (SELECT 1 FROM im_connections c WHERE c.id=im_deliveries.connection_id AND c.enabled=1)").
+		Where("NOT EXISTS (SELECT 1 FROM im_deliveries older WHERE older.binding_id=im_deliveries.binding_id AND older.state IN ? AND older.rowid<im_deliveries.rowid)", []constants.IMDeliveryState{constants.IMDeliveryStatePending, constants.IMDeliveryStateSending})
 }
 
 // ClaimDelivery 只允许一次发送者领取仍等待的记录。
@@ -740,6 +904,5 @@ func (c *imController) CheckpointLink(ctx context.Context, value models.IMConver
 	if result.Error != nil {
 		return databaseError("checkpoint_im_link", value.ID, result.Error)
 	}
-	publishCommittedChange(ctx, c.db, "im", eventsResource("global", ""))
 	return nil
 }

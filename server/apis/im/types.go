@@ -31,5 +31,13 @@ type VerifyIMLoginRequest struct {
 // ListIMConversationsResponse 对话列表响应。
 type ListIMConversationsResponse struct {
 	// 资源列表
-	Resources []models.IMConversationLink `json:"resources"`
+	Resources []IMConversationResource `json:"resources"`
+}
+
+// IMConversationResource 关联对话。
+type IMConversationResource struct {
+	// 对话关联
+	models.IMConversationLink
+	// 所属团队
+	ChannelID string `json:"channelId,omitempty"`
 }

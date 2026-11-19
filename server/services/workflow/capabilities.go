@@ -28,27 +28,15 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
 )
 
-func (s *Service) handleCreationTool(ctx context.Context, scope workflowtool.Scope, input workflowtool.Input) (map[string]any, error) {
-	if s.creationSessions == nil {
-		return nil, status_error.WorkflowCapabilityUnsupported
-	}
-	session, err := s.creationSessions.GetCreationSession(ctx, scope.Key)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.validateCreationExecution(ctx, session, scope.Token); err != nil {
-		return nil, err
-	}
+func (s *Service) handleCreationTool(ctx context.Context, scope workflowtool.Scope, session models.WorkflowCreationSession, input workflowtool.Input) (map[string]any, error) {
 	if input.SDK != "" && input.SDK != constants.WorkflowSDKIdentifier {
 		return nil, status_error.WorkflowCapabilityUnsupported.WithField("capability", "sdk_identity")
 	}
 	switch input.Action {
 	case constants.WorkflowActionQuery:
 		switch input.Type {
-		case constants.WorkflowQueryCapabilities:
-			return workflowtool.Capabilities(scope.Kind), nil
 		case constants.WorkflowQueryAuthoring:
-			return s.prepareAuthoring(ctx, scope, session, input)
+			return s.prepareAuthoring(ctx, session, input)
 		case constants.WorkflowQuerySDK:
 			content, err := workflowdsl.SDKTopic(input.Topic)
 			return map[string]any{"sdk": constants.WorkflowSDKIdentifier, "topic": input.Topic, "content": content}, err
@@ -60,29 +48,7 @@ func (s *Service) handleCreationTool(ctx context.Context, scope workflowtool.Sco
 		}
 		return nil, status_error.WorkflowCapabilityUnsupported
 	case constants.WorkflowActionSourceGet:
-		definition, err := s.store.GetDefinition(ctx, session.DefinitionID)
-		if err != nil {
-			return nil, err
-		}
-		source := ""
-		digest := ""
-		revisionID := input.RevisionID
-		if revisionID == "" {
-			revisionID = definition.CurrentRevisionID
-		}
-		if revisionID != "" {
-			revision, err := s.store.GetRevision(ctx, definition.ID, revisionID)
-			if err != nil {
-				return nil, err
-			}
-			source = revision.Source
-			digest = revision.SourceDigest
-		}
-		workspace, err := workflowfiles.PrepareWorkspace(s.dataDirectory, definition.ID, "")
-		if err != nil {
-			return nil, err
-		}
-		return map[string]any{"workflowId": definition.ID, "revisionId": revisionID, "currentRevisionId": definition.CurrentRevisionID, "source": source, "sourceDigest": digest, "sdk": constants.WorkflowSDKIdentifier, "workspace": workspace}, nil
+		return s.readWorkflowAuthoringSource(ctx, session.DefinitionID, input.RevisionID)
 	case constants.WorkflowActionSourceValidate:
 		compiled, diagnostics, err := workflowdsl.Compile(input.Source)
 		if err == nil {
@@ -184,10 +150,35 @@ func (s *Service) handleCreationTool(ctx context.Context, scope workflowtool.Sco
 	}
 }
 
+// readWorkflowAuthoringSource 读取已授权工作流的源码与工作区。
+func (s *Service) readWorkflowAuthoringSource(ctx context.Context, definitionID, revisionID string) (map[string]any, error) {
+	definition, err := s.store.GetDefinition(ctx, definitionID)
+	if err != nil {
+		return nil, err
+	}
+	source := ""
+	digest := ""
+	if revisionID == "" {
+		revisionID = definition.CurrentRevisionID
+	}
+	if revisionID != "" {
+		revision, err := s.store.GetRevision(ctx, definition.ID, revisionID)
+		if err != nil {
+			return nil, err
+		}
+		source = revision.Source
+		digest = revision.SourceDigest
+	}
+	workspace, err := workflowfiles.PrepareWorkspace(s.dataDirectory, definition.ID, "")
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"workflowId": definition.ID, "revisionId": revisionID, "currentRevisionId": definition.CurrentRevisionID, "source": source, "sourceDigest": digest, "sdk": constants.WorkflowSDKIdentifier, "workspace": workspace}, nil
+}
+
 // prepareAuthoring 在现有创作租约内组合资料，不创建工作、不修改源码或扩大资源权限。
 func (s *Service) prepareAuthoring(
 	ctx context.Context,
-	scope workflowtool.Scope,
 	session models.WorkflowCreationSession,
 	input workflowtool.Input,
 ) (map[string]any, error) {
@@ -241,7 +232,7 @@ func (s *Service) prepareAuthoring(
 		content.WriteString(guide + "\n\n")
 	}
 	content.WriteString(sdk)
-	source, err := s.handleCreationTool(ctx, scope, workflowtool.Input{Action: constants.WorkflowActionSourceGet})
+	source, err := s.readWorkflowAuthoringSource(ctx, session.DefinitionID, "")
 	if err != nil {
 		return nil, err
 	}
@@ -353,34 +344,7 @@ func (s *Service) BindConsumer(ctx context.Context, intent execution.WorkIntent,
 	return intent, nil
 }
 
-func (s *Service) handleConsumerTool(ctx context.Context, scope workflowtool.Scope, input workflowtool.Input) (map[string]any, error) {
-	if s.consumers == nil || s.chats == nil {
-		return nil, status_error.WorkflowCapabilityUnsupported
-	}
-	lease, err := s.consumers.GetConsumer(ctx, scope.Key)
-	if err != nil {
-		return nil, err
-	}
-	if subtle.ConstantTimeCompare([]byte(lease.AuthToken), []byte(scope.Token)) != 1 || lease.DeadlineAt <= time.Now().UnixMilli() {
-		return nil, status_error.WorkflowStateConflict
-	}
-	actual, err := s.chats.ReadExecution(ctx, lease.ChatID, lease.ID)
-	if err != nil {
-		return nil, err
-	}
-	if actual.CompletedAt != nil || actual.Status != constants.ExecutionStatusPending && actual.Status != constants.ExecutionStatusRunning {
-		return nil, status_error.WorkflowStateConflict
-	}
-	summary, err := s.chats.GetChatSummary(ctx, lease.ChatID)
-	if err != nil {
-		return nil, err
-	}
-	if summary.Chat.ActiveExecutionID != lease.ID {
-		return nil, status_error.WorkflowStateConflict
-	}
-	if input.Action == constants.WorkflowActionQuery && input.Type == constants.WorkflowQueryCapabilities {
-		return workflowtool.Capabilities(scope.Kind), nil
-	}
+func (s *Service) handleConsumerTool(ctx context.Context, lease models.WorkflowConsumerLease, actual models.Execution, chat models.Chat, input workflowtool.Input) (map[string]any, error) {
 	if input.Action == constants.WorkflowActionQuery && input.Type == constants.WorkflowQueryWorkflows {
 		items := []map[string]any{}
 		query := strings.ToLower(strings.TrimSpace(input.Search))
@@ -409,10 +373,10 @@ func (s *Service) handleConsumerTool(ctx context.Context, scope workflowtool.Sco
 		if !slices.Contains(lease.DefinitionIDs, input.WorkflowID) || input.RequestID == "" || len(input.RequestID) > 128 {
 			return nil, status_error.WorkflowStateConflict
 		}
-		if len(summary.Chat.AdditionalWorkingDirectories) == 0 {
+		if len(chat.AdditionalWorkingDirectories) == 0 {
 			return nil, status_error.WorkflowResourceInvalid.WithField("field", "workingDirectory")
 		}
-		approved := models.WorkflowScopeBinding{ProjectID: summary.Chat.ProjectID, WorkingDirectory: summary.Chat.AdditionalWorkingDirectories[0]}
+		approved := models.WorkflowScopeBinding{ProjectID: chat.ProjectID, WorkingDirectory: chat.AdditionalWorkingDirectories[0]}
 		requestID := requestidempotency.Identity{ID: input.RequestID}.ResourceID("workflow-use-run", lease.ID)
 		roots := capability.FileRoots(ctx)
 		if input.InputFileRoots != nil {
@@ -485,7 +449,7 @@ func (s *Service) resourcesCatalog(ctx context.Context, definitionID string) (ma
 		return nil, err
 	}
 	pythonPath, pythonErr := s.resolvePython(ctx)
-	resources := map[string]any{"builtinActions": []map[string]any{{"id": constants.IMBuiltinConnectorID, "name": "IM 交付", "toolName": constants.IMBuiltinToolName, "description": "工作流内置交付操作，经 Runner 持久效果边界直接调用，不需要安装 MCP 连接器。"}}, "sdk": constants.WorkflowSDKIdentifier, "toolPolicyCapabilities": workflowToolPolicyCapabilities(), "functionLanguages": []map[string]any{{"language": "javascript", "available": true, "executionModes": []string{"pure"}}, {"language": "python", "available": pythonErr == nil, "executable": pythonPath, "executionModes": []string{"trusted_local"}}}}
+	resources := map[string]any{"builtinActions": []map[string]any{{"id": constants.IMBuiltinConnectorID, "name": "IM delivery", "toolName": constants.IMBuiltinToolName, "description": "The workflow runner delivers messages and files through this built-in action. No MCP connector is required."}}, "sdk": constants.WorkflowSDKIdentifier, "toolPolicyCapabilities": workflowToolPolicyCapabilities(), "functionLanguages": []map[string]any{{"language": "javascript", "available": true, "executionModes": []string{"pure"}}, {"language": "python", "available": pythonErr == nil, "executable": pythonPath, "executionModes": []string{"trusted_local"}}}}
 	resources["scriptLanguages"] = []map[string]any{{"language": "python", "available": pythonErr == nil, "executable": pythonPath, "protocols": []string{"json", "text"}}}
 	if s.wakers != nil {
 		wakers, err := s.wakers.List(ctx, "", 100, 0)
@@ -719,42 +683,116 @@ func (s *Service) resourceItemsPage(ctx context.Context, definitionID, kind, cur
 	return map[string]any{"kind": kind, "items": items, "nextCursor": next}, nil
 }
 
+// workflowToolAccess 保存已核验的领域范围，供实际操作和回执共同使用。
+type workflowToolAccess struct {
+	// owner 是耐久命令回执的业务归属。
+	owner string
+	// definitions 是工作流使用者获准的定义集合。
+	definitions []string
+	// call 在本次核验的领域事实下分派实际操作。
+	call func(context.Context, workflowtool.Input) (map[string]any, error)
+}
+
+func (s *Service) authorizeWorkflowTool(ctx context.Context, scope workflowtool.Scope) (workflowToolAccess, error) {
+	switch scope.Kind {
+	case constants.WorkflowCapabilityScopeCreation:
+		if s.creationSessions == nil {
+			return workflowToolAccess{}, status_error.WorkflowCapabilityUnsupported
+		}
+		session, err := s.creationSessions.GetCreationSession(ctx, scope.Key)
+		if err != nil {
+			return workflowToolAccess{}, err
+		}
+		if err := s.validateCreationExecution(ctx, session, scope.Token); err != nil {
+			return workflowToolAccess{}, err
+		}
+		return workflowToolAccess{
+			owner: "workflow.authoring:" + session.DefinitionID + ":" + session.ChatID,
+			call: func(ctx context.Context, input workflowtool.Input) (map[string]any, error) {
+				return s.handleCreationTool(ctx, scope, session, input)
+			},
+		}, nil
+	case constants.WorkflowCapabilityScopeConsumer:
+		if s.consumers == nil || s.chats == nil {
+			return workflowToolAccess{}, status_error.WorkflowCapabilityUnsupported
+		}
+		lease, err := s.consumers.GetConsumer(ctx, scope.Key)
+		if err != nil {
+			return workflowToolAccess{}, err
+		}
+		if subtle.ConstantTimeCompare([]byte(lease.AuthToken), []byte(scope.Token)) != 1 || lease.DeadlineAt <= time.Now().UnixMilli() {
+			return workflowToolAccess{}, status_error.WorkflowStateConflict
+		}
+		actual, err := s.chats.ReadExecution(ctx, lease.ChatID, lease.ID)
+		if err != nil {
+			return workflowToolAccess{}, err
+		}
+		if actual.CompletedAt != nil || actual.Status != constants.ExecutionStatusPending && actual.Status != constants.ExecutionStatusRunning {
+			return workflowToolAccess{}, status_error.WorkflowStateConflict
+		}
+		summary, err := s.chats.GetChatSummary(ctx, lease.ChatID)
+		if err != nil {
+			return workflowToolAccess{}, err
+		}
+		if summary.Chat.ActiveExecutionID != lease.ID {
+			return workflowToolAccess{}, status_error.WorkflowStateConflict
+		}
+		return workflowToolAccess{
+			owner:       "workflow.consumer:" + lease.ChatID,
+			definitions: lease.DefinitionIDs,
+			call: func(ctx context.Context, input workflowtool.Input) (map[string]any, error) {
+				return s.handleConsumerTool(ctx, lease, actual, summary.Chat, input)
+			},
+		}, nil
+	case constants.WorkflowCapabilityScopeResult:
+		effect, err := s.runs.GetEffect(ctx, scope.Key)
+		if err != nil {
+			return workflowToolAccess{}, err
+		}
+		digest := workflowdsl.Digest([]byte(scope.Token))
+		if subtle.ConstantTimeCompare([]byte(digest), []byte(effect.TokenDigest)) != 1 {
+			return workflowToolAccess{}, status_error.WorkflowStateConflict
+		}
+		run, err := s.runs.GetRun(ctx, effect.RunID)
+		if err != nil {
+			return workflowToolAccess{}, err
+		}
+		schema := workerResultSchema(run, effect)
+		if len(schema) == 0 {
+			return workflowToolAccess{}, status_error.WorkflowStateConflict
+		}
+		return workflowToolAccess{
+			owner: "workflow.result:" + effect.ID,
+			call: func(ctx context.Context, input workflowtool.Input) (map[string]any, error) {
+				return s.handleResultTool(ctx, effect, schema, input)
+			},
+		}, nil
+	default:
+		return workflowToolAccess{}, status_error.WorkflowCapabilityUnsupported
+	}
+}
+
 func (s *Service) handleTool(ctx context.Context, scope workflowtool.Scope, input workflowtool.Input) (map[string]any, error) {
 	if !workflowtool.Allows(scope.Kind, input) {
 		return nil, status_error.WorkflowCapabilityUnsupported
 	}
-	switch scope.Kind {
-	case constants.WorkflowCapabilityScopeConsumer:
-		return s.handleConsumerTool(ctx, scope, input)
-	case constants.WorkflowCapabilityScopeCreation:
-		return s.handleCreationTool(ctx, scope, input)
-	case constants.WorkflowCapabilityScopeResult:
-	default:
-		return nil, status_error.WorkflowCapabilityUnsupported
-	}
-	effect, err := s.runs.GetEffect(ctx, scope.Key)
+	access, err := s.authorizeWorkflowTool(ctx, scope)
 	if err != nil {
 		return nil, err
 	}
-	digest := workflowdsl.Digest([]byte(scope.Token))
-	if subtle.ConstantTimeCompare([]byte(digest), []byte(effect.TokenDigest)) != 1 {
-		return nil, status_error.WorkflowStateConflict
+	return access.call(ctx, input)
+}
+
+func workerResultSchema(run models.WorkflowRun, effect models.WorkflowEffect) map[string]any {
+	if effect.Boundary.Primitive != "worker" || run.DeadlineAt <= time.Now().UnixMilli() || workflowstate.TerminalRun(run.Status) || run.Status == constants.WorkflowRunStatusCancelling || workflowstate.StepTerminal(effect.Status) || effect.Status == constants.WorkflowStepStatusUnknown || effect.SkipRequested {
+		return nil
 	}
+	schema, _ := workflowstate.BoundaryOptions(effect.Boundary)["schema"].(map[string]any)
+	return schema
+}
+
+func (s *Service) handleResultTool(ctx context.Context, effect models.WorkflowEffect, schema map[string]any, input workflowtool.Input) (map[string]any, error) {
 	if input.Action == constants.WorkflowActionQuery {
-		run, err := s.runs.GetRun(ctx, effect.RunID)
-		if err != nil {
-			return nil, err
-		}
-		if effect.Boundary.Primitive != "worker" || run.DeadlineAt <= time.Now().UnixMilli() || workflowstate.TerminalRun(run.Status) || run.Status == constants.WorkflowRunStatusCancelling || workflowstate.StepTerminal(effect.Status) || effect.Status == constants.WorkflowStepStatusUnknown || effect.SkipRequested {
-			return nil, status_error.WorkflowStateConflict
-		}
-		schema, _ := workflowstate.BoundaryOptions(effect.Boundary)["schema"].(map[string]any)
-		if len(schema) == 0 {
-			return nil, status_error.WorkflowStateConflict
-		}
-		if input.Type == constants.WorkflowQueryCapabilities {
-			return workflowtool.Capabilities(scope.Kind), nil
-		}
 		return map[string]any{"schema": schema, "nodeId": effect.Boundary.NodeID, "guidance": "Complete actual work, then invoke workflow.results.submit through the host-provided capability transport with data matching this schema and a stable requestId. When bot_capabilities MCP is injected, use workflow_results_submit and its advertised input schema. A final reply is not a structured result. Submission remains a candidate until this execution succeeds."}, nil
 	}
 	encoded, err := json.Marshal(input.Data)
@@ -762,13 +800,10 @@ func (s *Service) handleTool(ctx context.Context, scope workflowtool.Scope, inpu
 		return nil, status_error.WorkflowBudgetExceeded
 	}
 	err = s.state.MutateEffect(ctx, effect.RunID, effect.ID, func(ctx context.Context, state *controllers.WorkflowRunState, current *models.WorkflowEffect) error {
-		if current.AttemptGeneration != effect.AttemptGeneration || current.ExecutionID != effect.ExecutionID || current.Boundary.Primitive != "worker" {
+		if current.AttemptGeneration != effect.AttemptGeneration || current.ExecutionID != effect.ExecutionID {
 			return status_error.WorkflowStateConflict
 		}
-		if state.Run.DeadlineAt <= time.Now().UnixMilli() || workflowstate.TerminalRun(state.Run.Status) || state.Run.Status == constants.WorkflowRunStatusCancelling || workflowstate.StepTerminal(current.Status) || current.Status == constants.WorkflowStepStatusUnknown || current.SkipRequested {
-			return status_error.WorkflowStateConflict
-		}
-		schema, _ := workflowstate.BoundaryOptions(current.Boundary)["schema"].(map[string]any)
+		schema := workerResultSchema(state.Run, *current)
 		if len(schema) == 0 {
 			return status_error.WorkflowStateConflict
 		}

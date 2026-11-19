@@ -276,11 +276,11 @@ func sendCreationMessage(ctx context.Context, d *workflowDependencies, command S
 		session.ContextInstructions = nil
 		if len(canvasReferences) > 0 {
 			encoded, _ := json.Marshal(canvasReferences)
-			session.ContextInstructions = append(session.ContextInstructions, workinput.Instruction{Name: "WORKFLOW_CANVAS_REFERENCES.md", Content: "用户选中的画布目标（先读取引用版本定位，并将修改合并至当前Head；不要仅按标签猜测；不要在面向用户的回复中展示内部身份）：" + string(encoded)})
+			session.ContextInstructions = append(session.ContextInstructions, workinput.Instruction{Name: "WORKFLOW_CANVAS_REFERENCES.md", Content: string(encoded)})
 		}
 		if command.RunReference != nil {
 			encoded, _ := json.Marshal(command.RunReference)
-			session.ContextInstructions = append(session.ContextInstructions, workinput.Instruction{Name: "WORKFLOW_RUN_REFERENCE.md", Content: "优化依据（修改前读取原运行完整证据与原版本源码；不要在面向用户的回复中展示内部身份）：" + string(encoded)})
+			session.ContextInstructions = append(session.ContextInstructions, workinput.Instruction{Name: "WORKFLOW_RUN_REFERENCE.md", Content: string(encoded)})
 		}
 		session.Defaults = resolvedDefaults
 		session.AuthToken = util.New() + util.New()
@@ -337,7 +337,7 @@ func sendCreationMessage(ctx context.Context, d *workflowDependencies, command S
 	}
 	encodedWorkspace, _ := json.Marshal(internalWorkspace)
 	contextInstructions := append([]workinput.Instruction(nil), session.ContextInstructions...)
-	contextInstructions = append(contextInstructions, workinput.Instruction{Name: constants.WorkflowWorkspaceInstructionFileName, Content: "本工作流固定内部工作区：" + string(encodedWorkspace) + "\n脚本统一放 scriptsDirectory；长期状态放 stateDirectory；可再生成的缓存放 cacheDirectory；临时辅助文件放 temporaryDirectory。所有脚本和辅助文件都必须位于 rootDirectory 内，不得自行创建 /tmp 或 ~/xxx 等外部目录。业务成果默认留在内部工作区，运行成果默认写入对应 runDirectory。只有用户明确指定外部业务目录时，业务文件才允许写到该目录；已授权项目目录不作为脚本或辅助文件的存放位置。"})
+	contextInstructions = append(contextInstructions, workinput.Instruction{Name: constants.WorkflowWorkspaceInstructionFileName, Content: "Workflow workspace: " + string(encodedWorkspace) + "\nKeep scripts in scriptsDirectory, persistent state in stateDirectory, regenerable caches in cacheDirectory, and temporary support files in temporaryDirectory. Keep scripts and support files inside rootDirectory. Do not create external support directories such as /tmp or paths under the home directory. Keep deliverables in the workflow workspace by default and run deliverables in the corresponding runDirectory. Write business files to an external directory only if the user specifies it explicitly. Keep scripts and support files out of project directories."})
 	target := execution.ChatTarget{ChatID: session.ChatID}
 	clientID := ""
 	if session.ChatID == "" {

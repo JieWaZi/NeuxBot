@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -38,9 +39,12 @@ type consumerChatBoundary struct {
 	actual models.Execution
 	// summary 保存当前回合和获准工作范围。
 	summary chat.ChatSummary
+	// executionReads 记录能力调用读取真实执行的次数。
+	executionReads atomic.Int32
 }
 
 func (c *consumerChatBoundary) ReadExecution(_ context.Context, chatID, executionID string) (models.Execution, error) {
+	c.executionReads.Add(1)
 	if c.actual.ChatID != chatID || c.actual.ID != executionID {
 		return models.Execution{}, status_error.ExecutionNotFound
 	}
@@ -115,7 +119,7 @@ func TestConsumerCLIScopesReplayActualDefaultsAndRevocation(t *testing.T) {
 		switch id {
 		case "query":
 			switch input["type"] {
-			case constants.WorkflowQueryWorkflows, constants.WorkflowQueryCapabilities:
+			case constants.WorkflowQueryWorkflows:
 				id = "workflow.definitions.list"
 			case constants.WorkflowQuerySDK:
 				id = "workflow.sdk.get"
@@ -139,6 +143,9 @@ func TestConsumerCLIScopesReplayActualDefaultsAndRevocation(t *testing.T) {
 		body, _ := json.Marshal(capability.Request{Operation: id, RequestID: requestID, Params: params})
 		request, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1"+constants.AgentCLIPath+"/commands", bytes.NewReader(body))
 		request.Header.Set("Authorization", "Bearer "+grant.Token)
+		if id == "workflow.runs.start" {
+			request.Header.Set(constants.AgentCLIExecutionHeader, lease.ID)
+		}
 		request.RemoteAddr = "127.0.0.1:12345"
 		recorder := httptest.NewRecorder()
 		registry.ServeHTTP(recorder, request)
@@ -153,7 +160,11 @@ func TestConsumerCLIScopesReplayActualDefaultsAndRevocation(t *testing.T) {
 		}
 		return value
 	}
+	beforeList := queries.executionReads.Load()
 	list := call(map[string]any{"action": constants.WorkflowActionQuery, "type": constants.WorkflowQueryWorkflows}, false)
+	if reads := queries.executionReads.Load() - beforeList; reads != 1 {
+		t.Fatalf("listing workflows loaded the same execution %d times", reads)
+	}
 	call(map[string]any{"action": constants.WorkflowActionQuery, "type": constants.WorkflowQuerySDK}, true)
 	call(map[string]any{"action": constants.WorkflowActionQuery, "type": constants.WorkflowQueryResultSchema}, true)
 	call(map[string]any{"action": constants.WorkflowActionSourceGet}, true)
@@ -195,5 +206,5 @@ func TestConsumerCLIScopesReplayActualDefaultsAndRevocation(t *testing.T) {
 	queries.actual.CompletedAt = &now
 	queries.actual.Status = constants.ExecutionStatusCompleted
 	call(map[string]any{"action": "run.get", "runId": runID}, true)
-	call(map[string]any{"action": constants.WorkflowActionQuery, "type": constants.WorkflowQueryCapabilities}, true)
+	call(map[string]any{"action": constants.WorkflowActionQuery, "type": constants.WorkflowQueryWorkflows}, true)
 }

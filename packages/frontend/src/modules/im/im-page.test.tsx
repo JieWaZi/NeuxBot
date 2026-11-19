@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  act,
   cleanup,
   render,
   screen,
@@ -26,7 +27,7 @@ import {
 import type * as SDK from "@/shared/api/generated/sdk.gen";
 import "@/shared/i18n";
 import { IntegrationBreadcrumbs } from "@/modules/settings";
-import { useIMConnections } from "./queries";
+import { imQueryKeys, useIMConnections } from "./queries";
 import { IMPage } from "./im-page";
 import { IMConnectionDetailPage } from "./im-connection-detail-page";
 
@@ -150,6 +151,7 @@ function show(path = "/im") {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return client;
 }
 function BreadcrumbHarness() {
   const [params] = useSearchParams();
@@ -303,7 +305,7 @@ it("同平台连接按行展示，进入其他平台不会混入这些连接", a
   expect(screen.getByText("cli_second")).toBeInTheDocument();
 });
 
-it("外部授权入口打开单层授权配置，取消不批准聊天", async () => {
+it("待接入聊天在原卡片配置后才能授权，取消不批准聊天", async () => {
   api.bindings.mockResolvedValue({
     data: {
       resources: [
@@ -313,7 +315,6 @@ it("外部授权入口打开单层授权配置，取消不批准聊天", async (
           name: "待接入私聊",
           kind: "direct",
           state: "pending",
-          revision: 7,
         },
       ],
       totalSize: 1,
@@ -323,15 +324,65 @@ it("外部授权入口打开单层授权配置，取消不批准聊天", async (
   await openPlatform();
   expect(await screen.findByText("待授权")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "我的微信" }));
-  const authorize = await screen.findByRole("button", { name: "授权" });
-  await userEvent.click(authorize);
-  const dialog = await screen.findByRole("dialog");
-  expect(screen.getAllByRole("dialog")).toHaveLength(1);
-  expect(api.bindingUpdate).not.toHaveBeenCalled();
-  await userEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+  const edit = await screen.findByRole("button", { name: "编辑待接入私聊" });
+  await userEvent.click(edit);
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  const card = within(screen.getByRole("article", { name: "待接入私聊" }));
+  expect(card.getByRole("button", { name: "授权" })).toBeDisabled();
+  await userEvent.click(card.getByRole("radio", { name: "团队" }));
+  await userEvent.click(card.getByRole("combobox", { name: "执行目标" }));
+  await userEvent.click(
+    await screen.findByRole("option", { name: "研发团队" }),
+  );
+  expect(card.getByRole("button", { name: "授权" })).toBeEnabled();
   expect(api.bindingUpdate).not.toHaveBeenCalled();
-  await waitFor(() => expect(authorize).toHaveFocus());
+  await userEvent.click(card.getByRole("button", { name: "取消" }));
+  expect(api.bindingUpdate).not.toHaveBeenCalled();
+  await waitFor(() => expect(edit).toHaveFocus());
+});
+
+it("原卡片授权与撤销会刷新平台列表的授权状态", async () => {
+  let state = "pending";
+  api.bindings.mockImplementation(async () => ({
+    data: {
+      resources: [
+        {
+          id: "binding",
+          connectionId: "connection",
+          name: "工作聊天",
+          channelId: "team",
+          state,
+        },
+      ],
+      totalSize: 1,
+    },
+  }));
+  api.bindingUpdate
+    .mockImplementationOnce(async () => {
+      state = "approved";
+      return { data: {} };
+    })
+    .mockImplementationOnce(async () => {
+      state = "rejected";
+      return { data: {} };
+    });
+  show("/settings/integrations?tab=im&platform=weixin");
+  const user = userEvent.setup();
+  expect(await screen.findByText("待授权")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "我的微信" }));
+  await user.click(await screen.findByRole("button", { name: "授权" }));
+  expect(await screen.findByText("已授权")).toBeVisible();
+  await user.click(screen.getByRole("link", { name: "微信" }));
+  await waitFor(() =>
+    expect(screen.queryByText("待授权")).not.toBeInTheDocument(),
+  );
+
+  await user.click(screen.getByRole("button", { name: "我的微信" }));
+  await user.click(await screen.findByRole("button", { name: "撤销授权" }));
+  await user.click(screen.getByRole("button", { name: "确认撤销" }));
+  expect(await screen.findByText("已撤销")).toBeVisible();
+  await user.click(screen.getByRole("link", { name: "微信" }));
+  expect(await screen.findByText("待授权")).toBeVisible();
 });
 
 it("行上新对话入口打开单层确认，取消不改变聊天指针", async () => {
@@ -365,19 +416,21 @@ it("行上新对话入口打开单层确认，取消不改变聊天指针", asyn
   await waitFor(() => expect(create).toHaveFocus());
 });
 
-it("详情展示真实对话及当前指针，同时隐藏全部变更操作", async () => {
+it("详情保留历史团队路由及当前对话指针，同时隐藏全部变更操作", async () => {
+  const externalChatId = "external-chat-id";
+  const binding = {
+    id: "binding",
+    connectionId: "connection",
+    name: externalChatId,
+    externalChatId,
+    kind: "direct",
+    state: "approved",
+    activeLinkId: "old",
+    channelId: "current-team",
+  };
   api.bindings.mockResolvedValue({
     data: {
-      resources: [
-        {
-          id: "binding",
-          connectionId: "connection",
-          name: "我的聊天",
-          kind: "direct",
-          state: "approved",
-          activeLinkId: "old",
-        },
-      ],
+      resources: [binding],
       totalSize: 1,
     },
   });
@@ -394,18 +447,45 @@ it("详情展示真实对话及当前指针，同时隐藏全部变更操作", a
         {
           id: "another",
           chatId: "another-chat",
+          threadId: "historical-thread",
+          channelId: "historical-team",
           title: "历史对话",
           turnCount: 1,
         },
       ],
     },
   });
-  show("/im/connection");
+  const client = show("/im/connection");
   expect(await screen.findByText("实际对话")).toBeInTheDocument();
   const current = screen.getByText("实际对话").closest("li");
   if (!current) throw new Error("对话应显示在记录行中");
   expect(within(current).getByRole("status")).toHaveTextContent("当前对话");
   expect(within(current).getByText(/3 轮/)).toBeInTheDocument();
+  expect(current).not.toHaveTextContent(externalChatId);
+  expect(
+    within(current).getByRole("link", { name: "查看执行过程" }),
+  ).toHaveAttribute("href", "/chats/chat");
+  const historical = screen.getByText("历史对话").closest("li");
+  if (!historical) throw new Error("历史对话应显示在记录行中");
+  expect(
+    within(historical).getByRole("link", { name: "查看执行过程" }),
+  ).toHaveAttribute("href", "/teams/historical-team/threads/historical-thread");
+  api.bindings.mockResolvedValue({
+    data: {
+      resources: [{ ...binding, activeLinkId: "another" }],
+      totalSize: 1,
+    },
+  });
+  await act(async () => {
+    await client.invalidateQueries({
+      queryKey: imQueryKeys.bindings("connection"),
+    });
+  });
+  expect(await within(historical).findByRole("status")).toHaveTextContent(
+    "当前对话",
+  );
+  expect(within(current).queryByRole("status")).not.toBeInTheDocument();
+  expect(api.conversations).toHaveBeenCalledTimes(1);
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(api.bindingUpdate).not.toHaveBeenCalled();
   expect(api.selectConversation).not.toHaveBeenCalled();

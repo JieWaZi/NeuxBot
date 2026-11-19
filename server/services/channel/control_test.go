@@ -48,6 +48,11 @@ type stopChatFake struct {
 	provisionalChatIDs []string
 }
 
+// ReadInitialExecution 模拟首发计划尚未建立负责人 Chat。
+func (f *stopChatFake) ReadInitialExecution(context.Context, string) (chatservice.InitialExecutionState, error) {
+	return chatservice.InitialExecutionState{}, status_error.ChatNotFound
+}
+
 // DeleteProvisionalTeam 记录启动恢复的 Team 聚合补偿范围。
 func (f *stopChatFake) DeleteProvisionalTeam(
 	_ context.Context,

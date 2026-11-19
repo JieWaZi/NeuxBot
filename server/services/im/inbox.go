@@ -11,7 +11,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	protocol "github.com/JieWaZi/NeuxBot/server/internal/im"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
-	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/channel"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
@@ -20,14 +20,16 @@ import (
 func (s *Service) route(ctx context.Context, input models.IMInbox) error {
 	command, args := parseCommand(input.Content)
 	selectedLinkID := ""
-	var inspectedRevision int64
+	var inspectedApproved bool
+	var inspectedActiveLinkID string
 	if command == "" {
 		binding, err := s.config.Store.Binding(ctx, input.BindingID)
 		if err != nil {
 			return err
 		}
-		inspectedRevision = binding.Revision
-		if binding.State == constants.IMBindingStateApproved {
+		inspectedApproved = binding.State == constants.IMBindingStateApproved
+		inspectedActiveLinkID = binding.ActiveLinkID
+		if inspectedApproved {
 			selectedLinkID, err = s.incomingConversation(ctx, input, binding)
 			if err != nil {
 				return err
@@ -43,9 +45,9 @@ func (s *Service) route(ctx context.Context, input models.IMInbox) error {
 		if binding.State != constants.IMBindingStateApproved {
 			return nil
 		}
-		// 权威 Chat 查询在事务外完成；配置变动时让耐久输入重新路由，避免覆盖新选择。
-		if command == "" && binding.Revision != inspectedRevision {
-			return status_error.IMConfigurationConflict
+		// 活动对话在事务外检查，选择变化后保留收件等待下一次路由。
+		if command == "" && (!inspectedApproved || binding.ActiveLinkID != inspectedActiveLinkID) {
+			return nil
 		}
 		if command != "" && !allowedCommand(binding, input.SenderID, command) {
 			return s.finishInput(ctx, input, binding, "此命令需要该聊天的管理员操作。")
@@ -87,6 +89,15 @@ func (s *Service) route(ctx context.Context, input models.IMInbox) error {
 		linkID := binding.ActiveLinkID
 		if command == "" {
 			linkID = selectedLinkID
+		} else if input.QuoteMessageID != "" && (command == "/approve" || command == "/answer") {
+			quoted, err := s.config.Store.QuoteLink(ctx, binding.ID, input.QuoteMessageID)
+			if err != nil {
+				return err
+			}
+			if quoted == "" {
+				return s.finishInput(ctx, input, binding, "无法定位引用消息所属的对话，请在 NeuxBot 处理。")
+			}
+			linkID = quoted
 		}
 		if linkID == "" && command != "" {
 			return s.finishInput(ctx, input, binding, "当前还没有实际对话。发送工作消息即可创建。")
@@ -101,8 +112,7 @@ func (s *Service) route(ctx context.Context, input models.IMInbox) error {
 			if err := s.config.Store.SaveLink(ctx, link); err != nil {
 				return err
 			}
-			binding.ActiveLinkID = linkID
-			if err := s.config.Store.SaveBinding(ctx, binding, binding.Revision); err != nil {
+			if err := s.config.Store.SetBindingActiveLink(ctx, binding.ID, linkID); err != nil {
 				return err
 			}
 		}
@@ -231,16 +241,19 @@ func (s *Service) finishInput(ctx context.Context, input models.IMInbox, binding
 }
 
 func (s *Service) dispatch(input models.IMInbox) {
-	key := input.LinkID
-	if command, _ := parseCommand(input.Content); command != "" {
-		key = input.ID
+	inputKey := "input:" + input.ID
+	key := inputKey
+	command, _ := parseCommand(input.Content)
+	if command == "" {
+		key = "link:" + input.LinkID
 	}
 	s.life.Lock()
-	if s.ctx.Err() != nil || s.dispatching[key] {
+	if s.ctx.Err() != nil || s.dispatching[key] || s.dispatching[inputKey] {
 		s.life.Unlock()
 		return
 	}
 	s.dispatching[key] = true
+	s.dispatching[inputKey] = true
 	s.dispatchConnections[input.ConnectionID]++
 	s.workers.Add(1)
 	s.life.Unlock()
@@ -249,14 +262,18 @@ func (s *Service) dispatch(input models.IMInbox) {
 		defer func() {
 			s.life.Lock()
 			delete(s.dispatching, key)
+			delete(s.dispatching, inputKey)
 			s.dispatchConnections[input.ConnectionID]--
 			if s.dispatchConnections[input.ConnectionID] == 0 {
 				delete(s.dispatchConnections, input.ConnectionID)
 			}
 			s.life.Unlock()
 		}()
-		if err := s.accept(s.ctx, input); err != nil {
-			if hasCode(err, status_error.ChatHasActiveExecution) || hasCode(err, status_error.CreateRequestInProgress) {
+		if err := s.accept(s.ctx, &input); err != nil {
+			if s.ctx.Err() != nil || hasCode(err, status_error.ChatHasActiveExecution) || hasCode(err, status_error.CreateRequestInProgress) {
+				return
+			}
+			if command == "" && hasCode(err, status_error.DatabaseBusy) {
 				return
 			}
 			input.State = constants.IMInboxStateFailed
@@ -264,14 +281,62 @@ func (s *Service) dispatch(input models.IMInbox) {
 			if updateErr := s.config.Store.UpdateInbox(s.ctx, input); updateErr != nil {
 				logx.Errorf("im input failure commit failed: input_id=%s error=%v", input.ID, updateErr)
 			}
-			if _, deliveryErr := s.CreateDelivery(s.ctx, DeliveryRequest{RequestID: "input-failed:" + input.ID, TargetID: input.BindingID, LinkID: input.LinkID, Content: "本次工作未能接纳，请在 NeuxBot 查看配置或失败详情。原因：" + input.ErrorCode}); deliveryErr != nil {
+			if hasCode(err, status_error.IMChatNotAuthorized) {
+				return
+			}
+			if _, deliveryErr := s.CreateDelivery(s.ctx, rejectedInputDelivery(input.ID, input.BindingID, input.LinkID, input.ErrorCode)); deliveryErr != nil {
 				logx.Errorf("im failure delivery failed: input_id=%s error=%v", input.ID, deliveryErr)
 			}
 		}
 	}()
 }
 
-func (s *Service) accept(ctx context.Context, input models.IMInbox) error {
+// rejectedInputDelivery 为同一收件生成稳定的失败回执，沿用原对话而非当前活动对话。
+func rejectedInputDelivery(inputID, bindingID, linkID, code string) DeliveryRequest {
+	return DeliveryRequest{
+		RequestID: "input-failed:" + inputID, TargetID: bindingID, LinkID: linkID,
+		Content: "本次工作未能接纳，请在 NeuxBot 查看配置或失败详情。原因：" + code,
+	}
+}
+
+// RecordTeamLeadInputFailure 在团队结算事务中登记已接纳队列输入的失败投递。
+// 此路径只写纯文本 Outbox，平台发送仍由 IM 后台拥有。
+func (s *Service) RecordTeamLeadInputFailure(ctx context.Context, thread models.ChannelThread, input models.ChannelLeadInput, code string) error {
+	link, err := s.config.Store.Link(ctx, input.Payload.IMReplyLinkID)
+	if hasCode(err, status_error.IMResourceNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if link.ThreadID != thread.ID || link.ChatID != thread.LeadChatID {
+		return nil
+	}
+	_, err = s.createDelivery(ctx, rejectedInputDelivery(input.Payload.SubmissionID, link.BindingID, link.ID, code), s.approvedDeliveryBinding)
+	if hasCode(err, status_error.IMChatNotAuthorized) || hasCode(err, status_error.IMResourceNotFound) {
+		return nil
+	}
+	return err
+}
+
+func (s *Service) accept(ctx context.Context, input *models.IMInbox) error {
+	link, err := s.config.Store.Link(ctx, input.LinkID)
+	if err != nil {
+		return err
+	}
+	if link.BindingID != input.BindingID {
+		return status_error.IMChatNotAuthorized
+	}
+	command, args := parseCommand(input.Content)
+	if command == "" {
+		if s.restoreAdmission(ctx, *input, link) {
+			return nil
+		}
+		routed, err := s.config.Store.InboxIsRouted(ctx, input.ID, link.ID)
+		if err != nil || !routed {
+			return err
+		}
+	}
 	binding, err := s.config.Store.Binding(ctx, input.BindingID)
 	if err != nil {
 		return err
@@ -279,62 +344,58 @@ func (s *Service) accept(ctx context.Context, input models.IMInbox) error {
 	if binding.State != constants.IMBindingStateApproved {
 		return status_error.IMChatNotAuthorized
 	}
-	link, err := s.config.Store.Link(ctx, input.LinkID)
-	if err != nil {
-		return err
-	}
-	command, args := parseCommand(input.Content)
 	exists, err := s.conversationExists(ctx, link)
 	if err != nil {
 		return err
 	}
 	if !exists {
 		if command != "" {
-			return s.finishInput(ctx, input, binding, "当前对话已不存在。发送工作消息即可开始新对话。")
+			return s.finishInput(ctx, *input, binding, "当前对话已不存在。发送工作消息即可开始新对话。")
 		}
-		link, err = s.replaceMissingConversation(ctx, &input, link)
+		link, err = s.replaceMissingConversation(ctx, input, link)
 		if err != nil {
 			return err
 		}
 	}
 	if command != "" {
-		return s.executeCommand(ctx, input, binding, link, command, args)
+		return s.executeCommand(ctx, *input, binding, link, command, args)
 	}
-	if err := s.downloadInput(ctx, &input); err != nil {
+	if err := s.downloadInput(ctx, input); err != nil {
 		return err
 	}
+	boundary := s.bindingAdmission(input.BindingID)
 	options := link.Configuration.Options
-	workInput := execution.WorkInput{Actor: string(constants.ChannelMessageActorUser), SubmissionID: input.ID, Content: input.Content}
+	workInput := execution.WorkInput{Actor: string(constants.ChannelMessageActorUser), SubmissionID: input.ID, Content: input.Content, IMReplyLinkID: link.ID}
 	if strings.TrimSpace(workInput.Content) == "" {
-		workInput.Content = "请处理附带的文件。"
+		workInput.Content = "Process the attached files."
 	}
-	workInput.ContextInstructions = []workinput.Instruction{{Name: "IM_DELIVERY.md", Content: "完成后文字结果会自动回复到本聊天。如果生成了需要交付的文件，请使用 im_delivery：先 targets.list 查验授权目标，再把文件登记到当前聊天目标 " + binding.ID + "，等待 deliveries.get 返回 sent。文件使用本轮成果目录或获准项目中的真实路径。不要通过该工具重复发送完整文字结论。"}}
 	for _, file := range input.Files {
 		workInput.Attachments = append(workInput.Attachments, execution.AttachmentInput{SourcePath: file.Path})
 	}
 	if link.Configuration.ChannelID != "" {
 		submission := channel.SubmitMessageInput{}
 		if link.ThreadID == "" {
-			submission.Create = &channel.CreateThreadInput{ChannelID: link.Configuration.ChannelID, ClientRequestID: link.ID, ExecutionID: input.ExecutionID, ProjectID: link.Configuration.ProjectID, WorkingDirectory: link.Configuration.WorkingDirectory, Input: workInput}
-
+			submission.Create = &channel.CreateThreadInput{ChannelID: link.Configuration.ChannelID, ClientRequestID: link.ID, ExecutionID: input.ExecutionID, ProjectID: link.Configuration.ProjectID, WorkingDirectory: link.Configuration.WorkingDirectory, Input: workInput, AdmissionBoundary: boundary}
 		} else {
-			submission.Continue = &channel.SendMessageInput{ThreadID: link.ThreadID, Input: workInput}
+			submission.Continue = &channel.SendMessageInput{ThreadID: link.ThreadID, Input: workInput, AdmissionBoundary: s.teamQueueAdmission(*input, boundary)}
 		}
 		result, err := s.config.Teams.SubmitMessage(ctx, submission)
 		if err != nil {
-			return err
+			return s.reconcileAdmission(ctx, *input, link, err)
 		}
-		if result.Message != nil && result.Message.Execution != nil {
-			input.ExecutionID = result.Message.Execution.ID
-		} else if result.Message != nil {
-			input.ExecutionID = ""
-		}
-		if result.Thread != nil {
+		switch {
+		case result.Thread != nil:
 			link.ThreadID = result.Thread.Thread.ID
 			link.ChatID = result.Thread.Thread.LeadChatID
+		case result.Message != nil:
+			input.ExecutionID = ""
+			// 团队续发可能先派发其他排队输入，收件只关联自己的执行。
+			if result.Message.Execution != nil && result.Message.Execution.SubmissionID == input.ID {
+				input.ExecutionID = result.Message.Execution.ID
+			}
 		}
 	} else {
-		intent := execution.WorkIntent{ExecutionID: input.ExecutionID, Input: workInput, Admission: constants.ExecutionAdmissionCommitBeforeDispatch, Options: execution.WorkOptions{ConfigurationResolved: true, RuntimeID: options.RuntimeID, AccountID: options.AccountID, Model: options.Model, Reasoning: options.Reasoning, PermissionLevel: options.PermissionLevel}}
+		intent := execution.WorkIntent{ExecutionID: input.ExecutionID, Input: workInput, Admission: constants.ExecutionAdmissionCommitBeforeDispatch, AdmissionBoundary: boundary, Options: execution.WorkOptions{ConfigurationResolved: true, RuntimeID: options.RuntimeID, AccountID: options.AccountID, Model: options.Model, Reasoning: options.Reasoning, PermissionLevel: options.PermissionLevel}}
 		if link.ChatID == "" {
 			intent.ClientRequestID = link.ID
 			intent.Chat.Create = &execution.CreateChatSpec{WakerID: link.Configuration.WakerID, ProjectID: link.Configuration.ProjectID, WorkingDirectory: link.Configuration.WorkingDirectory}
@@ -343,18 +404,120 @@ func (s *Service) accept(ctx context.Context, input models.IMInbox) error {
 		}
 		accepted, err := s.config.Executions.Start(ctx, intent)
 		if err != nil {
-			return err
+			return s.reconcileAdmission(ctx, *input, link, err)
 		}
 		link.ChatID = accepted.Chat.ID
 		input.ExecutionID = accepted.Execution.ID
 	}
+	s.persistAcceptedInput(ctx, *input, link)
+	return nil
+}
+
+// bindingAdmission 把授权检查与接纳提交放在同一边界，准备与派发均在边界外执行。
+func (s *Service) bindingAdmission(bindingID string) execution.AdmissionBoundary {
+	return func(ctx context.Context, commit func(context.Context) error) error {
+		s.gate.Lock()
+		defer s.gate.Unlock()
+		binding, err := s.config.Store.Binding(ctx, bindingID)
+		if err != nil {
+			return err
+		}
+		if binding.State != constants.IMBindingStateApproved {
+			return status_error.IMChatNotAuthorized
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return commit(ctx)
+	}
+}
+
+// teamQueueAdmission 同时提交负责人排队事实和 IM 收件，派发完成前不写入执行标识。
+func (s *Service) teamQueueAdmission(input models.IMInbox, boundary execution.AdmissionBoundary) execution.AdmissionBoundary {
 	input.State = constants.IMInboxStateAccepted
-	return s.config.Transactions.Transaction(ctx, func(ctx context.Context) error {
+	input.ExecutionID = ""
+	return func(ctx context.Context, commit func(context.Context) error) error {
+		return boundary.Commit(ctx, func(ctx context.Context) error {
+			return s.config.Transactions.Transaction(ctx, func(tx context.Context) error {
+				if err := commit(tx); err != nil {
+					return err
+				}
+				return s.config.Store.UpdateInbox(tx, input)
+			})
+		})
+	}
+}
+
+// reconcileAdmission 在接纳入口报错时先核对它是否已提交工作。
+func (s *Service) reconcileAdmission(ctx context.Context, input models.IMInbox, link models.IMConversationLink, rejection error) error {
+	if ctx.Err() == nil && s.restoreAdmission(ctx, input, link) {
+		return nil
+	}
+	return rejection
+}
+
+// restoreAdmission 先恢复既有接纳。回执暂不可读时，保留收件供后续重试。
+func (s *Service) restoreAdmission(ctx context.Context, input models.IMInbox, link models.IMConversationLink) bool {
+	found, err := s.readAdmission(ctx, &input, &link)
+	if err != nil {
+		logx.Warnf("im admission receipt check pending: input_id=%s link_id=%s error_code=%s", input.ID, input.LinkID, errorCode(err))
+		return true
+	}
+	if !found {
+		return false
+	}
+	s.persistAcceptedInput(ctx, input, link)
+	return true
+}
+
+// readAdmission 只读取与原收件身份一致的权威接纳回执。
+func (s *Service) readAdmission(ctx context.Context, input *models.IMInbox, link *models.IMConversationLink) (bool, error) {
+	if link.ThreadID != "" {
+		queued, found, err := s.config.Threads.GetLeadInput(ctx, channel.LeadInputID(link.ThreadID, input.ID))
+		if err != nil || !found || queued.Payload.SubmissionID != input.ID || queued.Payload.IMReplyLinkID != link.ID {
+			return false, err
+		}
+		input.ExecutionID = queued.LeadExecutionID
+	} else {
+		var initializing bool
+		if link.Configuration.ChannelID != "" {
+			thread, found, err := s.config.Threads.GetByClientRequestID(ctx, link.Configuration.ChannelID, link.ID)
+			if err != nil || !found {
+				return false, err
+			}
+			initializing = thread.ReadyAt == nil
+			link.ChatID, link.ThreadID = thread.LeadChatID, thread.ID
+		} else if link.ChatID == "" {
+			link.ChatID = (requestidempotency.Identity{ID: link.ID}).ResourceID("chat", link.Configuration.WakerID)
+		}
+		receipt, err := s.config.Chats.ReadSubmission(ctx, link.ChatID, input.ID)
+		if hasCode(err, status_error.ChatNotFound) {
+			return false, nil
+		}
+		if err != nil || receipt == nil || receipt.IMReplyLinkID != link.ID {
+			return false, err
+		}
+		if initializing {
+			if err := s.config.Teams.ReconcileThread(ctx, link.ThreadID); err != nil {
+				return false, err
+			}
+		}
+		input.ExecutionID = receipt.ID
+	}
+	return true, nil
+}
+
+// persistAcceptedInput 原子提交接纳关联。失败时保留原收件及幂等键，由下一次派发补齐。
+func (s *Service) persistAcceptedInput(ctx context.Context, input models.IMInbox, link models.IMConversationLink) {
+	input.State = constants.IMInboxStateAccepted
+	if err := s.config.Transactions.Transaction(ctx, func(ctx context.Context) error {
 		if err := s.config.Store.UpdateLink(ctx, link); err != nil {
 			return err
 		}
 		return s.config.Store.UpdateInbox(ctx, input)
-	})
+	}); err != nil && ctx.Err() == nil {
+		logx.Warnf("im admitted input linkage pending: input_id=%s link_id=%s execution_id=%s error_code=%s", input.ID, link.ID, input.ExecutionID, errorCode(err))
+	}
 }
 
 // replaceMissingConversation 为接纳前失效的排队输入冻结独立关联，保留原配置及历史收据。
@@ -377,8 +540,7 @@ func (s *Service) replaceMissingConversation(ctx context.Context, input *models.
 		}
 		// /new 或显式切换后仍处理原排队输入，但不能把当前选择切回旧工作的替代对话。
 		if binding.ActiveLinkID == previous.ID {
-			binding.ActiveLinkID = linkID
-			if err := s.config.Store.SaveBinding(ctx, binding, binding.Revision); err != nil {
+			if err := s.config.Store.SetBindingActiveLink(ctx, binding.ID, linkID); err != nil {
 				return err
 			}
 		}

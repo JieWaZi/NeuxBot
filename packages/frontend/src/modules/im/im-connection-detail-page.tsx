@@ -11,7 +11,6 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { SettingsContentShell } from "@/modules/settings";
 import { Button } from "@/shared/ui/button";
 import { ConnectionConfigurationForm } from "./components/connection-dialog";
-import { ConnectionAuthorizationDialog } from "./components/connection-authorization-dialog";
 import { ConnectionNewConversationDialog } from "./components/connection-new-conversation-dialog";
 import { ConnectionDeleteDialog } from "./components/connection-delete-dialog";
 import { IMConnectionDetails } from "./im-connection-details";
@@ -69,9 +68,7 @@ function ConnectionPage({
   const connection = query.data?.resources?.find(
     (item) => item.id === connectionId,
   );
-  const [action, setAction] = useState<
-    "edit" | "authorize" | "new" | "delete"
-  >();
+  const [action, setAction] = useState<"edit" | "new" | "delete">();
   const [editingBindingId, setEditingBindingId] = useState<string>();
   const editing = action === "edit" || Boolean(editingBindingId);
   const refresh = () => {
@@ -85,13 +82,11 @@ function ConnectionPage({
         initialBindingId={initialBindingId}
         editingBindingId={editingBindingId}
         onEditBinding={setEditingBindingId}
-        onBindingSaved={refresh}
         editDisabled={editing}
         configurationContent={
           connection && action === "edit" ? (
             <ConnectionConfigurationForm
               connection={connection}
-              includeBindings={false}
               statusStale={query.isError}
               onSaved={refresh}
               onClose={() => {
@@ -123,16 +118,6 @@ function ConnectionPage({
             </TooltipProvider>
           ) : undefined
         }
-        authorizationAction={
-          <Button
-            variant="settings-outline"
-            size="settings"
-            disabled={editing}
-            onClick={() => setAction("authorize")}
-          >
-            {t("authorize")}
-          </Button>
-        }
         conversationAction={
           <Button
             variant="settings-outline"
@@ -161,13 +146,6 @@ function ConnectionPage({
         <span id={newConversationHintId} className="sr-only">
           {t("noAuthorizedChats")}
         </span>
-      ) : null}
-      {action === "authorize" ? (
-        <ConnectionAuthorizationDialog
-          connectionId={connectionId}
-          onSaved={refresh}
-          onClose={() => setAction(undefined)}
-        />
       ) : null}
       {action === "new" ? (
         <ConnectionNewConversationDialog

@@ -201,15 +201,21 @@ func TestMCPBridgePreservesPreDispatchValidationFailure(t *testing.T) {
 	}
 }
 
-func TestMCPBridgeUsesBoundOperationsAndRotatesSessionGrant(t *testing.T) {
+func TestMCPBridgeReusesConnectionAcrossExecutionScopes(t *testing.T) {
 	workspace, err := workflowfiles.PrepareWorkspace(t.TempDir(), util.New(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	registry := capability.New(nil)
 	defer registry.Close()
+	httpServer := httptest.NewServer(registry)
+	defer httpServer.Close()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	calls := 0
-	grant, activate, revoke, err := registry.Prepare(capability.GrantSpec{ExecutionID: "first", Validate: func(context.Context) error { return nil }, Bindings: []capability.Binding{{Operation: "workflow.source.get", Call: func(_ context.Context, req capability.Request) (capability.Result, error) {
+	path, activate, finish, err := registry.PrepareConnection(dir, "workflow-authoring", httpServer.URL+constants.AgentCLIPath, capability.GrantSpec{ExecutionID: "first", Validate: func(context.Context) error { return nil }, Bindings: []capability.Binding{{Operation: "workflow.source.get", Call: func(_ context.Context, req capability.Request) (capability.Result, error) {
 		calls++
 		return capability.Result{Data: map[string]any{"workflowId": "bound", "source": "source", "workspace": workspace}}, nil
 	}}}})
@@ -217,18 +223,7 @@ func TestMCPBridgeUsesBoundOperationsAndRotatesSessionGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	activate()
-	defer revoke()
-	httpServer := httptest.NewServer(registry)
-	defer httpServer.Close()
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	connection := capability.Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: httpServer.URL + constants.AgentCLIPath, CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token}
-	path, err := capability.WriteConnection(dir, "first.json", connection)
-	if err != nil {
-		t.Fatal(err)
-	}
+	defer finish()
 	bridge, err := newMCPServer(context.Background(), path)
 	if err != nil {
 		t.Fatal(err)
@@ -285,31 +280,31 @@ func TestMCPBridgeUsesBoundOperationsAndRotatesSessionGrant(t *testing.T) {
 	if !ok || received["rootDirectory"] != workspace.RootDirectory || received["scriptsDirectory"] != workspace.ScriptsDirectory || received["temporaryDirectory"] != workspace.TemporaryDirectory {
 		t.Fatalf("MCP lost the host-owned storage layout: %s", body)
 	}
-	revoke()
+	finish()
 	if result := call(); !result.IsError || calls != 1 {
-		t.Fatal("revoked turn retained MCP access")
+		t.Fatal("finished execution retained MCP access")
 	}
-	next, activateNext, revokeNext, err := registry.Prepare(capability.GrantSpec{ExecutionID: "second", Validate: func(context.Context) error { return nil }, Bindings: []capability.Binding{{Operation: "workflow.source.get", Call: func(context.Context, capability.Request) (capability.Result, error) {
+	nextPath, activateNext, finishNext, err := registry.PrepareConnection(dir, "workflow-authoring", httpServer.URL+constants.AgentCLIPath, capability.GrantSpec{ExecutionID: "second", Validate: func(context.Context) error { return nil }, Bindings: []capability.Binding{{Operation: "workflow.source.get", Call: func(context.Context, capability.Request) (capability.Result, error) {
 		calls++
 		return capability.Result{Data: map[string]any{"workflowId": "bound", "source": "second-source", "workspace": workspace}}, nil
 	}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	activateNext()
-	defer revokeNext()
-	connection.GrantID, connection.Token = next.ID, next.Token
-	if _, err := capability.WriteConnection(dir, "first.json", connection); err != nil {
-		t.Fatal(err)
+	if nextPath != path {
+		t.Fatal("continued execution changed the MCP connection path")
 	}
+	activateNext()
+	defer finishNext()
+	finish()
 	result = call()
 	raw, _ := json.Marshal(result.StructuredContent)
 	if result.IsError || calls != 2 {
-		t.Fatalf("hot session did not acquire current turn grant: %s calls=%d", raw, calls)
+		t.Fatalf("hot session did not pick up current execution scope: %s calls=%d", raw, calls)
 	}
-	revokeNext()
+	finishNext()
 	if result := call(); !result.IsError || calls != 2 {
-		t.Fatal("second revoked turn retained MCP access")
+		t.Fatal("second finished execution retained MCP access")
 	}
 }
 

@@ -19,6 +19,8 @@ import (
 type InitialExecutionState struct {
 	// Chat 是当前 Chat 的身份及待处理交互事实。
 	Chat models.Chat
+	// ThreadWorkspaceID 是权威日志记录的团队对话归属，普通 Chat 为空。
+	ThreadWorkspaceID string
 	// CreateRequestID 是首发时提交的稳定请求身份。
 	CreateRequestID string
 	// CreateRequestHash 是首发规范化业务内容摘要。
@@ -50,7 +52,10 @@ func (m *service) ReadInitialExecution(ctx context.Context, chatID string) (Init
 	if err != nil {
 		return InitialExecutionState{}, err
 	}
-	return InitialExecutionState{Chat: chat, CreateRequestID: state.createRequestID, CreateRequestHash: state.createRequestHash, InitialExecution: cloneExecution(state.initialExecution)}, nil
+	return InitialExecutionState{
+		Chat: chat, ThreadWorkspaceID: state.threadWorkspaceID, CreateRequestID: state.createRequestID,
+		CreateRequestHash: state.createRequestHash, InitialExecution: cloneExecution(state.initialExecution),
+	}, nil
 }
 
 // ReadSubmission 只按原 submission 身份定位已接纳回执。

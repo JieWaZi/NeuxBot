@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -148,7 +149,7 @@ func TestPendingRunKeepsAdmissionConfiguration(t *testing.T) {
 			firstContext, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			boundary.cancel = cancel
-			command := AdmissionCommand{Task: task, Source: constants.AutomaticRunSourceManual, OccurrenceKey: "opportunity", RequestID: "request"}
+			command := AdmissionCommand{Task: task, Source: constants.AutomaticRunSourceManual, OccurrenceKey: "opportunity", RequestID: "request", Input: "保留 这段原文\nand the next line"}
 			if _, err := service.Admit(firstContext, command); !errors.Is(err, status_error.OperationCanceled) {
 				t.Fatalf("first dispatch did not leave a recoverable opportunity: %v", err)
 			}
@@ -175,6 +176,9 @@ func TestPendingRunKeepsAdmissionConfiguration(t *testing.T) {
 				t.Fatalf("recovery changed opportunity identity: %+v intents=%d", run, len(boundary.intents))
 			}
 			for _, intent := range boundary.intents {
+				if intent.Input.Content != "run\n\nAdditional requirements for this invocation:\n"+command.Input {
+					t.Fatalf("unexpected automatic task instructions: %q", intent.Input.Content)
+				}
 				if !intent.Options.ConfigurationResolved || intent.Options.Model != model || intent.Options.Reasoning != reasoning || intent.Options.AccountID != constants.AiAccountSystemID || (intent.Options.Fast == nil) != (fast == nil) || fast != nil && *intent.Options.Fast != *fast {
 					t.Fatalf("pending dispatch re-inherited runtime defaults: %+v", intent.Options)
 				}
@@ -187,6 +191,8 @@ func TestPendingRunKeepsAdmissionConfiguration(t *testing.T) {
 type configurationAdmissionTeams struct {
 	// cancel 让第一次派发保留尚未接纳的持久机会。
 	cancel context.CancelFunc
+	// deferPublication 模拟负责人接纳已成功而团队尚未发布。
+	deferPublication bool
 	// inputs 保存每次真正派发的成员配置。
 	inputs []channelservice.CreateThreadInput
 	// threads 保存恢复时能够核对的团队对话收据。
@@ -206,6 +212,9 @@ func (b *configurationAdmissionTeams) SubmitMessage(ctx context.Context, value c
 	}
 	ready := int64(1)
 	thread := models.ChannelThread{ID: util.New(), ChannelID: input.ChannelID, LeadWakerID: "lead", LeadChatID: util.New(), ReadyAt: &ready, ClientRequestID: &input.ClientRequestID, AutomaticRunID: input.AutomaticRunID}
+	if b.deferPublication {
+		thread.ReadyAt, thread.ProvisioningID = nil, "pending-team-publication"
+	}
 	members := []models.ChannelThreadMember{}
 	for index, config := range input.MemberConfigs {
 		chatID := util.New()
@@ -220,9 +229,108 @@ func (b *configurationAdmissionTeams) SubmitMessage(ctx context.Context, value c
 	if err := b.threads.Create(ctx, thread, members); err != nil {
 		return channelservice.SubmitMessageResult{}, err
 	}
-	executed := models.Execution{ID: input.ExecutionID, ChatID: thread.LeadChatID, Status: constants.ExecutionStatusRunning}
+	executed := models.Execution{ID: input.ExecutionID, ChatID: thread.LeadChatID, Status: constants.ExecutionStatusRunning, AutomaticRunID: input.AutomaticRunID}
 	b.states[thread.LeadChatID] = chat.InitialExecutionState{Chat: models.Chat{ID: thread.LeadChatID, WakerID: "lead", ActiveExecutionID: input.ExecutionID}, InitialExecution: &executed}
+	if b.deferPublication {
+		return channelservice.SubmitMessageResult{}, status_error.CreateRequestInProgress
+	}
 	return channelservice.SubmitMessageResult{Thread: &channelservice.ThreadResult{Thread: thread, Members: members, LeadExecution: &executed}}, nil
+}
+
+// ReconcileThreadPublication 模拟发布事务恢复，始终只发布原首发执行。
+func (b *configurationAdmissionTeams) ReconcileThreadPublication(ctx context.Context, threadID string) (models.ChannelThread, error) {
+	if b.deferPublication {
+		return models.ChannelThread{}, status_error.CreateRequestInProgress
+	}
+	thread, err := b.threads.Get(ctx, threadID)
+	if err != nil {
+		return thread, err
+	}
+	execution := b.states[thread.LeadChatID].InitialExecution
+	if execution == nil {
+		return models.ChannelThread{}, status_error.CreateRequestInProgress
+	}
+	if err := b.threads.MarkReady(ctx, thread.ID, thread.ProvisioningID, execution.ID, 2); err != nil {
+		return models.ChannelThread{}, err
+	}
+	return b.threads.Get(ctx, thread.ID)
+}
+
+func TestOneShotTeamScheduleRecoversAcceptedTurnOnLiveTick(t *testing.T) {
+	ctx := t.Context()
+	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "team-admission.db"), Migrate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := database.DB.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	wakers := controllers.NewWakerController(database.DB)
+	for _, id := range []string{"lead", "member"} {
+		if err := wakers.Create(ctx, models.Waker{ID: id, Name: id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	channels := controllers.NewChannelController(database.DB)
+	if err := channels.Create(ctx, models.Channel{ID: "team", LeadWakerID: "lead", Name: "排程团队"}, []models.ChannelMember{
+		{ChannelID: "team", WakerID: "lead", RuntimeID: "codex", PermissionLevel: constants.PermissionLevelDefault},
+		{ChannelID: "team", WakerID: "member", RuntimeID: "codex", PermissionLevel: constants.PermissionLevelDefault},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	threads := controllers.NewChannelThreadController(database.DB)
+	tasks := controllers.NewAutomaticTaskController(database.DB)
+	state := &configurationAdmissionExecutions{states: map[string]chat.InitialExecutionState{}}
+	teams := &configurationAdmissionTeams{threads: threads, states: state.states, deferPublication: true}
+	now := time.Date(2026, time.November, 19, 10, 0, 0, 0, time.UTC)
+	sut := New(Config{Tasks: tasks, Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB)),
+		Wakers: wakers, Executions: state, Chats: configurationAdmissionChats{executions: state}, Teams: teams,
+		Channels: channels, Threads: threads, TeamTasks: controllers.NewChannelTaskController(database.DB),
+		Now: func() time.Time { return now },
+	})
+	sut.ctx = ctx
+	task := models.AutomaticTask{ID: util.New(), WakerID: "lead", NextRunAt: timePointer(now), AutomaticTaskConfiguration: models.AutomaticTaskConfiguration{
+		ChannelID: "team", Name: "调度首发", Instruction: "执行工作", Enabled: true, Trigger: constants.AutomaticTaskTriggerSchedule,
+		Schedule: models.AutomaticTaskSchedule{Kind: constants.AutomaticScheduleKindOnce, Timezone: "UTC", OnceAt: now.Format(constants.AutomaticTaskLocalTimeLayout)},
+	}}
+	if err := tasks.Create(ctx, task); err != nil {
+		t.Fatal(err)
+	}
+	if err := sut.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := tasks.Get(ctx, task.ID)
+	if err != nil || saved.ActiveRunID == "" || saved.NextRunAt != nil {
+		t.Fatalf("第一个扫描应领取一次性机会并耗尽计划：%+v %v", saved, err)
+	}
+	pending, err := tasks.GetRun(ctx, saved.ActiveRunID)
+	if err != nil || pending.Admission != constants.AutomaticRunAdmissionPending || pending.ExecutionID == "" {
+		t.Fatalf("尚未发布的团队首轮被判失败：%+v %v", pending, err)
+	}
+	thread, exists, err := threads.GetByClientRequestID(ctx, "team", pending.ID)
+	if err != nil || !exists {
+		t.Fatalf("缺少待发布团队：%+v %v", thread, err)
+	}
+	teams.deferPublication = false
+	now = now.Add(time.Second)
+	finished := state.states[thread.LeadChatID]
+	finished.Chat.ActiveExecutionID = ""
+	finished.InitialExecution.Status = constants.ExecutionStatusCompleted
+	finished.InitialExecution.CompletedAt = timePointer(now)
+	state.states[thread.LeadChatID] = finished
+	if err := sut.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	accepted, err := tasks.GetRun(ctx, pending.ID)
+	if err != nil || accepted.Admission != constants.AutomaticRunAdmissionAccepted || accepted.ThreadID != thread.ID || accepted.ExecutionID != pending.ExecutionID || len(teams.inputs) != 1 {
+		t.Fatalf("团队发布后未核对原调度机会：%+v %v", accepted, err)
+	}
+	saved, err = tasks.Get(ctx, task.ID)
+	if err != nil || saved.ActiveRunID != "" || saved.NextRunAt != nil {
+		t.Fatalf("线上扫描未释放已完成的一次性机会：%+v %v", saved, err)
+	}
 }
 
 func TestPendingTeamRunFreezesOverridesAndInheritedNativeDefaults(t *testing.T) {

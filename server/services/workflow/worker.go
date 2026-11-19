@@ -132,7 +132,7 @@ func (a CoreWorkerAdapter) Dispatch(ctx context.Context, input WorkerDispatch) (
 	create.ExecutionWorkspaceDirectory = filepath.Join(internalWorkspace.TemporaryDirectory, constants.WorkflowWorkerDirectoryName, input.Effect.ID)
 	encoded, _ := json.Marshal(internalWorkspace)
 	create.AdditionalWorkingDirectories = []string{internalWorkspace.RootDirectory}
-	contextInstructions := []workinput.Instruction{{Name: constants.WorkflowWorkspaceInstructionFileName, Content: "本次运行固定内部工作区：" + string(encoded) + "\nChat 当前工作目录仅承载本次智能体执行。脚本统一放 scriptsDirectory；长期状态放 stateDirectory；缓存放 cacheDirectory；临时辅助文件放 temporaryDirectory；本次业务成果默认放 runDirectory。所有脚本和辅助文件必须位于 rootDirectory 内，不得自行创建 /tmp 或 ~/xxx 等外部目录。只有用户明确指定外部业务目录时，业务文件才允许写到该目录；不得把脚本、缓存、状态或临时文件放到外部业务目录。"}}
+	contextInstructions := []workinput.Instruction{{Name: constants.WorkflowWorkspaceInstructionFileName, Content: "Workflow run workspace: " + string(encoded) + "\nThe chat working directory is for this execution. Keep scripts in scriptsDirectory, persistent state in stateDirectory, caches in cacheDirectory, temporary files in temporaryDirectory, and run deliverables in runDirectory by default. Keep scripts and support files inside rootDirectory. Do not create external support directories such as /tmp or paths under the home directory. Write deliverables to an external directory only if the user specifies it explicitly. Keep scripts, caches, state, and temporary files out of external business directories."}}
 	// 宿主结果协议只进入智能体上下文，聊天正文保留节点的业务要求。
 	if resultInstruction != "" {
 		contextInstructions = append(contextInstructions, workinput.Instruction{Name: constants.WorkflowResultsInstructionFileName, Content: resultInstruction})

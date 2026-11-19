@@ -19,7 +19,10 @@ export type TeamLiveProjectionAction =
   | { event: ChannelEvent; type: "event" }
   | { type: "reconnect" };
 
-export type TeamEventNotice = "leader-retry-exhausted" | "task-recovery-failed";
+export type TeamEventNotice =
+  | "lead-input-failed"
+  | "leader-retry-exhausted"
+  | "task-recovery-failed";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -40,6 +43,12 @@ function eventPayloadOf(event: ChannelEvent): Record<string, unknown> {
 export function teamEventNoticeOf(
   event: ChannelEvent,
 ): TeamEventNotice | undefined {
+  if (
+    event.type === "lead.input_failed" &&
+    eventPayloadOf(event).reportedBySend === false
+  ) {
+    return "lead-input-failed";
+  }
   if (event.type === "task.recovery_failed") return "task-recovery-failed";
   if (
     event.type === "team.leader.processing" &&

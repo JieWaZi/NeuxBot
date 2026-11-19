@@ -71,6 +71,9 @@ func (s *service) CreateTask(
 	if err != nil {
 		return TaskResult{}, err
 	}
+	if directInput != nil {
+		input.imReplyLinkID = directInput.IMReplyLinkID
+	}
 	now := time.Now().UnixMilli()
 	taskID := util.New()
 	for _, dependencyID := range dependencyIDs {
@@ -95,6 +98,7 @@ func (s *service) CreateTask(
 		Subject:             input.Subject,
 		Description:         input.Description,
 		DirectInput:         directInput,
+		IMReplyLinkID:       input.imReplyLinkID,
 		DeferUntilLeadIdle:  input.DeferDispatch,
 		DelegationSentAt:    now,
 		Status:              constants.ChannelTaskStatusPending,
@@ -176,6 +180,11 @@ func (s *service) updatePendingTask(
 	fields := map[string]interface{}{
 		"defer_until_lead_idle": true,
 		"updated_at":            now,
+	}
+	editedText := (input.Subject != "" && input.Subject != task.Subject) ||
+		(input.Description != "" && input.Description != task.Description)
+	if editedText && task.IMReplyLinkID != input.imReplyLinkID {
+		fields["im_reply_link_id"] = ""
 	}
 	if input.AssigneeWakerID != "" {
 		if _, memberErr := s.threads.GetMember(ctx, task.ThreadID, input.AssigneeWakerID); memberErr != nil {
@@ -369,6 +378,7 @@ func (s *service) dispatchTask(
 		TaskID:           task.ID,
 		ChatID:           member.ChatID,
 		ExecutionID:      util.New(),
+		IMReplyLinkID:    workInput.IMReplyLinkID,
 		AssigneeWakerID:  task.AssigneeWakerID,
 		Fence:            fence,
 		Reason:           reason,
@@ -640,13 +650,15 @@ func taskWorkInput(
 	followUps []models.ChannelTaskFollowUp,
 ) (execution.WorkInput, error) {
 	workInput := execution.WorkInput{
-		Actor:   string(constants.ChannelMessageActorLead),
-		Content: dispatchTaskContent(task, dependencies),
+		Actor:         string(constants.ChannelMessageActorLead),
+		Content:       dispatchTaskContent(task, dependencies),
+		IMReplyLinkID: task.IMReplyLinkID,
 	}
 	if task.DirectInput != nil {
 		directInput := *task.DirectInput
 		if task.CurrentFence == 0 {
 			workInput = directInput
+			workInput.IMReplyLinkID = task.IMReplyLinkID
 		} else {
 			appendWorkInputReferences(&workInput, directInput)
 		}
@@ -675,10 +687,11 @@ func taskWorkInput(
 		appendWorkInputReferences(&workInput, input)
 	}
 	workInput.Actor = string(followUpActor)
+	workInput.IMReplyLinkID = followUps[0].Payload.IMReplyLinkID
 	return workInput, nil
 }
 
-// nextFollowUpBatch 保持补充的全局先后顺序，并避免一次成员输入混合用户和负责人作者。
+// nextFollowUpBatch 保持补充的全局先后顺序，限制同一批使用同一作者角色和回复来源。
 func nextFollowUpBatch(followUps []models.ChannelTaskFollowUp) []models.ChannelTaskFollowUp {
 	if len(followUps) < 2 {
 		return followUps
@@ -693,7 +706,7 @@ func nextFollowUpBatch(followUps []models.ChannelTaskFollowUp) []models.ChannelT
 		if nextActor == "" {
 			nextActor = constants.ChannelMessageActorUser
 		}
-		if nextActor != actor {
+		if nextActor != actor || followUps[end].Payload.IMReplyLinkID != followUps[0].Payload.IMReplyLinkID {
 			break
 		}
 		end++

@@ -106,7 +106,7 @@ type service struct {
 	// systemSkillDirectory 是初始化时发布的不可变系统技能目录。
 	systemSkillDirectory string
 	// agentBindings 提供伙伴当前普通业务能力的领域绑定。
-	agentBindings func(models.Chat, string, []string, string) []capability.Binding
+	agentBindings func(models.Chat, string, []string, string, string) []capability.Binding
 	// validateIntent 在首发和续发接纳前校验领域持久约束。
 	validateIntent func(context.Context, WorkIntent) error
 	// acquireTeamChatInput 将团队成员 Chat 的直接输入纳入团队聚合接纳边界。
@@ -177,8 +177,8 @@ type Config struct {
 	AgentEndpoint string
 	// AgentBinary 是应用提供的 CLI 绝对路径。
 	AgentBinary string
-	// AgentBindings 按冻结伙伴和目录范围签发普通能力。
-	AgentBindings func(models.Chat, string, []string, string) []capability.Binding
+	// AgentBindings 按伙伴、目录与受信工作来源签发普通能力。
+	AgentBindings func(models.Chat, string, []string, string, string) []capability.Binding
 	// ValidateIntent 校验入口无关的领域接纳约束；为空时不增加额外限制。
 	ValidateIntent func(context.Context, WorkIntent) error
 	// AcquireTeamChatInput 保护团队成员直接输入，普通 Chat 通过不持锁。

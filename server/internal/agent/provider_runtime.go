@@ -142,6 +142,8 @@ type ProviderLaunch struct {
 	BaseEnvironment map[string]string `json:",omitempty"`
 	// Environment is the explicit launch environment before account lease injection.
 	Environment map[string]string
+	// BotCLIContextFile is the host-selected grant path used by botcli child commands.
+	BotCLIContextFile string `json:",omitempty"`
 	// ConfigHome is the default native configuration directory.
 	ConfigHome string
 	// CodexConfig contains native Codex launch configuration overrides.

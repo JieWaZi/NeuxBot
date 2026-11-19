@@ -18,9 +18,32 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 )
 
+func TestContextFlagBelongsToMCPServe(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := Execute(t.Context(), []string{"version", "--context", "ignored"}, IO{Out: &stdout, Err: &stderr})
+	if code != 2 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "AgentInputInvalid") {
+		t.Fatalf("ordinary command accepted the context override: code=%d stdout=%s stderr=%s", code, &stdout, &stderr)
+	}
+	stderr.Reset()
+	path := filepath.Join(t.TempDir(), "missing.json")
+	code = Execute(t.Context(), []string{"mcp", "serve", "--context", path}, IO{Out: &stdout, Err: &stderr})
+	if code == 0 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "AgentContextStorageError") {
+		t.Fatalf("MCP serve did not read the host path: code=%d stdout=%s stderr=%s", code, &stdout, &stderr)
+	}
+}
+
 func TestCanceledMutationPreservesUnknownEffectAndReceiptAdvice(t *testing.T) {
 	accepted, release := make(chan struct{}), make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodGet && request.URL.Path == constants.AgentCLIPath+constants.AgentCLIExecutionPath {
+			_ = json.NewEncoder(w).Encode(capability.Response{
+				ProtocolVersion: constants.AgentCLIProtocolVersion, OK: true, Result: capability.Result{Data: "execution"},
+			})
+			return
+		}
+		if request.Header.Get(constants.AgentCLIExecutionHeader) != "execution" {
+			t.Error("external command did not carry the captured execution identity")
+		}
 		_, _ = io.Copy(io.Discard, request.Body)
 		close(accepted)
 		<-release
@@ -44,8 +67,9 @@ func TestCanceledMutationPreservesUnknownEffectAndReceiptAdvice(t *testing.T) {
 		case <-ctx.Done():
 		}
 	}()
+	t.Setenv(constants.AgentCLIContextEnvironment, path)
 	var out, errOut bytes.Buffer
-	code := Execute(ctx, []string{"--context", path, "im", "deliveries", "create", "--target-id", "target", "--content", "report", "--request-id", "stable-report"}, IO{Out: &out, Err: &errOut})
+	code := Execute(ctx, []string{"im", "deliveries", "create", "--target-id", "target", "--content", "report", "--request-id", "stable-report"}, IO{Out: &out, Err: &errOut})
 	var response capability.Response
 	if code != 130 || out.Len() != 0 || json.Unmarshal(errOut.Bytes(), &response) != nil || response.Error == nil || response.Error.Code != "AgentCommandOutcomeUnknown" || response.Error.RetryAdvice != "query_receipt" || response.Error.EffectState != "unknown" {
 		t.Fatalf("canceled write lost original uncertainty: code=%d stdout=%s stderr=%s", code, &out, &errOut)
@@ -80,10 +104,15 @@ func TestCommandsUseCurrentGrantAndSeparateOutputStreams(t *testing.T) {
 	}
 	run := func(args []string, input string) (int, string, string) {
 		var out, errOut bytes.Buffer
-		code := Execute(context.Background(), append([]string{"--context", contextFile}, args...), IO{In: strings.NewReader(input), Out: &out, Err: &errOut})
+		code := Execute(context.Background(), args, IO{In: strings.NewReader(input), Out: &out, Err: &errOut})
 		return code, out.String(), errOut.String()
 	}
-	code, out, errOut := run([]string{"--context", contextFile, "im", "deliveries", "create", "--input", "-", "--request-id", "report-01"}, `{"targetId":"known-target","content":"report"}`)
+	t.Setenv(constants.AgentCLIContextEnvironment, contextFile)
+	var hostOutput, hostFailure bytes.Buffer
+	if code := Execute(t.Context(), []string{"capabilities"}, IO{Out: &hostOutput, Err: &hostFailure}); code != 0 || !strings.Contains(hostOutput.String(), "im.deliveries.create") {
+		t.Fatalf("host did not provide the authorized context: code=%d stdout=%s stderr=%s", code, &hostOutput, &hostFailure)
+	}
+	code, out, errOut := run([]string{"im", "deliveries", "create", "--input", "-", "--request-id", "report-01"}, `{"targetId":"known-target","content":"report"}`)
 	if code != 0 || errOut != "" || len(calls) != 1 || calls[0].RequestID != "report-01" || !strings.Contains(out, `"completion":"accepted"`) {
 		t.Fatalf("code=%d stdout=%s stderr=%s calls=%v", code, out, errOut, calls)
 	}

@@ -397,6 +397,7 @@ func replayChatState(records []eventlog.Record) (chatState, error) {
 				return chatState{}, status_error.ChatLogCorrupted
 			}
 			execution := models.Execution{AutomaticRunID: executionData.AutomaticRunID,
+				IMReplyLinkID:     executionData.IMReplyLinkID,
 				ID:                record.ExecutionID,
 				ChatID:            record.ChatID,
 				UserMessageID:     executionData.UserMessageID,
@@ -672,6 +673,7 @@ func (m *service) deleteChatsAtomically(ctx context.Context, chatIDs []string, p
 	}
 	defer releaseOperation()
 	targets := make([]chatDeletionTarget, 0, len(chatIDs))
+	var imAdmissions []models.Execution
 	seen := make(map[string]struct{}, len(chatIDs))
 	threadTargets := make(map[string]struct{})
 	for _, value := range chatIDs {
@@ -705,6 +707,13 @@ func (m *service) deleteChatsAtomically(ctx context.Context, chatIDs []string, p
 		// Execution Core 必须先完成 durable 终态；Chat 不拥有 Runtime 生命周期。
 		if chat.ActiveExecutionID != "" {
 			return status_error.ChatHasActiveExecution
+		}
+		if m.preserveIMAdmissions != nil {
+			for _, receipt := range state.executions {
+				if receipt.IMReplyLinkID != "" && receipt.SubmissionID != "" {
+					imAdmissions = append(imAdmissions, *receipt)
+				}
+			}
 		}
 		if chat.WorkspaceDirectory == "" {
 			return status_error.ChatDirectoryOwnershipInvalid
@@ -795,6 +804,14 @@ func (m *service) deleteChatsAtomically(ctx context.Context, chatIDs []string, p
 			if err := m.closeNativeThread(ctx, chatID); err != nil {
 				return err
 			}
+		}
+	}
+	// 文件一旦进入删除暂存，IM 便可能读不到回执。先提交已经接纳的事实。
+	if len(imAdmissions) > 0 {
+		if err := m.queryIndexes.transactionController.Transaction(ctx, func(tx context.Context) error {
+			return m.preserveIMAdmissions(tx, imAdmissions)
+		}); err != nil {
+			return err
 		}
 	}
 	if len(targets) < len(canonicalChatIDs) {

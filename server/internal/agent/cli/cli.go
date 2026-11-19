@@ -22,13 +22,39 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// client freezes the grant read by one CLI process and never switches to the next turn's connection file after failure.
+// client holds the Core connection and pins each external command to its execution before sending it.
 type client struct {
 	// connection holds connection data validated against the fixed local entry point.
 	connection capability.Connection
 }
 
 func (c client) request(ctx context.Context, method, path string, payload any, mutation bool, timeout time.Duration) (capability.Response, error) {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	defer transport.CloseIdleConnections()
+	httpClient := &http.Client{Transport: transport, Timeout: timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	var executionID string
+	if input, ok := payload.(capability.Request); ok {
+		operation, _ := capability.Find(input.Operation)
+		if operation.Effect == constants.AgentCLIEffectExternal {
+			scope, err := c.send(ctx, httpClient, http.MethodGet, constants.AgentCLIExecutionPath, nil, false, "")
+			if err != nil {
+				return capability.Response{}, err
+			}
+			if !scope.OK {
+				scope.Operation = input.Operation
+				return scope, nil
+			}
+			executionID, _ = scope.Data.(string)
+			if executionID == "" {
+				return capability.Response{}, status_error.AgentConnectionUnavailable
+			}
+		}
+	}
+	return c.send(ctx, httpClient, method, path, payload, mutation, executionID)
+}
+
+func (c client) send(ctx context.Context, httpClient *http.Client, method, path string, payload any, mutation bool, executionID string) (capability.Response, error) {
 	var body bytes.Buffer
 	if payload != nil && json.NewEncoder(&body).Encode(payload) != nil {
 		return capability.Response{}, status_error.AgentInputInvalid
@@ -39,10 +65,9 @@ func (c client) request(ctx context.Context, method, path string, payload any, m
 	}
 	request.Header.Set("Authorization", "Bearer "+c.connection.Token)
 	request.Header.Set("Content-Type", "application/json")
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = nil
-	defer transport.CloseIdleConnections()
-	httpClient := http.Client{Transport: transport, Timeout: timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	if executionID != "" {
+		request.Header.Set(constants.AgentCLIExecutionHeader, executionID)
+	}
 	response, err := httpClient.Do(request)
 	uncertain := func() (capability.Response, error) {
 		if mutation {
@@ -91,8 +116,6 @@ type IO struct {
 
 // runner holds output and syntax state for one command execution.
 type runner struct {
-	// contextFile is supplied explicitly by the current command.
-	contextFile string
 	// streams contains the explicit process input and output streams.
 	streams IO
 	// entered reports whether Cobra has completed routing and argument count checks.
@@ -182,7 +205,7 @@ func failureExit(failure *capability.Failure) int {
 }
 
 func (r *runner) run(ctx context.Context, method, path string, payload any, mutation bool, timeout time.Duration) error {
-	connection, err := capability.ReadConnection(r.contextFile)
+	connection, err := readCommandConnection()
 	if err != nil {
 		return err
 	}
@@ -194,9 +217,23 @@ func (r *runner) run(ctx context.Context, method, path string, payload any, muta
 	return nil
 }
 
+func readCommandConnection() (capability.Connection, error) {
+	if path, explicit := os.LookupEnv(constants.AgentCLIContextEnvironment); explicit {
+		return capability.ReadConnection(path)
+	}
+	threadID := os.Getenv(constants.AgentCLICodexThreadEnvironment)
+	if threadID == "" {
+		return capability.Connection{}, status_error.AgentContextStorageError
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return capability.Connection{}, status_error.AgentContextStorageError
+	}
+	return capability.ReadCodexShellConnection(executable, threadID)
+}
+
 func (r *runner) root() *cobra.Command {
 	root := &cobra.Command{Use: "botcli", Short: "Use capabilities authorized for the current NeuxBot execution", SilenceErrors: true, SilenceUsage: true, CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true}}
-	root.PersistentFlags().StringVar(&r.contextFile, "context", "", "Use this execution-specific connection file")
 	root.AddCommand(r.mcpCommand())
 	root.RunE = func(cmd *cobra.Command, _ []string) error { r.entered = true; return status_error.AgentInputInvalid }
 	root.AddCommand(&cobra.Command{Use: "version", Args: cobra.NoArgs, RunE: func(_ *cobra.Command, _ []string) error {

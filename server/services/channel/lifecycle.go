@@ -274,14 +274,15 @@ func (s *service) handleAttemptTerminal(
 		// 负责人任务已在同一个负责人 Chat 中产生结果，不再向自己重复投递报告。
 		if task.AssigneeWakerID != thread.LeadWakerID {
 			if err := s.tasks.CreateNotification(transactionContext, models.ChannelLeadNotification{
-				ID:        attempt.ID,
-				ThreadID:  thread.ID,
-				TaskID:    task.ID,
-				AttemptID: attempt.ID,
-				Status:    constants.ChannelNotificationStatusPending,
-				Payload:   reportContent,
-				CreatedAt: now,
-				UpdatedAt: now,
+				ID:            attempt.ID,
+				ThreadID:      thread.ID,
+				TaskID:        task.ID,
+				AttemptID:     attempt.ID,
+				IMReplyLinkID: attempt.IMReplyLinkID,
+				Status:        constants.ChannelNotificationStatusPending,
+				Payload:       reportContent,
+				CreatedAt:     now,
+				UpdatedAt:     now,
 			}); err != nil {
 				return err
 			}
@@ -511,14 +512,15 @@ func (s *service) failAttempt(
 				nil,
 			)
 			if err := s.tasks.CreateNotification(transactionContext, models.ChannelLeadNotification{
-				ID:        util.New(),
-				ThreadID:  thread.ID,
-				TaskID:    task.ID,
-				AttemptID: attempt.ID,
-				Status:    constants.ChannelNotificationStatusPending,
-				Payload:   reportContent,
-				CreatedAt: now,
-				UpdatedAt: now,
+				ID:            util.New(),
+				ThreadID:      thread.ID,
+				TaskID:        task.ID,
+				AttemptID:     attempt.ID,
+				IMReplyLinkID: attempt.IMReplyLinkID,
+				Status:        constants.ChannelNotificationStatusPending,
+				Payload:       reportContent,
+				CreatedAt:     now,
+				UpdatedAt:     now,
 			}); err != nil {
 				return err
 			}

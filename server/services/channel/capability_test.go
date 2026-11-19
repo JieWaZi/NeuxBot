@@ -154,6 +154,7 @@ func TestChannelTaskCapabilityRequiresBoardReadAndRejectsLeadAssignee(t *testing
 	}
 
 	chatFake := &postTurnChatFake{
+		executions: map[string]models.Execution{"lead-running": {IMReplyLinkID: "original-im-link"}},
 		summaries: map[string]chatservice.ChatSummary{
 			"lead-chat":        {Chat: models.Chat{ID: "lead-chat", ActiveExecutionID: "lead-running"}},
 			"member-chat":      {Chat: models.Chat{ID: "member-chat"}},
@@ -305,6 +306,10 @@ func TestChannelTaskCapabilityRequiresBoardReadAndRejectsLeadAssignee(t *testing
 	}
 	if output.Task.Status != constants.ChannelTaskStatusPending {
 		t.Fatalf("created task status = %s, want pending", output.Task.Status)
+	}
+	stored, err := tasks.Get(ctx, output.Task.ID)
+	if err != nil || stored.IMReplyLinkID != "original-im-link" {
+		t.Fatalf("delegated task lost its original IM link: %+v, %v", stored, err)
 	}
 	if _, err := tasks.GetCurrentAttempt(ctx, output.Task.ID, output.Task.CurrentFence); err == nil {
 		t.Fatal("tool-created task dispatched before the lead turn ended")

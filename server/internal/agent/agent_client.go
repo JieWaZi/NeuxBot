@@ -776,6 +776,9 @@ func acpDirectoryArguments(launch ProviderLaunch, provider string) []string {
 }
 
 func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease AccountLease, auth LaunchAuthLease, resources ResourceLease) ([]string, error) {
+	if path := launch.BotCLIContextFile; path != "" && (!filepath.IsAbs(path) || strings.ContainsRune(path, 0)) {
+		return nil, status_error.RuntimeConfigurationInvalid
+	}
 	profileScope := provider == constants.RuntimeIDKimi || provider == constants.RuntimeIDGemini ||
 		provider == constants.RuntimeIDGrok || provider == constants.RuntimeIDOpenCode || provider == constants.RuntimeIDPi
 	var homeVariable string
@@ -801,7 +804,7 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 			names = make(map[string]struct{}, len(source))
 		}
 		for key, value := range source {
-			// CLI bootstrap configuration belongs to Core, never the native agent process.
+			// Only the explicit host grant below may supply botcli configuration.
 			if strings.HasPrefix(strings.ToUpper(key), "BOTCLI_") {
 				continue
 			}
@@ -839,6 +842,18 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 			}
 		}
 		environment["PATH"] = strings.Join(paths, string(filepath.ListSeparator))
+	}
+
+	finalize := func() []string {
+		applyResourcePath()
+		if launch.BotCLIContextFile != "" {
+			environment[constants.AgentCLIContextEnvironment] = launch.BotCLIContextFile
+		}
+		result := make([]string, 0, len(environment))
+		for _, key := range slices.Sorted(maps.Keys(environment)) {
+			result = append(result, key+"="+environment[key])
+		}
+		return result
 	}
 
 	if err := merge(launch.BaseEnvironment, false); err != nil {
@@ -881,12 +896,7 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 		if err := merge(lease.Environment, false); err != nil {
 			return nil, err
 		}
-		applyResourcePath()
-		result := make([]string, 0, len(environment))
-		for _, key := range slices.Sorted(maps.Keys(environment)) {
-			result = append(result, key+"="+environment[key])
-		}
-		return result, nil
+		return finalize(), nil
 	}
 	// Managed credentials are selected by the lease, not inherited API credentials.
 	if provider == constants.RuntimeIDCodex && lease.CodexCredentialKind != "" {
@@ -951,12 +961,7 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 		environment["CODEBUDDY_CODE_DISABLE_TERMINAL_TITLE"] = "1"
 	}
 
-	applyResourcePath()
-	env := make([]string, 0, len(environment))
-	for _, key := range slices.Sorted(maps.Keys(environment)) {
-		env = append(env, key+"="+environment[key])
-	}
-	return env, nil
+	return finalize(), nil
 }
 
 func (c *directAgentClient) Initialize(ctx context.Context) error {

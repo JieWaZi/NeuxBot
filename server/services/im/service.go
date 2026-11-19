@@ -43,7 +43,7 @@ type Config struct {
 	DataDirectory string
 	// Platforms 可替换各平台真实传输边界，用于不联网的验收。
 	Platforms map[constants.IMPlatform]protocol.Platform
-	// Events 在内存扫码进度生效后交付安全事件，不替代平台认证或连接事实。
+	// Events 交付扫码进度，以及唤醒 IM 结果投影的已提交变化。
 	Events *events.Hub
 	// Now 是可替换时钟，缺省使用系统时间。
 	Now func() time.Time
@@ -63,7 +63,7 @@ type connectionWorker struct {
 type Service struct {
 	// config 是构造时固定的业务及传输依赖。
 	config Config
-	// gate 串行保护聊天指针及冻结路由，只覆盖短数据库操作。
+	// gate 串行保护 IM 授权、路由和接纳事实的提交。
 	gate sync.Mutex
 	// deliveryGate 保护冻结文件与唯一投递提交，避免同请求并发改变文件。
 	deliveryGate sync.Mutex
@@ -77,7 +77,7 @@ type Service struct {
 	workers sync.WaitGroup
 	// connections 保存当前真实收取任务。
 	connections map[string]*connectionWorker
-	// dispatching 标记正在向某个会话接纳输入，避免同会话乱序。
+	// dispatching 按收件和会话标记接纳，替换会话时仍保留原收件的处理权。
 	dispatching map[string]bool
 	// dispatchConnections 记录各连接正在接纳的输入数量，删除时保护已开始的接纳。
 	dispatchConnections map[string]int
@@ -111,13 +111,15 @@ func (s *Service) Start(ctx context.Context) error {
 		return err
 	}
 	s.ctx, s.cancel = context.WithCancel(ctx)
+	projection := &resultProjection{hub: s.config.Events}
 	s.workers.Add(1)
 	go func() {
 		defer s.workers.Done()
+		defer projection.close()
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
 		for {
-			s.tick()
+			s.tick(projection)
 			select {
 			case <-s.ctx.Done():
 				return
@@ -159,7 +161,7 @@ func (s *Service) SetSuspended(value bool) {
 
 // KeepAwake 返回启用连接实际请求的系统运行策略。
 func (s *Service) KeepAwake(ctx context.Context) (bool, error) {
-	connections, err := s.config.Store.Connections(ctx)
+	connections, err := s.config.Store.ConnectionConfigurations(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -171,11 +173,18 @@ func (s *Service) KeepAwake(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-func (s *Service) tick() {
+func (s *Service) tick(projection *resultProjection) {
 	if s.ctx.Err() != nil {
 		return
 	}
-	s.maintainConnections()
+	configurations, err := s.maintainConnections()
+	if err != nil {
+		return
+	}
+	projection.setActive(len(configurations) > 0)
+	if len(configurations) == 0 {
+		return
+	}
 	s.life.Lock()
 	suspended := s.suspended
 	s.life.Unlock()
@@ -208,25 +217,14 @@ func (s *Service) tick() {
 			}
 		}
 	}
-	s.projectResults()
-	deliveries, _, err := s.config.Store.Deliveries(s.ctx, constants.IMDeliveryStatePending, constants.IMPageSize, 0)
-	if err != nil {
-		return
-	}
-	seenTargets := map[string]bool{}
-	for _, delivery := range deliveries {
-		if seenTargets[delivery.BindingID] {
-			continue
-		}
-		seenTargets[delivery.BindingID] = true
-		s.startDelivery(delivery)
-	}
+	s.projectResults(projection)
+	s.scheduleDeliveries(configurations)
 }
 
-func (s *Service) maintainConnections() {
-	configurations, err := s.config.Store.Connections(s.ctx)
+func (s *Service) maintainConnections() ([]models.IMConnection, error) {
+	configurations, err := s.config.Store.ConnectionConfigurations(s.ctx)
 	if err != nil {
-		return
+		return nil, err
 	}
 	s.life.Lock()
 	defer s.life.Unlock()
@@ -259,13 +257,14 @@ func (s *Service) maintainConnections() {
 			defer s.workers.Done()
 			defer close(worker.done)
 			defer cancel()
-			s.runConnection(ctx, configuration)
+			s.runConnection(ctx, configuration.ID)
 		}()
 	}
+	return configurations, nil
 }
 
-func (s *Service) runConnection(ctx context.Context, configuration models.IMConnection) {
-	connection, err := s.config.Store.Connection(ctx, configuration.ID)
+func (s *Service) runConnection(ctx context.Context, connectionID string) {
+	connection, err := s.config.Store.Connection(ctx, connectionID)
 	if err != nil {
 		return
 	}
@@ -320,7 +319,7 @@ func (s *Service) Receive(ctx context.Context, connection models.IMConnection, m
 			if name == "" {
 				name = message.ChatID
 			}
-			binding := models.IMBinding{ID: bindingID, ConnectionID: connection.ID, ExternalChatID: message.ChatID, Kind: message.Kind, Name: name, State: constants.IMBindingStatePending, Revision: 1, ContextToken: message.ContextToken, ControllerIDs: []string{connection.OwnerID}}
+			binding := models.IMBinding{ID: bindingID, ConnectionID: connection.ID, ExternalChatID: message.ChatID, Kind: message.Kind, Name: name, State: constants.IMBindingStatePending, ContextToken: message.ContextToken, ControllerIDs: []string{connection.OwnerID}}
 			if connection.OwnerID == "" {
 				binding.ControllerIDs = []string{message.SenderID}
 			}

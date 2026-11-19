@@ -123,6 +123,16 @@ func (s *service) toolChannelTasks(
 		}
 		return channelToolError(status_error.AgentOperationForbidden, "This is a result-notification turn. Read the task board and report status, but do not create or modify tasks.")
 	}
+	var replyLinkID string
+	switch action {
+	case constants.ChannelTaskToolActionCreate, constants.ChannelTaskToolActionUpdate, constants.ChannelTaskToolActionFollowUp, constants.ChannelTaskToolActionRetry:
+		execution, readErr := s.chats.ReadExecution(ctx, member.ChatID, capability.ExecutionID)
+		if readErr != nil {
+			logChannelToolFailure(capability, action, input.TaskID, readErr)
+			return channelToolError(readErr, "The current execution is unavailable.")
+		}
+		replyLinkID = execution.IMReplyLinkID
+	}
 	switch action {
 	case constants.ChannelTaskToolActionList, constants.ChannelTaskToolActionSearch:
 		tasks, listErr := s.tasks.ListByThread(ctx, thread.ID)
@@ -183,6 +193,7 @@ func (s *service) toolChannelTasks(
 			DependencyTaskIDs:   input.DependencyTaskIDs,
 			RequiresHumanReview: input.RequiresHumanReview,
 			DirectDelivery:      input.DirectDelivery,
+			imReplyLinkID:       replyLinkID,
 			DeferDispatch:       true,
 		})
 		if createErr != nil {
@@ -204,6 +215,7 @@ func (s *service) toolChannelTasks(
 			Subject:         input.Subject,
 			Description:     input.Description,
 			Priority:        input.Priority,
+			imReplyLinkID:   replyLinkID,
 		})
 		if updateErr != nil {
 			logChannelToolFailure(capability, action, input.TaskID, updateErr)
@@ -220,8 +232,9 @@ func (s *service) toolChannelTasks(
 			return channelToolError(status_error.ChannelTaskStateConflict, "follow_up only works on an in-progress task in this channel thread.")
 		}
 		if followErr := s.FollowUpTask(ctx, task.ID, execution.WorkInput{
-			Actor:   string(constants.ChannelMessageActorLead),
-			Content: input.Text,
+			Actor:         string(constants.ChannelMessageActorLead),
+			Content:       input.Text,
+			IMReplyLinkID: replyLinkID,
 		}); followErr != nil {
 			logChannelToolFailure(capability, action, task.ID, followErr)
 			return channelToolError(followErr, channelToolErrorText(followErr))
@@ -247,7 +260,7 @@ func (s *service) toolChannelTasks(
 		if task.ThreadID != thread.ID {
 			return channelToolError(status_error.ChannelTaskNotFound, "The task was not found in this channel thread.")
 		}
-		if retryErr := s.retryTask(ctx, task.ID, strings.TrimSpace(input.AssigneeWakerID)); retryErr != nil {
+		if retryErr := s.retryTask(ctx, task.ID, strings.TrimSpace(input.AssigneeWakerID), replyLinkID); retryErr != nil {
 			logChannelToolFailure(capability, action, task.ID, retryErr)
 			return channelToolError(retryErr, channelToolErrorText(retryErr))
 		}

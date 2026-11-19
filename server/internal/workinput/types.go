@@ -22,6 +22,8 @@ type Input struct {
 	ConnectorIDs []string `json:"connectorIds,omitempty"`
 	// PluginIDs 是本轮明确选择的插件标识。
 	PluginIDs []string `json:"pluginIds,omitempty"`
+	// IMReplyLinkID 是受信 IM 入口冻结的原会话标识，随工作输入进入持久队列。
+	IMReplyLinkID string `json:"imReplyLinkId,omitempty"`
 	// ContextInstructions 是入口冻结的执行说明，随耐久队列保真，不进入用户消息或标题。
 	ContextInstructions []Instruction `json:"contextInstructions,omitempty"`
 }

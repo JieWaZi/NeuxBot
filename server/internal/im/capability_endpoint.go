@@ -3,8 +3,10 @@ package im
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"io"
+
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 // ToolInput 是聊天与工作流共用的固定 IM 能力输入。
@@ -32,7 +34,7 @@ func DecodeToolInput(encoded []byte) (ToolInput, error) {
 		return input, status_error.IMConfigurationInvalid
 	}
 	var trailing any
-	if decoder.Decode(&trailing) != io.EOF || len(input.RequestID) > 100 || len(input.Content) > 200000 || len(input.Files) > 10 {
+	if decoder.Decode(&trailing) != io.EOF || len(input.RequestID) > 100 || len(input.Content) > constants.IMDeliveryTextMaximumBytes || len(input.Files) > 10 {
 		return input, status_error.IMConfigurationInvalid
 	}
 	switch input.Action {

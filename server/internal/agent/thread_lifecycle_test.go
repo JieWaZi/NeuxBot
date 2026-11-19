@@ -276,8 +276,8 @@ func TestThreadTurnPreparationAndRunningCancellation(t *testing.T) {
 		preparation <- err
 	}()
 	<-acquiring
-	if _, err := lifecycle.Prepare(t.Context(), req, input, ports); !errors.Is(err, status_error.RuntimeUnavailable) {
-		t.Fatalf("parallel preparation = %v", err)
+	if _, err := lifecycle.Prepare(t.Context(), req, input, ports); !errors.Is(err, agent.ErrTurnAdmissionBusy) || !errors.Is(err, status_error.RuntimeUnavailable) {
+		t.Fatalf("parallel preparation did not preserve a retryable admission error: %v", err)
 	}
 	if err := lifecycle.CloseThread(t.Context(), req.ChatID); err != nil {
 		t.Fatal(err)

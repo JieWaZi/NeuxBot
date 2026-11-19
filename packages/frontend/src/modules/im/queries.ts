@@ -45,6 +45,7 @@ export function useIMConnections() {
     topic: "im",
     resource: { kind: "global" },
     queryKeys: [imQueryKeys.connections],
+    eventTypes: ["im.changed"],
     active,
   });
   const query = useQuery({
@@ -64,14 +65,27 @@ export function useIMConnections() {
 
 export function useIMBindings(connectionId = "", enabled = true) {
   const active = useRouteSceneActive();
+  const client = useQueryClient();
   useQueryEvents({
     topic: "im",
-    resource: { kind: "connection", id: connectionId },
+    resource: connectionId
+      ? { kind: "connection", id: connectionId }
+      : { kind: "global" },
     queryKeys: [imQueryKeys.bindings(connectionId)],
     active,
-    enabled: enabled && Boolean(connectionId),
+    enabled,
+    eventTypes: ["im.changed"],
+    eventFilter: connectionId
+      ? undefined
+      : ({ payload }) =>
+          Boolean(
+            payload &&
+            typeof payload === "object" &&
+            "kind" in payload &&
+            payload.kind === "binding",
+          ),
   });
-  return useQuery({
+  const query = useQuery({
     queryKey: imQueryKeys.bindings(connectionId),
     queryFn: async ({ signal }) => {
       const resources: IMBinding[] = [];
@@ -95,50 +109,54 @@ export function useIMBindings(connectionId = "", enabled = true) {
     },
     enabled,
   });
+  return {
+    ...query,
+    refresh: () =>
+      connectionId
+        ? Promise.all([
+            query.refetch(),
+            client.invalidateQueries({
+              queryKey: imQueryKeys.bindings(""),
+              exact: true,
+            }),
+          ])
+        : query.refetch(),
+  };
 }
 
 export function useIMConversations(
   connectionId: string,
-  bindings: IMBinding[],
+  bindingIds: string[],
   enabled: boolean,
 ) {
   const active = useRouteSceneActive();
+  const queryKey = imQueryKeys.conversations(connectionId, bindingIds);
   useQueryEvents({
     topic: "im",
     resource: { kind: "connection", id: connectionId },
-    queryKeys: [
-      imQueryKeys.conversations(
-        connectionId,
-        bindings.flatMap((binding) => binding.id || []),
-      ),
-    ],
+    queryKeys: [queryKey],
     active,
     enabled: enabled && Boolean(connectionId),
   });
   return useQuery({
-    queryKey: imQueryKeys.conversations(
-      connectionId,
-      bindings.flatMap((binding) => binding.id || []),
-    ),
+    queryKey,
     enabled,
     queryFn: async ({ signal }) =>
       (
         await Promise.all(
-          bindings
-            .filter((binding) => binding.id)
-            .map(async (binding) => {
-              const { data } = await listImConversations(
-                withLocalErrorSurface({
-                  path: { bindingId: binding.id || "" },
-                  signal,
-                  throwOnError: true,
-                }),
-              );
-              return (data?.resources || []).map((conversation) => ({
-                conversation,
-                binding,
-              }));
-            }),
+          bindingIds.map(async (bindingId) => {
+            const { data } = await listImConversations(
+              withLocalErrorSurface({
+                path: { bindingId },
+                signal,
+                throwOnError: true,
+              }),
+            );
+            return (data?.resources || []).map((conversation) => ({
+              conversation,
+              bindingId,
+            }));
+          }),
         )
       )
         .flat()

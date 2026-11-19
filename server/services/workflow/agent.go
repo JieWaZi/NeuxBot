@@ -35,31 +35,25 @@ func (s *Service) AgentBindings(key, token string, kind constants.WorkflowCapabi
 	}
 	bindings := make([]capability.Binding, 0, len(ids))
 	for _, id := range ids {
+		op, _ := capability.Find(id)
 		binding := capability.Binding{Operation: id}
 		binding.Call = func(ctx context.Context, request capability.Request) (capability.Result, error) {
-			owner, err := s.agentOwner(ctx, scope)
-			if err != nil {
-				return capability.Result{}, err
-			}
-			if kind == constants.WorkflowCapabilityScopeConsumer && id == "workflow.runs.start" {
-				lease, err := s.consumers.GetConsumer(ctx, key)
+			if op.Effect != constants.AgentCLIEffectRead {
+				access, err := s.authorizeWorkflowTool(ctx, scope)
 				if err != nil {
 					return capability.Result{}, err
 				}
-				definitionID, _ := request.Params["definitionId"].(string)
-				if !slices.Contains(lease.DefinitionIDs, definitionID) {
-					return capability.Result{}, status_error.AgentOperationForbidden
-				}
-			}
-			op, _ := capability.Find(id)
-			if op.Effect != constants.AgentCLIEffectRead {
 				if id == "workflow.runs.start" {
-					return s.startAgentRun(ctx, scope, owner, request)
+					definitionID, _ := request.Params["definitionId"].(string)
+					if !slices.Contains(access.definitions, definitionID) {
+						return capability.Result{}, status_error.AgentOperationForbidden
+					}
+					return s.startAgentRun(ctx, scope, access.owner, request)
 				}
-				result, err := capability.Execute(ctx, s.commands, owner, request, func(ctx context.Context) error {
+				result, err := capability.Execute(ctx, s.commands, access.owner, request, func(ctx context.Context) error {
 					input := workflowAgentInput(request)
-					input.RequestID = capability.ID(owner, id, request.RequestID)
-					_, err := s.handleTool(ctx, scope, input)
+					input.RequestID = capability.ID(access.owner, id, request.RequestID)
+					_, err := access.call(ctx, input)
 					return err
 				})
 				return workflowAgentReceipt(id, result), err
@@ -72,7 +66,7 @@ func (s *Service) AgentBindings(key, token string, kind constants.WorkflowCapabi
 				return capability.Observe(ctx, request.Params, func() events.Subscription {
 					return s.events.Subscribe("workflow", events.Resource{Kind: "workflow", ID: input.RunID})
 				}, func(ctx context.Context) (any, bool, error) {
-					value, err := s.handleConsumerTool(ctx, scope, workflowtool.Input{Action: constants.WorkflowActionRunGet, RunID: input.RunID})
+					value, err := s.handleTool(ctx, scope, input)
 					if err != nil {
 						return nil, false, err
 					}
@@ -109,22 +103,17 @@ func (s *Service) AgentBindings(key, token string, kind constants.WorkflowCapabi
 			}
 			return capability.Result{Data: value}, nil
 		}
-		op, _ := capability.Find(id)
 		if op.Effect != constants.AgentCLIEffectRead {
 			binding.Receipt = func(ctx context.Context, requestID string) (capability.Result, error) {
-				owner, err := s.agentOwner(ctx, scope)
+				access, err := s.authorizeWorkflowTool(ctx, scope)
 				if err != nil {
 					return capability.Result{}, err
 				}
-				result, err := capability.Lookup(ctx, s.commands, owner, id, requestID)
+				result, err := capability.Lookup(ctx, s.commands, access.owner, id, requestID)
 				if err == nil && kind == constants.WorkflowCapabilityScopeConsumer {
 					data, _ := result.Data.(map[string]any)
 					if definition, ok := data["definitionId"].(string); ok {
-						lease, getErr := s.consumers.GetConsumer(ctx, key)
-						if getErr != nil {
-							return capability.Result{}, getErr
-						}
-						if !slices.Contains(lease.DefinitionIDs, definition) {
+						if !slices.Contains(access.definitions, definition) {
 							return capability.Result{}, status_error.AgentOperationForbidden
 						}
 					}
@@ -148,6 +137,7 @@ func (s *Service) startAgentRun(ctx context.Context, scope workflowtool.Scope, o
 			input := workflowAgentInput(prepared.request)
 			input.Args, input.InputFileRoots = prepared.args, prepared.roots
 			input.RequestID = capability.ID(owner, request.Operation, request.RequestID)
+			// 冻结文件可能跨过授权期限，新运行接纳前读取当前执行范围。
 			_, err := s.handleTool(ctx, scope, input)
 			return err
 		})
@@ -277,23 +267,6 @@ func (s *Service) prepareAgentRunInput(ctx context.Context, owner string, reques
 		return nil, err
 	}
 	return prepared, nil
-}
-
-func (s *Service) agentOwner(ctx context.Context, scope workflowtool.Scope) (string, error) {
-	if _, err := s.handleTool(ctx, scope, workflowtool.Input{Action: constants.WorkflowActionQuery, Type: constants.WorkflowQueryCapabilities}); err != nil {
-		return "", err
-	}
-	switch scope.Kind {
-	case constants.WorkflowCapabilityScopeCreation:
-		session, err := s.creationSessions.GetCreationSession(ctx, scope.Key)
-		return "workflow.authoring:" + session.DefinitionID + ":" + session.ChatID, err
-	case constants.WorkflowCapabilityScopeConsumer:
-		lease, err := s.consumers.GetConsumer(ctx, scope.Key)
-		return "workflow.consumer:" + lease.ChatID, err
-	case constants.WorkflowCapabilityScopeResult:
-		return "workflow.result:" + scope.Key, nil
-	}
-	return "", status_error.AgentOperationForbidden
 }
 
 func unwrapWorkflow(value map[string]any) map[string]any {

@@ -1,3 +1,4 @@
+import { Pencil } from "lucide-react";
 import { useId, type ReactNode } from "react";
 import { QueryState } from "@/shared/ui/query-state";
 import { localApiErrorMessage } from "@/shared/api/local-error-surface";
@@ -11,38 +12,40 @@ import {
 } from "@/modules/settings";
 import { BindingForm } from "./components/binding-form";
 import { Button } from "@/shared/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/shared/ui/tooltip";
 import { Skeleton } from "@/shared/ui/skeleton";
-import { BindingOverview } from "./components/binding-overview";
 import { ConnectionConversationsTable } from "./components/connection-conversations-table";
 import {
   BindingStatus,
   ConnectionStatus,
 } from "./components/connection-status";
 import { useIMBindings, useIMConnections } from "./queries";
+import type { IMBinding } from "./types";
 
 export function IMConnectionDetails({
   connectionId,
   initialBindingId,
-  authorizationAction,
   conversationAction,
   deleteAction,
   configurationAction,
   configurationContent,
   editingBindingId,
   onEditBinding,
-  onBindingSaved,
   editDisabled,
 }: {
   connectionId: string;
   initialBindingId?: string;
-  authorizationAction?: ReactNode;
   conversationAction?: ReactNode;
   deleteAction?: ReactNode;
   configurationAction?: ReactNode;
   configurationContent?: ReactNode;
   editingBindingId?: string;
   onEditBinding?: (id: string | undefined) => void;
-  onBindingSaved?: () => void;
   editDisabled?: boolean;
 }) {
   const bindingActionId = useId();
@@ -65,6 +68,51 @@ export function IMConnectionDetails({
   const connection = query.data?.resources?.find(
     (item) => item.id === connectionId,
   );
+  const chatTitle = (binding: IMBinding) =>
+    binding.name?.replace(/\s+/g, " ").trim() ||
+    binding.externalChatId ||
+    t("chatAccess");
+  const chatTitleCounts = new Map<string, number>();
+  for (const binding of bindings) {
+    const title = chatTitle(binding);
+    chatTitleCounts.set(title, (chatTitleCounts.get(title) ?? 0) + 1);
+  }
+  const chatLabel = (binding: IMBinding) => {
+    const title = chatTitle(binding);
+    const externalId = binding.externalChatId;
+    return (chatTitleCounts.get(title) ?? 0) > 1 &&
+      externalId &&
+      externalId !== title
+      ? `${title} · ${externalId}`
+      : title;
+  };
+  const bindingEditAction = (binding: IMBinding) => {
+    const id = binding.id;
+    if (!id || !onEditBinding) return null;
+    const label = t("editNamedChat", {
+      name: chatLabel(binding),
+    });
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              id={`${bindingActionId}-${id}`}
+              size="icon"
+              variant="plain"
+              aria-label={label}
+              disabled={editDisabled || bindingsQuery.isError}
+              onClick={() => onEditBinding(id)}
+            >
+              <Pencil />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{t("editConnection")}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  };
+  const singleBinding = bindings.length === 1 ? bindings[0] : undefined;
   return (
     <div className="grid min-h-0 gap-6">
       {!connection && query.isPending ? (
@@ -140,7 +188,12 @@ export function IMConnectionDetails({
               ) : null}
             </SettingsCard>
           </SettingsGroup>
-          <SettingsGroup title={t("chatAccess")} trailing={authorizationAction}>
+          <SettingsGroup
+            title={t("chatAccess")}
+            trailing={
+              singleBinding ? bindingEditAction(singleBinding) : undefined
+            }
+          >
             <SettingsCard>
               {bindingsQuery.isError ? (
                 <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
@@ -164,45 +217,32 @@ export function IMConnectionDetails({
                 <ConnectionDetailSkeleton label={t("loading")} />
               ) : bindings.length ? (
                 bindings.map((item) => (
-                  <div
+                  <article
                     key={item.id}
+                    aria-labelledby={`${bindingActionId}-title-${item.id}`}
                     className="before:bg-border-subtle relative grid min-w-0 gap-3 px-4 py-3 before:absolute before:inset-x-4 before:top-0 before:h-px first:before:hidden"
                   >
-                    <header className="flex flex-wrap items-center justify-between gap-3">
-                      <h4 className="type-body min-w-0 font-medium [overflow-wrap:anywhere]">
-                        {item.name || item.externalChatId || t("chatAccess")}
+                    <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                      <h4
+                        id={`${bindingActionId}-title-${item.id}`}
+                        className="type-body min-w-0 font-medium [overflow-wrap:anywhere]"
+                      >
+                        {chatLabel(item)}
                       </h4>
-                      <BindingStatus binding={item} />
+                      <div className="flex shrink-0 items-center gap-2">
+                        <BindingStatus binding={item} />
+                        {singleBinding ? null : bindingEditAction(item)}
+                      </div>
                     </header>
-                    {editingBindingId === item.id ? (
-                      <BindingForm
-                        binding={item}
-                        host="page"
-                        onClose={() => closeBindingEditor(item.id)}
-                        onSaved={onBindingSaved ?? (() => undefined)}
-                      />
-                    ) : (
-                      <>
-                        <BindingOverview binding={item} compact />
-                        {onEditBinding ? (
-                          <div className="flex justify-end">
-                            <Button
-                              id={`${bindingActionId}-${item.id}`}
-                              size="settings"
-                              variant="ghost"
-                              aria-label={t("configureNamedChat", {
-                                name: item.name || item.externalChatId,
-                              })}
-                              disabled={editDisabled}
-                              onClick={() => onEditBinding(item.id)}
-                            >
-                              {t("configureChat")}
-                            </Button>
-                          </div>
-                        ) : null}
-                      </>
-                    )}
-                  </div>
+                    <BindingForm
+                      binding={item}
+                      readOnly={!item.id || editingBindingId !== item.id}
+                      manageAuthorization={Boolean(item.id && onEditBinding)}
+                      authorizationDisabled={bindingsQuery.isError}
+                      onClose={() => closeBindingEditor(item.id)}
+                      refreshBindings={bindingsQuery.refresh}
+                    />
+                  </article>
                 ))
               ) : !bindingsQuery.isError ? (
                 <p className="text-content-secondary type-body px-4 py-3">
@@ -219,6 +259,7 @@ export function IMConnectionDetails({
             trailing={conversationAction}
             connectionId={connectionId}
             bindings={bindings}
+            chatLabel={chatLabel}
             ready={!bindingsQuery.isPending && !bindingsQuery.isError}
             sourceError={bindingsQuery.error}
             onRetrySource={() => void bindingsQuery.refetch()}

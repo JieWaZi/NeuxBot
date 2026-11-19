@@ -239,19 +239,20 @@ func (m *service) startNativeExecution(
 
 	workspace := nativeWorkspace(state, request, files)
 	skills := m.nativeSkills(enabledSkills)
-	connectors := runtimeConnectorDeclarations(enabledConnectors)
+	configuredConnectors := runtimeConnectorDeclarations(enabledConnectors)
+	connectors := configuredConnectors
 	contextInstructions := nativeContextInstructions(request, files)
 	message := nativeMessage(request, files)
 	message.Text += pluginSelectionHint(frozen.selected)
 	instructions := nativeInstructions(request, files)
-	activate, revoke, err := m.prepareAgent(ctx, environment, workspace, &skills, &instructions, &connectors, &contextInstructions, state.chat, executionID, request, files.referencedFiles)
+	grant, err := m.prepareAgent(ctx, environment, workspace, &skills, &instructions, &connectors, &contextInstructions, state.chat, executionID, request, files.referencedFiles)
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
-	if revoke != nil {
+	if grant.finish != nil {
 		defer func() {
 			if *releaseReservation {
-				revoke()
+				grant.finish()
 			}
 		}()
 	}
@@ -277,12 +278,18 @@ func (m *service) startNativeExecution(
 		return AcceptedExecution{}, err
 	}
 
-	metadata, err := json.Marshal([]any{instructions, skills, connectors, workspace, frozen.native})
+	// 内部 MCP 的启动参数由宿主冷连接交付，只有公开工具集合参与历史兼容。
+	resourceFacts := []any{instructions, skills, configuredConnectors, workspace, frozen.native}
+	if len(grant.mcpOperations) > 0 {
+		resourceFacts = append(resourceFacts, grant.mcpOperations)
+	}
+	metadata, err := json.Marshal(resourceFacts)
 	if err != nil {
 		return AcceptedExecution{}, status_error.RuntimeConfigurationInvalid
 	}
 	key := sessionResourceKey(frozen.key, string(metadata), enabledConnectors)
 	thread := nativeThreadRequest(state.chat.ID, workspace, instructions, request, environment, selection, key)
+	thread.Connection.Launch.BotCLIContextFile = grant.cliContextFile
 	thread.Connection.Account, err = m.resolveAccount(ctx, thread.Connection.Account, thread.Connection.Launch.ConfigHome)
 	if err != nil {
 		return AcceptedExecution{}, err
@@ -295,7 +302,7 @@ func (m *service) startNativeExecution(
 	work := nativeExecutionWork{
 		chat: state.chat, state: state, files: files, journal: journal,
 		input: request, execution: newExecutionIndex(state, request, executionID, userMessageID),
-		activate: activate, revoke: revoke, started: make(chan executionStartResult, 1),
+		cliContextFile: grant.cliContextFile, activate: grant.activate, finishToolScope: grant.finish, started: make(chan executionStartResult, 1),
 	}
 	ports := work.ports(m)
 	ports.AcquireResources = func(ctx context.Context, selection agent.ResourceSelection) (agent.ResourceLease, error) {
@@ -345,8 +352,12 @@ func (m *service) startNativeExecution(
 	// A reliable entrypoint commits the pending job before dispatch. The native admission
 	// batch then adds execution.started and the actual input identity together.
 	if request.admission == constants.ExecutionAdmissionCommitBeforeDispatch {
-		accepted, err := journal.CommitAcceptedTurn(ctx, work.admission(""))
-		if err != nil {
+		var accepted chatservice.AcceptedTurn
+		if err := request.admissionBoundary.Commit(ctx, func(ctx context.Context) error {
+			var err error
+			accepted, err = journal.CommitAcceptedTurn(ctx, work.admission(""))
+			return err
+		}); err != nil {
 			return AcceptedExecution{}, err
 		}
 		files.commit()
@@ -457,10 +468,12 @@ type nativeExecutionWork struct {
 	selectedPlugins []plugins.Snapshot
 	// resources is the native connection's acquired resource projection.
 	resources *nativeResourceProjection
+	// cliContextFile 是当前回合的常驻 CLI 连接文件，内部 MCP 分支不设置此路径。
+	cliContextFile string
 	// activate enables a grant only after durable admission and projection.
 	activate func()
-	// revoke retires this input's grant.
-	revoke func()
+	// finishToolScope 结束本轮工具范围。
+	finishToolScope func()
 	// started reports the first durable admission or pre-admission failure to Start.
 	started chan executionStartResult
 	// precommitted records a reliable entrypoint's durable pending execution.
@@ -496,12 +509,20 @@ func (work *nativeExecutionWork) ports(m *service) agent.TurnPorts {
 			work.admissionFacts = work.admission(admitted.Input.HostInvocationID)
 			return work.journal.PrepareTurnAdmission(ctx, work.admissionFacts, "turn:"+admitted.Input.HostInvocationID)
 		},
-		Authorize: func(ctx context.Context, _ agent.TurnAdmission, receipt agent.CommitReceipt) (func(), error) {
+		Authorize: func(ctx context.Context, admitted agent.TurnAdmission, receipt agent.CommitReceipt) (func(), error) {
 			if err := work.projectAdmission(context.WithoutCancel(ctx), receipt); err != nil {
 				return nil, err
 			}
 			if err := ctx.Err(); err != nil {
 				return nil, err
+			}
+			if session := admitted.Binding.Session; session.Provider == constants.RuntimeIDCodex && work.cliContextFile != "" {
+				if err := m.agent.BindCodexShellConnection(work.cliContextFile, executionID, session.SessionID); err != nil {
+					if !errors.Is(err, status_error.AgentContextStorageError) {
+						return nil, err
+					}
+					logx.Warnf("prepare Codex shell capability lookup: execution_id=%s error=%v", executionID, err)
+				}
 			}
 			// 接纳批次的最后一项业务事实是 execution.started。
 			startedRevision := receipt.First + int64(len(work.admissionFacts.Facts)) - 1
@@ -513,7 +534,7 @@ func (work *nativeExecutionWork) ports(m *service) agent.TurnPorts {
 				work.resources.updateUsage(authorization.Usage{ChatID: chatID, ExecutionID: executionID,
 					WakerID: work.chat.WakerID, Title: work.chat.Title})
 			}
-			return work.revoke, nil
+			return work.finishToolScope, nil
 		},
 		Committed: func(receipt agent.CommitReceipt) {
 			if work.projected.Load() {
@@ -682,8 +703,8 @@ func (m *service) runNativeExecution(ctx context.Context, work *nativeExecutionW
 }
 
 func (work *nativeExecutionWork) settle(m *service, result agent.TurnResult) {
-	if work.revoke != nil {
-		work.revoke()
+	if work.finishToolScope != nil {
+		work.finishToolScope()
 	}
 	if work.resources.updateUsage != nil {
 		work.resources.updateUsage()

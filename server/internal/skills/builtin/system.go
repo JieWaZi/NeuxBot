@@ -26,11 +26,11 @@ func systemDefinition() (definition, error) {
 
 // CLIPath 返回系统技能中当前平台的可执行入口。
 func CLIPath(directory string) string {
-	name := "botcli"
+	name := constants.AgentCLIBinaryName
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
-	return filepath.Join(directory, "scripts", name)
+	return filepath.Join(directory, constants.AgentCLISkillScriptsDirectory, name)
 }
 
 // SystemDirectory 将同包资源和受管 CLI 一起准备为不可变技能，不使用用户版本指针。
@@ -49,7 +49,7 @@ func SystemDirectory(dataDirectory, binaryPath string) (string, error) {
 	}
 	// CLI 字节和执行位纳入同一内容摘要，更新程序时不会复用旧入口。
 	item.Files = append(item.Files, resource{Path: filepath.ToSlash(CLIPath("")), Data: binary, Executable: true})
-	root := filepath.Join(dataDirectory, "system-skills")
+	root := filepath.Join(dataDirectory, constants.AgentCLISystemSkillsDirectory)
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return "", status_error.SkillStorageError
 	}

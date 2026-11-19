@@ -25,6 +25,7 @@ import {
 import "@/shared/i18n";
 import { ChatQueueProvider } from "@/modules/chat/runtime/chat-queue-store";
 import { WorkbenchProvider } from "@/modules/chat/workbench/workbench-store";
+import type { subscribeChannel, subscribeChat } from "@/shared/api/events";
 import { client } from "@/shared/api/generated/client.gen";
 import type {
   CreateChannelThreadResponse,
@@ -40,9 +41,24 @@ vi.mock("@/shared/platform", () => ({
   hasPlatformService: () => false,
   subscribeFileDrop: () => () => undefined,
 }));
+const stream = vi.hoisted(() => ({
+  channel: undefined as
+    Parameters<typeof subscribeChannel>[2]["onEvent"] | undefined,
+  chat: undefined as Parameters<typeof subscribeChat>[1]["onEvent"] | undefined,
+}));
 vi.mock("@/shared/api/events", () => ({
-  subscribeChannel: () => () => undefined,
-  subscribeChat: () => () => undefined,
+  subscribeChannel: ((_, __, { onEvent }) => {
+    stream.channel = onEvent;
+    return () => {
+      if (stream.channel === onEvent) stream.channel = undefined;
+    };
+  }) satisfies typeof subscribeChannel,
+  subscribeChat: ((_, { onEvent }) => {
+    stream.chat = onEvent;
+    return () => {
+      if (stream.chat === onEvent) stream.chat = undefined;
+    };
+  }) satisfies typeof subscribeChat,
 }));
 
 function deferred<T>() {
@@ -51,6 +67,87 @@ function deferred<T>() {
     resolve = done;
   });
   return { promise, resolve };
+}
+
+async function verifyQueuedLeadInputFeedback() {
+  const submissions: string[] = [];
+  server.use(
+    http.post(
+      `${api}/channels/team-1/threads/thread-1/messages`,
+      async ({ request }) => {
+        const body = (await request.json()) as { submissionId: string };
+        submissions.push(body.submissionId);
+        return HttpResponse.json({
+          queuedInput: {
+            id: `queued-${submissions.length}`,
+            createdAt: Date.now(),
+            status: "pending",
+          },
+        });
+      },
+    ),
+  );
+  const user = userEvent.setup();
+  const enqueue = async (text: string, expectedCount: number) => {
+    await user.type(screen.getByRole("textbox"), text);
+    await user.click(screen.getByRole("button", { name: "加入发送队列" }));
+    await waitFor(() => {
+      expect(submissions).toHaveLength(expectedCount);
+      expect(screen.queryByText(text)).not.toBeInTheDocument();
+    });
+  };
+  const completed = "正常接纳的排队消息";
+  await enqueue(completed, 1);
+  expect(stream.chat).toBeDefined();
+  act(() => {
+    stream.chat?.({
+      type: "message.user_created",
+      sequence: 3,
+      message: {
+        id: "queued-user-message",
+        executionId: "queued-execution",
+        submissionId: submissions[0],
+        content: completed,
+        actor: "user",
+        role: "user",
+      },
+    });
+  });
+  expect(await screen.findByText(completed)).toBeVisible();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+  await enqueue("派发前失败的排队消息", 2);
+  expect(stream.channel).toBeDefined();
+  const failure = {
+    id: "queued-input-failed",
+    threadId: "thread-1",
+    type: "lead.input_failed",
+    payload: {
+      inputId: "queued-2",
+      errorCode: "RuntimeUnavailable",
+      reason: "private runtime exception",
+      reportedBySend: false,
+    },
+  } as const;
+  act(() => {
+    stream.channel?.({
+      ...failure,
+      id: "synchronous-input-failed",
+      payload: {
+        ...failure.payload,
+        inputId: "synchronous",
+        reportedBySend: true,
+      },
+    });
+  });
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  act(() => stream.channel?.(failure));
+  const notice = await screen.findByRole("alert");
+  expect(notice).toHaveTextContent("排队的消息未能交给负责人");
+  expect(notice).not.toHaveTextContent("private runtime exception");
+  await user.click(screen.getByRole("button", { name: "关闭错误提示" }));
+  act(() => stream.channel?.(failure));
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 }
 
 const api = "http://bot.test/api/v1";
@@ -95,15 +192,23 @@ describe("团队首发完整路由交接", () => {
     status: "running" | "completed";
     historyFails?: boolean;
     unknownMemberOptions?: boolean;
+    checkQueuedFailure?: boolean;
   }>([
     { withExecution: true, status: "running" },
     { withExecution: false, status: "running" },
     { withExecution: false, status: "completed" },
     { withExecution: false, status: "running", historyFails: true },
     { withExecution: true, status: "running", unknownMemberOptions: true },
+    { withExecution: true, status: "running", checkQueuedFailure: true },
   ])(
-    "首发配置与交接 execution=$withExecution，历史=$status，首次查询失败=$historyFails，成员可选配置未知=$unknownMemberOptions",
-    async ({ withExecution, status, historyFails, unknownMemberOptions }) => {
+    "首发配置与交接 execution=$withExecution，历史=$status，首次查询失败=$historyFails，成员可选配置未知=$unknownMemberOptions，队列结算=$checkQueuedFailure",
+    async ({
+      withExecution,
+      status,
+      historyFails,
+      unknownMemberOptions,
+      checkQueuedFailure,
+    }) => {
       const creation = deferred<CreateChannelThreadResponse>();
       const history = deferred<ListChannelTimelineResponse>();
       const received = vi.fn();
@@ -350,9 +455,9 @@ describe("团队首发完整路由交接", () => {
         </StrictMode>,
       );
       await waitFor(() =>
-        expect(screen.getByTestId("composer-model-control")).toHaveTextContent(
-          "gpt-5",
-        ),
+        expect(
+          screen.getByTestId("composer-model-control"),
+        ).toHaveAccessibleName(/gpt-5/),
       );
       await userEvent.setup().type(screen.getByRole("textbox"), text);
       await waitFor(() =>
@@ -505,6 +610,7 @@ describe("团队首发完整路由交接", () => {
           expect(activeAvatar()).toHaveAttribute("data-activity", "completed");
           expect(activeAvatar()).toHaveAttribute("data-animation", "notify");
         }
+        if (checkQueuedFailure) await verifyQueuedLeadInputFeedback();
       } finally {
         observer.disconnect();
         view.unmount();

@@ -199,6 +199,8 @@ type ExecutionCreatedData struct {
 
 	// AutomaticRunID 是服务端冻结的自动任务来源，随原执行事实恢复。
 	AutomaticRunID string `json:"automaticRunId,omitempty"`
+	// IMReplyLinkID 是本次接纳冻结的原 IM 会话标识，随执行事实恢复。
+	IMReplyLinkID string `json:"imReplyLinkId,omitempty"`
 	// SubmissionID 是入口无关的稳定输入身份，写入同一权威执行事实。
 	SubmissionID string `json:"submissionId,omitempty"`
 	// SubmissionHash 是规范化输入和冻结配置的摘要，拒绝同键异内容。

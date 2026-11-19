@@ -2,9 +2,9 @@
 
 Use this guide when the user asks to send a message or artifact to an authorized chat, including an artifact created during this task.
 
-Reuse a confirmed target ID. When discovery is needed, use `botcli im targets list`; names and external account identifiers are not interchangeable with target IDs. Resolve a real ambiguity with the user.
+For a file requested in the current IM chat, omit `targetId` to deliver to that chat. Core returns the normal text reply automatically. For any other destination, use a confirmed target ID. Discover available destinations with `botcli im targets list` when needed. Resolve a real ambiguity with the user.
 
-Create the requested artifact in the approved scope before sending it. Use a JSON input file containing targetId, content and files; files must exist and be readable. Do not put report bodies, secret values, or JSON strings into shell command text. Select a stable request ID before the first `im deliveries create` call.
+Create the requested artifact in the approved scope before sending it. Use a JSON input file containing the file paths and any explicit destination or caption. Files must exist and be readable. Do not put report bodies, secret values, or JSON strings into shell command text. Select a stable request ID before the first `im deliveries create` call.
 
 Creation registers frozen content in the durable delivery queue. It does not prove that the platform accepted the message. Inspect `im deliveries get` or a bounded `im deliveries wait`. Only sent confirms platform acceptance; it does not prove that a human read it. A wait timeout leaves the original delivery running.
 

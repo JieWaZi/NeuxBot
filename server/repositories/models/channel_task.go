@@ -21,6 +21,8 @@ type ChannelTask struct {
 	Description string `gorm:"column:description;type:text;not null" json:"description"`
 	// DirectInput 是显式 @ 成员时需要原样交付的完整输入；负责人任务工具创建时为空。
 	DirectInput *workinput.Input `gorm:"column:direct_input;type:text;serializer:json" json:"-"`
+	// IMReplyLinkID 是任务当前派发的原 IM 会话标识，显式重试按发起回合重新绑定。
+	IMReplyLinkID string `json:"-"`
 	// DeferUntilLeadIdle 表示负责人规划回合尚未结束，调度器不得提前启动该任务。
 	DeferUntilLeadIdle bool `gorm:"column:defer_until_lead_idle;not null;default:false;index" json:"-"`
 	// DelegationSentAt 是本次首次派发、重试或改派意图持久化时的 Unix 毫秒时间，不随等待接纳更新。
@@ -81,6 +83,8 @@ type ChannelTaskAttempt struct {
 	ChatID string `gorm:"column:chat_id;type:varchar(32);not null;index" json:"chatId"`
 	// ExecutionID 是执行接纳后关联的 Chat Execution 标识。
 	ExecutionID string `gorm:"column:execution_id;type:varchar(32);not null;default:'';uniqueIndex:idx_channel_task_attempt_execution,where:execution_id <> ''" json:"executionId,omitempty"`
+	// IMReplyLinkID 是领取尝试时冻结的原 IM 会话标识。
+	IMReplyLinkID string `json:"-"`
 	// AssigneeWakerID 是本次尝试实际使用的执行伙伴标识。
 	AssigneeWakerID string `gorm:"column:assignee_waker_id;type:varchar(32);not null" json:"assigneeWakerId"`
 	// Fence 是本次尝试提交最终结果必须匹配的围栏值。

@@ -6,7 +6,10 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type * as SDK from "@/shared/api/generated/sdk.gen";
 import "@/shared/i18n";
-import { ConnectionDialog } from "./connection-dialog";
+import {
+  ConnectionConfigurationForm,
+  ConnectionDialog,
+} from "./connection-dialog";
 import type { IMPlatform } from "../types";
 
 const api = vi.hoisted(() => ({
@@ -98,25 +101,28 @@ function show(
     <StrictMode>
       <QueryClientProvider client={client}>
         <MemoryRouter>
-          <ConnectionDialog
-            platform={platform}
-            connection={
-              existing
-                ? {
-                    id: "new",
-                    platform,
-                    appId: "same-account",
-                    enabled: true,
-                    state,
-                    errorCode,
-                    name: "现有连接",
-                    revision: 1,
-                  }
-                : undefined
-            }
-            onClose={vi.fn()}
-            onSaved={vi.fn()}
-          />
+          {existing ? (
+            <ConnectionConfigurationForm
+              connection={{
+                id: "new",
+                platform,
+                appId: "same-account",
+                enabled: true,
+                state,
+                errorCode,
+                name: "现有连接",
+                revision: 1,
+              }}
+              onClose={vi.fn()}
+              onSaved={vi.fn()}
+            />
+          ) : (
+            <ConnectionDialog
+              platform={platform}
+              onClose={vi.fn()}
+              onSaved={vi.fn()}
+            />
+          )}
         </MemoryRouter>
       </QueryClientProvider>
     </StrictMode>,
@@ -230,57 +236,17 @@ for (const platform of ["weixin", "feishu", "wecom"] as const) {
     });
   });
 }
-it("已有聊天配置的连接合并保存名称与聊天设置", async () => {
+it.each(["approved", "pending"])("聊天 %s 时只保存连接名称", async (state) => {
   api.bindings.mockResolvedValue({
     data: {
       resources: [
-        {
-          id: "binding",
-          connectionId: "new",
-          name: "测试群",
-          state: "approved",
-          channelId: "team",
-          revision: 4,
-        },
+        { id: "binding", connectionId: "new", name: "测试群", state },
       ],
       totalSize: 1,
     },
   });
   const user = userEvent.setup();
   show("weixin", true);
-  await screen.findByText("测试群");
-  const name = screen.getByLabelText(/名称/);
-  await user.clear(name);
-  await user.type(name, "团队机器人");
-  await user.click(screen.getByRole("button", { name: "保存" }));
-  await waitFor(() => expect(api.bindingUpdate).toHaveBeenCalledTimes(1));
-  expect(api.update.mock.calls[0]?.[0]).toMatchObject({
-    body: { name: "团队机器人" },
-  });
-  expect(api.bindingUpdate.mock.calls[0]?.[0]).toMatchObject({
-    path: { bindingId: "binding" },
-    body: { channelId: "team", revision: 4 },
-  });
-});
-
-it("待授权聊天可单独修改连接名称，不要求配置伙伴或批准聊天", async () => {
-  api.bindings.mockResolvedValue({
-    data: {
-      resources: [
-        {
-          id: "binding",
-          connectionId: "new",
-          name: "待授权聊天",
-          state: "pending",
-          revision: 1,
-        },
-      ],
-      totalSize: 1,
-    },
-  });
-  const user = userEvent.setup();
-  show("feishu", true);
-  await screen.findByText("待授权聊天");
   const name = screen.getByLabelText(/名称/);
   await user.clear(name);
   await user.type(name, "独立连接名称");
@@ -289,6 +255,7 @@ it("待授权聊天可单独修改连接名称，不要求配置伙伴或批准�
   expect(api.update.mock.calls[0]?.[0]).toMatchObject({
     body: { name: "独立连接名称" },
   });
+  expect(api.bindings).not.toHaveBeenCalled();
   expect(api.bindingUpdate).not.toHaveBeenCalled();
 });
 
@@ -404,8 +371,10 @@ it("企业微信可切换手工凭据，Bot ID 与 Secret 映射到现有接口�
 it("已有企业微信机器人维护密钥时固定身份并保存轮换密钥", async () => {
   const user = userEvent.setup();
   show("wecom", true);
-  expect(screen.getByLabelText(/Bot ID/)).toBeDisabled();
-  expect(screen.getByLabelText(/Bot ID/)).toHaveValue("same-account");
+  expect(screen.getByText("same-account")).toBeVisible();
+  expect(
+    screen.queryByRole("textbox", { name: "Bot ID" }),
+  ).not.toBeInTheDocument();
   expect(screen.getByLabelText(/机器人密钥/)).not.toBeRequired();
   expect(api.start).not.toHaveBeenCalled();
   await user.type(screen.getByLabelText(/机器人密钥/), "rotated-secret");
@@ -498,8 +467,10 @@ it("企业微信密钥保存失败保留输入，就近提示并可重试", asyn
 
 it("企业微信授权失效时默认维护当前机器人凭据，扫码由明确入口触发", async () => {
   show("wecom", true, "login_required");
-  expect(screen.getByLabelText(/Bot ID/)).toHaveValue("same-account");
-  expect(screen.getByLabelText(/Bot ID/)).toBeDisabled();
+  expect(screen.getByText("same-account")).toBeVisible();
+  expect(
+    screen.queryByRole("textbox", { name: "Bot ID" }),
+  ).not.toBeInTheDocument();
   expect(screen.queryByTitle("扫码连接")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "返回扫码接入" })).toBeEnabled();
   expect(api.start).not.toHaveBeenCalled();
@@ -526,33 +497,17 @@ it("企业微信切换手工模式后取消只保存名称，不提交未完成�
   });
 });
 
-for (const [state, errorCode] of [
+it.each([
   ["failed", "IMConnectionReplaced"],
   ["login_required", "IMLoginRequired"],
-] as const) {
-  it(`企业微信已有聊天在 ${errorCode} 后直接保存会恢复连接并保留凭据`, async () => {
-    api.bindings.mockResolvedValue({
-      data: {
-        resources: [
-          {
-            id: "binding",
-            connectionId: "new",
-            name: "研发群",
-            state: "approved",
-            channelId: "team",
-            revision: 4,
-          },
-        ],
-        totalSize: 1,
-      },
-    });
+] as const)(
+  "企业微信连接为 %s 时直接保存可复用原凭据",
+  async (state, errorCode) => {
     const user = userEvent.setup();
     show("wecom", true, state, errorCode);
-    await screen.findByText("研发群");
     expect(screen.getByLabelText(/机器人密钥/)).toHaveValue("");
     await user.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(api.bindingUpdate).toHaveBeenCalledTimes(1));
-    expect(api.update).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(api.update).toHaveBeenCalledTimes(1));
     expect(api.update.mock.calls[0]?.[0]).toMatchObject({
       path: { connectionId: "new" },
       body: {
@@ -563,59 +518,13 @@ for (const [state, errorCode] of [
       },
     });
     expect(api.start).not.toHaveBeenCalled();
-    expect(api.update.mock.invocationCallOrder[0]).toBeLessThan(
-      api.bindingUpdate.mock.invocationCallOrder[0] || 0,
-    );
-  });
-}
+    expect(api.bindingUpdate).not.toHaveBeenCalled();
+  },
+);
 
-it("企业微信待授权聊天恢复连接时不隐式批准聊天", async () => {
-  api.bindings.mockResolvedValue({
-    data: {
-      resources: [
-        {
-          id: "binding",
-          connectionId: "new",
-          name: "待授权私聊",
-          state: "pending",
-          revision: 4,
-        },
-      ],
-      totalSize: 1,
-    },
-  });
-  const user = userEvent.setup();
-  show("wecom", true, "failed", "IMConnectionReplaced");
-  await screen.findByText("待授权私聊");
-  await user.click(screen.getByRole("button", { name: "保存" }));
-  await waitFor(() => expect(api.update).toHaveBeenCalledTimes(1));
-  expect(api.update.mock.calls[0]?.[0]).toMatchObject({
-    body: { appId: "same-account", appSecret: "", enabled: true },
-  });
-  expect(api.bindingUpdate).not.toHaveBeenCalled();
-});
-
-it("企业微信正常连接已有聊天仅保存原聊天配置，不意外重连", async () => {
-  api.bindings.mockResolvedValue({
-    data: {
-      resources: [
-        {
-          id: "binding",
-          connectionId: "new",
-          name: "研发群",
-          state: "approved",
-          channelId: "team",
-          revision: 4,
-        },
-      ],
-      totalSize: 1,
-    },
-  });
-  const user = userEvent.setup();
+it("已有企业微信正常连接未编辑时不提交或重新登录", () => {
   show("wecom", true);
-  await screen.findByText("研发群");
-  await user.click(screen.getByRole("button", { name: "保存" }));
-  await waitFor(() => expect(api.bindingUpdate).toHaveBeenCalledTimes(1));
+  expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
   expect(api.update).not.toHaveBeenCalled();
   expect(api.start).not.toHaveBeenCalled();
 });

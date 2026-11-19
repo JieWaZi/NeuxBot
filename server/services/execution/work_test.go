@@ -917,6 +917,46 @@ func TestIntegrationAutomaticTaskExecutionProvenanceSurvivesJournalReplay(t *tes
 	waitForChatTerminal(t, manager, accepted.Chat.ID)
 }
 
+func TestIMReplyLinkSurvivesAdmissionAndJournalReplay(t *testing.T) {
+	manager := newMessageTestService(t, t.TempDir())
+	ctx := t.Context()
+	intent := WorkIntent{
+		ClientRequestID: "im-link-origin",
+		ExecutionID:     util.New(),
+		Chat:            ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}},
+		Input:           WorkInput{Actor: "user", Content: "Prepare the report", IMReplyLinkID: "original-im-link"},
+		Options:         WorkOptions{RuntimeID: agent.RuntimeIDCodex, PermissionLevel: agent.PermissionLevelAuto},
+		Admission:       constants.ExecutionAdmissionCommitBeforeDispatch,
+	}
+	blocked := intent
+	blocked.AdmissionBoundary = func(context.Context, func(context.Context) error) error {
+		return status_error.IMChatNotAuthorized
+	}
+	if _, err := manager.execution.Start(ctx, blocked); !errors.Is(err, status_error.IMChatNotAuthorized) {
+		t.Fatalf("revoked work was admitted: %v", err)
+	}
+	accepted, err := manager.execution.Start(ctx, intent)
+	if err != nil || accepted.Execution.IMReplyLinkID != intent.Input.IMReplyLinkID {
+		t.Fatalf("accepted execution lost original link: %+v, %v", accepted.Execution, err)
+	}
+	waitForChatTerminal(t, manager, accepted.Chat.ID)
+	chats := manager.chats.(chatservice.Module)
+	stored, err := chats.ReadExecution(ctx, accepted.Chat.ID, accepted.Execution.ID)
+	if err != nil || stored.IMReplyLinkID != intent.Input.IMReplyLinkID {
+		t.Fatalf("journal lost original link: %+v, %v", stored, err)
+	}
+	changed := intent
+	changed.Input.IMReplyLinkID = "another-im-link"
+	if _, err := manager.execution.Start(ctx, changed); !errors.Is(err, status_error.CreateRequestConflict) {
+		t.Fatalf("replay changed the reply destination: %v", err)
+	}
+	continued, err := manager.sendTestMessage(ctx, testMessageInput{ChatID: accepted.Chat.ID, Message: userMessage{Text: "Continue on the desktop"}, Runtime: runtimeSelection{RuntimeID: agent.RuntimeIDCodex}})
+	if err != nil || continued.Execution.IMReplyLinkID != "" {
+		t.Fatalf("desktop continuation gained an IM destination: %+v, %v", continued.Execution, err)
+	}
+	waitForChatTerminal(t, manager, accepted.Chat.ID)
+}
+
 // nativeFixtureEnvironmentReader replaces only the external process; model and permission
 // snapshots are still supplied by the test exercising product validation.
 type nativeFixtureEnvironmentReader struct {
@@ -988,6 +1028,8 @@ type recordedRun struct {
 	Connectors []agent.ConnectorDeclaration
 	// Message 是本轮业务输入。
 	Message agent.Message
+	// CLIContextFile 是宿主供原生进程读取的能力连接路径。
+	CLIContextFile string
 	// ContextInstructions 是本轮明确上下文。
 	ContextInstructions []agent.Instruction
 	// SelectedSkills 是用户明确引用的技能名称。
@@ -999,7 +1041,9 @@ type recordedRun struct {
 }
 
 func (r recordedRun) thread() agent.ThreadRequest {
-	return nativeThreadRequest("chat", r.Workspace, r.Instructions, pendingMessage{runtime: r.Runtime}, models.RuntimeEnvironment{Detection: r.Detection}, agent.ResourceSelection{}, "")
+	thread := nativeThreadRequest("chat", r.Workspace, r.Instructions, pendingMessage{runtime: r.Runtime}, models.RuntimeEnvironment{Detection: r.Detection}, agent.ResourceSelection{}, "")
+	thread.Connection.Launch.BotCLIContextFile = r.CLIContextFile
+	return thread
 }
 func (r recordedRun) prompt() string {
 	return nativeTurnPrompt(r.Message, r.ContextInstructions, r.SelectedSkills, r.SelectedConnectors)
@@ -1009,7 +1053,9 @@ func (r recordedRun) turnRequest(id string, detection agent.DetectionResult) (ag
 }
 func (r *recordedRun) prepare(m *service, chat models.Chat, id string, capabilities []ToolCapability, domains *[]string, paths []string) (func(), func(), error) {
 	r.Runtime.WorkspaceReadOnly = r.ReadOnly
-	return m.prepareAgent(context.Background(), models.RuntimeEnvironment{Detection: r.Detection}, r.Workspace, &r.Skills, &r.Instructions, &r.Connectors, &r.ContextInstructions, chat, id, pendingMessage{runtime: r.Runtime, toolCapabilities: capabilities, allowedAgentDomains: domains}, paths)
+	grant, err := m.prepareAgent(context.Background(), models.RuntimeEnvironment{Detection: r.Detection}, r.Workspace, &r.Skills, &r.Instructions, &r.Connectors, &r.ContextInstructions, chat, id, pendingMessage{runtime: r.Runtime, toolCapabilities: capabilities, allowedAgentDomains: domains}, paths)
+	r.CLIContextFile = grant.cliContextFile
+	return grant.activate, grant.finish, err
 }
 func recordBusinessInputs(m *service, state messageChat, request pendingMessage, files *preparedMessageFiles, skills []models.SkillWithState, connectors []models.MCPConnector, environment models.RuntimeEnvironment) recordedRun {
 	r := recordedRun{Runtime: request.runtime, Detection: environment.Detection, Workspace: nativeWorkspace(state, request, files), Instructions: nativeInstructions(request, files), Skills: m.nativeSkills(skills), Connectors: runtimeConnectorDeclarations(connectors), Message: nativeMessage(request, files), ContextInstructions: nativeContextInstructions(request, files), SelectedSkills: selectedSkillNames(request, skills), SelectedConnectors: request.message.ConnectorIDs}

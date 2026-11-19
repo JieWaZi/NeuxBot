@@ -11,6 +11,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/internal/teamwork"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
@@ -238,7 +239,7 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 	}
 	content := run.Configuration.Instruction
 	if input != "" {
-		content += "\n\n本次调用附加要求：\n" + input
+		content += "\n\nAdditional requirements for this invocation:\n" + input
 	}
 	var accepted execution.AcceptedExecution
 	var startErr error
@@ -250,6 +251,9 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 		ctx = locked
 		defer release()
 		accepted, run.ThreadID, startErr = s.startTeam(ctx, run, content)
+		if run.ThreadID != "" || util.HasStatusCode(startErr, status_error.CreateRequestInProgress) {
+			s.pendingTeamRuns[run.ID] = struct{}{}
+		}
 	} else {
 		intent := execution.WorkIntent{
 			AutomaticRunID: run.ID, ClientRequestID: run.ID, ExecutionID: run.ExecutionID, Admission: constants.ExecutionAdmissionCommitBeforeDispatch,
@@ -274,6 +278,10 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 			return RunView{}, err
 		}
 		if run.Admission != constants.AutomaticRunAdmissionAccepted {
+			if run.Configuration.ChannelID != "" && util.HasStatusCode(startErr, status_error.CreateRequestInProgress) {
+				// 保留原机会和执行标识，团队首发发布后由调度恢复完成关联。
+				return RunView{}, startErr
+			}
 			if ctx.Err() != nil {
 				// 未知取消保留 pending，只有显式同键请求可以接续。
 				_ = s.config.Tasks.ReleaseRun(context.WithoutCancel(ctx), task.ID, run.ID)
@@ -294,6 +302,7 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 	if source == constants.AutomaticRunSourceAPI && !exists {
 		s.rates[task.ID] = append(s.rates[task.ID], now)
 	}
+	delete(s.pendingTeamRuns, run.ID)
 	return s.ReadRun(ctx, run)
 }
 
@@ -390,7 +399,7 @@ func (s *Service) startTeam(ctx context.Context, run models.AutomaticRun, conten
 	thread := result.Thread.Thread
 	state, err := s.config.Chats.ReadInitialExecution(ctx, thread.LeadChatID)
 	if err != nil {
-		return execution.AcceptedExecution{}, "", err
+		return execution.AcceptedExecution{}, thread.ID, err
 	}
 	if state.InitialExecution == nil || state.InitialExecution.ID != run.ExecutionID {
 		return execution.AcceptedExecution{}, "", status_error.AutomaticTaskServiceInvalid
@@ -398,17 +407,30 @@ func (s *Service) startTeam(ctx context.Context, run models.AutomaticRun, conten
 	return execution.AcceptedExecution{Chat: state.Chat, Execution: *state.InitialExecution}, thread.ID, nil
 }
 
-// reconcileTeam 在响应丢失或重启后通过团队首发身份寻找已就绪的权威会话。
+// reconcileTeam 通过原机会寻找团队首发，发布补偿由团队服务核验原 Chat 收据后完成。
 func (s *Service) reconcileTeam(ctx context.Context, run *models.AutomaticRun) error {
 	thread, exists, err := s.config.Threads.GetByClientRequestID(ctx, run.Configuration.ChannelID, run.ID)
-	if err != nil || !exists || thread.ReadyAt == nil {
+	if err != nil || !exists {
 		return err
+	}
+	if thread.AutomaticRunID != run.ID {
+		return status_error.AutomaticTaskServiceInvalid
+	}
+	if thread.ReadyAt == nil {
+		thread, err = s.config.Teams.ReconcileThreadPublication(ctx, thread.ID)
+		if util.HasStatusCode(err, status_error.CreateRequestInProgress) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
 	}
 	state, err := s.config.Chats.ReadInitialExecution(ctx, thread.LeadChatID)
 	if err != nil {
 		return err
 	}
-	if state.InitialExecution == nil || state.InitialExecution.ID != run.ExecutionID {
+	if state.InitialExecution == nil || state.InitialExecution.ID != run.ExecutionID ||
+		state.InitialExecution.AutomaticRunID != run.ID {
 		return status_error.AutomaticTaskServiceInvalid
 	}
 	run.ThreadID = thread.ID
@@ -417,6 +439,31 @@ func (s *Service) reconcileTeam(ctx context.Context, run *models.AutomaticRun) e
 	run.Admission = constants.AutomaticRunAdmissionAccepted
 	run.UpdatedAt = s.config.Now().UnixMilli()
 	return s.config.Tasks.UpdateRunAdmission(ctx, *run)
+}
+
+// reconcilePendingTeamRuns 在原调度扫描中对账未完成发布的已派发团队机会。
+func (s *Service) reconcilePendingTeamRuns(ctx context.Context) {
+	for runID := range s.pendingTeamRuns {
+		if ctx.Err() != nil {
+			return
+		}
+		run, err := s.config.Tasks.GetRun(ctx, runID)
+		if util.HasStatusCode(err, status_error.AutomaticRunNotFound) {
+			delete(s.pendingTeamRuns, runID)
+			continue
+		}
+		if err == nil {
+			err = s.ReconcileRun(ctx, &run)
+		}
+		if err == nil && run.Admission == constants.AutomaticRunAdmissionAccepted {
+			err = s.releaseFinishedSlot(ctx, run)
+		}
+		if err != nil {
+			logx.Warnf("reconcile pending automatic team run failed: run_id=%s error_code=%s", runID, util.ErrorCode(err, status_error.AutomaticTaskServiceInvalid.Key()))
+		} else if run.Admission != constants.AutomaticRunAdmissionPending {
+			delete(s.pendingTeamRuns, runID)
+		}
+	}
 }
 
 // teamRunView 保留团队全部成员的忙碌、审批和验收状态，负责人结束规划不代表运行完成。
@@ -716,12 +763,17 @@ func (s *Service) refreshSlot(ctx context.Context, task models.AutomaticTask) er
 	if err := s.ReconcileRun(ctx, &run); err != nil {
 		return err
 	}
+	return s.releaseFinishedSlot(ctx, run)
+}
+
+// releaseFinishedSlot 检查已对账运行的整体状态，并释放仍由它占用的运行槽。
+func (s *Service) releaseFinishedSlot(ctx context.Context, run models.AutomaticRun) error {
 	view, err := s.ReadRun(ctx, run)
 	if err != nil {
 		return err
 	}
 	if !Unfinished(view.State) {
-		return s.config.Tasks.ReleaseRun(ctx, task.ID, run.ID)
+		return s.config.Tasks.ReleaseRun(ctx, run.TaskID, run.ID)
 	}
 	return nil
 }

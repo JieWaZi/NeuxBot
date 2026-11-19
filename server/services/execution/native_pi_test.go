@@ -154,8 +154,8 @@ func assertNativePiProductWire(t *testing.T, trace, sessionID string) {
 			instructions = append(instructions, digest)
 		case "prompt":
 			message, _ := record["message"].(string)
-			if nativeFixtureOutputDirectory(message) == "" {
-				t.Fatalf("Pi prompt lost persistent space directory: %s", message)
+			if strings.Contains(message, "<neuxbot-turn-context>") {
+				t.Fatalf("plain Pi prompt included host instructions: %s", message)
 			}
 			prompts = append(prompts, nativeFixtureBusinessText(message))
 		case "set_thinking_level":

@@ -27,9 +27,10 @@ func (mcpWriter) Close() error { return nil }
 
 func (r *runner) mcpCommand() *cobra.Command {
 	root := &cobra.Command{Use: "mcp", Short: "Expose the current execution's capabilities over MCP"}
-	root.AddCommand(&cobra.Command{Use: "serve", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	var contextFile string
+	serve := &cobra.Command{Use: "serve", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		r.entered = true
-		server, err := newMCPServer(cmd.Context(), r.contextFile)
+		server, err := newMCPServer(cmd.Context(), contextFile)
 		if err != nil {
 			return err
 		}
@@ -41,11 +42,13 @@ func (r *runner) mcpCommand() *cobra.Command {
 			return status_error.AgentConnectionUnavailable
 		}
 		return nil
-	}})
+	}}
+	serve.Flags().StringVar(&contextFile, "context", "", "Use the host-provided MCP connection file")
+	root.AddCommand(serve)
 	return root
 }
 
-// newMCPServer freezes the session entry point and tool catalog; each call reads the current grant once and never retries with changed credentials.
+// newMCPServer binds the resident host connection and its tool catalog once.
 func newMCPServer(ctx context.Context, path string) (*mcp.Server, error) {
 	connection, err := capability.ReadConnection(path)
 	if err != nil {
@@ -66,17 +69,6 @@ func newMCPServer(ctx context.Context, path string) (*mcp.Server, error) {
 	encoded, err := json.Marshal(response.Data)
 	if err != nil || json.Unmarshal(encoded, &available) != nil {
 		return nil, status_error.AgentConnectionUnavailable
-	}
-	// Warm native sessions retain the bridge process; grants rotate at the same path without transferring authorization across Core instances or entry points.
-	requestCurrent := func(ctx context.Context, method, route string, payload any, mutation bool, timeout time.Duration) (capability.Response, error) {
-		current, err := capability.ReadConnection(path)
-		if err != nil {
-			return capability.Response{}, err
-		}
-		if current.Endpoint != connection.Endpoint || current.CoreEpoch != connection.CoreEpoch {
-			return capability.Response{}, status_error.AgentContextUnauthorized
-		}
-		return (client{connection: current}).request(ctx, method, route, payload, mutation, timeout)
 	}
 	server := mcp.NewServer(&mcp.Implementation{Name: "NeuxBot", Version: constants.ApplicationVersion}, nil)
 	for _, entry := range available.Operations {
@@ -112,7 +104,7 @@ func newMCPServer(ctx context.Context, path string) (*mcp.Server, error) {
 				}
 				input.CWD = cwd
 			}
-			result, err := requestCurrent(ctx, http.MethodPost, "/commands", input, mutation, 65*time.Second)
+			result, err := bound.request(ctx, http.MethodPost, "/commands", input, mutation, 65*time.Second)
 			if err != nil {
 				result = capability.ErrorResponse(op.ID, err)
 			}
@@ -148,7 +140,7 @@ func newMCPServer(ctx context.Context, path string) (*mcp.Server, error) {
 			if json.Unmarshal(raw, &params) != nil || params == nil || op.Validate(params) != nil {
 				return mcpResponse(capability.ErrorResponse(entry.name, status_error.AgentInputInvalid)), nil
 			}
-			result, err := requestCurrent(ctx, http.MethodGet, entry.path(params), nil, false, 35*time.Second)
+			result, err := bound.request(ctx, http.MethodGet, entry.path(params), nil, false, 35*time.Second)
 			if err != nil {
 				result = capability.ErrorResponse(entry.name, err)
 			}

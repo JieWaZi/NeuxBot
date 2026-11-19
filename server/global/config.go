@@ -570,10 +570,11 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		hub.Publish(events.Event{Topic: "usage", Type: "usage.changed", Resource: events.Resource{Kind: "global"}})
 	}
 	chatModule, err := chat.New(chat.Config{
-		StorageDirectory:  configuration.ManagedFilesDirectory,
-		Conversations:     conversations,
-		Projects:          ProjectControllerManager,
-		CloseNativeThread: threads.CloseThread,
+		StorageDirectory:     configuration.ManagedFilesDirectory,
+		Conversations:        conversations,
+		Projects:             ProjectControllerManager,
+		CloseNativeThread:    threads.CloseThread,
+		PreserveIMAdmissions: IMControllerManager.PreserveInboxAdmissions,
 		ResetUsageProjection: func(ctx context.Context) error {
 			if err := usageProjection.ResetProjection(ctx); err != nil {
 				return err
@@ -633,7 +634,7 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		Agent: AgentCapabilities, Events: EventHub,
 		AgentEndpoint: "http://127.0.0.1:" + strconv.Itoa(configuration.Server.Port) + constants.AgentCLIPath,
 		AgentBinary:   agentBinaryPath(),
-		AgentBindings: func(chat models.Chat, executionID string, roots []string, automaticRunID string) []capability.Binding {
+		AgentBindings: func(chat models.Chat, executionID string, roots []string, automaticRunID, imReplyLinkID string) []capability.Binding {
 			bindings := MemoryService.AgentBindings(memory.Context{RunID: executionID, ChatID: chat.ID, PartnerID: chat.WakerID, ProjectID: chat.ProjectID})
 			if KnowledgeService != nil {
 				knowledgeChat := chat
@@ -645,7 +646,7 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 				}
 			}
 			if IMService != nil {
-				bindings = append(bindings, IMService.AgentBindings(chat, executionID, roots, EventHub)...)
+				bindings = append(bindings, IMService.AgentBindings(chat, executionID, roots, EventHub, imReplyLinkID)...)
 			}
 			return bindings
 		},
@@ -680,9 +681,13 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 	if err := ExecutionService.Open(ctx); err != nil {
 		return mapCoreError("open_execution_service", status_error.CoreChatInitializationFailed, err)
 	}
+	var imModule *imservice.Service
 	channelModule, err := channelservice.New(channelservice.Config{
 		AutomaticRun: AutomaticTaskControllerManager.GetRun,
 		Commands:     controllers.NewAgentCommandController(DB),
+		RecordIMLeadInputFailure: func(ctx context.Context, thread models.ChannelThread, input models.ChannelLeadInput, code string) error {
+			return imModule.RecordTeamLeadInputFailure(ctx, thread, input, code)
+		},
 
 		BeforeUserInput: func(ctx context.Context, threadID string) error {
 			if ScheduleService == nil {
@@ -707,10 +712,11 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		)
 	}
 	ChannelService = channelModule
+	imModule = imservice.New(imservice.Config{Events: EventHub, Store: IMControllerManager, Transactions: TransactionControllerManager, Executions: ExecutionService, Chats: ChatService, Teams: ChannelService, Channels: ChannelControllerManager, Threads: ChannelThreadControllerManager, TeamTasks: ChannelTaskControllerManager, DataDirectory: configuration.ManagedFilesDirectory})
+	IMService = imModule
 	if err := ChannelService.Start(ctx); err != nil {
 		return mapCoreError("start_channel_service", status_error.CoreChannelInitializationFailed, err)
 	}
-	IMService = imservice.New(imservice.Config{Events: EventHub, Store: IMControllerManager, Transactions: TransactionControllerManager, Executions: ExecutionService, Chats: ChatService, Teams: ChannelService, Channels: ChannelControllerManager, Threads: ChannelThreadControllerManager, TeamTasks: ChannelTaskControllerManager, DataDirectory: configuration.ManagedFilesDirectory})
 	WorkflowState = workflowstate.New(WorkflowControllerManager, WorkflowRunControllerManager, TransactionControllerManager)
 	WorkflowService = workflow.New(workflow.Config{
 		RepairOutput: repairWorkflowOutput,

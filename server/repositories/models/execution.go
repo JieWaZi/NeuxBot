@@ -11,6 +11,8 @@ import (
 type Execution struct {
 	// AutomaticRunID 是原自动运行的受信来源，不由模型或任务正文提供。
 	AutomaticRunID string `json:"automaticRunId,omitempty"`
+	// IMReplyLinkID 是本次接纳冻结的原 IM 会话标识，仅供宿主投递。
+	IMReplyLinkID string `json:"-"`
 	// SubmissionID 是入口无关的稳定输入身份，写入同一权威执行事实。
 	SubmissionID string `json:"submissionId,omitempty"`
 	// SubmissionHash 只用于服务端同键异内容校验；耐久摘要由 JSONL 执行事实单独保存，不向外序列化。

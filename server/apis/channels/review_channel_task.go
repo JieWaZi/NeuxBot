@@ -135,17 +135,23 @@ func (r *ReviewChannelTask) Output(ctx *gin.Context) (interface{}, error) {
 			return updateErr
 		}
 		if current.AssigneeWakerID != thread.LeadWakerID {
+			// 验收完成的是原尝试，结果沿用该尝试冻结的对话归属。
+			attempt, err := global.ChannelTaskControllerManager.GetCurrentAttempt(transactionContext, current.ID, current.CurrentFence)
+			if err != nil {
+				return err
+			}
 			if createErr := global.ChannelTaskControllerManager.CreateNotification(
 				transactionContext,
 				models.ChannelLeadNotification{
-					ID:        util.New(),
-					ThreadID:  thread.ID,
-					TaskID:    current.ID,
-					AttemptID: reviewNotificationAttemptID(current.ID, current.CurrentFence),
-					Status:    constants.ChannelNotificationStatusPending,
-					Payload:   current.Result,
-					CreatedAt: now,
-					UpdatedAt: now,
+					ID:            util.New(),
+					ThreadID:      thread.ID,
+					TaskID:        current.ID,
+					AttemptID:     reviewNotificationAttemptID(current.ID, current.CurrentFence),
+					IMReplyLinkID: attempt.IMReplyLinkID,
+					Status:        constants.ChannelNotificationStatusPending,
+					Payload:       current.Result,
+					CreatedAt:     now,
+					UpdatedAt:     now,
 				},
 			); createErr != nil {
 				return createErr

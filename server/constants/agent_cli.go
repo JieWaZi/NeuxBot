@@ -7,8 +7,24 @@ const (
 	AgentCLIPath = "/agent/v1"
 	// AgentCLIMCPCatalogPath 只向待接纳或已接纳的授权上下文发布固定工具目录。
 	AgentCLIMCPCatalogPath = "/mcp/catalog"
+	// AgentCLIExecutionPath 返回常驻连接当前接纳的执行标识，用于固定外部操作归属。
+	AgentCLIExecutionPath = "/execution"
+	// AgentCLIExecutionHeader 携带外部操作发起时由宿主返回的执行标识。
+	AgentCLIExecutionHeader = "X-NeuxBot-Execution-ID"
 	// AgentCLIBinaryEnvironment 允许应用装配明确提供受管 CLI 的实际路径。
 	AgentCLIBinaryEnvironment = "BOTCLI_BINARY_PATH"
+	// AgentCLIContextEnvironment 是宿主交给原生进程的能力连接文件路径。
+	AgentCLIContextEnvironment = "BOTCLI_CONTEXT_FILE"
+	// AgentCLICodexThreadEnvironment 是 Codex 为实际 Shell 调用提供的原生线程标识。
+	AgentCLICodexThreadEnvironment = "CODEX_THREAD_ID"
+	// AgentCLIContextDirectory 在 Core 数据根内保存受管连接。
+	AgentCLIContextDirectory = "agent-contexts"
+	// AgentCLISystemSkillsDirectory 在 Core 数据根内保存随版本发布的不可变系统技能。
+	AgentCLISystemSkillsDirectory = "system-skills"
+	// AgentCLISkillScriptsDirectory 是系统技能中的可执行文件目录。
+	AgentCLISkillScriptsDirectory = "scripts"
+	// AgentCLIBinaryName 是系统技能中受管命令的可执行文件基础名称。
+	AgentCLIBinaryName = "botcli"
 	// AgentCLIRequestMaximumBytes 限制普通命令载荷与连接响应。
 	AgentCLIRequestMaximumBytes = 4 << 20
 	// AgentCLIContextMaximumBytes 限制本机连接文件，避免读取任意大文件。

@@ -77,6 +77,63 @@ func TestGrantActivationScopeAndRevocation(t *testing.T) {
 	}
 }
 
+func TestResidentConnectionsKeepConcurrentChatScopesSeparate(t *testing.T) {
+	registry := New(nil)
+	defer registry.Close()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpoint := "http://127.0.0.1:18080" + constants.AgentCLIPath
+	open := func(chat, operation, allowedFile string) (Connection, func()) {
+		t.Helper()
+		path, activate, finish, err := registry.PrepareConnection(root, chat, endpoint, GrantSpec{
+			ExecutionID: chat,
+			FilePaths:   []string{allowedFile},
+			Bindings: []Binding{{Operation: operation, Call: func(ctx context.Context, _ Request) (Result, error) {
+				return Result{Data: map[string]any{"files": FilePaths(ctx)}}, nil
+			}}},
+			Validate: func(context.Context) error { return nil },
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		connection, err := ReadConnection(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		activate()
+		return connection, finish
+	}
+	first, finishFirst := open("first-chat", "workflow.source.get", "first-file")
+	defer finishFirst()
+	second, finishSecond := open("second-chat", "im.targets.list", "second-file")
+	defer finishSecond()
+	if first.Token == second.Token {
+		t.Fatal("independent chats shared a credential")
+	}
+	call := func(connection Connection, operation string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodPost, constants.AgentCLIPath+"/commands",
+			strings.NewReader(`{"operation":"`+operation+`","params":{}}`))
+		request.RemoteAddr = "127.0.0.1:12345"
+		request.Header.Set("Authorization", "Bearer "+connection.Token)
+		response := httptest.NewRecorder()
+		registry.ServeHTTP(response, request)
+		return response
+	}
+	if response := call(first, "im.targets.list"); response.Code != http.StatusForbidden {
+		t.Fatalf("first chat accessed second chat's operation: %d", response.Code)
+	}
+	finishFirst()
+	if response := call(first, "workflow.source.get"); response.Code != http.StatusUnauthorized {
+		t.Fatalf("idle chat retained access: %d", response.Code)
+	}
+	if response := call(second, "im.targets.list"); response.Code != http.StatusOK ||
+		!strings.Contains(response.Body.String(), "second-file") || strings.Contains(response.Body.String(), "first-file") {
+		t.Fatalf("second chat lost isolation when the first finished: %d %s", response.Code, response.Body)
+	}
+}
+
 func TestPreparedGrantOnlyExposesMCPToolCatalog(t *testing.T) {
 	registry := New(nil)
 	defer registry.Close()
@@ -156,7 +213,7 @@ func TestCurrentConnectionAndRemoteAddressRejection(t *testing.T) {
 
 func TestInvalidContextRecoveryRequiresHostAuthorization(t *testing.T) {
 	response := ErrorResponse("workflow.source.get", status_error.AgentContextUnauthorized)
-	if response.Error == nil || response.Error.RetryAdvice != "refresh_context" || !strings.Contains(response.Error.Message, "host must provide") || !strings.Contains(response.Error.Message, "Do not retry") {
+	if response.Error == nil || response.Error.RetryAdvice != "refresh_context" || !strings.Contains(response.Error.Message, "host manages the connection") || !strings.Contains(response.Error.Message, "Do not retry") {
 		t.Fatalf("失效上下文缺少明确恢复边界: %+v", response)
 	}
 }

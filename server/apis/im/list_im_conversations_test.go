@@ -39,7 +39,7 @@ func (r conversationLogReader) CountUserMessages(ctx context.Context, chatID str
 	return int64(len(rows)), err
 }
 
-func TestListIMConversationsOmitsDeletedChat(t *testing.T) {
+func TestListIMConversations(t *testing.T) {
 	db, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "im.db"), Migrate: true})
 	if err != nil {
 		t.Fatal(err)
@@ -108,6 +108,56 @@ func TestListIMConversationsOmitsDeletedChat(t *testing.T) {
 		if len(resources) != 1 || resources[0].ID != "valid" {
 			t.Fatalf("resources = %#v; deleted team conversation must not appear", resources)
 		}
+	})
+
+	t.Run("history keeps the original team after rebinding", func(t *testing.T) {
+		teamChatID := "33333333333333333333333333333333"
+		if _, err := conversationfixture.CommitFacts(t.Context(), store, teamChatID, []eventlog.AppendInput{
+			{Type: constants.ChatEventTypeCreated},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.DB.Create(&models.IMBinding{ID: "binding", ChannelID: "current-team"}).Error; err != nil {
+			t.Fatal(err)
+		}
+		readyAt := int64(1)
+		thread := models.ChannelThread{
+			ID: "historical-thread", ChannelID: "historical-team", LeadWakerID: "member", LeadChatID: teamChatID,
+			AdditionalWorkingDirectories: []string{}, ReadyAt: &readyAt,
+		}
+		if err := db.DB.Create(&thread).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.DB.Create(&models.ChannelThreadMember{ThreadID: thread.ID, WakerID: "member", ChatID: teamChatID}).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := controller.SaveLink(ctx, models.IMConversationLink{
+			ID: "historical-link", BindingID: "binding", ThreadID: thread.ID, ChatID: teamChatID,
+			Configuration: models.IMConversationConfiguration{ChannelID: "historical-team"},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		output, err := (&ListIMConversations{BindingID: "binding"}).Output(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		payload, err := json.Marshal(output)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var listing map[string][]map[string]any
+		if err := json.Unmarshal(payload, &listing); err != nil {
+			t.Fatal(err)
+		}
+		for _, resource := range listing["resources"] {
+			if resource["id"] == "historical-link" {
+				if resource["channelId"] != "historical-team" || resource["threadId"] != "historical-thread" {
+					t.Fatalf("historical team route = %v; want historical-team/historical-thread", resource)
+				}
+				return
+			}
+		}
+		t.Fatalf("missing historical team link: %s", payload)
 	})
 
 	t.Run("log failure is not treated as an empty conversation list", func(t *testing.T) {

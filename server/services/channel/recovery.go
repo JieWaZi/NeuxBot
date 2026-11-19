@@ -8,18 +8,101 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/teamwork"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
-// ReconcileThread 推进可调度任务以及负责人耐久输入和结果通知队列。
-func (s *service) ReconcileThread(ctx context.Context, threadID string) error {
-	threadID = strings.TrimSpace(threadID)
-	if threadID == "" {
-		return status_error.BadRequest
+// recoverInitializingThread 补交已接纳的首发。启动或同键重试可回收明确未接纳的计划。
+func (s *service) recoverInitializingThread(ctx context.Context, thread models.ChannelThread, reclaimUnadmitted bool) (models.ChannelThread, error) {
+	locked, release, err := teamwork.Acquire(ctx, thread.ChannelID)
+	if err != nil {
+		return models.ChannelThread{}, err
 	}
-	thread, err := s.threads.Get(ctx, threadID)
+	defer release()
+	ctx = locked
+	thread, err = s.threads.Get(ctx, thread.ID)
+	if reclaimUnadmitted && hasStatusErrorCode(err, status_error.ChannelThreadNotFound.Code()) {
+		return models.ChannelThread{}, nil
+	}
+	if err != nil || thread.ReadyAt != nil {
+		return thread, err
+	}
+	if thread.ProvisioningID == "" {
+		return models.ChannelThread{}, status_error.CreateRequestInProgress
+	}
+	receipt, err := s.readInitialThreadExecution(ctx, thread)
+	if err != nil {
+		return models.ChannelThread{}, err
+	}
+	if receipt == nil {
+		if reclaimUnadmitted {
+			return models.ChannelThread{}, s.reclaimUnadmittedThread(ctx, thread)
+		}
+		return models.ChannelThread{}, status_error.CreateRequestInProgress
+	}
+	terminal := executionTerminal(receipt.Status)
+	if !terminal && !s.executions.IsExecutionActive(thread.LeadChatID, receipt.ID) {
+		// 异常退出留下的活动事实由 Chat 启动恢复收敛，线上没有执行所有者时不重新派发。
+		return models.ChannelThread{}, status_error.CreateRequestInProgress
+	}
+	tasks, err := s.tasks.ListByThread(ctx, thread.ID)
+	if err != nil {
+		return models.ChannelThread{}, err
+	}
+	if err := s.publishInitialThread(context.WithoutCancel(ctx), &thread, receipt.ID, tasks); err != nil {
+		logx.Warnf("recover accepted channel thread pending: thread_id=%s execution_id=%s error=%v", thread.ID, receipt.ID, err)
+		return models.ChannelThread{}, status_error.CreateRequestInProgress
+	}
+	var token string
+	if scope, ok := s.capabilities.Resolve(thread.ID); ok && scope.ExecutionID == receipt.ID {
+		token = scope.LeaseID
+	}
+	if terminal {
+		if token != "" {
+			s.capabilities.Revoke(token)
+		}
+	} else {
+		s.watchLeadExecution(thread, receipt.ID, nil, nil, token)
+	}
+	return thread, nil
+}
+
+// reclaimUnadmittedThread 回收没有首轮接纳记录的团队计划及其可能已建立的成员 Chat。
+func (s *service) reclaimUnadmittedThread(ctx context.Context, thread models.ChannelThread) error {
+	members, err := s.threads.ListMembers(ctx, thread.ID)
 	if err != nil {
 		return err
 	}
+	chatIDs := make([]string, 0, len(members))
+	for _, member := range members {
+		chatIDs = append(chatIDs, member.ChatID)
+		if err := s.executions.CancelAndWait(ctx, member.ChatID); err != nil {
+			return err
+		}
+	}
+	return s.deleteInitializingThread(ctx, thread, chatIDs)
+}
+
+// ReconcileThreadPublication 补齐已接纳的首发，只读取原 Chat 收据和提交团队发布。
+func (s *service) ReconcileThreadPublication(ctx context.Context, threadID string) (models.ChannelThread, error) {
+	threadID = strings.TrimSpace(threadID)
+	if threadID == "" {
+		return models.ChannelThread{}, status_error.BadRequest
+	}
+	thread, err := s.threads.Get(ctx, threadID)
+	if err != nil || thread.ReadyAt != nil {
+		return thread, err
+	}
+	return s.recoverInitializingThread(ctx, thread, false)
+}
+
+// ReconcileThread 补齐已接纳的首发，再推进任务、负责人输入和结果通知队列。
+func (s *service) ReconcileThread(ctx context.Context, threadID string) error {
+	thread, err := s.ReconcileThreadPublication(ctx, threadID)
+	if err != nil {
+		return err
+	}
+	threadID = thread.ID
 	if err := s.ensureThreadWritable(ctx, thread); err != nil {
 		return err
 	}
@@ -30,7 +113,12 @@ func (s *service) ReconcileThread(ctx context.Context, threadID string) error {
 		return err
 	}
 	if _, err := s.drainLeadInputs(ctx, threadID); err != nil {
-		return err
+		if ctx.Err() != nil {
+			return err
+		}
+		logx.Warnf("defer channel lead input recovery: thread_id=%s error=%v", threadID, err)
+		s.watchRecoveryDrain(threadID)
+		return nil
 	}
 	if err := s.drainNotifications(ctx, threadID); err != nil {
 		return err
@@ -39,7 +127,7 @@ func (s *service) ReconcileThread(ctx context.Context, threadID string) error {
 	return nil
 }
 
-// watchRecoveryDrain 在服务重启后持续推进仍被活跃负责人 Chat 阻塞的持久输入与结果队列。
+// watchRecoveryDrain 在启动恢复或即时派发遇到故障后推进已有输入和结果队列。
 func (s *service) watchRecoveryDrain(threadID string) {
 	if threadID == "" {
 		return
@@ -50,17 +138,28 @@ func (s *service) watchRecoveryDrain(threadID string) {
 		return
 	}
 	go func() {
-		defer s.unregisterWatcher(watcherID)
 		ticker := time.NewTicker(
 			time.Duration(constants.ChannelRecoveryPollIntervalMilliseconds) * time.Millisecond,
 		)
 		defer ticker.Stop()
 		for {
-			if s.recoveryQueuesEmpty(threadID) {
+			locked, release, err := s.acquireThreadOperation(watcherContext, threadID)
+			if hasStatusErrorCode(err, status_error.ChannelThreadNotFound.Code()) {
+				s.unregisterWatcher(watcherID)
 				return
+			}
+			if err == nil {
+				if s.recoveryQueuesEmpty(locked, threadID) {
+					// 清空检查与退出登记共享接纳锁，后续入队可以重新启动监听。
+					s.unregisterWatcher(watcherID)
+					release()
+					return
+				}
+				release()
 			}
 			select {
 			case <-watcherContext.Done():
+				s.unregisterWatcher(watcherID)
 				return
 			case <-ticker.C:
 				if err := s.projectPendingMemberReports(watcherContext, threadID); err != nil {
@@ -83,15 +182,18 @@ func (s *service) watchRecoveryDrain(threadID string) {
 }
 
 // recoveryQueuesEmpty 判断重启恢复需要照看的负责人输入和结果队列是否已经进入投递态或完成态。
-func (s *service) recoveryQueuesEmpty(threadID string) bool {
-	thread, err := s.threads.Get(s.lifecycleContext, threadID)
+func (s *service) recoveryQueuesEmpty(ctx context.Context, threadID string) bool {
+	thread, err := s.threads.Get(ctx, threadID)
+	if hasStatusErrorCode(err, status_error.ChannelThreadNotFound.Code()) {
+		return true
+	}
 	if err != nil {
 		return false
 	}
-	if err := s.ensureThreadWritable(s.lifecycleContext, thread); err != nil {
+	if err := s.ensureThreadWritable(ctx, thread); err != nil {
 		return false
 	}
-	tasks, err := s.tasks.ListByThread(s.lifecycleContext, threadID)
+	tasks, err := s.tasks.ListByThread(ctx, threadID)
 	if err != nil {
 		return false
 	}
@@ -101,7 +203,7 @@ func (s *service) recoveryQueuesEmpty(threadID string) bool {
 		}
 	}
 	inputs, err := s.threads.ListLeadInputs(
-		s.lifecycleContext,
+		ctx,
 		threadID,
 		[]constants.ChannelInputStatus{constants.ChannelInputStatusPending},
 		1,
@@ -109,6 +211,6 @@ func (s *service) recoveryQueuesEmpty(threadID string) bool {
 	if err != nil || len(inputs) > 0 {
 		return false
 	}
-	notifications, err := s.tasks.ListPendingNotifications(s.lifecycleContext, threadID, 1)
+	notifications, err := s.tasks.ListPendingNotifications(ctx, threadID, 1)
 	return err == nil && len(notifications) == 0
 }

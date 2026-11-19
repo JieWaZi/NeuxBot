@@ -216,11 +216,13 @@ export function useExecutionSelection({
   value,
   runtime: fixedRuntime,
   enabled = true,
+  loadNativeCatalog = true,
   reasoningDefault,
 }: {
   value: ExecutionSelection;
   runtime?: RuntimeOption;
   enabled?: boolean;
+  loadNativeCatalog?: boolean;
   reasoningDefault?: "minimum";
 }) {
   const queryClient = useQueryClient();
@@ -264,6 +266,7 @@ export function useExecutionSelection({
   const catalogOptions = nativeModelCatalogOptions(catalogIdentity);
   const catalogEnabled = Boolean(
     enabled &&
+    loadNativeCatalog &&
     usesNativeCatalog &&
     runtime?.id &&
     (accountId === "system" || account),

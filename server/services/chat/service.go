@@ -37,6 +37,10 @@ type Service interface {
 	ReadExecutionOutcome(context.Context, string, string) (ExecutionOutcome, error)
 	// ReadExecution 按稳定身份读取任意已接纳回合的权威事实。
 	ReadExecution(context.Context, string, string) (models.Execution, error)
+	// ReadInitialExecution 返回首次执行、所属工作区及当前交互事实，不投影消息正文。
+	ReadInitialExecution(context.Context, string) (InitialExecutionState, error)
+	// ReadSubmission 按原输入身份读取已接纳回执，缺失返回 nil。
+	ReadSubmission(context.Context, string, string) (*models.Execution, error)
 	// ForkChat 事务化复制继承历史，并在原生分叉完成后公开子会话。
 	ForkChat(ctx context.Context, input ForkInput, fork NativeFork) (string, error)
 	// Start 完成权威日志恢复并开始接受新的 Chat 执行。
@@ -93,8 +97,6 @@ type Service interface {
 type Module interface {
 	// InitializeReadingBaseline 建立历史索引，期间不产生新的运行结果。
 	InitializeReadingBaseline(context.Context) error
-	// ReadInitialExecution 返回供入口查询的首次执行及当前交互事实，不投影消息正文。
-	ReadInitialExecution(context.Context, string) (InitialExecutionState, error)
 	// Service 提供 Chat 查询、恢复与元数据用例。
 	Service
 	// Journal 只交给 Execution Core 读写权威事实。
@@ -113,6 +115,8 @@ type service struct {
 	deletionMu sync.Mutex
 	// closeNativeThread 在删除围栏内释放会话拥有的原生连接及租约。
 	closeNativeThread func(context.Context, string) error
+	// preserveIMAdmissions 在清理权威日志前保留已接纳的外部收件事实。
+	preserveIMAdmissions func(context.Context, []models.Execution) error
 	// logStore 持久化每个对话的权威追加日志。
 	logStore chatJournalStorage
 	// eventCommitter 固化 JSONL 提交后的发布和消息位置索引顺序。
@@ -140,6 +144,8 @@ type Config struct {
 	BeforeRecovery func(context.Context, Module) error
 	// CloseNativeThread 在文件暂存前关闭目标会话的原生连接。
 	CloseNativeThread func(context.Context, string) error
+	// PreserveIMAdmissions 以权威回执补齐尚未挂接的 IM 收件。
+	PreserveIMAdmissions func(context.Context, []models.Execution) error
 	// ResetUsageProjection 在权威分片清理后使旧用量投影失效。
 	ResetUsageProjection func(context.Context) error
 	// Conversations 是原生与公开会话共用的权威存储。
@@ -219,13 +225,14 @@ func newService(config Config) (*service, error) {
 	queryIndexes.reading = config.QueryIndexes.Reading
 	queryIndexes.logStore = logStore
 	implementation := &service{
-		storage:           storage,
-		deletions:         deletions,
-		deletionIntents:   config.QueryIndexes.DeletionIntents,
-		closeNativeThread: config.CloseNativeThread,
-		logStore:          logStore,
-		projectController: config.Projects,
-		queryIndexes:      queryIndexes,
+		storage:              storage,
+		deletions:            deletions,
+		deletionIntents:      config.QueryIndexes.DeletionIntents,
+		closeNativeThread:    config.CloseNativeThread,
+		preserveIMAdmissions: config.PreserveIMAdmissions,
+		logStore:             logStore,
+		projectController:    config.Projects,
+		queryIndexes:         queryIndexes,
 		eventCommitter: newEventCommitter(
 			logStore,
 			subscriptions,

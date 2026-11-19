@@ -69,6 +69,8 @@ type postTurnChatFake struct {
 	mutex sync.Mutex
 	// summaries 保存测试中各 Chat 的当前有界摘要。
 	summaries map[string]chatservice.ChatSummary
+	// executions 提供任务工具读取的已接纳执行事实。
+	executions map[string]models.Execution
 	// leadChatID 是负责人主协调 Chat 标识。
 	leadChatID string
 	// leadTerminal 是负责人规划回合的持久终态事件。
@@ -113,6 +115,27 @@ func (f *postTurnChatFake) GetChatSummary(
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
 	return f.summaries[chatID], nil
+}
+
+// ReadExecution 返回指定测试执行的服务端接纳事实。
+func (f *postTurnChatFake) ReadExecution(_ context.Context, chatID, executionID string) (models.Execution, error) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	execution := f.executions[executionID]
+	execution.ID, execution.ChatID = executionID, chatID
+	return execution, nil
+}
+
+// ReadSubmission 寻找测试已提交的原输入收据。
+func (f *postTurnChatFake) ReadSubmission(_ context.Context, chatID, submissionID string) (*models.Execution, error) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	for _, execution := range f.executions {
+		if execution.ChatID == chatID && execution.SubmissionID == submissionID {
+			return &execution, nil
+		}
+	}
+	return nil, nil
 }
 
 // ReadExecutionMessages 返回本轮完整终态消息，其他回合不参与补偿。
@@ -1144,7 +1167,7 @@ func TestRetryDelegationKeepsRequestTimeAcrossBusyAndFailedAdmission(t *testing.
 	}
 	chats.summaries["member-chat"] = chatservice.ChatSummary{Chat: models.Chat{ID: "member-chat", ActiveExecutionID: "busy"}}
 	before := time.Now().UnixMilli()
-	if err := sut.retryTask(ctx, created.Task.ID, "member"); err != nil {
+	if err := sut.retryTask(ctx, created.Task.ID, "member", ""); err != nil {
 		t.Fatal(err)
 	}
 	after := time.Now().UnixMilli()

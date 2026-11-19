@@ -46,8 +46,10 @@ type Service interface {
 	StopTask(ctx context.Context, taskID string) error
 	// StopWork 以可恢复 canceling intent 停止一个团队对话的全部当前工作。
 	StopWork(ctx context.Context, channelID string, threadID string) error
-	// ReconcileThread 推进可调度任务以及负责人耐久输入和结果通知队列。
+	// ReconcileThread 补齐已接纳的首发，再推进任务、负责人输入和结果通知队列。
 	ReconcileThread(ctx context.Context, threadID string) error
+	// ReconcileThreadPublication 只补交团队首发，供持有原机会的入口核对接纳结果。
+	ReconcileThreadPublication(ctx context.Context, threadID string) (models.ChannelThread, error)
 	// ListPendingInteractions 聚合负责人和成员 Chat 尚待用户处理的审批与结构化输入。
 	ListPendingInteractions(ctx context.Context, threadID string) ([]PendingTeamInteraction, []TeamMemberActivity, error)
 	// SyncInteractionEvents 把成员 Chat 的交互事实幂等投影到团队持久事件流。
@@ -66,6 +68,8 @@ type Config struct {
 	AutomaticRun func(context.Context, string) (models.AutomaticRun, error)
 	// BeforeUserInput 在新用户输入提交前冻结已结束的自动运行，回调不持有调度全局锁。
 	BeforeUserInput func(context.Context, string) error
+	// RecordIMLeadInputFailure 在团队失败事务中登记原 IM 会话的待发结果。
+	RecordIMLeadInputFailure func(context.Context, models.ChannelThread, models.ChannelLeadInput, string) error
 	// Channels 读取团队当前配置。
 	Channels controllers.ChannelController
 	// Threads 持久化团队对话快照和事件。
@@ -92,6 +96,8 @@ type service struct {
 	automaticRun func(context.Context, string) (models.AutomaticRun, error)
 	// beforeUserInput 在新用户输入前封闭已结束的自动运行。
 	beforeUserInput func(context.Context, string) error
+	// recordIMLeadInputFailure 与队列结算共同提交原 IM 会话的失败交付。
+	recordIMLeadInputFailure func(context.Context, models.ChannelThread, models.ChannelLeadInput, string) error
 	// channels 读取团队当前配置。
 	channels controllers.ChannelController
 	// threads 持久化团队对话快照和事件。
@@ -152,10 +158,11 @@ func New(config Config) (Service, error) {
 		return nil, status_error.CoreChannelInitializationFailed
 	}
 	return &service{
-		commands:        config.Commands,
-		channels:        config.Channels,
-		beforeUserInput: config.BeforeUserInput,
-		automaticRun:    config.AutomaticRun,
+		commands:                 config.Commands,
+		channels:                 config.Channels,
+		beforeUserInput:          config.BeforeUserInput,
+		recordIMLeadInputFailure: config.RecordIMLeadInputFailure,
+		automaticRun:             config.AutomaticRun,
 
 		threads:            config.Threads,
 		tasks:              config.Tasks,
@@ -261,7 +268,7 @@ func (s *service) ensureThreadWritable(
 	return err
 }
 
-// Start 恢复进行中的任务监听并开始接受团队工作。
+// Start 恢复团队首发、任务和监听并开始接受团队工作。
 func (s *service) Start(ctx context.Context) error {
 	s.lifecycleMutex.Lock()
 	defer s.lifecycleMutex.Unlock()
@@ -290,19 +297,8 @@ func (s *service) Start(ctx context.Context) error {
 		return err
 	}
 	for _, thread := range initializingThreads {
-		members, memberErr := s.threads.ListMembers(ctx, thread.ID)
-		if memberErr != nil {
-			return memberErr
-		}
-		chatIDs := make([]string, 0, len(members))
-		for _, member := range members {
-			chatIDs = append(chatIDs, member.ChatID)
-			if cancelErr := s.executions.CancelAndWait(ctx, member.ChatID); cancelErr != nil {
-				return cancelErr
-			}
-		}
-		if cleanupErr := s.deleteInitializingThread(ctx, thread, chatIDs); cleanupErr != nil {
-			return cleanupErr
+		if _, err := s.recoverInitializingThread(ctx, thread, true); err != nil {
+			return err
 		}
 	}
 	cancelingThreads, err := s.threads.ListCanceling(ctx)

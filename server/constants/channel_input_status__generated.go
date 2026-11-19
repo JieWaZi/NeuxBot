@@ -20,6 +20,8 @@ func (v ChannelInputStatus) String() string {
 		return "consumed"
 	case ChannelInputStatusDelivering:
 		return "delivering"
+	case ChannelInputStatusFailed:
+		return "failed"
 	case ChannelInputStatusPending:
 		return "pending"
 	}
@@ -34,6 +36,8 @@ func (v ChannelInputStatus) Label() string {
 		return "ChannelInputStatusConsumed 表示消息已经作为负责人 Chat 的权威事实接纳。"
 	case ChannelInputStatusDelivering:
 		return "ChannelInputStatusDelivering 表示消息已经关联一次负责人 Chat Execution。"
+	case ChannelInputStatusFailed:
+		return "ChannelInputStatusFailed 表示负责人输入在进入 Chat 之前被明确拒绝。"
 	case ChannelInputStatusPending:
 		return "ChannelInputStatusPending 表示消息已经持久化但尚未进入负责人 Chat。"
 	}
@@ -41,7 +45,7 @@ func (v ChannelInputStatus) Label() string {
 }
 
 func (v ChannelInputStatus) Values() []enum.Enum {
-	return []enum.Enum{ChannelInputStatusCancelled, ChannelInputStatusConsumed, ChannelInputStatusDelivering, ChannelInputStatusPending}
+	return []enum.Enum{ChannelInputStatusCancelled, ChannelInputStatusConsumed, ChannelInputStatusDelivering, ChannelInputStatusFailed, ChannelInputStatusPending}
 }
 
 func (v ChannelInputStatus) Type() string {
@@ -50,7 +54,7 @@ func (v ChannelInputStatus) Type() string {
 
 func (v ChannelInputStatus) MarshalText() ([]byte, error) {
 	switch v {
-	case ChannelInputStatusCancelled, ChannelInputStatusConsumed, ChannelInputStatusDelivering, ChannelInputStatusPending:
+	case ChannelInputStatusCancelled, ChannelInputStatusConsumed, ChannelInputStatusDelivering, ChannelInputStatusFailed, ChannelInputStatusPending:
 		return []byte(v.String()), nil
 	default:
 		return nil, enum.InvalidTypeError
@@ -65,6 +69,8 @@ func (v *ChannelInputStatus) UnmarshalText(text []byte) error {
 		*v = ChannelInputStatusConsumed
 	case ChannelInputStatusDelivering.String():
 		*v = ChannelInputStatusDelivering
+	case ChannelInputStatusFailed.String():
+		*v = ChannelInputStatusFailed
 	case ChannelInputStatusPending.String():
 		*v = ChannelInputStatusPending
 	default:

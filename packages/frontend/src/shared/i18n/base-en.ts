@@ -304,6 +304,8 @@ export const baseEn = {
     },
     chatLoadError: "Team chat is temporarily unavailable.",
     eventNotice: {
+      "lead-input-failed":
+        "A queued message could not reach the team lead. Please send it again.",
       "task-recovery-failed":
         "A team task could not recover automatically. Check the member's chat, make adjustments, and ask the lead to retry.",
       "leader-retry-exhausted":

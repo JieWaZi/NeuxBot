@@ -88,11 +88,9 @@ type IMBinding struct {
 	ContextCiphertext string `json:"-"`
 	// ContextToken 是仅供本次发送解密的微信上下文。
 	ContextToken string `gorm:"-" json:"-"`
-	// Revision 是授权和指针的并发版本。
-	Revision int64 `json:"revision"`
 	// CreatedAt 是首次发现聊天的时间。
 	CreatedAt int64 `gorm:"autoCreateTime:milli" json:"createdAt"`
-	// UpdatedAt 是最近授权或上下文变化的时间。
+	// UpdatedAt 是授权、活动会话或上下文的最近变化时间。
 	UpdatedAt int64 `gorm:"autoUpdateTime:milli" json:"updatedAt"`
 }
 

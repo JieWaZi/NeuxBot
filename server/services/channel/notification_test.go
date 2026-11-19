@@ -16,6 +16,145 @@ import (
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
+func TestTeamReportKeepsIMReplyLinkThroughAttemptAndSynthesis(t *testing.T) {
+	const linkID = "original-im-link"
+	for _, test := range []struct {
+		// name describes the report batch evaluated by the lead.
+		name string
+		// withDesktopReport adds a result from independent desktop work.
+		withDesktopReport bool
+	}{
+		{name: "same origin"},
+		{name: "mixed origins get separate lead replies", withDesktopReport: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			sut, thread, _, captured := newDelegationDispatchService(t)
+			ctx := t.Context()
+			if test.withDesktopReport {
+				desktop := models.ChannelTask{ID: "desktop-task", ThreadID: thread.ID, AssigneeWakerID: "member", Subject: "desktop review", Status: constants.ChannelTaskStatusInReview, Result: "desktop result"}
+				if err := sut.tasks.Create(ctx, desktop, nil); err != nil {
+					t.Fatal(err)
+				}
+				notice := models.ChannelLeadNotification{ID: "desktop-notice", ThreadID: thread.ID, TaskID: desktop.ID, AttemptID: "desktop-attempt", Status: constants.ChannelNotificationStatusPending, Payload: desktop.Result, CreatedAt: 1}
+				if err := sut.tasks.CreateNotification(ctx, notice); err != nil {
+					t.Fatal(err)
+				}
+			}
+			delegated, err := sut.CreateTask(ctx, CreateTaskInput{ThreadID: thread.ID, SenderWakerID: "lead", AssigneeWakerID: "member", Subject: "Prepare report", Description: "Prepare the IM report", imReplyLinkID: linkID})
+			if err != nil || delegated.Execution == nil || captured.startCount() != 1 || captured.firstStart().Input.IMReplyLinkID != linkID {
+				t.Fatalf("member execution lost provenance: %+v, %v", delegated, err)
+			}
+			attempt, err := sut.tasks.GetCurrentAttempt(ctx, delegated.Task.ID, delegated.Task.CurrentFence)
+			if err != nil || attempt.IMReplyLinkID != linkID {
+				t.Fatalf("durable attempt lost provenance: %+v, %v", attempt, err)
+			}
+			message := messageview.Message{ExecutionID: attempt.ExecutionID, Status: constants.ExecutionStatusCompleted, DisplayParts: []messageview.MessageDisplayPart{{Type: constants.MessageDisplayPartText, Text: "IM result"}}}
+			if err := sut.handleAttemptTerminal(attempt, message); err != nil {
+				t.Fatal(err)
+			}
+			notices, err := sut.tasks.ReadNotifications(ctx, thread.ID, []string{attempt.ID})
+			if err != nil || len(notices) != 1 || notices[0].IMReplyLinkID != linkID {
+				t.Fatalf("durable report lost provenance: %+v, %v", notices, err)
+			}
+			if count := captured.startCount(); count != 2 {
+				t.Fatalf("wanted member and lead starts, got %d", count)
+			}
+			lead := captured.startAt(1)
+			if test.withDesktopReport {
+				if lead.Input.IMReplyLinkID != "" || strings.Contains(lead.Input.Content, "IM result") {
+					t.Fatalf("desktop synthesis mixed in IM work: %+v", lead.Input)
+				}
+				complete := chatservice.PublicEvent{ExecutionID: lead.ExecutionID, ExecutionStatus: constants.ExecutionStatusCompleted}
+				if handled, err := sut.completeLeadExecution(ctx, thread, lead.ExecutionID, []string{"desktop-notice"}, nil, complete); err != nil || !handled {
+					t.Fatalf("desktop group's completion did not advance notification delivery: %v", err)
+				}
+				if count := captured.startCount(); count != 3 {
+					t.Fatalf("wanted a separate IM lead synthesis, got %d starts", count)
+				}
+				lead = captured.startAt(2)
+			}
+			if lead.Input.IMReplyLinkID != linkID || !strings.Contains(lead.Input.Content, "IM result") || strings.Contains(lead.Input.Content, "desktop result") || strings.Contains(lead.Input.Content, "desktop review") {
+				t.Fatalf("IM synthesis mixed sources or lost its reply destination: %+v", lead.Input)
+			}
+		})
+	}
+}
+
+func TestExplicitRetryReportsToCurrentLeadTurnOrigin(t *testing.T) {
+	for _, source := range []string{"desktop", "another-im-link"} {
+		t.Run(source, func(t *testing.T) {
+			ctx := t.Context()
+			sut, thread, chats, executions := newDelegationDispatchService(t)
+			currentLink := source
+			if source == "desktop" {
+				currentLink = ""
+			}
+			const originalLink = "original-im-link"
+			task := models.ChannelTask{ID: "retry-task", ThreadID: thread.ID, SenderWakerID: "lead", AssigneeWakerID: "member",
+				Subject: "准备报告", Description: "核验报告", CurrentFence: 1, Status: constants.ChannelTaskStatusFailed, IMReplyLinkID: originalLink}
+			if err := sut.tasks.Create(ctx, task, nil); err != nil {
+				t.Fatal(err)
+			}
+			original := models.ChannelTaskAttempt{ID: "original-attempt", TaskID: task.ID, ChatID: "member-chat", ExecutionID: "prior-member-execution",
+				AssigneeWakerID: "member", Fence: 1, StartedAt: testTimestamp(1), Reason: constants.ChannelAttemptReasonInitial,
+				Status: constants.ExecutionStatusFailed, IMReplyLinkID: originalLink}
+			if err := sut.tasks.CreateAttempt(ctx, original); err != nil {
+				t.Fatal(err)
+			}
+			if err := sut.tasks.CreateNotification(ctx, models.ChannelLeadNotification{ID: original.ID, ThreadID: thread.ID,
+				TaskID: task.ID, AttemptID: original.ID, IMReplyLinkID: originalLink, Status: constants.ChannelNotificationStatusConsumed, Payload: "原失败报告"}); err != nil {
+				t.Fatal(err)
+			}
+			lead := chats.summaries[thread.LeadChatID]
+			lead.Chat.ActiveExecutionID = "lead-retry-turn"
+			chats.summaries[thread.LeadChatID] = lead
+			chats.executions = map[string]models.Execution{lead.Chat.ActiveExecutionID: {IMReplyLinkID: currentLink}}
+			member := chats.summaries[original.ChatID]
+			member.Chat.ActiveExecutionID = "member-busy"
+			chats.summaries[original.ChatID] = member
+			if _, _, err := sut.mintLeadCapability(ctx, thread, lead.Chat.ActiveExecutionID, true); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := sut.toolChannelTasks(ctx, thread.ID, channeltool.TaskInput{Action: constants.ChannelTaskToolActionList}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := sut.toolChannelTasks(ctx, thread.ID, channeltool.TaskInput{Action: constants.ChannelTaskToolActionRetry, TaskID: task.ID}); err != nil {
+				t.Fatal(err)
+			}
+			queued, err := sut.tasks.Get(ctx, task.ID)
+			if err != nil || queued.Status != constants.ChannelTaskStatusPending || queued.IMReplyLinkID != currentLink || executions.startCount() != 0 {
+				t.Fatalf("重试没有在入队时绑定当前负责人回合：%+v %v", queued, err)
+			}
+			lead.Chat.ActiveExecutionID, member.Chat.ActiveExecutionID = "", ""
+			chats.summaries[thread.LeadChatID], chats.summaries[original.ChatID] = lead, member
+			if _, err := sut.schedule(ctx, thread.ID); err != nil {
+				t.Fatal(err)
+			}
+			attempt, err := sut.tasks.GetCurrentAttempt(ctx, task.ID, 2)
+			if err != nil || attempt.IMReplyLinkID != currentLink || attempt.Reason != constants.ChannelAttemptReasonRetry || executions.startCount() != 1 || executions.firstStart().Input.IMReplyLinkID != currentLink {
+				t.Fatalf("重试派发没有沿用已冻结的回合来源：%+v %v", attempt, err)
+			}
+			if err := sut.handleAttemptTerminal(attempt, messageview.Message{ExecutionID: attempt.ExecutionID, Status: constants.ExecutionStatusCompleted,
+				DisplayParts: []messageview.MessageDisplayPart{{Type: constants.MessageDisplayPartText, Text: "新回合的重试结果"}}}); err != nil {
+				t.Fatal(err)
+			}
+			if executions.startCount() != 2 || executions.startAt(1).Input.IMReplyLinkID != currentLink {
+				t.Fatalf("重试结果沿错误会话发起汇总，派发次数 %d", executions.startCount())
+			}
+			history, err := sut.tasks.GetCurrentAttempt(ctx, task.ID, 1)
+			if err != nil || history.IMReplyLinkID != originalLink || history.Status != constants.ExecutionStatusFailed {
+				t.Fatalf("重试改写了原尝试：%+v %v", history, err)
+			}
+			for id, expected := range map[string]string{original.ID: originalLink, attempt.ID: currentLink} {
+				notices, err := sut.tasks.ReadNotifications(ctx, thread.ID, []string{id})
+				if err != nil || len(notices) != 1 || notices[0].IMReplyLinkID != expected {
+					t.Fatalf("报告 %s 没有保留所属尝试来源 %q：%+v %v", id, expected, notices, err)
+				}
+			}
+		})
+	}
+}
+
 func TestFinalResultContentOnlyKeepsUserFacingText(t *testing.T) {
 	message := messageview.Message{
 		Content: "正在查找资料。最终结论。",

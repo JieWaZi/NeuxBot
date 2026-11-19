@@ -83,7 +83,7 @@ type GrantSpec struct {
 type Grant struct {
 	// ID is the non-reusable identity of this grant.
 	ID string
-	// Token is a random execution credential written only to the managed connection file.
+	// Token is a random credential written only to the managed connection file.
 	Token string
 	// Epoch identifies the current Core lifecycle.
 	Epoch string
@@ -91,9 +91,7 @@ type Grant struct {
 
 // lease holds the actual server-side execution binding.
 type lease struct {
-	// id scopes the grant identity in the connection file.
-	id string
-	// executionID identifies the source execution for revocation and diagnostics.
+	// executionID is the immutable origin of requests admitted against this lease.
 	executionID string
 	// bindings keeps invocation and receipt queries within the same object scope.
 	bindings map[string]Binding
@@ -123,10 +121,14 @@ type lease struct {
 	active bool
 }
 
-// Registry stores only active grants and stops issuing or admitting calls after closure.
+// Registry owns Core-lifetime connections and their execution scopes.
 type Registry struct {
-	// mutex protects active leases and closure state.
+	// mutex protects connections, execution scopes, and closure state.
 	mutex sync.Mutex
+	// connections maps managed file paths to token digests.
+	connections map[string]string
+	// codexShellAliases maps a resident token digest to its currently bound native alias.
+	codexShellAliases map[string]string
 	// leases indexes grants by token digest without retaining plaintext transport tokens.
 	leases map[string]*lease
 	// epoch distinguishes grants across Core restarts.
@@ -139,7 +141,7 @@ type Registry struct {
 
 // New creates an empty grant registry without starting goroutines or listeners.
 func New(guide func(string) (string, error)) *Registry {
-	return &Registry{leases: map[string]*lease{}, epoch: util.New(), guide: guide}
+	return &Registry{connections: map[string]string{}, codexShellAliases: map[string]string{}, leases: map[string]*lease{}, epoch: util.New(), guide: guide}
 }
 
 func tokenKey(token string) string {
@@ -149,41 +151,107 @@ func tokenKey(token string) string {
 
 // Prepare prepares an inactive grant; both returned activation and revocation functions are idempotent.
 func (r *Registry) Prepare(spec GrantSpec) (Grant, func(), func(), error) {
+	grant := r.newGrant()
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	activate, finish, err := r.bindExecutionLocked(tokenKey(grant.Token), spec)
+	if err != nil {
+		return Grant{}, nil, nil, err
+	}
+	return grant, activate, finish, nil
+}
+
+func (r *Registry) newGrant() Grant {
+	return Grant{ID: util.New(), Token: util.New() + util.New(), Epoch: r.epoch}
+}
+
+// PrepareConnection opens or reuses a Core-owned connection and stages the next execution scope.
+// Identity must identify the trusted chat, runtime, account, and tool catalog.
+func (r *Registry) PrepareConnection(root, identity, endpoint string, spec GrantSpec) (string, func(), func(), error) {
+	if !filepath.IsLocal(identity) || strings.ContainsAny(identity, "/\\") || identity == "." {
+		return "", nil, nil, status_error.AgentContextStorageError
+	}
+	directory := filepath.Join(root, r.epoch, identity)
+	path := filepath.Join(directory, residentConnectionFilename)
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	key, exists := r.connections[path]
+	var grant Grant
+	if !exists {
+		grant = r.newGrant()
+		key = tokenKey(grant.Token)
+	}
+	activate, finish, err := r.bindExecutionLocked(key, spec)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	if !exists {
+		if _, err := WriteConnection(directory, residentConnectionFilename, Connection{
+			ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: endpoint,
+			CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token,
+		}); err != nil {
+			r.leases[key].cancel()
+			delete(r.leases, key)
+			return "", nil, nil, err
+		}
+		r.connections[path] = key
+	}
+	return path, activate, finish, nil
+}
+
+func (r *Registry) bindExecutionLocked(key string, spec GrantSpec) (func(), func(), error) {
+	if r.closed || r.leases[key] != nil {
+		return nil, nil, status_error.AgentConnectionUnavailable
+	}
 	if spec.ExecutionID == "" || spec.Validate == nil {
-		return Grant{}, nil, nil, status_error.AgentInputInvalid
+		return nil, nil, status_error.AgentInputInvalid
 	}
 	bindings := map[string]Binding{}
 	for _, binding := range spec.Bindings {
 		op, ok := Find(binding.Operation)
 		if !ok || binding.Call == nil || (op.Effect != constants.AgentCLIEffectRead && binding.Receipt == nil) {
-			return Grant{}, nil, nil, status_error.AgentInputInvalid
+			return nil, nil, status_error.AgentInputInvalid
 		}
 		if _, exists := bindings[binding.Operation]; exists {
-			return Grant{}, nil, nil, status_error.AgentInputInvalid
+			return nil, nil, status_error.AgentInputInvalid
 		}
 		bindings[binding.Operation] = binding
 	}
-	grant := Grant{ID: util.New(), Token: util.New() + util.New(), Epoch: r.epoch}
 	ctx, cancel := context.WithCancel(context.Background())
-	current := &lease{id: grant.ID, executionID: spec.ExecutionID, bindings: bindings, fileRoots: append([]string(nil), spec.FileRoots...), filePaths: append([]string(nil), spec.FilePaths...), managedSpace: spec.ManagedSpace, record: spec.Record, recorded: map[string]bool{}, validate: spec.Validate, ctx: ctx, cancel: cancel, waits: make(chan struct{}, 4)}
-	key := tokenKey(grant.Token)
-	r.mutex.Lock()
-	if r.closed {
-		r.mutex.Unlock()
-		cancel()
-		return Grant{}, nil, nil, status_error.AgentConnectionUnavailable
+	current := &lease{
+		executionID:  spec.ExecutionID,
+		bindings:     bindings,
+		fileRoots:    append([]string(nil), spec.FileRoots...),
+		filePaths:    append([]string(nil), spec.FilePaths...),
+		managedSpace: spec.ManagedSpace,
+		record:       spec.Record,
+		recorded:     map[string]bool{},
+		validate:     spec.Validate,
+		ctx:          ctx,
+		cancel:       cancel,
+		waits:        make(chan struct{}, 4),
 	}
 	r.leases[key] = current
-	r.mutex.Unlock()
 	activate := func() {
 		r.mutex.Lock()
 		defer r.mutex.Unlock()
-		if r.leases[key] == current {
+		if r.leases[key] == current && current.ctx.Err() == nil {
 			current.active = true
 		}
 	}
-	revoke := func() { r.mutex.Lock(); delete(r.leases, key); r.mutex.Unlock(); cancel(); current.calls.Wait() }
-	return grant, activate, revoke, nil
+	var finishOnce sync.Once
+	finish := func() {
+		finishOnce.Do(func() {
+			r.mutex.Lock()
+			current.cancel()
+			r.mutex.Unlock()
+			current.calls.Wait()
+			r.mutex.Lock()
+			delete(r.leases, key)
+			r.mutex.Unlock()
+		})
+	}
+	return activate, finish, nil
 }
 
 // Close revokes all executions and wakes in-flight requests without cancelling admitted domain work.
@@ -196,9 +264,27 @@ func (r *Registry) Close() {
 		leases = append(leases, current)
 		delete(r.leases, key)
 	}
+	connections := r.connections
+	r.connections = nil
+	for _, alias := range r.codexShellAliases {
+		connections[alias] = ""
+	}
+	r.codexShellAliases = nil
 	r.mutex.Unlock()
 	for _, current := range leases {
 		current.calls.Wait()
+	}
+	directories := make(map[string]struct{})
+	for path := range connections {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			logx.Warnf("remove resident agent connection failed: error=%v", err)
+		}
+		directory := filepath.Dir(path)
+		_ = os.Remove(directory)
+		directories[filepath.Dir(directory)] = struct{}{}
+	}
+	for directory := range directories {
+		_ = os.Remove(directory)
 	}
 }
 
@@ -272,7 +358,7 @@ func ErrorResponse(operation string, err error) Response {
 	}
 	message := code
 	if errors.Is(err, status_error.AgentContextUnauthorized) {
-		message = "The execution context is invalid or has been revoked. Stop dependent calls; the host must provide a new authorized execution context. Do not retry with this context or modify connection files."
+		message = "The connection is invalid or has no authorized execution. The host manages the connection. Stop dependent calls. Do not retry in this execution or modify connection files."
 	}
 	var details map[string]any
 	var rejected rejection
@@ -307,7 +393,7 @@ var requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,` + str
 // ValidRequestID validates the idempotency identifier shared by CLI, MCP, and receipt queries.
 func ValidRequestID(value string) bool { return requestIDPattern.MatchString(value) }
 
-// ServeHTTP admits the fixed command protocol using only short-lived execution authentication.
+// ServeHTTP authenticates the connection and admits calls against its current execution scope.
 func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
@@ -323,7 +409,7 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 	catalog := request.Method == http.MethodGet && request.URL.Path == constants.AgentCLIPath+constants.AgentCLIMCPCatalogPath
 	r.mutex.Lock()
 	current := r.leases[tokenKey(provided)]
-	valid := found && provided != "" && current != nil && (current.active || catalog) && !r.closed
+	valid := found && provided != "" && current != nil && current.ctx.Err() == nil && (current.active || catalog) && !r.closed
 	if valid {
 		current.calls.Add(1)
 	}
@@ -333,6 +419,10 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 		return
 	}
 	defer current.calls.Done()
+	if request.Method == http.MethodGet && request.URL.Path == constants.AgentCLIPath+constants.AgentCLIExecutionPath {
+		writeSuccess(w, "execution", constants.AgentCLICompletionImmediate, Result{Data: current.executionID})
+		return
+	}
 	ctx, cancel := context.WithCancel(request.Context())
 	ctx = context.WithValue(ctx, fileRootsKey{}, current.fileRoots)
 	ctx = context.WithValue(ctx, filePathsKey{}, current.filePaths)
@@ -423,6 +513,10 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 			return
 		}
 		op, _ := Find(input.Operation)
+		if op.Effect == constants.AgentCLIEffectExternal && request.Header.Get(constants.AgentCLIExecutionHeader) != current.executionID {
+			writeFailure(w, input.Operation, status_error.AgentContextUnauthorized)
+			return
+		}
 		if input.Params == nil {
 			input.Params = map[string]any{}
 		}
@@ -618,7 +712,7 @@ type Connection struct {
 	Endpoint string `json:"endpoint"`
 	// CoreEpoch distinguishes Core lifecycles.
 	CoreEpoch string `json:"coreEpoch"`
-	// GrantID identifies the current execution grant.
+	// GrantID identifies the published connection credential.
 	GrantID string `json:"grantId"`
 	// Token is a credential stored only in the managed file and request headers.
 	Token string `json:"token"`
@@ -637,7 +731,7 @@ func (c Connection) Validate() error {
 	return nil
 }
 
-// ReadConnection reads one complete descriptor once; in-flight commands cannot switch to the next turn's identity.
+// ReadConnection reads one complete host-published descriptor.
 func ReadConnection(path string) (Connection, error) {
 	if !filepath.IsAbs(path) {
 		return Connection{}, status_error.AgentContextStorageError
@@ -674,16 +768,8 @@ func WriteConnection(directory, filename string, value Connection) (string, erro
 	if err := value.Validate(); err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(directory, 0o700); err != nil {
-		logx.Errorf("create agent context directory failed: error=%v", err)
-		return "", status_error.AgentContextStorageError
-	}
-	resolved, err := filepath.EvalSymlinks(directory)
-	if err != nil || filepath.Clean(resolved) != filepath.Clean(directory) {
-		return "", status_error.AgentContextStorageError
-	}
-	if err := protectDirectory(directory); err != nil {
-		return "", status_error.AgentContextStorageError
+	if err := prepareConnectionDirectory(directory); err != nil {
+		return "", err
 	}
 	path := filepath.Join(directory, filename)
 	if info, err := os.Lstat(path); err == nil && !info.Mode().IsRegular() {
@@ -712,6 +798,21 @@ func WriteConnection(directory, filename string, value Connection) (string, erro
 		return "", status_error.AgentContextStorageError
 	}
 	return path, nil
+}
+
+func prepareConnectionDirectory(directory string) error {
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		logx.Errorf("create agent context directory failed: error=%v", err)
+		return status_error.AgentContextStorageError
+	}
+	resolved, err := filepath.EvalSymlinks(directory)
+	if err != nil || filepath.Clean(resolved) != filepath.Clean(directory) {
+		return status_error.AgentContextStorageError
+	}
+	if err := protectDirectory(directory); err != nil {
+		return status_error.AgentContextStorageError
+	}
+	return nil
 }
 
 // Receipt is the minimal admission fact committed together with the domain change.

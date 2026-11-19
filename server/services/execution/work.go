@@ -135,12 +135,16 @@ type pendingMessage struct {
 	parentExecutionID string
 	// admission 决定首批事实在 Runtime 调度前还是接受后提交。
 	admission constants.ExecutionAdmission
+	// admissionBoundary 是调用方针对原输入的可选接纳边界。
+	admissionBoundary AdmissionBoundary
 	// toolCapabilities 保存上层入口为本次执行签发的短期内部能力。
 	toolCapabilities []ToolCapability
 	// allowedAgentDomains 冻结默认软件能力的领域白名单。
 	allowedAgentDomains *[]string
 	// allowedConnectorIDs 是入口冻结的 MCP 白名单，nil 与空列表具有不同业务含义。
 	allowedConnectorIDs *[]string
+	// imReplyLinkID 是本轮工作冻结的原 IM 会话标识。
+	imReplyLinkID string
 	// contextInstructions 是本轮动态业务上下文，不参与原生会话资源指纹。
 	contextInstructions []agent.Instruction
 	// supplementalInstructions 是稳定的业务角色与成员上下文。
@@ -268,7 +272,11 @@ func (m *service) startMessage(
 	}
 	isNew := request.chatID == ""
 	if request.submissionID != "" {
-		identity, err := requestidempotency.NewSubmission(request.submissionID, []any{request.chatID, request.message, request.runtime, request.parentExecutionID, request.admission, stableToolCapabilities(request.toolCapabilities), request.supplementalInstructions, request.contextInstructions, request.allowedConnectorIDs, request.allowedAgentDomains})
+		content := []any{request.chatID, request.message, request.runtime, request.parentExecutionID, request.admission, stableToolCapabilities(request.toolCapabilities), request.supplementalInstructions, request.contextInstructions, request.allowedConnectorIDs, request.allowedAgentDomains}
+		if request.imReplyLinkID != "" {
+			content = append(content, map[string]string{"imReplyLinkId": request.imReplyLinkID})
+		}
+		identity, err := requestidempotency.NewSubmission(request.submissionID, content)
 		if err != nil {
 			return AcceptedExecution{}, err
 		}
@@ -590,6 +598,9 @@ func createRequestContent(request pendingMessage) []interface{} {
 	}
 	if len(request.create.additionalWorkingDirectories) > 0 {
 		content = append(content, map[string]any{"additionalWorkingDirectories": request.create.additionalWorkingDirectories})
+	}
+	if request.imReplyLinkID != "" {
+		content = append(content, map[string]string{"imReplyLinkId": request.imReplyLinkID})
 	}
 	return content
 }
@@ -1089,7 +1100,7 @@ func (m *service) prepareNativeInstructions(ctx context.Context, state messageCh
 		return nil, err
 	}
 	profileDocument := builtinrolepreset.ResolveWakerAgents(state.chat.WakerID, storedDocuments, 0)
-	instructions := []agent.Instruction{{Name: "Workspace directories", Content: "The working directory is persistent and may be shared by several chats of this partner. Organize your persistent files here as needed; no output or temporary subdirectory is required. Use the system temporary directory (TMPDIR or /tmp) for disposable intermediate files. User projects remain at their authorized absolute roots."}}
+	instructions := []agent.Instruction{{Name: "Workspace directories", Content: "The working directory is persistent and may be shared by several chats of this partner. Organize your persistent files here as needed; no output or temporary subdirectory is required. Use the system temporary directory (TMPDIR or /tmp) for disposable intermediate files. User projects remain at their authorized absolute roots. Use the exact attachment paths supplied for this input. Leave original uploads intact and do not enumerate their parent directories."}}
 	if profileDocument.Content != "" {
 		instructions = append(instructions, agent.Instruction{Name: profileDocument.FileName, Content: profileDocument.Content})
 	}
@@ -1282,6 +1293,7 @@ func newExecutionIndex(
 	}
 	return models.Execution{
 		AutomaticRunID:    request.automaticRunID,
+		IMReplyLinkID:     request.imReplyLinkID,
 		ID:                executionID,
 		ChatID:            state.chat.ID,
 		UserMessageID:     userMessageID,
@@ -1364,6 +1376,7 @@ func startedMessageEvents(
 				RequestedAt:       request.requestedAt,
 				SteerExecutionID:  request.message.SteerExecutionID,
 				AutomaticRunID:    execution.AutomaticRunID,
+				IMReplyLinkID:     execution.IMReplyLinkID,
 				PluginResources:   execution.PluginResources,
 				UserMessageID:     execution.UserMessageID,
 				SubmissionID:      execution.SubmissionID,
@@ -1489,11 +1502,7 @@ func nativeWorkspace(state messageChat, request pendingMessage, files *preparedM
 
 // nativeContextInstructions 只携带本轮路径及业务引用。
 func nativeContextInstructions(request pendingMessage, files *preparedMessageFiles) []agent.Instruction {
-	taskContext := fmt.Sprintf("Your persistent space directory is %q. Organize new files there as needed, or use the user-authorized working directories when the task requires it. Keep modifications to existing files at their existing true paths. Use the system temporary directory (TMPDIR or /tmp) for disposable intermediate files. Attachment paths in this turn identify the exact input files; do not modify the originals or enumerate their parent directories.", files.executionWorkspaceDirectory)
-	if request.message.Actor == "workflow" {
-		taskContext = fmt.Sprintf("This workflow worker has an isolated execution directory at %q. The current workflow workspace context specifies the owning scripts, state, cache, temporary and run-result directories. Use those owning directories for workflow files. Attachment paths identify the exact input files; do not modify the originals or enumerate their parent directories.", files.executionWorkspaceDirectory)
-	}
-	contextInstructions := append([]agent.Instruction{{Name: "Current task directories", Content: taskContext}}, request.contextInstructions...)
+	contextInstructions := slices.Clone(request.contextInstructions)
 	if len(files.projectEntries) > 0 {
 		encoded, _ := json.Marshal(files.projectEntries)
 		contextInstructions = append(contextInstructions, agent.Instruction{Name: "Current project entries", Content: "This native client uses the following cwd-relative project entries. Use each entry path for project tools; sourcePath remains the original authorized file location.\n" + string(encoded)})

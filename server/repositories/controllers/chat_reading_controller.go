@@ -336,7 +336,7 @@ func (c *chatReadingController) ProjectionRecovered(ctx context.Context, chat st
 		resource = eventsResource("global", "")
 	}
 	publishCommittedChange(ctx, c.db, "reading", resource)
-	publishCommittedWorkBoardChange(ctx, c.db, resource, "reading-recovered")
+	publishCommittedWorkBoardChange(ctx, c.db, resource, constants.ChatReadingRecoveredReason)
 }
 
 // ProjectionUnavailable 在数据库故障时发布固定范围失效。

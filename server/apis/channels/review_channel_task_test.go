@@ -196,20 +196,40 @@ func TestReviewChannelTaskKeepsHumanDecisionInAPIUseCase(t *testing.T) {
 
 	rejectedID := "88888888888888888888888888888888"
 	approvedID := "99999999999999999999999999999999"
+	localApprovedID := "abababababababababababababababab"
+	imReplyLinkID := "12121212121212121212121212121212"
 	for _, task := range []models.ChannelTask{
 		{
 			ID: rejectedID, ThreadID: threadID, AssigneeWakerID: memberID,
 			Subject: "驳回任务", Description: "等待驳回", Status: constants.ChannelTaskStatusInReview,
-			RequiresHumanReview: true, CurrentFence: 1,
+			RequiresHumanReview: true, CurrentFence: 1, IMReplyLinkID: imReplyLinkID,
 		},
 		{
 			ID: approvedID, ThreadID: threadID, AssigneeWakerID: memberID,
 			Subject: "通过任务", Description: "等待通过", Status: constants.ChannelTaskStatusInReview,
 			RequiresHumanReview: true, CurrentFence: 1, Result: "已交付",
 		},
+		{
+			ID: localApprovedID, ThreadID: threadID, AssigneeWakerID: memberID,
+			Subject: "桌面续做任务", Description: "等待通过", Status: constants.ChannelTaskStatusInReview,
+			RequiresHumanReview: true, CurrentFence: 2, Result: "桌面修改已交付", IMReplyLinkID: imReplyLinkID,
+		},
 	} {
 		if err := global.ChannelTaskControllerManager.Create(ctx, task, nil); err != nil {
 			t.Fatalf("create review task %s: %v", task.ID, err)
+		}
+	}
+	// 桌面创建的任务可接收 IM 补充，IM 创建的任务也可接收独立的桌面修改要求。
+	for _, attempt := range []models.ChannelTaskAttempt{
+		{ID: "13131313131313131313131313131313", TaskID: rejectedID, Fence: 1, IMReplyLinkID: imReplyLinkID},
+		{ID: "14141414141414141414141414141414", TaskID: approvedID, Fence: 1},
+		{ID: "15151515151515151515151515151515", TaskID: approvedID, Fence: 2, IMReplyLinkID: imReplyLinkID, Result: "已交付"},
+		{ID: "16161616161616161616161616161616", TaskID: localApprovedID, Fence: 2, Result: "桌面修改已交付"},
+	} {
+		attempt.ChatID, attempt.AssigneeWakerID = memberChatID, memberID
+		attempt.Status = constants.ExecutionStatusCompleted
+		if err := global.ChannelTaskControllerManager.CreateAttempt(ctx, attempt); err != nil {
+			t.Fatalf("create review attempt %s: %v", attempt.ID, err)
 		}
 	}
 
@@ -237,7 +257,7 @@ func TestReviewChannelTaskKeepsHumanDecisionInAPIUseCase(t *testing.T) {
 		t.Fatalf("list rejected task follow-ups: %v", err)
 	}
 	if rejected.Status != constants.ChannelTaskStatusPending || len(followUps) != 1 ||
-		followUps[0].Text != "请补充回归验证" {
+		followUps[0].Text != "请补充回归验证" || followUps[0].Payload.IMReplyLinkID != "" {
 		t.Fatalf("rejected task = %+v, follow-ups = %+v", rejected, followUps)
 	}
 
@@ -262,6 +282,10 @@ func TestReviewChannelTaskKeepsHumanDecisionInAPIUseCase(t *testing.T) {
 	if _, err := approve.Output(ginContext); err != nil {
 		t.Fatalf("approve review Output() error = %v", err)
 	}
+	approve.TaskID = localApprovedID
+	if _, err := approve.Output(ginContext); err != nil {
+		t.Fatalf("approve desktop follow-up Output() error = %v", err)
+	}
 	approved, err := global.ChannelTaskControllerManager.Get(ctx, approvedID)
 	if err != nil {
 		t.Fatalf("get approved task: %v", err)
@@ -270,9 +294,22 @@ func TestReviewChannelTaskKeepsHumanDecisionInAPIUseCase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list approved task notifications: %v", err)
 	}
-	if approved.Status != constants.ChannelTaskStatusCompleted || len(notifications) != 1 ||
-		notifications[0].TaskID != approvedID {
+	if approved.Status != constants.ChannelTaskStatusCompleted || len(notifications) != 2 {
 		t.Fatalf("approved task = %+v, notifications = %+v", approved, notifications)
+	}
+	for _, notification := range notifications {
+		switch notification.TaskID {
+		case approvedID:
+			if notification.IMReplyLinkID != imReplyLinkID || notification.Payload != "已交付" {
+				t.Fatalf("approved report lost its original IM link: %+v", notification)
+			}
+		case localApprovedID:
+			if notification.IMReplyLinkID != "" || notification.Payload != "桌面修改已交付" {
+				t.Fatalf("approved desktop report inherited an IM link: %+v", notification)
+			}
+		default:
+			t.Fatalf("unexpected approval notification: %+v", notification)
+		}
 	}
 
 	humanCancelledID := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

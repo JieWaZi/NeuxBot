@@ -46,10 +46,12 @@ type Chats interface {
 	DeleteChatsAtomically(context.Context, []string, func(context.Context) error) error
 }
 
-// Teams 只负责把冻结机会交给既有团队首发用例。
+// Teams 拥有冻结机会使用的团队首发及发布恢复。
 type Teams interface {
 	// SubmitMessage 以稳定首次发送身份建立团队会话。
 	SubmitMessage(context.Context, channelservice.SubmitMessageInput) (channelservice.SubmitMessageResult, error)
+	// ReconcileThreadPublication 补交已经接纳的团队首发。
+	ReconcileThreadPublication(context.Context, string) (models.ChannelThread, error)
 }
 
 // Workflows 复用工作流接纳和权威状态，不在调度服务内运行流程。
@@ -128,6 +130,8 @@ type Service struct {
 	suspended bool
 	// lastTick 是前一次连续运行的扫描时间，用于检测时钟跳变。
 	lastTick time.Time
+	// pendingTeamRuns 记录当前进程需要补读的原团队机会，即使它已没有后续计划。
+	pendingTeamRuns map[string]struct{}
 	// apiOwner 是状态与地址配置的唯一发布服务。
 	apiOwner *integrationapi.Listener
 	// ownsAPI 区分独立宿主和由 Core 全局管理的共享监听。
@@ -143,7 +147,7 @@ func New(config Config) *Service {
 	if config.Now == nil {
 		config.Now = time.Now
 	}
-	s := &Service{config: config, rates: map[string][]time.Time{}, sealedWakers: map[string]bool{}, apiOwner: config.APIListener}
+	s := &Service{config: config, rates: map[string][]time.Time{}, sealedWakers: map[string]bool{}, pendingTeamRuns: map[string]struct{}{}, apiOwner: config.APIListener}
 	if s.apiOwner == nil {
 		s.ownsAPI = true
 		s.apiOwner = integrationapi.NewListener(config.DataDirectory, func(address string) http.Handler { return config.APIHandler(s, config, address) })
@@ -278,6 +282,17 @@ func (s *Service) recover(ctx context.Context) error {
 		}
 		if run.Admission == constants.AutomaticRunAdmissionPending {
 			if run.Source == constants.AutomaticRunSourceSchedule {
+				if run.Configuration.ChannelID != "" {
+					_, exists, err := s.config.Threads.GetByClientRequestID(ctx, run.Configuration.ChannelID, run.ID)
+					if err != nil {
+						return err
+					}
+					if exists {
+						// 团队启动恢复已经回收未接纳计划，留存的发布锚点继续由原机会对账。
+						s.pendingTeamRuns[run.ID] = struct{}{}
+						continue
+					}
+				}
 				if err := s.interrupt(ctx, &run); err != nil {
 					return err
 				}
@@ -298,6 +313,7 @@ func (s *Service) Tick(ctx context.Context) error {
 	if s.suspended || ctx.Err() != nil {
 		return nil
 	}
+	s.reconcilePendingTeamRuns(ctx)
 	now := s.config.Now()
 	gap := now.Sub(s.lastTick)
 	wallGap := time.Duration(now.UnixMilli()-s.lastTick.UnixMilli()) * time.Millisecond

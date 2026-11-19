@@ -28,6 +28,8 @@ type CreateThreadInput struct {
 	MemberConfigs []MemberExecutionConfigInput
 	// Input 是进入负责人 Chat 的首条用户输入。
 	Input execution.WorkInput
+	// AdmissionBoundary 可选地保护负责人首发的耐久接纳。
+	AdmissionBoundary execution.AdmissionBoundary `json:"-"`
 }
 
 // MemberExecutionConfigInput 是成员后续新执行使用的完整可变配置。
@@ -70,6 +72,8 @@ type SendMessageInput struct {
 	MentionWakerID string
 	// Input 是本轮用户输入和附件引用。
 	Input execution.WorkInput
+	// AdmissionBoundary 可选地保护输入进入负责人队列的接纳。
+	AdmissionBoundary execution.AdmissionBoundary `json:"-"`
 }
 
 // SendMessageResult 是团队消息接纳后的负责人执行或正式任务。
@@ -130,6 +134,8 @@ type CreateTaskInput struct {
 	DirectDelivery bool
 	// DirectInput 是显式 @ 非负责人成员时必须原样持久化并交给成员 Chat 的用户输入。
 	DirectInput *execution.WorkInput
+	// imReplyLinkID 是负责人正式创建任务时从当前回合继承的原 IM 会话标识。
+	imReplyLinkID string
 	// DeferDispatch 表示由负责人当前规划回合结束后统一派发本次创建的任务。
 	DeferDispatch bool
 }
@@ -144,6 +150,8 @@ type TaskResult struct {
 
 // UpdateTaskInput 是负责人修改尚未执行任务的输入。
 type UpdateTaskInput struct {
+	// imReplyLinkID 标识发起变更的负责人回合，用于核对是否仍可回复原会话。
+	imReplyLinkID string
 	// ThreadID 是任务所属团队对话标识。
 	ThreadID string
 	// TaskID 是需要修改的任务标识。

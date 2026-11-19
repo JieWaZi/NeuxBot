@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	acp "github.com/JieWaZi/acp-go-sdk"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
@@ -601,6 +602,99 @@ func TestNativeLaunchEnvironmentExcludesHostCLIConfiguration(t *testing.T) {
 	}
 	if values["PATH"] != "/native/tools" || values["PLUGIN_RESOURCE"] != "ready" {
 		t.Fatalf("ordinary runtime environment changed: %v", values)
+	}
+}
+
+func TestNativeLaunchEnvironmentUsesOnlyTheSelectedBotCLIContext(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "connection.json")
+	for _, provider := range []string{constants.RuntimeIDCodex, constants.RuntimeIDPi} {
+		t.Run(provider, func(t *testing.T) {
+			launch := ProviderLaunch{
+				BotCLIContextFile: path,
+				BaseEnvironment:   map[string]string{constants.AgentCLIContextEnvironment: "/inherited"},
+				Environment:       map[string]string{constants.AgentCLIContextEnvironment: "/override"},
+			}
+			resource := ResourceLease{Environment: map[string]string{constants.AgentCLIContextEnvironment: "/plugin"}}
+			env, err := nativeLaunchEnvironment(provider, launch, AccountLease{}, LaunchAuthLease{}, resource)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, entry := range env {
+				if name, value, _ := strings.Cut(entry, "="); strings.EqualFold(name, constants.AgentCLIContextEnvironment) {
+					if value != path {
+						t.Fatalf("child received a competing capability path: %s", value)
+					}
+					return
+				}
+			}
+			t.Fatal("child did not receive the host capability path")
+		})
+	}
+}
+
+func TestCodexSessionDoesNotRewriteShellEnvironmentPolicy(t *testing.T) {
+	policies := map[string]map[string]json.RawMessage{
+		"dotted": {
+			"shell_environment_policy.inherit":         json.RawMessage(`"none"`),
+			"shell_environment_policy.include_only":    json.RawMessage(`["USER_*"]`),
+			"shell_environment_policy.set.USER_MARKER": json.RawMessage(`"preserved"`),
+		},
+		"nested": {
+			"shell_environment_policy": json.RawMessage(`{"inherit":"all","filters":{"USER_*":"include","*SECRET*":"exclude"},"set":{"USER_MARKER":"preserved"}}`),
+		},
+	}
+	for name, policy := range policies {
+		t.Run(name, func(t *testing.T) {
+			req := providerTestRequest(t, constants.RuntimeIDCodex)
+			req.Launch.BotCLIContextFile = filepath.Join(req.Account.CWD, "host connection.json")
+			req.Launch.CodexConfig = policy
+			owner := NewProviderRuntime(ProviderRuntimeOptions{AcquireAccount: providerTestAccount})
+			t.Cleanup(func() { _ = owner.Close(context.Background()) })
+			conn, err := owner.Open(t.Context(), req, ProviderConnectionPorts{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			client, err := conn.Client()
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = client.ForkSession(t.Context(), AgentForkRequest{
+				SourceSessionID: "fixture-source", SourceCWD: req.Account.CWD, Position: "exact-turn",
+				ReceiptDirectory: filepath.Join(req.Account.CWD, "fork-receipt"),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			trace, err := os.ReadFile(filepath.Join(req.Account.CWD, "trace"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(trace), req.Launch.BotCLIContextFile) {
+				t.Fatal("host context appeared in native configuration or process arguments")
+			}
+			for line := range strings.SplitSeq(string(trace), "\n") {
+				if !strings.Contains(line, `"method":"thread/fork"`) {
+					continue
+				}
+				var request struct {
+					// Params contains the native thread configuration overrides.
+					Params struct {
+						// Config holds the effective host overrides sent to Codex.
+						Config map[string]json.RawMessage `json:"config"`
+					} `json:"params"`
+				}
+				if err := json.Unmarshal([]byte(line), &request); err != nil {
+					t.Fatal(err)
+				}
+				for key, want := range req.Launch.CodexConfig {
+					if got := request.Params.Config[key]; string(got) != string(want) {
+						t.Fatalf("native shell config changed %s from %s to %s", key, want, got)
+					}
+				}
+				return
+			}
+			t.Fatal("missing Codex thread/fork frame")
+		})
 	}
 }
 

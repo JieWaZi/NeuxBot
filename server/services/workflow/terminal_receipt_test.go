@@ -2,18 +2,19 @@ package workflow
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
-func TestCreationRunsGetIncludesPersistedToolFailureAndOriginalIdentity(t *testing.T) {
+func TestCreationEvidenceIncludesPersistedToolFailureAndOriginalIdentity(t *testing.T) {
 	s, _ := workflowTestService(t)
 	source := `export const meta={sdk:'bot.workflow',title:'发送诊断',description:'保留原调用失败',phases:[{id:'delivery-phase',title:'发送',detail:'发送',canExit:true}],actions:[{id:'send',label:'发送',description:'发送微信',risk:'external',type:'builtin',handler:'send',connectorIds:['b17d96aa55314c33ab46c172e8cab012']}]};const actions={send:async(ctx,input)=>await ctx.callTool({callId:'original-call',connectorId:'b17d96aa55314c33ab46c172e8cab012',toolName:'im_delivery',input:{action:'deliveries.create',targetId:'target',content:'正文'}})};return await action('send',{id:'deliver',label:'发送微信',phase:'delivery-phase'});`
 	d := savedTestWorkflow(t, s, source)
@@ -42,20 +43,30 @@ func TestCreationRunsGetIncludesPersistedToolFailureAndOriginalIdentity(t *testi
 		actual:  models.Execution{ID: "authoring", ChatID: "authoring-chat", Status: constants.ExecutionStatusRunning},
 		summary: chat.ChatSummary{Chat: models.Chat{ID: "authoring-chat", ActiveExecutionID: "authoring"}},
 	}
-	if err := s.creationSessions.CreateCreationSession(ctx, models.WorkflowCreationSession{ID: "creation", ChatID: "authoring-chat", ActiveExecutionID: "authoring", DefinitionID: d.ID, AuthToken: "private"}); err != nil {
+	session := models.WorkflowCreationSession{ID: "creation", ChatID: "authoring-chat", ActiveExecutionID: "authoring", DefinitionID: d.ID, AuthToken: "private"}
+	if err := s.creationSessions.CreateCreationSession(ctx, session); err != nil {
 		t.Fatal(err)
 	}
-	data, err := s.handleCreationTool(ctx, workflowtool.Scope{Key: "creation", Token: "private"}, workflowtool.Input{Action: constants.WorkflowActionRunsGet, RunID: run.ID})
+	bindings := s.AgentBindings(session.ID, session.AuthToken, constants.WorkflowCapabilityScopeCreation)
+	const operation = "workflow.evidence.list"
+	index := slices.IndexFunc(bindings, func(binding capability.Binding) bool { return binding.Operation == operation })
+	if index < 0 {
+		t.Fatal("创作场景缺少执行证据读取能力")
+	}
+	result, err := bindings[index].Call(ctx, capability.Request{Operation: operation, Params: map[string]any{"runId": run.ID}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	receipts := data["actionCalls"].([]models.WorkflowActionCall)
-	if len(receipts) != 1 || receipts[0].ID != state.ActionCalls[0].ID || receipts[0].CallID != "original-call" {
-		t.Fatalf("优化读取丢失原调用身份: %+v", data)
+	data, _ := result.Data.(map[string]any)
+	receipts, _ := data["actionCalls"].([]models.WorkflowActionCall)
+	if len(receipts) != 1 || receipts[0].ID != state.ActionCalls[0].ID || receipts[0].CallID != "original-call" || receipts[0].Failure == nil {
+		t.Fatalf("创作证据丢失原调用身份或失败记录: %+v", data)
 	}
-	failure := receipts[0].Failure.Data.(map[string]any)
-	if failure["reason"] != status_error.IMWorkflowDeliveryNotAllowed.Key() || failure["targetId"] != "target" || failure["cause"] == nil || failure["sourceRange"] == nil {
-		t.Fatalf("优化读取丢失完整原因: %+v", failure)
+	failure, _ := receipts[0].Failure.Data.(map[string]any)
+	cause, _ := failure["cause"].(map[string]any)
+	if failure["reason"] != status_error.IMWorkflowDeliveryNotAllowed.Key() || failure["targetId"] != "target" || failure["sourceRange"] == nil ||
+		cause["code"] != status_error.IMWorkflowDeliveryNotAllowed.Key() || cause["hint"] != constants.IMRecoveryEnableWorkflowDelivery {
+		t.Fatalf("创作证据丢失完整原因: %+v", failure)
 	}
 }
 

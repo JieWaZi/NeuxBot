@@ -93,11 +93,12 @@ func (s *service) FollowUpTask(
 	return nil
 }
 
-// retryTask 由负责人短期任务能力重试一次失败任务，可在重试前更换执行伙伴。
+// retryTask 以当前负责人回合的来源重试失败任务，可同时更换执行伙伴。
 func (s *service) retryTask(
 	ctx context.Context,
 	taskID string,
 	assigneeWakerID string,
+	replyLinkID string,
 ) error {
 	taskID = strings.TrimSpace(taskID)
 	assigneeWakerID = strings.TrimSpace(assigneeWakerID)
@@ -152,6 +153,7 @@ func (s *service) retryTask(
 		if err := s.tasks.UpdateFields(transactionContext, task.ID, map[string]interface{}{
 			"assignee_waker_id":  assigneeWakerID,
 			"delegation_sent_at": now,
+			"im_reply_link_id":   replyLinkID,
 			"status":             constants.ChannelTaskStatusPending,
 			"error_message":      "",
 			"finished_at":        nil,

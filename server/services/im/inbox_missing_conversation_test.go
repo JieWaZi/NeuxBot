@@ -19,6 +19,126 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestActiveConversationChangesKeepBindingSettingsAndLastSaveWins(t *testing.T) {
+	service, _, _ := newIMFixture(t)
+	ctx := t.Context()
+	store := service.config.Store
+	opened, err := store.Binding(ctx, "b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstLink := protocol.StableID("link", "first")
+	for _, step := range []struct {
+		// id 是收件的稳定身份。
+		id string
+		// content 是首条工作消息或切换命令。
+		content string
+		// activeLink 是路由后的活动会话身份。
+		activeLink string
+	}{
+		{id: "first", content: "第一次工作", activeLink: firstLink},
+		{id: "new", content: "/new"},
+		{id: "use", content: "/use " + firstLink, activeLink: firstLink},
+	} {
+		input := models.IMInbox{ID: step.id, ConnectionID: "c", BindingID: "b", ExternalMessageID: step.id, Content: step.content, State: constants.IMInboxStatePending}
+		if err := store.SaveInbox(ctx, input); err != nil {
+			t.Fatal(err)
+		}
+		if err := service.route(ctx, input); err != nil {
+			t.Fatal(err)
+		}
+		current, err := store.Binding(ctx, "b")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if current.ActiveLinkID != step.activeLink || current.WakerID != opened.WakerID {
+			t.Errorf("路由 %s 后对话或配置不正确: link=%q waker=%q", step.id, current.ActiveLinkID, current.WakerID)
+		}
+		if step.id == "first" {
+			if err := store.UpdateLink(ctx, models.IMConversationLink{ID: firstLink, ChatID: "first-chat"}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := service.WithBinding(ctx, "b", func(tx context.Context, current models.IMBinding) error {
+		current.AllowWorkflowDelivery = false
+		return store.SaveBinding(tx, current)
+	}); err != nil {
+		t.Fatalf("会话切换后应可保存配置: %v", err)
+	}
+	current, err := store.Binding(ctx, "b")
+	if err != nil || current.ActiveLinkID != firstLink || current.AllowWorkflowDelivery {
+		t.Fatalf("配置保存影响当前对话或没有提交: %+v %v", current, err)
+	}
+	if err := service.WithBinding(ctx, "b", func(tx context.Context, current models.IMBinding) error {
+		current.Name = "最后保存"
+		current.AllowWorkflowDelivery = opened.AllowWorkflowDelivery
+		return store.SaveBinding(tx, current)
+	}); err != nil {
+		t.Fatalf("较早打开的配置应可直接保存: %v", err)
+	}
+	current, err = store.Binding(ctx, "b")
+	if err != nil || current.Name != "最后保存" || !current.AllowWorkflowDelivery || current.ActiveLinkID != firstLink {
+		t.Fatalf("最后保存的配置应生效并保留活动会话: %+v %v", current, err)
+	}
+}
+
+func TestRoutingRechecksConversationSelectionAfterInspectingLink(t *testing.T) {
+	service, db, _ := newIMFixture(t)
+	ctx := t.Context()
+	store := service.config.Store
+	first := models.IMInbox{ID: "first", ConnectionID: "c", BindingID: "b", ExternalMessageID: "first", Content: "第一次工作", State: constants.IMInboxStatePending}
+	if err := store.SaveInbox(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.route(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	inspected, err := store.Binding(ctx, "b")
+	if err != nil || inspected.ActiveLinkID == "" {
+		t.Fatalf("首条消息未建立会话: %+v %v", inspected, err)
+	}
+	service.config.Store = &selectionChangeStore{IMController: store, onInspect: func() {
+		if err := service.SelectConversation(ctx, "b", ""); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	next := models.IMInbox{ID: "next", ConnectionID: "c", BindingID: "b", ExternalMessageID: "next", Content: "下一次工作", State: constants.IMInboxStatePending}
+	if err := store.SaveInbox(ctx, next); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.route(ctx, next); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.First(&next, "id = ?", next.ID).Error; err != nil || next.State != constants.IMInboxStatePending {
+		t.Fatalf("检查会话期间的切换应保留待路由收件: %+v %v", next, err)
+	}
+	if err := service.route(ctx, next); err != nil {
+		t.Fatal(err)
+	}
+	current, err := store.Binding(ctx, "b")
+	if err != nil || current.ActiveLinkID != protocol.StableID("link", next.ID) {
+		t.Fatalf("重新路由未采用新的对话选择: %+v %v", current, err)
+	}
+}
+
+type selectionChangeStore struct {
+	// IMController 提供真实的 SQLite 持久层。
+	controllers.IMController
+	// onInspect 在读出旧会话后触发一次选择变更。
+	onInspect func()
+}
+
+func (s *selectionChangeStore) Link(ctx context.Context, id string) (models.IMConversationLink, error) {
+	link, err := s.IMController.Link(ctx, id)
+	if s.onInspect != nil {
+		change := s.onInspect
+		s.onInspect = nil
+		change()
+	}
+	return link, err
+}
+
 func TestQueuedConversationKeepsAdmittedExecutionSelectionAndChecksCurrentAuthorization(t *testing.T) {
 	for _, revoked := range []bool{false, true} {
 		t.Run(map[bool]string{false: "edited_binding", true: "revoked_binding"}[revoked], func(t *testing.T) {
@@ -33,7 +153,7 @@ func TestQueuedConversationKeepsAdmittedExecutionSelectionAndChecksCurrentAuthor
 			}
 			binding.ProjectID = "admitted-project"
 			binding.Options = models.IMExecutionOptions{RuntimeID: "codex", AccountID: "admitted-account", Model: "admitted-model", Reasoning: "high", PermissionLevel: constants.PermissionLevelDefault}
-			if err := service.config.Store.SaveBinding(ctx, binding, binding.Revision); err != nil {
+			if err := service.config.Store.SaveBinding(ctx, binding); err != nil {
 				t.Fatal(err)
 			}
 			input := models.IMInbox{ID: "admitted-input", BindingID: "b", ConnectionID: "c", Content: "按已接纳配置执行", State: constants.IMInboxStatePending}
@@ -55,10 +175,10 @@ func TestQueuedConversationKeepsAdmittedExecutionSelectionAndChecksCurrentAuthor
 			if revoked {
 				binding.State = constants.IMBindingStateRejected
 			}
-			if err := service.config.Store.SaveBinding(ctx, binding, binding.Revision); err != nil {
+			if err := service.config.Store.SaveBinding(ctx, binding); err != nil {
 				t.Fatal(err)
 			}
-			err = service.accept(ctx, input)
+			err = service.accept(ctx, &input)
 			if revoked {
 				if !errors.Is(err, status_error.IMChatNotAuthorized) || len(executions.inputs) != 0 {
 					t.Fatalf("撤权后仍接纳旧配置: inputs=%+v error=%v", executions.inputs, err)
@@ -90,7 +210,7 @@ func TestQueuedConversationKeepsAdmittedExecutionSelectionAndChecksCurrentAuthor
 			if err := db.First(&next, "id = ?", next.ID).Error; err != nil {
 				t.Fatal(err)
 			}
-			if err := service.accept(ctx, next); err != nil {
+			if err := service.accept(ctx, &next); err != nil {
 				t.Fatal(err)
 			}
 			if len(executions.inputs) != 2 || executions.inputs[1].Chat.ChatID == "" || executions.inputs[1].Options.Model != "admitted-model" || executions.inputs[1].Options.AccountID != "admitted-account" || executions.inputs[1].Input.SubmissionID != next.ID || next.LinkID != input.LinkID {
@@ -170,8 +290,9 @@ func (e *missingConversationTeams) SubmitMessage(ctx context.Context, input chan
 func attachConversationReaders(t *testing.T, service *Service, db *gorm.DB) {
 	t.Helper()
 	module, err := chat.New(chat.Config{
-		StorageDirectory: service.config.DataDirectory,
-		Projects:         controllers.NewProjectController(db),
+		StorageDirectory:     service.config.DataDirectory,
+		Projects:             controllers.NewProjectController(db),
+		PreserveIMAdmissions: service.config.Store.PreserveInboxAdmissions,
 		QueryIndexes: chat.QueryIndexDependencies{
 			Chats:           controllers.NewChatController(db),
 			Transactions:    service.config.Transactions,
@@ -200,7 +321,7 @@ func TestIncomingMessageCreatesConversationWhenCurrentPartnerChatWasDeleted(t *t
 	previous.Options.Model = "previous-model"
 	binding.Options.Model = "current-model"
 	binding.ActiveLinkID = "deleted-link"
-	if err := service.config.Store.SaveBinding(ctx, binding, binding.Revision); err != nil {
+	if err := service.config.Store.SaveBinding(ctx, binding); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.config.Store.SaveLink(ctx, models.IMConversationLink{ID: "deleted-link", BindingID: "b", ChatID: protocol.StableID("chat", "deleted"), Title: "已删除对话", Configuration: models.IMConversationConfiguration{WakerID: previous.WakerID, ChannelID: previous.ChannelID, ProjectID: previous.ProjectID, WorkingDirectory: previous.WorkingDirectory, Options: previous.Options}}); err != nil {
@@ -216,7 +337,7 @@ func TestIncomingMessageCreatesConversationWhenCurrentPartnerChatWasDeleted(t *t
 	if err := db.First(&input, "id = ?", input.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := service.accept(ctx, input); err != nil {
+	if err := service.accept(ctx, &input); err != nil {
 		t.Fatalf("当前会话删除后新消息应新建对话，而非续发失效会话: %v", err)
 	}
 	if len(executions.inputs) != 1 || executions.inputs[0].Chat.Create == nil || executions.inputs[0].Chat.ChatID != "" {
@@ -239,7 +360,7 @@ func TestIncomingMessageCreatesConversationWhenCurrentPartnerChatWasDeleted(t *t
 	if err := db.First(&followup, "id = ?", followup.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := service.accept(ctx, followup); err != nil {
+	if err := service.accept(ctx, &followup); err != nil {
 		t.Fatal(err)
 	}
 	if len(executions.inputs) != 2 || executions.inputs[1].Chat.Create != nil || executions.inputs[1].Chat.ChatID != current.ChatID || followup.LinkID != current.ID {
@@ -260,7 +381,7 @@ func TestIncomingMessageCreatesConversationWhenCurrentTeamThreadWasDeleted(t *te
 	binding.WakerID = ""
 	binding.ChannelID = "team"
 	binding.ActiveLinkID = "deleted-link"
-	if err := service.config.Store.SaveBinding(ctx, binding, binding.Revision); err != nil {
+	if err := service.config.Store.SaveBinding(ctx, binding); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.config.Store.SaveLink(ctx, models.IMConversationLink{ID: "deleted-link", BindingID: "b", ChatID: "deleted-chat", ThreadID: "deleted-thread", Title: "已删除团队对话", Configuration: models.IMConversationConfiguration{WakerID: binding.WakerID, ChannelID: binding.ChannelID, ProjectID: binding.ProjectID, WorkingDirectory: binding.WorkingDirectory, Options: binding.Options}}); err != nil {
@@ -276,7 +397,7 @@ func TestIncomingMessageCreatesConversationWhenCurrentTeamThreadWasDeleted(t *te
 	if err := db.First(&input, "id = ?", input.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := service.accept(ctx, input); err != nil {
+	if err := service.accept(ctx, &input); err != nil {
 		t.Fatalf("当前团队对话删除后新消息应新建对话，而非续发失效线程: %v", err)
 	}
 	if len(teams.inputs) != 1 || teams.inputs[0].Create == nil || teams.inputs[0].Continue != nil || input.LinkID == "deleted-link" {
@@ -298,7 +419,7 @@ func TestQueuedMessageKeepsFrozenConfigurationAfterConversationDeletionAndNewSel
 	}
 	binding.Options.Model = "frozen-model"
 	binding.ActiveLinkID = "previous-link"
-	if err := service.config.Store.SaveBinding(ctx, binding, binding.Revision); err != nil {
+	if err := service.config.Store.SaveBinding(ctx, binding); err != nil {
 		t.Fatal(err)
 	}
 	previous := models.IMConversationLink{ID: "previous-link", BindingID: "b", ChatID: chatID, Configuration: models.IMConversationConfiguration{WakerID: binding.WakerID, ChannelID: binding.ChannelID, ProjectID: binding.ProjectID, WorkingDirectory: binding.WorkingDirectory, Options: binding.Options}, EventCursor: 17, PendingReportIDs: []string{"already-observed-report"}}
@@ -326,12 +447,12 @@ func TestQueuedMessageKeepsFrozenConfigurationAfterConversationDeletionAndNewSel
 		t.Fatal(err)
 	}
 	binding.Options.Model = "future-model"
-	if err := service.config.Store.SaveBinding(ctx, binding, binding.Revision); err != nil {
+	if err := service.config.Store.SaveBinding(ctx, binding); err != nil {
 		t.Fatal(err)
 	}
 	executions := &missingConversationExecutions{chats: service.config.Chats, directory: service.config.DataDirectory}
 	service.config.Executions = executions
-	if err := service.accept(ctx, input); err != nil {
+	if err := service.accept(ctx, &input); err != nil {
 		t.Fatalf("接纳前失效的排队输入未建立独立对话: %v", err)
 	}
 	if len(executions.inputs) != 1 || executions.inputs[0].Chat.Create == nil || executions.inputs[0].Options.Model != "frozen-model" || executions.inputs[0].Input.SubmissionID != input.ID {
@@ -356,7 +477,7 @@ func TestConversationDatabaseFailureDoesNotCreateReplacement(t *testing.T) {
 		t.Fatal(err)
 	}
 	binding.ActiveLinkID = "existing-link"
-	if err := service.config.Store.SaveBinding(ctx, binding, binding.Revision); err != nil {
+	if err := service.config.Store.SaveBinding(ctx, binding); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.config.Store.SaveLink(ctx, models.IMConversationLink{ID: "existing-link", BindingID: "b", ChatID: "actual-chat", Configuration: models.IMConversationConfiguration{WakerID: binding.WakerID, ChannelID: binding.ChannelID, ProjectID: binding.ProjectID, WorkingDirectory: binding.WorkingDirectory, Options: binding.Options}}); err != nil {
@@ -402,7 +523,7 @@ func TestExistingConversationWithMissingQueryIndexIsNotReplaced(t *testing.T) {
 		t.Fatal(err)
 	}
 	binding.ActiveLinkID = "existing-link"
-	if err := service.config.Store.SaveBinding(ctx, binding, binding.Revision); err != nil {
+	if err := service.config.Store.SaveBinding(ctx, binding); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.config.Store.SaveLink(ctx, models.IMConversationLink{ID: "existing-link", BindingID: "b", ChatID: chatID, Configuration: models.IMConversationConfiguration{WakerID: binding.WakerID, ChannelID: binding.ChannelID, ProjectID: binding.ProjectID, WorkingDirectory: binding.WorkingDirectory, Options: binding.Options}}); err != nil {
@@ -454,7 +575,7 @@ func TestQuotingDeletedConversationStartsOnlyTheNewInput(t *testing.T) {
 	}
 	executions := &missingConversationExecutions{chats: service.config.Chats, directory: service.config.DataDirectory}
 	service.config.Executions = executions
-	if err := service.accept(ctx, input); err != nil {
+	if err := service.accept(ctx, &input); err != nil {
 		t.Fatalf("引用已删会话未能新建独立对话: %v", err)
 	}
 	if len(executions.inputs) != 1 || executions.inputs[0].Input.Content != input.Content || executions.inputs[0].Input.SubmissionID != input.ID || executions.inputs[0].Chat.Create == nil {
@@ -485,7 +606,7 @@ func TestDuplicateReceivedMessageDoesNotReplayAcceptedWorkAfterDeletion(t *testi
 	}
 	binding.State = constants.IMBindingStateApproved
 	binding.WakerID = "waker"
-	if err := service.config.Store.SaveBinding(ctx, binding, binding.Revision); err != nil {
+	if err := service.config.Store.SaveBinding(ctx, binding); err != nil {
 		t.Fatal(err)
 	}
 	inputs, err := service.config.Store.Inbox(ctx, constants.IMInboxStatePending, 20)
@@ -501,7 +622,7 @@ func TestDuplicateReceivedMessageDoesNotReplayAcceptedWorkAfterDeletion(t *testi
 	}
 	executions := &missingConversationExecutions{chats: service.config.Chats, directory: service.config.DataDirectory}
 	service.config.Executions = executions
-	if err := service.accept(ctx, inputs[0]); err != nil {
+	if err := service.accept(ctx, &inputs[0]); err != nil {
 		t.Fatal(err)
 	}
 	link, err := service.config.Store.Link(ctx, inputs[0].LinkID)

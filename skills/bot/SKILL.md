@@ -5,11 +5,10 @@ description: Use NeuxBot's authorized knowledge, delivery, workflow, team, memor
 
 # NeuxBot
 
-Use the skill directory and execution context supplied by the application.
+Use the skill directory supplied by the application.
 The executable is `scripts/botcli` (`scripts/botcli.exe` on Windows), relative
-to this `SKILL.md`. Invoke its exact quoted absolute path with the current
-`--context <execution-file>` supplied by the host; every `botcli` example below
-means that executable and explicit context.
+to this `SKILL.md`. Invoke its exact quoted absolute path. The host configures
+its connection, so the examples only show the command and its business arguments.
 Resolve reference paths from this skill directory, not the working directory.
 
 ## Read the relevant mode
@@ -63,9 +62,8 @@ reference's spelling. `--library` and `--libraryId` are not `--library-id`.
 ## Discover and invoke
 
 - Prefer the injected `bot_capabilities` MCP tools. They use the same operation
-  contracts, authorization and receipts as CLI. When using CLI, include the
-  exact `--context <execution-file>` supplied for this turn; do not reuse a
-  prior turn's context or edit connection files.
+  contracts, authorization and receipts as CLI. For CLI use the host-configured
+  connection.
 - In a host-bound workflow authoring conversation, business goals describe a
   reusable workflow to create or modify, starting with the first message. Follow
   the authoring guide supplied in the host instructions. Native CLI workflow

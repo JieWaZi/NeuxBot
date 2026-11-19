@@ -19,6 +19,8 @@ type announceEntry struct {
 	TaskID string
 	// AttemptID 是报告对应的成员执行尝试标识。
 	AttemptID string
+	// IMReplyLinkID 是该报告对应的成员尝试冻结的原 IM 会话标识。
+	IMReplyLinkID string
 	// MemberWakerID 是报告作者对应的伙伴标识。
 	MemberWakerID string
 	// MemberChatID 是报告完整执行所在的权威 Chat 标识。

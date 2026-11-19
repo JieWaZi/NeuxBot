@@ -23,6 +23,17 @@ type ToolCapability struct {
 	Bindings []agentcap.Binding `json:"-"`
 }
 
+// AdmissionBoundary 让宿主在耐久接纳时校验仍然有效的提交来源。
+type AdmissionBoundary func(context.Context, func(context.Context) error) error
+
+// Commit 在可选来源授权边界内提交接纳事实。
+func (boundary AdmissionBoundary) Commit(ctx context.Context, commit func(context.Context) error) error {
+	if boundary != nil {
+		return boundary(ctx, commit)
+	}
+	return commit(ctx)
+}
+
 // WorkIntent 是所有产品入口提交给 Execution Core 的中立工作契约。
 type WorkIntent struct {
 	// AutomaticRunID 是服务端编排传入的原自动运行，外部正文不能绑定。
@@ -39,6 +50,8 @@ type WorkIntent struct {
 	Options WorkOptions
 	// Admission 描述本次工作何时进入权威事实源。
 	Admission constants.ExecutionAdmission
+	// AdmissionBoundary 可选地保护派发前的耐久接纳，不随原生执行传递。
+	AdmissionBoundary AdmissionBoundary `json:"-"`
 	// ClaimAttachments 在首发幂等检查后将原附件引用转换为本地路径，回调由宿主提供。
 	// 返回的释放函数以权威接纳结果结算附件租约。
 	ClaimAttachments func([]AttachmentInput) (func(bool), error) `json:"-"`
@@ -216,7 +229,10 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 		intent.Admission != constants.ExecutionAdmissionCommitBeforeDispatch {
 		return AcceptedExecution{}, status_error.BadRequest
 	}
-	request := pendingMessage{automaticRunID: intent.AutomaticRunID,
+	if intent.AdmissionBoundary != nil && intent.Admission != constants.ExecutionAdmissionCommitBeforeDispatch {
+		return AcceptedExecution{}, status_error.BadRequest
+	}
+	request := pendingMessage{automaticRunID: intent.AutomaticRunID, imReplyLinkID: intent.Input.IMReplyLinkID,
 		executionID:     intent.ExecutionID,
 		submissionID:    intent.Input.SubmissionID,
 		clientRequestID: intent.ClientRequestID,
@@ -249,6 +265,7 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 		},
 		parentExecutionID:       intent.Options.ParentExecutionID,
 		admission:               intent.Admission,
+		admissionBoundary:       intent.AdmissionBoundary,
 		toolCapabilities:        cloneToolCapabilities(intent.Options.ToolCapabilities),
 		allowedConnectorIDs:     cloneConnectorAllowlist(intent.Options.AllowedConnectorIDs),
 		allowedAgentDomains:     cloneConnectorAllowlist(intent.Options.AllowedAgentDomains),

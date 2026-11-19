@@ -4,7 +4,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
-	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -22,20 +21,22 @@ func (o *ListIMConversations) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	resources := make([]models.IMConversationLink, 0, len(values))
+	resources := make([]IMConversationResource, 0, len(values))
 	for _, value := range values {
 		if value.ChatID == "" {
 			continue
 		}
+		resource := IMConversationResource{IMConversationLink: value}
 		chatIDs := []string{value.ChatID}
 		if value.ThreadID != "" {
-			_, err := global.ChannelThreadControllerManager.Get(ctx, value.ThreadID)
+			thread, err := global.ChannelThreadControllerManager.Get(ctx, value.ThreadID)
 			if util.HasStatusCode(err, status_error.ChannelThreadNotFound) {
 				continue
 			}
 			if err != nil {
 				return nil, ginx.WithStack(err)
 			}
+			resource.ChannelID = thread.ChannelID
 			members, err := global.ChannelThreadControllerManager.ListMembers(ctx, value.ThreadID)
 			if err != nil {
 				return nil, ginx.WithStack(err)
@@ -55,10 +56,10 @@ func (o *ListIMConversations) Output(ctx *gin.Context) (interface{}, error) {
 			if err != nil {
 				return nil, ginx.WithStack(err)
 			}
-			value.TurnCount += count
+			resource.TurnCount += count
 		}
 		if !missing && len(chatIDs) > 0 {
-			resources = append(resources, value)
+			resources = append(resources, resource)
 		}
 	}
 	return ListIMConversationsResponse{Resources: resources}, nil

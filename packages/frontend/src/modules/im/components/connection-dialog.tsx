@@ -28,7 +28,6 @@ import {
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent } from "@/shared/ui/dialog";
 import { FieldLabel } from "@/shared/ui/field-label";
-import { Skeleton } from "@/shared/ui/skeleton";
 import {
   useSettingsDraftGuard,
   SettingsFieldGroup,
@@ -36,17 +35,9 @@ import {
   SettingsGroup,
 } from "@/modules/settings";
 import { Input } from "@/shared/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/shared/ui/select";
 import { FormFooter } from "./form-footer";
-import { BindingForm } from "./binding-form";
-import { BindingStatus, ConnectionStatus } from "./connection-status";
-import { imQueryKeys, useIMBindings } from "../queries";
+import { ConnectionStatus } from "./connection-status";
+import { imQueryKeys } from "../queries";
 import type {
   ConnectionConfiguration,
   IMConnection,
@@ -59,9 +50,7 @@ export function ConnectionConfigurationForm({
   platform = "weixin",
   onClose,
   onSaved,
-  initialBindingId,
   host = "page",
-  includeBindings = true,
   statusStale = false,
   dismissRef,
 }: {
@@ -69,20 +58,12 @@ export function ConnectionConfigurationForm({
   platform?: IMPlatform;
   onClose: () => void;
   onSaved: () => void;
-  initialBindingId?: string;
   host?: "page" | "dialog";
-  includeBindings?: boolean;
   statusStale?: boolean;
   dismissRef?: RefObject<(() => void) | null>;
 }) {
   const { t } = useTranslation("im");
   const id = useId();
-  const bindings = useIMBindings(connection?.id || "", Boolean(connection?.id));
-  const [bindingId, setBindingId] = useState(initialBindingId || "");
-  const binding =
-    bindings.data?.find((item) => item.id === bindingId) ||
-    bindings.data?.find((item) => item.state !== "approved") ||
-    bindings.data?.[0];
   const [value, setValue] = useState<ConnectionConfiguration>({
     name: connection?.name || t(connection?.platform || platform),
     platform: connection?.platform || platform,
@@ -96,7 +77,6 @@ export function ConnectionConfigurationForm({
   const isWecom = value.platform === "wecom";
   const supportsManual = value.platform === "feishu" || isWecom;
   const [saved, setSaved] = useState(connection);
-  const [credentialRecoverySaved, setCredentialRecoverySaved] = useState(false);
   const [login, setLogin] = useState<IMLogin>();
   const [manual, setManual] = useState(
     Boolean(
@@ -258,7 +238,6 @@ export function ConnectionConfigurationForm({
       setSaved(result.data ? { ...saved, ...body, ...result.data } : saved);
       onSaved();
       if (manual) {
-        setCredentialRecoverySaved(true);
         setValue((previous) => ({ ...previous, appSecret: "" }));
       }
     },
@@ -524,13 +503,6 @@ export function ConnectionConfigurationForm({
       {loginError}
     </SettingsGroup>
   );
-  const nameChanged = Boolean(connection && value.name?.trim() !== saved?.name);
-  const needsCredentialRecovery =
-    isWecom &&
-    manual &&
-    !credentialRecoverySaved &&
-    (connection?.state === "login_required" ||
-      connection?.errorCode === "IMConnectionReplaced");
   const nameRow = (
     <SettingsFieldRow
       label={
@@ -662,150 +634,85 @@ export function ConnectionConfigurationForm({
     value.name !== initialValue.name ||
     Boolean(value.appSecret) ||
     (!connection?.appId && value.appId !== initialValue.appId);
+  const needsCredentialRecovery =
+    !statusStale &&
+    isWecom &&
+    manual &&
+    Boolean(connection?.appId) &&
+    (connection?.state === "login_required" ||
+      connection?.errorCode === "IMConnectionReplaced");
   useSettingsDraftGuard({
     dirty: host === "page" && dirty,
     pending: host === "page" && save.isPending,
   });
   return (
-    <>
-      {connection && binding && includeBindings ? (
-        <BindingForm
-          key={binding.id}
-          host={host}
-          binding={binding}
-          onClose={close}
-          onSaved={onSaved}
-          disabled={busy || !value.name?.trim()}
-          onBeforeSave={
-            nameChanged ||
-            (manual && value.appSecret) ||
-            needsCredentialRecovery
-              ? () => save.mutateAsync(undefined)
-              : undefined
-          }
-          beforeFields={
-            <>
-              {nameField}
-              {loginFields}
-              <SettingsFieldGroup title={t("chatAccess")}>
-                <SettingsFieldRow label={t("name")}>
-                  {(bindings.data?.length || 0) > 1 ? (
-                    <Select value={binding.id} onValueChange={setBindingId}>
-                      <SelectTrigger
-                        appearance={host === "page" ? "settings" : "default"}
-                        size={host === "page" ? "settings" : "sm"}
-                        aria-label={t("chatAccess")}
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {bindings.data?.map((item) => (
-                          <SelectItem key={item.id} value={item.id || ""}>
-                            {item.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <p className="type-body break-all">{binding.name}</p>
-                  )}
-                </SettingsFieldRow>
-                <SettingsFieldRow label={t("state")}>
-                  <BindingStatus binding={binding} />
-                </SettingsFieldRow>
-              </SettingsFieldGroup>
-            </>
-          }
-        />
-      ) : (
-        <form id={id + "-form"} onSubmit={submit} className="contents">
-          <div
-            className={
-              host === "dialog"
-                ? "grid min-h-0 gap-6 overflow-y-auto px-6 pb-6"
-                : "min-h-0"
+    <form id={id + "-form"} onSubmit={submit} className="contents">
+      <div
+        className={
+          host === "dialog"
+            ? "grid min-h-0 gap-6 overflow-y-auto px-6 pb-6"
+            : "min-h-0"
+        }
+      >
+        {host === "page" ? (
+          pageFields
+        ) : (
+          <>
+            {nameField}
+            {loginFields}
+          </>
+        )}
+      </div>
+      <FormFooter host={host}>
+        {host === "page" && save.error ? (
+          <p role="alert" className="text-destructive type-body basis-full">
+            {localApiErrorMessage(save.error, t("operationFailed"))}
+          </p>
+        ) : null}
+        {host === "page" && dirty ? (
+          <span className="type-body text-content-secondary mr-auto">
+            {t("unsavedChanges")}
+          </span>
+        ) : null}
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={save.isPending || (confirmed && !value.name?.trim())}
+          onClick={close}
+        >
+          {t(
+            host === "page"
+              ? "cancel"
+              : confirmed || connection
+                ? "done"
+                : "cancel",
+          )}
+        </Button>
+        {manual || connection ? (
+          <Button
+            type="submit"
+            form={id + "-form"}
+            aria-busy={save.isPending}
+            disabled={
+              !canSave ||
+              busy ||
+              (host === "page" && !dirty && !needsCredentialRecovery)
             }
           >
-            {host === "page" ? (
-              pageFields
-            ) : (
-              <>
-                {nameField}
-                {loginFields}
-              </>
-            )}
-            {connection && includeBindings && bindings.isPending ? (
-              <div role="status" aria-label={t("loading")} aria-busy="true">
-                <Skeleton className="h-row-default w-full" />
-              </div>
-            ) : null}
-            {connection &&
-            includeBindings &&
-            !bindings.isPending &&
-            !binding ? (
-              <p className="text-content-secondary type-body">
-                {t(isWecom ? "wecomFirstMessage" : "waitingForChat")}
-              </p>
-            ) : null}
-            {bindings.error && connection && includeBindings ? (
-              <p role="alert" className="text-destructive type-body">
-                {localApiErrorMessage(bindings.error, t("operationFailed"))}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void bindings.refetch()}
-                >
-                  {t("reload")}
-                </Button>
-              </p>
-            ) : null}
-          </div>
-          <FormFooter host={host}>
-            {host === "page" && save.error ? (
-              <p role="alert" className="text-destructive type-body basis-full">
-                {localApiErrorMessage(save.error, t("operationFailed"))}
-              </p>
-            ) : null}
-            {host === "page" && dirty ? (
-              <span className="type-body text-content-secondary mr-auto">
-                {t("unsavedChanges")}
-              </span>
-            ) : null}
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={save.isPending || (confirmed && !value.name?.trim())}
-              onClick={close}
-            >
-              {t(
-                host === "page"
-                  ? "cancel"
-                  : confirmed || connection
-                    ? "done"
-                    : "cancel",
-              )}
-            </Button>
-            {manual || connection ? (
-              <Button
-                type="submit"
-                form={id + "-form"}
-                aria-busy={save.isPending}
-                disabled={!canSave || busy || (host === "page" && !dirty)}
-              >
-                {t("save")}
-              </Button>
-            ) : null}
-          </FormFooter>
-        </form>
-      )}
-    </>
+            {t("save")}
+          </Button>
+        ) : null}
+      </FormFooter>
+    </form>
   );
 }
 
 /** 新增连接保留扫码弹窗，已有连接由三级页面承载。 */
 export function ConnectionDialog(
-  props: Omit<Parameters<typeof ConnectionConfigurationForm>[0], "host">,
+  props: Pick<
+    Parameters<typeof ConnectionConfigurationForm>[0],
+    "platform" | "onClose" | "onSaved"
+  >,
 ) {
   const { t } = useTranslation("im");
   const dialogFocus = useDialogFocusRestore();
@@ -820,8 +727,8 @@ export function ConnectionDialog(
       <DialogContent
         {...dialogFocus}
         size="lg"
-        title={t(props.connection ? "editConnection" : "connectPlatform", {
-          platform: t(props.connection?.platform || props.platform || "weixin"),
+        title={t("connectPlatform", {
+          platform: t(props.platform || "weixin"),
         })}
       >
         <ConnectionConfigurationForm

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"maps"
 	"slices"
 	"strconv"
@@ -18,6 +19,9 @@ import (
 )
 
 const turnSettlementTimeout = 15 * time.Second
+
+// ErrTurnAdmissionBusy identifies a temporary prepare conflict with the original public error code.
+var ErrTurnAdmissionBusy = fmt.Errorf("native turn admission is busy: %w", status_error.RuntimeUnavailable)
 
 // ThreadRequest freezes the public owner, session settings and authorized resources.
 type ThreadRequest struct {
@@ -270,16 +274,20 @@ func (l *ThreadLifecycle) prepare(ctx context.Context, request ThreadRequest, in
 			if closeFiles != nil {
 				_ = closeFiles(context.WithoutCancel(ctx))
 			}
-			return nil, status_error.RuntimeUnavailable
+			return nil, ErrTurnAdmissionBusy
 		}
 	}
 	state := l.threads[id]
 	if l.closing || l.restarting[request.Connection.Account.Provider] || state != nil && (state.closing || state.active != nil || state.fork != nil) {
+		var admissionErr error = ErrTurnAdmissionBusy
+		if l.closing {
+			admissionErr = status_error.RuntimeUnavailable
+		}
 		l.mu.Unlock()
 		if closeFiles != nil {
 			_ = closeFiles(context.WithoutCancel(ctx))
 		}
-		return nil, status_error.RuntimeUnavailable
+		return nil, admissionErr
 	}
 	if state == nil {
 		state = &threadState{id: id, chatID: request.ChatID}
@@ -528,7 +536,7 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 func (l *ThreadLifecycle) openConnection(ctx context.Context, state *threadState, request ProviderConnectionRequest, acquire func(context.Context, ResourceSelection) (ResourceLease, error), closeFiles func(context.Context) error) (*providerConnection, error) {
 	// Retire idle consumers before ProviderRuntime reserves and materializes the
 	// target. Active and preparing consumers are never canceled for replacement.
-	if err := l.closeIdleConsumers(ctx, status_error.RuntimeUnavailable, func(other *threadState) bool {
+	if err := l.closeIdleConsumers(ctx, ErrTurnAdmissionBusy, func(other *threadState) bool {
 		return other != state && (other.connection != nil && skillsConflict(other.connection.skills, request.Resources.Skills) || (other.active != nil || other.fork != nil) && skillsConflict(other.admittedSkills, request.Resources.Skills))
 	}); err != nil {
 		return nil, err

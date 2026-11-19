@@ -587,7 +587,7 @@ func pluginSelectionHint(selected []plugins.Snapshot) string {
 	for _, item := range selected {
 		names = append(names, item.Name+" ("+item.ID+")")
 	}
-	return "\n\n用户本轮明确选择插件：" + strings.Join(names, "、") + "。请按任务需要使用其可用技能或连接器。"
+	return "\n\nThe user selected these plugins for this turn: " + strings.Join(names, ", ") + ". Use their available skills or connectors as needed for the task."
 }
 
 var pluginCLIVersion = regexp.MustCompile(`([0-9]+)\.([0-9]+)\.([0-9]+)`)

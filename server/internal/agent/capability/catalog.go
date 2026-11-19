@@ -169,7 +169,7 @@ func catalog() []Operation {
 		operation("knowledge.sources.get", "Read one immutable source within a frozen resource.", read, immediate, "knowledge", text("libraryId", true), text("backend", false), text("connectionId", false), text("sourceVersionId", true)),
 
 		operation("im.targets.list", "Discover authorized message recipients.", read, immediate, "im.delivery", page...),
-		operation("im.deliveries.create", "Register a durable delivery; acceptance is not platform confirmation.", external, accepted, "im.delivery", text("targetId", true), text("content", false), list("files")),
+		operation("im.deliveries.create", "Register a durable delivery. Omit targetId for files replying to the current IM chat. Acceptance is not platform confirmation.", external, accepted, "im.delivery", text("targetId", false), text("content", false), list("files")),
 		operation("im.deliveries.get", "Read the actual state of an authorized delivery.", read, immediate, "im.delivery", text("deliveryId", true)),
 		operation("workflow.source.get", "Read source for the bound workflow.", read, immediate, "workflow.authoring", text("revisionId", false), text("workflowId", false)),
 		operation("workflow.authoring.prepare", "Prepare minimal authoring guidance, current source, pending annotations, needed resource pages, execution defaults, retry compatibility and save contracts in one read. Select actual DSL primitives; no separate SDK discovery is needed.", read, immediate, "workflow.authoring",

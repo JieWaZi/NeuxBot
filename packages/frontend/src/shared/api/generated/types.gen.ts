@@ -994,11 +994,6 @@ export type GithubComJieWaZiNeuxBotServerApisImBindingConfiguration = {
      */
     projectId?: string;
     /**
-     * 配置版本
-     */
-    revision?: number;
-    state?: GithubComJieWaZiNeuxBotServerConstantsImBindingState & unknown;
-    /**
      * 伙伴标识
      */
     wakerId?: string;
@@ -1016,6 +1011,13 @@ export type GithubComJieWaZiNeuxBotServerApisImGetImStatusResponse = {
      * 维持运行
      */
     keepAwake?: boolean;
+};
+
+export type GithubComJieWaZiNeuxBotServerApisImImConversationResource = GithubComJieWaZiNeuxBotServerRepositoriesModelsImConversationLink & {
+    /**
+     * 所属团队
+     */
+    channelId?: string;
 };
 
 /**
@@ -1049,7 +1051,7 @@ export type GithubComJieWaZiNeuxBotServerApisImListImConversationsResponse = {
     /**
      * 资源列表
      */
-    resources?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsImConversationLink>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerApisImImConversationResource>;
 };
 
 /**
@@ -1060,6 +1062,14 @@ export type GithubComJieWaZiNeuxBotServerApisImSelectImConversationRequest = {
      * 对话标识
      */
     linkId?: string;
+};
+
+/**
+ * UpdateIMBindingRequest 聊天授权更新。
+ */
+export type GithubComJieWaZiNeuxBotServerApisImUpdateImBindingRequest = {
+    configuration?: GithubComJieWaZiNeuxBotServerApisImBindingConfiguration & unknown;
+    state?: GithubComJieWaZiNeuxBotServerConstantsImBindingState & unknown;
 };
 
 /**
@@ -7087,6 +7097,7 @@ export type GithubComJieWaZiNeuxBotServerConstantsChannelActivityState = 'idle' 
  * * `interaction.approval.resolved` - ChannelEventApprovalResolved 表示成员 Chat 审批结果已投影到团队事件流。
  * * `interaction.elicitation.requested` - ChannelEventElicitationRequested 表示成员 Chat 结构化输入请求已投影到团队事件流。
  * * `interaction.elicitation.resolved` - ChannelEventElicitationResolved 表示成员 Chat 结构化输入结果已投影到团队事件流。
+ * * `lead.input_failed` - ChannelEventLeadInputFailed 表示负责人队列已结算未进入 Chat 的输入。
  * * `lead.input_queued` - ChannelEventLeadInputQueued 表示用户输入已进入负责人可靠队列。
  * * `members.config_updated` - ChannelEventMemberConfigsUpdated 表示团队对话成员执行配置已经更新。
  * * `task.cancelled` - ChannelEventTaskCancelled 表示单项团队任务已经取消。
@@ -7106,17 +7117,18 @@ export type GithubComJieWaZiNeuxBotServerConstantsChannelActivityState = 'idle' 
  * * `thread.work_stopping` - ChannelEventThreadWorkStopping 表示团队对话已经冻结新工作并正在收敛真实执行。
  *
  */
-export type GithubComJieWaZiNeuxBotServerConstantsChannelEventType = '' | 'interaction.approval.requested' | 'interaction.approval.resolved' | 'interaction.elicitation.requested' | 'interaction.elicitation.resolved' | 'lead.input_queued' | 'members.config_updated' | 'task.cancelled' | 'task.created' | 'task.dispatch_deferred' | 'task.finished' | 'task.follow_up_queued' | 'task.recovery_failed' | 'task.retry_queued' | 'task.review_approved' | 'task.started' | 'task.updated' | 'team.leader.processing' | 'team.member.direct_delivered' | 'thread.created' | 'thread.work_stopped' | 'thread.work_stopping';
+export type GithubComJieWaZiNeuxBotServerConstantsChannelEventType = '' | 'interaction.approval.requested' | 'interaction.approval.resolved' | 'interaction.elicitation.requested' | 'interaction.elicitation.resolved' | 'lead.input_failed' | 'lead.input_queued' | 'members.config_updated' | 'task.cancelled' | 'task.created' | 'task.dispatch_deferred' | 'task.finished' | 'task.follow_up_queued' | 'task.recovery_failed' | 'task.retry_queued' | 'task.review_approved' | 'task.started' | 'task.updated' | 'team.leader.processing' | 'team.member.direct_delivered' | 'thread.created' | 'thread.work_stopped' | 'thread.work_stopping';
 
 /**
  * >
  * * `cancelled` - ChannelInputStatusCancelled 表示用户停止当前团队工作时取消了尚未执行的消息。
  * * `consumed` - ChannelInputStatusConsumed 表示消息已经作为负责人 Chat 的权威事实接纳。
  * * `delivering` - ChannelInputStatusDelivering 表示消息已经关联一次负责人 Chat Execution。
+ * * `failed` - ChannelInputStatusFailed 表示负责人输入在进入 Chat 之前被明确拒绝。
  * * `pending` - ChannelInputStatusPending 表示消息已经持久化但尚未进入负责人 Chat。
  *
  */
-export type GithubComJieWaZiNeuxBotServerConstantsChannelInputStatus = 'cancelled' | 'consumed' | 'delivering' | 'pending';
+export type GithubComJieWaZiNeuxBotServerConstantsChannelInputStatus = 'cancelled' | 'consumed' | 'delivering' | 'failed' | 'pending';
 
 /**
  * >
@@ -11225,13 +11237,9 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsImBinding = {
      * ProjectID 是由桌面批准的项目，使用受管临时目录时为空。
      */
     projectId?: string;
-    /**
-     * Revision 是授权和指针的并发版本。
-     */
-    revision?: number;
     state?: GithubComJieWaZiNeuxBotServerConstantsImBindingState & unknown;
     /**
-     * UpdatedAt 是最近授权或上下文变化的时间。
+     * UpdatedAt 是授权、活动会话或上下文的最近变化时间。
      */
     updatedAt?: number;
     /**
@@ -19925,7 +19933,7 @@ export type ListImBindingsResponses = {
 export type ListImBindingsResponse = ListImBindingsResponses[keyof ListImBindingsResponses];
 
 export type UpdateImBindingData = {
-    body: GithubComJieWaZiNeuxBotServerApisImBindingConfiguration & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisImUpdateImBindingRequest & unknown;
     path: {
         /**
          * 聊天标识

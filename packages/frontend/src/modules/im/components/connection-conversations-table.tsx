@@ -13,6 +13,7 @@ import type { IMBinding } from "../types";
 export function ConnectionConversationsTable({
   connectionId,
   bindings,
+  chatLabel,
   ready,
   sourceError,
   onRetrySource,
@@ -20,6 +21,7 @@ export function ConnectionConversationsTable({
 }: {
   connectionId: string;
   bindings: IMBinding[];
+  chatLabel: (binding: IMBinding) => string;
   ready: boolean;
   sourceError?: unknown;
   onRetrySource: () => void;
@@ -27,9 +29,14 @@ export function ConnectionConversationsTable({
 }) {
   const { t, i18n } = useTranslation("im");
   const [requestedPage, setRequestedPage] = useState(1);
-  const query = useIMConversations(connectionId, bindings, ready);
+  const bindingIds = bindings.flatMap((binding) => binding.id || []);
+  const bindingsById = new Map(
+    bindings.map((binding) => [binding.id, binding]),
+  );
+  const query = useIMConversations(connectionId, bindingIds, ready);
   const pageSize = 10;
   const rows = query.data || [];
+  const showChatSource = bindings.length > 1;
   const page = Math.min(
     requestedPage,
     Math.max(1, Math.ceil(rows.length / pageSize)),
@@ -60,6 +67,10 @@ export function ConnectionConversationsTable({
           <ul aria-label={t("conversations")}>
             {rows
               .slice((page - 1) * pageSize, page * pageSize)
+              .map(({ conversation, bindingId }) => ({
+                conversation,
+                binding: bindingsById.get(bindingId),
+              }))
               .map(({ conversation, binding: item }) => (
                 <li
                   key={conversation.id}
@@ -70,7 +81,8 @@ export function ConnectionConversationsTable({
                       <span className="[overflow-wrap:anywhere]">
                         {conversation.title || t("conversationTitle")}
                       </span>
-                      {item.activeLinkId === conversation.id ? (
+                      {conversation.id &&
+                      item?.activeLinkId === conversation.id ? (
                         <Badge role="status" variant="success">
                           {t("currentConversation")}
                         </Badge>
@@ -78,7 +90,12 @@ export function ConnectionConversationsTable({
                     </div>
                     <p className="type-resource-body text-content-secondary mt-1 [overflow-wrap:anywhere]">
                       {[
-                        item.name || item.externalChatId,
+                        item &&
+                          (showChatSource
+                            ? chatLabel(item)
+                            : item.name !== item.externalChatId
+                              ? item.name
+                              : undefined),
                         conversation.createdAt
                           ? new Intl.DateTimeFormat(i18n.resolvedLanguage, {
                               dateStyle: "medium",
@@ -97,8 +114,8 @@ export function ConnectionConversationsTable({
                     <Button asChild size="settings" variant="ghost">
                       <Link
                         to={
-                          conversation.threadId && item.channelId
-                            ? `/teams/${item.channelId}/threads/${conversation.threadId}`
+                          conversation.threadId && conversation.channelId
+                            ? `/teams/${conversation.channelId}/threads/${conversation.threadId}`
                             : `/chats/${conversation.chatId}`
                         }
                       >

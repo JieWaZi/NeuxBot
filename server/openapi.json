@@ -8145,7 +8145,7 @@
               "schema": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisImBindingConfiguration"
+                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisImUpdateIMBindingRequest"
                   },
                   {
                     "description": "请求体",
@@ -63661,23 +63661,6 @@
             "description": "项目标识",
             "x-go-field-name": "ProjectID"
           },
-          "revision": {
-            "type": "integer",
-            "format": "int64",
-            "description": "配置版本",
-            "x-go-field-name": "Revision"
-          },
-          "state": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerConstantsIMBindingState"
-              },
-              {
-                "description": "授权状态",
-                "x-go-field-name": "State"
-              }
-            ]
-          },
           "wakerId": {
             "type": "string",
             "description": "伙伴标识",
@@ -63708,6 +63691,27 @@
         "description": "GetIMStatusResponse 运行策略响应。",
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisImGetIMStatusResponse",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/im.GetIMStatusResponse"
+      },
+      "GithubComJieWaZiNeuxBotServerApisImIMConversationResource": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerRepositoriesModelsIMConversationLink"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "channelId": {
+                "type": "string",
+                "description": "所属团队",
+                "x-go-field-name": "ChannelID",
+                "x-tag-json": "channelId,omitempty"
+              }
+            },
+            "description": "IMConversationResource 关联对话。",
+            "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisImIMConversationResource",
+            "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/im.IMConversationResource"
+          }
+        ]
       },
       "GithubComJieWaZiNeuxBotServerApisImListIMBindingsResponse": {
         "type": "object",
@@ -63753,7 +63757,7 @@
           "resources": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerRepositoriesModelsIMConversationLink"
+              "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisImIMConversationResource"
             },
             "description": "资源列表",
             "x-go-field-name": "Resources"
@@ -63776,6 +63780,38 @@
         "description": "SelectIMConversationRequest 对话选择请求。",
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisImSelectIMConversationRequest",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/im.SelectIMConversationRequest"
+      },
+      "GithubComJieWaZiNeuxBotServerApisImUpdateIMBindingRequest": {
+        "type": "object",
+        "properties": {
+          "configuration": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisImBindingConfiguration"
+              },
+              {
+                "description": "聊天配置",
+                "x-go-field-name": "Configuration",
+                "x-go-star-level": 1,
+                "x-tag-json": "configuration,omitempty"
+              }
+            ]
+          },
+          "state": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerConstantsIMBindingState"
+              },
+              {
+                "description": "授权状态",
+                "x-go-field-name": "State"
+              }
+            ]
+          }
+        },
+        "description": "UpdateIMBindingRequest 聊天授权更新。",
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisImUpdateIMBindingRequest",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/im.UpdateIMBindingRequest"
       },
       "GithubComJieWaZiNeuxBotServerApisImVerifyIMLoginRequest": {
         "type": "object",
@@ -74218,6 +74254,7 @@
           "interaction.approval.resolved",
           "interaction.elicitation.requested",
           "interaction.elicitation.resolved",
+          "lead.input_failed",
           "lead.input_queued",
           "members.config_updated",
           "task.cancelled",
@@ -74236,13 +74273,14 @@
           "thread.work_stopped",
           "thread.work_stopping"
         ],
-        "description": ">\n* `` - ChannelEventTypeUnspecified 表示空或未知事件类型。\n* `interaction.approval.requested` - ChannelEventApprovalRequested 表示成员 Chat 审批请求已投影到团队事件流。\n* `interaction.approval.resolved` - ChannelEventApprovalResolved 表示成员 Chat 审批结果已投影到团队事件流。\n* `interaction.elicitation.requested` - ChannelEventElicitationRequested 表示成员 Chat 结构化输入请求已投影到团队事件流。\n* `interaction.elicitation.resolved` - ChannelEventElicitationResolved 表示成员 Chat 结构化输入结果已投影到团队事件流。\n* `lead.input_queued` - ChannelEventLeadInputQueued 表示用户输入已进入负责人可靠队列。\n* `members.config_updated` - ChannelEventMemberConfigsUpdated 表示团队对话成员执行配置已经更新。\n* `task.cancelled` - ChannelEventTaskCancelled 表示单项团队任务已经取消。\n* `task.created` - ChannelEventTaskCreated 表示正式团队任务已经持久化。\n* `task.dispatch_deferred` - ChannelEventTaskDispatchDeferred 表示任务已经持久但本次派发需要稍后重试。\n* `task.finished` - ChannelEventTaskFinished 表示正式团队任务尝试已经提交终态。\n* `task.follow_up_queued` - ChannelEventTaskFollowUpQueued 表示用户补充已经进入任务队列。\n* `task.recovery_failed` - ChannelEventTaskRecoveryFailed 表示恢复时无法继续旧任务尝试。\n* `task.retry_queued` - ChannelEventTaskRetryQueued 表示失败任务已经由负责人显式重试。\n* `task.review_approved` - ChannelEventTaskReviewApproved 表示用户已通过任务人工验收。\n* `task.started` - ChannelEventTaskStarted 表示正式团队任务已经关联成员执行。\n* `task.updated` - ChannelEventTaskUpdated 表示负责人已修改尚未执行的正式团队任务。\n* `team.leader.processing` - ChannelEventTeamLeaderProcessing 表示负责人开始或结束处理成员结果批次。\n* `team.member.direct_delivered` - ChannelEventMemberDirectDelivered 表示成员报告已直接成为团队主时间线的完整答复。\n* `thread.created` - ChannelEventThreadCreated 表示团队对话及成员 Chat 已经就绪。\n* `thread.work_stopped` - ChannelEventThreadWorkStopped 表示团队对话当前工作已由用户停止。\n* `thread.work_stopping` - ChannelEventThreadWorkStopping 表示团队对话已经冻结新工作并正在收敛真实执行。\n",
+        "description": ">\n* `` - ChannelEventTypeUnspecified 表示空或未知事件类型。\n* `interaction.approval.requested` - ChannelEventApprovalRequested 表示成员 Chat 审批请求已投影到团队事件流。\n* `interaction.approval.resolved` - ChannelEventApprovalResolved 表示成员 Chat 审批结果已投影到团队事件流。\n* `interaction.elicitation.requested` - ChannelEventElicitationRequested 表示成员 Chat 结构化输入请求已投影到团队事件流。\n* `interaction.elicitation.resolved` - ChannelEventElicitationResolved 表示成员 Chat 结构化输入结果已投影到团队事件流。\n* `lead.input_failed` - ChannelEventLeadInputFailed 表示负责人队列已结算未进入 Chat 的输入。\n* `lead.input_queued` - ChannelEventLeadInputQueued 表示用户输入已进入负责人可靠队列。\n* `members.config_updated` - ChannelEventMemberConfigsUpdated 表示团队对话成员执行配置已经更新。\n* `task.cancelled` - ChannelEventTaskCancelled 表示单项团队任务已经取消。\n* `task.created` - ChannelEventTaskCreated 表示正式团队任务已经持久化。\n* `task.dispatch_deferred` - ChannelEventTaskDispatchDeferred 表示任务已经持久但本次派发需要稍后重试。\n* `task.finished` - ChannelEventTaskFinished 表示正式团队任务尝试已经提交终态。\n* `task.follow_up_queued` - ChannelEventTaskFollowUpQueued 表示用户补充已经进入任务队列。\n* `task.recovery_failed` - ChannelEventTaskRecoveryFailed 表示恢复时无法继续旧任务尝试。\n* `task.retry_queued` - ChannelEventTaskRetryQueued 表示失败任务已经由负责人显式重试。\n* `task.review_approved` - ChannelEventTaskReviewApproved 表示用户已通过任务人工验收。\n* `task.started` - ChannelEventTaskStarted 表示正式团队任务已经关联成员执行。\n* `task.updated` - ChannelEventTaskUpdated 表示负责人已修改尚未执行的正式团队任务。\n* `team.leader.processing` - ChannelEventTeamLeaderProcessing 表示负责人开始或结束处理成员结果批次。\n* `team.member.direct_delivered` - ChannelEventMemberDirectDelivered 表示成员报告已直接成为团队主时间线的完整答复。\n* `thread.created` - ChannelEventThreadCreated 表示团队对话及成员 Chat 已经就绪。\n* `thread.work_stopped` - ChannelEventThreadWorkStopped 表示团队对话当前工作已由用户停止。\n* `thread.work_stopping` - ChannelEventThreadWorkStopping 表示团队对话已经冻结新工作并正在收敛真实执行。\n",
         "x-enum-labels": {
           "": "ChannelEventTypeUnspecified 表示空或未知事件类型。",
           "interaction.approval.requested": "ChannelEventApprovalRequested 表示成员 Chat 审批请求已投影到团队事件流。",
           "interaction.approval.resolved": "ChannelEventApprovalResolved 表示成员 Chat 审批结果已投影到团队事件流。",
           "interaction.elicitation.requested": "ChannelEventElicitationRequested 表示成员 Chat 结构化输入请求已投影到团队事件流。",
           "interaction.elicitation.resolved": "ChannelEventElicitationResolved 表示成员 Chat 结构化输入结果已投影到团队事件流。",
+          "lead.input_failed": "ChannelEventLeadInputFailed 表示负责人队列已结算未进入 Chat 的输入。",
           "lead.input_queued": "ChannelEventLeadInputQueued 表示用户输入已进入负责人可靠队列。",
           "members.config_updated": "ChannelEventMemberConfigsUpdated 表示团队对话成员执行配置已经更新。",
           "task.cancelled": "ChannelEventTaskCancelled 表示单项团队任务已经取消。",
@@ -74270,13 +74308,15 @@
           "cancelled",
           "consumed",
           "delivering",
+          "failed",
           "pending"
         ],
-        "description": ">\n* `cancelled` - ChannelInputStatusCancelled 表示用户停止当前团队工作时取消了尚未执行的消息。\n* `consumed` - ChannelInputStatusConsumed 表示消息已经作为负责人 Chat 的权威事实接纳。\n* `delivering` - ChannelInputStatusDelivering 表示消息已经关联一次负责人 Chat Execution。\n* `pending` - ChannelInputStatusPending 表示消息已经持久化但尚未进入负责人 Chat。\n",
+        "description": ">\n* `cancelled` - ChannelInputStatusCancelled 表示用户停止当前团队工作时取消了尚未执行的消息。\n* `consumed` - ChannelInputStatusConsumed 表示消息已经作为负责人 Chat 的权威事实接纳。\n* `delivering` - ChannelInputStatusDelivering 表示消息已经关联一次负责人 Chat Execution。\n* `failed` - ChannelInputStatusFailed 表示负责人输入在进入 Chat 之前被明确拒绝。\n* `pending` - ChannelInputStatusPending 表示消息已经持久化但尚未进入负责人 Chat。\n",
         "x-enum-labels": {
           "cancelled": "ChannelInputStatusCancelled 表示用户停止当前团队工作时取消了尚未执行的消息。",
           "consumed": "ChannelInputStatusConsumed 表示消息已经作为负责人 Chat 的权威事实接纳。",
           "delivering": "ChannelInputStatusDelivering 表示消息已经关联一次负责人 Chat Execution。",
+          "failed": "ChannelInputStatusFailed 表示负责人输入在进入 Chat 之前被明确拒绝。",
           "pending": "ChannelInputStatusPending 表示消息已经持久化但尚未进入负责人 Chat。"
         },
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerConstantsChannelInputStatus",
@@ -81789,12 +81829,6 @@
             "description": "ProjectID 是由桌面批准的项目，使用受管临时目录时为空。",
             "x-go-field-name": "ProjectID"
           },
-          "revision": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Revision 是授权和指针的并发版本。",
-            "x-go-field-name": "Revision"
-          },
           "state": {
             "allOf": [
               {
@@ -81809,7 +81843,7 @@
           "updatedAt": {
             "type": "integer",
             "format": "int64",
-            "description": "UpdatedAt 是最近授权或上下文变化的时间。",
+            "description": "UpdatedAt 是授权、活动会话或上下文的最近变化时间。",
             "x-go-field-name": "UpdatedAt"
           },
           "wakerId": {

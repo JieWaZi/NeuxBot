@@ -15,7 +15,7 @@ import (
 func TestWorkflowReferencesReachNativeResumePromptWithoutReloadingInstructions(t *testing.T) {
 	manager := agentPreparationFixture(t)
 	journal := manager.journal.(*agentTestJournal)
-	manager.agentBindings = func(models.Chat, string, []string, string) []capability.Binding {
+	manager.agentBindings = func(models.Chat, string, []string, string, string) []capability.Binding {
 		return []capability.Binding{agentPreparationBinding(t, "workflow.source.save")}
 	}
 	root := t.TempDir()

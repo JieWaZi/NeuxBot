@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -222,7 +223,7 @@ func TestWecomDeliveryRespectsUTF8ByteLimitUsingExistingOutbox(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding := models.IMBinding{ID: "wecom-binding", ConnectionID: connection.ID, ExternalChatID: "member", Kind: constants.IMChatKindDirect, Name: "成员", State: constants.IMBindingStateApproved, WakerID: "waker", Revision: 1}
+	binding := models.IMBinding{ID: "wecom-binding", ConnectionID: connection.ID, ExternalChatID: "member", Kind: constants.IMChatKindDirect, Name: "成员", State: constants.IMBindingStateApproved, WakerID: "waker"}
 	if err := s.config.Store.DiscoverBinding(ctx, binding); err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +295,7 @@ func TestWecomPendingDeliveryWaitsForAuthenticationWithoutClaimingOrResending(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding := models.IMBinding{ID: "waiting-binding", ConnectionID: connection.ID, ExternalChatID: "member", Kind: constants.IMChatKindDirect, Name: "成员", State: constants.IMBindingStateApproved, WakerID: "waker", Revision: 1}
+	binding := models.IMBinding{ID: "waiting-binding", ConnectionID: connection.ID, ExternalChatID: "member", Kind: constants.IMChatKindDirect, Name: "成员", State: constants.IMBindingStateApproved, WakerID: "waker"}
 	if err := s.config.Store.DiscoverBinding(ctx, binding); err != nil {
 		t.Fatal(err)
 	}
@@ -328,6 +329,74 @@ func TestWecomPendingDeliveryWaitsForAuthenticationWithoutClaimingOrResending(t 
 	}
 }
 
+func TestUnreadyWecomBacklogDoesNotBlockReadyTargets(t *testing.T) {
+	s, db, platform := newIMFixture(t)
+	ctx := t.Context()
+	connection, err := s.SaveConfiguration(ctx, "", ConnectionConfiguration{Name: "企业微信", Platform: constants.IMPlatformWecom, AppID: "bot", AppSecret: "secret", Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wecom := &preparingWecomPlatform{}
+	s.config.Platforms[constants.IMPlatformWecom] = wecom
+	var backlog []models.IMDelivery
+	for i := range constants.IMPageSize {
+		id := fmt.Sprintf("blocked-%d", i)
+		binding := models.IMBinding{ID: id, ConnectionID: connection.ID, ExternalChatID: id, Kind: constants.IMChatKindDirect, State: constants.IMBindingStateApproved}
+		if err := s.config.Store.DiscoverBinding(ctx, binding); err != nil {
+			t.Fatal(err)
+		}
+		delivery, err := s.CreateDelivery(ctx, DeliveryRequest{RequestID: id, TargetID: id, Content: "等待认证"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		backlog = append(backlog, delivery)
+	}
+	var ready []models.IMDelivery
+	for _, id := range []string{"first", "second"} {
+		delivery, err := s.CreateDelivery(ctx, DeliveryRequest{RequestID: id, TargetID: "b", Content: id})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ready = append(ready, delivery)
+	}
+	// 真实节拍启动发送；本用例不需要开启平台接收协程。
+	if err := db.Model(&models.IMConnection{}).Where("id IN ?", []string{"c", connection.ID}).Update("state", constants.IMConnectionStateLoginRequired).Error; err != nil {
+		t.Fatal(err)
+	}
+	s.ctx = ctx
+	projection := &resultProjection{hub: s.config.Events}
+	defer projection.close()
+	for i, delivery := range ready {
+		s.tick(projection)
+		s.workers.Wait()
+		progress, err := s.config.Store.Delivery(ctx, delivery.ID)
+		if err != nil || progress.State != constants.IMDeliveryStateSent || progress.Attempts != 1 {
+			t.Fatalf("ready target did not progress at tick %d: %+v %v", i+1, progress, err)
+		}
+		if len(platform.ids) != i+1 || platform.ids[i] != partIdentity(delivery.ID, 0) {
+			t.Fatalf("target order was not preserved: %v", platform.ids)
+		}
+	}
+	for _, delivery := range backlog {
+		progress, err := s.config.Store.Delivery(ctx, delivery.ID)
+		if err != nil || progress.State != constants.IMDeliveryStatePending || progress.Attempts != 0 {
+			t.Fatalf("unready target was claimed: %+v %v", progress, err)
+		}
+	}
+	if err := s.config.Store.SetBindingState(ctx, backlog[0].BindingID, constants.IMBindingStateRejected); err != nil {
+		t.Fatal(err)
+	}
+	s.tick(projection)
+	s.workers.Wait()
+	rejected, err := s.config.Store.Delivery(ctx, backlog[0].ID)
+	if err != nil || rejected.State != constants.IMDeliveryStateFailed || rejected.ErrorCode != status_error.IMChatNotAuthorized.Key() || rejected.Attempts != 0 {
+		t.Fatalf("revocation did not settle pending delivery during disconnection: %+v %v", rejected, err)
+	}
+	if wecom.sends != 0 {
+		t.Fatal("unready connection reached the transport")
+	}
+}
+
 func TestWecomOnlyDefinitelyUnsentConnectionRaceReturnsToPending(t *testing.T) {
 	for _, lostACK := range []bool{false, true} {
 		t.Run(map[bool]string{false: "lost_before_write", true: "lost_ack"}[lostACK], func(t *testing.T) {
@@ -337,7 +406,7 @@ func TestWecomOnlyDefinitelyUnsentConnectionRaceReturnsToPending(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			binding := models.IMBinding{ID: "race-binding", ConnectionID: connection.ID, ExternalChatID: "member", Kind: constants.IMChatKindDirect, Name: "成员", State: constants.IMBindingStateApproved, WakerID: "waker", Revision: 1}
+			binding := models.IMBinding{ID: "race-binding", ConnectionID: connection.ID, ExternalChatID: "member", Kind: constants.IMChatKindDirect, Name: "成员", State: constants.IMBindingStateApproved, WakerID: "waker"}
 			if err := s.config.Store.DiscoverBinding(ctx, binding); err != nil {
 				t.Fatal(err)
 			}
@@ -392,7 +461,7 @@ func TestWecomUploadRetryClassificationPreservesPendingOrExplicitFailure(t *test
 			if err != nil {
 				t.Fatal(err)
 			}
-			binding := models.IMBinding{ID: "file-binding", ConnectionID: connection.ID, ExternalChatID: "member", Kind: constants.IMChatKindDirect, Name: "成员", State: constants.IMBindingStateApproved, WakerID: "waker", Revision: 1}
+			binding := models.IMBinding{ID: "file-binding", ConnectionID: connection.ID, ExternalChatID: "member", Kind: constants.IMChatKindDirect, Name: "成员", State: constants.IMBindingStateApproved, WakerID: "waker"}
 			if err := s.config.Store.DiscoverBinding(ctx, binding); err != nil {
 				t.Fatal(err)
 			}
@@ -477,7 +546,7 @@ func TestIMGroupExecutionReceivesOnlyBodyWithoutSenderIdentity(t *testing.T) {
 				binding.WakerID = ""
 				binding.ChannelID = "team"
 			}
-			if err := service.config.Store.SaveBinding(ctx, binding, binding.Revision); err != nil {
+			if err := service.config.Store.SaveBinding(ctx, binding); err != nil {
 				t.Fatal(err)
 			}
 			executions := &missingConversationExecutions{chats: service.config.Chats, directory: service.config.DataDirectory}
@@ -494,7 +563,7 @@ func TestIMGroupExecutionReceivesOnlyBodyWithoutSenderIdentity(t *testing.T) {
 			if err := db.First(&input, "id = ?", input.ID).Error; err != nil {
 				t.Fatal(err)
 			}
-			if err := service.accept(ctx, input); err != nil {
+			if err := service.accept(ctx, &input); err != nil {
 				t.Fatal(err)
 			}
 			var actual execution.WorkInput
@@ -551,7 +620,7 @@ func TestIMGroupNewCommandPreservesSenderAuthorizationWithoutRuntimeSubmission(t
 			binding.Kind = constants.IMChatKindGroup
 			binding.ControllerIDs = []string{"controller"}
 			binding.ActiveLinkID = "existing-link"
-			if err := service.config.Store.SaveBinding(ctx, binding, binding.Revision); err != nil {
+			if err := service.config.Store.SaveBinding(ctx, binding); err != nil {
 				t.Fatal(err)
 			}
 			executions := &missingConversationExecutions{}

@@ -21,6 +21,8 @@ type ChannelLeadInput struct {
 	Status constants.ChannelInputStatus `gorm:"column:status;type:varchar(24);not null;index" json:"status"`
 	// LeadExecutionID 是接纳该消息的负责人 Chat Execution 标识。
 	LeadExecutionID string `gorm:"column:lead_execution_id;type:varchar(32);not null;default:'';index" json:"leadExecutionId,omitempty"`
+	// ErrorCode 是未获 Chat 接纳时记录的稳定失败原因。
+	ErrorCode string `gorm:"column:error_code;not null;default:''" json:"errorCode,omitempty"`
 	// CreatedAt 是用户补充进入可靠队列时的 Unix 毫秒时间。
 	CreatedAt int64 `gorm:"column:created_at;autoCreateTime:milli;index" json:"createdAt"`
 	// UpdatedAt 是投递状态最近变化时的 Unix 毫秒时间。
@@ -40,6 +42,8 @@ type ChannelLeadNotification struct {
 	TaskID string `gorm:"column:task_id;type:varchar(32);not null;index" json:"taskId"`
 	// AttemptID 是产生结果的有效尝试标识；人工验收通知使用稳定合成标识占用同一去重键。
 	AttemptID string `gorm:"column:attempt_id;type:varchar(32);not null;uniqueIndex" json:"attemptId"`
+	// IMReplyLinkID 是成员尝试冻结的原 IM 会话标识。
+	IMReplyLinkID string `json:"-"`
 	// Status 是通知从待投递到已消费的持久化状态。
 	Status constants.ChannelNotificationStatus `gorm:"column:status;type:varchar(24);not null;index" json:"status"`
 	// DirectDelivered 表示该报告已经直接作为成员答复交付用户，无需负责人汇总。

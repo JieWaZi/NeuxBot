@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -15,11 +16,14 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	protocol "github.com/JieWaZi/NeuxBot/server/internal/im"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/channel"
+	"github.com/JieWaZi/NeuxBot/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 	"gorm.io/gorm"
@@ -127,9 +131,10 @@ func (c *capturingTeams) SubmitMessage(_ context.Context, input channel.SubmitMe
 	return channel.SubmitMessageResult{Thread: &channel.ThreadResult{Thread: models.ChannelThread{ID: "thread", LeadChatID: "chat"}}}, nil
 }
 
-func TestTeamManagedScopeAndDeliveryInstructionsSurviveRouting(t *testing.T) {
+func TestTeamManagedScopeAndCleanInputSurviveIMRouting(t *testing.T) {
 	s, db, _ := newIMFixture(t)
 	ctx := context.Background()
+	s.config.Threads = controllers.NewChannelThreadController(db)
 	teams := &capturingTeams{}
 	s.config.Teams = teams
 	binding, err := s.config.Store.Binding(ctx, "b")
@@ -138,7 +143,7 @@ func TestTeamManagedScopeAndDeliveryInstructionsSurviveRouting(t *testing.T) {
 	}
 	binding.WakerID = ""
 	binding.ChannelID = "team"
-	if err := s.config.Store.SaveBinding(ctx, binding, binding.Revision); err != nil {
+	if err := s.config.Store.SaveBinding(ctx, binding); err != nil {
 		t.Fatal(err)
 	}
 	input := models.IMInbox{ID: "message", BindingID: "b", ConnectionID: "c", Content: "你是谁", State: constants.IMInboxStatePending}
@@ -151,14 +156,14 @@ func TestTeamManagedScopeAndDeliveryInstructionsSurviveRouting(t *testing.T) {
 	if err := db.WithContext(ctx).First(&input, "id = ?", input.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := s.accept(ctx, input); err != nil {
+	if err := s.accept(ctx, &input); err != nil {
 		t.Fatal(err)
 	}
 	if teams.input.Create == nil || teams.input.Create.WorkingDirectory != "" {
 		t.Fatal("IM must let the common team executor allocate its owned workspace")
 	}
 	work := teams.input.Create.Input
-	if work.Content != "你是谁" || len(work.ContextInstructions) != 1 || work.ContextInstructions[0].Name != "IM_DELIVERY.md" {
+	if work.Content != "你是谁" || len(work.ContextInstructions) != 0 || work.IMReplyLinkID != input.LinkID {
 		t.Fatalf("用户消息被执行说明污染: %+v", work)
 	}
 }
@@ -203,10 +208,311 @@ func newIMFixture(t *testing.T) (*Service, *gorm.DB, *recordingPlatform) {
 	if err := store.SaveConnection(ctx, models.IMConnection{ID: "c", Platform: constants.IMPlatformWeixin, Name: "测试微信", Enabled: true, Credential: "test-token", OwnerID: "owner", KeepAwake: true}, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.DiscoverBinding(ctx, models.IMBinding{ID: "b", ConnectionID: "c", ExternalChatID: "owner", Kind: constants.IMChatKindDirect, Name: "自己", State: constants.IMBindingStateApproved, WakerID: "waker", ContextToken: "context", Revision: 1, AllowWorkflowDelivery: true}); err != nil {
+	if err := store.DiscoverBinding(ctx, models.IMBinding{ID: "b", ConnectionID: "c", ExternalChatID: "owner", Kind: constants.IMChatKindDirect, Name: "自己", State: constants.IMBindingStateApproved, WakerID: "waker", ContextToken: "context", AllowWorkflowDelivery: true}); err != nil {
 		t.Fatal(err)
 	}
 	return service, db, platform
+}
+
+func TestIMInteractionCommandUsesQuotedConversation(t *testing.T) {
+	for _, tc := range []struct {
+		// name 标识当前命令的路由情形。
+		name string
+		// selectCommand 模拟回复前切换当前对话。
+		selectCommand string
+		// content 是收到的审批或问答命令。
+		content string
+		// quoteReceipt 表示命令引用平台已送达的交互消息。
+		quoteReceipt bool
+		// unresolvedQuote 是无法在当前聊天定位的外部引用。
+		unresolvedQuote string
+		// interactionID 是应提交到现有执行的交互标识。
+		interactionID string
+	}{
+		{name: "quoted approval after use", selectCommand: "/use current-link", content: "/approve approval-id 1", quoteReceipt: true, interactionID: "approval-id"},
+		{name: "quoted answer after new", selectCommand: "/new", content: `/answer question-id {"answer":"ready"}`, quoteReceipt: true, interactionID: "question-id"},
+		{name: "unquoted approval", content: "/approve approval-id 1", interactionID: "approval-id"},
+		{name: "unresolved quote", content: "/approve approval-id 1", unresolvedQuote: "unknown-receipt"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, db, _ := newIMFixture(t)
+			ctx := t.Context()
+			original := models.IMConversationLink{ID: "original-link", BindingID: "b", ChatID: "original-chat"}
+			current := models.IMConversationLink{ID: "current-link", BindingID: "b", ChatID: "current-chat"}
+			for _, link := range []models.IMConversationLink{original, current} {
+				if err := s.config.Store.SaveLink(ctx, link); err != nil {
+					t.Fatal(err)
+				}
+			}
+			s.config.Chats = quotedInteractionChats{replyProjectionChats{replyLinkID: original.ID}}
+			executions := &quotedInteractionExecutions{}
+			s.config.Executions = executions
+			// 通过实际路由与 SQLite 收件身份保存命令。
+			route := func(id, content, quote string) models.IMInbox {
+				t.Helper()
+				input := models.IMInbox{ID: id, ConnectionID: "c", BindingID: "b", ExternalMessageID: id, Content: content, QuoteMessageID: quote, State: constants.IMInboxStatePending}
+				if err := s.config.Store.SaveInbox(ctx, input); err != nil {
+					t.Fatal(err)
+				}
+				if err := s.route(ctx, input); err != nil {
+					t.Fatal(err)
+				}
+				if err := db.First(&input, "id = ?", id).Error; err != nil {
+					t.Fatal(err)
+				}
+				return input
+			}
+			route("use-original", "/use "+original.ID, "")
+			quote := tc.unresolvedQuote
+			if tc.quoteReceipt {
+				delivery, err := s.CreateDelivery(ctx, DeliveryRequest{RequestID: "original-interaction", TargetID: "b", LinkID: original.ID, ChatID: original.ChatID, ExecutionID: "active", Content: "原对话的交互消息"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := s.sendDelivery(ctx, delivery); err != nil {
+					t.Fatal(err)
+				}
+				delivery, err = s.config.Store.Delivery(ctx, delivery.ID)
+				if err != nil || len(delivery.Receipts) != 1 {
+					t.Fatalf("缺少交互投递回执: %+v %v", delivery, err)
+				}
+				quote = delivery.Receipts[0]
+			}
+			if tc.selectCommand != "" {
+				route("select-conversation", tc.selectCommand, "")
+			}
+			binding, err := s.config.Store.Binding(ctx, "b")
+			if err != nil {
+				t.Fatal(err)
+			}
+			input := route("interaction-command", tc.content, quote)
+			if tc.interactionID == "" {
+				if input.State != constants.IMInboxStateProcessed || input.LinkID != "" {
+					t.Fatalf("无法定位的引用仍被路由到当前对话: %+v", input)
+				}
+				return
+			}
+			if input.State != constants.IMInboxStateRouted || input.LinkID != original.ID {
+				t.Fatalf("命令未路由到交互所在的对话: %+v", input)
+			}
+			if err := s.accept(ctx, &input); err != nil {
+				t.Fatal(err)
+			}
+			if executions.chatID != original.ChatID || executions.interactionID != tc.interactionID {
+				t.Fatalf("交互提交给了错误的执行: %+v", executions)
+			}
+			after, err := s.config.Store.Binding(ctx, "b")
+			if err != nil || after.ActiveLinkID != binding.ActiveLinkID {
+				t.Fatalf("引用交互改变了当前对话: %+v %v", after, err)
+			}
+		})
+	}
+}
+
+// quotedInteractionChats 提供引用对话中的活动审批和可通过 IM 回答的表单。
+type quotedInteractionChats struct {
+	// replyProjectionChats 提供已有交互与执行来源。
+	replyProjectionChats
+}
+
+func (quotedInteractionChats) CountUserMessages(context.Context, string) (int64, error) {
+	return 1, nil
+}
+
+func (c quotedInteractionChats) GetChatSummary(ctx context.Context, chatID string) (chat.ChatSummary, error) {
+	summary, err := c.replyProjectionChats.GetChatSummary(ctx, chatID)
+	summary.Chat.PendingElicitations[0].Mode = "form"
+	return summary, err
+}
+
+// quotedInteractionExecutions 记录命令解析后实际送达的目标。
+type quotedInteractionExecutions struct {
+	// Service 复用该回归不触发的执行端口。
+	execution.Service
+	// chatID 是提交审批或回答的会话。
+	chatID string
+	// interactionID 是提交审批或回答的目标。
+	interactionID string
+}
+
+func (e *quotedInteractionExecutions) ResolveApproval(_ context.Context, chatID, approvalID, _ string) error {
+	e.chatID, e.interactionID = chatID, approvalID
+	return nil
+}
+
+func (e *quotedInteractionExecutions) ResolveElicitation(_ context.Context, chatID, questionID string, _ map[string]any, _ bool) error {
+	e.chatID, e.interactionID = chatID, questionID
+	return nil
+}
+
+func TestIMResultProjectionWakesFromCommittedChatTerminal(t *testing.T) {
+	s, db, _ := newIMFixture(t)
+	attachConversationReaders(t, s, db)
+	ctx := t.Context()
+	s.ctx = ctx
+	link := models.IMConversationLink{ID: "terminal-link", BindingID: "b", ChatID: protocol.StableID("chat", "committed-terminal")}
+	conversation, err := createAdmissionChat(ctx, s.config.Chats, s.config.DataDirectory, link.ChatID, "waker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.config.Store.SaveLink(ctx, link); err != nil {
+		t.Fatal(err)
+	}
+	execution := models.Execution{ID: "terminal-execution", ChatID: link.ChatID, UserMessageID: "user", IMReplyLinkID: link.ID}
+	created, err := json.Marshal(eventlog.ExecutionCreatedData{UserMessageID: execution.UserMessageID, IMReplyLinkID: link.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.config.Chats.CommitAcceptedTurn(ctx, chat.StartedTurn{
+		Chat:      conversation,
+		Execution: execution,
+		Facts: []eventlog.AppendInput{
+			{Type: constants.ChatEventTypeUserMessageCreated, MessageID: execution.UserMessageID, Data: json.RawMessage(`{"role":"user","content":"test"}`)},
+			{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: execution.ID, Data: created},
+			{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: execution.ID},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	projection := &resultProjection{hub: s.config.Events}
+	projection.setActive(true)
+	defer projection.close()
+	s.projectResults(projection)
+	if len(projection.pending) != 0 {
+		t.Fatalf("启动对账未结束: %v", projection.pending)
+	}
+	commit, err := s.config.Chats.CommitTerminal(ctx, chat.TerminalFact{
+		Execution: execution,
+		Type:      constants.ChatEventTypeExecutionCanceled,
+		Status:    constants.ExecutionStatusCanceled,
+		Data:      json.RawMessage(`{"status":"canceled"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.config.Chats.PublishTerminal(commit)
+	s.projectResults(projection)
+	delivery, found, err := s.config.Store.FindDelivery(ctx, "result:"+link.ID+":"+execution.ID)
+	if err != nil || !found || delivery.LinkID != link.ID || delivery.State != constants.IMDeliveryStatePending {
+		t.Fatalf("已提交的 Chat 终态未触发对该 IM 会话的投递: %+v %v", delivery, err)
+	}
+}
+
+func TestIMWithoutConnectionsSkipsOrdinaryChatProjection(t *testing.T) {
+	s, db, _ := newIMFixture(t)
+	ctx := t.Context()
+	connection, err := s.config.Store.Connection(ctx, "c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.config.Store.DeleteConnection(ctx, connection.ID, connection.Revision, ""); err != nil {
+		t.Fatal(err)
+	}
+	linkQueries := 0
+	if err := db.Callback().Query().After("gorm:query").Register("test:im-link-reads", func(query *gorm.DB) {
+		if strings.Contains(query.Statement.SQL.String(), "im_conversation_links") {
+			linkQueries++
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.ctx = ctx
+	projection := &resultProjection{hub: s.config.Events}
+	defer projection.close()
+	s.tick(projection)
+	for _, id := range []string{"ordinary-chat-a", "ordinary-chat-b"} {
+		emitProjectionChange(t, s, events.Resource{Kind: "chat", ID: id})
+	}
+	s.tick(projection)
+	if linkQueries != 0 {
+		t.Fatalf("ordinary chats triggered %d IM link queries without any connections", linkQueries)
+	}
+	if _, subscribed := projection.subscriptions["work-board"]; subscribed {
+		t.Fatal("IM still subscribed to ordinary chat changes without any connections")
+	}
+}
+
+func TestIMBatchesRelationshipLookupsForUnlinkedChats(t *testing.T) {
+	s, db, _ := newIMFixture(t)
+	ctx := t.Context()
+	s.ctx = ctx
+	projection := &resultProjection{hub: s.config.Events}
+	defer projection.close()
+	projection.setActive(true)
+	s.projectResults(projection)
+	linkQueries := 0
+	if err := db.Callback().Query().After("gorm:query").Register("test:im-unlinked-chat-reads", func(query *gorm.DB) {
+		if strings.Contains(query.Statement.SQL.String(), "im_conversation_links") {
+			linkQueries++
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for i := range constants.IMPageSize {
+		emitProjectionChange(t, s, events.Resource{Kind: "chat", ID: fmt.Sprintf("ordinary-chat-%d", i)})
+	}
+	emitProjectionChange(t, s, events.Resource{Kind: "chat", ID: "ordinary-chat-0"})
+	s.projectResults(projection)
+	if linkQueries != 1 {
+		t.Fatalf("ordinary chats triggered %d IM link queries, want one batch lookup", linkQueries)
+	}
+}
+
+func TestIMConversationHistoryRefreshesForMemberOfDisabledConnection(t *testing.T) {
+	s, db, _ := newIMFixture(t)
+	ctx := t.Context()
+	s.ctx = ctx
+	connection, err := s.config.Store.Connection(ctx, "c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection.Enabled = false
+	if err := s.config.Store.SaveConnection(ctx, connection, connection.Revision); err != nil {
+		t.Fatal(err)
+	}
+	link := models.IMConversationLink{ID: "team-link", BindingID: "b", ChatID: "lead-chat", ThreadID: "thread"}
+	if err := s.config.Store.SaveLink(ctx, link); err != nil {
+		t.Fatal(err)
+	}
+	member := models.ChannelThreadMember{ThreadID: link.ThreadID, WakerID: "member", ChatID: "member-chat"}
+	if err := db.Create(&member).Error; err != nil {
+		t.Fatal(err)
+	}
+	projection := &resultProjection{hub: s.config.Events}
+	s.tick(projection)
+	defer projection.close()
+	subscription := s.config.Events.Subscribe("im", events.Resource{})
+	defer subscription.Close()
+	publishChatChange := func(chatID string) {
+		t.Helper()
+		source := events.Resource{Kind: "chat", ID: chatID}
+		if err := events.Emit(s.config.Events, "work-board", "work-board.changed", source, source); err != nil {
+			t.Fatal(err)
+		}
+	}
+	publishChatChange("unrelated-chat")
+	s.projectResults(projection)
+	select {
+	case change := <-subscription.Events:
+		t.Fatalf("an unlinked chat invalidated IM history: %+v", change)
+	default:
+	}
+	publishChatChange(member.ChatID)
+	publishChatChange(member.ChatID)
+	s.projectResults(projection)
+	select {
+	case change := <-subscription.Events:
+		if change.Type != constants.IMConversationsChangedEventType || change.Resource != (events.Resource{Kind: "connection", ID: connection.ID}) {
+			t.Fatalf("member change invalidated the wrong IM resource: %+v", change)
+		}
+	default:
+		t.Fatal("member change did not invalidate its linked connection history")
+	}
+	select {
+	case change := <-subscription.Events:
+		t.Fatalf("duplicate member changes were not coalesced: %+v", change)
+	default:
+	}
 }
 
 func TestFrozenDeliveryUnknownRetryOnlyResendsUnconfirmedParts(t *testing.T) {
@@ -396,7 +702,7 @@ func TestTargetsDoNotExposeOtherPartnerOrUnapprovedChats(t *testing.T) {
 	}
 	binding, _ := s.config.Store.Binding(ctx, "b")
 	binding.AllowWorkflowDelivery = false
-	if err := s.config.Store.SaveBinding(ctx, binding, binding.Revision); err != nil {
+	if err := s.config.Store.SaveBinding(ctx, binding); err != nil {
 		t.Fatal(err)
 	}
 	targets, err = s.Targets(ctx, "", true)
@@ -405,7 +711,7 @@ func TestTargetsDoNotExposeOtherPartnerOrUnapprovedChats(t *testing.T) {
 	}
 	binding, _ = s.config.Store.Binding(ctx, "b")
 	binding.State = constants.IMBindingStateRejected
-	s.config.Store.SaveBinding(ctx, binding, binding.Revision)
+	s.config.Store.SaveBinding(ctx, binding)
 	if _, err := s.CreateDelivery(ctx, DeliveryRequest{RequestID: "rejected", TargetID: "b", Content: "result"}); !errors.Is(err, status_error.IMChatNotAuthorized) {
 		t.Fatalf("unapproved target accepted: %v", err)
 	}

@@ -74,6 +74,7 @@ func testAgentRunFileScope(t *testing.T, exact bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv(constants.AgentCLIContextEnvironment, connection)
 	t.Chdir(sub)
 	call := func(arguments []string, params any) (int, capability.Response) {
 		t.Helper()
@@ -83,7 +84,7 @@ func testAgentRunFileScope(t *testing.T, exact bool) {
 				t.Fatal(err)
 			}
 		}
-		code := agentcli.Execute(ctx, append([]string{"--context", connection}, arguments...), agentcli.IO{In: &input, Out: &output, Err: &failure})
+		code := agentcli.Execute(ctx, arguments, agentcli.IO{In: &input, Out: &output, Err: &failure})
 		body := output.Bytes()
 		if code != 0 {
 			body = failure.Bytes()

@@ -6,22 +6,29 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http/httptest"
 	"os"
+	"os/exec"
+	"path"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/changes"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -30,6 +37,7 @@ import (
 	usageservice "github.com/JieWaZi/NeuxBot/server/services/usage"
 	acp "github.com/JieWaZi/acp-go-sdk"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
+	"github.com/google/uuid"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
@@ -173,6 +181,9 @@ func newNativeProductFixtureWithAccounts(t *testing.T, ctx context.Context, prov
 	if standardACP {
 		environment.entry.DefaultFast = nil
 	}
+	if providerID == constants.RuntimeIDCodex {
+		environment.entry.ConfigHome = os.Getenv("NEUX_EXECUTION_FIXTURE_CODEX_HOME")
+	}
 	accounts := new(atomic.Int32)
 	failAccountClose := new(atomic.Int32)
 	failAccountAcquire := new(atomic.Int32)
@@ -245,6 +256,194 @@ func newNativeProductFixtureWithAccounts(t *testing.T, ctx context.Context, prov
 		}
 	}
 	return nativeProductFixture{root: root, trace: trace, accounts: accounts, failAccountClose: failAccountClose, failAccountAcquire: failAccountAcquire, usage: controllers.NewUsageController(db), open: open}
+}
+
+func TestNativeProductHostConnectionSurvivesHotContinuation(t *testing.T) {
+	t.Run("explicit_with_unavailable_fallback", func(t *testing.T) { testNativeProductHostConnection(t, false) })
+	t.Run("filtered", func(t *testing.T) { testNativeProductHostConnection(t, true) })
+}
+
+func testNativeProductHostConnection(t *testing.T, filtered bool) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	t.Setenv("NEUX_EXECUTION_FIXTURE_CHECK_GRANT", "1")
+	if filtered {
+		home := t.TempDir()
+		config := "[shell_environment_policy]\ninclude_only = ['USER_*']\n[shell_environment_policy.set]\nUSER_MARKER = 'preserved'\n"
+		if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(config), 0600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("NEUX_EXECUTION_FIXTURE_CODEX_HOME", home)
+	}
+	fixture := newNativeProductFixture(t, ctx, "codex", "TestNativeExecutionCodexChild", constants.PermissionLevelAuto)
+	name := constants.AgentCLIBinaryName
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	binary := filepath.Join(t.TempDir(), name)
+	if filtered {
+		build := exec.CommandContext(ctx, "go", "build", "-o", binary, "../../cmd/botcli")
+		if output, err := build.CombinedOutput(); err != nil {
+			t.Fatalf("构建受管命令失败: %v\n%s", err, output)
+		}
+	} else if err := os.WriteFile(binary, []byte("test CLI file fixture"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	skill := publishedTestSystemSkill(t, fixture.root, binary)
+	bundledCLI := builtinskills.CLIPath(skill)
+	if filtered {
+		t.Setenv("NEUX_EXECUTION_FIXTURE_BOTCLI", bundledCLI)
+	} else {
+		contextRoot := filepath.Join(fixture.root, constants.AgentCLIContextDirectory)
+		if err := os.MkdirAll(contextRoot, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(contextRoot, "codex-threads"), []byte("unavailable fallback directory"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	open := func() (Core, *conversation.Store, func()) {
+		core, _, store, closeRuntime := fixture.open()
+		registry := capability.New(nil)
+		manager := core.(*service)
+		manager.agent = registry
+		manager.agentEndpoint = "http://127.0.0.1:18080" + constants.AgentCLIPath
+		manager.systemSkillDirectory = skill
+		closeEndpoint := func() {}
+		if filtered {
+			endpoint := httptest.NewServer(registry)
+			manager.agentEndpoint = endpoint.URL + constants.AgentCLIPath
+			closeEndpoint = endpoint.Close
+		}
+		return core, store, func() {
+			closeRuntime()
+			registry.Close()
+			closeEndpoint()
+		}
+	}
+	core, store, closeRuntime := open()
+	defer func() { closeRuntime() }()
+	options := WorkOptions{RuntimeID: "codex", Model: "fixture-model", PermissionLevel: constants.PermissionLevelAuto}
+	intent := WorkIntent{ClientRequestID: "host-grant", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "native-waker"}}, Input: WorkInput{Actor: "user", Content: "first clean input"}, Options: options}
+	run := func(message string) agent.NativeSessionKey {
+		t.Helper()
+		intent.Input.Content = message
+		accepted, err := core.Start(ctx, intent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		waitNativeProductStatus(t, ctx, store, accepted, constants.ExecutionStatusCompleted)
+		if err := core.CancelExecutionAndWait(ctx, accepted.Chat.ID, accepted.Execution.ID); err != nil {
+			t.Fatal(err)
+		}
+		intent.ClientRequestID = ""
+		intent.Chat = ChatTarget{ChatID: accepted.Chat.ID}
+		binding, err := store.ReadBinding(ctx, accepted.Chat.ID)
+		if err != nil || binding == nil {
+			t.Fatalf("读取原生绑定失败: %v", err)
+		}
+		return binding.Session
+	}
+	first, second := run("first clean input"), run("second clean input")
+	if first != second || fixture.accounts.Load() != 1 {
+		t.Fatal("热续聊重新创建了原生会话或进程")
+	}
+	wantTurns := 2
+	if filtered {
+		old, err := capability.ReadCodexShellConnection(bundledCLI, first.SessionID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		closeRuntime()
+		if _, err := capability.ReadCodexShellConnection(bundledCLI, first.SessionID); !errors.Is(err, status_error.AgentContextStorageError) {
+			t.Fatalf("关闭 Core 后残留旧的 Shell 入口: %v", err)
+		}
+		core, store, closeRuntime = open()
+		resumed := run("continued after Core restart")
+		current, err := capability.ReadCodexShellConnection(bundledCLI, resumed.SessionID)
+		if err != nil || resumed != first || current.CoreEpoch == old.CoreEpoch || current.GrantID == old.GrantID || fixture.accounts.Load() != 2 {
+			t.Fatalf("Core 重启后没有在原生会话中绑定新凭据: %v", err)
+		}
+		wantTurns = 3
+	}
+	trace, err := os.ReadFile(fixture.trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var grants []string
+	for _, line := range strings.Split(string(trace), "\n") {
+		if grant, ok := strings.CutPrefix(line, "host grant "); ok {
+			grants = append(grants, grant)
+		}
+		if strings.Contains(line, `"method":"turn/start"`) && strings.Contains(line, "neuxbot-turn-context") {
+			t.Fatalf("host context entered native user input: %s", line)
+		}
+	}
+	if len(grants) != wantTurns || grants[0] != grants[1] {
+		t.Fatalf("heated continuation did not reuse the process and connection: grants=%d launches=%d", len(grants), fixture.accounts.Load())
+	}
+	if filtered && strings.Count(string(trace), "filtered botcli succeeded\n") != wantTurns {
+		t.Fatalf("各回合的受限 Shell 都应能调用原有工具: %s", trace)
+	}
+}
+
+func TestNativeProductWorkflowResumesAfterToolConnectionChanges(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	fixture := newNativeProductFixture(t, ctx, "codex", "TestNativeExecutionCodexChild", constants.PermissionLevelAuto)
+	binary := filepath.Join(t.TempDir(), "botcli")
+	if err := os.WriteFile(binary, []byte("test CLI file fixture"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	skill := publishedTestSystemSkill(t, fixture.root, binary)
+	open := func() (Core, *conversation.Store, func()) {
+		core, _, store, closeRuntime := fixture.open()
+		registry := capability.New(nil)
+		core.(*service).agent = registry
+		core.(*service).agentEndpoint = "http://127.0.0.1:18080" + constants.AgentCLIPath
+		core.(*service).systemSkillDirectory = skill
+		return core, store, func() {
+			closeRuntime()
+			registry.Close()
+		}
+	}
+	options := WorkOptions{RuntimeID: "codex", Model: "fixture-model", PermissionLevel: constants.PermissionLevelAuto,
+		ToolCapabilities: []ToolCapability{{ID: "workflow.sample", Name: "Workflow sample", Bindings: []capability.Binding{
+			agentPreparationBinding(t, "workflow.source.get"),
+		}}},
+	}
+	run := func(core Core, store *conversation.Store, intent WorkIntent) (AcceptedExecution, agent.NativeSessionKey) {
+		t.Helper()
+		accepted, err := core.Start(ctx, intent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		waitNativeProductStatus(t, ctx, store, accepted, constants.ExecutionStatusCompleted)
+		if err := core.CancelExecutionAndWait(ctx, accepted.Chat.ID, accepted.Execution.ID); err != nil {
+			t.Fatal(err)
+		}
+		input, _, err := store.ReadHostInputConsumption(ctx, agent.HostInputRef{ChatID: accepted.Chat.ID, HostInvocationID: accepted.Execution.ID})
+		if err != nil || input.Session.SessionID == "" {
+			t.Fatalf("read native binding: %+v %v", input, err)
+		}
+		return accepted, input.Session
+	}
+	core, store, closeRuntime := open()
+	defer func() { closeRuntime() }()
+	first, session := run(core, store, WorkIntent{ClientRequestID: "workflow-core-restart", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "native-waker"}}, Input: WorkInput{Actor: "user", Content: "first workflow input"}, Options: options})
+	closeRuntime()
+	core, store, closeRuntime = open()
+	intent := WorkIntent{Chat: ChatTarget{ChatID: first.Chat.ID}, Input: WorkInput{Actor: "user", Content: "second workflow input"}, Options: options}
+	_, resumed := run(core, store, intent)
+	if resumed != session || fixture.accounts.Load() != 2 {
+		t.Fatalf("new tool connection changed native history: first=%+v resumed=%+v launches=%d", session, resumed, fixture.accounts.Load())
+	}
+	intent.Options.ToolCapabilities[0].Bindings = append(intent.Options.ToolCapabilities[0].Bindings, agentPreparationBinding(t, "workflow.definitions.list"))
+	_, changed := run(core, store, intent)
+	if changed == resumed {
+		t.Fatal("Codex reused a native session with a different tool catalog")
+	}
 }
 
 func TestNativeProductDurationStartsBeforePreparation(t *testing.T) {
@@ -917,9 +1116,22 @@ func TestNativeExecutionCodexChild(t *testing.T) {
 			thread, _ = params["threadId"].(string)
 			if thread == "" {
 				thread = fmt.Sprintf("fixture-thread-%d", os.Getpid())
+				if os.Getenv("NEUX_EXECUTION_FIXTURE_CHECK_GRANT") == "1" {
+					thread = uuid.NewString()
+				}
 			}
 			ack(map[string]any{"thread": map[string]any{"id": thread}, "model": "fixture-model"})
 		case "turn/start":
+			if os.Getenv("NEUX_EXECUTION_FIXTURE_CHECK_GRANT") == "1" {
+				connection, err := capability.ReadConnection(os.Getenv(constants.AgentCLIContextEnvironment))
+				if err != nil {
+					os.Exit(4)
+				}
+				_, _ = fmt.Fprintln(file, "host grant", connection.GrantID)
+			}
+			if binary := os.Getenv("NEUX_EXECUTION_FIXTURE_BOTCLI"); binary != "" {
+				checkFilteredCodexCLI(t.Context(), file, binary, thread)
+			}
 			if strings.Contains(line, "revise-explicit-artifact") {
 				selected, sibling := os.Getenv("NEUX_EXECUTION_FIXTURE_ARTIFACT"), os.Getenv("NEUX_EXECUTION_FIXTURE_ARTIFACT_SIBLING")
 				if selected == "" || sibling == "" || os.WriteFile(selected, []byte("revised original\n"), 0600) != nil || os.WriteFile(sibling, []byte("sibling also changed\n"), 0600) != nil {
@@ -927,18 +1139,8 @@ func TestNativeExecutionCodexChild(t *testing.T) {
 				}
 			}
 			if strings.Contains(line, "first-success") {
-				params, _ := frame["params"].(map[string]any)
-				cwd, _ := params["cwd"].(string)
-				input, _ := params["input"].([]any)
-				output := ""
-				for _, raw := range input {
-					if item, ok := raw.(map[string]any); ok {
-						if text, ok := item["text"].(string); ok {
-							output = nativeFixtureOutputDirectory(text)
-						}
-					}
-				}
-				if cwd == "" || output == "" || os.WriteFile(filepath.Join(output, "fixture-change.txt"), []byte("native write"), 0600) != nil {
+				cwd, err := os.Getwd()
+				if err != nil || os.WriteFile(filepath.Join(cwd, "fixture-change.txt"), []byte("native write"), 0600) != nil {
 					os.Exit(3)
 				}
 			}
@@ -973,6 +1175,56 @@ func TestNativeExecutionCodexChild(t *testing.T) {
 		}
 	}
 	os.Exit(0)
+}
+
+func checkFilteredCodexCLI(ctx context.Context, trace *os.File, binary, thread string) {
+	settings := struct {
+		// Policy 是 Codex 从用户配置加载的 Shell 过滤规则。
+		Policy struct {
+			// Set 在 include_only 过滤前应用用户指定的值。
+			Set map[string]string `toml:"set"`
+			// IncludeOnly 按模式保留用户允许的环境变量。
+			IncludeOnly []string `toml:"include_only"`
+		} `toml:"shell_environment_policy"`
+	}{}
+	if _, err := toml.DecodeFile(filepath.Join(os.Getenv("CODEX_HOME"), "config.toml"), &settings); err != nil {
+		_, _ = fmt.Fprintln(trace, "filtered botcli config read failed", err)
+		return
+	}
+	environment := map[string]string{}
+	for _, entry := range os.Environ() {
+		if name, value, ok := strings.Cut(entry, "="); ok {
+			environment[name] = value
+		}
+	}
+	for name, value := range settings.Policy.Set {
+		environment[name] = value
+	}
+	for name := range environment {
+		if !slices.ContainsFunc(settings.Policy.IncludeOnly, func(pattern string) bool {
+			matches, _ := path.Match(strings.ToUpper(pattern), strings.ToUpper(name))
+			return matches
+		}) {
+			delete(environment, name)
+		}
+	}
+	// 与 Codex 的 Shell 一致，原生线程标识在 include_only 之后写入。
+	environment[constants.AgentCLICodexThreadEnvironment] = thread
+	if environment["USER_MARKER"] != "preserved" || environment["NEUX_EXECUTION_FIXTURE_BASE_VALUE"] != "" || environment[constants.AgentCLIContextEnvironment] != "" {
+		_, _ = fmt.Fprintln(trace, "filtered botcli fixture unexpectedly bypassed the shell allowlist")
+		return
+	}
+	command := exec.CommandContext(ctx, binary, "capabilities")
+	for name, value := range environment {
+		command.Env = append(command.Env, name+"="+value)
+	}
+	output, err := command.CombinedOutput()
+	var response capability.Response
+	if err != nil || json.Unmarshal(output, &response) != nil || !response.OK || response.Operation != "capabilities" {
+		_, _ = fmt.Fprintf(trace, "filtered botcli failed: %v %s\n", err, output)
+		return
+	}
+	_, _ = fmt.Fprintln(trace, "filtered botcli succeeded")
 }
 
 func TestNativeExecutionClaudeCursorChild(t *testing.T) {
@@ -1371,35 +1623,4 @@ func TestNativeProductMCPDisplayRenameKeepsCodexSession(t *testing.T) {
 func nativeFixtureBusinessText(text string) string {
 	business, _, _ := strings.Cut(text, "\n\n<neuxbot-turn-context>\n")
 	return business
-}
-
-// nativeFixtureOutputDirectory 读取真实发送给原生替身的固定空间目录。
-func nativeFixtureOutputDirectory(text string) string {
-	_, raw, found := strings.Cut(text, "\n\n<neuxbot-turn-context>\n")
-	if !found {
-		return ""
-	}
-	raw, _, found = strings.Cut(raw, "\n</neuxbot-turn-context>")
-	if !found {
-		return ""
-	}
-	var instructions []agent.Instruction
-	if json.Unmarshal([]byte(raw), &instructions) != nil {
-		return ""
-	}
-	for _, instruction := range instructions {
-		if instruction.Name != "Current task directories" {
-			continue
-		}
-		content, ok := strings.CutPrefix(instruction.Content, "Your persistent space directory is ")
-		if !ok {
-			return ""
-		}
-		var path string
-		if json.NewDecoder(strings.NewReader(content)).Decode(&path) != nil || !filepath.IsAbs(path) {
-			return ""
-		}
-		return path
-	}
-	return ""
 }

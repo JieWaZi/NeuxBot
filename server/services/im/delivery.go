@@ -49,8 +49,13 @@ type DeliveryRequest struct {
 func (s *Service) CreateDelivery(ctx context.Context, request DeliveryRequest) (models.IMDelivery, error) {
 	s.deliveryGate.Lock()
 	defer s.deliveryGate.Unlock()
+	return s.createDelivery(ctx, request, s.authorizedDeliveryBinding)
+}
+
+// createDelivery 共用投递幂等身份和持久化。包含文件的请求由 CreateDelivery 持有冻结保护。
+func (s *Service) createDelivery(ctx context.Context, request DeliveryRequest, authorize func(context.Context, string, bool) (models.IMBinding, error)) (models.IMDelivery, error) {
 	request.Content = strings.TrimSpace(request.Content)
-	if request.RequestID == "" || request.TargetID == "" || (request.Content == "" && len(request.Files) == 0) || len(request.Content) > 200000 || len(request.Files) > 10 {
+	if request.RequestID == "" || request.TargetID == "" || (request.Content == "" && len(request.Files) == 0) || len(request.Content) > constants.IMDeliveryTextMaximumBytes || len(request.Files) > 10 {
 		return models.IMDelivery{}, status_error.IMConfigurationInvalid
 	}
 	var frozen []models.IMFile
@@ -91,22 +96,9 @@ func (s *Service) CreateDelivery(ctx context.Context, request DeliveryRequest) (
 		}
 		return previous, nil
 	}
-	binding, err := s.config.Store.Binding(ctx, request.TargetID)
+	binding, err := authorize(ctx, request.TargetID, request.WorkflowRunID != "")
 	if err != nil {
 		return models.IMDelivery{}, err
-	}
-	if binding.State != constants.IMBindingStateApproved {
-		return models.IMDelivery{}, status_error.IMChatNotAuthorized
-	}
-	if request.WorkflowRunID != "" && !binding.AllowWorkflowDelivery {
-		return models.IMDelivery{}, status_error.IMWorkflowDeliveryNotAllowed
-	}
-	connection, err := s.config.Store.Connection(ctx, binding.ConnectionID)
-	if err != nil {
-		return models.IMDelivery{}, err
-	}
-	if !connection.Enabled {
-		return models.IMDelivery{}, status_error.IMConfigurationInvalid
 	}
 	delivery := models.IMDelivery{ID: protocol.StableID("delivery", request.RequestID), RequestID: request.RequestID, RequestHash: identity.Hash, BindingID: binding.ID, ConnectionID: binding.ConnectionID, ExternalChatID: binding.ExternalChatID, LinkID: request.LinkID, ChatID: request.ChatID, ExecutionID: request.ExecutionID, WorkflowRunID: request.WorkflowRunID, WorkflowDefinitionID: request.WorkflowDefinitionID, Content: request.Content, State: constants.IMDeliveryStatePending, Files: []models.IMFile{}, Receipts: []string{}}
 	if request.VerifyFileContent {
@@ -137,6 +129,37 @@ func (s *Service) CreateDelivery(ctx context.Context, request DeliveryRequest) (
 	return delivery, nil
 }
 
+// authorizedDeliveryBinding 核对已批准且启用的真实投递目的地。
+func (s *Service) authorizedDeliveryBinding(ctx context.Context, targetID string, workflow bool) (models.IMBinding, error) {
+	binding, err := s.approvedDeliveryBinding(ctx, targetID, workflow)
+	if err != nil {
+		return models.IMBinding{}, err
+	}
+	connection, err := s.config.Store.Connection(ctx, binding.ConnectionID)
+	if err != nil {
+		return models.IMBinding{}, err
+	}
+	if !connection.Enabled {
+		return models.IMBinding{}, status_error.IMConfigurationInvalid
+	}
+	return binding, nil
+}
+
+// approvedDeliveryBinding 核对目标授权，已经接纳的输入可在连接停用期间先保存待发结果。
+func (s *Service) approvedDeliveryBinding(ctx context.Context, targetID string, workflow bool) (models.IMBinding, error) {
+	binding, err := s.config.Store.Binding(ctx, targetID)
+	if err != nil {
+		return models.IMBinding{}, err
+	}
+	if binding.State != constants.IMBindingStateApproved {
+		return models.IMBinding{}, status_error.IMChatNotAuthorized
+	}
+	if workflow && !binding.AllowWorkflowDelivery {
+		return models.IMBinding{}, status_error.IMWorkflowDeliveryNotAllowed
+	}
+	return binding, nil
+}
+
 // RetryDelivery 只重新投递已有冻结内容；不确定结果必须由用户明确核对。
 func (s *Service) RetryDelivery(ctx context.Context, id string, confirmedUnknown bool) error {
 	s.life.Lock()
@@ -157,6 +180,36 @@ func (s *Service) RetryDelivery(ctx context.Context, id string, confirmedUnknown
 	delivery.State = constants.IMDeliveryStatePending
 	delivery.ErrorCode = ""
 	return s.config.Store.UpdateDelivery(ctx, delivery)
+}
+
+// scheduleDeliveries 在选取待发批次前按现有传输状态排除等待连接的目标。
+func (s *Service) scheduleDeliveries(configurations []models.IMConnection) {
+	var waiting []string
+	hasEnabled := false
+	for _, configuration := range configurations {
+		if !configuration.Enabled {
+			continue
+		}
+		hasEnabled = true
+		if !deliveryReady(s.config.Platforms[configuration.Platform], configuration.ID) {
+			waiting = append(waiting, configuration.ID)
+		}
+	}
+	if !hasEnabled {
+		return
+	}
+	deliveries, err := s.config.Store.PendingDeliveryHeads(s.ctx, waiting, constants.IMPageSize)
+	if err != nil {
+		return
+	}
+	for _, delivery := range deliveries {
+		s.startDelivery(delivery)
+	}
+}
+
+func deliveryReady(platform protocol.Platform, connectionID string) bool {
+	readiness, required := platform.(protocol.ConnectionReadiness)
+	return !required || readiness.ConnectionReady(connectionID)
 }
 
 func (s *Service) startDelivery(delivery models.IMDelivery) {
@@ -211,8 +264,8 @@ func (s *Service) sendDelivery(ctx context.Context, delivery models.IMDelivery) 
 		return s.config.Store.UpdateDelivery(ctx, delivery)
 	}
 	platform := s.config.Platforms[connection.Platform]
-	if readiness, ok := platform.(protocol.ConnectionReadiness); ok && !readiness.ConnectionReady(connection.ID) {
-		// 沿用已有维护节拍等待认证或重连，不领取、不计尝试，也不增加等待协程。
+	if !deliveryReady(platform, connection.ID) {
+		// 读取待发队首后连接也可能失活，留在原队列等待恢复。
 		return nil
 	}
 	claimed, err := s.config.Store.ClaimDelivery(ctx, delivery.ID)

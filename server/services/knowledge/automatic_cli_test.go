@@ -96,10 +96,11 @@ func TestAutomaticMaintenanceCLIUsesAuthorizedTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv(constants.AgentCLIContextEnvironment, connection)
 	cli := func(input string, args ...string) (int, capability.Response) {
 		t.Helper()
 		var output, errors bytes.Buffer
-		code := agentcli.Execute(ctx, append([]string{"--context", connection}, args...), agentcli.IO{In: strings.NewReader(input), Out: &output, Err: &errors})
+		code := agentcli.Execute(ctx, args, agentcli.IO{In: strings.NewReader(input), Out: &output, Err: &errors})
 		data := output.Bytes()
 		if code != 0 {
 			data = errors.Bytes()

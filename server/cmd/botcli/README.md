@@ -6,17 +6,19 @@
 
 ## 开始使用
 
-应用在执行指令中提供系统 [bot 技能](../../../skills/bot/SKILL.md) 的实际可执行文件路径，在本轮输入中提供明确的连接文件路径。每次业务调用必须传入 `--context`，CLI 不从环境变量取得授权上下文，也不依赖全局安装、PATH 或当前工作目录。工作流在支持 stdio 的 Runtime 中使用 `botcli mcp serve --context <当次路径>`；工具与 CLI 共用目录、授权及回执。
+应用提供系统 [bot 技能](../../../skills/bot/SKILL.md) 的实际可执行文件路径。宿主通过 `BOTCLI_CONTEXT_FILE` 绑定受管 CLI 连接，模型只需调用给定的可执行文件。支持 stdio 的工作流由宿主启动内部 MCP，工具与 CLI 共用能力目录、授权及回执。
 
-以下路径仅为示例，调用时使用本次执行实际提供的绝对路径：
+Codex 的 Shell 过滤掉 `BOTCLI_CONTEXT_FILE` 时，随应用交付的 botcli 根据 Codex 提供的原生线程标识查找同一受管连接。其他原生智能体的显式环境过滤须允许 `BOTCLI_CONTEXT_FILE`。
+
+以下命令在宿主启动的执行环境中运行，路径替换为宿主提供的绝对路径。
 
 ```sh
-"/app/skills/bot/scripts/botcli" --context "/app/agent-contexts/example/connection.json" capabilities
-"/app/skills/bot/scripts/botcli" --context "/app/agent-contexts/example/connection.json" describe knowledge.pages.search
-"/app/skills/bot/scripts/botcli" --context "/app/agent-contexts/example/connection.json" knowledge pages search --library-id library-example --query "部署流程"
+"/app/skills/bot/scripts/botcli" capabilities
+"/app/skills/bot/scripts/botcli" describe knowledge.pages.search
+"/app/skills/bot/scripts/botcli" knowledge pages search --library-id library-example --query "部署流程"
 ```
 
-Windows 使用应用提供的 `botcli.exe` 绝对路径，同样显式传入 `--context`。普通外部终端没有执行上下文时，不能直接获得应用业务能力。开发时可在仓库根目录运行 `go -C server run ./cmd/botcli --help` 查看命令树，但这不签发业务授权。Core 启动器用于定位打包程序的 `BOTCLI_BINARY_PATH` 只属于宿主装配，不再注入模型执行子进程。
+Windows 使用应用提供的 `botcli.exe` 绝对路径。普通外部终端没有执行上下文时，不能直接获得应用业务能力。开发时可在仓库根目录运行 `go -C server run ./cmd/botcli --help` 查看命令树，但这不签发业务授权。Core 启动器用于定位打包程序的 `BOTCLI_BINARY_PATH` 只属于宿主装配，不再注入模型执行子进程。
 
 操作标识中的点对应命令路径中的空格，例如 `workflow.runs.get` 对应 `botcli workflow runs get`。短标量可用命令行参数，复杂对象或长正文用 `--input request.json`；`--input -` 从标准输入读取 JSON。同一字段不要同时从文件和命令行提供。
 
@@ -175,21 +177,21 @@ Windows 使用应用提供的 `botcli.exe` 绝对路径，同样显式传入 `--
 先发现目标和操作，再提交用户要求的工作。以下示例中的 `request.json` 是调用者准备的真实 UTF-8 JSON 文件，字段以对应 `describe` 为准：
 
 ```sh
-"/app/skills/bot/scripts/botcli" --context "/app/agent-contexts/example/connection.json" describe im.deliveries.create
-"/app/skills/bot/scripts/botcli" --context "/app/agent-contexts/example/connection.json" im deliveries create --input request.json --request-id delivery-example-01
-"/app/skills/bot/scripts/botcli" --context "/app/agent-contexts/example/connection.json" receipts get --operation im.deliveries.create --request-id delivery-example-01
+"/app/skills/bot/scripts/botcli" describe im.deliveries.create
+"/app/skills/bot/scripts/botcli" im deliveries create --input request.json --request-id delivery-example-01
+"/app/skills/bot/scripts/botcli" receipts get --operation im.deliveries.create --request-id delivery-example-01
 ```
 
 已知交付身份后，可在最长 60 秒的观察窗口内等待：
 
 ```sh
-"/app/skills/bot/scripts/botcli" --context "/app/agent-contexts/example/connection.json" im deliveries wait --delivery-id delivery-example --timeout 30s
+"/app/skills/bot/scripts/botcli" im deliveries wait --delivery-id delivery-example --timeout 30s
 ```
 
 已有明确的工作流创作需求时，优先读取所需上下文，避免遍历全部指南：
 
 ```sh
-"/app/skills/bot/scripts/botcli" --context "/app/agent-contexts/example/connection.json" workflow authoring prepare --primitives functionTask
+"/app/skills/bot/scripts/botcli" workflow authoring prepare --primitives functionTask
 ```
 
 ## 当前边界

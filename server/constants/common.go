@@ -622,8 +622,17 @@ const (
 // IMFileMaximumBytes 是单个 IM 文件允许上传或下载的最大字节数。
 const IMFileMaximumBytes int64 = 20 * 1024 * 1024
 
+// IMDeliveryTextMaximumBytes 是单次 IM 投递正文的字节上限。
+const IMDeliveryTextMaximumBytes = 200_000
+
 // IMPageSize 是管理列表每页默认条目数。
 const IMPageSize = 50
+
+// IMConnectionConfigurationResourceKind 标识影响投递资格的连接配置变化。
+const IMConnectionConfigurationResourceKind = "connection_configuration"
+
+// IMConversationsChangedEventType 标识 IM 前端对话记录需要重新读取。
+const IMConversationsChangedEventType = "im.conversations.changed"
 
 // IMWeixinBaseURL 是腾讯 iLink 的官方机器人 API。
 const IMWeixinBaseURL = "https://ilinkai.weixin.qq.com"
@@ -698,8 +707,6 @@ const (
 	WorkflowActionRunGet = "run.get"
 	// WorkflowActionRunCancel 停止本能力接纳的运行。
 	WorkflowActionRunCancel = "run.cancel"
-	// WorkflowQueryCapabilities 查询当前能力允许的动作及参数。
-	WorkflowQueryCapabilities = "capabilities"
 	// WorkflowQueryAuthoring 按实际节点组合创作资料与当前版本。
 	WorkflowQueryAuthoring = "authoring"
 	// WorkflowQuerySDK 按主题查询原生 DSL 声明。
@@ -732,6 +739,8 @@ const (
 	PluginUsageChangedEventType = "plugins.usage.changed"
 	// EntityActivityChangedEventType 表示已有伙伴或团队的活动摘要变化。
 	EntityActivityChangedEventType = "entities.activity.changed"
+	// ChatReadingRecoveredReason 标识原 Chat 查询投影恢复后发布的范围失效。
+	ChatReadingRecoveredReason = "reading-recovered"
 )
 
 // PluginStdioMode 是 Core 内部的原生 MCP 工作目录子进程模式。

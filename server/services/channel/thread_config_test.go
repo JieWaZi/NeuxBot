@@ -133,21 +133,24 @@ func TestReplayCreateThreadReturnsReadyAggregateAndRejectsAmbiguousRequests(t *t
 	}
 	sut := &service{threads: threads, tasks: tasks}
 	identity := requestidempotency.Identity{ID: requestID, Hash: thread.ClientRequestHash}
-	result, err := sut.replayCreateThread(context.Background(), thread, identity)
+	result, replayed, err := sut.replayCreateThread(context.Background(), thread, identity)
 	if err != nil {
 		t.Fatalf("replay ready thread: %v", err)
 	}
-	if !result.Replayed || result.Thread.ID != thread.ID || len(result.Members) != 1 ||
+	if !replayed || !result.Replayed || result.Thread.ID != thread.ID || len(result.Members) != 1 ||
 		len(result.Tasks) != 1 || result.LeadExecution != nil {
 		t.Fatalf("replayed aggregate = %+v", result)
 	}
 	conflicting := identity
 	conflicting.Hash = "different"
-	if _, err := sut.replayCreateThread(context.Background(), thread, conflicting); err == nil || err.Error() != status_error.CreateRequestConflict.Error() {
+	if _, _, err := sut.replayCreateThread(context.Background(), thread, conflicting); err == nil || err.Error() != status_error.CreateRequestConflict.Error() {
 		t.Fatalf("conflicting replay error = %v", err)
 	}
 	thread.ReadyAt = nil
-	if _, err := sut.replayCreateThread(context.Background(), thread, identity); err == nil || err.Error() != status_error.CreateRequestInProgress.Error() {
+	if err := database.DB.Model(&models.ChannelThread{}).Where("id = ?", thread.ID).Update("ready_at", nil).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := sut.replayCreateThread(context.Background(), thread, identity); err == nil || err.Error() != status_error.CreateRequestInProgress.Error() {
 		t.Fatalf("initializing replay error = %v", err)
 	}
 }

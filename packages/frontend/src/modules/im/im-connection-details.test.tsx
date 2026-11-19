@@ -25,6 +25,8 @@ import { IMConnectionDetailPage } from "./im-connection-detail-page";
 
 const api = vi.hoisted(() => ({
   connections: vi.fn<(options?: unknown) => Promise<{ data: object }>>(),
+  runtimes: vi.fn<() => Promise<{ data: object }>>(),
+  catalog: vi.fn<(options: unknown) => Promise<{ data: object }>>(),
   remove: vi.fn<(options: unknown) => Promise<{ data: object }>>(async () => ({
     data: {},
   })),
@@ -53,6 +55,9 @@ vi.mock("@/shared/api/generated/sdk.gen", async (original) => ({
   listImBindings: api.bindings,
   getProject: api.project,
   listProjects: async () => ({ data: { resources: [], totalSize: 0 } }),
+  listRuntimes: api.runtimes,
+  getRuntimeModelCatalog: api.catalog,
+  listAiAccounts: async () => ({ data: { resources: [] } }),
   listImConversations: api.conversations,
   selectImConversation: api.selectConversation,
   updateImConnection: api.update,
@@ -118,6 +123,19 @@ beforeEach(() => {
   api.project
     .mockReset()
     .mockResolvedValue({ data: { id: "project", name: "资讯整理" } });
+  api.runtimes.mockReset().mockResolvedValue({
+    data: {
+      resources: [
+        {
+          id: "sample",
+          name: "测试智能体",
+          enabled: true,
+          models: [{ id: "model", name: "测试模型" }],
+        },
+      ],
+    },
+  });
+  api.catalog.mockReset();
 });
 afterEach(() => {
   cleanup();
@@ -262,6 +280,92 @@ it("详情内对话分页不修改设置页地址", async () => {
   );
 });
 
+it("合并多个聊天的记录时保留与名称相同的外部聊天 ID", async () => {
+  api.bindings.mockResolvedValue({
+    data: {
+      resources: ["first", "second"].map((id) => ({
+        id,
+        name: `im-${id}`,
+        externalChatId: `im-${id}`,
+        state: "approved",
+      })),
+      totalSize: 2,
+    },
+  });
+  api.conversations
+    .mockResolvedValueOnce({
+      data: { resources: [{ id: "one", title: "对话一" }] },
+    })
+    .mockResolvedValueOnce({
+      data: { resources: [{ id: "two", title: "对话二" }] },
+    });
+  show();
+  const list = within(await screen.findByRole("list", { name: "对话记录" }));
+  expect(list.getByText("对话一").closest("li")).toHaveTextContent("im-first");
+  expect(list.getByText("对话二").closest("li")).toHaveTextContent("im-second");
+});
+
+it("同名聊天可按外部 ID 区分授权卡片、编辑入口与对话归属", async () => {
+  const binding = {
+    connectionId: "connection",
+    channelId: "team",
+    state: "approved",
+  };
+  api.bindings.mockResolvedValue({
+    data: {
+      resources: [
+        { ...binding, id: "first", name: "协作群", externalChatId: "oc-first" },
+        {
+          ...binding,
+          id: "second",
+          name: " 协作群 ",
+          externalChatId: "oc-second",
+        },
+        { ...binding, id: "third", name: "独立群", externalChatId: "oc-third" },
+        {
+          ...binding,
+          id: "fourth",
+          name: "oc-fourth",
+          externalChatId: "oc-fourth",
+        },
+      ],
+      totalSize: 4,
+    },
+  });
+  api.conversations
+    .mockResolvedValueOnce({
+      data: { resources: [{ id: "one", title: "对话一" }] },
+    })
+    .mockResolvedValueOnce({
+      data: { resources: [{ id: "two", title: "对话二" }] },
+    });
+  show(undefined, true);
+
+  const first = within(
+    await screen.findByRole("article", { name: "协作群 · oc-first" }),
+  );
+  const second = within(
+    screen.getByRole("article", { name: "协作群 · oc-second" }),
+  );
+  expect(screen.getByRole("article", { name: "独立群" })).not.toHaveTextContent(
+    "oc-third",
+  );
+  expect(screen.getByRole("heading", { name: "oc-fourth" })).toBeVisible();
+  const list = within(await screen.findByRole("list", { name: "对话记录" }));
+  expect(list.getByText("对话一").closest("li")).toHaveTextContent(
+    "协作群 · oc-first",
+  );
+  expect(list.getByText("对话二").closest("li")).toHaveTextContent(
+    "协作群 · oc-second",
+  );
+
+  await userEvent
+    .setup()
+    .click(second.getByRole("button", { name: "编辑协作群 · oc-second" }));
+  expect(first.getByRole("switch")).toBeDisabled();
+  expect(second.getByRole("switch")).toBeEnabled();
+});
+
 it("三级仅配置Card显示连接状态，空记录无表头计数，删除有完整影响说明", async () => {
   show(undefined, true);
   await screen.findByText("bot-account");
@@ -304,18 +408,66 @@ it("连接配置原Card内编辑，授权、记录、危险区始终保留", asy
   expect(screen.getByRole("heading", { name: "危险操作" })).toBeInTheDocument();
 });
 
-it("选择的授权项在原Card编辑，取消不写连接且其他分区仍可见", async () => {
+it.each(["weixin", "feishu", "wecom"])(
+  "%s 的授权项可就地编辑，取消不提交且其他分区仍可见",
+  async (platform) => {
+    api.connections.mockResolvedValue({
+      data: { resources: [{ id: "connection", platform, name: "机器人" }] },
+    });
+    api.bindings.mockResolvedValue({
+      data: {
+        resources: [
+          {
+            id: "binding",
+            name: "协作群",
+            connectionId: "connection",
+            channelId: "team",
+            state: "approved",
+            allowWorkflowDelivery: true,
+          },
+        ],
+        totalSize: 1,
+      },
+    });
+    show(undefined, true);
+    const user = userEvent.setup();
+    const edit = await screen.findByRole("button", { name: "编辑协作群" });
+    expect(screen.getByRole("switch")).toBeChecked();
+    expect(screen.getByRole("switch")).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "授权" }),
+    ).not.toBeInTheDocument();
+    await user.click(edit);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("switch")).toBeEnabled();
+    await user.click(screen.getByRole("switch"));
+    expect(
+      screen.getByRole("heading", { name: "对话记录" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "危险操作" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.getByRole("switch")).toBeChecked();
+    expect(screen.getByRole("switch")).toBeDisabled();
+    expect(api.update).not.toHaveBeenCalled();
+    expect(api.bindingUpdate).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "编辑协作群" })).toHaveFocus(),
+    );
+  },
+);
+
+it("只读和编辑共用运行控件，伙伴名称前显示头像", async () => {
   api.bindings.mockResolvedValue({
     data: {
       resources: [
         {
           id: "binding",
-          name: "协作群",
-          connectionId: "connection",
-          channelId: "team",
+          name: "伙伴聊天",
+          wakerId: "waker",
           state: "approved",
-          revision: 7,
-          allowWorkflowDelivery: true,
+          options: { runtimeId: "sample", model: "model", reasoning: "low" },
         },
       ],
       totalSize: 1,
@@ -323,18 +475,312 @@ it("选择的授权项在原Card编辑，取消不写连接且其他分区仍可
   });
   show(undefined, true);
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: "配置协作群" }));
-  expect(screen.getByRole("switch")).toBeChecked();
-  await user.click(screen.getByRole("switch"));
-  expect(screen.getByRole("heading", { name: "对话记录" })).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "危险操作" })).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "取消" }));
-  expect(screen.queryByRole("switch")).not.toBeInTheDocument();
-  expect(api.update).not.toHaveBeenCalled();
-  expect(api.bindingUpdate).not.toHaveBeenCalled();
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: "配置协作群" })).toHaveFocus(),
+  const card = within(await screen.findByRole("article", { name: "伙伴聊天" }));
+  const workflow = card.getByRole("switch", {
+    name: "允许工作流查询并发送到此聊天",
+  });
+  expect(card.getByText("允许工作流查询并发送到此聊天")).toHaveClass(
+    "type-label",
   );
+  const target = card.getByRole("combobox", { name: "执行目标" });
+  const runtime = card.getByTestId("composer-runtime-control");
+  const model = card.getByTestId("composer-model-control");
+  expect(model).toHaveTextContent("low");
+  await waitFor(() => expect(target).toHaveTextContent("日常助理"));
+  expect(target.querySelector("[data-companion-avatar]")).toBeInTheDocument();
+  for (const control of [target, runtime, model, workflow])
+    expect(control).toBeDisabled();
+
+  await user.click(screen.getByRole("button", { name: "编辑伙伴聊天" }));
+  expect(card.getByTestId("composer-runtime-control")).toBe(runtime);
+  expect(card.getByTestId("composer-model-control")).toBe(model);
+  expect(card.getByRole("combobox", { name: "执行目标" })).toBe(target);
+  for (const control of [target, runtime, model, workflow])
+    expect(control).toBeEnabled();
+  await user.click(target);
+  const option = await screen.findByRole("option", { name: "日常助理" });
+  expect(option.querySelector("[data-companion-avatar]")).toBeInTheDocument();
+});
+
+it("待授权聊天在查看态显示未配置，编辑时填入默认运行配置", async () => {
+  api.bindings.mockResolvedValue({
+    data: {
+      resources: [
+        {
+          id: "pending",
+          name: "待授权聊天",
+          kind: "direct",
+          state: "pending",
+          options: {
+            runtimeId: "",
+            accountId: "",
+            model: "",
+            reasoning: "",
+            permissionLevel: "",
+          },
+          allowWorkflowDelivery: false,
+        },
+        {
+          id: "configured",
+          name: "已配置聊天",
+          kind: "direct",
+          wakerId: "waker",
+          state: "approved",
+          options: { runtimeId: "sample", permissionLevel: "default" },
+        },
+      ],
+      totalSize: 2,
+    },
+  });
+  show(undefined, true);
+  const user = userEvent.setup();
+  const configured = within(
+    await screen.findByRole("article", { name: "已配置聊天" }),
+  );
+  await waitFor(() =>
+    expect(
+      configured.getByTestId("composer-runtime-control"),
+    ).toHaveTextContent("测试智能体"),
+  );
+  const pending = within(screen.getByRole("article", { name: "待授权聊天" }));
+  const runtime = pending.getByTestId("composer-runtime-control");
+  const model = pending.getByTestId("composer-model-control");
+  const permission = pending.getByTestId("composer-permission-control");
+  for (const control of [runtime, model, permission]) {
+    expect(control).toHaveTextContent("未配置");
+    expect(control).toBeDisabled();
+  }
+  expect(pending.getByRole("radio", { name: "伙伴" })).not.toBeChecked();
+  expect(pending.getByRole("combobox", { name: "执行目标" })).toHaveTextContent(
+    "选择伙伴或团队",
+  );
+  expect(
+    pending.queryByRole("button", { name: "授权" }),
+  ).not.toBeInTheDocument();
+
+  await user.click(pending.getByRole("button", { name: "编辑待授权聊天" }));
+  expect(runtime).toHaveTextContent("测试智能体");
+  expect(permission).toHaveTextContent("默认权限");
+  expect(pending.getByRole("radio", { name: "伙伴" })).toBeChecked();
+  expect(pending.getByRole("button", { name: "授权" })).toBeDisabled();
+});
+
+it("模型目录读取失败时仍能保存工作流权限，并保留已保存的运行配置", async () => {
+  const binding = {
+    id: "binding",
+    name: "伙伴聊天",
+    kind: "direct",
+    wakerId: "waker",
+    state: "approved",
+    options: {
+      runtimeId: "codex",
+      accountId: "system",
+      model: "saved-model",
+      reasoning: "low",
+      permissionLevel: "auto",
+    },
+    allowWorkflowDelivery: true,
+  };
+  api.runtimes.mockResolvedValue({
+    data: { resources: [{ id: "codex", enabled: true }] },
+  });
+  api.catalog.mockRejectedValue(new Error("catalog read failed"));
+  api.bindings.mockResolvedValue({
+    data: { resources: [binding], totalSize: 1 },
+  });
+  api.bindingUpdate.mockImplementation(async () => {
+    api.bindings.mockResolvedValue({
+      data: {
+        resources: [{ ...binding, allowWorkflowDelivery: false }],
+        totalSize: 1,
+      },
+    });
+    return { data: {} };
+  });
+  show(undefined, true);
+  const user = userEvent.setup();
+  const card = within(await screen.findByRole("article", { name: "伙伴聊天" }));
+  await user.click(screen.getByRole("button", { name: "编辑伙伴聊天" }));
+  expect(await card.findByRole("alert")).toBeVisible();
+  const workflow = card.getByRole("switch", {
+    name: "允许工作流查询并发送到此聊天",
+  });
+  await user.click(workflow);
+  const save = screen.getByRole("button", { name: "保存" });
+  expect(save).toBeEnabled();
+  await user.click(card.getByRole("button", { name: "重试读取" }));
+  await waitFor(() =>
+    expect(api.catalog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { runtimeId: "codex" },
+        query: { accountId: "system", refresh: true },
+      }),
+    ),
+  );
+  await user.click(save);
+  await waitFor(() => expect(workflow).toBeDisabled());
+  expect(workflow).not.toBeChecked();
+  expect(api.bindingUpdate).toHaveBeenCalledWith(
+    expect.objectContaining({
+      body: {
+        state: undefined,
+        configuration: {
+          name: "伙伴聊天",
+          wakerId: "waker",
+          channelId: "",
+          projectId: "",
+          workingDirectory: "",
+          controllerIds: [],
+          options: binding.options,
+          allowWorkflowDelivery: false,
+        },
+      },
+    }),
+  );
+  expect(card.getByTestId("composer-model-control")).toHaveTextContent(
+    "saved-model",
+  );
+  expect(card.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+it("只读态可直接重新授权已配置的聊天", async () => {
+  const binding = {
+    id: "binding",
+    name: "协作群",
+    connectionId: "connection",
+    channelId: "team",
+    state: "rejected",
+    kind: "group",
+    controllerIds: ["owner"],
+    projectId: "project",
+    allowWorkflowDelivery: false,
+  };
+  api.bindings.mockResolvedValue({
+    data: { resources: [binding], totalSize: 1 },
+  });
+  api.bindingUpdate.mockImplementation(async () => {
+    api.bindings.mockResolvedValue({
+      data: {
+        resources: [{ ...binding, state: "approved" }],
+        totalSize: 1,
+      },
+    });
+    return { data: {} };
+  });
+  show(undefined, true);
+  const user = userEvent.setup();
+  const authorize = await screen.findByRole("button", { name: "授权" });
+  expect(screen.getByRole("switch")).toBeDisabled();
+  expect(api.bindingUpdate).not.toHaveBeenCalled();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  await user.click(authorize);
+  expect(await screen.findByText("已授权")).toBeInTheDocument();
+  expect(api.bindingUpdate).toHaveBeenCalledWith(
+    expect.objectContaining({
+      path: { bindingId: "binding" },
+      body: { state: "approved" },
+    }),
+  );
+  expect(screen.getByRole("switch")).toBeDisabled();
+  expect(screen.getByRole("switch")).not.toBeChecked();
+});
+
+it("只读态可撤销授权，编辑中取消撤销保留草稿", async () => {
+  const binding = {
+    id: "binding",
+    name: "协作群",
+    connectionId: "connection",
+    channelId: "team",
+    state: "approved",
+    kind: "group",
+    controllerIds: ["owner"],
+    allowWorkflowDelivery: true,
+  };
+  api.bindings.mockResolvedValue({
+    data: {
+      resources: [binding, { ...binding, id: "second", name: "另一个群" }],
+      totalSize: 2,
+    },
+  });
+  show(undefined, true);
+  const user = userEvent.setup();
+  const card = within(await screen.findByRole("article", { name: "协作群" }));
+  const controllers = card.getByRole("textbox", {
+    name: /聊天管理员的平台身份/,
+  });
+  expect(controllers).toHaveAccessibleDescription(
+    /用空格或逗号分隔多个 ID.*停止工作及审批/,
+  );
+  const revoke = card.getByRole("button", { name: "撤销授权" });
+  expect(
+    card.getByText("撤销后，此聊天无法发起工作。已有对话保留。"),
+  ).toBeVisible();
+  expect(revoke).toBeEnabled();
+  await user.click(revoke);
+  expect(card.getByRole("button", { name: "确认撤销" })).toBeVisible();
+  expect(api.bindingUpdate).not.toHaveBeenCalled();
+  await user.click(card.getByRole("button", { name: "保留授权" }));
+
+  await user.click(await screen.findByRole("button", { name: "编辑协作群" }));
+  expect(screen.getByRole("button", { name: "编辑另一个群" })).toBeDisabled();
+  await user.click(card.getByRole("switch"));
+  await user.click(card.getByRole("button", { name: "撤销授权" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(api.bindingUpdate).not.toHaveBeenCalled();
+  await user.click(card.getByRole("button", { name: "保留授权" }));
+  expect(card.getByRole("switch")).toBeEnabled();
+  expect(card.getByRole("switch")).not.toBeChecked();
+  await user.click(screen.getByRole("button", { name: "取消" }));
+  await user.click(card.getByRole("button", { name: "撤销授权" }));
+  await user.click(card.getByRole("button", { name: "确认撤销" }));
+  await waitFor(() =>
+    expect(api.bindingUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { bindingId: "binding" },
+        body: { state: "rejected" },
+      }),
+    ),
+  );
+  await waitFor(() => expect(card.getByRole("switch")).toBeDisabled());
+});
+
+it("编辑中确认撤销只提交授权状态并保留草稿", async () => {
+  const binding = {
+    id: "binding",
+    name: "协作群",
+    connectionId: "connection",
+    channelId: "team",
+    state: "approved",
+    allowWorkflowDelivery: true,
+  };
+  api.bindings.mockResolvedValue({
+    data: { resources: [binding], totalSize: 1 },
+  });
+  api.bindingUpdate.mockImplementationOnce(async () => {
+    api.bindings.mockResolvedValue({
+      data: { resources: [{ ...binding, state: "rejected" }], totalSize: 1 },
+    });
+    return { data: {} };
+  });
+  show(undefined, true);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "编辑协作群" }));
+  await user.click(screen.getByRole("switch"));
+  await user.click(screen.getByRole("button", { name: "撤销授权" }));
+  await user.click(screen.getByRole("button", { name: "确认撤销" }));
+  expect(await screen.findByText("已撤销")).toBeVisible();
+  await waitFor(() => expect(screen.getByRole("switch")).toBeEnabled());
+  expect(screen.getByRole("switch")).not.toBeChecked();
+  expect(screen.getByRole("button", { name: "授权" })).toBeEnabled();
+  expect(api.bindingUpdate.mock.calls[0]?.[0]).toMatchObject({
+    path: { bindingId: "binding" },
+  });
+  expect(api.bindingUpdate.mock.calls[0]?.[0]).toHaveProperty("body", {
+    state: "rejected",
+  });
+  await user.click(screen.getByRole("button", { name: "取消" }));
+  expect(screen.getByRole("switch")).toBeChecked();
+  expect(screen.getByRole("switch")).toBeDisabled();
 });
 
 it("授权后台读失败保留已打开的编辑草稿", async () => {
@@ -347,7 +793,6 @@ it("授权后台读失败保留已打开的编辑草稿", async () => {
           connectionId: "connection",
           channelId: "team",
           state: "approved",
-          revision: 7,
           allowWorkflowDelivery: true,
         },
       ],
@@ -356,7 +801,7 @@ it("授权后台读失败保留已打开的编辑草稿", async () => {
   });
   const { client } = show(undefined, true);
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: "配置协作群" }));
+  await user.click(await screen.findByRole("button", { name: "编辑协作群" }));
   await user.click(screen.getByRole("switch"));
   api.bindings.mockRejectedValue(new Error("refresh failed"));
   await act(async () => {
@@ -374,39 +819,61 @@ it("授权后台读失败保留已打开的编辑草稿", async () => {
   expect(event.defaultPrevented).toBe(true);
 });
 
-it("授权编辑固定原revision，后台更新后冲突仍保留草稿", async () => {
+it("后台读取新的设置后可以直接保存当前草稿", async () => {
   const binding = {
     id: "binding",
     name: "协作群",
     connectionId: "connection",
     channelId: "team",
+    projectId: "project",
     state: "approved",
-    revision: 7,
-    allowWorkflowDelivery: true,
   };
   api.bindings.mockResolvedValue({
     data: { resources: [binding], totalSize: 1 },
   });
-  api.bindingUpdate.mockRejectedValueOnce(new Error("revision conflict"));
   const { client } = show(undefined, true);
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: "配置协作群" }));
-  await user.click(screen.getByRole("switch"));
+  await user.click(await screen.findByRole("button", { name: "编辑协作群" }));
+  await user.click(screen.getByRole("button", { name: "工作范围" }));
+  await user.click(await screen.findByRole("menuitem", { name: "默认" }));
   api.bindings.mockResolvedValue({
-    data: { resources: [{ ...binding, revision: 9 }], totalSize: 1 },
+    data: {
+      resources: [
+        {
+          ...binding,
+          name: "新的群名称",
+          channelId: "",
+          wakerId: "waker",
+          options: { runtimeId: "sample" },
+          projectId: "",
+        },
+      ],
+      totalSize: 1,
+    },
   });
   await act(async () => {
     await client.invalidateQueries({
       queryKey: ["im", "connection-bindings", "connection"],
     });
   });
+  expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+  expect(screen.getByRole("combobox", { name: "执行目标" })).toHaveTextContent(
+    "研发团队",
+  );
+  expect(api.bindingUpdate).not.toHaveBeenCalled();
   await user.click(screen.getByRole("button", { name: "保存" }));
-  await screen.findByRole("alert");
+  await waitFor(() => expect(api.bindingUpdate).toHaveBeenCalledTimes(1));
   expect(api.bindingUpdate.mock.calls[0]?.[0]).toMatchObject({
-    body: { revision: 7, allowWorkflowDelivery: false },
+    body: {
+      state: undefined,
+      configuration: {
+        name: "新的群名称",
+        channelId: "team",
+        wakerId: "",
+        projectId: "",
+      },
+    },
   });
-  expect(screen.getByRole("switch")).not.toBeChecked();
-  expect(api.update).not.toHaveBeenCalled();
 });
 
 it("连接后台读取失败在配置Card表达陈旧并保留编辑输入", async () => {

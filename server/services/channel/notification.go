@@ -107,11 +107,16 @@ func (s *service) drainNotifications(ctx context.Context, threadID string) error
 	if err != nil {
 		return err
 	}
-	prompt := teamNotificationPrompt(
-		entries,
-		buildTaskBoardSnapshot(tasks),
-		tasks,
-	)
+	// 依照现有通知的顺序，每次只接纳一组同来源报告；余项继续等待原调度器处理。
+	replyLinkID := entries[0].IMReplyLinkID
+	end := 1
+	for end < len(entries) && entries[end].IMReplyLinkID == replyLinkID {
+		end++
+	}
+	projectedEntries := entries
+	entries, ids = entries[:end], ids[:end]
+	groupTasks := notificationGroupTasks(tasks, entries, replyLinkID)
+	prompt := teamNotificationPrompt(entries, buildTaskBoardSnapshot(groupTasks), groupTasks)
 	leadExecutionID := util.New()
 	capability, capabilityToken, err := s.mintLeadCapability(ctx, thread, leadExecutionID, false)
 	if err != nil {
@@ -149,7 +154,7 @@ func (s *service) drainNotifications(ctx context.Context, threadID string) error
 		false,
 	)
 	options.AccountID = lead.AccountID
-	for _, entry := range entries {
+	for _, entry := range projectedEntries {
 		options.HistoryMessageIDsToOmit = append(options.HistoryMessageIDsToOmit, entry.NotificationID)
 	}
 	accepted, err := s.executions.Start(ctx, execution.WorkIntent{AutomaticRunID: automaticRunID,
@@ -158,6 +163,7 @@ func (s *service) drainNotifications(ctx context.Context, threadID string) error
 		Input: execution.WorkInput{
 			Actor:               string(constants.ChannelMessageActorSystem),
 			Content:             prompt,
+			IMReplyLinkID:       replyLinkID,
 			ContextInstructions: []workinput.Instruction{leaderTurnInstruction(false)},
 		},
 		Options:   options,
@@ -259,6 +265,21 @@ func (s *service) drainNotifications(ctx context.Context, threadID string) error
 	return nil
 }
 
+// notificationGroupTasks 只把同一回复来源的任务和本批报告所对应的续跑任务交给负责人。
+func notificationGroupTasks(tasks []models.ChannelTask, reports []announceEntry, replyLinkID string) []models.ChannelTask {
+	reportedTasks := make(map[string]bool, len(reports))
+	for _, report := range reports {
+		reportedTasks[report.TaskID] = true
+	}
+	group := make([]models.ChannelTask, 0, len(tasks))
+	for _, task := range tasks {
+		if task.IMReplyLinkID == replyLinkID || reportedTasks[task.ID] {
+			group = append(group, task)
+		}
+	}
+	return group
+}
+
 // pendingNotificationEntries 读取等待交付的成员结果，并补齐稳定的作者与内容投影。
 func (s *service) pendingNotificationEntries(
 	ctx context.Context,
@@ -297,6 +318,7 @@ func (s *service) pendingNotificationEntries(
 			NotificationID:    notification.ID,
 			TaskID:            notification.TaskID,
 			AttemptID:         notification.AttemptID,
+			IMReplyLinkID:     notification.IMReplyLinkID,
 			MemberWakerID:     member.WakerID,
 			MemberChatID:      member.ChatID,
 			MemberDisplayName: member.DisplayName,
@@ -597,11 +619,9 @@ func (s *service) completeLeadExecution(
 		return false, nil
 	}
 	notificationStatus := constants.ChannelNotificationStatusConsumed
-	inputStatus := constants.ChannelInputStatusConsumed
 	leadExecutionID := executionID
 	if event.ExecutionStatus != constants.ExecutionStatusCompleted {
 		notificationStatus = constants.ChannelNotificationStatusPending
-		inputStatus = constants.ChannelInputStatusPending
 		leadExecutionID = ""
 	}
 	now := time.Now().UnixMilli()
@@ -625,8 +645,9 @@ func (s *service) completeLeadExecution(
 			}
 		}
 		if len(inputIDs) > 0 {
+			// 输入在 Execution 接纳后已进入权威日志，任何终态都结束队列交接。
 			return s.threads.UpdateLeadInputs(
-				transactionContext, inputIDs, inputStatus, leadExecutionID, now,
+				transactionContext, inputIDs, constants.ChannelInputStatusConsumed, executionID, now,
 			)
 		}
 		return nil

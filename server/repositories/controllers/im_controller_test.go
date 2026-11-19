@@ -9,8 +9,45 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
+
+func TestIMBindingDiscoveryOnlyNotifiesOnInsert(t *testing.T) {
+	hub := events.New()
+	defer hub.Close()
+	store := NewIMController(WithEventPublisher(newTestDB(t), hub))
+	subscription := hub.Subscribe("im", events.Resource{Kind: "global"})
+	defer subscription.Close()
+	ctx := t.Context()
+	binding := models.IMBinding{ID: "binding", ConnectionID: "connection", ExternalChatID: "group"}
+	if err := store.DiscoverBinding(ctx, binding); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case event := <-subscription.Events:
+		var affected events.Resource
+		if err := json.Unmarshal(event.Payload, &affected); err != nil || affected != eventsResource("binding", binding.ID) ||
+			event.Resource != eventsResource("connection", binding.ConnectionID) {
+			t.Fatalf("binding discovery event: %+v %v", event, err)
+		}
+	default:
+		t.Fatal("new binding did not publish an event")
+	}
+	binding.ContextToken = "new-context"
+	if err := store.DiscoverBinding(ctx, binding); err != nil {
+		t.Fatal(err)
+	}
+	actual, err := store.Binding(ctx, binding.ID)
+	if err != nil || actual.ContextToken != binding.ContextToken {
+		t.Fatalf("the sending context was not refreshed: %+v %v", actual, err)
+	}
+	select {
+	case event := <-subscription.Events:
+		t.Fatalf("sending context refresh changed visible bindings: %+v", event)
+	default:
+	}
+}
 
 func TestIMControllerEncryptsSecretsDeduplicatesAndKeepsProjection(t *testing.T) {
 	db := newTestDB(t)
@@ -52,7 +89,7 @@ func TestIMControllerEncryptsSecretsDeduplicatesAndKeepsProjection(t *testing.T)
 	if actualIdentity.Credential != "private-token" || actualIdentity.AppID != "original-bot" || actualIdentity.Revision != 2 {
 		t.Fatal("identity rejection altered saved credential")
 	}
-	binding := models.IMBinding{ID: "b", ConnectionID: "c", ExternalChatID: "user", State: constants.IMBindingStateApproved, ContextToken: "private-context", Revision: 1, ControllerIDs: []string{"owner"}}
+	binding := models.IMBinding{ID: "b", ConnectionID: "c", ExternalChatID: "user", State: constants.IMBindingStateApproved, ContextToken: "private-context", ControllerIDs: []string{"owner"}}
 	if err := store.DiscoverBinding(ctx, binding); err != nil {
 		t.Fatal(err)
 	}
@@ -178,5 +215,30 @@ func TestIMConnectionsCountOnlyExistingConversationsAcrossBindings(t *testing.T)
 	}
 	if db.Migrator().HasColumn(&models.IMConnection{}, "conversation_count") || db.Migrator().HasColumn(&models.IMConversationLink{}, "turn_count") {
 		t.Fatal("query counts were persisted as duplicate counters")
+	}
+}
+
+func TestIMConnectionConfigurationsOnlyQueriesConnections(t *testing.T) {
+	db := newTestDB(t)
+	store := NewIMController(db)
+	ctx := t.Context()
+	input := models.IMConnection{
+		ID: "connection", Platform: constants.IMPlatformWeixin, Enabled: true, KeepAwake: true,
+		State: constants.IMConnectionStateLoginRequired, ErrorCode: status_error.IMLoginRequired.Key(),
+	}
+	if err := store.SaveConnection(ctx, input, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Migrator().DropTable(&models.IMConversationLink{}); err != nil {
+		t.Fatal(err)
+	}
+	configurations, err := store.ConnectionConfigurations(ctx)
+	if err != nil || len(configurations) != 1 {
+		t.Fatalf("读取连接配置依赖了对话关联: %+v %v", configurations, err)
+	}
+	config := configurations[0]
+	if config.ID != input.ID || config.Platform != input.Platform || !config.Enabled || !config.KeepAwake ||
+		config.State != input.State || config.ErrorCode != input.ErrorCode || config.Revision != 1 {
+		t.Fatalf("连接配置遗漏运行字段: %+v", config)
 	}
 }

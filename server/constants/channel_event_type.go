@@ -38,6 +38,8 @@ const (
 	ChannelEventMemberConfigsUpdated ChannelEventType = "members.config_updated"
 	// ChannelEventLeadInputQueued 表示用户输入已进入负责人可靠队列。
 	ChannelEventLeadInputQueued ChannelEventType = "lead.input_queued"
+	// ChannelEventLeadInputFailed 表示负责人队列已结算未进入 Chat 的输入。
+	ChannelEventLeadInputFailed ChannelEventType = "lead.input_failed"
 	// ChannelEventTeamLeaderProcessing 表示负责人开始或结束处理成员结果批次。
 	ChannelEventTeamLeaderProcessing ChannelEventType = "team.leader.processing"
 	// ChannelEventMemberDirectDelivered 表示成员报告已直接成为团队主时间线的完整答复。

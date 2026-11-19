@@ -1,8 +1,7 @@
 export const imZh = {
   statusStale: "状态待更新",
   bindingSaveFailed: "聊天配置未保存，请重试。",
-  configureChat: "配置",
-  configureNamedChat: "配置{{name}}",
+  editNamedChat: "编辑{{name}}",
   unsavedTitle: "放弃未保存的更改？",
   unsavedDescription: "离开会丢弃当前配置草稿。",
   continueEditing: "继续编辑",
@@ -44,8 +43,7 @@ export const imZh = {
   pageSizeSelection: "每页条数",
   scopePlaceholder: "选择工作范围（可选）",
   editActions: "编辑操作",
-  revokeHint:
-    "撤销“{{name}}”的授权后，此聊天将无法继续发起工作。已有对话仍保留。",
+  revokeHint: "撤销后，此聊天无法发起工作。已有对话保留。",
   conversations: "对话记录",
   newConversation: "新建对话",
   newConversationHint:
@@ -83,9 +81,6 @@ export const imZh = {
   appIdPlaceholder: "例如：cli_a1b2c3",
   chatNamePlaceholder: "用于识别接入聊天的名称",
   chatNameHint: "每个聊天独立配置伙伴或团队及工作范围。",
-  executorHint: "指定谁来处理这个聊天收到的任务。",
-  scopeHint: "可选。选择项目或本地目录，留空使用默认工作范围。",
-  workflowHint: "允许工作流发现此聊天作为结果接收目标。",
 
   bindings: "聊天接入",
   chatAccess: "聊天接入",
@@ -187,9 +182,11 @@ export const imZh = {
   chooseDirectory: "选择本机目录",
   controllers: "聊天管理员的平台身份",
   controllerHint:
-    "多个身份用空格或逗号分隔。管理员可以新建、切换、停止对话及处理工具审批；其他群成员仍可提交工作。",
+    "用空格或逗号分隔多个 ID。管理员可新建或切换对话、停止工作及审批。",
   allowWorkflow: "允许工作流查询并发送到此聊天",
   revoke: "撤销授权",
+  confirmRevoke: "确认撤销",
+  keepAuthorization: "保留授权",
   approve: "批准聊天",
   needsAttention: "需要检查配置",
   state: "状态",
@@ -255,8 +252,7 @@ export const imZh = {
 export const imEn = {
   statusStale: "Status needs refreshing",
   bindingSaveFailed: "Chat configuration was not saved. Try again.",
-  configureChat: "Configure",
-  configureNamedChat: "Configure {{name}}",
+  editNamedChat: "Edit {{name}}",
   unsavedTitle: "Discard unsaved changes?",
   unsavedDescription: "Leaving will discard your configuration draft.",
   continueEditing: "Continue editing",
@@ -299,7 +295,7 @@ export const imEn = {
   scopePlaceholder: "Choose workspace (optional)",
   editActions: "Edit actions",
   revokeHint:
-    "Revoking access for {{name}} stops this chat from submitting work. Existing conversations are retained.",
+    "This chat can no longer submit work after revocation. Existing conversations are kept.",
   conversations: "Conversations",
   newConversation: "New conversation",
   newConversationHint:
@@ -339,11 +335,6 @@ export const imEn = {
   appIdPlaceholder: "For example: cli_a1b2c3",
   chatNamePlaceholder: "A name to identify this chat",
   chatNameHint: "Each chat has its own partner or team and workspace.",
-  executorHint: "Choose who handles tasks received in this chat.",
-  scopeHint:
-    "Optional. Choose a project or local directory, or leave empty to use the default workspace.",
-  workflowHint:
-    "Allow workflows to discover this chat as a result destination.",
   bindings: "Chat access",
   chatAccess: "Chat access",
   connectPlatform: "Connect {{platform}}",
@@ -451,9 +442,11 @@ export const imEn = {
   chooseDirectory: "Choose local directory",
   controllers: "Chat controller platform IDs",
   controllerHint:
-    "Separate IDs with commas or spaces. Controllers can create, switch, stop and approve; all other group members can still submit work.",
+    "Separate IDs with spaces or commas. Controllers can create or switch conversations, stop work, and respond to approvals.",
   allowWorkflow: "Allow workflows to discover and send to this chat",
   revoke: "Revoke chat access",
+  confirmRevoke: "Confirm revocation",
+  keepAuthorization: "Keep access",
   approve: "Approve chat",
   needsAttention: "Check configuration",
   state: "Status",

@@ -85,7 +85,10 @@ func (s *service) createThread(
 		return ThreadResult{}, err
 	}
 	if exists {
-		return s.replayCreateThread(ctx, existing, requestIdentity)
+		result, replayed, err := s.replayCreateThread(ctx, existing, requestIdentity)
+		if err != nil || replayed {
+			return result, err
+		}
 	}
 	channel, err := s.channels.Get(ctx, input.ChannelID)
 	if err != nil {
@@ -219,6 +222,7 @@ func (s *service) createThread(
 			Subject:          thread.Title,
 			Description:      input.Input.Content,
 			DirectInput:      &memberInput,
+			IMReplyLinkID:    memberInput.IMReplyLinkID,
 			DirectDelivery:   true,
 			DelegationSentAt: now,
 			Status:           constants.ChannelTaskStatusPending,
@@ -228,7 +232,7 @@ func (s *service) createThread(
 		}
 		thread.TaskCount = 1
 	}
-	// 首先持久化最小 Thread/member/Chat-ID 计划；后续任何崩溃都能由 Start 定位并回滚。
+	// 先持久化成员和 Chat 标识计划，启动恢复据此定位首轮回执或回收未接纳的工作区。
 	if err := s.transaction(ctx, func(transactionContext context.Context) error {
 		if err := s.threads.Create(transactionContext, thread, members); err != nil {
 			return err
@@ -247,7 +251,10 @@ func (s *service) createThread(
 			return ThreadResult{}, lookupErr
 		}
 		if exists {
-			return s.replayCreateThread(ctx, existing, requestIdentity)
+			result, replayed, replayErr := s.replayCreateThread(ctx, existing, requestIdentity)
+			if replayErr != nil || replayed {
+				return result, replayErr
+			}
 		}
 		return ThreadResult{}, err
 	}
@@ -339,47 +346,39 @@ func (s *service) createThread(
 
 	accepted, err := s.executions.Start(ctx, execution.WorkIntent{
 		AutomaticRunID: thread.AutomaticRunID, ExecutionID: leadExecutionID,
-		Chat:      execution.ChatTarget{ChatID: leadChat.ID},
-		Input:     input.Input,
-		Options:   workOptions,
-		Admission: constants.ExecutionAdmissionCommitBeforeDispatch,
+		Chat:              execution.ChatTarget{ChatID: leadChat.ID},
+		Input:             input.Input,
+		Options:           workOptions,
+		Admission:         constants.ExecutionAdmissionCommitBeforeDispatch,
+		AdmissionBoundary: input.AdmissionBoundary,
 	})
+	completionContext := context.WithoutCancel(ctx)
 	if err != nil {
 		s.capabilities.Revoke(capabilityToken)
-		s.rollbackInitializingThread(ctx, thread, plannedChatIDs)
+		receipt, readErr := s.readInitialThreadExecution(completionContext, thread)
+		if readErr != nil || receipt != nil {
+			// 日志同步错误可能留下完整接纳记录，保留初始化锚点供恢复核对。
+			return ThreadResult{}, status_error.CreateRequestInProgress
+		}
+		s.rollbackInitializingThread(completionContext, thread, plannedChatIDs)
 		return ThreadResult{}, err
 	}
-	readyAt := time.Now().UnixMilli()
-	err = s.transaction(ctx, func(transactionContext context.Context) error {
-		if err := s.threads.MarkReady(transactionContext, threadID, provisioningID, accepted.Execution.ID, readyAt); err != nil {
-			return err
-		}
-		_, err := s.appendEvent(transactionContext, channel.ID, threadID, constants.ChannelEventThreadCreated, map[string]interface{}{
-			"threadId":   threadID,
-			"leadChatId": leadChat.ID,
-		})
-		if err != nil || initialTask == nil {
-			return err
-		}
-		_, err = s.appendEvent(transactionContext, channel.ID, threadID, constants.ChannelEventTaskCreated, *initialTask)
-		return err
-	})
-	if err != nil {
-		s.capabilities.Revoke(capabilityToken)
-		s.rollbackAcceptedThread(ctx, thread, plannedChatIDs)
-		return ThreadResult{}, err
+	initialTasks := []models.ChannelTask{}
+	if initialTask != nil {
+		initialTasks = append(initialTasks, *initialTask)
 	}
-	thread.ReadyAt = &readyAt
-	thread.UpdatedAt = readyAt
+	if err := s.publishInitialThread(completionContext, &thread, accepted.Execution.ID, initialTasks); err != nil {
+		logx.Warnf("publish accepted channel thread pending: thread_id=%s execution_id=%s error=%v", thread.ID, accepted.Execution.ID, err)
+		return ThreadResult{}, status_error.CreateRequestInProgress
+	}
 	s.watchLeadExecution(thread, accepted.Execution.ID, nil, nil, capabilityToken)
 	result := ThreadResult{
 		Thread:        thread,
 		Members:       members,
 		LeadExecution: &accepted.Execution,
-		Tasks:         []models.ChannelTask{},
+		Tasks:         initialTasks,
 	}
 	if initialTask != nil {
-		result.Tasks = append(result.Tasks, *initialTask)
 		if _, scheduleErr := s.schedule(ctx, thread.ID); scheduleErr != nil {
 			if _, eventErr := s.appendEvent(ctx, channel.ID, thread.ID, constants.ChannelEventTaskDispatchDeferred, map[string]interface{}{
 				"taskId": initialTask.ID,
@@ -409,6 +408,50 @@ func (s *service) createThread(
 	return result, nil
 }
 
+// readInitialThreadExecution 从预分配的负责人 Chat 核验原团队首轮接纳。
+func (s *service) readInitialThreadExecution(ctx context.Context, thread models.ChannelThread) (*models.Execution, error) {
+	state, err := s.chats.ReadInitialExecution(ctx, thread.LeadChatID)
+	if hasStatusErrorCode(err, status_error.ChatNotFound.Code()) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if state.ThreadWorkspaceID != thread.ID || state.Chat.ID != thread.LeadChatID || state.Chat.WakerID != thread.LeadWakerID {
+		return nil, status_error.ChatDirectoryOwnershipInvalid
+	}
+	receipt := state.InitialExecution
+	if receipt != nil && (receipt.ChatID != thread.LeadChatID || receipt.AutomaticRunID != thread.AutomaticRunID) {
+		return nil, status_error.ChatLogCorrupted
+	}
+	return receipt, nil
+}
+
+// publishInitialThread 在同一事务公开首发和预建任务，沿用已接纳执行的通知边界。
+func (s *service) publishInitialThread(ctx context.Context, thread *models.ChannelThread, executionID string, tasks []models.ChannelTask) error {
+	readyAt := time.Now().UnixMilli()
+	if err := s.transaction(ctx, func(transactionContext context.Context) error {
+		if err := s.threads.MarkReady(transactionContext, thread.ID, thread.ProvisioningID, executionID, readyAt); err != nil {
+			return err
+		}
+		if _, err := s.appendEvent(transactionContext, thread.ChannelID, thread.ID, constants.ChannelEventThreadCreated, map[string]string{
+			"threadId": thread.ID, "leadChatId": thread.LeadChatID,
+		}); err != nil {
+			return err
+		}
+		for _, task := range tasks {
+			if _, err := s.appendEvent(transactionContext, thread.ChannelID, thread.ID, constants.ChannelEventTaskCreated, task); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	thread.ReadyAt, thread.UpdatedAt = &readyAt, readyAt
+	return nil
+}
+
 // createThreadRequestIdentity 为规范化团队首发内容建立共享幂等身份。
 func createThreadRequestIdentity(input CreateThreadInput) (requestidempotency.Identity, error) {
 	return requestidempotency.New(input.ClientRequestID, []interface{}{
@@ -422,37 +465,43 @@ func createThreadRequestIdentity(input CreateThreadInput) (requestidempotency.Id
 	})
 }
 
-// replayCreateThread 对同键同内容返回既有就绪对话；初始化中的请求只暴露稳定冲突状态。
+// replayCreateThread 返回同键的既有首发。明确未接纳的计划回收后允许同一请求继续接纳。
 func (s *service) replayCreateThread(
 	ctx context.Context,
 	thread models.ChannelThread,
 	requestIdentity requestidempotency.Identity,
-) (ThreadResult, error) {
+) (ThreadResult, bool, error) {
 	storedRequestID := ""
 	if thread.ClientRequestID != nil {
 		storedRequestID = *thread.ClientRequestID
 	}
-	if err := requestIdentity.ValidateReplay(
-		storedRequestID,
-		thread.ClientRequestHash,
-		thread.ReadyAt != nil,
-	); err != nil {
-		return ThreadResult{}, err
+	if err := requestIdentity.ValidateReplay(storedRequestID, thread.ClientRequestHash, true); err != nil {
+		return ThreadResult{}, false, err
+	}
+	if thread.ReadyAt == nil {
+		var err error
+		thread, err = s.recoverInitializingThread(ctx, thread, true)
+		if err != nil || thread.ID == "" {
+			return ThreadResult{}, false, err
+		}
+		if err := s.ReconcileThread(ctx, thread.ID); err != nil {
+			logx.Warnf("reconcile recovered channel thread failed: thread_id=%s error=%v", thread.ID, err)
+		}
 	}
 	members, err := s.threads.ListMembers(ctx, thread.ID)
 	if err != nil {
-		return ThreadResult{}, err
+		return ThreadResult{}, false, err
 	}
 	tasks, err := s.tasks.ListByThread(ctx, thread.ID)
 	if err != nil {
-		return ThreadResult{}, err
+		return ThreadResult{}, false, err
 	}
 	return ThreadResult{
 		Thread:   thread,
 		Members:  members,
 		Replayed: true,
 		Tasks:    tasks,
-	}, nil
+	}, true, nil
 }
 
 // ApplyMemberConfigOverrides 将完整成员覆盖应用到团队默认配置，并校验成员身份及重复项。
@@ -553,24 +602,8 @@ func (s *service) sendMessage(
 		if _, err := s.threads.GetMember(ctx, thread.ID, input.MentionWakerID); err != nil {
 			return SendMessageResult{}, err
 		}
-		if input.MentionWakerID == thread.LeadWakerID {
-			queued, enqueueErr := s.enqueueLeadInput(ctx, thread, input.Input, true)
-			if enqueueErr != nil {
-				return SendMessageResult{}, enqueueErr
-			}
-			accepted, drainErr := s.drainLeadInputs(ctx, thread.ID)
-			if drainErr != nil {
-				return SendMessageResult{}, drainErr
-			}
-			return SendMessageResult{
-				Execution: accepted,
-				QueuedInput: &QueuedLeadInput{
-					ID:        queued.ID,
-					Status:    queued.Status,
-					CreatedAt: queued.CreatedAt,
-				},
-			}, nil
-		}
+	}
+	if input.MentionWakerID != "" && input.MentionWakerID != thread.LeadWakerID {
 		active, activeErr := s.activeTaskForAssignee(ctx, thread.ID, input.MentionWakerID)
 		if activeErr != nil {
 			return SendMessageResult{}, activeErr
@@ -594,12 +627,21 @@ func (s *service) sendMessage(
 		}
 		return SendMessageResult{Task: &created.Task}, nil
 	}
-	queued, err := s.enqueueLeadInput(ctx, thread, input.Input, false)
+	queued, err := s.enqueueLeadInput(ctx, thread, input.Input, input.MentionWakerID != "", input.AdmissionBoundary)
 	if err != nil {
 		return SendMessageResult{}, err
 	}
-	accepted, err := s.drainLeadInputs(ctx, thread.ID)
-	if err != nil {
+	var accepted *models.Execution
+	if queued.Status == constants.ChannelInputStatusPending {
+		accepted, err = s.dispatchLeadInputs(ctx, thread.ID, &queued)
+		if accepted == nil {
+			s.watchRecoveryDrain(thread.ID)
+		}
+	}
+	if queued.Status == constants.ChannelInputStatusFailed && queued.Payload.IMReplyLinkID == "" {
+		return SendMessageResult{}, leadInputFailureError(queued.ErrorCode)
+	}
+	if err != nil && queued.Status != constants.ChannelInputStatusFailed {
 		return SendMessageResult{}, err
 	}
 	return SendMessageResult{
@@ -653,25 +695,6 @@ func (s *service) deleteInitializingThread(
 	return s.transaction(ctx, func(transactionContext context.Context) error {
 		return s.threads.DeleteInitializing(transactionContext, thread.ID)
 	})
-}
-
-func (s *service) rollbackAcceptedThread(
-	ctx context.Context,
-	thread models.ChannelThread,
-	chatIDs []string,
-) {
-	for _, chatID := range chatIDs {
-		if err := s.executions.CancelAndWait(ctx, chatID); err != nil {
-			logx.Errorf(
-				"cancel accepted channel chat failed: provisioning_id=%s thread_id=%s chat_id=%s error=%v",
-				thread.ProvisioningID,
-				thread.ID,
-				chatID,
-				err,
-			)
-		}
-	}
-	s.rollbackInitializingThread(ctx, thread, chatIDs)
 }
 
 func (s *service) appendEvent(

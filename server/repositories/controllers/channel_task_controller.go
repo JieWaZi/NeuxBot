@@ -63,6 +63,8 @@ type ChannelTaskController interface {
 	ReleaseAttemptFollowUps(ctx context.Context, attemptID string) error
 	// ReadNotifications 读取同团队中已投影报告的最终交付判定。
 	ReadNotifications(context.Context, string, []string) ([]models.ChannelLeadNotification, error)
+	// ListAbandonedReportIDs 返回已结束且没有对应通知的提前上报。
+	ListAbandonedReportIDs(ctx context.Context, threadID string, ids []string) ([]string, error)
 	// CreateNotification 持久化一项等待交给团队负责人的任务结果。
 	CreateNotification(ctx context.Context, notification models.ChannelLeadNotification) error
 	// ListPendingNotifications 返回团队对话尚未交给负责人的结果通知。
@@ -979,4 +981,23 @@ func (c *channelTaskController) ReadNotifications(ctx context.Context, threadID 
 		return nil, databaseError("read_channel_notifications", threadID, err)
 	}
 	return result, nil
+}
+
+// ListAbandonedReportIDs 在同一语句快照中核对尝试终态和通知缺失。
+func (c *channelTaskController) ListAbandonedReportIDs(ctx context.Context, threadID string, ids []string) ([]string, error) {
+	db := controllerDB(ctx, c.db)
+	owningTask := db.Model(&models.ChannelTask{}).Select("1").
+		Where("id = channel_task_attempts.task_id AND thread_id = ?", threadID)
+	matchingNotification := db.Model(&models.ChannelLeadNotification{}).Select("1").
+		Where("thread_id = ? AND id = channel_task_attempts.id", threadID)
+	terminal := []constants.ExecutionStatus{constants.ExecutionStatusCompleted, constants.ExecutionStatusFailed, constants.ExecutionStatusCanceled}
+	var abandoned []string
+	if err := db.Model(&models.ChannelTaskAttempt{}).
+		Where("id IN ? AND status IN ?", ids, terminal).
+		Where("EXISTS (?)", owningTask).
+		Where("NOT EXISTS (?)", matchingNotification).
+		Pluck("id", &abandoned).Error; err != nil {
+		return nil, databaseError("list_abandoned_channel_reports", threadID, err)
+	}
+	return abandoned, nil
 }

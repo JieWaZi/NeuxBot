@@ -20,6 +20,15 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
+func TestPlainPartnerInputUsesOnlyTheUserMessage(t *testing.T) {
+	request := pendingMessage{message: userMessage{Actor: "user", Text: "你好"}}
+	files := &preparedMessageFiles{executionWorkspaceDirectory: t.TempDir()}
+	plan := recordBusinessInputs(&service{}, messageChat{}, request, files, nil, nil, models.RuntimeEnvironment{})
+	if got := plan.prompt(); got != request.message.Text {
+		t.Fatalf("plain partner input contains host instructions: %q", got)
+	}
+}
+
 func TestTurnPathsAndContextDoNotChangeNativeSessionSettings(t *testing.T) {
 	root := t.TempDir()
 	manager := &service{}
@@ -66,7 +75,7 @@ func TestCapabilityFileRootsFreezeSpaceAndRealProjects(t *testing.T) {
 	chat.WorkspaceDirectory = cwd
 	chat.AdditionalWorkingDirectories = []string{cwd, project}
 	var roots []string
-	manager.agentBindings = func(_ models.Chat, _ string, frozen []string, _ string) []capability.Binding {
+	manager.agentBindings = func(_ models.Chat, _ string, frozen []string, _, _ string) []capability.Binding {
 		roots = append([]string(nil), frozen...)
 		return nil
 	}

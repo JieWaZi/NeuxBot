@@ -9,9 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"runtime"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -72,11 +70,11 @@ func TestWorkflowMCPUsesCustomRuntimeBase(t *testing.T) {
 	if len(request.Connectors) != 1 || request.Connectors[0].RuntimeKey != "bot_capabilities" {
 		t.Fatalf("custom runtime lost MCP: %+v", request.Connectors)
 	}
-	if !strings.Contains(agentapi.DeveloperInstructions(request.Instructions), "Use the injected bot_capabilities MCP tools for NeuxBot operations in this execution") || strings.Contains(request.prompt(), "For all NeuxBot CLI calls") {
+	if !strings.Contains(agentapi.DeveloperInstructions(request.Instructions), "Use the injected bot_capabilities MCP tools for NeuxBot operations in this execution") || strings.Contains(request.prompt(), "connection.json") || request.CLIContextFile != "" {
 		t.Fatalf("MCP workflow received competing CLI instructions: %+v", request)
 	}
 	for _, instruction := range request.Instructions {
-		if instruction.Name == "软件能力" && strings.Contains(instruction.Content, "with capabilities") {
+		if instruction.Name == "NeuxBot capabilities" && strings.Contains(instruction.Content, "with capabilities") {
 			t.Fatalf("MCP workflow still requires CLI discovery: %s", instruction.Content)
 		}
 	}
@@ -105,17 +103,17 @@ func TestWorkflowResultSelectsOnlySupportedTransport(t *testing.T) {
 			}
 			defer release()
 			if runtimeID == "codex" {
-				if len(request.Connectors) != 1 || !strings.Contains(agentapi.DeveloperInstructions(request.Instructions), "Use the injected bot_capabilities MCP tools") || strings.Contains(request.prompt(), "For all NeuxBot CLI calls") {
+				if len(request.Connectors) != 1 || !strings.Contains(agentapi.DeveloperInstructions(request.Instructions), "Use the injected bot_capabilities MCP tools") || strings.Contains(request.prompt(), "connection.json") || request.CLIContextFile != "" {
 					t.Fatalf("result worker did not receive its MCP transport: %+v", request)
 				}
-			} else if len(request.Connectors) != 0 || !strings.Contains(request.prompt(), "For all NeuxBot CLI calls") || preparedContextPath(t, request) == "" {
+			} else if len(request.Connectors) != 0 || strings.Contains(request.prompt(), "connection.json") || request.thread().Connection.Launch.BotCLIContextFile == "" {
 				t.Fatalf("unsupported runtime lost its actual CLI fallback: %+v", request)
 			}
 		})
 	}
 }
 
-func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing.T) {
+func TestNativeSessionReusesResidentCredentialAcrossExecutions(t *testing.T) {
 	registry := capability.New(nil)
 	defer registry.Close()
 	endpoint := "http://127.0.0.1:18080"
@@ -158,7 +156,14 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 		}
 	}
 	firstPath := preparedContextPath(t, request)
+	if strings.Contains(request.prompt(), firstPath) {
+		t.Fatal("host authorization path entered the model input")
+	}
 	first, err := capability.ReadConnection(firstPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstFile, err := os.Stat(firstPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,8 +180,11 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 		t.Fatal("continued native process lost its stable explicit context path")
 	}
 	second, err := capability.ReadConnection(firstPath)
-	if err != nil || second.Token == first.Token || second.GrantID == first.GrantID {
-		t.Fatalf("credential did not rotate: %v", err)
+	if err != nil || second != first {
+		t.Fatalf("resident credential changed between executions: %v", err)
+	}
+	if secondFile, err := os.Stat(firstPath); err != nil || !os.SameFile(firstFile, secondFile) {
+		t.Fatalf("continuation rewrote the resident connection file: %v", err)
 	}
 	send := func(token string) int {
 		request := httptest.NewRequest(http.MethodGet, endpoint+constants.AgentCLIPath+"/capabilities", nil)
@@ -186,8 +194,8 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 		registry.ServeHTTP(response, request)
 		return response.Code
 	}
-	if send(first.Token) != 401 || send(second.Token) != 200 {
-		t.Fatal("old invocation crossed into a later grant")
+	if send(first.Token) != 200 {
+		t.Fatal("resident credential could not access the current execution")
 	}
 	journal.chat.WakerID = "other-waker"
 	if send(second.Token) != 401 {
@@ -203,8 +211,15 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 		t.Fatalf("capability validation loaded full message context %d times", journal.contextReads)
 	}
 	revokeSecond()
+	if send(first.Token) != 401 {
+		t.Fatal("idle connection retained completed execution capabilities")
+	}
+	if idle, err := capability.ReadConnection(firstPath); err != nil || idle != first {
+		t.Fatal("settling an execution removed or changed the resident credential")
+	}
+	registry.Close()
 	if _, err := os.Stat(firstPath); !os.IsNotExist(err) {
-		t.Fatal("settled execution left its credential file on disk")
+		t.Fatal("Core shutdown left a resident credential on disk")
 	}
 }
 
@@ -224,7 +239,7 @@ func TestKnowledgeCLIPreparationKeepsOnlyTheFrozenGrant(t *testing.T) {
 	journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "execution"}}
 	manager := &service{agent: registry, agentEndpoint: endpoint.URL + constants.AgentCLIPath, journal: journal, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
 	manager.systemSkillDirectory = publishedTestSystemSkill(t, manager.skillDataDirectory, binary)
-	manager.agentBindings = func(models.Chat, string, []string, string) []capability.Binding {
+	manager.agentBindings = func(models.Chat, string, []string, string, string) []capability.Binding {
 		t.Fatal("scoped command discovered ordinary resources")
 		return nil
 	}
@@ -252,20 +267,14 @@ func TestKnowledgeCLIPreparationKeepsOnlyTheFrozenGrant(t *testing.T) {
 		t.Fatal("existing CLI context or workspace policy was lost")
 	}
 	// 从无技能文件的目录运行，清空 PATH，证明入口与引用均无需搜索。
-	command := exec.Command(builtinskills.CLIPath(request.Skills[0].Path), "--context", preparedContextPath(t, request), "capabilities")
+	command := exec.Command(builtinskills.CLIPath(request.Skills[0].Path), "capabilities")
 	command.Dir = t.TempDir()
 	command.Env = os.Environ()
-	command.Env = append(command.Env, "BOTCLI_CONTEXT_FILE="+preparedContextPath(t, request))
+	command.Env = append(command.Env, constants.AgentCLIContextEnvironment+"="+request.thread().Connection.Launch.BotCLIContextFile)
 	command.Env = append(command.Env, "PATH=")
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("invoke skill-local CLI without PATH: %v\n%s", err, output)
-	}
-	// 遗留环境变量不能代替当前轮显式授权路径。
-	withoutContext := exec.Command(builtinskills.CLIPath(request.Skills[0].Path), "capabilities")
-	withoutContext.Dir, withoutContext.Env = command.Dir, command.Env
-	if data, err := withoutContext.CombinedOutput(); err == nil {
-		t.Fatalf("CLI accepted an implicit context from the process environment: %s", data)
 	}
 	var response capability.Response
 	if err := json.Unmarshal(output, &response); err != nil || !response.OK {
@@ -358,7 +367,7 @@ func TestWorkflowAuthoringPreparationSuppliesModeAndStableGuideForEveryRuntime(t
 		t.Run(runtimeID, func(t *testing.T) {
 			manager := agentPreparationFixture(t)
 			journal := manager.journal.(*agentTestJournal)
-			manager.agentBindings = func(models.Chat, string, []string, string) []capability.Binding {
+			manager.agentBindings = func(models.Chat, string, []string, string, string) []capability.Binding {
 				return []capability.Binding{agentPreparationBinding(t, "workflow.authoring.prepare"), agentPreparationBinding(t, "workflow.source.get"), agentPreparationBinding(t, "workflow.source.save")}
 			}
 			guide, err := builtinskills.Guide("workflow.authoring")
@@ -399,10 +408,10 @@ func TestWorkflowAuthoringPreparationSuppliesModeAndStableGuideForEveryRuntime(t
 						t.Error("preparation rewrote user input or repeated the stable authoring role in this turn")
 					}
 					if runtimeID != "unsupported" {
-						if len(request.Connectors) != 1 || request.Connectors[0].RuntimeKey != "bot_capabilities" || strings.Contains(request.prompt(), "For all NeuxBot CLI calls") {
+						if len(request.Connectors) != 1 || request.Connectors[0].RuntimeKey != "bot_capabilities" || strings.Contains(request.prompt(), "connection.json") || request.CLIContextFile != "" {
 							t.Errorf("base/custom runtime lost its single MCP authoring transport: %+v", request.Connectors)
 						}
-					} else if len(request.Connectors) != 0 || !strings.Contains(request.prompt(), "For all NeuxBot CLI calls") || preparedContextPath(t, request) == "" {
+					} else if len(request.Connectors) != 0 || strings.Contains(request.prompt(), "connection.json") || request.thread().Connection.Launch.BotCLIContextFile == "" {
 						t.Error("unknown runtime lost the authorized CLI fallback")
 					}
 				})
@@ -438,31 +447,19 @@ func TestWorkflowAuthoringPreparationDoesNotOverrideOrdinaryChatOrWorker(t *test
 	}
 }
 
-// preparedContextPath 读取真正交付给模型或 MCP 进程的路径，不依赖执行环境。
+// preparedContextPath 读取宿主实际用于 CLI 或 MCP 的连接路径。
 func preparedContextPath(t *testing.T, request recordedRun) string {
 	t.Helper()
+	if path := request.thread().Connection.Launch.BotCLIContextFile; path != "" {
+		return path
+	}
 	for _, connector := range request.Connectors {
-		if connector.RuntimeKey == "bot_capabilities" {
-			for i, arg := range connector.Arguments {
-				if arg == "--context" && i+1 < len(connector.Arguments) {
-					return connector.Arguments[i+1]
-				}
-			}
+		if connector.RuntimeKey == "bot_capabilities" && len(connector.Arguments) == 4 && connector.Arguments[2] == "--context" {
+			return connector.Arguments[3]
 		}
 	}
-	context := request.Message.Text
-	for _, instruction := range request.ContextInstructions {
-		context += "\n" + instruction.Content
-	}
-	match := regexp.MustCompile(`--context ("(?:[^"\\]|\\.)*")`).FindStringSubmatch(context)
-	if len(match) != 2 {
-		t.Fatalf("no explicit CLI context delivered: %s", context)
-	}
-	path, err := strconv.Unquote(match[1])
-	if err != nil {
-		t.Fatal(err)
-	}
-	return path
+	t.Fatal("missing host capability connection")
+	return ""
 }
 
 func publishedTestSystemSkill(t *testing.T, root, binary string) string {

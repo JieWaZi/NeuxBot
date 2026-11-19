@@ -153,7 +153,7 @@ func TestWorkflowTargetFailuresKeepSpecificCauseAndNeverRegisterDelivery(t *test
 				expected = status_error.IMLoginRequired
 			}
 			if scenario == "revoked" || scenario == "disabled_delivery" {
-				if err := s.config.Store.SaveBinding(ctx, binding, binding.Revision); err != nil {
+				if err := s.config.Store.SaveBinding(ctx, binding); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -179,7 +179,7 @@ func TestWorkflowDeliveryPermissionChangeStopsPendingMessage(t *testing.T) {
 	}
 	binding, _ := s.config.Store.Binding(ctx, "b")
 	binding.AllowWorkflowDelivery = false
-	if err := s.config.Store.SaveBinding(ctx, binding, binding.Revision); err != nil {
+	if err := s.config.Store.SaveBinding(ctx, binding); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.sendDelivery(ctx, delivery); err != nil {
@@ -200,7 +200,7 @@ func TestWorkflowPermissionRevocationKeepsSentPartsAndStopsFollowingParts(t *tes
 			t.Fatal(err)
 		}
 		binding.AllowWorkflowDelivery = false
-		if err := s.config.Store.SaveBinding(ctx, binding, binding.Revision); err != nil {
+		if err := s.config.Store.SaveBinding(ctx, binding); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -281,7 +281,7 @@ func TestWorkflowSentReceiptRecoveryIgnoresLaterPermissionChanges(t *testing.T) 
 				if scenario == "disabled_delivery" {
 					binding.State, binding.AllowWorkflowDelivery = constants.IMBindingStateApproved, false
 				}
-				err = s.config.Store.SaveBinding(ctx, binding, binding.Revision)
+				err = s.config.Store.SaveBinding(ctx, binding)
 			case "disabled_connection":
 				connection, loadErr := s.config.Store.Connection(ctx, "c")
 				if loadErr != nil {
@@ -321,7 +321,7 @@ func TestWorkflowPendingReceiptRecoveryCannotBypassRevokedPermission(t *testing.
 		t.Fatal(err)
 	}
 	binding.AllowWorkflowDelivery = false
-	if err := s.config.Store.SaveBinding(ctx, binding, binding.Revision); err != nil {
+	if err := s.config.Store.SaveBinding(ctx, binding); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.sendDelivery(ctx, delivery); err != nil {
@@ -346,7 +346,7 @@ func TestRevokedBindingSettlesPendingDeliveryWithoutCallingPlatform(t *testing.T
 	}
 	binding, _ := s.config.Store.Binding(ctx, "b")
 	binding.State = constants.IMBindingStateRejected
-	if err := s.config.Store.SaveBinding(ctx, binding, binding.Revision); err != nil {
+	if err := s.config.Store.SaveBinding(ctx, binding); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.sendDelivery(ctx, delivery); err != nil {

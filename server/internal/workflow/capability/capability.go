@@ -72,9 +72,6 @@ type Scope struct {
 // Allows 只实施业务角色授权，不复制 CLI 输入契约。
 func Allows(scope constants.WorkflowCapabilityScope, input Input) bool {
 	if input.Action == constants.WorkflowActionQuery {
-		if input.Type == constants.WorkflowQueryCapabilities {
-			return scope == constants.WorkflowCapabilityScopeCreation || scope == constants.WorkflowCapabilityScopeConsumer || scope == constants.WorkflowCapabilityScopeResult
-		}
 		switch scope {
 		case constants.WorkflowCapabilityScopeCreation:
 			return input.Type == constants.WorkflowQuerySDK || input.Type == constants.WorkflowQueryExamples || input.Type == constants.WorkflowQueryResources || input.Type == constants.WorkflowQueryAuthoring
@@ -99,11 +96,6 @@ func Allows(scope constants.WorkflowCapabilityScope, input Input) bool {
 		return input.Action == constants.WorkflowActionResultSubmit
 	}
 	return false
-}
-
-// Capabilities 只用于内部授权探测，不向模型发布第二份命令目录。
-func Capabilities(scope constants.WorkflowCapabilityScope) map[string]any {
-	return map[string]any{"scope": scope}
 }
 
 // SourcePatch 是完整源码的精确文本补丁。

@@ -260,18 +260,18 @@ func TestWakerOnboardingSavesAfterInterviewWithoutConfirmation(t *testing.T) {
 		manager.journal = journal
 		manager.wakerController, manager.profileController = wakers, profiles
 		manager.onboardingTransactions, manager.onboardingCommands = core.onboardingTransactions, core.onboardingCommands
-		manager.agentBindings = func(models.Chat, string, []string, string) []capability.Binding {
+		manager.agentBindings = func(models.Chat, string, []string, string, string) []capability.Binding {
 			return []capability.Binding{agentPreparationBinding(t, "memory.entries.search")}
 		}
 		run := recordedRun{Runtime: runtimeSelection{RuntimeID: "unsupported"}}
-		activate, revoke, err := manager.prepareAgent(ctx, models.RuntimeEnvironment{}, run.Workspace, &run.Skills, &run.Instructions, &run.Connectors, &run.ContextInstructions,
+		grant, err := manager.prepareAgent(ctx, models.RuntimeEnvironment{}, run.Workspace, &run.Skills, &run.Instructions, &run.Connectors, &run.ContextInstructions,
 			chat, "turn", pendingMessage{admission: constants.ExecutionAdmissionCommitOnRuntimeAccept, message: userMessage{Actor: "user"}}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer revoke()
-		activate()
-		connection, err := capability.ReadConnection(preparedContextPath(t, run))
+		defer grant.finish()
+		grant.activate()
+		connection, err := capability.ReadConnection(grant.cliContextFile)
 		if err != nil {
 			t.Fatal(err)
 		}

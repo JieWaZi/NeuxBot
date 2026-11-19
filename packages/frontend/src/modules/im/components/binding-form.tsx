@@ -1,7 +1,10 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useId, useState, type FormEvent, type ReactNode } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { listProjectsOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
+import {
+  getProjectOptions,
+  listProjectsOptions,
+} from "@/shared/api/generated/@tanstack/react-query.gen";
 import { updateImBinding } from "@/shared/api/generated/sdk.gen";
 import {
   localApiErrorMessage,
@@ -13,11 +16,11 @@ import {
   type ExecutionSelection,
 } from "@/shared/hooks/use-execution-selection";
 import { Button } from "@/shared/ui/button";
+import { StaticAvatar } from "@/shared/ui/avatar";
 import { FormFooter } from "./form-footer";
 import { ExecutionConfigurationControls } from "@/shared/ui/execution-configuration-controls";
 import { WorkspaceScopePicker } from "@/shared/ui/workspace-scope-picker";
 import { FieldControlTrigger } from "@/shared/ui/field-control-trigger";
-import { FieldLabel } from "@/shared/ui/field-label";
 import { Input } from "@/shared/ui/input";
 import {
   Select,
@@ -27,54 +30,87 @@ import {
   SelectValue,
 } from "@/shared/ui/select";
 import { Switch } from "@/shared/ui/switch";
-import { SegmentedControl } from "@/shared/ui/segmented-control";
 import { useWorkExecutors } from "@/shared/hooks/use-work-executors";
-import {
-  useSettingsDraftGuard,
-  SettingsFieldGroup,
-  SettingsFieldRow,
-} from "@/modules/settings";
+import { useSettingsDraftGuard, SettingsRow } from "@/modules/settings";
 import type { IMBinding } from "../types";
+import { canAuthorizeWithoutConfiguration } from "../model/binding-authorization";
+import {
+  BindingConfigurationFields,
+  BindingExecutorKind,
+} from "./binding-configuration-fields";
+import { useBindingAuthorization } from "./use-binding-authorization";
+
+function bindingDraft(binding: IMBinding) {
+  const kind: "team" | "waker" = binding.channelId ? "team" : "waker";
+  const options: ExecutionSelection = binding.options ?? {};
+  return {
+    kind,
+    target: binding.channelId || binding.wakerId || "",
+    projectID: binding.projectId || "",
+    directory: binding.workingDirectory || "",
+    controllers: binding.controllerIds?.join(", ") || "",
+    allowWorkflow: binding.allowWorkflowDelivery ?? true,
+    options,
+  };
+}
+
+type BindingDraft = ReturnType<typeof bindingDraft>;
+
+type BindingEditor = {
+  initial: BindingDraft;
+  draft: BindingDraft;
+  directoryError?: unknown;
+};
 
 export function BindingForm({
-  binding,
+  binding: currentBinding,
   onClose,
-  onSaved,
-  beforeFields,
-  onBeforeSave,
-  disabled = false,
-  purpose = "edit",
-  host = "dialog",
+  refreshBindings,
+  manageAuthorization = false,
+  readOnly = false,
+  authorizationDisabled = false,
 }: {
   binding: IMBinding;
   onClose: () => void;
-  onSaved: () => void;
-  beforeFields?: ReactNode;
-  onBeforeSave?: () => Promise<unknown>;
-  disabled?: boolean;
-  purpose?: "edit" | "authorization";
-  host?: "page" | "dialog";
+  refreshBindings: () => Promise<unknown>;
+  manageAuthorization?: boolean;
+  readOnly?: boolean;
+  authorizationDisabled?: boolean;
 }) {
   const { t } = useTranslation("im");
   const id = useId();
-  // 版本与草稿是同一编辑快照；后台刷新不能替换版本后静默覆盖并发修改。
-  const [revision] = useState(binding.revision);
-  const [kind, setKind] = useState(binding.channelId ? "team" : "waker");
-  const [target, setTarget] = useState(
-    binding.channelId || binding.wakerId || "",
-  );
-  const [projectID, setProjectID] = useState(binding.projectId || "");
-  const [directory, setDirectory] = useState(binding.workingDirectory || "");
-  const [controllers, setControllers] = useState(
-    binding.controllerIds?.join(", ") || "",
-  );
-  const [allowWorkflow, setAllowWorkflow] = useState(
-    binding.allowWorkflowDelivery ?? true,
-  );
-  const [options, setOptions] = useState<ExecutionSelection>(
-    binding.options || {},
-  );
-  const [directoryError, setDirectoryError] = useState<unknown>();
+  // 查看态展示已保存设置。编辑开始时初始化草稿，后续读取保留用户输入。
+  const [editor, setEditor] = useState<BindingEditor>();
+  if (!readOnly && !editor) {
+    const initial = bindingDraft(currentBinding);
+    setEditor({ initial, draft: initial });
+  } else if (readOnly && editor) {
+    setEditor(undefined);
+  }
+  function changeDraft(patch: Partial<BindingDraft>) {
+    setEditor((current) =>
+      current && current.initial === editor?.initial
+        ? {
+            ...current,
+            draft: { ...current.draft, ...patch },
+            directoryError: undefined,
+          }
+        : current,
+    );
+  }
+  const approved = currentBinding.state === "approved";
+  const initialDraft = editor?.initial ?? bindingDraft(currentBinding);
+  const draft = editor?.draft ?? initialDraft;
+  const {
+    kind,
+    target,
+    projectID,
+    directory,
+    controllers,
+    allowWorkflow,
+    options,
+  } = draft;
+  const dirty = JSON.stringify(draft) !== JSON.stringify(initialDraft);
   const executors = useWorkExecutors();
   const team = executors.data?.teams.find(
     (item) => item.channel?.id === target,
@@ -87,118 +123,192 @@ export function BindingForm({
         query: { pageNum: 1, pageSize: 100 },
       }),
     ),
-    enabled: Boolean(owner),
+    enabled: !readOnly && Boolean(owner),
+  });
+  const listedProject = projects.data?.resources?.find(
+    (item) => item.id === projectID,
+  );
+  const selectedProject = useQuery({
+    ...getProjectOptions(
+      withLocalErrorSurface({ path: { wakerId: owner, projectId: projectID } }),
+    ),
+    enabled: Boolean(owner && projectID && !listedProject),
   });
   const execution = useExecutionSelection({
     value: options,
-    enabled: kind === "waker",
+    enabled: kind === "waker" && (!readOnly || Boolean(options.runtimeId)),
+    loadNativeCatalog: !readOnly,
   });
-  const [initialDraft] = useState(() => ({
-    kind,
-    target,
-    projectID,
-    directory,
-    controllers,
-    allowWorkflow,
-    options,
-  }));
-  const dirty =
-    JSON.stringify({
-      kind,
-      target,
-      projectID,
-      directory,
-      controllers,
-      allowWorkflow,
-      options,
-    }) !== JSON.stringify(initialDraft);
+  // 其他字段的编辑沿用已选运行配置，Core 负责校验提交。
+  const executionOptions = options.runtimeId ? options : execution.selection;
+  const canReuseConfiguration =
+    !approved && !dirty && canAuthorizeWithoutConfiguration(currentBinding);
   const save = useMutation({
-    mutationFn: async () => {
-      await onBeforeSave?.();
-      // 尚未选择响应目标时，只保存连接设置，不隐式批准聊天。
-      if (!target) return;
-      return updateImBinding(
+    mutationFn: () =>
+      updateImBinding(
         withLocalErrorSurface({
-          path: { bindingId: binding.id || "" },
+          path: { bindingId: currentBinding.id || "" },
           body: {
-            name: binding.name || binding.externalChatId || "",
-            state: "approved",
-            wakerId: kind === "waker" ? target : "",
-            channelId: kind === "team" ? target : "",
-            projectId: projectID,
-            workingDirectory: directory,
-            options:
-              kind === "waker"
-                ? {
-                    ...execution.selection,
-                    permissionLevel: execution.selection.permissionLevel as
-                      "default" | "auto" | "full-access",
-                  }
-                : {},
-            controllerIds: controllers.split(/[,，\s]+/).filter(Boolean),
-            allowWorkflowDelivery: allowWorkflow,
-            revision,
+            state: approved ? undefined : "approved",
+            configuration: {
+              name: currentBinding.name || currentBinding.externalChatId || "",
+              wakerId: kind === "waker" ? target : "",
+              channelId: kind === "team" ? target : "",
+              projectId: projectID,
+              workingDirectory: directory,
+              options:
+                kind === "waker"
+                  ? {
+                      ...executionOptions,
+                      permissionLevel: execution.selection.permissionLevel,
+                    }
+                  : {},
+              controllerIds: controllers.split(/[,，\s]+/).filter(Boolean),
+              allowWorkflowDelivery: allowWorkflow,
+            },
           },
           throwOnError: true,
         }),
-      );
-    },
-    onSuccess: () => {
-      onSaved();
+      ),
+    onSuccess: async () => {
+      await refreshBindings();
       onClose();
     },
   });
+  const authorization = useBindingAuthorization({
+    binding: currentBinding,
+    refresh: refreshBindings,
+    onAuthorized: () => {
+      if (!readOnly) onClose();
+    },
+  });
+  const busy = save.isPending || authorization.isPending;
+  const executionReady = kind === "team" || Boolean(executionOptions.runtimeId);
+  const canSubmit =
+    !readOnly &&
+    !busy &&
+    !authorization.confirmingRevocation &&
+    (canReuseConfiguration
+      ? !authorizationDisabled
+      : dirty && Boolean(target) && executionReady);
   const submit = (e: FormEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (save.isPending) return;
-    save.mutate();
+    if (!canSubmit) return;
+    if (canReuseConfiguration) authorization.approve();
+    else save.mutate();
   };
-  const chooseTarget = (value: string) => {
-    setTarget(value);
-    setProjectID("");
-    setDirectory("");
-  };
+  const controlsDisabled =
+    readOnly || busy || authorization.confirmingRevocation;
+  const canRevoke = manageAuthorization && approved;
+  const canApproveSaved =
+    manageAuthorization &&
+    !approved &&
+    readOnly &&
+    canAuthorizeWithoutConfiguration(currentBinding);
+  const waker =
+    kind === "waker"
+      ? executors.data?.wakers.find((item) => item.id === target)
+      : undefined;
+  const executorName =
+    (kind === "team" ? team?.channel?.name : waker?.name) || target;
   useSettingsDraftGuard({
-    dirty: host === "page" && dirty,
-    pending: host === "page" && save.isPending,
+    dirty: !readOnly && dirty,
+    pending: busy,
   });
+  const inlineApproval = !readOnly && !approved;
+  const scope =
+    directory || listedProject?.name || selectedProject.data?.name || projectID;
+  const fieldError =
+    executors.error ||
+    projects.error ||
+    selectedProject.error ||
+    editor?.directoryError;
+  const executionError = !readOnly && execution.error;
+  const authorizationError = authorization.error ? (
+    <p role="alert" className="text-destructive type-body basis-full">
+      {localApiErrorMessage(authorization.error, t("operationFailed"))}
+    </p>
+  ) : null;
+  const actions = (
+    <>
+      {save.error ? (
+        <p role="alert" className="text-destructive type-body basis-full">
+          {localApiErrorMessage(save.error, t("bindingSaveFailed"))}
+        </p>
+      ) : null}
+      {!inlineApproval && dirty ? (
+        <span className="type-body text-content-secondary mr-auto">
+          {t("unsavedChanges")}
+        </span>
+      ) : null}
+      <Button
+        type="button"
+        variant="secondary"
+        disabled={busy}
+        onClick={() => {
+          save.reset();
+          onClose();
+        }}
+      >
+        {t("cancel")}
+      </Button>
+      <Button
+        type="submit"
+        form={id + "-form"}
+        aria-busy={busy}
+        disabled={!canSubmit}
+      >
+        {t(approved ? "save" : "authorize")}
+      </Button>
+    </>
+  );
   return (
     <form id={id + "-form"} className="contents" onSubmit={submit}>
-      <fieldset
-        disabled={save.isPending}
-        className={
-          host === "dialog"
-            ? "grid min-h-0 gap-6 overflow-y-auto px-6 pb-6"
-            : "grid min-h-0 gap-6"
-        }
-      >
-        {beforeFields}
-        <SettingsFieldGroup
-          surface={host === "page" ? "plain" : "card"}
-          title={t("runtimeConfiguration")}
-        >
-          <SettingsFieldRow label={t("executor")}>
-            <div className="grid gap-3">
-              <SegmentedControl
-                ariaLabel={t("executor")}
-                value={kind}
-                onValueChange={(value) => {
-                  setKind(value);
-                  chooseTarget("");
-                }}
-                options={[
-                  { value: "waker", label: t("partner") },
-                  { value: "team", label: t("team") },
-                ]}
+      <fieldset disabled={controlsDisabled} className="grid min-h-0 gap-6">
+        <BindingConfigurationFields
+          executor={
+            <>
+              <BindingExecutorKind
+                value={readOnly && !target ? "" : kind}
+                onChange={
+                  controlsDisabled
+                    ? undefined
+                    : (value) =>
+                        changeDraft({
+                          kind: value,
+                          target: "",
+                          projectID: "",
+                          directory: "",
+                        })
+                }
               />
-              <Select value={target} onValueChange={chooseTarget}>
+              <Select
+                value={target}
+                onValueChange={(value) =>
+                  changeDraft({ target: value, projectID: "", directory: "" })
+                }
+                disabled={controlsDisabled}
+              >
                 <SelectTrigger
-                  appearance={host === "page" ? "settings" : "default"}
-                  size={host === "page" ? "settings" : "sm"}
+                  appearance="settings"
+                  size="settings"
                   aria-label={t("executor")}
                 >
-                  <SelectValue placeholder={t("chooseExecutor")} />
+                  <SelectValue placeholder={t("chooseExecutor")}>
+                    {target ? (
+                      <span className="flex items-center gap-2">
+                        {kind === "waker" ? (
+                          <StaticAvatar
+                            name={executorName}
+                            src={waker?.avatar}
+                            size="xs"
+                          />
+                        ) : null}
+                        <span className="min-w-0 truncate">{executorName}</span>
+                      </span>
+                    ) : null}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {kind === "waker"
@@ -206,7 +316,16 @@ export function BindingForm({
                         .filter((item) => item.id)
                         .map((item) => (
                           <SelectItem key={item.id} value={item.id || ""}>
-                            {item.name}
+                            <span className="flex items-center gap-2">
+                              <StaticAvatar
+                                name={item.name || item.id || ""}
+                                src={item.avatar}
+                                size="xs"
+                              />
+                              <span className="min-w-0 truncate">
+                                {item.name || item.id}
+                              </span>
+                            </span>
                           </SelectItem>
                         ))
                     : executors.data?.teams
@@ -221,180 +340,217 @@ export function BindingForm({
                         ))}
                 </SelectContent>
               </Select>
-              <p className="text-content-secondary type-caption">
-                {t("executorHint")}
-              </p>
-            </div>
-          </SettingsFieldRow>
-          <SettingsFieldRow label={t("runtimeConfiguration")}>
-            {kind === "waker" ? (
-              <div className="flex flex-wrap items-center gap-2">
+            </>
+          }
+          runtime={
+            kind === "waker" ? (
+              <>
                 <ExecutionConfigurationControls
                   state={execution}
-                  onChange={setOptions}
-                  disabled={save.isPending}
+                  onChange={(value) => changeDraft({ options: value })}
+                  presentation="settings"
+                  savedSelection={
+                    readOnly
+                      ? { value: options, placeholder: t("notConfigured") }
+                      : undefined
+                  }
+                  disabled={controlsDisabled}
                 />
-              </div>
+                {executionError ? (
+                  <div className="flex w-full flex-wrap items-center gap-2">
+                    <p role="alert" className="text-destructive type-caption">
+                      {localApiErrorMessage(
+                        executionError,
+                        t("common:executionSelection.loadError"),
+                      )}
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={
+                        execution.runtimesQuery.isFetching ||
+                        execution.accountsQuery.isFetching ||
+                        execution.catalogRefreshing
+                      }
+                      onClick={() => {
+                        if (execution.runtimesQuery.isError)
+                          void execution.runtimesQuery.refetch();
+                        if (execution.accountsQuery.isError)
+                          void execution.accountsQuery.refetch();
+                        if (execution.catalogIssue)
+                          void execution.refreshCatalog();
+                      }}
+                    >
+                      {t("reload")}
+                    </Button>
+                  </div>
+                ) : null}
+              </>
             ) : (
               <p className="text-content-secondary type-caption">
                 {t("teamDefaults")}
               </p>
-            )}
-          </SettingsFieldRow>
-        </SettingsFieldGroup>
-        <SettingsFieldGroup
-          surface={host === "page" ? "plain" : "card"}
-          title={t("permissionsAndScope")}
-        >
-          <SettingsFieldRow label={t("scope")}>
-            <div className="grid gap-2">
-              <WorkspaceScopePicker
-                ownerId={owner}
-                projects={projects.data?.resources || []}
-                projectId={projectID}
-                onSelectManaged={() => {
-                  setProjectID("");
-                  setDirectory("");
-                }}
-                onSelectProject={(value) => {
-                  setProjectID(value);
-                  setDirectory("");
-                }}
-                onPickDirectory={async () => {
-                  try {
-                    const path = await selectDirectory();
-                    if (path) {
-                      setDirectory(path);
-                      setProjectID("");
-                    }
-                  } catch (error) {
-                    setDirectoryError(error);
-                  }
-                }}
-                trigger={
-                  <FieldControlTrigger
-                    aria-label={t("scope")}
-                    title={directory || undefined}
-                    disabled={save.isPending}
-                  >
-                    <span>
-                      {projects.data?.resources?.find(
-                        (item) => item.id === projectID,
-                      )?.name ||
-                        directory ||
-                        t("scopePlaceholder")}
-                    </span>
-                  </FieldControlTrigger>
-                }
-              />
-              <p className="text-content-secondary type-caption">
-                {t("scopeHint")}
-              </p>
-            </div>
-          </SettingsFieldRow>
-          {binding.kind === "group" ? (
-            <SettingsFieldRow
-              label={
-                <FieldLabel required htmlFor={id + "-controllers"}>
-                  {t("controllers")}
-                </FieldLabel>
+            )
+          }
+          scope={
+            <WorkspaceScopePicker
+              ownerId={owner}
+              projects={projects.data?.resources || []}
+              projectId={projectID}
+              onSelectManaged={() =>
+                changeDraft({ projectID: "", directory: "" })
               }
-            >
-              <div className="grid gap-2">
-                <Input
-                  appearance={host === "page" ? "catalog" : "default"}
-                  id={id + "-controllers"}
-                  required
-                  placeholder={
-                    binding.controllerIds?.join(", ") || t("controllers")
-                  }
-                  value={controllers}
-                  onChange={(e) => setControllers(e.target.value)}
-                />
-                <p className="text-content-secondary type-caption">
-                  {t("controllerHint")}
-                </p>
-              </div>
-            </SettingsFieldRow>
-          ) : null}
-          <SettingsFieldRow
-            label={
-              <FieldLabel htmlFor={id + "-workflow"}>
-                {t("allowWorkflow")}
-              </FieldLabel>
-            }
-          >
-            <div className="grid justify-items-start gap-2">
+              onSelectProject={(value) =>
+                changeDraft({ projectID: value, directory: "" })
+              }
+              onPickDirectory={async () => {
+                try {
+                  const path = await selectDirectory();
+                  if (path) changeDraft({ directory: path, projectID: "" });
+                } catch (error) {
+                  setEditor((current) =>
+                    current && current.initial === editor?.initial
+                      ? { ...current, directoryError: error }
+                      : current,
+                  );
+                }
+              }}
+              trigger={
+                <FieldControlTrigger
+                  aria-label={t("scope")}
+                  title={scope || undefined}
+                  disabled={controlsDisabled}
+                >
+                  <span>{scope || t("scopePlaceholder")}</span>
+                </FieldControlTrigger>
+              }
+            />
+          }
+          controllers={
+            currentBinding.kind === "group"
+              ? {
+                  id: id + "-controllers",
+                  control: (
+                    <Input
+                      appearance="catalog"
+                      id={id + "-controllers"}
+                      aria-describedby={id + "-controllers-hint"}
+                      required
+                      placeholder={
+                        currentBinding.controllerIds?.join(", ") ||
+                        t("controllers")
+                      }
+                      value={controllers}
+                      onChange={(e) =>
+                        changeDraft({ controllers: e.target.value })
+                      }
+                    />
+                  ),
+                }
+              : undefined
+          }
+          workflow={{
+            id: id + "-workflow",
+            control: (
               <Switch
                 id={id + "-workflow"}
                 checked={allowWorkflow}
-                onClick={() => setAllowWorkflow(!allowWorkflow)}
+                onClick={() => changeDraft({ allowWorkflow: !allowWorkflow })}
               />
-              <p className="text-content-secondary type-caption">
-                {t("workflowHint")}
-              </p>
-            </div>
-          </SettingsFieldRow>
-        </SettingsFieldGroup>
-        {(host === "dialog" && save.error) ||
-        executors.error ||
-        projects.error ||
-        directoryError ? (
-          <p role="alert" className="text-destructive type-caption">
-            {localApiErrorMessage(
-              (host === "dialog" && save.error) ||
-                executors.error ||
-                projects.error ||
-                directoryError,
-              t("operationFailed"),
-            )}
-          </p>
-        ) : null}
+            ),
+          }}
+        />
       </fieldset>
-      <FormFooter host={host}>
-        {host === "page" && save.error ? (
-          <p role="alert" className="text-destructive type-body basis-full">
-            {localApiErrorMessage(save.error, t("bindingSaveFailed"))}
+      {fieldError ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <p role="alert" className="text-destructive type-caption">
+            {localApiErrorMessage(fieldError, t("operationFailed"))}
           </p>
-        ) : null}
-        {host === "page" && dirty ? (
-          <span className="type-body text-content-secondary mr-auto">
-            {t("unsavedChanges")}
-          </span>
-        ) : null}
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={save.isPending}
-          onClick={onClose}
-        >
-          {t("cancel")}
-        </Button>
-        <Button
-          type="submit"
-          form={id + "-form"}
-          aria-busy={save.isPending}
-          disabled={
-            (host === "page" && !dirty) ||
-            (!target && !onBeforeSave) ||
-            disabled ||
-            save.isPending ||
-            (kind === "waker" &&
-              Boolean(target) &&
-              (execution.loading ||
-                Boolean(execution.error) ||
-                !execution.selection.runtimeId))
-          }
-        >
+          {executors.isError || projects.isError || selectedProject.isError ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                if (executors.isError) void executors.refetch();
+                if (projects.isError) void projects.refetch();
+                if (selectedProject.isError) void selectedProject.refetch();
+              }}
+            >
+              {t("reload")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {canRevoke ? (
+        <SettingsRow grouped title={t("revoke")} description={t("revokeHint")}>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {authorizationError}
+            {authorization.confirmingRevocation ? (
+              <>
+                <Button
+                  type="button"
+                  size="settings"
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={authorization.cancelRevocation}
+                >
+                  {t("keepAuthorization")}
+                </Button>
+                <Button
+                  type="button"
+                  size="settings"
+                  variant="danger-quiet"
+                  aria-busy={authorization.isPending}
+                  disabled={busy || authorizationDisabled}
+                  onClick={authorization.confirmRevocation}
+                >
+                  {t("confirmRevoke")}
+                </Button>
+              </>
+            ) : (
+              <Button
+                type="button"
+                size="settings"
+                variant="danger-quiet"
+                disabled={busy || authorizationDisabled}
+                onClick={authorization.startRevocation}
+              >
+                {t("revoke")}
+              </Button>
+            )}
+          </div>
+        </SettingsRow>
+      ) : inlineApproval || canApproveSaved ? (
+        <p className="type-body text-content-secondary px-4">
           {t(
-            purpose === "authorization"
-              ? "authorize"
-              : !target || binding.state === "approved"
-                ? "save"
-                : "authorize",
+            currentBinding.kind === "group"
+              ? "groupAuthorization"
+              : "directAuthorization",
           )}
-        </Button>
-      </FormFooter>
+        </p>
+      ) : null}
+      {canApproveSaved ? (
+        <div className="flex flex-wrap items-center justify-end gap-2 px-4">
+          {authorizationError}
+          <Button
+            type="button"
+            aria-busy={authorization.isPending}
+            disabled={busy || authorizationDisabled}
+            onClick={authorization.approve}
+          >
+            {t("authorize")}
+          </Button>
+        </div>
+      ) : inlineApproval ? (
+        <div className="flex flex-wrap items-center justify-end gap-2 px-4">
+          {authorizationError}
+          {actions}
+        </div>
+      ) : !readOnly ? (
+        <FormFooter host="page">{actions}</FormFooter>
+      ) : null}
     </form>
   );
 }

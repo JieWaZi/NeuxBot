@@ -65,6 +65,7 @@ export function ExecutionModelControl({
   reasoningOptions,
   thinkingPending = false,
   allowDefaultReasoning = false,
+  showSavedReasoning = false,
   allowDefaultModel = false,
   disabled = false,
   defaultReasoning = "",
@@ -86,6 +87,7 @@ export function ExecutionModelControl({
   reasoningOptions?: RuntimeReasoningOption[];
   thinkingPending?: boolean;
   allowDefaultReasoning?: boolean;
+  showSavedReasoning?: boolean;
   allowDefaultModel?: boolean;
   disabled?: boolean;
   defaultReasoning?: string;
@@ -140,6 +142,8 @@ export function ExecutionModelControl({
   };
   const hasReasoning = availableOptions.length > 1 || thinkingPending;
   const hasSettings = hasReasoning || Boolean(onFastChange);
+  const showReasoningSummary =
+    hasReasoning || (showSavedReasoning && Boolean(selectedReasoning));
   const fallbackReasoning = allowDefaultReasoning
     ? ""
     : availableOptions.find((option) => option.id === defaultReasoning)?.id ||
@@ -186,7 +190,9 @@ export function ExecutionModelControl({
           >
             <span>
               {triggerName}
-              {hasReasoning && reasoningName ? ` · ${reasoningName}` : ""}
+              {showReasoningSummary && reasoningName
+                ? ` · ${reasoningName}`
+                : ""}
               {fast === true ? " · Fast" : ""}
             </span>
           </FieldControlTrigger>
@@ -203,7 +209,7 @@ export function ExecutionModelControl({
             aria-busy={thinkingPending || undefined}
             title={[
               triggerName,
-              hasReasoning && reasoningName,
+              showReasoningSummary && reasoningName,
               fast === true && "Fast",
             ]
               .filter(Boolean)
@@ -217,7 +223,7 @@ export function ExecutionModelControl({
                 role="presentation"
               />
             ) : null}
-            {hasReasoning && reasoningName ? (
+            {showReasoningSummary && reasoningName ? (
               <span
                 className={
                   maxed

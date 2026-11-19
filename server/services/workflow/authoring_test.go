@@ -57,6 +57,7 @@ func authoringTestCLI(t *testing.T, s *Service, session models.WorkflowCreationS
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv(constants.AgentCLIContextEnvironment, connection)
 	return func(args []string, params any) (int, capability.Response) {
 		t.Helper()
 		var input, output, failure bytes.Buffer
@@ -65,7 +66,7 @@ func authoringTestCLI(t *testing.T, s *Service, session models.WorkflowCreationS
 				t.Fatal(err)
 			}
 		}
-		code := agentcli.Execute(context.Background(), append([]string{"--context", connection}, args...), agentcli.IO{
+		code := agentcli.Execute(context.Background(), args, agentcli.IO{
 			In: &input, Out: &output, Err: &failure,
 		})
 		body := output.Bytes()

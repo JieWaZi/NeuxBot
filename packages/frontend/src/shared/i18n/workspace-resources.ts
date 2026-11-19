@@ -307,6 +307,7 @@ export const workspaceResources = {
       },
       chatLoadError: "暂时无法载入团队对话。",
       eventNotice: {
+        "lead-input-failed": "排队的消息未能交给负责人，请重新发送。",
         "task-recovery-failed":
           "一项团队任务未能自动恢复。请查看成员会话，调整后让负责人重试。",
         "leader-retry-exhausted":

@@ -119,7 +119,7 @@ func (s *Service) Targets(ctx context.Context, wakerID string, workflow bool) ([
 	if err != nil {
 		return nil, err
 	}
-	connections, err := s.config.Store.Connections(ctx)
+	connections, err := s.config.Store.ConnectionConfigurations(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -175,6 +175,8 @@ func (s *Service) selectConversation(ctx context.Context, binding models.IMBindi
 			return status_error.IMResourceNotFound
 		}
 	}
-	binding.ActiveLinkID = linkID
-	return s.config.Store.SaveBinding(ctx, binding, binding.Revision)
+	if binding.ActiveLinkID == linkID {
+		return nil
+	}
+	return s.config.Store.SetBindingActiveLink(ctx, binding.ID, linkID)
 }

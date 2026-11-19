@@ -2,13 +2,19 @@ package channel
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	channeltool "github.com/JieWaZi/NeuxBot/server/internal/teamcapability"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -17,6 +23,349 @@ import (
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
+
+func TestStartSettlesUnstartableLeadInputAndDispatchesNext(t *testing.T) {
+	for _, cause := range []status_error.StatusError{status_error.RuntimeUnavailable, status_error.MessageAttachmentInvalid} {
+		t.Run(cause.Key(), func(t *testing.T) {
+			ctx := t.Context()
+			sut, thread, _, captured := newDelegationDispatchService(t)
+			sut.Close()
+			for index, id := range []string{"broken-input", "next-input"} {
+				if err := sut.threads.CreateLeadInput(ctx, models.ChannelLeadInput{
+					ID: LeadInputID(thread.ID, id), ThreadID: thread.ID,
+					Payload: execution.WorkInput{Actor: "user", SubmissionID: id, Content: id},
+					Status:  constants.ChannelInputStatusPending, CreatedAt: int64(index + 1),
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			stub := &leadInputRejectionExecution{postTurnExecutionFake: captured, cause: cause}
+			sut.executions = stub
+			if err := sut.Start(ctx); err != nil {
+				t.Fatalf("负责人输入拒绝导致团队服务启动失败: %v", err)
+			}
+			if err := sut.ReconcileThread(ctx, thread.ID); err != nil {
+				t.Fatal(err)
+			}
+			broken, found, err := sut.threads.GetLeadInput(ctx, LeadInputID(thread.ID, "broken-input"))
+			if err != nil || !found || broken.Status != constants.ChannelInputStatusFailed || broken.ErrorCode != cause.Key() || broken.LeadExecutionID != "" {
+				t.Fatalf("未接纳输入没有独立失败终态: %+v found=%t error=%v", broken, found, err)
+			}
+			next, found, err := sut.threads.GetLeadInput(ctx, LeadInputID(thread.ID, "next-input"))
+			if err != nil || !found || next.LeadExecutionID == "" || captured.startCount() != 1 {
+				t.Fatalf("后续输入未派发一次: %+v found=%t starts=%d error=%v", next, found, captured.startCount(), err)
+			}
+			replay := SendMessageInput{ThreadID: thread.ID, Input: execution.WorkInput{SubmissionID: "broken-input", Content: "broken-input"}}
+			if _, err := sut.sendMessage(ctx, replay); !errors.Is(err, cause) {
+				t.Fatalf("同键重试未返回原失败: %v", err)
+			}
+			if captured.startCount() != 1 {
+				t.Fatal("重试派发了额外执行")
+			}
+			events, err := sut.threads.ListEvents(ctx, thread.ID, "", 10)
+			if err != nil || len(events) != 1 || events[0].Type != constants.ChannelEventLeadInputFailed {
+				t.Fatalf("队列失败未产生唯一的持久事件: %+v %v", events, err)
+			}
+			var payload map[string]any
+			if err := json.Unmarshal(events[0].Payload, &payload); err != nil || payload["reportedBySend"] != false {
+				t.Fatalf("异步失败应通过团队事件报告: %s %v", events[0].Payload, err)
+			}
+		})
+	}
+}
+
+func TestLeadInputRejectionReturnedBySendSkipsDuplicateNotice(t *testing.T) {
+	ctx := t.Context()
+	sut, thread, _, captured := newDelegationDispatchService(t)
+	sut.executions = &leadInputRejectionExecution{postTurnExecutionFake: captured, cause: status_error.MessageAttachmentInvalid}
+	_, err := sut.sendMessage(ctx, SendMessageInput{ThreadID: thread.ID, Input: execution.WorkInput{
+		Actor: "user", SubmissionID: "broken-input", Content: "broken input",
+	}})
+	if !errors.Is(err, status_error.MessageAttachmentInvalid) {
+		t.Fatalf("发送未返回即时拒绝: %v", err)
+	}
+	events, err := sut.threads.ListEvents(ctx, thread.ID, "", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range events {
+		if event.Type != constants.ChannelEventLeadInputFailed {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(event.Payload, &payload); err != nil || payload["reportedBySend"] != true {
+			t.Fatalf("发送响应已承载失败，持久事件应避免重复提示: %s %v", event.Payload, err)
+		}
+		return
+	}
+	t.Fatal("缺少原输入的持久失败事件")
+}
+
+func TestLeadInputWaitsForTemporaryNativeAdmissionContention(t *testing.T) {
+	ctx := t.Context()
+	sut, thread, _, captured := newDelegationDispatchService(t)
+	sut.Close()
+	sut.executions = &leadInputRejectionExecution{postTurnExecutionFake: captured, cause: agentapi.ErrTurnAdmissionBusy}
+	result, err := sut.sendMessage(ctx, SendMessageInput{ThreadID: thread.ID, Input: execution.WorkInput{
+		Actor: "user", SubmissionID: "broken-input", Content: "waiting for the runtime",
+	}})
+	if err != nil || result.QueuedInput == nil || result.QueuedInput.Status != constants.ChannelInputStatusPending {
+		t.Fatalf("临时占用应保留同一输入等待派发: %+v %v", result, err)
+	}
+	sut.executions = captured
+	if err := sut.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	queued, found, err := sut.threads.GetLeadInput(ctx, result.QueuedInput.ID)
+	if err != nil || !found || queued.LeadExecutionID == "" || queued.ErrorCode != "" || captured.startCount() != 1 {
+		t.Fatalf("占用解除后没有派发原输入: %+v found=%t starts=%d error=%v", queued, found, captured.startCount(), err)
+	}
+}
+
+func TestLeadInputSendDoesNotReturnAnEarlierSubmissionsExecution(t *testing.T) {
+	ctx := t.Context()
+	sut, thread, _, captured := newDelegationDispatchService(t)
+	earlier, err := sut.enqueueLeadInput(ctx, thread, execution.WorkInput{
+		Actor: "user", SubmissionID: "earlier-input", Content: "earlier input",
+	}, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := sut.sendMessage(ctx, SendMessageInput{ThreadID: thread.ID, Input: execution.WorkInput{
+		Actor: "user", SubmissionID: "newer-input", Content: "newer input",
+	}})
+	if err != nil || result.QueuedInput == nil || result.QueuedInput.ID != LeadInputID(thread.ID, "newer-input") ||
+		result.QueuedInput.Status != constants.ChannelInputStatusPending || result.Execution != nil {
+		t.Fatalf("新输入提前取得了其他输入的执行收据: %+v %v", result, err)
+	}
+	previous, found, err := sut.threads.GetLeadInput(ctx, earlier.ID)
+	if err != nil || !found || previous.LeadExecutionID == "" || captured.startCount() != 1 {
+		t.Fatalf("队首先前的输入没有按顺序派发: %+v found=%t starts=%d error=%v", previous, found, captured.startCount(), err)
+	}
+}
+
+type leadInputRejectionExecution struct {
+	// postTurnExecutionFake 接纳其余队列输入并记录派发身份。
+	*postTurnExecutionFake
+	// cause 是第一条输入在接纳前的确定性拒绝。
+	cause error
+	// beforeRejection 可以让已提交的 Chat 收据先于错误返回可见。
+	beforeRejection func()
+}
+
+// Start 让队首返回指定错误，并保留其余输入的正常接纳边界。
+func (e *leadInputRejectionExecution) Start(ctx context.Context, intent execution.WorkIntent) (execution.AcceptedExecution, error) {
+	if intent.Input.SubmissionID == "broken-input" {
+		if e.beforeRejection != nil {
+			e.beforeRejection()
+		}
+		return execution.AcceptedExecution{}, e.cause
+	}
+	return e.postTurnExecutionFake.Start(ctx, intent)
+}
+
+func TestLeadInputAdmissionReceiptWinsOverStartError(t *testing.T) {
+	ctx := t.Context()
+	sut, thread, chats, captured := newDelegationDispatchService(t)
+	submissionID := "broken-input"
+	inputID := LeadInputID(thread.ID, submissionID)
+	executionID := (requestidempotency.Identity{ID: submissionID}).ResourceID("lead_execution", thread.ID)
+	sut.executions = &leadInputRejectionExecution{
+		postTurnExecutionFake: captured, cause: status_error.RuntimeUnavailable,
+		beforeRejection: func() {
+			chats.mutex.Lock()
+			defer chats.mutex.Unlock()
+			chats.executions = map[string]models.Execution{
+				executionID: {ID: executionID, ChatID: thread.LeadChatID, SubmissionID: submissionID, Status: constants.ExecutionStatusRunning},
+			}
+		},
+	}
+	result, err := sut.sendMessage(ctx, SendMessageInput{ThreadID: thread.ID, Input: execution.WorkInput{Content: "已接纳输入", SubmissionID: submissionID}})
+	if err != nil || result.Execution == nil || result.Execution.ID != executionID {
+		t.Fatalf("派发错误覆盖了原接纳收据: %+v %v", result, err)
+	}
+	queued, found, err := sut.threads.GetLeadInput(ctx, inputID)
+	if err != nil || !found || queued.Status != constants.ChannelInputStatusDelivering || queued.LeadExecutionID != executionID || queued.ErrorCode != "" {
+		t.Fatalf("原收据未进入正常执行结算: %+v found=%t error=%v", queued, found, err)
+	}
+}
+
+func TestPendingLeadInputRecoversReceiptWithoutStartingAgain(t *testing.T) {
+	ctx := t.Context()
+	sut, thread, chats, captured := newDelegationDispatchService(t)
+	submissionID := "already-accepted"
+	executionID := (requestidempotency.Identity{ID: submissionID}).ResourceID("lead_execution", thread.ID)
+	chats.executions = map[string]models.Execution{
+		executionID: {ID: executionID, ChatID: thread.LeadChatID, SubmissionID: submissionID, Status: constants.ExecutionStatusRunning},
+	}
+	result, err := sut.sendMessage(ctx, SendMessageInput{ThreadID: thread.ID, Input: execution.WorkInput{Content: "恢复原输入", SubmissionID: submissionID}})
+	if err != nil || result.Execution == nil || result.Execution.ID != executionID || captured.startCount() != 0 {
+		t.Fatalf("已接纳但缺关联的输入重复调用了派发：%+v starts=%d error=%v", result, captured.startCount(), err)
+	}
+}
+
+func TestLeadExecutionSurvivesFailedInitialQueueHandoff(t *testing.T) {
+	ctx := t.Context()
+	sut, thread, chats, captured := newDelegationDispatchService(t)
+	sut.threads = &unwritableLeadInputHandoff{ChannelThreadController: sut.threads}
+	submissionID := "committed-input"
+	executionID := (requestidempotency.Identity{ID: submissionID}).ResourceID("lead_execution", thread.ID)
+	chats.terminalEvents = map[string]chatservice.PublicEvent{
+		thread.LeadChatID: {Message: &messageview.Message{ExecutionID: executionID, Role: constants.MessageRoleAssistant, Status: constants.ExecutionStatusCompleted}},
+	}
+	result, err := sut.sendMessage(ctx, SendMessageInput{ThreadID: thread.ID, Input: execution.WorkInput{Content: "已接纳的原执行", SubmissionID: submissionID}})
+	if err != nil || result.Execution == nil || result.Execution.ID != executionID {
+		t.Fatalf("关联写入失败不应覆盖已接纳执行：%+v %v", result, err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		queued, found, err := sut.threads.GetLeadInput(ctx, LeadInputID(thread.ID, submissionID))
+		if err != nil || !found {
+			t.Fatalf("读取已接纳输入失败: %+v %v", queued, err)
+		}
+		if queued.Status == constants.ChannelInputStatusConsumed {
+			if queued.LeadExecutionID != executionID || captured.startCount() != 1 || captured.cancelCount() != 0 {
+				t.Fatalf("原执行被取消或重做: %+v starts=%d cancels=%d", queued, captured.startCount(), captured.cancelCount())
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("原执行 watcher 未从权威终态补齐队列关联")
+}
+
+type unwritableLeadInputHandoff struct {
+	// ChannelThreadController 负责存储除初次关联写入以外的队列生命周期。
+	controllers.ChannelThreadController
+}
+
+// UpdateLeadInputs 模拟执行接纳后初次关联写入遇到数据库故障。
+func (c *unwritableLeadInputHandoff) UpdateLeadInputs(ctx context.Context, ids []string, status constants.ChannelInputStatus, executionID string, updatedAt int64) error {
+	if status == constants.ChannelInputStatusDelivering {
+		return status_error.DatabaseBusy
+	}
+	return c.ChannelThreadController.UpdateLeadInputs(ctx, ids, status, executionID, updatedAt)
+}
+
+func TestStartDefersLeadInputWhenSubmissionReceiptReadFails(t *testing.T) {
+	ctx := t.Context()
+	sut, thread, chats, captured := newDelegationDispatchService(t)
+	sut.Close()
+	queued, err := sut.enqueueLeadInput(ctx, thread, execution.WorkInput{Actor: "user", Content: "读取暂时失败", SubmissionID: "broken-input"}, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sut.chats = &unreadableLeadInputReceipt{Service: chats}
+	sut.executions = &leadInputRejectionExecution{postTurnExecutionFake: captured, cause: status_error.RuntimeUnavailable}
+	if err := sut.Start(ctx); err != nil {
+		t.Fatalf("回执暂时无法读取导致团队启动失败: %v", err)
+	}
+	pending, found, err := sut.threads.GetLeadInput(ctx, queued.ID)
+	if err != nil || !found || pending.Status != constants.ChannelInputStatusPending || pending.ErrorCode != "" {
+		t.Fatalf("未知接纳结果没有交给队列继续恢复: %+v found=%t error=%v", pending, found, err)
+	}
+}
+
+type unreadableLeadInputReceipt struct {
+	// Service 提供回执读取以外的真实业务替身。
+	chatservice.Service
+}
+
+// ReadSubmission 让接纳确认出现暂时的数据库故障。
+func (*unreadableLeadInputReceipt) ReadSubmission(context.Context, string, string) (*models.Execution, error) {
+	return nil, status_error.DatabaseBusy
+}
+
+func TestQueuedLeadInputDispatchesAfterTransientFailure(t *testing.T) {
+	ctx := t.Context()
+	sut, thread, _, captured := newDelegationDispatchService(t)
+	captured.setStartError(status_error.DatabaseBusy)
+	input := SendMessageInput{ThreadID: thread.ID, Input: execution.WorkInput{Content: "处理新增要求", SubmissionID: "queued-input"}}
+	if _, err := sut.sendMessage(ctx, input); !hasStatusErrorCode(err, status_error.DatabaseBusy.Code()) {
+		t.Fatalf("首次派发没有遇到预期的暂时故障：%v", err)
+	}
+	inputID := LeadInputID(thread.ID, input.Input.SubmissionID)
+	queued, exists, err := sut.threads.GetLeadInput(ctx, inputID)
+	if err != nil || !exists || queued.Status != constants.ChannelInputStatusPending {
+		t.Fatalf("派发失败后缺少已入队输入：%+v %v", queued, err)
+	}
+	captured.setStartError(nil)
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		current, exists, err := sut.threads.GetLeadInput(ctx, inputID)
+		if err != nil || !exists {
+			t.Fatalf("无法读取待恢复输入：%+v %v", current, err)
+		}
+		if current.Status == constants.ChannelInputStatusDelivering {
+			if captured.startCount() != 1 || captured.firstStart().Input.SubmissionID != input.Input.SubmissionID || current.LeadExecutionID != captured.firstStart().ExecutionID {
+				t.Fatalf("后台派发改变原输入身份或重复派发：%+v starts=%d", current, captured.startCount())
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("暂时故障消失后仍未派发已入队输入")
+}
+
+func TestFailedLeadTurnConsumesOriginalQueuedInput(t *testing.T) {
+	ctx := t.Context()
+	sut, thread, _, captured := newDelegationDispatchService(t)
+	result, err := sut.sendMessage(ctx, SendMessageInput{ThreadID: thread.ID, MentionWakerID: thread.LeadWakerID, Input: execution.WorkInput{Content: "直接执行"}})
+	if err != nil || result.Execution == nil || result.QueuedInput == nil {
+		t.Fatalf("负责人续发未接纳：%+v %v", result, err)
+	}
+	if captured.firstStart().Input.SubmissionID != result.QueuedInput.ID {
+		t.Errorf("缺少输入标识的旧入口未使用队列身份：%+v", captured.firstStart().Input)
+	}
+	event := chatservice.PublicEvent{ExecutionID: result.Execution.ID, ExecutionStatus: constants.ExecutionStatusFailed}
+	handled, err := sut.completeLeadExecution(ctx, thread, result.Execution.ID, nil, []string{result.QueuedInput.ID}, event)
+	if err != nil || !handled {
+		t.Fatalf("未处理已接纳输入的失败终态：%v", err)
+	}
+	finished, exists, err := sut.threads.GetLeadInput(ctx, result.QueuedInput.ID)
+	if err != nil || !exists || finished.Status != constants.ChannelInputStatusConsumed || finished.LeadExecutionID != result.Execution.ID || captured.startCount() != 1 {
+		t.Fatalf("已接纳的失败输入被重新派发：%+v starts=%d error=%v", finished, captured.startCount(), err)
+	}
+}
+
+func TestQueuedLeadInputHasDrainOwnerWhileChatIsBusy(t *testing.T) {
+	ctx := t.Context()
+	sut, thread, chats, captured := newDelegationDispatchService(t)
+	chats.mutex.Lock()
+	chats.summaries[thread.LeadChatID] = chatservice.ChatSummary{Chat: models.Chat{ID: thread.LeadChatID, ActiveExecutionID: "desktop-turn"}}
+	chats.mutex.Unlock()
+
+	result, err := sut.sendMessage(ctx, SendMessageInput{ThreadID: thread.ID, Input: execution.WorkInput{Content: "等负责人空闲后处理"}})
+	if err != nil || result.Execution != nil || result.QueuedInput == nil || captured.startCount() != 0 {
+		t.Fatalf("负责人忙碌时应只接纳队列输入: %+v %v", result, err)
+	}
+	sut.watchersMutex.Lock()
+	_, registered := sut.watchers["recovery:"+thread.ID]
+	sut.watchersMutex.Unlock()
+	if !registered {
+		t.Fatal("普通 Chat 回合进行中，团队已接纳队列但未登记派发监听")
+	}
+}
+
+func TestRecoveryDrainExitsForDeletedThread(t *testing.T) {
+	ctx := t.Context()
+	sut, thread, _, _ := newDelegationDispatchService(t)
+	if err := sut.threads.Delete(ctx, thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	sut.watchRecoveryDrain(thread.ID)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		sut.watchersMutex.Lock()
+		_, registered := sut.watchers["recovery:"+thread.ID]
+		sut.watchersMutex.Unlock()
+		if !registered {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("已删除团队对话的队列恢复仍在运行")
+}
 
 func TestTeamAdmittedNativeDefaultsSurviveEnvironmentChanges(t *testing.T) {
 	on, off := true, false

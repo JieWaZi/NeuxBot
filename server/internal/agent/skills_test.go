@@ -482,8 +482,8 @@ func TestSharedSkillsThreadAdmissionAndIdleRetirement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := prepare("blocked", "kimi", "two"); !errors.Is(err, status_error.RuntimeUnavailable) {
-		t.Fatalf("cross-chat active conflict = %v", err)
+	if _, err := prepare("blocked", "kimi", "two"); !errors.Is(err, ErrTurnAdmissionBusy) || !errors.Is(err, status_error.RuntimeUnavailable) {
+		t.Fatalf("cross-chat active conflict did not preserve a retryable admission error: %v", err)
 	}
 	// Settlement without process release models a successfully completed public turn.
 	first.mu.Lock()
