@@ -6,7 +6,7 @@
 
 团队成员及负责人只有一份当前事实。新增成员、移除成员、调整职责和更换负责人均作用于已有团队对话，不要求用户另开对话。已有聊天、成员执行过程、任务尝试及报告保留原身份。
 
-用户已确认纳入负责人变更，并保留 NeuxBot 的负责人协调、成员执行与报告模式。参考 OpenBot 的动态成员、按需成员会话和动态执行上下文；不移植其整套多人路由、数据库事件溯源或工具体系。
+用户已确认纳入负责人变更，并保留 NeuxBot 的负责人协调、成员执行与报告模式。当前成员决定后续工作资格，成员会话按需准备，每轮接纳使用最新团队上下文。
 
 以下为本方案的工程建议：移除成员取消其尚未完成的执行工作；负责人交接按回合边界串行完成；第一阶段每次新执行提供有界的当前成员上下文，不增加原生 Session 级上下文缓存。这些建议随本方案一起评审。
 
@@ -23,19 +23,13 @@
 
 “立即生效”指配置提交后新操作使用新事实，不保证模型在正在生成的同一轮中主动收到推送。第一阶段不自动插入 steering 或唤醒一个空闲团队；用户下一条输入、任务交付或 Agent 主动查询会观察变化。
 
-## 2. 当前问题与参考依据
+## 2. 当前问题与设计依据
 
 现有 `ChannelMember` 保存团队成员，`ChannelThreadMember` 在首次发送时复制名单、角色、资料与执行设置，`ChannelThread.LeadWakerID/LeadChatID` 固定负责人。更新团队只修改配置层；任务创建、`@` 校验、CLI 与虚拟 `TEAM.md` 仍使用线程成员。前端导航与执行候选还有两套名单口径。
 
 现有 `TEAM.md` 将完整名单放入稳定指令，并要求 Agent 不再核实；伙伴资料改变还会改变原生稳定指令指纹。根因和实现入口见 [团队协作](../../architecture/teams-cn.md)、[thread.go](../../../server/services/channel/thread.go)、[team_md.go](../../../server/services/channel/team_md.go)、[agent.go](../../../server/services/channel/agent.go)。
 
-本次参考 OpenBot 0.72.0，提交 `7183ebd6b0ab6f3fd9c735816fdd952836eae8f2`，结论来自静态源码：
-
-- [channel-service.ts](https://github.com/nightly-labs/openbot/blob/7183ebd6b0ab6f3fd9c735816fdd952836eae8f2/src/backend/channel-service.ts)：保存当前成员、移除成员收敛工作、执行前检查当前资格。
-- [channel-store.ts](https://github.com/nightly-labs/openbot/blob/7183ebd6b0ab6f3fd9c735816fdd952836eae8f2/src/backend/channel-store.ts)：按团队和伙伴按需准备线程，历史线程不等于当前成员资格。
-- [channel-history.ts](https://github.com/nightly-labs/openbot/blob/7183ebd6b0ab6f3fd9c735816fdd952836eae8f2/src/backend/channel-history.ts)：每轮读取当前团队，团队事实变化后通过本轮上下文交付。
-
-NeuxBot 沿用 SQLite、Chat JSONL、Execution、短期 capability 和统一 WS，不引入参考项目的依赖。
+团队配置保存当前成员资格，成员退出时收敛已有工作，新任务接纳时复核资格。执行按需准备成员会话，并在本轮输入交付当前团队信息。历史会话继续承担原记录的读取。存储、执行和事件分别复用 SQLite、Chat JSONL、Execution、短期 capability 和统一 WS。
 
 ## 3. 权威数据与存储
 
@@ -159,7 +153,7 @@ sequenceDiagram
 
 负责人首发、普通续聊、成员首次派发、结果通知、任务补充续跑和支持的 steering 都从当前事实构建该动态段。业务用户原文保持不变；同一实际输入中只附加一次，不加入 supplemental 稳定指令或 workspace 文件。
 
-第一阶段每次新执行输入携带这份紧凑的当前上下文。团队目前最多 5 人，优先避免新建不可靠的“已交付上下文摘要”缓存；这有意区别于 OpenBot 的变化后省略优化。后续若有测量证明需要，再以真实原生 Session/压缩边界和输入交付回执优化，不能在准备、排队或接纳时提前认为模型已经读过。
+第一阶段每次新执行输入携带这份紧凑的当前上下文。团队目前最多 5 人，每轮直接交付成员信息可以避免判断模型是否收到过旧摘要。后续可依据真实原生 Session、压缩边界和输入交付回执评估优化，只有交付回执才能确认模型已收到上下文。
 
 `botcli team members list` 保留原命令，负责人和执行成员都可只读调用，返回 `revision` 与当前 `items`，角色、资格和可分派性来自当前团队。报告角色授权仍绑定原 Attempt；当前负责人变化不撤销合法的旧成员报告资格。移除“名单权威且不得核实”与“只有名单缺失才查询”的指令。计划分派或怀疑名单变化时允许查询；创建任务失败时返回当前资格与重新查询指引，不要求 Agent 猜名字或重开会话。
 

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 按 OpenBot 的阅读/请求/提醒职责重建 Go 会话阅读，保留铃铛小点和任务看板，删除旧通知业务，无兼容。
+**Goal:** 按阅读、原请求和提醒的职责重建 Go 会话阅读，保留铃铛小点和任务看板，删除旧通知业务，无兼容。
 
 **Architecture:** 三张功能表保存消息阅读索引、Chat 游标、原运行查看记录；一个标记只负责首次基线初始化。索引加入现有 Chat.LatestSequence 投影事务，原有效请求保持原所有者；共享查询提供完整聚合，原 AfterCommit/Hub 发失效，客户端重读。Electron 仅对 live 事件提醒。
 
@@ -21,7 +21,7 @@
 - 同一公开 MessageID 只计一条；顺序取 Message.CreatedSequence，不取终态到达顺序；有合格持久正文可计数，不必等待整轮结束。
 - 复用 Chat.LatestSequence 唯一覆盖游标；读索引与原投影同事务提交，不建立第二份消息权威。
 - 工作流重跑创建新 RunID，原终态不改写；按原 RunID 记录已看。
-- 保留纯 Hub/AfterCommit/既有连接及目录，不因名字移动全项目事件导入。不迁移 OpenBot 整套事件溯源数据库。
+- 事件统一使用现有 Hub、AfterCommit、连接与导入路径。
 - 无全局持久 Revision；订阅失效、在途 dirty、原资源版本及新 epoch 后重读负责实时恢复，不补弹历史。
 - 默认只做定向验证；不运行 go test ./...、pnpm check、desktop check、全量前端测试。
 - 不打开/控制/截图应用，真实 CLI/系统通知验收另获授权；不改真实数据、不提交或推送。
@@ -35,12 +35,12 @@
 4. 工作流重试新 Run、joined/detached 和自动机会归属不能重复：任务 3/4。
 5. 批量阅读跨批允许部分完成，但不升级冻结边界、不跨重启继续、不清新消息：任务 4/6。
 
-## OpenBot 源码对照与验收
+## 实施核对与验收
 
-参考版本为 OpenBot 0.66.0，固定提交 `22cd028e7c99c41e49bbab434dbda63ff9e56304`。[设计第 2 节](../specs/2026-11-10-conversation-reading-and-attention-design.md#2-openbot-实现依据与适配边界)说明原行为及 NeuxBot 的差异。各任务的「OpenBot 对照」列出实现前要读的源码入口和要验证的行为。本机有源码时可用 `git show <提交>:<仓库相对路径>` 查看固定版本。
+[设计第 2 节](../specs/2026-11-10-conversation-reading-and-attention-design.md#2-阅读聚合与提醒的设计)定义阅读、原请求、聚合与提醒的职责。各任务列出实现位置和需要验证的行为。
 
-- [ ] 开始每项任务前，阅读该任务列出的 OpenBot 代码和对应的 NeuxBot 调用链。
-- [ ] 任务验收时记录 OpenBot 函数与行号、NeuxBot 实现位置、适配差异和对应的定向用例。审阅者根据这四项核对。
+- [ ] 开始任务前，核对本项目的现有调用链和写入边界。
+- [ ] 任务验收时记录实现位置、定向用例和可观察结果。
 
 ## 文件与职责
 
@@ -62,9 +62,9 @@
 
 ## Task 1：最小数据模型与阅读命令契约
 
-**OpenBot 对照**
+**设计核对**
 
-对照已读游标单调前进、手动未读独立回退，以及同一边界如何计算未读。跨窗口代次和 Run 查看记录按 NeuxBot 契约验证。 [已读和标未读](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/backend/conversation-read-store.ts#L129-L173) · [未读计算](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/backend/conversation-read-store.ts#L280-L302)
+核对已读游标只向前推进、手动未读主动回退，以及未读计数与阅读边界的一致性。验收覆盖跨窗口操作代次和原 Run 查看记录。
 
 **Files:** 新增上述两个 Model、两个 Controller 及对应测试；修改 `server/repositories/models/chat.go` 增加可重建 LatestReadableSequence 提示；原 constants 枚举/错误及注册处按规范生成。
 
@@ -84,9 +84,9 @@
 
 ## Task 2：接入唯一 Chat 投影与恢复
 
-**OpenBot 对照**
+**设计核对**
 
-对照消息分页、阅读边界共用的排序键，以及按作者和消息类型筛选未读。团队分页与实时合并须使用同一顺序。索引原子性和恢复按 NeuxBot 的 JSONL/SQLite 边界验证。 [消息分页](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/backend/database/conversation-queries.ts#L571-L615) · [阅读排序键](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/backend/conversation-read-store.ts#L213-L235) · [未读资格](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/packages/contracts/src/conversation-read.ts#L28-L64)
+核对消息分页、团队实时合并和阅读边界共用同一排序。未读资格使用公开正文类型和作者，索引跟随原 JSONL 与 SQLite 投影事务恢复。
 
 **Files:** 新增 `server/services/chat/reading.go`、`reading_test.go`；修改 `live_projection.go`、`recovery.go`、`event_pipeline.go`、`journal.go`、`service.go` 及其他实际推进覆盖位置的路径。团队持久消息顺序修改 `server/services/channel/timeline.go` 及前端实际实时合并处。不可修改 acp-go 或原生模型探测。
 
@@ -105,9 +105,9 @@
 
 ## Task 3：阅读 API、原请求与原运行生命周期
 
-**OpenBot 对照**
+**设计核对**
 
-对照读写命令只影响指定会话，以及完整、部分快照对缺席请求的处理。验收分别覆盖跨会话边界、请求结束和部分结果保留有效请求。 [会话读写入口](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/backend/agent/conversation-reader.ts#L137-L185) · [提问对账](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/renderer/src/features/agents/agent-runtime-snapshot.ts#L82-L113) · [审批对账](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/renderer/src/features/agents/agent-runtime-snapshot.ts#L147-L158)
+核对阅读命令仅修改指定会话，完整请求快照可移除缺席项，部分快照保留仍有效的请求。验收覆盖跨会话边界和请求结束。
 
 **Files:** 新增 `server/apis/chat_reading/{router,get,read,unread}.go`、`reading_test.go` 和 `server/apis/run_viewing/{router,get,view}.go`、`viewing_test.go`；修改实际 API 总注册、原请求提交发布处。工作流 `retry_workflow_run.go`、`schedule/runs.go` 只核对/补窄测试，不更改现有新 Run 和接纳生命周期。
 
@@ -122,9 +122,9 @@
 
 ## Task 4：完整聚合、看板与无耐久批量阅读
 
-**OpenBot 对照**
+**设计核对**
 
-对照主会话和开放子线程求和，以及逐线程捕获消息边界再标已读。NeuxBot 由 Go 汇总完整范围并冻结批量目标。验收覆盖未访问会话、独立计数和操作期间到达的新消息。 [主会话与子线程聚合](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/renderer/src/features/conversation/conversation-context.tsx#L171-L183) · [开放子线程计数](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/renderer/src/features/agent-tasks/agent-tasks-state.ts#L421-L455) · [全部已读](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/renderer/src/features/conversation/conversation-context.tsx#L1128-L1155) · [子线程全部已读](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/renderer/src/features/agent-tasks/agent-tasks-state.ts#L708-L717)
+Go Core 按完整的会话归属聚合，并冻结批量阅读目标。验收覆盖尚未打开的会话、按原工作身份去重和操作期间到达的新消息。
 
 **Files:** 新增 `server/services/workspaceattention/query.go`、`query_test.go` 和 `server/apis/workspace_attention/{router,snapshot}.go`；修改 `server/repositories/controllers/work_board_*.go`、`server/apis/work_board/{router,list,summary}.go`；新建 `view_targets.go`、`mark_viewed.go` 及定向测试；删除旧 result/clear_results 接口。
 
@@ -149,9 +149,9 @@
 
 ## Task 5：既有事件的失效与重读闭环
 
-**OpenBot 对照**
+**设计核对**
 
-对照游标提交后发失效，再从权威读取。NeuxBot 复用 work-board/global，按自身连接契约验证先订阅后查询、未打开会话提交和 GET 失败后的补读。 [提交后 conversation-invalidated](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/backend/agent/conversation-reader.ts#L144-L160)
+核对游标提交后按资源发失效并重读。验收覆盖先订阅后查询、未打开的会话发生提交，以及 GET 失败后的补读。
 
 **Files:** 修改 `server/apis/events/{sources,protocol,stream}.go`、实际领域 AfterCommit 发布点、`packages/frontend/src/shared/api/global-events.ts`/`use-query-events.ts` 的主题及调度装配和其定向测试；保留纯 `internal/notification/events/hub.go` 与事务目录。
 
@@ -167,11 +167,11 @@
 
 ## Task 6：铃铛小点、会话阅读意图与看板
 
-**OpenBot 对照**
+**设计核对**
 
-对照显式重开解除 hold、前台可读条件、同会话读写串行与侧栏优先级。验收覆盖启动恢复不误读、旧打开意图不清新未读、待办展示期间保留未读。铃铛与看板按 NeuxBot 产品契约实现。 [显式重开](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/renderer/src/features/conversation/conversation-context.tsx#L362-L376) · [前台可读资格](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/renderer/src/features/conversation/conversation-context.tsx#L417-L433) · [同会话串行读写](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/renderer/src/features/conversation/conversation-context.tsx#L991-L1096) · [侧栏状态优先级](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/packages/ui/src/features/sidebar/sidebar-agent-states.ts#L69-L94) · [需要你分组计数](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/packages/ui/src/features/sidebar/SidebarWaitingGroup.tsx#L16-L35) · [主线程请求归属](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/renderer/src/features/agents/agent-thread-attention.ts#L13-L38)
+核对显式重开解除未读保留、前台可读条件、同会话串行读写和侧栏优先级。验收覆盖启动恢复、跨窗口标未读和待办期间保留未读。
 
-头像沿用 OpenBot 的呈现层次。伙伴头像本体使用空闲动作，运行时用角标和表情表达；头像右下角复用未读数字、运行点和原请求类型图标。普通行、置顶行和“需要你”行共用角标语义。 [普通行](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/packages/ui/src/features/sidebar/SidebarAgentRow.tsx#L54-L102) · [置顶行](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/packages/ui/src/features/sidebar/SidebarPinnedGroup.tsx#L140-L158) · [状态角标](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/packages/ui/src/features/sidebar/SidebarAgentIndicator.tsx#L200-L321) · [角标样式](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/packages/ui/src/features/sidebar/sidebar-felt-badges.css#L17-L109) · [头像本体](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/packages/ui/src/features/agents/AgentAvatar.tsx#L33-L48)
+伙伴头像用角标和表情表达运行状态。普通行、置顶行和“需要你”行共用未读、运行和原请求的角标语义。
 
 **Files:** 新增 `packages/frontend/src/modules/workspaceattention/{index.ts,api/queries.ts,components/attention-bell.tsx}` 和测试；新增 `shared/api/chat-reading.tsx` 及测试；修改 `app/layout/app-shell.tsx`、`entity-navigation.tsx`、会话列表/Tab、ChatThread、团队成员定位、work-board、工作流/自动机会原结果区域和 i18n。
 
@@ -188,30 +188,30 @@
 - [ ] 使用 frontend 目录 `pnpm exec vitest run <上述具体文件>` 定向红绿验证；Node原生webstorage干扰jsdom时使用 `NODE_OPTIONS=--no-experimental-webstorage`，不改产品逻辑迁就环境。
 - [ ] 修改文件定向 ESLint/Prettier、UI策略检查；API变化运行前端 typecheck，不跑全量前端测试，不启动真实界面。
 
-侧栏实现沿用上述 OpenBot 角标位置、紫色未读和原请求图标。根据桌面试用反馈，每个头像只呈现一个状态标记，运行保留一组三点，审批保留一枚盾牌。测试覆盖播放帧后的单角标、历史列表及原请求队首定位。
+侧栏使用统一的角标位置、紫色未读和原请求图标。根据桌面试用反馈，每个头像只呈现一个状态标记，运行保留一组三点，审批保留一枚盾牌。测试覆盖播放帧后的单角标、历史列表及原请求队首定位。
 
 ## Task 7：Electron 实时提醒
 
-**OpenBot 对照**
+**设计核对**
 
-对照主进程统一分派、窗口聚焦抑制、原请求身份、请求结束时撤回和点击定位。验收覆盖多窗口、异步构造期间请求结束，以及重连不补弹历史。 [应用统一分派](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/main/renderer-forwarders.ts#L134-L149) · [过滤、撤回与导航](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/main/renderer-forwarders.ts#L325-L441) · [事件资格与请求键](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/packages/team-client/src/agent-notifications.ts#L92-L131)
+核对主进程统一分派、窗口聚焦抑制、原请求身份、请求结束撤回和点击定位。验收覆盖多窗口、构造期间请求结束和重连时的历史隔离。
 
 **Files:** 新增 `desktop/electron/main/workspace-attention.ts` 和对应 node 测试；修改 `core-events.ts`、`desktop-services.ts`、`index.ts`、实际提醒设置/导航桥接。仅确有 Bridge 变化时更新协议/白名单定向验证。
 
-**Interfaces:** 一个主进程 consumer 接 work-board/global 的独立 live 完成/失败/请求帧，参考 OpenBot.renderer-forwarders；内存去重、异步查摘要期间请求结束防护、request_closed撤回。系统通知不是阅读事实。
+**Interfaces:** 主进程统一消费 work-board/global 的实时完成、失败和请求帧，按业务身份去重。在异步读取摘要时复核请求有效性，收到 request_closed 后撤回提醒。系统通知不是阅读事实。
 
 - [ ] 写测试：多个Renderer只提醒一次，任何有效窗口聚焦抑制；all/needs-me/off，安全预览；同消息/请求身份去重，原执行代次不同不混淆。
 - [ ] 写测试：异步查摘要期间resolved不弹、断线关闭现有请求提示/在途构造、重连快照不重弹；点击校验真实目标，失效进入看板；关闭不调用阅读/审批。
 - [ ] 定向 node 测试先失败后实现通过；内存句柄有界，系统权限拒绝不影响看板/铃铛。
 - [ ] 无用户授权不做原生截图/点击和真实CLI审批，单独列待验收边界。
 
-定向验证记录：`server/apis/events/stream_test.go` 从真实 WS 核对未订阅的 Chat 变化仍抵达全局看板及恢复不重放历史；`desktop/electron/tests/core-events.test.mjs` 验证共享订阅交付就绪边界、缺口单次重订阅。`desktop/electron/main/workspace-attention.ts` 对应 OpenBot 主进程的焦点抑制与请求撤回；提醒身份增加原执行与团队验收代次，点击用原领域查询校验。`desktop/electron/tests/workspace-attention.test.mjs` 与 `bridge.test.mjs` 验证焦点、偏好、预览竞争、撤回和挂载前点击。以上验证使用本机测试替身，实际系统通知权限及窗口定位另行验收。
+定向验证记录：`server/apis/events/stream_test.go` 从真实 WS 核对未订阅的 Chat 变化仍抵达全局看板及恢复不重放历史；`desktop/electron/tests/core-events.test.mjs` 验证共享订阅交付就绪边界、缺口单次重订阅。`desktop/electron/main/workspace-attention.ts` 负责焦点抑制与请求撤回。提醒身份包含原执行和团队验收代次，点击用原领域查询校验。`desktop/electron/tests/workspace-attention.test.mjs` 与 `bridge.test.mjs` 验证焦点、偏好、预览竞争、撤回和挂载前点击。以上验证使用本机测试替身，实际系统通知权限及窗口定位另行验收。
 
 ## Task 8：首次基线、删除旧业务与收口
 
-**OpenBot 对照**
+**设计核对**
 
-对照首次启用时固定旧线程阅读边界，以及随后新消息仍计为未读。NeuxBot 在自身启动顺序中先记录基线，再恢复执行。验收覆盖隔离坏日志和中途崩溃。 [历史基线初始化](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/backend/openbot-database-schema.ts#L1042-L1061) · [读取基线和初始化游标](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/backend/conversation-read-store.ts#L40-L62) · [历史基线回归测试](https://github.com/nightly-labs/openbot/blob/22cd028e7c99c41e49bbab434dbda63ff9e56304/src/backend/conversation-read-migration.test.ts#L21-L65)
+首次启用先固定历史阅读边界，再恢复执行。验收覆盖新消息仍计为未读、坏日志隔离和中途崩溃。
 
 **Files:** 新增 `server/services/workspaceattention/initialize.go`、`initialize_test.go`，但只提供首次启动用例、无常驻派发器；修改 `server/global/config.go` 与真实启动顺序、相关Repository初始化/删表方法；删除设计第9节旧生产链；实施完成后更新权威架构说明及生成契约。
 
@@ -231,7 +231,7 @@
 
 | 设计重点                        | 任务    |
 | ------------------------------- | ------- |
-| OpenBot证据、三类事实、最少数据 | 1、2、3 |
+| 事实归属与最少数据 | 1、2、3 |
 | 单覆盖投影与活进程定向修复      | 2、5    |
 | 原运行身份、原请求恢复          | 3、4    |
 | 多会话准确聚合、看板/批量       | 4、6    |
