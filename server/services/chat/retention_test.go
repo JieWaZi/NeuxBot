@@ -61,6 +61,12 @@ func TestRetentionProtectionRecoveryAndExpiredDeletion(t *testing.T) {
 	if _, err := chats.recovery.reconcileChat(ctx, id); err != nil {
 		t.Fatal(err)
 	}
+	if rows := candidates(); len(rows) != 0 {
+		t.Fatalf("startup exposed an unverified candidate: %+v", rows)
+	}
+	if _, done, err := chats.backfillRetentionPage(ctx, ""); !done || err != nil {
+		t.Fatalf("backfill did not finish: %v %v", done, err)
+	}
 	summary, err := chats.GetChatSummary(ctx, id)
 	if err != nil || !summary.Chat.RetentionProtected || summary.Chat.LastActivityAt != activity {
 		t.Fatalf("backfill at log tail: %+v %v", summary, err)
@@ -110,6 +116,123 @@ func TestRetentionProtectionRecoveryAndExpiredDeletion(t *testing.T) {
 	}
 	if _, err := os.Stat(cwd); err != nil {
 		t.Fatal(err)
+	}
+}
+
+type retentionBackfillDuringRename struct {
+	controllers.ChatController
+	// rename 提交一次与历史回填并发的元数据变更。
+	rename func() error
+}
+
+func (c *retentionBackfillDuringRename) BackfillRetentionProjection(ctx context.Context, id string, sequence, activity int64, protected bool) error {
+	if c.rename != nil {
+		rename := c.rename
+		c.rename = nil
+		if err := rename(); err != nil {
+			return err
+		}
+	}
+	return c.ChatController.BackfillRetentionProjection(ctx, id, sequence, activity, protected)
+}
+
+func TestRetentionBackfillRetriesChatRenamedDuringProjection(t *testing.T) {
+	db, chats, _ := newDeleteTestService(t)
+	ctx := t.Context()
+	const id = "retention-backfill-race"
+	cwd := t.TempDir()
+	created, err := chats.CreateDormantChats(ctx, []DormantChat{{Chat: models.Chat{
+		ID: id, WakerID: "partner", WorkspaceDirectory: cwd, AdditionalWorkingDirectories: []string{cwd},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&models.Chat{}).Where("id = ?", id).UpdateColumn("last_activity_at", 0).Error; err != nil {
+		t.Fatal(err)
+	}
+	control := chats.queryIndexes.chatController
+	chats.queryIndexes.chatController = &retentionBackfillDuringRename{ChatController: control, rename: func() error {
+		return chats.RenameChat(ctx, id, "Updated")
+	}}
+	cursor, done, err := chats.backfillRetentionPage(ctx, "")
+	if done || cursor != "" || !errors.Is(err, status_error.Conflict) {
+		t.Fatalf("concurrent title update must leave candidate for retry: %q %v %v", cursor, done, err)
+	}
+	if _, done, err := chats.backfillRetentionPage(ctx, cursor); !done || err != nil {
+		t.Fatalf("retry failed: %v %v", done, err)
+	}
+	current, err := control.Get(ctx, id)
+	if err != nil || current.Title != "Updated" || current.LastActivityAt != created[0].LastActivityAt {
+		t.Fatalf("backfill changed concurrent title or activity time: %+v %v", current, err)
+	}
+}
+
+type retentionClockRollbackJournal struct {
+	chatJournalStorage
+}
+
+func (j retentionClockRollbackJournal) ReadAfter(id string, after int64, limit int) ([]eventlog.Record, error) {
+	rows, err := j.chatJournalStorage.ReadAfter(id, after, limit)
+	for i := range rows {
+		if rows[i].Sequence == 1 {
+			rows[i].RecordedAt = 1000
+		} else {
+			rows[i].RecordedAt = 500
+		}
+	}
+	return rows, err
+}
+
+func TestRetentionRecoveryBackfillsLaggingOldPrefixBeforeOlderTail(t *testing.T) {
+	db, chats, _ := newDeleteTestService(t)
+	ctx := t.Context()
+	const id = "retention-lagging-prefix"
+	cwd := t.TempDir()
+	if _, err := chats.CreateDormantChats(ctx, []DormantChat{{Chat: models.Chat{
+		ID: id, WakerID: "partner", WorkspaceDirectory: cwd, AdditionalWorkingDirectories: []string{cwd},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&models.Chat{}).Where("id = ?", id).UpdateColumns(map[string]any{"created_at": 1000, "last_activity_at": 0}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := chats.eventCommitter.append(id, []eventlog.AppendInput{{
+		Type: constants.ChatEventTypeUserMessageCreated, MessageID: "late-message",
+		Data: marshalData(eventlog.MessageCreatedData{Role: constants.MessageRoleUser, Content: "older clock"}),
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	chats.recovery.logStore = retentionClockRollbackJournal{chatJournalStorage: chats.logStore}
+	if _, err := chats.recovery.reconcileChat(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	current, err := chats.queryIndexes.chatController.Get(ctx, id)
+	if err != nil || current.LastActivityAt != 1000 {
+		t.Fatalf("recovery used the older tail instead of the verified historical maximum: %+v %v", current, err)
+	}
+}
+
+func TestRetentionForkIndexProtectsBothIdentitiesUntilTerminalWrite(t *testing.T) {
+	chats, parent := forkFixture(t)
+	directory := chats.storage.ForkDirectory(parent, "retention-index")
+	operation := chatstorage.ForkOperation{SourceChatID: parent, ChatID: "child-retention-index"}
+	if err := chatstorage.WriteForkOperation(directory, operation); err != nil {
+		t.Fatal(err)
+	}
+	if err := chats.recoverForks(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{operation.ChatID, operation.SourceChatID} {
+		if pending, ready := chats.pendingForks.contains(id); !ready || !pending {
+			t.Fatalf("recovery left unresolved %s unprotected: ready=%v pending=%v", id, ready, pending)
+		}
+	}
+	operation.Cancelled = true
+	if err := chats.writeForkOperation(directory, operation); err != nil {
+		t.Fatal(err)
+	}
+	if pending, ready := chats.pendingForks.chatIDs(); !ready || len(pending) != 0 {
+		t.Fatalf("terminal operation retained a provisional reference: ready=%v pending=%v", ready, pending)
 	}
 }
 

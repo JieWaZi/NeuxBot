@@ -21,6 +21,10 @@ type ChatController interface {
 	ExcludingRetentionChats(ids []string) ChatRetentionReader
 	// IsRetentionCandidate 在删除围栏内复核当前投影及领域归属。
 	IsRetentionCandidate(ctx context.Context, candidate ChatRetentionCandidate, cutoff int64) (bool, error)
+	// ListRetentionBackfill 读取尚未核验活动时间的有界历史会话页。
+	ListRetentionBackfill(context.Context, string, int) ([]ChatRetentionCandidate, error)
+	// BackfillRetentionProjection 只更新仍处于原日志游标且未核验的保留字段。
+	BackfillRetentionProjection(context.Context, string, int64, int64, bool) error
 	// ListStorageChats 根据已计量的私有目录身份分批读取会话归属及展示字段。
 	ListStorageChats(ctx context.Context, ids []string) ([]models.Chat, error)
 	// ReadExecutionLocation 按原身份定位权威执行入口。
@@ -49,6 +53,8 @@ type ChatController interface {
 	CountByWakerUpdatedRange(ctx context.Context, wakerID string, titleQuery string, updatedAtStart int64, updatedAtEnd int64) (int64, error)
 	// CountActiveByWaker 返回伙伴普通对话中 active_execution_id 非空的数量。
 	CountActiveByWaker(ctx context.Context, wakerID string) (int64, error)
+	// HasActiveWakerWork 核对伙伴是否存在执行中会话，包括隐藏任务。
+	HasActiveWakerWork(ctx context.Context, wakerID string) (bool, error)
 	// ListActivitySummariesByWaker 批量返回伙伴普通 Chat 的聚合活动计数。
 	ListActivitySummariesByWaker(
 		ctx context.Context,
@@ -390,6 +396,17 @@ func (c *chatController) CountActiveByWaker(
 		)
 	}
 	return count, nil
+}
+
+func (c *chatController) HasActiveWakerWork(ctx context.Context, wakerID string) (bool, error) {
+	var ids []string
+	err := controllerDB(ctx, c.db).Model(&models.Chat{}).
+		Where("waker_id = ? AND active_execution_id <> ''", wakerID).
+		Limit(1).Pluck("id", &ids).Error
+	if err != nil {
+		return false, databaseError("find_active_waker_work", "waker_id="+wakerID, err)
+	}
+	return len(ids) > 0, nil
 }
 
 // CountCreatedByWakerGroupedByDay 返回时间窗内按自然日分组的 created_at 计数。

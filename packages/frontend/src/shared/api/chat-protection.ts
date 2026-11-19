@@ -4,8 +4,6 @@ import { getChatQueryKey } from "./generated/@tanstack/react-query.gen";
 import { updateChatProtection } from "./generated/sdk.gen";
 import { withLocalErrorSurface } from "./local-error-surface";
 
-export const expiredChatsKey = ["storage", "expired-chats"] as const;
-
 export function useChatProtection() {
   const client = useQueryClient();
   return useMutation({
@@ -32,7 +30,6 @@ export function useChatProtection() {
           queryKey: getChatQueryKey({ path: { chatId } }),
         }),
         client.invalidateQueries({ queryKey: chatListKey(wakerId) }),
-        client.invalidateQueries({ queryKey: expiredChatsKey }),
       ]);
     },
   });

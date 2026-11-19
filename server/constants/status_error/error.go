@@ -892,6 +892,9 @@ const (
 	// @errZH 存储统计已更新，请返回第一页
 	// @errEN storage measurements changed; return to the first page
 	StorageSnapshotExpired StatusError = http.StatusConflict*1e8 + 9704
+	// @errZH 另一项存储维护正在运行，请结束后重试
+	// @errEN another storage maintenance operation is running; retry when it finishes
+	StorageMaintenanceBusy StatusError = http.StatusConflict*1e8 + 9705
 	// @errZH 存储策略不可用
 	// @errEN the storage policy is unavailable
 	StoragePolicyInvalid StatusError = http.StatusInternalServerError*1e8 + 9701

@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
   cleanup,
+  configure,
   render,
   screen,
   within,
@@ -11,10 +12,14 @@ import {
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation, useSearchParams } from "react-router-dom";
 import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import { platform, configurePlatform } from "@/shared/platform/provider";
 import { client } from "@/shared/api/generated/client.gen";
+import {
+  SceneChromeHost,
+  SceneChromePortalProvider,
+} from "@/shared/ui/scene-chrome-portal";
 import { SettingsScene } from "../pages/settings-scene";
 import { settingsSectionOf } from "../settings-navigation";
 
@@ -45,36 +50,15 @@ const usage = {
   disks: [{ path: "/work", freeBytes: 2048, totalBytes: 4096 }],
 };
 const server = setupServer(
+  http.get("http://127.0.0.1:8080/api/v1/wakers/:wakerId", () =>
+    HttpResponse.json({}),
+  ),
   http.get(root + "/usage", () => HttpResponse.json(usage)),
   http.get(root + "/entities", () =>
     HttpResponse.json({ items: [], total: 0 }),
   ),
   http.get(root + "/policy", () => HttpResponse.json(policy)),
   http.get(root + "/maintenance", () => HttpResponse.json({})),
-  http.get(root + "/expired-chats", () =>
-    HttpResponse.json({
-      items: [
-        {
-          chatId: "c1",
-          wakerId: "w1",
-          wakerName: "Lumi",
-          title: "Archive",
-          lastActivityAt: 1700000000000,
-          bytes: 1024,
-          files: [
-            {
-              category: "attachments",
-              path: "/work/chat/attachments",
-              bytes: 1024,
-            },
-          ],
-        },
-      ],
-      total: 1,
-      complete: true,
-      knownBytes: 1024,
-    }),
-  ),
   http.post(root + "/expired-chats/preview", () =>
     HttpResponse.json({
       id: "preview-1",
@@ -91,13 +75,39 @@ const server = setupServer(
   ),
 );
 beforeAll(() => {
+  configure({ asyncUtilTimeout: 5000 });
   client.setConfig({ baseUrl: "http://127.0.0.1:8080" });
   server.listen({ onUnhandledRequest: "error" });
 });
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-function openSettings() {
+function TestLocation() {
+  const location = useLocation();
+  return (
+    <output aria-label="当前地址">
+      {location.pathname}
+      {location.search}
+    </output>
+  );
+}
+
+function RoutedStorageSettingsScene() {
+  const [params] = useSearchParams();
+  return (
+    <SettingsScene
+      section={settingsSectionOf("storage")}
+      storageOwnerId={
+        params.get("files") === "wakers"
+          ? params.get("owner") || undefined
+          : undefined
+      }
+      onClose={() => {}}
+    />
+  );
+}
+
+function openSettings(href = "/settings/storage") {
   const user = userEvent.setup();
   render(
     <QueryClientProvider
@@ -105,26 +115,55 @@ function openSettings() {
         new QueryClient({ defaultOptions: { queries: { retry: false } } })
       }
     >
-      <MemoryRouter>
-        <SettingsScene
-          section={settingsSectionOf("storage")}
-          onClose={() => {}}
-        />
+      <MemoryRouter initialEntries={[href]}>
+        <TestLocation />
+        <SceneChromePortalProvider>
+          <header aria-label="设置顶栏">
+            <SceneChromeHost />
+          </header>
+          <RoutedStorageSettingsScene />
+        </SceneChromePortalProvider>
       </MemoryRouter>
     </QueryClientProvider>,
   );
   return user;
 }
 
-it("在部分统计中保留已知大小，展开分类后可读真实路径", async () => {
-  const user = openSettings();
-  expect(await screen.findByText(/至少/)).toBeVisible();
-  await user.click(screen.getByText("工作文件"));
-  expect(screen.getByText("/work/Wakers")).toBeVisible();
+it("存储总览合并底层分类，只显示磁盘剩余容量", async () => {
+  server.use(
+    http.get(root + "/usage", () =>
+      HttpResponse.json({
+        ...usage,
+        totalBytes: 8192,
+        categories: [
+          ...usage.categories,
+          { category: "conversations", bytes: 1024 },
+          { category: "shared_native", bytes: 1024 },
+          { category: "knowledge", bytes: 1024 },
+          { category: "logs", bytes: 1024 },
+          { category: "cache", bytes: 2048 },
+          { category: "other", bytes: 1024 },
+        ],
+      }),
+    ),
+  );
+  openSettings();
+  const total = await screen.findByText("至少 8 KB");
+  expect(total).toBeVisible();
+  expect(total.closest('[data-slot="settings-card"]')).toBeNull();
+  expect(screen.getByText("磁盘剩余 2 KB")).toBeVisible();
+  expect(screen.getByText("会话").parentElement).toHaveTextContent("2 KB");
+  expect(screen.getByText("应用与资源").parentElement).toHaveTextContent(
+    "4 KB",
+  );
+  expect(screen.getByText("知识与记忆")).toBeVisible();
+  expect(screen.getByText("工作文件")).toBeVisible();
+  expect(screen.queryByText(/\/(work|data)/)).toBeNull();
+  expect(screen.queryByText("会话私有文件")).toBeNull();
   expect(screen.queryByText("桌面缓存")).toBeNull();
 });
 
-it("首次启用以拟保存期限签发预览，取消不写入，确认携带预览和原版本", async () => {
+it("仅在确认启用后取得策略令牌并写入原版本", async () => {
   const previews: unknown[] = [],
     writes: unknown[] = [];
   server.use(
@@ -151,13 +190,13 @@ it("首次启用以拟保存期限签发预览，取消不写入，确认携带�
     await within(dialog).findByText(/超过 15 天无活动的会话将永久删除/),
   ).toBeVisible();
   await user.click(within(dialog).getByRole("button", { name: "取消" }));
+  expect(previews).toEqual([]);
   expect(writes).toEqual([]);
   await user.click(toggle);
   dialog = await screen.findByRole("dialog");
   await user.click(
     await within(dialog).findByRole("button", { name: "确认启用" }),
   );
-  expect(previews).toEqual([{ retentionDays: 15 }, { retentionDays: 15 }]);
   await waitFor(() =>
     expect(writes).toEqual([
       {
@@ -168,46 +207,63 @@ it("首次启用以拟保存期限签发预览，取消不写入，确认携带�
       },
     ]),
   );
+  expect(previews).toEqual([{ retentionDays: 15 }]);
 });
 
-it("手动删除冻结选择，预览展示私有目录并独立确认", async () => {
-  const previews: unknown[] = [],
-    writes: unknown[] = [];
-  server.use(
-    http.post(root + "/expired-chats/preview", async ({ request }) => {
-      previews.push(await request.json());
-      return HttpResponse.json({
-        id: "manual-1",
-        total: 1,
-        knownBytes: 1024,
-        complete: true,
-      });
-    }),
-    http.post(root + "/expired-chats/cleanup", async ({ request }) => {
-      writes.push(await request.json());
-      return HttpResponse.json({ runId: "r1" });
-    }),
+it("会话保留只提供自动清理和天数设置", async () => {
+  openSettings();
+  await screen.findByRole("switch", { name: "自动清理会话" });
+  expect(screen.getByRole("combobox", { name: "保留天数" })).toHaveTextContent(
+    "15 天",
   );
-  const user = openSettings();
-  await user.click(
-    await screen.findByRole("button", { name: "预览待清理会话" }),
-  );
-  await user.click(await screen.findByText("Archive"));
-  expect(screen.getByText("/work/chat/attachments")).toBeVisible();
-  await user.click(screen.getByRole("checkbox", { name: "选择 Archive" }));
-  await user.click(screen.getByRole("button", { name: "删除所选会话" }));
-  const dialog = await screen.findByRole("dialog", {
-    name: "永久删除所选会话？",
+  expect(screen.queryByRole("button", { name: "预览待清理会话" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "删除所选会话" })).toBeNull();
+});
+
+it("清理区合并同类项目，显示可释放大小并隐藏空项", async () => {
+  const original = platform();
+  configurePlatform({
+    ...original,
+    kind: "desktop",
+    host: {
+      ...original.host,
+      preview_desktop_storage: async ({ category }) => ({
+        available: true,
+        bytes: category === "desktop-cache" ? 2048 : 0,
+      }),
+      clear_desktop_storage: async () => ({ removedBytes: 0 }),
+    },
   });
-  expect(writes).toEqual([]);
-  await user.click(
-    await within(dialog).findByRole("button", { name: "永久删除" }),
-  );
-  await waitFor(() => expect(writes).toEqual([{ previewId: "manual-1" }]));
-  expect(previews).toEqual([{ retentionDays: 15, chatIds: ["c1"] }]);
+  try {
+    server.use(
+      http.post(root + "/cleanup-preview", () =>
+        HttpResponse.json({
+          items: [
+            { category: "caches", available: true, bytes: 1024 },
+            { category: "logs", available: false, bytes: 8192 },
+            { category: "runtimes", available: true, bytes: 0 },
+          ],
+        }),
+      ),
+    );
+    const user = openSettings();
+    expect(await screen.findByText("预计可释放 3 KB")).toBeVisible();
+    const button = screen.getByRole("button", { name: "清理缓存" });
+    expect(button.closest("section")).toHaveTextContent("3 KB");
+    expect(button.querySelector("svg.lucide-trash-2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "一键清理" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "诊断日志" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "未使用的程序" })).toBeNull();
+    await user.click(button);
+    expect(
+      screen.getByRole("dialog", { name: "清理所选资源？" }),
+    ).toHaveTextContent("将清理以下项目中可回收的文件：缓存。");
+  } finally {
+    configurePlatform(original);
+  }
 });
 
-it("部分成功时仅重新预览失败类别，重新签发的标识用于提交", async () => {
+it("仅确认后清理失败的类别", async () => {
   const reviews: unknown[] = [],
     writes: unknown[] = [];
   server.use(
@@ -243,48 +299,15 @@ it("部分成功时仅重新预览失败类别，重新签发的标识用于提�
   const user = openSettings();
   await user.click(await screen.findByRole("button", { name: "重试失败类别" }));
   const dialog = await screen.findByRole("dialog");
-  expect(await within(dialog).findByText("历史日志")).toBeVisible();
-  expect(reviews).toContainEqual({ categories: ["logs"] });
+  expect(dialog).toHaveTextContent("诊断日志");
+  expect(reviews).not.toContainEqual({ categories: ["logs"] });
   expect(writes).toEqual([]);
   await user.click(within(dialog).getByRole("button", { name: "确认清理" }));
   await waitFor(() => expect(writes).toEqual([{ previewId: "new-resource" }]));
+  expect(reviews).toContainEqual({ categories: ["logs"] });
 });
 
-it("预览行保留会话后重新读取候选", async () => {
-  let kept = false;
-  server.use(
-    http.put(root + "/chats/c1/protection", async ({ request }) => {
-      kept = ((await request.json()) as { protected: boolean }).protected;
-      return HttpResponse.json({});
-    }),
-    http.get(root + "/expired-chats", () =>
-      HttpResponse.json({
-        items: kept
-          ? []
-          : [
-              {
-                chatId: "c1",
-                title: "Keep",
-                wakerId: "w1",
-                bytes: 5,
-                files: [],
-              },
-            ],
-        total: kept ? 0 : 1,
-        knownBytes: kept ? 0 : 5,
-        complete: true,
-      }),
-    ),
-  );
-  const user = openSettings();
-  await user.click(
-    await screen.findByRole("button", { name: "预览待清理会话" }),
-  );
-  await user.click(await screen.findByRole("button", { name: "保留此会话" }));
-  expect(await screen.findByText("当前没有符合条件的会话。")).toBeVisible();
-});
-
-it("桌面日志失败后仅重试该类别，保留成功的桌面缓存回执", async () => {
+it("桌面日志失败后仅重试该类别，页面不显示成功回执", async () => {
   const calls: string[] = [];
   const original = platform();
   configurePlatform({
@@ -292,11 +315,9 @@ it("桌面日志失败后仅重试该类别，保留成功的桌面缓存回执"
     kind: "desktop",
     host: {
       ...original.host,
-      preview_desktop_storage: async () => ({
-        items: [
-          { category: "desktop-cache", bytes: 512 },
-          { category: "desktop-logs", bytes: 256 },
-        ],
+      preview_desktop_storage: async ({ category }) => ({
+        available: true,
+        bytes: category === "desktop-cache" ? 512 : 256,
       }),
       clear_desktop_storage: async ({ category }) => {
         calls.push(category);
@@ -314,19 +335,109 @@ it("桌面日志失败后仅重试该类别，保留成功的桌面缓存回执"
   const user = openSettings();
   await user.click(await screen.findByRole("button", { name: "一键清理" }));
   let dialog = await screen.findByRole("dialog", { name: "清理所选资源？" });
-  await within(dialog).findByText("桌面缓存");
+  expect(dialog).toHaveTextContent("缓存");
   await user.click(within(dialog).getByRole("button", { name: "确认清理" }));
-  await user.click(await screen.findByRole("button", { name: "重试失败类别" }));
+  const retry = await screen.findByRole("button", { name: "重试失败类别" });
+  expect(screen.queryByText(/已移除文件/)).toBeNull();
+  await user.click(retry);
   dialog = await screen.findByRole("dialog");
-  await within(dialog).findByText("桌面日志");
-  expect(within(dialog).queryByText("桌面缓存")).toBeNull();
+  expect(dialog).toHaveTextContent("诊断日志");
+  expect(dialog).not.toHaveTextContent("缓存");
   await user.click(within(dialog).getByRole("button", { name: "确认清理" }));
   await waitFor(() =>
     expect(calls).toEqual(["desktop-cache", "desktop-logs", "desktop-logs"]),
   );
 });
 
-it("较大对话默认读取五项，查看更多沿服务端游标追加", async () => {
+it("Core 清理复查失败时，桌面缓存仍可清理，零字节复查结束旧失败", async () => {
+  let coreBytes = 1024;
+  let corePreviews = 0;
+  const desktopClear = vi.fn(async () => ({ removedBytes: 512 }));
+  const original = platform();
+  configurePlatform({
+    ...original,
+    kind: "desktop",
+    host: {
+      ...original.host,
+      preview_desktop_storage: async ({ category }) => ({
+        available: true,
+        bytes: category === "desktop-cache" ? 512 : 0,
+      }),
+      clear_desktop_storage: desktopClear,
+    },
+  });
+  server.use(
+    http.post(root + "/cleanup-preview", () => {
+      if (++corePreviews === 2)
+        return HttpResponse.json({ message: "failed" }, { status: 500 });
+      return HttpResponse.json({
+        id: "preview",
+        items: [{ category: "caches", bytes: coreBytes, available: true }],
+      });
+    }),
+  );
+  const user = openSettings();
+  await user.click(await screen.findByRole("button", { name: "一键清理" }));
+  await user.click(
+    within(await screen.findByRole("dialog")).getByRole("button", {
+      name: "确认清理",
+    }),
+  );
+  const retry = await screen.findByRole("button", { name: "重试失败类别" });
+  expect(desktopClear).toHaveBeenCalledExactlyOnceWith({
+    category: "desktop-cache",
+  });
+  coreBytes = 0;
+  await user.click(retry);
+  await user.click(
+    within(await screen.findByRole("dialog")).getByRole("button", {
+      name: "确认清理",
+    }),
+  );
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(screen.queryByRole("button", { name: "重试失败类别" })).toBeNull();
+  expect(desktopClear).toHaveBeenCalledTimes(1);
+});
+
+it("Core 维护进行中仍能确认桌面缓存清理", async () => {
+  const desktopClear = vi.fn(async () => ({ removedBytes: 512 }));
+  const original = platform();
+  configurePlatform({
+    ...original,
+    kind: "desktop",
+    host: {
+      ...original.host,
+      preview_desktop_storage: async ({ category }) => ({
+        available: true,
+        bytes: category === "desktop-cache" ? 512 : 0,
+      }),
+      clear_desktop_storage: desktopClear,
+    },
+  });
+  server.use(
+    http.get(root + "/maintenance", () =>
+      HttpResponse.json({ current: { id: "other", startedAt: 1700000000000 } }),
+    ),
+  );
+  const user = openSettings();
+  await screen.findByText(/正在清理 ·/);
+  expect(screen.getByRole("button", { name: "清理诊断日志" })).toBeDisabled();
+  const desktop = await screen.findByRole("button", { name: "清理缓存" });
+  expect(desktop).toBeEnabled();
+  await user.click(desktop);
+  await user.click(
+    within(await screen.findByRole("dialog")).getByRole("button", {
+      name: "确认清理",
+    }),
+  );
+  await waitFor(() =>
+    expect(desktopClear).toHaveBeenCalledExactlyOnceWith({
+      category: "desktop-cache",
+    }),
+  );
+});
+
+it("总览只显示占用最大的十个会话，点行直接打开会话", async () => {
   const requests: string[] = [];
   server.use(
     http.get(root + "/entities", ({ request }) => {
@@ -334,26 +445,34 @@ it("较大对话默认读取五项，查看更多沿服务端游标追加", asyn
       if (params.get("kind") !== "chats")
         return HttpResponse.json({ items: [], total: 0 });
       requests.push(params.get("limit") + ":" + (params.get("cursor") ?? ""));
-      const more = params.has("cursor");
       return HttpResponse.json({
-        items: (more ? [6] : [1, 2, 3, 4, 5]).map((id) => ({
-          id: "chat-" + id,
-          title: "Chat " + id,
-          wakerId: "lumi",
-          wakerName: "Lumi",
-          bytes: 100 - id,
-        })),
-        total: 6,
-        nextCursor: more ? undefined : "chat-tail",
+        items: Array.from(
+          { length: Number(params.get("limit")) },
+          (_, index) => ({
+            id: "chat-" + (index + 1),
+            title: "Chat " + (index + 1),
+            wakerId: "lumi",
+            bytes: 100 - index,
+            fileCount: 2,
+          }),
+        ),
+        total: 12,
+        nextCursor: "chat-tail",
       });
     }),
   );
   const user = openSettings();
-  expect(await screen.findByRole("button", { name: /Chat 5/ })).toBeVisible();
-  expect(screen.queryByText("Chat 6")).toBeNull();
-  await user.click(screen.getByRole("button", { name: "查看更多" }));
-  expect(await screen.findByRole("button", { name: /Chat 6/ })).toBeVisible();
-  expect(requests).toEqual(["5:", "5:chat-tail"]);
+  const tenth = await screen.findByText("Chat 10");
+  const chatRow = tenth.closest("button");
+  expect(chatRow).toHaveTextContent("2 个附件");
+  expect(chatRow?.querySelector("svg.lucide-chevron-right")).toBeNull();
+  expect(screen.queryByRole("button", { name: "查看更多" })).toBeNull();
+  expect(screen.queryByText("Chat 11")).toBeNull();
+  expect(requests).toEqual(["10:"]);
+  await user.click(tenth);
+  expect(screen.getByLabelText("当前地址")).toHaveTextContent(
+    "/chats/chat-10?wakerId=lumi",
+  );
 });
 
 it("强制统计失败保留旧数，重试恢复", async () => {
@@ -378,7 +497,7 @@ it("强制统计失败保留旧数，重试恢复", async () => {
   expect(attempts).toBe(2);
 });
 
-it("已启用时缩短保留期预览拟保存的天数，取消后仍显示已保存期限", async () => {
+it("已启用时缩短保留期确认新天数，取消后保持已保存期限", async () => {
   const previews: unknown[] = [];
   server.use(
     http.get(root + "/policy", () =>
@@ -405,49 +524,12 @@ it("已启用时缩短保留期预览拟保存的天数，取消后仍显示已�
   await user.click(screen.getByRole("option", { name: "30 天" }));
   const dialog = await screen.findByRole("dialog");
   expect(await within(dialog).findByText(/超过 30 天/)).toBeVisible();
-  expect(await within(dialog).findByText(/至少 100 B/)).toBeVisible();
+  expect(dialog).not.toHaveTextContent("100 B");
   await user.click(within(dialog).getByRole("button", { name: "取消" }));
   expect(screen.getByRole("combobox", { name: "保留天数" })).toHaveTextContent(
     "60 天",
   );
-  expect(previews).toEqual([{ retentionDays: 30 }]);
-});
-
-it("过期会话大小未知时不把零当作精确测量", async () => {
-  server.use(
-    http.get(root + "/expired-chats", () =>
-      HttpResponse.json({
-        items: [
-          {
-            chatId: "unknown",
-            title: "Unknown",
-            bytes: 0,
-            sizeKnown: false,
-            files: [],
-          },
-          {
-            chatId: "partial",
-            title: "Partial",
-            bytes: 8,
-            sizeKnown: false,
-            files: [],
-          },
-        ],
-        total: 2,
-        knownBytes: 8,
-        complete: false,
-      }),
-    ),
-  );
-  const user = openSettings();
-  await user.click(
-    await screen.findByRole("button", { name: "预览待清理会话" }),
-  );
-  const title = await screen.findByText("Unknown");
-  expect(title.parentElement).toHaveTextContent("大小未知");
-  expect(screen.getByText("Partial").parentElement).toHaveTextContent(
-    "至少 8 B",
-  );
+  expect(previews).toEqual([]);
 });
 
 it("键盘取消策略确认后焦点回到原开关", async () => {
@@ -475,17 +557,363 @@ it("Core 离线时保留快照，禁用维护写入，关闭设置时释放订�
 });
 
 it("资源清理已接纳但维护状态尚未读回时，保留该运行的待确认提示", async () => {
+  let accepted = false;
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   server.use(
-    http.post(root + "/cleanup", () =>
-      HttpResponse.json({ runId: "just-accepted" }),
-    ),
+    http.get(root + "/maintenance", async () => {
+      if (accepted) await gate;
+      return HttpResponse.json({});
+    }),
+    http.post(root + "/cleanup", () => {
+      accepted = true;
+      return HttpResponse.json({ runId: "just-accepted" });
+    }),
   );
   const user = openSettings();
   await user.click(await screen.findByRole("button", { name: "一键清理" }));
   const dialog = await screen.findByRole("dialog", { name: "清理所选资源？" });
-  await within(dialog).findByText("历史日志");
+  expect(dialog).toHaveTextContent("诊断日志");
   await user.click(within(dialog).getByRole("button", { name: "确认清理" }));
   expect(
     await screen.findByText("请求已接纳，正在读取维护状态。"),
   ).toBeVisible();
+  release();
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "一键清理" })).toBeEnabled(),
+  );
+  expect(await screen.findByText(/清理结果未能确认/)).toBeVisible();
+  expect(screen.getByRole("button", { name: "重试失败类别" })).toBeEnabled();
+});
+
+it("伙伴排行直接打开可搜索的文件列表，删除须确认", async () => {
+  let removed = false;
+  server.use(
+    http.get(root + "/entities", ({ request }) =>
+      HttpResponse.json({
+        items:
+          new URL(request.url).searchParams.get("kind") === "wakers"
+            ? [{ id: "lumi", title: "lumi", bytes: 1024, fileCount: 1 }]
+            : [],
+        total: 1,
+      }),
+    ),
+    http.get(root + "/files", ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      expect(params.get("kind")).toBe("wakers");
+      expect(params.get("id")).toBe("lumi");
+      return HttpResponse.json({
+        title: "lumi",
+        total: removed ? 0 : 1,
+        totalBytes: removed ? 0 : 1024,
+        complete: true,
+        items: removed
+          ? []
+          : [
+              {
+                id: "Agents/lumi/notes.md",
+                relativePath: "notes.md",
+                bytes: 1024,
+                source: "workspace",
+                version: "generation",
+              },
+            ],
+      });
+    }),
+    http.post(root + "/files/delete", async ({ request }) => {
+      expect(await request.json()).toEqual({
+        kind: "wakers",
+        id: "lumi",
+        fileId: "Agents/lumi/notes.md",
+        version: "generation",
+      });
+      removed = true;
+      return HttpResponse.json({});
+    }),
+  );
+  const user = openSettings();
+  await user.click(await screen.findByRole("button", { name: /lumi/ }));
+  const chrome = screen.getByRole("banner", { name: "设置顶栏" });
+  expect(await within(chrome).findByText("lumi")).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  expect(await screen.findByRole("heading", { name: "lumi" })).toHaveClass(
+    "sr-only",
+  );
+  expect(await screen.findByText("notes.md")).toBeVisible();
+  const search = screen.getByRole("searchbox", { name: "搜索文件" });
+  const sort = screen.getByRole("combobox", { name: "文件排序" });
+  expect(
+    sort.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "notes.md 的操作" }));
+  await user.click(await screen.findByRole("menuitem", { name: "删除文件" }));
+  const dialog = await screen.findByRole("dialog", { name: "删除文件？" });
+  expect(removed).toBe(false);
+  await user.click(within(dialog).getByRole("button", { name: "删除文件" }));
+  expect(await screen.findByText("没有文件。")).toBeVisible();
+  expect(removed).toBe(true);
+  await user.click(within(chrome).getByRole("link", { name: "存储" }));
+  expect(await screen.findByRole("heading", { name: "伙伴" })).toBeVisible();
+  expect(screen.getByLabelText("当前地址")).toHaveTextContent(
+    /^\/settings\/storage$/,
+  );
+});
+
+it("直接打开伙伴会话页签时，加载前可返回总览并在读回后显示伙伴名称", async () => {
+  const files = vi.fn();
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  server.use(
+    http.get(root + "/files", () => {
+      files();
+      return HttpResponse.json({ items: [] });
+    }),
+    http.get("http://127.0.0.1:8080/api/v1/wakers/lumi", async () => {
+      await gate;
+      return HttpResponse.json({ id: "lumi", name: "Lumi" });
+    }),
+  );
+  openSettings("/settings/storage?files=wakers&owner=lumi&tab=chats");
+  const chrome = screen.getByRole("banner", { name: "设置顶栏" });
+  const overview = await within(chrome).findByRole("link", { name: "存储" });
+  expect(overview).toHaveAttribute("href", "/settings/storage");
+  expect(within(chrome).getByText("伙伴")).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  release();
+  expect(await within(chrome).findByText("Lumi")).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  expect(screen.getByRole("radio", { name: "会话" })).toBeChecked();
+  expect(files).not.toHaveBeenCalled();
+});
+
+it("伙伴会话页签只读取本伙伴，确认删除后刷新占用列表", async () => {
+  let deleted = false;
+  server.use(
+    http.get(root + "/files", () =>
+      HttpResponse.json({ title: "Lumi", items: [], total: 0, complete: true }),
+    ),
+    http.get(root + "/entities", ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      if (params.get("kind") === "wakers") {
+        return HttpResponse.json({
+          items: [{ id: "lumi", title: "Lumi", bytes: 4096 }],
+          total: 1,
+        });
+      }
+      if (params.get("wakerId") !== "lumi")
+        return HttpResponse.json({ items: [], total: 0 });
+      return HttpResponse.json({
+        items: [
+          ...(!deleted
+            ? [{ id: "large", title: "大型会话", bytes: 3072, wakerId: "lumi" }]
+            : []),
+          { id: "small", title: "小型会话", bytes: 1024, wakerId: "lumi" },
+        ],
+        total: deleted ? 1 : 2,
+      });
+    }),
+    http.delete("http://127.0.0.1:8080/api/v1/chats/large", () => {
+      deleted = true;
+      return HttpResponse.json({});
+    }),
+  );
+  const user = openSettings();
+  await user.click(await screen.findByText("Lumi"));
+  await user.click(await screen.findByRole("radio", { name: "会话" }));
+  const larger = await screen.findByText("大型会话");
+  const smaller = screen.getByText("小型会话");
+  expect(
+    larger.compareDocumentPosition(smaller) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(screen.queryByRole("searchbox", { name: "搜索文件" })).toBeNull();
+  const opener = screen.getByRole("button", { name: /删除.*大型会话/ });
+  await user.click(opener);
+  await screen.findByRole("dialog", { name: "删除对话" });
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(opener).toHaveFocus());
+  await user.keyboard("{Enter}");
+  const dialog = await screen.findByRole("dialog", { name: "删除对话" });
+  expect(deleted).toBe(false);
+  await user.click(within(dialog).getByRole("button", { name: "删除对话" }));
+  await waitFor(() => expect(screen.queryByText("大型会话")).toBeNull());
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: /删除.*小型会话/ }),
+    ).toHaveFocus(),
+  );
+  expect(deleted).toBe(true);
+  expect(screen.getByLabelText("当前地址")).toHaveTextContent("tab=chats");
+});
+
+it("文件续页游标失效时重新获取游标并保留搜索和排序", async () => {
+  const cursors: string[] = [];
+  let fresh = false;
+  server.use(
+    http.get("http://127.0.0.1:8080/api/v1/wakers/lumi", () =>
+      HttpResponse.json({ id: "lumi", name: "Lumi" }),
+    ),
+    http.get(root + "/files", ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      expect(params.get("search")).toBe("report");
+      expect(params.get("sort")).toBe("largest");
+      const cursor = params.get("cursor") ?? "";
+      cursors.push(cursor);
+      if (cursor === "old-tail") {
+        fresh = true;
+        return HttpResponse.json(
+          { key: "StorageSnapshotExpired", message: "expired" },
+          { status: 409 },
+        );
+      }
+      const relativePath = cursor ? "report-end.txt" : "report-head.txt";
+      return HttpResponse.json({
+        title: "Lumi",
+        total: 2,
+        complete: true,
+        items: [{ id: relativePath, relativePath, source: "workspace" }],
+        nextCursor: cursor ? undefined : fresh ? "new-tail" : "old-tail",
+      });
+    }),
+  );
+  const user = openSettings(
+    "/settings/storage?files=wakers&owner=lumi&search=report&sort=largest",
+  );
+  await user.click(await screen.findByRole("button", { name: "查看更多" }));
+  expect(await screen.findByText("report-end.txt")).toBeVisible();
+  expect(cursors).toEqual(["", "old-tail", "", "new-tail"]);
+  expect(screen.getByRole("searchbox")).toHaveValue("report");
+  expect(screen.getByRole("combobox", { name: "文件排序" })).toHaveTextContent(
+    "占用最大",
+  );
+});
+
+it("按文件名搜索只请求停顿后的查询", async () => {
+  const searches: string[] = [];
+  server.use(
+    http.get("http://127.0.0.1:8080/api/v1/wakers/lumi", () =>
+      HttpResponse.json({ id: "lumi", name: "Lumi" }),
+    ),
+    http.get(root + "/files", ({ request }) => {
+      searches.push(new URL(request.url).searchParams.get("search") ?? "");
+      return HttpResponse.json({ total: 0, complete: true, items: [] });
+    }),
+  );
+  const user = openSettings("/settings/storage?files=wakers&owner=lumi");
+  await screen.findByText("没有文件。");
+  await user.type(screen.getByRole("searchbox"), "report");
+  expect(await screen.findByText("没有匹配的文件。")).toBeVisible();
+  expect(searches).toEqual(["", "report"]);
+});
+
+it("确认和读屏名称区分同名文件，取消和删除均恢复焦点", async () => {
+  let removed = false;
+  const file = (folder: string) => ({
+    id: folder,
+    relativePath: folder + "/report.txt",
+    source: "workspace",
+    version: "v1",
+  });
+  server.use(
+    http.get("http://127.0.0.1:8080/api/v1/wakers/lumi", () =>
+      HttpResponse.json({ id: "lumi", name: "Lumi" }),
+    ),
+    http.get(root + "/files", () =>
+      HttpResponse.json({
+        total: removed ? 1 : 2,
+        complete: true,
+        items: removed ? [file("b")] : [file("a"), file("b")],
+      }),
+    ),
+    http.post(root + "/files/delete", async ({ request }) => {
+      expect(await request.json()).toMatchObject({ fileId: "a" });
+      removed = true;
+      return HttpResponse.json({});
+    }),
+  );
+  const user = openSettings("/settings/storage?files=wakers&owner=lumi");
+  const opener = await screen.findByRole("button", {
+    name: "a/report.txt 的操作",
+  });
+  async function openFileConfirmation() {
+    opener.focus();
+    await user.keyboard("{Enter}");
+    const remove = await screen.findByRole("menuitem", { name: "删除文件" });
+    remove.focus();
+    await user.keyboard("{Enter}");
+    return screen.findByRole("dialog", { name: "删除文件？" });
+  }
+  const dialog = await openFileConfirmation();
+  expect(dialog).toHaveTextContent("a/report.txt");
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(opener).toHaveFocus());
+  await user.click(
+    within(await openFileConfirmation()).getByRole("button", {
+      name: "删除文件",
+    }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "b/report.txt 的操作" }),
+    ).toHaveFocus(),
+  );
+});
+
+it("删除同名附件时展示会话和上传标识", async () => {
+  server.use(
+    http.get(root + "/files", () =>
+      HttpResponse.json({
+        total: 2,
+        complete: true,
+        items: ["upload-a1234567", "upload-b1234567"].map((messageId) => ({
+          id: messageId,
+          relativePath: "attachments/" + messageId + "/report.txt",
+          source: "attachment",
+          chatTitle: "日报",
+          modifiedAt: 1700000000000,
+          messageId,
+          version: "v1",
+        })),
+      }),
+    ),
+  );
+  const user = openSettings("/settings/storage?files=wakers&owner=lumi");
+  await user.click(
+    await screen.findByRole("button", {
+      name: /report\.txt.*日报.*上传 b1234567/,
+    }),
+  );
+  await user.click(await screen.findByRole("menuitem", { name: "删除文件" }));
+  const dialog = await screen.findByRole("dialog", { name: "删除文件？" });
+  expect(dialog).toHaveTextContent("日报");
+  expect(dialog).toHaveTextContent("上传 b1234567");
+  expect(dialog).not.toHaveTextContent("attachments/");
+});
+
+it("清理确认取消返还焦点，断线期间保持确认不可提交", async () => {
+  const user = openSettings();
+  const opener = await screen.findByRole("button", { name: "清理诊断日志" });
+  opener.focus();
+  await user.keyboard("{Enter}");
+  await screen.findByRole("dialog", { name: "清理所选资源？" });
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(opener).toHaveFocus());
+  await user.keyboard("{Enter}");
+  const dialog = await screen.findByRole("dialog", { name: "清理所选资源？" });
+  act(() => {
+    for (const observer of events.observers)
+      observer.onState?.("reconnecting", false);
+  });
+  expect(
+    within(dialog).getByRole("button", { name: "确认清理" }),
+  ).toBeDisabled();
 });

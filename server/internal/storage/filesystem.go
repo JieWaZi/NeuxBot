@@ -44,6 +44,10 @@ type Limits struct {
 
 // FileEntry 是已计量且在本次扫描中唯一归属的常规文件。
 type FileEntry struct {
+	// identity 标识本次扫描观测到的文件实例。
+	identity fileIdentity
+	// ModifiedAt 是文件测量时的修改时间。
+	ModifiedAt time.Time
 	// Path 是文件在扫描时的真实布局绝对路径。
 	Path string
 	// OwnerRoot 是该文件所属的规范配置根。
@@ -98,6 +102,8 @@ type Measurement struct {
 	Complete bool
 	// Entries 是用于按类和实体聚合的常规文件记录。
 	Entries []FileEntry
+	// FileAliases 保存实体下的其他硬链接路径，用于逻辑明细且不计入磁盘总量。
+	FileAliases []FileEntry
 	// Problems 是导致统计不完整的有界原因列表。
 	Problems []Problem
 	// Disks 是去重后的实际卷容量。
@@ -423,17 +429,22 @@ func (s *scanner) addFile(root *os.Root, owner *scanRoot, relative string, name 
 		s.ioProblem("identify_file", owner, relative, err, status_error.StorageScanIncomplete)
 		return
 	}
-	if _, seen := s.files[identity]; seen {
-		return
-	}
-	s.files[identity] = struct{}{}
 	entry := classifyFile(owner, relative)
 	entry.Path = filepath.Join(owner.path, relative)
 	entry.OwnerRoot = owner.path
 	entry.Bytes = info.Size()
+	entry.ModifiedAt = info.ModTime()
+	entry.identity = identity
 	if entry.WakerID != "" && s.isSystemSkillCopy(owner, root, relative, name, info) {
 		entry.Category = constants.StorageCategoryPrograms
 	}
+	if _, seen := s.files[identity]; seen {
+		if entry.WakerID != "" || entry.ChatID != "" {
+			s.result.FileAliases = append(s.result.FileAliases, entry)
+		}
+		return
+	}
+	s.files[identity] = struct{}{}
 	s.result.Bytes += entry.Bytes
 	s.result.Files++
 	s.result.Entries = append(s.result.Entries, entry)

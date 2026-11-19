@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"slices"
 	"time"
 
@@ -534,6 +535,67 @@ func (s *service) publishInstallation(base string) {
 	}
 }
 
+// CommitInstallationSelection 在保存前复核路径，并与同一智能体的安装和回收互斥。
+func (s *service) CommitInstallationSelection(ctx context.Context, runtimeID, path string, commit func(models.RuntimeEnvironment, agent.CLIInstallation) error) error {
+	refresh := s.runtimeRefreshLock(runtimeID)
+	refresh.Lock()
+	defer refresh.Unlock()
+	s.installationMutex.Lock()
+	defer s.installationMutex.Unlock()
+	environment, err := s.environments.Get(ctx, runtimeID)
+	if err != nil {
+		return err
+	}
+	base := environment.BaseRuntimeID
+	if job := s.installationJobs[base]; s.installationClosing || s.restarting[base] || (job != nil && job.cancel != nil) {
+		return status_error.RuntimeInstallationBusy
+	}
+	if !s.installationPathAvailable(runtimeID, path) {
+		return status_error.RuntimeConfigurationInvalid
+	}
+	if path == environment.Detection.ResolvedBinary {
+		return commit(environment, agent.CLIInstallation{})
+	}
+	for _, selected := range environment.Detection.Installations {
+		if selected.Path == path && selected.Available {
+			return commit(environment, selected)
+		}
+	}
+	return status_error.RuntimeConfigurationInvalid
+}
+
+func (s *service) installationPathAvailable(runtimeID, path string) bool {
+	if !filepath.IsAbs(path) {
+		return false
+	}
+	resolved, err := s.runtimeCatalog.ResolveExecutable(agent.DetectRequest{
+		RuntimeID: runtimeID, LaunchOverride: agent.LaunchOverride{Binary: path},
+	})
+	return err == nil && resolved == filepath.Clean(path)
+}
+
+// refreshInstallationPaths 核对历史下拉项对应的文件，不启动 CLI 或读取账号状态。
+func (s *service) refreshInstallationPaths(ctx context.Context, runtimeID string) error {
+	refresh := s.runtimeRefreshLock(runtimeID)
+	refresh.Lock()
+	defer refresh.Unlock()
+	environment, err := s.environments.Get(ctx, runtimeID)
+	if err != nil {
+		return err
+	}
+	changed := false
+	for i, item := range environment.Detection.Installations {
+		if item.Available && !s.installationPathAvailable(runtimeID, item.Path) {
+			environment.Detection.Installations[i].Available = false
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	return s.environments.UpdateDetection(ctx, runtimeID, environment.Detection, environment.DetectedAt)
+}
+
 // ReclaimPrograms 清理经过当前设置及使用者核验的旧版本和安装暂存。
 func (s *service) ReclaimPrograms(ctx context.Context, remove bool) (int64, error) {
 	store, ok := s.installer.(interface {
@@ -604,5 +666,13 @@ func (s *service) reclaimProgram(ctx context.Context, provider string, remove bo
 		protected = append(protected, environment.Detection.Runtime.PrefixArgs...)
 		protected = append(protected, environment.PrefixArgs...)
 	}
-	return reclaim(ctx, provider, protected, remove)
+	bytes, reclaimErr := reclaim(ctx, provider, protected, remove)
+	if remove {
+		for _, environment := range environments {
+			if environment.BaseRuntimeID == provider {
+				reclaimErr = errors.Join(reclaimErr, s.refreshInstallationPaths(ctx, environment.RuntimeID))
+			}
+		}
+	}
+	return bytes, reclaimErr
 }

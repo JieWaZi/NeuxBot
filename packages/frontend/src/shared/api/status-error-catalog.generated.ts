@@ -3107,6 +3107,19 @@ export const statusErrorCatalog = {
       },
     ],
   },
+  StorageMaintenanceBusy: {
+    code: 40900009705,
+    en: [
+      {
+        text: "another storage maintenance operation is running; retry when it finishes",
+      },
+    ],
+    zh: [
+      {
+        text: "另一项存储维护正在运行，请结束后重试",
+      },
+    ],
+  },
   StoragePolicyConflict: {
     code: 40900009703,
     en: [

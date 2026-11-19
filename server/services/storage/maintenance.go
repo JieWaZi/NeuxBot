@@ -63,6 +63,8 @@ type CleanupItem struct {
 	Bytes int64 `json:"bytes"`
 	// Available 可以清理
 	Available bool `json:"available"`
+	// Complete 大小完整
+	Complete bool `json:"complete"`
 }
 
 // CleanupPreview 是固定类型的清理确认。
@@ -212,14 +214,18 @@ func (s *Service) StartExpiredCleanup(id string) (string, error) {
 	if !s.valid {
 		return "", status_error.StoragePolicyInvalid
 	}
-	if s.current != nil {
+	if s.current != nil && s.current.Kind == "expired-chats" && s.currentPreviewID == id {
 		return s.current.ID, nil
 	}
 	saved, valid := s.lookupPreview(id, previewChats)
 	if !valid || saved.revision != s.state.Policy.Revision {
 		return "", status_error.StoragePreviewExpired
 	}
+	if s.current != nil {
+		return "", status_error.StorageMaintenanceBusy
+	}
 	delete(s.previews, id)
+	s.currentPreviewID = id
 	return s.beginRetention(saved, false), nil
 }
 
@@ -236,14 +242,14 @@ func (s *Service) PreviewCleanup(ctx context.Context, kinds []constants.StorageC
 			return CleanupPreview{}, status_error.BadRequest
 		}
 		seen = append(seen, kind)
-		item := CleanupItem{Category: kind}
+		item := CleanupItem{Category: kind, Complete: true}
 		if owner, ok := s.config.Cleanup[kind]; ok {
 			bytes, err := owner.Preview(ctx)
 			if ctx.Err() != nil {
 				return CleanupPreview{}, status_error.OperationCanceled
 			}
-			item.Bytes, item.Available = bytes, err == nil || bytes > 0
-			if item.Available {
+			item.Bytes, item.Available, item.Complete = bytes, err == nil || bytes > 0, err == nil
+			if bytes > 0 {
 				value.resources = append(value.resources, kind)
 			}
 		}
@@ -267,14 +273,18 @@ func (s *Service) StartCleanup(id string) (string, error) {
 	if s.closed {
 		return "", status_error.OperationCanceled
 	}
-	if s.current != nil {
+	if s.current != nil && s.current.Kind == "resources" && s.currentPreviewID == id {
 		return s.current.ID, nil
 	}
 	value, valid := s.lookupPreview(id, previewResources)
 	if !valid {
 		return "", status_error.StoragePreviewExpired
 	}
+	if s.current != nil {
+		return "", status_error.StorageMaintenanceBusy
+	}
 	delete(s.previews, id)
+	s.currentPreviewID = id
 	run := s.beginRun("resources")
 	s.bg.Go(func() {
 		for _, kind := range value.resources {
@@ -307,6 +317,7 @@ func (s *Service) finishRun(run Run, automatic bool, policyRevision uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.current = nil
+	s.currentPreviewID = ""
 	next := s.state
 	next.Last = &run
 	advance := automatic && next.Policy.Enabled && next.Policy.Revision == policyRevision && s.ctx.Err() == nil

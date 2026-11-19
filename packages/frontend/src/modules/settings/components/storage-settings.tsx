@@ -1,23 +1,23 @@
 import {
-  useMutation,
   useQuery,
-  useQueryClient,
   useInfiniteQuery,
+  useQueryClient,
 } from "@tanstack/react-query";
-import { RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
-import { expiredChatsKey } from "@/shared/api/chat-protection";
+import {
+  Navigate,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from "react-router-dom";
 import { useQueryEvents } from "@/shared/api/use-query-events";
-import { localizedNumberFormat } from "@/shared/i18n/format";
 import { chatHref } from "@/shared/lib/chat-navigation";
-import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
+import { Avatar } from "@/shared/ui/avatar";
 import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import {
-  readUsage,
-  storageOptions,
+  loadMoreStorage,
   storageEntitiesOptions,
   storageKeys,
   storageMaintenanceOptions,
@@ -36,202 +36,30 @@ import {
 } from "./storage-feedback";
 import { StorageCleanup } from "./storage-cleanup-dialog";
 import { StorageRetentionSettings } from "./storage-retention-settings";
+import { StoragePartnerDetails } from "./storage-files";
+import { StorageOverview } from "./storage-overview";
+import { StorageChatList } from "./storage-chat-list";
 
-const colors: Record<string, string> = {
-  work_files: "bg-accent",
-  conversations: "bg-accent-secondary",
-  shared_native: "bg-status-info-content",
-  knowledge: "bg-success",
-  programs: "bg-warning",
-  accounts: "bg-status-warning-content",
-  cache: "bg-status-success-content",
-  logs: "bg-content-secondary",
-  temporary: "bg-content-muted",
-  recovery: "bg-danger",
-  app_data: "bg-primary",
-  other: "bg-border",
-};
-const percent = localizedNumberFormat({
-  style: "percent",
-  maximumFractionDigits: 1,
-});
-
-function StorageOverview({ active }: { active: boolean }) {
-  const { t } = useTranslation("storage");
-  const client = useQueryClient();
-  const usage = useQuery({ ...storageOptions(), enabled: active });
-  const scan = useMutation({
-    mutationFn: async () => {
-      await client.cancelQueries({ queryKey: storageKeys.usage, exact: true });
-      await client.fetchQuery({
-        ...storageOptions(),
-        staleTime: 0,
-        queryFn: ({ signal }) => readUsage(true, signal),
-      });
-      await client.invalidateQueries({ queryKey: storageKeys.entities });
-    },
-  });
-  const [highlight, setHighlight] = useState<string>();
-  const data = usage.data;
-  const rows = (data?.categories ?? []).filter((row) => row.category);
-  const total = data?.totalBytes ?? 0;
-  return (
-    <SettingsGroup
-      title={t("usage")}
-      trailing={
-        <Button
-          size="settings"
-          variant="settings-outline"
-          disabled={scan.isPending || usage.isFetching}
-          onClick={() => scan.mutate()}
-        >
-          <RefreshCw />
-          {t(scan.isPending ? "scanning" : "rescan")}
-        </Button>
-      }
-    >
-      {usage.isPending ? <StorageLoading /> : null}
-      {usage.isError ? (
-        <StorageError
-          error={usage.error}
-          retry={() => scan.mutate()}
-          stale={Boolean(data)}
-        />
-      ) : null}
-      {data ? (
-        <SettingsCard>
-          <div className="grid gap-3 p-4">
-            <div>
-              <p className="type-display text-content-primary font-semibold tabular-nums">
-                {data.complete
-                  ? storageSize(total)
-                  : t("partial", { size: storageSize(total) })}
-              </p>
-              {data.scannedAt ? (
-                <p className="type-ui text-content-secondary">
-                  {t("scanned", { time: storageDate(data.scannedAt) })}
-                </p>
-              ) : null}
-            </div>
-            {total > 0 ? (
-              <div aria-hidden="true" className="flex h-2.5 w-full gap-0.5">
-                {rows
-                  .filter((row) => (row.bytes ?? 0) > 0)
-                  .map((row) => (
-                    <span
-                      key={row.category}
-                      className={cn(
-                        "duration-quick min-w-px rounded-xs transition-opacity motion-reduce:transition-none",
-                        colors[row.category ?? "other"] ?? colors.other,
-                        highlight && highlight !== row.category && "opacity-40",
-                      )}
-                      style={{ flexGrow: row.bytes, flexBasis: 0 }}
-                    />
-                  ))}
-              </div>
-            ) : null}
-            <div className="type-ui text-content-secondary grid gap-0.5 break-all">
-              {Array.from(
-                new Set([data.dataRoot, data.managedRoot].filter(Boolean)),
-              ).map((path) => (
-                <p key={path}>
-                  {[
-                    data.dataRoot === path ? t("dataRoot") : null,
-                    data.managedRoot === path ? t("managedRoot") : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}{" "}
-                  · {path}
-                </p>
-              ))}
-              {(data.disks ?? []).map((disk) => (
-                <p key={disk.path}>
-                  {disk.freeBytes == null
-                    ? disk.path
-                    : t("free", {
-                        path: (disk.paths?.length
-                          ? disk.paths
-                          : [disk.path]
-                        ).join(" · "),
-                        size: storageSize(disk.freeBytes),
-                      })}
-                </p>
-              ))}
-            </div>
-          </div>
-          {rows.length ? (
-            <div
-              aria-label={t("categories")}
-              className="grid gap-x-5 px-4 pb-3 @[42.5rem]/settings-scene:grid-cols-2"
-            >
-              {rows.map((row) => {
-                const key = row.category ?? "other";
-                return (
-                  <details
-                    key={key}
-                    className="min-w-0"
-                    onMouseEnter={() => setHighlight(key)}
-                    onMouseLeave={() => setHighlight(undefined)}
-                    onFocus={() => setHighlight(key)}
-                    onBlur={() => setHighlight(undefined)}
-                  >
-                    <summary className="focus-visible:ring-ring hover:bg-action-quiet-hover type-body flex cursor-pointer list-none items-center gap-2 rounded-sm py-1 outline-none focus-visible:ring-2">
-                      <span
-                        aria-hidden="true"
-                        className={cn(
-                          "size-2 shrink-0 rounded-full",
-                          colors[key] ?? colors.other,
-                        )}
-                      />
-                      <span className="min-w-0 flex-1">
-                        {t("category." + key, {
-                          defaultValue: t("category.other"),
-                        })}
-                      </span>
-                      <span className="tabular-nums">
-                        {storageSize(row.bytes ?? 0)}
-                      </span>
-                      {total > 0 ? (
-                        <span className="text-content-secondary type-ui tabular-nums">
-                          {percent.format((row.bytes ?? 0) / total)}
-                        </span>
-                      ) : null}
-                    </summary>
-                    <ul className="text-content-secondary type-ui grid gap-1 px-4 py-1 break-all">
-                      {Array.from(new Set(row.paths ?? [])).map((path) => (
-                        <li key={path}>{path}</li>
-                      ))}
-                    </ul>
-                  </details>
-                );
-              })}
-            </div>
-          ) : data.complete ? (
-            <p className="type-body px-4 pb-3">{t("empty")}</p>
-          ) : null}
-        </SettingsCard>
-      ) : null}
-    </SettingsGroup>
-  );
-}
-
-function EntityUsage({
-  kind,
+function StorageWakerList({
   active,
+  offline,
+  onOpenFiles,
 }: {
-  kind: "wakers" | "chats";
   active: boolean;
+  offline: boolean;
+  onOpenFiles: (id: string) => void;
 }) {
   const { t } = useTranslation("storage");
-  const navigate = useNavigate();
+  const client = useQueryClient();
+  const options = storageEntitiesOptions("wakers");
   const list = useInfiniteQuery({
-    ...storageEntitiesOptions(kind),
+    ...options,
     enabled: active,
   });
   const rows = (list.data?.pages ?? []).flatMap((page) => page.items ?? []);
   if (!list.isPending && !list.isError && !rows.length) return null;
   return (
-    <SettingsGroup title={t(kind)}>
+    <SettingsGroup title={t("wakers")}>
       {list.isPending ? <StorageLoading /> : null}
       {list.isError ? (
         <StorageError
@@ -245,44 +73,28 @@ function EntityUsage({
           {rows.map((row) => {
             const id = row.id ?? "";
             const largest = rows[0]?.bytes ?? 0;
-            const description =
-              kind === "chats"
-                ? row.wakerName
-                : [
-                    row.workspaceBytes
-                      ? t("workspaceSize", {
-                          size: storageSize(row.workspaceBytes),
-                        })
-                      : null,
-                    row.chatBytes
-                      ? t("chatSize", { size: storageSize(row.chatBytes) })
-                      : null,
-                    row.internalBytes
-                      ? t("internalSize", {
-                          size: storageSize(row.internalBytes),
-                        })
-                      : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ");
+            const title = row.title || t("wakerFallback");
+            const description = [
+              t("fileCount", { count: row.fileCount ?? 0 }),
+              t("chatCount", { count: row.chatCount ?? 0 }),
+            ].join(" · ");
             return (
               <SettingsNavigationRow
                 key={id}
-                title={
-                  row.title ||
-                  t(kind === "chats" ? "chatFallback" : "wakerFallback")
-                }
+                title={title}
                 description={description}
-                onClick={() =>
-                  navigate(
-                    kind === "chats"
-                      ? chatHref(id, row.wakerId ?? "")
-                      : "/wakers/" + encodeURIComponent(id),
-                  )
+                visual={
+                  <Avatar
+                    name={title}
+                    src={row.avatar}
+                    size="sm"
+                    animated={false}
+                  />
                 }
+                onClick={() => onOpenFiles(id)}
                 trailing={
                   <>
-                    {kind === "wakers" && largest > 0 ? (
+                    {largest > 0 ? (
                       <span
                         aria-hidden="true"
                         className="bg-muted hidden h-1.5 w-16 overflow-hidden rounded-full @[42.5rem]/settings-scene:block"
@@ -311,8 +123,8 @@ function EntityUsage({
           <Button
             size="settings"
             variant="settings-outline"
-            disabled={list.isFetchingNextPage}
-            onClick={() => void list.fetchNextPage()}
+            disabled={offline || list.isFetching}
+            onClick={() => void loadMoreStorage(client, options.queryKey, list)}
           >
             {t("more")}
           </Button>
@@ -322,40 +134,72 @@ function EntityUsage({
   );
 }
 
-export function StorageSettings() {
+export function StorageSettings({
+  partnerId,
+  showSceneChrome,
+}: {
+  partnerId?: string;
+  showSceneChrome: boolean;
+}) {
   const { t } = useTranslation("storage");
   const active = useRouteSceneActive();
+  const client = useQueryClient();
+  const [params, setParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const kind = params.get("files");
+  const id = params.get("owner");
+  function openFiles(owner: string) {
+    setParams(
+      { files: "wakers", owner },
+      { state: { fromStorageOverview: true } },
+    );
+  }
   const connection = useQueryEvents({
     topic: "storage",
     observeConnection: true,
     resource: { kind: "global" },
     active,
     enabled: active,
-    queryKeys: [...Object.values(storageKeys), expiredChatsKey],
+    queryKeys: Object.values(storageKeys),
     eventTypes: ["storage.changed"],
   });
   const offline =
     connection.state === "unavailable" || connection.state === "reconnecting";
   const maintenance = useQuery({
     ...storageMaintenanceOptions(),
-    enabled: active,
+    enabled: active && !partnerId && kind !== "chats",
   });
-  const current = maintenance.data?.current;
+  const current = maintenance.isError ? undefined : maintenance.data?.current;
   const last = maintenance.data?.last;
-  const [receipt, setReceipt] = useState<{
-    id: string;
-    previousLastId?: string;
-    epoch?: string;
-  }>();
-  const recordRun = (id: string) =>
-    setReceipt({ id, previousLastId: last?.id, epoch: connection.epoch });
-  const awaiting = Boolean(
-    receipt &&
-    !current &&
-    receipt.id !== last?.id &&
-    receipt.previousLastId === last?.id &&
-    receipt.epoch === connection.epoch,
-  );
+  const [receipt, setReceipt] = useState<string>();
+  function recordRun(id: string) {
+    setReceipt(id);
+    void client
+      .invalidateQueries({ queryKey: storageKeys.maintenance })
+      .finally(() =>
+        setReceipt((recorded) => (recorded === id ? undefined : recorded)),
+      );
+  }
+  const awaiting = Boolean(receipt && !current && receipt !== last?.id);
+  if (kind === "chats" && id) {
+    return <Navigate to={chatHref(id, "")} replace />;
+  }
+  if (partnerId) {
+    return (
+      <StoragePartnerDetails
+        key={partnerId}
+        scope={{ kind: "wakers", id: partnerId }}
+        active={active}
+        disabled={offline}
+        showSceneChrome={showSceneChrome}
+        onBack={() => {
+          if (location.state?.fromStorageOverview === true) navigate(-1);
+          else setParams({}, { replace: true });
+        }}
+      />
+    );
+  }
   return (
     <SettingsContentShell title={t("title")} showHeader={false}>
       {offline ? (
@@ -364,20 +208,22 @@ export function StorageSettings() {
         </p>
       ) : null}
       <StorageOverview active={active} />
-      <EntityUsage kind="wakers" active={active} />
-      <EntityUsage kind="chats" active={active} />
+      <StorageWakerList
+        active={active}
+        offline={offline}
+        onOpenFiles={openFiles}
+      />
+      <StorageChatList active={active} disabled={offline} />
       <StorageCleanup
         active={active}
-        disabled={offline || Boolean(current) || awaiting}
+        disabled={offline}
+        coreBusy={Boolean(current) || awaiting}
         onStarted={recordRun}
         last={last}
+        currentRunId={current?.id}
+        awaitingRunId={receipt}
       />
-      <StorageRetentionSettings
-        active={active}
-        disabled={offline}
-        busy={Boolean(current) || awaiting}
-        onStarted={recordRun}
-      />
+      <StorageRetentionSettings active={active} disabled={offline} />
       {maintenance.isError ? (
         <StorageError
           error={maintenance.error}

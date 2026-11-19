@@ -25,14 +25,15 @@ it("stages original desktop bytes in Core and discards only the returned upload 
 
   expect(received).toHaveLength(2);
   const [stage, discard] = received;
-  expect(stage?.method).toBe("POST");
-  expect(stage?.headers.get("Authorization")).toBe("Bearer test-token");
-  expect(stage?.headers.get("Content-Type")).toBe("application/octet-stream");
-  expect(new Uint8Array(await stage!.arrayBuffer())).toEqual(
+  if (!stage || !discard) throw new Error("Expected stage and discard requests");
+  expect(stage.method).toBe("POST");
+  expect(stage.headers.get("Authorization")).toBe("Bearer test-token");
+  expect(stage.headers.get("Content-Type")).toBe("application/octet-stream");
+  expect(new Uint8Array(await stage.arrayBuffer())).toEqual(
     new Uint8Array([0, 255]),
   );
-  expect(discard?.method).toBe("DELETE");
-  expect(new URL(discard!.url).searchParams.get("sourcePath")).toBe(
+  expect(discard.method).toBe("DELETE");
+  expect(new URL(discard.url).searchParams.get("sourcePath")).toBe(
     "upload:fixture/image.png",
   );
 });

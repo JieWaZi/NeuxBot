@@ -674,3 +674,33 @@ func forkNativeFixture(t *testing.T, journal *conversationJournal, chatID, execu
 		t.Fatal(err)
 	}
 }
+
+func TestForkPreservesRemovedAttachmentReference(t *testing.T) {
+	m, source := forkFixture(t)
+	parent, err := m.storage.ChatRoot(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(parent, "removed-chat-files.json"), []byte(`["attachments/before.txt"]`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(parent, "attachments", "before.txt")); err != nil {
+		t.Fatal(err)
+	}
+	child, err := m.ForkChat(t.Context(), ForkInput{ChatID: source, ExecutionID: "before", ClientRequestID: "removed-attachment"}, NativeFork{
+		Execute: func(context.Context, NativeForkInput) (agent.NativeBinding, error) {
+			return forkTestBinding("child-with-removed-attachment"), nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := m.storage.ChatRoot(child)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := os.ReadFile(filepath.Join(target, "removed-chat-files.json"))
+	if err != nil || string(manifest) != `["attachments/before.txt"]` {
+		t.Fatalf("child attachment marker: %q %v", manifest, err)
+	}
+}

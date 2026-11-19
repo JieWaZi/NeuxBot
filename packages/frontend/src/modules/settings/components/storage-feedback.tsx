@@ -12,8 +12,15 @@ const time = localizedDateTimeFormat({
   dateStyle: "medium",
   timeStyle: "short",
 });
+const uploadTime = localizedDateTimeFormat({
+  dateStyle: "medium",
+  timeStyle: "medium",
+});
 export function storageDate(value: number) {
   return time.format(value);
+}
+export function storageUploadDate(value: number) {
+  return uploadTime.format(value);
 }
 export function storageSize(bytes: number) {
   const units = ["B", "KB", "MB", "GB", "TB", "PB"];

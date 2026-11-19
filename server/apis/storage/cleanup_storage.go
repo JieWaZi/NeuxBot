@@ -30,6 +30,7 @@ func (*CleanupStorage) Path() string { return "/cleanup" }
 
 // Output 清理存储资源。
 // [StoragePreviewExpired][40900009702][清理预览已失效]
+// [StorageMaintenanceBusy][40900009705][另一项存储维护正在运行]
 func (d *CleanupStorage) Output(ctx *gin.Context) (interface{}, error) {
 	id, err := global.StorageService.StartCleanup(d.Data.PreviewID)
 	if err != nil {

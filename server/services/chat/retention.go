@@ -9,6 +9,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
@@ -85,14 +86,18 @@ func (m *service) retentionReader(ctx context.Context) (controllers.ChatRetentio
 	for _, intent := range intents {
 		ids = append(ids, intent.ChatIDs...)
 	}
-	err = m.visitForkOperations(func(_ string, op chatstorage.ForkOperation) error {
-		if !op.Published && !op.Cancelled {
-			ids = append(ids, op.ChatID, op.SourceChatID)
+	if forkIDs, ready := m.pendingForks.chatIDs(); ready {
+		ids = append(ids, forkIDs...)
+	} else {
+		err = m.visitForkOperations(func(_ string, op chatstorage.ForkOperation) error {
+			if !op.Published && !op.Cancelled {
+				ids = append(ids, op.ChatID, op.SourceChatID)
+			}
+			return ctx.Err()
+		})
+		if err != nil {
+			return nil, err
 		}
-		return ctx.Err()
-	})
-	if err != nil {
-		return nil, err
 	}
 	return m.queryIndexes.chatController.ExcludingRetentionChats(ids), nil
 }
@@ -182,10 +187,67 @@ func (m *service) checkRetention(ctx context.Context, candidate controllers.Chat
 			return status_error.ChatLogVersionConflict
 		}
 	}
+	if pending, ready := m.pendingForks.contains(chat.ID); ready {
+		if pending {
+			return status_error.ChatLogVersionConflict
+		}
+		return nil
+	}
 	return m.visitForkOperations(func(_ string, op chatstorage.ForkOperation) error {
 		if !op.Published && !op.Cancelled && (op.SourceChatID == chat.ID || op.ChatID == chat.ID) {
 			return status_error.ChatLogVersionConflict
 		}
 		return nil
 	})
+}
+
+// backfillRetentionPage 复用后台修复循环核验旧数据，每页限制会话数、每次读取限制日志记录数。
+func (m *service) backfillRetentionPage(ctx context.Context, afterID string) (string, bool, error) {
+	const pageSize = 16
+	rows, err := m.queryIndexes.chatController.ListRetentionBackfill(ctx, afterID, pageSize)
+	if err != nil {
+		return afterID, false, err
+	}
+	for _, row := range rows {
+		if err := ctx.Err(); err != nil {
+			return afterID, false, err
+		}
+		if err := m.backfillRetentionChat(ctx, row); err != nil {
+			if hasStatusErrorCode(err, status_error.Conflict.Code()) || hasStatusErrorCode(err, status_error.DatabaseError.Code()) || hasStatusErrorCode(err, status_error.DatabaseBusy.Code()) {
+				// 停在上一条已处理的游标，下一批重新读取并发变更后的事实。
+				return afterID, false, err
+			}
+			if !hasStatusErrorCode(err, status_error.ChatNotFound.Code()) {
+				logx.Warnf("backfill chat retention projection: chat_id=%s error=%v", row.ChatID, err)
+			}
+		}
+		afterID = row.ChatID
+	}
+	return afterID, len(rows) < pageSize, nil
+}
+
+func (m *service) backfillRetentionChat(ctx context.Context, row controllers.ChatRetentionCandidate) error {
+	var projection models.Chat
+	for cursor := int64(0); cursor < row.Sequence; {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		batch, err := m.logStore.ReadAfter(row.ChatID, cursor, int(min(64, row.Sequence-cursor)))
+		if err != nil {
+			return err
+		}
+		if len(batch) == 0 || (cursor == 0 && batch[0].Type != constants.ChatEventTypeCreated) {
+			return status_error.ChatLogCorrupted
+		}
+		for _, record := range batch {
+			if err := applyRetentionRecord(&projection, record); err != nil {
+				return err
+			}
+			cursor = record.Sequence
+		}
+	}
+	if projection.LastActivityAt <= 0 {
+		return status_error.ChatLogCorrupted
+	}
+	return m.queryIndexes.chatController.BackfillRetentionProjection(ctx, row.ChatID, row.Sequence, projection.LastActivityAt, projection.RetentionProtected)
 }

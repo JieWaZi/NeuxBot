@@ -10,6 +10,22 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
+// InheritedAttachmentPaths 在实际删除时重新核对旧分叉受管附件的精确路径。
+func (s *Service) InheritedAttachmentPaths(ctx context.Context, chatID string) (map[string]string, error) {
+	if s.config.InheritedAttachments == nil {
+		return nil, status_error.ChatDirectoryOwnershipInvalid
+	}
+	return s.config.InheritedAttachments(ctx, chatID)
+}
+
+// CheckFileIdle 要求现有执行所有者确认当前文件可修改。
+func (s *Service) CheckFileIdle(ctx context.Context, wakerID, chatID string) error {
+	if s.config.CheckFileIdle == nil {
+		return status_error.WorkspaceStorageFailed
+	}
+	return s.config.CheckFileIdle(ctx, wakerID, chatID)
+}
+
 const scanFreshness = time.Minute
 
 // Snapshot 记录同一代目录测量，供总量、排序和预览共用。
@@ -26,6 +42,8 @@ type Snapshot struct {
 	ChatMetadata []models.Chat
 	// ChatMetadataError 描述目录测量成功但实体归属不可读。
 	ChatMetadataError error
+	// index 在当前代次内共享归属、实体排行、可管理文件和排序结果。
+	index snapshotIndex
 }
 
 // PrivateUsage 汇总一个 Chat 的私有文件字节。
@@ -101,7 +119,7 @@ func (s *Service) measure(work *scan) {
 		Timeout:    constants.StorageScanMaximumSeconds * time.Second,
 	})
 	chats := make(map[string]PrivateUsage)
-	for _, entry := range measured.Entries {
+	for entry := range entityFilePaths(measured) {
 		if entry.ChatID == "" {
 			continue
 		}
@@ -123,6 +141,9 @@ func (s *Service) measure(work *scan) {
 			ids = append(ids, id)
 		}
 		work.snapshot.ChatMetadata, work.snapshot.ChatMetadataError = s.config.LookupChats(work.ctx, ids)
+	}
+	if err == nil && work.ctx.Err() == nil {
+		err = work.snapshot.indexEntities(work.ctx, s.config.InheritedAttachments)
 	}
 	work.err = err
 	s.mu.Lock()

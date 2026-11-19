@@ -18,6 +18,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspacefiles"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
@@ -131,7 +132,7 @@ func (m *service) ForkChat(ctx context.Context, input ForkInput, fork NativeFork
 		if err != nil {
 			return "", err
 		}
-		if err = chatstorage.WriteForkOperation(directory, operation); err != nil {
+		if err = m.writeForkOperation(directory, operation); err != nil {
 			return "", err
 		}
 	}
@@ -173,7 +174,7 @@ func (m *service) ForkChat(ctx context.Context, input ForkInput, fork NativeFork
 			return "", err
 		}
 		operation.Prepared = true
-		if err = chatstorage.WriteForkOperation(directory, operation); err != nil {
+		if err = m.writeForkOperation(directory, operation); err != nil {
 			return "", err
 		}
 	}
@@ -184,7 +185,7 @@ func (m *service) ForkChat(ctx context.Context, input ForkInput, fork NativeFork
 				return err
 			}
 			operation.NativeStarted = true
-			return chatstorage.WriteForkOperation(directory, operation)
+			return m.writeForkOperation(directory, operation)
 		}
 		binding, forkErr := fork.Execute(ctx, NativeForkInput{BeforeFork: beforeFork, ReceiptDirectory: directory, Boundary: payload.Boundary, Configuration: *payload.Created.ForkConfiguration, ChatID: input.ChatID, Workspace: payload.Created.WorkspaceDirectory, ReconcileOnly: reconcileOnly})
 		if forkErr != nil {
@@ -200,7 +201,7 @@ func (m *service) ForkChat(ctx context.Context, input ForkInput, fork NativeFork
 		if err != nil {
 			return "", status_error.ChatLogError
 		}
-		if err = chatstorage.WriteForkOperation(directory, operation); err != nil {
+		if err = m.writeForkOperation(directory, operation); err != nil {
 			return "", err
 		}
 	}
@@ -214,7 +215,7 @@ func (m *service) ForkChat(ctx context.Context, input ForkInput, fork NativeFork
 	}
 	operation.Published = true
 	operation.Payload = nil
-	if err = chatstorage.WriteForkOperation(directory, operation); err != nil {
+	if err = m.writeForkOperation(directory, operation); err != nil {
 		return "", err
 	}
 	return operation.ChatID, nil
@@ -363,7 +364,13 @@ func (m *service) prepareForkWorkspace(chatID string, payload forkPayload) error
 		for _, attachment := range message.Attachments {
 			if attachment.Managed {
 				if err := chatstorage.CopyForkAttachment(source, target, attachment.Path); err != nil {
-					return err
+					removed, markerErr := workspacefiles.CopyRemovedAttachmentReference(source, target, attachment.Path)
+					if markerErr != nil {
+						return markerErr
+					}
+					if !removed {
+						return err
+					}
 				}
 			}
 		}
@@ -470,7 +477,8 @@ func writeForkFacts(ctx context.Context, store *conversation.Store, chatID strin
 
 // recoverForks 完成已经取得原生身份的持久操作；结果未知的原生调用保持待对账。
 func (m *service) recoverForks(ctx context.Context) error {
-	return m.visitForkOperations(func(directory string, operation chatstorage.ForkOperation) error {
+	pending := map[string][2]string{}
+	err := m.visitForkOperations(func(directory string, operation chatstorage.ForkOperation) error {
 		if operation.Published {
 			return nil
 		}
@@ -489,6 +497,7 @@ func (m *service) recoverForks(ctx context.Context) error {
 			return m.cancelUnpublishedFork(directory, operation)
 		}
 		if operation.SessionID == "" {
+			pending[directory] = [2]string{operation.ChatID, operation.SourceChatID}
 			return nil
 		}
 		var payload forkPayload
@@ -500,8 +509,12 @@ func (m *service) recoverForks(ctx context.Context) error {
 		}
 		operation.Published = true
 		operation.Payload = nil
-		return chatstorage.WriteForkOperation(directory, operation)
+		return m.writeForkOperation(directory, operation)
 	})
+	if err == nil {
+		m.pendingForks.replace(pending)
+	}
+	return err
 }
 
 // visitForkOperations 顺序读取持久分叉操作，供恢复和删除共用。
@@ -563,7 +576,7 @@ func (m *service) sealVisibleForks(ctx context.Context, chatIDs map[string]struc
 		}
 		operation.Published = true
 		operation.Payload = nil
-		return chatstorage.WriteForkOperation(directory, operation)
+		return m.writeForkOperation(directory, operation)
 	})
 }
 
@@ -606,7 +619,7 @@ func (m *service) cancelUnpublishedFork(directory string, operation chatstorage.
 	if !operation.Cancelled {
 		operation.Cancelled = true
 		operation.Payload = nil
-		if err := chatstorage.WriteForkOperation(directory, operation); err != nil {
+		if err := m.writeForkOperation(directory, operation); err != nil {
 			return err
 		}
 	}

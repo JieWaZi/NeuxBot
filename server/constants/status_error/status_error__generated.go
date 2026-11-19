@@ -389,6 +389,8 @@ func (v StatusError) Key() string {
 		return "StoragePolicyConflict"
 	case StorageSnapshotExpired:
 		return "StorageSnapshotExpired"
+	case StorageMaintenanceBusy:
+		return "StorageMaintenanceBusy"
 	case WorkspaceResourceTooLarge:
 		return "WorkspaceResourceTooLarge"
 	case WakerProfileTooLong:
@@ -816,6 +818,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			StoragePreviewExpired:                "the cleanup preview expired; preview again",
 			StoragePolicyConflict:                "the storage policy changed; refresh before retrying",
 			StorageSnapshotExpired:               "storage measurements changed; return to the first page",
+			StorageMaintenanceBusy:               "another storage maintenance operation is running; retry when it finishes",
 			WorkspaceResourceTooLarge:            "workspace resource exceeds the size limit",
 			WakerProfileTooLong:                  "partner profile is too long; shorten it to {{.MaxTokens}} tokens or fewer",
 			ReadingTargetLimitExceeded:           "too many awaiting-view targets; narrow the filter",
@@ -1103,6 +1106,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			StoragePreviewExpired:                "清理预览已失效，请重新预览",
 			StoragePolicyConflict:                "存储策略已变化，请刷新后重试",
 			StorageSnapshotExpired:               "存储统计已更新，请返回第一页",
+			StorageMaintenanceBusy:               "另一项存储维护正在运行，请结束后重试",
 			WorkspaceResourceTooLarge:            "工作区资源超过大小限制",
 			WakerProfileTooLong:                  "伙伴档案超过长度上限，请精简到 {{.MaxTokens}} token 以内",
 			ReadingTargetLimitExceeded:           "待查看工作过多，请缩小筛选范围",

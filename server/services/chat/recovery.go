@@ -180,7 +180,8 @@ func (c *recoveryCoordinator) reconcileChat(
 		}
 		return c.rebuildProjection(ctx, chatID, diagnostic, true, false)
 	}
-	if indexed.LastActivityAt <= 0 {
+	if indexed.LastActivityAt <= 0 && (indexed.LatestSequence < latest || indexed.ActiveExecutionID != "") {
+		// 存量会话没有已核验的活动前缀时，不能用迟到的尾部或中断终态代替完整历史。
 		diagnostic.Issues = appendIssue(diagnostic.Issues, constants.ChatRecoveryIssueChatProjectionContentMismatch)
 		return c.rebuildProjection(ctx, chatID, diagnostic, true, false)
 	}

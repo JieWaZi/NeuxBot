@@ -5329,6 +5329,28 @@ export type GithubComJieWaZiNeuxBotServerApisStorageChatProtectionInput = {
 };
 
 /**
+ * DeleteStorageFileInput 存储文件删除请求。
+ */
+export type GithubComJieWaZiNeuxBotServerApisStorageDeleteStorageFileInput = {
+    /**
+     * 文件标识
+     */
+    fileId: string;
+    /**
+     * 对象标识
+     */
+    id: string;
+    /**
+     * 对象类型
+     */
+    kind: string;
+    /**
+     * 文件版本
+     */
+    version: string;
+};
+
+/**
  * DiskUsage 单卷容量。
  */
 export type GithubComJieWaZiNeuxBotServerApisStorageDiskUsage = {
@@ -5372,6 +5394,10 @@ export type GithubComJieWaZiNeuxBotServerApisStorageEntityPage = {
  * EntityUsage 是实体行大小。
  */
 export type GithubComJieWaZiNeuxBotServerApisStorageEntityUsage = {
+    /**
+     * Avatar 伙伴头像
+     */
+    avatar?: string;
     /**
      * Bytes 占用大小
      */
@@ -5528,6 +5554,74 @@ export type GithubComJieWaZiNeuxBotServerApisStorageStorageConfirmation = {
      * PreviewID 确认标识
      */
     previewId: string;
+};
+
+/**
+ * StorageFile 文件明细行。
+ */
+export type GithubComJieWaZiNeuxBotServerApisStorageStorageFile = {
+    /**
+     * 文件大小
+     */
+    bytes?: number;
+    /**
+     * 会话标题
+     */
+    chatTitle?: string;
+    /**
+     * 文件标识
+     */
+    id?: string;
+    /**
+     * MessageID 上传消息标识
+     */
+    messageId?: string;
+    /**
+     * 修改时间
+     */
+    modifiedAt?: number;
+    /**
+     * 文件路径
+     */
+    relativePath?: string;
+    /**
+     * 文件来源
+     */
+    source?: string;
+    /**
+     * 文件版本
+     */
+    version?: string;
+};
+
+/**
+ * StorageFilePage 存储文件列表。
+ */
+export type GithubComJieWaZiNeuxBotServerApisStorageStorageFilePage = {
+    /**
+     * 扫描完整
+     */
+    complete?: boolean;
+    /**
+     * 文件列表
+     */
+    items?: Array<GithubComJieWaZiNeuxBotServerApisStorageStorageFile>;
+    /**
+     * 后续游标
+     */
+    nextCursor?: string;
+    /**
+     * 对象名称
+     */
+    title?: string;
+    /**
+     * 文件总数
+     */
+    total?: number;
+    /**
+     * 文件总量
+     */
+    totalBytes?: number;
 };
 
 /**
@@ -13940,6 +14034,10 @@ export type GithubComJieWaZiNeuxBotServerServicesStorageCleanupItem = {
      */
     bytes?: number;
     category?: GithubComJieWaZiNeuxBotServerConstantsStorageCleanupKind & unknown;
+    /**
+     * Complete 大小完整
+     */
+    complete?: boolean;
 };
 
 /**
@@ -15665,6 +15763,7 @@ export type ReadErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -16034,6 +16133,7 @@ export type CommandErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -16673,6 +16773,7 @@ export type StartAiAccountLoginErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -17051,6 +17152,7 @@ export type CancelAiAccountLoginErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -17524,6 +17626,7 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -17984,6 +18087,7 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -18358,6 +18462,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -20313,6 +20418,7 @@ export type StreamEventsErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -21406,6 +21512,7 @@ export type UpdateMcpServiceErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -21874,6 +21981,7 @@ export type UpdateApiServiceErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -30664,6 +30772,7 @@ export type ListPluginsErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -31054,6 +31163,7 @@ export type BrowsePluginsErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -31423,6 +31533,7 @@ export type RefreshPluginCatalogErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -31802,6 +31913,7 @@ export type GetCatalogPluginErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -32189,6 +32301,7 @@ export type GetCatalogPluginConnectorErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -32563,6 +32676,7 @@ export type PrepareCatalogPluginErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -32950,6 +33064,7 @@ export type GetCatalogPluginReadmeErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -33341,6 +33456,7 @@ export type GetCatalogPluginSkillErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -33710,6 +33826,7 @@ export type CreatePluginFromSkillsErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -34183,6 +34300,7 @@ export type GetPluginErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -34651,6 +34769,7 @@ export type StartPluginAuthorizationErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -35336,6 +35455,7 @@ export type GetPluginConfigurationErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -35929,6 +36049,7 @@ export type InstallPluginErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -36446,6 +36567,7 @@ export type UpdatePluginInstallationsErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -36994,6 +37116,12 @@ export type UpdateRuntimeEnvironmentErrors = {
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[RuntimeInstallationBusy][40900007301]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[RuntimeConfigurationInvalid][50000000040]`
@@ -37821,6 +37949,7 @@ export type CleanupStorageErrors = {
     408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePreviewExpired][40900009702]`
      *
      */
@@ -37877,17 +38006,21 @@ export type ListStorageEntitiesData = {
     path?: never;
     query: {
         /**
-         * Cursor 分页游标
+         * 分页游标
          */
         cursor?: string;
         /**
-         * Kind 列表类型
+         * 列表类型
          */
         kind: string;
         /**
-         * Limit 分页大小
+         * 分页大小
          */
         limit?: number;
+        /**
+         * 伙伴标识
+         */
+        wakerId?: string;
     };
     url: '/api/v1/storage/entities';
 };
@@ -37908,9 +38041,17 @@ export type ListStorageEntitiesErrors = {
     /**
      * >
      * * `[StorageSnapshotExpired][40900009704]`
+     * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type ListStorageEntitiesError = ListStorageEntitiesErrors[keyof ListStorageEntitiesErrors];
@@ -37974,6 +38115,7 @@ export type CleanupExpiredChatsErrors = {
     408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePreviewExpired][40900009702]`
      *
      */
@@ -38037,6 +38179,131 @@ export type PreviewExpiredChatsResponses = {
 };
 
 export type PreviewExpiredChatsResponse = PreviewExpiredChatsResponses[keyof PreviewExpiredChatsResponses];
+
+export type ListStorageFilesData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * 分页游标
+         */
+        cursor?: string;
+        /**
+         * 对象标识
+         */
+        id: string;
+        /**
+         * 对象类型
+         */
+        kind: string;
+        /**
+         * 搜索词
+         */
+        search?: string;
+        /**
+         * 排序方式
+         */
+        sort?: string;
+    };
+    url: '/api/v1/storage/files';
+};
+
+export type ListStorageFilesErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatNotFound][40400000005]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[OperationCanceled][40800000001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[StorageSnapshotExpired][40900009704]`
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type ListStorageFilesError = ListStorageFilesErrors[keyof ListStorageFilesErrors];
+
+export type ListStorageFilesResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisStorageStorageFilePage;
+};
+
+export type ListStorageFilesResponse = ListStorageFilesResponses[keyof ListStorageFilesResponses];
+
+export type DeleteStorageFileData = {
+    body: GithubComJieWaZiNeuxBotServerApisStorageDeleteStorageFileInput & unknown;
+    path?: never;
+    query?: never;
+    url: '/api/v1/storage/files/delete';
+};
+
+export type DeleteStorageFileErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     * * `[WorkspacePathInvalid][40000007102]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[WorkspaceResourceNotFound][40400007103]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[OperationCanceled][40800000001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[InternalServerError][50000000001]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[WorkspaceStorageFailed][50000007106]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type DeleteStorageFileError = DeleteStorageFileErrors[keyof DeleteStorageFileErrors];
+
+export type DeleteStorageFileResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type DeleteStorageFileResponse = DeleteStorageFileResponses[keyof DeleteStorageFileResponses];
 
 export type GetStorageMaintenanceData = {
     body?: never;
@@ -38129,6 +38396,14 @@ export type GetStorageUsageErrors = {
     408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ManagedWorkspaceError][50000000033]`
      * * `[StorageRootInvalid][50000009702]`
      *
      */
@@ -38766,6 +39041,7 @@ export type CreateWakerErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -39271,6 +39547,7 @@ export type ListAutomaticTasksErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -39712,6 +39989,7 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -40119,6 +40397,7 @@ export type DeleteAutomaticTaskErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -40497,6 +40776,7 @@ export type GetAutomaticTaskErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -41026,6 +41306,7 @@ export type ListAutomaticRunsErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -41404,6 +41685,7 @@ export type TriggerAutomaticTaskErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -42301,6 +42583,7 @@ export type StartWakerOnboardingErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -42706,6 +42989,7 @@ export type ListWakerPluginsErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -44285,6 +44569,7 @@ export type CreateWorkflowErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -44672,6 +44957,7 @@ export type DeleteWorkflowErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -45069,6 +45355,7 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -45472,6 +45759,7 @@ export type EditWorkflowConfigurationErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -45846,6 +46134,7 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -46308,6 +46597,7 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -46713,6 +47003,7 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -47118,6 +47409,7 @@ export type StartWorkflowRunErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -47496,6 +47788,7 @@ export type DeleteWorkflowRunErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -47984,6 +48277,7 @@ export type AnswerWorkflowHumanErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -48366,6 +48660,7 @@ export type GetWorkflowInstanceErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -48748,6 +49043,7 @@ export type SkipWorkflowWorkerErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -49130,6 +49426,7 @@ export type AnswerWorkflowOperationErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -49508,6 +49805,7 @@ export type RetryWorkflowRunErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`
@@ -49956,6 +50254,7 @@ export type SaveWorkflowSourceErrors = {
      * * `[RuntimeUpdateCheckBusy][40900007303]`
      * * `[RuntimeVersionUnknown][40900007304]`
      * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
      * * `[StoragePolicyConflict][40900009703]`
      * * `[StoragePreviewExpired][40900009702]`
      * * `[StorageSnapshotExpired][40900009704]`

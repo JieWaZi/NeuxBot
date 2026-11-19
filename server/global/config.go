@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -784,11 +785,22 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		databasePath = ""
 	}
 	StorageService = storageservice.New(ctx, storageservice.Config{
-		Roots:         storagefs.Roots{Data: configuration.DataDirectory, Managed: configuration.ManagedFilesDirectory, Database: databasePath},
-		Candidates:    chatModule,
-		LookupChats:   ChatControllerManager.ListStorageChats,
-		DeleteExpired: chatModule.DeleteChatIfExpired,
-		Events:        EventHub,
+		Roots:                storagefs.Roots{Data: configuration.DataDirectory, Managed: configuration.ManagedFilesDirectory, Database: databasePath},
+		Candidates:           chatModule,
+		LookupChats:          ChatControllerManager.ListStorageChats,
+		DeleteExpired:        chatModule.DeleteChatIfExpired,
+		InheritedAttachments: chatModule.InheritedAttachmentPaths,
+		Events:               EventHub,
+		CheckFileIdle: func(ctx context.Context, wakerID, chatID string) error {
+			occupied := executionCore.OccupiedChatIDs()
+			if chatID != "" {
+				if slices.Contains(occupied, chatID) {
+					return status_error.ChatHasActiveExecution
+				}
+				return nil
+			}
+			return chatModule.CheckOccupiedWorkspace(ctx, wakerID, occupied)
+		},
 		Cleanup: map[constants.StorageCleanupKind]storageservice.CleanupOwner{
 			constants.StorageCleanupKindCaches: {
 				Preview: func(ctx context.Context) (int64, error) {

@@ -15,6 +15,7 @@ import {
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
+import { useDialogFocusRestore } from "@/shared/ui/use-dialog-focus-restore";
 
 type ChatTaskDialogProps = {
   chatId: string;
@@ -24,6 +25,8 @@ type ChatTaskDialogProps = {
   onChanged?: () => Promise<void> | void;
   onOpenChange: (open: boolean) => void;
   onDeleted: (deletedChatId: string) => void;
+  returnFocusTo?: () => HTMLElement | null;
+  disabled?: boolean;
 };
 
 export function ChatTaskDialog({
@@ -34,12 +37,15 @@ export function ChatTaskDialog({
   onOpenChange,
   open,
   title,
+  returnFocusTo,
+  disabled = false,
 }: ChatTaskDialogProps) {
   const { t } = useTranslation("chat");
   const queryClient = useQueryClient();
   const [nextTitle, setNextTitle] = useState(title);
   const rename = useMutation(withLocalErrorMutation(updateChatMutation()));
   const remove = useMutation(withLocalErrorMutation(deleteChatMutation()));
+  const focus = useDialogFocusRestore(returnFocusTo);
 
   const close = () => {
     rename.reset();
@@ -78,6 +84,7 @@ export function ChatTaskDialog({
       }}
     >
       <DialogContent
+        {...(mode === "delete" && returnFocusTo ? focus : undefined)}
         size="sm"
         title={mode === "rename" ? t("renameTask") : t("deleteTask")}
         description={mode === "delete" ? t("deleteTaskDescription") : undefined}
@@ -113,7 +120,9 @@ export function ChatTaskDialog({
           <Button
             type="button"
             variant={mode === "delete" ? "danger" : "primary"}
-            disabled={pending || (mode === "rename" && !nextTitle.trim())}
+            disabled={
+              disabled || pending || (mode === "rename" && !nextTitle.trim())
+            }
             onClick={() => void confirm()}
           >
             {pending && <LoaderCircle className="animate-spin" />}

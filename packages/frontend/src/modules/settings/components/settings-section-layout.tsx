@@ -121,17 +121,21 @@ export function SettingsGroup({
 
 /** 设置中的整行二级导航，与普通设置行共用密度、表面和焦点。 */
 export function SettingsNavigationRow({
+  className,
   title,
   description,
   visual,
   onClick,
   ariaLabel,
   trailing,
+  showChevron = true,
 }: {
+  className?: string;
   title: ReactNode;
   description?: ReactNode;
   visual?: ReactNode;
   trailing?: ReactNode;
+  showChevron?: boolean;
   onClick: () => void;
   ariaLabel?: string;
 }) {
@@ -140,7 +144,10 @@ export function SettingsNavigationRow({
       type="button"
       aria-label={ariaLabel}
       onClick={onClick}
-      className="before:bg-border-subtle min-h-row-detail hover:bg-action-quiet-hover focus-visible:ring-ring relative flex w-full items-center gap-4 px-4 py-3 text-left outline-none before:absolute before:inset-x-4 before:top-0 before:h-px first:before:hidden focus-visible:ring-2 focus-visible:ring-inset"
+      className={cn(
+        "before:bg-border-subtle min-h-row-detail hover:bg-action-quiet-hover focus-visible:ring-ring relative flex w-full items-center gap-4 px-4 py-3 text-left outline-none before:absolute before:inset-x-4 before:top-0 before:h-px first:before:hidden focus-visible:ring-2 focus-visible:ring-inset",
+        className,
+      )}
     >
       {visual}
       <span className="min-w-0 flex-1">
@@ -154,10 +161,12 @@ export function SettingsNavigationRow({
         ) : null}
       </span>
       {trailing}
-      <ChevronRight
-        aria-hidden="true"
-        className="size-icon-md text-content-tertiary shrink-0"
-      />
+      {showChevron ? (
+        <ChevronRight
+          aria-hidden="true"
+          className="size-icon-md text-content-tertiary shrink-0"
+        />
+      ) : null}
     </button>
   );
 }

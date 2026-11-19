@@ -17,13 +17,14 @@ const bounds = {
   height: z.number().positive().finite(),
 };
 const file = { root, relativePath: text };
+const desktopStorage = z
+  .object({ category: z.enum(["desktop-cache", "desktop-logs"]) })
+  .strict();
 export const commandSchemas = {
   core_connection: z.undefined(),
   get_window_appearance: z.undefined(),
-  preview_desktop_storage: z.undefined(),
-  clear_desktop_storage: z
-    .object({ category: z.enum(["desktop-cache", "desktop-logs"]) })
-    .strict(),
+  preview_desktop_storage: desktopStorage,
+  clear_desktop_storage: desktopStorage,
   set_window_appearance: z
     .object({
       theme: z.enum(["system", "light", "dark"]),

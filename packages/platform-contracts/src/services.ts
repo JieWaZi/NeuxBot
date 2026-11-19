@@ -64,8 +64,8 @@ export type DesktopStorageCategory = "desktop-cache" | "desktop-logs";
 
 export type DesktopStorageCommands = {
   preview_desktop_storage: {
-    args: undefined;
-    result: { items: { category: DesktopStorageCategory; bytes: number }[] };
+    args: { category: DesktopStorageCategory };
+    result: { available: boolean; bytes: number };
   };
   clear_desktop_storage: {
     args: { category: DesktopStorageCategory };

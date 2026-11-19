@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -268,20 +269,40 @@ func TestUpdateRuntimeEnvironmentKeepsActiveAccountLease(t *testing.T) {
 // TestRuntimeInstallationSelectionUsesDiscoveredInstances 验证版本切换只接受已发现且可用的实例。
 func TestRuntimeInstallationSelectionUsesDiscoveredInstances(t *testing.T) {
 	runtimeUpdateFixture(t)
-	refresh := &runtimeUpdateRefreshRecorder{}
+	catalog, err := agentapi.NewCatalog(agentapi.CatalogConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := runtimeenvironment.New(runtimeenvironment.Config{
+		RuntimeCatalog: catalog,
+		Environments:   global.RuntimeEnvironmentControllerManager,
+		Transactions:   global.TransactionControllerManager,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	refresh := &runtimeUpdateRefreshRecorder{Service: service}
 	previous := global.RuntimeEnvironmentService
 	global.RuntimeEnvironmentService = refresh
 	t.Cleanup(func() { global.RuntimeEnvironmentService = previous })
-	environment := models.RuntimeEnvironment{ID: "qoder", RuntimeID: "qoder", BaseRuntimeID: constants.RuntimeIDQoder, Detection: agentapi.DetectionResult{ResolvedBinary: "/bin/qoder", Runtime: agentapi.RuntimeSummary{ID: "qoder", BaseRuntimeID: "qoder"}, Installations: []agentapi.CLIInstallation{{Path: "/bin/qoder", Version: "1", Available: true}, {Path: "/bin/qoderclicn", Version: "2", Available: true}, {Path: "/missing/qoder", Available: false}}}}
+	dir := t.TempDir()
+	current, next := filepath.Join(dir, "qoder"), filepath.Join(dir, "qoderclicn")
+	retired, unknown := filepath.Join(dir, "old-qoder"), filepath.Join(dir, "arbitrary")
+	for _, binary := range []string{current, next, unknown} {
+		if err := os.WriteFile(binary, []byte("fixture"), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	environment := models.RuntimeEnvironment{ID: "qoder", RuntimeID: "qoder", BaseRuntimeID: constants.RuntimeIDQoder, Detection: agentapi.DetectionResult{ResolvedBinary: current, Runtime: agentapi.RuntimeSummary{ID: "qoder", BaseRuntimeID: "qoder"}, Installations: []agentapi.CLIInstallation{{Path: current, Version: "1", Available: true}, {Path: next, Version: "2", Available: true}, {Path: retired, Available: true}}}}
 	if err := global.RuntimeEnvironmentControllerManager.Ensure(t.Context(), environment); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/arbitrary/cli", "/missing/qoder", "/bin/qoderclicn"} {
+	for _, path := range []string{unknown, retired, next} {
 		request := UpdateRuntimeEnvironment{RuntimeID: "qoder", Body: UpdateRuntimeEnvironmentRequest{InstallationPath: path, Enabled: true, DefaultPermissionLevel: constants.PermissionLevelFullAccess}}
 		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 		ctx.Request = httptest.NewRequest("PUT", "/", nil)
 		_, err := request.Output(ctx)
-		if path != "/bin/qoderclicn" {
+		if path != next {
 			if !errors.Is(err, status_error.RuntimeConfigurationInvalid) {
 				t.Fatalf("unverified selection accepted: %s %v", path, err)
 			}

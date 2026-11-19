@@ -137,8 +137,11 @@ async function codeCacheBytes(storagePath: string | null): Promise<number> {
   const pending = [root];
   let seen = 0;
   let bytes = 0;
-  while (pending.length) {
-    const directory = pending.pop()!;
+  for (
+    let directory = pending.pop();
+    directory !== undefined;
+    directory = pending.pop()
+  ) {
     if (!(await fileInfo(directory))?.isDirectory()) continue;
     let handle;
     try {

@@ -861,8 +861,10 @@ func (m *service) deleteChatsAtomically(ctx context.Context, chatIDs []string, p
 	for _, target := range targets {
 		visible[target.chatID] = struct{}{}
 	}
-	if err := m.sealVisibleForks(ctx, visible); err != nil {
-		return err
+	if retention == nil {
+		if err := m.sealVisibleForks(ctx, visible); err != nil {
+			return err
+		}
 	}
 	aggregates := make([]chatstorage.DeletionTarget, 0, len(threadTargets)+len(targets))
 	for threadID := range threadTargets {
@@ -901,6 +903,10 @@ func (m *service) deleteChatsAtomically(ctx context.Context, chatIDs []string, p
 	}
 	if err := m.deleteAggregatesAtomically(ctx, aggregates, canonicalChatIDs, finalize, retention); err != nil {
 		return err
+	}
+	if retention != nil {
+		// 排他门内已经核对双方均无未完成分叉，不需要封存或撤销额外记录。
+		return nil
 	}
 	return m.cancelForksFromDeletedChats(seen)
 }

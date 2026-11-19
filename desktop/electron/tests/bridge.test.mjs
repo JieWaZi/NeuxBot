@@ -311,6 +311,58 @@ test("IPC 拒绝外部网页及子框架，并在执行前校验参数", async (
   assert.equal(contents.listenerCount("did-start-navigation"), 0);
 });
 
+test("桌面缓存读取失败不会阻断日志探测与清理", async () => {
+  const registered = new Map();
+  const { installDesktopServices } = loadModule("main/desktop-services.ts", {
+    electron: {
+      ipcMain: {
+        handle: (name, handler) => registered.set(name, handler),
+        removeHandler: (name) => registered.delete(name),
+      },
+    },
+    "node-pty": {},
+  });
+  const contents = new EventEmitter();
+  contents.mainFrame = { url: "bot://app/index.html" };
+  contents.isDestroyed = () => false;
+  contents.session = {
+    storagePath: null,
+    getCacheSize: async () => {
+      throw new Error("cache unavailable");
+    },
+  };
+  const dispose = installDesktopServices(
+    { webContents: contents, isDestroyed: () => false },
+    {},
+    contents.mainFrame.url,
+    undefined,
+    undefined,
+    undefined,
+    { preview: async () => 1024, clear: async () => 512 },
+  );
+  try {
+    const event = { sender: contents, senderFrame: contents.mainFrame };
+    const preview = registered.get("bot:preview_desktop_storage");
+    assert.throws(() => preview(event, { category: "../logs" }));
+    await assert.rejects(
+      () => preview(event, { category: "desktop-cache" }),
+      /cache unavailable/,
+    );
+    assert.deepEqual(await preview(event, { category: "desktop-logs" }), {
+      bytes: 1024,
+      available: true,
+    });
+    assert.deepEqual(
+      await registered.get("bot:clear_desktop_storage")(event, {
+        category: "desktop-logs",
+      }),
+      { removedBytes: 512 },
+    );
+  } finally {
+    dispose();
+  }
+});
+
 test("草稿对话可创建隔离网页浏览器，但不能借此打开本地文件", async () => {
   const registered = new Map();
   const views = [];

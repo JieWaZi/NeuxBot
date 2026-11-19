@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"slices"
 	"sync"
 	"testing"
@@ -653,5 +654,64 @@ func TestStorageReclaimRetainsManagedScriptLaunchedThroughSystemNode(t *testing.
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestStorageReclaimSerializesVersionSelection 验证回收和设置共享保护范围，过期安装选项会失效。
+func TestStorageReclaimSerializesVersionSelection(t *testing.T) {
+	svc, _, _ := installationLifecycleFixture(t)
+	catalog, err := agent.NewCatalog(agent.CatalogConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.runtimeCatalog = catalog
+	const id = constants.RuntimeIDCodex
+	directory := t.TempDir()
+	current, retired := filepath.Join(directory, "current"), filepath.Join(directory, "retired")
+	for _, path := range []string{current, retired} {
+		if err := os.WriteFile(path, []byte("fixture"), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	detection := agent.DetectionResult{
+		Runtime:        agent.RuntimeSummary{ID: id, BaseRuntimeID: id},
+		ResolvedBinary: current,
+		Installations:  []agent.CLIInstallation{{Path: current, Available: true}, {Path: retired, Available: true}},
+	}
+	if err := svc.environments.UpdateDetection(t.Context(), id, detection, 10); err != nil {
+		t.Fatal(err)
+	}
+	entered, proceed := make(chan struct{}), make(chan struct{})
+	finished := make(chan error, 1)
+	go func() {
+		_, err := svc.reclaimProgram(t.Context(), id, true, func(_ context.Context, _ string, protected []string, _ bool) (int64, error) {
+			if !slices.Contains(protected, current) || slices.Contains(protected, retired) {
+				t.Errorf("unexpected protected paths: %v", protected)
+			}
+			close(entered)
+			<-proceed
+			return 7, os.Remove(retired)
+		})
+		finished <- err
+	}()
+	<-entered
+	commit := func(models.RuntimeEnvironment, agent.CLIInstallation) error {
+		t.Error("a removed or reclaiming version reached commit")
+		return nil
+	}
+	err = svc.CommitInstallationSelection(t.Context(), id, retired, commit)
+	close(proceed)
+	if reclaimErr := <-finished; reclaimErr != nil {
+		t.Fatal(reclaimErr)
+	}
+	if !errors.Is(err, status_error.RuntimeInstallationBusy) {
+		t.Fatalf("select during reclaim = %v", err)
+	}
+	if err := svc.CommitInstallationSelection(t.Context(), id, retired, commit); !errors.Is(err, status_error.RuntimeConfigurationInvalid) {
+		t.Fatalf("select after reclaim = %v", err)
+	}
+	environment, err := svc.environments.Get(t.Context(), id)
+	if err != nil || len(environment.Detection.Installations) != 2 || !environment.Detection.Installations[0].Available || environment.Detection.Installations[1].Available || environment.Detection.ResolvedBinary != current {
+		t.Fatalf("installation availability not refreshed: %+v, %v", environment.Detection, err)
 	}
 }

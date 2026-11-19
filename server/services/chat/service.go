@@ -102,6 +102,10 @@ type Service interface {
 
 // Module 是组合根同时交给查询入口和 Execution Core 的完整 Chat 模块。
 type Module interface {
+	// CheckOccupiedWorkspace 拒绝修改仍有执行或文件收尾所有者的伙伴空间。
+	CheckOccupiedWorkspace(ctx context.Context, wakerID string, occupied []string) error
+	// InheritedAttachmentPaths 返回旧分叉已由权威继承事实确认的受管附件路径。
+	InheritedAttachmentPaths(ctx context.Context, chatID string) (map[string]string, error)
 	// InitializeReadingBaseline 建立历史索引，期间不产生新的运行结果。
 	InitializeReadingBaseline(context.Context) error
 	// Service 提供 Chat 查询、恢复与元数据用例。
@@ -120,6 +124,8 @@ type service struct {
 	deletionIntents controllers.ChatDeletionIntentController
 	// deletionMu 保证分片清理期间其他删除不会隐藏仍可能回滚的 Chat。
 	deletionMu sync.Mutex
+	// pendingForks 是从权威操作文件重建的未完成分叉查询索引。
+	pendingForks pendingForkIndex
 	// closeIdleNativeThread 仅释放没有接纳、回合或分叉的会话原生资源。
 	closeIdleNativeThread func(context.Context, string) error
 	// closeNativeThread 在删除围栏内释放会话拥有的原生连接及租约。

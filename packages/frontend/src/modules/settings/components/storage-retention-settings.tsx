@@ -13,30 +13,20 @@ import {
   SelectItem,
   SelectContent,
 } from "@/shared/ui/select";
-import { expiredChatsKey } from "@/shared/api/chat-protection";
 import {
-  deleteExpired,
   reviewChats,
   savePolicy,
   storageKeys,
   storagePolicyOptions,
 } from "../api/storage";
-import {
-  storageSize,
-  storageDate,
-  StorageError,
-  StorageLoading,
-} from "./storage-feedback";
+import { storageDate, StorageError, StorageLoading } from "./storage-feedback";
 import {
   SettingsGroup,
   SettingsCard,
   SettingsRow,
 } from "./settings-section-layout";
-import { ExpiredChatList } from "./storage-expired-chats";
 
-type Decision =
-  | { kind: "manual"; days: number; ids: string[] }
-  | { kind: "enable" | "shorten"; days: number; revision: number };
+type Decision = { kind: "enable" | "shorten"; days: number; revision: number };
 const presets = [15, 30, 60, 90];
 
 function RetentionConfirm({
@@ -48,31 +38,18 @@ function RetentionConfirm({
   decision: Decision;
   disabled: boolean;
   onClose: () => void;
-  onDone: (runId?: string) => void;
+  onDone: () => void;
 }) {
   const { t } = useTranslation("storage");
   const focus = useDialogFocusRestore();
-  const preview = useQuery({
-    queryKey: ["storage", "retention-preview", decision],
-    queryFn: () =>
-      reviewChats(
-        decision.days,
-        decision.kind === "manual" ? decision.ids : undefined,
-      ),
-    gcTime: 0,
-    staleTime: 0,
-    refetchOnWindowFocus: false,
-  });
   const submit = useMutation({
-    mutationFn: async (id: string) => {
-      if (decision.kind === "manual") return (await deleteExpired(id)).runId;
-      else await savePolicy(true, decision.days, decision.revision, id);
+    mutationFn: async () => {
+      const { id } = await reviewChats(decision.days);
+      if (!id) throw new Error();
+      await savePolicy(true, decision.days, decision.revision, id);
     },
     onSuccess: onDone,
   });
-  const data = preview.data;
-  const size = storageSize(data?.knownBytes ?? 0);
-  const manual = decision.kind === "manual";
   return (
     <Dialog
       open
@@ -82,36 +59,14 @@ function RetentionConfirm({
     >
       <DialogContent
         {...focus}
-        title={t(manual ? "manualTitle" : "policyTitle")}
-        description={
-          manual
-            ? t("manualImpact")
-            : t("policyImpact", { days: decision.days })
-        }
+        title={t("policyTitle")}
+        description={t("policyImpact", { days: decision.days })}
       >
-        <div className="grid gap-2 px-6 pb-4">
-          {preview.isFetching ? <StorageLoading /> : null}
-          {preview.isError ? (
-            <StorageError
-              error={preview.error}
-              retry={() => void preview.refetch()}
-            />
-          ) : null}
-          {data ? (
-            <p className="type-body">
-              {t("candidates", {
-                count: data.total ?? 0,
-                size: data.complete ? size : t("partial", { size }),
-              })}
-            </p>
-          ) : null}
-          {data && !data.complete ? (
-            <p className="type-body text-content-secondary">
-              {t("unavailable")}
-            </p>
-          ) : null}
-          {submit.isError ? <StorageError error={submit.error} /> : null}
-        </div>
+        {submit.isError ? (
+          <div className="px-6 pb-4">
+            <StorageError error={submit.error} />
+          </div>
+        ) : null}
         <DialogFooter>
           <Button
             size="settings"
@@ -119,43 +74,20 @@ function RetentionConfirm({
             disabled={submit.isPending}
             onClick={onClose}
           >
-            {t(submit.isError && !manual ? "close" : "cancel")}
+            {t(submit.isError ? "close" : "cancel")}
           </Button>
-          {submit.isError && !manual ? null : submit.isError ? (
-            <Button
-              size="settings"
-              onClick={() => {
-                submit.reset();
-                void preview.refetch();
-              }}
-            >
-              {t("newPreview")}
-            </Button>
-          ) : (
+          {!submit.isError ? (
             <Button
               size="settings"
               variant="danger"
-              disabled={
-                disabled ||
-                submit.isPending ||
-                preview.isFetching ||
-                preview.isError ||
-                !data?.id ||
-                (manual && !data.total)
-              }
-              onClick={() => {
-                if (data?.id) submit.mutate(data.id);
-              }}
+              disabled={disabled || submit.isPending}
+              onClick={() => submit.mutate()}
             >
               {t(
-                manual
-                  ? "delete"
-                  : decision.kind === "enable"
-                    ? "enableConfirm"
-                    : "shortenConfirm",
+                decision.kind === "enable" ? "enableConfirm" : "shortenConfirm",
               )}
             </Button>
-          )}
+          ) : null}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -165,13 +97,9 @@ function RetentionConfirm({
 export function StorageRetentionSettings({
   active,
   disabled,
-  busy,
-  onStarted,
 }: {
   active: boolean;
   disabled: boolean;
-  busy: boolean;
-  onStarted: (id: string) => void;
 }) {
   const { t } = useTranslation("storage");
   const client = useQueryClient();
@@ -179,10 +107,8 @@ export function StorageRetentionSettings({
   const saved = policy.data;
   const [decision, setDecision] = useState<Decision>();
   const [custom, setCustom] = useState<string>();
-  const [showExpired, setShowExpired] = useState(false);
   const refresh = () => {
     void client.invalidateQueries({ queryKey: storageKeys.policy });
-    void client.invalidateQueries({ queryKey: expiredChatsKey });
   };
   const save = useMutation({
     mutationFn: ({
@@ -316,47 +242,19 @@ export function StorageRetentionSettings({
           </p>
         ) : null}
         {save.isError ? <StorageError error={save.error} /> : null}
-        {saved ? (
-          <div>
-            <Button
-              size="settings"
-              variant="settings-outline"
-              aria-expanded={showExpired}
-              onClick={() => setShowExpired(!showExpired)}
-            >
-              {t("previewChats")}
-            </Button>
-          </div>
-        ) : null}
       </SettingsGroup>
-      {saved && showExpired ? (
-        <ExpiredChatList
-          key={days}
-          days={days}
-          active={active}
-          disabled={disabled || busy}
-          onReview={(ids) => setDecision({ kind: "manual", days, ids })}
-        />
-      ) : null}
       {decision ? (
         <RetentionConfirm
           decision={decision}
-          disabled={disabled || (decision.kind === "manual" && busy)}
+          disabled={disabled}
           onClose={() => {
             setDecision(undefined);
-            if (decision.kind !== "manual") void policy.refetch();
+            void policy.refetch();
           }}
-          onDone={(runId) => {
-            if (runId) onStarted(runId);
+          onDone={() => {
             setDecision(undefined);
             setCustom(undefined);
             refresh();
-            if (decision.kind === "manual") {
-              setShowExpired(false);
-              void client.invalidateQueries({
-                queryKey: storageKeys.maintenance,
-              });
-            }
           }}
         />
       ) : null}

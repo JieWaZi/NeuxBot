@@ -94,6 +94,8 @@ type ChatGroupPreparer interface {
 type Core interface {
 	Service
 	ChatGroupPreparer
+	// OccupiedChatIDs 返回仍有执行或文件收尾所有者的聊天。
+	OccupiedChatIDs() []string
 }
 
 // service 是 Execution Core 的唯一实现。

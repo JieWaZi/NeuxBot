@@ -57,17 +57,13 @@ export function installDesktopServices(
     ) => DesktopCommands[K]["result"] | Promise<DesktopCommands[K]["result"]>;
   } = {
     core_connection: () => core.connection(),
-    preview_desktop_storage: async () => {
-      if (process.env.NEUXBOT_CORE_URL || !desktopLogs) return { items: [] };
-      return {
-        items: [
-          {
-            category: "desktop-cache",
-            bytes: await desktopCacheSize(contents.session),
-          },
-          { category: "desktop-logs", bytes: await desktopLogs.preview() },
-        ],
-      };
+    preview_desktop_storage: async ({ category }) => {
+      if (process.env.NEUXBOT_CORE_URL || !desktopLogs)
+        return { available: false, bytes: 0 };
+      const bytes = await (category === "desktop-cache"
+        ? desktopCacheSize(contents.session)
+        : desktopLogs.preview());
+      return { available: true, bytes };
     },
     clear_desktop_storage: async ({ category }) => {
       if (process.env.NEUXBOT_CORE_URL || !desktopLogs)

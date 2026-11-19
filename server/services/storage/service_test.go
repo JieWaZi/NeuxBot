@@ -146,6 +146,54 @@ func TestStorageCleanupReportsCompletedAndFailedOwners(t *testing.T) {
 	}
 }
 
+func TestStorageCleanupPreviewAndAdmissionKeepEachRequestDistinct(t *testing.T) {
+	caches := constants.StorageCleanupKindCaches
+	programs := constants.StorageCleanupKindRuntimes
+	started := make(chan struct{})
+	finish := make(chan struct{})
+	service := New(t.Context(), Config{PolicyDirectory: t.TempDir(), Cleanup: map[constants.StorageCleanupKind]CleanupOwner{
+		caches: {
+			Preview: func(context.Context) (int64, error) { return 12, nil },
+			Remove: func(context.Context) (ResourceCleanup, error) {
+				close(started)
+				<-finish
+				return ResourceCleanup{Bytes: 12}, nil
+			},
+		},
+		programs: {
+			Preview: func(context.Context) (int64, error) { return 0, nil },
+			Remove:  func(context.Context) (ResourceCleanup, error) { return ResourceCleanup{Bytes: 2}, nil },
+		},
+	}})
+	t.Cleanup(service.Close)
+	defer close(finish)
+	preview, err := service.PreviewCleanup(t.Context(), []constants.StorageCleanupKind{caches, programs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved := service.previews[preview.ID]; len(saved.resources) != 1 || saved.resources[0] != caches {
+		t.Errorf("preview granted permission for a category with zero measured bytes: %+v", saved)
+	}
+	other, err := service.PreviewCleanup(t.Context(), []constants.StorageCleanupKind{caches})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := service.StartCleanup(preview.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	if id, err := service.StartCleanup("missing"); id != "" || !errors.Is(err, status_error.StoragePreviewExpired) {
+		t.Errorf("invalid preview returned existing run %q with error %v", id, err)
+	}
+	if id, err := service.StartCleanup(other.ID); id != "" || !errors.Is(err, status_error.StatusError(40900009705)) {
+		t.Errorf("distinct preview joined existing run %q with error %v", id, err)
+	}
+	if id, err := service.StartCleanup(preview.ID); id != run || err != nil {
+		t.Errorf("identical preview replay returned %q (%v), want %q", id, err, run)
+	}
+}
+
 type scheduledRetentionCandidates struct {
 	// emptyRetentionCandidates 提供测试不使用的读取方式。
 	emptyRetentionCandidates

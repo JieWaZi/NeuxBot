@@ -10,6 +10,7 @@ import {
 import { DesktopNotificationSettings } from "../components/desktop-notification-settings";
 import { SettingsPageFooterHost } from "../components/settings-page-footer";
 import { IntegrationBreadcrumbs } from "../components/integration-breadcrumbs";
+import { StorageBreadcrumbs } from "../components/storage-breadcrumbs";
 import { type SettingsSection } from "../settings-navigation";
 import { useTheme } from "@/shared/theme";
 import { interfaceScales, isInterfaceScale } from "@/shared/theme/appearance";
@@ -200,6 +201,7 @@ export function SettingsScene({
   onOpenRuntime,
   onRuntimeBack,
   runtimeId,
+  storageOwnerId,
   section,
   showSceneChrome = true,
 }: {
@@ -208,18 +210,15 @@ export function SettingsScene({
   onOpenRuntime?: (runtimeId: string) => void;
   onRuntimeBack?: () => void;
   runtimeId?: string;
+  storageOwnerId?: string;
   section: SettingsSection;
   showSceneChrome?: boolean;
   imIntegrationContent?: ReactNode;
   integrationBreadcrumbs?: ReactNode;
 }) {
-  const { t } = useTranslation("appSettings");
-  const sectionKey = {
-    general: "general",
-    storage: "storage",
-    agents: "runtimeEnvironments",
-    integrations: "integrations",
-  }[section];
+  const { t } = useTranslation(["appSettings", "storage"]);
+  const storagePartnerId = section === "storage" ? storageOwnerId : undefined;
+  const detailId = section === "storage" ? storagePartnerId : runtimeId;
 
   return (
     <>
@@ -228,13 +227,14 @@ export function SettingsScene({
         aria-label={t("sceneLabel")}
         className="bg-surface-scene @container/settings-scene relative z-10 flex h-full min-h-0 flex-col overflow-hidden"
       >
-        {showSceneChrome &&
-        section !== "agents" &&
-        section !== "integrations" ? (
+        {showSceneChrome && section === "general" ? (
           <SceneBreadcrumbs
             ariaLabel={t("sceneLabel")}
-            items={[{ label: t(`sections.${sectionKey}`) }]}
+            items={[{ label: t("sections.general") }]}
           />
+        ) : null}
+        {showSceneChrome && section === "storage" && !storagePartnerId ? (
+          <StorageBreadcrumbs />
         ) : null}
         {showSceneChrome && section === "integrations" ? (
           <Suspense fallback={<IntegrationBreadcrumbs />}>
@@ -244,7 +244,7 @@ export function SettingsScene({
         <SettingsPageFooterHost>
           <div
             data-slot="settings-page-viewport"
-            key={`${section}:${runtimeId ?? ""}`}
+            key={`${section}:${detailId ?? ""}`}
             className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto"
           >
             <div className="max-w-settings-content mx-auto w-full px-4 py-6 @[42.5rem]/settings-scene:px-8">
@@ -257,11 +257,19 @@ export function SettingsScene({
                         items={[{ label: t("sections.runtimeEnvironments") }]}
                       />
                     ) : null}
+                    {showSceneChrome && storagePartnerId ? (
+                      <StorageBreadcrumbs partnerTitle={t("storage:wakers")} />
+                    ) : null}
                     <SettingsLoading />
                   </>
                 }
               >
-                {section === "storage" ? <StorageSettings /> : null}
+                {section === "storage" ? (
+                  <StorageSettings
+                    partnerId={storagePartnerId}
+                    showSceneChrome={showSceneChrome}
+                  />
+                ) : null}
                 {section === "general" ? <GeneralSettings /> : null}
                 {section === "agents" ? (
                   <RuntimeEnvironmentsSection

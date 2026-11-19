@@ -108,5 +108,29 @@ func (c *chatController) IsRetentionCandidate(ctx context.Context, candidate Cha
 }
 
 func (c *chatController) ListStorageChats(ctx context.Context, ids []string) ([]models.Chat, error) {
-	return readRelatedRows[models.Chat](controllerDB(ctx, c.db), "id", "id, title, waker_id, hidden_from_waker_history, latest_sequence", ids)
+	return readRelatedRows[models.Chat](controllerDB(ctx, c.db), "id", "id, title, waker_id, hidden_from_waker_history, latest_sequence, fork_source_chat_id", ids)
+}
+
+func (c *chatController) ListRetentionBackfill(ctx context.Context, afterID string, limit int) ([]ChatRetentionCandidate, error) {
+	var rows []ChatRetentionCandidate
+	err := controllerDB(ctx, c.db).Model(&models.Chat{}).
+		Where("id > ? AND last_activity_at = 0 AND latest_sequence > 0 AND hidden_from_waker_history = 0 AND waker_id <> ''", afterID).
+		Select("id, latest_sequence").Order("id ASC").Limit(limit).Find(&rows).Error
+	if err != nil {
+		return nil, databaseError("list_chat_retention_backfill", "", err)
+	}
+	return rows, nil
+}
+
+func (c *chatController) BackfillRetentionProjection(ctx context.Context, id string, sequence, activity int64, protected bool) error {
+	result := controllerDB(ctx, c.db).Model(&models.Chat{}).
+		Where("id = ? AND latest_sequence = ? AND last_activity_at = 0", id, sequence).
+		UpdateColumns(map[string]any{"last_activity_at": activity, "retention_protected": protected})
+	if result.Error != nil {
+		return databaseError("backfill_chat_retention", id, result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return status_error.Conflict
+	}
+	return nil
 }

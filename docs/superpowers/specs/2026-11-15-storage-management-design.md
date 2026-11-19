@@ -55,17 +55,17 @@
 - [成果快照回收](../../../server/internal/chat/changes/retention.go)：保留耐久记录引用，清理无引用私有对象。
 - [账号租约](../../../server/services/aiaccount/service.go)：关闭失败仍保留原所有者。账号旧代次可能包含历史与凭据，不作为通用缓存；本次不按年龄删除。
 
-## 3. 参考 OpenBot 的范围
+## 3. 存储页的数据与操作设计
 
-截图提供总量、分类、伙伴和大对话的页面层次。代码核对使用本地 OpenBot 工作副本 `7183ebd6b0ab6f3fd9c735816fdd952836eae8f2`，另只读核对本机 OpenBot 0.67.1 的磁盘元数据。两项证据各自成立，页面版本与字节数按实际扫描时点理解。
+存储总览按占用总量、分类、伙伴和会话组织。总量回答本机用掉多少空间，伙伴和会话入口帮助定位具体文件和记录。统计有缺口时展示已知小计。列表仅展示部分条目时仍使用同一快照的总量。
 
-| 核对项   | 本地源码与磁盘证据                                                                                                                                                                                                        | NeuxBot 设计                                                                                     |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| 占用     | 概览按宿主分组，数据库及 WAL、SHM 一起计量。伙伴与聊天明细结合工作区、附件归属及消息查询。按需扫描，缓存 60 秒，同范围共享在途请求，修改后使快照失效。本机可见 `openbot.db` 及伴随文件、`provider-runtimes/` 和 `logs/`。 | 延用按需统计与页面层次，使用自己的受管根、私有目录和共享原生分片。扫描不完整与列表截断分别标记。 |
-| 手动清理 | 存储页逐类确认缓存和日志，存储文件按业务身份删除，旧程序及下载由程序所有者处理。删除对话历史另走会话用例，会复查活跃工作并处理关联附件。                                                                                  | 存储页提供可确认的资源清理与会话清理，复用各所有者的生命周期和删除恢复机制。                     |
-| 自动回收 | 程序所有者在启动、更新检查时回收超出保留窗且无人使用的旧版本，并在删除前复查使用戳。远端附件缓存只回收缓存副本。此次在存储 UI、IPC、服务端存储路由、聊天服务中未找到可配置闲置天数的会话定时删除入口。                    | 会话保留策略由 NeuxBot Core 管理，按持久化活动与所有权判断，复用已有排他删除。                   |
+| 用例 | 职责 |
+| --- | --- |
+| 统计 | Go Core 按需测量实际程序数据根与受管文件根，按归属汇总工作文件、会话和应用数据。总览、排行和文件明细共享同一代统计。 |
+| 手动清理 | 缓存、诊断日志和旧程序由各自的所有者回收。逐文件删除复核归属、版本和运行状态。删除会话复用会话的排他删除与恢复流程。 |
+| 自动保留 | Core 按已保存的保留期限判断会话的最近活动，复核保护和运行状态后清理会话专属数据。 |
 
-源码入口见 [统计与清理服务](https://github.com/nightly-labs/openbot/blob/7183ebd6b0ab6f3fd9c735816fdd952836eae8f2/src/backend/storage-usage.ts)、[存储页](https://github.com/nightly-labs/openbot/blob/7183ebd6b0ab6f3fd9c735816fdd952836eae8f2/packages/ui/src/features/files/StorageOverview.tsx)、[IPC](https://github.com/nightly-labs/openbot/blob/7183ebd6b0ab6f3fd9c735816fdd952836eae8f2/src/main/ipc/storage-handlers.ts)、[宿主目录装配](https://github.com/nightly-labs/openbot/blob/7183ebd6b0ab6f3fd9c735816fdd952836eae8f2/src/main/application-services.ts)、[程序回收](https://github.com/nightly-labs/openbot/blob/7183ebd6b0ab6f3fd9c735816fdd952836eae8f2/src/main/provider-runtime-manager.ts)、[附件缓存](https://github.com/nightly-labs/openbot/blob/7183ebd6b0ab6f3fd9c735816fdd952836eae8f2/src/main/remote-attachment-cache.ts)和[会话历史删除](https://github.com/nightly-labs/openbot/blob/7183ebd6b0ab6f3fd9c735816fdd952836eae8f2/src/backend/agent-service.ts)。
+模块入口为 [存储统计服务](../../../server/services/storage/usage.go)、[设置存储页](../../../packages/frontend/src/modules/settings/components/storage-settings.tsx)和[资源清理服务](../../../server/services/storage/maintenance.go)。
 
 ## 4. 目录清单与计量归属
 

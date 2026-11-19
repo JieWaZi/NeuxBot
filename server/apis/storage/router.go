@@ -9,6 +9,8 @@ var Router = ginx.NewRouter(ginx.Group("/storage"))
 func init() {
 	Router.Register(&GetStorageUsage{})
 	Router.Register(&ListStorageEntities{})
+	Router.Register(&ListStorageFiles{})
+	Router.Register(&DeleteStorageFile{})
 	Router.Register(&GetStoragePolicy{})
 	Router.Register(&UpdateStoragePolicy{})
 	Router.Register(&GetStorageMaintenance{})

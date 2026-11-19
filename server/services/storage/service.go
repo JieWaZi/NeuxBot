@@ -57,6 +57,10 @@ type Config struct {
 	DeleteExpired DeleteExpiredChat
 	// Cleanup 是有权限执行的固定类别。
 	Cleanup map[constants.StorageCleanupKind]CleanupOwner
+	// CheckFileIdle 核对原执行所有者的占用。调用者先持有伙伴和会话操作门。
+	CheckFileIdle func(context.Context, string, string) error
+	// InheritedAttachments 为旧分叉提供权威附件归属证明。
+	InheritedAttachments filesystem.InheritedAttachments
 	// Events 是唯一 Core 事件发布方。
 	Events events.Publisher
 	// Now 读取 Core 当前时间。
@@ -95,6 +99,8 @@ type Service struct {
 	previews map[string]preview
 	// current 是当前维护，最多一项。
 	current *Run
+	// currentPreviewID 允许正在运行时重放同一个已接纳确认。
+	currentPreviewID string
 	// revision 是当前进程的维护事件顺序。
 	revision uint64
 	// generation 在清理和重新测量后淘汰旧读取。
