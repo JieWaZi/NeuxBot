@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 )
@@ -32,8 +31,6 @@ type SourceState struct {
 type storedIndex struct {
 	// 上次核验成功的完整目录
 	Content json.RawMessage `json:"content"`
-	// Asset 区分默认来源下完整版目录与兼容目录，条件请求只复用同一份资产的验证器。
-	Asset string `json:"asset,omitempty"`
 	// 上游内容实体标识
 	ETag string `json:"etag,omitempty"`
 	// 上游内容修改时间
@@ -113,7 +110,7 @@ var remoteIndexes sync.Map
 // Start 注册已有轻索引并后台更新，归档独立预取，关闭时取消并等待全部工作。
 func Start(ctx context.Context, source, directory string, changed func()) func() {
 	ctx, cancel := context.WithCancel(ctx)
-	index := newRemoteIndex(ctx, source, cacheFilename(directory, catalogAsset(source)), changed)
+	index := newRemoteIndex(ctx, source, cacheFilename(directory, source), changed)
 	index.assets = true
 	remoteIndexes.Store(source, index)
 	index.startRefresh()
@@ -135,28 +132,16 @@ func cacheFilename(directory, source string) string {
 	return filepath.Join(directory, "catalog", hex.EncodeToString(sum[:])+".json")
 }
 
-func catalogAsset(source string) string {
-	if source == constants.PluginCatalogHTTPSource {
-		return constants.PluginCatalogFullHTTPSource
-	}
-	return source
-}
-
 func indexCache(source string) string {
 	if value, ok := remoteIndexes.Load(source); ok {
 		return value.(*remoteIndex).filename
 	}
-	return cacheFilename(filepath.Join(os.TempDir(), "neuxbot-plugin-catalog"), catalogAsset(source))
+	return cacheFilename(filepath.Join(os.TempDir(), "neuxbot-plugin-catalog"), source)
 }
 
 func newRemoteIndex(ctx context.Context, source, filename string, changed func()) *remoteIndex {
 	index := &remoteIndex{directory: filepath.Dir(filepath.Dir(filename)), ctx: ctx, source: source, filename: filename, recoveryGate: make(chan struct{}, 1), done: make(chan struct{}), changed: changed, state: SourceState{State: "unavailable"}}
-	asset := catalogAsset(source)
-	index.snapshot = readIndexSnapshot(filename, asset, source)
-	if len(index.snapshot.Content) == 0 && asset != source {
-		// 仅以只读方式加载旧版缓存，旧客户端继续维护自己的文件。
-		index.snapshot = readIndexSnapshot(cacheFilename(index.directory, source), source, source)
-	}
+	index.snapshot = readIndexSnapshot(filename)
 	if len(index.snapshot.Content) != 0 {
 		index.state = SourceState{State: "cached", FetchedAt: index.snapshot.FetchedAt}
 	}
@@ -171,19 +156,13 @@ func newRemoteIndex(ctx context.Context, source, filename string, changed func()
 	return index
 }
 
-func readIndexSnapshot(filename, asset, logicalSource string) storedIndex {
+func readIndexSnapshot(filename string) storedIndex {
 	data, err := os.ReadFile(filename)
 	if err != nil || len(data) > 5*1024*1024 {
 		return storedIndex{}
 	}
 	var snapshot storedIndex
 	if json.Unmarshal(data, &snapshot) != nil || len(snapshot.Content) == 0 {
-		return storedIndex{}
-	}
-	if snapshot.Asset == "" {
-		snapshot.Asset = asset
-	}
-	if snapshot.Asset != asset && snapshot.Asset != logicalSource {
 		return storedIndex{}
 	}
 	if _, err := parseIndex(snapshot.Content); err != nil {
@@ -445,15 +424,7 @@ func (index *remoteIndex) fetch(ctx context.Context) error {
 		}
 		next.Content = raw
 	} else {
-		asset := catalogAsset(index.source)
-		allowFallback := asset != index.source && next.Asset != asset
-		requestCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-		defer cancel()
-		client := &http.Client{Timeout: 15 * time.Second}
-		downloaded, absent, err := fetchIndexAsset(requestCtx, client, asset, next)
-		if absent && allowFallback {
-			downloaded, _, err = fetchIndexAsset(requestCtx, client, index.source, next)
-		}
+		downloaded, err := fetchRemoteIndex(ctx, index.source, next)
 		if err != nil {
 			return fail(err)
 		}
@@ -463,11 +434,7 @@ func (index *remoteIndex) fetch(ctx context.Context) error {
 		return fail(status_error.PluginDistributionUnavailable)
 	}
 	next.FetchedAt = time.Now().UnixMilli()
-	persisted := next
-	if index.source != constants.PluginCatalogHTTPSource {
-		persisted.Asset = ""
-	}
-	if err := index.save(persisted); err != nil {
+	if err := index.save(next); err != nil {
 		logx.Warnf("persist plugin catalog failed: error=%v", err)
 		return fail(status_error.PluginStorageError)
 	}
@@ -483,14 +450,11 @@ func (index *remoteIndex) fetch(ctx context.Context) error {
 	return nil
 }
 
-// fetchIndexAsset 返回同一资产的新快照，并单独标记能触发兼容读取的 404。
-func fetchIndexAsset(ctx context.Context, client *http.Client, asset string, next storedIndex) (storedIndex, bool, error) {
-	if next.Asset != asset {
-		next = storedIndex{Asset: asset}
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, asset, nil)
+// fetchRemoteIndex 用同一来源的验证器读取已校验的目录快照。
+func fetchRemoteIndex(ctx context.Context, source string, next storedIndex) (storedIndex, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
 	if err != nil {
-		return storedIndex{}, false, status_error.PluginContentInvalid
+		return storedIndex{}, status_error.PluginContentInvalid
 	}
 	if next.ETag != "" {
 		request.Header.Set("If-None-Match", next.ETag)
@@ -498,35 +462,36 @@ func fetchIndexAsset(ctx context.Context, client *http.Client, asset string, nex
 	if next.LastModified != "" {
 		request.Header.Set("If-Modified-Since", next.LastModified)
 	}
+	client := &http.Client{Timeout: 15 * time.Second}
 	started := time.Now()
 	response, err := client.Do(request)
 	if err != nil {
-		logDistributionFailure("index_get", "", asset, response, started, err)
-		return storedIndex{}, false, status_error.PluginDistributionUnavailable
+		logDistributionFailure("index_get", "", source, response, started, err)
+		return storedIndex{}, status_error.PluginDistributionUnavailable
 	}
 	defer response.Body.Close()
 	switch response.StatusCode {
 	case http.StatusNotModified:
 		if len(next.Content) == 0 {
-			return storedIndex{}, false, status_error.PluginContentInvalid
+			return storedIndex{}, status_error.PluginContentInvalid
 		}
 	case http.StatusOK:
 		data, err := io.ReadAll(io.LimitReader(response.Body, 4*1024*1024+1))
 		if err != nil {
-			logDistributionFailure("index_body", "", asset, response, started, err)
-			return storedIndex{}, false, status_error.PluginDistributionUnavailable
+			logDistributionFailure("index_body", "", source, response, started, err)
+			return storedIndex{}, status_error.PluginDistributionUnavailable
 		}
 		if _, err := parseIndex(data); err != nil {
-			return storedIndex{}, false, err
+			return storedIndex{}, err
 		}
 		next.Content = data
 		next.ETag = response.Header.Get("ETag")
 		next.LastModified = response.Header.Get("Last-Modified")
 	default:
-		logDistributionFailure("index_status", "", asset, response, started, nil)
-		return storedIndex{}, response.StatusCode == http.StatusNotFound, status_error.PluginDistributionUnavailable
+		logDistributionFailure("index_status", "", source, response, started, nil)
+		return storedIndex{}, status_error.PluginDistributionUnavailable
 	}
-	return next, false, nil
+	return next, nil
 }
 
 func (index *remoteIndex) save(next storedIndex) error {

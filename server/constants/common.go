@@ -762,10 +762,8 @@ const (
 	PluginLocaleEnglish = "en"
 	// PluginLocaleChinese 是插件简体中文展示与文档语言。
 	PluginLocaleChinese = "zh-CN"
-	// PluginCatalogHTTPSource 是默认插件目录的稳定来源身份及旧版分发地址。
+	// PluginCatalogHTTPSource 是默认插件目录的稳定来源身份和分发地址。
 	PluginCatalogHTTPSource = "https://github.com/JieWaZi/neux-plugins/releases/latest/download/catalog.json"
-	// PluginCatalogFullHTTPSource 是 Core 首选的完整插件目录分发地址。
-	PluginCatalogFullHTTPSource = "https://github.com/JieWaZi/neux-plugins/releases/latest/download/catalog-v2.json"
 	// PluginAuthCommandStrategy 是包内授权桥接策略。
 	PluginAuthCommandStrategy = "plugin-command"
 	// PluginAuthHostedStrategy 是 Core 管理的托管 MCP OAuth 授权策略。

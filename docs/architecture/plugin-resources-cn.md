@@ -20,7 +20,7 @@
 
 自有目录安装包先解包到受管暂存区，来源与完整摘要绑定；摘要使用带长度的路径记录和逐文件摘要，内容不能伪造另一条文件边界。准备时复验相同快照，再写入按完整摘要寻址的内容目录。清单中的 repository 只是作者声明，目录包身份来自经核验的分发目录项，不接受用户路径或任意插件暂存令牌新增目录资源。本地技能封装只接收既有技能扫描批次及其中的候选标识，复用原批次完整性校验。
 
-默认软件目录使用独立插件仓库的 [完整目录](https://github.com/JieWaZi/neux-plugins/releases/latest/download/catalog-v2.json)，来源身份仍为 `catalog:<key>`。旧版 Core 读取 [兼容目录](https://github.com/JieWaZi/neux-plugins/releases/latest/download/catalog.json)，其中的包可由旧版解析。新 Core 仅在完整目录返回 404 且还未取得完整快照时读取兼容目录。两份目录的 HTTP 验证器按发布文件区分，旧 Core 的持久快照只用于迁移时的离线读取。完整快照同步失败时保留最近可用内容。
+独立插件仓库通过 [catalog.json](https://github.com/JieWaZi/neux-plugins/releases/latest/download/catalog.json) 发布默认软件目录。默认条目的来源身份为 `catalog:<key>`，已有持久快照和 HTTP 验证器继续按同一来源读取。同步失败时保留最近可用快照。
 
 Core 从外部轻索引读取名称、图标、简介和固定下载绑定，不在 Go 或应用资源中预置插件目录、详情或完整包。首次启动无缓存时需成功读取来源。离线展示持久缓存和已安装内容。自定义 HTTP 镜像或本地目录由 `NEUXBOT_PLUGIN_CATALOG_URL` 明确选择，保持独立来源身份。
 
@@ -104,7 +104,7 @@ STDIO 配置经过 Core 的无协议转换启动模式设置 cwd，保持原始 
 
 ### 托管 MCP OAuth
 
-单个公开 HTTPS Streamable HTTP MCP 可在 `mcp.json` 的服务声明中使用 `extensions.com.openai.auth.type: oauth`。该包不包含技能、包内授权驱动或配置。目录详情和安装包提供同一授权摘要 `mcp-oauth`，走现有共享账号和授权窗口。Notion 与 Linear 首先采用此声明，各自独立发版。
+单个公开 HTTPS Streamable HTTP MCP 可在 `mcp.json` 的服务声明中使用 `extensions.com.openai.auth.type: oauth`。该包不包含技能、包内授权驱动或配置。目录详情和安装包提供同一授权摘要 `mcp-oauth`，走现有共享账号和授权窗口。查看此类插件的公开详情、安装和授权均需要支持托管 MCP OAuth 的 Core。Notion 与 Linear 首先采用此声明，各自独立发版。
 
 更新保留相同 MCP 地址的托管授权。切换托管授权方式或地址时，用户确认更新全部伙伴，Core 在共享账号空闲时同时更新所有固定版本并清除旧授权，伙伴启停状态随原安装保留。转为托管 OAuth 时，同一事务清除旧包配置；新版本需要账号时，用户在更新后从插件详情连接。切换失败保留原安装、配置和账号。
 
