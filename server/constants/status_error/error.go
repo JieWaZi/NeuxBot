@@ -757,6 +757,12 @@ const (
 	// @errZH 插件所需程序暂时无法准备，请检查网络后重试
 	// @errEN required plugin dependencies could not be prepared; check the network and retry
 	PluginDependencyUnavailable StatusError = http.StatusBadGateway*1e8 + 6503
+	// @errZH 无法连接插件授权服务，请稍后重试
+	// @errEN unable to reach the plugin authorization service; try again later
+	PluginOAuthServiceUnavailable StatusError = http.StatusBadGateway*1e8 + 6504
+	// @errZH 插件服务未提供可读取的授权元数据
+	// @errEN the plugin service did not provide readable authorization metadata
+	PluginOAuthMetadataUnavailable StatusError = http.StatusBadGateway*1e8 + 6505
 	// @errZH 技能声明名称相同但内容不同，请调整已启用的技能或插件
 	// @errEN skills with the same declared name have different content
 	PluginSkillConflict StatusError = http.StatusConflict*1e8 + 6504

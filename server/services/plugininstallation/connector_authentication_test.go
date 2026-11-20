@@ -83,7 +83,7 @@ func TestStageOneAccountMaterialLifecycleAndRestart(t *testing.T) {
 	owner := New(Config{Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB)), DataDirectory: data, Bridges: registry, BridgeEnvironment: os.Environ(), Store: store})
 	config := models.PluginConfiguration{PluginID: "p"}
 	account := models.PluginAccount{PluginID: "p"}
-	release, err := owner.PrepareVersions(ctx, []models.PluginVersion{version, second}, &config, &account)
+	release, err := owner.PrepareVersions(ctx, []models.PluginVersion{version, second}, &config, &account, false)
 	if err != nil {
 		t.Fatal(err)
 	}

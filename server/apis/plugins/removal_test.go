@@ -44,7 +44,11 @@ type removalAuthFixture struct {
 type removalDriver struct {
 	// fixture 是受控的外部账号状态。
 	fixture *removalAuthFixture
+	// operation 固定生产注册表选择的版本和代次。
+	operation commandbridge.OperationContext
 }
+
+func (d removalDriver) OperationContext() commandbridge.OperationContext { return d.operation }
 
 func (d removalDriver) Status(context.Context, bool) (authorization.Account, error) {
 	return authorization.Account{Configured: true, Available: d.fixture.available.Load(), ID: "fixture-user", Scopes: []string{"read"}}, nil
@@ -101,11 +105,12 @@ func removalPlugin(t *testing.T, ctx *gin.Context, name string, fixture *removal
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture.auth, _, err = installationService().Bridge(context.Background(), version)
+	owner, bridge, err := installationService().Bridge(context.Background(), version)
+	fixture.auth = owner
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := fixture.auth.ReplaceDriver(removalDriver{fixture: fixture}); err != nil {
+	if err := fixture.auth.ReplaceDriver(removalDriver{fixture: fixture, operation: bridge.OperationContext()}); err != nil {
 		t.Fatal(err)
 	}
 	return detail

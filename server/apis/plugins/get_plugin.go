@@ -47,26 +47,26 @@ func (o *GetPlugin) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
+	// 不受支持的保留版本只提供管理事实，不尝试读取或重解析包内容。
+	if result.PackageStatus == constants.PluginPackageStatusAvailable {
+		for index, version := range states[resource.ID].Versions {
+			if version.ID != result.ResolvedVersionID {
+				continue
+			}
+			source, release, readErr := acquirePluginPresentation(version)
+			if readErr != nil {
+				return nil, ginx.WithStack(readErr)
+			}
+			parsed, readErr := packageplugin.LocalizeReadme(source, version.Package, o.Locale)
+			release()
+			if readErr != nil {
+				return nil, ginx.WithStack(readErr)
+			}
+			result.Versions[index].Package = parsed.Public()
+			break
+		}
+	}
 	entries, source := catalog.Snapshot(global.PluginCatalogSource())
 	applyPluginUpdate(&result, entries, source)
-	// 不受支持的保留版本只提供管理事实，不尝试读取或重解析包内容。
-	if result.PackageStatus != constants.PluginPackageStatusAvailable {
-		return result, nil
-	}
-	for index, version := range states[resource.ID].Versions {
-		if version.ID != result.ResolvedVersionID {
-			continue
-		}
-		source, release, readErr := acquirePluginPresentation(version)
-		if readErr != nil {
-			return nil, ginx.WithStack(readErr)
-		}
-		parsed, readErr := packageplugin.LocalizeReadme(source, version.Package, o.Locale)
-		release()
-		if readErr != nil {
-			return nil, ginx.WithStack(readErr)
-		}
-		result.Versions[index].Package = parsed.Public()
-	}
 	return result, nil
 }

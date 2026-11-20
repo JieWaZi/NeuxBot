@@ -1476,9 +1476,6 @@ function ChatView({
       composerConnectorsError: connectorsQuery.isError,
       composerFileRoots: fileRoots,
       availableSkillIds: availableSkillIDs,
-      availablePluginIds: pluginsQuery.data
-        ? new Set(enabledPlugins.map((plugin) => plugin.id))
-        : undefined,
       availableConnectorIds: availableConnectorIDs,
       selectedSkillIds: selectedSkillIDs,
       selectedConnectorIds: selectedConnectorIDs,

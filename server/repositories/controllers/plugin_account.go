@@ -22,7 +22,7 @@ func (c *pluginController) AccountGeneration(ctx context.Context, id string) (in
 func (c *pluginController) Account(ctx context.Context, id string) (models.PluginAccount, error) {
 	account := models.PluginAccount{PluginID: id}
 	db := controllerDB(ctx, c.db)
-	if err := db.Where("plugin_id = ?", id).Limit(1).Find(&account).Error; err != nil {
+	if err := db.Select("plugin_id", "generation", "delivery_materials", "updated_at").Where("plugin_id = ?", id).Limit(1).Find(&account).Error; err != nil {
 		return account, databaseError("read_plugin_account", id, err)
 	}
 	if len(account.DeliveryMaterials) > 0 {

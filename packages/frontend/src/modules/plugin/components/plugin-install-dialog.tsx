@@ -12,7 +12,7 @@ import {
   useEffectEvent,
   useRef,
 } from "react";
-import { LoaderCircle, Plus } from "lucide-react";
+import { Link2, LoaderCircle, Plus } from "lucide-react";
 import type {
   GetPluginAuthorizationResponse,
   StartPluginAuthorizationResponse,
@@ -57,6 +57,7 @@ import { pluginAccountContext } from "../model/plugin-account-context";
 import { PartnerPicker } from "./partner-picker";
 import { PluginIcon } from "./plugin-icon";
 import { PluginAuthPanel } from "./plugin-auth-panel";
+import { openNewAuthorizationPage } from "./plugin-authorization-dialog";
 import { PluginConfigurationEditor } from "./plugin-configuration-editor";
 
 import type { PluginBrowseEntry } from "../model/plugin-browse";
@@ -236,6 +237,12 @@ export function PluginInstallDialog({
         session,
       };
       if (!alive.current) await cancelAttempt();
+      else if (session.id && session.id !== state?.data?.session?.id) {
+        const target = current.versions?.find(
+          (version) => version.id === selectedVersion,
+        )?.package;
+        openNewAuthorizationPage(session, pluginPreferredAuthAction(target));
+      }
     } finally {
       if (alive.current) setStartingAuthorization(false);
     }
@@ -487,12 +494,15 @@ export function PluginInstallDialog({
   const complete = authorizeOnly
     ? phase === "authorization" && Boolean(detail?.account?.available)
     : Boolean(results?.length && results.every((item) => item.installed));
+  const authorizing = phase === "authorization" && !complete;
   const error =
     resumeError ??
     prepare.error ??
     authorization.error ??
     cancellation.error ??
     install.error;
+  const showAuthorization =
+    phase === "authorization" && Boolean(pluginId && version?.id) && !results;
   return (
     <Dialog
       open
@@ -501,17 +511,17 @@ export function PluginInstallDialog({
       }}
     >
       <DialogContent
-        size="md"
+        size={authorizing ? "sm" : "md"}
         headingLayout="centered"
         title={t(
-          authorizeOnly || (phase === "authorization" && !complete)
-            ? "authorizeNamed"
-            : "installNamed",
+          authorizeOnly || authorizing ? "authorizeNamed" : "installNamed",
           {
             name: pluginDisplayName(pkg, detail?.plugin?.name ?? preview?.name),
           },
         )}
-        description={pluginSummary(pkg, preview?.description)}
+        description={
+          authorizing ? undefined : pluginSummary(pkg, preview?.description)
+        }
         visual={
           <div className="flex items-center gap-5 pb-2">
             <span className="bg-surface-subtle grid size-14 place-items-center rounded-lg">
@@ -526,7 +536,17 @@ export function PluginInstallDialog({
                 className="hidden size-10 dark:block"
               />
             </span>
-            <Plus className="size-icon-lg text-content-caption" />
+            {authorizing ? (
+              <Link2
+                aria-hidden="true"
+                className="size-icon-lg text-content-caption"
+              />
+            ) : (
+              <Plus
+                aria-hidden="true"
+                className="size-icon-lg text-content-caption"
+              />
+            )}
             <PluginIcon
               pkg={pkg}
               icon={pkg ? undefined : preview?.icon}
@@ -587,7 +607,7 @@ export function PluginInstallDialog({
                   </Button>
                 </div>
               ) : null}
-              {catalogRead?.error && (
+              {catalogRead?.error && !showAuthorization && (
                 <StatusNotice
                   role="alert"
                   className="flex flex-wrap items-center gap-3"
@@ -605,30 +625,31 @@ export function PluginInstallDialog({
                   </Button>
                 </StatusNotice>
               )}
-              {query.isError && (
+              {query.isError && !showAuthorization && (
                 <QueryState
                   error={query.error}
                   onRetry={() => void query.refetch()}
                 />
               )}
-              {phase === "authorization" &&
-                pluginId &&
-                version?.id &&
-                !results && (
-                  <PluginAuthPanel
-                    preferredAction={pluginPreferredAuthAction(pkg)}
-                    installation
-                    starting={startingAuthorization || cancellation.isPending}
-                    pluginId={pluginId}
-                    wakerId={wakerId}
-                    versionId={version?.id}
-                    onRestart={restartAuthorization}
-                    onReady={() => {
-                      attempt.current = null;
-                      void resume();
-                    }}
-                  />
-                )}
+              {showAuthorization && version?.id && (
+                <PluginAuthPanel
+                  preferredAction={pluginPreferredAuthAction(pkg)}
+                  installation
+                  starting={startingAuthorization || cancellation.isPending}
+                  operationError={error}
+                  detailError={query.error}
+                  detailRefreshing={query.isFetching}
+                  onRetryDetail={() => void query.refetch()}
+                  pluginId={pluginId}
+                  wakerId={wakerId}
+                  versionId={version?.id}
+                  onRestart={restartAuthorization}
+                  onReady={() => {
+                    attempt.current = null;
+                    void resume();
+                  }}
+                />
+              )}
               {phase === "configuration" && detail && (
                 <PluginConfigurationEditor
                   detail={detail}
@@ -653,7 +674,7 @@ export function PluginInstallDialog({
               </p>
             </section>
           )}
-          {error && (
+          {error && (!showAuthorization || complete) && (
             <p role="alert" className="type-body text-destructive">
               {localApiErrorMessage(error, t("failed"))}
             </p>

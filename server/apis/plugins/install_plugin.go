@@ -64,7 +64,7 @@ func (o *InstallPlugin) Output(ctx *gin.Context) (interface{}, error) {
 	if config.Revision != o.Body.ExpectedConfigurationRevision {
 		return nil, ginx.WithStack(status_error.PluginConfigurationConflict)
 	}
-	release, err := prepareInstallationVersions(ctx, []models.PluginVersion{version}, &config, &account)
+	release, err := prepareInstallationVersions(ctx, []models.PluginVersion{version}, &config, &account, false)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
@@ -115,6 +115,9 @@ func (o *InstallPlugin) Output(ctx *gin.Context) (interface{}, error) {
 			}
 			if current.Revision != config.Revision {
 				return status_error.PluginConfigurationConflict
+			}
+			if err := installationService().ValidateAuthorizationBinding(txctx, version); err != nil {
+				return err
 			}
 			return store.Install(txctx, models.WakerPlugin{ID: util.New(), WakerID: waker, PluginID: resource.ID, VersionID: version.ID, Enabled: true})
 		})

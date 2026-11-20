@@ -2316,6 +2316,32 @@ export const statusErrorCatalog = {
       },
     ],
   },
+  PluginOAuthMetadataUnavailable: {
+    code: 50200006505,
+    en: [
+      {
+        text: "the plugin service did not provide readable authorization metadata",
+      },
+    ],
+    zh: [
+      {
+        text: "插件服务未提供可读取的授权元数据",
+      },
+    ],
+  },
+  PluginOAuthServiceUnavailable: {
+    code: 50200006504,
+    en: [
+      {
+        text: "unable to reach the plugin authorization service; try again later",
+      },
+    ],
+    zh: [
+      {
+        text: "无法连接插件授权服务，请稍后重试",
+      },
+    ],
+  },
   PluginPackageUnsupported: {
     code: 42200006502,
     en: [

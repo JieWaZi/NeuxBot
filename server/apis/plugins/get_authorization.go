@@ -2,6 +2,8 @@ package plugins
 
 import (
 	"context"
+	"path/filepath"
+
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
@@ -11,7 +13,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
-	"path/filepath"
 )
 
 // 插件共享账号
@@ -44,7 +45,27 @@ func cachedAccount(ctx *gin.Context, id, waker, versionID string) (PluginAuthori
 		result, version, err = readCachedAccount(txctx, id, waker, versionID)
 		return err
 	})
-	return result, version, err
+	if err != nil || version.Package.Integration.Authentication == nil {
+		return result, version, err
+	}
+	account, session, uses := cachedAuthorization(version, result.ConfigurationRevision, result.AccountGeneration)
+	if _, hosted := version.Package.HostedOAuthServer(); hosted {
+		result.Account.CheckedAt = account.CheckedAt
+	} else {
+		result.Account = account
+	}
+	result.Session, result.ActiveUses = session, uses
+	if result.Account.CheckedAt > 0 || (result.Provider == constants.PluginAuthHostedStrategy && len(result.Account.Scopes) > 0) {
+		for _, scope := range result.RequiredScopes {
+			if !containsScope(result.Account.Scopes, scope) {
+				result.MissingScopes = append(result.MissingScopes, scope)
+			}
+		}
+		if len(result.MissingScopes) > 0 {
+			result.Account.Available = false
+		}
+	}
+	return result, version, nil
 }
 
 func readCachedAccount(ctx context.Context, id, waker, versionID string) (PluginAuthorizationResponse, models.PluginVersion, error) {
@@ -74,23 +95,43 @@ func readCachedAccount(ctx context.Context, id, waker, versionID string) (Plugin
 	result.ConfigurationRevision = revision
 	result.AccountGeneration = generation
 	if declaration := version.Package.Integration.Authentication; declaration != nil {
+		result.Provider = declaration.Strategy
 		result.RequiredScopes = append(result.RequiredScopes, declaration.Scopes...)
-		if global.PluginBridges != nil {
-			result.Account, result.Session, result.ActiveUses = global.PluginBridges.CachedAuthorization(id, version.Digest+":"+filepath.ToSlash(version.Package.SourcePath), commandbridge.OperationContext{PluginID: id, VersionID: version.ID, Digest: version.Digest, ConfigurationRevision: revision, AccountGeneration: generation})
-		}
-		if result.Account.CheckedAt > 0 {
-			for _, scope := range result.RequiredScopes {
-				if !containsScope(result.Account.Scopes, scope) {
-					result.MissingScopes = append(result.MissingScopes, scope)
-				}
-			}
-			if len(result.MissingScopes) > 0 {
-				result.Account.Available = false
-			}
+		if _, hosted := version.Package.HostedOAuthServer(); hosted {
+			result.Account, err = installationService().HostedAccount(ctx, version)
 		}
 	}
-	return result, version, nil
+	return result, version, err
 }
+
+// cachedAuthorization 必须在事务外读取进程内会话，退出操作可能持有身份锁并提交数据库写入。
+func cachedAuthorization(version models.PluginVersion, revision, generation int64) (authorization.Account, authorization.Session, []authorization.Usage) {
+	account, session, uses := authorization.Account{Scopes: []string{}}, authorization.Session{}, []authorization.Usage{}
+	if global.PluginBridges != nil {
+		account, session, uses = global.PluginBridges.CachedAuthorization(version.PluginID, version.Digest+":"+filepath.ToSlash(version.Package.SourcePath), commandbridge.OperationContext{
+			PluginID: version.PluginID, VersionID: version.ID, Digest: version.Digest,
+			ConfigurationRevision: revision, AccountGeneration: generation,
+		})
+		if _, hosted := version.Package.HostedOAuthServer(); hosted {
+			uses = global.PluginBridges.IdentityUsages(version.PluginID)
+		}
+	}
+	return account, session, uses
+}
+
+func authorizationProjection(ctx context.Context, version models.PluginVersion, revision, generation int64) (authorization.Account, authorization.Session, []authorization.Usage, error) {
+	account, session, uses := cachedAuthorization(version, revision, generation)
+	if _, hosted := version.Package.HostedOAuthServer(); hosted {
+		current, err := installationService().HostedAccount(ctx, version)
+		if err != nil {
+			return account, session, uses, err
+		}
+		current.CheckedAt = account.CheckedAt
+		account = current
+	}
+	return account, session, uses, nil
+}
+
 func containsScope(scopes []string, scope string) bool {
 	for _, candidate := range scopes {
 		if candidate == scope {

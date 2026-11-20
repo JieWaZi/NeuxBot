@@ -14,7 +14,6 @@ import (
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
-	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/plugininstallation"
 	"golang.org/x/mod/semver"
@@ -90,8 +89,12 @@ func detailFromState(ctx context.Context, resource models.Plugin, state models.P
 		return result, nil
 	}
 	result.PackageStatus = constants.PluginPackageStatusAvailable
-	if global.PluginBridges != nil && version.Package.Integration.Authentication != nil {
-		result.Account, _, _ = global.PluginBridges.CachedAuthorization(resource.ID, version.Digest+":"+filepath.ToSlash(version.Package.SourcePath), commandbridge.OperationContext{PluginID: resource.ID, VersionID: version.ID, Digest: version.Digest, ConfigurationRevision: config.Revision, AccountGeneration: state.Account.Generation})
+	if version.Package.Integration.Authentication != nil {
+		account, _, _, err := authorizationProjection(ctx, version, config.Revision, state.Account.Generation)
+		if err != nil {
+			return result, err
+		}
+		result.Account = account
 	}
 
 	return result, nil
@@ -116,7 +119,7 @@ func publicCatalogEntry(entry catalog.Entry) PluginCatalogEntryResponse {
 }
 func stagedRoot() string { return filepath.Join(global.Config.DataDirectory, "plugins", "staging") }
 func installationService() *plugininstallation.Service {
-	return plugininstallation.New(plugininstallation.Config{Transactions: global.TransactionControllerManager, Contents: global.PluginContents, DataDirectory: global.Config.DataDirectory, Bridges: global.PluginBridges, BridgeEnvironment: global.PluginBridgeEnvironment, Store: global.PluginControllerManager, CloseIdlePlugin: closeIdlePlugin})
+	return plugininstallation.New(plugininstallation.Config{Transactions: global.TransactionControllerManager, Contents: global.PluginContents, DataDirectory: global.Config.DataDirectory, Bridges: global.PluginBridges, HostedOAuth: global.PluginHostedOAuth, BridgeEnvironment: global.PluginBridgeEnvironment, Store: global.PluginControllerManager, CloseIdlePlugin: closeIdlePlugin})
 }
 
 func listPluginResources(ctx context.Context, waker, query string, page, size int) (ListPluginsResponse, error) {
@@ -178,13 +181,21 @@ func listPluginResources(ctx context.Context, waker, query string, page, size in
 	return result, nil
 }
 
-// applyPluginUpdate 仅从同来源目录和真实伙伴安装派生更新，不读取包文件或变更安装。
+// applyPluginUpdate 从同来源目录投影展示图标，并按真实伙伴安装派生更新。
 func applyPluginUpdate(detail *PluginDetailResponse, entries []catalog.Entry, source catalog.SourceState) {
 	detail.CatalogSource = source
 	detail.Update = PluginUpdateResponse{WakerIDs: []string{}}
 	for _, entry := range entries {
-		if entry.SourceKey != detail.Plugin.SourceKey {
+		if entry.SourceKey == "" || entry.SourceKey != detail.Plugin.SourceKey {
 			continue
+		}
+		for index := range detail.Versions {
+			version := &detail.Versions[index]
+			pkg := &version.Package
+			if useCatalogDisplayIcon(detail.Plugin.SourceKey, version.Version, pkg.Icon, pkg.Presentation.Icons, entry) {
+				pkg.Icon = entry.Package.Icon
+				pkg.Presentation.Icons = entry.Package.Presentation.Icons
+			}
 		}
 		target := normalizedPluginVersion(entry.Package.Manifest.Version)
 		if !semver.IsValid(target) {
@@ -214,6 +225,20 @@ func applyPluginUpdate(detail *PluginDetailResponse, entries []catalog.Entry, so
 		}
 		return
 	}
+}
+
+// useCatalogDisplayIcon 只更新展示图标，版本身份与包内容仍由固定版本提供。
+func useCatalogDisplayIcon(sourceKey, version, icon string, icons packageplugin.ThemeValues, entry catalog.Entry) bool {
+	if sourceKey == "" || sourceKey != entry.SourceKey ||
+		(entry.Package.Icon == "" && entry.Package.Presentation.Icons == (packageplugin.ThemeValues{})) {
+		return false
+	}
+	if icon == "" && icons == (packageplugin.ThemeValues{}) {
+		return true
+	}
+	current := normalizedPluginVersion(version)
+	target := normalizedPluginVersion(entry.Package.Manifest.Version)
+	return semver.IsValid(current) && semver.IsValid(target) && semver.Compare(target, current) > 0
 }
 
 func normalizedPluginVersion(version string) string {

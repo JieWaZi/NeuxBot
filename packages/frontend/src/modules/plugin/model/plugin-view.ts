@@ -41,14 +41,15 @@ export function pluginExplanation(
 export function resourceCategory(value: string | null): ResourceCategory {
   return value === "skills" || value === "connectors" ? value : "plugins";
 }
-/** 仅宿主支持的包内桥接声明提供共享授权。 */
+/** 宿主统一呈现命令桥接和托管 MCP 登录。 */
 export function pluginHasAuthorization(
   pkg: PluginCatalogEntry["package"],
 ): boolean {
   const authentication = pkg?.integration?.authentication;
   return (
-    authentication?.strategy === "plugin-command" &&
-    authentication.protocol === "neuxbot-auth/1"
+    authentication?.protocol === "neuxbot-auth/1" &&
+    (authentication.strategy === "plugin-command" ||
+      authentication.strategy === "mcp-oauth")
   );
 }
 

@@ -135,10 +135,14 @@ func (o *BrowsePlugins) Output(ctx *gin.Context) (interface{}, error) {
 	}
 	result := BrowsePluginsResponse{CatalogSource: source, Entries: []PluginBrowseEntry{}, PageNum: o.PageNum, PageSize: o.PageSize}
 	offset := (o.PageNum - 1) * o.PageSize
+	var resources []models.Plugin
+	var states map[string]models.PluginBrowseState
 	err := global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
 		result.Entries = []PluginBrowseEntry{}
 		result.TotalSize = nil
-		resources, installedTotal, err := global.PluginControllerManager.BrowseInstalled(txctx, o.Query, offset, o.PageSize)
+		var installedTotal int64
+		var err error
+		resources, installedTotal, err = global.PluginControllerManager.BrowseInstalled(txctx, o.Query, offset, o.PageSize)
 		if err != nil {
 			return err
 		}
@@ -156,13 +160,11 @@ func (o *BrowsePlugins) Output(ctx *gin.Context) (interface{}, error) {
 		for _, resource := range resources {
 			ids = append(ids, resource.ID)
 		}
-		states, err := global.PluginControllerManager.ReadBrowseStates(txctx, ids)
+		states, err = global.PluginControllerManager.ReadBrowseStates(txctx, ids)
 		if err != nil {
 			return err
 		}
-		for _, resource := range resources {
-			result.Entries = append(result.Entries, installedBrowseEntry(resource, states[resource.ID], bySource, o.Locale))
-		}
+		result.Entries = make([]PluginBrowseEntry, len(resources))
 		total := installedTotal + localTotal
 		if !o.InstalledOnly && hasCatalogSnapshot {
 			installedSources := map[string]bool{}
@@ -203,12 +205,17 @@ func (o *BrowsePlugins) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
+	// 账号缓存可能等待共享身份锁，必须在结束目录读事务后补齐。
+	for i, resource := range resources {
+		result.Entries[i] = installedBrowseEntry(resource, states[resource.ID], bySource, o.Locale)
+	}
 	return result, nil
 }
 
 func installedBrowseEntry(resource models.Plugin, state models.PluginBrowseState, catalogEntries map[string]catalog.Entry, locale string) PluginBrowseEntry {
 	result := PluginBrowseEntry{SourceKey: resource.SourceKey, PluginID: resource.ID, Name: resource.Name, Description: resource.Description, InstalledCount: state.InstalledCount}
-	if entry, ok := catalogEntries[resource.SourceKey]; ok {
+	entry, inCatalog := catalogEntries[resource.SourceKey]
+	if inCatalog {
 		result.CatalogKey = entry.Key
 		result.Update = browseUpdate(state.Versions, entry)
 	}
@@ -220,6 +227,10 @@ func installedBrowseEntry(resource models.Plugin, state models.PluginBrowseState
 	result.VersionID = version.ID
 	result.Icon = version.Icon
 	result.Icons = version.Icons
+	if inCatalog && useCatalogDisplayIcon(resource.SourceKey, version.Version, version.Icon, version.Icons, entry) {
+		result.Icon = entry.Package.Icon
+		result.Icons = entry.Package.Presentation.Icons
+	}
 	result.Category = version.Category
 	result.Name, result.Description = browsePresentation(version.ManifestName, version.ManifestDescription, packageplugin.Presentation{DisplayName: version.DisplayName, ShortDescription: version.ShortDescription, DisplayNames: version.DisplayNames, LocalizedDescriptions: version.LocalizedDescriptions}, resource.Name, locale)
 	if result.Description == "" {

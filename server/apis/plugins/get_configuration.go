@@ -2,6 +2,7 @@ package plugins
 
 import (
 	"context"
+
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
@@ -28,6 +29,8 @@ type PluginConfigurationResponse struct {
 	ConfigurationRevision int64 `json:"configurationRevision"`
 	// 账号代次
 	AccountGeneration int64 `json:"accountGeneration"`
+	// 更新后授权
+	AuthorizationAfterUpdate bool `json:"authorizationAfterUpdate,omitempty"`
 }
 
 // 读取插件配置
@@ -66,9 +69,21 @@ func (o *GetPluginConfiguration) Output(ctx *gin.Context) (interface{}, error) {
 
 	var config models.PluginConfiguration
 	var generation int64
+	var authorizationAfterUpdate bool
 	err = global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
 		var err error
-		config, err = global.PluginControllerManager.Configuration(txctx, o.PluginID)
+		if version.Package.Integration.Authentication != nil {
+			authorizationAfterUpdate, err = installationService().ChangesHostedAuthorization(txctx, version)
+			if err != nil {
+				return err
+			}
+		}
+		if _, hosted := version.Package.HostedOAuthServer(); authorizationAfterUpdate && hosted {
+			config = models.PluginConfiguration{PluginID: o.PluginID, Values: map[string]string{}}
+			config.Revision, err = global.PluginControllerManager.ConfigurationRevision(txctx, o.PluginID)
+		} else {
+			config, err = global.PluginControllerManager.Configuration(txctx, o.PluginID)
+		}
 		if err != nil {
 			return err
 		}
@@ -78,8 +93,8 @@ func (o *GetPluginConfiguration) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	result := PluginConfigurationResponse{VersionID: version.ID, Fields: extension.Config, Values: config.Values, ConfiguredSecrets: []string{}, ConfigurationRevision: config.Revision, AccountGeneration: generation, Blockers: []string{}}
-	_, readinessErr := installationService().Summary(version, config, generation)
+	result := PluginConfigurationResponse{VersionID: version.ID, Fields: extension.Config, Values: config.Values, ConfiguredSecrets: []string{}, ConfigurationRevision: config.Revision, AccountGeneration: generation, Blockers: []string{}, AuthorizationAfterUpdate: authorizationAfterUpdate}
+	_, readinessErr := installationService().Summary(ctx, version, config, generation)
 	result.Ready = readinessErr == nil
 	if readinessErr != nil {
 		result.Blockers = append(result.Blockers, errorKey(readinessErr))

@@ -587,6 +587,10 @@ func (v StatusError) Key() string {
 		return "PluginDistributionUnavailable"
 	case PluginDependencyUnavailable:
 		return "PluginDependencyUnavailable"
+	case PluginOAuthServiceUnavailable:
+		return "PluginOAuthServiceUnavailable"
+	case PluginOAuthMetadataUnavailable:
+		return "PluginOAuthMetadataUnavailable"
 	case RuntimeInstallationFailed:
 		return "RuntimeInstallationFailed"
 	case KnowledgeRemoteUnreachable:
@@ -917,6 +921,8 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			PluginAuthorizationFailed:            "plugin authentication did not complete or external authorization expired",
 			PluginDistributionUnavailable:        "plugin catalog or archive could not be downloaded; check the network and retry",
 			PluginDependencyUnavailable:          "required plugin dependencies could not be prepared; check the network and retry",
+			PluginOAuthServiceUnavailable:        "unable to reach the plugin authorization service; try again later",
+			PluginOAuthMetadataUnavailable:       "the plugin service did not provide readable authorization metadata",
 			RuntimeInstallationFailed:            "agent program maintenance failed; retry the operation",
 			KnowledgeRemoteUnreachable:           "remote knowledge service is unreachable",
 			KnowledgeRemoteIncompatible:          "remote knowledge service protocol is incompatible",
@@ -1205,6 +1211,8 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			PluginAuthorizationFailed:            "插件认证未完成或外部授权失效",
 			PluginDistributionUnavailable:        "插件目录或安装包暂时无法下载，请检查网络后重试",
 			PluginDependencyUnavailable:          "插件所需程序暂时无法准备，请检查网络后重试",
+			PluginOAuthServiceUnavailable:        "无法连接插件授权服务，请稍后重试",
+			PluginOAuthMetadataUnavailable:       "插件服务未提供可读取的授权元数据",
 			RuntimeInstallationFailed:            "智能体程序维护失败，请重试",
 			KnowledgeRemoteUnreachable:           "远端知识服务连接失败",
 			KnowledgeRemoteIncompatible:          "远端知识服务响应不符合支持的协议",

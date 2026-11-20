@@ -762,12 +762,18 @@ const (
 	PluginLocaleEnglish = "en"
 	// PluginLocaleChinese 是插件简体中文展示与文档语言。
 	PluginLocaleChinese = "zh-CN"
-	// PluginCatalogHTTPSource 是默认公开软件目录。
+	// PluginCatalogHTTPSource 是默认插件目录的稳定来源身份和分发地址。
 	PluginCatalogHTTPSource = "https://github.com/JieWaZi/neux-plugins/releases/latest/download/catalog.json"
 	// PluginAuthCommandStrategy 是包内授权桥接策略。
 	PluginAuthCommandStrategy = "plugin-command"
-	// PluginAuthProtocol 是逐行JSON-RPC授权扩展版本。
+	// PluginAuthHostedStrategy 是 Core 管理的托管 MCP OAuth 授权策略。
+	PluginAuthHostedStrategy = "mcp-oauth"
+	// PluginAuthProtocol 是共享的插件授权协议版本。
 	PluginAuthProtocol = "neuxbot-auth/1"
+	// PluginAuthOpenURLAction 表示打开浏览器继续插件授权。
+	PluginAuthOpenURLAction = "open-url"
+	// PluginMCPOAuthMode 是标准 MCP 声明中的 OAuth 模式。
+	PluginMCPOAuthMode = "oauth"
 	// PluginAccountInvalidationTimeoutSeconds 限定外部身份变化后撤销旧材料的本地清理时间。
 	PluginAccountInvalidationTimeoutSeconds = 5
 	// PluginAuthPreparationTimeoutSeconds 为首次挑战前的受管资产下载与启动保留有界准备时间。

@@ -71,8 +71,7 @@ export const pluginZh = {
   readmeTooLarge: "说明超过内置阅读范围，可下载原文查看。",
   readmeInvalid: "说明文件无法读取，以下展示插件简介。",
   downloadReadme: "下载原始说明",
-  authorizationWaiting: "请完成当前授权步骤，完成后会自动更新状态。",
-  authorizationScopeHelp: "实际可用能力受账号、服务商和资源权限限制。",
+  authorizationWaiting: "正在等待授权…",
   edit: "编辑插件",
   close: "关闭",
   editPlugin: "编辑 {{name}}",
@@ -153,11 +152,11 @@ export const pluginZh = {
   authentication: "账号连接",
   showQR: "显示二维码",
   scanTitle: "扫码授权",
-  deviceCodeHelp: "在授权页面输入此一次性验证码：",
+  deviceCodeHelp: "在授权页面输入以下验证码",
+  browserAuthorizationHelp: "请在浏览器中完成授权",
   copyCode: "复制验证码",
   codeCopied: "已复制",
   copyCodeFailed: "复制未完成，请手动输入验证码。",
-  localWaitUntil: "本机等待至 {{time}}",
   login: "连接账号",
   logout: "断开连接",
   openAuth: "打开授权页面",
@@ -167,6 +166,7 @@ export const pluginZh = {
   authUnknown: "尚未认证",
   authRefresh: "重新检查认证",
   cancelAuth: "取消本次认证",
+  accountConnected: "已连接",
   sharedIdentity: "已连接：{{name}}",
   update: "更新全部伙伴",
   updateAvailable: "可更新",
@@ -178,6 +178,8 @@ export const pluginZh = {
   prepareUpdateHelp:
     "准备新版本后可以核对插件说明、共享设置与账号，确认后才会更新伙伴。继续即同意运行此插件提供的授权程序及工具组件。",
   updateReadyHelp: "请完成新版本需要的共享设置与账号连接，再确认更新全部伙伴。",
+  updateReauthorizationHelp:
+    "新版本的授权方式或服务地址已变更。更新后请在插件详情重新连接账号。",
   updateRetryHelp:
     "更新未完成，原安装保持不变。若安装关系或共享设置已变化，请重新读取后确认。",
   reloadUpdate: "重新读取并确认",
@@ -279,10 +281,7 @@ export const pluginEn: { [K in keyof typeof pluginZh]: string } = {
   readmeInvalid:
     "The README could not be read. Showing the plugin summary instead.",
   downloadReadme: "Download original README",
-  authorizationWaiting:
-    "Complete the current authorization step. The status will update automatically.",
-  authorizationScopeHelp:
-    "Available capabilities depend on account, provider and resource permissions.",
+  authorizationWaiting: "Waiting for authorization…",
   edit: "Edit plugin",
   close: "Close",
   editPlugin: "Edit {{name}}",
@@ -366,11 +365,11 @@ export const pluginEn: { [K in keyof typeof pluginZh]: string } = {
   authentication: "Account connection",
   showQR: "Show QR code",
   scanTitle: "Scan to authorize",
-  deviceCodeHelp: "Enter this one-time code on the authorization page:",
+  deviceCodeHelp: "Enter this code on the authorization page.",
+  browserAuthorizationHelp: "Complete authorization in your browser.",
   copyCode: "Copy code",
   codeCopied: "Copied",
   copyCodeFailed: "Could not copy. Enter the code manually.",
-  localWaitUntil: "Local wait ends at {{time}}",
   login: "Connect account",
   logout: "Disconnect",
   openAuth: "Open authorization page",
@@ -380,6 +379,7 @@ export const pluginEn: { [K in keyof typeof pluginZh]: string } = {
   authUnknown: "Not authorized",
   authRefresh: "Check authorization again",
   cancelAuth: "Cancel this authorization",
+  accountConnected: "Connected",
   sharedIdentity: "Connected: {{name}}",
   update: "Update all partners",
   updateAvailable: "Update available",
@@ -392,6 +392,8 @@ export const pluginEn: { [K in keyof typeof pluginZh]: string } = {
     "Review the new plugin description, shared settings and account before updating partners. Continuing allows the plugin’s authorization programs and tool components to run.",
   updateReadyHelp:
     "Complete the new version’s shared settings and account connection, then confirm the update for all partners.",
+  updateReauthorizationHelp:
+    "The new version changes the authorization method or service address. Reconnect the account in plugin details after updating.",
   updateRetryHelp:
     "The update did not complete; original installations are unchanged. Reload and confirm if installations or shared settings have changed.",
   reloadUpdate: "Reload and confirm again",

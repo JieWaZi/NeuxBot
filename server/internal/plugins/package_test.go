@@ -109,13 +109,13 @@ func TestStandardContractRejectsOldPersistedSnapshots(t *testing.T) {
 	}
 }
 func TestStandardMCPAuthenticationNeverDowngradesUnsupportedModes(t *testing.T) {
-	for _, mode := range []string{"oauth", "mixed", "unknown"} {
+	for _, mode := range []string{"mixed", "unknown"} {
 		root := t.TempDir()
 		standardInput(t, root, nil)
 		fixtureFile(t, root, "mcp.json", `{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"remote":{"type":"streamable-http","url":"https://example.com/mcp","extensions":{"com.openai":{"auth":{"type":"`+mode+`"}}}}}}`)
 		if _, err := Load(root); err == nil {
 			t.Fatalf("%s downgraded to anonymous", mode)
-		} else if (mode == "oauth" || mode == "mixed") && !errors.Is(err, status_error.PluginCapabilityUnsupported) {
+		} else if mode == "mixed" && !errors.Is(err, status_error.PluginCapabilityUnsupported) {
 			t.Fatalf("unsupported mode returned wrong failure: %v", err)
 		}
 	}

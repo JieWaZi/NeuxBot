@@ -33,6 +33,7 @@ export function ChatComposerReferenceChip({
 
 type ChatMessageReferenceChipProps = {
   label: string;
+  icon?: ReactNode;
   tone?: "default" | "connector" | "plugin";
   href?: string;
   unavailable?: boolean;
@@ -42,6 +43,7 @@ type ChatMessageReferenceChipProps = {
 
 export function ChatMessageReferenceChip({
   label,
+  icon,
   tone = "default",
   href,
   unavailable = false,
@@ -56,7 +58,7 @@ export function ChatMessageReferenceChip({
     tone === "connector" ? Cable : tone === "plugin" ? Package : Sparkles;
   const content = (
     <>
-      <Icon className="size-icon-xs shrink-0" aria-hidden="true" />
+      {icon ?? <Icon className="size-icon-xs shrink-0" aria-hidden="true" />}
       <span className="truncate">{label}</span>
     </>
   );

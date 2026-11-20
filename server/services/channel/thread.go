@@ -12,6 +12,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/internal/teamwork"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
@@ -39,6 +40,34 @@ func (s *service) SubmitMessage(
 		return SubmitMessageResult{}, err
 	}
 	return SubmitMessageResult{Message: &result}, nil
+}
+
+// directedPluginReferences 为公开首发保留成员当时选择的插件版本，不向负责人交付能力。
+func (s *service) directedPluginReferences(ctx context.Context, wakerID string, ids []string) ([]plugins.Snapshot, error) {
+	if s.plugins == nil {
+		return nil, status_error.PluginNotReady
+	}
+	var refs []models.PluginReference
+	if err := s.transaction(ctx, func(txctx context.Context) error {
+		var err error
+		refs, err = s.plugins.InstalledReferences(txctx, wakerID)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	byID := make(map[string]models.PluginReference, len(refs))
+	for _, ref := range refs {
+		byID[ref.ID] = ref
+	}
+	snapshots := make([]plugins.Snapshot, 0, len(ids))
+	for _, id := range ids {
+		ref, ok := byID[strings.TrimSpace(id)]
+		if !ok {
+			return nil, status_error.PluginNotReady
+		}
+		snapshots = append(snapshots, plugins.Snapshot{ID: ref.ID, Name: ref.Name, VersionID: ref.VersionID, Version: ref.Version})
+	}
+	return snapshots, nil
 }
 
 // createThread 在首次发送时建立成员快照和一人一个 Chat，并按提及路由启动负责人执行。
@@ -139,6 +168,16 @@ func (s *service) createThread(
 			map[string]interface{}{"WakerID": input.MentionWakerID},
 		)
 	}
+	directedToMember := input.MentionWakerID != "" && input.MentionWakerID != channel.LeadWakerID
+	leadInput := input.Input
+	var messagePlugins []plugins.Snapshot
+	if directedToMember && len(input.Input.PluginIDs) != 0 {
+		messagePlugins, err = s.directedPluginReferences(ctx, input.MentionWakerID, input.Input.PluginIDs)
+		if err != nil {
+			return ThreadResult{}, err
+		}
+		leadInput.PluginIDs = nil
+	}
 	threadID := util.New()
 	provisioningID := util.New()
 	now := time.Now().UnixMilli()
@@ -211,7 +250,7 @@ func (s *service) createThread(
 		UpdatedAt:                    now,
 	}
 	var initialTask *models.ChannelTask
-	if input.MentionWakerID != "" && input.MentionWakerID != channel.LeadWakerID {
+	if directedToMember {
 		memberInput := input.Input
 		// 首发用户输入已经由负责人 Chat 作为公开事实保存；任务副本仅负责保留
 		// 完整附件和能力引用，不在聚合时间线生成第二个用户气泡。
@@ -349,12 +388,13 @@ func (s *service) createThread(
 		input.MentionWakerID == thread.LeadWakerID,
 	)
 	workOptions.AccountID = leadConfig.AccountID
-	input.Input.ContextInstructions = append(input.Input.ContextInstructions, leaderTurnInstruction(input.MentionWakerID == thread.LeadWakerID))
+	leadInput.ContextInstructions = append(leadInput.ContextInstructions, leaderTurnInstruction(input.MentionWakerID == thread.LeadWakerID))
 
 	accepted, err := s.executions.Start(ctx, execution.WorkIntent{
 		AutomaticRunID: thread.AutomaticRunID, ExecutionID: leadExecutionID,
 		Chat:              execution.ChatTarget{ChatID: leadChat.ID},
-		Input:             input.Input,
+		Input:             leadInput,
+		MessagePlugins:    messagePlugins,
 		Options:           workOptions,
 		Admission:         constants.ExecutionAdmissionCommitBeforeDispatch,
 		AdmissionBoundary: input.AdmissionBoundary,

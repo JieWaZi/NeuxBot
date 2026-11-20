@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
-	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 // 目标次序与格式仅属于生成器协议，不依赖已安装 CLI。
@@ -81,6 +83,10 @@ func prepareNativeTarget(ctx context.Context, parent, id string, pkg Package, ro
 	}
 	if err := ValidateContract(pkg); err != nil {
 		return NativeTarget{}, err
+	}
+	// 托管 OAuth 依赖 Core 的授权与中继，只能准备受管投射。
+	if owner == nil && pkg.declaresHostedOAuth() {
+		return NativeTarget{}, status_error.PluginCapabilityUnsupported
 	}
 	if !registeredTarget(cli) {
 		return NativeTarget{}, status_error.PluginCapabilityUnsupported
@@ -196,6 +202,9 @@ func prepareNativeTarget(ctx context.Context, parent, id string, pkg Package, ro
 }
 
 func nativeServers(pkg Package, cli, id string, bindings []AuthenticationBinding) (map[string]any, error) {
+	if pkg.declaresHostedOAuth() {
+		return nil, status_error.PluginCapabilityUnsupported
+	}
 	servers := map[string]any{}
 	for _, server := range pkg.Servers {
 		data, _ := json.Marshal(server)
@@ -419,6 +428,9 @@ func TargetFormat(pkg Package, cli string) (string, error) {
 	}
 	if !registeredTarget(cli) {
 		return "", status_error.PluginCapabilityUnsupported
+	}
+	if auth := pkg.Integration.Authentication; auth != nil && auth.Strategy == constants.PluginAuthHostedStrategy {
+		return "projection", nil
 	}
 	extension, err := ClientExtension(pkg)
 	if err != nil {
